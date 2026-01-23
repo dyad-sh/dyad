@@ -37,7 +37,10 @@ export function VisualEditingChangesDialog({
         expectedResponsesRef.current.delete(componentId);
 
         // Check if all responses received (only if we're actually waiting)
-        if (isWaitingForResponses.current && expectedResponsesRef.current.size === 0) {
+        if (
+          isWaitingForResponses.current &&
+          expectedResponsesRef.current.size === 0
+        ) {
           setAllResponsesReceived(true);
         }
       }
@@ -84,7 +87,14 @@ export function VisualEditingChangesDialog({
 
       applyChanges();
     }
-  }, [allResponsesReceived, isSaving, pendingChanges, selectedAppId, onReset, setPendingChanges]);
+  }, [
+    allResponsesReceived,
+    isSaving,
+    pendingChanges,
+    selectedAppId,
+    onReset,
+    setPendingChanges,
+  ]);
 
   if (pendingChanges.size === 0) return null;
 
@@ -154,7 +164,12 @@ export function VisualEditingChangesDialog({
           <Check size={14} className="mr-1" />
           <span>{isSaving ? "Saving..." : "Save Changes"}</span>
         </Button>
-        <Button size="sm" variant="outline" onClick={handleDiscard} disabled={isSaving}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleDiscard}
+          disabled={isSaving}
+        >
           <X size={14} className="mr-1" />
           <span>Discard</span>
         </Button>

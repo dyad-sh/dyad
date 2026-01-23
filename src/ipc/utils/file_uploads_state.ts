@@ -42,7 +42,9 @@ export class FileUploadsState {
   ): void {
     const map = this.ensureChat(chatId);
     map.set(fileId, fileInfo);
-    logger.log(`Added file upload for chat ${chatId}: ${fileId} -> ${fileInfo.originalName}`);
+    logger.log(
+      `Added file upload for chat ${chatId}: ${fileId} -> ${fileInfo.originalName}`,
+    );
   }
 
   /**

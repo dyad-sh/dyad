@@ -18,7 +18,11 @@ export default function dyadTagger(): Plugin {
     async transform(code: string, id: string) {
       try {
         // Ignore non-jsx files and files inside node_modules
-        if (!VALID_EXTENSIONS.has(path.extname(id)) || id.includes("node_modules")) return null;
+        if (
+          !VALID_EXTENSIONS.has(path.extname(id)) ||
+          id.includes("node_modules")
+        )
+          return null;
 
         const ast = parse(code, {
           sourceType: "module",
@@ -40,7 +44,9 @@ export default function dyadTagger(): Plugin {
 
               // ── 2. Check whether the tag already has data-dyad-id ───────────────
               const alreadyTagged = node.attributes?.some(
-                (attr: any) => attr.type === "JSXAttribute" && attr.name?.name === "data-dyad-id",
+                (attr: any) =>
+                  attr.type === "JSXAttribute" &&
+                  attr.name?.name === "data-dyad-id",
               );
               if (alreadyTagged) return;
 
@@ -57,7 +63,10 @@ export default function dyadTagger(): Plugin {
                 );
               }
             } catch (error) {
-              console.warn(`[dyad-tagger] Warning: Failed to process JSX node in ${id}:`, error);
+              console.warn(
+                `[dyad-tagger] Warning: Failed to process JSX node in ${id}:`,
+                error,
+              );
             }
           },
         });
@@ -70,7 +79,10 @@ export default function dyadTagger(): Plugin {
           map: ms.generateMap({ hires: true }),
         };
       } catch (error) {
-        console.warn(`[dyad-tagger] Warning: Failed to transform ${id}:`, error);
+        console.warn(
+          `[dyad-tagger] Warning: Failed to transform ${id}:`,
+          error,
+        );
         return null;
       }
     },

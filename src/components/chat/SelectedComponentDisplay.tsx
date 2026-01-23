@@ -7,9 +7,13 @@ import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { Code2, X } from "lucide-react";
 
 export function SelectedComponentsDisplay() {
-  const [selectedComponents, setSelectedComponents] = useAtom(selectedComponentsPreviewAtom);
+  const [selectedComponents, setSelectedComponents] = useAtom(
+    selectedComponentsPreviewAtom,
+  );
   const previewIframeRef = useAtomValue(previewIframeRefAtom);
-  const setVisualEditingSelectedComponent = useSetAtom(visualEditingSelectedComponentAtom);
+  const setVisualEditingSelectedComponent = useSetAtom(
+    visualEditingSelectedComponentAtom,
+  );
 
   const handleRemoveComponent = (index: number) => {
     const componentToRemove = selectedComponents[index];
@@ -33,7 +37,10 @@ export function SelectedComponentsDisplay() {
     setSelectedComponents([]);
     setVisualEditingSelectedComponent(null);
     if (previewIframeRef?.contentWindow) {
-      previewIframeRef.contentWindow.postMessage({ type: "clear-dyad-component-overlays" }, "*");
+      previewIframeRef.contentWindow.postMessage(
+        { type: "clear-dyad-component-overlays" },
+        "*",
+      );
     }
   };
 
@@ -62,7 +69,10 @@ export function SelectedComponentsDisplay() {
         <div key={selectedComponent.id} className="mb-1 last:mb-0">
           <div className="flex items-center justify-between rounded-md bg-indigo-600/10 px-2 py-1 text-sm">
             <div className="flex items-center gap-2 overflow-hidden">
-              <Code2 size={16} className="flex-shrink-0 text-indigo-600 dark:text-indigo-400" />
+              <Code2
+                size={16}
+                className="flex-shrink-0 text-indigo-600 dark:text-indigo-400"
+              />
               <div className="flex flex-col overflow-hidden">
                 <span
                   className="truncate font-medium text-indigo-800 dark:text-indigo-300"
@@ -74,7 +84,8 @@ export function SelectedComponentsDisplay() {
                   className="truncate text-xs text-indigo-600/80 dark:text-indigo-400/80"
                   title={`${selectedComponent.relativePath}:${selectedComponent.lineNumber}`}
                 >
-                  {selectedComponent.relativePath}:{selectedComponent.lineNumber}
+                  {selectedComponent.relativePath}:
+                  {selectedComponent.lineNumber}
                 </span>
               </div>
             </div>

@@ -40,7 +40,9 @@ async function verifyReleaseAssets() {
     });
 
     if (!response.ok) {
-      throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
+      throw new Error(
+        `GitHub API error: ${response.status} ${response.statusText}`,
+      );
     }
 
     const allReleases = await response.json();
@@ -101,19 +103,25 @@ async function verifyReleaseAssets() {
     console.log("");
 
     // Check for missing assets
-    const missingAssets = expectedAssets.filter((expected) => !actualAssets.includes(expected));
+    const missingAssets = expectedAssets.filter(
+      (expected) => !actualAssets.includes(expected),
+    );
 
     if (missingAssets.length > 0) {
       console.error("❌ VERIFICATION FAILED!");
       console.error("📭 Missing assets:");
       missingAssets.forEach((asset) => console.error(`  - ${asset}`));
       console.error("");
-      console.error("Please ensure all platforms have completed their builds and uploads.");
+      console.error(
+        "Please ensure all platforms have completed their builds and uploads.",
+      );
       process.exit(1);
     }
 
     // Check for unexpected assets (optional warning)
-    const unexpectedAssets = actualAssets.filter((actual) => !expectedAssets.includes(actual));
+    const unexpectedAssets = actualAssets.filter(
+      (actual) => !expectedAssets.includes(actual),
+    );
 
     if (unexpectedAssets.length > 0) {
       console.warn("⚠️  Unexpected assets found:");

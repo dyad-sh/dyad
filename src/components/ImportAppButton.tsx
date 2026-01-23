@@ -10,12 +10,19 @@ export function ImportAppButton({ className }: { className?: string }) {
   return (
     <>
       <div className={cn("px-4 pb-1 flex justify-center", className)}>
-        <Button variant="default" size="default" onClick={() => setIsDialogOpen(true)}>
+        <Button
+          variant="default"
+          size="default"
+          onClick={() => setIsDialogOpen(true)}
+        >
           <Upload className="mr-2 h-4 w-4" />
           Import App
         </Button>
       </div>
-      <ImportAppDialog isOpen={isDialogOpen} onClose={() => setIsDialogOpen(false)} />
+      <ImportAppDialog
+        isOpen={isDialogOpen}
+        onClose={() => setIsDialogOpen(false)}
+      />
     </>
   );
 }

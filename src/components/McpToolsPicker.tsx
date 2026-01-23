@@ -1,8 +1,17 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { Wrench } from "lucide-react";
 import { useMcp } from "@/hooks/useMcp";
@@ -39,7 +48,10 @@ export function McpToolsPicker() {
           <TooltipContent>Tools</TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      <PopoverContent className="w-120 max-h-[80vh] overflow-y-auto" align="start">
+      <PopoverContent
+        className="w-120 max-h-[80vh] overflow-y-auto"
+        align="start"
+      >
         <div className="space-y-4">
           <div>
             <h3 className="font-medium">Tools (MCP)</h3>
@@ -49,7 +61,8 @@ export function McpToolsPicker() {
           </div>
           {servers.length === 0 ? (
             <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
-              No MCP servers configured. Configure them in Settings → Tools (MCP).
+              No MCP servers configured. Configure them in Settings → Tools
+              (MCP).
             </div>
           ) : (
             <div className="space-y-3">
@@ -70,7 +83,9 @@ export function McpToolsPicker() {
                         className="flex items-center justify-between gap-2 rounded border p-2"
                       >
                         <div className="min-w-0">
-                          <div className="font-mono text-sm truncate">{t.name}</div>
+                          <div className="font-mono text-sm truncate">
+                            {t.name}
+                          </div>
                           {t.description && (
                             <div className="text-xs text-muted-foreground truncate">
                               {t.description}
@@ -78,8 +93,14 @@ export function McpToolsPicker() {
                           )}
                         </div>
                         <Select
-                          value={consentsMap[`${s.id}:${t.name}`] || t.consent || "ask"}
-                          onValueChange={(v) => setToolConsent(s.id, t.name, v as any)}
+                          value={
+                            consentsMap[`${s.id}:${t.name}`] ||
+                            t.consent ||
+                            "ask"
+                          }
+                          onValueChange={(v) =>
+                            setToolConsent(s.id, t.name, v as any)
+                          }
                         >
                           <SelectTrigger className="w-[140px] h-8">
                             <SelectValue />
@@ -93,7 +114,9 @@ export function McpToolsPicker() {
                       </div>
                     ))}
                     {(toolsByServer[s.id] || []).length === 0 && (
-                      <div className="text-xs text-muted-foreground">No tools discovered.</div>
+                      <div className="text-xs text-muted-foreground">
+                        No tools discovered.
+                      </div>
                     )}
                   </div>
                 </div>

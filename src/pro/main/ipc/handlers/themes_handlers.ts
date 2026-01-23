@@ -41,7 +41,10 @@ if (!fs.existsSync(THEME_IMAGES_TEMP_DIR)) {
 function getMimeTypeFromExtension(
   ext: string,
 ): "image/jpeg" | "image/png" | "image/gif" | "image/webp" {
-  const mimeMap: Record<string, "image/jpeg" | "image/png" | "image/gif" | "image/webp"> = {
+  const mimeMap: Record<
+    string,
+    "image/jpeg" | "image/png" | "image/gif" | "image/webp"
+  > = {
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
     ".png": "image/png",
@@ -146,27 +149,33 @@ export function registerThemesHandlers() {
   });
 
   // Set app theme (built-in or custom theme ID)
-  handle("set-app-theme", async (_, params: SetAppThemeParams): Promise<void> => {
-    const { appId, themeId } = params;
-    // Use raw SQL to properly set NULL when themeId is null (representing "no theme")
-    if (!themeId) {
-      await db
-        .update(apps)
-        .set({ themeId: sql`NULL` })
-        .where(eq(apps.id, appId));
-    } else {
-      await db.update(apps).set({ themeId }).where(eq(apps.id, appId));
-    }
-  });
+  handle(
+    "set-app-theme",
+    async (_, params: SetAppThemeParams): Promise<void> => {
+      const { appId, themeId } = params;
+      // Use raw SQL to properly set NULL when themeId is null (representing "no theme")
+      if (!themeId) {
+        await db
+          .update(apps)
+          .set({ themeId: sql`NULL` })
+          .where(eq(apps.id, appId));
+      } else {
+        await db.update(apps).set({ themeId }).where(eq(apps.id, appId));
+      }
+    },
+  );
 
   // Get app theme
-  handle("get-app-theme", async (_, params: GetAppThemeParams): Promise<string | null> => {
-    const app = await db.query.apps.findFirst({
-      where: eq(apps.id, params.appId),
-      columns: { themeId: true },
-    });
-    return app?.themeId ?? null;
-  });
+  handle(
+    "get-app-theme",
+    async (_, params: GetAppThemeParams): Promise<string | null> => {
+      const app = await db.query.apps.findFirst({
+        where: eq(apps.id, params.appId),
+        columns: { themeId: true },
+      });
+      return app?.themeId ?? null;
+    },
+  );
 
   // Get all custom themes
   handle("get-custom-themes", async (): Promise<CustomTheme[]> => {
@@ -336,9 +345,12 @@ export function registerThemesHandlers() {
   );
 
   // Delete custom theme
-  handle("delete-custom-theme", async (_, params: DeleteCustomThemeParams): Promise<void> => {
-    await db.delete(customThemes).where(eq(customThemes.id, params.id));
-  });
+  handle(
+    "delete-custom-theme",
+    async (_, params: DeleteCustomThemeParams): Promise<void> => {
+      await db.delete(customThemes).where(eq(customThemes.id, params.id));
+    },
+  );
 
   // Save theme image to temp directory
   handle(
@@ -382,34 +394,42 @@ export function registerThemesHandlers() {
   );
 
   // Cleanup theme images from temp directory
-  handle("cleanup-theme-images", async (_, params: CleanupThemeImagesParams): Promise<void> => {
-    const { paths } = params;
+  handle(
+    "cleanup-theme-images",
+    async (_, params: CleanupThemeImagesParams): Promise<void> => {
+      const { paths } = params;
 
-    for (const filePath of paths) {
-      // Security: only delete files in our temp directory
-      // Use path.resolve() to normalize and prevent path traversal attacks
-      const normalizedPath = path.resolve(filePath);
-      const normalizedTempDir = path.resolve(THEME_IMAGES_TEMP_DIR);
-      if (!normalizedPath.startsWith(normalizedTempDir + path.sep)) {
-        throw new Error("Invalid path: cannot delete files outside temp directory");
-      }
+      for (const filePath of paths) {
+        // Security: only delete files in our temp directory
+        // Use path.resolve() to normalize and prevent path traversal attacks
+        const normalizedPath = path.resolve(filePath);
+        const normalizedTempDir = path.resolve(THEME_IMAGES_TEMP_DIR);
+        if (!normalizedPath.startsWith(normalizedTempDir + path.sep)) {
+          throw new Error(
+            "Invalid path: cannot delete files outside temp directory",
+          );
+        }
 
-      try {
-        await unlink(filePath);
-        logger.log(`Cleaned up theme image: ${filePath}`);
-      } catch (error) {
-        // File might already be deleted (ENOENT), that's okay
-        // But other errors (permissions, etc.) should be reported
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-          throw new Error("Failed to cleanup temporary image file");
+        try {
+          await unlink(filePath);
+          logger.log(`Cleaned up theme image: ${filePath}`);
+        } catch (error) {
+          // File might already be deleted (ENOENT), that's okay
+          // But other errors (permissions, etc.) should be reported
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+            throw new Error("Failed to cleanup temporary image file");
+          }
         }
       }
-    }
-  });
+    },
+  );
 
   handle(
     "generate-theme-prompt",
-    async (_, params: GenerateThemePromptParams): Promise<GenerateThemePromptResult> => {
+    async (
+      _,
+      params: GenerateThemePromptParams,
+    ): Promise<GenerateThemePromptResult> => {
       const settings = readSettings();
 
       // Return mock response in test mode
@@ -477,7 +497,9 @@ Modern dark theme with purple accents for testing.
       // Build the user input prompt
       const keywordsPart = params.keywords.trim() || "N/A";
       const imagesPart =
-        params.imagePaths.length > 0 ? `${params.imagePaths.length} image(s) attached` : "N/A";
+        params.imagePaths.length > 0
+          ? `${params.imagePaths.length} image(s) attached`
+          : "N/A";
       const userInput = `inspired by: ${keywordsPart}
 images: ${imagesPart}`;
 
@@ -495,7 +517,9 @@ images: ${imagesPart}`;
           const normalizedImagePath = path.resolve(imagePath);
           const normalizedTempDir = path.resolve(THEME_IMAGES_TEMP_DIR);
           if (!normalizedImagePath.startsWith(normalizedTempDir + path.sep)) {
-            throw new Error("Invalid image path: images must be uploaded through the theme dialog");
+            throw new Error(
+              "Invalid image path: images must be uploaded through the theme dialog",
+            );
           }
 
           try {
@@ -510,7 +534,9 @@ images: ${imagesPart}`;
               mimeType,
             } as ImagePart);
           } catch {
-            throw new Error(`Failed to read image file: ${path.basename(imagePath)}`);
+            throw new Error(
+              `Failed to read image file: ${path.basename(imagePath)}`,
+            );
           }
         }
 

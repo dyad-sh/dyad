@@ -68,7 +68,9 @@ export const NeonConfigure = () => {
         </CardHeader>
         <CardContent>
           <div className="text-center py-8">
-            <div className="text-sm text-muted-foreground">Loading Neon project information...</div>
+            <div className="text-sm text-muted-foreground">
+              Loading Neon project information...
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -87,7 +89,9 @@ export const NeonConfigure = () => {
         </CardHeader>
         <CardContent>
           <div className="text-center py-8">
-            <div className="text-sm text-red-500">Error loading Neon project: {error.message}</div>
+            <div className="text-sm text-red-500">
+              Error loading Neon project: {error.message}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -143,8 +147,13 @@ export const NeonConfigure = () => {
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm truncate">{branch.branchName}</span>
-                    <Badge variant="secondary" className={getBranchTypeColor(branch.type)}>
+                    <span className="font-medium text-sm truncate">
+                      {branch.branchName}
+                    </span>
+                    <Badge
+                      variant="secondary"
+                      className={getBranchTypeColor(branch.type)}
+                    >
                       {branch.type}
                     </Badge>
                   </div>

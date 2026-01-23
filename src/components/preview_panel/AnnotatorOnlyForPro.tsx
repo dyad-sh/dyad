@@ -35,7 +35,8 @@ export const AnnotatorOnlyForPro = ({ onGoBack }: AnnotatorOnlyForProProps) => {
           Annotator is a Pro Feature
         </h2>
         <p className="text-muted-foreground mb-10 text-center max-w-md text-base leading-relaxed">
-          Unlock the ability to annotate screenshots and enhance your workflow with Dyad Pro.
+          Unlock the ability to annotate screenshots and enhance your workflow
+          with Dyad Pro.
         </p>
 
         {/* Get Pro Button */}

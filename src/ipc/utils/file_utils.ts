@@ -39,7 +39,10 @@ export function getFilesRecursively(dir: string, baseDir: string): string[] {
   return files;
 }
 
-export async function copyDirectoryRecursive(source: string, destination: string) {
+export async function copyDirectoryRecursive(
+  source: string,
+  destination: string,
+) {
   await fsPromises.mkdir(destination, { recursive: true });
   const entries = await fsPromises.readdir(source, { withFileTypes: true });
   // Why do we sort? This ensures stable ordering of files across platforms
@@ -77,7 +80,8 @@ export async function writeMigrationFile(
     })
     .filter((num) => num !== -1);
 
-  const nextMigrationNumber = migrationNumbers.length > 0 ? Math.max(...migrationNumbers) + 1 : 0;
+  const nextMigrationNumber =
+    migrationNumbers.length > 0 ? Math.max(...migrationNumbers) + 1 : 0;
   const paddedNumber = String(nextMigrationNumber).padStart(4, "0");
 
   let description = "migration";

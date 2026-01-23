@@ -34,7 +34,9 @@ export function NeonConnector() {
             <Button
               variant="outline"
               onClick={() => {
-                IpcClient.getInstance().openExternalUrl("https://console.neon.tech/");
+                IpcClient.getInstance().openExternalUrl(
+                  "https://console.neon.tech/",
+                );
               }}
               className="ml-2 px-2 py-1 h-8 mb-2"
               style={{ display: "inline-flex", alignItems: "center" }}
@@ -83,7 +85,13 @@ export function NeonConnector() {
   );
 }
 
-function NeonSvg({ isDarkMode, className }: { isDarkMode?: boolean; className?: string }) {
+function NeonSvg({
+  isDarkMode,
+  className,
+}: {
+  isDarkMode?: boolean;
+  className?: string;
+}) {
   const textColor = isDarkMode ? "#fff" : "#000";
 
   return (

@@ -25,7 +25,8 @@ const RUNTIME_URL = `https://github.com/AppImage/type2-runtime/releases/download
 // Can be generated with: curl -sL <URL> | sha256sum
 // Also visible directly on the GitHub releases page; see 'runtime-x86_64' on:
 // https://github.com/AppImage/type2-runtime/releases/tag/20251108
-const RUNTIME_SHA256 = "2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d";
+const RUNTIME_SHA256 =
+  "2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d";
 
 // For creating temporary work directories; largely arbitrary
 const APPDIR_PREFIX = "AppDir";
@@ -43,7 +44,12 @@ export class MakerAppImage extends MakerBase<{ icon?: string }> {
     return process.platform === "linux" && process.arch === "x64";
   }
 
-  override async make({ appName, dir, makeDir, packageJSON }: MakerOptions): Promise<string[]> {
+  override async make({
+    appName,
+    dir,
+    makeDir,
+    packageJSON,
+  }: MakerOptions): Promise<string[]> {
     const version = packageJSON["version"];
 
     if (!version || typeof version !== "string")
@@ -61,7 +67,9 @@ export class MakerAppImage extends MakerBase<{ icon?: string }> {
     });
 
     if (!res.ok)
-      throw new Error(`Could not fetch AppImage runtime: ${res.status} ${res.statusText}`);
+      throw new Error(
+        `Could not fetch AppImage runtime: ${res.status} ${res.statusText}`,
+      );
 
     const runtime = Buffer.from(await res.arrayBuffer());
 
@@ -86,7 +94,9 @@ export class MakerAppImage extends MakerBase<{ icon?: string }> {
     try {
       // Create directory structure of AppDir.
       // For conventions, see: https://docs.appimage.org/reference/appdir.html#conventions
-      appDir = await mkdtemp(resolve(tmpdir(), `${APPDIR_PREFIX}_${appName}_${version}_`));
+      appDir = await mkdtemp(
+        resolve(tmpdir(), `${APPDIR_PREFIX}_${appName}_${version}_`),
+      );
       const binDir = resolve(appDir, "usr/bin");
       const libDir = resolve(appDir, `usr/lib/${appName}`);
 
@@ -117,7 +127,8 @@ export class MakerAppImage extends MakerBase<{ icon?: string }> {
       if (icon) {
         const ext = extname(icon);
 
-        if (!ext || ext !== ".png") throw new Error(`Invalid icon extension: ${ext || "[None]"}`);
+        if (!ext || ext !== ".png")
+          throw new Error(`Invalid icon extension: ${ext || "[None]"}`);
 
         const finalIconName = `${appName}${ext}`;
         const finalIconPath = resolve(appDir, finalIconName);
@@ -127,15 +138,25 @@ export class MakerAppImage extends MakerBase<{ icon?: string }> {
       }
 
       // By convention, executables should be in /bin
-      await symlink(relative(binDir, resolve(libDir, appName)), resolve(binDir, appName), "file");
+      await symlink(
+        relative(binDir, resolve(libDir, appName)),
+        resolve(binDir, appName),
+        "file",
+      );
 
       // The entry point of an AppImage should be the AppRun file.
       // See: https://docs.appimage.org/reference/appdir.html#general-description
-      await symlink(relative(appDir, resolve(binDir, appName)), resolve(appDir, "AppRun"), "file");
+      await symlink(
+        relative(appDir, resolve(binDir, appName)),
+        resolve(appDir, "AppRun"),
+        "file",
+      );
 
       // mksquashfs emits a file, so we create a temporary file
       // inside a temporary directory to hold the output
-      workDir = await mkdtemp(resolve(tmpdir(), `${WORKDIR_PREFIX}_${appName}_${version}_`));
+      workDir = await mkdtemp(
+        resolve(tmpdir(), `${WORKDIR_PREFIX}_${appName}_${version}_`),
+      );
       const tempSquashedFsPath = resolve(workDir, "temp");
 
       const execFileAsync = promisify(execFile);

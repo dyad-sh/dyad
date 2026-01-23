@@ -205,9 +205,9 @@ describe("retryWithRateLimit", () => {
       const badRequestError = { response: { status: 400 } };
       const operation = vi.fn().mockRejectedValue(badRequestError);
 
-      await expect(retryWithRateLimit(operation, "test-operation")).rejects.toEqual(
-        badRequestError,
-      );
+      await expect(
+        retryWithRateLimit(operation, "test-operation"),
+      ).rejects.toEqual(badRequestError);
       expect(operation).toHaveBeenCalledTimes(1);
     });
 
@@ -215,7 +215,9 @@ describe("retryWithRateLimit", () => {
       const serverError = { response: { status: 500 } };
       const operation = vi.fn().mockRejectedValue(serverError);
 
-      await expect(retryWithRateLimit(operation, "test-operation")).rejects.toEqual(serverError);
+      await expect(
+        retryWithRateLimit(operation, "test-operation"),
+      ).rejects.toEqual(serverError);
       expect(operation).toHaveBeenCalledTimes(1);
     });
 
@@ -223,9 +225,9 @@ describe("retryWithRateLimit", () => {
       const error = new Error("Network failure");
       const operation = vi.fn().mockRejectedValue(error);
 
-      await expect(retryWithRateLimit(operation, "test-operation")).rejects.toThrow(
-        "Network failure",
-      );
+      await expect(
+        retryWithRateLimit(operation, "test-operation"),
+      ).rejects.toThrow("Network failure");
       expect(operation).toHaveBeenCalledTimes(1);
     });
 
@@ -233,7 +235,9 @@ describe("retryWithRateLimit", () => {
       const error = { message: "Connection timeout" };
       const operation = vi.fn().mockRejectedValue(error);
 
-      await expect(retryWithRateLimit(operation, "test-operation")).rejects.toEqual(error);
+      await expect(
+        retryWithRateLimit(operation, "test-operation"),
+      ).rejects.toEqual(error);
       expect(operation).toHaveBeenCalledTimes(1);
     });
   });
@@ -432,7 +436,11 @@ describe("fetchWithRetry", () => {
     });
     vi.mocked(fetch).mockResolvedValue(successResponse);
 
-    const result = await fetchWithRetry("https://example.com/api", { method: "GET" }, "test-fetch");
+    const result = await fetchWithRetry(
+      "https://example.com/api",
+      { method: "GET" },
+      "test-fetch",
+    );
 
     expect(result).toBe(successResponse);
     expect(fetch).toHaveBeenCalledTimes(1);
@@ -518,7 +526,11 @@ describe("fetchWithRetry", () => {
     vi.mocked(fetch).mockRejectedValue(networkError);
 
     await expect(
-      fetchWithRetry("https://example.com/api", { method: "GET" }, "test-fetch"),
+      fetchWithRetry(
+        "https://example.com/api",
+        { method: "GET" },
+        "test-fetch",
+      ),
     ).rejects.toThrow("Network failure");
 
     expect(fetch).toHaveBeenCalledTimes(1);
@@ -550,7 +562,11 @@ describe("fetchWithRetry", () => {
     const successResponse = new Response(null, { status: 200 });
     vi.mocked(fetch).mockResolvedValue(successResponse);
 
-    const result = await fetchWithRetry("https://example.com/api", undefined, "test-fetch");
+    const result = await fetchWithRetry(
+      "https://example.com/api",
+      undefined,
+      "test-fetch",
+    );
 
     expect(result).toBe(successResponse);
     expect(fetch).toHaveBeenCalledWith("https://example.com/api", undefined);

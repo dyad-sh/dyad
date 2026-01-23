@@ -15,7 +15,11 @@ import { useChatModeToggle } from "@/hooks/useChatModeToggle";
 import { useTypingPlaceholder } from "@/hooks/useTypingPlaceholder";
 import { AuxiliaryActionsMenu } from "./AuxiliaryActionsMenu";
 
-export function HomeChatInput({ onSubmit }: { onSubmit: (options?: HomeSubmitOptions) => void }) {
+export function HomeChatInput({
+  onSubmit,
+}: {
+  onSubmit: (options?: HomeSubmitOptions) => void;
+}) {
   const posthog = usePostHog();
   const [inputValue, setInputValue] = useAtom(homeChatInputValueAtom);
   const { settings } = useSettings();
@@ -76,7 +80,10 @@ export function HomeChatInput({ onSubmit }: { onSubmit: (options?: HomeSubmitOpt
           onDrop={handleDrop}
         >
           {/* Attachments list */}
-          <AttachmentsList attachments={attachments} onRemove={removeAttachment} />
+          <AttachmentsList
+            attachments={attachments}
+            onRemove={removeAttachment}
+          />
 
           {/* Drag and drop overlay */}
           <DragDropOverlay isDraggingOver={isDraggingOver} />
@@ -116,7 +123,10 @@ export function HomeChatInput({ onSubmit }: { onSubmit: (options?: HomeSubmitOpt
               <ChatInputControls showContextFilesPicker={false} />
             </div>
 
-            <AuxiliaryActionsMenu onFileSelect={handleFileSelect} hideContextFilesPicker />
+            <AuxiliaryActionsMenu
+              onFileSelect={handleFileSelect}
+              hideContextFilesPicker
+            />
           </div>
         </div>
       </div>

@@ -59,7 +59,13 @@ export const showError = (message: any) => {
 
   // Use custom error toast with enhanced features
   const toastId = toast.custom(
-    (t) => <CustomErrorToast message={errorMessage} toastId={t} onCopy={() => onCopy(t)} />,
+    (t) => (
+      <CustomErrorToast
+        message={errorMessage}
+        toastId={t}
+        onCopy={() => onCopy(t)}
+      />
+    ),
     { duration: 8_000 },
   );
 
@@ -88,9 +94,18 @@ export const showInfo = (message: string) => {
  * @param message The prompt message to display
  * @param onResponse Callback function called when user responds
  */
-export const showInputRequest = (message: string, onResponse: (response: "y" | "n") => void) => {
+export const showInputRequest = (
+  message: string,
+  onResponse: (response: "y" | "n") => void,
+) => {
   const toastId = toast.custom(
-    (t) => <InputRequestToast message={message} toastId={t} onResponse={onResponse} />,
+    (t) => (
+      <InputRequestToast
+        message={message}
+        toastId={t}
+        onResponse={onResponse}
+      />
+    ),
     { duration: Infinity }, // Don't auto-close
   );
 
@@ -130,7 +145,9 @@ export const showExtraFilesToast = ({
   posthog: PostHog;
 }) => {
   if (error) {
-    showError(`Error committing files ${files.join(", ")} changed outside of Dyad: ${error}`);
+    showError(
+      `Error committing files ${files.join(", ")} changed outside of Dyad: ${error}`,
+    );
     posthog.capture("extra-files:error", {
       files: files,
       error,

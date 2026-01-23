@@ -14,13 +14,16 @@
     const oldUrlForMessage = previousUrl;
     let newUrl;
     try {
-      newUrl = url ? new URL(url, window.location.href).href : window.location.href;
+      newUrl = url
+        ? new URL(url, window.location.href).href
+        : window.location.href;
     } catch (e) {
       console.error("Could not parse URL", e);
       newUrl = window.location.href;
     }
 
-    const navigationType = originalMethod === originalPushState ? "pushState" : "replaceState";
+    const navigationType =
+      originalMethod === originalPushState ? "pushState" : "replaceState";
 
     try {
       // Pass the original state directly
@@ -34,7 +37,10 @@
         PARENT_TARGET_ORIGIN,
       );
     } catch (e) {
-      console.error(`[vite-dev-plugin] Error calling original ${navigationType}: `, e);
+      console.error(
+        `[vite-dev-plugin] Error calling original ${navigationType}: `,
+        e,
+      );
       window.parent.postMessage(
         {
           type: "navigation-error",
@@ -67,7 +73,12 @@
 
   // --- Listener for Commands from Parent ---
   window.addEventListener("message", (event) => {
-    if (event.source !== window.parent || !event.data || typeof event.data !== "object") return;
+    if (
+      event.source !== window.parent ||
+      !event.data ||
+      typeof event.data !== "object"
+    )
+      return;
     if (event.data.type === "navigate") {
       const direction = event.data.payload?.direction;
       if (direction === "forward") history.forward();
@@ -85,7 +96,8 @@
           type: sourceType,
           payload: {
             message: error?.message || String(error),
-            stack: error?.stack || "<no stack available - StackTrace.js missing>",
+            stack:
+              error?.stack || "<no stack available - StackTrace.js missing>",
           },
         },
         PARENT_TARGET_ORIGIN,
@@ -95,7 +107,9 @@
 
     window.StackTrace.fromError(error)
       .then((stackFrames) => {
-        const sourcemappedStack = stackFrames.map((sf) => sf.toString()).join("\n");
+        const sourcemappedStack = stackFrames
+          .map((sf) => sf.toString())
+          .join("\n");
 
         const payload = {
           message: error?.message || String(error),
@@ -111,7 +125,10 @@
         );
       })
       .catch((mappingError) => {
-        console.error("[vite-dev-plugin] Error during stacktrace sourcemapping:", mappingError);
+        console.error(
+          "[vite-dev-plugin] Error during stacktrace sourcemapping:",
+          mappingError,
+        );
 
         const payload = {
           message: error?.message || String(error),
@@ -157,7 +174,8 @@
           type: "unhandled-rejection",
           payload: {
             message: event.reason.toString(),
-            stack: "<no stack available - an improper error was thrown (promise)>",
+            stack:
+              "<no stack available - an improper error was thrown (promise)>",
           },
         },
         PARENT_TARGET_ORIGIN,
@@ -219,7 +237,9 @@
       // The document is still loading, wait for DOMContentLoaded
       document.addEventListener("DOMContentLoaded", () => {
         if (!document.body) {
-          console.error("document.body does not exist - something very weird happened");
+          console.error(
+            "document.body does not exist - something very weird happened",
+          );
           return;
         }
 
@@ -230,10 +250,14 @@
         const observer = new MutationObserver(observerCallback);
         observer.observe(document.body, config);
       });
-      console.log("Document loading, waiting for DOMContentLoaded to set up observer.");
+      console.log(
+        "Document loading, waiting for DOMContentLoaded to set up observer.",
+      );
     } else {
       if (!document.body) {
-        console.error("document.body does not exist - something very weird happened");
+        console.error(
+          "document.body does not exist - something very weird happened",
+        );
         return;
       }
       // The DOM is already interactive or complete

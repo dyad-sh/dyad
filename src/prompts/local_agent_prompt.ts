@@ -140,7 +140,9 @@ export function constructLocalAgentPrompt(
   options?: { readOnly?: boolean },
 ): string {
   // Use ask mode prompt if read-only, otherwise use the regular local agent prompt
-  const basePrompt = options?.readOnly ? LOCAL_AGENT_ASK_SYSTEM_PROMPT : LOCAL_AGENT_SYSTEM_PROMPT;
+  const basePrompt = options?.readOnly
+    ? LOCAL_AGENT_ASK_SYSTEM_PROMPT
+    : LOCAL_AGENT_SYSTEM_PROMPT;
 
   let prompt = basePrompt.replace("[[AI_RULES]]", aiRules ?? DEFAULT_AI_RULES);
 

@@ -3,7 +3,10 @@ import { ToolDefinition, AgentContext, Todo } from "./types";
 
 const todoSchema = z.object({
   id: z.string().describe("Unique identifier for the todo item"),
-  content: z.string().optional().describe("The description/content of the todo item"),
+  content: z
+    .string()
+    .optional()
+    .describe("The description/content of the todo item"),
   status: z
     .enum(["pending", "in_progress", "completed"])
     .optional()
@@ -91,7 +94,9 @@ Multiple complex features provided as list requiring organized task management.
 - Start working on todos by using tool calls in the same tool call batch as the todo write
 - Batch todo updates with other tool calls for better latency and lower costs for the user
 `;
-export const updateTodosTool: ToolDefinition<z.infer<typeof updateTodosSchema>> = {
+export const updateTodosTool: ToolDefinition<
+  z.infer<typeof updateTodosSchema>
+> = {
   name: "update_todos",
   description: DESCRIPTION,
   inputSchema: updateTodosSchema,
@@ -119,7 +124,9 @@ export const updateTodosTool: ToolDefinition<z.infer<typeof updateTodosSchema>> 
         } else {
           // New todo - require all fields
           if (todo.content === undefined || todo.status === undefined) {
-            throw new Error(`New todo with id "${todo.id}" must have content and status defined`);
+            throw new Error(
+              `New todo with id "${todo.id}" must have content and status defined`,
+            );
           }
           existingTodosMap.set(todo.id, todo as Todo);
         }

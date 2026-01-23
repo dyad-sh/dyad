@@ -1,6 +1,12 @@
 import React, { useState } from "react";
 import { CustomTagState } from "./stateTypes";
-import { Table2, Loader2, CircleX, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
+import {
+  Table2,
+  Loader2,
+  CircleX,
+  ChevronsDownUp,
+  ChevronsUpDown,
+} from "lucide-react";
 
 interface DyadSupabaseTableSchemaProps {
   node: {
@@ -12,7 +18,10 @@ interface DyadSupabaseTableSchemaProps {
   children: React.ReactNode;
 }
 
-export function DyadSupabaseTableSchema({ node, children }: DyadSupabaseTableSchemaProps) {
+export function DyadSupabaseTableSchema({
+  node,
+  children,
+}: DyadSupabaseTableSchemaProps) {
   const [isContentVisible, setIsContentVisible] = useState(false);
   const { table, state } = node.properties;
   const isLoading = state === "pending";
@@ -22,7 +31,11 @@ export function DyadSupabaseTableSchema({ node, children }: DyadSupabaseTableSch
   return (
     <div
       className={`bg-(--background-lightest) hover:bg-(--background-lighter) rounded-lg px-4 py-2 border my-2 cursor-pointer ${
-        isLoading ? "border-amber-500" : isAborted ? "border-red-500" : "border-border"
+        isLoading
+          ? "border-amber-500"
+          : isAborted
+            ? "border-red-500"
+            : "border-border"
       }`}
       onClick={() => setIsContentVisible(!isContentVisible)}
     >
@@ -38,8 +51,12 @@ export function DyadSupabaseTableSchema({ node, children }: DyadSupabaseTableSch
           <span className="text-gray-700 dark:text-gray-300 font-medium text-sm">
             {table ? `Table Schema: ${table}` : "Supabase Table Schema"}
           </span>
-          {isLoading && <span className="text-xs text-amber-600">Fetching...</span>}
-          {isAborted && <span className="text-xs text-red-500">Did not finish</span>}
+          {isLoading && (
+            <span className="text-xs text-amber-600">Fetching...</span>
+          )}
+          {isAborted && (
+            <span className="text-xs text-red-500">Did not finish</span>
+          )}
         </div>
         <div className="flex items-center">
           {isContentVisible ? (

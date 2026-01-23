@@ -31,7 +31,10 @@ function getSessionId(messages: any[]): string {
   if (!firstUserMsg) {
     return crypto.randomUUID();
   }
-  return crypto.createHash("md5").update(JSON.stringify(firstUserMsg)).digest("hex");
+  return crypto
+    .createHash("md5")
+    .update(JSON.stringify(firstUserMsg))
+    .digest("hex");
 }
 
 /**
@@ -97,7 +100,9 @@ async function loadFixture(fixtureName: string): Promise<LocalAgentFixture> {
     const fixture = module.fixture as LocalAgentFixture;
 
     if (!fixture || !fixture.turns) {
-      throw new Error(`Invalid fixture: missing 'fixture' export or 'turns' array`);
+      throw new Error(
+        `Invalid fixture: missing 'fixture' export or 'turns' array`,
+      );
     }
 
     fixtureCache.set(fixtureName, fixture);
@@ -235,7 +240,8 @@ async function streamToolCallResponse(res: Response, turn: Turn) {
   }
 
   // 4) Send finish
-  const finishReason = turn.toolCalls && turn.toolCalls.length > 0 ? "tool_calls" : "stop";
+  const finishReason =
+    turn.toolCalls && turn.toolCalls.length > 0 ? "tool_calls" : "stop";
   res.write(mkChunk({}, finishReason));
   res.write("data: [DONE]\n\n");
   res.end();

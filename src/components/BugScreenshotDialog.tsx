@@ -29,7 +29,9 @@ export function BugScreenshotDialog({
         await IpcClient.getInstance().takeScreenshot();
         setIsScreenshotSuccessOpen(true);
       } catch (error) {
-        setScreenshotError(error instanceof Error ? error.message : "Failed to take screenshot");
+        setScreenshotError(
+          error instanceof Error ? error.message : "Failed to take screenshot",
+        );
       }
     }, 200); // Small delay for dialog to close
   };
@@ -47,7 +49,8 @@ export function BugScreenshotDialog({
               onClick={handleReportBugWithScreenshot}
               className="w-full py-6 border-primary/50 shadow-sm shadow-primary/10 transition-all hover:shadow-md hover:shadow-primary/15"
             >
-              <Camera className="mr-2 h-5 w-5" /> Take a screenshot (recommended)
+              <Camera className="mr-2 h-5 w-5" /> Take a screenshot
+              (recommended)
             </Button>
             <p className="text-sm text-muted-foreground px-2">
               You'll get better and faster responses if you do this!
@@ -62,7 +65,9 @@ export function BugScreenshotDialog({
               className="w-full py-6 bg-(--background-lightest)"
             >
               <BugIcon className="mr-2 h-5 w-5" />{" "}
-              {isLoading ? "Preparing Report..." : "File bug report without screenshot"}
+              {isLoading
+                ? "Preparing Report..."
+                : "File bug report without screenshot"}
             </Button>
             <p className="text-sm text-muted-foreground px-2">
               We'll still try to respond but might not be able to help as much.

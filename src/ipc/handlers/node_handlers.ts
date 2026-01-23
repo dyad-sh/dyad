@@ -13,7 +13,12 @@ const logger = log.scope("node_handlers");
 
 export function registerNodeHandlers() {
   ipcMain.handle("nodejs-status", async (): Promise<NodeSystemInfo> => {
-    logger.log("handling ipc: nodejs-status for platform:", platform(), "and arch:", arch());
+    logger.log(
+      "handling ipc: nodejs-status for platform:",
+      platform(),
+      "and arch:",
+      arch(),
+    );
     // Run checks in parallel
     const [nodeVersion, pnpmVersion] = await Promise.all([
       runShellCommand("node --version"),
@@ -28,11 +33,13 @@ export function registerNodeHandlers() {
     let nodeDownloadUrl = "https://nodejs.org/dist/v22.14.0/node-v22.14.0.pkg";
     if (platform() == "win32") {
       if (arch() === "arm64" || arch() === "arm") {
-        nodeDownloadUrl = "https://nodejs.org/dist/v22.14.0/node-v22.14.0-arm64.msi";
+        nodeDownloadUrl =
+          "https://nodejs.org/dist/v22.14.0/node-v22.14.0-arm64.msi";
       } else {
         // x64 is the most common architecture for Windows so it's the
         // default download url.
-        nodeDownloadUrl = "https://nodejs.org/dist/v22.14.0/node-v22.14.0-x64.msi";
+        nodeDownloadUrl =
+          "https://nodejs.org/dist/v22.14.0/node-v22.14.0-x64.msi";
       }
     }
     return { nodeVersion, pnpmVersion, nodeDownloadUrl };
@@ -52,7 +59,10 @@ export function registerNodeHandlers() {
     if (settings.customNodePath) {
       const separator = platform() === "win32" ? ";" : ":";
       process.env.PATH = `${settings.customNodePath}${separator}${process.env.PATH}`;
-      logger.debug("Added custom Node.js path to PATH:", settings.customNodePath);
+      logger.debug(
+        "Added custom Node.js path to PATH:",
+        settings.customNodePath,
+      );
     }
     logger.debug("Reloaded env path, now:", process.env.PATH);
   });

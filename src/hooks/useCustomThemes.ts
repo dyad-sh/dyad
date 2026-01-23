@@ -36,7 +36,9 @@ export function useCreateCustomTheme() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (params: CreateCustomThemeParams): Promise<CustomTheme> => {
+    mutationFn: async (
+      params: CreateCustomThemeParams,
+    ): Promise<CustomTheme> => {
       const ipcClient = IpcClient.getInstance();
       return ipcClient.createCustomTheme(params);
     },
@@ -53,7 +55,9 @@ export function useUpdateCustomTheme() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (params: UpdateCustomThemeParams): Promise<CustomTheme> => {
+    mutationFn: async (
+      params: UpdateCustomThemeParams,
+    ): Promise<CustomTheme> => {
       const ipcClient = IpcClient.getInstance();
       return ipcClient.updateCustomTheme(params);
     },
@@ -85,7 +89,9 @@ export function useDeleteCustomTheme() {
 
 export function useGenerateThemePrompt() {
   return useMutation({
-    mutationFn: async (params: GenerateThemePromptParams): Promise<GenerateThemePromptResult> => {
+    mutationFn: async (
+      params: GenerateThemePromptParams,
+    ): Promise<GenerateThemePromptResult> => {
       const ipcClient = IpcClient.getInstance();
       return ipcClient.generateThemePrompt(params);
     },

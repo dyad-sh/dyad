@@ -89,7 +89,10 @@ const testWithMultipleBackups = testWithConfig({
         },
       };
 
-      fs.writeFileSync(path.join(backupPath, "backup.json"), JSON.stringify(metadata, null, 2));
+      fs.writeFileSync(
+        path.join(backupPath, "backup.json"),
+        JSON.stringify(metadata, null, 2),
+      );
 
       // Create mock backup files
       fs.writeFileSync(
@@ -117,37 +120,45 @@ test("backup is not created for first run", async ({ po }) => {
   expect(fs.existsSync(path.join(po.userDataDir, "backups"))).toEqual(false);
 });
 
-testWithLastVersion("backup is created if version is upgraded", async ({ po }) => {
-  await ensureAppIsRunning(po);
+testWithLastVersion(
+  "backup is created if version is upgraded",
+  async ({ po }) => {
+    await ensureAppIsRunning(po);
 
-  const backups = fs.readdirSync(path.join(po.userDataDir, "backups"));
-  expect(backups).toHaveLength(1);
-  const backupDir = path.join(po.userDataDir, "backups", backups[0]);
-  const backupMetadata = JSON.parse(fs.readFileSync(path.join(backupDir, "backup.json"), "utf8"));
+    const backups = fs.readdirSync(path.join(po.userDataDir, "backups"));
+    expect(backups).toHaveLength(1);
+    const backupDir = path.join(po.userDataDir, "backups", backups[0]);
+    const backupMetadata = JSON.parse(
+      fs.readFileSync(path.join(backupDir, "backup.json"), "utf8"),
+    );
 
-  expect(backupMetadata.version).toBeDefined();
-  expect(backupMetadata.timestamp).toBeDefined();
-  expect(backupMetadata.reason).toBe("upgrade_from_0.1.0");
-  expect(backupMetadata.files.settings).toBe(true);
-  expect(backupMetadata.files.database).toBe(true);
-  expect(backupMetadata.checksums.settings).toBeDefined();
-  expect(backupMetadata.checksums.database).toBeDefined();
+    expect(backupMetadata.version).toBeDefined();
+    expect(backupMetadata.timestamp).toBeDefined();
+    expect(backupMetadata.reason).toBe("upgrade_from_0.1.0");
+    expect(backupMetadata.files.settings).toBe(true);
+    expect(backupMetadata.files.database).toBe(true);
+    expect(backupMetadata.checksums.settings).toBeDefined();
+    expect(backupMetadata.checksums.database).toBeDefined();
 
-  // Compare the backup files to the original files
-  const backupSettings = fs.readFileSync(path.join(backupDir, "user-settings.json"), "utf8");
-  expect(backupSettings).toEqual(JSON.stringify(BACKUP_SETTINGS, null, 2));
+    // Compare the backup files to the original files
+    const backupSettings = fs.readFileSync(
+      path.join(backupDir, "user-settings.json"),
+      "utf8",
+    );
+    expect(backupSettings).toEqual(JSON.stringify(BACKUP_SETTINGS, null, 2));
 
-  // For database, verify the backup file exists and has correct checksum
-  const backupDbPath = path.join(backupDir, "sqlite.db");
-  const originalDbPath = path.join(po.userDataDir, "sqlite.db");
+    // For database, verify the backup file exists and has correct checksum
+    const backupDbPath = path.join(backupDir, "sqlite.db");
+    const originalDbPath = path.join(po.userDataDir, "sqlite.db");
 
-  expect(fs.existsSync(backupDbPath)).toBe(true);
-  expect(fs.existsSync(originalDbPath)).toBe(true);
+    expect(fs.existsSync(backupDbPath)).toBe(true);
+    expect(fs.existsSync(originalDbPath)).toBe(true);
 
-  const backupChecksum = calculateChecksum(backupDbPath);
-  // Verify backup metadata contains the correct checksum
-  expect(backupMetadata.checksums.database).toBe(backupChecksum);
-});
+    const backupChecksum = calculateChecksum(backupDbPath);
+    // Verify backup metadata contains the correct checksum
+    expect(backupMetadata.checksums.database).toBe(backupChecksum);
+  },
+);
 
 testWithMultipleBackups(
   "backup cleanup deletes oldest backups when exceeding MAX_BACKUPS",
@@ -181,11 +192,15 @@ testWithMultipleBackups(
       const backupPath = path.join(backupsDir, expectedBackup);
       expect(fs.existsSync(backupPath)).toBe(true);
       expect(fs.existsSync(path.join(backupPath, "backup.json"))).toBe(true);
-      expect(fs.existsSync(path.join(backupPath, "user-settings.json"))).toBe(true);
+      expect(fs.existsSync(path.join(backupPath, "user-settings.json"))).toBe(
+        true,
+      );
 
       // The first backup does NOT have a SQLite database because the backup
       // manager is run before the DB is initialized.
-      expect(fs.existsSync(path.join(backupPath, "sqlite.db"))).toBe(backup !== "*");
+      expect(fs.existsSync(path.join(backupPath, "sqlite.db"))).toBe(
+        backup !== "*",
+      );
     }
 
     // The 2 oldest backups should have been deleted

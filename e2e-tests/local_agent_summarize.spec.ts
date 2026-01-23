@@ -9,31 +9,34 @@ import { expect } from "@playwright/test";
  * This test directly triggers summarization by sending the "Summarize from chat-id=X"
  * prompt, which is the same mechanism used by the "Summarize into new chat" button.
  */
-testSkipIfWindows("local-agent - summarize to new chat works", async ({ po }) => {
-  await po.setUpDyadPro({ localAgent: true });
-  await po.importApp("minimal");
-  await po.selectLocalAgentMode();
+testSkipIfWindows(
+  "local-agent - summarize to new chat works",
+  async ({ po }) => {
+    await po.setUpDyadPro({ localAgent: true });
+    await po.importApp("minimal");
+    await po.selectLocalAgentMode();
 
-  // First, send a message to create a chat with some content
-  // This simulates a chat with technical discussion
-  await po.sendPrompt("tc=local-agent/read-then-edit");
+    // First, send a message to create a chat with some content
+    // This simulates a chat with technical discussion
+    await po.sendPrompt("tc=local-agent/read-then-edit");
 
-  // Get the current chat URL to extract the chat ID
-  const url = po.page.url();
-  const chatIdMatch = url.match(/[?&]id=(\d+)/);
-  expect(chatIdMatch).toBeTruthy();
-  const originalChatId = chatIdMatch![1];
+    // Get the current chat URL to extract the chat ID
+    const url = po.page.url();
+    const chatIdMatch = url.match(/[?&]id=(\d+)/);
+    expect(chatIdMatch).toBeTruthy();
+    const originalChatId = chatIdMatch![1];
 
-  // Create a new chat by clicking the "New Chat" button
-  await po.clickNewChat();
+    // Create a new chat by clicking the "New Chat" button
+    await po.clickNewChat();
 
-  // Now trigger summarization by sending the summarize prompt
-  // This is the same mechanism used by the "Summarize into new chat" button
-  await po.sendPrompt(`Summarize from chat-id=${originalChatId}`);
+    // Now trigger summarization by sending the summarize prompt
+    // This is the same mechanism used by the "Summarize into new chat" button
+    await po.sendPrompt(`Summarize from chat-id=${originalChatId}`);
 
-  // Snapshot the messages in the new chat
-  // This verifies that the summarization actually ran and produced content
-  // (Before the fix, this would fail with "no technical discussion" error
-  // because the local agent handler wasn't receiving the formatted chat content)
-  await po.snapshotMessages();
-});
+    // Snapshot the messages in the new chat
+    // This verifies that the summarization actually ran and produced content
+    // (Before the fix, this would fail with "no technical discussion" error
+    // because the local agent handler wasn't receiving the formatted chat content)
+    await po.snapshotMessages();
+  },
+);

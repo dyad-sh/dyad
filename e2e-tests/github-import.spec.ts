@@ -6,20 +6,32 @@ test("should open GitHub import modal from home", async ({ po }) => {
   // Click the "Import from Github" button
   await po.page.getByRole("button", { name: "Import App" }).click();
   // Verify modal opened with import UI (showing all tabs even when not authenticated)
-  await expect(po.page.getByRole("heading", { name: "Import App" })).toBeVisible();
   await expect(
-    po.page.getByText("Import existing app from local folder or clone from Github"),
+    po.page.getByRole("heading", { name: "Import App" }),
+  ).toBeVisible();
+  await expect(
+    po.page.getByText(
+      "Import existing app from local folder or clone from Github",
+    ),
   ).toBeVisible();
 
   // All tabs should be visible
-  await expect(po.page.getByRole("tab", { name: "Local Folder" })).toBeVisible();
-  await expect(po.page.getByRole("tab", { name: "Your GitHub Repos" })).toBeVisible();
+  await expect(
+    po.page.getByRole("tab", { name: "Local Folder" }),
+  ).toBeVisible();
+  await expect(
+    po.page.getByRole("tab", { name: "Your GitHub Repos" }),
+  ).toBeVisible();
   await expect(po.page.getByRole("tab", { name: "GitHub URL" })).toBeVisible();
   // Local Folder tab should be active by default
-  await expect(po.page.getByRole("button", { name: "Select Folder" })).toBeVisible();
+  await expect(
+    po.page.getByRole("button", { name: "Select Folder" }),
+  ).toBeVisible();
   // Switch to Your GitHub Repos tab - should show GitHub connector
   await po.page.getByRole("tab", { name: "Your GitHub Repos" }).click();
-  await expect(po.page.getByRole("button", { name: "Connect to GitHub" })).toBeVisible();
+  await expect(
+    po.page.getByRole("button", { name: "Connect to GitHub" }),
+  ).toBeVisible();
 });
 
 test("should connect to GitHub and show import UI", async ({ po }) => {
@@ -35,9 +47,13 @@ test("should connect to GitHub and show import UI", async ({ po }) => {
   // After connection, should show repositories list instead of connector
   await expect(po.page.getByText("testuser/existing-app")).toBeVisible();
   // Should be able to see all tabs
-  await expect(po.page.getByRole("tab", { name: "Your GitHub Repos" })).toBeVisible();
+  await expect(
+    po.page.getByRole("tab", { name: "Your GitHub Repos" }),
+  ).toBeVisible();
   await expect(po.page.getByRole("tab", { name: "GitHub URL" })).toBeVisible();
-  await expect(po.page.getByRole("tab", { name: "Local Folder" })).toBeVisible();
+  await expect(
+    po.page.getByRole("tab", { name: "Local Folder" }),
+  ).toBeVisible();
 });
 
 test("should import GitHub URL", async ({ po }) => {
@@ -57,7 +73,9 @@ test("should import GitHub URL", async ({ po }) => {
   // Click import
   await po.page.getByRole("button", { name: "Import", exact: true }).click();
   // Should close modal and navigate to chat
-  await expect(po.page.getByRole("heading", { name: "Import App" })).not.toBeVisible();
+  await expect(
+    po.page.getByRole("heading", { name: "Import App" }),
+  ).not.toBeVisible();
   // Verify AI_RULES generation prompt was sent
 });
 
@@ -81,7 +99,9 @@ test("should import from repository list", async ({ po }) => {
   await po.page.getByRole("button", { name: "Import" }).first().click();
 
   // Should close modal and navigate to chat
-  await expect(po.page.getByRole("heading", { name: "Import App" })).not.toBeVisible();
+  await expect(
+    po.page.getByRole("heading", { name: "Import App" }),
+  ).not.toBeVisible();
 });
 
 test("should support advanced options with custom commands", async ({ po }) => {
@@ -100,19 +120,29 @@ test("should support advanced options with custom commands", async ({ po }) => {
 
   // Fill one command - should show error
   await po.page.getByPlaceholder("pnpm install").fill("npm install");
-  await expect(po.page.getByText("Both commands are required when customizing")).toBeVisible();
-  await expect(po.page.getByRole("button", { name: "Import", exact: true })).toBeDisabled();
+  await expect(
+    po.page.getByText("Both commands are required when customizing"),
+  ).toBeVisible();
+  await expect(
+    po.page.getByRole("button", { name: "Import", exact: true }),
+  ).toBeDisabled();
 
   // Fill both commands
   await po.page.getByPlaceholder("pnpm dev").fill("npm start");
 
-  await expect(po.page.getByRole("button", { name: "Import", exact: true })).toBeEnabled();
-  await expect(po.page.getByText("Both commands are required when customizing")).not.toBeVisible();
+  await expect(
+    po.page.getByRole("button", { name: "Import", exact: true }),
+  ).toBeEnabled();
+  await expect(
+    po.page.getByText("Both commands are required when customizing"),
+  ).not.toBeVisible();
 
   // Import with custom commands
   await po.page.getByRole("button", { name: "Import", exact: true }).click();
 
-  await expect(po.page.getByRole("heading", { name: "Import App" })).not.toBeVisible();
+  await expect(
+    po.page.getByRole("heading", { name: "Import App" }),
+  ).not.toBeVisible();
 });
 
 test("should allow empty commands to use defaults", async ({ po }) => {
@@ -128,9 +158,13 @@ test("should allow empty commands to use defaults", async ({ po }) => {
     .fill("https://github.com/dyad-sh/nextjs-template.git");
 
   // Commands are empty by default, so import should be enabled
-  await expect(po.page.getByRole("button", { name: "Import", exact: true })).toBeEnabled();
+  await expect(
+    po.page.getByRole("button", { name: "Import", exact: true }),
+  ).toBeEnabled();
 
   await po.page.getByRole("button", { name: "Import", exact: true }).click();
 
-  await expect(po.page.getByRole("heading", { name: "Import App" })).not.toBeVisible();
+  await expect(
+    po.page.getByRole("heading", { name: "Import App" }),
+  ).not.toBeVisible();
 });

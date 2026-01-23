@@ -37,7 +37,9 @@ export function registerUploadHandlers() {
     });
 
     if (!response.ok) {
-      throw new Error(`Upload failed with status ${response.status}: ${response.statusText}`);
+      throw new Error(
+        `Upload failed with status ${response.status}: ${response.statusText}`,
+      );
     }
 
     logger.debug("Successfully uploaded data to signed URL");

@@ -1,6 +1,10 @@
 import { IpcClient } from "@/ipc/ipc_client";
 import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
-import { X, ExternalLink as ExternalLinkIcon, CircleArrowUp } from "lucide-react";
+import {
+  X,
+  ExternalLink as ExternalLinkIcon,
+  CircleArrowUp,
+} from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -116,7 +120,9 @@ export function ChatErrorBox({
               Upgrade to Dyad Pro
             </ExternalLink>
           )}
-        <ExternalLink href="https://www.dyad.sh/docs/faq">Read docs</ExternalLink>
+        <ExternalLink href="https://www.dyad.sh/docs/faq">
+          Read docs
+        </ExternalLink>
       </div>
     </ChatErrorContainer>
   );
@@ -135,11 +141,17 @@ function ExternalLink({
 }) {
   const baseClasses =
     "cursor-pointer inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium shadow-sm focus:outline-none focus:ring-2";
-  const primaryClasses = "bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500";
+  const primaryClasses =
+    "bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500";
   const secondaryClasses =
     "bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 hover:border-blue-300 focus:ring-blue-200";
   const iconElement =
-    icon ?? (variant === "primary" ? <CircleArrowUp size={18} /> : <ExternalLinkIcon size={14} />);
+    icon ??
+    (variant === "primary" ? (
+      <CircleArrowUp size={18} />
+    ) : (
+      <ExternalLinkIcon size={14} />
+    ));
 
   return (
     <a
@@ -161,7 +173,10 @@ function ChatErrorContainer({
 }) {
   return (
     <div className="relative mt-2 bg-red-50 border border-red-200 rounded-md shadow-sm p-2 mx-4">
-      <button onClick={onDismiss} className="absolute top-2.5 left-2 p-1 hover:bg-red-100 rounded">
+      <button
+        onClick={onDismiss}
+        className="absolute top-2.5 left-2 p-1 hover:bg-red-100 rounded"
+      >
         <X size={14} className="text-red-500" />
       </button>
       <div className="pl-8 py-1 text-sm">
@@ -206,7 +221,10 @@ function ChatInfoContainer({
 }) {
   return (
     <div className="relative mt-2 bg-sky-50 border border-sky-200 rounded-md shadow-sm p-2 mx-4">
-      <button onClick={onDismiss} className="absolute top-2.5 left-2 p-1 hover:bg-sky-100 rounded">
+      <button
+        onClick={onDismiss}
+        className="absolute top-2.5 left-2 p-1 hover:bg-sky-100 rounded"
+      >
         <X size={14} className="text-sky-600" />
       </button>
       <div className="pl-8 py-1 text-sm">

@@ -1,7 +1,18 @@
 import React from "react";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useCountTokens } from "@/hooks/useCountTokens";
-import { MessageSquare, Code, Bot, AlignLeft, ExternalLink } from "lucide-react";
+import {
+  MessageSquare,
+  Code,
+  Bot,
+  AlignLeft,
+  ExternalLink,
+} from "lucide-react";
 import { chatInputValueAtom } from "@/atoms/chatAtoms";
 import { useAtom } from "jotai";
 import { useSettings } from "@/hooks/useSettings";
@@ -48,7 +59,8 @@ export function TokenBar({ chatId }: TokenBarProps) {
               <div className="flex justify-between mb-1 text-xs text-muted-foreground">
                 <span>Tokens: {totalTokens.toLocaleString()}</span>
                 <span>
-                  {Math.round(percentUsed)}% of {(contextWindow / 1000).toFixed(0)}K
+                  {Math.round(percentUsed)}% of{" "}
+                  {(contextWindow / 1000).toFixed(0)}K
                 </span>
               </div>
               <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden flex">
@@ -58,7 +70,10 @@ export function TokenBar({ chatId }: TokenBarProps) {
                   style={{ width: `${messageHistoryPercent}%` }}
                 />
                 {/* Codebase tokens */}
-                <div className="h-full bg-green-400" style={{ width: `${codebasePercent}%` }} />
+                <div
+                  className="h-full bg-green-400"
+                  style={{ width: `${codebasePercent}%` }}
+                />
                 {/* Mentioned apps tokens */}
                 <div
                   className="h-full bg-orange-400"
@@ -70,7 +85,10 @@ export function TokenBar({ chatId }: TokenBarProps) {
                   style={{ width: `${systemPromptPercent}%` }}
                 />
                 {/* Input tokens */}
-                <div className="h-full bg-yellow-400" style={{ width: `${inputPercent}%` }} />
+                <div
+                  className="h-full bg-yellow-400"
+                  style={{ width: `${inputPercent}%` }}
+                />
               </div>
             </div>
           </TooltipTrigger>
@@ -108,8 +126,11 @@ export function TokenBar({ chatId }: TokenBarProps) {
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      {error && <div className="text-red-500 text-xs mt-1">Failed to count tokens</div>}
-      {(!settings?.enableProSmartFilesContextMode || !settings?.enableDyadPro) && (
+      {error && (
+        <div className="text-red-500 text-xs mt-1">Failed to count tokens</div>
+      )}
+      {(!settings?.enableProSmartFilesContextMode ||
+        !settings?.enableDyadPro) && (
         <div className="text-xs text-center text-muted-foreground mt-2">
           Optimize your tokens with{" "}
           <a
@@ -118,7 +139,9 @@ export function TokenBar({ chatId }: TokenBarProps) {
                 ? IpcClient.getInstance().openExternalUrl(
                     "https://www.dyad.sh/docs/guides/ai-models/pro-modes#smart-context",
                   )
-                : IpcClient.getInstance().openExternalUrl("https://dyad.sh/pro#ai")
+                : IpcClient.getInstance().openExternalUrl(
+                    "https://dyad.sh/pro#ai",
+                  )
             }
             className="text-blue-500 dark:text-blue-400 cursor-pointer hover:underline"
           >

@@ -5,7 +5,11 @@ import { ProblemReport } from "../ipc_types";
 import log from "electron-log";
 import { WorkerInput, WorkerOutput } from "../../../shared/tsc_types";
 
-import { getDyadDeleteTags, getDyadRenameTags, getDyadWriteTags } from "../utils/dyad_tag_parser";
+import {
+  getDyadDeleteTags,
+  getDyadRenameTags,
+  getDyadWriteTags,
+} from "../utils/dyad_tag_parser";
 import { getTypeScriptCachePath } from "@/paths/paths";
 
 const logger = log.scope("tsc");

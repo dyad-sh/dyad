@@ -2,7 +2,11 @@ import { CodebaseFile, CodebaseFileReference } from "@/utils/codebase";
 import { ModelMessage } from "@ai-sdk/provider-utils";
 import crypto from "node:crypto";
 import log from "electron-log";
-import { getCurrentCommitHash, getFileAtCommit, isGitStatusClean } from "./git_utils";
+import {
+  getCurrentCommitHash,
+  getFileAtCommit,
+  isGitStatusClean,
+} from "./git_utils";
 import { normalizePath } from "../../../shared/normalizePath";
 
 const logger = log.scope("versioned_codebase_context");
@@ -49,7 +53,8 @@ export function parseFilesFromMessage(content: string): string[] {
   }
 
   // Parse <dyad-code-search-result>...</dyad-code-search-result>
-  const codeSearchRegex = /<dyad-code-search-result>(.*?)<\/dyad-code-search-result>/gs;
+  const codeSearchRegex =
+    /<dyad-code-search-result>(.*?)<\/dyad-code-search-result>/gs;
   while ((match = codeSearchRegex.exec(content)) !== null) {
     const innerContent = match[1];
     const paths: string[] = [];
@@ -57,7 +62,11 @@ export function parseFilesFromMessage(content: string): string[] {
     const lines = innerContent.split("\n");
     for (const line of lines) {
       const trimmedLine = line.trim();
-      if (trimmedLine && !trimmedLine.startsWith("<") && !trimmedLine.startsWith(">")) {
+      if (
+        trimmedLine &&
+        !trimmedLine.startsWith("<") &&
+        !trimmedLine.startsWith(">")
+      ) {
         paths.push(normalizePath(trimmedLine));
       }
     }
@@ -96,10 +105,16 @@ export async function processChatMessagesWithVersionedFiles({
 }): Promise<VersionedFiles> {
   const fileIdToContent: Record<string, string> = {};
   const fileReferences: CodebaseFileReference[] = [];
-  const messageIndexToFilePathToFileId: Record<number, Record<string, string>> = {};
+  const messageIndexToFilePathToFileId: Record<
+    number,
+    Record<string, string>
+  > = {};
   for (const file of files) {
     // Generate SHA-256 hash of content as fileId
-    const fileId = crypto.createHash("sha256").update(file.content).digest("hex");
+    const fileId = crypto
+      .createHash("sha256")
+      .update(file.content)
+      .digest("hex");
 
     fileIdToContent[fileId] = file.content;
     const { content: _content, ...restOfFile } = file;
@@ -110,7 +125,11 @@ export async function processChatMessagesWithVersionedFiles({
     });
   }
 
-  for (let messageIndex = 0; messageIndex < chatMessages.length; messageIndex++) {
+  for (
+    let messageIndex = 0;
+    messageIndex < chatMessages.length;
+    messageIndex++
+  ) {
     const message = chatMessages[messageIndex];
 
     // Only process assistant messages
@@ -186,7 +205,10 @@ export async function processChatMessagesWithVersionedFiles({
       }
 
       // Generate SHA-256 hash of content as fileId
-      const fileId = crypto.createHash("sha256").update(fileContent).digest("hex");
+      const fileId = crypto
+        .createHash("sha256")
+        .update(fileContent)
+        .digest("hex");
 
       // Store in fileIdToContent
       fileIdToContent[fileId] = fileContent;

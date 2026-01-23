@@ -1,6 +1,12 @@
 import React, { useState } from "react";
 import { CustomTagState } from "./stateTypes";
-import { Database, Loader2, CircleX, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
+import {
+  Database,
+  Loader2,
+  CircleX,
+  ChevronsDownUp,
+  ChevronsUpDown,
+} from "lucide-react";
 
 interface DyadSupabaseProjectInfoProps {
   node: {
@@ -11,7 +17,10 @@ interface DyadSupabaseProjectInfoProps {
   children: React.ReactNode;
 }
 
-export function DyadSupabaseProjectInfo({ node, children }: DyadSupabaseProjectInfoProps) {
+export function DyadSupabaseProjectInfo({
+  node,
+  children,
+}: DyadSupabaseProjectInfoProps) {
   const [isContentVisible, setIsContentVisible] = useState(false);
   const { state } = node.properties;
   const isLoading = state === "pending";
@@ -21,7 +30,11 @@ export function DyadSupabaseProjectInfo({ node, children }: DyadSupabaseProjectI
   return (
     <div
       className={`bg-(--background-lightest) hover:bg-(--background-lighter) rounded-lg px-4 py-2 border my-2 cursor-pointer ${
-        isLoading ? "border-amber-500" : isAborted ? "border-red-500" : "border-border"
+        isLoading
+          ? "border-amber-500"
+          : isAborted
+            ? "border-red-500"
+            : "border-border"
       }`}
       onClick={() => setIsContentVisible(!isContentVisible)}
     >
@@ -37,8 +50,12 @@ export function DyadSupabaseProjectInfo({ node, children }: DyadSupabaseProjectI
           <span className="text-gray-700 dark:text-gray-300 font-medium text-sm">
             Supabase Project Info
           </span>
-          {isLoading && <span className="text-xs text-amber-600">Fetching...</span>}
-          {isAborted && <span className="text-xs text-red-500">Did not finish</span>}
+          {isLoading && (
+            <span className="text-xs text-amber-600">Fetching...</span>
+          )}
+          {isAborted && (
+            <span className="text-xs text-red-500">Did not finish</span>
+          )}
         </div>
         <div className="flex items-center">
           {isContentVisible ? (

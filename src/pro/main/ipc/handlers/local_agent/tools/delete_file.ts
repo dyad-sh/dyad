@@ -21,59 +21,60 @@ const deleteFileSchema = z.object({
   path: z.string().describe("The file path to delete"),
 });
 
-export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> = {
-  name: "delete_file",
-  description: "Delete a file from the codebase",
-  inputSchema: deleteFileSchema,
-  defaultConsent: "always",
-  modifiesState: true,
+export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
+  {
+    name: "delete_file",
+    description: "Delete a file from the codebase",
+    inputSchema: deleteFileSchema,
+    defaultConsent: "always",
+    modifiesState: true,
 
-  getConsentPreview: (args) => `Delete ${args.path}`,
+    getConsentPreview: (args) => `Delete ${args.path}`,
 
-  buildXml: (args, _isComplete) => {
-    if (!args.path) return undefined;
-    return `<dyad-delete path="${escapeXmlAttr(args.path)}"></dyad-delete>`;
-  },
+    buildXml: (args, _isComplete) => {
+      if (!args.path) return undefined;
+      return `<dyad-delete path="${escapeXmlAttr(args.path)}"></dyad-delete>`;
+    },
 
-  execute: async (args, ctx: AgentContext) => {
-    const fullFilePath = safeJoin(ctx.appPath, args.path);
+    execute: async (args, ctx: AgentContext) => {
+      const fullFilePath = safeJoin(ctx.appPath, args.path);
 
-    // Track if this is a shared module
-    if (isSharedServerModule(args.path)) {
-      ctx.isSharedModulesChanged = true;
-    }
-
-    if (fs.existsSync(fullFilePath)) {
-      if (fs.lstatSync(fullFilePath).isDirectory()) {
-        fs.rmdirSync(fullFilePath, { recursive: true });
-      } else {
-        fs.unlinkSync(fullFilePath);
-      }
-      logger.log(`Successfully deleted file: ${fullFilePath}`);
-
-      // Remove from git
-      try {
-        await gitRemove({ path: ctx.appPath, filepath: args.path });
-      } catch (error) {
-        logger.warn(`Failed to git remove deleted file ${args.path}:`, error);
+      // Track if this is a shared module
+      if (isSharedServerModule(args.path)) {
+        ctx.isSharedModulesChanged = true;
       }
 
-      // Delete Supabase function if applicable
-      if (ctx.supabaseProjectId && isServerFunction(args.path)) {
-        try {
-          await deleteSupabaseFunction({
-            supabaseProjectId: ctx.supabaseProjectId,
-            functionName: getFunctionNameFromPath(args.path),
-            organizationSlug: ctx.supabaseOrganizationSlug ?? null,
-          });
-        } catch (error) {
-          return `File deleted, but failed to delete Supabase function: ${error}`;
+      if (fs.existsSync(fullFilePath)) {
+        if (fs.lstatSync(fullFilePath).isDirectory()) {
+          fs.rmdirSync(fullFilePath, { recursive: true });
+        } else {
+          fs.unlinkSync(fullFilePath);
         }
-      }
-    } else {
-      logger.warn(`File to delete does not exist: ${fullFilePath}`);
-    }
+        logger.log(`Successfully deleted file: ${fullFilePath}`);
 
-    return `Successfully deleted ${args.path}`;
-  },
-};
+        // Remove from git
+        try {
+          await gitRemove({ path: ctx.appPath, filepath: args.path });
+        } catch (error) {
+          logger.warn(`Failed to git remove deleted file ${args.path}:`, error);
+        }
+
+        // Delete Supabase function if applicable
+        if (ctx.supabaseProjectId && isServerFunction(args.path)) {
+          try {
+            await deleteSupabaseFunction({
+              supabaseProjectId: ctx.supabaseProjectId,
+              functionName: getFunctionNameFromPath(args.path),
+              organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+            });
+          } catch (error) {
+            return `File deleted, but failed to delete Supabase function: ${error}`;
+          }
+        }
+      } else {
+        logger.warn(`File to delete does not exist: ${fullFilePath}`);
+      }
+
+      return `Successfully deleted ${args.path}`;
+    },
+  };

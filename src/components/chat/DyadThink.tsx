@@ -34,7 +34,10 @@ export const DyadThink: React.FC<DyadThinkProps> = ({ children, node }) => {
     const originalTokens = parseFloat(tokenSavingsMatch[1]);
     const smartContextTokens = parseFloat(tokenSavingsMatch[2]);
     return (
-      <DyadTokenSavings originalTokens={originalTokens} smartContextTokens={smartContextTokens} />
+      <DyadTokenSavings
+        originalTokens={originalTokens}
+        smartContextTokens={smartContextTokens}
+      />
     );
   }
 
@@ -61,7 +64,9 @@ export const DyadThink: React.FC<DyadThinkProps> = ({ children, node }) => {
       >
         <Brain size={16} className="text-purple-500" />
         <span>Thinking</span>
-        {inProgress && <Loader size={14} className="ml-1 text-purple-500 animate-spin" />}
+        {inProgress && (
+          <Loader size={14} className="ml-1 text-purple-500 animate-spin" />
+        )}
       </div>
 
       {/* Indicator icon */}
@@ -79,7 +84,11 @@ export const DyadThink: React.FC<DyadThinkProps> = ({ children, node }) => {
         }}
       >
         <div className="px-0 text-sm text-gray-600 dark:text-gray-300">
-          {typeof children === "string" ? <VanillaMarkdownParser content={children} /> : children}
+          {typeof children === "string" ? (
+            <VanillaMarkdownParser content={children} />
+          ) : (
+            children
+          )}
         </div>
       </div>
     </div>

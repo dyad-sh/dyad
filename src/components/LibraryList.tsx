@@ -32,7 +32,8 @@ export function LibraryList({ show }: { show: boolean }) {
         <div className="space-y-1 p-4 pt-0">
           {LIBRARY_SECTIONS.map((section) => {
             const isActive =
-              section.to === pathname || (section.to !== "/" && pathname.startsWith(section.to));
+              section.to === pathname ||
+              (section.to !== "/" && pathname.startsWith(section.to));
 
             return (
               <Link

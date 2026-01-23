@@ -5,11 +5,19 @@ import { RouterProvider } from "@tanstack/react-router";
 import { PostHogProvider } from "posthog-js/react";
 import posthog from "posthog-js";
 import { getTelemetryUserId, isTelemetryOptedIn } from "./hooks/useSettings";
-import { QueryCache, QueryClient, QueryClientProvider, MutationCache } from "@tanstack/react-query";
+import {
+  QueryCache,
+  QueryClient,
+  QueryClientProvider,
+  MutationCache,
+} from "@tanstack/react-query";
 import { showError, showMcpConsentToast } from "./lib/toast";
 import { IpcClient } from "./ipc/ipc_client";
 import { useSetAtom } from "jotai";
-import { pendingAgentConsentsAtom, agentTodosByChatIdAtom } from "./atoms/chatAtoms";
+import {
+  pendingAgentConsentsAtom,
+  agentTodosByChatIdAtom,
+} from "./atoms/chatAtoms";
 import { queryKeys } from "./lib/queryKeys";
 
 // @ts-ignore
@@ -52,32 +60,40 @@ const queryClient = new QueryClient({
   }),
 });
 
-const posthogClient = posthog.init("phc_5Vxx0XT8Ug3eWROhP6mm4D6D2DgIIKT232q4AKxC2ab", {
-  api_host: "https://us.i.posthog.com",
-  // @ts-ignore
-  debug: import.meta.env.MODE === "development",
-  autocapture: false,
-  capture_exceptions: true,
-  capture_pageview: false,
-  before_send: (event) => {
-    if (!isTelemetryOptedIn()) {
-      console.debug("Telemetry not opted in, skipping event");
-      return null;
-    }
-    const telemetryUserId = getTelemetryUserId();
-    if (telemetryUserId) {
-      posthogClient.identify(telemetryUserId);
-    }
+const posthogClient = posthog.init(
+  "phc_5Vxx0XT8Ug3eWROhP6mm4D6D2DgIIKT232q4AKxC2ab",
+  {
+    api_host: "https://us.i.posthog.com",
+    // @ts-ignore
+    debug: import.meta.env.MODE === "development",
+    autocapture: false,
+    capture_exceptions: true,
+    capture_pageview: false,
+    before_send: (event) => {
+      if (!isTelemetryOptedIn()) {
+        console.debug("Telemetry not opted in, skipping event");
+        return null;
+      }
+      const telemetryUserId = getTelemetryUserId();
+      if (telemetryUserId) {
+        posthogClient.identify(telemetryUserId);
+      }
 
-    if (event?.properties["$ip"]) {
-      event.properties["$ip"] = null;
-    }
+      if (event?.properties["$ip"]) {
+        event.properties["$ip"] = null;
+      }
 
-    console.debug("Telemetry opted in - UUID:", telemetryUserId, "sending event", event);
-    return event;
+      console.debug(
+        "Telemetry opted in - UUID:",
+        telemetryUserId,
+        "sending event",
+        event,
+      );
+      return event;
+    },
+    persistence: "localStorage",
   },
-  persistence: "localStorage",
-});
+);
 
 function App() {
   useEffect(() => {
@@ -167,7 +183,9 @@ function App() {
   useEffect(() => {
     const ipc = IpcClient.getInstance();
     const unsubscribe = ipc.onChatStreamEnd((chatId) => {
-      setPendingAgentConsents((prev) => prev.filter((consent) => consent.chatId !== chatId));
+      setPendingAgentConsents((prev) =>
+        prev.filter((consent) => consent.chatId !== chatId),
+      );
     });
     return () => unsubscribe();
   }, [setPendingAgentConsents]);

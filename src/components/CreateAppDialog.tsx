@@ -28,7 +28,11 @@ interface CreateAppDialogProps {
   template: Template | undefined;
 }
 
-export function CreateAppDialog({ open, onOpenChange, template }: CreateAppDialogProps) {
+export function CreateAppDialog({
+  open,
+  onOpenChange,
+  template,
+}: CreateAppDialogProps) {
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const [appName, setAppName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -99,7 +103,9 @@ export function CreateAppDialog({ open, onOpenChange, template }: CreateAppDialo
                 disabled={isSubmitting}
               />
               {nameExists && (
-                <p className="text-sm text-red-500">An app with this name already exists</p>
+                <p className="text-sm text-red-500">
+                  An app with this name already exists
+                </p>
               )}
             </div>
           </div>
@@ -118,7 +124,9 @@ export function CreateAppDialog({ open, onOpenChange, template }: CreateAppDialo
               disabled={!canSubmit}
               className="bg-indigo-600 hover:bg-indigo-700"
             >
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isSubmitting && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
               {isSubmitting ? "Creating..." : "Create App"}
             </Button>
           </DialogFooter>

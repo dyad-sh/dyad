@@ -20,8 +20,14 @@ interface AzureConfigurationProps {
 const AZURE_API_KEY_VAR = "AZURE_API_KEY";
 const AZURE_RESOURCE_NAME_VAR = "AZURE_RESOURCE_NAME";
 
-export function AzureConfiguration({ settings, envVars, updateSettings }: AzureConfigurationProps) {
-  const existing = (settings?.providerSettings?.azure as AzureProviderSetting | undefined) ?? {};
+export function AzureConfiguration({
+  settings,
+  envVars,
+  updateSettings,
+}: AzureConfigurationProps) {
+  const existing =
+    (settings?.providerSettings?.azure as AzureProviderSetting | undefined) ??
+    {};
   const existingApiKey = existing.apiKey?.value ?? "";
   const existingResourceName = existing.resourceName ?? "";
 
@@ -94,7 +100,8 @@ export function AzureConfiguration({ settings, envVars, updateSettings }: AzureC
       return {
         variant: "default" as const,
         title: "Azure OpenAI Configured",
-        description: "Dyad will use the credentials saved in Settings for Azure OpenAI models.",
+        description:
+          "Dyad will use the credentials saved in Settings for Azure OpenAI models.",
         icon: KeyRound,
         titleClassName: "",
         descriptionClassName: "",
@@ -121,7 +128,8 @@ export function AzureConfiguration({ settings, envVars, updateSettings }: AzureC
       icon: Info,
       titleClassName: "text-red-800 dark:text-red-400",
       descriptionClassName: "text-red-800 dark:text-red-400",
-      alertClassName: "border-red-200 bg-red-100 dark:border-red-800/50 dark:bg-red-800/20",
+      alertClassName:
+        "border-red-200 bg-red-100 dark:border-red-800/50 dark:bg-red-800/20",
     };
   }, [hasSavedSettings, usingEnvironmentOnly]);
 
@@ -131,7 +139,9 @@ export function AzureConfiguration({ settings, envVars, updateSettings }: AzureC
     <div className="space-y-4">
       <Alert variant={status.variant} className={status.alertClassName}>
         <StatusIcon className="h-4 w-4" />
-        <AlertTitle className={status.titleClassName}>{status.title}</AlertTitle>
+        <AlertTitle className={status.titleClassName}>
+          {status.title}
+        </AlertTitle>
         <AlertDescription className={status.descriptionClassName}>
           {status.description}
         </AlertDescription>
@@ -139,7 +149,10 @@ export function AzureConfiguration({ settings, envVars, updateSettings }: AzureC
 
       <div className="grid grid-cols-1 gap-4">
         <div>
-          <label htmlFor="azure-resource-name" className="block text-sm font-medium mb-1">
+          <label
+            htmlFor="azure-resource-name"
+            className="block text-sm font-medium mb-1"
+          >
             Resource Name
           </label>
           <Input
@@ -155,7 +168,10 @@ export function AzureConfiguration({ settings, envVars, updateSettings }: AzureC
           />
         </div>
         <div>
-          <label htmlFor="azure-api-key" className="block text-sm font-medium mb-1">
+          <label
+            htmlFor="azure-api-key"
+            className="block text-sm font-medium mb-1"
+          >
             API Key
           </label>
           <Input
@@ -189,8 +205,8 @@ export function AzureConfiguration({ settings, envVars, updateSettings }: AzureC
           <Info className="h-4 w-4" />
           <AlertTitle>Configuration Needed</AlertTitle>
           <AlertDescription>
-            Azure OpenAI requests require both a resource name and API key. Enter them above or
-            supply the environment variables instead.
+            Azure OpenAI requests require both a resource name and API key.
+            Enter them above or supply the environment variables instead.
           </AlertDescription>
         </Alert>
       )}
@@ -202,15 +218,25 @@ export function AzureConfiguration({ settings, envVars, updateSettings }: AzureC
         </Alert>
       )}
 
-      <Accordion type="single" collapsible defaultValue="azure-env" className="w-full space-y-4">
-        <AccordionItem value="azure-env" className="border rounded-lg px-4 bg-background">
+      <Accordion
+        type="single"
+        collapsible
+        defaultValue="azure-env"
+        className="w-full space-y-4"
+      >
+        <AccordionItem
+          value="azure-env"
+          className="border rounded-lg px-4 bg-background"
+        >
           <AccordionTrigger className="text-lg font-medium hover:no-underline cursor-pointer">
             Environment Variables (optional)
           </AccordionTrigger>
           <AccordionContent className="pt-4 space-y-4">
             <div className="space-y-3 text-sm">
               <div className="flex justify-between items-center p-3 bg-muted rounded border">
-                <code className="font-mono text-foreground">{AZURE_API_KEY_VAR}</code>
+                <code className="font-mono text-foreground">
+                  {AZURE_API_KEY_VAR}
+                </code>
                 <span
                   data-testid="azure-api-key-status"
                   className={`px-2 py-1 rounded text-xs font-medium ${envApiKey ? "bg-green-100 text-green-800 dark:bg-green-800/20 dark:text-green-400" : "bg-red-100 text-red-800 dark:bg-red-800/20 dark:text-red-400"}`}
@@ -219,7 +245,9 @@ export function AzureConfiguration({ settings, envVars, updateSettings }: AzureC
                 </span>
               </div>
               <div className="flex justify-between items-center p-3 bg-muted rounded border">
-                <code className="font-mono text-foreground">{AZURE_RESOURCE_NAME_VAR}</code>
+                <code className="font-mono text-foreground">
+                  {AZURE_RESOURCE_NAME_VAR}
+                </code>
                 <span
                   data-testid="azure-resource-name-status"
                   className={`px-2 py-1 rounded text-xs font-medium ${envResourceName ? "bg-green-100 text-green-800 dark:bg-green-800/20 dark:text-green-400" : "bg-red-100 text-red-800 dark:bg-red-800/20 dark:text-red-400"}`}
@@ -230,12 +258,13 @@ export function AzureConfiguration({ settings, envVars, updateSettings }: AzureC
             </div>
             <div className="text-sm text-muted-foreground space-y-2">
               <p>
-                You can continue to configure Azure via environment variables. If both variables are
-                present and no settings are saved, Dyad will use them automatically.
+                You can continue to configure Azure via environment variables.
+                If both variables are present and no settings are saved, Dyad
+                will use them automatically.
               </p>
               <p>
-                Values saved in Settings take precedence over environment variables. Restart Dyad
-                after changing environment variables.
+                Values saved in Settings take precedence over environment
+                variables. Restart Dyad after changing environment variables.
               </p>
             </div>
           </AccordionContent>

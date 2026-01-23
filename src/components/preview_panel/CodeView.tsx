@@ -47,7 +47,9 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
   }
 
   if (!app) {
-    return <div className="text-center py-4 text-gray-500">No app selected</div>;
+    return (
+      <div className="text-center py-4 text-gray-500">No app selected</div>
+    );
   }
 
   if (app.files && app.files.length > 0) {
@@ -89,7 +91,9 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
                 initialLine={selectedFile.line ?? null}
               />
             ) : (
-              <div className="text-center py-4 text-gray-500">Select a file to view</div>
+              <div className="text-center py-4 text-gray-500">
+                Select a file to view
+              </div>
             )}
           </div>
         </div>

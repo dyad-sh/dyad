@@ -13,7 +13,9 @@ testSkipIfWindows("context window", async ({ po }) => {
 
   await po.goToSettingsTab();
   const beforeSettings = po.recordSettings();
-  await po.page.getByRole("combobox", { name: "Maximum number of chat turns" }).click();
+  await po.page
+    .getByRole("combobox", { name: "Maximum number of chat turns" })
+    .click();
   await po.page.getByRole("option", { name: "Plus (5)" }).click();
 
   // close combobox

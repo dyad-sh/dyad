@@ -94,7 +94,9 @@ export function AppUpgrades({ appId }: { appId: number | null }) {
 
   return (
     <div className="mt-6">
-      <h3 className="text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">App Upgrades</h3>
+      <h3 className="text-lg font-semibold mb-3 text-gray-900 dark:text-gray-100">
+        App Upgrades
+      </h3>
       {currentUpgrades.length === 0 ? (
         <div
           data-testid="no-app-upgrades-needed"
@@ -110,14 +112,21 @@ export function AppUpgrades({ appId }: { appId: number | null }) {
               className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg flex justify-between items-start"
             >
               <div className="flex-grow">
-                <h4 className="font-semibold text-gray-800 dark:text-gray-200">{upgrade.title}</h4>
+                <h4 className="font-semibold text-gray-800 dark:text-gray-200">
+                  {upgrade.title}
+                </h4>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   {upgrade.description}
                 </p>
                 {mutationError && upgradingVariables === upgrade.id && (
-                  <Alert variant="destructive" className="mt-3 dark:bg-destructive/15">
+                  <Alert
+                    variant="destructive"
+                    className="mt-3 dark:bg-destructive/15"
+                  >
                     <Terminal className="h-4 w-4" />
-                    <AlertTitle className="dark:text-red-200">Upgrade Failed</AlertTitle>
+                    <AlertTitle className="dark:text-red-200">
+                      Upgrade Failed
+                    </AlertTitle>
                     <AlertDescription className="text-xs text-red-400 dark:text-red-300">
                       {(mutationError as Error).message}{" "}
                       <a

@@ -35,8 +35,12 @@ export function resolveDirectoryWithinAppPath(params: {
   const resolvedAppPath = pathImpl.resolve(params.appPath);
   const resolvedPath = pathImpl.resolve(resolvedAppPath, params.directory);
 
-  const appForCheck = caseInsensitive ? resolvedAppPath.toLowerCase() : resolvedAppPath;
-  const targetForCheck = caseInsensitive ? resolvedPath.toLowerCase() : resolvedPath;
+  const appForCheck = caseInsensitive
+    ? resolvedAppPath.toLowerCase()
+    : resolvedAppPath;
+  const targetForCheck = caseInsensitive
+    ? resolvedPath.toLowerCase()
+    : resolvedPath;
 
   const relForCheck = pathImpl.relative(appForCheck, targetForCheck);
 
@@ -47,7 +51,9 @@ export function resolveDirectoryWithinAppPath(params: {
       !pathImpl.isAbsolute(relForCheck));
 
   if (!isWithinRoot) {
-    throw new Error(`Invalid directory path: "${params.directory}" escapes the project directory`);
+    throw new Error(
+      `Invalid directory path: "${params.directory}" escapes the project directory`,
+    );
   }
 
   return pathImpl.relative(resolvedAppPath, resolvedPath);

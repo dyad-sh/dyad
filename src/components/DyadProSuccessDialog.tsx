@@ -13,7 +13,10 @@ interface DyadProSuccessDialogProps {
   onClose: () => void;
 }
 
-export function DyadProSuccessDialog({ isOpen, onClose }: DyadProSuccessDialogProps) {
+export function DyadProSuccessDialog({
+  isOpen,
+  onClose,
+}: DyadProSuccessDialogProps) {
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-md">
@@ -28,7 +31,8 @@ export function DyadProSuccessDialog({ isOpen, onClose }: DyadProSuccessDialogPr
 
         <div className="py-4 space-y-4">
           <p className="text-base text-muted-foreground">
-            You're all set! We've applied these default settings, but you can change them anytime:
+            You're all set! We've applied these default settings, but you can
+            change them anytime:
           </p>
 
           <div className="space-y-3">
@@ -38,7 +42,9 @@ export function DyadProSuccessDialog({ isOpen, onClose }: DyadProSuccessDialogPr
               </div>
               <div>
                 <p className="font-medium">Auto model</p>
-                <p className="text-sm text-muted-foreground">Automatically picks a top AI model</p>
+                <p className="text-sm text-muted-foreground">
+                  Automatically picks a top AI model
+                </p>
               </div>
             </div>
 

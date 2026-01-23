@@ -74,10 +74,14 @@ export const Console = () => {
   const hasScrolledToBottom = useRef(false);
   const [showFilters, setShowFilters] = useState(false);
   const [containerHeight, setContainerHeight] = useState(0);
-  const [expandedEntries, setExpandedEntries] = useState<Set<string>>(new Set());
+  const [expandedEntries, setExpandedEntries] = useState<Set<string>>(
+    new Set(),
+  );
 
   // Filter states
-  const [levelFilter, setLevelFilter] = useState<"all" | "info" | "warn" | "error">("all");
+  const [levelFilter, setLevelFilter] = useState<
+    "all" | "info" | "warn" | "error"
+  >("all");
   const [typeFilter, setTypeFilter] = useState<
     "all" | "server" | "client" | "edge-function" | "network-requests"
   >("all");
@@ -107,7 +111,9 @@ export const Console = () => {
         // Clear logs from UI
         setConsoleEntries([]);
       } catch (error) {
-        showError(error instanceof Error ? error.message : "Failed to clear logs");
+        showError(
+          error instanceof Error ? error.message : "Failed to clear logs",
+        );
       }
     }
   }, [selectedAppId, setConsoleEntries]);
@@ -157,7 +163,11 @@ export const Console = () => {
       .filter((entry) => {
         if (levelFilter !== "all" && entry.level !== levelFilter) return false;
         if (typeFilter !== "all" && entry.type !== typeFilter) return false;
-        if (sourceFilter && sourceFilter !== "all" && entry.sourceName !== sourceFilter)
+        if (
+          sourceFilter &&
+          sourceFilter !== "all" &&
+          entry.sourceName !== sourceFilter
+        )
           return false;
         return true;
       })
@@ -234,7 +244,10 @@ export const Console = () => {
         {containerHeight > 0 &&
           (isTestMode ? (
             // Non-virtualized rendering for test mode - all logs visible in DOM
-            <div className="font-mono text-xs" style={{ height: listHeight, overflowY: "auto" }}>
+            <div
+              className="font-mono text-xs"
+              style={{ height: listHeight, overflowY: "auto" }}
+            >
               {filteredEntries.map((entry, index) => {
                 const entryKey = getEntryKey(entry, index);
                 const isExpanded = expandedEntries.has(entryKey);
@@ -263,9 +276,13 @@ export const Console = () => {
               itemContent={ItemContent}
               defaultItemHeight={100}
               className="font-mono text-xs"
-              initialTopMostItemIndex={filteredEntries.length > 0 ? filteredEntries.length - 1 : 0}
+              initialTopMostItemIndex={
+                filteredEntries.length > 0 ? filteredEntries.length - 1 : 0
+              }
               followOutput={
-                isNearBottom && initialScrollDone.current && !isScrolling ? "auto" : false
+                isNearBottom && initialScrollDone.current && !isScrolling
+                  ? "auto"
+                  : false
               }
               atBottomThreshold={100}
               atBottomStateChange={(atBottom) => {

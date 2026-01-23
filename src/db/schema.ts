@@ -145,27 +145,33 @@ export const messagesRelations = relations(messages, ({ one }) => ({
   }),
 }));
 
-export const language_model_providers = sqliteTable("language_model_providers", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  api_base_url: text("api_base_url").notNull(),
-  env_var_name: text("env_var_name"),
-  createdAt: integer("created_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-  updatedAt: integer("updated_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-});
+export const language_model_providers = sqliteTable(
+  "language_model_providers",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    api_base_url: text("api_base_url").notNull(),
+    env_var_name: text("env_var_name"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+);
 
 export const language_models = sqliteTable("language_models", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   displayName: text("display_name").notNull(),
   apiName: text("api_name").notNull(),
   builtinProviderId: text("builtin_provider_id"),
-  customProviderId: text("custom_provider_id").references(() => language_model_providers.id, {
-    onDelete: "cascade",
-  }),
+  customProviderId: text("custom_provider_id").references(
+    () => language_model_providers.id,
+    {
+      onDelete: "cascade",
+    },
+  ),
   description: text("description"),
   max_output_tokens: integer("max_output_tokens"),
   context_window: integer("context_window"),
@@ -178,16 +184,22 @@ export const language_models = sqliteTable("language_models", {
 });
 
 // Define relations for new tables
-export const languageModelProvidersRelations = relations(language_model_providers, ({ many }) => ({
-  languageModels: many(language_models),
-}));
-
-export const languageModelsRelations = relations(language_models, ({ one }) => ({
-  provider: one(language_model_providers, {
-    fields: [language_models.customProviderId],
-    references: [language_model_providers.id],
+export const languageModelProvidersRelations = relations(
+  language_model_providers,
+  ({ many }) => ({
+    languageModels: many(language_models),
   }),
-}));
+);
+
+export const languageModelsRelations = relations(
+  language_models,
+  ({ one }) => ({
+    provider: one(language_model_providers, {
+      fields: [language_models.customProviderId],
+      references: [language_model_providers.id],
+    }),
+  }),
+);
 
 export const versionsRelations = relations(versions, ({ one }) => ({
   app: one(apps, {
@@ -204,7 +216,10 @@ export const mcpServers = sqliteTable("mcp_servers", {
   command: text("command"),
   // Store typed JSON for args and environment variables
   args: text("args", { mode: "json" }).$type<string[] | null>(),
-  envJson: text("env_json", { mode: "json" }).$type<Record<string, string> | null>(),
+  envJson: text("env_json", { mode: "json" }).$type<Record<
+    string,
+    string
+  > | null>(),
   url: text("url"),
   enabled: integer("enabled", { mode: "boolean" })
     .notNull()

@@ -43,9 +43,14 @@ export function ManageDyadProButton({ className }: { className?: string }) {
     <Button
       variant="outline"
       size="lg"
-      className={cn("cursor-pointer w-full mt-4 bg-(--background-lighter) text-primary", className)}
+      className={cn(
+        "cursor-pointer w-full mt-4 bg-(--background-lighter) text-primary",
+        className,
+      )}
       onClick={() => {
-        IpcClient.getInstance().openExternalUrl("https://academy.dyad.sh/subscription");
+        IpcClient.getInstance().openExternalUrl(
+          "https://academy.dyad.sh/subscription",
+        );
       }}
     >
       <Wallet aria-hidden="true" className="w-5 h-5" />
@@ -62,7 +67,9 @@ export function SetupDyadProButton() {
       size="lg"
       className="cursor-pointer w-full mt-4 bg-(--background-lighter) text-primary"
       onClick={() => {
-        IpcClient.getInstance().openExternalUrl("https://academy.dyad.sh/settings");
+        IpcClient.getInstance().openExternalUrl(
+          "https://academy.dyad.sh/settings",
+        );
       }}
     >
       <KeyRound aria-hidden="true" />

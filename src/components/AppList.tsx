@@ -20,7 +20,8 @@ export function AppList({ show }: { show?: boolean }) {
   const [selectedAppId, setSelectedAppId] = useAtom(selectedAppIdAtom);
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const { apps, loading, error } = useLoadApps();
-  const { toggleFavorite, isLoading: isFavoriteLoading } = useAddAppToFavorite();
+  const { toggleFavorite, isLoading: isFavoriteLoading } =
+    useAddAppToFavorite();
   // search dialog state
   const [isSearchDialogOpen, setIsSearchDialogOpen] = useState(false);
 
@@ -36,9 +37,15 @@ export function AppList({ show }: { show?: boolean }) {
     [apps],
   );
 
-  const favoriteApps = useMemo(() => apps.filter((app) => app.isFavorite), [apps]);
+  const favoriteApps = useMemo(
+    () => apps.filter((app) => app.isFavorite),
+    [apps],
+  );
 
-  const nonFavoriteApps = useMemo(() => apps.filter((app) => !app.isFavorite), [apps]);
+  const nonFavoriteApps = useMemo(
+    () => apps.filter((app) => !app.isFavorite),
+    [apps],
+  );
 
   if (!show) {
     return null;
@@ -92,11 +99,17 @@ export function AppList({ show }: { show?: boolean }) {
             </Button>
 
             {loading ? (
-              <div className="py-2 px-4 text-sm text-gray-500">Loading apps...</div>
+              <div className="py-2 px-4 text-sm text-gray-500">
+                Loading apps...
+              </div>
             ) : error ? (
-              <div className="py-2 px-4 text-sm text-red-500">Error loading apps</div>
+              <div className="py-2 px-4 text-sm text-red-500">
+                Error loading apps
+              </div>
             ) : apps.length === 0 ? (
-              <div className="py-2 px-4 text-sm text-gray-500">No apps found</div>
+              <div className="py-2 px-4 text-sm text-gray-500">
+                No apps found
+              </div>
             ) : (
               <SidebarMenu className="space-y-1" data-testid="app-list">
                 <SidebarGroupLabel>Favorite apps</SidebarGroupLabel>

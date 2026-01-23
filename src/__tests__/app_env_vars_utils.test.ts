@@ -417,7 +417,9 @@ SPECIAL_CHARS="p@ssw0rd!#$%"`);
   });
 
   it("should handle complex escaped quotes", () => {
-    const envVars = [{ key: "COMPLEX", value: "This is \"complex\" with 'mixed' quotes" }];
+    const envVars = [
+      { key: "COMPLEX", value: "This is \"complex\" with 'mixed' quotes" },
+    ];
 
     const result = serializeEnvFile(envVars);
     expect(result).toBe(`COMPLEX="This is \\"complex\\" with 'mixed' quotes"`);

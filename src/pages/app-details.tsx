@@ -6,8 +6,18 @@ import { IpcClient } from "@/ipc/ipc_client";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, MoreVertical, MessageCircle, Pencil, Folder } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  ArrowLeft,
+  MoreVertical,
+  MessageCircle,
+  Pencil,
+  Folder,
+} from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -39,23 +49,27 @@ export default function AppDetailsPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
-  const [isRenameConfirmDialogOpen, setIsRenameConfirmDialogOpen] = useState(false);
+  const [isRenameConfirmDialogOpen, setIsRenameConfirmDialogOpen] =
+    useState(false);
   const [newAppName, setNewAppName] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
-  const [isRenameFolderDialogOpen, setIsRenameFolderDialogOpen] = useState(false);
+  const [isRenameFolderDialogOpen, setIsRenameFolderDialogOpen] =
+    useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [isRenamingFolder, setIsRenamingFolder] = useState(false);
 
   const [isCopyDialogOpen, setIsCopyDialogOpen] = useState(false);
   const [newCopyAppName, setNewCopyAppName] = useState("");
-  const [isChangeLocationDialogOpen, setIsChangeLocationDialogOpen] = useState(false);
+  const [isChangeLocationDialogOpen, setIsChangeLocationDialogOpen] =
+    useState(false);
 
   const queryClient = useQueryClient();
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
 
   const debouncedNewCopyAppName = useDebounce(newCopyAppName, 150);
-  const { data: checkNameResult, isLoading: isCheckingName } =
-    useCheckName(debouncedNewCopyAppName);
+  const { data: checkNameResult, isLoading: isCheckingName } = useCheckName(
+    debouncedNewCopyAppName,
+  );
   const nameExists = checkNameResult?.exists ?? false;
 
   // Get the appId from search params and find the corresponding app
@@ -88,7 +102,9 @@ export default function AppDetailsPage() {
 
   const handleOpenRenameFolderDialog = () => {
     if (selectedApp) {
-      setNewFolderName(normalizePath(selectedApp.path).split("/").pop() || selectedApp.path);
+      setNewFolderName(
+        normalizePath(selectedApp.path).split("/").pop() || selectedApp.path,
+      );
       setIsRenameFolderDialogOpen(true);
     }
   };
@@ -113,10 +129,9 @@ export default function AppDetailsPage() {
       await refreshApps();
     } catch (error) {
       console.error("Failed to rename app:", error);
-      const errorMessage = (error instanceof Error ? error.message : String(error)).replace(
-        /^Error invoking remote method 'rename-app': Error: /,
-        "",
-      );
+      const errorMessage = (
+        error instanceof Error ? error.message : String(error)
+      ).replace(/^Error invoking remote method 'rename-app': Error: /, "");
       showError(errorMessage);
     } finally {
       setIsRenaming(false);
@@ -138,10 +153,9 @@ export default function AppDetailsPage() {
       await refreshApps();
     } catch (error) {
       console.error("Failed to rename folder:", error);
-      const errorMessage = (error instanceof Error ? error.message : String(error)).replace(
-        /^Error invoking remote method 'rename-app': Error: /,
-        "",
-      );
+      const errorMessage = (
+        error instanceof Error ? error.message : String(error)
+      ).replace(/^Error invoking remote method 'rename-app': Error: /, "");
       showError(errorMessage);
     } finally {
       setIsRenamingFolder(false);
@@ -169,7 +183,8 @@ export default function AppDetailsPage() {
         ? currentPath.replace(/[/\\][^/\\]*$/, "") // Remove last path component
         : undefined;
 
-      const response = await IpcClient.getInstance().selectAppLocation(currentParentDir);
+      const response =
+        await IpcClient.getInstance().selectAppLocation(currentParentDir);
       if (!response.canceled && response.path) {
         await changeLocationMutation.mutateAsync({
           appId,
@@ -247,7 +262,10 @@ export default function AppDetailsPage() {
   const currentAppPath = selectedApp.resolvedPath || "";
 
   return (
-    <div className="relative min-h-screen p-4 w-full" data-testid="app-details-page">
+    <div
+      className="relative min-h-screen p-4 w-full"
+      data-testid="app-details-page"
+    >
       <Button
         onClick={() => router.history.back()}
         variant="outline"
@@ -326,7 +344,9 @@ export default function AppDetailsPage() {
 
         <div className="grid grid-cols-2 gap-3 text-sm mb-4">
           <div>
-            <span className="block text-gray-500 dark:text-gray-400 mb-0.5 text-xs">Created</span>
+            <span className="block text-gray-500 dark:text-gray-400 mb-0.5 text-xs">
+              Created
+            </span>
             <span>{selectedApp.createdAt.toString()}</span>
           </div>
           <div>
@@ -336,7 +356,9 @@ export default function AppDetailsPage() {
             <span>{selectedApp.updatedAt.toString()}</span>
           </div>
           <div className="col-span-2">
-            <span className="block text-gray-500 dark:text-gray-400 mb-0.5 text-xs">Path</span>
+            <span className="block text-gray-500 dark:text-gray-400 mb-0.5 text-xs">
+              Path
+            </span>
             <div className="flex items-center gap-1">
               <Button
                 variant="ghost"
@@ -418,7 +440,10 @@ export default function AppDetailsPage() {
         </Dialog>
 
         {/* Rename Folder Dialog */}
-        <Dialog open={isRenameFolderDialogOpen} onOpenChange={setIsRenameFolderDialogOpen}>
+        <Dialog
+          open={isRenameFolderDialogOpen}
+          onOpenChange={setIsRenameFolderDialogOpen}
+        >
           <DialogContent className="max-w-sm p-4">
             <DialogHeader className="pb-2">
               <DialogTitle>Rename app folder</DialogTitle>
@@ -480,13 +505,18 @@ export default function AppDetailsPage() {
         </Dialog>
 
         {/* Rename Confirmation Dialog */}
-        <Dialog open={isRenameConfirmDialogOpen} onOpenChange={setIsRenameConfirmDialogOpen}>
+        <Dialog
+          open={isRenameConfirmDialogOpen}
+          onOpenChange={setIsRenameConfirmDialogOpen}
+        >
           <DialogContent className="max-w-sm p-4">
             <DialogHeader className="pb-2">
               <DialogTitle className="text-base">
                 How would you like to rename "{selectedApp.name}"?
               </DialogTitle>
-              <DialogDescription className="text-xs">Choose an option:</DialogDescription>
+              <DialogDescription className="text-xs">
+                Choose an option:
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-2 my-2">
               <Button
@@ -543,7 +573,10 @@ export default function AppDetailsPage() {
                 <DialogTitle>Copy "{selectedApp.name}"</DialogTitle>
                 <DialogDescription className="text-sm">
                   <p>Create a copy of this app.</p>
-                  <p>Note: this does not copy over the Supabase project or GitHub project.</p>
+                  <p>
+                    Note: this does not copy over the Supabase project or GitHub
+                    project.
+                  </p>
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-3 my-2">
@@ -567,7 +600,8 @@ export default function AppDetailsPage() {
 
                   {nameExists && (
                     <p className="text-xs text-yellow-600 dark:text-yellow-500 mt-1">
-                      An app with this name already exists. Please choose another name.
+                      An app with this name already exists. Please choose
+                      another name.
                     </p>
                   )}
                 </div>
@@ -576,7 +610,9 @@ export default function AppDetailsPage() {
                   <Button
                     variant="outline"
                     className="w-full justify-start p-2 h-auto relative text-sm"
-                    onClick={() => copyAppMutation.mutate({ withHistory: true })}
+                    onClick={() =>
+                      copyAppMutation.mutate({ withHistory: true })
+                    }
                     disabled={
                       copyAppMutation.isPending ||
                       nameExists ||
@@ -594,9 +630,12 @@ export default function AppDetailsPage() {
                       </span>
                     </div>
                     <div className="text-left">
-                      <p className="font-medium text-xs">Copy app with history</p>
+                      <p className="font-medium text-xs">
+                        Copy app with history
+                      </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Copies the entire app, including the Git version history.
+                        Copies the entire app, including the Git version
+                        history.
                       </p>
                     </div>
                   </Button>
@@ -604,7 +643,9 @@ export default function AppDetailsPage() {
                   <Button
                     variant="outline"
                     className="w-full justify-start p-2 h-auto text-sm"
-                    onClick={() => copyAppMutation.mutate({ withHistory: false })}
+                    onClick={() =>
+                      copyAppMutation.mutate({ withHistory: false })
+                    }
                     disabled={
                       copyAppMutation.isPending ||
                       nameExists ||
@@ -617,7 +658,9 @@ export default function AppDetailsPage() {
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       )}
                     <div className="text-left">
-                      <p className="font-medium text-xs">Copy app without history</p>
+                      <p className="font-medium text-xs">
+                        Copy app without history
+                      </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
                         Useful if the current app has a Git-related issue.
                       </p>
@@ -640,13 +683,16 @@ export default function AppDetailsPage() {
         )}
 
         {/* Change Location Dialog */}
-        <Dialog open={isChangeLocationDialogOpen} onOpenChange={setIsChangeLocationDialogOpen}>
+        <Dialog
+          open={isChangeLocationDialogOpen}
+          onOpenChange={setIsChangeLocationDialogOpen}
+        >
           <DialogContent className="max-w-sm p-4">
             <DialogHeader className="pb-2">
               <DialogTitle>Change App Location</DialogTitle>
               <DialogDescription className="text-xs">
-                Select a folder where this app will be stored. The app folder name will remain the
-                same.
+                Select a folder where this app will be stored. The app folder
+                name will remain the same.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="pt-2">
@@ -682,8 +728,8 @@ export default function AppDetailsPage() {
             <DialogHeader className="pb-2">
               <DialogTitle>Delete "{selectedApp.name}"?</DialogTitle>
               <DialogDescription className="text-xs">
-                This action is irreversible. All app files and chat history will be permanently
-                deleted.
+                This action is irreversible. All app files and chat history will
+                be permanently deleted.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="flex justify-end gap-2 pt-2">

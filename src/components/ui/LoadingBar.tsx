@@ -10,7 +10,11 @@ export const LoadingBar: React.FC<{ isVisible: boolean }> = ({ isVisible }) => {
         isVisible ? "" : "invisible",
       )}
     >
-      <div className={cn("absolute top-0 left-0 h-full w-1/2 bg-primary animate-marquee")} />
+      <div
+        className={cn(
+          "absolute top-0 left-0 h-full w-1/2 bg-primary animate-marquee",
+        )}
+      />
     </div>
   );
 };

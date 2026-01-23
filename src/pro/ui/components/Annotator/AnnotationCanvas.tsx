@@ -1,5 +1,12 @@
 import React from "react";
-import { Stage, Layer, Image as KonvaImage, Path, Text, Transformer } from "react-konva";
+import {
+  Stage,
+  Layer,
+  Image as KonvaImage,
+  Path,
+  Text,
+  Transformer,
+} from "react-konva";
 import { getStroke } from "perfect-freehand";
 
 // Helper to convert stroke points to SVG path data
@@ -89,7 +96,12 @@ export const AnnotationCanvas = ({
         style={{ touchAction: "none" }}
       >
         <Layer>
-          <KonvaImage image={image} listening={false} scaleX={scale} scaleY={scale} />
+          <KonvaImage
+            image={image}
+            listening={false}
+            scaleX={scale}
+            scaleY={scale}
+          />
           {shapes.map((shape) => {
             if (shape.type === "line") {
               const stroke = getStroke(shape.points, {

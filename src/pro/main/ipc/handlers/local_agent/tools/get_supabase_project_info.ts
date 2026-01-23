@@ -6,7 +6,9 @@ const getSupabaseProjectInfoSchema = z.object({
   includeDbFunctions: z
     .boolean()
     .optional()
-    .describe("When true, includes database functions in the response. Defaults to false."),
+    .describe(
+      "When true, includes database functions in the response. Defaults to false.",
+    ),
 });
 
 export const getSupabaseProjectInfoTool: ToolDefinition<
@@ -26,7 +28,9 @@ export const getSupabaseProjectInfoTool: ToolDefinition<
       throw new Error("Supabase is not connected to this app");
     }
 
-    ctx.onXmlStream("<dyad-supabase-project-info></dyad-supabase-project-info>");
+    ctx.onXmlStream(
+      "<dyad-supabase-project-info></dyad-supabase-project-info>",
+    );
 
     const info = await getSupabaseProjectInfo({
       supabaseProjectId: ctx.supabaseProjectId,

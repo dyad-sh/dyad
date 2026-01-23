@@ -16,7 +16,10 @@ test("attach image - home chat", async ({ po }) => {
   await po.setUp();
 
   // Open auxiliary actions menu
-  await po.getHomeChatInputContainer().getByTestId("auxiliary-actions-menu").click();
+  await po
+    .getHomeChatInputContainer()
+    .getByTestId("auxiliary-actions-menu")
+    .click();
 
   // Hover over "Attach files" to open submenu
   await po.page.getByRole("menuitem", { name: "Attach files" }).hover();
@@ -41,7 +44,10 @@ test("attach image - chat", async ({ po }) => {
   await po.sendPrompt("basic");
 
   // Open auxiliary actions menu
-  await po.getChatInputContainer().getByTestId("auxiliary-actions-menu").click();
+  await po
+    .getChatInputContainer()
+    .getByTestId("auxiliary-actions-menu")
+    .click();
 
   // Hover over "Attach files" to open submenu
   await po.page.getByRole("menuitem", { name: "Attach files" }).hover();
@@ -66,7 +72,10 @@ test("attach image - chat - upload to codebase", async ({ po }) => {
   await po.sendPrompt("basic");
 
   // Open auxiliary actions menu
-  await po.getChatInputContainer().getByTestId("auxiliary-actions-menu").click();
+  await po
+    .getChatInputContainer()
+    .getByTestId("auxiliary-actions-menu")
+    .click();
 
   // Hover over "Attach files" to open submenu
   await po.page.getByRole("menuitem", { name: "Attach files" }).hover();
@@ -91,7 +100,10 @@ test("attach image - chat - upload to codebase", async ({ po }) => {
   const filePath = path.join(appPath, "new", "image", "file.png");
   expect(fs.existsSync(filePath)).toBe(true);
   // check contents of filePath is equal in value to e2e-tests/fixtures/images/logo.png
-  const expectedContents = fs.readFileSync("e2e-tests/fixtures/images/logo.png", "base64");
+  const expectedContents = fs.readFileSync(
+    "e2e-tests/fixtures/images/logo.png",
+    "base64",
+  );
   const actualContents = fs.readFileSync(filePath, "base64");
   expect(actualContents).toBe(expectedContents);
 });
@@ -101,7 +113,10 @@ test("attach image via drag - chat", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.sendPrompt("basic");
   // read fixture and convert to base64 for browser context
-  const fileBase64 = fs.readFileSync("e2e-tests/fixtures/images/logo.png", "base64");
+  const fileBase64 = fs.readFileSync(
+    "e2e-tests/fixtures/images/logo.png",
+    "base64",
+  );
   // locate the inner drop target (first child div of the container)
   const dropTarget = po.getChatInputContainer().locator("div").first();
   // simulate dragenter, dragover, and drop with a File
@@ -118,7 +133,9 @@ test("attach image via drag - chat", async ({ po }) => {
     dt.items.add(file);
     // dispatch drag events
     ["dragenter", "dragover", "drop"].forEach((eventType) => {
-      element.dispatchEvent(new DragEvent(eventType, { dataTransfer: dt, bubbles: true }));
+      element.dispatchEvent(
+        new DragEvent(eventType, { dataTransfer: dt, bubbles: true }),
+      );
     });
   }, fileBase64);
 

@@ -12,7 +12,9 @@ test.describe("Node.js Path Configuration", () => {
     await browseButton.click();
 
     // Should show selecting state
-    await expect(po.page.getByRole("button", { name: /Selecting\.\.\./i })).toBeVisible();
+    await expect(
+      po.page.getByRole("button", { name: /Selecting\.\.\./i }),
+    ).toBeVisible();
   });
 
   test("should reset custom path to system default", async ({ po }) => {

@@ -150,7 +150,10 @@ app.get("/lmstudio/api/v0/models", (req, res) => {
 });
 
 ["lmstudio", "gateway", "engine", "ollama", "azure"].forEach((provider) => {
-  app.post(`/${provider}/v1/chat/completions`, createChatCompletionHandler(provider));
+  app.post(
+    `/${provider}/v1/chat/completions`,
+    createChatCompletionHandler(provider),
+  );
   // Also add responses API endpoints for each provider
   app.post(`/${provider}/v1/responses`, createResponsesHandler(provider));
 });
@@ -180,9 +183,18 @@ app.get("/github/api/user/repos", handleUserRepos);
 app.post("/github/api/user/repos", handleUserRepos);
 app.get("/github/api/repos/:owner/:repo", handleRepo);
 app.get("/github/api/repos/:owner/:repo/branches", handleRepoBranches);
-app.get("/github/api/repos/:owner/:repo/collaborators", handleRepoCollaborators);
-app.put("/github/api/repos/:owner/:repo/collaborators/:username", handleRepoCollaborators);
-app.delete("/github/api/repos/:owner/:repo/collaborators/:username", handleRepoCollaborators);
+app.get(
+  "/github/api/repos/:owner/:repo/collaborators",
+  handleRepoCollaborators,
+);
+app.put(
+  "/github/api/repos/:owner/:repo/collaborators/:username",
+  handleRepoCollaborators,
+);
+app.delete(
+  "/github/api/repos/:owner/:repo/collaborators/:username",
+  handleRepoCollaborators,
+);
 app.post("/github/api/orgs/:org/repos", handleOrgRepos);
 
 // GitHub test endpoints for verifying push operations
@@ -195,7 +207,9 @@ app.all("/github/git/*", handleGitPush);
 // Dyad Engine turbo-file-edit endpoint for edit_file tool
 app.post("/engine/v1/tools/turbo-file-edit", (req, res) => {
   const { path: filePath, description } = req.body;
-  console.log(`* turbo-file-edit: ${filePath} - ${description || "no description"}`);
+  console.log(
+    `* turbo-file-edit: ${filePath} - ${description || "no description"}`,
+  );
 
   try {
     res.json({ result: "TURBO EDITED filePath" });
@@ -208,12 +222,16 @@ app.post("/engine/v1/tools/turbo-file-edit", (req, res) => {
 // Dyad Engine code-search endpoint for code_search tool
 app.post("/engine/v1/tools/code-search", (req, res) => {
   const { query, filesContext } = req.body;
-  console.log(`* code-search: "${query}" - searching ${filesContext?.length || 0} files`);
+  console.log(
+    `* code-search: "${query}" - searching ${filesContext?.length || 0} files`,
+  );
 
   try {
     // Return mock relevant files based on the files provided
     // For testing, return the first few files that exist in the context
-    const relevantFiles = (filesContext || []).slice(0, 3).map((f: { path: string }) => f.path);
+    const relevantFiles = (filesContext || [])
+      .slice(0, 3)
+      .map((f: { path: string }) => f.path);
 
     res.json({ relevantFiles });
   } catch (error) {

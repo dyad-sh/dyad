@@ -143,14 +143,17 @@ export function readSettings(): UserSettings {
     }
     for (const provider in combinedSettings.providerSettings) {
       if (combinedSettings.providerSettings[provider].apiKey) {
-        const encryptionType = combinedSettings.providerSettings[provider].apiKey.encryptionType;
+        const encryptionType =
+          combinedSettings.providerSettings[provider].apiKey.encryptionType;
         combinedSettings.providerSettings[provider].apiKey = {
           value: decrypt(combinedSettings.providerSettings[provider].apiKey),
           encryptionType,
         };
       }
       // Decrypt Vertex service account key if present
-      const v = combinedSettings.providerSettings[provider] as VertexProviderSetting;
+      const v = combinedSettings.providerSettings[
+        provider
+      ] as VertexProviderSetting;
       if (provider === "vertex" && v?.serviceAccountKey) {
         const encryptionType = v.serviceAccountKey.encryptionType;
         v.serviceAccountKey = {
@@ -179,18 +182,26 @@ export function writeSettings(settings: Partial<UserSettings>): void {
     const currentSettings = readSettings();
     const newSettings = { ...currentSettings, ...settings };
     if (newSettings.githubAccessToken) {
-      newSettings.githubAccessToken = encrypt(newSettings.githubAccessToken.value);
+      newSettings.githubAccessToken = encrypt(
+        newSettings.githubAccessToken.value,
+      );
     }
     if (newSettings.vercelAccessToken) {
-      newSettings.vercelAccessToken = encrypt(newSettings.vercelAccessToken.value);
+      newSettings.vercelAccessToken = encrypt(
+        newSettings.vercelAccessToken.value,
+      );
     }
     if (newSettings.supabase) {
       // Encrypt legacy tokens (kept for backwards compat)
       if (newSettings.supabase.accessToken) {
-        newSettings.supabase.accessToken = encrypt(newSettings.supabase.accessToken.value);
+        newSettings.supabase.accessToken = encrypt(
+          newSettings.supabase.accessToken.value,
+        );
       }
       if (newSettings.supabase.refreshToken) {
-        newSettings.supabase.refreshToken = encrypt(newSettings.supabase.refreshToken.value);
+        newSettings.supabase.refreshToken = encrypt(
+          newSettings.supabase.refreshToken.value,
+        );
       }
       // Encrypt tokens for each organization in the organizations map
       if (newSettings.supabase.organizations) {
@@ -207,10 +218,14 @@ export function writeSettings(settings: Partial<UserSettings>): void {
     }
     if (newSettings.neon) {
       if (newSettings.neon.accessToken) {
-        newSettings.neon.accessToken = encrypt(newSettings.neon.accessToken.value);
+        newSettings.neon.accessToken = encrypt(
+          newSettings.neon.accessToken.value,
+        );
       }
       if (newSettings.neon.refreshToken) {
-        newSettings.neon.refreshToken = encrypt(newSettings.neon.refreshToken.value);
+        newSettings.neon.refreshToken = encrypt(
+          newSettings.neon.refreshToken.value,
+        );
       }
     }
     for (const provider in newSettings.providerSettings) {

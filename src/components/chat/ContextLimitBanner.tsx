@@ -1,6 +1,10 @@
 import { AlertTriangle, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
 
 const CONTEXT_LIMIT_THRESHOLD = 40_000;
@@ -17,7 +21,10 @@ function formatTokenCount(count: number): string {
   return count.toString();
 }
 
-export function ContextLimitBanner({ totalTokens, contextWindow }: ContextLimitBannerProps) {
+export function ContextLimitBanner({
+  totalTokens,
+  contextWindow,
+}: ContextLimitBannerProps) {
   const { handleSummarize } = useSummarizeInNewChat();
 
   // Don't show banner if we don't have the necessary data
@@ -51,16 +58,22 @@ export function ContextLimitBanner({ totalTokens, contextWindow }: ContextLimitB
             <div className="grid gap-1">
               <div className="flex justify-between gap-4">
                 <span>Used:</span>
-                <span className="font-medium">{formatTokenCount(totalTokens)}</span>
+                <span className="font-medium">
+                  {formatTokenCount(totalTokens)}
+                </span>
               </div>
               <div className="flex justify-between gap-4">
                 <span>Limit:</span>
-                <span className="font-medium">{formatTokenCount(contextWindow)}</span>
+                <span className="font-medium">
+                  {formatTokenCount(contextWindow)}
+                </span>
               </div>
             </div>
           </TooltipContent>
         </Tooltip>
-        <p className="text-sm font-medium">You're close to the context limit for this chat.</p>
+        <p className="text-sm font-medium">
+          You're close to the context limit for this chat.
+        </p>
       </div>
       <Button
         onClick={handleSummarize}

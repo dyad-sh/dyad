@@ -11,7 +11,8 @@ const config: PlaywrightTestConfig = {
   // Use a custom snapshot path template because Playwright's default
   // is platform-specific which isn't necessary for Dyad e2e tests
   // which should be platform agnostic (we don't do screenshots; only textual diffs).
-  snapshotPathTemplate: "{testDir}/{testFileDir}/snapshots/{testFileName}_{arg}{ext}",
+  snapshotPathTemplate:
+    "{testDir}/{testFileDir}/snapshots/{testFileName}_{arg}{ext}",
 
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   // Why not use GitHub reporter? Because we're using matrix and it's discouraged:

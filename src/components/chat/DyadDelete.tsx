@@ -8,7 +8,11 @@ interface DyadDeleteProps {
   path?: string;
 }
 
-export const DyadDelete: React.FC<DyadDeleteProps> = ({ children, node, path: pathProp }) => {
+export const DyadDelete: React.FC<DyadDeleteProps> = ({
+  children,
+  node,
+  path: pathProp,
+}) => {
   // Use props directly if provided, otherwise extract from node
   const path = pathProp || node?.properties?.path || "";
 
@@ -21,15 +25,21 @@ export const DyadDelete: React.FC<DyadDeleteProps> = ({ children, node, path: pa
         <div className="flex items-center gap-2">
           <Trash2 size={16} className="text-red-500" />
           {fileName && (
-            <span className="text-gray-700 dark:text-gray-300 font-medium text-sm">{fileName}</span>
+            <span className="text-gray-700 dark:text-gray-300 font-medium text-sm">
+              {fileName}
+            </span>
           )}
           <div className="text-xs text-red-500 font-medium">Delete</div>
         </div>
       </div>
       {path && (
-        <div className="text-xs text-gray-500 dark:text-gray-400 font-medium mb-1">{path}</div>
+        <div className="text-xs text-gray-500 dark:text-gray-400 font-medium mb-1">
+          {path}
+        </div>
       )}
-      <div className="text-sm text-gray-600 dark:text-gray-300 mt-2">{children}</div>
+      <div className="text-sm text-gray-600 dark:text-gray-300 mt-2">
+        {children}
+      </div>
     </div>
   );
 };

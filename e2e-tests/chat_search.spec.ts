@@ -41,7 +41,9 @@ test.skip("chat search - basic search dialog functionality", async ({ po }) => {
   await po.page.keyboard.press("Escape");
 });
 
-test.skip("chat search - with named chats for easier testing", async ({ po }) => {
+test.skip("chat search - with named chats for easier testing", async ({
+  po,
+}) => {
   await po.setUp({ autoApprove: true });
   await po.importApp("minimal");
 

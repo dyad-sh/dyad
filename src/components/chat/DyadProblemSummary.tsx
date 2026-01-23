@@ -1,5 +1,10 @@
 import React, { useState } from "react";
-import { ChevronsDownUp, ChevronsUpDown, AlertTriangle, FileText } from "lucide-react";
+import {
+  ChevronsDownUp,
+  ChevronsUpDown,
+  AlertTriangle,
+  FileText,
+} from "lucide-react";
 import type { Problem } from "@/ipc/ipc_types";
 
 type ProblemWithoutSnippet = Omit<Problem, "snippet">;
@@ -18,7 +23,9 @@ const ProblemItem: React.FC<ProblemItemProps> = ({ problem, index }) => {
   return (
     <div className="flex items-start gap-3 py-2 px-3 border-b border-gray-200 dark:border-gray-700 last:border-b-0">
       <div className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mt-0.5">
-        <span className="text-xs font-medium text-gray-600 dark:text-gray-400">{index + 1}</span>
+        <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+          {index + 1}
+        </span>
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-2">
@@ -42,7 +49,10 @@ const ProblemItem: React.FC<ProblemItemProps> = ({ problem, index }) => {
   );
 };
 
-export const DyadProblemSummary: React.FC<DyadProblemSummaryProps> = ({ summary, children }) => {
+export const DyadProblemSummary: React.FC<DyadProblemSummaryProps> = ({
+  summary,
+  children,
+}) => {
   const [isContentVisible, setIsContentVisible] = useState(false);
 
   // Parse problems from children content if available
@@ -81,7 +91,8 @@ export const DyadProblemSummary: React.FC<DyadProblemSummaryProps> = ({ summary,
   }, [children]);
 
   const totalProblems = problems.length;
-  const displaySummary = summary || `${totalProblems} problems found (TypeScript errors)`;
+  const displaySummary =
+    summary || `${totalProblems} problems found (TypeScript errors)`;
 
   return (
     <div
@@ -91,7 +102,10 @@ export const DyadProblemSummary: React.FC<DyadProblemSummaryProps> = ({ summary,
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <AlertTriangle size={16} className="text-amber-600 dark:text-amber-500" />
+          <AlertTriangle
+            size={16}
+            className="text-amber-600 dark:text-amber-500"
+          />
           <span className="text-gray-700 dark:text-gray-300 font-medium text-sm">
             <span className="font-bold mr-2 outline-2 outline-amber-200 dark:outline-amber-700 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 rounded-md px-1">
               Auto-fix

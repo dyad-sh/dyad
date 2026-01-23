@@ -34,7 +34,10 @@ export function RuntimeModeSelector() {
           <Label className="text-sm font-medium" htmlFor="runtime-mode">
             Runtime Mode
           </Label>
-          <Select value={settings.runtimeMode2 ?? "host"} onValueChange={handleRuntimeModeChange}>
+          <Select
+            value={settings.runtimeMode2 ?? "host"}
+            onValueChange={handleRuntimeModeChange}
+          >
             <SelectTrigger className="w-48" id="runtime-mode">
               <SelectValue />
             </SelectTrigger>
@@ -45,7 +48,8 @@ export function RuntimeModeSelector() {
           </Select>
         </div>
         <div className="text-sm text-gray-500 dark:text-gray-400">
-          Choose whether to run apps directly on the local machine or in Docker containers
+          Choose whether to run apps directly on the local machine or in Docker
+          containers
         </div>
       </div>
       {isDockerMode && (

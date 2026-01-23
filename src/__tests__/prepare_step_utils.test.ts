@@ -29,7 +29,9 @@ describe("prepare_step_utils", () => {
       const result = transformContentPart(part);
 
       expect(result.type).toBe("image");
-      expect((result as { type: "image"; image: URL }).image).toBeInstanceOf(URL);
+      expect((result as { type: "image"; image: URL }).image).toBeInstanceOf(
+        URL,
+      );
       expect((result as { type: "image"; image: URL }).image.href).toBe(
         "https://example.com/image.png",
       );
@@ -56,7 +58,11 @@ describe("prepare_step_utils", () => {
       const allInjectedMessages: InjectedMessage[] = [];
       const currentMessageCount = 5;
 
-      processPendingMessages(pendingUserMessages, allInjectedMessages, currentMessageCount);
+      processPendingMessages(
+        pendingUserMessages,
+        allInjectedMessages,
+        currentMessageCount,
+      );
 
       expect(pendingUserMessages).toHaveLength(0);
       expect(allInjectedMessages).toHaveLength(1);
@@ -111,7 +117,9 @@ describe("prepare_step_utils", () => {
         type: "text",
         text: "Check this image:",
       });
-      expect((allInjectedMessages[0].message.content[1] as ImagePart).type).toBe("image");
+      expect(
+        (allInjectedMessages[0].message.content[1] as ImagePart).type,
+      ).toBe("image");
     });
 
     it("does nothing when no pending messages", () => {
@@ -132,7 +140,9 @@ describe("prepare_step_utils", () => {
           content: [{ type: "text", text: "Existing" }],
         },
       };
-      const pendingUserMessages: UserMessageContentPart[][] = [[{ type: "text", text: "New" }]];
+      const pendingUserMessages: UserMessageContentPart[][] = [
+        [{ type: "text", text: "New" }],
+      ];
       const allInjectedMessages: InjectedMessage[] = [existingInjected];
 
       processPendingMessages(pendingUserMessages, allInjectedMessages, 7);
@@ -251,7 +261,9 @@ describe("prepare_step_utils", () => {
       // After injections: [a, at-1, b, c, at-3, d]
       expect(result).toHaveLength(6);
       expect(
-        result.map((m) => ("id" in m ? m.id : (m.content[0] as { text: string }).text)),
+        result.map((m) =>
+          "id" in m ? m.id : (m.content[0] as { text: string }).text,
+        ),
       ).toEqual(["a", "at-1", "b", "c", "at-3", "d"]);
     });
 
@@ -332,14 +344,20 @@ describe("prepare_step_utils", () => {
       const pendingUserMessages: UserMessageContentPart[][] = [];
       const allInjectedMessages: InjectedMessage[] = [];
 
-      const result = prepareStepMessages(options, pendingUserMessages, allInjectedMessages);
+      const result = prepareStepMessages(
+        options,
+        pendingUserMessages,
+        allInjectedMessages,
+      );
 
       expect(result).toBeUndefined();
     });
 
     it("processes pending messages and returns modified options", () => {
       const options = {
-        messages: [{ role: "user", content: "Original" }] satisfies ModelMessage[],
+        messages: [
+          { role: "user", content: "Original" },
+        ] satisfies ModelMessage[],
         temperature: 0.7,
       };
       const pendingUserMessages: UserMessageContentPart[][] = [
@@ -347,7 +365,11 @@ describe("prepare_step_utils", () => {
       ];
       const allInjectedMessages: InjectedMessage[] = [];
 
-      const result = prepareStepMessages(options, pendingUserMessages, allInjectedMessages);
+      const result = prepareStepMessages(
+        options,
+        pendingUserMessages,
+        allInjectedMessages,
+      );
 
       expect(result).toBeDefined();
       expect(result!.messages).toHaveLength(2);
@@ -363,7 +385,9 @@ describe("prepare_step_utils", () => {
 
       // Step 1: Add first pending message
       pendingUserMessages.push([{ type: "text", text: "Screenshot 1" }]);
-      const step1Messages: ModelMessage[] = [{ role: "assistant", content: "Let me help" }];
+      const step1Messages: ModelMessage[] = [
+        { role: "assistant", content: "Let me help" },
+      ];
 
       let result = prepareStepMessages(
         { messages: step1Messages },
@@ -401,10 +425,16 @@ describe("prepare_step_utils", () => {
         model: "gpt-4",
         tools: ["search", "write"],
       };
-      const pendingUserMessages: UserMessageContentPart[][] = [[{ type: "text", text: "test" }]];
+      const pendingUserMessages: UserMessageContentPart[][] = [
+        [{ type: "text", text: "test" }],
+      ];
       const allInjectedMessages: InjectedMessage[] = [];
 
-      const result = prepareStepMessages(options, pendingUserMessages, allInjectedMessages);
+      const result = prepareStepMessages(
+        options,
+        pendingUserMessages,
+        allInjectedMessages,
+      );
 
       expect(result).toBeDefined();
       expect(result!.maxTokens).toBe(1000);
@@ -422,12 +452,18 @@ describe("prepare_step_utils", () => {
         },
       };
       const options = {
-        messages: [{ role: "assistant", content: "Response" }] satisfies ModelMessage[],
+        messages: [
+          { role: "assistant", content: "Response" },
+        ] satisfies ModelMessage[],
       };
       const pendingUserMessages: UserMessageContentPart[][] = [];
       const allInjectedMessages: InjectedMessage[] = [existingInjected];
 
-      const result = prepareStepMessages(options, pendingUserMessages, allInjectedMessages);
+      const result = prepareStepMessages(
+        options,
+        pendingUserMessages,
+        allInjectedMessages,
+      );
 
       expect(result).toBeDefined();
       expect(result!.messages).toHaveLength(2);
@@ -441,7 +477,9 @@ describe("prepare_step_utils", () => {
       const pendingUserMessages: UserMessageContentPart[][] = [];
 
       // Step 1: User sends initial prompt
-      let currentMessages: ModelMessage[] = [{ role: "user", content: "Build a todo app" }];
+      let currentMessages: ModelMessage[] = [
+        { role: "user", content: "Build a todo app" },
+      ];
       let result = prepareStepMessages(
         { messages: currentMessages },
         pendingUserMessages,

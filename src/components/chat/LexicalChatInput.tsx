@@ -1,5 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { $getRoot, $createParagraphNode, $createTextNode, EditorState } from "lexical";
+import {
+  $getRoot,
+  $createParagraphNode,
+  $createTextNode,
+  EditorState,
+} from "lexical";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
@@ -30,40 +35,41 @@ const beautifulMentionsTheme: BeautifulMentionsTheme = {
 };
 
 // Custom menu item component
-const CustomMenuItem = forwardRef<HTMLLIElement, BeautifulMentionsMenuItemProps>(
-  ({ selected, item, ...props }, ref) => {
-    const isPrompt = item.data?.type === "prompt";
-    const isApp = item.data?.type === "app";
-    const label = isPrompt ? "Prompt" : isApp ? "App" : "File";
-    const value = (item as any)?.value;
-    return (
-      <li
-        className={`m-0 flex items-center px-3 py-2 cursor-pointer whitespace-nowrap ${
-          selected
-            ? "bg-accent text-accent-foreground"
-            : "bg-popover text-popover-foreground hover:bg-accent/50"
-        }`}
-        {...props}
-        ref={ref}
-      >
-        <div className="flex items-center space-x-2 min-w-0">
-          <span
-            className={`px-2 py-0.5 text-xs font-medium rounded-md flex-shrink-0 ${
-              isPrompt
-                ? "bg-purple-500 text-white"
-                : isApp
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-blue-600 text-white"
-            }`}
-          >
-            {label}
-          </span>
-          <span className="truncate text-sm">{value}</span>
-        </div>
-      </li>
-    );
-  },
-);
+const CustomMenuItem = forwardRef<
+  HTMLLIElement,
+  BeautifulMentionsMenuItemProps
+>(({ selected, item, ...props }, ref) => {
+  const isPrompt = item.data?.type === "prompt";
+  const isApp = item.data?.type === "app";
+  const label = isPrompt ? "Prompt" : isApp ? "App" : "File";
+  const value = (item as any)?.value;
+  return (
+    <li
+      className={`m-0 flex items-center px-3 py-2 cursor-pointer whitespace-nowrap ${
+        selected
+          ? "bg-accent text-accent-foreground"
+          : "bg-popover text-popover-foreground hover:bg-accent/50"
+      }`}
+      {...props}
+      ref={ref}
+    >
+      <div className="flex items-center space-x-2 min-w-0">
+        <span
+          className={`px-2 py-0.5 text-xs font-medium rounded-md flex-shrink-0 ${
+            isPrompt
+              ? "bg-purple-500 text-white"
+              : isApp
+                ? "bg-primary text-primary-foreground"
+                : "bg-blue-600 text-white"
+          }`}
+        >
+          {label}
+        </span>
+        <span className="truncate text-sm">{value}</span>
+      </div>
+    </li>
+  );
+});
 
 // Custom menu component
 function CustomMenu({ loading: _loading, ...props }: any) {
@@ -98,8 +104,11 @@ function EnterKeyPlugin({
       KEY_ENTER_COMMAND,
       (event: KeyboardEvent) => {
         // Check if mentions menu is open by looking for our custom menu element
-        const mentionsMenu = document.querySelector('[data-mentions-menu="true"]');
-        const hasVisibleItems = mentionsMenu && mentionsMenu.children.length > 0;
+        const mentionsMenu = document.querySelector(
+          '[data-mentions-menu="true"]',
+        );
+        const hasVisibleItems =
+          mentionsMenu && mentionsMenu.children.length > 0;
 
         if (hasVisibleItems) {
           // If mentions menu is open with items, let the mentions plugin handle the Enter key
@@ -269,7 +278,11 @@ export function LexicalChatInput({
       if (excludeCurrentApp && app.name === currentAppName) return false;
 
       // Exclude already mentioned apps (case-insensitive comparison)
-      if (alreadyMentioned.some((mentioned) => mentioned.toLowerCase() === app.name.toLowerCase()))
+      if (
+        alreadyMentioned.some(
+          (mentioned) => mentioned.toLowerCase() === app.name.toLowerCase(),
+        )
+      )
         return false;
 
       return true;
@@ -320,8 +333,14 @@ export function LexicalChatInput({
           const appNames = apps?.map((app) => app.name) || [];
           for (const appName of appNames) {
             // Escape special regex characters in app name
-            const escapedAppName = appName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            const mentionRegex = new RegExp(`@(${escapedAppName})(?![a-zA-Z0-9_-])`, "g");
+            const escapedAppName = appName.replace(
+              /[.*+?^${}()|[\]\\]/g,
+              "\\$&",
+            );
+            const mentionRegex = new RegExp(
+              `@(${escapedAppName})(?![a-zA-Z0-9_-])`,
+              "g",
+            );
             textContent = textContent.replace(mentionRegex, "@app:$1");
           }
           // Convert @PromptTitle to @prompt:<id>
@@ -333,7 +352,10 @@ export function LexicalChatInput({
           }
 
           for (const fullPath of appFiles || []) {
-            const escapedDisplay = fullPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const escapedDisplay = fullPath.replace(
+              /[.*+?^${}()|[\]\\]/g,
+              "\\$&",
+            );
             const fileRegex = new RegExp(`@(${escapedDisplay})(?![\\w-])`, "g");
             textContent = textContent.replace(fileRegex, `@file:${fullPath}`);
           }
@@ -388,12 +410,20 @@ export function LexicalChatInput({
         />
         <OnChangePlugin onChange={handleEditorChange} />
         <HistoryPlugin />
-        <EnterKeyPlugin onSubmit={handleSubmit} disableSendButton={disableSendButton} />
+        <EnterKeyPlugin
+          onSubmit={handleSubmit}
+          disableSendButton={disableSendButton}
+        />
         <ExternalValueSyncPlugin
           value={value}
-          promptsById={Object.fromEntries((prompts || []).map((p) => [p.id, p.title]))}
+          promptsById={Object.fromEntries(
+            (prompts || []).map((p) => [p.id, p.title]),
+          )}
         />
-        <ClearEditorPlugin shouldClear={shouldClear} onCleared={handleCleared} />
+        <ClearEditorPlugin
+          shouldClear={shouldClear}
+          onCleared={handleCleared}
+        />
       </div>
     </LexicalComposer>
   );

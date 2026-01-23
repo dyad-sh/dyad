@@ -24,7 +24,10 @@ interface StyleObject {
 /**
  * Convert spacing values (margin/padding) to Tailwind classes
  */
-function convertSpacingToTailwind(values: SpacingValues, prefix: "m" | "p"): string[] {
+function convertSpacingToTailwind(
+  values: SpacingValues,
+  prefix: "m" | "p",
+): string[] {
   const classes: string[] = [];
   const { left, right, top, bottom } = values;
 
@@ -32,13 +35,23 @@ function convertSpacingToTailwind(values: SpacingValues, prefix: "m" | "p"): str
   const hasVertical = top !== undefined && bottom !== undefined;
 
   // All sides equal
-  if (hasHorizontal && hasVertical && left === right && top === bottom && left === top) {
+  if (
+    hasHorizontal &&
+    hasVertical &&
+    left === right &&
+    top === bottom &&
+    left === top
+  ) {
     classes.push(`${prefix}-[${left}]`);
   } else {
     const horizontalValue = hasHorizontal && left === right ? left : null;
     const verticalValue = hasVertical && top === bottom ? top : null;
 
-    if (horizontalValue !== null && verticalValue !== null && horizontalValue === verticalValue) {
+    if (
+      horizontalValue !== null &&
+      verticalValue !== null &&
+      horizontalValue === verticalValue
+    ) {
       // px = py or mx = my, so use the shorthand for all sides
       classes.push(`${prefix}-[${horizontalValue}]`);
     } else {
@@ -78,9 +91,12 @@ export function stylesToTailwind(styles: StyleObject): string[] {
   }
 
   if (styles.border) {
-    if (styles.border.width !== undefined) classes.push(`border-[${styles.border.width}]`);
-    if (styles.border.radius !== undefined) classes.push(`rounded-[${styles.border.radius}]`);
-    if (styles.border.color !== undefined) classes.push(`border-[${styles.border.color}]`);
+    if (styles.border.width !== undefined)
+      classes.push(`border-[${styles.border.width}]`);
+    if (styles.border.radius !== undefined)
+      classes.push(`rounded-[${styles.border.radius}]`);
+    if (styles.border.color !== undefined)
+      classes.push(`border-[${styles.border.color}]`);
   }
 
   if (styles.backgroundColor !== undefined) {
@@ -88,14 +104,19 @@ export function stylesToTailwind(styles: StyleObject): string[] {
   }
 
   if (styles.dimensions) {
-    if (styles.dimensions.width !== undefined) classes.push(`w-[${styles.dimensions.width}]`);
-    if (styles.dimensions.height !== undefined) classes.push(`h-[${styles.dimensions.height}]`);
+    if (styles.dimensions.width !== undefined)
+      classes.push(`w-[${styles.dimensions.width}]`);
+    if (styles.dimensions.height !== undefined)
+      classes.push(`h-[${styles.dimensions.height}]`);
   }
 
   if (styles.text) {
-    if (styles.text.fontSize !== undefined) classes.push(`text-[${styles.text.fontSize}]`);
-    if (styles.text.fontWeight !== undefined) classes.push(`font-[${styles.text.fontWeight}]`);
-    if (styles.text.color !== undefined) classes.push(`[color:${styles.text.color}]`);
+    if (styles.text.fontSize !== undefined)
+      classes.push(`text-[${styles.text.fontSize}]`);
+    if (styles.text.fontWeight !== undefined)
+      classes.push(`font-[${styles.text.fontWeight}]`);
+    if (styles.text.color !== undefined)
+      classes.push(`[color:${styles.text.color}]`);
     if (styles.text.fontFamily !== undefined) {
       // Replace spaces with underscores for Tailwind arbitrary values
       const fontFamilyValue = styles.text.fontFamily.replace(/\s/g, "_");
@@ -157,7 +178,9 @@ export function extractClassPrefixes(classes: string[]): string[] {
         // to avoid removing text-center, text-left, text-color classes
         if (cls.startsWith("text-")) {
           // Check if it's a font-size class (ends with size suffix like xs, sm, lg, xl, 2xl, etc.)
-          const sizeMatch = cls.match(/^text-(xs|sm|base|lg|xl|2xl|3xl|4xl|5xl|6xl|7xl|8xl|9xl)$/);
+          const sizeMatch = cls.match(
+            /^text-(xs|sm|base|lg|xl|2xl|3xl|4xl|5xl|6xl|7xl|8xl|9xl)$/,
+          );
           if (sizeMatch) {
             return "text-size-"; // Use a specific prefix for font-size
           }

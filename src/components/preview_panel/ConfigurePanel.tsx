@@ -5,8 +5,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { Trash2, Edit2, Plus, Save, X, HelpCircle, ArrowRight } from "lucide-react";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
+import {
+  Trash2,
+  Edit2,
+  Plus,
+  Save,
+  X,
+  HelpCircle,
+  ArrowRight,
+} from "lucide-react";
 import { showError, showSuccess } from "@/lib/toast";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
@@ -93,7 +105,10 @@ export const ConfigurePanel = () => {
       return;
     }
 
-    const newEnvVars = [...envVars, { key: newKey.trim(), value: newValue.trim() }];
+    const newEnvVars = [
+      ...envVars,
+      { key: newKey.trim(), value: newValue.trim() },
+    ];
     saveEnvVarsMutation.mutate(newEnvVars);
     setNewKey("");
     setNewValue("");
@@ -114,7 +129,10 @@ export const ConfigurePanel = () => {
 
     // Check for duplicate keys (excluding the current one being edited)
     if (
-      envVars.some((envVar) => envVar.key === editingKeyValue.trim() && envVar.key !== editingKey)
+      envVars.some(
+        (envVar) =>
+          envVar.key === editingKeyValue.trim() && envVar.key !== editingKey,
+      )
     ) {
       showError("Environment variable with this key already exists");
       return;
@@ -163,7 +181,9 @@ export const ConfigurePanel = () => {
           </CardHeader>
           <CardContent>
             <div className="text-center py-8">
-              <div className="text-sm text-muted-foreground">Loading environment variables...</div>
+              <div className="text-sm text-muted-foreground">
+                Loading environment variables...
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -247,7 +267,11 @@ export const ConfigurePanel = () => {
                 />
               </div>
               <div className="flex gap-2">
-                <Button onClick={handleAdd} size="sm" disabled={saveEnvVarsMutation.isPending}>
+                <Button
+                  onClick={handleAdd}
+                  size="sm"
+                  disabled={saveEnvVarsMutation.isPending}
+                >
                   <Save size={14} />
                   {saveEnvVarsMutation.isPending ? "Saving..." : "Save"}
                 </Button>
@@ -258,7 +282,11 @@ export const ConfigurePanel = () => {
               </div>
             </div>
           ) : (
-            <Button onClick={() => setIsAddingNew(true)} variant="outline" className="w-full">
+            <Button
+              onClick={() => setIsAddingNew(true)}
+              variant="outline"
+              className="w-full"
+            >
               <Plus size={14} />
               Add Environment Variable
             </Button>
@@ -272,7 +300,10 @@ export const ConfigurePanel = () => {
               </p>
             ) : (
               envVars.map((envVar) => (
-                <div key={envVar.key} className="flex items-center space-x-2 p-2 border rounded-md">
+                <div
+                  key={envVar.key}
+                  className="flex items-center space-x-2 p-2 border rounded-md"
+                >
                   {editingKey === envVar.key ? (
                     <>
                       <div className="flex-1 space-y-2">
@@ -312,8 +343,12 @@ export const ConfigurePanel = () => {
                   ) : (
                     <>
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm truncate">{envVar.key}</div>
-                        <div className="text-xs text-muted-foreground truncate">{envVar.value}</div>
+                        <div className="font-medium text-sm truncate">
+                          {envVar.key}
+                        </div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          {envVar.value}
+                        </div>
                       </div>
                       <div className="flex gap-1">
                         <Button

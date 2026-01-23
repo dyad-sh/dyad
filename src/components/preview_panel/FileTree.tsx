@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Folder, FolderOpen, Loader2, Search, X } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Folder,
+  FolderOpen,
+  Loader2,
+  Search,
+  X,
+} from "lucide-react";
 import { selectedFileAtom } from "@/atoms/viewAtoms";
 import { useSetAtom } from "jotai";
 import { Input } from "@/components/ui/input";
@@ -194,16 +202,26 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
 
       <div className="flex-1 overflow-auto">
         {isSearchMode && searchError && (
-          <div className="px-3 py-2 text-xs text-red-500">{searchError.message}</div>
+          <div className="px-3 py-2 text-xs text-red-500">
+            {searchError.message}
+          </div>
         )}
-        {isSearchMode && !searchLoading && !searchError && matchesByPath.size === 0 ? (
+        {isSearchMode &&
+        !searchLoading &&
+        !searchError &&
+        matchesByPath.size === 0 ? (
           <div className="px-3 py-2 text-xs text-muted-foreground">
             No files matched your search.
           </div>
         ) : isSearchMode ? (
           <div className="px-2 py-1">
             {searchResultsList.map(({ path, matchCount, result }) => (
-              <SearchResultItem key={path} path={path} matchCount={matchCount} result={result} />
+              <SearchResultItem
+                key={path}
+                path={path}
+                matchCount={matchCount}
+                result={result}
+              />
             ))}
           </div>
         ) : (
@@ -239,7 +257,13 @@ const sortNodes = (nodes: TreeNode[]): TreeNode[] => {
 };
 
 // Tree nodes component
-const TreeNodes = ({ nodes, level, matchesByPath, isSearchMode, searchQuery }: TreeNodesProps) => (
+const TreeNodes = ({
+  nodes,
+  level,
+  matchesByPath,
+  isSearchMode,
+  searchQuery,
+}: TreeNodesProps) => (
   <ul className="ml-4">
     {sortNodes(nodes).map((node) => (
       <TreeNode
@@ -269,7 +293,11 @@ interface SearchResultItemProps {
   result: AppFileSearchResult;
 }
 
-const SearchResultItem = ({ path, matchCount, result }: SearchResultItemProps) => {
+const SearchResultItem = ({
+  path,
+  matchCount,
+  result,
+}: SearchResultItemProps) => {
   const setSelectedFile = useSetAtom(selectedFileAtom);
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -339,7 +367,13 @@ const SearchResultItem = ({ path, matchCount, result }: SearchResultItemProps) =
 };
 
 // Individual tree node component
-const TreeNode = ({ node, level, matchesByPath, isSearchMode, searchQuery }: TreeNodeProps) => {
+const TreeNode = ({
+  node,
+  level,
+  matchesByPath,
+  isSearchMode,
+  searchQuery,
+}: TreeNodeProps) => {
   const [expanded, setExpanded] = useState(level < 2);
   const setSelectedFile = useSetAtom(selectedFileAtom);
   const match = isSearchMode ? matchesByPath.get(node.path) : undefined;

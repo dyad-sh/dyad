@@ -21,7 +21,8 @@ const options: OptionInfo[] = [
   {
     value: "2",
     label: "Economy (2)",
-    description: "Minimal context to reduce token usage and improve response times.",
+    description:
+      "Minimal context to reduce token usage and improve response times.",
   },
   {
     value: defaultValue,
@@ -36,7 +37,8 @@ const options: OptionInfo[] = [
   {
     value: "10",
     label: "High (10)",
-    description: "Extended context for complex conversations requiring more history.",
+    description:
+      "Extended context for complex conversations requiring more history.",
   },
   {
     value: "100",
@@ -58,10 +60,12 @@ export const MaxChatTurnsSelector: React.FC = () => {
   };
 
   // Determine the current value
-  const currentValue = settings?.maxChatTurnsInContext?.toString() || defaultValue;
+  const currentValue =
+    settings?.maxChatTurnsInContext?.toString() || defaultValue;
 
   // Find the current option to display its description
-  const currentOption = options.find((opt) => opt.value === currentValue) || options[1];
+  const currentOption =
+    options.find((opt) => opt.value === currentValue) || options[1];
 
   return (
     <div className="space-y-1">
@@ -85,7 +89,9 @@ export const MaxChatTurnsSelector: React.FC = () => {
           </SelectContent>
         </Select>
       </div>
-      <div className="text-sm text-gray-500 dark:text-gray-400">{currentOption.description}</div>
+      <div className="text-sm text-gray-500 dark:text-gray-400">
+        {currentOption.description}
+      </div>
     </div>
   );
 };

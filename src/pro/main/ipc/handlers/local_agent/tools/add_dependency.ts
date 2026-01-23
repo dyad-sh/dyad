@@ -9,7 +9,9 @@ const addDependencySchema = z.object({
   packages: z.array(z.string()).describe("Array of package names to install"),
 });
 
-export const addDependencyTool: ToolDefinition<z.infer<typeof addDependencySchema>> = {
+export const addDependencyTool: ToolDefinition<
+  z.infer<typeof addDependencySchema>
+> = {
   name: "add_dependency",
   description: "Install npm packages",
   inputSchema: addDependencySchema,

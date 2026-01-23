@@ -32,7 +32,10 @@ export function DyadListFiles({ node, children }: DyadListFilesProps) {
   };
 
   return (
-    <div data-testid="dyad-list-files" className="my-2 border rounded-md overflow-hidden">
+    <div
+      data-testid="dyad-list-files"
+      className="my-2 border rounded-md overflow-hidden"
+    >
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}

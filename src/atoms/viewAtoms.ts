@@ -5,4 +5,6 @@ export const selectedFileAtom = atom<{
   path: string;
   line?: number | null;
 } | null>(null);
-export const activeSettingsSectionAtom = atom<string | null>("general-settings");
+export const activeSettingsSectionAtom = atom<string | null>(
+  "general-settings",
+);

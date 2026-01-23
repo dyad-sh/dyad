@@ -27,41 +27,50 @@ testWithConfig({
     fs.mkdirSync(userDataDir, { recursive: true });
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
   },
-})("force-close detection shows dialog with performance data", async ({ po }) => {
-  // Wait for the home page to be visible first
-  await expect(po.getHomeChatInputContainer()).toBeVisible({
-    timeout: Timeout.LONG,
-  });
+})(
+  "force-close detection shows dialog with performance data",
+  async ({ po }) => {
+    // Wait for the home page to be visible first
+    await expect(po.getHomeChatInputContainer()).toBeVisible({
+      timeout: Timeout.LONG,
+    });
 
-  // Check if the force-close dialog is visible by looking for the heading
-  await expect(po.page.getByRole("heading", { name: "Force Close Detected" })).toBeVisible({
-    timeout: Timeout.MEDIUM,
-  });
+    // Check if the force-close dialog is visible by looking for the heading
+    await expect(
+      po.page.getByRole("heading", { name: "Force Close Detected" }),
+    ).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
 
-  // Verify the warning message
-  await expect(
-    po.page.getByText("The app was not closed properly the last time it was running"),
-  ).toBeVisible();
+    // Verify the warning message
+    await expect(
+      po.page.getByText(
+        "The app was not closed properly the last time it was running",
+      ),
+    ).toBeVisible();
 
-  // Verify performance data is displayed
-  await expect(po.page.getByText("Last Known State:")).toBeVisible();
+    // Verify performance data is displayed
+    await expect(po.page.getByText("Last Known State:")).toBeVisible();
 
-  // Check Process Metrics section
-  await expect(po.page.getByText("Process Metrics")).toBeVisible();
-  await expect(po.page.getByText("256 MB")).toBeVisible();
-  await expect(po.page.getByText("45.5%")).toBeVisible();
+    // Check Process Metrics section
+    await expect(po.page.getByText("Process Metrics")).toBeVisible();
+    await expect(po.page.getByText("256 MB")).toBeVisible();
+    await expect(po.page.getByText("45.5%")).toBeVisible();
 
-  // Check System Metrics section
-  await expect(po.page.getByText("System Metrics")).toBeVisible();
-  await expect(po.page.getByText("8192 / 16384 MB")).toBeVisible();
-  await expect(po.page.getByText("35.2%")).toBeVisible();
+    // Check System Metrics section
+    await expect(po.page.getByText("System Metrics")).toBeVisible();
+    await expect(po.page.getByText("8192 / 16384 MB")).toBeVisible();
+    await expect(po.page.getByText("35.2%")).toBeVisible();
 
-  // Close the dialog
-  await po.page.getByRole("button", { name: "OK" }).click();
+    // Close the dialog
+    await po.page.getByRole("button", { name: "OK" }).click();
 
-  // Verify dialog is closed by checking the heading is no longer visible
-  await expect(po.page.getByRole("heading", { name: "Force Close Detected" })).not.toBeVisible();
-});
+    // Verify dialog is closed by checking the heading is no longer visible
+    await expect(
+      po.page.getByRole("heading", { name: "Force Close Detected" }),
+    ).not.toBeVisible();
+  },
+);
 
 testWithConfig({
   preLaunchHook: async ({ userDataDir }) => {
@@ -93,7 +102,9 @@ testWithConfig({
   });
 
   // Verify that the force-close dialog is NOT shown
-  await expect(po.page.getByRole("heading", { name: "Force Close Detected" })).not.toBeVisible();
+  await expect(
+    po.page.getByRole("heading", { name: "Force Close Detected" }),
+  ).not.toBeVisible();
 });
 
 testWithConfig({})(
@@ -120,10 +131,18 @@ testWithConfig({})(
     expect(settings.lastKnownPerformance).toBeDefined();
     expect(settings.lastKnownPerformance.timestamp).toBeGreaterThan(0);
     expect(settings.lastKnownPerformance.memoryUsageMB).toBeGreaterThan(0);
-    expect(settings.lastKnownPerformance.cpuUsagePercent).toBeGreaterThanOrEqual(0);
-    expect(settings.lastKnownPerformance.systemMemoryUsageMB).toBeGreaterThan(0);
-    expect(settings.lastKnownPerformance.systemMemoryTotalMB).toBeGreaterThan(0);
-    expect(settings.lastKnownPerformance.systemCpuPercent).toBeGreaterThanOrEqual(0);
+    expect(
+      settings.lastKnownPerformance.cpuUsagePercent,
+    ).toBeGreaterThanOrEqual(0);
+    expect(settings.lastKnownPerformance.systemMemoryUsageMB).toBeGreaterThan(
+      0,
+    );
+    expect(settings.lastKnownPerformance.systemMemoryTotalMB).toBeGreaterThan(
+      0,
+    );
+    expect(
+      settings.lastKnownPerformance.systemCpuPercent,
+    ).toBeGreaterThanOrEqual(0);
 
     // Verify the timestamp is recent (within the last minute)
     const now = Date.now();

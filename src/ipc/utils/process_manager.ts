@@ -54,19 +54,27 @@ export function killProcess(process: ChildProcess): Promise<void> {
     // Handle potential errors during kill/close sequence
     process.on("error", (err) => {
       clearTimeout(timeout);
-      console.error(`Error during stop sequence for process (PID: ${process.pid}): ${err.message}`);
+      console.error(
+        `Error during stop sequence for process (PID: ${process.pid}): ${err.message}`,
+      );
       resolve();
     });
 
     // Ensure PID exists before attempting to kill
     if (process.pid) {
       // Use tree-kill to terminate the entire process tree
-      console.log(`Attempting to tree-kill process tree starting at PID ${process.pid}.`);
+      console.log(
+        `Attempting to tree-kill process tree starting at PID ${process.pid}.`,
+      );
       treeKill(process.pid, "SIGTERM", (err: Error | undefined) => {
         if (err) {
-          console.warn(`tree-kill error for PID ${process.pid}: ${err.message}`);
+          console.warn(
+            `tree-kill error for PID ${process.pid}: ${err.message}`,
+          );
         } else {
-          console.log(`tree-kill signal sent successfully to PID ${process.pid}.`);
+          console.log(
+            `tree-kill signal sent successfully to PID ${process.pid}.`,
+          );
         }
       });
     } else {
@@ -105,7 +113,10 @@ export function removeDockerVolumesForApp(appId: number): Promise<void> {
 /**
  * Stops an app based on its RunningAppInfo (container vs host) and removes it from the running map.
  */
-export async function stopAppByInfo(appId: number, appInfo: RunningAppInfo): Promise<void> {
+export async function stopAppByInfo(
+  appId: number,
+  appInfo: RunningAppInfo,
+): Promise<void> {
   if (appInfo.isDocker) {
     const containerName = appInfo.containerName || `dyad-app-${appId}`;
     await stopDockerContainer(containerName);
@@ -120,7 +131,10 @@ export async function stopAppByInfo(appId: number, appInfo: RunningAppInfo): Pro
  * @param appId The app ID
  * @param process The process to check against
  */
-export function removeAppIfCurrentProcess(appId: number, process: ChildProcess): void {
+export function removeAppIfCurrentProcess(
+  appId: number,
+  process: ChildProcess,
+): void {
   const currentAppInfo = runningApps.get(appId);
   if (currentAppInfo && currentAppInfo.process === process) {
     runningApps.delete(appId);
@@ -128,6 +142,8 @@ export function removeAppIfCurrentProcess(appId: number, process: ChildProcess):
       `Removed app ${appId} (processId ${currentAppInfo.processId}) from running map. Current size: ${runningApps.size}`,
     );
   } else {
-    console.log(`App ${appId} process was already removed or replaced in running map. Ignoring.`);
+    console.log(
+      `App ${appId} process was already removed or replaced in running map. Ignoring.`,
+    );
   }
 }

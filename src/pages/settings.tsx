@@ -52,7 +52,9 @@ export default function SettingsPage() {
       showSuccess("Successfully reset everything. Restart the application.");
     } catch (error) {
       console.error("Error resetting:", error);
-      showError(error instanceof Error ? error.message : "An unknown error occurred");
+      showError(
+        error instanceof Error ? error.message : "An unknown error occurred",
+      );
     } finally {
       setIsResetting(false);
       setIsResetDialogOpen(false);
@@ -72,7 +74,9 @@ export default function SettingsPage() {
           Go Back
         </Button>
         <div className="flex justify-between mb-4">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Settings</h1>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+            Settings
+          </h1>
         </div>
 
         <div className="space-y-6">
@@ -80,13 +84,21 @@ export default function SettingsPage() {
           <WorkflowSettings />
           <AISettings />
 
-          <div id="provider-settings" className="bg-white dark:bg-gray-800 rounded-xl shadow-sm">
+          <div
+            id="provider-settings"
+            className="bg-white dark:bg-gray-800 rounded-xl shadow-sm"
+          >
             <ProviderSettingsGrid />
           </div>
 
           <div className="space-y-6">
-            <div id="telemetry" className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
-              <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Telemetry</h2>
+            <div
+              id="telemetry"
+              className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
+            >
+              <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                Telemetry
+              </h2>
               <div className="space-y-2">
                 <TelemetrySwitch />
                 <div className="text-sm text-gray-500 dark:text-gray-400">
@@ -104,8 +116,13 @@ export default function SettingsPage() {
           </div>
 
           {/* Integrations Section */}
-          <div id="integrations" className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
-            <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Integrations</h2>
+          <div
+            id="integrations"
+            className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
+          >
+            <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+              Integrations
+            </h2>
             <div className="space-y-4">
               <GitHubIntegration />
               <VercelIntegration />
@@ -127,14 +144,24 @@ export default function SettingsPage() {
           </div>
 
           {/* Tools (MCP) */}
-          <div id="tools-mcp" className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
-            <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Tools (MCP)</h2>
+          <div
+            id="tools-mcp"
+            className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
+          >
+            <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+              Tools (MCP)
+            </h2>
             <ToolsMcpSettings />
           </div>
 
           {/* Experiments Section */}
-          <div id="experiments" className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
-            <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Experiments</h2>
+          <div
+            id="experiments"
+            className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
+          >
+            <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+              Experiments
+            </h2>
             <div className="space-y-4">
               <div className="space-y-1 mt-4">
                 <div className="flex items-center space-x-2">
@@ -150,8 +177,8 @@ export default function SettingsPage() {
                   <Label htmlFor="enable-native-git">Enable Native Git</Label>
                 </div>
                 <div className="text-sm text-gray-500 dark:text-gray-400">
-                  This doesn't require any external Git installation and offers a faster, native-Git
-                  performance experience.
+                  This doesn't require any external Git installation and offers
+                  a faster, native-Git performance experience.
                 </div>
               </div>
             </div>
@@ -162,7 +189,9 @@ export default function SettingsPage() {
             id="danger-zone"
             className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-red-200 dark:border-red-800"
           >
-            <h2 className="text-lg font-medium text-red-600 dark:text-red-400 mb-4">Danger Zone</h2>
+            <h2 className="text-lg font-medium text-red-600 dark:text-red-400 mb-4">
+              Danger Zone
+            </h2>
 
             <div className="space-y-4">
               <div className="flex items-start justify-between flex-col sm:flex-row sm:items-center gap-4">
@@ -171,8 +200,8 @@ export default function SettingsPage() {
                     Reset Everything
                   </h3>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    This will delete all your apps, chats, and settings. This action cannot be
-                    undone.
+                    This will delete all your apps, chats, and settings. This
+                    action cannot be undone.
                   </p>
                 </div>
                 <button
@@ -205,12 +234,19 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
   const { theme, setTheme } = useTheme();
 
   return (
-    <div id="general-settings" className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
-      <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">General Settings</h2>
+    <div
+      id="general-settings"
+      className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
+    >
+      <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+        General Settings
+      </h2>
 
       <div className="space-y-4 mb-4">
         <div className="flex items-center gap-4">
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Theme</label>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Theme
+          </label>
 
           <div className="relative bg-gray-100 dark:bg-gray-700 rounded-lg p-1 flex">
             {(["system", "light", "dark"] as const).map((option) => (
@@ -241,7 +277,8 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
       <div className="space-y-1 mt-4">
         <AutoUpdateSwitch />
         <div className="text-sm text-gray-500 dark:text-gray-400">
-          This will automatically update the app when new versions are available.
+          This will automatically update the app when new versions are
+          available.
         </div>
       </div>
 
@@ -268,8 +305,13 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
 
 export function WorkflowSettings() {
   return (
-    <div id="workflow-settings" className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
-      <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Workflow Settings</h2>
+    <div
+      id="workflow-settings"
+      className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
+    >
+      <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+        Workflow Settings
+      </h2>
 
       <div className="mt-4">
         <DefaultChatModeSelector />
@@ -293,8 +335,13 @@ export function WorkflowSettings() {
 }
 export function AISettings() {
   return (
-    <div id="ai-settings" className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
-      <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">AI Settings</h2>
+    <div
+      id="ai-settings"
+      className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
+    >
+      <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+        AI Settings
+      </h2>
 
       <div className="mt-4">
         <ThinkingBudgetSelector />

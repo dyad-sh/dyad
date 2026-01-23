@@ -62,8 +62,12 @@ export function defaultShouldRetryThisError(error: any): boolean {
 
   try {
     // Check status code
-    const statusCode = error?.statusCode || error?.status || error?.response?.status;
-    if (statusCode && (RETRYABLE_STATUS_CODES.has(statusCode) || statusCode >= 500)) {
+    const statusCode =
+      error?.statusCode || error?.status || error?.response?.status;
+    if (
+      statusCode &&
+      (RETRYABLE_STATUS_CODES.has(statusCode) || statusCode >= 500)
+    ) {
       return true;
     }
 
@@ -75,7 +79,9 @@ export function defaultShouldRetryThisError(error: any): boolean {
       JSON.stringify(error)
     ).toLowerCase();
 
-    return RETRYABLE_ERROR_PATTERNS.some((pattern) => errorString.includes(pattern));
+    return RETRYABLE_ERROR_PATTERNS.some((pattern) =>
+      errorString.includes(pattern),
+    );
   } catch {
     // If we can't parse the error, don't retry
     return false;
@@ -116,7 +122,9 @@ class FallbackModel implements LanguageModelV3 {
     return this.getUnderlyingModel().provider;
   }
 
-  get supportedUrls(): Record<string, RegExp[]> | PromiseLike<Record<string, RegExp[]>> {
+  get supportedUrls():
+    | Record<string, RegExp[]>
+    | PromiseLike<Record<string, RegExp[]>> {
     return this.getUnderlyingModel().supportedUrls;
   }
 
@@ -141,14 +149,18 @@ class FallbackModel implements LanguageModelV3 {
     if (this.isRetrying) return;
 
     const now = Date.now();
-    if (this.currentModelIndex !== 0 && now - this.lastModelReset >= this.modelResetInterval) {
+    if (
+      this.currentModelIndex !== 0 &&
+      now - this.lastModelReset >= this.modelResetInterval
+    ) {
       this.currentModelIndex = 0;
       this.lastModelReset = now;
     }
   }
 
   private switchToNextModel(): void {
-    this.currentModelIndex = (this.currentModelIndex + 1) % this.settings.models.length;
+    this.currentModelIndex =
+      (this.currentModelIndex + 1) % this.settings.models.length;
   }
 
   private async retry<T>(
@@ -199,7 +211,9 @@ class FallbackModel implements LanguageModelV3 {
       }
 
       // Should never reach here, but just in case
-      throw new Error(`Max retries (${this.maxRetries}) exceeded for ${operationName}`);
+      throw new Error(
+        `Max retries (${this.maxRetries}) exceeded for ${operationName}`,
+      );
     } finally {
       this.isRetrying = false;
     }
@@ -216,7 +230,11 @@ class FallbackModel implements LanguageModelV3 {
       const result = await this.getUnderlyingModel().doStream(options);
 
       // Create a wrapped stream that handles errors gracefully
-      const wrappedStream = this.createWrappedStream(result.stream, options, retryState);
+      const wrappedStream = this.createWrappedStream(
+        result.stream,
+        options,
+        retryState,
+      );
 
       return {
         ...result,
@@ -236,7 +254,8 @@ class FallbackModel implements LanguageModelV3 {
 
     return new ReadableStream<LanguageModelV3StreamPart>({
       async start(controller) {
-        let reader: ReadableStreamDefaultReader<LanguageModelV3StreamPart> | null = null;
+        let reader: ReadableStreamDefaultReader<LanguageModelV3StreamPart> | null =
+          null;
 
         const processStream = async (
           stream: ReadableStream<LanguageModelV3StreamPart>,
@@ -297,18 +316,23 @@ class FallbackModel implements LanguageModelV3 {
 
             // Check if we've tried all models
             if (
-              retryState.modelsAttempted.size === fallbackModel.settings.models.length &&
+              retryState.modelsAttempted.size ===
+                fallbackModel.settings.models.length &&
               retryState.attemptNumber >= fallbackModel.maxRetries
             ) {
               controller.error(
-                new Error(`All models failed during streaming. Last error: ${err.message}`),
+                new Error(
+                  `All models failed during streaming. Last error: ${err.message}`,
+                ),
               );
               return;
             }
 
             try {
               // Create a new stream with the next model
-              const nextResult = await fallbackModel.getUnderlyingModel().doStream(options);
+              const nextResult = await fallbackModel
+                .getUnderlyingModel()
+                .doStream(options);
               await processStream(nextResult.stream);
             } catch (nextError) {
               // If the retry also fails, propagate the error
@@ -333,11 +357,20 @@ export { defaultShouldRetryThisError as isRetryableError };
 
 // Type guards for better error handling
 export function isNetworkError(error: any): boolean {
-  const networkErrorCodes = ["ECONNREFUSED", "ENOTFOUND", "ECONNRESET", "EPIPE", "ETIMEDOUT"];
+  const networkErrorCodes = [
+    "ECONNREFUSED",
+    "ENOTFOUND",
+    "ECONNRESET",
+    "EPIPE",
+    "ETIMEDOUT",
+  ];
   return error?.code && networkErrorCodes.includes(error.code);
 }
 
 export function isRateLimitError(error: any): boolean {
   const statusCode = error?.statusCode || error?.status;
-  return statusCode === 429 || (error?.message && error.message.toLowerCase().includes("rate"));
+  return (
+    statusCode === 429 ||
+    (error?.message && error.message.toLowerCase().includes("rate"))
+  );
 }

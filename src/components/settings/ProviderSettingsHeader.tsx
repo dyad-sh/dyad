@@ -1,8 +1,19 @@
-import { ArrowLeft, ArrowUp, Circle, ExternalLink, GiftIcon, KeyRound } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowUp,
+  Circle,
+  ExternalLink,
+  GiftIcon,
+  KeyRound,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { IpcClient } from "@/ipc/ipc_client";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {} from "react";
 
 interface ProviderSettingsHeaderProps {
@@ -15,9 +26,17 @@ interface ProviderSettingsHeaderProps {
   onBackClick: () => void;
 }
 
-function getKeyButtonText({ isConfigured, isDyad }: { isConfigured: boolean; isDyad: boolean }) {
+function getKeyButtonText({
+  isConfigured,
+  isDyad,
+}: {
+  isConfigured: boolean;
+  isDyad: boolean;
+}) {
   if (isDyad) {
-    return isConfigured ? "Manage Dyad Pro Subscription" : "Setup Dyad Pro Subscription";
+    return isConfigured
+      ? "Manage Dyad Pro Subscription"
+      : "Setup Dyad Pro Subscription";
   }
   return isConfigured ? "Manage API Keys" : "Setup API Key";
 }
@@ -71,12 +90,18 @@ export function ProviderSettingsHeader({
           ) : (
             <Circle
               className={`h-5 w-5 ${
-                isConfigured ? "fill-green-500 text-green-600" : "fill-yellow-400 text-yellow-500"
+                isConfigured
+                  ? "fill-green-500 text-green-600"
+                  : "fill-yellow-400 text-yellow-500"
               }`}
             />
           )}
           <span className="ml-2 text-sm text-gray-600 dark:text-gray-400">
-            {isLoading ? "Loading..." : isConfigured ? "Setup Complete" : "Not Setup"}
+            {isLoading
+              ? "Loading..."
+              : isConfigured
+                ? "Setup Complete"
+                : "Not Setup"}
           </span>
         </div>
         {!isLoading && hasFreeTier && (

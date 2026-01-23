@@ -76,7 +76,9 @@ export interface AgentContext {
  * Parse partial/streaming JSON into a partial object using jsonrepair.
  * Handles incomplete JSON gracefully during streaming.
  */
-export function parsePartialJson<T extends Record<string, unknown>>(jsonText: string): Partial<T> {
+export function parsePartialJson<T extends Record<string, unknown>>(
+  jsonText: string,
+): Partial<T> {
   if (!jsonText.trim()) {
     return {} as Partial<T>;
   }

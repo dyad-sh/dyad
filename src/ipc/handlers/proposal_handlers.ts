@@ -1,5 +1,9 @@
 import { type IpcMainInvokeEvent } from "electron";
-import type { CodeProposal, ProposalResult, ActionProposal } from "../../lib/schemas";
+import type {
+  CodeProposal,
+  ProposalResult,
+  ActionProposal,
+} from "../../lib/schemas";
 import { db } from "../../db";
 import { messages, chats } from "../../db/schema";
 import { desc, eq, and } from "drizzle-orm";
@@ -18,7 +22,11 @@ import {
 } from "../utils/dyad_tag_parser";
 import log from "electron-log";
 import { isServerFunction } from "../../supabase_admin/supabase_utils";
-import { estimateMessagesTokens, estimateTokens, getContextWindow } from "../utils/token_utils";
+import {
+  estimateMessagesTokens,
+  estimateTokens,
+  getContextWindow,
+} from "../utils/token_utils";
 import { extractCodebase } from "../../utils/codebase";
 import { getDyadAppPath } from "../../paths/paths";
 import { withLock } from "../utils/lock_utils";
@@ -58,7 +66,9 @@ function cleanupExpiredCacheEntries() {
   });
 
   if (expiredCount > 0) {
-    logger.log(`Cleaned up ${expiredCount} expired codebase token cache entries`);
+    logger.log(
+      `Cleaned up ${expiredCount} expired codebase token cache entries`,
+    );
   }
 }
 
@@ -136,26 +146,31 @@ const getProposalHandler = async (
         !latestAssistantMessage?.approvalState
       ) {
         const messageId = latestAssistantMessage.id; // Get the message ID
-        logger.log(`Found latest assistant message (ID: ${messageId}), parsing content...`);
+        logger.log(
+          `Found latest assistant message (ID: ${messageId}), parsing content...`,
+        );
         const messageContent = latestAssistantMessage.content;
 
         const proposalTitle = getDyadChatSummaryTag(messageContent);
 
         const proposalWriteFiles = getDyadWriteTags(messageContent);
-        const proposalSearchReplaceFiles = getDyadSearchReplaceTags(messageContent);
+        const proposalSearchReplaceFiles =
+          getDyadSearchReplaceTags(messageContent);
         const proposalRenameFiles = getDyadRenameTags(messageContent);
         const proposalDeleteFiles = getDyadDeleteTags(messageContent);
         const proposalExecuteSqlQueries = getDyadExecuteSqlTags(messageContent);
         const packagesAdded = getDyadAddDependencyTags(messageContent);
 
         const filesChanged = [
-          ...proposalWriteFiles.concat(proposalSearchReplaceFiles).map((tag) => ({
-            name: path.basename(tag.path),
-            path: tag.path,
-            summary: tag.description ?? "(no change summary found)", // Generic summary
-            type: "write" as const,
-            isServerFunction: isServerFunction(tag.path),
-          })),
+          ...proposalWriteFiles
+            .concat(proposalSearchReplaceFiles)
+            .map((tag) => ({
+              name: path.basename(tag.path),
+              path: tag.path,
+              summary: tag.description ?? "(no change summary found)", // Generic summary
+              type: "write" as const,
+              isServerFunction: isServerFunction(tag.path),
+            })),
           ...proposalRenameFiles.map((tag) => ({
             name: path.basename(tag.to),
             path: tag.to,
@@ -204,7 +219,9 @@ const getProposalHandler = async (
             messageId,
           };
         } else {
-          logger.log("No relevant tags found in the latest assistant message content.");
+          logger.log(
+            "No relevant tags found in the latest assistant message content.",
+          );
         }
       }
       const actions: ActionProposal["actions"] = [];
@@ -213,7 +230,8 @@ const getProposalHandler = async (
         const refactorTarget = writeTags.reduce(
           (largest, tag) => {
             const lineCount = tag.content.split("\n").length;
-            return lineCount > 500 && (!largest || lineCount > largest.lineCount)
+            return lineCount > 500 &&
+              (!largest || lineCount > largest.lineCount)
               ? { path: tag.path, lineCount }
               : largest;
           },
@@ -225,7 +243,10 @@ const getProposalHandler = async (
             path: refactorTarget.path,
           });
         }
-        if (writeTags.length === 0 && latestAssistantMessage.content.includes("```")) {
+        if (
+          writeTags.length === 0 &&
+          latestAssistantMessage.content.includes("```")
+        ) {
           actions.push({
             id: "write-code-properly",
           });
@@ -335,7 +356,9 @@ const approveProposalHandler = async (
   });
 
   if (!messageToApprove?.content) {
-    throw new Error(`Assistant message not found for chatId: ${chatId}, messageId: ${messageId}`);
+    throw new Error(
+      `Assistant message not found for chatId: ${chatId}, messageId: ${messageId}`,
+    );
   }
 
   // 2. Process the actions defined in the message content
@@ -350,7 +373,9 @@ const approveProposalHandler = async (
   );
 
   if (processResult.error) {
-    throw new Error(`Error processing actions for message ${messageId}: ${processResult.error}`);
+    throw new Error(
+      `Error processing actions for message ${messageId}: ${processResult.error}`,
+    );
   }
 
   return {
@@ -364,7 +389,9 @@ const rejectProposalHandler = async (
   _event: IpcMainInvokeEvent,
   { chatId, messageId }: { chatId: number; messageId: number },
 ): Promise<void> => {
-  logger.log(`IPC: reject-proposal called for chatId: ${chatId}, messageId: ${messageId}`);
+  logger.log(
+    `IPC: reject-proposal called for chatId: ${chatId}, messageId: ${messageId}`,
+  );
 
   // 1. Verify the message exists and is an assistant message
   const messageToReject = await db.query.messages.findFirst({
@@ -377,11 +404,16 @@ const rejectProposalHandler = async (
   });
 
   if (!messageToReject) {
-    throw new Error(`Assistant message not found for chatId: ${chatId}, messageId: ${messageId}`);
+    throw new Error(
+      `Assistant message not found for chatId: ${chatId}, messageId: ${messageId}`,
+    );
   }
 
   // 2. Update the message's approval state to 'rejected'
-  await db.update(messages).set({ approvalState: "rejected" }).where(eq(messages.id, messageId));
+  await db
+    .update(messages)
+    .set({ approvalState: "rejected" })
+    .where(eq(messages.id, messageId));
 
   logger.log(`Message ${messageId} marked as rejected.`);
 };

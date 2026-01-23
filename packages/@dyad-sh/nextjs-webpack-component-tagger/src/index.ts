@@ -46,7 +46,9 @@ export default function dyadTaggerLoader(this: any, code: string) {
 
             // Skip if already tagged
             const alreadyTagged = node.attributes?.some(
-              (attr: any) => attr.type === "JSXAttribute" && attr.name?.name === "data-dyad-id",
+              (attr: any) =>
+                attr.type === "JSXAttribute" &&
+                attr.name?.name === "data-dyad-id",
             );
             if (alreadyTagged) return;
 
@@ -57,7 +59,10 @@ export default function dyadTaggerLoader(this: any, code: string) {
 
             // Inject the attributes
             if (node.name.end != null) {
-              ms.appendLeft(node.name.end, ` data-dyad-id="${dyadId}" data-dyad-name="${tagName}"`);
+              ms.appendLeft(
+                node.name.end,
+                ` data-dyad-id="${dyadId}" data-dyad-name="${tagName}"`,
+              );
               transformCount++;
             }
           } catch (error) {
@@ -80,7 +85,10 @@ export default function dyadTaggerLoader(this: any, code: string) {
         map: ms.generateMap({ hires: true }),
       };
     } catch (error) {
-      console.warn(`[dyad-tagger] Warning: Failed to transform ${this.resourcePath}:`, error);
+      console.warn(
+        `[dyad-tagger] Warning: Failed to transform ${this.resourcePath}:`,
+        error,
+      );
       return null;
     }
   };

@@ -87,7 +87,9 @@ export async function retryWithRateLimit<T>(
 
       // Don't retry if we've exhausted all attempts
       if (attempt === maxRetries) {
-        logger.error(`${context}: Failed after ${maxRetries + 1} attempts due to rate limit`);
+        logger.error(
+          `${context}: Failed after ${maxRetries + 1} attempts due to rate limit`,
+        );
         throw error;
       }
 
@@ -95,7 +97,8 @@ export async function retryWithRateLimit<T>(
 
       // Use exponential backoff with jitter
       const exponentialDelay = baseDelay * Math.pow(2, attempt);
-      const jitter = exponentialDelay * RETRY_CONFIG.jitterFactor * Math.random();
+      const jitter =
+        exponentialDelay * RETRY_CONFIG.jitterFactor * Math.random();
       delay = Math.min(exponentialDelay + jitter, maxDelay);
       logger.warn(
         `${context}: Rate limited (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${Math.round(delay)}ms`,
@@ -128,7 +131,10 @@ export async function fetchWithRetry(
     async () => {
       const response = await fetch(input, init);
       if (response.status === 429) {
-        throw new RateLimitError(`Rate limited (429): ${response.statusText}`, response);
+        throw new RateLimitError(
+          `Rate limited (429): ${response.statusText}`,
+          response,
+        );
       }
       return response;
     },

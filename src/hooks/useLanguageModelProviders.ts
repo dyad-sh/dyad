@@ -2,7 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { IpcClient } from "@/ipc/ipc_client";
 import type { LanguageModelProvider } from "@/ipc/ipc_types";
 import { useSettings } from "./useSettings";
-import { cloudProviders, VertexProviderSetting, AzureProviderSetting } from "@/lib/schemas";
+import {
+  cloudProviders,
+  VertexProviderSetting,
+  AzureProviderSetting,
+} from "@/lib/schemas";
 import { queryKeys } from "@/lib/queryKeys";
 
 export function useLanguageModelProviders() {
@@ -36,7 +40,8 @@ export function useLanguageModelProviders() {
     if (provider === "azure") {
       const azureSettings = providerSettings as AzureProviderSetting;
       const hasSavedSettings = Boolean(
-        (azureSettings?.apiKey?.value ?? "").trim() && (azureSettings?.resourceName ?? "").trim(),
+        (azureSettings?.apiKey?.value ?? "").trim() &&
+        (azureSettings?.resourceName ?? "").trim(),
       );
       if (hasSavedSettings) {
         return true;
@@ -63,8 +68,12 @@ export function useLanguageModelProviders() {
     }
 
     // Check custom providers
-    const customProviders = queryResult.data?.filter((provider) => provider.type === "custom");
-    return customProviders?.some((provider) => isProviderSetup(provider.id)) ?? false;
+    const customProviders = queryResult.data?.filter(
+      (provider) => provider.type === "custom",
+    );
+    return (
+      customProviders?.some((provider) => isProviderSetup(provider.id)) ?? false
+    );
   };
 
   return {

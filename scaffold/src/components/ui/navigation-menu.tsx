@@ -11,7 +11,10 @@ const NavigationMenu = React.forwardRef<
 >(({ className, children, ...props }, ref) => (
   <NavigationMenuPrimitive.Root
     ref={ref}
-    className={cn("relative z-10 flex max-w-max flex-1 items-center justify-center", className)}
+    className={cn(
+      "relative z-10 flex max-w-max flex-1 items-center justify-center",
+      className,
+    )}
     {...props}
   >
     {children}
@@ -26,7 +29,10 @@ const NavigationMenuList = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <NavigationMenuPrimitive.List
     ref={ref}
-    className={cn("group flex flex-1 list-none items-center justify-center space-x-1", className)}
+    className={cn(
+      "group flex flex-1 list-none items-center justify-center space-x-1",
+      className,
+    )}
     {...props}
   />
 ));
@@ -88,7 +94,8 @@ const NavigationMenuViewport = React.forwardRef<
     />
   </div>
 ));
-NavigationMenuViewport.displayName = NavigationMenuPrimitive.Viewport.displayName;
+NavigationMenuViewport.displayName =
+  NavigationMenuPrimitive.Viewport.displayName;
 
 const NavigationMenuIndicator = React.forwardRef<
   React.ElementRef<typeof NavigationMenuPrimitive.Indicator>,
@@ -105,7 +112,8 @@ const NavigationMenuIndicator = React.forwardRef<
     <div className="relative top-[60%] h-2 w-2 rotate-45 rounded-tl-sm bg-border shadow-md" />
   </NavigationMenuPrimitive.Indicator>
 ));
-NavigationMenuIndicator.displayName = NavigationMenuPrimitive.Indicator.displayName;
+NavigationMenuIndicator.displayName =
+  NavigationMenuPrimitive.Indicator.displayName;
 
 export {
   navigationMenuTriggerStyle,

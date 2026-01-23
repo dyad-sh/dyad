@@ -118,14 +118,17 @@ export function useMcp() {
     meta: { showErrorToast: true },
   });
 
-  const createServer = async (params: CreateMcpServer) => createServerMutation.mutateAsync(params);
+  const createServer = async (params: CreateMcpServer) =>
+    createServerMutation.mutateAsync(params);
 
   const toggleEnabled = async (id: number, currentEnabled: boolean) =>
     updateServerMutation.mutateAsync({ id, enabled: !currentEnabled });
 
-  const updateServer = async (params: McpServerUpdate) => updateServerMutation.mutateAsync(params);
+  const updateServer = async (params: McpServerUpdate) =>
+    updateServerMutation.mutateAsync(params);
 
-  const deleteServer = async (id: number) => deleteServerMutation.mutateAsync(id);
+  const deleteServer = async (id: number) =>
+    deleteServerMutation.mutateAsync(id);
 
   const setToolConsent = async (
     serverId: number,
@@ -148,8 +151,12 @@ export function useMcp() {
     toolsByServer: toolsByServerQuery.data || {},
     consentsList: consentsQuery.data || [],
     consentsMap,
-    isLoading: serversQuery.isLoading || toolsByServerQuery.isLoading || consentsQuery.isLoading,
-    error: serversQuery.error || toolsByServerQuery.error || consentsQuery.error,
+    isLoading:
+      serversQuery.isLoading ||
+      toolsByServerQuery.isLoading ||
+      consentsQuery.isLoading,
+    error:
+      serversQuery.error || toolsByServerQuery.error || consentsQuery.error,
     refetchAll,
 
     // Mutations

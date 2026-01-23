@@ -107,7 +107,9 @@ export function CreateCustomProviderDialog({
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{isEditMode ? "Edit Custom Provider" : "Add Custom Provider"}</DialogTitle>
+          <DialogTitle>
+            {isEditMode ? "Edit Custom Provider" : "Add Custom Provider"}
+          </DialogTitle>
           <DialogDescription>
             {isEditMode
               ? "Update your custom language model provider configuration."
@@ -156,7 +158,9 @@ export function CreateCustomProviderDialog({
               required
               disabled={isLoading}
             />
-            <p className="text-xs text-muted-foreground">The base URL for the API endpoint.</p>
+            <p className="text-xs text-muted-foreground">
+              The base URL for the API endpoint.
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -176,12 +180,19 @@ export function CreateCustomProviderDialog({
           {(errorMessage || error) && (
             <div className="text-sm text-red-500">
               {errorMessage ||
-                (error instanceof Error ? error.message : "Failed to create custom provider")}
+                (error instanceof Error
+                  ? error.message
+                  : "Failed to create custom provider")}
             </div>
           )}
 
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={handleClose} disabled={isLoading}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleClose}
+              disabled={isLoading}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={isLoading}>

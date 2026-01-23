@@ -34,7 +34,8 @@ async function getPublishableKey({
     throw new Error("No keys found for Supabase project " + projectId);
   }
   const publishableKey = keys.find(
-    (key) => (key as any)["name"] === "anon" || (key as any)["type"] === "publishable",
+    (key) =>
+      (key as any)["name"] === "anon" || (key as any)["type"] === "publishable",
   );
 
   if (!publishableKey) {

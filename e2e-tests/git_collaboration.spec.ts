@@ -6,7 +6,9 @@ import { execSync } from "child_process";
 
 test.describe("Git Collaboration", () => {
   //create git conflict helper function
-  test("should create, switch, rename, merge, and delete branches", async ({ po }) => {
+  test("should create, switch, rename, merge, and delete branches", async ({
+    po,
+  }) => {
     await po.setUp({ disableNativeGit: false });
     await po.sendPrompt("tc=basic");
 
@@ -43,13 +45,17 @@ test.describe("Git Collaboration", () => {
     //open branches accordion
     const branchesCard = po.page.getByTestId("branches-header");
     await branchesCard.click();
-    await expect(po.page.getByTestId(`branch-item-${featureBranch}`)).toBeVisible();
+    await expect(
+      po.page.getByTestId(`branch-item-${featureBranch}`),
+    ).toBeVisible();
 
     // 2. Create a branch from source (create feature-2 from main)
     // First switch back to main to ensure we are not on feature-1
     await po.page.getByTestId("branch-select-trigger").click();
     await po.page.getByRole("option", { name: "main" }).click();
-    await expect(po.page.getByTestId("current-branch-display")).toHaveText("main");
+    await expect(po.page.getByTestId("current-branch-display")).toHaveText(
+      "main",
+    );
 
     const featureBranch2 = "feature-2";
     await po.page.getByTestId("create-branch-trigger").click();
@@ -61,7 +67,9 @@ test.describe("Git Collaboration", () => {
     await po.page.getByTestId("create-branch-submit-button").click();
 
     // Verify creation (it auto-switches to the new branch, so we verify we're on it)
-    await expect(po.page.getByTestId("current-branch-display")).toHaveText(featureBranch2);
+    await expect(po.page.getByTestId("current-branch-display")).toHaveText(
+      featureBranch2,
+    );
 
     {
       const appPath = await po.getCurrentAppPath();
@@ -77,7 +85,9 @@ test.describe("Git Collaboration", () => {
     // Switch back to main first since we can't rename the branch we're currently on
     await po.page.getByTestId("branch-select-trigger").click();
     await po.page.getByRole("option", { name: "main" }).click();
-    await expect(po.page.getByTestId("current-branch-display")).toHaveText("main");
+    await expect(po.page.getByTestId("current-branch-display")).toHaveText(
+      "main",
+    );
 
     // Rename feature-2 to feature-2-renamed
     const renamedBranch = "feature-2-renamed";
@@ -89,8 +99,12 @@ test.describe("Git Collaboration", () => {
 
     // Verify rename
     await po.page.getByTestId("branch-select-trigger").click();
-    await expect(po.page.getByRole("option", { name: renamedBranch })).toBeVisible();
-    await expect(po.page.getByTestId(`branch-item-${featureBranch2}`)).not.toBeVisible();
+    await expect(
+      po.page.getByRole("option", { name: renamedBranch }),
+    ).toBeVisible();
+    await expect(
+      po.page.getByTestId(`branch-item-${featureBranch2}`),
+    ).not.toBeVisible();
     await po.page.keyboard.press("Escape");
 
     // 4. Merge Branch
@@ -101,7 +115,9 @@ test.describe("Git Collaboration", () => {
     // Switch to feature-1 and create a test file
     await po.page.getByTestId("branch-select-trigger").click();
     await po.page.getByRole("option", { name: featureBranch }).click();
-    await expect(po.page.getByTestId("current-branch-display")).toHaveText(featureBranch);
+    await expect(po.page.getByTestId("current-branch-display")).toHaveText(
+      featureBranch,
+    );
 
     const mergeTestFile = "merge-test.txt";
     const mergeTestFilePath = path.join(appPath, mergeTestFile);
@@ -111,14 +127,19 @@ test.describe("Git Collaboration", () => {
     execSync("git config user.email 'test@example.com'", { cwd: appPath });
     execSync("git config user.name 'Test User'", { cwd: appPath });
     execSync("git config commit.gpgsign false", { cwd: appPath });
-    execSync(`git add ${mergeTestFile} && git commit -m "Add merge test file"`, {
-      cwd: appPath,
-    });
+    execSync(
+      `git add ${mergeTestFile} && git commit -m "Add merge test file"`,
+      {
+        cwd: appPath,
+      },
+    );
 
     // Switch back to main
     await po.page.getByTestId("branch-select-trigger").click();
     await po.page.getByRole("option", { name: "main" }).click();
-    await expect(po.page.getByTestId("current-branch-display")).toHaveText("main");
+    await expect(po.page.getByTestId("current-branch-display")).toHaveText(
+      "main",
+    );
 
     // Verify file doesn't exist on main before merge
     expect(fs.existsSync(mergeTestFilePath)).toBe(false);
@@ -161,7 +182,9 @@ test.describe("Git Collaboration", () => {
 
     // Verify deletion
     await po.page.getByTestId("branch-select-trigger").click();
-    await expect(po.page.getByTestId(`branch-item-${featureBranch}`)).not.toBeVisible();
+    await expect(
+      po.page.getByTestId(`branch-item-${featureBranch}`),
+    ).not.toBeVisible();
     await po.page.keyboard.press("Escape");
   });
 
@@ -182,7 +205,9 @@ test.describe("Git Collaboration", () => {
     await collaboratorsCard.click();
 
     // Wait for Collaborator Manager
-    await expect(po.page.getByTestId("collaborator-invite-input")).toBeVisible();
+    await expect(
+      po.page.getByTestId("collaborator-invite-input"),
+    ).toBeVisible();
 
     // Invite a fake user
     const fakeUser = "test-user-123";
@@ -192,13 +217,17 @@ test.describe("Git Collaboration", () => {
     await po.waitForToast("success");
 
     // verify collaborator appears in the list
-    await expect(po.page.getByTestId(`collaborator-item-${fakeUser}`)).toBeVisible();
+    await expect(
+      po.page.getByTestId(`collaborator-item-${fakeUser}`),
+    ).toBeVisible();
 
     // Delete collaborator
     await po.page.getByTestId(`collaborator-remove-button-${fakeUser}`).click();
     await po.page.getByTestId("confirm-remove-collaborator").click();
     await po.waitForToast("success");
-    await expect(po.page.getByTestId(`collaborator-item-${fakeUser}`)).not.toBeVisible({
+    await expect(
+      po.page.getByTestId(`collaborator-item-${fakeUser}`),
+    ).not.toBeVisible({
       timeout: 5000,
     });
   });

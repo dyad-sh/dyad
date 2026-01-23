@@ -1,4 +1,8 @@
-import { type Template, type ApiTemplate, localTemplatesData } from "../../shared/templates";
+import {
+  type Template,
+  type ApiTemplate,
+  localTemplatesData,
+} from "../../shared/templates";
 import log from "electron-log";
 
 const logger = log.scope("template_utils");
@@ -36,7 +40,9 @@ export async function fetchApiTemplates(): Promise<Template[]> {
     try {
       const response = await fetch("https://api.dyad.sh/v1/templates");
       if (!response.ok) {
-        throw new Error(`Failed to fetch templates: ${response.status} ${response.statusText}`);
+        throw new Error(
+          `Failed to fetch templates: ${response.status} ${response.statusText}`,
+        );
       }
 
       const apiTemplates: ApiTemplate[] = await response.json();
@@ -62,11 +68,15 @@ export async function getAllTemplates(): Promise<Template[]> {
   return [...localTemplatesData, ...apiTemplates];
 }
 
-export async function getTemplateOrThrow(templateId: string): Promise<Template> {
+export async function getTemplateOrThrow(
+  templateId: string,
+): Promise<Template> {
   const allTemplates = await getAllTemplates();
   const template = allTemplates.find((template) => template.id === templateId);
   if (!template) {
-    throw new Error(`Template ${templateId} not found. Please select a different template.`);
+    throw new Error(
+      `Template ${templateId} not found. Please select a different template.`,
+    );
   }
   return template;
 }

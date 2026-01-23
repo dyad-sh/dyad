@@ -19,7 +19,9 @@ export interface LMStudioModel {
 }
 
 export async function fetchLMStudioModels(): Promise<LocalModelListResponse> {
-  const modelsResponse: Response = await fetch(`${LM_STUDIO_BASE_URL}/api/v0/models`);
+  const modelsResponse: Response = await fetch(
+    `${LM_STUDIO_BASE_URL}/api/v0/models`,
+  );
   if (!modelsResponse.ok) {
     throw new Error("Failed to fetch models from LM Studio");
   }
@@ -38,7 +40,10 @@ export async function fetchLMStudioModels(): Promise<LocalModelListResponse> {
 }
 
 export function registerLMStudioHandlers() {
-  ipcMain.handle("local-models:list-lmstudio", async (): Promise<LocalModelListResponse> => {
-    return fetchLMStudioModels();
-  });
+  ipcMain.handle(
+    "local-models:list-lmstudio",
+    async (): Promise<LocalModelListResponse> => {
+      return fetchLMStudioModels();
+    },
+  );
 }

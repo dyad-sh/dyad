@@ -6,7 +6,10 @@ interface CopyErrorMessageProps {
   className?: string;
 }
 
-export const CopyErrorMessage = ({ errorMessage, className = "" }: CopyErrorMessageProps) => {
+export const CopyErrorMessage = ({
+  errorMessage,
+  className = "",
+}: CopyErrorMessageProps) => {
   const [isCopied, setIsCopied] = useState(false);
 
   const handleCopy = async (e: React.MouseEvent) => {

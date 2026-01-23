@@ -8,7 +8,11 @@ interface DyadReadProps {
   path?: string;
 }
 
-export const DyadRead: React.FC<DyadReadProps> = ({ children, node, path: pathProp }) => {
+export const DyadRead: React.FC<DyadReadProps> = ({
+  children,
+  node,
+  path: pathProp,
+}) => {
   const path = pathProp || node?.properties?.path || "";
   const fileName = path ? path.split("/").pop() : "";
 
@@ -18,15 +22,23 @@ export const DyadRead: React.FC<DyadReadProps> = ({ children, node, path: pathPr
         <div className="flex items-center gap-2">
           <FileText size={16} className="text-gray-600" />
           {fileName && (
-            <span className="text-gray-700 dark:text-gray-300 font-medium text-sm">{fileName}</span>
+            <span className="text-gray-700 dark:text-gray-300 font-medium text-sm">
+              {fileName}
+            </span>
           )}
           <div className="text-xs text-gray-600 font-medium">Read</div>
         </div>
       </div>
       {path && (
-        <div className="text-xs text-gray-500 dark:text-gray-400 font-medium mb-1">{path}</div>
+        <div className="text-xs text-gray-500 dark:text-gray-400 font-medium mb-1">
+          {path}
+        </div>
       )}
-      {children && <div className="text-sm text-gray-600 dark:text-gray-300 mt-2">{children}</div>}
+      {children && (
+        <div className="text-sm text-gray-600 dark:text-gray-300 mt-2">
+          {children}
+        </div>
+      )}
     </div>
   );
 };

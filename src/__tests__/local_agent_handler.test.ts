@@ -247,10 +247,13 @@ vi.mock("@/pro/main/ipc/handlers/local_agent/tool_definitions", () => ({
   clearPendingConsentsForChat: vi.fn(),
 }));
 
-vi.mock("@/pro/main/ipc/handlers/local_agent/processors/file_operations", () => ({
-  deployAllFunctionsIfNeeded: vi.fn(async () => {}),
-  commitAllChanges: vi.fn(async () => ({ commitHash: "abc123" })),
-}));
+vi.mock(
+  "@/pro/main/ipc/handlers/local_agent/processors/file_operations",
+  () => ({
+    deployAllFunctionsIfNeeded: vi.fn(async () => {}),
+    commitAllChanges: vi.fn(async () => ({ commitHash: "abc123" })),
+  }),
+);
 
 // ============================================================================
 // Import the function under test AFTER mocks are set up
@@ -280,11 +283,16 @@ describe("handleLocalAgentStream", () => {
       mockSettings = buildTestSettings({ enableDyadPro: false });
 
       // Act
-      await handleLocalAgentStream(event, { chatId: 1, prompt: "test" }, new AbortController(), {
-        placeholderMessageId: 10,
-        systemPrompt: "You are helpful",
-        dyadRequestId,
-      });
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
 
       // Assert
       const errorMessages = getMessagesByChannel("chat:response:error");
@@ -304,11 +312,16 @@ describe("handleLocalAgentStream", () => {
       });
 
       // Act
-      await handleLocalAgentStream(event, { chatId: 1, prompt: "test" }, new AbortController(), {
-        placeholderMessageId: 10,
-        systemPrompt: "You are helpful",
-        dyadRequestId,
-      });
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
 
       // Assert
       const errorMessages = getMessagesByChannel("chat:response:error");
@@ -325,11 +338,16 @@ describe("handleLocalAgentStream", () => {
 
       // Act & Assert
       await expect(
-        handleLocalAgentStream(event, { chatId: 999, prompt: "test" }, new AbortController(), {
-          placeholderMessageId: 10,
-          systemPrompt: "You are helpful",
-          dyadRequestId,
-        }),
+        handleLocalAgentStream(
+          event,
+          { chatId: 999, prompt: "test" },
+          new AbortController(),
+          {
+            placeholderMessageId: 10,
+            systemPrompt: "You are helpful",
+            dyadRequestId,
+          },
+        ),
       ).rejects.toThrow("Chat not found: 999");
     });
 
@@ -341,11 +359,16 @@ describe("handleLocalAgentStream", () => {
 
       // Act & Assert
       await expect(
-        handleLocalAgentStream(event, { chatId: 1, prompt: "test" }, new AbortController(), {
-          placeholderMessageId: 10,
-          systemPrompt: "You are helpful",
-          dyadRequestId,
-        }),
+        handleLocalAgentStream(
+          event,
+          { chatId: 1, prompt: "test" },
+          new AbortController(),
+          {
+            placeholderMessageId: 10,
+            systemPrompt: "You are helpful",
+            dyadRequestId,
+          },
+        ),
       ).rejects.toThrow("Chat not found: 1");
     });
   });
@@ -364,11 +387,16 @@ describe("handleLocalAgentStream", () => {
       ]);
 
       // Act
-      await handleLocalAgentStream(event, { chatId: 1, prompt: "test" }, new AbortController(), {
-        placeholderMessageId: 10,
-        systemPrompt: "You are helpful",
-        dyadRequestId,
-      });
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
 
       // Assert - check that chunks were sent
       const chunkMessages = getMessagesByChannel("chat:response:chunk");
@@ -383,7 +411,9 @@ describe("handleLocalAgentStream", () => {
       });
 
       // Assert - verify database was updated with accumulated content
-      const contentUpdates = dbOperations.updates.filter((u) => u.data.content !== undefined);
+      const contentUpdates = dbOperations.updates.filter(
+        (u) => u.data.content !== undefined,
+      );
       expect(contentUpdates.length).toBeGreaterThan(0);
       // Final content should contain both chunks
       const lastContentUpdate = contentUpdates[contentUpdates.length - 1];
@@ -406,17 +436,25 @@ describe("handleLocalAgentStream", () => {
       ]);
 
       // Act
-      await handleLocalAgentStream(event, { chatId: 1, prompt: "test" }, new AbortController(), {
-        placeholderMessageId: 10,
-        systemPrompt: "You are helpful",
-        dyadRequestId,
-      });
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
 
       // Assert - find the final content update
-      const contentUpdates = dbOperations.updates.filter((u) => u.data.content !== undefined);
+      const contentUpdates = dbOperations.updates.filter(
+        (u) => u.data.content !== undefined,
+      );
       expect(contentUpdates.length).toBeGreaterThan(0);
 
-      const finalContent = contentUpdates[contentUpdates.length - 1].data.content as string;
+      const finalContent = contentUpdates[contentUpdates.length - 1].data
+        .content as string;
       expect(finalContent).toContain("<think>");
       expect(finalContent).toContain("Let me think...");
       expect(finalContent).toContain("</think>");
@@ -435,15 +473,23 @@ describe("handleLocalAgentStream", () => {
       ]);
 
       // Act
-      await handleLocalAgentStream(event, { chatId: 1, prompt: "test" }, new AbortController(), {
-        placeholderMessageId: 10,
-        systemPrompt: "You are helpful",
-        dyadRequestId,
-      });
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
 
       // Assert
-      const contentUpdates = dbOperations.updates.filter((u) => u.data.content !== undefined);
-      const finalContent = contentUpdates[contentUpdates.length - 1].data.content as string;
+      const contentUpdates = dbOperations.updates.filter(
+        (u) => u.data.content !== undefined,
+      );
+      const finalContent = contentUpdates[contentUpdates.length - 1].data
+        .content as string;
 
       // The thinking block should be closed before the answer
       expect(finalContent).toContain("<think>");
@@ -480,19 +526,27 @@ describe("handleLocalAgentStream", () => {
       };
 
       // Act
-      await handleLocalAgentStream(event, { chatId: 1, prompt: "test" }, abortController, {
-        placeholderMessageId: 10,
-        systemPrompt: "You are helpful",
-        dyadRequestId,
-      });
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        abortController,
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
 
       // Assert - only first chunk should be processed (stream breaks on abort)
       expect(yieldCount).toBe(1);
 
       // Verify only the first chunk made it into the response
-      const contentUpdates = dbOperations.updates.filter((u) => u.data.content !== undefined);
+      const contentUpdates = dbOperations.updates.filter(
+        (u) => u.data.content !== undefined,
+      );
       expect(contentUpdates.length).toBeGreaterThan(0);
-      const finalContent = contentUpdates[contentUpdates.length - 1].data.content as string;
+      const finalContent = contentUpdates[contentUpdates.length - 1].data
+        .content as string;
       expect(finalContent).toContain("First ");
       expect(finalContent).not.toContain("Second");
     });
@@ -516,14 +570,21 @@ describe("handleLocalAgentStream", () => {
       };
 
       // Act
-      await handleLocalAgentStream(event, { chatId: 1, prompt: "test" }, abortController, {
-        placeholderMessageId: 10,
-        systemPrompt: "You are helpful",
-        dyadRequestId,
-      });
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        abortController,
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
 
       // Assert - should have saved cancellation message
-      const contentUpdates = dbOperations.updates.filter((u) => u.data.content !== undefined);
+      const contentUpdates = dbOperations.updates.filter(
+        (u) => u.data.content !== undefined,
+      );
       const hasCancellationNote = contentUpdates.some((u) =>
         (u.data.content as string).includes("[Response cancelled by user]"),
       );
@@ -537,17 +598,26 @@ describe("handleLocalAgentStream", () => {
       const { event } = createFakeEvent();
       mockSettings = buildTestSettings({ enableDyadPro: true });
       mockChatData = buildTestChat();
-      mockStreamResult = createFakeStream([{ type: "text-delta", text: "Done" }]);
+      mockStreamResult = createFakeStream([
+        { type: "text-delta", text: "Done" },
+      ]);
 
       // Act
-      await handleLocalAgentStream(event, { chatId: 1, prompt: "test" }, new AbortController(), {
-        placeholderMessageId: 10,
-        systemPrompt: "You are helpful",
-        dyadRequestId,
-      });
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
 
       // Assert - commit hash should be saved
-      const commitUpdates = dbOperations.updates.filter((u) => u.data.commitHash !== undefined);
+      const commitUpdates = dbOperations.updates.filter(
+        (u) => u.data.commitHash !== undefined,
+      );
       expect(commitUpdates).toHaveLength(1);
       expect(commitUpdates[0].data.commitHash).toBe("abc123");
     });
@@ -557,14 +627,21 @@ describe("handleLocalAgentStream", () => {
       const { event } = createFakeEvent();
       mockSettings = buildTestSettings({ enableDyadPro: true });
       mockChatData = buildTestChat();
-      mockStreamResult = createFakeStream([{ type: "text-delta", text: "Done" }]);
+      mockStreamResult = createFakeStream([
+        { type: "text-delta", text: "Done" },
+      ]);
 
       // Act
-      await handleLocalAgentStream(event, { chatId: 1, prompt: "test" }, new AbortController(), {
-        placeholderMessageId: 10,
-        systemPrompt: "You are helpful",
-        dyadRequestId,
-      });
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
 
       // Assert - approval state should be set
       const approvalUpdates = dbOperations.updates.filter(

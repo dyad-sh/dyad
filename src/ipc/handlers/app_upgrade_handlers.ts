@@ -18,7 +18,8 @@ const availableUpgrades: Omit<AppUpgrade, "isNeeded">[] = [
   {
     id: "component-tagger",
     title: "Enable select component to edit",
-    description: "Installs the Dyad component tagger Vite plugin and its dependencies.",
+    description:
+      "Installs the Dyad component tagger Vite plugin and its dependencies.",
     manualUpgradeUrl: "https://dyad.sh/docs/upgrades/select-component",
   },
   {
@@ -109,7 +110,9 @@ async function applyComponentTagger(appPath: string) {
 
   // Add import statement if not present
   if (
-    !content.includes("import dyadComponentTagger from '@dyad-sh/react-vite-component-tagger';")
+    !content.includes(
+      "import dyadComponentTagger from '@dyad-sh/react-vite-component-tagger';",
+    )
   ) {
     // Add it after the last import statement
     const lines = content.split("\n");
@@ -131,10 +134,15 @@ async function applyComponentTagger(appPath: string) {
   // Add plugin to plugins array
   if (content.includes("plugins: [")) {
     if (!content.includes("dyadComponentTagger()")) {
-      content = content.replace("plugins: [", "plugins: [dyadComponentTagger(), ");
+      content = content.replace(
+        "plugins: [",
+        "plugins: [dyadComponentTagger(), ",
+      );
     }
   } else {
-    throw new Error("Could not find `plugins: [` in vite.config.ts. Manual installation required.");
+    throw new Error(
+      "Could not find `plugins: [` in vite.config.ts. Manual installation required.",
+    );
   }
 
   await fs.promises.writeFile(viteConfigPath, content);
@@ -187,7 +195,13 @@ async function applyComponentTagger(appPath: string) {
   }
 }
 
-async function applyCapacitor({ appName, appPath }: { appName: string; appPath: string }) {
+async function applyCapacitor({
+  appName,
+  appPath,
+}: {
+  appName: string;
+  appPath: string;
+}) {
   // Install Capacitor dependencies
   await simpleSpawn({
     command:
@@ -228,28 +242,32 @@ async function applyCapacitor({ appName, appPath }: { appName: string; appPath: 
       err,
     );
     throw new Error(
-      "Failed to commit Capacitor changes. Please commit them manually. Error: " + err,
+      "Failed to commit Capacitor changes. Please commit them manually. Error: " +
+        err,
     );
   }
 }
 
 export function registerAppUpgradeHandlers() {
-  handle("get-app-upgrades", async (_, { appId }: { appId: number }): Promise<AppUpgrade[]> => {
-    const app = await getApp(appId);
-    const appPath = getDyadAppPath(app.path);
+  handle(
+    "get-app-upgrades",
+    async (_, { appId }: { appId: number }): Promise<AppUpgrade[]> => {
+      const app = await getApp(appId);
+      const appPath = getDyadAppPath(app.path);
 
-    const upgradesWithStatus = availableUpgrades.map((upgrade) => {
-      let isNeeded = false;
-      if (upgrade.id === "component-tagger") {
-        isNeeded = isComponentTaggerUpgradeNeeded(appPath);
-      } else if (upgrade.id === "capacitor") {
-        isNeeded = isCapacitorUpgradeNeeded(appPath);
-      }
-      return { ...upgrade, isNeeded };
-    });
+      const upgradesWithStatus = availableUpgrades.map((upgrade) => {
+        let isNeeded = false;
+        if (upgrade.id === "component-tagger") {
+          isNeeded = isComponentTaggerUpgradeNeeded(appPath);
+        } else if (upgrade.id === "capacitor") {
+          isNeeded = isCapacitorUpgradeNeeded(appPath);
+        }
+        return { ...upgrade, isNeeded };
+      });
 
-    return upgradesWithStatus;
-  });
+      return upgradesWithStatus;
+    },
+  );
 
   handle(
     "execute-app-upgrade",

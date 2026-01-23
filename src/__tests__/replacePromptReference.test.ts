@@ -31,7 +31,10 @@ describe("replacePromptReference", () => {
 
   it("supports string keys in map as well as numeric", () => {
     const input = "Mix @prompt:7 and @prompt:8";
-    const prompts = { "7": "Seven", 8: "Eight" } as Record<string | number, string>;
+    const prompts = { "7": "Seven", 8: "Eight" } as Record<
+      string | number,
+      string
+    >;
     const output = replacePromptReference(input, prompts);
     expect(output).toBe("Mix Seven and Eight");
   });

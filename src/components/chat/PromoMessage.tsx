@@ -109,7 +109,8 @@ export const UPLOAD_CHAT_TIP: MessageConfig = {
   spans: [
     {
       type: "text",
-      content: "Want to report a bad AI response? Upload the chat by clicking Help",
+      content:
+        "Want to report a bad AI response? Upload the chat by clicking Help",
     },
   ],
 };

@@ -1,5 +1,11 @@
 import React, { useState } from "react";
-import { ChevronsDownUp, ChevronsUpDown, AlertTriangle, XCircle, Sparkles } from "lucide-react";
+import {
+  ChevronsDownUp,
+  ChevronsUpDown,
+  AlertTriangle,
+  XCircle,
+  Sparkles,
+} from "lucide-react";
 import { useAtomValue } from "jotai";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
@@ -10,7 +16,11 @@ interface DyadOutputProps {
   children?: React.ReactNode;
 }
 
-export const DyadOutput: React.FC<DyadOutputProps> = ({ type, message, children }) => {
+export const DyadOutput: React.FC<DyadOutputProps> = ({
+  type,
+  message,
+  children,
+}) => {
   const [isContentVisible, setIsContentVisible] = useState(false);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage } = useStreamChat();
@@ -77,13 +87,17 @@ export const DyadOutput: React.FC<DyadOutputProps> = ({ type, message, children 
 
       {/* Content area */}
       {isContentVisible && children && (
-        <div className="mt-4 pl-20 text-sm text-gray-800 dark:text-gray-200">{children}</div>
+        <div className="mt-4 pl-20 text-sm text-gray-800 dark:text-gray-200">
+          {children}
+        </div>
       )}
 
       {/* Action buttons at the bottom - always visible for errors */}
       {isError && message && (
         <div className="mt-3 px-6 flex justify-end gap-2">
-          <CopyErrorMessage errorMessage={children ? `${message}\n${children}` : message} />
+          <CopyErrorMessage
+            errorMessage={children ? `${message}\n${children}` : message}
+          />
           <button
             onClick={handleAIFix}
             className="cursor-pointer flex items-center justify-center bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-800 text-white rounded text-xs px-2 py-1 h-6"

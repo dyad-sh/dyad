@@ -19,7 +19,10 @@ interface ComponentAnalysis {
  * @param changes - Map of line numbers to their changes
  * @returns The transformed source code
  */
-export function transformContent(content: string, changes: Map<number, ContentChange>): string {
+export function transformContent(
+  content: string,
+  changes: Map<number, ContentChange>,
+): string {
   // Parse with babel for compatibility with JSX/TypeScript
   const ast = parse(content, {
     sourceType: "module",
@@ -39,24 +42,34 @@ export function transformContent(content: string, changes: Map<number, ContentCh
         const change = changes.get(line)!;
 
         // Check if this element has any nested JSX elements as direct children
-        const hasNestedJSX = path.node.children.some((child: any) => child.type === "JSXElement");
+        const hasNestedJSX = path.node.children.some(
+          (child: any) => child.type === "JSXElement",
+        );
 
         // Skip text content modification if there are nested elements
         const shouldModifyText =
-          "textContent" in change && change.textContent !== undefined && !hasNestedJSX;
+          "textContent" in change &&
+          change.textContent !== undefined &&
+          !hasNestedJSX;
 
         // Update className if there are style changes
         if (change.classes.length > 0) {
           const attributes = path.node.openingElement.attributes;
           let classNameAttr = attributes.find(
-            (attr: any) => attr.type === "JSXAttribute" && attr.name.name === "className",
+            (attr: any) =>
+              attr.type === "JSXAttribute" && attr.name.name === "className",
           ) as any;
 
           if (classNameAttr) {
             // Get existing classes
             let existingClasses: string[] = [];
-            if (classNameAttr.value && classNameAttr.value.type === "StringLiteral") {
-              existingClasses = classNameAttr.value.value.split(/\s+/).filter(Boolean);
+            if (
+              classNameAttr.value &&
+              classNameAttr.value.type === "StringLiteral"
+            ) {
+              existingClasses = classNameAttr.value.value
+                .split(/\s+/)
+                .filter(Boolean);
             }
 
             // Filter out classes with matching prefixes
@@ -121,8 +134,12 @@ export function transformContent(content: string, changes: Map<number, ContentCh
 
             // Check for each spacing type (margin and padding)
             ["m", "p"].forEach((type) => {
-              const hasDirectionalX = change.prefixes.some((p) => p === `${type}x-`);
-              const hasDirectionalY = change.prefixes.some((p) => p === `${type}y-`);
+              const hasDirectionalX = change.prefixes.some(
+                (p) => p === `${type}x-`,
+              );
+              const hasDirectionalY = change.prefixes.some(
+                (p) => p === `${type}y-`,
+              );
 
               // Only process if we're adding at least one directional class for this type
               if (!hasDirectionalX && !hasDirectionalY) {
@@ -136,7 +153,9 @@ export function transformContent(content: string, changes: Map<number, ContentCh
 
               if (allSidesClass) {
                 // Remove the omni-directional class from filtered classes
-                filteredClasses = filteredClasses.filter((cls) => cls !== allSidesClass);
+                filteredClasses = filteredClasses.filter(
+                  (cls) => cls !== allSidesClass,
+                );
 
                 // Extract the value
                 const valueMatch = allSidesClass.match(/\[([^\]]+)\]/);
@@ -157,9 +176,11 @@ export function transformContent(content: string, changes: Map<number, ContentCh
             });
 
             // Combine filtered, preserved, and new classes
-            const updatedClasses = [...filteredClasses, ...addedClasses, ...change.classes].join(
-              " ",
-            );
+            const updatedClasses = [
+              ...filteredClasses,
+              ...addedClasses,
+              ...change.classes,
+            ].join(" ");
 
             // Update the className value
             classNameAttr.value = {
@@ -186,7 +207,8 @@ export function transformContent(content: string, changes: Map<number, ContentCh
             if (child.type === "JSXElement") return false;
             return (
               child.type === "JSXText" ||
-              (child.type === "JSXExpressionContainer" && child.expression.type === "StringLiteral")
+              (child.type === "JSXExpressionContainer" &&
+                child.expression.type === "StringLiteral")
             );
           });
 
@@ -214,7 +236,10 @@ export function transformContent(content: string, changes: Map<number, ContentCh
  * - Whether it has dynamic styling (className/style with expressions)
  * - Whether it contains static text content
  */
-export function analyzeComponent(content: string, line: number): ComponentAnalysis {
+export function analyzeComponent(
+  content: string,
+  line: number,
+): ComponentAnalysis {
   const ast = parse(content, {
     sourceType: "module",
     plugins: ["jsx", "typescript"],
@@ -226,7 +251,10 @@ export function analyzeComponent(content: string, line: number): ComponentAnalys
   const walk = (node: any): void => {
     if (!node) return;
 
-    if (node.type === "JSXElement" && node.openingElement?.loc?.start.line === line) {
+    if (
+      node.type === "JSXElement" &&
+      node.openingElement?.loc?.start.line === line
+    ) {
       foundElement = node;
       return;
     }
@@ -281,7 +309,10 @@ export function analyzeComponent(content: string, line: number): ComponentAnalys
               dynamic = true;
             }
             // Check for identifiers (variables)
-            if (expr.type === "Identifier" || expr.type === "MemberExpression") {
+            if (
+              expr.type === "Identifier" ||
+              expr.type === "MemberExpression"
+            ) {
               dynamic = true;
             }
             // Check for CallExpression (function calls)

@@ -5,7 +5,11 @@ import {
   SelectItem,
   SelectValue,
 } from "@/components/ui/select";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useSettings } from "@/hooks/useSettings";
 import type { ChatMode } from "@/lib/schemas";
 import { isDyadProEnabled } from "@/lib/schemas";
@@ -127,13 +131,17 @@ export function ChatModeSelector() {
         <SelectItem value="build">
           <div className="flex flex-col items-start">
             <span className="font-medium">Build</span>
-            <span className="text-xs text-muted-foreground">Generate and edit code</span>
+            <span className="text-xs text-muted-foreground">
+              Generate and edit code
+            </span>
           </div>
         </SelectItem>
         <SelectItem value="ask">
           <div className="flex flex-col items-start">
             <span className="font-medium">Ask</span>
-            <span className="text-xs text-muted-foreground">Ask questions about the app</span>
+            <span className="text-xs text-muted-foreground">
+              Ask questions about the app
+            </span>
           </div>
         </SelectItem>
         <SelectItem value="agent">

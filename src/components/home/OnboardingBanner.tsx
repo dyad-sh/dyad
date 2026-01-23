@@ -16,7 +16,9 @@ export const OnboardingBanner = ({
       <a
         onClick={(e) => {
           e.preventDefault();
-          IpcClient.getInstance().openExternalUrl("https://www.youtube.com/watch?v=rgdNoHLaRN4");
+          IpcClient.getInstance().openExternalUrl(
+            "https://www.youtube.com/watch?v=rgdNoHLaRN4",
+          );
           setIsVisible(false);
         }}
         target="_blank"
@@ -38,8 +40,12 @@ export const OnboardingBanner = ({
           </div>
           <div className="flex-1 px-4 py-3">
             <div className="text-foreground">
-              <p className="font-semibold text-base">Get started with Dyad in 3 minutes</p>
-              <p className="text-sm text-muted-foreground">Start building your app for free</p>
+              <p className="font-semibold text-base">
+                Get started with Dyad in 3 minutes
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Start building your app for free
+              </p>
             </div>
           </div>
         </div>

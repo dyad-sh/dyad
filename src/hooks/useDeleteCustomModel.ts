@@ -19,7 +19,9 @@ export function useDeleteCustomModel({
   const mutation = useMutation<void, Error, DeleteCustomModelParams>({
     mutationFn: async (params: DeleteCustomModelParams) => {
       if (!params.providerId || !params.modelApiName) {
-        throw new Error("Provider ID and Model API Name are required for deletion.");
+        throw new Error(
+          "Provider ID and Model API Name are required for deletion.",
+        );
       }
       const ipcClient = IpcClient.getInstance();
       // This method will be added to IpcClient next

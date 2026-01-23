@@ -8,7 +8,11 @@ import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 import { useCheckoutVersion } from "@/hooks/useCheckoutVersion";
 import { useLoadApp } from "@/hooks/useLoadApp";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 import { useRunApp } from "@/hooks/useRunApp";
 
@@ -28,7 +32,9 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
     isRevertingVersion,
   } = useVersions(appId);
 
-  const [selectedVersionId, setSelectedVersionId] = useAtom(selectedVersionIdAtom);
+  const [selectedVersionId, setSelectedVersionId] = useAtom(
+    selectedVersionIdAtom,
+  );
   const { checkoutVersion, isCheckingOutVersion } = useCheckoutVersion();
   const wasVisibleRef = useRef(false);
   const [cachedVersions, setCachedVersions] = useState<Version[]>([]);
@@ -120,7 +126,8 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                 key={version.oid}
                 className={cn(
                   "px-4 py-2 hover:bg-(--background-lightest) cursor-pointer",
-                  selectedVersionId === version.oid && "bg-(--background-lightest)",
+                  selectedVersionId === version.oid &&
+                    "bg-(--background-lightest)",
                   isCheckingOutVersion &&
                     selectedVersionId === version.oid &&
                     "opacity-50 cursor-not-allowed",
@@ -134,13 +141,17 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-xs">
-                      Version {versions.length - index} ({version.oid.slice(0, 7)})
+                      Version {versions.length - index} (
+                      {version.oid.slice(0, 7)})
                     </span>
                     {/* example format: '2025-07-25T21:52:01Z' */}
                     {version.dbTimestamp &&
                       (() => {
-                        const timestampMs = new Date(version.dbTimestamp).getTime();
-                        const isExpired = Date.now() - timestampMs > 24 * 60 * 60 * 1000;
+                        const timestampMs = new Date(
+                          version.dbTimestamp,
+                        ).getTime();
+                        const isExpired =
+                          Date.now() - timestampMs > 24 * 60 * 60 * 1000;
                         return (
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -166,26 +177,37 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                       })()}
                   </div>
                   <div className="flex items-center gap-2">
-                    {isCheckingOutVersion && selectedVersionId === version.oid && (
-                      <Loader2 size={12} className="animate-spin text-primary" />
-                    )}
+                    {isCheckingOutVersion &&
+                      selectedVersionId === version.oid && (
+                        <Loader2
+                          size={12}
+                          className="animate-spin text-primary"
+                        />
+                      )}
                     <span className="text-xs opacity-90">
                       {isCheckingOutVersion && selectedVersionId === version.oid
                         ? "Loading..."
-                        : formatDistanceToNow(new Date(version.timestamp * 1000), {
-                            addSuffix: true,
-                          })}
+                        : formatDistanceToNow(
+                            new Date(version.timestamp * 1000),
+                            {
+                              addSuffix: true,
+                            },
+                          )}
                     </span>
                   </div>
                 </div>
                 <div className="flex items-center justify-between gap-2">
                   {version.message && (
                     <p className="mt-1 text-sm">
-                      {version.message.startsWith("Reverted all changes back to version ")
+                      {version.message.startsWith(
+                        "Reverted all changes back to version ",
+                      )
                         ? version.message.replace(
                             /Reverted all changes back to version ([a-f0-9]+)/,
                             (_, hash) => {
-                              const targetIndex = versions.findIndex((v) => v.oid === hash);
+                              const targetIndex = versions.findIndex(
+                                (v) => v.oid === hash,
+                              );
                               return targetIndex !== -1
                                 ? `Reverted all changes back to version ${
                                     versions.length - targetIndex
@@ -219,7 +241,8 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                           className={cn(
                             "invisible mt-1 flex items-center gap-1 px-2 py-0.5 text-sm font-medium bg-(--primary) text-(--primary-foreground) hover:bg-background-lightest rounded-md transition-colors",
                             selectedVersionId === version.oid && "visible",
-                            isRevertingVersion && "opacity-50 cursor-not-allowed",
+                            isRevertingVersion &&
+                              "opacity-50 cursor-not-allowed",
                           )}
                           aria-label="Restore to this version"
                         >
@@ -228,7 +251,9 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                           ) : (
                             <RotateCcw size={12} />
                           )}
-                          <span>{isRevertingVersion ? "Restoring..." : "Restore"}</span>
+                          <span>
+                            {isRevertingVersion ? "Restoring..." : "Restore"}
+                          </span>
                         </button>
                       </TooltipTrigger>
                       <TooltipContent>

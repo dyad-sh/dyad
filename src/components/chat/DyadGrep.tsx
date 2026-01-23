@@ -1,7 +1,13 @@
 import type React from "react";
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { ChevronsDownUp, ChevronsUpDown, Search, Loader, CircleX } from "lucide-react";
+import {
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Search,
+  Loader,
+  CircleX,
+} from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
 import { CustomTagState } from "./stateTypes";
 
@@ -48,7 +54,9 @@ export const DyadGrep: React.FC<DyadGrepProps> = ({ children, node }) => {
   }
 
   // Build result summary
-  const resultSummary = count ? `${count} match${count === "1" ? "" : "es"}` : "";
+  const resultSummary = count
+    ? `${count} match${count === "1" ? "" : "es"}`
+    : "";
 
   // Dynamic border styling
   const borderClass = inProgress
@@ -71,7 +79,9 @@ export const DyadGrep: React.FC<DyadGrepProps> = ({ children, node }) => {
               GREP
             </span>
             {description}
-            {resultSummary && <span className="ml-2 text-gray-500">({resultSummary})</span>}
+            {resultSummary && (
+              <span className="ml-2 text-gray-500">({resultSummary})</span>
+            )}
           </span>
           {inProgress && (
             <div className="flex items-center text-(--primary) text-xs">
@@ -88,9 +98,15 @@ export const DyadGrep: React.FC<DyadGrepProps> = ({ children, node }) => {
         </div>
         <div className="flex items-center">
           {isContentVisible ? (
-            <ChevronsDownUp size={20} className="text-(--primary)/70 hover:text-(--primary)" />
+            <ChevronsDownUp
+              size={20}
+              className="text-(--primary)/70 hover:text-(--primary)"
+            />
           ) : (
-            <ChevronsUpDown size={20} className="text-(--primary)/70 hover:text-(--primary)" />
+            <ChevronsUpDown
+              size={20}
+              className="text-(--primary)/70 hover:text-(--primary)"
+            />
           )}
         </div>
       </div>

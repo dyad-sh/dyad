@@ -45,7 +45,10 @@ function getSimilarity(original: string, search: string): number {
   const dist = distance(normalizedOriginal, normalizedSearch);
 
   // Calculate similarity ratio (0 to 1, where 1 is an exact match)
-  const maxLength = Math.max(normalizedOriginal.length, normalizedSearch.length);
+  const maxLength = Math.max(
+    normalizedOriginal.length,
+    normalizedSearch.length,
+  );
   return 1 - dist / maxLength;
 }
 
@@ -63,7 +66,10 @@ function quickScoreByExactLines(
   for (let i = 0; i < searchLines.length; i++) {
     if (startIdx + i >= targetLines.length) break;
 
-    if (normalizeString(targetLines[startIdx + i]) === normalizeString(searchLines[i])) {
+    if (
+      normalizeString(targetLines[startIdx + i]) ===
+      normalizeString(searchLines[i])
+    ) {
       exactMatches++;
     }
   }
@@ -123,7 +129,11 @@ function fastFuzzySearch(
 
   const MAX_CANDIDATES_TO_CHECK = 10; // Only check top 10 candidates
 
-  for (let i = 0; i < Math.min(candidates.length, MAX_CANDIDATES_TO_CHECK); i++) {
+  for (
+    let i = 0;
+    i < Math.min(candidates.length, MAX_CANDIDATES_TO_CHECK);
+    i++
+  ) {
     const candidate = candidates[i];
 
     // Check time limit
@@ -135,7 +145,9 @@ function fastFuzzySearch(
       break;
     }
 
-    const originalChunk = lines.slice(candidate.index, candidate.index + searchLen).join("\n");
+    const originalChunk = lines
+      .slice(candidate.index, candidate.index + searchLen)
+      .join("\n");
 
     const similarity = getSimilarity(originalChunk, searchChunk);
 
@@ -182,7 +194,8 @@ export function applySearchReplace(
     replaceContent = unescapeMarkers(replaceContent);
 
     let searchLines = searchContent === "" ? [] : searchContent.split(/\r?\n/);
-    let replaceLines = replaceContent === "" ? [] : replaceContent.split(/\r?\n/);
+    let replaceLines =
+      replaceContent === "" ? [] : replaceContent.split(/\r?\n/);
 
     if (searchLines.length === 0) {
       return {
@@ -214,7 +227,8 @@ export function applySearchReplace(
     if (exactPositions.length > 1) {
       return {
         success: false,
-        error: "Search block matched multiple locations in the target file (ambiguous)",
+        error:
+          "Search block matched multiple locations in the target file (ambiguous)",
       };
     }
     if (exactPositions.length === 1) {
@@ -247,7 +261,8 @@ export function applySearchReplace(
       if (candidates.length > 1) {
         return {
           success: false,
-          error: "Search block fuzzy matched multiple locations in the target file (ambiguous)",
+          error:
+            "Search block fuzzy matched multiple locations in the target file (ambiguous)",
         };
       }
 
@@ -276,7 +291,10 @@ export function applySearchReplace(
       }
     }
 
-    const matchedLines = resultLines.slice(matchIndex, matchIndex + searchLines.length);
+    const matchedLines = resultLines.slice(
+      matchIndex,
+      matchIndex + searchLines.length,
+    );
 
     // Preserve indentation relative to first matched line
     const originalIndents = matchedLines.map((line) => {
@@ -300,7 +318,10 @@ export function applySearchReplace(
 
       const finalIndent =
         relativeLevel < 0
-          ? matchedIndent.slice(0, Math.max(0, matchedIndent.length + relativeLevel))
+          ? matchedIndent.slice(
+              0,
+              Math.max(0, matchedIndent.length + relativeLevel),
+            )
           : matchedIndent + currentIndent.slice(searchBaseLevel);
 
       return finalIndent + line.trim();

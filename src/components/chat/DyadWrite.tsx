@@ -1,7 +1,15 @@
 import type React from "react";
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { ChevronsDownUp, ChevronsUpDown, Pencil, Loader, CircleX, Edit, X } from "lucide-react";
+import {
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Pencil,
+  Loader,
+  CircleX,
+  Edit,
+  X,
+} from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
 import { CustomTagState } from "./stateTypes";
 import { FileEditor } from "../preview_panel/FileEditor";
@@ -47,7 +55,11 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
   return (
     <div
       className={`bg-(--background-lightest) hover:bg-(--background-lighter) rounded-lg px-4 py-2 border my-2 cursor-pointer ${
-        inProgress ? "border-amber-500" : aborted ? "border-red-500" : "border-border"
+        inProgress
+          ? "border-amber-500"
+          : aborted
+            ? "border-red-500"
+            : "border-border"
       }`}
       onClick={() => setIsContentVisible(!isContentVisible)}
     >
@@ -55,7 +67,9 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
         <div className="flex items-center gap-2">
           <Pencil size={16} />
           {fileName && (
-            <span className="text-gray-700 dark:text-gray-300 font-medium text-sm">{fileName}</span>
+            <span className="text-gray-700 dark:text-gray-300 font-medium text-sm">
+              {fileName}
+            </span>
           )}
           {inProgress && (
             <div className="flex items-center text-amber-600 text-xs">
@@ -114,7 +128,9 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
         </div>
       </div>
       {path && (
-        <div className="text-xs text-gray-500 dark:text-gray-400 font-medium mb-1">{path}</div>
+        <div className="text-xs text-gray-500 dark:text-gray-400 font-medium mb-1">
+          {path}
+        </div>
       )}
       {description && (
         <div className="text-sm text-gray-600 dark:text-gray-300">
@@ -123,13 +139,18 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
         </div>
       )}
       {isContentVisible && (
-        <div className="text-xs cursor-text" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="text-xs cursor-text"
+          onClick={(e) => e.stopPropagation()}
+        >
           {isEditing ? (
             <div className="h-96 min-h-96 border border-gray-200 dark:border-gray-700 rounded overflow-hidden">
               <FileEditor appId={appId ?? null} filePath={path} />
             </div>
           ) : (
-            <CodeHighlight className="language-typescript">{children}</CodeHighlight>
+            <CodeHighlight className="language-typescript">
+              {children}
+            </CodeHighlight>
           )}
         </div>
       )}

@@ -2,7 +2,11 @@ import { db } from "@/db";
 import { apps } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { AppChatContext, AppChatContextSchema, ContextPathResults } from "@/lib/schemas";
+import {
+  AppChatContext,
+  AppChatContextSchema,
+  ContextPathResults,
+} from "@/lib/schemas";
 import { estimateTokens } from "../utils/token_utils";
 import { createLoggedHandler } from "./safe_handle";
 import log from "electron-log";
@@ -37,9 +41,8 @@ export function registerContextPathsHandlers() {
         smartContextAutoIncludes: [],
         excludePaths: [],
       };
-      const { contextPaths, smartContextAutoIncludes, excludePaths } = validateChatContext(
-        app.chatContext,
-      );
+      const { contextPaths, smartContextAutoIncludes, excludePaths } =
+        validateChatContext(app.chatContext);
       for (const contextPath of contextPaths) {
         const { formattedOutput, files } = await extractCodebase({
           appPath,
@@ -96,7 +99,10 @@ export function registerContextPathsHandlers() {
 
   handle(
     "set-context-paths",
-    async (_, { appId, chatContext }: { appId: number; chatContext: AppChatContext }) => {
+    async (
+      _,
+      { appId, chatContext }: { appId: number; chatContext: AppChatContext },
+    ) => {
       const schema = z.object({
         appId: z.number(),
         chatContext: AppChatContextSchema,

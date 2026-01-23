@@ -28,11 +28,13 @@ export function DeleteChatDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Delete Chat</AlertDialogTitle>
           <AlertDialogDescription>
-            Are you sure you want to delete "{chatTitle || "this chat"}"? This action cannot be
-            undone and all messages in this chat will be permanently lost.
+            Are you sure you want to delete "{chatTitle || "this chat"}"? This
+            action cannot be undone and all messages in this chat will be
+            permanently lost.
             <br />
             <br />
-            <strong>Note:</strong> Any code changes that have already been accepted will be kept.
+            <strong>Note:</strong> Any code changes that have already been
+            accepted will be kept.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

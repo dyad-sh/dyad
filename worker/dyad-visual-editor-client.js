@@ -7,7 +7,9 @@
   function findElementByDyadId(dyadId, runtimeId) {
     // If runtimeId is provided, try to find element by runtime ID first
     if (runtimeId) {
-      const elementByRuntimeId = document.querySelector(`[data-dyad-runtime-id="${runtimeId}"]`);
+      const elementByRuntimeId = document.querySelector(
+        `[data-dyad-runtime-id="${runtimeId}"]`,
+      );
       if (elementByRuntimeId) {
         return elementByRuntimeId;
       }
@@ -21,7 +23,12 @@
   function applyStyles(element, styles) {
     if (!element || !styles) return;
 
-    console.debug(`[Dyad Visual Editor] Applying styles:`, styles, "to element:", element);
+    console.debug(
+      `[Dyad Visual Editor] Applying styles:`,
+      styles,
+      "to element:",
+      element,
+    );
 
     const applySpacing = (type, values) => {
       if (!values) return;

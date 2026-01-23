@@ -76,7 +76,8 @@ export async function dryRunSearchReplace({
       if (!result.success || typeof result.content !== "string") {
         issues.push({
           filePath,
-          error: "Unable to apply search-replace to file because: " + result.error,
+          error:
+            "Unable to apply search-replace to file because: " + result.error,
         });
         logger.warn(
           `Unable to apply search-replace to file ${filePath} because: ${result.error}. Original content:\n${original}\n Diff content:\n${tag.content}`,
@@ -125,7 +126,10 @@ export async function processFullResponseActions(
     return {};
   }
 
-  if (chatWithApp.app.neonProjectId && chatWithApp.app.neonDevelopmentBranchId) {
+  if (
+    chatWithApp.app.neonProjectId &&
+    chatWithApp.app.neonDevelopmentBranchId
+  ) {
     try {
       await storeDbTimestampAtCurrentVersion({
         appId: chatWithApp.app.id,
@@ -133,7 +137,8 @@ export async function processFullResponseActions(
     } catch (error) {
       logger.error("Error creating Neon branch at current version:", error);
       throw new Error(
-        "Could not create Neon branch; database versioning functionality is not working: " + error,
+        "Could not create Neon branch; database versioning functionality is not working: " +
+          error,
       );
     }
   }
@@ -393,7 +398,8 @@ export async function processFullResponseActions(
               supabaseProjectId: chatWithApp.app.supabaseProjectId!,
               functionName: extractFunctionNameFromPath(filePath),
               appPath,
-              organizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
+              organizationSlug:
+                chatWithApp.app.supabaseOrganizationSlug ?? null,
             });
           } catch (error) {
             errors.push({
@@ -433,7 +439,10 @@ export async function processFullResponseActions(
               `Replaced file ID ${trimmedContent} with content from ${fileInfo.originalName}`,
             );
           } catch (error) {
-            logger.error(`Failed to read uploaded file ${fileInfo.originalName}:`, error);
+            logger.error(
+              `Failed to read uploaded file ${fileInfo.originalName}:`,
+              error,
+            );
             errors.push({
               message: `Failed to read uploaded file: ${fileInfo.originalName}`,
               error: error,
@@ -451,7 +460,11 @@ export async function processFullResponseActions(
       logger.log(`Successfully wrote file: ${fullFilePath}`);
       writtenFiles.push(filePath);
       // Deploy individual function (skip if shared modules changed - will be handled later)
-      if (isServerFunction(filePath) && typeof content === "string" && !sharedModulesChanged) {
+      if (
+        isServerFunction(filePath) &&
+        typeof content === "string" &&
+        !sharedModulesChanged
+      ) {
         try {
           await deploySupabaseFunction({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
@@ -471,23 +484,28 @@ export async function processFullResponseActions(
     // If shared modules changed, redeploy all functions
     if (sharedModulesChanged && chatWithApp.app.supabaseProjectId) {
       try {
-        logger.info("Shared modules changed, redeploying all Supabase functions");
+        logger.info(
+          "Shared modules changed, redeploying all Supabase functions",
+        );
         const deployErrors = await deployAllSupabaseFunctions({
           appPath,
           supabaseProjectId: chatWithApp.app.supabaseProjectId,
-          supabaseOrganizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
+          supabaseOrganizationSlug:
+            chatWithApp.app.supabaseOrganizationSlug ?? null,
         });
         if (deployErrors.length > 0) {
           for (const err of deployErrors) {
             errors.push({
-              message: "Failed to deploy Supabase function after shared module change",
+              message:
+                "Failed to deploy Supabase function after shared module change",
               error: err,
             });
           }
         }
       } catch (error) {
         errors.push({
-          message: "Failed to redeploy all Supabase functions after shared module change",
+          message:
+            "Failed to redeploy all Supabase functions after shared module change",
           error: error,
         });
       }
@@ -511,11 +529,16 @@ export async function processFullResponseActions(
 
       // Create commit with details of all changes
       const changes = [];
-      if (writtenFiles.length > 0) changes.push(`wrote ${writtenFiles.length} file(s)`);
-      if (renamedFiles.length > 0) changes.push(`renamed ${renamedFiles.length} file(s)`);
-      if (deletedFiles.length > 0) changes.push(`deleted ${deletedFiles.length} file(s)`);
+      if (writtenFiles.length > 0)
+        changes.push(`wrote ${writtenFiles.length} file(s)`);
+      if (renamedFiles.length > 0)
+        changes.push(`renamed ${renamedFiles.length} file(s)`);
+      if (deletedFiles.length > 0)
+        changes.push(`deleted ${deletedFiles.length} file(s)`);
       if (dyadAddDependencyPackages.length > 0)
-        changes.push(`added ${dyadAddDependencyPackages.join(", ")} package(s)`);
+        changes.push(
+          `added ${dyadAddDependencyPackages.join(", ")} package(s)`,
+        );
       if (dyadExecuteSqlQueries.length > 0)
         changes.push(`executed ${dyadExecuteSqlQueries.length} SQL queries`);
 
@@ -541,11 +564,15 @@ export async function processFullResponseActions(
             message: message + " + extra files edited outside of Dyad",
             amend: true,
           });
-          logger.log(`Amend commit with changes outside of dyad: ${uncommittedFiles.join(", ")}`);
+          logger.log(
+            `Amend commit with changes outside of dyad: ${uncommittedFiles.join(", ")}`,
+          );
         } catch (error) {
           // Just log, but don't throw an error because the user can still
           // commit these changes outside of Dyad if needed.
-          logger.error(`Failed to commit changes outside of dyad: ${uncommittedFiles.join(", ")}`);
+          logger.error(
+            `Failed to commit changes outside of dyad: ${uncommittedFiles.join(", ")}`,
+          );
           extraFilesError = (error as any).toString();
         }
       }

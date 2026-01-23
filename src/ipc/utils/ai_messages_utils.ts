@@ -28,7 +28,9 @@ export function getAiMessagesJsonIfWithinLimit(
     return payload;
   }
 
-  logger.warn(`ai_messages_json too large (${jsonStr.length} bytes), skipping save`);
+  logger.warn(
+    `ai_messages_json too large (${jsonStr.length} bytes), skipping save`,
+  );
   return undefined;
 }
 
@@ -52,7 +54,10 @@ export function parseAiMessagesJson(msg: DbMessageForParsing): ModelMessage[] {
     const parsed = msg.aiMessagesJson;
 
     // Legacy shape: stored directly as a ModelMessage[]
-    if (Array.isArray(parsed) && parsed.every((m) => m && typeof m.role === "string")) {
+    if (
+      Array.isArray(parsed) &&
+      parsed.every((m) => m && typeof m.role === "string")
+    ) {
       return parsed;
     }
 

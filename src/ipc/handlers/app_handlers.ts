@@ -48,7 +48,13 @@ import { getLanguageModelProviders } from "../shared/language_model_helpers";
 import { startProxy } from "../utils/start_proxy_server";
 import { Worker } from "worker_threads";
 import { createFromTemplate } from "./createFromTemplate";
-import { gitCommit, gitAdd, gitInit, gitListBranches, gitRenameBranch } from "../utils/git_utils";
+import {
+  gitCommit,
+  gitAdd,
+  gitInit,
+  gitListBranches,
+  gitRenameBranch,
+} from "../utils/git_utils";
 import { safeSend } from "../utils/safe_sender";
 import { normalizePath } from "../../../shared/normalizePath";
 import {
@@ -137,7 +143,10 @@ async function copyDir(
   await fsPromises.cp(source, destination, {
     recursive: true,
     filter: (src: string) => {
-      if (options?.excludeNodeModules && path.basename(src) === "node_modules") {
+      if (
+        options?.excludeNodeModules &&
+        path.basename(src) === "node_modules"
+      ) {
         return false;
       }
       if (filter) {
@@ -225,7 +234,10 @@ async function executeAppLocalNode({
     // Attempt to capture any immediate errors if possible
     let errorOutput = "";
     let spawnErr: any | null = null;
-    spawnedProcess.stderr?.on("data", (data) => (errorOutput += data.toString()));
+    spawnedProcess.stderr?.on(
+      "data",
+      (data) => (errorOutput += data.toString()),
+    );
     await new Promise<void>((resolve) => {
       spawnedProcess.once("error", (err) => {
         spawnErr = err;
@@ -239,7 +251,9 @@ async function executeAppLocalNode({
       spawnErr?.errno ? `errno=${spawnErr.errno}` : null,
       spawnErr?.syscall ? `syscall=${spawnErr.syscall}` : null,
       spawnErr?.path ? `path=${spawnErr.path}` : null,
-      spawnErr?.spawnargs ? `spawnargs=${JSON.stringify(spawnErr.spawnargs)}` : null,
+      spawnErr?.spawnargs
+        ? `spawnargs=${JSON.stringify(spawnErr.spawnargs)}`
+        : null,
     ]
       .filter(Boolean)
       .join(", ");
@@ -289,7 +303,9 @@ function listenToProcess({
   // Log output
   spawnedProcess.stdout?.on("data", async (data) => {
     const message = util.stripVTControlCharacters(data.toString());
-    logger.debug(`App ${appId} (PID: ${spawnedProcess.pid}) stdout: ${message}`);
+    logger.debug(
+      `App ${appId} (PID: ${spawnedProcess.pid}) stdout: ${message}`,
+    );
 
     // Add to central log store
     addLog({
@@ -348,7 +364,9 @@ function listenToProcess({
 
   spawnedProcess.stderr?.on("data", async (data) => {
     const message = util.stripVTControlCharacters(data.toString());
-    logger.error(`App ${appId} (PID: ${spawnedProcess.pid}) stderr: ${message}`);
+    logger.error(
+      `App ${appId} (PID: ${spawnedProcess.pid}) stderr: ${message}`,
+    );
 
     // Add to central log store
     addLog({
@@ -376,7 +394,9 @@ function listenToProcess({
 
   // Handle errors during process lifecycle (e.g., command not found)
   spawnedProcess.on("error", (err) => {
-    logger.error(`Error in app ${appId} (PID: ${spawnedProcess.pid}) process: ${err.message}`);
+    logger.error(
+      `Error in app ${appId} (PID: ${spawnedProcess.pid}) process: ${err.message}`,
+    );
     removeAppIfCurrentProcess(appId, spawnedProcess);
     // Note: We don't throw here as the error is asynchronous. The caller got a success response already.
     // Consider adding ipcRenderer event emission to notify UI of the error.
@@ -437,7 +457,9 @@ async function executeAppInDocker({
       stopContainer.on("error", () => resolve()); // Container might not exist
     });
   } catch (error) {
-    logger.info(`Docker container ${containerName} not found. Ignoring error: ${error}`);
+    logger.info(
+      `Docker container ${containerName} not found. Ignoring error: ${error}`,
+    );
   }
 
   // Create a Dockerfile in the app directory if it doesn't exist
@@ -534,7 +556,9 @@ RUN npm install -g pnpm
       spawnErr?.errno ? `errno=${spawnErr.errno}` : null,
       spawnErr?.syscall ? `syscall=${spawnErr.syscall}` : null,
       spawnErr?.path ? `path=${spawnErr.path}` : null,
-      spawnErr?.spawnargs ? `spawnargs=${JSON.stringify(spawnErr.spawnargs)}` : null,
+      spawnErr?.spawnargs
+        ? `spawnargs=${JSON.stringify(spawnErr.spawnargs)}`
+        : null,
     ]
       .filter(Boolean)
       .join(", ");
@@ -665,7 +689,9 @@ async function searchAppFilesWithRipgrep({
           const absolutePath = path.isAbsolute(matchPath)
             ? matchPath
             : path.join(appPath, matchPath);
-          const relativePath = normalizePath(path.relative(appPath, absolutePath));
+          const relativePath = normalizePath(
+            path.relative(appPath, absolutePath),
+          );
           if (relativePath.startsWith("..")) {
             continue; // outside app directory
           }
@@ -673,7 +699,11 @@ async function searchAppFilesWithRipgrep({
           const lineText = event.data.lines?.text as string;
           const lineNumber = event.data.line_number as number;
           const submatch = event.data.submatches?.[0];
-          if (typeof lineText !== "string" || typeof lineNumber !== "number" || !submatch) {
+          if (
+            typeof lineText !== "string" ||
+            typeof lineNumber !== "number" ||
+            !submatch
+          ) {
             continue;
           }
 
@@ -697,7 +727,9 @@ async function searchAppFilesWithRipgrep({
               existing.snippets = [];
             }
             // Only add if this line number isn't already in the snippets
-            const existingLine = existing.snippets.find((s) => s.line === snippet.line);
+            const existingLine = existing.snippets.find(
+              (s) => s.line === snippet.line,
+            );
             if (!existingLine) {
               existing.snippets.push(snippet);
             }
@@ -739,7 +771,10 @@ export function registerAppHandlers() {
 
   handle(
     "create-app",
-    async (_, params: CreateAppParams): Promise<{ app: any; chatId: number }> => {
+    async (
+      _,
+      params: CreateAppParams,
+    ): Promise<{ app: any; chatId: number }> => {
       const appPath = params.name;
       const fullAppPath = getDyadAppPath(appPath);
       if (fs.existsSync(fullAppPath)) {
@@ -795,81 +830,84 @@ export function registerAppHandlers() {
     },
   );
 
-  handle("copy-app", async (_, params: CopyAppParams): Promise<{ app: any }> => {
-    const { appId, newAppName, withHistory } = params;
+  handle(
+    "copy-app",
+    async (_, params: CopyAppParams): Promise<{ app: any }> => {
+      const { appId, newAppName, withHistory } = params;
 
-    // 1. Check if an app with the new name already exists
-    const existingApp = await db.query.apps.findFirst({
-      where: eq(apps.name, newAppName),
-    });
-
-    if (existingApp) {
-      throw new Error(`An app named "${newAppName}" already exists.`);
-    }
-
-    // 2. Find the original app
-    const originalApp = await db.query.apps.findFirst({
-      where: eq(apps.id, appId),
-    });
-
-    if (!originalApp) {
-      throw new Error("Original app not found.");
-    }
-
-    const originalAppPath = getDyadAppPath(originalApp.path);
-    const newAppPath = getDyadAppPath(newAppName);
-
-    // 3. Copy the app folder
-    try {
-      await copyDir(
-        originalAppPath,
-        newAppPath,
-        (source: string) => {
-          if (!withHistory && path.basename(source) === ".git") {
-            return false;
-          }
-          return true;
-        },
-        { excludeNodeModules: true },
-      );
-    } catch (error) {
-      logger.error("Failed to copy app directory:", error);
-      throw new Error("Failed to copy app directory.");
-    }
-
-    if (!withHistory) {
-      // Initialize git repo and create first commit
-      await gitInit({ path: newAppPath, ref: "main" });
-
-      // Stage all files
-      await gitAdd({ path: newAppPath, filepath: "." });
-
-      // Create initial commit
-      await gitCommit({
-        path: newAppPath,
-        message: "Init Dyad app",
+      // 1. Check if an app with the new name already exists
+      const existingApp = await db.query.apps.findFirst({
+        where: eq(apps.name, newAppName),
       });
-    }
 
-    // 4. Create a new app entry in the database
-    const [newDbApp] = await db
-      .insert(apps)
-      .values({
-        name: newAppName,
-        path: newAppName, // Use the new name for the path
-        // Explicitly set these to null because we don't want to copy them over.
-        // Note: we could just leave them out since they're nullable field, but this
-        // is to make it explicit we intentionally don't want to copy them over.
-        supabaseProjectId: null,
-        githubOrg: null,
-        githubRepo: null,
-        installCommand: originalApp.installCommand,
-        startCommand: originalApp.startCommand,
-      })
-      .returning();
+      if (existingApp) {
+        throw new Error(`An app named "${newAppName}" already exists.`);
+      }
 
-    return { app: newDbApp };
-  });
+      // 2. Find the original app
+      const originalApp = await db.query.apps.findFirst({
+        where: eq(apps.id, appId),
+      });
+
+      if (!originalApp) {
+        throw new Error("Original app not found.");
+      }
+
+      const originalAppPath = getDyadAppPath(originalApp.path);
+      const newAppPath = getDyadAppPath(newAppName);
+
+      // 3. Copy the app folder
+      try {
+        await copyDir(
+          originalAppPath,
+          newAppPath,
+          (source: string) => {
+            if (!withHistory && path.basename(source) === ".git") {
+              return false;
+            }
+            return true;
+          },
+          { excludeNodeModules: true },
+        );
+      } catch (error) {
+        logger.error("Failed to copy app directory:", error);
+        throw new Error("Failed to copy app directory.");
+      }
+
+      if (!withHistory) {
+        // Initialize git repo and create first commit
+        await gitInit({ path: newAppPath, ref: "main" });
+
+        // Stage all files
+        await gitAdd({ path: newAppPath, filepath: "." });
+
+        // Create initial commit
+        await gitCommit({
+          path: newAppPath,
+          message: "Init Dyad app",
+        });
+      }
+
+      // 4. Create a new app entry in the database
+      const [newDbApp] = await db
+        .insert(apps)
+        .values({
+          name: newAppName,
+          path: newAppName, // Use the new name for the path
+          // Explicitly set these to null because we don't want to copy them over.
+          // Note: we could just leave them out since they're nullable field, but this
+          // is to make it explicit we intentionally don't want to copy them over.
+          supabaseProjectId: null,
+          githubOrg: null,
+          githubRepo: null,
+          installCommand: originalApp.installCommand,
+          startCommand: originalApp.startCommand,
+        })
+        .returning();
+
+      return { app: newDbApp };
+    },
+  );
 
   handle("get-app", async (_, appId: number): Promise<App> => {
     const app = await db.query.apps.findFirst({
@@ -899,7 +937,8 @@ export function registerAppHandlers() {
     // Check for multi-organization credentials or legacy single account
     const hasSupabaseCredentials =
       (app.supabaseOrganizationSlug &&
-        settings.supabase?.organizations?.[app.supabaseOrganizationSlug]?.accessToken?.value) ||
+        settings.supabase?.organizations?.[app.supabaseOrganizationSlug]
+          ?.accessToken?.value) ||
       settings.supabase?.accessToken?.value;
     if (app.supabaseProjectId && hasSupabaseCredentials) {
       supabaseProjectName = await getSupabaseProjectName(
@@ -982,7 +1021,10 @@ export function registerAppHandlers() {
 
   ipcMain.handle(
     "run-app",
-    async (event: Electron.IpcMainInvokeEvent, { appId }: { appId: number }): Promise<void> => {
+    async (
+      event: Electron.IpcMainInvokeEvent,
+      { appId }: { appId: number },
+    ): Promise<void> => {
       return withLock(appId, async () => {
         // Check if app is already running
         if (runningApps.has(appId)) {
@@ -1029,54 +1071,64 @@ export function registerAppHandlers() {
     },
   );
 
-  ipcMain.handle("stop-app", async (_, { appId }: { appId: number }): Promise<void> => {
-    logger.log(`Attempting to stop app ${appId}. Current running apps: ${runningApps.size}`);
-    return withLock(appId, async () => {
-      const appInfo = runningApps.get(appId);
-
-      if (!appInfo) {
-        logger.log(`App ${appId} not found in running apps map. Assuming already stopped.`);
-        return;
-      }
-
-      const { process, processId } = appInfo;
+  ipcMain.handle(
+    "stop-app",
+    async (_, { appId }: { appId: number }): Promise<void> => {
       logger.log(
-        `Found running app ${appId} with processId ${processId} (PID: ${process.pid}). Attempting to stop.`,
+        `Attempting to stop app ${appId}. Current running apps: ${runningApps.size}`,
       );
+      return withLock(appId, async () => {
+        const appInfo = runningApps.get(appId);
 
-      // Check if the process is already exited or closed
-      if (process.exitCode !== null || process.signalCode !== null) {
+        if (!appInfo) {
+          logger.log(
+            `App ${appId} not found in running apps map. Assuming already stopped.`,
+          );
+          return;
+        }
+
+        const { process, processId } = appInfo;
         logger.log(
-          `Process for app ${appId} (PID: ${process.pid}) already exited (code: ${process.exitCode}, signal: ${process.signalCode}). Cleaning up map.`,
+          `Found running app ${appId} with processId ${processId} (PID: ${process.pid}). Attempting to stop.`,
         );
-        runningApps.delete(appId); // Ensure cleanup if somehow missed
-        return;
-      }
 
-      try {
-        await stopAppByInfo(appId, appInfo);
+        // Check if the process is already exited or closed
+        if (process.exitCode !== null || process.signalCode !== null) {
+          logger.log(
+            `Process for app ${appId} (PID: ${process.pid}) already exited (code: ${process.exitCode}, signal: ${process.signalCode}). Cleaning up map.`,
+          );
+          runningApps.delete(appId); // Ensure cleanup if somehow missed
+          return;
+        }
 
-        // Now, safely remove the app from the map *after* confirming closure
-        removeAppIfCurrentProcess(appId, process);
+        try {
+          await stopAppByInfo(appId, appInfo);
 
-        return;
-      } catch (error: any) {
-        logger.error(
-          `Error stopping app ${appId} (PID: ${process.pid}, processId: ${processId}):`,
-          error,
-        );
-        // Attempt cleanup even if an error occurred during the stop process
-        removeAppIfCurrentProcess(appId, process);
-        throw new Error(`Failed to stop app ${appId}: ${error.message}`);
-      }
-    });
-  });
+          // Now, safely remove the app from the map *after* confirming closure
+          removeAppIfCurrentProcess(appId, process);
+
+          return;
+        } catch (error: any) {
+          logger.error(
+            `Error stopping app ${appId} (PID: ${process.pid}, processId: ${processId}):`,
+            error,
+          );
+          // Attempt cleanup even if an error occurred during the stop process
+          removeAppIfCurrentProcess(appId, process);
+          throw new Error(`Failed to stop app ${appId}: ${error.message}`);
+        }
+      });
+    },
+  );
 
   ipcMain.handle(
     "restart-app",
     async (
       event: Electron.IpcMainInvokeEvent,
-      { appId, removeNodeModules }: { appId: number; removeNodeModules?: boolean },
+      {
+        appId,
+        removeNodeModules,
+      }: { appId: number; removeNodeModules?: boolean },
     ): Promise<void> => {
       logger.log(`Restarting app ${appId}`);
       return withLock(appId, async () => {
@@ -1085,7 +1137,9 @@ export function registerAppHandlers() {
           const appInfo = runningApps.get(appId);
           if (appInfo) {
             const { processId } = appInfo;
-            logger.log(`Stopping app ${appId} (processId ${processId}) before restart`);
+            logger.log(
+              `Stopping app ${appId} (processId ${processId}) before restart`,
+            );
             await stopAppByInfo(appId, appInfo);
           } else {
             logger.log(`App ${appId} not running. Proceeding to start.`);
@@ -1111,7 +1165,9 @@ export function registerAppHandlers() {
             const runtimeMode = settings.runtimeMode2 ?? "host";
 
             const nodeModulesPath = path.join(appPath, "node_modules");
-            logger.log(`Removing node_modules for app ${appId} at ${nodeModulesPath}`);
+            logger.log(
+              `Removing node_modules for app ${appId} at ${nodeModulesPath}`,
+            );
             if (fs.existsSync(nodeModulesPath)) {
               await fsPromises.rm(nodeModulesPath, {
                 recursive: true,
@@ -1129,15 +1185,21 @@ export function registerAppHandlers() {
               );
               try {
                 await removeDockerVolumesForApp(appId);
-                logger.log(`Removed Docker volumes for app ${appId} (dyad-pnpm-${appId}).`);
+                logger.log(
+                  `Removed Docker volumes for app ${appId} (dyad-pnpm-${appId}).`,
+                );
               } catch (e) {
                 // Best-effort cleanup; log and continue
-                logger.warn(`Failed to remove Docker volumes for app ${appId}. Continuing: ${e}`);
+                logger.warn(
+                  `Failed to remove Docker volumes for app ${appId}. Continuing: ${e}`,
+                );
               }
             }
           }
 
-          logger.debug(`Executing app ${appId} in path ${app.path} after restart request`); // Adjusted log
+          logger.debug(
+            `Executing app ${appId} in path ${app.path} after restart request`,
+          ); // Adjusted log
 
           await executeApp({
             appPath,
@@ -1161,7 +1223,11 @@ export function registerAppHandlers() {
     "edit-app-file",
     async (
       _,
-      { appId, filePath, content }: { appId: number; filePath: string; content: string },
+      {
+        appId,
+        filePath,
+        content,
+      }: { appId: number; filePath: string; content: string },
     ): Promise<EditAppFileReturnType> => {
       // It should already be normalized, but just in case.
       filePath = normalizePath(filePath);
@@ -1187,7 +1253,10 @@ export function registerAppHandlers() {
             appId: app.id,
           });
         } catch (error) {
-          logger.error("Error storing Neon timestamp at current version:", error);
+          logger.error(
+            "Error storing Neon timestamp at current version:",
+            error,
+          );
           throw new Error(
             "Could not store Neon timestamp at current version; database versioning functionality is not working: " +
               error,
@@ -1220,7 +1289,9 @@ export function registerAppHandlers() {
         // Check if shared module was modified - redeploy all functions
         if (isSharedServerModule(filePath)) {
           try {
-            logger.info(`Shared module ${filePath} modified, redeploying all Supabase functions`);
+            logger.info(
+              `Shared module ${filePath} modified, redeploying all Supabase functions`,
+            );
             const deployErrors = await deployAllSupabaseFunctions({
               appPath,
               supabaseProjectId: app.supabaseProjectId,
@@ -1232,7 +1303,10 @@ export function registerAppHandlers() {
               };
             }
           } catch (error) {
-            logger.error(`Error redeploying Supabase functions after shared module change:`, error);
+            logger.error(
+              `Error redeploying Supabase functions after shared module change:`,
+              error,
+            );
             return {
               warning: `File saved, but failed to redeploy Supabase functions: ${error}`,
             };
@@ -1248,7 +1322,10 @@ export function registerAppHandlers() {
               organizationSlug: app.supabaseOrganizationSlug ?? null,
             });
           } catch (error) {
-            logger.error(`Error deploying Supabase function ${filePath}:`, error);
+            logger.error(
+              `Error deploying Supabase function ${filePath}:`,
+              error,
+            );
             return {
               warning: `File saved, but failed to deploy Supabase function: ${filePath}: ${error}`,
             };
@@ -1259,59 +1336,67 @@ export function registerAppHandlers() {
     },
   );
 
-  ipcMain.handle("delete-app", async (_, { appId }: { appId: number }): Promise<void> => {
-    // Static server worker is NOT terminated here anymore
+  ipcMain.handle(
+    "delete-app",
+    async (_, { appId }: { appId: number }): Promise<void> => {
+      // Static server worker is NOT terminated here anymore
 
-    return withLock(appId, async () => {
-      // Check if app exists
-      const app = await db.query.apps.findFirst({
-        where: eq(apps.id, appId),
-      });
+      return withLock(appId, async () => {
+        // Check if app exists
+        const app = await db.query.apps.findFirst({
+          where: eq(apps.id, appId),
+        });
 
-      if (!app) {
-        throw new Error("App not found");
-      }
-
-      // Stop the app if it's running
-      if (runningApps.has(appId)) {
-        const appInfo = runningApps.get(appId)!;
-        try {
-          logger.log(`Stopping app ${appId} before deletion.`); // Adjusted log
-          await stopAppByInfo(appId, appInfo);
-        } catch (error: any) {
-          logger.error(`Error stopping app ${appId} before deletion:`, error); // Adjusted log
-          // Continue with deletion even if stopping fails
+        if (!app) {
+          throw new Error("App not found");
         }
-      }
 
-      // Clear logs for this app to prevent memory leak
-      clearLogs(appId);
+        // Stop the app if it's running
+        if (runningApps.has(appId)) {
+          const appInfo = runningApps.get(appId)!;
+          try {
+            logger.log(`Stopping app ${appId} before deletion.`); // Adjusted log
+            await stopAppByInfo(appId, appInfo);
+          } catch (error: any) {
+            logger.error(`Error stopping app ${appId} before deletion:`, error); // Adjusted log
+            // Continue with deletion even if stopping fails
+          }
+        }
 
-      // Delete app from database
-      try {
-        await db.delete(apps).where(eq(apps.id, appId));
-        // Note: Associated chats will cascade delete
-      } catch (error: any) {
-        logger.error(`Error deleting app ${appId} from database:`, error);
-        throw new Error(`Failed to delete app from database: ${error.message}`);
-      }
+        // Clear logs for this app to prevent memory leak
+        clearLogs(appId);
 
-      // Delete app files
-      const appPath = getDyadAppPath(app.path);
-      try {
-        await fsPromises.rm(appPath, { recursive: true, force: true });
-      } catch (error: any) {
-        logger.error(`Error deleting app files for app ${appId}:`, error);
-        throw new Error(
-          `App deleted from database, but failed to delete app files. Please delete app files from ${appPath} manually.\n\nError: ${error.message}`,
-        );
-      }
-    });
-  });
+        // Delete app from database
+        try {
+          await db.delete(apps).where(eq(apps.id, appId));
+          // Note: Associated chats will cascade delete
+        } catch (error: any) {
+          logger.error(`Error deleting app ${appId} from database:`, error);
+          throw new Error(
+            `Failed to delete app from database: ${error.message}`,
+          );
+        }
+
+        // Delete app files
+        const appPath = getDyadAppPath(app.path);
+        try {
+          await fsPromises.rm(appPath, { recursive: true, force: true });
+        } catch (error: any) {
+          logger.error(`Error deleting app files for app ${appId}:`, error);
+          throw new Error(
+            `App deleted from database, but failed to delete app files. Please delete app files from ${appPath} manually.\n\nError: ${error.message}`,
+          );
+        }
+      });
+    },
+  );
 
   ipcMain.handle(
     "add-to-favorite",
-    async (_, { appId }: { appId: number }): Promise<{ isFavorite: boolean }> => {
+    async (
+      _,
+      { appId }: { appId: number },
+    ): Promise<{ isFavorite: boolean }> => {
       return withLock(appId, async () => {
         try {
           // Fetch the current isFavorite value
@@ -1335,13 +1420,18 @@ export function registerAppHandlers() {
             .returning({ isFavorite: apps.isFavorite });
 
           if (updated.length === 0) {
-            throw new Error(`Failed to update favorite status for app ID ${appId}.`);
+            throw new Error(
+              `Failed to update favorite status for app ID ${appId}.`,
+            );
           }
 
           // Return the updated isFavorite value
           return { isFavorite: updated[0].isFavorite };
         } catch (error: any) {
-          logger.error(`Error in add-to-favorite handler for app ID ${appId}:`, error);
+          logger.error(
+            `Error in add-to-favorite handler for app ID ${appId}:`,
+            error,
+          );
           throw new Error(`Failed to toggle favorite status: ${error.message}`);
         }
       });
@@ -1352,7 +1442,11 @@ export function registerAppHandlers() {
     "rename-app",
     async (
       _,
-      { appId, appName, appPath }: { appId: number; appName: string; appPath: string },
+      {
+        appId,
+        appName,
+        appPath,
+      }: { appId: number; appName: string; appPath: string },
     ): Promise<void> => {
       return withLock(appId, async () => {
         // Check if app exists
@@ -1378,7 +1472,8 @@ export function registerAppHandlers() {
         // Validate path for invalid characters when path changes (only for relative paths)
         if (pathChanged) {
           const invalidChars = /[<>:"|?*/\\]/;
-          const hasInvalidChars = invalidChars.test(appPath) || /[\x00-\x1f]/.test(appPath);
+          const hasInvalidChars =
+            invalidChars.test(appPath) || /[\x00-\x1f]/.test(appPath);
 
           if (hasInvalidChars) {
             throw new Error(
@@ -1415,7 +1510,9 @@ export function registerAppHandlers() {
         }
 
         if (hasPathConflict) {
-          throw new Error(`An app with the path '${newAppPath}' already exists`);
+          throw new Error(
+            `An app with the path '${newAppPath}' already exists`,
+          );
         }
 
         // Stop the app if it's running
@@ -1425,7 +1522,9 @@ export function registerAppHandlers() {
             await stopAppByInfo(appId, appInfo);
           } catch (error: any) {
             logger.error(`Error stopping app ${appId} before renaming:`, error);
-            throw new Error(`Failed to stop app before renaming: ${error.message}`);
+            throw new Error(
+              `Failed to stop app before renaming: ${error.message}`,
+            );
           }
         }
 
@@ -1436,7 +1535,9 @@ export function registerAppHandlers() {
           try {
             // Check if destination directory already exists
             if (fs.existsSync(newAppPath)) {
-              throw new Error(`Destination path '${newAppPath}' already exists`);
+              throw new Error(
+                `Destination path '${newAppPath}' already exists`,
+              );
             }
 
             // Create parent directory if it doesn't exist
@@ -1449,7 +1550,10 @@ export function registerAppHandlers() {
               excludeNodeModules: true,
             });
           } catch (error: any) {
-            logger.error(`Error moving app files from ${oldAppPath} to ${newAppPath}:`, error);
+            logger.error(
+              `Error moving app files from ${oldAppPath} to ${newAppPath}:`,
+              error,
+            );
             // Attempt cleanup if destination exists (partial copy may have occurred)
             if (fs.existsSync(newAppPath)) {
               try {
@@ -1458,7 +1562,10 @@ export function registerAppHandlers() {
                   force: true,
                 });
               } catch (cleanupError) {
-                logger.warn(`Failed to clean up partial move at ${newAppPath}:`, cleanupError);
+                logger.warn(
+                  `Failed to clean up partial move at ${newAppPath}:`,
+                  cleanupError,
+                );
               }
             }
             throw new Error(`Failed to move app files: ${error.message}`);
@@ -1473,7 +1580,10 @@ export function registerAppHandlers() {
             //
             // Not deleting the old directory is annoying, but not a big deal
             // since the user can do it themselves if they need to.
-            logger.warn(`Error deleting old app directory ${oldAppPath}:`, error);
+            logger.warn(
+              `Error deleting old app directory ${oldAppPath}:`,
+              error,
+            );
           }
         }
 
@@ -1502,7 +1612,10 @@ export function registerAppHandlers() {
               // Delete the new directory
               await fsPromises.rm(newAppPath, { recursive: true, force: true });
             } catch (rollbackError) {
-              logger.error(`Failed to rollback file move during rename error:`, rollbackError);
+              logger.error(
+                `Failed to rollback file move during rename error:`,
+                rollbackError,
+              );
             }
           }
 
@@ -1597,7 +1710,9 @@ export function registerAppHandlers() {
           // and 'main' already exists, we might want to allow this if 'main' is the current branch
           // and just switch to it, or delete 'master'.
           // For now, let's keep it simple and throw an error.
-          throw new Error(`Branch '${newBranchName}' already exists. Cannot rename.`);
+          throw new Error(
+            `Branch '${newBranchName}' already exists. Cannot rename.`,
+          );
         }
 
         await gitRenameBranch({
@@ -1609,7 +1724,9 @@ export function registerAppHandlers() {
           `Branch renamed from '${oldBranchName}' to '${newBranchName}' for app ${appId}`,
         );
       } catch (error: any) {
-        logger.error(`Failed to rename branch for app ${appId}: ${error.message}`);
+        logger.error(
+          `Failed to rename branch for app ${appId}: ${error.message}`,
+        );
         throw new Error(
           `Failed to rename branch '${oldBranchName}' to '${newBranchName}': ${error.message}`,
         );
@@ -1617,31 +1734,34 @@ export function registerAppHandlers() {
     });
   });
 
-  handle("respond-to-app-input", async (_, { appId, response }: RespondToAppInputParams) => {
-    if (response !== "y" && response !== "n") {
-      throw new Error(`Invalid response: ${response}`);
-    }
-    const appInfo = runningApps.get(appId);
+  handle(
+    "respond-to-app-input",
+    async (_, { appId, response }: RespondToAppInputParams) => {
+      if (response !== "y" && response !== "n") {
+        throw new Error(`Invalid response: ${response}`);
+      }
+      const appInfo = runningApps.get(appId);
 
-    if (!appInfo) {
-      throw new Error(`App ${appId} is not running`);
-    }
+      if (!appInfo) {
+        throw new Error(`App ${appId} is not running`);
+      }
 
-    const { process } = appInfo;
+      const { process } = appInfo;
 
-    if (!process.stdin) {
-      throw new Error(`App ${appId} process has no stdin available`);
-    }
+      if (!process.stdin) {
+        throw new Error(`App ${appId} process has no stdin available`);
+      }
 
-    try {
-      // Write the response to stdin with a newline
-      process.stdin.write(`${response}\n`);
-      logger.debug(`Sent response '${response}' to app ${appId} stdin`);
-    } catch (error: any) {
-      logger.error(`Error sending response to app ${appId}:`, error);
-      throw new Error(`Failed to send response to app: ${error.message}`);
-    }
-  });
+      try {
+        // Write the response to stdin with a newline
+        process.stdin.write(`${response}\n`);
+        logger.debug(`Sent response '${response}' to app ${appId} stdin`);
+      } catch (error: any) {
+        logger.error(`Error sending response to app ${appId}:`, error);
+        throw new Error(`Failed to send response to app: ${error.message}`);
+      }
+    },
+  );
 
   handle(
     "search-app-files",
@@ -1674,78 +1794,90 @@ export function registerAppHandlers() {
     },
   );
 
-  handle("search-app", async (_, searchQuery: string): Promise<AppSearchResult[]> => {
-    // Use parameterized query to prevent SQL injection
-    const pattern = `%${searchQuery.replace(/[%_]/g, "\\$&")}%`;
+  handle(
+    "search-app",
+    async (_, searchQuery: string): Promise<AppSearchResult[]> => {
+      // Use parameterized query to prevent SQL injection
+      const pattern = `%${searchQuery.replace(/[%_]/g, "\\$&")}%`;
 
-    // 1) Apps whose name matches
-    const appNameMatches = await db
-      .select({
-        id: apps.id,
-        name: apps.name,
-        createdAt: apps.createdAt,
-      })
-      .from(apps)
-      .where(like(apps.name, pattern))
-      .orderBy(desc(apps.createdAt));
+      // 1) Apps whose name matches
+      const appNameMatches = await db
+        .select({
+          id: apps.id,
+          name: apps.name,
+          createdAt: apps.createdAt,
+        })
+        .from(apps)
+        .where(like(apps.name, pattern))
+        .orderBy(desc(apps.createdAt));
 
-    const appNameMatchesResult: AppSearchResult[] = appNameMatches.map((r) => ({
-      id: r.id,
-      name: r.name,
-      createdAt: r.createdAt,
-      matchedChatTitle: null,
-      matchedChatMessage: null,
-    }));
+      const appNameMatchesResult: AppSearchResult[] = appNameMatches.map(
+        (r) => ({
+          id: r.id,
+          name: r.name,
+          createdAt: r.createdAt,
+          matchedChatTitle: null,
+          matchedChatMessage: null,
+        }),
+      );
 
-    // 2) Apps whose chat title matches
-    const chatTitleMatches = await db
-      .select({
-        id: apps.id,
-        name: apps.name,
-        createdAt: apps.createdAt,
-        matchedChatTitle: chats.title,
-      })
-      .from(apps)
-      .innerJoin(chats, eq(apps.id, chats.appId))
-      .where(like(chats.title, pattern))
-      .orderBy(desc(apps.createdAt));
+      // 2) Apps whose chat title matches
+      const chatTitleMatches = await db
+        .select({
+          id: apps.id,
+          name: apps.name,
+          createdAt: apps.createdAt,
+          matchedChatTitle: chats.title,
+        })
+        .from(apps)
+        .innerJoin(chats, eq(apps.id, chats.appId))
+        .where(like(chats.title, pattern))
+        .orderBy(desc(apps.createdAt));
 
-    const chatTitleMatchesResult: AppSearchResult[] = chatTitleMatches.map((r) => ({
-      id: r.id,
-      name: r.name,
-      createdAt: r.createdAt,
-      matchedChatTitle: r.matchedChatTitle,
-      matchedChatMessage: null,
-    }));
+      const chatTitleMatchesResult: AppSearchResult[] = chatTitleMatches.map(
+        (r) => ({
+          id: r.id,
+          name: r.name,
+          createdAt: r.createdAt,
+          matchedChatTitle: r.matchedChatTitle,
+          matchedChatMessage: null,
+        }),
+      );
 
-    // 3) Apps whose chat message content matches
-    const chatMessageMatches = await db
-      .select({
-        id: apps.id,
-        name: apps.name,
-        createdAt: apps.createdAt,
-        matchedChatTitle: chats.title,
-        matchedChatMessage: messages.content,
-      })
-      .from(apps)
-      .innerJoin(chats, eq(apps.id, chats.appId))
-      .innerJoin(messages, eq(chats.id, messages.chatId))
-      .where(like(messages.content, pattern))
-      .orderBy(desc(apps.createdAt));
+      // 3) Apps whose chat message content matches
+      const chatMessageMatches = await db
+        .select({
+          id: apps.id,
+          name: apps.name,
+          createdAt: apps.createdAt,
+          matchedChatTitle: chats.title,
+          matchedChatMessage: messages.content,
+        })
+        .from(apps)
+        .innerJoin(chats, eq(apps.id, chats.appId))
+        .innerJoin(messages, eq(chats.id, messages.chatId))
+        .where(like(messages.content, pattern))
+        .orderBy(desc(apps.createdAt));
 
-    // Flatten and dedupe by app id
-    const allMatches: AppSearchResult[] = [
-      ...appNameMatchesResult,
-      ...chatTitleMatchesResult,
-      ...chatMessageMatches,
-    ];
-    const uniqueApps = Array.from(new Map(allMatches.map((app) => [app.id, app])).values());
+      // Flatten and dedupe by app id
+      const allMatches: AppSearchResult[] = [
+        ...appNameMatchesResult,
+        ...chatTitleMatchesResult,
+        ...chatMessageMatches,
+      ];
+      const uniqueApps = Array.from(
+        new Map(allMatches.map((app) => [app.id, app])).values(),
+      );
 
-    // Sort newest apps first
-    uniqueApps.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      // Sort newest apps first
+      uniqueApps.sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
 
-    return uniqueApps;
-  });
+      return uniqueApps;
+    },
+  );
 
   // Handler for adding logs to central store from renderer
   ipcMain.handle("add-log", async (_, entry: ConsoleEntry) => {
@@ -1778,7 +1910,10 @@ export function registerAppHandlers() {
 
   handle(
     "change-app-location",
-    async (_, params: ChangeAppLocationParams): Promise<ChangeAppLocationResult> => {
+    async (
+      _,
+      params: ChangeAppLocationParams,
+    ): Promise<ChangeAppLocationResult> => {
       const { appId, parentDirectory } = params;
 
       if (!parentDirectory) {
@@ -1810,7 +1945,10 @@ export function registerAppHandlers() {
         if (currentResolvedPath === nextResolvedPath) {
           // Path hasn't changed, but we should update to absolute path format if needed
           if (!path.isAbsolute(app.path)) {
-            await db.update(apps).set({ path: nextResolvedPath }).where(eq(apps.id, appId));
+            await db
+              .update(apps)
+              .set({ path: nextResolvedPath })
+              .where(eq(apps.id, appId));
           }
           return {
             resolvedPath: nextResolvedPath,
@@ -1820,7 +1958,8 @@ export function registerAppHandlers() {
         const allApps = await db.query.apps.findMany();
         const conflict = allApps.some(
           (existingApp) =>
-            existingApp.id !== appId && getDyadAppPath(existingApp.path) === nextResolvedPath,
+            existingApp.id !== appId &&
+            getDyadAppPath(existingApp.path) === nextResolvedPath,
         );
 
         if (conflict) {
@@ -1841,7 +1980,10 @@ export function registerAppHandlers() {
           logger.warn(
             `Source path ${currentResolvedPath} does not exist. Updating database path only.`,
           );
-          await db.update(apps).set({ path: nextResolvedPath }).where(eq(apps.id, appId));
+          await db
+            .update(apps)
+            .set({ path: nextResolvedPath })
+            .where(eq(apps.id, appId));
           return {
             resolvedPath: nextResolvedPath,
           };
@@ -1853,7 +1995,9 @@ export function registerAppHandlers() {
             await stopAppByInfo(appId, appInfo);
           } catch (error: any) {
             logger.error(`Error stopping app ${appId} before moving:`, error);
-            throw new Error(`Failed to stop app before moving: ${error.message}`);
+            throw new Error(
+              `Failed to stop app before moving: ${error.message}`,
+            );
           }
         }
 
@@ -1866,7 +2010,10 @@ export function registerAppHandlers() {
           });
 
           // Update path to absolute path
-          await db.update(apps).set({ path: nextResolvedPath }).where(eq(apps.id, appId));
+          await db
+            .update(apps)
+            .set({ path: nextResolvedPath })
+            .where(eq(apps.id, appId));
 
           try {
             await fsPromises.rm(currentResolvedPath, {
@@ -1874,7 +2021,10 @@ export function registerAppHandlers() {
               force: true,
             });
           } catch (error: any) {
-            logger.warn(`Error deleting old app directory ${currentResolvedPath}:`, error);
+            logger.warn(
+              `Error deleting old app directory ${currentResolvedPath}:`,
+              error,
+            );
           }
 
           return {
@@ -1889,7 +2039,10 @@ export function registerAppHandlers() {
                 force: true,
               });
             } catch (cleanupError) {
-              logger.warn(`Failed to clean up partial move at ${nextResolvedPath}:`, cleanupError);
+              logger.warn(
+                `Failed to clean up partial move at ${nextResolvedPath}:`,
+                cleanupError,
+              );
             }
           }
           logger.error(

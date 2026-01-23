@@ -30,11 +30,19 @@ export function resolveConsent(
   }
 }
 
-export async function getStoredConsent(serverId: number, toolName: string): Promise<Consent> {
+export async function getStoredConsent(
+  serverId: number,
+  toolName: string,
+): Promise<Consent> {
   const rows = await db
     .select()
     .from(mcpToolConsents)
-    .where(and(eq(mcpToolConsents.serverId, serverId), eq(mcpToolConsents.toolName, toolName)));
+    .where(
+      and(
+        eq(mcpToolConsents.serverId, serverId),
+        eq(mcpToolConsents.toolName, toolName),
+      ),
+    );
   if (rows.length === 0) return "ask";
   return (rows[0].consent as Consent) ?? "ask";
 }
@@ -47,12 +55,22 @@ export async function setStoredConsent(
   const rows = await db
     .select()
     .from(mcpToolConsents)
-    .where(and(eq(mcpToolConsents.serverId, serverId), eq(mcpToolConsents.toolName, toolName)));
+    .where(
+      and(
+        eq(mcpToolConsents.serverId, serverId),
+        eq(mcpToolConsents.toolName, toolName),
+      ),
+    );
   if (rows.length > 0) {
     await db
       .update(mcpToolConsents)
       .set({ consent })
-      .where(and(eq(mcpToolConsents.serverId, serverId), eq(mcpToolConsents.toolName, toolName)));
+      .where(
+        and(
+          eq(mcpToolConsents.serverId, serverId),
+          eq(mcpToolConsents.toolName, toolName),
+        ),
+      );
   } else {
     await db.insert(mcpToolConsents).values({ serverId, toolName, consent });
   }

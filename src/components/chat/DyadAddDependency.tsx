@@ -13,7 +13,10 @@ interface DyadAddDependencyProps {
   packages?: string;
 }
 
-export const DyadAddDependency: React.FC<DyadAddDependencyProps> = ({ children, node }) => {
+export const DyadAddDependency: React.FC<DyadAddDependencyProps> = ({
+  children,
+  node,
+}) => {
   // Extract package attribute from the node if available
   const packages = node?.properties?.packages?.split(" ") || "";
   const [isContentVisible, setIsContentVisible] = useState(false);
@@ -24,21 +27,27 @@ export const DyadAddDependency: React.FC<DyadAddDependencyProps> = ({ children, 
       className={`bg-(--background-lightest) dark:bg-gray-900 hover:bg-(--background-lighter) rounded-lg px-4 py-3 border my-2 border-border ${
         hasChildren ? "cursor-pointer" : ""
       }`}
-      onClick={hasChildren ? () => setIsContentVisible(!isContentVisible) : undefined}
+      onClick={
+        hasChildren ? () => setIsContentVisible(!isContentVisible) : undefined
+      }
     >
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <Package size={18} className="text-gray-600 dark:text-gray-400" />
           {packages.length > 0 && (
             <div className="text-gray-800 dark:text-gray-200 font-semibold text-base">
-              <div className="font-normal">Do you want to install these packages?</div>{" "}
+              <div className="font-normal">
+                Do you want to install these packages?
+              </div>{" "}
               <div className="flex flex-wrap gap-2 mt-2">
                 {packages.map((p: string) => (
                   <span
                     className="cursor-pointer text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
                     key={p}
                     onClick={() => {
-                      IpcClient.getInstance().openExternalUrl(`https://www.npmjs.com/package/${p}`);
+                      IpcClient.getInstance().openExternalUrl(
+                        `https://www.npmjs.com/package/${p}`,
+                      );
                     }}
                   >
                     {p}

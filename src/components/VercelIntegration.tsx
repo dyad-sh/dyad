@@ -19,7 +19,9 @@ export function VercelIntegration() {
         showError("Failed to disconnect from Vercel");
       }
     } catch (err: any) {
-      showError(err.message || "An error occurred while disconnecting from Vercel");
+      showError(
+        err.message || "An error occurred while disconnecting from Vercel",
+      );
     } finally {
       setIsDisconnecting(false);
     }
@@ -34,7 +36,9 @@ export function VercelIntegration() {
   return (
     <div className="flex items-center justify-between">
       <div>
-        <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Vercel Integration</h3>
+        <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          Vercel Integration
+        </h3>
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
           Your account is connected to Vercel.
         </p>

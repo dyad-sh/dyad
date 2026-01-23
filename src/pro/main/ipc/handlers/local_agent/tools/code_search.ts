@@ -1,6 +1,11 @@
 import { z } from "zod";
 import log from "electron-log";
-import { ToolDefinition, AgentContext, escapeXmlAttr, escapeXmlContent } from "./types";
+import {
+  ToolDefinition,
+  AgentContext,
+  escapeXmlAttr,
+  escapeXmlContent,
+} from "./types";
 import { extractCodebase } from "../../../../../../utils/codebase";
 import { engineFetch } from "./engine_fetch";
 
@@ -39,7 +44,9 @@ async function callCodeSearch(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Code search failed: ${response.status} ${response.statusText} - ${errorText}`);
+    throw new Error(
+      `Code search failed: ${response.status} ${response.statusText} - ${errorText}`,
+    );
   }
 
   const data = codeSearchResponseSchema.parse(await response.json());
@@ -62,67 +69,70 @@ Skip this tool for:
 3. Simple symbol lookups (use \`grep\`)
 `;
 
-export const codeSearchTool: ToolDefinition<z.infer<typeof codeSearchSchema>> = {
-  name: "code_search",
-  description: DESCRIPTION,
-  inputSchema: codeSearchSchema,
-  defaultConsent: "always",
+export const codeSearchTool: ToolDefinition<z.infer<typeof codeSearchSchema>> =
+  {
+    name: "code_search",
+    description: DESCRIPTION,
+    inputSchema: codeSearchSchema,
+    defaultConsent: "always",
 
-  getConsentPreview: (args) => `Search for "${args.query}"`,
+    getConsentPreview: (args) => `Search for "${args.query}"`,
 
-  buildXml: (args, isComplete) => {
-    if (!args.query) return undefined;
-    if (isComplete) return undefined;
-    return `<dyad-code-search query="${escapeXmlAttr(args.query)}">Searching...`;
-  },
+    buildXml: (args, isComplete) => {
+      if (!args.query) return undefined;
+      if (isComplete) return undefined;
+      return `<dyad-code-search query="${escapeXmlAttr(args.query)}">Searching...`;
+    },
 
-  execute: async (args, ctx: AgentContext) => {
-    logger.log(`Executing code search: ${args.query}`);
+    execute: async (args, ctx: AgentContext) => {
+      logger.log(`Executing code search: ${args.query}`);
 
-    // Gather all files from the project
-    const { files } = await extractCodebase({
-      appPath: ctx.appPath,
-      chatContext: {
-        contextPaths: [],
-        smartContextAutoIncludes: [],
-        excludePaths: [],
-      },
-    });
+      // Gather all files from the project
+      const { files } = await extractCodebase({
+        appPath: ctx.appPath,
+        chatContext: {
+          contextPaths: [],
+          smartContextAutoIncludes: [],
+          excludePaths: [],
+        },
+      });
 
-    // Map files to FileContext format
-    const filesContext = files.map((file) => ({
-      path: file.path,
-      content: file.content,
-    }));
+      // Map files to FileContext format
+      const filesContext = files.map((file) => ({
+        path: file.path,
+        content: file.content,
+      }));
 
-    logger.log(`Searching ${filesContext.length} files for query: "${args.query}"`);
+      logger.log(
+        `Searching ${filesContext.length} files for query: "${args.query}"`,
+      );
 
-    // Call the code-search endpoint
-    const relevantFiles = await callCodeSearch(
-      {
-        query: args.query,
-        filesContext,
-      },
-      ctx,
-    );
+      // Call the code-search endpoint
+      const relevantFiles = await callCodeSearch(
+        {
+          query: args.query,
+          filesContext,
+        },
+        ctx,
+      );
 
-    // Format results
-    const resultText =
-      relevantFiles.length === 0
-        ? "No relevant files found."
-        : relevantFiles.map((f) => ` - ${f}`).join("\n");
+      // Format results
+      const resultText =
+        relevantFiles.length === 0
+          ? "No relevant files found."
+          : relevantFiles.map((f) => ` - ${f}`).join("\n");
 
-    // Write final result to UI and DB with dyad-code-search wrapper
-    ctx.onXmlComplete(
-      `<dyad-code-search query="${escapeXmlAttr(args.query)}">${escapeXmlContent(resultText)}</dyad-code-search>`,
-    );
+      // Write final result to UI and DB with dyad-code-search wrapper
+      ctx.onXmlComplete(
+        `<dyad-code-search query="${escapeXmlAttr(args.query)}">${escapeXmlContent(resultText)}</dyad-code-search>`,
+      );
 
-    logger.log(`Code search completed for query: ${args.query}`);
+      logger.log(`Code search completed for query: ${args.query}`);
 
-    if (relevantFiles.length === 0) {
-      return "No relevant files found for the given query.";
-    }
+      if (relevantFiles.length === 0) {
+        return "No relevant files found for the given query.";
+      }
 
-    return `Found ${relevantFiles.length} relevant file(s):\n${resultText}`;
-  },
-};
+      return `Found ${relevantFiles.length} relevant file(s):\n${resultText}`;
+    },
+  };

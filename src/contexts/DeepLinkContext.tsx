@@ -15,9 +15,9 @@ const DeepLinkContext = createContext<DeepLinkContextType>({
 });
 
 export function DeepLinkProvider({ children }: { children: React.ReactNode }) {
-  const [lastDeepLink, setLastDeepLink] = useState<(DeepLinkData & { timestamp: number }) | null>(
-    null,
-  );
+  const [lastDeepLink, setLastDeepLink] = useState<
+    (DeepLinkData & { timestamp: number }) | null
+  >(null);
   const navigate = useNavigate();
   const scrollAndNavigateTo = useScrollAndNavigateTo("/settings", {
     behavior: "smooth",

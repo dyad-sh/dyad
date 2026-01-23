@@ -226,7 +226,10 @@ describe("integration tests", () => {
     const serverName = "filesystem";
     const toolName = "read_file";
 
-    const key = buildMcpToolKey(sanitizeMcpName(serverName), sanitizeMcpName(toolName));
+    const key = buildMcpToolKey(
+      sanitizeMcpName(serverName),
+      sanitizeMcpName(toolName),
+    );
     expect(key).toBe("filesystem__read_file");
 
     const parsed = parseMcpToolKey(key);

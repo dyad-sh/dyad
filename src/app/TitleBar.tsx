@@ -15,7 +15,11 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { IpcClient } from "@/ipc/ipc_client";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { UserBudgetInfo } from "@/ipc/ipc_types";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { ActionHeader } from "@/components/preview_panel/ActionHeader";
 
 export const TitleBar = () => {
@@ -59,7 +63,9 @@ export const TitleBar = () => {
 
   // Get selected app name
   const selectedApp = apps.find((app) => app.id === selectedAppId);
-  const displayText = selectedApp ? `App: ${selectedApp.name}` : "(no app selected)";
+  const displayText = selectedApp
+    ? `App: ${selectedApp.name}`
+    : "(no app selected)";
 
   const handleAppClick = () => {
     if (selectedApp) {
@@ -137,7 +143,11 @@ function WindowsControls() {
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
         >
-          <rect width="12" height="1" fill={isDarkMode ? "#ffffff" : "#000000"} />
+          <rect
+            width="12"
+            height="1"
+            fill={isDarkMode ? "#ffffff" : "#000000"}
+          />
         </svg>
       </button>
       <button
@@ -184,7 +194,11 @@ function WindowsControls() {
   );
 }
 
-export function DyadProButton({ isDyadProEnabled }: { isDyadProEnabled: boolean }) {
+export function DyadProButton({
+  isDyadProEnabled,
+}: {
+  isDyadProEnabled: boolean;
+}) {
   const { navigate } = useRouter();
   const { userBudget } = useUserBudgetInfo();
   return (
@@ -204,13 +218,17 @@ export function DyadProButton({ isDyadProEnabled }: { isDyadProEnabled: boolean 
       size="sm"
     >
       {isDyadProEnabled ? "Pro" : "Pro (off)"}
-      {userBudget && isDyadProEnabled && <AICreditStatus userBudget={userBudget} />}
+      {userBudget && isDyadProEnabled && (
+        <AICreditStatus userBudget={userBudget} />
+      )}
     </Button>
   );
 }
 
 export function AICreditStatus({ userBudget }: { userBudget: UserBudgetInfo }) {
-  const remaining = Math.round(userBudget.totalCredits - userBudget.usedCredits);
+  const remaining = Math.round(
+    userBudget.totalCredits - userBudget.usedCredits,
+  );
   return (
     <Tooltip>
       <TooltipTrigger>

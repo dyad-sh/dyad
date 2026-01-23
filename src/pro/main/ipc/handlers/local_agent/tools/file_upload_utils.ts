@@ -7,7 +7,10 @@
 
 import fs from "node:fs";
 import log from "electron-log";
-import { FileUploadsState, FileUploadInfo } from "@/ipc/utils/file_uploads_state";
+import {
+  FileUploadsState,
+  FileUploadInfo,
+} from "@/ipc/utils/file_uploads_state";
 
 const readFile = fs.promises.readFile;
 const logger = log.scope("file_upload_utils");
@@ -52,14 +55,21 @@ export async function resolveFileUploadContent(
 
   try {
     const fileContent = await readFile(fileInfo.filePath);
-    logger.log(`Replaced file ID ${trimmedContent} with content from ${fileInfo.originalName}`);
+    logger.log(
+      `Replaced file ID ${trimmedContent} with content from ${fileInfo.originalName}`,
+    );
     return {
       content: fileContent,
       wasReplaced: true,
       fileInfo,
     };
   } catch (error) {
-    logger.error(`Failed to read uploaded file ${fileInfo.originalName}:`, error);
-    throw new Error(`Failed to read uploaded file: ${fileInfo.originalName}. ${error}`);
+    logger.error(
+      `Failed to read uploaded file ${fileInfo.originalName}:`,
+      error,
+    );
+    throw new Error(
+      `Failed to read uploaded file: ${fileInfo.originalName}. ${error}`,
+    );
   }
 }

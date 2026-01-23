@@ -1,10 +1,22 @@
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { SimpleAvatar } from "@/components/ui/SimpleAvatar";
 import { IpcClient } from "@/ipc/ipc_client";
-import { Trash2, UserPlus, Users, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
+import {
+  Trash2,
+  UserPlus,
+  Users,
+  ChevronsDownUp,
+  ChevronsUpDown,
+} from "lucide-react";
 import { showSuccess, showError } from "@/lib/toast";
 import {
   AlertDialog,
@@ -37,7 +49,9 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
   const [inviteUsername, setInviteUsername] = useState("");
   const [isInviting, setIsInviting] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [collaboratorToDelete, setCollaboratorToDelete] = useState<string | null>(null);
+  const [collaboratorToDelete, setCollaboratorToDelete] = useState<
+    string | null
+  >(null);
 
   const loadCollaborators = useCallback(async () => {
     setIsLoading(true);
@@ -80,7 +94,10 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
     if (!collaboratorToDelete) return;
 
     try {
-      await IpcClient.getInstance().removeCollaborator(appId, collaboratorToDelete);
+      await IpcClient.getInstance().removeCollaborator(
+        appId,
+        collaboratorToDelete,
+      );
       showSuccess(`Removed ${collaboratorToDelete} from the project.`);
       loadCollaborators();
     } catch (error: any) {
@@ -92,7 +109,10 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
 
   return (
     <Card className="transition-all duration-200">
-      <CardHeader className="p-2 cursor-pointer" onClick={() => setIsExpanded((prev) => !prev)}>
+      <CardHeader
+        className="p-2 cursor-pointer"
+        onClick={() => setIsExpanded((prev) => !prev)}
+      >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Users className="w-5 h-5" />
@@ -145,9 +165,13 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
 
           {/* Collaborators List */}
           <div className="space-y-2 mt-4">
-            <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Current Team</h3>
+            <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">
+              Current Team
+            </h3>
             {isLoading ? (
-              <div className="text-sm text-center py-4 text-gray-500">Loading collaborators...</div>
+              <div className="text-sm text-center py-4 text-gray-500">
+                Loading collaborators...
+              </div>
             ) : collaborators.length === 0 ? (
               <div className="text-sm text-center py-4 text-gray-500 bg-gray-50 dark:bg-gray-800/50 rounded-md">
                 No collaborators found.
@@ -205,15 +229,18 @@ export function GithubCollaboratorManager({ appId }: CollaboratorManagerProps) {
             <AlertDialogTitle>Remove collaborator?</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to remove{" "}
-              <span className="font-medium">{collaboratorToDelete}</span> from this project? This
-              action cannot be undone.
+              <span className="font-medium">{collaboratorToDelete}</span> from
+              this project? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel data-testid="confirm-remove-collaborator-cancel">
               Cancel
             </AlertDialogCancel>
-            <AlertDialogAction data-testid="confirm-remove-collaborator" onClick={handleRemove}>
+            <AlertDialogAction
+              data-testid="confirm-remove-collaborator"
+              onClick={handleRemove}
+            >
               Remove
             </AlertDialogAction>
           </AlertDialogFooter>

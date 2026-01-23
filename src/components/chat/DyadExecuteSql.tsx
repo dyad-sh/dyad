@@ -1,7 +1,13 @@
 import type React from "react";
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { ChevronsDownUp, ChevronsUpDown, Database, Loader, CircleX } from "lucide-react";
+import {
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Database,
+  Loader,
+  CircleX,
+} from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
 import { CustomTagState } from "./stateTypes";
 
@@ -11,7 +17,11 @@ interface DyadExecuteSqlProps {
   description?: string;
 }
 
-export const DyadExecuteSql: React.FC<DyadExecuteSqlProps> = ({ children, node, description }) => {
+export const DyadExecuteSql: React.FC<DyadExecuteSqlProps> = ({
+  children,
+  node,
+  description,
+}) => {
   const [isContentVisible, setIsContentVisible] = useState(false);
   const state = node?.properties?.state as CustomTagState;
   const inProgress = state === "pending";
@@ -21,7 +31,11 @@ export const DyadExecuteSql: React.FC<DyadExecuteSqlProps> = ({ children, node, 
   return (
     <div
       className={`bg-(--background-lightest) hover:bg-(--background-lighter) rounded-lg px-4 py-2 border my-2 cursor-pointer ${
-        inProgress ? "border-amber-500" : aborted ? "border-red-500" : "border-border"
+        inProgress
+          ? "border-amber-500"
+          : aborted
+            ? "border-red-500"
+            : "border-border"
       }`}
       onClick={() => setIsContentVisible(!isContentVisible)}
     >

@@ -12,7 +12,9 @@ interface DyadCodebaseContextProps {
   };
 }
 
-export const DyadCodebaseContext: React.FC<DyadCodebaseContextProps> = ({ node }) => {
+export const DyadCodebaseContext: React.FC<DyadCodebaseContextProps> = ({
+  node,
+}) => {
   const state = node?.properties?.state as CustomTagState;
   const inProgress = state === "pending";
   const [isExpanded, setIsExpanded] = useState(inProgress);
@@ -80,7 +82,9 @@ export const DyadCodebaseContext: React.FC<DyadCodebaseContextProps> = ({ node }
               {files.map((file, index) => {
                 const filePath = file.trim();
                 const fileName = filePath.split("/").pop() || filePath;
-                const pathPart = filePath.substring(0, filePath.length - fileName.length) || "";
+                const pathPart =
+                  filePath.substring(0, filePath.length - fileName.length) ||
+                  "";
 
                 return (
                   <div

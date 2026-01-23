@@ -103,7 +103,9 @@ export const CodeHighlight = memo(
       >
         {language ? (
           <div className="absolute top-2 left-2 right-2 text-xs flex justify-between">
-            <span className="tracking-tighter text-muted-foreground/85">{language}</span>
+            <span className="tracking-tighter text-muted-foreground/85">
+              {language}
+            </span>
             {code && (
               <button
                 className="mr-2 flex items-center text-xs cursor-pointer"

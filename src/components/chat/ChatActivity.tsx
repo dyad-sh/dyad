@@ -1,11 +1,22 @@
 import { useMemo, useState } from "react";
 
 import { Bell, Loader2, CheckCircle2 } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { ChatSummary } from "@/lib/schemas";
 import { useAtomValue } from "jotai";
-import { isStreamingByIdAtom, recentStreamChatIdsAtom } from "@/atoms/chatAtoms";
+import {
+  isStreamingByIdAtom,
+  recentStreamChatIdsAtom,
+} from "@/atoms/chatAtoms";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useSelectChat } from "@/hooks/useSelectChat";
 import { useChats } from "@/hooks/useChats";
@@ -39,7 +50,10 @@ export function ChatActivityButton() {
         </TooltipTrigger>
         <TooltipContent>Recent chat activity</TooltipContent>
       </Tooltip>
-      <PopoverContent align="end" className="w-80 p-0 max-h-[50vh] overflow-y-auto">
+      <PopoverContent
+        align="end"
+        className="w-80 p-0 max-h-[50vh] overflow-y-auto"
+      >
         <ChatActivityList onSelect={() => setOpen(false)} />
       </PopoverContent>
     </Popover>
@@ -70,7 +84,9 @@ function ChatActivityList({ onSelect }: { onSelect?: () => void }) {
   }
 
   if (rows.length === 0) {
-    return <div className="p-4 text-sm text-muted-foreground">No recent chats</div>;
+    return (
+      <div className="p-4 text-sm text-muted-foreground">No recent chats</div>
+    );
   }
 
   return (
@@ -88,7 +104,9 @@ function ChatActivityList({ onSelect }: { onSelect?: () => void }) {
             data-testid={`chat-activity-list-item-${c.id}`}
           >
             <div className="min-w-0">
-              <div className="truncate text-sm font-medium">{c.title ?? `Chat #${c.id}`}</div>
+              <div className="truncate text-sm font-medium">
+                {c.title ?? `Chat #${c.id}`}
+              </div>
               <div className="text-xs text-muted-foreground">
                 {apps.apps.find((a) => a.id === c.appId)?.name}
               </div>

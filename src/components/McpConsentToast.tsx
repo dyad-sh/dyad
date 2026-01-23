@@ -35,7 +35,8 @@ export function McpConsentToast({
 
   // Collapsible input preview state
   const [isInputExpanded, setIsInputExpanded] = React.useState(false);
-  const [inputCollapsedMaxHeight, setInputCollapsedMaxHeight] = React.useState<number>(0);
+  const [inputCollapsedMaxHeight, setInputCollapsedMaxHeight] =
+    React.useState<number>(0);
   const [inputHasOverflow, setInputHasOverflow] = React.useState(false);
   const inputRef = React.useRef<HTMLPreElement | null>(null);
 
@@ -114,7 +115,8 @@ export function McpConsentToast({
             <div className="space-y-2 text-sm">
               <p>
                 <span className="font-semibold">{toolName}</span> from
-                <span className="font-semibold"> {serverName}</span> requests your consent.
+                <span className="font-semibold"> {serverName}</span> requests
+                your consent.
               </p>
               {toolDescription && (
                 <div>
@@ -145,7 +147,9 @@ export function McpConsentToast({
                     ref={inputRef}
                     className="bg-amber-100/60 dark:bg-slate-700/60 p-2 rounded text-xs whitespace-pre-wrap"
                     style={{
-                      maxHeight: isInputExpanded ? "40vh" : inputCollapsedMaxHeight,
+                      maxHeight: isInputExpanded
+                        ? "40vh"
+                        : inputCollapsedMaxHeight,
                       overflow: isInputExpanded ? "auto" : "hidden",
                     }}
                   >
@@ -164,7 +168,11 @@ export function McpConsentToast({
               )}
             </div>
             <div className="flex items-center gap-3 mt-4">
-              <Button onClick={() => handle("accept-once")} size="sm" className="px-6">
+              <Button
+                onClick={() => handle("accept-once")}
+                size="sm"
+                className="px-6"
+              >
                 Allow once
               </Button>
               <Button

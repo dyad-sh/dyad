@@ -24,13 +24,24 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { showError, showSuccess } from "@/lib/toast";
 import { useMutation } from "@tanstack/react-query";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 
-export type PreviewMode = "preview" | "code" | "problems" | "configure" | "publish" | "security";
+export type PreviewMode =
+  | "preview"
+  | "code"
+  | "problems"
+  | "configure"
+  | "publish"
+  | "security";
 
 // Preview Header component with preview mode toggle
 export const ActionHeader = () => {
@@ -231,7 +242,13 @@ export const ActionHeader = () => {
               </span>
             ),
           )}
-          {renderButton("code", codeRef, <Code size={iconSize} />, "Code", "code-mode-button")}
+          {renderButton(
+            "code",
+            codeRef,
+            <Code size={iconSize} />,
+            "Code",
+            "code-mode-button",
+          )}
           {renderButton(
             "configure",
             configureRef,

@@ -32,7 +32,9 @@ export function ZoomSelector() {
   const { settings, updateSettings } = useSettings();
   const currentZoomLevel: ZoomLevel = useMemo(() => {
     const value = settings?.zoomLevel ?? DEFAULT_ZOOM_LEVEL;
-    return ZoomLevelSchema.safeParse(value).success ? (value as ZoomLevel) : DEFAULT_ZOOM_LEVEL;
+    return ZoomLevelSchema.safeParse(value).success
+      ? (value as ZoomLevel)
+      : DEFAULT_ZOOM_LEVEL;
   }, [settings?.zoomLevel]);
 
   return (
@@ -45,7 +47,9 @@ export function ZoomSelector() {
       </div>
       <Select
         value={currentZoomLevel}
-        onValueChange={(value) => updateSettings({ zoomLevel: value as ZoomLevel })}
+        onValueChange={(value) =>
+          updateSettings({ zoomLevel: value as ZoomLevel })
+        }
       >
         <SelectTrigger id="zoom-level" className="w-[220px]">
           <SelectValue placeholder="Select zoom level" />

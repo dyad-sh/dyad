@@ -130,7 +130,9 @@ export const ProviderSettingSchema = z.union([
  * Type derived from the ProviderSettingSchema
  */
 export type ProviderSetting = z.infer<typeof ProviderSettingSchema>;
-export type RegularProviderSetting = z.infer<typeof RegularProviderSettingSchema>;
+export type RegularProviderSetting = z.infer<
+  typeof RegularProviderSettingSchema
+>;
 export type AzureProviderSetting = z.infer<typeof AzureProviderSettingSchema>;
 export type VertexProviderSetting = z.infer<typeof VertexProviderSettingSchema>;
 
@@ -163,11 +165,15 @@ export const SupabaseOrganizationCredentialsSchema = z.object({
   expiresIn: z.number(),
   tokenTimestamp: z.number(),
 });
-export type SupabaseOrganizationCredentials = z.infer<typeof SupabaseOrganizationCredentialsSchema>;
+export type SupabaseOrganizationCredentials = z.infer<
+  typeof SupabaseOrganizationCredentialsSchema
+>;
 
 export const SupabaseSchema = z.object({
   // Map keyed by organizationSlug -> organization credentials
-  organizations: z.record(z.string(), SupabaseOrganizationCredentialsSchema).optional(),
+  organizations: z
+    .record(z.string(), SupabaseOrganizationCredentialsSchema)
+    .optional(),
 
   // Legacy fields - kept for backwards compat
   accessToken: SecretSchema.optional(),
@@ -229,7 +235,11 @@ export type ReleaseChannel = z.infer<typeof ReleaseChannelSchema>;
 export const ZoomLevelSchema = z.enum(["90", "100", "110", "125", "150"]);
 export type ZoomLevel = z.infer<typeof ZoomLevelSchema>;
 
-export const SmartContextModeSchema = z.enum(["balanced", "conservative", "deep"]);
+export const SmartContextModeSchema = z.enum([
+  "balanced",
+  "conservative",
+  "deep",
+]);
 export type SmartContextMode = z.infer<typeof SmartContextModeSchema>;
 
 export const AgentToolConsentSchema = z.enum(["ask", "always", "never"]);
@@ -331,7 +341,10 @@ export function hasDyadProKey(settings: UserSettings): boolean {
 export function getEffectiveDefaultChatMode(settings: UserSettings): ChatMode {
   if (settings.defaultChatMode) {
     // "local-agent" requires Pro - fall back to "build" if user lost Pro access
-    if (settings.defaultChatMode === "local-agent" && !isDyadProEnabled(settings)) {
+    if (
+      settings.defaultChatMode === "local-agent" &&
+      !isDyadProEnabled(settings)
+    ) {
       return "build";
     }
     return settings.defaultChatMode;
@@ -345,7 +358,8 @@ export function isSupabaseConnected(settings: UserSettings | null): boolean {
   }
   return Boolean(
     settings.supabase?.accessToken ||
-    (settings.supabase?.organizations && Object.keys(settings.supabase.organizations).length > 0),
+    (settings.supabase?.organizations &&
+      Object.keys(settings.supabase.organizations).length > 0),
   );
 }
 

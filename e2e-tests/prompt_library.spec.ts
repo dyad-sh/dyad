@@ -14,7 +14,9 @@ test("create and edit prompt", async ({ po }) => {
   await expect(po.page.getByTestId("prompt-card")).toMatchAriaSnapshot();
 
   await po.page.getByTestId("edit-prompt-button").click();
-  await po.page.getByRole("textbox", { name: "Content" }).fill("prompt1content-edited");
+  await po.page
+    .getByRole("textbox", { name: "Content" })
+    .fill("prompt1content-edited");
   await po.page.getByRole("button", { name: "Save" }).click();
 
   await expect(po.page.getByTestId("prompt-card")).toMatchAriaSnapshot();

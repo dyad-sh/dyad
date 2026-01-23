@@ -23,7 +23,10 @@ import {
 } from "../shared/language_model_constants";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
 import { LanguageModelProvider } from "../ipc_types";
-import { createDyadEngine, type DyadEngineProvider } from "./llm_engine_provider";
+import {
+  createDyadEngine,
+  type DyadEngineProvider,
+} from "./llm_engine_provider";
 
 import { LM_STUDIO_BASE_URL } from "./lm_studio_utils";
 import { createOllamaProvider } from "./ollama_provider";
@@ -92,16 +95,21 @@ export async function getModelClient(
           enableLazyEdits:
             settings.selectedChatMode === "ask"
               ? false
-              : settings.enableProLazyEditsMode && settings.proLazyEditsMode !== "v2",
+              : settings.enableProLazyEditsMode &&
+                settings.proLazyEditsMode !== "v2",
           enableSmartFilesContext,
           enableWebSearch: settings.enableProWebSearch,
         },
         settings,
       });
 
-      logger.info(`\x1b[1;97;44m Using Dyad Pro API key for model: ${model.name} \x1b[0m`);
+      logger.info(
+        `\x1b[1;97;44m Using Dyad Pro API key for model: ${model.name} \x1b[0m`,
+      );
 
-      logger.info(`\x1b[1;30;42m Using Dyad Pro engine: ${dyadEngineUrl ?? "<prod>"} \x1b[0m`);
+      logger.info(
+        `\x1b[1;30;42m Using Dyad Pro engine: ${dyadEngineUrl ?? "<prod>"} \x1b[0m`,
+      );
 
       // Do not use free variant (for openrouter).
       const modelName = model.name.split(":free")[0];
@@ -127,7 +135,9 @@ export async function getModelClient(
   // Handle 'auto' provider by trying each model in AUTO_MODELS until one works
   if (model.provider === "auto") {
     if (model.name === "free") {
-      const openRouterProvider = allProviders.find((p) => p.id === "openrouter");
+      const openRouterProvider = allProviders.find(
+        (p) => p.id === "openrouter",
+      );
       if (!openRouterProvider) {
         throw new Error("OpenRouter provider not found");
       }
@@ -149,7 +159,9 @@ export async function getModelClient(
       };
     }
     for (const autoModel of AUTO_MODELS) {
-      const providerInfo = allProviders.find((p) => p.id === autoModel.provider);
+      const providerInfo = allProviders.find(
+        (p) => p.id === autoModel.provider,
+      );
       const envVarName = providerInfo?.envVarName;
 
       const apiKey =
@@ -157,7 +169,9 @@ export async function getModelClient(
         (envVarName ? getEnvVar(envVarName) : undefined);
 
       if (apiKey) {
-        logger.log(`Using provider: ${autoModel.provider} model: ${autoModel.name}`);
+        logger.log(
+          `Using provider: ${autoModel.provider} model: ${autoModel.name}`,
+        );
         // Recursively call with the specific model found
         return await getModelClient(
           {
@@ -169,7 +183,9 @@ export async function getModelClient(
       }
     }
     // If no models have API keys, throw an error
-    throw new Error("No API keys available for any model supported by the 'auto' provider.");
+    throw new Error(
+      "No API keys available for any model supported by the 'auto' provider.",
+    );
   }
   return getRegularModelClient(model, settings, providerConfig);
 }
@@ -207,7 +223,10 @@ function getProModelClient({
       builtinProviderId: "openai",
     };
   }
-  if (settings.selectedChatMode === "local-agent" && model.provider === "openai") {
+  if (
+    settings.selectedChatMode === "local-agent" &&
+    model.provider === "openai"
+  ) {
     return {
       model: provider.responses(modelId, { providerId: model.provider }),
       builtinProviderId: model.provider,
@@ -230,7 +249,9 @@ function getRegularModelClient(
   // Get API key for the specific provider
   const apiKey =
     settings.providerSettings?.[model.provider]?.apiKey?.value ||
-    (providerConfig.envVarName ? getEnvVar(providerConfig.envVarName) : undefined);
+    (providerConfig.envVarName
+      ? getEnvVar(providerConfig.envVarName)
+      : undefined);
 
   const providerId = providerConfig.id;
   // Create client based on provider ID or type
@@ -277,7 +298,9 @@ function getRegularModelClient(
     }
     case "vertex": {
       // Vertex uses Google service account credentials with project/location
-      const vertexSettings = settings.providerSettings?.[model.provider] as VertexProviderSetting;
+      const vertexSettings = settings.providerSettings?.[
+        model.provider
+      ] as VertexProviderSetting;
       const project = vertexSettings?.projectId;
       const location = vertexSettings?.location;
       const serviceAccountKey = vertexSettings?.serviceAccountKey?.value;
@@ -303,7 +326,9 @@ function getRegularModelClient(
           // publishers/google/models/<model>. For partner MaaS models the
           // full publisher path is already included.
           model: provider(
-            model.name.includes("/") ? model.name : `publishers/google/models/${model.name}`,
+            model.name.includes("/")
+              ? model.name
+              : `publishers/google/models/${model.name}`,
           ),
           builtinProviderId: providerId,
         },
@@ -345,9 +370,15 @@ function getRegularModelClient(
         };
       }
 
-      const azureSettings = settings.providerSettings?.azure as AzureProviderSetting | undefined;
-      const azureApiKeyFromSettings = (azureSettings?.apiKey?.value ?? "").trim();
-      const azureResourceNameFromSettings = (azureSettings?.resourceName ?? "").trim();
+      const azureSettings = settings.providerSettings?.azure as
+        | AzureProviderSetting
+        | undefined;
+      const azureApiKeyFromSettings = (
+        azureSettings?.apiKey?.value ?? ""
+      ).trim();
+      const azureResourceNameFromSettings = (
+        azureSettings?.resourceName ?? ""
+      ).trim();
       const envResourceName = (getEnvVar("AZURE_RESOURCE_NAME") ?? "").trim();
       const envAzureApiKey = (getEnvVar("AZURE_API_KEY") ?? "").trim();
 
@@ -422,7 +453,9 @@ function getRegularModelClient(
       // Handle custom providers
       if (providerConfig.type === "custom") {
         if (!providerConfig.apiBaseUrl) {
-          throw new Error(`Custom provider ${model.provider} is missing the API Base URL.`);
+          throw new Error(
+            `Custom provider ${model.provider} is missing the API Base URL.`,
+          );
         }
         // Assume custom providers are OpenAI compatible for now
         const provider = createOpenAICompatible({

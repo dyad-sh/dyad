@@ -1,5 +1,8 @@
 // db.ts
-import { type BetterSQLite3Database, drizzle } from "drizzle-orm/better-sqlite3";
+import {
+  type BetterSQLite3Database,
+  drizzle,
+} from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import * as schema from "./schema";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
@@ -74,7 +77,9 @@ export function getDb(): BetterSQLite3Database<typeof schema> & {
   $client: Database.Database;
 } {
   if (!_db) {
-    throw new Error("Database not initialized. Call initializeDatabase() first.");
+    throw new Error(
+      "Database not initialized. Call initializeDatabase() first.",
+    );
   }
   return _db as any;
 }

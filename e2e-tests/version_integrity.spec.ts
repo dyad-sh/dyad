@@ -9,12 +9,16 @@ const runVersionIntegrityTest = async (po: PageObject, nativeGit: boolean) => {
   // Importing a simple app with a few files.
   await po.page.getByRole("button", { name: "Import App" }).click();
   await eph.stubDialog(po.electronApp, "showOpenDialog", {
-    filePaths: [path.join(__dirname, "fixtures", "import-app", "version-integrity")],
+    filePaths: [
+      path.join(__dirname, "fixtures", "import-app", "version-integrity"),
+    ],
   });
 
   await po.page.getByRole("button", { name: "Select Folder" }).click();
   await po.page.getByRole("textbox", { name: "Enter new app name" }).click();
-  await po.page.getByRole("textbox", { name: "Enter new app name" }).fill("version-integrity-app");
+  await po.page
+    .getByRole("textbox", { name: "Enter new app name" })
+    .fill("version-integrity-app");
   await po.page.getByRole("button", { name: "Import" }).click();
 
   // Initial snapshot

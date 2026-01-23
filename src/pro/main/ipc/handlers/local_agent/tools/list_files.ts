@@ -1,19 +1,30 @@
 import path from "node:path";
 import { z } from "zod";
-import { ToolDefinition, AgentContext, escapeXmlAttr, escapeXmlContent } from "./types";
+import {
+  ToolDefinition,
+  AgentContext,
+  escapeXmlAttr,
+  escapeXmlContent,
+} from "./types";
 import { extractCodebase } from "../../../../../../utils/codebase";
 import { resolveDirectoryWithinAppPath } from "./path_safety";
 
 const listFilesSchema = z.object({
   directory: z.string().optional().describe("Optional subdirectory to list"),
-  recursive: z.boolean().optional().describe("Whether to list files recursively (default: false)"),
+  recursive: z
+    .boolean()
+    .optional()
+    .describe("Whether to list files recursively (default: false)"),
 });
 
 type ListFilesArgs = z.infer<typeof listFilesSchema>;
 
 function getXmlAttributes(args: ListFilesArgs) {
-  const dirAttr = args.directory ? ` directory="${escapeXmlAttr(args.directory)}"` : "";
-  const recursiveAttr = args.recursive !== undefined ? ` recursive="${args.recursive}"` : "";
+  const dirAttr = args.directory
+    ? ` directory="${escapeXmlAttr(args.directory)}"`
+    : "";
+  const recursiveAttr =
+    args.recursive !== undefined ? ` recursive="${args.recursive}"` : "";
   return `${dirAttr}${recursiveAttr}`;
 }
 
@@ -59,7 +70,9 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
 
     // Use "**" for recursive, "*" for non-recursive (immediate children only)
     const globSuffix = args.recursive ? "/**" : "/*";
-    const globPath = sanitizedDirectory ? sanitizedDirectory + globSuffix : globSuffix.slice(1); // Remove leading "/" for root directory
+    const globPath = sanitizedDirectory
+      ? sanitizedDirectory + globSuffix
+      : globSuffix.slice(1); // Remove leading "/" for root directory
 
     const { files } = await extractCodebase({
       appPath: ctx.appPath,
@@ -71,13 +84,15 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
     });
 
     // Build full file list for LLM
-    const allFilesList = files.map((file) => " - " + file.path).join("\n") || "";
+    const allFilesList =
+      files.map((file) => " - " + file.path).join("\n") || "";
 
     // Build abbreviated list for UI display
     const MAX_FILES_TO_SHOW = 20;
     const totalCount = files.length;
     const displayedFiles = files.slice(0, MAX_FILES_TO_SHOW);
-    const abbreviatedList = displayedFiles.map((file) => " - " + file.path).join("\n") || "";
+    const abbreviatedList =
+      displayedFiles.map((file) => " - " + file.path).join("\n") || "";
     const countInfo =
       totalCount > MAX_FILES_TO_SHOW
         ? `\n... and ${totalCount - MAX_FILES_TO_SHOW} more files (${totalCount} total)`

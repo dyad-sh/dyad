@@ -34,14 +34,21 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
   const inProgress = state === "pending";
   const aborted = state === "aborted";
 
-  const blocks = useMemo(() => parseSearchReplaceBlocks(String(children ?? "")), [children]);
+  const blocks = useMemo(
+    () => parseSearchReplaceBlocks(String(children ?? "")),
+    [children],
+  );
 
   const fileName = path ? path.split("/").pop() : "";
 
   return (
     <div
       className={`bg-(--background-lightest) hover:bg-(--background-lighter) rounded-lg px-4 py-2 border my-2 cursor-pointer ${
-        inProgress ? "border-amber-500" : aborted ? "border-red-500" : "border-border"
+        inProgress
+          ? "border-amber-500"
+          : aborted
+            ? "border-red-500"
+            : "border-border"
       }`}
       onClick={() => setIsContentVisible(!isContentVisible)}
     >
@@ -54,7 +61,9 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
             </span>
           </div>
           {fileName && (
-            <span className="text-gray-700 dark:text-gray-300 font-medium text-sm">{fileName}</span>
+            <span className="text-gray-700 dark:text-gray-300 font-medium text-sm">
+              {fileName}
+            </span>
           )}
           {inProgress && (
             <div className="flex items-center text-amber-600 text-xs">
@@ -84,7 +93,9 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
         </div>
       </div>
       {path && (
-        <div className="text-xs text-gray-500 dark:text-gray-400 font-medium mb-1">{path}</div>
+        <div className="text-xs text-gray-500 dark:text-gray-400 font-medium mb-1">
+          {path}
+        </div>
       )}
       {description && (
         <div className="text-sm text-gray-600 dark:text-gray-300">
@@ -93,9 +104,14 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
         </div>
       )}
       {isContentVisible && (
-        <div className="text-xs cursor-text" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="text-xs cursor-text"
+          onClick={(e) => e.stopPropagation()}
+        >
           {blocks.length === 0 ? (
-            <CodeHighlight className="language-typescript">{children}</CodeHighlight>
+            <CodeHighlight className="language-typescript">
+              {children}
+            </CodeHighlight>
           ) : (
             <div className="space-y-3">
               {blocks.map((b, i) => (

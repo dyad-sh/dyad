@@ -39,7 +39,11 @@ testSkipIfWindows("select multiple components", async ({ po }) => {
     .getByRole("heading", { name: "Welcome to Your Blank App" })
     .click();
 
-  await po.getPreviewIframeElement().contentFrame().getByText("Made with Dyad").click();
+  await po
+    .getPreviewIframeElement()
+    .contentFrame()
+    .getByText("Made with Dyad")
+    .click();
 
   await po.snapshotPreview();
   await po.snapshotSelectedComponentsDisplay();
@@ -77,29 +81,36 @@ testSkipIfWindows("deselect component", async ({ po }) => {
   await po.snapshotServerDump("last-message");
 });
 
-testSkipIfWindows("deselect individual component from multiple", async ({ po }) => {
-  await po.setUp();
-  await po.sendPrompt("tc=basic");
-  await po.clickTogglePreviewPanel();
-  await po.clickPreviewPickElement();
+testSkipIfWindows(
+  "deselect individual component from multiple",
+  async ({ po }) => {
+    await po.setUp();
+    await po.sendPrompt("tc=basic");
+    await po.clickTogglePreviewPanel();
+    await po.clickPreviewPickElement();
 
-  await po
-    .getPreviewIframeElement()
-    .contentFrame()
-    .getByRole("heading", { name: "Welcome to Your Blank App" })
-    .click();
+    await po
+      .getPreviewIframeElement()
+      .contentFrame()
+      .getByRole("heading", { name: "Welcome to Your Blank App" })
+      .click();
 
-  await po.getPreviewIframeElement().contentFrame().getByText("Made with Dyad").click();
+    await po
+      .getPreviewIframeElement()
+      .contentFrame()
+      .getByText("Made with Dyad")
+      .click();
 
-  await po.snapshotSelectedComponentsDisplay();
+    await po.snapshotSelectedComponentsDisplay();
 
-  await po.clickDeselectComponent({ index: 0 });
+    await po.clickDeselectComponent({ index: 0 });
 
-  await po.snapshotPreview();
-  await po.snapshotSelectedComponentsDisplay();
+    await po.snapshotPreview();
+    await po.snapshotSelectedComponentsDisplay();
 
-  await expect(po.getSelectedComponentsDisplay()).toBeVisible();
-});
+    await expect(po.getSelectedComponentsDisplay()).toBeVisible();
+  },
+);
 
 testSkipIfWindows("upgrade app to select component", async ({ po }) => {
   await po.setUp();

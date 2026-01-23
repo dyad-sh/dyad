@@ -14,7 +14,9 @@ export function useAddAppToFavorite() {
     },
     onSuccess: (newIsFavorite, appId) => {
       setApps((currentApps) =>
-        currentApps.map((app) => (app.id === appId ? { ...app, isFavorite: newIsFavorite } : app)),
+        currentApps.map((app) =>
+          app.id === appId ? { ...app, isFavorite: newIsFavorite } : app,
+        ),
       );
       showSuccess("App favorite status updated");
     },

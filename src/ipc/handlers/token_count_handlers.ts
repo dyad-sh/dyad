@@ -1,7 +1,10 @@
 import { db } from "../../db";
 import { chats } from "../../db/schema";
 import { eq } from "drizzle-orm";
-import { constructSystemPrompt, readAiRules } from "../../prompts/system_prompt";
+import {
+  constructSystemPrompt,
+  readAiRules,
+} from "../../prompts/system_prompt";
 import { getThemePromptById } from "../utils/theme_utils";
 import {
   getSupabaseAvailableSystemPrompt,
@@ -10,7 +13,10 @@ import {
 import { getDyadAppPath } from "../../paths/paths";
 import log from "electron-log";
 import { extractCodebase } from "../../utils/codebase";
-import { getSupabaseContext, getSupabaseClientCode } from "../../supabase_admin/supabase_context";
+import {
+  getSupabaseContext,
+  getSupabaseClientCode,
+} from "../../supabase_admin/supabase_context";
 
 import { TokenCountParams } from "../ipc_types";
 import { TokenCountResult } from "../ipc_types";
@@ -27,132 +33,146 @@ const logger = log.scope("token_count_handlers");
 const handle = createLoggedHandler(logger);
 
 export function registerTokenCountHandlers() {
-  handle("chat:count-tokens", async (event, req: TokenCountParams): Promise<TokenCountResult> => {
-    const chat = await db.query.chats.findFirst({
-      where: eq(chats.id, req.chatId),
-      with: {
-        messages: {
-          orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+  handle(
+    "chat:count-tokens",
+    async (event, req: TokenCountParams): Promise<TokenCountResult> => {
+      const chat = await db.query.chats.findFirst({
+        where: eq(chats.id, req.chatId),
+        with: {
+          messages: {
+            orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+          },
+          app: true,
         },
-        app: true,
-      },
-    });
-
-    if (!chat) {
-      throw new Error(`Chat not found: ${req.chatId}`);
-    }
-
-    // Prepare message history for token counting
-    const messageHistory = chat.messages.map((message) => message.content).join("");
-    const messageHistoryTokens = estimateTokens(messageHistory);
-
-    // Count input tokens
-    const inputTokens = estimateTokens(req.input);
-
-    const settings = readSettings();
-
-    // Parse app mentions from the input
-    const mentionedAppNames = parseAppMentions(req.input);
-
-    // Count system prompt tokens
-    const themePrompt = await getThemePromptById(chat.app?.themeId ?? null);
-    let systemPrompt = constructSystemPrompt({
-      aiRules: await readAiRules(getDyadAppPath(chat.app.path)),
-      chatMode:
-        settings.selectedChatMode === "agent" || settings.selectedChatMode === "local-agent"
-          ? "build"
-          : settings.selectedChatMode,
-      enableTurboEditsV2: isTurboEditsV2Enabled(settings),
-      themePrompt,
-    });
-    let supabaseContext = "";
-
-    if (chat.app?.supabaseProjectId) {
-      const supabaseClientCode = await getSupabaseClientCode({
-        projectId: chat.app.supabaseProjectId,
-        organizationSlug: chat.app.supabaseOrganizationSlug ?? null,
       });
-      systemPrompt += "\n\n" + getSupabaseAvailableSystemPrompt(supabaseClientCode);
-      supabaseContext = await getSupabaseContext({
-        supabaseProjectId: chat.app.supabaseProjectId,
-        organizationSlug: chat.app.supabaseOrganizationSlug ?? null,
-      });
-    } else if (
-      // Neon projects don't need Supabase.
-      !chat.app?.neonProjectId
-    ) {
-      systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
-    }
 
-    const systemPromptTokens = estimateTokens(systemPrompt + supabaseContext);
-
-    // Extract codebase information if app is associated with the chat
-    let codebaseInfo = "";
-    let codebaseTokens = 0;
-
-    if (chat.app) {
-      const appPath = getDyadAppPath(chat.app.path);
-      const { formattedOutput, files } = await extractCodebase({
-        appPath,
-        chatContext: validateChatContext(chat.app.chatContext),
-      });
-      codebaseInfo = formattedOutput;
-      if (settings.enableDyadPro && settings.enableProSmartFilesContextMode) {
-        codebaseTokens = estimateTokens(
-          files
-            // It doesn't need to be the exact format but it's just to get a token estimate
-            .map((file) => `<dyad-file=${file.path}>${file.content}</dyad-file>`)
-            .join("\n\n"),
-        );
-      } else {
-        codebaseTokens = estimateTokens(codebaseInfo);
+      if (!chat) {
+        throw new Error(`Chat not found: ${req.chatId}`);
       }
-      logger.log(`Extracted codebase information from ${appPath}, tokens: ${codebaseTokens}`);
-    }
 
-    // Extract codebases for mentioned apps
-    const mentionedAppsCodebases = await extractMentionedAppsCodebases(
-      mentionedAppNames,
-      chat.app?.id, // Exclude current app
-    );
-
-    // Calculate tokens for mentioned apps
-    let mentionedAppsTokens = 0;
-    if (mentionedAppsCodebases.length > 0) {
-      const mentionedAppsContent = mentionedAppsCodebases
-        .map(
-          ({ appName, codebaseInfo }) => `\n\n=== Referenced App: ${appName} ===\n${codebaseInfo}`,
-        )
+      // Prepare message history for token counting
+      const messageHistory = chat.messages
+        .map((message) => message.content)
         .join("");
+      const messageHistoryTokens = estimateTokens(messageHistory);
 
-      mentionedAppsTokens = estimateTokens(mentionedAppsContent);
+      // Count input tokens
+      const inputTokens = estimateTokens(req.input);
 
-      logger.log(
-        `Extracted ${mentionedAppsCodebases.length} mentioned app codebases, tokens: ${mentionedAppsTokens}`,
+      const settings = readSettings();
+
+      // Parse app mentions from the input
+      const mentionedAppNames = parseAppMentions(req.input);
+
+      // Count system prompt tokens
+      const themePrompt = await getThemePromptById(chat.app?.themeId ?? null);
+      let systemPrompt = constructSystemPrompt({
+        aiRules: await readAiRules(getDyadAppPath(chat.app.path)),
+        chatMode:
+          settings.selectedChatMode === "agent" ||
+          settings.selectedChatMode === "local-agent"
+            ? "build"
+            : settings.selectedChatMode,
+        enableTurboEditsV2: isTurboEditsV2Enabled(settings),
+        themePrompt,
+      });
+      let supabaseContext = "";
+
+      if (chat.app?.supabaseProjectId) {
+        const supabaseClientCode = await getSupabaseClientCode({
+          projectId: chat.app.supabaseProjectId,
+          organizationSlug: chat.app.supabaseOrganizationSlug ?? null,
+        });
+        systemPrompt +=
+          "\n\n" + getSupabaseAvailableSystemPrompt(supabaseClientCode);
+        supabaseContext = await getSupabaseContext({
+          supabaseProjectId: chat.app.supabaseProjectId,
+          organizationSlug: chat.app.supabaseOrganizationSlug ?? null,
+        });
+      } else if (
+        // Neon projects don't need Supabase.
+        !chat.app?.neonProjectId
+      ) {
+        systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
+      }
+
+      const systemPromptTokens = estimateTokens(systemPrompt + supabaseContext);
+
+      // Extract codebase information if app is associated with the chat
+      let codebaseInfo = "";
+      let codebaseTokens = 0;
+
+      if (chat.app) {
+        const appPath = getDyadAppPath(chat.app.path);
+        const { formattedOutput, files } = await extractCodebase({
+          appPath,
+          chatContext: validateChatContext(chat.app.chatContext),
+        });
+        codebaseInfo = formattedOutput;
+        if (settings.enableDyadPro && settings.enableProSmartFilesContextMode) {
+          codebaseTokens = estimateTokens(
+            files
+              // It doesn't need to be the exact format but it's just to get a token estimate
+              .map(
+                (file) => `<dyad-file=${file.path}>${file.content}</dyad-file>`,
+              )
+              .join("\n\n"),
+          );
+        } else {
+          codebaseTokens = estimateTokens(codebaseInfo);
+        }
+        logger.log(
+          `Extracted codebase information from ${appPath}, tokens: ${codebaseTokens}`,
+        );
+      }
+
+      // Extract codebases for mentioned apps
+      const mentionedAppsCodebases = await extractMentionedAppsCodebases(
+        mentionedAppNames,
+        chat.app?.id, // Exclude current app
       );
-    }
 
-    // Calculate total tokens
-    const totalTokens =
-      messageHistoryTokens +
-      inputTokens +
-      systemPromptTokens +
-      codebaseTokens +
-      mentionedAppsTokens;
+      // Calculate tokens for mentioned apps
+      let mentionedAppsTokens = 0;
+      if (mentionedAppsCodebases.length > 0) {
+        const mentionedAppsContent = mentionedAppsCodebases
+          .map(
+            ({ appName, codebaseInfo }) =>
+              `\n\n=== Referenced App: ${appName} ===\n${codebaseInfo}`,
+          )
+          .join("");
 
-    // Find the last assistant message since totalTokens is only set on assistant messages
-    const lastAssistantMessage = [...chat.messages].reverse().find((m) => m.role === "assistant");
-    const actualMaxTokens = lastAssistantMessage?.maxTokensUsed ?? null;
+        mentionedAppsTokens = estimateTokens(mentionedAppsContent);
 
-    return {
-      estimatedTotalTokens: totalTokens,
-      actualMaxTokens,
-      messageHistoryTokens,
-      codebaseTokens,
-      mentionedAppsTokens,
-      inputTokens,
-      systemPromptTokens,
-      contextWindow: await getContextWindow(),
-    };
-  });
+        logger.log(
+          `Extracted ${mentionedAppsCodebases.length} mentioned app codebases, tokens: ${mentionedAppsTokens}`,
+        );
+      }
+
+      // Calculate total tokens
+      const totalTokens =
+        messageHistoryTokens +
+        inputTokens +
+        systemPromptTokens +
+        codebaseTokens +
+        mentionedAppsTokens;
+
+      // Find the last assistant message since totalTokens is only set on assistant messages
+      const lastAssistantMessage = [...chat.messages]
+        .reverse()
+        .find((m) => m.role === "assistant");
+      const actualMaxTokens = lastAssistantMessage?.maxTokensUsed ?? null;
+
+      return {
+        estimatedTotalTokens: totalTokens,
+        actualMaxTokens,
+        messageHistoryTokens,
+        codebaseTokens,
+        mentionedAppsTokens,
+        inputTokens,
+        systemPromptTokens,
+        contextWindow: await getContextWindow(),
+      };
+    },
+  );
 }

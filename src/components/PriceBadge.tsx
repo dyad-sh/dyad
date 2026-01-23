@@ -1,6 +1,10 @@
 import React from "react";
 
-export function PriceBadge({ dollarSigns }: { dollarSigns: number | undefined }) {
+export function PriceBadge({
+  dollarSigns,
+}: {
+  dollarSigns: number | undefined;
+}) {
   if (dollarSigns === undefined || dollarSigns === null) return null;
 
   const label = dollarSigns === 0 ? "Free" : "$".repeat(dollarSigns);

@@ -48,7 +48,9 @@ describe("formatMessagesForSummary", () => {
     expect(result).toContain('<message role="assistant">Message 2</message>');
 
     // Should contain omission indicator
-    expect(result).toContain('<message role="system">[... 4 messages omitted ...]</message>');
+    expect(result).toContain(
+      '<message role="system">[... 4 messages omitted ...]</message>',
+    );
 
     // Should contain last 6 messages
     expect(result).toContain('<message role="user">Message 7</message>');
@@ -60,9 +62,13 @@ describe("formatMessagesForSummary", () => {
 
     // Should not contain middle messages
     expect(result).not.toContain('<message role="user">Message 3</message>');
-    expect(result).not.toContain('<message role="assistant">Message 4</message>');
+    expect(result).not.toContain(
+      '<message role="assistant">Message 4</message>',
+    );
     expect(result).not.toContain('<message role="user">Message 5</message>');
-    expect(result).not.toContain('<message role="assistant">Message 6</message>');
+    expect(result).not.toContain(
+      '<message role="assistant">Message 6</message>',
+    );
   });
 
   it("should handle messages with undefined content", () => {
@@ -103,7 +109,9 @@ describe("formatMessagesForSummary", () => {
     const result = formatMessagesForSummary(messages);
 
     // Should indicate 12 messages omitted (20 total - 2 first - 6 last = 12)
-    expect(result).toContain('<message role="system">[... 12 messages omitted ...]</message>');
+    expect(result).toContain(
+      '<message role="system">[... 12 messages omitted ...]</message>',
+    );
   });
 
   it("should handle messages with special characters in content", () => {
@@ -115,8 +123,12 @@ describe("formatMessagesForSummary", () => {
     const result = formatMessagesForSummary(messages);
 
     // Should preserve special characters as-is (no HTML escaping)
-    expect(result).toContain('<message role="user">Hello <world> & "friends"</message>');
-    expect(result).toContain('<message role="assistant">Hi there! <tag>content</tag></message>');
+    expect(result).toContain(
+      '<message role="user">Hello <world> & "friends"</message>',
+    );
+    expect(result).toContain(
+      '<message role="assistant">Hi there! <tag>content</tag></message>',
+    );
   });
 
   it("should maintain message order in truncated output", () => {
@@ -134,7 +146,9 @@ describe("formatMessagesForSummary", () => {
     // Check order: first 2, then omission, then last 6
     expect(lines[0]).toBe('<message role="user">Message 1</message>');
     expect(lines[1]).toBe('<message role="assistant">Message 2</message>');
-    expect(lines[2]).toBe('<message role="system">[... 7 messages omitted ...]</message>');
+    expect(lines[2]).toBe(
+      '<message role="system">[... 7 messages omitted ...]</message>',
+    );
 
     // Last 6 messages are messages 10-15 (indices 9-14)
     // Message 10 (index 9): 9 % 2 === 1, so "assistant"

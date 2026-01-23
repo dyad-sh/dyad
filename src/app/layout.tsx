@@ -7,7 +7,11 @@ import { TitleBar } from "./TitleBar";
 import { useEffect, type ReactNode } from "react";
 import { useRunApp } from "@/hooks/useRunApp";
 import { useAtomValue, useSetAtom } from "jotai";
-import { appConsoleEntriesAtom, previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
+import {
+  appConsoleEntriesAtom,
+  previewModeAtom,
+  selectedAppIdAtom,
+} from "@/atoms/appAtoms";
 import { useSettings } from "@/hooks/useSettings";
 import type { ZoomLevel } from "@/lib/schemas";
 import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
@@ -19,7 +23,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   const { refreshAppIframe } = useRunApp();
   const previewMode = useAtomValue(previewModeAtom);
   const { settings } = useSettings();
-  const setSelectedComponentsPreview = useSetAtom(selectedComponentsPreviewAtom);
+  const setSelectedComponentsPreview = useSetAtom(
+    selectedComponentsPreviewAtom,
+  );
   const setChatInput = useSetAtom(chatInputValueAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);

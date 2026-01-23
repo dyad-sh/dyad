@@ -11,7 +11,12 @@ import {
 
 import { InfoIcon, Settings2, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "./ui/tooltip";
 import { useSettings } from "@/hooks/useSettings";
 import { useContextPaths } from "@/hooks/useContextPaths";
 import type { ContextPathResult } from "@/lib/schemas";
@@ -59,7 +64,9 @@ export function ContextFilesPicker() {
   const addAutoIncludePath = () => {
     if (
       newAutoIncludePath.trim() === "" ||
-      smartContextAutoIncludes.find((p: ContextPathResult) => p.globPath === newAutoIncludePath)
+      smartContextAutoIncludes.find(
+        (p: ContextPathResult) => p.globPath === newAutoIncludePath,
+      )
     ) {
       setNewAutoIncludePath("");
       return;
@@ -108,7 +115,8 @@ export function ContextFilesPicker() {
     updateExcludePaths(newPaths);
   };
 
-  const isSmartContextEnabled = settings?.enableDyadPro && settings?.enableProSmartFilesContextMode;
+  const isSmartContextEnabled =
+    settings?.enableDyadPro && settings?.enableProSmartFilesContextMode;
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -135,7 +143,10 @@ export function ContextFilesPicker() {
                   </TooltipTrigger>
                   <TooltipContent className="max-w-[300px]">
                     {isSmartContextEnabled ? (
-                      <p>With Smart Context, Dyad uses the most relevant files as context.</p>
+                      <p>
+                        With Smart Context, Dyad uses the most relevant files as
+                        context.
+                      </p>
                     ) : (
                       <p>By default, Dyad uses your whole codebase.</p>
                     )}
@@ -159,7 +170,11 @@ export function ContextFilesPicker() {
                 }
               }}
             />
-            <Button type="submit" onClick={addPath} data-testid="manual-context-files-add-button">
+            <Button
+              type="submit"
+              onClick={addPath}
+              data-testid="manual-context-files-add-button"
+            >
               Add
             </Button>
           </div>
@@ -175,7 +190,9 @@ export function ContextFilesPicker() {
                     <div className="flex flex-1 flex-col overflow-hidden">
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <span className="truncate font-mono text-sm">{p.globPath}</span>
+                          <span className="truncate font-mono text-sm">
+                            {p.globPath}
+                          </span>
                         </TooltipTrigger>
                         <TooltipContent>
                           <p>{p.globPath}</p>
@@ -222,8 +239,8 @@ export function ContextFilesPicker() {
                       </TooltipTrigger>
                       <TooltipContent className="max-w-[300px]">
                         <p>
-                          Exclude paths take precedence - files that match both include and exclude
-                          patterns will be excluded.
+                          Exclude paths take precedence - files that match both
+                          include and exclude patterns will be excluded.
                         </p>
                       </TooltipContent>
                     </Tooltip>
@@ -308,8 +325,9 @@ export function ContextFilesPicker() {
                         </TooltipTrigger>
                         <TooltipContent className="max-w-[300px]">
                           <p>
-                            Auto-include files are always included in the context in addition to the
-                            files selected as relevant by Smart Context.
+                            Auto-include files are always included in the
+                            context in addition to the files selected as
+                            relevant by Smart Context.
                           </p>
                         </TooltipContent>
                       </Tooltip>
@@ -351,7 +369,9 @@ export function ContextFilesPicker() {
                         <div className="flex flex-1 flex-col overflow-hidden">
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <span className="truncate font-mono text-sm">{p.globPath}</span>
+                              <span className="truncate font-mono text-sm">
+                                {p.globPath}
+                              </span>
                             </TooltipTrigger>
                             <TooltipContent>
                               <p>{p.globPath}</p>

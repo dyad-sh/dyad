@@ -33,7 +33,9 @@ export async function handleSupabaseOAuthReturn({
 
   if (!errorOccurred && orgs.length > 0) {
     if (orgs.length > 1) {
-      logger.warn("Multiple Supabase organizations found unexpectedly, using the first one");
+      logger.warn(
+        "Multiple Supabase organizations found unexpectedly, using the first one",
+      );
     }
     const organizationSlug = orgs[0].slug;
     const existingOrgs = settings.supabase?.organizations ?? {};

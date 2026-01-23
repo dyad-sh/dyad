@@ -54,7 +54,11 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
   });
 
   // Mutation: Delete a Supabase organization connection
-  const deleteOrganizationMutation = useMutation<void, Error, DeleteSupabaseOrganizationParams>({
+  const deleteOrganizationMutation = useMutation<
+    void,
+    Error,
+    DeleteSupabaseOrganizationParams
+  >({
     mutationFn: async (params) => {
       const ipcClient = IpcClient.getInstance();
       await ipcClient.deleteSupabaseOrganization(params);
@@ -69,7 +73,11 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
   });
 
   // Mutation: Associate a Supabase project with an app
-  const setAppProjectMutation = useMutation<void, Error, SetSupabaseAppProjectParams>({
+  const setAppProjectMutation = useMutation<
+    void,
+    Error,
+    SetSupabaseAppProjectParams
+  >({
     mutationFn: async (params) => {
       const ipcClient = IpcClient.getInstance();
       await ipcClient.setSupabaseAppProject(params);

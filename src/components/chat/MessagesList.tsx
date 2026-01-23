@@ -90,63 +90,65 @@ function FooterComponent({ context }: { context?: FooterContext }) {
 
       {!isStreaming && (
         <div className="flex max-w-3xl mx-auto gap-2">
-          {!!messages.length && messages[messages.length - 1].role === "assistant" && (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={isUndoLoading}
-              onClick={async () => {
-                if (!selectedChatId || !appId) {
-                  console.error("No chat selected or app ID not available");
-                  return;
-                }
-
-                setIsUndoLoading(true);
-                try {
-                  const currentMessage = messages[messages.length - 1];
-                  // The user message that triggered this assistant response
-                  const userMessage = messages[messages.length - 2];
-                  if (currentMessage?.sourceCommitHash) {
-                    console.debug(
-                      "Reverting to source commit hash",
-                      currentMessage.sourceCommitHash,
-                    );
-                    await revertVersion({
-                      versionId: currentMessage.sourceCommitHash,
-                      currentChatMessageId: userMessage
-                        ? {
-                            chatId: selectedChatId,
-                            messageId: userMessage.id,
-                          }
-                        : undefined,
-                    });
-                    const chat = await IpcClient.getInstance().getChat(selectedChatId);
-                    setMessagesById((prev) => {
-                      const next = new Map(prev);
-                      next.set(selectedChatId, chat.messages);
-                      return next;
-                    });
-                  } else {
-                    showWarning(
-                      "No source commit hash found for message. Need to manually undo code changes",
-                    );
+          {!!messages.length &&
+            messages[messages.length - 1].role === "assistant" && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isUndoLoading}
+                onClick={async () => {
+                  if (!selectedChatId || !appId) {
+                    console.error("No chat selected or app ID not available");
+                    return;
                   }
-                } catch (error) {
-                  console.error("Error during undo operation:", error);
-                  showError("Failed to undo changes");
-                } finally {
-                  setIsUndoLoading(false);
-                }
-              }}
-            >
-              {isUndoLoading ? (
-                <Loader2 size={16} className="mr-1 animate-spin" />
-              ) : (
-                <Undo size={16} />
-              )}
-              Undo
-            </Button>
-          )}
+
+                  setIsUndoLoading(true);
+                  try {
+                    const currentMessage = messages[messages.length - 1];
+                    // The user message that triggered this assistant response
+                    const userMessage = messages[messages.length - 2];
+                    if (currentMessage?.sourceCommitHash) {
+                      console.debug(
+                        "Reverting to source commit hash",
+                        currentMessage.sourceCommitHash,
+                      );
+                      await revertVersion({
+                        versionId: currentMessage.sourceCommitHash,
+                        currentChatMessageId: userMessage
+                          ? {
+                              chatId: selectedChatId,
+                              messageId: userMessage.id,
+                            }
+                          : undefined,
+                      });
+                      const chat =
+                        await IpcClient.getInstance().getChat(selectedChatId);
+                      setMessagesById((prev) => {
+                        const next = new Map(prev);
+                        next.set(selectedChatId, chat.messages);
+                        return next;
+                      });
+                    } else {
+                      showWarning(
+                        "No source commit hash found for message. Need to manually undo code changes",
+                      );
+                    }
+                  } catch (error) {
+                    console.error("Error during undo operation:", error);
+                    showError("Failed to undo changes");
+                  } finally {
+                    setIsUndoLoading(false);
+                  }
+                }}
+              >
+                {isUndoLoading ? (
+                  <Loader2 size={16} className="mr-1 animate-spin" />
+                ) : (
+                  <Undo size={16} />
+                )}
+                Undo
+              </Button>
+            )}
           {!!messages.length && (
             <Button
               variant="outline"
@@ -168,7 +170,8 @@ function FooterComponent({ context }: { context?: FooterContext }) {
                     lastVersion.oid === lastMessage.commitHash &&
                     lastMessage.role === "assistant"
                   ) {
-                    const previousAssistantMessage = messages[messages.length - 3];
+                    const previousAssistantMessage =
+                      messages[messages.length - 3];
                     if (
                       previousAssistantMessage?.role === "assistant" &&
                       previousAssistantMessage?.commitHash
@@ -179,9 +182,13 @@ function FooterComponent({ context }: { context?: FooterContext }) {
                       });
                       shouldRedo = false;
                     } else {
-                      const chat = await IpcClient.getInstance().getChat(selectedChatId);
+                      const chat =
+                        await IpcClient.getInstance().getChat(selectedChatId);
                       if (chat.initialCommitHash) {
-                        console.debug("Reverting to initial commit hash", chat.initialCommitHash);
+                        console.debug(
+                          "Reverting to initial commit hash",
+                          chat.initialCommitHash,
+                        );
                         await revertVersion({
                           versionId: chat.initialCommitHash,
                         });
@@ -229,183 +236,218 @@ function FooterComponent({ context }: { context?: FooterContext }) {
         </div>
       )}
 
-      {isStreaming && !settings?.enableDyadPro && !userBudget && messages.length > 0 && (
-        <PromoMessage seed={messages.length * (appId ?? 1) * (selectedChatId ?? 1)} />
-      )}
+      {isStreaming &&
+        !settings?.enableDyadPro &&
+        !userBudget &&
+        messages.length > 0 && (
+          <PromoMessage
+            seed={messages.length * (appId ?? 1) * (selectedChatId ?? 1)}
+          />
+        )}
       <div ref={messagesEndRef} />
       {renderSetupBanner()}
     </>
   );
 }
 
-export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(function MessagesList(
-  { messages, messagesEndRef, onScrollerRef, distanceFromBottomRef, isUserScrolling },
-  ref,
-) {
-  const appId = useAtomValue(selectedAppIdAtom);
-  const { versions, revertVersion } = useVersions(appId);
-  const { streamMessage, isStreaming } = useStreamChat();
-  const { isAnyProviderSetup, isProviderSetup } = useLanguageModelProviders();
-  const { settings } = useSettings();
-  const setMessagesById = useSetAtom(chatMessagesByIdAtom);
-  const [isUndoLoading, setIsUndoLoading] = useState(false);
-  const [isRetryLoading, setIsRetryLoading] = useState(false);
-  const selectedChatId = useAtomValue(selectedChatIdAtom);
-  const { userBudget } = useUserBudgetInfo();
-
-  // Virtualization only renders visible DOM elements, which creates issues for E2E tests:
-  // 1. Off-screen logs don't exist in the DOM and can't be queried by test selectors
-  // 2. Tests would need complex scrolling logic to bring elements into view before interaction
-  // 3. Race conditions and timing issues occur when waiting for virtualized elements to render after scrolling
-  const isTestMode = settings?.isTestMode;
-  // Only fetch token count when not streaming
-  const { result: tokenCountResult } = useCountTokens(!isStreaming ? selectedChatId : null, "");
-
-  // Wrap state setters in useCallback to stabilize references
-  const handleSetIsUndoLoading = useCallback((loading: boolean) => {
-    setIsUndoLoading(loading);
-  }, []);
-
-  const handleSetIsRetryLoading = useCallback((loading: boolean) => {
-    setIsRetryLoading(loading);
-  }, []);
-
-  // Stabilize renderSetupBanner with proper dependencies
-  const renderSetupBanner = useCallback(() => {
-    const selectedModel = settings?.selectedModel;
-    if (
-      selectedModel?.name === "free" &&
-      selectedModel?.provider === "auto" &&
-      !isProviderSetup("openrouter")
-    ) {
-      return <OpenRouterSetupBanner className="w-full" />;
-    }
-    if (!isAnyProviderSetup()) {
-      return <SetupBanner />;
-    }
-    return null;
-  }, [
-    settings?.selectedModel?.name,
-    settings?.selectedModel?.provider,
-    isProviderSetup,
-    isAnyProviderSetup,
-  ]);
-
-  // Memoized item renderer for virtualized list
-  const itemContent = useCallback(
-    (index: number, message: Message) => {
-      const isLastMessage = index === messages.length - 1;
-      const messageKey = message.id;
-
-      return (
-        <div className="px-4" key={messageKey}>
-          <MemoizedChatMessage message={message} isLastMessage={isLastMessage} />
-        </div>
-      );
+export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
+  function MessagesList(
+    {
+      messages,
+      messagesEndRef,
+      onScrollerRef,
+      distanceFromBottomRef,
+      isUserScrolling,
     },
-    [messages.length],
-  );
+    ref,
+  ) {
+    const appId = useAtomValue(selectedAppIdAtom);
+    const { versions, revertVersion } = useVersions(appId);
+    const { streamMessage, isStreaming } = useStreamChat();
+    const { isAnyProviderSetup, isProviderSetup } = useLanguageModelProviders();
+    const { settings } = useSettings();
+    const setMessagesById = useSetAtom(chatMessagesByIdAtom);
+    const [isUndoLoading, setIsUndoLoading] = useState(false);
+    const [isRetryLoading, setIsRetryLoading] = useState(false);
+    const selectedChatId = useAtomValue(selectedChatIdAtom);
+    const { userBudget } = useUserBudgetInfo();
 
-  // Create context object for Footer component with stable references
-  const footerContext = useMemo<FooterContext>(
-    () => ({
-      messages,
-      messagesEndRef,
-      isStreaming,
-      tokenCountResult,
-      isUndoLoading,
-      isRetryLoading,
-      setIsUndoLoading: handleSetIsUndoLoading,
-      setIsRetryLoading: handleSetIsRetryLoading,
-      versions,
-      revertVersion,
-      streamMessage,
-      selectedChatId,
-      appId,
-      setMessagesById,
-      settings,
-      userBudget,
-      renderSetupBanner,
-    }),
-    [
-      messages,
-      messagesEndRef,
-      isStreaming,
-      tokenCountResult,
-      isUndoLoading,
-      isRetryLoading,
-      handleSetIsUndoLoading,
-      handleSetIsRetryLoading,
-      versions,
-      revertVersion,
-      streamMessage,
-      selectedChatId,
-      appId,
-      setMessagesById,
-      settings,
-      userBudget,
-      renderSetupBanner,
-    ],
-  );
+    // Virtualization only renders visible DOM elements, which creates issues for E2E tests:
+    // 1. Off-screen logs don't exist in the DOM and can't be queried by test selectors
+    // 2. Tests would need complex scrolling logic to bring elements into view before interaction
+    // 3. Race conditions and timing issues occur when waiting for virtualized elements to render after scrolling
+    const isTestMode = settings?.isTestMode;
+    // Only fetch token count when not streaming
+    const { result: tokenCountResult } = useCountTokens(
+      !isStreaming ? selectedChatId : null,
+      "",
+    );
 
-  // Render empty state or setup banner
-  if (messages.length === 0) {
-    const setupBanner = renderSetupBanner();
-    if (setupBanner) {
+    // Wrap state setters in useCallback to stabilize references
+    const handleSetIsUndoLoading = useCallback((loading: boolean) => {
+      setIsUndoLoading(loading);
+    }, []);
+
+    const handleSetIsRetryLoading = useCallback((loading: boolean) => {
+      setIsRetryLoading(loading);
+    }, []);
+
+    // Stabilize renderSetupBanner with proper dependencies
+    const renderSetupBanner = useCallback(() => {
+      const selectedModel = settings?.selectedModel;
+      if (
+        selectedModel?.name === "free" &&
+        selectedModel?.provider === "auto" &&
+        !isProviderSetup("openrouter")
+      ) {
+        return <OpenRouterSetupBanner className="w-full" />;
+      }
+      if (!isAnyProviderSetup()) {
+        return <SetupBanner />;
+      }
+      return null;
+    }, [
+      settings?.selectedModel?.name,
+      settings?.selectedModel?.provider,
+      isProviderSetup,
+      isAnyProviderSetup,
+    ]);
+
+    // Memoized item renderer for virtualized list
+    const itemContent = useCallback(
+      (index: number, message: Message) => {
+        const isLastMessage = index === messages.length - 1;
+        const messageKey = message.id;
+
+        return (
+          <div className="px-4" key={messageKey}>
+            <MemoizedChatMessage
+              message={message}
+              isLastMessage={isLastMessage}
+            />
+          </div>
+        );
+      },
+      [messages.length],
+    );
+
+    // Create context object for Footer component with stable references
+    const footerContext = useMemo<FooterContext>(
+      () => ({
+        messages,
+        messagesEndRef,
+        isStreaming,
+        tokenCountResult,
+        isUndoLoading,
+        isRetryLoading,
+        setIsUndoLoading: handleSetIsUndoLoading,
+        setIsRetryLoading: handleSetIsRetryLoading,
+        versions,
+        revertVersion,
+        streamMessage,
+        selectedChatId,
+        appId,
+        setMessagesById,
+        settings,
+        userBudget,
+        renderSetupBanner,
+      }),
+      [
+        messages,
+        messagesEndRef,
+        isStreaming,
+        tokenCountResult,
+        isUndoLoading,
+        isRetryLoading,
+        handleSetIsUndoLoading,
+        handleSetIsRetryLoading,
+        versions,
+        revertVersion,
+        streamMessage,
+        selectedChatId,
+        appId,
+        setMessagesById,
+        settings,
+        userBudget,
+        renderSetupBanner,
+      ],
+    );
+
+    // Render empty state or setup banner
+    if (messages.length === 0) {
+      const setupBanner = renderSetupBanner();
+      if (setupBanner) {
+        return (
+          <div
+            className="absolute inset-0 overflow-y-auto p-4"
+            ref={ref}
+            data-testid="messages-list"
+          >
+            {setupBanner}
+          </div>
+        );
+      }
       return (
-        <div className="absolute inset-0 overflow-y-auto p-4" ref={ref} data-testid="messages-list">
-          {setupBanner}
-        </div>
-      );
-    }
-    return (
-      <div className="absolute inset-0 overflow-y-auto p-4" ref={ref} data-testid="messages-list">
-        <div className="flex flex-col items-center justify-center h-full max-w-2xl mx-auto">
-          <div className="flex flex-1 items-center justify-center text-gray-500">
-            No messages yet
+        <div
+          className="absolute inset-0 overflow-y-auto p-4"
+          ref={ref}
+          data-testid="messages-list"
+        >
+          <div className="flex flex-col items-center justify-center h-full max-w-2xl mx-auto">
+            <div className="flex flex-1 items-center justify-center text-gray-500">
+              No messages yet
+            </div>
           </div>
         </div>
-      </div>
-    );
-  }
+      );
+    }
 
-  // In test mode, render all messages without virtualization
-  // so E2E tests can query all messages in the DOM
-  if (isTestMode) {
+    // In test mode, render all messages without virtualization
+    // so E2E tests can query all messages in the DOM
+    if (isTestMode) {
+      return (
+        <div
+          className="absolute inset-0 p-4 overflow-y-auto"
+          ref={ref}
+          data-testid="messages-list"
+        >
+          {messages.map((message, index) => {
+            const isLastMessage = index === messages.length - 1;
+            return (
+              <div className="px-4" key={message.id}>
+                <ChatMessage message={message} isLastMessage={isLastMessage} />
+              </div>
+            );
+          })}
+          <FooterComponent context={footerContext} />
+        </div>
+      );
+    }
+
     return (
-      <div className="absolute inset-0 p-4 overflow-y-auto" ref={ref} data-testid="messages-list">
-        {messages.map((message, index) => {
-          const isLastMessage = index === messages.length - 1;
-          return (
-            <div className="px-4" key={message.id}>
-              <ChatMessage message={message} isLastMessage={isLastMessage} />
-            </div>
-          );
-        })}
-        <FooterComponent context={footerContext} />
+      <div
+        className="absolute inset-0 overflow-y-auto p-4"
+        ref={ref}
+        data-testid="messages-list"
+      >
+        <Virtuoso
+          data={messages}
+          increaseViewportBy={{ top: 1000, bottom: 500 }}
+          initialTopMostItemIndex={messages.length - 1}
+          itemContent={itemContent}
+          components={{ Footer: FooterComponent }}
+          context={footerContext}
+          scrollerRef={onScrollerRef}
+          followOutput={() => {
+            const shouldAutoScroll =
+              !isUserScrolling &&
+              isStreaming &&
+              distanceFromBottomRef &&
+              distanceFromBottomRef.current <= 280;
+            return shouldAutoScroll ? "auto" : false;
+          }}
+        />
       </div>
     );
-  }
-
-  return (
-    <div className="absolute inset-0 overflow-y-auto p-4" ref={ref} data-testid="messages-list">
-      <Virtuoso
-        data={messages}
-        increaseViewportBy={{ top: 1000, bottom: 500 }}
-        initialTopMostItemIndex={messages.length - 1}
-        itemContent={itemContent}
-        components={{ Footer: FooterComponent }}
-        context={footerContext}
-        scrollerRef={onScrollerRef}
-        followOutput={() => {
-          const shouldAutoScroll =
-            !isUserScrolling &&
-            isStreaming &&
-            distanceFromBottomRef &&
-            distanceFromBottomRef.current <= 280;
-          return shouldAutoScroll ? "auto" : false;
-        }}
-      />
-    </div>
-  );
-});
+  },
+);

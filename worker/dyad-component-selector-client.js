@@ -71,7 +71,9 @@
 
       const rect = el.getBoundingClientRect();
       const borderColor = isHighlighted ? "#00ff00" : "#7f22fe";
-      const backgroundColor = isHighlighted ? "rgba(0, 255, 0, 0.05)" : "rgba(127, 34, 254, 0.05)";
+      const backgroundColor = isHighlighted
+        ? "rgba(0, 255, 0, 0.05)"
+        : "rgba(127, 34, 254, 0.05)";
 
       css(overlay, {
         top: `${rect.top + window.scrollY}px`,
@@ -136,7 +138,11 @@
     });
 
     // Update hover overlay if visible
-    if (hoverOverlay && hoverOverlay.style.display !== "none" && state.element) {
+    if (
+      hoverOverlay &&
+      hoverOverlay.style.display !== "none" &&
+      state.element
+    ) {
       const rect = state.element.getBoundingClientRect();
       css(hoverOverlay, {
         top: `${rect.top + window.scrollY}px`,
@@ -149,7 +155,9 @@
     // Send updated coordinates for highlighted or selected component to parent
     if (highlightedElement) {
       // Multi-selector mode: send coordinates for the highlighted component
-      const highlightedItem = overlays.find(({ el }) => el === highlightedElement);
+      const highlightedItem = overlays.find(
+        ({ el }) => el === highlightedElement,
+      );
 
       if (highlightedItem) {
         const rect = highlightedItem.el.getBoundingClientRect();
@@ -199,7 +207,10 @@
       overlays.splice(indicesToRemove[i], 1);
     }
 
-    if (highlightedElement && highlightedElement.dataset.dyadId === componentId) {
+    if (
+      highlightedElement &&
+      highlightedElement.dataset.dyadId === componentId
+    ) {
       highlightedElement = null;
     }
   }
@@ -209,7 +220,8 @@
     if (!componentCoordinates) return false;
 
     // Toolbar is positioned at bottom of component: top = coordinates.top + coordinates.height + 4px
-    const toolbarTop = componentCoordinates.top + componentCoordinates.height + 4;
+    const toolbarTop =
+      componentCoordinates.top + componentCoordinates.height + 4;
     const toolbarLeft = componentCoordinates.left;
     const toolbarHeight = 60;
     // Add some padding to the width since we don't know exact width
@@ -227,7 +239,9 @@
   function isHighlightedComponentChildOfSelected() {
     if (!highlightedElement) return null;
 
-    const highlightedItem = overlays.find(({ el }) => el === highlightedElement);
+    const highlightedItem = overlays.find(
+      ({ el }) => el === highlightedElement,
+    );
     if (!highlightedItem) return null;
 
     // Check if any other selected component contains the highlighted element
@@ -301,7 +315,9 @@
     // Check if mouse is over toolbar - if so, hide the label and treat as if mouse left component
     if (isMouseOverToolbar(e.clientX, e.clientY)) {
       if (currentHoveredElement) {
-        const previousItem = overlays.find((item) => item.el === currentHoveredElement);
+        const previousItem = overlays.find(
+          (item) => item.el === currentHoveredElement,
+        );
         if (previousItem) {
           updateSelectedOverlayLabel(previousItem, false);
         }
@@ -319,7 +335,11 @@
     const parentOfHighlighted = isHighlightedComponentChildOfSelected();
 
     // If hovering over the highlighted component and it has a parent, hide the parent's label
-    if (hoveredItem && hoveredItem.el === highlightedElement && parentOfHighlighted) {
+    if (
+      hoveredItem &&
+      hoveredItem.el === highlightedElement &&
+      parentOfHighlighted
+    ) {
       // Hide the parent component's label
       updateSelectedOverlayLabel(parentOfHighlighted, false);
       // Also clear currentHoveredElement if it's the parent
@@ -330,7 +350,9 @@
     }
 
     if (currentHoveredElement && currentHoveredElement !== el) {
-      const previousItem = overlays.find((item) => item.el === currentHoveredElement);
+      const previousItem = overlays.find(
+        (item) => item.el === currentHoveredElement,
+      );
       if (previousItem) {
         updateSelectedOverlayLabel(previousItem, false);
       }
@@ -401,7 +423,9 @@
 
     // Update only the previously highlighted component
     if (highlightedElement && highlightedElement !== state.element) {
-      const previousItem = overlays.find((item) => item.el === highlightedElement);
+      const previousItem = overlays.find(
+        (item) => item.el === highlightedElement,
+      );
       if (previousItem) {
         css(previousItem.overlay, {
           border: `3px solid #7f22fe`,
@@ -546,7 +570,9 @@
 
   function initializeComponentSelector() {
     if (!document.body) {
-      console.error("Dyad component selector initialization failed: document.body not found.");
+      console.error(
+        "Dyad component selector initialization failed: document.body not found.",
+      );
       return;
     }
     setTimeout(() => {
@@ -559,7 +585,9 @@
         );
         console.debug("Dyad component selector initialized");
       } else {
-        console.warn("Dyad component selector not initialized because no DOM elements were tagged");
+        console.warn(
+          "Dyad component selector not initialized because no DOM elements were tagged",
+        );
       }
     }, 0);
   }

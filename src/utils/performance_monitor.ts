@@ -44,7 +44,9 @@ function getCpuUsagePercent(): number | null {
 
   // Calculate CPU time used (user + system) in microseconds
   const cpuTimeMicros =
-    currentCpuUsage.user - lastCpuUsage.user + (currentCpuUsage.system - lastCpuUsage.system);
+    currentCpuUsage.user -
+    lastCpuUsage.user +
+    (currentCpuUsage.system - lastCpuUsage.system);
 
   // CPU percentage = (CPU time / wall clock time) * 100
   // This gives percentage across all cores (can exceed 100% on multi-core systems)

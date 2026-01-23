@@ -1,6 +1,10 @@
 import { OpenAICompatibleChatLanguageModel } from "@ai-sdk/openai-compatible";
 import { OpenAIResponsesLanguageModel } from "@ai-sdk/openai/internal";
-import { FetchFunction, loadApiKey, withoutTrailingSlash } from "@ai-sdk/provider-utils";
+import {
+  FetchFunction,
+  loadApiKey,
+  withoutTrailingSlash,
+} from "@ai-sdk/provider-utils";
 
 import log from "electron-log";
 import { getExtraProviderOptions } from "./thinking_utils";
@@ -58,7 +62,9 @@ Creates a chat model for text generation.
   responses(modelId: ExampleChatModelId, chatParams: ChatParams): LanguageModel;
 }
 
-export function createDyadEngine(options: ExampleProviderSettings): DyadEngineProvider {
+export function createDyadEngine(
+  options: ExampleProviderSettings,
+): DyadEngineProvider {
   const baseURL = withoutTrailingSlash(options.baseURL);
   logger.info("creating dyad engine with baseURL", baseURL);
 
@@ -95,7 +101,11 @@ export function createDyadEngine(options: ExampleProviderSettings): DyadEnginePr
   });
 
   // Custom fetch implementation that adds dyad-specific options to the request
-  const createDyadFetch = ({ providerId }: { providerId: string }): FetchFunction => {
+  const createDyadFetch = ({
+    providerId,
+  }: {
+    providerId: string;
+  }): FetchFunction => {
     return (input: RequestInfo | URL, init?: RequestInit) => {
       // Use default fetch if no init or body
       if (!init || !init.body || typeof init.body !== "string") {
@@ -151,7 +161,8 @@ export function createDyadEngine(options: ExampleProviderSettings): DyadEnginePr
             files: dyadFiles,
             versioned_files: dyadVersionedFiles,
             enable_lazy_edits: options.dyadOptions.enableLazyEdits,
-            enable_smart_files_context: options.dyadOptions.enableSmartFilesContext,
+            enable_smart_files_context:
+              options.dyadOptions.enableSmartFilesContext,
             smart_context_mode: dyadSmartContextMode,
             enable_web_search: options.dyadOptions.enableWebSearch,
             app_id: dyadAppId,
@@ -183,7 +194,10 @@ export function createDyadEngine(options: ExampleProviderSettings): DyadEnginePr
     };
   };
 
-  const createChatModel = (modelId: ExampleChatModelId, chatParams: ChatParams) => {
+  const createChatModel = (
+    modelId: ExampleChatModelId,
+    chatParams: ChatParams,
+  ) => {
     const config = {
       ...getCommonModelConfig(),
       fetch: createDyadFetch({ providerId: chatParams.providerId }),
@@ -192,7 +206,10 @@ export function createDyadEngine(options: ExampleProviderSettings): DyadEnginePr
     return new OpenAICompatibleChatLanguageModel(modelId, config);
   };
 
-  const createResponsesModel = (modelId: ExampleChatModelId, chatParams: ChatParams) => {
+  const createResponsesModel = (
+    modelId: ExampleChatModelId,
+    chatParams: ChatParams,
+  ) => {
     const config = {
       ...getCommonModelConfig(),
       fetch: createDyadFetch({ providerId: chatParams.providerId }),

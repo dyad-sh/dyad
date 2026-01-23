@@ -16,9 +16,18 @@ export function useShortcut(
       eventModifiers: { ctrl?: boolean; shift?: boolean; meta?: boolean },
     ) => {
       const keyMatches = eventKey === key.toLowerCase();
-      const ctrlMatches = isModifierActive(modifiers.ctrl, eventModifiers.ctrl || false);
-      const shiftMatches = isModifierActive(modifiers.shift, eventModifiers.shift || false);
-      const metaMatches = isModifierActive(modifiers.meta, eventModifiers.meta || false);
+      const ctrlMatches = isModifierActive(
+        modifiers.ctrl,
+        eventModifiers.ctrl || false,
+      );
+      const shiftMatches = isModifierActive(
+        modifiers.shift,
+        eventModifiers.shift || false,
+      );
+      const metaMatches = isModifierActive(
+        modifiers.meta,
+        eventModifiers.meta || false,
+      );
 
       if (
         keyMatches &&

@@ -7,7 +7,11 @@ import "@/components/chat/monaco";
 import { IpcClient } from "@/ipc/ipc_client";
 import { showError, showSuccess, showWarning } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSettings } from "@/hooks/useSettings";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
@@ -27,7 +31,12 @@ interface BreadcrumbProps {
   isSaving: boolean;
 }
 
-const Breadcrumb: React.FC<BreadcrumbProps> = ({ path, hasUnsavedChanges, onSave, isSaving }) => {
+const Breadcrumb: React.FC<BreadcrumbProps> = ({
+  path,
+  hasUnsavedChanges,
+  onSave,
+  isSaving,
+}) => {
   const segments = path.split("/").filter(Boolean);
 
   return (
@@ -36,7 +45,12 @@ const Breadcrumb: React.FC<BreadcrumbProps> = ({ path, hasUnsavedChanges, onSave
         <div className="flex items-center gap-1 overflow-hidden min-w-0">
           {segments.map((segment, index) => (
             <React.Fragment key={index}>
-              {index > 0 && <ChevronRight size={14} className="text-gray-400 flex-shrink-0" />}
+              {index > 0 && (
+                <ChevronRight
+                  size={14}
+                  className="text-gray-400 flex-shrink-0"
+                />
+              )}
               <span className="hover:text-gray-900 dark:hover:text-gray-100 cursor-pointer truncate">
                 {segment}
               </span>
@@ -62,7 +76,11 @@ const Breadcrumb: React.FC<BreadcrumbProps> = ({ path, hasUnsavedChanges, onSave
             </TooltipContent>
           </Tooltip>
           {hasUnsavedChanges && (
-            <Circle size={8} fill="currentColor" className="text-amber-600 dark:text-amber-400" />
+            <Circle
+              size={8}
+              fill="currentColor"
+              className="text-amber-600 dark:text-amber-400"
+            />
           )}
         </div>
       </div>
@@ -70,7 +88,11 @@ const Breadcrumb: React.FC<BreadcrumbProps> = ({ path, hasUnsavedChanges, onSave
   );
 };
 
-export const FileEditor = ({ appId, filePath, initialLine = null }: FileEditorProps) => {
+export const FileEditor = ({
+  appId,
+  filePath,
+  initialLine = null,
+}: FileEditorProps) => {
   const { content, loading, error } = useLoadAppFile(appId, filePath);
   const { theme } = useTheme();
   const [value, setValue] = useState<string | undefined>(undefined);
@@ -107,7 +129,8 @@ export const FileEditor = ({ appId, filePath, initialLine = null }: FileEditorPr
   // Determine if dark mode based on theme
   const isDarkMode =
     theme === "dark" ||
-    (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    (theme === "system" &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches);
   const editorTheme = isDarkMode ? "dyad-dark" : "dyad-light";
 
   // Navigate to a specific line in the editor
@@ -155,14 +178,24 @@ export const FileEditor = ({ appId, filePath, initialLine = null }: FileEditorPr
 
   // Save the file
   const saveFile = async () => {
-    if (!appId || !currentValueRef.current || !needsSaveRef.current || isSavingRef.current) return;
+    if (
+      !appId ||
+      !currentValueRef.current ||
+      !needsSaveRef.current ||
+      isSavingRef.current
+    )
+      return;
 
     try {
       isSavingRef.current = true;
       setIsSaving(true);
 
       const ipcClient = IpcClient.getInstance();
-      const { warning } = await ipcClient.editAppFile(appId, filePath, currentValueRef.current);
+      const { warning } = await ipcClient.editAppFile(
+        appId,
+        filePath,
+        currentValueRef.current,
+      );
       await queryClient.invalidateQueries({
         queryKey: queryKeys.versions.list({ appId }),
       });

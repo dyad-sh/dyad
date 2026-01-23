@@ -28,7 +28,10 @@ export function useAttachments() {
     }
   };
 
-  const handleFileSelect = (fileList: FileList, type: "chat-context" | "upload-to-codebase") => {
+  const handleFileSelect = (
+    fileList: FileList,
+    type: "chat-context" | "upload-to-codebase",
+  ) => {
     const files = Array.from(fileList);
     const fileAttachments: FileAttachment[] = files.map((file) => ({
       file,

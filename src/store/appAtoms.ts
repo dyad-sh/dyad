@@ -10,4 +10,6 @@ export const activeCheckoutCounterAtom = atom(0);
  * Derived atom that is true if any checkoutVersion mutation is in progress.
  * This atom is read-only and derives its state from activeCheckoutCounterAtom.
  */
-export const isAnyCheckoutVersionInProgressAtom = atom((get) => get(activeCheckoutCounterAtom) > 0);
+export const isAnyCheckoutVersionInProgressAtom = atom(
+  (get) => get(activeCheckoutCounterAtom) > 0,
+);

@@ -6,7 +6,11 @@ import dotenv from "dotenv";
 import started from "electron-squirrel-startup";
 import { updateElectronApp, UpdateSourceType } from "update-electron-app";
 import log from "electron-log";
-import { getSettingsFilePath, readSettings, writeSettings } from "./main/settings";
+import {
+  getSettingsFilePath,
+  readSettings,
+  writeSettings,
+} from "./main/settings";
 import { handleSupabaseOAuthReturn } from "./supabase_admin/supabase_return_handler";
 import { handleDyadProReturn } from "./main/pro";
 import { IS_TEST_BUILD } from "./ipc/utils/test_utils";
@@ -20,7 +24,10 @@ import {
   AddPromptDataSchema,
   AddPromptPayload,
 } from "./ipc/deep_link_data";
-import { startPerformanceMonitoring, stopPerformanceMonitoring } from "./utils/performance_monitor";
+import {
+  startPerformanceMonitoring,
+  stopPerformanceMonitoring,
+} from "./utils/performance_monitor";
 import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai_messages_cleanup";
 import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
@@ -62,7 +69,9 @@ if (fs.existsSync(gitDir)) {
 // https://www.electronjs.org/docs/latest/tutorial/launch-app-from-url-in-another-app#main-process-mainjs
 if (process.defaultApp) {
   if (process.argv.length >= 2) {
-    app.setAsDefaultProtocolClient("dyad", process.execPath, [path.resolve(process.argv[1])]);
+    app.setAsDefaultProtocolClient("dyad", process.execPath, [
+      path.resolve(process.argv[1]),
+    ]);
   }
 } else {
   app.setAsDefaultProtocolClient("dyad");
@@ -206,7 +215,9 @@ const createWindow = () => {
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
-    mainWindow.loadFile(path.join(__dirname, "../renderer/main_window/index.html"));
+    mainWindow.loadFile(
+      path.join(__dirname, "../renderer/main_window/index.html"),
+    );
   }
   if (process.env.NODE_ENV === "development") {
     // Open the DevTools.
@@ -240,9 +251,8 @@ const createWindow = () => {
         { role: "delete" },
       );
       if (params.misspelledWord) {
-        const suggestions: Electron.MenuItemConstructorOptions[] = params.dictionarySuggestions
-          .slice(0, 5)
-          .map((suggestion) => ({
+        const suggestions: Electron.MenuItemConstructorOptions[] =
+          params.dictionarySuggestions.slice(0, 5).map((suggestion) => ({
             label: suggestion,
             click: () => {
               try {
@@ -274,7 +284,8 @@ const createWindow = () => {
         { type: "separator" },
         {
           label: "Inspect Element",
-          click: () => mainWindow?.webContents.inspectElement(params.x, params.y),
+          click: () =>
+            mainWindow?.webContents.inspectElement(params.x, params.y),
         },
       );
     }
@@ -317,7 +328,12 @@ async function handleDeepLinkReturn(url: string) {
   }
 
   // Intentionally do NOT log the full URL which may contain sensitive tokens.
-  log.log("Handling deep link: protocol", parsed.protocol, "hostname", parsed.hostname);
+  log.log(
+    "Handling deep link: protocol",
+    parsed.protocol,
+    "hostname",
+    parsed.hostname,
+  );
   if (parsed.protocol !== "dyad:") {
     dialog.showErrorBox(
       "Invalid Protocol",
@@ -330,7 +346,10 @@ async function handleDeepLinkReturn(url: string) {
     const refreshToken = parsed.searchParams.get("refreshToken");
     const expiresIn = Number(parsed.searchParams.get("expiresIn"));
     if (!token || !refreshToken || !expiresIn) {
-      dialog.showErrorBox("Invalid URL", "Expected token, refreshToken, and expiresIn");
+      dialog.showErrorBox(
+        "Invalid URL",
+        "Expected token, refreshToken, and expiresIn",
+      );
       return;
     }
     handleNeonOAuthReturn({ token, refreshToken, expiresIn });
@@ -345,7 +364,10 @@ async function handleDeepLinkReturn(url: string) {
     const refreshToken = parsed.searchParams.get("refreshToken");
     const expiresIn = Number(parsed.searchParams.get("expiresIn"));
     if (!token || !refreshToken || !expiresIn) {
-      dialog.showErrorBox("Invalid URL", "Expected token, refreshToken, and expiresIn");
+      dialog.showErrorBox(
+        "Invalid URL",
+        "Expected token, refreshToken, and expiresIn",
+      );
       return;
     }
     await handleSupabaseOAuthReturn({ token, refreshToken, expiresIn });

@@ -16,7 +16,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLoadApp } from "@/hooks/useLoadApp";
@@ -45,7 +51,8 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   // Check if there are any connected organizations
   const isConnected = isSupabaseConnected(settings);
 
-  const branchesProjectId = app?.supabaseParentProjectId || app?.supabaseProjectId;
+  const branchesProjectId =
+    app?.supabaseParentProjectId || app?.supabaseProjectId;
 
   const {
     organizations,
@@ -107,9 +114,13 @@ export function SupabaseConnector({ appId }: { appId: number }) {
       const orgKey = project.organizationSlug;
       if (!acc[orgKey]) {
         // Find the organization info to get the name
-        const orgInfo = organizations.find((o) => o.organizationSlug === project.organizationSlug);
+        const orgInfo = organizations.find(
+          (o) => o.organizationSlug === project.organizationSlug,
+        );
         acc[orgKey] = {
-          orgLabel: orgInfo?.name || `Organization ${project.organizationSlug.slice(0, 8)}`,
+          orgLabel:
+            orgInfo?.name ||
+            `Organization ${project.organizationSlug.slice(0, 8)}`,
           projects: [],
         };
       }
@@ -182,7 +193,10 @@ export function SupabaseConnector({ appId }: { appId: number }) {
           </CardTitle>
           <CardDescription className="flex flex-col gap-1.5 text-sm">
             This app is connected to project:{" "}
-            <Badge variant="secondary" className="ml-2 text-base font-bold px-3 py-1">
+            <Badge
+              variant="secondary"
+              className="ml-2 text-base font-bold px-3 py-1"
+            >
               {app.supabaseProjectName}
             </Badge>
           </CardDescription>
@@ -195,7 +209,9 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                 value={app.supabaseProjectId || ""}
                 onValueChange={async (supabaseBranchProjectId) => {
                   try {
-                    const branch = branches.find((b) => b.projectRef === supabaseBranchProjectId);
+                    const branch = branches.find(
+                      (b) => b.projectRef === supabaseBranchProjectId,
+                    );
                     if (!branch) {
                       throw new Error("Branch not found");
                     }
@@ -214,12 +230,18 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                 }}
                 disabled={isLoadingBranches || isSettingAppProject}
               >
-                <SelectTrigger id="supabase-branch-select" data-testid="supabase-branch-select">
+                <SelectTrigger
+                  id="supabase-branch-select"
+                  data-testid="supabase-branch-select"
+                >
                   <SelectValue placeholder="Select a branch" />
                 </SelectTrigger>
                 <SelectContent>
                   {branches.map((branch) => (
-                    <SelectItem key={branch.projectRef} value={branch.projectRef}>
+                    <SelectItem
+                      key={branch.projectRef}
+                      value={branch.projectRef}
+                    >
                       {branch.name}
                       {branch.isDefault && " (Default)"}
                     </SelectItem>
@@ -258,15 +280,24 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                 disabled={isFetchingProjects}
                 title="Refresh projects"
               >
-                <RefreshCw className={`h-4 w-4 ${isFetchingProjects ? "animate-spin" : ""}`} />
+                <RefreshCw
+                  className={`h-4 w-4 ${isFetchingProjects ? "animate-spin" : ""}`}
+                />
               </Button>
-              <Button variant="outline" size="sm" onClick={handleAddAccount} className="gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleAddAccount}
+                className="gap-1"
+              >
                 <Plus className="h-4 w-4" />
                 Add Organization
               </Button>
             </div>
           </CardTitle>
-          <CardDescription>Select a Supabase project to connect to this app</CardDescription>
+          <CardDescription>
+            Select a Supabase project to connect to this app
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {isLoadingProjects || isFetchingProjects ? (
@@ -277,7 +308,11 @@ export function SupabaseConnector({ appId }: { appId: number }) {
           ) : projectsError ? (
             <div className="text-red-500">
               Error loading projects: {projectsError.message}
-              <Button variant="outline" className="mt-2" onClick={() => refetchProjects()}>
+              <Button
+                variant="outline"
+                className="mt-2"
+                onClick={() => refetchProjects()}
+              >
                 Retry
               </Button>
             </div>
@@ -294,7 +329,8 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                     >
                       <div className="flex flex-col min-w-0 flex-1">
                         <span className="font-medium truncate">
-                          {org.name || `Organization ${org.organizationSlug.slice(0, 8)}`}
+                          {org.name ||
+                            `Organization ${org.organizationSlug.slice(0, 8)}`}
                         </span>
                         {org.ownerEmail && (
                           <span className="text-xs text-muted-foreground truncate">
@@ -306,7 +342,9 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                         variant="ghost"
                         size="sm"
                         className="h-7 px-2 text-muted-foreground hover:text-destructive shrink-0"
-                        onClick={() => handleDeleteOrganization(org.organizationSlug)}
+                        onClick={() =>
+                          handleDeleteOrganization(org.organizationSlug)
+                        }
                         title="Disconnect organization"
                       >
                         <Trash2 className="h-3.5 w-3.5 mr-1" />
@@ -324,7 +362,10 @@ export function SupabaseConnector({ appId }: { appId: number }) {
               ) : (
                 <div className="space-y-2">
                   <Label htmlFor="project-select">Project</Label>
-                  <Select value={currentProjectValue} onValueChange={handleProjectSelect}>
+                  <Select
+                    value={currentProjectValue}
+                    onValueChange={handleProjectSelect}
+                  >
                     <SelectTrigger id="project-select">
                       <SelectValue placeholder="Select a project" />
                     </SelectTrigger>

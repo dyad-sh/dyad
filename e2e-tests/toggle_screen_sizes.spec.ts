@@ -14,32 +14,41 @@ test.describe("Toggle Screen Size Tests", () => {
     });
   }
 
-  testSkipIfWindows("should open and close device mode popover", async ({ po }) => {
-    test.setTimeout(Timeout.EXTRA_LONG * 1.5);
-    await setupApp(po);
+  testSkipIfWindows(
+    "should open and close device mode popover",
+    async ({ po }) => {
+      test.setTimeout(Timeout.EXTRA_LONG * 1.5);
+      await setupApp(po);
 
-    // Click the device mode button to open popover
-    const deviceModeButton = po.page.locator('[data-testid="device-mode-button"]');
-    await deviceModeButton.click();
+      // Click the device mode button to open popover
+      const deviceModeButton = po.page.locator(
+        '[data-testid="device-mode-button"]',
+      );
+      await deviceModeButton.click();
 
-    // Verify popover is visible with device options
-    const originalButton = po.page.locator('[aria-label="Desktop view"]');
-    await expect(originalButton).toBeVisible();
+      // Verify popover is visible with device options
+      const originalButton = po.page.locator('[aria-label="Desktop view"]');
+      await expect(originalButton).toBeVisible();
 
-    // Close popover by clicking the button again
-    await deviceModeButton.click();
+      // Close popover by clicking the button again
+      await deviceModeButton.click();
 
-    // Verify popover is closed
-    await expect(originalButton).toBeHidden();
-  });
+      // Verify popover is closed
+      await expect(originalButton).toBeHidden();
+    },
+  );
 
   testSkipIfWindows("should switch between device modes", async ({ po }) => {
     test.setTimeout(Timeout.EXTRA_LONG * 1.5);
     await setupApp(po);
 
-    const deviceModeButton = po.page.locator('[data-testid="device-mode-button"]');
+    const deviceModeButton = po.page.locator(
+      '[data-testid="device-mode-button"]',
+    );
 
-    const previewIframe = po.page.locator('[data-testid="preview-iframe-element"]');
+    const previewIframe = po.page.locator(
+      '[data-testid="preview-iframe-element"]',
+    );
 
     // Switch to tablet mode
     await deviceModeButton.click();

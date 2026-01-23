@@ -13,7 +13,13 @@ interface DraggableTextInputProps {
   index: number;
   totalInputs: number;
   scale: number;
-  onMove: (id: string, x: number, y: number, adjustedX: number, adjustedY: number) => void;
+  onMove: (
+    id: string,
+    x: number,
+    y: number,
+    adjustedX: number,
+    adjustedY: number,
+  ) => void;
   onChange: (id: string, value: string) => void;
   onKeyDown: (id: string, e: React.KeyboardEvent, index: number) => void;
   onRemove: (id: string) => void;
@@ -53,8 +59,14 @@ export const DraggableTextInput = ({
         let newY = e.clientY - dragOffset.current.y;
 
         // Constrain within container bounds
-        newX = Math.max(0, Math.min(newX, containerRect.width - elementRect.width));
-        newY = Math.max(0, Math.min(newY, containerRect.height - elementRect.height));
+        newX = Math.max(
+          0,
+          Math.min(newX, containerRect.width - elementRect.width),
+        );
+        newY = Math.max(
+          0,
+          Math.min(newY, containerRect.height - elementRect.height),
+        );
 
         // Calculate adjusted coordinates for the canvas
         const adjustedX = newX / scale;

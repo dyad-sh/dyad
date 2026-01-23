@@ -25,7 +25,9 @@ export function useCreateApp() {
     },
   });
 
-  const createApp = async (params: CreateAppParams): Promise<CreateAppResult> => {
+  const createApp = async (
+    params: CreateAppParams,
+  ): Promise<CreateAppResult> => {
     return mutation.mutateAsync(params);
   };
 

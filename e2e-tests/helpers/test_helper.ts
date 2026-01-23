@@ -6,7 +6,10 @@ import path from "path";
 import os from "os";
 import { execSync } from "child_process";
 import { generateAppFilesSnapshotData } from "./generateAppFilesSnapshotData";
-import { BUILD_SYSTEM_POSTFIX, BUILD_SYSTEM_PREFIX } from "@/prompts/system_prompt";
+import {
+  BUILD_SYSTEM_POSTFIX,
+  BUILD_SYSTEM_PREFIX,
+} from "@/prompts/system_prompt";
 
 const showDebugLogs = process.env.DEBUG_LOGS === "true";
 
@@ -119,7 +122,10 @@ function normalizeVersionedFiles(dump: any): void {
   // Update messageIndexToFilePathToFileId
   if (vf.messageIndexToFilePathToFileId) {
     for (const pathToId of Object.values(
-      vf.messageIndexToFilePathToFileId as Record<string, Record<string, string>>,
+      vf.messageIndexToFilePathToFileId as Record<
+        string,
+        Record<string, string>
+      >,
     )) {
       for (const [filePath, id] of Object.entries(pathToId)) {
         pathToId[filePath] = oldToNewId[id] ?? id;
@@ -141,15 +147,23 @@ export class ContextFilesPickerDialog {
 
   async addAutoIncludeContextFile(path: string) {
     await this.page.getByTestId("auto-include-context-files-input").fill(path);
-    await this.page.getByTestId("auto-include-context-files-add-button").click();
+    await this.page
+      .getByTestId("auto-include-context-files-add-button")
+      .click();
   }
 
   async removeManualContextFile() {
-    await this.page.getByTestId("manual-context-files-remove-button").first().click();
+    await this.page
+      .getByTestId("manual-context-files-remove-button")
+      .first()
+      .click();
   }
 
   async removeAutoIncludeContextFile() {
-    await this.page.getByTestId("auto-include-context-files-remove-button").first().click();
+    await this.page
+      .getByTestId("auto-include-context-files-remove-button")
+      .first()
+      .click();
   }
 
   async addExcludeContextFile(path: string) {
@@ -158,7 +172,10 @@ export class ContextFilesPickerDialog {
   }
 
   async removeExcludeContextFile() {
-    await this.page.getByTestId("exclude-context-files-remove-button").first().click();
+    await this.page
+      .getByTestId("exclude-context-files-remove-button")
+      .first()
+      .click();
   }
 }
 
@@ -233,7 +250,9 @@ class GitHubConnector {
 
   async selectCustomBranch(branch: string) {
     await this.page.getByTestId("github-branch-select").click();
-    await this.page.getByRole("option", { name: "✏️ Type custom branch name" }).click();
+    await this.page
+      .getByRole("option", { name: "✏️ Type custom branch name" })
+      .click();
     await this.page.getByTestId("github-custom-branch-input").click();
     await this.page.getByTestId("github-custom-branch-input").fill(branch);
   }
@@ -243,15 +262,21 @@ class GitHubConnector {
   }
 
   async snapshotConnectedRepo() {
-    await expect(this.page.getByTestId("github-connected-repo")).toMatchAriaSnapshot();
+    await expect(
+      this.page.getByTestId("github-connected-repo"),
+    ).toMatchAriaSnapshot();
   }
 
   async snapshotSetupRepo() {
-    await expect(this.page.getByTestId("github-setup-repo")).toMatchAriaSnapshot();
+    await expect(
+      this.page.getByTestId("github-setup-repo"),
+    ).toMatchAriaSnapshot();
   }
 
   async snapshotUnconnectedRepo() {
-    await expect(this.page.getByTestId("github-unconnected-repo")).toMatchAriaSnapshot();
+    await expect(
+      this.page.getByTestId("github-unconnected-repo"),
+    ).toMatchAriaSnapshot();
   }
 
   async clickSyncToGithubButton() {
@@ -259,7 +284,9 @@ class GitHubConnector {
   }
 
   async clickDisconnectRepoButton() {
-    await this.page.getByRole("button", { name: "Disconnect from repo" }).click();
+    await this.page
+      .getByRole("button", { name: "Disconnect from repo" })
+      .click();
   }
 
   async clearPushEvents() {
@@ -287,7 +314,8 @@ class GitHubConnector {
       (event: any) =>
         event.repo === expectedEvent.repo &&
         event.branch === expectedEvent.branch &&
-        (!expectedEvent.operation || event.operation === expectedEvent.operation),
+        (!expectedEvent.operation ||
+          event.operation === expectedEvent.operation),
     );
 
     if (!matchingEvent) {
@@ -403,7 +431,9 @@ export class PageObject {
         // Capture any error output to include in the final error if we time out
         const stdOut = error?.stdout ? error.stdout.toString() : "";
         const stdErr = error?.stderr ? error.stderr.toString() : "";
-        lastOutput = [stdOut, stdErr, error?.message].filter(Boolean).join("\n");
+        lastOutput = [stdOut, stdErr, error?.message]
+          .filter(Boolean)
+          .join("\n");
         console.error("Dependency check command failed:", lastOutput);
       }
 
@@ -427,7 +457,9 @@ export class PageObject {
       .nth(1)
       .click();
     await this.page.getByRole("textbox", { name: "Set Dyad API Key" }).click();
-    await this.page.getByRole("textbox", { name: "Set Dyad API Key" }).fill("testdyadkey");
+    await this.page
+      .getByRole("textbox", { name: "Set Dyad API Key" })
+      .fill("testdyadkey");
     await this.page.getByRole("button", { name: "Save Key" }).click();
   }
 
@@ -462,19 +494,25 @@ export class PageObject {
 
   async openContextFilesPicker() {
     // Open the auxiliary actions menu
-    await this.getChatInputContainer().getByTestId("auxiliary-actions-menu").click();
+    await this.getChatInputContainer()
+      .getByTestId("auxiliary-actions-menu")
+      .click();
 
     // Click on "Codebase context" to open the popover
     await this.page.getByTestId("codebase-context-trigger").click();
 
     // Wait for the popover content to be visible
-    await this.page.getByTestId("manual-context-files-input").waitFor({ state: "visible" });
+    await this.page
+      .getByTestId("manual-context-files-input")
+      .waitFor({ state: "visible" });
 
     return new ContextFilesPickerDialog(this.page, async () => {
       // Close the popover first
       await this.page.keyboard.press("Escape");
       // Wait a bit for the popover to close, then close the dropdown menu
-      await this.page.getByTestId("manual-context-files-input").waitFor({ state: "hidden" });
+      await this.page
+        .getByTestId("manual-context-files-input")
+        .waitFor({ state: "hidden" });
       await this.page.keyboard.press("Escape");
     });
   }
@@ -516,7 +554,9 @@ export class PageObject {
       filesData.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
       if (files) {
         filesData = filesData.filter((file) =>
-          files.some((f) => normalizePath(f) === normalizePath(file.relativePath)),
+          files.some(
+            (f) => normalizePath(f) === normalizePath(file.relativePath),
+          ),
         );
       }
 
@@ -547,7 +587,9 @@ export class PageObject {
       // Update page so that "[[dyad-dump-path=*]]" is replaced with a placeholder path
       // which is stable across runs.
       await this.page.evaluate(() => {
-        const messagesList = document.querySelector("[data-testid=messages-list]");
+        const messagesList = document.querySelector(
+          "[data-testid=messages-list]",
+        );
         if (!messagesList) {
           throw new Error("Messages list not found");
         }
@@ -600,7 +642,13 @@ export class PageObject {
   ////////////////////////////////
 
   async selectPreviewMode(
-    mode: "code" | "problems" | "preview" | "configure" | "security" | "publish",
+    mode:
+      | "code"
+      | "problems"
+      | "preview"
+      | "configure"
+      | "security"
+      | "publish",
   ) {
     await this.page.getByTestId(`${mode}-mode-button`).click();
   }
@@ -610,7 +658,9 @@ export class PageObject {
   }
 
   async snapshotChatActivityList() {
-    await expect(this.page.getByTestId("chat-activity-list")).toMatchAriaSnapshot();
+    await expect(
+      this.page.getByTestId("chat-activity-list"),
+    ).toMatchAriaSnapshot();
   }
 
   async clickRecheckProblems() {
@@ -675,14 +725,18 @@ export class PageObject {
   }
 
   async clickPreviewAnnotatorButton() {
-    await this.page.getByTestId("preview-annotator-button").click({ timeout: Timeout.EXTRA_LONG });
+    await this.page
+      .getByTestId("preview-annotator-button")
+      .click({ timeout: Timeout.EXTRA_LONG });
   }
 
   async waitForAnnotatorMode() {
     // Wait for the annotator toolbar to be visible
-    await expect(this.page.getByRole("button", { name: "Select" })).toBeVisible({
-      timeout: Timeout.MEDIUM,
-    });
+    await expect(this.page.getByRole("button", { name: "Select" })).toBeVisible(
+      {
+        timeout: Timeout.MEDIUM,
+      },
+    );
   }
 
   async clickAnnotatorSubmit() {
@@ -764,7 +818,9 @@ export class PageObject {
   }
 
   async snapshotSecurityFindingsTable() {
-    await expect(this.page.getByTestId("security-findings-table")).toMatchAriaSnapshot();
+    await expect(
+      this.page.getByTestId("security-findings-table"),
+    ).toMatchAriaSnapshot();
   }
 
   async snapshotServerDump(
@@ -773,10 +829,14 @@ export class PageObject {
   ) {
     await this.waitForChatCompletion();
     // Get the text content of the messages list
-    const messagesListText = await this.page.getByTestId("messages-list").textContent();
+    const messagesListText = await this.page
+      .getByTestId("messages-list")
+      .textContent();
 
     // Find ALL dump paths using global regex
-    const dumpPathMatches = messagesListText?.match(/\[\[dyad-dump-path=([^\]]+)\]\]/g);
+    const dumpPathMatches = messagesListText?.match(
+      /\[\[dyad-dump-path=([^\]]+)\]\]/g,
+    );
 
     if (!dumpPathMatches || dumpPathMatches.length === 0) {
       throw new Error("No dump path found in messages list");
@@ -793,7 +853,8 @@ export class PageObject {
     // Select the dump path based on index
     // -1 means last, -2 means second to last, etc.
     // 0 means first, 1 means second, etc.
-    const selectedIndex = dumpIndex < 0 ? dumpPaths.length + dumpIndex : dumpIndex;
+    const selectedIndex =
+      dumpIndex < 0 ? dumpPaths.length + dumpIndex : dumpIndex;
 
     if (selectedIndex < 0 || selectedIndex >= dumpPaths.length) {
       throw new Error(
@@ -807,28 +868,31 @@ export class PageObject {
     }
 
     // Read the JSON file
-    const dumpContent: string = (fs.readFileSync(dumpFilePath, "utf-8") as any).replaceAll(
-      /\[\[dyad-dump-path=([^\]]+)\]\]/g,
-      "[[dyad-dump-path=*]]",
-    );
+    const dumpContent: string = (
+      fs.readFileSync(dumpFilePath, "utf-8") as any
+    ).replaceAll(/\[\[dyad-dump-path=([^\]]+)\]\]/g, "[[dyad-dump-path=*]]");
     // Perform snapshot comparison
     const parsedDump = JSON.parse(dumpContent);
     if (type === "request") {
       if (parsedDump["body"]["input"]) {
-        parsedDump["body"]["input"] = parsedDump["body"]["input"].map((input: any) => {
-          if (input.role === "system") {
-            input.content = "[[SYSTEM_MESSAGE]]";
-          }
-          return input;
-        });
+        parsedDump["body"]["input"] = parsedDump["body"]["input"].map(
+          (input: any) => {
+            if (input.role === "system") {
+              input.content = "[[SYSTEM_MESSAGE]]";
+            }
+            return input;
+          },
+        );
       }
       if (parsedDump["body"]["messages"]) {
-        parsedDump["body"]["messages"] = parsedDump["body"]["messages"].map((message: any) => {
-          if (message.role === "system") {
-            message.content = "[[SYSTEM_MESSAGE]]";
-          }
-          return message;
-        });
+        parsedDump["body"]["messages"] = parsedDump["body"]["messages"].map(
+          (message: any) => {
+            if (message.role === "system") {
+              message.content = "[[SYSTEM_MESSAGE]]";
+            }
+            return message;
+          },
+        );
       }
       // Normalize fileIds to be deterministic based on content
       normalizeVersionedFiles(parsedDump);
@@ -836,7 +900,9 @@ export class PageObject {
       normalizeItemReferences(parsedDump);
       // Normalize tool_call IDs (e.g., call_1234567890_0) to be deterministic
       normalizeToolCallIds(parsedDump);
-      expect(JSON.stringify(parsedDump, null, 2).replace(/\\r\\n/g, "\\n")).toMatchSnapshot(name);
+      expect(
+        JSON.stringify(parsedDump, null, 2).replace(/\\r\\n/g, "\\n"),
+      ).toMatchSnapshot(name);
       return;
     }
     expect(
@@ -883,12 +949,17 @@ export class PageObject {
   }
 
   getChatInput() {
-    return this.page.locator('[data-lexical-editor="true"][aria-placeholder^="Ask Dyad to build"]');
+    return this.page.locator(
+      '[data-lexical-editor="true"][aria-placeholder^="Ask Dyad to build"]',
+    );
   }
 
   clickNewChat({ index = 0 }: { index?: number } = {}) {
     // There is two new chat buttons...
-    return this.page.getByRole("button", { name: "New Chat" }).nth(index).click();
+    return this.page
+      .getByRole("button", { name: "New Chat" })
+      .nth(index)
+      .click();
   }
 
   async clickBackButton() {
@@ -899,7 +970,9 @@ export class PageObject {
     // Need to make sure it's NOT visible yet to avoid a race when we opened
     // the auxiliary actions menu earlier.
     await expect(this.page.getByTestId("token-bar-toggle")).not.toBeVisible();
-    await this.getChatInputContainer().getByTestId("auxiliary-actions-menu").click();
+    await this.getChatInputContainer()
+      .getByTestId("auxiliary-actions-menu")
+      .click();
     await this.page.getByTestId("token-bar-toggle").click();
   }
 
@@ -939,7 +1012,10 @@ export class PageObject {
     await this.page.getByText("Local models").click();
     await this.page.getByText("LM Studio", { exact: true }).click();
     // Both of the elements that match "lmstudio-model-1" are the same button, so we just pick the first.
-    await this.page.getByText("lmstudio-model-1", { exact: true }).first().click();
+    await this.page
+      .getByText("lmstudio-model-1", { exact: true })
+      .first()
+      .click();
   }
 
   async selectTestAzureModel() {
@@ -963,18 +1039,26 @@ export class PageObject {
   async setUpTestProvider() {
     await this.page.getByText("Add custom providerConnect to").click();
     // Fill out provider dialog
-    await this.page.getByRole("textbox", { name: "Provider ID" }).fill("testing");
+    await this.page
+      .getByRole("textbox", { name: "Provider ID" })
+      .fill("testing");
     await this.page.getByRole("textbox", { name: "Display Name" }).click();
-    await this.page.getByRole("textbox", { name: "Display Name" }).fill("test-provider");
+    await this.page
+      .getByRole("textbox", { name: "Display Name" })
+      .fill("test-provider");
     await this.page.getByText("API Base URLThe base URL for").click();
-    await this.page.getByRole("textbox", { name: "API Base URL" }).fill("http://localhost:3500/v1");
+    await this.page
+      .getByRole("textbox", { name: "API Base URL" })
+      .fill("http://localhost:3500/v1");
     await this.page.getByRole("button", { name: "Add Provider" }).click();
   }
 
   async setUpTestModel() {
     await this.page.getByRole("heading", { name: "test-provider" }).click();
     await this.page.getByRole("button", { name: "Add Custom Model" }).click();
-    await this.page.getByRole("textbox", { name: "Model ID*" }).fill("test-model");
+    await this.page
+      .getByRole("textbox", { name: "Model ID*" })
+      .fill("test-model");
     await this.page.getByRole("textbox", { name: "Model ID*" }).press("Tab");
     await this.page.getByRole("textbox", { name: "Name*" }).fill("test-model");
     await this.page.getByRole("button", { name: "Add Model" }).click();
@@ -1000,7 +1084,9 @@ export class PageObject {
     await this.page.getByRole("button", { name: "New Prompt" }).click();
     await this.page.getByRole("textbox", { name: "Title" }).fill(title);
     if (description) {
-      await this.page.getByRole("textbox", { name: "Description (optional)" }).fill(description);
+      await this.page
+        .getByRole("textbox", { name: "Description (optional)" })
+        .fill(description);
     }
     await this.page.getByRole("textbox", { name: "Content" }).fill(content);
     await this.page.getByRole("button", { name: "Save" }).click();
@@ -1016,16 +1102,23 @@ export class PageObject {
 
   async isCurrentAppNameNone() {
     await expect(async () => {
-      await expect(this.getTitleBarAppNameButton()).toContainText("no app selected");
+      await expect(this.getTitleBarAppNameButton()).toContainText(
+        "no app selected",
+      );
     }).toPass();
   }
 
   async getCurrentAppName() {
     // Make sure to wait for the app to be set to avoid a race condition.
     await expect(async () => {
-      await expect(this.getTitleBarAppNameButton()).not.toContainText("no app selected");
+      await expect(this.getTitleBarAppNameButton()).not.toContainText(
+        "no app selected",
+      );
     }).toPass();
-    return (await this.getTitleBarAppNameButton().textContent())?.replace("App: ", "");
+    return (await this.getTitleBarAppNameButton().textContent())?.replace(
+      "App: ",
+      "",
+    );
   }
 
   async getCurrentAppPath() {
@@ -1056,7 +1149,11 @@ export class PageObject {
     await this.locateAppUpgradeButton({ upgradeId }).click();
   }
 
-  async expectAppUpgradeButtonIsNotVisible({ upgradeId }: { upgradeId: string }) {
+  async expectAppUpgradeButtonIsNotVisible({
+    upgradeId,
+  }: {
+    upgradeId: string;
+  }) {
     await expect(this.locateAppUpgradeButton({ upgradeId })).toBeHidden({
       timeout: Timeout.MEDIUM,
     });
@@ -1123,7 +1220,10 @@ export class PageObject {
 
     const diffLines: string[] = [];
 
-    const allKeys = new Set([...Object.keys(beforeSettings), ...Object.keys(afterSettings)]);
+    const allKeys = new Set([
+      ...Object.keys(beforeSettings),
+      ...Object.keys(afterSettings),
+    ]);
 
     // Sort keys for deterministic output
     const sortedKeys = Array.from(allKeys).sort();
@@ -1145,7 +1245,9 @@ export class PageObject {
       const formatValue = (val: unknown, marker: "+" | "-") => {
         const displayVal = key in redactedKeys ? redactedKeys[key] : val;
         const lines = JSON.stringify(displayVal, null, 2).split("\n");
-        return lines.map((line, i) => (i === 0 ? line : `${marker}   ${line}`)).join("\n");
+        return lines
+          .map((line, i) => (i === 0 ? line : `${marker}   ${line}`))
+          .join("\n");
       };
 
       if (!beforeExists && afterExists) {
@@ -1172,7 +1274,9 @@ export class PageObject {
     // await page.getByRole('combobox').filter({ hasText: 'Stable' }).click();
     // await page.getByRole('option', { name: 'Beta' }).dblclick();
     await this.page.getByRole("combobox", { name: "Release Channel" }).click();
-    await this.page.getByRole("option", { name: channel === "stable" ? "Stable" : "Beta" }).click();
+    await this.page
+      .getByRole("option", { name: channel === "stable" ? "Stable" : "Beta" })
+      .click();
   }
 
   async clickTelemetryAccept() {
@@ -1218,8 +1322,13 @@ export class PageObject {
     await expect(this.page.locator("[data-sonner-toast]")).toHaveCount(0);
   }
 
-  async waitForToast(type?: "success" | "error" | "warning" | "info", timeout = 5000) {
-    const selector = type ? `[data-sonner-toast][data-type="${type}"]` : "[data-sonner-toast]";
+  async waitForToast(
+    type?: "success" | "error" | "warning" | "info",
+    timeout = 5000,
+  ) {
+    const selector = type
+      ? `[data-sonner-toast][data-type="${type}"]`
+      : "[data-sonner-toast]";
 
     await this.page.waitForSelector(selector, { timeout });
   }
@@ -1231,18 +1340,24 @@ export class PageObject {
   }
 
   async assertToastVisible(type?: "success" | "error" | "warning" | "info") {
-    const selector = type ? `[data-sonner-toast][data-type="${type}"]` : "[data-sonner-toast]";
+    const selector = type
+      ? `[data-sonner-toast][data-type="${type}"]`
+      : "[data-sonner-toast]";
 
     await expect(this.page.locator(selector)).toBeVisible();
   }
 
   async assertToastWithText(text: string) {
-    await expect(this.page.locator(`[data-sonner-toast]:has-text("${text}")`)).toBeVisible();
+    await expect(
+      this.page.locator(`[data-sonner-toast]:has-text("${text}")`),
+    ).toBeVisible();
   }
 
   async dismissAllToasts() {
     // Click all close buttons if they exist
-    const closeButtons = this.page.locator("[data-sonner-toast] button[data-close-button]");
+    const closeButtons = this.page.locator(
+      "[data-sonner-toast] button[data-close-button]",
+    );
     const count = await closeButtons.count();
     for (let i = 0; i < count; i++) {
       await closeButtons.nth(i).click();
@@ -1258,11 +1373,15 @@ export class PageObject {
   ////////////////////////////////
 
   getAgentConsentBanner() {
-    return this.page.getByRole("button", { name: "Always allow" }).locator("..");
+    return this.page
+      .getByRole("button", { name: "Always allow" })
+      .locator("..");
   }
 
   async waitForAgentConsentBanner(timeout = Timeout.MEDIUM) {
-    await expect(this.page.getByRole("button", { name: "Always allow" })).toBeVisible({ timeout });
+    await expect(
+      this.page.getByRole("button", { name: "Always allow" }),
+    ).toBeVisible({ timeout });
   }
 
   async clickAgentConsentAlwaysAllow() {
@@ -1338,7 +1457,8 @@ export const test = base.extend<{
       // parse the directory and find paths and other info
       const appInfo = eph.parseElectronApp(latestBuild);
       process.env.OLLAMA_HOST = "http://localhost:3500/ollama";
-      process.env.LM_STUDIO_BASE_URL_FOR_TESTING = "http://localhost:3500/lmstudio";
+      process.env.LM_STUDIO_BASE_URL_FOR_TESTING =
+        "http://localhost:3500/lmstudio";
       process.env.DYAD_ENGINE_URL = "http://localhost:3500/engine/v1";
       process.env.DYAD_GATEWAY_URL = "http://localhost:3500/gateway/v1";
       process.env.E2E_TEST_BUILD = "true";
@@ -1352,7 +1472,11 @@ export const test = base.extend<{
         await electronConfig.preLaunchHook({ userDataDir });
       }
       const electronApp = await electron.launch({
-        args: [appInfo.main, "--enable-logging", `--user-data-dir=${userDataDir}`],
+        args: [
+          appInfo.main,
+          "--enable-logging",
+          `--user-data-dir=${userDataDir}`,
+        ],
         executablePath: appInfo.executable,
         // Strong suspicion this is causing issues on Windows with tests hanging due to error:
         // ffmpeg failed to write: Error [ERR_STREAM_WRITE_AFTER_END]: write after end
@@ -1404,7 +1528,10 @@ export const test = base.extend<{
           console.timeEnd("taskkill");
           console.log("[cleanup:end] Killed dyad.exe");
         } catch (error) {
-          console.warn("Failed to kill dyad.exe: (continuing with test cleanup)", error);
+          console.warn(
+            "Failed to kill dyad.exe: (continuing with test cleanup)",
+            error,
+          );
         }
       } else {
         await electronApp.close();
@@ -1457,7 +1584,10 @@ function prettifyDump(
             // We remove package.json because it's flaky.
             // Depending on whether pnpm install is run, it will be modified,
             // and the contents and timestamp (thus affecting order) will be affected.
-            .replace(/\n<dyad-file path="package\.json">[\s\S]*?<\/dyad-file>\n/g, "");
+            .replace(
+              /\n<dyad-file path="package\.json">[\s\S]*?<\/dyad-file>\n/g,
+              "",
+            );
       return `===\nrole: ${message.role}\nmessage: ${content}`;
     })
     .join("\n\n");

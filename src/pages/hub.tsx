@@ -23,8 +23,10 @@ const HubPage: React.FC = () => {
     setIsCreateDialogOpen(true);
   };
   // Separate templates into official and community
-  const officialTemplates = templates?.filter((template) => template.isOfficial) || [];
-  const communityTemplates = templates?.filter((template) => !template.isOfficial) || [];
+  const officialTemplates =
+    templates?.filter((template) => template.isOfficial) || [];
+  const communityTemplates =
+    templates?.filter((template) => !template.isOfficial) || [];
 
   return (
     <div className="min-h-screen px-8 py-4">
@@ -104,7 +106,9 @@ function BackendSection() {
   return (
     <div className="">
       <header className="mb-4 text-left">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Backend Services</h1>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+          Backend Services
+        </h1>
         <p className="text-md text-gray-600 dark:text-gray-400">
           Connect to backend services for your projects.
         </p>

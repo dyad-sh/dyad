@@ -11,7 +11,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Plus, Save, Edit2 } from "lucide-react";
 
 interface CreateOrEditPromptDialogProps {
@@ -173,7 +177,11 @@ export function CreateOrEditPromptDialog({
         <Tooltip>
           <TooltipTrigger asChild>
             <DialogTrigger asChild>
-              <Button size="icon" variant="ghost" data-testid="edit-prompt-button">
+              <Button
+                size="icon"
+                variant="ghost"
+                data-testid="edit-prompt-button"
+              >
                 <Edit2 className="h-4 w-4" />
               </Button>
             </DialogTrigger>
@@ -185,7 +193,9 @@ export function CreateOrEditPromptDialog({
       )}
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>{mode === "create" ? "Create New Prompt" : "Edit Prompt"}</DialogTitle>
+          <DialogTitle>
+            {mode === "create" ? "Create New Prompt" : "Edit Prompt"}
+          </DialogTitle>
           <DialogDescription>
             {mode === "create"
               ? "Create a new prompt template for your library."
@@ -201,7 +211,9 @@ export function CreateOrEditPromptDialog({
           <Input
             placeholder="Description (optional)"
             value={draft.description}
-            onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
+            onChange={(e) =>
+              setDraft((d) => ({ ...d, description: e.target.value }))
+            }
           />
           <Textarea
             ref={textareaRef}
@@ -220,7 +232,10 @@ export function CreateOrEditPromptDialog({
           <Button variant="outline" onClick={handleCancel}>
             Cancel
           </Button>
-          <Button onClick={onSave} disabled={!draft.title.trim() || !draft.content.trim()}>
+          <Button
+            onClick={onSave}
+            disabled={!draft.title.trim() || !draft.content.trim()}
+          >
             <Save className="mr-2 h-4 w-4" /> Save
           </Button>
         </DialogFooter>

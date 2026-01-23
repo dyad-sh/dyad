@@ -3,7 +3,11 @@
  */
 
 import log from "electron-log";
-import { gitCommit, gitAddAll, getGitUncommittedFiles } from "@/ipc/utils/git_utils";
+import {
+  gitCommit,
+  gitAddAll,
+  getGitUncommittedFiles,
+} from "@/ipc/utils/git_utils";
 import { deployAllSupabaseFunctions } from "../../../../../../supabase_admin/supabase_utils";
 import type { AgentContext } from "../tools/types";
 
@@ -21,7 +25,10 @@ export interface FileOperationResult {
 export async function deployAllFunctionsIfNeeded(
   ctx: Pick<
     AgentContext,
-    "appPath" | "supabaseProjectId" | "supabaseOrganizationSlug" | "isSharedModulesChanged"
+    | "appPath"
+    | "supabaseProjectId"
+    | "supabaseOrganizationSlug"
+    | "isSharedModulesChanged"
   >,
 ): Promise<FileOperationResult> {
   if (!ctx.supabaseProjectId || !ctx.isSharedModulesChanged) {
@@ -79,7 +86,10 @@ export async function commitAllChanges(
           message: message,
         });
       } catch (error) {
-        logger.error(`Failed to commit extra files: ${uncommittedFiles.join(", ")}`, error);
+        logger.error(
+          `Failed to commit extra files: ${uncommittedFiles.join(", ")}`,
+          error,
+        );
       }
     }
 

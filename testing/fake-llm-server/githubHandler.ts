@@ -60,8 +60,10 @@ const mockBranches = [
 ];
 
 // Simple in-memory collaborator store keyed by full repo name
-const repoCollaborators: Record<string, { login: string; avatar_url: string; permissions: any }[]> =
-  {};
+const repoCollaborators: Record<
+  string,
+  { login: string; avatar_url: string; permissions: any }[]
+> = {};
 
 // Store device flow state
 let deviceFlowState = {
@@ -361,7 +363,10 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
 
   // Create a unique temporary directory for this request
   const mockReposRoot = fs.mkdtempSync(
-    path.join(os.tmpdir(), "dyad-git-mock-" + Math.random().toString(36).substring(2, 15)),
+    path.join(
+      os.tmpdir(),
+      "dyad-git-mock-" + Math.random().toString(36).substring(2, 15),
+    ),
   );
   console.error(`* Created temporary git repos directory: ${mockReposRoot}`);
 
@@ -437,7 +442,9 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
       // Initialize as bare repository
       const { execSync } = require("child_process");
       execSync(`git init --bare`, { cwd: bareRepoPath });
-      console.log(`* Successfully created bare git repository: ${repoName}.git`);
+      console.log(
+        `* Successfully created bare git repository: ${repoName}.git`,
+      );
     } catch (error) {
       console.error(`* Failed to create bare git repository:`, error);
       return res.status(500).json({
@@ -448,7 +455,10 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
 
     // Rewrite the URL to match what the middleware expects
     // Change /github/git/testuser/test-repo.git/... to /github/git/test-repo.git/...
-    const rewrittenUrl = req.url.replace(/\/github\/git\/[^/]+\//, "/github/git/");
+    const rewrittenUrl = req.url.replace(
+      /\/github\/git\/[^/]+\//,
+      "/github/git/",
+    );
     req.url = rewrittenUrl;
     console.log(`* Rewritten URL from ${urlPath} to ${rewrittenUrl}`);
   }
@@ -460,7 +470,9 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
     next ||
       (() => {
         // Fallback if middleware doesn't handle the request
-        console.log(`* Git middleware did not handle request: ${req.method} ${req.url}`);
+        console.log(
+          `* Git middleware did not handle request: ${req.method} ${req.url}`,
+        );
         res.status(404).json({
           message: "Git operation not supported",
           url: req.url,

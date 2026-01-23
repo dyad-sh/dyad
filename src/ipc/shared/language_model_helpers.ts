@@ -16,9 +16,13 @@ import {
  * merging them with custom providers taking precedence.
  * @returns A promise that resolves to an array of LanguageModelProvider objects.
  */
-export async function getLanguageModelProviders(): Promise<LanguageModelProvider[]> {
+export async function getLanguageModelProviders(): Promise<
+  LanguageModelProvider[]
+> {
   // Fetch custom providers from the database
-  const customProvidersDb = await db.select().from(languageModelProvidersSchema);
+  const customProvidersDb = await db
+    .select()
+    .from(languageModelProvidersSchema);
 
   const customProvidersMap = new Map<string, LanguageModelProvider>();
   for (const cp of customProvidersDb) {
@@ -120,7 +124,10 @@ export async function getLanguageModels({
       type: "custom",
     }));
   } catch (error) {
-    console.error(`Error fetching custom models for provider "${providerId}" from DB:`, error);
+    console.error(
+      `Error fetching custom models for provider "${providerId}" from DB:`,
+      error,
+    );
     // Continue with empty custom models array
   }
 
@@ -135,7 +142,9 @@ export async function getLanguageModels({
         type: "cloud",
       }));
     } else {
-      console.warn(`Provider "${providerId}" is cloud type but not found in MODEL_OPTIONS.`);
+      console.warn(
+        `Provider "${providerId}" is cloud type but not found in MODEL_OPTIONS.`,
+      );
     }
   }
 
@@ -146,7 +155,9 @@ export async function getLanguageModels({
  * Fetches all language models grouped by their provider IDs.
  * @returns A promise that resolves to a Record mapping provider IDs to arrays of LanguageModel objects.
  */
-export async function getLanguageModelsByProviders(): Promise<Record<string, LanguageModel[]>> {
+export async function getLanguageModelsByProviders(): Promise<
+  Record<string, LanguageModel[]>
+> {
   const providers = await getLanguageModelProviders();
 
   // Fetch all models concurrently

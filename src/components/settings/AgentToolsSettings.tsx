@@ -7,7 +7,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import { useAgentTools, type AgentToolName, type AgentTool } from "@/hooks/useAgentTools";
+import {
+  useAgentTools,
+  type AgentToolName,
+  type AgentTool,
+} from "@/hooks/useAgentTools";
 import { Loader2, ChevronRight } from "lucide-react";
 import { AgentToolConsent } from "@/lib/schemas";
 
@@ -15,7 +19,10 @@ export function AgentToolsSettings() {
   const { tools, isLoading, setConsent } = useAgentTools();
   const [showAutoApproved, setShowAutoApproved] = useState(false);
 
-  const handleConsentChange = (toolName: AgentToolName, consent: AgentToolConsent) => {
+  const handleConsentChange = (
+    toolName: AgentToolName,
+    consent: AgentToolConsent,
+  ) => {
     setConsent({ toolName, consent });
   };
 
@@ -27,8 +34,10 @@ export function AgentToolsSettings() {
     );
   }
 
-  const autoApprovedTools = tools?.filter((t: AgentTool) => t.isAllowedByDefault) || [];
-  const requiresApprovalTools = tools?.filter((t: AgentTool) => !t.isAllowedByDefault) || [];
+  const autoApprovedTools =
+    tools?.filter((t: AgentTool) => t.isAllowedByDefault) || [];
+  const requiresApprovalTools =
+    tools?.filter((t: AgentTool) => !t.isAllowedByDefault) || [];
 
   return (
     <div className="space-y-6">
@@ -44,7 +53,9 @@ export function AgentToolsSettings() {
             name={tool.name}
             description={tool.description}
             consent={tool.consent}
-            onConsentChange={(consent) => handleConsentChange(tool.name as AgentToolName, consent)}
+            onConsentChange={(consent) =>
+              handleConsentChange(tool.name as AgentToolName, consent)
+            }
           />
         ))}
       </div>
@@ -101,7 +112,10 @@ function ToolConsentRow({
             {description?.slice(0, 100)} {description?.length > 100 && "..."}
           </div>
         </div>
-        <Select value={consent} onValueChange={(v) => onConsentChange(v as AgentToolConsent)}>
+        <Select
+          value={consent}
+          onValueChange={(v) => onConsentChange(v as AgentToolConsent)}
+        >
           <SelectTrigger className="w-[140px] h-8">
             <SelectValue />
           </SelectTrigger>

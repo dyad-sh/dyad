@@ -106,7 +106,9 @@ describe("parseAiMessagesJson", () => {
       };
 
       const result = parseAiMessagesJson(msg);
-      expect(result).toEqual([{ role: "assistant", content: "Direct content" }]);
+      expect(result).toEqual([
+        { role: "assistant", content: "Direct content" },
+      ]);
     });
 
     it("should fallback for user messages", () => {
@@ -133,7 +135,9 @@ describe("parseAiMessagesJson", () => {
       };
 
       const result = parseAiMessagesJson(msg);
-      expect(result).toEqual([{ role: "assistant", content: "fallback content" }]);
+      expect(result).toEqual([
+        { role: "assistant", content: "fallback content" },
+      ]);
     });
 
     it("should fallback when messages array is missing role", () => {
@@ -148,7 +152,9 @@ describe("parseAiMessagesJson", () => {
       };
 
       const result = parseAiMessagesJson(msg);
-      expect(result).toEqual([{ role: "assistant", content: "fallback content" }]);
+      expect(result).toEqual([
+        { role: "assistant", content: "fallback content" },
+      ]);
     });
 
     it("should fallback when aiMessagesJson is an empty object", () => {
@@ -168,11 +174,16 @@ describe("parseAiMessagesJson", () => {
         id: 10,
         role: "assistant",
         content: "fallback content",
-        aiMessagesJson: [{ role: "user", content: "valid" }, { noRole: true } as any] as any,
+        aiMessagesJson: [
+          { role: "user", content: "valid" },
+          { noRole: true } as any,
+        ] as any,
       };
 
       const result = parseAiMessagesJson(msg);
-      expect(result).toEqual([{ role: "assistant", content: "fallback content" }]);
+      expect(result).toEqual([
+        { role: "assistant", content: "fallback content" },
+      ]);
     });
 
     it("should fallback when messages is not an array", () => {
@@ -187,7 +198,9 @@ describe("parseAiMessagesJson", () => {
       };
 
       const result = parseAiMessagesJson(msg);
-      expect(result).toEqual([{ role: "assistant", content: "fallback content" }]);
+      expect(result).toEqual([
+        { role: "assistant", content: "fallback content" },
+      ]);
     });
   });
 
@@ -260,7 +273,9 @@ describe("getAiMessagesJsonIfWithinLimit", () => {
   it("should return undefined for messages exceeding size limit", () => {
     // Create a message that exceeds 1MB
     const largeContent = "x".repeat(MAX_AI_MESSAGES_SIZE + 1000);
-    const messages: ModelMessage[] = [{ role: "assistant", content: largeContent }];
+    const messages: ModelMessage[] = [
+      { role: "assistant", content: largeContent },
+    ];
 
     const result = getAiMessagesJsonIfWithinLimit(messages);
     expect(result).toBeUndefined();
@@ -275,7 +290,9 @@ describe("getAiMessagesJsonIfWithinLimit", () => {
     const baseSize = JSON.stringify(basePayload).length;
     const remainingSpace = MAX_AI_MESSAGES_SIZE - baseSize;
 
-    const messages: ModelMessage[] = [{ role: "assistant", content: "a".repeat(remainingSpace) }];
+    const messages: ModelMessage[] = [
+      { role: "assistant", content: "a".repeat(remainingSpace) },
+    ];
 
     const result = getAiMessagesJsonIfWithinLimit(messages);
     expect(result).toBeDefined();

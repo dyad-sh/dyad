@@ -25,9 +25,12 @@ const logger = log.scope("language_model_handlers");
 const handle = createLoggedHandler(logger);
 
 export function registerLanguageModelHandlers() {
-  handle("get-language-model-providers", async (): Promise<LanguageModelProvider[]> => {
-    return getLanguageModelProviders();
-  });
+  handle(
+    "get-language-model-providers",
+    async (): Promise<LanguageModelProvider[]> => {
+      return getLanguageModelProviders();
+    },
+  );
 
   handle(
     "create-custom-language-model-provider",
@@ -83,9 +86,18 @@ export function registerLanguageModelHandlers() {
 
   handle(
     "create-custom-language-model",
-    async (event: IpcMainInvokeEvent, params: CreateCustomLanguageModelParams): Promise<void> => {
-      const { apiName, displayName, providerId, description, maxOutputTokens, contextWindow } =
-        params;
+    async (
+      event: IpcMainInvokeEvent,
+      params: CreateCustomLanguageModelParams,
+    ): Promise<void> => {
+      const {
+        apiName,
+        displayName,
+        providerId,
+        description,
+        maxOutputTokens,
+        contextWindow,
+      } = params;
 
       // Validation
       if (!apiName) {
@@ -157,7 +169,9 @@ export function registerLanguageModelHandlers() {
             api_base_url: apiBaseUrl,
             env_var_name: envVarName || null,
           })
-          .where(eq(languageModelProvidersSchema.id, CUSTOM_PROVIDER_PREFIX + id))
+          .where(
+            eq(languageModelProvidersSchema.id, CUSTOM_PROVIDER_PREFIX + id),
+          )
           .run();
 
         if (updateResult.changes === 0) {
@@ -179,7 +193,10 @@ export function registerLanguageModelHandlers() {
 
   handle(
     "delete-custom-language-model",
-    async (event: IpcMainInvokeEvent, params: { modelId: string }): Promise<void> => {
+    async (
+      event: IpcMainInvokeEvent,
+      params: { modelId: string },
+    ): Promise<void> => {
       const { modelId: apiName } = params;
 
       // Validation
@@ -187,7 +204,9 @@ export function registerLanguageModelHandlers() {
         throw new Error("Model API name (modelId) is required");
       }
 
-      logger.info(`Handling delete-custom-language-model for apiName: ${apiName}`);
+      logger.info(
+        `Handling delete-custom-language-model for apiName: ${apiName}`,
+      );
 
       const existingModel = await db
         .select()
@@ -196,10 +215,14 @@ export function registerLanguageModelHandlers() {
         .get();
 
       if (!existingModel) {
-        throw new Error(`A model with API name (modelId) "${apiName}" was not found`);
+        throw new Error(
+          `A model with API name (modelId) "${apiName}" was not found`,
+        );
       }
 
-      await db.delete(languageModelsSchema).where(eq(languageModelsSchema.apiName, apiName));
+      await db
+        .delete(languageModelsSchema)
+        .where(eq(languageModelsSchema.apiName, apiName));
     },
   );
 
@@ -210,11 +233,15 @@ export function registerLanguageModelHandlers() {
       params: { providerId: string; modelApiName: string },
     ): Promise<void> => {
       const { providerId, modelApiName } = params;
-      logger.info(`Handling delete-custom-model for ${providerId} / ${modelApiName}`);
+      logger.info(
+        `Handling delete-custom-model for ${providerId} / ${modelApiName}`,
+      );
       if (!providerId || !modelApiName) {
         throw new Error("Provider ID and Model API Name are required.");
       }
-      logger.info(`Attempting to delete custom model ${modelApiName} for provider ${providerId}`);
+      logger.info(
+        `Attempting to delete custom model ${modelApiName} for provider ${providerId}`,
+      );
 
       const providers = await getLanguageModelProviders();
       const provider = providers.find((p) => p.id === providerId);
@@ -251,7 +278,10 @@ export function registerLanguageModelHandlers() {
 
   handle(
     "delete-custom-language-model-provider",
-    async (event: IpcMainInvokeEvent, params: { providerId: string }): Promise<void> => {
+    async (
+      event: IpcMainInvokeEvent,
+      params: { providerId: string },
+    ): Promise<void> => {
       const { providerId } = params;
 
       // Validation
@@ -259,7 +289,9 @@ export function registerLanguageModelHandlers() {
         throw new Error("Provider ID is required");
       }
 
-      logger.info(`Handling delete-custom-language-model-provider for providerId: ${providerId}`);
+      logger.info(
+        `Handling delete-custom-language-model-provider for providerId: ${providerId}`,
+      );
 
       // Check if the provider exists before attempting deletion
       const existingProvider = await db
@@ -312,7 +344,10 @@ export function registerLanguageModelHandlers() {
 
   handle(
     "get-language-models",
-    async (event: IpcMainInvokeEvent, params: { providerId: string }): Promise<LanguageModel[]> => {
+    async (
+      event: IpcMainInvokeEvent,
+      params: { providerId: string },
+    ): Promise<LanguageModel[]> => {
       if (!params || typeof params.providerId !== "string") {
         throw new Error("Invalid parameters: providerId (string) is required.");
       }
@@ -328,7 +363,10 @@ export function registerLanguageModelHandlers() {
     },
   );
 
-  handle("get-language-models-by-providers", async (): Promise<Record<string, LanguageModel[]>> => {
-    return getLanguageModelsByProviders();
-  });
+  handle(
+    "get-language-models-by-providers",
+    async (): Promise<Record<string, LanguageModel[]>> => {
+      return getLanguageModelsByProviders();
+    },
+  );
 }

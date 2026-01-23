@@ -18,7 +18,9 @@ import { AddMcpServerDeepLinkData } from "@/ipc/deep_link_data";
 
 type KeyValue = { key: string; value: string };
 
-function parseEnvJsonToArray(envJson?: Record<string, string> | string | null): KeyValue[] {
+function parseEnvJsonToArray(
+  envJson?: Record<string, string> | string | null,
+): KeyValue[] {
   if (!envJson) return [];
   try {
     const obj =
@@ -103,12 +105,18 @@ function EnvVarsEditor({
       showError("Both key and value are required");
       return;
     }
-    if (envVars.some((e) => e.key === editingKeyValue.trim() && e.key !== editingKey)) {
+    if (
+      envVars.some(
+        (e) => e.key === editingKeyValue.trim() && e.key !== editingKey,
+      )
+    ) {
       showError("Environment variable with this key already exists");
       return;
     }
     const next = envVars.map((e) =>
-      e.key === editingKey ? { key: editingKeyValue.trim(), value: editingValue.trim() } : e,
+      e.key === editingKey
+        ? { key: editingKeyValue.trim(), value: editingValue.trim() }
+        : e,
     );
     await saveAll(next);
     setEditingKey(null);
@@ -155,7 +163,11 @@ function EnvVarsEditor({
             />
           </div>
           <div className="flex gap-2">
-            <Button onClick={handleAdd} size="sm" disabled={disabled || isSaving}>
+            <Button
+              onClick={handleAdd}
+              size="sm"
+              disabled={disabled || isSaving}
+            >
               <Save size={14} />
               {isSaving ? "Saving..." : "Save"}
             </Button>
@@ -192,7 +204,10 @@ function EnvVarsEditor({
           </p>
         ) : (
           envVars.map((kv) => (
-            <div key={kv.key} className="flex items-center space-x-2 p-2 border rounded-md">
+            <div
+              key={kv.key}
+              className="flex items-center space-x-2 p-2 border rounded-md"
+            >
               {editingKey === kv.key ? (
                 <>
                   <div className="flex-1 space-y-2">
@@ -220,7 +235,11 @@ function EnvVarsEditor({
                     >
                       <Save size={14} />
                     </Button>
-                    <Button onClick={handleCancelEdit} size="sm" variant="outline">
+                    <Button
+                      onClick={handleCancelEdit}
+                      size="sm"
+                      variant="outline"
+                    >
                       <X size={14} />
                     </Button>
                   </div>
@@ -229,7 +248,9 @@ function EnvVarsEditor({
                 <>
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm truncate">{kv.key}</div>
-                    <div className="text-xs text-muted-foreground truncate">{kv.value}</div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {kv.value}
+                    </div>
                   </div>
                   <div className="flex gap-1">
                     <Button
@@ -425,7 +446,9 @@ export function ToolsMcpSettings() {
                   {s.transport}
                   {s.url ? ` · ${s.url}` : ""}
                   {s.command ? ` · ${s.command}` : ""}
-                  {Array.isArray(s.args) && s.args.length ? ` · ${s.args.join(" ")}` : ""}
+                  {Array.isArray(s.args) && s.args.length
+                    ? ` · ${s.args.join(" ")}`
+                    : ""}
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -440,7 +463,9 @@ export function ToolsMcpSettings() {
             </div>
             {s.transport === "stdio" && (
               <div className="mt-3">
-                <div className="text-sm font-medium mb-2">Environment Variables</div>
+                <div className="text-sm font-medium mb-2">
+                  Environment Variables
+                </div>
                 <EnvVarsEditor
                   serverId={s.id}
                   envJson={s.envJson}
@@ -463,7 +488,9 @@ export function ToolsMcpSettings() {
                     <div className="flex items-center gap-2">
                       <Select
                         value={consents[`${s.id}:${t.name}`] || "ask"}
-                        onValueChange={(v) => onSetToolConsent(s.id, t.name, v as any)}
+                        onValueChange={(v) =>
+                          onSetToolConsent(s.id, t.name, v as any)
+                        }
                       >
                         <SelectTrigger className="w-[140px] h-8">
                           <SelectValue />
@@ -484,13 +511,17 @@ export function ToolsMcpSettings() {
                 </div>
               ))}
               {(toolsByServer[s.id] || []).length === 0 && (
-                <div className="text-xs text-muted-foreground">No tools discovered.</div>
+                <div className="text-xs text-muted-foreground">
+                  No tools discovered.
+                </div>
               )}
             </div>
           </div>
         ))}
         {servers.length === 0 && (
-          <div className="text-sm text-muted-foreground">No servers configured yet.</div>
+          <div className="text-sm text-muted-foreground">
+            No servers configured yet.
+          </div>
         )}
       </div>
     </div>

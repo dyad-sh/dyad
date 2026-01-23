@@ -10,7 +10,14 @@ JSON schema for the structured issue output from sub-agents.
   "type": "array",
   "items": {
     "type": "object",
-    "required": ["file", "line_start", "severity", "category", "title", "description"],
+    "required": [
+      "file",
+      "line_start",
+      "severity",
+      "category",
+      "title",
+      "description"
+    ],
     "properties": {
       "file": {
         "type": "string",
@@ -33,7 +40,14 @@ JSON schema for the structured issue output from sub-agents.
       },
       "category": {
         "type": "string",
-        "enum": ["security", "logic", "performance", "error-handling", "style", "other"],
+        "enum": [
+          "security",
+          "logic",
+          "performance",
+          "error-handling",
+          "style",
+          "other"
+        ],
         "description": "Category of the issue"
       },
       "title": {

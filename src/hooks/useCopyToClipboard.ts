@@ -154,7 +154,12 @@ export const useCopyToClipboard = () => {
       case "dyad-output": {
         const outputType = attributes.type || "info";
         const message = attributes.message || "";
-        const emoji = outputType === "error" ? "❌" : outputType === "warning" ? "⚠️" : "ℹ️";
+        const emoji =
+          outputType === "error"
+            ? "❌"
+            : outputType === "warning"
+              ? "⚠️"
+              : "ℹ️";
 
         let outputResult = `${emoji} **${outputType.toUpperCase()}**`;
         if (message) {
@@ -259,7 +264,9 @@ export const useCopyToClipboard = () => {
 
       const missingCloseTags = openCount - closeCount;
       if (missingCloseTags > 0) {
-        processedContent += Array(missingCloseTags).fill(`</${tagName}>`).join("");
+        processedContent += Array(missingCloseTags)
+          .fill(`</${tagName}>`)
+          .join("");
       }
     }
 

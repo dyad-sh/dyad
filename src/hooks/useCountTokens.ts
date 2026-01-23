@@ -1,4 +1,8 @@
-import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { IpcClient } from "@/ipc/ipc_client";
 import type { TokenCountResult } from "@/ipc/ipc_types";
 import { useCallback, useEffect, useState } from "react";

@@ -69,7 +69,9 @@ export function NodePathSelector() {
         await checkNodeStatus();
         showSuccess("Node.js path updated successfully");
       } else if (result.path === null && result.canceled === false) {
-        showError(`Could not find Node.js at the path "${result.selectedPath}"`);
+        showError(
+          `Could not find Node.js at the path "${result.selectedPath}"`,
+        );
       }
     } catch (error: any) {
       showError(`Failed to set Node.js path: ${error.message}`);
@@ -101,7 +103,9 @@ export function NodePathSelector() {
     <div className="space-y-4">
       <div className="space-y-2">
         <div className="flex gap-2">
-          <Label className="text-sm font-medium">Node.js Path Configuration</Label>
+          <Label className="text-sm font-medium">
+            Node.js Path Configuration
+          </Label>
 
           <Button
             onClick={handleSelectNodePath}
@@ -169,7 +173,10 @@ export function NodePathSelector() {
             <p>Node.js is properly configured and ready to use.</p>
           ) : (
             <>
-              <p>Select the folder where Node.js is installed if it's not in your system PATH.</p>
+              <p>
+                Select the folder where Node.js is installed if it's not in your
+                system PATH.
+              </p>
             </>
           )}
         </div>

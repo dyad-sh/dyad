@@ -6,11 +6,20 @@ import { db } from "../../../../db";
 import { apps } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 import { getDyadAppPath } from "../../../../paths/paths";
-import { stylesToTailwind, extractClassPrefixes } from "../../../../utils/style-utils";
+import {
+  stylesToTailwind,
+  extractClassPrefixes,
+} from "../../../../utils/style-utils";
 import { gitAdd, gitCommit } from "../../../../ipc/utils/git_utils";
 import { safeJoin } from "@/ipc/utils/path_utils";
-import { AnalyseComponentParams, ApplyVisualEditingChangesParams } from "@/ipc/ipc_types";
-import { transformContent, analyzeComponent } from "../../utils/visual_editing_utils";
+import {
+  AnalyseComponentParams,
+  ApplyVisualEditingChangesParams,
+} from "@/ipc/ipc_types";
+import {
+  transformContent,
+  analyzeComponent,
+} from "../../utils/visual_editing_utils";
 import { normalizePath } from "../../../../../shared/normalizePath";
 
 export function registerVisualEditingHandlers() {
@@ -33,7 +42,10 @@ export function registerVisualEditingHandlers() {
         const appPath = getDyadAppPath(app.path);
         const fileChanges = new Map<
           string,
-          Map<number, { classes: string[]; prefixes: string[]; textContent?: string }>
+          Map<
+            number,
+            { classes: string[]; prefixes: string[]; textContent?: string }
+          >
         >();
 
         // Group changes by file and line

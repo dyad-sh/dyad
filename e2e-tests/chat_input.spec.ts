@@ -24,7 +24,9 @@ test("send button disabled during pending proposal", async ({ po }) => {
   await expect(sendButton).toBeEnabled();
 });
 
-test("send button disabled during pending proposal - reject", async ({ po }) => {
+test("send button disabled during pending proposal - reject", async ({
+  po,
+}) => {
   await po.setUp();
 
   // Send a prompt that generates a proposal

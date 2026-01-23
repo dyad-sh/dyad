@@ -43,7 +43,10 @@ export default function ThemesPage() {
           </div>
         )}
 
-        <CustomThemeDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
+        <CustomThemeDialog
+          open={createDialogOpen}
+          onOpenChange={setCreateDialogOpen}
+        />
       </div>
     </div>
   );
@@ -74,7 +77,10 @@ function ThemeCard({ theme }: { theme: CustomTheme }) {
   };
 
   return (
-    <div data-testid="theme-card" className="border rounded-lg p-4 bg-(--background-lightest)">
+    <div
+      data-testid="theme-card"
+      className="border rounded-lg p-4 bg-(--background-lightest)"
+    >
       <div className="space-y-2">
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0">
@@ -83,7 +89,9 @@ function ThemeCard({ theme }: { theme: CustomTheme }) {
               <h3 className="text-lg font-semibold truncate">{theme.name}</h3>
             </div>
             {theme.description && (
-              <p className="text-sm text-muted-foreground mt-1">{theme.description}</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                {theme.description}
+              </p>
             )}
           </div>
           <div className="flex gap-1 shrink-0 ml-2">

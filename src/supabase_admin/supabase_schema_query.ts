@@ -9,10 +9,18 @@
 export function buildSupabaseSchemaQuery(tableName?: string): string {
   // Escape single quotes in table name to prevent SQL injection
   const escapedTableName = tableName?.replace(/'/g, "''");
-  const tableFilter = escapedTableName ? ` AND tables.table_name = '${escapedTableName}'` : "";
-  const columnFilter = escapedTableName ? ` AND c.table_name = '${escapedTableName}'` : "";
-  const policyFilter = escapedTableName ? ` AND cls.relname = '${escapedTableName}'` : "";
-  const triggerFilter = escapedTableName ? ` AND t.event_object_table = '${escapedTableName}'` : "";
+  const tableFilter = escapedTableName
+    ? ` AND tables.table_name = '${escapedTableName}'`
+    : "";
+  const columnFilter = escapedTableName
+    ? ` AND c.table_name = '${escapedTableName}'`
+    : "";
+  const policyFilter = escapedTableName
+    ? ` AND cls.relname = '${escapedTableName}'`
+    : "";
+  const triggerFilter = escapedTableName
+    ? ` AND t.event_object_table = '${escapedTableName}'`
+    : "";
 
   return `
         WITH table_info AS (

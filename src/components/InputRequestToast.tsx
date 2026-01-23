@@ -9,7 +9,11 @@ interface InputRequestToastProps {
   onResponse: (response: "y" | "n") => void;
 }
 
-export function InputRequestToast({ message, toastId, onResponse }: InputRequestToastProps) {
+export function InputRequestToast({
+  message,
+  toastId,
+  onResponse,
+}: InputRequestToastProps) {
   const handleClose = () => {
     toast.dismiss(toastId);
   };

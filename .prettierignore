@@ -7,5 +7,3 @@ drizzle/
 **/snapshots/**
 # test fixtures
 e2e-tests/fixtures/**
-# symlinks
-CLAUDE.md

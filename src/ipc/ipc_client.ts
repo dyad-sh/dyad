@@ -105,6 +105,7 @@ import type {
   SaveThemeImageResult,
   CleanupThemeImagesParams,
   UncommittedFile,
+  SyncAppsFromFolderResult,
 } from "./ipc_types";
 import type { Template } from "../shared/templates";
 import type { Theme } from "../shared/themes";
@@ -1796,6 +1797,11 @@ export class IpcClient {
     params: AnalyseComponentParams,
   ): Promise<{ isDynamic: boolean; hasStaticText: boolean }> {
     return this.ipcRenderer.invoke("analyze-component", params);
+  }
+
+  // --- Restore ---
+  public async syncAppsFromFolder(): Promise<SyncAppsFromFolderResult> {
+    return this.ipcRenderer.invoke("sync-apps-from-folder");
   }
 
   // --- Console Logs ---

@@ -123,6 +123,11 @@
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gh-permission-hook.py",
             "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/python-permission-hook.py",
+            "timeout": 5000
           }
         ]
       }

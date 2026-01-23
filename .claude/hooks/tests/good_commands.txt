@@ -212,8 +212,8 @@ gh api /repos/owner/repo/labels | sort | uniq
 gh api /repos/owner/repo/pulls | cut -d'"' -f2
 gh pr list --json number,title | tr ',' '\n'
 gh api /repos/owner/repo 2>&1 | grep "name"
-gh api /repos/owner/repo | less
-gh api /repos/owner/repo | more
+# Note: less and more are intentionally NOT included here because they support
+# shell escapes (e.g., '!command' in less). Use head/tail/jq for paging instead.
 
 # Double-quoted arguments with special regex characters (should be allowed)
 gh api /repos/owner/repo | grep "test|prod"
@@ -278,11 +278,21 @@ gh api repos/owner/repo/pulls/123/comments/456/replies -f body="Reply with doubl
 gh api /repos/owner/repo/pulls/123/comments/456/replies -f body='Another reply'
 gh api repos/owner/repo/pulls/999/comments/888/replies --field body='Field syntax reply'
 
+# PR comment replies with explicit POST method (should be allowed)
+gh api --method POST repos/owner/repo/pulls/123/comments/456/replies -f body='Reply with explicit POST'
+gh api -X POST repos/owner/repo/pulls/123/comments/456/replies -f body='Reply with -X POST'
+gh api --method=POST /repos/owner/repo/pulls/123/comments/456/replies -f body='Reply with --method=POST'
+
 # Issue comments
 gh api repos/owner/repo/issues/123/comments -f body='Comment text'
 gh api repos/owner/repo/issues/123/comments -f body="Comment with double quotes"
 gh api /repos/owner/repo/issues/456/comments -f body='Another comment'
 gh api repos/owner/repo/issues/789/comments --field body='Field syntax comment'
+
+# Issue comments with explicit POST method (should be allowed)
+gh api --method POST repos/owner/repo/issues/123/comments -f body='Comment with explicit POST'
+gh api -X POST repos/owner/repo/issues/123/comments -f body='Comment with -X POST'
+gh api --method=POST /repos/owner/repo/issues/456/comments -f body='Comment with --method=POST'
 
 # =============================================================================
 # COMMANDS WITH ENV VAR PREFIXES

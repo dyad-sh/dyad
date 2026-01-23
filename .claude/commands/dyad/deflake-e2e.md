@@ -49,7 +49,7 @@ Identify and fix flaky E2E tests by running them repeatedly and investigating fa
    Run the failing test with Playwright browser debugging enabled:
 
    ```
-   DEBUG=pw:browser npm run e2e e2e-tests/<testfile>.spec.ts
+   DEBUG=pw:browser npm run e2e -- e2e-tests/<testfile>.spec.ts
    ```
 
    Analyze the debug output to understand:

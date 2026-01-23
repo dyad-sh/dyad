@@ -5,14 +5,24 @@ Analyze session debugging data to identify errors and issues that may have cause
 ## Arguments
 
 - `$ARGUMENTS`: Two space-separated arguments expected:
-  1. URL to a JSON file containing session debugging data
+  1. URL to a JSON file containing session debugging data (starts with `http://` or `https://`)
   2. GitHub issue number or URL
 
 ## Instructions
 
-1. **Parse the arguments:**
+1. **Parse and validate the arguments:**
 
-   Split `$ARGUMENTS` on whitespace. The first argument is the session data URL (starts with `http://` or `https://`), and the second is the GitHub issue identifier (either a number or a GitHub issue URL).
+   Split `$ARGUMENTS` on whitespace to get exactly two arguments:
+
+   - First argument: session data URL (must start with `http://` or `https://`)
+   - Second argument: GitHub issue identifier (number like `123` or full URL like `https://github.com/owner/repo/issues/123`)
+
+   **Validation:** If fewer than two arguments are provided, inform the user:
+
+   > "Usage: /dyad:session-debug <session-data-url> <issue-number-or-url>"
+   > "Example: /dyad:session-debug https://example.com/session.json 123"
+
+   Then stop execution.
 
 2. **Fetch the GitHub issue:**
 

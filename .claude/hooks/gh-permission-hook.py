@@ -30,7 +30,7 @@ ALLOWED (auto-approved):
    - Mutations: addPullRequestReview, addPullRequestReviewComment
 
 6. Piping to safe text-processing commands:
-   - jq, head, tail, grep, wc, sort, uniq, cut, tr, less, more
+   - jq, head, tail, grep, wc, sort, uniq, cut, tr
 
 BLOCKED (denied):
 -----------------
@@ -116,8 +116,8 @@ SAFE_DOUBLE_QUOTED_PATTERN = re.compile(r'"[^"$`]*"')
 # sort/uniq: sort and deduplicate lines
 # cut: extract fields from lines
 # tr: character translation
-# less/more: pagers
-SAFE_PIPE_PATTERN = re.compile(r'\|\s*(jq|head|tail|grep|wc|sort|uniq|cut|tr|less|more)\b')
+# Note: less/more are NOT included because they support shell escapes (e.g., !cmd)
+SAFE_PIPE_PATTERN = re.compile(r'\|\s*(jq|head|tail|grep|wc|sort|uniq|cut|tr)\b')
 
 # Safe redirect patterns - common shell redirects that don't execute commands
 # 2>&1: redirect stderr to stdout (very common for capturing all output)
@@ -233,8 +233,15 @@ def main():
         sys.exit(0)
 
     tool_name = input_data.get("tool_name", "")
-    tool_input = input_data.get("tool_input", {})
-    command = tool_input.get("command", "")
+    tool_input = input_data.get("tool_input")
+
+    # Validate types to prevent crashes on malformed input
+    if not isinstance(tool_input, dict):
+        sys.exit(0)
+
+    command = tool_input.get("command")
+    if not isinstance(command, str):
+        sys.exit(0)
 
     # Only process Bash commands
     if tool_name != "Bash":
@@ -270,6 +277,66 @@ def main():
     sys.exit(0)
 
 
+def extract_api_endpoint(cmd: str) -> Optional[str]:
+    """
+    Extract the API endpoint from a gh api command.
+
+    The endpoint is the first positional argument after 'gh api' that doesn't
+    start with a dash (flag). It may or may not have a leading slash.
+
+    Examples:
+    - "gh api /repos/owner/repo" -> "/repos/owner/repo"
+    - "gh api repos/owner/repo" -> "repos/owner/repo"
+    - "gh api --method GET /repos/owner/repo" -> "/repos/owner/repo"
+    - "gh api /repos/owner/repo -f body='test'" -> "/repos/owner/repo"
+    """
+    # Remove "gh api " prefix and "graphql" if present
+    api_part = re.sub(r'^gh\s+api\s+', '', cmd, flags=re.IGNORECASE)
+
+    # Skip past graphql keyword if present
+    if api_part.lower().startswith('graphql'):
+        return None  # GraphQL commands are handled separately
+
+    # Split by whitespace, but be careful about quoted strings
+    # We'll use a simple approach: find the first token that looks like an endpoint
+    # (starts with / or looks like a path) and isn't a flag
+
+    # First, remove flag arguments to isolate the endpoint
+    # Flags: --method, --method=X, -X, -X=X, --input, --input=X, -f, -f=X, -F, -F=X, --field, --field=X
+    # --jq, --jq=X, --paginate, --template, etc.
+
+    # Remove known flags with values
+    cleaned = api_part
+    # Remove flags that take values
+    cleaned = re.sub(r'--method[=\s]+(?:"[^"]*"|\'[^\']*\'|\S+)', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'-X[=\s]+(?:"[^"]*"|\'[^\']*\'|\S+)', '', cleaned)
+    cleaned = re.sub(r'--input[=\s]+(?:"[^"]*"|\'[^\']*\'|\S+)', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'--field[=\s]+(?:"[^"]*"|\'[^\']*\'|\S+)', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'-f[=\s]+(?:"[^"]*"|\'[^\']*\'|\S+)', '', cleaned)
+    cleaned = re.sub(r'-F[=\s]+(?:"[^"]*"|\'[^\']*\'|\S+)', '', cleaned)
+    cleaned = re.sub(r'--jq[=\s]+(?:"[^"]*"|\'[^\']*\'|\S+)', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'--template[=\s]+(?:"[^"]*"|\'[^\']*\'|\S+)', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'--header[=\s]+(?:"[^"]*"|\'[^\']*\'|\S+)', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'-H[=\s]+(?:"[^"]*"|\'[^\']*\'|\S+)', '', cleaned)
+    # Remove standalone flags
+    cleaned = re.sub(r'--paginate\b', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'--silent\b', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'--verbose\b', '', cleaned, flags=re.IGNORECASE)
+
+    # Now find the endpoint - should be first remaining path-like token
+    # Could start with / or be like repos/owner/repo
+    endpoint_match = re.search(r'''
+        (?:^|\s)                        # start or whitespace
+        (['"]?)                         # optional opening quote
+        (/?[a-zA-Z][a-zA-Z0-9_/{}.-]*)  # endpoint path
+        \1                              # matching closing quote
+    ''', cleaned.strip(), re.VERBOSE)
+
+    if endpoint_match:
+        return endpoint_match.group(2)
+    return None
+
+
 def check_gh_api_command(cmd: str) -> Optional[dict]:
     """
     Check gh api commands for read-only vs destructive operations.
@@ -280,42 +347,53 @@ def check_gh_api_command(cmd: str) -> Optional[dict]:
     if re.search(r"gh\s+api\s+graphql\b", cmd, re.IGNORECASE):
         return check_gh_graphql_command(cmd)
 
+    # Extract the actual endpoint from the command
+    endpoint = extract_api_endpoint(cmd)
+
     # Destructive HTTP methods
     destructive_methods = ["POST", "PUT", "PATCH", "DELETE"]
+
+    # Determine the HTTP method being used
+    method = None
 
     # Check for explicit method flag (handles --method VALUE, --method=VALUE, --method="VALUE", --method='VALUE')
     method_match = re.search(r'--method[=\s]+["\']?(\w+)["\']?', cmd, re.IGNORECASE)
     if method_match:
         method = method_match.group(1).upper()
-        if method in destructive_methods:
-            return make_deny_decision(
-                f"Destructive gh api command blocked: --method {method}"
-            )
-        elif method == "GET":
-            return make_allow_decision("Read-only gh api GET request auto-approved")
 
     # Check for -X shorthand method flag (handles -X VALUE, -X=VALUE, -X="VALUE", -X='VALUE')
-    method_match = re.search(r'-X[=\s]+["\']?(\w+)["\']?', cmd)
-    if method_match:
-        method = method_match.group(1).upper()
+    if not method:
+        method_match = re.search(r'-X[=\s]+["\']?(\w+)["\']?', cmd)
+        if method_match:
+            method = method_match.group(1).upper()
+
+    # Check if command has input data (implies write operation)
+    has_input = bool(re.search(r"(--input[=\s]|--field[=\s]|-f[=\s]|-F[=\s])", cmd))
+
+    # Check allowed endpoints FIRST before blocking based on method
+    # This allows explicit POST to allowed endpoints like PR comment replies
+    if endpoint:
+        # Allow PR comment replies (repos/.../pulls/.../comments/.../replies)
+        if re.search(r'/pulls/\d+/comments/\d+/replies$', endpoint):
+            if method in [None, "POST"] or has_input:
+                return make_allow_decision("PR comment reply auto-approved")
+
+        # Allow issue comment creation/replies
+        if re.search(r'/issues/\d+/comments$', endpoint):
+            if method in [None, "POST"] or has_input:
+                return make_allow_decision("Issue comment auto-approved")
+
+    # Now check if method is destructive (after checking allowed endpoints)
+    if method:
         if method in destructive_methods:
             return make_deny_decision(
-                f"Destructive gh api command blocked: -X {method}"
+                f"Destructive gh api command blocked: {method}"
             )
         elif method == "GET":
             return make_allow_decision("Read-only gh api GET request auto-approved")
 
-    # Check for --input or -f/--field flags (typically used with POST/PATCH)
-    # Handles both space and equals syntax: --input data.json or --input=data.json
-    if re.search(r"(--input[=\s]|--field[=\s]|-f[=\s]|-F[=\s])", cmd):
-        # Allow PR comment replies (repos/.../pulls/.../comments/.../replies)
-        if re.search(r'/pulls/\d+/comments/\d+/replies', cmd):
-            return make_allow_decision("PR comment reply auto-approved")
-
-        # Allow issue comment creation/replies
-        if re.search(r'/issues/\d+/comments', cmd):
-            return make_allow_decision("Issue comment auto-approved")
-
+    # Check for input flags (typically used with POST/PATCH)
+    if has_input:
         return make_deny_decision(
             "gh api command with input data blocked (likely a write operation)"
         )
@@ -339,13 +417,20 @@ def check_gh_graphql_command(cmd: str) -> Optional[dict]:
         # the mutation's opening brace, not nested in input arguments.
         # Pattern handles: mutation { name..., mutation Name { name..., mutation($var: Type!) { name...
         # The key is matching right after "mutation [Name] [(variables)] {"
+        #
+        # IMPORTANT: We must handle GraphQL field aliases. In GraphQL, you can write:
+        #   mutation { aliasName: actualOperation(args) { ... } }
+        # If someone writes: mutation { resolveReviewThread: deleteIssue(args) { ... } }
+        # The 'resolveReviewThread' is just an alias, the actual operation is 'deleteIssue'.
+        # So we need to ensure the matched name is NOT followed by ':' (which would make it an alias).
         allowed_pr_mutations = (
             r'\bmutation\s*'           # mutation keyword
             r'(?:\w+\s*)?'             # optional mutation name
             r'(?:\([^)]*\)\s*)?'       # optional variables in parentheses
             r'\{\s*'                   # opening brace
             r'(resolveReviewThread|unresolveReviewThread|'
-            r'addPullRequestReviewComment|addPullRequestReview)\b'
+            r'addPullRequestReviewComment|addPullRequestReview)\b'  # word boundary ensures full name match
+            r'(?!\s*:)'                # NOT followed by colon (would make it an alias)
         )
         if re.search(allowed_pr_mutations, cmd, re.IGNORECASE):
             return make_allow_decision("PR review mutation auto-approved")

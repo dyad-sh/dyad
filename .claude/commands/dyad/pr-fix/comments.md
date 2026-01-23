@@ -10,7 +10,9 @@ Read all unresolved GitHub PR comments and address or resolve them appropriately
 
 1. **Determine the PR to work on:**
 
-   - If `$ARGUMENTS` contains a PR number or URL, use that
+   - If `$ARGUMENTS` is provided:
+     - If it's a number (e.g., `123`), use it as the PR number
+     - If it's a URL (e.g., `https://github.com/owner/repo/pull/123`), extract the PR number from the path
    - Otherwise, get the current branch's PR using `gh pr view --json number,url,title,body --jq '.'`
    - If no PR is found, inform the user and stop
 

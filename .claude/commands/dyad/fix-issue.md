@@ -10,11 +10,16 @@ Create a plan to fix a GitHub issue, then send it to be worked on remotely after
 
 1. **Fetch the GitHub issue:**
 
+   First, extract the issue number from `$ARGUMENTS`:
+
+   - If `$ARGUMENTS` is a number (e.g., `123`), use it directly
+   - If `$ARGUMENTS` is a URL (e.g., `https://github.com/owner/repo/issues/123`), extract the issue number from the path
+
+   Then fetch the issue:
+
    ```
    gh issue view <issue-number> --json title,body,comments,labels,assignees
    ```
-
-   If `$ARGUMENTS` is a URL, extract the issue number from it first.
 
 2. **Analyze the issue:**
 

@@ -27,41 +27,34 @@ except ImportError:
 NUM_AGENTS = 3
 CONSENSUS_THRESHOLD = 2
 MIN_SEVERITY = "MEDIUM"
-MODEL = "claude-sonnet-4-20250514"
-MAX_TOKENS = 4096
+MODEL = "claude-opus-4-5-20251101"
+
+# Extended thinking configuration (interleaved thinking with max effort)
+# Using maximum values for most thorough analysis
+THINKING_BUDGET_TOKENS = 128000  # Maximum thinking budget for deepest analysis
+MAX_TOKENS = 128000  # Maximum output tokens
 
 SEVERITY_RANK = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
 
-REVIEW_SYSTEM_PROMPT = """You are a code reviewer analyzing a pull request for correctness issues.
+# Path to the review prompt markdown file (relative to this script)
+SCRIPT_DIR = Path(__file__).parent
+REVIEW_PROMPT_PATH = SCRIPT_DIR.parent / "references" / "review_prompt.md"
 
-Review the provided code changes carefully. For each issue you identify:
-1. Specify the exact file path
-2. Specify the line number(s) affected
-3. Describe the issue clearly and concisely
-4. Classify the criticality level
 
-Criticality levels:
-- HIGH: Security vulnerabilities, data loss risks, crashes, race conditions, broken core functionality
-- MEDIUM: Logic errors, unhandled edge cases, performance issues, resource leaks, maintainability concerns
-- LOW: Style issues, minor improvements, documentation gaps, naming suggestions
+def load_review_prompt() -> str:
+    """Load the system prompt from review_prompt.md."""
+    if not REVIEW_PROMPT_PATH.exists():
+        raise FileNotFoundError(f"Review prompt not found: {REVIEW_PROMPT_PATH}")
 
-Output ONLY a JSON array of issues. No other text.
+    content = REVIEW_PROMPT_PATH.read_text()
 
-Schema:
-[
-  {
-    "file": "path/to/file.py",
-    "line_start": 42,
-    "line_end": 45,
-    "severity": "HIGH|MEDIUM|LOW",
-    "category": "security|logic|performance|error-handling|style|other",
-    "title": "Brief issue title",
-    "description": "Detailed explanation of the issue and why it matters",
-    "suggestion": "Optional: how to fix it"
-  }
-]
+    # Extract the system prompt from the first code block after "## System Prompt"
+    # The format is: ## System Prompt\n\n```\n<prompt>\n```
+    match = re.search(r'## System Prompt\s*\n+```\n(.*?)\n```', content, re.DOTALL)
+    if not match:
+        raise ValueError("Could not extract system prompt from review_prompt.md")
 
-If no issues found, return an empty array: []"""
+    return match.group(1).strip()
 
 
 @dataclass
@@ -154,23 +147,53 @@ def build_review_prompt(files: list[FileDiff]) -> str:
 async def run_sub_agent(
     client: anthropic.AsyncAnthropic,
     agent_id: int,
-    files: list[FileDiff]
+    files: list[FileDiff],
+    system_prompt: str,
+    use_thinking: bool = True,
+    thinking_budget: int = THINKING_BUDGET_TOKENS
 ) -> list[Issue]:
-    """Run a single sub-agent review."""
+    """Run a single sub-agent review with extended thinking."""
     prompt = build_review_prompt(files)
-    
+
     print(f"  Agent {agent_id}: Starting review ({len(files)} files)...")
-    
+    if use_thinking:
+        print(f"  Agent {agent_id}: Using extended thinking (budget: {thinking_budget} tokens)")
+
     try:
-        response = await client.messages.create(
-            model=MODEL,
-            max_tokens=MAX_TOKENS,
-            system=REVIEW_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        
-        # Extract JSON from response
-        content = response.content[0].text.strip()
+        # Build API call parameters
+        api_params = {
+            "model": MODEL,
+            "max_tokens": MAX_TOKENS,
+            "messages": [{"role": "user", "content": prompt}]
+        }
+
+        # Add extended thinking for max effort analysis
+        if use_thinking:
+            api_params["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": thinking_budget
+            }
+            # Note: system prompts are not supported with extended thinking,
+            # so we prepend the system prompt to the user message
+            api_params["messages"] = [{
+                "role": "user",
+                "content": f"{system_prompt}\n\n---\n\n{prompt}"
+            }]
+        else:
+            api_params["system"] = system_prompt
+
+        response = await client.messages.create(**api_params)
+
+        # Extract JSON from response, handling thinking blocks
+        content = None
+        for block in response.content:
+            if block.type == "text":
+                content = block.text.strip()
+                break
+
+        if content is None:
+            print(f"  Agent {agent_id}: No text response found")
+            return []
         
         # Handle potential markdown code blocks
         if content.startswith('```'):
@@ -340,8 +363,12 @@ async def main():
     parser.add_argument('--output', type=str, default='consensus_results.json', help='Output file')
     parser.add_argument('--num-agents', type=int, default=NUM_AGENTS, help='Number of sub-agents')
     parser.add_argument('--threshold', type=int, default=CONSENSUS_THRESHOLD, help='Consensus threshold')
-    parser.add_argument('--min-severity', type=str, default=MIN_SEVERITY, 
+    parser.add_argument('--min-severity', type=str, default=MIN_SEVERITY,
                        choices=['HIGH', 'MEDIUM', 'LOW'], help='Minimum severity to report')
+    parser.add_argument('--no-thinking', action='store_true',
+                       help='Disable extended thinking (faster but less thorough)')
+    parser.add_argument('--thinking-budget', type=int, default=THINKING_BUDGET_TOKENS,
+                       help=f'Thinking budget tokens (default: {THINKING_BUDGET_TOKENS})')
     args = parser.parse_args()
     
     # Check for API key
@@ -357,12 +384,18 @@ async def main():
     
     diff_content = diff_path.read_text()
     
+    use_thinking = not args.no_thinking
+    thinking_budget = args.thinking_budget
+
     print(f"Multi-Agent PR Review")
     print(f"=====================")
     print(f"PR: {args.repo}#{args.pr_number}")
     print(f"Agents: {args.num_agents}")
     print(f"Consensus threshold: {args.threshold}")
     print(f"Min severity: {args.min_severity}")
+    print(f"Extended thinking: {'enabled' if use_thinking else 'disabled'}")
+    if use_thinking:
+        print(f"Thinking budget: {thinking_budget} tokens")
     print()
     
     # Parse diff into files
@@ -375,13 +408,21 @@ async def main():
     
     # Create shuffled orderings
     orderings = create_shuffled_orderings(files, args.num_agents)
-    
+
+    # Load review prompt from markdown file
+    print("Loading review prompt from references/review_prompt.md...")
+    try:
+        system_prompt = load_review_prompt()
+    except (FileNotFoundError, ValueError) as e:
+        print(f"Error loading review prompt: {e}")
+        sys.exit(1)
+
     # Run sub-agents in parallel
     print(f"\nSpawning {args.num_agents} review agents...")
     client = anthropic.AsyncAnthropic()
-    
+
     tasks = [
-        run_sub_agent(client, i + 1, ordering)
+        run_sub_agent(client, i + 1, ordering, system_prompt, use_thinking, thinking_budget)
         for i, ordering in enumerate(orderings)
     ]
     
@@ -404,6 +445,8 @@ async def main():
         'num_agents': args.num_agents,
         'consensus_threshold': args.threshold,
         'min_severity': args.min_severity,
+        'extended_thinking': use_thinking,
+        'thinking_budget': thinking_budget if use_thinking else None,
         'total_issues_per_agent': [len(r) for r in all_results],
         'consensus_issues': consensus_issues,
         'comment_body': format_pr_comment(consensus_issues, args.pr_number)

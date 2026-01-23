@@ -1,5 +1,5 @@
 ---
-name: multi-agent-pr-review
+name: dyad:multi-pr-review
 description: Multi-agent code review system that spawns three independent Claude sub-agents to review PR diffs. Each agent receives files in different randomized order to reduce ordering bias. Issues are classified as high/medium/low criticality. Results are aggregated using consensus voting - only issues flagged by 2+ agents as medium or higher criticality are reported and posted as PR comments. Use when reviewing PRs, performing code review with multiple perspectives, or when consensus-based issue detection is needed.
 ---
 
@@ -102,3 +102,32 @@ Optional tuning in `orchestrate_review.py`:
 - `NUM_AGENTS` - Number of sub-agents (default: 3)
 - `CONSENSUS_THRESHOLD` - Min agents to agree (default: 2)
 - `MIN_SEVERITY` - Minimum severity to report (default: MEDIUM)
+- `THINKING_BUDGET_TOKENS` - Extended thinking budget (default: 128000)
+- `MAX_TOKENS` - Maximum output tokens (default: 128000)
+
+## Extended Thinking
+
+This skill uses **extended thinking (interleaved thinking)** with **max effort** by default. Each sub-agent leverages Claude's extended thinking capability for deeper code analysis:
+
+- **Budget**: 128,000 thinking tokens per agent for thorough reasoning
+- **Max output**: 128,000 tokens for comprehensive issue reports
+
+To disable extended thinking (faster but less thorough):
+
+```bash
+python3 scripts/orchestrate_review.py \
+  --pr-number <PR_NUMBER> \
+  --repo <OWNER/REPO> \
+  --diff-file pr_diff.patch \
+  --no-thinking
+```
+
+To customize thinking budget:
+
+```bash
+python3 scripts/orchestrate_review.py \
+  --pr-number <PR_NUMBER> \
+  --repo <OWNER/REPO> \
+  --diff-file pr_diff.patch \
+  --thinking-budget 50000
+```

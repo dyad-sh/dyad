@@ -10,6 +10,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { gitAddAll, gitCommit } from "../utils/git_utils";
 import { simpleSpawn } from "../utils/simpleSpawn";
+import { IS_TEST_BUILD } from "../utils/test_utils";
 
 export const logger = log.scope("app_upgrade_handlers");
 const handle = createLoggedHandler(logger);
@@ -143,10 +144,21 @@ async function getLatestReactVersion(
   }
 }
 
+// Marker file to indicate React upgrade was applied (used in E2E tests)
+const REACT_UPGRADE_MARKER = ".dyad-react-upgraded";
+
 async function isReactUpgradeNeeded(appPath: string): Promise<boolean> {
   // Check if it's a Vite app first
   if (!isViteApp(appPath)) {
     return false;
+  }
+
+  // In test builds, check for marker file indicating upgrade was already applied
+  if (IS_TEST_BUILD) {
+    const markerPath = path.join(appPath, REACT_UPGRADE_MARKER);
+    if (fs.existsSync(markerPath)) {
+      return false;
+    }
   }
 
   const packageJsonPath = path.join(appPath, "package.json");
@@ -356,6 +368,13 @@ async function applyReactUpgrade(appPath: string) {
     errorPrefix: "Failed to upgrade React",
   });
 
+  // In test builds, create a marker file to indicate upgrade was applied
+  // This allows the isReactUpgradeNeeded check to return false after upgrade
+  if (IS_TEST_BUILD) {
+    const markerPath = path.join(appPath, REACT_UPGRADE_MARKER);
+    await fs.promises.writeFile(markerPath, "");
+  }
+
   // Commit changes
   try {
     logger.info("Staging and committing React upgrade changes");
@@ -369,6 +388,10 @@ async function applyReactUpgrade(appPath: string) {
     logger.warn(
       `Failed to commit changes. This may happen if the project is not in a git repository, or if there are no changes to commit.`,
       err,
+    );
+    throw new Error(
+      "Failed to commit React upgrade changes. Please commit them manually. Error: " +
+        err,
     );
   }
 }

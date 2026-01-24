@@ -25,8 +25,7 @@ testSkipIfWindows(
       timeout: Timeout.MEDIUM,
     });
 
-    // Wait for upgrade to complete (button becomes enabled again or hidden)
-    // Note: The actual upgrade may not work in test environment due to external tool dependencies
-    await po.page.waitForTimeout(5000);
+    // Verify the upgrade completes and button becomes hidden
+    await po.expectAppUpgradeButtonIsNotVisible({ upgradeId: "react-upgrade" });
   },
 );

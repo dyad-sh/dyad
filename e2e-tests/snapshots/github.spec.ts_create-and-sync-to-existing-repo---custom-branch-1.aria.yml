@@ -3,9 +3,7 @@
 - combobox:
   - img
   - text: "Branch: new-branch"
-- button "Refresh branches":
-  - img
-- button "Create new branch":
+- button "Branch actions":
   - img
 - img
 - heading "Branches" [level=3]

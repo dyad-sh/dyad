@@ -13,15 +13,13 @@ defaults:
     shell: bash
 
 jobs:
-  triage:
-    name: Determine E2E Test Strategy
+  claude-triage:
+    name: Claude Code Analysis
     environment: ai-bots
     runs-on: ubuntu-latest
     outputs:
-      decision: ${{ steps.parse-output.outputs.decision }}
-      tests: ${{ steps.parse-output.outputs.tests }}
-      shard_matrix: ${{ steps.compute-shards.outputs.matrix }}
-      shard_count: ${{ steps.compute-shards.outputs.shard_count }}
+      result: ${{ steps.triage.outputs.result }}
+      changed_files: ${{ steps.changed-files.outputs.files }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -129,11 +127,24 @@ jobs:
             - Only include the test file name (e.g., `chat_input.spec.ts`), not the full path
             - If you cannot confidently determine the scope, choose "all"
 
+  triage:
+    name: Determine E2E Test Strategy
+    needs: claude-triage
+    runs-on: ubuntu-latest
+    outputs:
+      decision: ${{ steps.parse-output.outputs.decision }}
+      tests: ${{ steps.parse-output.outputs.tests }}
+      shard_matrix: ${{ steps.compute-shards.outputs.matrix }}
+      shard_count: ${{ steps.compute-shards.outputs.shard_count }}
+    steps:
       - name: Parse Claude Output
         id: parse-output
+        env:
+          TRIAGE_RESULT: ${{ needs.claude-triage.outputs.result }}
         run: |
           # Extract the decision and tests from Claude's output
-          OUTPUT='${{ steps.triage.outputs.result }}'
+          # Use env var to avoid shell injection from single quotes in output
+          OUTPUT="$TRIAGE_RESULT"
 
           # Parse DECISION line
           DECISION=$(echo "$OUTPUT" | grep -oP 'DECISION:\s*\K(none|specific|all)' | head -1)
@@ -179,8 +190,12 @@ jobs:
             echo 'matrix={"shard":[1,2,3,4],"shardTotal":[4]}' >> $GITHUB_OUTPUT
             echo "shard_count=4" >> $GITHUB_OUTPUT
           else
-            # Count the number of specific tests
-            TEST_COUNT=$(echo "$TESTS" | tr ',' '\n' | grep -c '.' || echo "0")
+            # Count the number of specific tests (handle empty case)
+            if [ -z "$TESTS" ]; then
+              TEST_COUNT=0
+            else
+              TEST_COUNT=$(echo "$TESTS" | tr ',' '\n' | grep -v '^$' | wc -l | tr -d ' ')
+            fi
 
             # Determine shard count based on test count
             # 1-3 tests: 1 shard
@@ -303,8 +318,16 @@ jobs:
           if [ "$DECISION" = "all" ]; then
             echo "test_args=" >> $GITHUB_OUTPUT
           else
-            # Convert comma-separated list to space-separated paths
-            TEST_PATHS=$(echo "$TESTS" | tr ',' '\n' | sed 's/^/e2e-tests\//' | tr '\n' ' ')
+            # Validate test names match expected pattern (alphanumeric, underscores, hyphens, ending in .spec.ts)
+            for test in $(echo "$TESTS" | tr ',' '\n' | grep -v '^$'); do
+              if ! echo "$test" | grep -qE '^[a-zA-Z0-9_-]+\.spec\.ts$'; then
+                echo "Invalid test name: $test - defaulting to run all tests"
+                echo "test_args=" >> $GITHUB_OUTPUT
+                exit 0
+              fi
+            done
+            # Convert comma-separated list to space-separated paths (filter empty lines)
+            TEST_PATHS=$(echo "$TESTS" | tr ',' '\n' | grep -v '^$' | sed 's/^/e2e-tests\//' | tr '\n' ' ')
             echo "test_args=$TEST_PATHS" >> $GITHUB_OUTPUT
           fi
 

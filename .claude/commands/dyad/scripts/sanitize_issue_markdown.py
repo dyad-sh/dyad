@@ -32,38 +32,23 @@ def sanitize_issue_markdown(markdown: str) -> str:
     result = re.sub(r"<!--[\s\S]*?-->", "", result)
 
     # Remove zero-width characters and other invisible Unicode
-    # Zero-width space, zero-width non-joiner, zero-width joiner,
-    # word joiner, zero-width no-break space, etc.
-    invisible_chars = [
-        "\u200b",  # Zero-width space
-        "\u200c",  # Zero-width non-joiner
-        "\u200d",  # Zero-width joiner
-        "\u2060",  # Word joiner
-        "\ufeff",  # Zero-width no-break space / BOM
-        "\u00ad",  # Soft hyphen
-        "\u034f",  # Combining grapheme joiner
-        "\u061c",  # Arabic letter mark
-        "\u180e",  # Mongolian vowel separator
-    ]
-    for char in invisible_chars:
-        result = result.replace(char, "")
+    # (Zero-width space, non-joiner, joiner, word joiner, no-break space, etc.)
+    result = re.sub(
+        r"[\u200b\u200c\u200d\u2060\ufeff\u00ad\u034f\u061c\u180e]", "", result
+    )
 
     # Remove other control characters (except newlines, tabs)
     result = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", result)
 
     # Remove HTML details/summary blocks but keep inner content
-    result = re.sub(r"<details[^>]*>", "", result, flags=re.IGNORECASE)
-    result = re.sub(r"</details>", "", result, flags=re.IGNORECASE)
-    result = re.sub(r"<summary[^>]*>", "", result, flags=re.IGNORECASE)
-    result = re.sub(r"</summary>", "", result, flags=re.IGNORECASE)
+    result = re.sub(r"</?(?:details|summary)[^>]*>", "", result, flags=re.IGNORECASE)
 
     # Remove empty HTML tags
     result = re.sub(r"<([a-z]+)[^>]*>\s*</\1>", "", result, flags=re.IGNORECASE)
 
     # Remove GitHub task list markers that are just decoration
-    # But keep the actual checkbox content
-    result = re.sub(r"^(\s*)-\s*\[ \]\s*$", "", result, flags=re.MULTILINE)
-    result = re.sub(r"^(\s*)-\s*\[x\]\s*$", "", result, flags=re.MULTILINE)
+    # But keep the actual checkbox content (supports both [x] and [X])
+    result = re.sub(r"^\s*-\s*\[[ xX]\]\s*$", "", result, flags=re.MULTILINE)
 
     # Normalize line endings
     result = result.replace("\r\n", "\n").replace("\r", "\n")

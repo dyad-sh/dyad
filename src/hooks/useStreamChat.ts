@@ -12,6 +12,7 @@ import {
   isStreamingByIdAtom,
   recentStreamChatIdsAtom,
   queuedMessageByIdAtom,
+  type QueuedMessage,
 } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
@@ -340,6 +341,7 @@ export function useStreamChat({
       streamMessage({
         prompt: queuedMessage.prompt,
         chatId,
+        redo: false,
         attachments: queuedMessage.attachments,
         selectedComponents: queuedMessage.selectedComponents,
       });
@@ -353,6 +355,7 @@ export function useStreamChat({
     setQueuedMessageById,
     posthog,
     settings?.selectedChatMode,
+    shouldProcessQueue,
   ]);
 
   return {
@@ -381,25 +384,20 @@ export function useStreamChat({
       hasChatId && chatId !== undefined
         ? (queuedMessageById.get(chatId) ?? null)
         : null,
-    queueMessage: (message: {
-      prompt: string;
-      attachments?: FileAttachment[];
-      selectedComponents?: ComponentSelection[];
-    }): boolean => {
-      if (chatId === undefined) return false;
+    queueMessage: (message: QueuedMessage) => {
+      if (chatId === undefined) return;
       const existingMessage = queuedMessageById.get(chatId);
       if (existingMessage) {
         showWarning(
           "A message is already queued. Wait for it to be sent or clear it.",
         );
-        return false;
+        return;
       }
       setQueuedMessageById((prev) => {
         const next = new Map(prev);
         next.set(chatId, message);
         return next;
       });
-      return true;
     },
     clearQueuedMessage: () => {
       if (chatId === undefined) return;

@@ -15,7 +15,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useNavigate } from "@tanstack/react-router";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { toast } from "sonner";
 import { showError } from "@/lib/toast";
 
@@ -282,9 +282,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                             if (appId && !versionInCurrentChat) {
                               try {
                                 const newChatId =
-                                  await IpcClient.getInstance().createChat(
-                                    appId,
-                                  );
+                                  await ipc.chat.createChat(appId);
                                 setSelectedChatId(newChatId);
                                 await navigate({
                                   to: "/chat",

@@ -226,3 +226,80 @@ export function createDyadEngine(
 
   return provider;
 }
+
+// Module-level map to track request ID attempts across multiple calls
+// Size is limited to prevent unbounded memory growth
+const transcriptionRequestIdAttempts = new Map<string, number>();
+const MAX_TRACKED_REQUESTS = 500; // Limit to prevent memory accumulation
+
+/**
+ * Tracks and increments attempt count for a request ID.
+ * Automatically removes oldest entries when map exceeds MAX_TRACKED_REQUESTS.
+ */
+function trackRequestAttempt(requestId: string): number {
+  const currentAttempt =
+    (transcriptionRequestIdAttempts.get(requestId) || 0) + 1;
+  transcriptionRequestIdAttempts.set(requestId, currentAttempt);
+
+  // Cleanup: if map exceeds max size, remove the oldest (first) entries
+  // Maps maintain insertion order, so first entries are oldest
+  if (transcriptionRequestIdAttempts.size > MAX_TRACKED_REQUESTS) {
+    const entriesToRemove =
+      transcriptionRequestIdAttempts.size - MAX_TRACKED_REQUESTS;
+    let removed = 0;
+    for (const key of transcriptionRequestIdAttempts.keys()) {
+      if (removed >= entriesToRemove) break;
+      transcriptionRequestIdAttempts.delete(key);
+      removed++;
+    }
+  }
+
+  return currentAttempt;
+}
+
+export async function transcribeWithDyadEngine(
+  audioBuffer: Buffer,
+  filename: string,
+  requestId: string,
+  options: ExampleProviderSettings,
+): Promise<string> {
+  const baseURL = withoutTrailingSlash(options.baseURL);
+  const apiKey = loadApiKey({
+    apiKey: options.apiKey,
+    environmentVariableName: "DYAD_PRO_API_KEY",
+    description: "Dyad Pro API key",
+  });
+  logger.info("transcribing with dyad engine with baseURL", baseURL);
+
+  // Track and modify requestId with attempt number
+  let modifiedRequestId = requestId;
+  if (requestId) {
+    const currentAttempt = trackRequestAttempt(requestId);
+    modifiedRequestId = `${requestId}:attempt-${currentAttempt}`;
+  }
+
+  const formData = new FormData();
+  const blob = new Blob([audioBuffer as any]);
+  formData.append("file", blob, filename);
+  formData.append("model", "whisper-1");
+
+  const fetchFn = options.fetch || fetch;
+  const response = await fetchFn(`${baseURL}/audio/transcriptions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "X-Dyad-Request-Id": modifiedRequestId,
+      ...options.headers,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `Dyad Engine transcription failed: ${response.status} ${response.statusText} - ${errorText}`,
+    );
+  }
+  const data = (await response.json()) as { text: string };
+  return data.text;
+}

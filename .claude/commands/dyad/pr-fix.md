@@ -24,8 +24,33 @@ This is a meta-skill that orchestrates two sub-skills to comprehensively fix PR 
    - Update snapshots if needed
    - Ensure all checks pass
 
-3. **Summary:**
-   After both sub-skills complete, provide a consolidated summary of:
+3. **Post Summary Comment:**
+   After both sub-skills complete, post a comment on the PR with a consolidated summary using `gh pr comment`. The comment should include:
+   - A header indicating success (✅) or failure (❌)
    - Review comments addressed, resolved, or flagged
    - CI checks that were fixed
    - Any remaining issues requiring human attention
+   - Use `<details>` tags to collapse verbose details (e.g., full error messages, lengthy explanations)
+   - If there were any errors, include specific error messages in the collapsed details
+
+   Example format:
+
+   ```
+   ## ✅ Claude Code completed successfully
+
+   ### Summary
+   - Fixed 2 review comments
+   - Resolved 1 CI failure (lint error in `src/foo.ts`)
+
+   <details>
+   <summary>Details</summary>
+
+   ... detailed information here ...
+
+   </details>
+
+   ---
+   [Workflow run](https://github.com/dyad-sh/dyad/actions/runs/12345678)
+   ```
+
+   Note: Include a link to the workflow run at the end. Use the `GITHUB_REPOSITORY` and `GITHUB_RUN_ID` environment variables to construct the URL: `https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID`

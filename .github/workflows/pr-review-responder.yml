@@ -97,6 +97,11 @@ jobs:
           ref: ${{ github.event.workflow_run.head_branch }}
           fetch-depth: 0
 
+      - name: Record HEAD before Claude Code
+        if: steps.pr-info.outputs.should_continue == 'true'
+        id: before-claude
+        run: echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
       - name: Update labels to pending
         if: steps.pr-info.outputs.should_continue == 'true'
         run: |
@@ -112,6 +117,21 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
             /dyad:pr-fix ${{ steps.pr-info.outputs.pr_number }}
+
+      - name: Re-trigger CI if commits were pushed
+        if: steps.pr-info.outputs.should_continue == 'true' && success()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git fetch origin
+          NEW_SHA=$(git rev-parse origin/${{ github.event.workflow_run.head_branch }})
+          if [ "${{ steps.before-claude.outputs.sha }}" != "$NEW_SHA" ]; then
+            echo "Claude pushed new commits, re-triggering CI by closing and reopening PR"
+            gh pr close ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }}
+            gh pr reopen ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }}
+          else
+            echo "No new commits pushed, skipping CI re-trigger"
+          fi
 
       - name: Update labels to done
         if: steps.pr-info.outputs.should_continue == 'true' && success()

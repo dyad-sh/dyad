@@ -302,12 +302,14 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
     // If streaming, queue the message instead of sending immediately
     if (isStreaming) {
-      queueMessage({
+      const queued = queueMessage({
         prompt: currentInput,
         attachments,
         selectedComponents: componentsToSend,
       });
-      clearAttachments();
+      if (queued) {
+        clearAttachments();
+      }
       return;
     }
 

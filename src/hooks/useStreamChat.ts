@@ -385,19 +385,20 @@ export function useStreamChat({
         ? (queuedMessageById.get(chatId) ?? null)
         : null,
     queueMessage: (message: QueuedMessage) => {
-      if (chatId === undefined) return;
+      if (chatId === undefined) return false;
       const existingMessage = queuedMessageById.get(chatId);
       if (existingMessage) {
         showWarning(
           "A message is already queued. Wait for it to be sent or clear it.",
         );
-        return;
+        return false;
       }
       setQueuedMessageById((prev) => {
         const next = new Map(prev);
         next.set(chatId, message);
         return next;
       });
+      return true;
     },
     clearQueuedMessage: () => {
       if (chatId === undefined) return;

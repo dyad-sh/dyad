@@ -1,20 +1,18 @@
-import { ipcMain } from "electron";
 import { db } from "../../db";
 import { apps, chats, messages } from "../../db/schema";
 import { desc, eq, and, like } from "drizzle-orm";
 import type { ChatSearchResult, ChatSummary } from "../../lib/schemas";
-import { createLoggedHandler } from "./safe_handle";
 
 import log from "electron-log";
 import { getDyadAppPath } from "../../paths/paths";
-import { UpdateChatParams } from "../ipc_types";
 import { getCurrentCommitHash } from "../utils/git_utils";
+import { createTypedHandler } from "./base";
+import { chatContracts } from "../types/chat";
 
 const logger = log.scope("chat_handlers");
-const handle = createLoggedHandler(logger);
 
 export function registerChatHandlers() {
-  handle("create-chat", async (_, appId: number): Promise<number> => {
+  createTypedHandler(chatContracts.createChat, async (_, appId) => {
     // Get the app's path first
     const app = await db.query.apps.findFirst({
       where: eq(apps.id, appId),
@@ -58,7 +56,7 @@ export function registerChatHandlers() {
     return chat.id;
   });
 
-  ipcMain.handle("get-chat", async (_, chatId: number) => {
+  createTypedHandler(chatContracts.getChat, async (_, chatId) => {
     const chat = await db.query.chats.findFirst({
       where: eq(chats.id, chatId),
       with: {
@@ -72,10 +70,17 @@ export function registerChatHandlers() {
       throw new Error("Chat not found");
     }
 
-    return chat;
+    return {
+      ...chat,
+      title: chat.title ?? "",
+      messages: chat.messages.map((m) => ({
+        ...m,
+        role: m.role as "user" | "assistant",
+      })),
+    };
   });
 
-  handle("get-chats", async (_, appId?: number): Promise<ChatSummary[]> => {
+  createTypedHandler(chatContracts.getChats, async (_, appId) => {
     // If appId is provided, filter chats for that app
     const query = appId
       ? db.query.chats.findMany({
@@ -99,75 +104,74 @@ export function registerChatHandlers() {
         });
 
     const allChats = await query;
-    return allChats;
+    return allChats as ChatSummary[];
   });
 
-  handle("delete-chat", async (_, chatId: number): Promise<void> => {
+  createTypedHandler(chatContracts.deleteChat, async (_, chatId) => {
     await db.delete(chats).where(eq(chats.id, chatId));
   });
 
-  handle("update-chat", async (_, { chatId, title }: UpdateChatParams) => {
+  createTypedHandler(chatContracts.updateChat, async (_, params) => {
+    const { chatId, title } = params;
     await db.update(chats).set({ title }).where(eq(chats.id, chatId));
   });
 
-  handle("delete-messages", async (_, chatId: number): Promise<void> => {
+  createTypedHandler(chatContracts.deleteMessages, async (_, chatId) => {
     await db.delete(messages).where(eq(messages.chatId, chatId));
   });
 
-  handle(
-    "search-chats",
-    async (_, appId: number, query: string): Promise<ChatSearchResult[]> => {
-      // 1) Find chats by title and map to ChatSearchResult with no matched message
-      const chatTitleMatches = await db
-        .select({
-          id: chats.id,
-          appId: chats.appId,
-          title: chats.title,
-          createdAt: chats.createdAt,
-        })
-        .from(chats)
-        .where(and(eq(chats.appId, appId), like(chats.title, `%${query}%`)))
-        .orderBy(desc(chats.createdAt))
-        .limit(10);
+  createTypedHandler(chatContracts.searchChats, async (_, params) => {
+    const { appId, query } = params;
+    // 1) Find chats by title and map to ChatSearchResult with no matched message
+    const chatTitleMatches = await db
+      .select({
+        id: chats.id,
+        appId: chats.appId,
+        title: chats.title,
+        createdAt: chats.createdAt,
+      })
+      .from(chats)
+      .where(and(eq(chats.appId, appId), like(chats.title, `%${query}%`)))
+      .orderBy(desc(chats.createdAt))
+      .limit(10);
 
-      const titleResults: ChatSearchResult[] = chatTitleMatches.map((c) => ({
-        id: c.id,
-        appId: c.appId,
-        title: c.title,
-        createdAt: c.createdAt,
-        matchedMessageContent: null,
-      }));
+    const titleResults: ChatSearchResult[] = chatTitleMatches.map((c) => ({
+      id: c.id,
+      appId: c.appId,
+      title: c.title,
+      createdAt: c.createdAt,
+      matchedMessageContent: null,
+    }));
 
-      // 2) Find messages that match and join to chats to build one result per message
-      const messageResults = await db
-        .select({
-          id: chats.id,
-          appId: chats.appId,
-          title: chats.title,
-          createdAt: chats.createdAt,
-          matchedMessageContent: messages.content,
-        })
-        .from(messages)
-        .innerJoin(chats, eq(messages.chatId, chats.id))
-        .where(
-          and(eq(chats.appId, appId), like(messages.content, `%${query}%`)),
-        )
-        .orderBy(desc(chats.createdAt))
-        .limit(10);
+    // 2) Find messages that match and join to chats to build one result per message
+    const messageResults = await db
+      .select({
+        id: chats.id,
+        appId: chats.appId,
+        title: chats.title,
+        createdAt: chats.createdAt,
+        matchedMessageContent: messages.content,
+      })
+      .from(messages)
+      .innerJoin(chats, eq(messages.chatId, chats.id))
+      .where(and(eq(chats.appId, appId), like(messages.content, `%${query}%`)))
+      .orderBy(desc(chats.createdAt))
+      .limit(10);
 
-      // Combine: keep title matches and per-message matches
-      const combined: ChatSearchResult[] = [...titleResults, ...messageResults];
-      const uniqueChats = Array.from(
-        new Map(combined.map((item) => [item.id, item])).values(),
-      );
+    // Combine: keep title matches and per-message matches
+    const combined: ChatSearchResult[] = [...titleResults, ...messageResults];
+    const uniqueChats = Array.from(
+      new Map(combined.map((item) => [item.id, item])).values(),
+    );
 
-      // Sort newest chats first
-      uniqueChats.sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      );
+    // Sort newest chats first
+    uniqueChats.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
 
-      return uniqueChats;
-    },
-  );
+    return uniqueChats;
+  });
+
+  logger.debug("Registered chat IPC handlers");
 }

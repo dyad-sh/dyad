@@ -26,7 +26,7 @@ export default function LibraryPage() {
   useEffect(() => {
     const handleDeepLink = async () => {
       if (lastDeepLink?.type === "add-prompt") {
-        const deepLink = lastDeepLink as AddPromptDeepLinkData;
+        const deepLink = lastDeepLink as unknown as AddPromptDeepLinkData;
         const payload = deepLink.payload;
         showInfo(`Prefilled prompt: ${payload.title}`);
         setPrefillData({

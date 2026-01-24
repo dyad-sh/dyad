@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 import { useCustomLanguageModelProvider } from "@/hooks/useCustomLanguageModelProvider";
-import type { LanguageModelProvider } from "@/ipc/ipc_types";
+import type { LanguageModelProvider } from "@/ipc/types";
 
 interface CreateCustomProviderDialogProps {
   isOpen: boolean;

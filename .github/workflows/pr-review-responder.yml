@@ -30,13 +30,34 @@ jobs:
             const run = context.payload.workflow_run;
 
             // Get PR associated with this workflow run
-            if (!run.pull_requests || run.pull_requests.length === 0) {
-              console.log('No pull requests associated with this workflow run');
-              core.setOutput('should_continue', 'false');
-              return;
-            }
+            // Note: run.pull_requests can be empty for cross-repo PRs (forks)
+            // So we also search by head SHA as a fallback
+            let prNumber;
 
-            const prNumber = run.pull_requests[0].number;
+            if (run.pull_requests && run.pull_requests.length > 0) {
+              prNumber = run.pull_requests[0].number;
+            } else {
+              // Search for PRs with matching head branch
+              // Note: head_repository can be null if the fork was deleted
+              if (!run.head_repository) {
+                console.log('Head repository not available');
+                core.setOutput('should_continue', 'false');
+                return;
+              }
+              const { data: prs } = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                head: `${run.head_repository.owner.login}:${run.head_branch}`
+              });
+
+              if (prs.length === 0) {
+                console.log('No pull requests found for this workflow run');
+                core.setOutput('should_continue', 'false');
+                return;
+              }
+              prNumber = prs[0].number;
+            }
 
             // Fetch full PR details to get labels
             const { data: pr } = await github.rest.pulls.get({

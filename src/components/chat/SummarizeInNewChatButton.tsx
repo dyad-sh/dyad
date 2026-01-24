@@ -3,7 +3,7 @@ import { useAtomValue } from "jotai";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { showError } from "@/lib/toast";
 
 export function useSummarizeInNewChat() {
@@ -22,7 +22,7 @@ export function useSummarizeInNewChat() {
       return;
     }
     try {
-      const newChatId = await IpcClient.getInstance().createChat(appId);
+      const newChatId = await ipc.chat.createChat(appId);
       // navigate to new chat
       await navigate({ to: "/chat", search: { id: newChatId } });
       await streamMessage({

@@ -18,8 +18,7 @@ import {
   getSupabaseClientCode,
 } from "../../supabase_admin/supabase_context";
 
-import { TokenCountParams } from "../ipc_types";
-import { TokenCountResult } from "../ipc_types";
+import { TokenCountParams, TokenCountResult } from "@/ipc/types";
 import { estimateTokens, getContextWindow } from "../utils/token_utils";
 import { createLoggedHandler } from "./safe_handle";
 import { validateChatContext } from "../utils/context_paths_utils";

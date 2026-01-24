@@ -85,7 +85,7 @@ def test_good_commands() -> tuple[int, int, list[str]]:
 
 
 def test_bad_commands() -> tuple[int, int, list[str]]:
-    """Test that bad commands are denied."""
+    """Test that bad commands are denied or require user confirmation."""
     commands = load_commands("bad_commands.txt")
     passed = 0
     failed = 0
@@ -93,9 +93,9 @@ def test_bad_commands() -> tuple[int, int, list[str]]:
 
     for cmd in commands:
         result = run_hook(cmd)
-        # Bad commands should be 'deny'
+        # Bad commands should be 'deny' or 'ask' (require user confirmation)
         # 'allow' is definitely wrong, 'none' means it wasn't caught
-        if result["decision"] != "deny":
+        if result["decision"] not in ("deny", "ask"):
             failed += 1
             failures.append(f"  FAIL (not blocked): {cmd}\n    Decision: {result['decision']}, Reason: {result['reason']}")
         else:

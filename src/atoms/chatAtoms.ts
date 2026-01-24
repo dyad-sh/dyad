@@ -1,4 +1,4 @@
-import type { FileAttachment, Message, AgentTodo } from "@/ipc/ipc_types";
+import type { FileAttachment, Message, AgentTodo } from "@/ipc/types";
 import { atom } from "jotai";
 
 // Per-chat atoms implemented with maps keyed by chatId

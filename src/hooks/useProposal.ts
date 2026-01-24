@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import type { ProposalResult } from "@/lib/schemas";
 import { queryKeys } from "@/lib/queryKeys";
 
@@ -15,7 +15,7 @@ export function useProposal(chatId?: number | undefined) {
       if (chatId === undefined) {
         return null;
       }
-      return IpcClient.getInstance().getProposal(chatId);
+      return ipc.proposal.getProposal({ chatId });
     },
     enabled: chatId !== undefined,
     meta: { showErrorToast: true },

@@ -9,12 +9,16 @@ ALLOWED:
 - python .claude/script.py
 - python3 .claude/hooks/test.py
 - python "$CLAUDE_PROJECT_DIR/.claude/script.py"
+- python -m pytest (runs tests in project directory)
+- python -m pytest tests/ (explicit path within project)
 
 BLOCKED:
 - python script.py (outside .claude)
 - python /usr/local/bin/script.py
 - python ../malicious.py
-- python -m <module> (module execution bypasses directory restriction)
+- python -m <module> (module execution bypasses directory restriction, except pytest)
+- python -m pytest /outside/project (test paths must be within project)
+- python -m pytest --pyargs (could import arbitrary packages)
 - python -c "<code>" (inline code execution)
 - python < /tmp/file.py (stdin redirection)
 - python .claude/script.py; malicious_command (shell injection)
@@ -95,6 +99,113 @@ def is_python_command(cmd: str) -> bool:
         r'^(?:env\s+)?(?:/usr/bin/env\s+)?(?:[^\s]*/)?python3?\b',
         stripped
     ))
+
+
+def validate_pytest_args(args: list[str]) -> str | None:
+    """
+    Validate pytest arguments for security.
+
+    Returns:
+    - None if arguments are safe
+    - Error message string if arguments are unsafe
+
+    Security considerations:
+    - Test paths must be within the project directory to prevent executing
+      arbitrary code via test files or conftest.py loading outside the project
+    - Pytest's -c/--config-file and --confcutdir could load configs from outside
+      the project but these configs don't execute arbitrary Python code
+    - Pytest's --pyargs imports test modules by name which is blocked
+    """
+    project_dir = os.environ.get('CLAUDE_PROJECT_DIR', os.getcwd())
+
+    # Pytest options that take a path argument (option: number of path args that follow)
+    # These options specify files/dirs that pytest will read or use
+    pytest_path_options = {
+        '-c': 1, '--config-file': 1,  # Config file (INI format, not Python)
+        '-p': 1,  # Plugin to load (by name, not path - but block for safety)
+        '--confcutdir': 1,  # Stop conftest.py lookup at this directory
+        '--rootdir': 1,  # Root directory for tests
+        '--basetemp': 1,  # Base temp directory (generally safe)
+        '--cache-dir': 1,  # Cache directory
+        '--import-mode': 1,  # Import mode (prepend/append/importlib)
+        '-W': 1, '--pythonwarnings': 1,  # Warning filters (not a path)
+        '--log-file': 1,  # Log file path
+        '--junit-xml': 1,  # JUnit XML output
+        '--result-log': 1,  # Result log
+        '-o': 1, '--override-ini': 1,  # Override INI (key=value, not a path)
+    }
+
+    # Dangerous pytest options that should be blocked
+    dangerous_options = {
+        '--pyargs',  # Treat args as Python package names - could import anything
+    }
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+
+        # Check for dangerous options
+        if arg in dangerous_options or any(arg.startswith(f"{opt}=") for opt in dangerous_options):
+            return f"Pytest option '{arg}' is not allowed (could execute code outside project)"
+
+        # Handle options that take path arguments
+        for opt, num_args in pytest_path_options.items():
+            if arg == opt:
+                # Skip the option and its arguments
+                i += 1 + num_args
+                break
+            elif arg.startswith(f"{opt}="):
+                # Option with = syntax, just skip it
+                i += 1
+                break
+        else:
+            # Not a known path option
+            if arg.startswith('-'):
+                # Some other flag, skip it
+                i += 1
+            else:
+                # This looks like a test path argument
+                if not is_path_in_project(arg, project_dir):
+                    return (
+                        f"Pytest test path must be within the project directory. "
+                        f"Attempted path: {arg}"
+                    )
+                i += 1
+            continue
+        continue
+
+    return None
+
+
+def is_path_in_project(path: str, project_dir: str) -> bool:
+    """
+    Check if a path is within the project directory.
+    Handles relative paths, absolute paths, and path traversal attempts.
+    """
+    # Expand environment variables
+    expanded_path = os.path.expandvars(path)
+
+    # Normalize the path
+    if os.path.isabs(expanded_path):
+        abs_path = os.path.normpath(expanded_path)
+    else:
+        abs_path = os.path.normpath(os.path.join(project_dir, expanded_path))
+
+    # Resolve symlinks to get the real path
+    try:
+        real_path = os.path.realpath(abs_path)
+        real_project_dir = os.path.realpath(project_dir)
+    except OSError:
+        # If we can't resolve paths, be conservative and deny
+        return False
+
+    # Check if the path is inside the project directory
+    try:
+        common = os.path.commonpath([real_path, real_project_dir])
+        return common == real_project_dir
+    except ValueError:
+        # Different drives on Windows, etc.
+        return False
 
 
 def main():
@@ -227,8 +338,18 @@ def extract_python_script(command: str) -> tuple[str, str] | None:
             return ("", "Interactive Python mode is not allowed (stdin redirection risk)")
 
         # DENY: -m module execution (bypasses directory restriction)
+        # EXCEPT: pytest is allowed for running tests (with argument validation)
         # Check for both standalone -m and combined flags like -um, -Bm
         if arg == '-m' or (arg.startswith('-') and not arg.startswith('--') and 'm' in arg[1:]):
+            # Check if next argument is an allowed module
+            allowed_modules = {'pytest'}
+            if i + 1 < len(args) and args[i + 1] in allowed_modules:
+                # Validate pytest arguments
+                pytest_args = args[i + 2:]  # Arguments after 'pytest'
+                validation_error = validate_pytest_args(pytest_args)
+                if validation_error:
+                    return ("", validation_error)
+                return ("", "")  # Passthrough - allow pytest
             return ("", "Python -m module execution is not allowed (bypasses directory restriction)")
 
         # DENY: -c inline code execution

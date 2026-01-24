@@ -5,15 +5,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Loader2, Upload, X, Sparkles, Lock } from "lucide-react";
 import { useGenerateThemePrompt } from "@/hooks/useCustomThemes";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { showError } from "@/lib/toast";
 import { toast } from "sonner";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { AiAccessBanner } from "./ProBanner";
-import type {
-  ThemeGenerationMode,
-  ThemeGenerationModel,
-} from "@/ipc/ipc_types";
+import type { ThemeGenerationMode, ThemeGenerationModel } from "@/ipc/types";
 
 // Image upload constants
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per image (raw file size)
@@ -79,7 +76,7 @@ export function AIGeneratorTab({
       const paths = images.map((img) => img.path);
       if (paths.length > 0) {
         try {
-          await IpcClient.getInstance().cleanupThemeImages({ paths });
+          await ipc.template.cleanupThemeImages({ paths });
         } catch {
           if (showErrors) {
             showError("Failed to cleanup temporary image files");
@@ -165,7 +162,7 @@ export function AIGeneratorTab({
             });
 
             // Save to temp file via IPC
-            const result = await IpcClient.getInstance().saveThemeImage({
+            const result = await ipc.template.saveThemeImage({
               data: base64Data,
               filename: file.name,
             });

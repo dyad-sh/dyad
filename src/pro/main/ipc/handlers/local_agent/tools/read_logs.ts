@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { chats } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getLogs } from "@/lib/log_store";
-import type { ConsoleEntry } from "@/ipc/ipc_types";
+import type { ConsoleEntry } from "@/ipc/types";
 
 const readLogsSchema = z.object({
   type: z

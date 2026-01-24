@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { showError, showSuccess } from "@/lib/toast";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { useNavigate } from "@tanstack/react-router";
 import { NeonConfigure } from "./NeonConfigure";
 import { queryKeys } from "@/lib/queryKeys";
@@ -66,8 +66,7 @@ export const ConfigurePanel = () => {
     queryKey: queryKeys.appEnvVars.byApp({ appId: selectedAppId }),
     queryFn: async () => {
       if (!selectedAppId) return [];
-      const ipcClient = IpcClient.getInstance();
-      return await ipcClient.getAppEnvVars({ appId: selectedAppId });
+      return await ipc.misc.getAppEnvVars({ appId: selectedAppId });
     },
     enabled: !!selectedAppId,
   });
@@ -76,8 +75,7 @@ export const ConfigurePanel = () => {
   const saveEnvVarsMutation = useMutation({
     mutationFn: async (newEnvVars: { key: string; value: string }[]) => {
       if (!selectedAppId) throw new Error("No app selected");
-      const ipcClient = IpcClient.getInstance();
-      return await ipcClient.setAppEnvVars({
+      return await ipc.misc.setAppEnvVars({
         appId: selectedAppId,
         envVars: newEnvVars,
       });

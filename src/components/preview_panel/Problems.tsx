@@ -10,7 +10,7 @@ import {
   RefreshCw,
   Check,
 } from "lucide-react";
-import { Problem, ProblemReport } from "@/ipc/ipc_types";
+import { Problem, ProblemReport } from "@/ipc/types";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 

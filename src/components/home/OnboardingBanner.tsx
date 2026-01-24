@@ -1,4 +1,4 @@
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { Play } from "lucide-react";
 
 export const OnboardingBanner = ({
@@ -16,7 +16,7 @@ export const OnboardingBanner = ({
       <a
         onClick={(e) => {
           e.preventDefault();
-          IpcClient.getInstance().openExternalUrl(
+          ipc.system.openExternalUrl(
             "https://www.youtube.com/watch?v=rgdNoHLaRN4",
           );
           setIsVisible(false);

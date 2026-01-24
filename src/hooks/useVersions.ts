@@ -1,11 +1,10 @@
 import { useEffect } from "react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { versionsListAtom } from "@/atoms/appAtoms";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc, type RevertVersionResponse, type Version } from "@/ipc/types";
 
 import { chatMessagesByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { RevertVersionResponse, Version } from "@/ipc/ipc_types";
 import { queryKeys } from "@/lib/queryKeys";
 import { toast } from "sonner";
 
@@ -26,8 +25,7 @@ export function useVersions(appId: number | null) {
       if (appId === null) {
         return [];
       }
-      const ipcClient = IpcClient.getInstance();
-      return ipcClient.listVersions({ appId });
+      return ipc.version.listVersions({ appId });
     },
     enabled: appId !== null,
     placeholderData: [],
@@ -59,8 +57,7 @@ export function useVersions(appId: number | null) {
       if (currentAppId === null) {
         throw new Error("App ID is null");
       }
-      const ipcClient = IpcClient.getInstance();
-      return ipcClient.revertVersion({
+      return ipc.version.revertVersion({
         appId: currentAppId,
         previousVersionId: versionId,
         currentChatMessageId,
@@ -79,7 +76,7 @@ export function useVersions(appId: number | null) {
         queryKey: queryKeys.branches.current({ appId }),
       });
       if (selectedChatId) {
-        const chat = await IpcClient.getInstance().getChat(selectedChatId);
+        const chat = await ipc.chat.getChat(selectedChatId);
         setMessagesById((prev) => {
           const next = new Map(prev);
           next.set(selectedChatId, chat.messages);

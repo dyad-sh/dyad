@@ -17,11 +17,11 @@ import {
   FileIcon,
   SparklesIcon,
 } from "lucide-react";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { useState, useEffect } from "react";
 import { useAtomValue } from "jotai";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { ChatLogsData } from "@/ipc/ipc_types";
+import { ChatLogsData } from "@/ipc/types";
 import { showError } from "@/lib/toast";
 import { HelpBotDialog } from "./HelpBotDialog";
 import { useSettings } from "@/hooks/useSettings";
@@ -73,7 +73,7 @@ export function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
     setIsLoading(true);
     try {
       // Get system debug info
-      const debugInfo = await IpcClient.getInstance().getSystemDebugInfo();
+      const debugInfo = await ipc.system.getSystemDebugInfo();
 
       // Create a formatted issue body with the debug info
       const issueBody = `
@@ -112,13 +112,11 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
       const githubIssueUrl = `https://github.com/dyad-sh/dyad/issues/new?title=${encodedTitle}&labels=${labels}&body=${encodedBody}`;
 
       // Open the pre-filled GitHub issue page
-      IpcClient.getInstance().openExternalUrl(githubIssueUrl);
+      ipc.system.openExternalUrl(githubIssueUrl);
     } catch (error) {
       console.error("Failed to prepare bug report:", error);
       // Fallback to opening the regular GitHub issue page
-      IpcClient.getInstance().openExternalUrl(
-        "https://github.com/dyad-sh/dyad/issues/new",
-      );
+      ipc.system.openExternalUrl("https://github.com/dyad-sh/dyad/issues/new");
     } finally {
       setIsLoading(false);
     }
@@ -133,8 +131,7 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
     setIsUploading(true);
     try {
       // Get chat logs (includes debug info, chat data, and codebase)
-      const chatLogs =
-        await IpcClient.getInstance().getChatLogs(selectedChatId);
+      const chatLogs = await ipc.misc.getChatLogs(selectedChatId);
 
       // Store data for review and switch to review mode
       setChatLogsData(chatLogs);
@@ -183,11 +180,11 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
 
       const { uploadUrl, filename } = await response.json();
 
-      await IpcClient.getInstance().uploadToSignedUrl(
-        uploadUrl,
-        "application/json",
-        chatLogsJson,
-      );
+      await ipc.system.uploadToSignedUrl({
+        url: uploadUrl,
+        contentType: "application/json",
+        data: chatLogsJson,
+      });
 
       // Extract session ID (filename without extension)
       const sessionId = filename.replace(".json", "");
@@ -233,7 +230,7 @@ Pro User ID: ${userBudget?.redactedUserId || "n/a"}
     }
     const githubIssueUrl = `https://github.com/dyad-sh/dyad/issues/new?title=${encodedTitle}&labels=${labels}&body=${encodedBody}`;
 
-    IpcClient.getInstance().openExternalUrl(githubIssueUrl);
+    ipc.system.openExternalUrl(githubIssueUrl);
     handleClose();
   };
 
@@ -403,9 +400,7 @@ Pro User ID: ${userBudget?.redactedUserId || "n/a"}
               <Button
                 variant="outline"
                 onClick={() => {
-                  IpcClient.getInstance().openExternalUrl(
-                    "https://www.dyad.sh/docs",
-                  );
+                  ipc.system.openExternalUrl("https://www.dyad.sh/docs");
                 }}
                 className="w-full py-6 bg-(--background-lightest)"
               >

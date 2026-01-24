@@ -6,7 +6,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { v4 as uuidv4 } from "uuid";
 import { LoadingBlock, VanillaMarkdownParser } from "@/components/LoadingBlock";
 
@@ -75,59 +75,62 @@ export function HelpBotDialog({ isOpen, onClose }: HelpBotDialogProps) {
     setInput("");
     setStreaming(true);
 
-    IpcClient.getInstance().startHelpChat(sessionId, trimmed, {
-      onChunk: (delta) => {
-        // Buffer assistant content; UI will flush on interval for smoothness
-        assistantBufferRef.current += delta;
-      },
-      onEnd: () => {
-        // Final flush then stop streaming
-        setMessages((prev) => {
-          const next = [...prev];
-          const lastIdx = next.length - 1;
-          if (lastIdx >= 0 && next[lastIdx].role === "assistant") {
-            next[lastIdx] = {
-              ...next[lastIdx],
-              content: assistantBufferRef.current,
-              reasoning: reasoningBufferRef.current,
-            };
+    ipc.helpStream.start(
+      { sessionId, message: trimmed },
+      {
+        onChunk: (data) => {
+          // Buffer assistant content; UI will flush on interval for smoothness
+          assistantBufferRef.current += data.delta;
+        },
+        onEnd: () => {
+          // Final flush then stop streaming
+          setMessages((prev) => {
+            const next = [...prev];
+            const lastIdx = next.length - 1;
+            if (lastIdx >= 0 && next[lastIdx].role === "assistant") {
+              next[lastIdx] = {
+                ...next[lastIdx],
+                content: assistantBufferRef.current,
+                reasoning: reasoningBufferRef.current,
+              };
+            }
+            return next;
+          });
+          setStreaming(false);
+          if (flushTimerRef.current) {
+            window.clearInterval(flushTimerRef.current);
+            flushTimerRef.current = null;
           }
-          return next;
-        });
-        setStreaming(false);
-        if (flushTimerRef.current) {
-          window.clearInterval(flushTimerRef.current);
-          flushTimerRef.current = null;
-        }
-      },
-      onError: (errorMessage: string) => {
-        setError(errorMessage);
-        setStreaming(false);
+        },
+        onError: (data) => {
+          setError(data.error);
+          setStreaming(false);
 
-        // Clear the flush timer
-        if (flushTimerRef.current) {
-          window.clearInterval(flushTimerRef.current);
-          flushTimerRef.current = null;
-        }
-
-        // Clear the buffers
-        assistantBufferRef.current = "";
-        reasoningBufferRef.current = "";
-
-        // Remove the empty assistant message that was added optimistically
-        setMessages((prev) => {
-          const next = [...prev];
-          if (
-            next.length > 0 &&
-            next[next.length - 1].role === "assistant" &&
-            !next[next.length - 1].content
-          ) {
-            next.pop();
+          // Clear the flush timer
+          if (flushTimerRef.current) {
+            window.clearInterval(flushTimerRef.current);
+            flushTimerRef.current = null;
           }
-          return next;
-        });
+
+          // Clear the buffers
+          assistantBufferRef.current = "";
+          reasoningBufferRef.current = "";
+
+          // Remove the empty assistant message that was added optimistically
+          setMessages((prev) => {
+            const next = [...prev];
+            if (
+              next.length > 0 &&
+              next[next.length - 1].role === "assistant" &&
+              !next[next.length - 1].content
+            ) {
+              next.pop();
+            }
+            return next;
+          });
+        },
       },
-    });
+    );
 
     // Start smooth flush interval
     if (flushTimerRef.current) {

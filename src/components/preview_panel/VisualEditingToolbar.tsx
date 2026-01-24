@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { X, Move, Square, Palette, Type } from "lucide-react";
 import { Label } from "@/components/ui/label";
-import { ComponentSelection } from "@/ipc/ipc_types";
+import { ComponentSelection } from "@/ipc/types";
 import { useSetAtom, useAtomValue } from "jotai";
 import {
   pendingVisualChangesAtom,

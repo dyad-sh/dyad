@@ -1,4 +1,4 @@
-import { ipcMain, IpcMainInvokeEvent } from "electron";
+import { IpcMainInvokeEvent } from "electron";
 import { Vercel } from "@vercel/sdk";
 import { writeSettings, readSettings } from "../../main/settings";
 import * as schema from "../../db/schema";
@@ -11,20 +11,20 @@ import * as fs from "fs";
 import * as path from "path";
 import { CreateProjectFramework } from "@vercel/sdk/models/createprojectop.js";
 import { getDyadAppPath } from "@/paths/paths";
+import { createTypedHandler } from "./base";
 import {
-  CreateVercelProjectParams,
-  IsVercelProjectAvailableParams,
+  vercelContracts,
   SaveVercelAccessTokenParams,
-  VercelDeployment,
+  IsVercelProjectAvailableParams,
+  CreateVercelProjectParams,
+  ConnectToExistingVercelProjectParams,
+  GetVercelDeploymentsParams,
+  DisconnectVercelProjectParams,
   VercelProject,
-} from "../ipc_types";
-import { ConnectToExistingVercelProjectParams } from "../ipc_types";
-import { GetVercelDeploymentsParams } from "../ipc_types";
-import { DisconnectVercelProjectParams } from "../ipc_types";
-import { createLoggedHandler } from "./safe_handle";
+  VercelDeployment,
+} from "../types/vercel";
 
 const logger = log.scope("vercel_handlers");
-const handle = createLoggedHandler(logger);
 
 // Use test server URLs when in test mode
 const TEST_SERVER_BASE = "http://localhost:3500";
@@ -534,15 +534,41 @@ async function handleDisconnectVercelProject(
 // --- Registration ---
 export function registerVercelHandlers() {
   // DO NOT LOG this handler because tokens are sensitive
-  ipcMain.handle("vercel:save-token", handleSaveVercelToken);
+  createTypedHandler(vercelContracts.saveToken, async (event, params) => {
+    await handleSaveVercelToken(event, params);
+  });
 
-  // Logged handlers
-  handle("vercel:list-projects", handleListVercelProjects);
-  handle("vercel:is-project-available", handleIsProjectAvailable);
-  handle("vercel:create-project", handleCreateProject);
-  handle("vercel:connect-existing-project", handleConnectToExistingProject);
-  handle("vercel:get-deployments", handleGetVercelDeployments);
-  handle("vercel:disconnect", handleDisconnectVercelProject);
+  createTypedHandler(vercelContracts.listProjects, async () => {
+    return handleListVercelProjects();
+  });
+
+  createTypedHandler(
+    vercelContracts.isProjectAvailable,
+    async (event, params) => {
+      return handleIsProjectAvailable(event, params);
+    },
+  );
+
+  createTypedHandler(vercelContracts.createProject, async (event, params) => {
+    await handleCreateProject(event, params);
+  });
+
+  createTypedHandler(
+    vercelContracts.connectExistingProject,
+    async (event, params) => {
+      await handleConnectToExistingProject(event, params);
+    },
+  );
+
+  createTypedHandler(vercelContracts.getDeployments, async (event, params) => {
+    return handleGetVercelDeployments(event, params);
+  });
+
+  createTypedHandler(vercelContracts.disconnect, async (event, params) => {
+    await handleDisconnectVercelProject(event, params);
+  });
+
+  logger.debug("Registered Vercel IPC handlers");
 }
 
 export async function updateAppVercelProject({

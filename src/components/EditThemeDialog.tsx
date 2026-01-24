@@ -19,7 +19,7 @@ import {
 import { Save, Edit2, Loader2 } from "lucide-react";
 import { showError } from "@/lib/toast";
 import { toast } from "sonner";
-import type { CustomTheme } from "@/ipc/ipc_types";
+import type { CustomTheme } from "@/ipc/types";
 
 interface EditThemeDialogProps {
   theme: CustomTheme;

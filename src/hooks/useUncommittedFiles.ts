@@ -1,6 +1,5 @@
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc, type UncommittedFile } from "@/ipc/types";
 import { useQuery } from "@tanstack/react-query";
-import type { UncommittedFile } from "@/ipc/ipc_types";
 import { queryKeys } from "@/lib/queryKeys";
 
 export type { UncommittedFile };
@@ -16,8 +15,7 @@ export function useUncommittedFiles(appId: number | null) {
       if (appId === null) {
         throw new Error("appId is null, cannot fetch uncommitted files.");
       }
-      const ipcClient = IpcClient.getInstance();
-      return ipcClient.getUncommittedFiles(appId);
+      return ipc.git.getUncommittedFiles({ appId });
     },
     enabled: appId !== null,
     // Refetch every 5 seconds to keep the status updated

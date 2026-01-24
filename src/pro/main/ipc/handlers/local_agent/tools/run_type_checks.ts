@@ -6,7 +6,7 @@ import {
   escapeXmlContent,
 } from "./types";
 import { generateProblemReport } from "@/ipc/processors/tsc";
-import type { Problem } from "@/ipc/ipc_types";
+import type { Problem } from "@/ipc/types";
 import { safeSend } from "@/ipc/utils/safe_sender";
 
 import { normalizePath } from "../../../../../../../shared/normalizePath";

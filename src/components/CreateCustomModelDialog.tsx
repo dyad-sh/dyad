@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { useMutation } from "@tanstack/react-query";
 import { showError, showSuccess } from "@/lib/toast";
 
@@ -33,8 +33,6 @@ export function CreateCustomModelDialog({
   const [maxOutputTokens, setMaxOutputTokens] = useState<string>("");
   const [contextWindow, setContextWindow] = useState<string>("");
 
-  const ipcClient = IpcClient.getInstance();
-
   const mutation = useMutation({
     mutationFn: async () => {
       const params = {
@@ -56,7 +54,14 @@ export function CreateCustomModelDialog({
       if (contextWindow && isNaN(params.contextWindow ?? NaN))
         throw new Error("Context Window must be a valid number");
 
-      await ipcClient.createCustomLanguageModel(params);
+      await ipc.languageModel.createCustomModel({
+        providerId: params.providerId,
+        displayName: params.displayName,
+        apiName: params.apiName,
+        description: params.description,
+        maxOutputTokens: params.maxOutputTokens,
+        contextWindow: params.contextWindow,
+      });
     },
     onSuccess: () => {
       showSuccess("Custom model created successfully!");

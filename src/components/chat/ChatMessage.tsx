@@ -1,4 +1,4 @@
-import type { Message } from "@/ipc/ipc_types";
+import type { Message } from "@/ipc/types";
 import {
   DyadMarkdownParser,
   VanillaMarkdownParser,

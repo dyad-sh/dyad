@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 
 import { Label } from "@/components/ui/label";
 
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc, type SupabaseProject } from "@/ipc/types";
 import { toast } from "sonner";
 import { useSettings } from "@/hooks/useSettings";
 import { useSupabase } from "@/hooks/useSupabase";
@@ -39,7 +39,6 @@ import connectSupabaseLight from "../../assets/supabase/connect-supabase-light.s
 
 import { ExternalLink, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
-import type { SupabaseProject } from "@/ipc/ipc_types";
 import { isSupabaseConnected } from "@/lib/schemas";
 
 export function SupabaseConnector({ appId }: { appId: number }) {
@@ -132,12 +131,12 @@ export function SupabaseConnector({ appId }: { appId: number }) {
 
   const handleAddAccount = async () => {
     if (settings?.isTestMode) {
-      await IpcClient.getInstance().fakeHandleSupabaseConnect({
+      await ipc.supabase.fakeConnectAndSetProject({
         appId,
         fakeProjectId: "fake-project-id",
       });
     } else {
-      await IpcClient.getInstance().openExternalUrl(
+      await ipc.system.openExternalUrl(
         "https://supabase-oauth.dyad.sh/api/connect-supabase/login",
       );
     }
@@ -173,7 +172,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
             <Button
               variant="outline"
               onClick={() => {
-                IpcClient.getInstance().openExternalUrl(
+                ipc.system.openExternalUrl(
                   `https://supabase.com/dashboard/project/${app.supabaseProjectId}`,
                 );
               }}

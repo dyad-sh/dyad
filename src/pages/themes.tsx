@@ -10,7 +10,7 @@ import { DeleteConfirmationDialog } from "@/components/DeleteConfirmationDialog"
 import { Button } from "@/components/ui/button";
 import { Plus, Palette } from "lucide-react";
 import { showError } from "@/lib/toast";
-import type { CustomTheme } from "@/ipc/ipc_types";
+import type { CustomTheme } from "@/ipc/types";
 
 export default function ThemesPage() {
   const { customThemes, isLoading } = useCustomThemes();

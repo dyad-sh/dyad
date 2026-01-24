@@ -1,4 +1,4 @@
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { Dialog, DialogTitle } from "@radix-ui/react-dialog";
 import { DialogContent, DialogHeader } from "./ui/dialog";
 import { Button } from "./ui/button";
@@ -26,7 +26,7 @@ export function BugScreenshotDialog({
     onClose();
     setTimeout(async () => {
       try {
-        await IpcClient.getInstance().takeScreenshot();
+        await ipc.system.takeScreenshot();
         setIsScreenshotSuccessOpen(true);
       } catch (error) {
         setScreenshotError(

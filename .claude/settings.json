@@ -115,7 +115,9 @@
 
       "Bash(chmod:*)",
 
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(pytest:*)",
+      "Bash(python -m pytest:*)"
     ]
   },
   "hooks": {
@@ -143,6 +145,17 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/permission-request-hook.py",
+            "timeout": 30000
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/stop-hook.py",
             "timeout": 30000
           }
         ]

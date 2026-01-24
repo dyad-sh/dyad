@@ -1,9 +1,8 @@
 import { useEffect } from "react";
 import { useQuery, QueryClient } from "@tanstack/react-query";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc, type App } from "@/ipc/types";
 import { useAtom } from "jotai";
 import { currentAppAtom } from "@/atoms/appAtoms";
-import { App } from "@/ipc/ipc_types";
 import { queryKeys } from "@/lib/queryKeys";
 
 export function useLoadApp(appId: number | null) {
@@ -20,8 +19,7 @@ export function useLoadApp(appId: number | null) {
       if (appId === null) {
         return null;
       }
-      const ipcClient = IpcClient.getInstance();
-      return ipcClient.getApp(appId);
+      return ipc.app.getApp(appId);
     },
     enabled: appId !== null,
     // Deliberately not showing error toast here because

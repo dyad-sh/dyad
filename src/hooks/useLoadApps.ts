@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAtom } from "jotai";
 import { appsListAtom } from "@/atoms/appAtoms";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 
 export function useLoadApps() {
   const [apps, setApps] = useAtom(appsListAtom);
@@ -11,8 +11,7 @@ export function useLoadApps() {
   const refreshApps = useCallback(async () => {
     setLoading(true);
     try {
-      const ipcClient = IpcClient.getInstance();
-      const appListResponse = await ipcClient.listApps();
+      const appListResponse = await ipc.app.listApps();
       setApps(appListResponse.apps);
       setError(null);
     } catch (error) {

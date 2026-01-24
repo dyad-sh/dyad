@@ -6,7 +6,7 @@ import {
 } from "@/components/ui/card";
 import { useNavigate } from "@tanstack/react-router";
 import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
-import type { LanguageModelProvider } from "@/ipc/ipc_types";
+import type { LanguageModelProvider } from "@/ipc/types";
 
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useCustomLanguageModelProvider } from "@/hooks/useCustomLanguageModelProvider";

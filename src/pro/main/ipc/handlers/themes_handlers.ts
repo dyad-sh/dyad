@@ -24,7 +24,7 @@ import type {
   SaveThemeImageParams,
   SaveThemeImageResult,
   CleanupThemeImagesParams,
-} from "@/ipc/ipc_types";
+} from "@/ipc/types";
 
 const logger = log.scope("themes_handlers");
 const handle = createLoggedHandler(logger);

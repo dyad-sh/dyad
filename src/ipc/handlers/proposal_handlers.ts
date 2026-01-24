@@ -31,7 +31,7 @@ import { extractCodebase } from "../../utils/codebase";
 import { getDyadAppPath } from "../../paths/paths";
 import { withLock } from "../utils/lock_utils";
 import { createLoggedHandler } from "./safe_handle";
-import { ApproveProposalResult } from "../ipc_types";
+import { ApproveProposalResult } from "@/ipc/types";
 import { validateChatContext } from "../utils/context_paths_utils";
 import { readSettings } from "@/main/settings";
 
@@ -379,6 +379,7 @@ const approveProposalHandler = async (
   }
 
   return {
+    success: true,
     extraFiles: processResult.extraFiles,
     extraFilesError: processResult.extraFilesError,
   };

@@ -1,6 +1,6 @@
 import { BrowserWindow } from "electron";
 import log from "electron-log";
-import { TelemetryEventPayload } from "../ipc_types";
+import { TelemetryEventPayload } from "@/ipc/types";
 
 const logger = log.scope("telemetry");
 

@@ -3,7 +3,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useSettings } from "@/hooks/useSettings";
 import { showError, showSuccess } from "@/lib/toast";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { FolderOpen, RotateCcw, CheckCircle, AlertCircle } from "lucide-react";
 
 export function NodePathSelector() {
@@ -26,7 +26,7 @@ export function NodePathSelector() {
 
   const fetchSystemPath = async () => {
     try {
-      const debugInfo = await IpcClient.getInstance().getSystemDebugInfo();
+      const debugInfo = await ipc.system.getSystemDebugInfo();
       setSystemPath(debugInfo.nodePath || "System PATH (not available)");
     } catch (err) {
       console.error("Failed to fetch system path:", err);
@@ -43,7 +43,7 @@ export function NodePathSelector() {
     if (!settings) return;
     setIsCheckingNode(true);
     try {
-      const status = await IpcClient.getInstance().getNodejsStatus();
+      const status = await ipc.system.getNodejsStatus();
       setNodeStatus({
         version: status.nodeVersion,
         isValid: !!status.nodeVersion,
@@ -59,12 +59,12 @@ export function NodePathSelector() {
     setIsSelectingPath(true);
     try {
       // Call the IPC method to select folder
-      const result = await IpcClient.getInstance().selectNodeFolder();
+      const result = await ipc.system.selectNodeFolder();
       if (result.path) {
         // Save the custom path to settings
         await updateSettings({ customNodePath: result.path });
         // Update the environment PATH
-        await IpcClient.getInstance().reloadEnvPath();
+        await ipc.system.reloadEnvPath();
         // Recheck Node.js status
         await checkNodeStatus();
         showSuccess("Node.js path updated successfully");
@@ -84,7 +84,7 @@ export function NodePathSelector() {
       // Clear the custom path
       await updateSettings({ customNodePath: null });
       // Reload environment to use system PATH
-      await IpcClient.getInstance().reloadEnvPath();
+      await ipc.system.reloadEnvPath();
       // Recheck Node.js status
       await fetchSystemPath();
       await checkNodeStatus();

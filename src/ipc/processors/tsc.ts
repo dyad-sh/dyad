@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import { Worker } from "node:worker_threads";
 
-import { ProblemReport } from "../ipc_types";
+import { ProblemReport } from "@/ipc/types";
 import log from "electron-log";
 import { WorkerInput, WorkerOutput } from "../../../shared/tsc_types";
 

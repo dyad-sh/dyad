@@ -2,7 +2,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useAtom, useSetAtom } from "jotai";
 import { homeChatInputValueAtom } from "../atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { generateCuteAppName } from "@/lib/utils";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useSettings } from "@/hooks/useSettings";
@@ -31,7 +31,7 @@ import { invalidateAppQuery } from "@/hooks/useLoadApp";
 import { useQueryClient } from "@tanstack/react-query";
 import { ForceCloseDialog } from "@/components/ForceCloseDialog";
 
-import type { FileAttachment } from "@/ipc/ipc_types";
+import type { FileAttachment } from "@/ipc/types";
 import { NEON_TEMPLATE_IDS } from "@/shared/templates";
 import { neonTemplateHook } from "@/client_logic/template_hook";
 import {
@@ -68,8 +68,7 @@ export default function HomePage() {
 
   // Listen for force-close events
   useEffect(() => {
-    const ipc = IpcClient.getInstance();
-    const unsubscribe = ipc.onForceCloseDetected((data) => {
+    const unsubscribe = ipc.events.system.onForceCloseDetected((data) => {
       setPerformanceData(data.performanceData);
       setForceCloseDialogOpen(true);
     });
@@ -94,7 +93,7 @@ export default function HomePage() {
         }
 
         try {
-          const result = await IpcClient.getInstance().doesReleaseNoteExist({
+          const result = await ipc.system.doesReleaseNoteExist({
             version: appVersion,
           });
 
@@ -159,7 +158,7 @@ export default function HomePage() {
     try {
       setIsLoading(true);
       // Create the chat and navigate
-      const result = await IpcClient.getInstance().createApp({
+      const result = await ipc.app.createApp({
         name: generateCuteAppName(),
       });
       if (
@@ -174,7 +173,7 @@ export default function HomePage() {
 
       // Apply selected theme to the new app (if one is set)
       if (settings?.selectedThemeId) {
-        await IpcClient.getInstance().setAppTheme({
+        await ipc.template.setAppTheme({
           appId: result.app.id,
           themeId: settings.selectedThemeId || null,
         });

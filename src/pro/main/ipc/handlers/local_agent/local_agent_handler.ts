@@ -41,7 +41,7 @@ import { mcpServers } from "@/db/schema";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
 import { getAiMessagesJsonIfWithinLimit } from "@/ipc/utils/ai_messages_utils";
 
-import type { ChatStreamParams, ChatResponseEnd } from "@/ipc/ipc_types";
+import type { ChatStreamParams, ChatResponseEnd } from "@/ipc/types";
 import {
   AgentContext,
   parsePartialJson,

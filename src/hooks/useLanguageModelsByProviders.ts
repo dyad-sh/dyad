@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { IpcClient } from "@/ipc/ipc_client";
-import type { LanguageModel } from "@/ipc/ipc_types";
+import { ipc, type LanguageModel } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 
 /**
@@ -9,12 +8,10 @@ import { queryKeys } from "@/lib/queryKeys";
  * @returns TanStack Query result object for the language models organized by provider.
  */
 export function useLanguageModelsByProviders() {
-  const ipcClient = IpcClient.getInstance();
-
   return useQuery<Record<string, LanguageModel[]>, Error>({
     queryKey: queryKeys.languageModels.byProviders,
     queryFn: async () => {
-      return ipcClient.getLanguageModelsByProviders();
+      return ipc.languageModel.getModelsByProviders();
     },
   });
 }

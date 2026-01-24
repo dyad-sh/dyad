@@ -58,7 +58,6 @@ python3 -m pip install malicious_package
 python -m runpy /tmp/malicious.py
 python3 -m runpy script_outside_claude.py
 python -m unittest discover
-python3 -m pytest
 
 # =============================================================================
 # INLINE CODE EXECUTION (-c flag)
@@ -110,4 +109,20 @@ python3 -OBc "__import__('os').system('whoami')"
 python -um http.server
 python3 -Bm pip install malicious
 python -uBm runpy /tmp/malicious.py
-python3 -OBm pytest
+
+# =============================================================================
+# PYTEST WITH PATHS OUTSIDE PROJECT
+# =============================================================================
+
+# Absolute path outside project
+python -m pytest /tmp/malicious_tests
+python3 -m pytest /etc/tests
+python -m pytest /home/user/malicious
+
+# Path traversal attempts
+python -m pytest ../../../tmp/tests
+python3 -m pytest ../../malicious_tests
+
+# Dangerous pytest options
+python -m pytest --pyargs malicious_package
+python3 -m pytest --pyargs os

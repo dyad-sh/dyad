@@ -1,7 +1,7 @@
 import { useAtom, useAtomValue } from "jotai";
 import { pendingVisualChangesAtom } from "@/atoms/previewAtoms";
 import { Button } from "@/components/ui/button";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { Check, X } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { showError, showSuccess } from "@/lib/toast";
@@ -66,7 +66,7 @@ export function VisualEditingChangesDialog({
             return change;
           });
 
-          await IpcClient.getInstance().applyVisualEditingChanges({
+          await ipc.visualEditing.applyChanges({
             appId: selectedAppId!,
             changes: updatedChanges,
           });
@@ -130,7 +130,7 @@ export function VisualEditingChangesDialog({
           setAllResponsesReceived(true);
         }
       } else {
-        await IpcClient.getInstance().applyVisualEditingChanges({
+        await ipc.visualEditing.applyChanges({
           appId: selectedAppId!,
           changes: changesToSave,
         });

@@ -329,38 +329,40 @@ const createApplicationMenu = () => {
     {
       label: "Edit",
       submenu: [
-        { role: "undo" },
-        { role: "redo" },
-        { type: "separator" },
-        { role: "cut" },
-        { role: "copy" },
-        { role: "paste" },
-        { role: "delete" },
-        { type: "separator" },
-        { role: "selectAll" },
+        { role: "undo" as const },
+        { role: "redo" as const },
+        { type: "separator" as const },
+        { role: "cut" as const },
+        { role: "copy" as const },
+        { role: "paste" as const },
+        { role: "delete" as const },
+        { type: "separator" as const },
+        { role: "selectAll" as const },
       ],
     },
     // View menu
     {
       label: "View",
       submenu: [
-        { role: "reload" },
-        { role: "forceReload" },
-        { role: "toggleDevTools" },
-        { type: "separator" },
-        { role: "resetZoom" },
-        { role: "zoomIn" },
-        { role: "zoomOut" },
-        { type: "separator" },
-        { role: "togglefullscreen" },
+        { role: "reload" as const },
+        { role: "forceReload" as const },
+        ...(process.env.NODE_ENV === "development"
+          ? [{ role: "toggleDevTools" as const }]
+          : []),
+        { type: "separator" as const },
+        { role: "resetZoom" as const },
+        { role: "zoomIn" as const },
+        { role: "zoomOut" as const },
+        { type: "separator" as const },
+        { role: "togglefullscreen" as const },
       ],
     },
     // Window menu
     {
       label: "Window",
       submenu: [
-        { role: "minimize" },
-        { role: "zoom" },
+        { role: "minimize" as const },
+        { role: "zoom" as const },
         ...(isMac
           ? [
               { type: "separator" as const },

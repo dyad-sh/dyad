@@ -21,45 +21,35 @@ testSkipIfWindows("refresh app", async ({ po }) => {
 
 testSkipIfWindows("refresh preserves current route", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.sendPrompt("hi");
 
-  // Wait for the preview iframe to be visible
+  // Create a multi-page app with react-router navigation
+  await po.sendPrompt("tc=multi-page");
+
+  // Wait for the preview iframe to be visible and loaded
   await po.expectPreviewIframeIsVisible();
 
-  const addressBarPath = po.page.getByTestId("preview-address-bar-path");
+  // Wait for the Home Page content to be visible in the iframe
+  await expect(
+    po.getPreviewIframeElement().contentFrame().getByText("Home Page"),
+  ).toBeVisible({ timeout: Timeout.LONG });
 
-  // Wait for the address bar to be visible
-  await expect(addressBarPath).toBeVisible({ timeout: Timeout.MEDIUM });
-
-  // Initially should be at root
-  await expect(addressBarPath).toHaveText("/", { timeout: Timeout.MEDIUM });
-
-  // Navigate to a different route using JavaScript
-  const testRoute = "/test-route";
+  // Click on the navigation link to go to /about (realistic user behavior)
   await po
     .getPreviewIframeElement()
     .contentFrame()
-    .locator("body")
-    .evaluate((body, route) => {
-      // This triggers a pushState event that updates the navigation history
-      window.history.pushState({}, "", route);
-      // Dispatch a message to notify the parent about the navigation
-      window.parent.postMessage(
-        { type: "pushState", payload: { newUrl: window.location.href } },
-        "*",
-      );
-    }, testRoute);
+    .getByText("Go to About Page")
+    .click();
 
-  // Wait for address bar to update
-  await expect(addressBarPath).toHaveText(testRoute, {
-    timeout: Timeout.MEDIUM,
-  });
+  // Wait for the About Page content to be visible
+  await expect(
+    po.getPreviewIframeElement().contentFrame().getByText("About Page"),
+  ).toBeVisible({ timeout: Timeout.MEDIUM });
 
   // Click refresh
   await po.clickPreviewRefresh();
 
-  // Verify the route is preserved after refresh
-  await expect(addressBarPath).toHaveText(testRoute, {
-    timeout: Timeout.MEDIUM,
-  });
+  // Verify the route is preserved after refresh - About Page should still be visible
+  await expect(
+    po.getPreviewIframeElement().contentFrame().getByText("About Page"),
+  ).toBeVisible({ timeout: Timeout.MEDIUM });
 });

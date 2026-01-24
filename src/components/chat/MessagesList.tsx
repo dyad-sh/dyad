@@ -34,6 +34,7 @@ interface FooterContext {
   messages: Message[];
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
   isStreaming: boolean;
+  error: string | null;
   isUndoLoading: boolean;
   isRetryLoading: boolean;
   setIsUndoLoading: (loading: boolean) => void;
@@ -48,6 +49,7 @@ interface FooterContext {
   userBudget: ReturnType<typeof useUserBudgetInfo>["userBudget"];
   renderSetupBanner: () => React.ReactNode;
   queuedMessage: QueuedMessage | null;
+  clearQueuedMessage: () => void;
 }
 
 // Footer component for Virtuoso - receives context via props
@@ -58,6 +60,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     messages,
     messagesEndRef,
     isStreaming,
+    error,
     isUndoLoading,
     isRetryLoading,
     setIsUndoLoading,
@@ -72,6 +75,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     userBudget,
     renderSetupBanner,
     queuedMessage,
+    clearQueuedMessage,
   } = context;
 
   return (
@@ -232,14 +236,26 @@ function FooterComponent({ context }: { context?: FooterContext }) {
         )}
       {/* Show queued message with pending style */}
       {queuedMessage && (
-        <div className="px-4 opacity-60">
-          <div className="max-w-3xl mx-auto border border-dashed border-border rounded-lg p-4 bg-muted/30 my-2">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-              <span>Queued - will send after current response</span>
+        <div className="px-4">
+          <div className="max-w-3xl mx-auto relative my-2">
+            <div className="opacity-60 border border-dashed border-border rounded-lg p-4 bg-muted/30">
+              <div className="text-sm text-muted-foreground mb-2">
+                <span>
+                  {error
+                    ? "Queued - will send after a successful response"
+                    : "Queued - will send after current response"}
+                </span>
+              </div>
+              <div className="text-sm whitespace-pre-wrap break-words pb-6">
+                {queuedMessage.prompt}
+              </div>
             </div>
-            <div className="text-sm whitespace-pre-wrap break-words">
-              {queuedMessage.prompt}
-            </div>
+            <button
+              onClick={clearQueuedMessage}
+              className="absolute bottom-2 right-2 px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors cursor-pointer"
+            >
+              Clear
+            </button>
           </div>
         </div>
       )}
@@ -253,7 +269,13 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
   function MessagesList({ messages, messagesEndRef, onAtBottomChange }, ref) {
     const appId = useAtomValue(selectedAppIdAtom);
     const { versions, revertVersion } = useVersions(appId);
-    const { streamMessage, isStreaming, queuedMessage } = useStreamChat();
+    const {
+      streamMessage,
+      isStreaming,
+      error,
+      queuedMessage,
+      clearQueuedMessage,
+    } = useStreamChat();
     const { isAnyProviderSetup, isProviderSetup } = useLanguageModelProviders();
     const { settings } = useSettings();
     const setMessagesById = useSetAtom(chatMessagesByIdAtom);
@@ -322,6 +344,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         messages,
         messagesEndRef,
         isStreaming,
+        error,
         isUndoLoading,
         isRetryLoading,
         setIsUndoLoading: handleSetIsUndoLoading,
@@ -336,11 +359,13 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         userBudget,
         renderSetupBanner,
         queuedMessage,
+        clearQueuedMessage,
       }),
       [
         messages,
         messagesEndRef,
         isStreaming,
+        error,
         isUndoLoading,
         isRetryLoading,
         handleSetIsUndoLoading,
@@ -355,6 +380,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         userBudget,
         renderSetupBanner,
         queuedMessage,
+        clearQueuedMessage,
       ],
     );
 

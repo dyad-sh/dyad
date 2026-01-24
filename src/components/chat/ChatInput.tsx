@@ -327,9 +327,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     if (chatId) {
       ipc.chat.cancelStream(chatId);
     }
-    setIsStreaming(false);
-    // Clear queued message when user cancels
+    // Clear queued message before updating streaming state to prevent
+    // the queue-processing effect from auto-sending the cancelled message
     clearQueuedMessage();
+    setIsStreaming(false);
   };
 
   const dismissError = () => {

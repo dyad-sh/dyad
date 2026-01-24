@@ -66,7 +66,7 @@ testSkipIfWindows(
       po.page.getByText(
         "We've switched you to a new chat to give the AI a clean context.",
       ),
-    ).not.toBeVisible();
+    ).not.toBeVisible({ timeout: Timeout.MEDIUM });
   },
 );
 

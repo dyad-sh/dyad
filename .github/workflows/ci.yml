@@ -4,8 +4,8 @@ on:
   push:
     branches:
       - main
-  pull_request:
-    types: [opened, synchronize, reopened]
+  # Pull requests are handled by e2e-triage.yml which uses Claude to determine
+  # which tests to run (all, specific, or none)
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -30,8 +30,7 @@ jobs:
             { name: "windows", image: "windows-latest" },
             { name: "macos", image: "macos-latest" },
           ]
-        # If you update this, you need to update
-        # scripts/generate-playwright-summary.js
+        # Shard count - the summary script uses EXPECTED_SHARDS env var (defaults to 4)
         shard: [1, 2, 3, 4]
         shardTotal: [4]
     runs-on: ${{ matrix.os.image }}

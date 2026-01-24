@@ -1,0 +1,405 @@
+name: E2E Test Triage
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: e2e-triage-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  triage:
+    name: Determine E2E Test Strategy
+    environment: ai-bots
+    runs-on: ubuntu-latest
+    outputs:
+      decision: ${{ steps.parse-output.outputs.decision }}
+      tests: ${{ steps.parse-output.outputs.tests }}
+      shard_matrix: ${{ steps.compute-shards.outputs.matrix }}
+      shard_count: ${{ steps.compute-shards.outputs.shard_count }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get changed files
+        id: changed-files
+        run: |
+          # Get the list of changed files in this PR
+          FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | tr '\n' ' ')
+          echo "files=$FILES" >> $GITHUB_OUTPUT
+
+      - name: Claude Code Triage
+        id: triage
+        uses: anthropics/claude-code-base-action@beta
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          model: claude-sonnet-4-20250514
+          allowed_tools: "Read,Glob,Grep"
+          prompt: |
+            # E2E Test Triage Agent
+
+            You are analyzing a pull request to determine which e2e tests need to run.
+
+            ## Changed Files
+
+            The following files were changed in this PR:
+            ```
+            ${{ steps.changed-files.outputs.files }}
+            ```
+
+            ## Your Task
+
+            Analyze the changed files and determine ONE of three outcomes:
+
+            ### Option 1: Skip E2E Tests (decision: "none")
+            Use this when changes are ONLY in:
+            - `.claude/` directory (Claude configuration)
+            - Documentation files (`.md` files like README.md, CONTRIBUTING.md, AGENTS.md, etc.)
+            - `.github/workflows/` that don't affect e2e tests
+            - Comment-only changes
+
+            ### Option 2: Run Specific E2E Tests (decision: "specific")
+            Use this when:
+            - Changes are narrowly scoped to a specific feature
+            - You can confidently identify which e2e test files cover the changed functionality
+            - The number of relevant tests is small (roughly 1-20 test files)
+
+            To determine which tests to run:
+            1. Look at the changed source files
+            2. Search for e2e tests in `e2e-tests/` directory that test the affected functionality
+            3. Match based on:
+               - File names that correspond to features (e.g., `src/components/ChatInput.tsx` -> `e2e-tests/chat_input.spec.ts`)
+               - Imports or references to the changed files
+               - Test descriptions that mention the affected functionality
+
+            ### Option 3: Run All E2E Tests (decision: "all")
+            Use this when:
+            - Changes are broad or affect core infrastructure
+            - Changes touch multiple unrelated features
+            - You're uncertain which tests might be affected
+            - Changes affect shared utilities, state management, or IPC handlers
+            - Changes to build configuration, dependencies, or test infrastructure
+
+            ## Output Format
+
+            You MUST output your decision in this exact format (on a single line each):
+
+            ```
+            DECISION: <none|specific|all>
+            TESTS: <comma-separated list of test file names, or empty if none/all>
+            REASONING: <brief explanation>
+            ```
+
+            Example outputs:
+
+            For skipping tests:
+            ```
+            DECISION: none
+            TESTS:
+            REASONING: Only .claude/ configuration files were changed
+            ```
+
+            For specific tests:
+            ```
+            DECISION: specific
+            TESTS: chat_input.spec.ts,chat_mode.spec.ts,new_chat.spec.ts
+            REASONING: Changes to ChatInput component affect chat input functionality
+            ```
+
+            For all tests:
+            ```
+            DECISION: all
+            TESTS:
+            REASONING: Changes to IPC handler infrastructure could affect any feature
+            ```
+
+            ## Important Notes
+
+            - Be conservative: when in doubt, run all tests
+            - E2E test files are in `e2e-tests/` directory with `.spec.ts` extension
+            - Only include the test file name (e.g., `chat_input.spec.ts`), not the full path
+            - If you cannot confidently determine the scope, choose "all"
+
+      - name: Parse Claude Output
+        id: parse-output
+        run: |
+          # Extract the decision and tests from Claude's output
+          OUTPUT='${{ steps.triage.outputs.result }}'
+
+          # Parse DECISION line
+          DECISION=$(echo "$OUTPUT" | grep -oP 'DECISION:\s*\K(none|specific|all)' | head -1)
+          if [ -z "$DECISION" ]; then
+            echo "Could not parse decision, defaulting to 'all'"
+            DECISION="all"
+          fi
+
+          # Parse TESTS line
+          TESTS=$(echo "$OUTPUT" | grep -oP 'TESTS:\s*\K.*' | head -1 | tr -d ' ')
+
+          # Parse REASONING line for logging
+          REASONING=$(echo "$OUTPUT" | grep -oP 'REASONING:\s*\K.*' | head -1)
+
+          echo "decision=$DECISION" >> $GITHUB_OUTPUT
+          echo "tests=$TESTS" >> $GITHUB_OUTPUT
+
+          echo "## E2E Test Triage Decision" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Decision:** $DECISION" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -n "$TESTS" ]; then
+            echo "**Tests to run:**" >> $GITHUB_STEP_SUMMARY
+            echo "$TESTS" | tr ',' '\n' | while read test; do
+              echo "- $test" >> $GITHUB_STEP_SUMMARY
+            done
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "**Reasoning:** $REASONING" >> $GITHUB_STEP_SUMMARY
+
+      - name: Compute shard matrix
+        id: compute-shards
+        run: |
+          DECISION="${{ steps.parse-output.outputs.decision }}"
+          TESTS="${{ steps.parse-output.outputs.tests }}"
+
+          if [ "$DECISION" = "none" ]; then
+            # No tests to run - use a dummy matrix that will be skipped by the job condition
+            echo 'matrix={"shard":[1],"shardTotal":[1]}' >> $GITHUB_OUTPUT
+            echo "shard_count=0" >> $GITHUB_OUTPUT
+          elif [ "$DECISION" = "all" ]; then
+            # Run all tests with 4 shards
+            echo 'matrix={"shard":[1,2,3,4],"shardTotal":[4]}' >> $GITHUB_OUTPUT
+            echo "shard_count=4" >> $GITHUB_OUTPUT
+          else
+            # Count the number of specific tests
+            TEST_COUNT=$(echo "$TESTS" | tr ',' '\n' | grep -c '.' || echo "0")
+
+            # Determine shard count based on test count
+            # 1-3 tests: 1 shard
+            # 4-8 tests: 2 shards
+            # 9-15 tests: 3 shards
+            # 16+ tests: 4 shards
+            if [ "$TEST_COUNT" -le 3 ]; then
+              SHARD_COUNT=1
+            elif [ "$TEST_COUNT" -le 8 ]; then
+              SHARD_COUNT=2
+            elif [ "$TEST_COUNT" -le 15 ]; then
+              SHARD_COUNT=3
+            else
+              SHARD_COUNT=4
+            fi
+
+            # Build the shard array
+            SHARDS="["
+            for i in $(seq 1 $SHARD_COUNT); do
+              if [ $i -gt 1 ]; then
+                SHARDS="$SHARDS,"
+              fi
+              SHARDS="$SHARDS$i"
+            done
+            SHARDS="$SHARDS]"
+
+            echo "matrix={\"shard\":$SHARDS,\"shardTotal\":[$SHARD_COUNT]}" >> $GITHUB_OUTPUT
+            echo "shard_count=$SHARD_COUNT" >> $GITHUB_OUTPUT
+            echo "Computed $SHARD_COUNT shards for $TEST_COUNT tests"
+          fi
+
+  test:
+    name: E2E Tests
+    needs: triage
+    if: needs.triage.outputs.decision != 'none'
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          [
+            { name: "windows", image: "windows-latest" },
+            { name: "macos", image: "macos-latest" },
+          ]
+        shard: ${{ fromJson(needs.triage.outputs.shard_matrix).shard }}
+        shardTotal: ${{ fromJson(needs.triage.outputs.shard_matrix).shardTotal }}
+    runs-on: ${{ matrix.os.image }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Initialize environment
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install node modules
+        run: npm ci --no-audit --no-fund --progress=false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Presubmit check (e.g. lint, format)
+        if: contains(matrix.os.name, 'macos') && matrix.shard == 1
+        run: npm run presubmit
+
+      - name: Type-checking
+        if: contains(matrix.os.name, 'macos') && matrix.shard == 1
+        run: npm run ts
+
+      - name: Unit tests
+        if: contains(matrix.os.name, 'macos') && matrix.shard == 1
+        run: npm run test
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with:
+          version: latest
+
+      - name: Clone nextjs-template
+        run: git clone --depth 1 https://github.com/dyad-sh/nextjs-template.git nextjs-template
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ matrix.os.name }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ matrix.os.name }}-pnpm-store-
+
+      - name: Install scaffold dependencies
+        run: cd scaffold && pnpm install
+
+      - name: Install nextjs-template dependencies
+        run: cd nextjs-template && pnpm install
+
+      - name: Install Chromium browser for Playwright
+        run: npx playwright install chromium --with-deps
+
+      - name: Build
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: npm run pre:e2e
+
+      - name: Prep test server
+        run: cd testing/fake-llm-server && npm install && npm run build && cd -
+
+      - name: Determine test files to run
+        id: test-files
+        run: |
+          DECISION="${{ needs.triage.outputs.decision }}"
+          TESTS="${{ needs.triage.outputs.tests }}"
+
+          if [ "$DECISION" = "all" ]; then
+            echo "test_args=" >> $GITHUB_OUTPUT
+          else
+            # Convert comma-separated list to space-separated paths
+            TEST_PATHS=$(echo "$TESTS" | tr ',' '\n' | sed 's/^/e2e-tests\//' | tr '\n' ' ')
+            echo "test_args=$TEST_PATHS" >> $GITHUB_OUTPUT
+          fi
+
+      - name: E2E tests (Shard ${{ matrix.shard }}/${{ matrix.shardTotal }})
+        run: |
+          TEST_ARGS="${{ steps.test-files.outputs.test_args }}"
+          if [ -n "$TEST_ARGS" ]; then
+            DEBUG=pw:browser npx playwright test $TEST_ARGS --shard=${{ matrix.shard }}/${{ matrix.shardTotal }}
+          else
+            DEBUG=pw:browser npx playwright test --shard=${{ matrix.shard }}/${{ matrix.shardTotal }}
+          fi
+
+      - name: Upload shard results
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: ${{ !cancelled() }}
+        with:
+          name: blob-report-${{ matrix.os.name }}-shard-${{ matrix.shard }}
+          path: blob-report
+          retention-days: 1
+
+  merge-reports:
+    name: Merge E2E Reports
+    if: ${{ !cancelled() && needs.triage.outputs.decision != 'none' }}
+    needs: [triage, test]
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund --progress=false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download blob reports from GitHub Actions Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-blob-reports
+          pattern: blob-report-*
+          merge-multiple: true
+
+      - name: Debug - List downloaded blob reports
+        run: |
+          echo "Contents of all-blob-reports directory:"
+          ls -la all-blob-reports/
+          echo "File sizes and details:"
+          find all-blob-reports/ -type f -exec ls -lh {} \; || echo "No files found"
+
+      - name: Merge into HTML Report
+        run: PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report npx playwright merge-reports --config=merge.config.ts ./all-blob-reports
+
+      - name: Debug - List playwright-report contents
+        run: |
+          echo "Contents of playwright-report directory:"
+          ls -la playwright-report/ || echo "playwright-report directory does not exist"
+          echo "Current directory contents:"
+          ls -la
+
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: html-report--attempt-${{ github.run_attempt }}
+          path: playwright-report
+          retention-days: 3
+
+      - name: Generate Playwright summary
+        uses: actions/github-script@v7
+        env:
+          PLAYWRIGHT_RUN_ID: ${{ github.run_id }}
+          EXPECTED_SHARDS: ${{ needs.triage.outputs.shard_count }}
+        with:
+          script: |
+            const { run } = require('./scripts/generate-playwright-summary.js');
+            await run({ github, context, core });
+
+  skip-notification:
+    name: E2E Tests Skipped
+    needs: triage
+    if: needs.triage.outputs.decision == 'none'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post skip notification
+        run: |
+          echo "## E2E Tests Skipped" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "E2E tests were skipped because the changes don't require them." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "This typically happens when changes are limited to:" >> $GITHUB_STEP_SUMMARY
+          echo "- Documentation files (.md)" >> $GITHUB_STEP_SUMMARY
+          echo "- Claude configuration (.claude/)" >> $GITHUB_STEP_SUMMARY
+          echo "- CI workflow files that don't affect tests" >> $GITHUB_STEP_SUMMARY

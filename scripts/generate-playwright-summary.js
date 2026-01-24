@@ -3,8 +3,8 @@
 
 const fs = require("fs");
 
-// Expected number of shards per OS
-const EXPECTED_SHARDS_PER_OS = 4;
+// Expected number of shards per OS (can be overridden via EXPECTED_SHARDS env var)
+const EXPECTED_SHARDS_PER_OS = parseInt(process.env.EXPECTED_SHARDS || "4", 10);
 
 // Strip ANSI escape codes from terminal output
 function stripAnsi(str) {

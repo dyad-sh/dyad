@@ -100,7 +100,7 @@ jobs:
       - name: Update labels to pending
         if: steps.pr-info.outputs.should_continue == 'true'
         run: |
-          gh pr edit ${{ steps.pr-info.outputs.pr_number }} --remove-label "cc:request" --add-label "cc:pending"
+          gh pr edit ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }} --remove-label "cc:request" --add-label "cc:pending"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -116,13 +116,13 @@ jobs:
       - name: Update labels to done
         if: steps.pr-info.outputs.should_continue == 'true' && success()
         run: |
-          gh pr edit ${{ steps.pr-info.outputs.pr_number }} --remove-label "cc:pending" --add-label "cc:done"
+          gh pr edit ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }} --remove-label "cc:pending" --add-label "cc:done"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update labels to failed
         if: steps.pr-info.outputs.should_continue == 'true' && failure()
         run: |
-          gh pr edit ${{ steps.pr-info.outputs.pr_number }} --remove-label "cc:pending" --add-label "cc:failed"
+          gh pr edit ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }} --remove-label "cc:pending" --add-label "cc:failed"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

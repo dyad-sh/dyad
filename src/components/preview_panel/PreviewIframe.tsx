@@ -643,6 +643,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       setCurrentHistoryPosition(0);
       setCanGoBack(false);
       setCanGoForward(false);
+      // Clear stale reload URL when app changes
+      reloadUrlRef.current = null;
     }
   }, [appUrl]);
 
@@ -743,8 +745,31 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // Function to handle reload
   const handleReload = () => {
     // Store the current URL to preserve the route during reload
-    reloadUrlRef.current =
-      navigationHistory[currentHistoryPosition] || appUrl || null;
+    const currentUrl = navigationHistory[currentHistoryPosition] || appUrl;
+
+    // Validate that the URL is same-origin as appUrl to prevent XSS/URL injection
+    if (currentUrl && appUrl) {
+      try {
+        const currentOrigin = new URL(currentUrl).origin;
+        const appOrigin = new URL(appUrl).origin;
+
+        // Only use the current URL if it has the same origin as the app URL
+        if (currentOrigin === appOrigin) {
+          reloadUrlRef.current = currentUrl;
+        } else {
+          console.warn(
+            `Rejecting reload URL ${currentUrl} - origin mismatch with app URL ${appUrl}`,
+          );
+          reloadUrlRef.current = appUrl;
+        }
+      } catch (e) {
+        console.error("Invalid URL during reload validation", e);
+        reloadUrlRef.current = appUrl;
+      }
+    } else {
+      reloadUrlRef.current = currentUrl || null;
+    }
+
     setReloadKey((prevKey) => prevKey + 1);
     setErrorMessage(undefined);
     // Reset visual editing state
@@ -1105,6 +1130,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                   data-testid="preview-iframe-element"
                   onLoad={() => {
                     setErrorMessage(undefined);
+                    // Clear reload URL after iframe loads so it's only used once
+                    reloadUrlRef.current = null;
                   }}
                   ref={iframeRef}
                   key={reloadKey}

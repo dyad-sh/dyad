@@ -119,16 +119,33 @@ jobs:
             /dyad:pr-fix ${{ steps.pr-info.outputs.pr_number }}
 
       - name: Re-trigger CI if commits were pushed
-        if: steps.pr-info.outputs.should_continue == 'true' && success()
+        # Use always() to ensure commits get tested even if Claude Code fails partway through
+        if: steps.pr-info.outputs.should_continue == 'true' && always()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git fetch origin
-          NEW_SHA=$(git rev-parse origin/${{ github.event.workflow_run.head_branch }})
-          if [ "${{ steps.before-claude.outputs.sha }}" != "$NEW_SHA" ]; then
-            echo "Claude pushed new commits, re-triggering CI by closing and reopening PR"
-            gh pr close ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }}
-            gh pr reopen ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }}
+          # Fetch using the PR's head ref to handle both fork and same-repo PRs correctly
+          # Use the GitHub API to get the current head SHA, avoiding race conditions with git fetch
+          PR_HEAD_SHA=$(gh pr view ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }} --json headRefOid --jq '.headRefOid')
+          if [ -z "$PR_HEAD_SHA" ]; then
+            echo "Failed to get PR head SHA, falling back to git fetch"
+            git fetch origin ${{ github.event.workflow_run.head_branch }} || git fetch origin
+            PR_HEAD_SHA=$(git rev-parse FETCH_HEAD 2>/dev/null || git rev-parse origin/${{ github.event.workflow_run.head_branch }})
+          fi
+
+          if [ "${{ steps.before-claude.outputs.sha }}" != "$PR_HEAD_SHA" ]; then
+            echo "Claude pushed new commits (before: ${{ steps.before-claude.outputs.sha }}, after: $PR_HEAD_SHA)"
+            echo "Re-triggering CI by closing and reopening PR"
+            if gh pr close ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }}; then
+              if ! gh pr reopen ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }}; then
+                echo "::warning::Failed to reopen PR after close. Attempting recovery..."
+                # Retry reopen once after a short delay
+                sleep 2
+                gh pr reopen ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }} || echo "::error::PR may be left closed. Manual intervention required."
+              fi
+            else
+              echo "::warning::Failed to close PR, skipping re-trigger"
+            fi
           else
             echo "No new commits pushed, skipping CI re-trigger"
           fi

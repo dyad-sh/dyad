@@ -33,7 +33,11 @@ This is a meta-skill that orchestrates two sub-skills to comprehensively fix PR 
    - Use `<details>` tags to collapse verbose details (e.g., full error messages, lengthy explanations)
    - If there were any errors, include specific error messages in the collapsed details
 
-   Example format:
+   **Error handling:** If `gh pr comment` fails (e.g., due to network issues, rate limits, or permissions), log a warning but do not fail the entire skill if the underlying fixes were successful. The comment is informational and should not block a successful run.
+
+   Example formats:
+
+   **Success:**
 
    ```
    ## ✅ Claude Code completed successfully
@@ -53,4 +57,30 @@ This is a meta-skill that orchestrates two sub-skills to comprehensively fix PR 
    [Workflow run](https://github.com/dyad-sh/dyad/actions/runs/12345678)
    ```
 
-   Note: Include a link to the workflow run at the end. Use the `GITHUB_REPOSITORY` and `GITHUB_RUN_ID` environment variables to construct the URL: `https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID`
+   **Failure:**
+
+   ```
+   ## ❌ Claude Code failed
+
+   ### Summary
+   - Attempted to fix 2 review comments
+   - Failed to resolve 1 CI failure (lint error in `src/foo.ts`)
+
+   <details>
+   <summary>Error Details</summary>
+
+   **Error:** `lint` command failed with exit code 1.
+
+   ```
+
+   ... linter output ...
+
+   ```
+
+   </details>
+
+   ---
+   [Workflow run](https://github.com/dyad-sh/dyad/actions/runs/12345678)
+   ```
+
+   Note: Include a link to the workflow run at the end. If the `GITHUB_REPOSITORY` and `GITHUB_RUN_ID` environment variables are available, use them to construct the URL: `https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID`. If these environment variables are not set, omit the workflow run link.

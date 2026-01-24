@@ -1,21 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
-import { IpcClient } from "@/ipc/ipc_client";
-import type { UserBudgetInfo } from "@/ipc/ipc_types";
+import { ipc, type UserBudgetInfo } from "@/ipc/types";
+import { queryKeys } from "@/lib/queryKeys";
 
 const FIVE_MINUTES_IN_MS = 5 * 60 * 1000;
 
 export function useUserBudgetInfo() {
-  const queryKey = ["userBudgetInfo"];
-
   const { data, isLoading, error, isFetching, refetch } = useQuery<
     UserBudgetInfo | null,
     Error,
     UserBudgetInfo | null
   >({
-    queryKey: queryKey,
+    queryKey: queryKeys.userBudget.info,
     queryFn: async () => {
-      const ipcClient = IpcClient.getInstance();
-      return ipcClient.getUserBudget();
+      return ipc.system.getUserBudget();
     },
     // This data is not critical and can be stale for a bit
     staleTime: FIVE_MINUTES_IN_MS,

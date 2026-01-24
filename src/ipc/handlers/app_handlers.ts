@@ -2,18 +2,11 @@ import { ipcMain, app, dialog } from "electron";
 import { db, getDatabasePath } from "../../db";
 import { apps, chats, messages } from "../../db/schema";
 import { desc, eq, like } from "drizzle-orm";
-import type {
-  App,
-  CreateAppParams,
-  RenameBranchParams,
-  CopyAppParams,
-  EditAppFileReturnType,
-  RespondToAppInputParams,
-  ConsoleEntry,
-  ChangeAppLocationParams,
-  ChangeAppLocationResult,
-  AppFileSearchResult,
-} from "../ipc_types";
+import { createTypedHandler } from "./base";
+import { appContracts } from "../types/app";
+import type { AppFileSearchResult } from "../types/app";
+import { miscContracts } from "../types/misc";
+import { systemContracts } from "../types/system";
 import fs from "node:fs";
 import path from "node:path";
 import { getDyadAppPath, getUserDataPath } from "../../paths/paths";
@@ -764,152 +757,143 @@ async function searchAppFilesWithRipgrep({
 }
 
 export function registerAppHandlers() {
-  handle("restart-dyad", async () => {
+  createTypedHandler(systemContracts.restartDyad, async () => {
     app.relaunch();
     app.quit();
   });
 
-  handle(
-    "create-app",
-    async (
-      _,
-      params: CreateAppParams,
-    ): Promise<{ app: any; chatId: number }> => {
-      const appPath = params.name;
-      const fullAppPath = getDyadAppPath(appPath);
-      if (fs.existsSync(fullAppPath)) {
-        throw new Error(`App already exists at: ${fullAppPath}`);
-      }
-      // Create a new app
-      const [app] = await db
-        .insert(apps)
-        .values({
-          name: params.name,
-          // Use the name as the path for now
-          path: appPath,
-        })
-        .returning();
+  createTypedHandler(appContracts.createApp, async (_, params) => {
+    const appPath = params.name;
+    const fullAppPath = getDyadAppPath(appPath);
+    if (fs.existsSync(fullAppPath)) {
+      throw new Error(`App already exists at: ${fullAppPath}`);
+    }
+    // Create a new app
+    const [app] = await db
+      .insert(apps)
+      .values({
+        name: params.name,
+        // Use the name as the path for now
+        path: appPath,
+      })
+      .returning();
 
-      // Create an initial chat for this app
-      const [chat] = await db
-        .insert(chats)
-        .values({
-          appId: app.id,
-        })
-        .returning();
+    // Create an initial chat for this app
+    const [chat] = await db
+      .insert(chats)
+      .values({
+        appId: app.id,
+      })
+      .returning();
 
-      await createFromTemplate({
-        fullAppPath,
-      });
+    await createFromTemplate({
+      fullAppPath,
+    });
 
+    // Initialize git repo and create first commit
+
+    await gitInit({ path: fullAppPath, ref: "main" });
+
+    // Stage all files
+    await gitAdd({ path: fullAppPath, filepath: "." });
+
+    // Create initial commit
+    const commitHash = await gitCommit({
+      path: fullAppPath,
+      message: "Init Dyad app",
+    });
+
+    // Update chat with initial commit hash
+    await db
+      .update(chats)
+      .set({
+        initialCommitHash: commitHash,
+      })
+      .where(eq(chats.id, chat.id));
+
+    return {
+      app: { ...app, resolvedPath: fullAppPath },
+      chatId: chat.id,
+    };
+  });
+
+  createTypedHandler(appContracts.copyApp, async (_, params) => {
+    const { appId, newAppName, withHistory } = params;
+
+    // 1. Check if an app with the new name already exists
+    const existingApp = await db.query.apps.findFirst({
+      where: eq(apps.name, newAppName),
+    });
+
+    if (existingApp) {
+      throw new Error(`An app named "${newAppName}" already exists.`);
+    }
+
+    // 2. Find the original app
+    const originalApp = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
+
+    if (!originalApp) {
+      throw new Error("Original app not found.");
+    }
+
+    const originalAppPath = getDyadAppPath(originalApp.path);
+    const newAppPath = getDyadAppPath(newAppName);
+
+    // 3. Copy the app folder
+    try {
+      await copyDir(
+        originalAppPath,
+        newAppPath,
+        (source: string) => {
+          if (!withHistory && path.basename(source) === ".git") {
+            return false;
+          }
+          return true;
+        },
+        { excludeNodeModules: true },
+      );
+    } catch (error) {
+      logger.error("Failed to copy app directory:", error);
+      throw new Error("Failed to copy app directory.");
+    }
+
+    if (!withHistory) {
       // Initialize git repo and create first commit
-
-      await gitInit({ path: fullAppPath, ref: "main" });
+      await gitInit({ path: newAppPath, ref: "main" });
 
       // Stage all files
-      await gitAdd({ path: fullAppPath, filepath: "." });
+      await gitAdd({ path: newAppPath, filepath: "." });
 
       // Create initial commit
-      const commitHash = await gitCommit({
-        path: fullAppPath,
+      await gitCommit({
+        path: newAppPath,
         message: "Init Dyad app",
       });
+    }
 
-      // Update chat with initial commit hash
-      await db
-        .update(chats)
-        .set({
-          initialCommitHash: commitHash,
-        })
-        .where(eq(chats.id, chat.id));
+    // 4. Create a new app entry in the database
+    const [newDbApp] = await db
+      .insert(apps)
+      .values({
+        name: newAppName,
+        path: newAppName, // Use the new name for the path
+        // Explicitly set these to null because we don't want to copy them over.
+        // Note: we could just leave them out since they're nullable field, but this
+        // is to make it explicit we intentionally don't want to copy them over.
+        supabaseProjectId: null,
+        githubOrg: null,
+        githubRepo: null,
+        installCommand: originalApp.installCommand,
+        startCommand: originalApp.startCommand,
+      })
+      .returning();
 
-      return {
-        app: { ...app, resolvedPath: fullAppPath },
-        chatId: chat.id,
-      };
-    },
-  );
+    return { app: newDbApp };
+  });
 
-  handle(
-    "copy-app",
-    async (_, params: CopyAppParams): Promise<{ app: any }> => {
-      const { appId, newAppName, withHistory } = params;
-
-      // 1. Check if an app with the new name already exists
-      const existingApp = await db.query.apps.findFirst({
-        where: eq(apps.name, newAppName),
-      });
-
-      if (existingApp) {
-        throw new Error(`An app named "${newAppName}" already exists.`);
-      }
-
-      // 2. Find the original app
-      const originalApp = await db.query.apps.findFirst({
-        where: eq(apps.id, appId),
-      });
-
-      if (!originalApp) {
-        throw new Error("Original app not found.");
-      }
-
-      const originalAppPath = getDyadAppPath(originalApp.path);
-      const newAppPath = getDyadAppPath(newAppName);
-
-      // 3. Copy the app folder
-      try {
-        await copyDir(
-          originalAppPath,
-          newAppPath,
-          (source: string) => {
-            if (!withHistory && path.basename(source) === ".git") {
-              return false;
-            }
-            return true;
-          },
-          { excludeNodeModules: true },
-        );
-      } catch (error) {
-        logger.error("Failed to copy app directory:", error);
-        throw new Error("Failed to copy app directory.");
-      }
-
-      if (!withHistory) {
-        // Initialize git repo and create first commit
-        await gitInit({ path: newAppPath, ref: "main" });
-
-        // Stage all files
-        await gitAdd({ path: newAppPath, filepath: "." });
-
-        // Create initial commit
-        await gitCommit({
-          path: newAppPath,
-          message: "Init Dyad app",
-        });
-      }
-
-      // 4. Create a new app entry in the database
-      const [newDbApp] = await db
-        .insert(apps)
-        .values({
-          name: newAppName,
-          path: newAppName, // Use the new name for the path
-          // Explicitly set these to null because we don't want to copy them over.
-          // Note: we could just leave them out since they're nullable field, but this
-          // is to make it explicit we intentionally don't want to copy them over.
-          supabaseProjectId: null,
-          githubOrg: null,
-          githubRepo: null,
-          installCommand: originalApp.installCommand,
-          startCommand: originalApp.startCommand,
-        })
-        .returning();
-
-      return { app: newDbApp };
-    },
-  );
-
-  handle("get-app", async (_, appId: number): Promise<App> => {
+  createTypedHandler(appContracts.getApp, async (_, appId) => {
     const app = await db.query.apps.findFirst({
       where: eq(apps.id, appId),
     });
@@ -961,7 +945,7 @@ export function registerAppHandlers() {
     };
   });
 
-  ipcMain.handle("list-apps", async () => {
+  createTypedHandler(appContracts.listApps, async () => {
     const allApps = await db.query.apps.findMany({
       orderBy: [desc(apps.createdAt)],
     });
@@ -974,40 +958,38 @@ export function registerAppHandlers() {
     };
   });
 
-  ipcMain.handle(
-    "read-app-file",
-    async (_, { appId, filePath }: { appId: number; filePath: string }) => {
-      const app = await db.query.apps.findFirst({
-        where: eq(apps.id, appId),
-      });
+  createTypedHandler(appContracts.readAppFile, async (_, params) => {
+    const { appId, filePath } = params;
+    const app = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
 
-      if (!app) {
-        throw new Error("App not found");
-      }
+    if (!app) {
+      throw new Error("App not found");
+    }
 
-      const appPath = getDyadAppPath(app.path);
-      const fullPath = path.join(appPath, filePath);
+    const appPath = getDyadAppPath(app.path);
+    const fullPath = path.join(appPath, filePath);
 
-      // Check if the path is within the app directory (security check)
-      if (!fullPath.startsWith(appPath)) {
-        throw new Error("Invalid file path");
-      }
+    // Check if the path is within the app directory (security check)
+    if (!fullPath.startsWith(appPath)) {
+      throw new Error("Invalid file path");
+    }
 
-      if (!fs.existsSync(fullPath)) {
-        throw new Error("File not found");
-      }
+    if (!fs.existsSync(fullPath)) {
+      throw new Error("File not found");
+    }
 
-      try {
-        const contents = fs.readFileSync(fullPath, "utf-8");
-        return contents;
-      } catch (error) {
-        logger.error(`Error reading file ${filePath} for app ${appId}:`, error);
-        throw new Error("Failed to read file");
-      }
-    },
-  );
+    try {
+      const contents = fs.readFileSync(fullPath, "utf-8");
+      return contents;
+    } catch (error) {
+      logger.error(`Error reading file ${filePath} for app ${appId}:`, error);
+      throw new Error("Failed to read file");
+    }
+  });
 
-  // Do NOT use handle for this, it contains sensitive information.
+  // Do NOT use typed handler for this, it contains sensitive information.
   ipcMain.handle("get-env-vars", async () => {
     const envVars: Record<string, string | undefined> = {};
     const providers = await getLanguageModelProviders();
@@ -1019,218 +1001,15 @@ export function registerAppHandlers() {
     return envVars;
   });
 
-  ipcMain.handle(
-    "run-app",
-    async (
-      event: Electron.IpcMainInvokeEvent,
-      { appId }: { appId: number },
-    ): Promise<void> => {
-      return withLock(appId, async () => {
-        // Check if app is already running
-        if (runningApps.has(appId)) {
-          logger.debug(`App ${appId} is already running.`);
-          return;
-        }
+  createTypedHandler(appContracts.runApp, async (event, params) => {
+    const { appId } = params;
+    return withLock(appId, async () => {
+      // Check if app is already running
+      if (runningApps.has(appId)) {
+        logger.debug(`App ${appId} is already running.`);
+        return;
+      }
 
-        const app = await db.query.apps.findFirst({
-          where: eq(apps.id, appId),
-        });
-
-        if (!app) {
-          throw new Error("App not found");
-        }
-
-        logger.debug(`Starting app ${appId} in path ${app.path}`);
-
-        const appPath = getDyadAppPath(app.path);
-        try {
-          // There may have been a previous run that left a process on this port.
-          await cleanUpPort(getAppPort(appId));
-          await executeApp({
-            appPath,
-            appId,
-            event,
-            isNeon: !!app.neonProjectId,
-            installCommand: app.installCommand,
-            startCommand: app.startCommand,
-          });
-
-          return;
-        } catch (error: any) {
-          logger.error(`Error running app ${appId}:`, error);
-          // Ensure cleanup if error happens during setup but before process events are handled
-          if (
-            runningApps.has(appId) &&
-            runningApps.get(appId)?.processId === processCounter.value
-          ) {
-            runningApps.delete(appId);
-          }
-          throw new Error(`Failed to run app ${appId}: ${error.message}`);
-        }
-      });
-    },
-  );
-
-  ipcMain.handle(
-    "stop-app",
-    async (_, { appId }: { appId: number }): Promise<void> => {
-      logger.log(
-        `Attempting to stop app ${appId}. Current running apps: ${runningApps.size}`,
-      );
-      return withLock(appId, async () => {
-        const appInfo = runningApps.get(appId);
-
-        if (!appInfo) {
-          logger.log(
-            `App ${appId} not found in running apps map. Assuming already stopped.`,
-          );
-          return;
-        }
-
-        const { process, processId } = appInfo;
-        logger.log(
-          `Found running app ${appId} with processId ${processId} (PID: ${process.pid}). Attempting to stop.`,
-        );
-
-        // Check if the process is already exited or closed
-        if (process.exitCode !== null || process.signalCode !== null) {
-          logger.log(
-            `Process for app ${appId} (PID: ${process.pid}) already exited (code: ${process.exitCode}, signal: ${process.signalCode}). Cleaning up map.`,
-          );
-          runningApps.delete(appId); // Ensure cleanup if somehow missed
-          return;
-        }
-
-        try {
-          await stopAppByInfo(appId, appInfo);
-
-          // Now, safely remove the app from the map *after* confirming closure
-          removeAppIfCurrentProcess(appId, process);
-
-          return;
-        } catch (error: any) {
-          logger.error(
-            `Error stopping app ${appId} (PID: ${process.pid}, processId: ${processId}):`,
-            error,
-          );
-          // Attempt cleanup even if an error occurred during the stop process
-          removeAppIfCurrentProcess(appId, process);
-          throw new Error(`Failed to stop app ${appId}: ${error.message}`);
-        }
-      });
-    },
-  );
-
-  ipcMain.handle(
-    "restart-app",
-    async (
-      event: Electron.IpcMainInvokeEvent,
-      {
-        appId,
-        removeNodeModules,
-      }: { appId: number; removeNodeModules?: boolean },
-    ): Promise<void> => {
-      logger.log(`Restarting app ${appId}`);
-      return withLock(appId, async () => {
-        try {
-          // First stop the app if it's running
-          const appInfo = runningApps.get(appId);
-          if (appInfo) {
-            const { processId } = appInfo;
-            logger.log(
-              `Stopping app ${appId} (processId ${processId}) before restart`,
-            );
-            await stopAppByInfo(appId, appInfo);
-          } else {
-            logger.log(`App ${appId} not running. Proceeding to start.`);
-          }
-
-          // There may have been a previous run that left a process on this port.
-          await cleanUpPort(getAppPort(appId));
-
-          // Now start the app again
-          const app = await db.query.apps.findFirst({
-            where: eq(apps.id, appId),
-          });
-
-          if (!app) {
-            throw new Error("App not found");
-          }
-
-          const appPath = getDyadAppPath(app.path);
-
-          // Remove node_modules if requested
-          if (removeNodeModules) {
-            const settings = readSettings();
-            const runtimeMode = settings.runtimeMode2 ?? "host";
-
-            const nodeModulesPath = path.join(appPath, "node_modules");
-            logger.log(
-              `Removing node_modules for app ${appId} at ${nodeModulesPath}`,
-            );
-            if (fs.existsSync(nodeModulesPath)) {
-              await fsPromises.rm(nodeModulesPath, {
-                recursive: true,
-                force: true,
-              });
-              logger.log(`Successfully removed node_modules for app ${appId}`);
-            } else {
-              logger.log(`No node_modules directory found for app ${appId}`);
-            }
-
-            // If running in Docker mode, also remove container volumes so deps reinstall freshly
-            if (runtimeMode === "docker") {
-              logger.log(
-                `Docker mode detected for app ${appId}. Removing Docker volumes dyad-pnpm-${appId}...`,
-              );
-              try {
-                await removeDockerVolumesForApp(appId);
-                logger.log(
-                  `Removed Docker volumes for app ${appId} (dyad-pnpm-${appId}).`,
-                );
-              } catch (e) {
-                // Best-effort cleanup; log and continue
-                logger.warn(
-                  `Failed to remove Docker volumes for app ${appId}. Continuing: ${e}`,
-                );
-              }
-            }
-          }
-
-          logger.debug(
-            `Executing app ${appId} in path ${app.path} after restart request`,
-          ); // Adjusted log
-
-          await executeApp({
-            appPath,
-            appId,
-            event,
-            isNeon: !!app.neonProjectId,
-            installCommand: app.installCommand,
-            startCommand: app.startCommand,
-          }); // This will handle starting either mode
-
-          return;
-        } catch (error) {
-          logger.error(`Error restarting app ${appId}:`, error);
-          throw error;
-        }
-      });
-    },
-  );
-
-  ipcMain.handle(
-    "edit-app-file",
-    async (
-      _,
-      {
-        appId,
-        filePath,
-        content,
-      }: { appId: number; filePath: string; content: string },
-    ): Promise<EditAppFileReturnType> => {
-      // It should already be normalized, but just in case.
-      filePath = normalizePath(filePath);
       const app = await db.query.apps.findFirst({
         where: eq(apps.id, appId),
       });
@@ -1239,110 +1018,105 @@ export function registerAppHandlers() {
         throw new Error("App not found");
       }
 
+      logger.debug(`Starting app ${appId} in path ${app.path}`);
+
       const appPath = getDyadAppPath(app.path);
-      const fullPath = path.join(appPath, filePath);
+      try {
+        // There may have been a previous run that left a process on this port.
+        await cleanUpPort(getAppPort(appId));
+        await executeApp({
+          appPath,
+          appId,
+          event,
+          isNeon: !!app.neonProjectId,
+          installCommand: app.installCommand,
+          startCommand: app.startCommand,
+        });
 
-      // Check if the path is within the app directory (security check)
-      if (!fullPath.startsWith(appPath)) {
-        throw new Error("Invalid file path");
-      }
-
-      if (app.neonProjectId && app.neonDevelopmentBranchId) {
-        try {
-          await storeDbTimestampAtCurrentVersion({
-            appId: app.id,
-          });
-        } catch (error) {
-          logger.error(
-            "Error storing Neon timestamp at current version:",
-            error,
-          );
-          throw new Error(
-            "Could not store Neon timestamp at current version; database versioning functionality is not working: " +
-              error,
-          );
+        return;
+      } catch (error: any) {
+        logger.error(`Error running app ${appId}:`, error);
+        // Ensure cleanup if error happens during setup but before process events are handled
+        if (
+          runningApps.has(appId) &&
+          runningApps.get(appId)?.processId === processCounter.value
+        ) {
+          runningApps.delete(appId);
         }
+        throw new Error(`Failed to run app ${appId}: ${error.message}`);
+      }
+    });
+  });
+
+  createTypedHandler(appContracts.stopApp, async (_, params) => {
+    const { appId } = params;
+    logger.log(
+      `Attempting to stop app ${appId}. Current running apps: ${runningApps.size}`,
+    );
+    return withLock(appId, async () => {
+      const appInfo = runningApps.get(appId);
+
+      if (!appInfo) {
+        logger.log(
+          `App ${appId} not found in running apps map. Assuming already stopped.`,
+        );
+        return;
       }
 
-      // Ensure directory exists
-      const dirPath = path.dirname(fullPath);
-      await fsPromises.mkdir(dirPath, { recursive: true });
+      const { process, processId } = appInfo;
+      logger.log(
+        `Found running app ${appId} with processId ${processId} (PID: ${process.pid}). Attempting to stop.`,
+      );
+
+      // Check if the process is already exited or closed
+      if (process.exitCode !== null || process.signalCode !== null) {
+        logger.log(
+          `Process for app ${appId} (PID: ${process.pid}) already exited (code: ${process.exitCode}, signal: ${process.signalCode}). Cleaning up map.`,
+        );
+        runningApps.delete(appId); // Ensure cleanup if somehow missed
+        return;
+      }
 
       try {
-        await fsPromises.writeFile(fullPath, content, "utf-8");
+        await stopAppByInfo(appId, appInfo);
 
-        // Check if git repository exists and commit the change
-        if (fs.existsSync(path.join(appPath, ".git"))) {
-          await gitAdd({ path: appPath, filepath: filePath });
+        // Now, safely remove the app from the map *after* confirming closure
+        removeAppIfCurrentProcess(appId, process);
 
-          await gitCommit({
-            path: appPath,
-            message: `Updated ${filePath}`,
-          });
-        }
+        return;
       } catch (error: any) {
-        logger.error(`Error writing file ${filePath} for app ${appId}:`, error);
-        throw new Error(`Failed to write file: ${error.message}`);
+        logger.error(
+          `Error stopping app ${appId} (PID: ${process.pid}, processId: ${processId}):`,
+          error,
+        );
+        // Attempt cleanup even if an error occurred during the stop process
+        removeAppIfCurrentProcess(appId, process);
+        throw new Error(`Failed to stop app ${appId}: ${error.message}`);
       }
+    });
+  });
 
-      if (app.supabaseProjectId) {
-        // Check if shared module was modified - redeploy all functions
-        if (isSharedServerModule(filePath)) {
-          try {
-            logger.info(
-              `Shared module ${filePath} modified, redeploying all Supabase functions`,
-            );
-            const deployErrors = await deployAllSupabaseFunctions({
-              appPath,
-              supabaseProjectId: app.supabaseProjectId,
-              supabaseOrganizationSlug: app.supabaseOrganizationSlug ?? null,
-            });
-            if (deployErrors.length > 0) {
-              return {
-                warning: `File saved, but some Supabase functions failed to deploy: ${deployErrors.join(", ")}`,
-              };
-            }
-          } catch (error) {
-            logger.error(
-              `Error redeploying Supabase functions after shared module change:`,
-              error,
-            );
-            return {
-              warning: `File saved, but failed to redeploy Supabase functions: ${error}`,
-            };
-          }
-        } else if (isServerFunction(filePath)) {
-          // Regular function file - deploy just this function
-          try {
-            const functionName = extractFunctionNameFromPath(filePath);
-            await deploySupabaseFunction({
-              supabaseProjectId: app.supabaseProjectId,
-              functionName,
-              appPath,
-              organizationSlug: app.supabaseOrganizationSlug ?? null,
-            });
-          } catch (error) {
-            logger.error(
-              `Error deploying Supabase function ${filePath}:`,
-              error,
-            );
-            return {
-              warning: `File saved, but failed to deploy Supabase function: ${filePath}: ${error}`,
-            };
-          }
+  createTypedHandler(appContracts.restartApp, async (event, params) => {
+    const { appId, removeNodeModules } = params;
+    logger.log(`Restarting app ${appId}`);
+    return withLock(appId, async () => {
+      try {
+        // First stop the app if it's running
+        const appInfo = runningApps.get(appId);
+        if (appInfo) {
+          const { processId } = appInfo;
+          logger.log(
+            `Stopping app ${appId} (processId ${processId}) before restart`,
+          );
+          await stopAppByInfo(appId, appInfo);
+        } else {
+          logger.log(`App ${appId} not running. Proceeding to start.`);
         }
-      }
-      return {};
-    },
-  );
 
-  ipcMain.handle(
-    "delete-app",
-    async (_, { appId }: { appId: number }): Promise<void> => {
-      // Static server worker is NOT terminated here anymore
+        // There may have been a previous run that left a process on this port.
+        await cleanUpPort(getAppPort(appId));
 
-      return withLock(appId, async () => {
-        // Check if app exists
+        // Now start the app again
         const app = await db.query.apps.findFirst({
           where: eq(apps.id, appId),
         });
@@ -1351,282 +1125,436 @@ export function registerAppHandlers() {
           throw new Error("App not found");
         }
 
-        // Stop the app if it's running
-        if (runningApps.has(appId)) {
-          const appInfo = runningApps.get(appId)!;
-          try {
-            logger.log(`Stopping app ${appId} before deletion.`); // Adjusted log
-            await stopAppByInfo(appId, appInfo);
-          } catch (error: any) {
-            logger.error(`Error stopping app ${appId} before deletion:`, error); // Adjusted log
-            // Continue with deletion even if stopping fails
-          }
-        }
-
-        // Clear logs for this app to prevent memory leak
-        clearLogs(appId);
-
-        // Delete app from database
-        try {
-          await db.delete(apps).where(eq(apps.id, appId));
-          // Note: Associated chats will cascade delete
-        } catch (error: any) {
-          logger.error(`Error deleting app ${appId} from database:`, error);
-          throw new Error(
-            `Failed to delete app from database: ${error.message}`,
-          );
-        }
-
-        // Delete app files
         const appPath = getDyadAppPath(app.path);
-        try {
-          await fsPromises.rm(appPath, { recursive: true, force: true });
-        } catch (error: any) {
-          logger.error(`Error deleting app files for app ${appId}:`, error);
-          throw new Error(
-            `App deleted from database, but failed to delete app files. Please delete app files from ${appPath} manually.\n\nError: ${error.message}`,
+
+        // Remove node_modules if requested
+        if (removeNodeModules) {
+          const settings = readSettings();
+          const runtimeMode = settings.runtimeMode2 ?? "host";
+
+          const nodeModulesPath = path.join(appPath, "node_modules");
+          logger.log(
+            `Removing node_modules for app ${appId} at ${nodeModulesPath}`,
           );
-        }
-      });
-    },
-  );
-
-  ipcMain.handle(
-    "add-to-favorite",
-    async (
-      _,
-      { appId }: { appId: number },
-    ): Promise<{ isFavorite: boolean }> => {
-      return withLock(appId, async () => {
-        try {
-          // Fetch the current isFavorite value
-          const result = await db
-            .select({ isFavorite: apps.isFavorite })
-            .from(apps)
-            .where(eq(apps.id, appId))
-            .limit(1);
-
-          if (result.length === 0) {
-            throw new Error(`App with ID ${appId} not found.`);
+          if (fs.existsSync(nodeModulesPath)) {
+            await fsPromises.rm(nodeModulesPath, {
+              recursive: true,
+              force: true,
+            });
+            logger.log(`Successfully removed node_modules for app ${appId}`);
+          } else {
+            logger.log(`No node_modules directory found for app ${appId}`);
           }
 
-          const currentIsFavorite = result[0].isFavorite;
-
-          // Toggle the isFavorite value
-          const updated = await db
-            .update(apps)
-            .set({ isFavorite: !currentIsFavorite })
-            .where(eq(apps.id, appId))
-            .returning({ isFavorite: apps.isFavorite });
-
-          if (updated.length === 0) {
-            throw new Error(
-              `Failed to update favorite status for app ID ${appId}.`,
+          // If running in Docker mode, also remove container volumes so deps reinstall freshly
+          if (runtimeMode === "docker") {
+            logger.log(
+              `Docker mode detected for app ${appId}. Removing Docker volumes dyad-pnpm-${appId}...`,
             );
+            try {
+              await removeDockerVolumesForApp(appId);
+              logger.log(
+                `Removed Docker volumes for app ${appId} (dyad-pnpm-${appId}).`,
+              );
+            } catch (e) {
+              // Best-effort cleanup; log and continue
+              logger.warn(
+                `Failed to remove Docker volumes for app ${appId}. Continuing: ${e}`,
+              );
+            }
           }
+        }
 
-          // Return the updated isFavorite value
-          return { isFavorite: updated[0].isFavorite };
-        } catch (error: any) {
+        logger.debug(
+          `Executing app ${appId} in path ${app.path} after restart request`,
+        ); // Adjusted log
+
+        await executeApp({
+          appPath,
+          appId,
+          event,
+          isNeon: !!app.neonProjectId,
+          installCommand: app.installCommand,
+          startCommand: app.startCommand,
+        }); // This will handle starting either mode
+
+        return;
+      } catch (error) {
+        logger.error(`Error restarting app ${appId}:`, error);
+        throw error;
+      }
+    });
+  });
+
+  createTypedHandler(appContracts.editAppFile, async (_, params) => {
+    let { appId, filePath, content } = params;
+    // It should already be normalized, but just in case.
+    filePath = normalizePath(filePath);
+    const app = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
+
+    if (!app) {
+      throw new Error("App not found");
+    }
+
+    const appPath = getDyadAppPath(app.path);
+    const fullPath = path.join(appPath, filePath);
+
+    // Check if the path is within the app directory (security check)
+    if (!fullPath.startsWith(appPath)) {
+      throw new Error("Invalid file path");
+    }
+
+    if (app.neonProjectId && app.neonDevelopmentBranchId) {
+      try {
+        await storeDbTimestampAtCurrentVersion({
+          appId: app.id,
+        });
+      } catch (error) {
+        logger.error("Error storing Neon timestamp at current version:", error);
+        throw new Error(
+          "Could not store Neon timestamp at current version; database versioning functionality is not working: " +
+            error,
+        );
+      }
+    }
+
+    // Ensure directory exists
+    const dirPath = path.dirname(fullPath);
+    await fsPromises.mkdir(dirPath, { recursive: true });
+
+    try {
+      await fsPromises.writeFile(fullPath, content, "utf-8");
+
+      // Check if git repository exists and commit the change
+      if (fs.existsSync(path.join(appPath, ".git"))) {
+        await gitAdd({ path: appPath, filepath: filePath });
+
+        await gitCommit({
+          path: appPath,
+          message: `Updated ${filePath}`,
+        });
+      }
+    } catch (error: any) {
+      logger.error(`Error writing file ${filePath} for app ${appId}:`, error);
+      throw new Error(`Failed to write file: ${error.message}`);
+    }
+
+    if (app.supabaseProjectId) {
+      // Check if shared module was modified - redeploy all functions
+      if (isSharedServerModule(filePath)) {
+        try {
+          logger.info(
+            `Shared module ${filePath} modified, redeploying all Supabase functions`,
+          );
+          const deployErrors = await deployAllSupabaseFunctions({
+            appPath,
+            supabaseProjectId: app.supabaseProjectId,
+            supabaseOrganizationSlug: app.supabaseOrganizationSlug ?? null,
+          });
+          if (deployErrors.length > 0) {
+            return {
+              warning: `File saved, but some Supabase functions failed to deploy: ${deployErrors.join(", ")}`,
+            };
+          }
+        } catch (error) {
           logger.error(
-            `Error in add-to-favorite handler for app ID ${appId}:`,
+            `Error redeploying Supabase functions after shared module change:`,
             error,
           );
-          throw new Error(`Failed to toggle favorite status: ${error.message}`);
+          return {
+            warning: `File saved, but failed to redeploy Supabase functions: ${error}`,
+          };
         }
-      });
-    },
-  );
-
-  ipcMain.handle(
-    "rename-app",
-    async (
-      _,
-      {
-        appId,
-        appName,
-        appPath,
-      }: { appId: number; appName: string; appPath: string },
-    ): Promise<void> => {
-      return withLock(appId, async () => {
-        // Check if app exists
-        const app = await db.query.apps.findFirst({
-          where: eq(apps.id, appId),
-        });
-
-        if (!app) {
-          throw new Error("App not found");
-        }
-
-        const pathChanged = appPath !== app.path;
-
-        // Security: reject NEW absolute paths - rename-app should only accept relative paths for new paths
-        // Absolute paths should only be set through change-app-location handler
-        // If the path is changing and it's absolute, reject it
-        if (pathChanged && path.isAbsolute(appPath)) {
-          throw new Error(
-            "Absolute paths are not allowed when renaming an app folder. Please use a relative folder name only. To change the storage location, use the 'Change location' button.",
-          );
-        }
-
-        // Validate path for invalid characters when path changes (only for relative paths)
-        if (pathChanged) {
-          const invalidChars = /[<>:"|?*/\\]/;
-          const hasInvalidChars =
-            invalidChars.test(appPath) || /[\x00-\x1f]/.test(appPath);
-
-          if (hasInvalidChars) {
-            throw new Error(
-              `App path "${appPath}" contains characters that are not allowed in folder names: < > : " | ? * / \\ or control characters. Please use a different path.`,
-            );
-          }
-        }
-
-        // Check for conflicts with existing apps
-        const nameConflict = await db.query.apps.findFirst({
-          where: eq(apps.name, appName),
-        });
-
-        if (nameConflict && nameConflict.id !== appId) {
-          throw new Error(`An app with the name '${appName}' already exists`);
-        }
-
-        // If the current path is absolute, preserve the directory and only change the folder name
-        // Otherwise, resolve the new path using the default base path
-        const currentResolvedPath = getDyadAppPath(app.path);
-        const newAppPath = path.isAbsolute(app.path)
-          ? path.join(path.dirname(app.path), appPath)
-          : getDyadAppPath(appPath);
-
-        let hasPathConflict = false;
-        if (pathChanged) {
-          const allApps = await db.query.apps.findMany();
-          hasPathConflict = allApps.some((existingApp) => {
-            if (existingApp.id === appId) {
-              return false;
-            }
-            return getDyadAppPath(existingApp.path) === newAppPath;
+      } else if (isServerFunction(filePath)) {
+        // Regular function file - deploy just this function
+        try {
+          const functionName = extractFunctionNameFromPath(filePath);
+          await deploySupabaseFunction({
+            supabaseProjectId: app.supabaseProjectId,
+            functionName,
+            appPath,
+            organizationSlug: app.supabaseOrganizationSlug ?? null,
           });
+        } catch (error) {
+          logger.error(`Error deploying Supabase function ${filePath}:`, error);
+          return {
+            warning: `File saved, but failed to deploy Supabase function: ${filePath}: ${error}`,
+          };
+        }
+      }
+    }
+    return {};
+  });
+
+  createTypedHandler(appContracts.deleteApp, async (_, params) => {
+    const { appId } = params;
+    // Static server worker is NOT terminated here anymore
+
+    return withLock(appId, async () => {
+      // Check if app exists
+      const app = await db.query.apps.findFirst({
+        where: eq(apps.id, appId),
+      });
+
+      if (!app) {
+        throw new Error("App not found");
+      }
+
+      // Stop the app if it's running
+      if (runningApps.has(appId)) {
+        const appInfo = runningApps.get(appId)!;
+        try {
+          logger.log(`Stopping app ${appId} before deletion.`); // Adjusted log
+          await stopAppByInfo(appId, appInfo);
+        } catch (error: any) {
+          logger.error(`Error stopping app ${appId} before deletion:`, error); // Adjusted log
+          // Continue with deletion even if stopping fails
+        }
+      }
+
+      // Clear logs for this app to prevent memory leak
+      clearLogs(appId);
+
+      // Delete app from database
+      try {
+        await db.delete(apps).where(eq(apps.id, appId));
+        // Note: Associated chats will cascade delete
+      } catch (error: any) {
+        logger.error(`Error deleting app ${appId} from database:`, error);
+        throw new Error(`Failed to delete app from database: ${error.message}`);
+      }
+
+      // Delete app files
+      const appPath = getDyadAppPath(app.path);
+      try {
+        await fsPromises.rm(appPath, { recursive: true, force: true });
+      } catch (error: any) {
+        logger.error(`Error deleting app files for app ${appId}:`, error);
+        throw new Error(
+          `App deleted from database, but failed to delete app files. Please delete app files from ${appPath} manually.\n\nError: ${error.message}`,
+        );
+      }
+    });
+  });
+
+  createTypedHandler(appContracts.addToFavorite, async (_, params) => {
+    const { appId } = params;
+    return withLock(appId, async () => {
+      try {
+        // Fetch the current isFavorite value
+        const result = await db
+          .select({ isFavorite: apps.isFavorite })
+          .from(apps)
+          .where(eq(apps.id, appId))
+          .limit(1);
+
+        if (result.length === 0) {
+          throw new Error(`App with ID ${appId} not found.`);
         }
 
-        if (hasPathConflict) {
+        const currentIsFavorite = result[0].isFavorite;
+
+        // Toggle the isFavorite value
+        const updated = await db
+          .update(apps)
+          .set({ isFavorite: !currentIsFavorite })
+          .where(eq(apps.id, appId))
+          .returning({ isFavorite: apps.isFavorite });
+
+        if (updated.length === 0) {
           throw new Error(
-            `An app with the path '${newAppPath}' already exists`,
+            `Failed to update favorite status for app ID ${appId}.`,
           );
         }
 
-        // Stop the app if it's running
-        if (runningApps.has(appId)) {
-          const appInfo = runningApps.get(appId)!;
-          try {
-            await stopAppByInfo(appId, appInfo);
-          } catch (error: any) {
-            logger.error(`Error stopping app ${appId} before renaming:`, error);
-            throw new Error(
-              `Failed to stop app before renaming: ${error.message}`,
-            );
-          }
-        }
+        // Return the updated isFavorite value
+        return { isFavorite: updated[0].isFavorite };
+      } catch (error: any) {
+        logger.error(
+          `Error in add-to-favorite handler for app ID ${appId}:`,
+          error,
+        );
+        throw new Error(`Failed to toggle favorite status: ${error.message}`);
+      }
+    });
+  });
 
-        const oldAppPath = currentResolvedPath;
-        // Only move files if needed
-        if (newAppPath !== oldAppPath) {
-          // Move app files
-          try {
-            // Check if destination directory already exists
-            if (fs.existsSync(newAppPath)) {
-              throw new Error(
-                `Destination path '${newAppPath}' already exists`,
+  createTypedHandler(appContracts.renameApp, async (_, params) => {
+    const { appId, appName, appPath: newPath } = params;
+    return withLock(appId, async () => {
+      let appPath = newPath;
+      // Check if app exists
+      const app = await db.query.apps.findFirst({
+        where: eq(apps.id, appId),
+      });
+
+      if (!app) {
+        throw new Error("App not found");
+      }
+
+      const pathChanged = appPath !== app.path;
+
+      // Security: reject NEW absolute paths - rename-app should only accept relative paths for new paths
+      // Absolute paths should only be set through change-app-location handler
+      // If the path is changing and it's absolute, reject it
+      if (pathChanged && path.isAbsolute(appPath)) {
+        throw new Error(
+          "Absolute paths are not allowed when renaming an app folder. Please use a relative folder name only. To change the storage location, use the 'Change location' button.",
+        );
+      }
+
+      // Validate path for invalid characters when path changes (only for relative paths)
+      if (pathChanged) {
+        const invalidChars = /[<>:"|?*/\\]/;
+        const hasInvalidChars =
+          invalidChars.test(appPath) || /[\x00-\x1f]/.test(appPath);
+
+        if (hasInvalidChars) {
+          throw new Error(
+            `App path "${appPath}" contains characters that are not allowed in folder names: < > : " | ? * / \\ or control characters. Please use a different path.`,
+          );
+        }
+      }
+
+      // Check for conflicts with existing apps
+      const nameConflict = await db.query.apps.findFirst({
+        where: eq(apps.name, appName),
+      });
+
+      if (nameConflict && nameConflict.id !== appId) {
+        throw new Error(`An app with the name '${appName}' already exists`);
+      }
+
+      // If the current path is absolute, preserve the directory and only change the folder name
+      // Otherwise, resolve the new path using the default base path
+      const currentResolvedPath = getDyadAppPath(app.path);
+      const newAppPath = path.isAbsolute(app.path)
+        ? path.join(path.dirname(app.path), appPath)
+        : getDyadAppPath(appPath);
+
+      let hasPathConflict = false;
+      if (pathChanged) {
+        const allApps = await db.query.apps.findMany();
+        hasPathConflict = allApps.some((existingApp) => {
+          if (existingApp.id === appId) {
+            return false;
+          }
+          return getDyadAppPath(existingApp.path) === newAppPath;
+        });
+      }
+
+      if (hasPathConflict) {
+        throw new Error(`An app with the path '${newAppPath}' already exists`);
+      }
+
+      // Stop the app if it's running
+      if (runningApps.has(appId)) {
+        const appInfo = runningApps.get(appId)!;
+        try {
+          await stopAppByInfo(appId, appInfo);
+        } catch (error: any) {
+          logger.error(`Error stopping app ${appId} before renaming:`, error);
+          throw new Error(
+            `Failed to stop app before renaming: ${error.message}`,
+          );
+        }
+      }
+
+      const oldAppPath = currentResolvedPath;
+      // Only move files if needed
+      if (newAppPath !== oldAppPath) {
+        // Move app files
+        try {
+          // Check if destination directory already exists
+          if (fs.existsSync(newAppPath)) {
+            throw new Error(`Destination path '${newAppPath}' already exists`);
+          }
+
+          // Create parent directory if it doesn't exist
+          await fsPromises.mkdir(path.dirname(newAppPath), {
+            recursive: true,
+          });
+
+          // Copy the directory without node_modules
+          await copyDir(oldAppPath, newAppPath, undefined, {
+            excludeNodeModules: true,
+          });
+        } catch (error: any) {
+          logger.error(
+            `Error moving app files from ${oldAppPath} to ${newAppPath}:`,
+            error,
+          );
+          // Attempt cleanup if destination exists (partial copy may have occurred)
+          if (fs.existsSync(newAppPath)) {
+            try {
+              await fsPromises.rm(newAppPath, {
+                recursive: true,
+                force: true,
+              });
+            } catch (cleanupError) {
+              logger.warn(
+                `Failed to clean up partial move at ${newAppPath}:`,
+                cleanupError,
               );
             }
+          }
+          throw new Error(`Failed to move app files: ${error.message}`);
+        }
 
-            // Create parent directory if it doesn't exist
-            await fsPromises.mkdir(path.dirname(newAppPath), {
-              recursive: true,
-            });
+        try {
+          // Delete the old directory
+          await fsPromises.rm(oldAppPath, { recursive: true, force: true });
+        } catch (error: any) {
+          // Why is this just a warning? This happens quite often on Windows
+          // because it has an aggressive file lock.
+          //
+          // Not deleting the old directory is annoying, but not a big deal
+          // since the user can do it themselves if they need to.
+          logger.warn(`Error deleting old app directory ${oldAppPath}:`, error);
+        }
+      }
 
-            // Copy the directory without node_modules
-            await copyDir(oldAppPath, newAppPath, undefined, {
+      // Update app in database
+      // If the current path was absolute, store the new absolute path; otherwise store the relative path
+      const pathToStore = path.isAbsolute(app.path) ? newAppPath : appPath;
+      try {
+        await db
+          .update(apps)
+          .set({
+            name: appName,
+            path: pathToStore,
+          })
+          .where(eq(apps.id, appId))
+          .returning();
+
+        return;
+      } catch (error: any) {
+        // Attempt to rollback the file move
+        if (newAppPath !== oldAppPath) {
+          try {
+            // Copy back from new to old
+            await copyDir(newAppPath, oldAppPath, undefined, {
               excludeNodeModules: true,
             });
-          } catch (error: any) {
+            // Delete the new directory
+            await fsPromises.rm(newAppPath, { recursive: true, force: true });
+          } catch (rollbackError) {
             logger.error(
-              `Error moving app files from ${oldAppPath} to ${newAppPath}:`,
-              error,
-            );
-            // Attempt cleanup if destination exists (partial copy may have occurred)
-            if (fs.existsSync(newAppPath)) {
-              try {
-                await fsPromises.rm(newAppPath, {
-                  recursive: true,
-                  force: true,
-                });
-              } catch (cleanupError) {
-                logger.warn(
-                  `Failed to clean up partial move at ${newAppPath}:`,
-                  cleanupError,
-                );
-              }
-            }
-            throw new Error(`Failed to move app files: ${error.message}`);
-          }
-
-          try {
-            // Delete the old directory
-            await fsPromises.rm(oldAppPath, { recursive: true, force: true });
-          } catch (error: any) {
-            // Why is this just a warning? This happens quite often on Windows
-            // because it has an aggressive file lock.
-            //
-            // Not deleting the old directory is annoying, but not a big deal
-            // since the user can do it themselves if they need to.
-            logger.warn(
-              `Error deleting old app directory ${oldAppPath}:`,
-              error,
+              `Failed to rollback file move during rename error:`,
+              rollbackError,
             );
           }
         }
 
-        // Update app in database
-        // If the current path was absolute, store the new absolute path; otherwise store the relative path
-        const pathToStore = path.isAbsolute(app.path) ? newAppPath : appPath;
-        try {
-          await db
-            .update(apps)
-            .set({
-              name: appName,
-              path: pathToStore,
-            })
-            .where(eq(apps.id, appId))
-            .returning();
+        logger.error(`Error updating app ${appId} in database:`, error);
+        throw new Error(`Failed to update app in database: ${error.message}`);
+      }
+    });
+  });
 
-          return;
-        } catch (error: any) {
-          // Attempt to rollback the file move
-          if (newAppPath !== oldAppPath) {
-            try {
-              // Copy back from new to old
-              await copyDir(newAppPath, oldAppPath, undefined, {
-                excludeNodeModules: true,
-              });
-              // Delete the new directory
-              await fsPromises.rm(newAppPath, { recursive: true, force: true });
-            } catch (rollbackError) {
-              logger.error(
-                `Failed to rollback file move during rename error:`,
-                rollbackError,
-              );
-            }
-          }
-
-          logger.error(`Error updating app ${appId} in database:`, error);
-          throw new Error(`Failed to update app in database: ${error.message}`);
-        }
-      });
-    },
-  );
-
-  ipcMain.handle("reset-all", async (): Promise<void> => {
+  createTypedHandler(systemContracts.resetAll, async () => {
     logger.log("start: resetting all apps and settings.");
     // Stop all running apps first
     logger.log("stopping all running apps...");
@@ -1677,14 +1605,14 @@ export function registerAppHandlers() {
     logger.log("reset all complete.");
   });
 
-  ipcMain.handle("get-app-version", async (): Promise<{ version: string }> => {
+  createTypedHandler(systemContracts.getAppVersion, async () => {
     // Read version from package.json at project root
     const packageJsonPath = path.resolve(__dirname, "..", "..", "package.json");
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
     return { version: packageJson.version };
   });
 
-  handle("rename-branch", async (_, params: RenameBranchParams) => {
+  createTypedHandler(appContracts.renameBranch, async (_, params) => {
     const { appId, oldBranchName, newBranchName } = params;
     const app = await db.query.apps.findFirst({
       where: eq(apps.id, appId),
@@ -1734,66 +1662,60 @@ export function registerAppHandlers() {
     });
   });
 
-  handle(
-    "respond-to-app-input",
-    async (_, { appId, response }: RespondToAppInputParams) => {
-      if (response !== "y" && response !== "n") {
-        throw new Error(`Invalid response: ${response}`);
-      }
-      const appInfo = runningApps.get(appId);
+  createTypedHandler(appContracts.respondToAppInput, async (_, params) => {
+    const { appId, response } = params;
+    if (response !== "y" && response !== "n") {
+      throw new Error(`Invalid response: ${response}`);
+    }
+    const appInfo = runningApps.get(appId);
 
-      if (!appInfo) {
-        throw new Error(`App ${appId} is not running`);
-      }
+    if (!appInfo) {
+      throw new Error(`App ${appId} is not running`);
+    }
 
-      const { process } = appInfo;
+    const { process } = appInfo;
 
-      if (!process.stdin) {
-        throw new Error(`App ${appId} process has no stdin available`);
-      }
+    if (!process.stdin) {
+      throw new Error(`App ${appId} process has no stdin available`);
+    }
 
-      try {
-        // Write the response to stdin with a newline
-        process.stdin.write(`${response}\n`);
-        logger.debug(`Sent response '${response}' to app ${appId} stdin`);
-      } catch (error: any) {
-        logger.error(`Error sending response to app ${appId}:`, error);
-        throw new Error(`Failed to send response to app: ${error.message}`);
-      }
-    },
-  );
+    try {
+      // Write the response to stdin with a newline
+      process.stdin.write(`${response}\n`);
+      logger.debug(`Sent response '${response}' to app ${appId} stdin`);
+    } catch (error: any) {
+      logger.error(`Error sending response to app ${appId}:`, error);
+      throw new Error(`Failed to send response to app: ${error.message}`);
+    }
+  });
 
-  handle(
-    "search-app-files",
-    async (
-      _,
-      { appId, query }: { appId: number; query: string },
-    ): Promise<AppFileSearchResult[]> => {
-      const trimmedQuery = query.trim();
-      if (!trimmedQuery) {
-        return [];
-      }
+  createTypedHandler(appContracts.searchAppFiles, async (_, params) => {
+    const { appId, query } = params;
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) {
+      return [];
+    }
 
-      const appRecord = await db.query.apps.findFirst({
-        where: eq(apps.id, appId),
-      });
+    const appRecord = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
 
-      if (!appRecord) {
-        throw new Error("App not found");
-      }
+    if (!appRecord) {
+      throw new Error("App not found");
+    }
 
-      const appPath = getDyadAppPath(appRecord.path);
+    const appPath = getDyadAppPath(appRecord.path);
 
-      // Search file contents with ripgrep
-      const contentMatches = await searchAppFilesWithRipgrep({
-        appPath,
-        query: trimmedQuery,
-      });
+    // Search file contents with ripgrep
+    const contentMatches = await searchAppFilesWithRipgrep({
+      appPath,
+      query: trimmedQuery,
+    });
 
-      return contentMatches;
-    },
-  );
+    return contentMatches;
+  });
 
+  // search-app is not in app contracts - keep using handle
   handle(
     "search-app",
     async (_, searchQuery: string): Promise<AppSearchResult[]> => {
@@ -1880,14 +1802,16 @@ export function registerAppHandlers() {
   );
 
   // Handler for adding logs to central store from renderer
-  ipcMain.handle("add-log", async (_, entry: ConsoleEntry) => {
+  createTypedHandler(miscContracts.addLog, async (_, entry) => {
     addLog(entry);
   });
 
   // Handler for clearing logs for a specific app
-  ipcMain.handle("clear-logs", async (_, { appId }: { appId: number }) => {
+  createTypedHandler(miscContracts.clearLogs, async (_, { appId }) => {
     clearLogs(appId);
   });
+
+  // select-app-location is not in app contracts - keep using handle
   handle(
     "select-app-location",
     async (
@@ -1908,152 +1832,144 @@ export function registerAppHandlers() {
     },
   );
 
-  handle(
-    "change-app-location",
-    async (
-      _,
-      params: ChangeAppLocationParams,
-    ): Promise<ChangeAppLocationResult> => {
-      const { appId, parentDirectory } = params;
+  createTypedHandler(appContracts.changeAppLocation, async (_, params) => {
+    const { appId, parentDirectory } = params;
 
-      if (!parentDirectory) {
-        throw new Error("No destination folder provided.");
+    if (!parentDirectory) {
+      throw new Error("No destination folder provided.");
+    }
+
+    if (!path.isAbsolute(parentDirectory)) {
+      throw new Error("Please select an absolute destination folder.");
+    }
+
+    const normalizedParentDir = path.normalize(parentDirectory);
+
+    return withLock(appId, async () => {
+      const app = await db.query.apps.findFirst({
+        where: eq(apps.id, appId),
+      });
+
+      if (!app) {
+        throw new Error("App not found");
       }
 
-      if (!path.isAbsolute(parentDirectory)) {
-        throw new Error("Please select an absolute destination folder.");
+      const currentResolvedPath = getDyadAppPath(app.path);
+      // Extract app folder name from current path (works for both absolute and relative paths)
+      const appFolderName = path.basename(
+        path.isAbsolute(app.path) ? app.path : currentResolvedPath,
+      );
+      const nextResolvedPath = path.join(normalizedParentDir, appFolderName);
+
+      if (currentResolvedPath === nextResolvedPath) {
+        // Path hasn't changed, but we should update to absolute path format if needed
+        if (!path.isAbsolute(app.path)) {
+          await db
+            .update(apps)
+            .set({ path: nextResolvedPath })
+            .where(eq(apps.id, appId));
+        }
+        return {
+          resolvedPath: nextResolvedPath,
+        };
       }
 
-      const normalizedParentDir = path.normalize(parentDirectory);
+      const allApps = await db.query.apps.findMany();
+      const conflict = allApps.some(
+        (existingApp) =>
+          existingApp.id !== appId &&
+          getDyadAppPath(existingApp.path) === nextResolvedPath,
+      );
 
-      return withLock(appId, async () => {
-        const app = await db.query.apps.findFirst({
-          where: eq(apps.id, appId),
+      if (conflict) {
+        throw new Error(
+          `Another app already exists at '${nextResolvedPath}'. Please choose a different folder.`,
+        );
+      }
+
+      if (fs.existsSync(nextResolvedPath)) {
+        throw new Error(
+          `Destination path '${nextResolvedPath}' already exists. Please choose an empty folder.`,
+        );
+      }
+
+      // Check if source path exists - if not, just update the DB path without copying
+      const sourceExists = fs.existsSync(currentResolvedPath);
+      if (!sourceExists) {
+        logger.warn(
+          `Source path ${currentResolvedPath} does not exist. Updating database path only.`,
+        );
+        await db
+          .update(apps)
+          .set({ path: nextResolvedPath })
+          .where(eq(apps.id, appId));
+        return {
+          resolvedPath: nextResolvedPath,
+        };
+      }
+
+      if (runningApps.has(appId)) {
+        const appInfo = runningApps.get(appId)!;
+        try {
+          await stopAppByInfo(appId, appInfo);
+        } catch (error: any) {
+          logger.error(`Error stopping app ${appId} before moving:`, error);
+          throw new Error(`Failed to stop app before moving: ${error.message}`);
+        }
+      }
+
+      await fsPromises.mkdir(normalizedParentDir, { recursive: true });
+
+      try {
+        // Copy the directory without node_modules
+        await copyDir(currentResolvedPath, nextResolvedPath, undefined, {
+          excludeNodeModules: true,
         });
 
-        if (!app) {
-          throw new Error("App not found");
-        }
-
-        const currentResolvedPath = getDyadAppPath(app.path);
-        // Extract app folder name from current path (works for both absolute and relative paths)
-        const appFolderName = path.basename(
-          path.isAbsolute(app.path) ? app.path : currentResolvedPath,
-        );
-        const nextResolvedPath = path.join(normalizedParentDir, appFolderName);
-
-        if (currentResolvedPath === nextResolvedPath) {
-          // Path hasn't changed, but we should update to absolute path format if needed
-          if (!path.isAbsolute(app.path)) {
-            await db
-              .update(apps)
-              .set({ path: nextResolvedPath })
-              .where(eq(apps.id, appId));
-          }
-          return {
-            resolvedPath: nextResolvedPath,
-          };
-        }
-
-        const allApps = await db.query.apps.findMany();
-        const conflict = allApps.some(
-          (existingApp) =>
-            existingApp.id !== appId &&
-            getDyadAppPath(existingApp.path) === nextResolvedPath,
-        );
-
-        if (conflict) {
-          throw new Error(
-            `Another app already exists at '${nextResolvedPath}'. Please choose a different folder.`,
-          );
-        }
-
-        if (fs.existsSync(nextResolvedPath)) {
-          throw new Error(
-            `Destination path '${nextResolvedPath}' already exists. Please choose an empty folder.`,
-          );
-        }
-
-        // Check if source path exists - if not, just update the DB path without copying
-        const sourceExists = fs.existsSync(currentResolvedPath);
-        if (!sourceExists) {
-          logger.warn(
-            `Source path ${currentResolvedPath} does not exist. Updating database path only.`,
-          );
-          await db
-            .update(apps)
-            .set({ path: nextResolvedPath })
-            .where(eq(apps.id, appId));
-          return {
-            resolvedPath: nextResolvedPath,
-          };
-        }
-
-        if (runningApps.has(appId)) {
-          const appInfo = runningApps.get(appId)!;
-          try {
-            await stopAppByInfo(appId, appInfo);
-          } catch (error: any) {
-            logger.error(`Error stopping app ${appId} before moving:`, error);
-            throw new Error(
-              `Failed to stop app before moving: ${error.message}`,
-            );
-          }
-        }
-
-        await fsPromises.mkdir(normalizedParentDir, { recursive: true });
+        // Update path to absolute path
+        await db
+          .update(apps)
+          .set({ path: nextResolvedPath })
+          .where(eq(apps.id, appId));
 
         try {
-          // Copy the directory without node_modules
-          await copyDir(currentResolvedPath, nextResolvedPath, undefined, {
-            excludeNodeModules: true,
+          await fsPromises.rm(currentResolvedPath, {
+            recursive: true,
+            force: true,
           });
+        } catch (error: any) {
+          logger.warn(
+            `Error deleting old app directory ${currentResolvedPath}:`,
+            error,
+          );
+        }
 
-          // Update path to absolute path
-          await db
-            .update(apps)
-            .set({ path: nextResolvedPath })
-            .where(eq(apps.id, appId));
-
+        return {
+          resolvedPath: nextResolvedPath,
+        };
+      } catch (error: any) {
+        // Attempt cleanup if destination exists (partial copy may have occurred)
+        if (fs.existsSync(nextResolvedPath)) {
           try {
-            await fsPromises.rm(currentResolvedPath, {
+            await fsPromises.rm(nextResolvedPath, {
               recursive: true,
               force: true,
             });
-          } catch (error: any) {
+          } catch (cleanupError) {
             logger.warn(
-              `Error deleting old app directory ${currentResolvedPath}:`,
-              error,
+              `Failed to clean up partial move at ${nextResolvedPath}:`,
+              cleanupError,
             );
           }
-
-          return {
-            resolvedPath: nextResolvedPath,
-          };
-        } catch (error: any) {
-          // Attempt cleanup if destination exists (partial copy may have occurred)
-          if (fs.existsSync(nextResolvedPath)) {
-            try {
-              await fsPromises.rm(nextResolvedPath, {
-                recursive: true,
-                force: true,
-              });
-            } catch (cleanupError) {
-              logger.warn(
-                `Failed to clean up partial move at ${nextResolvedPath}:`,
-                cleanupError,
-              );
-            }
-          }
-          logger.error(
-            `Error moving app files from ${currentResolvedPath} to ${nextResolvedPath}:`,
-            error,
-          );
-          throw new Error(`Failed to move app files: ${error.message}`);
         }
-      });
-    },
-  );
+        logger.error(
+          `Error moving app files from ${currentResolvedPath} to ${nextResolvedPath}:`,
+          error,
+        );
+        throw new Error(`Failed to move app files: ${error.message}`);
+      }
+    });
+  });
 }
 
 function getCommand({

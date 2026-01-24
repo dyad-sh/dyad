@@ -1,0 +1,76 @@
+# Commands that should be BLOCKED by the python-permission-hook
+# Format: one command per line, lines starting with # are comments
+# These are python commands that attempt to run scripts OUTSIDE the .claude directory
+
+# =============================================================================
+# SCRIPTS IN CURRENT DIRECTORY
+# =============================================================================
+
+python script.py
+python3 script.py
+python test.py
+python3 test.py
+python ./script.py
+python3 ./script.py
+
+# =============================================================================
+# SCRIPTS IN OTHER DIRECTORIES
+# =============================================================================
+
+python src/script.py
+python3 src/script.py
+python src/test.py
+python3 src/test.py
+python lib/utils.py
+python3 lib/utils.py
+
+# =============================================================================
+# ABSOLUTE PATHS OUTSIDE .claude
+# =============================================================================
+
+python /usr/local/bin/script.py
+python3 /usr/local/bin/script.py
+python /tmp/malicious.py
+python3 /tmp/malicious.py
+python /home/user/script.py
+python3 /home/user/script.py
+
+# =============================================================================
+# PATH TRAVERSAL ATTEMPTS
+# =============================================================================
+
+python ../malicious.py
+python3 ../malicious.py
+python ../../escape.py
+python3 ../../escape.py
+python .claude/../escape.py
+python3 .claude/../escape.py
+
+# =============================================================================
+# QUOTED PATHS OUTSIDE .claude
+# =============================================================================
+
+python "script.py"
+python3 "script.py"
+python 'script.py'
+python3 'script.py'
+python "/tmp/malicious.py"
+python3 "/tmp/malicious.py"
+
+# =============================================================================
+# WITH FLAGS
+# =============================================================================
+
+python -u script.py
+python3 -u script.py
+python -B /tmp/malicious.py
+python3 -B /tmp/malicious.py
+
+# =============================================================================
+# WITH ENVIRONMENT VARIABLES
+# =============================================================================
+
+FOO=bar python script.py
+FOO=bar python3 script.py
+DEBUG=1 python /tmp/test.py
+DEBUG=1 python3 /tmp/test.py

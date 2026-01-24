@@ -1,25 +1,22 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import type {
   CustomTheme,
   CreateCustomThemeParams,
   UpdateCustomThemeParams,
   GenerateThemePromptParams,
   GenerateThemePromptResult,
-} from "@/ipc/ipc_types";
-
-// Query key for custom themes
-export const CUSTOM_THEMES_QUERY_KEY = ["custom-themes"];
+} from "@/ipc/types";
+import { queryKeys } from "@/lib/queryKeys";
 
 /**
  * Hook to fetch all custom themes.
  */
 export function useCustomThemes() {
   const query = useQuery({
-    queryKey: CUSTOM_THEMES_QUERY_KEY,
+    queryKey: queryKeys.customThemes.all,
     queryFn: async (): Promise<CustomTheme[]> => {
-      const ipcClient = IpcClient.getInstance();
-      return ipcClient.getCustomThemes();
+      return ipc.template.getCustomThemes();
     },
     meta: {
       showErrorToast: true,
@@ -41,13 +38,12 @@ export function useCreateCustomTheme() {
     mutationFn: async (
       params: CreateCustomThemeParams,
     ): Promise<CustomTheme> => {
-      const ipcClient = IpcClient.getInstance();
-      return ipcClient.createCustomTheme(params);
+      return ipc.template.createCustomTheme(params);
     },
     onSuccess: () => {
       // Invalidate all custom theme queries using prefix matching
       queryClient.invalidateQueries({
-        queryKey: ["custom-themes"],
+        queryKey: queryKeys.customThemes.all,
       });
     },
   });
@@ -60,13 +56,12 @@ export function useUpdateCustomTheme() {
     mutationFn: async (
       params: UpdateCustomThemeParams,
     ): Promise<CustomTheme> => {
-      const ipcClient = IpcClient.getInstance();
-      return ipcClient.updateCustomTheme(params);
+      return ipc.template.updateCustomTheme(params);
     },
     onSuccess: () => {
       // Invalidate all custom theme queries using prefix matching
       queryClient.invalidateQueries({
-        queryKey: ["custom-themes"],
+        queryKey: queryKeys.customThemes.all,
       });
     },
   });
@@ -77,13 +72,12 @@ export function useDeleteCustomTheme() {
 
   return useMutation({
     mutationFn: async (id: number): Promise<void> => {
-      const ipcClient = IpcClient.getInstance();
-      await ipcClient.deleteCustomTheme({ id });
+      await ipc.template.deleteCustomTheme({ id });
     },
     onSuccess: () => {
       // Invalidate all custom theme queries using prefix matching
       queryClient.invalidateQueries({
-        queryKey: ["custom-themes"],
+        queryKey: queryKeys.customThemes.all,
       });
     },
   });
@@ -94,8 +88,7 @@ export function useGenerateThemePrompt() {
     mutationFn: async (
       params: GenerateThemePromptParams,
     ): Promise<GenerateThemePromptResult> => {
-      const ipcClient = IpcClient.getInstance();
-      return ipcClient.generateThemePrompt(params);
+      return ipc.template.generateThemePrompt(params);
     },
   });
 }

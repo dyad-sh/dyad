@@ -1,0 +1,73 @@
+name: Cancel CI after merge
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  cancel-ci:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel CI workflows for merged PR branch
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pr = context.payload.pull_request;
+            // Use head SHA instead of branch name - works for both fork and non-fork PRs
+            // since workflow runs are registered to the base repo regardless
+            const headSha = pr.head.sha;
+
+            console.log(`Looking for CI workflows to cancel for SHA: ${headSha}`);
+
+            // Use workflow file path instead of display name for reliable matching
+            const workflowFile = 'ci.yml';
+
+            // Query all cancelable statuses: in_progress, queued, pending, waiting
+            const statuses = ['in_progress', 'queued', 'pending', 'waiting'];
+            const allRuns = [];
+
+            for (const status of statuses) {
+              try {
+                const { data } = await github.rest.actions.listWorkflowRuns({
+                  owner,
+                  repo,
+                  workflow_id: workflowFile,
+                  head_sha: headSha,
+                  status,
+                });
+                allRuns.push(...data.workflow_runs);
+              } catch (error) {
+                // Status may not be supported or no runs found
+                console.log(`No runs found for status '${status}': ${error.message}`);
+              }
+            }
+
+            if (allRuns.length === 0) {
+              console.log('No cancelable CI workflows found for this SHA');
+              return;
+            }
+
+            // Deduplicate runs by ID (in case a run appears in multiple status queries)
+            const uniqueRuns = [...new Map(allRuns.map(run => [run.id, run])).values()];
+
+            console.log(`Found ${uniqueRuns.length} workflow run(s) to cancel`);
+
+            // Cancel each workflow run
+            for (const run of uniqueRuns) {
+              console.log(`Cancelling workflow run ${run.id} (status: ${run.status})`);
+              try {
+                await github.rest.actions.cancelWorkflowRun({
+                  owner,
+                  repo,
+                  run_id: run.id,
+                });
+                console.log(`Successfully cancelled workflow run ${run.id}`);
+              } catch (error) {
+                console.log(`Failed to cancel workflow run ${run.id}: ${error.message}`);
+              }
+            }

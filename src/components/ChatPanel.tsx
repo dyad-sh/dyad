@@ -5,7 +5,7 @@ import {
   chatStreamCountByIdAtom,
   isStreamingByIdAtom,
 } from "../atoms/chatAtoms";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 
 import { ChatHeader } from "./chat/ChatHeader";
 import { MessagesList } from "./chat/MessagesList";
@@ -123,7 +123,7 @@ export function ChatPanel({
       // no-op when no chat
       return;
     }
-    const chat = await IpcClient.getInstance().getChat(chatId);
+    const chat = await ipc.chat.getChat(chatId);
     setMessagesById((prev) => {
       const next = new Map(prev);
       next.set(chatId, chat.messages);

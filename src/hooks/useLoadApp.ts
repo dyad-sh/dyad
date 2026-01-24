@@ -1,9 +1,9 @@
 import { useEffect } from "react";
 import { useQuery, QueryClient } from "@tanstack/react-query";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc, type App } from "@/ipc/types";
 import { useAtom } from "jotai";
 import { currentAppAtom } from "@/atoms/appAtoms";
-import { App } from "@/ipc/ipc_types";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function useLoadApp(appId: number | null) {
   const [, setApp] = useAtom(currentAppAtom);
@@ -14,13 +14,12 @@ export function useLoadApp(appId: number | null) {
     error,
     refetch: refreshApp,
   } = useQuery<App | null, Error>({
-    queryKey: ["app", appId],
+    queryKey: queryKeys.apps.detail({ appId }),
     queryFn: async () => {
       if (appId === null) {
         return null;
       }
-      const ipcClient = IpcClient.getInstance();
-      return ipcClient.getApp(appId);
+      return ipc.app.getApp(appId);
     },
     enabled: appId !== null,
     // Deliberately not showing error toast here because
@@ -44,5 +43,7 @@ export const invalidateAppQuery = (
   queryClient: QueryClient,
   { appId }: { appId: number | null },
 ) => {
-  return queryClient.invalidateQueries({ queryKey: ["app", appId] });
+  return queryClient.invalidateQueries({
+    queryKey: queryKeys.apps.detail({ appId }),
+  });
 };

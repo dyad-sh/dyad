@@ -1,4 +1,4 @@
-import { ComponentSelection, VisualEditingChange } from "@/ipc/ipc_types";
+import { ComponentSelection, VisualEditingChange } from "@/ipc/types";
 import { atom } from "jotai";
 
 export const selectedComponentsPreviewAtom = atom<ComponentSelection[]>([]);

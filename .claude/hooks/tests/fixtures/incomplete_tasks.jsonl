@@ -1,0 +1,33 @@
+{"type": "user", "message": {"content": "Fix all the PR review comments on this branch"}}
+{"type": "assistant", "message": {"content": [{"type": "text", "text": "I'll help you fix the PR review comments. Let me create a task list to track progress."}, {"type": "tool_use", "name": "TaskCreate", "input": {"subject": "Determine the PR to work on", "description": "Get the current branch's PR", "activeForm": "Determining PR"}}]}}
+{"type": "tool_result", "content": "Task 1 created"}
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "TaskCreate", "input": {"subject": "Fetch unresolved PR review threads", "description": "Get all review threads", "activeForm": "Fetching review threads"}}]}}
+{"type": "tool_result", "content": "Task 2 created"}
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "TaskCreate", "input": {"subject": "Process and address review comments", "description": "Fix each comment", "activeForm": "Processing comments"}}]}}
+{"type": "tool_result", "content": "Task 3 created"}
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "TaskCreate", "input": {"subject": "Verify, commit, and push changes", "description": "Run lint, commit, push", "activeForm": "Verifying and pushing"}}]}}
+{"type": "tool_result", "content": "Task 4 created"}
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "TaskCreate", "input": {"subject": "Provide summary to user", "description": "Report what was done", "activeForm": "Providing summary"}}]}}
+{"type": "tool_result", "content": "Task 5 created"}
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "TaskUpdate", "input": {"taskId": "1", "status": "in_progress"}}]}}
+{"type": "tool_result", "content": "Task 1 updated to in_progress"}
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": "gh pr view --json number"}}]}}
+{"type": "tool_result", "content": "PR #123"}
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "TaskUpdate", "input": {"taskId": "1", "status": "completed"}}]}}
+{"type": "tool_result", "content": "Task 1 completed"}
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "TaskUpdate", "input": {"taskId": "2", "status": "in_progress"}}]}}
+{"type": "tool_result", "content": "Task 2 updated to in_progress"}
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": "gh api graphql"}}]}}
+{"type": "tool_result", "content": "Found 2 review threads"}
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "TaskUpdate", "input": {"taskId": "2", "status": "completed"}}]}}
+{"type": "tool_result", "content": "Task 2 completed"}
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "TaskUpdate", "input": {"taskId": "3", "status": "in_progress"}}]}}
+{"type": "tool_result", "content": "Task 3 updated to in_progress"}
+{"type": "assistant", "message": {"content": [{"type": "text", "text": "I found 2 review comments to address."}, {"type": "tool_use", "name": "Edit", "input": {"file_path": "src/main.ts", "old_string": "foo", "new_string": "bar"}}]}}
+{"type": "tool_result", "content": "File edited"}
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "TaskUpdate", "input": {"taskId": "3", "status": "completed"}}]}}
+{"type": "tool_result", "content": "Task 3 completed"}
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "TaskUpdate", "input": {"taskId": "4", "status": "in_progress"}}]}}
+{"type": "tool_result", "content": "Task 4 updated to in_progress"}
+{"type": "assistant", "message": {"content": [{"type": "text", "text": "Now running lint checks..."}, {"type": "tool_use", "name": "Bash", "input": {"command": "npm run lint"}}]}}
+{"type": "tool_result", "content": "Lint passed"}

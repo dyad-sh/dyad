@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
+import { queryKeys } from "@/lib/queryKeys";
 
 export interface PromptItem {
   id: number;
@@ -13,10 +14,9 @@ export interface PromptItem {
 export function usePrompts() {
   const queryClient = useQueryClient();
   const listQuery = useQuery({
-    queryKey: ["prompts"],
+    queryKey: queryKeys.prompts.all,
     queryFn: async (): Promise<PromptItem[]> => {
-      const ipc = IpcClient.getInstance();
-      return ipc.listPrompts();
+      return ipc.prompt.list();
     },
     meta: { showErrorToast: true },
   });
@@ -27,11 +27,10 @@ export function usePrompts() {
       description?: string;
       content: string;
     }): Promise<PromptItem> => {
-      const ipc = IpcClient.getInstance();
-      return ipc.createPrompt(params);
+      return ipc.prompt.create(params);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["prompts"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.prompts.all });
     },
     meta: {
       showErrorToast: true,
@@ -45,11 +44,10 @@ export function usePrompts() {
       description?: string;
       content: string;
     }): Promise<void> => {
-      const ipc = IpcClient.getInstance();
-      return ipc.updatePrompt(params);
+      return ipc.prompt.update(params);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["prompts"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.prompts.all });
     },
     meta: {
       showErrorToast: true,
@@ -58,11 +56,10 @@ export function usePrompts() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number): Promise<void> => {
-      const ipc = IpcClient.getInstance();
-      return ipc.deletePrompt(id);
+      return ipc.prompt.delete(id);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["prompts"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.prompts.all });
     },
     meta: {
       showErrorToast: true,

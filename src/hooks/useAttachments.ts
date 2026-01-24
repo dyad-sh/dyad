@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import type { FileAttachment } from "@/ipc/ipc_types";
+import type { FileAttachment } from "@/ipc/types";
 import { useAtom } from "jotai";
 import { attachmentsAtom } from "@/atoms/chatAtoms";
 

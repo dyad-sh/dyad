@@ -1,7 +1,7 @@
 import { db } from "../../db";
 import { messages } from "../../db/schema";
 import { eq } from "drizzle-orm";
-import { Message } from "../ipc_types";
+import { Message } from "@/ipc/types";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -29,14 +29,10 @@ export async function executeAddDependency({
   // Update the message content with the installation results
   const updatedContent = message.content.replace(
     new RegExp(
-      `<dyad-add-dependency packages="${packages.join(
-        " ",
-      )}">[^<]*</dyad-add-dependency>`,
+      `<dyad-add-dependency packages="${packages.join(" ")}">[^<]*</dyad-add-dependency>`,
       "g",
     ),
-    `<dyad-add-dependency packages="${packages.join(
-      " ",
-    )}">${installResults}</dyad-add-dependency>`,
+    `<dyad-add-dependency packages="${packages.join(" ")}">${installResults}</dyad-add-dependency>`,
   );
 
   // Save the updated message back to the database

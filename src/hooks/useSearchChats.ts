@@ -1,16 +1,17 @@
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import type { ChatSearchResult } from "@/lib/schemas";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function useSearchChats(appId: number | null, query: string) {
   const enabled = Boolean(appId && query && query.trim().length > 0);
 
   const { data, isFetching, isLoading } = useQuery({
-    queryKey: ["search-chats", appId, query],
+    queryKey: queryKeys.chats.search({ appId, query }),
     enabled,
     queryFn: async (): Promise<ChatSearchResult[]> => {
       // Non-null assertion safe due to enabled guard
-      return IpcClient.getInstance().searchChats(appId as number, query);
+      return ipc.chat.searchChats({ appId: appId as number, query });
     },
     placeholderData: keepPreviousData,
     retry: 0,

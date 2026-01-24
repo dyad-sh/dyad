@@ -1,5 +1,5 @@
 import { FileText, X, MessageSquare, Upload } from "lucide-react";
-import type { FileAttachment } from "@/ipc/ipc_types";
+import type { FileAttachment } from "@/ipc/types";
 
 interface AttachmentsListProps {
   attachments: FileAttachment[];

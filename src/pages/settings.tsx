@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { ProviderSettingsGrid } from "@/components/ProviderSettings";
 import ConfirmationDialog from "@/components/ConfirmationDialog";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { showSuccess, showError } from "@/lib/toast";
 import { AutoApproveSwitch } from "@/components/AutoApproveSwitch";
 import { TelemetrySwitch } from "@/components/TelemetrySwitch";
@@ -47,8 +47,7 @@ export default function SettingsPage() {
   const handleResetEverything = async () => {
     setIsResetting(true);
     try {
-      const ipcClient = IpcClient.getInstance();
-      await ipcClient.resetAll();
+      await ipc.system.resetAll();
       showSuccess("Successfully reset everything. Restart the application.");
     } catch (error) {
       console.error("Error resetting:", error);

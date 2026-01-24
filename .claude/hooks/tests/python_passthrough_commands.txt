@@ -1,0 +1,58 @@
+# Commands that should PASSTHROUGH (not be handled by python hook)
+# These result in decision: 'none' - the hook doesn't make a decision
+# Format: one command per line, lines starting with # are comments
+
+# =============================================================================
+# NON-PYTHON COMMANDS
+# =============================================================================
+
+# Basic shell commands
+ls -la
+cat file.txt
+echo "hello"
+npm install
+git status
+
+# Other interpreters
+node script.js
+ruby script.rb
+perl script.pl
+
+# =============================================================================
+# PYTHON VERSION/HELP (passthrough to normal permission flow)
+# =============================================================================
+
+python --version
+python3 --version
+python -V
+python3 -V
+python --help
+python3 --help
+python -h
+python3 -h
+
+# =============================================================================
+# PYTEST (allowed module with validated arguments)
+# =============================================================================
+
+# Basic pytest invocations
+python -m pytest
+python3 -m pytest
+python3 -OBm pytest
+
+# Pytest with common options (no paths)
+python -m pytest -v
+python3 -m pytest --verbose
+python -m pytest -x --tb=short
+python3 -m pytest -k "test_something"
+python -m pytest --collect-only
+
+# Pytest with relative paths within project (these are assumed to be in project)
+python -m pytest tests/
+python3 -m pytest src/tests
+python -m pytest tests/unit tests/integration
+python3 -m pytest ./tests
+
+# Pytest with options and paths
+python -m pytest -v tests/
+python3 -m pytest --tb=short tests/unit/

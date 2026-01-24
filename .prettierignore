@@ -7,3 +7,5 @@ drizzle/
 **/snapshots/**
 # test fixtures
 e2e-tests/fixtures/**
+# sanitize_issue_markdown test goldens
+.claude/commands/dyad/scripts/goldens/**

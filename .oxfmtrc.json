@@ -1,0 +1,14 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 80,
+  "experimentalSortPackageJson": false,
+  "ignorePatterns": [
+    "build",
+    "coverage",
+    "drizzle/",
+    "**/pnpm-lock.yaml",
+    "**/snapshots/**",
+    "e2e-tests/fixtures/**",
+    ".claude/commands/dyad/scripts/goldens/**"
+  ]
+}

@@ -6,7 +6,7 @@ import { z } from "zod";
 import { IpcMainInvokeEvent } from "electron";
 import { jsonrepair } from "jsonrepair";
 import { AgentToolConsent } from "@/lib/schemas";
-import { AgentTodo } from "@/ipc/ipc_types";
+import { AgentTodo } from "@/ipc/types";
 
 // ============================================================================
 // XML Escape Helpers

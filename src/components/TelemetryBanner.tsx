@@ -1,4 +1,4 @@
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import React from "react";
 import { Button } from "./ui/button";
 import { atom, useAtom } from "jotai";
@@ -32,7 +32,7 @@ export function PrivacyBanner() {
             </em>
             <a
               onClick={() => {
-                IpcClient.getInstance().openExternalUrl(
+                ipc.system.openExternalUrl(
                   "https://dyad.sh/docs/policies/privacy-policy",
                 );
               }}

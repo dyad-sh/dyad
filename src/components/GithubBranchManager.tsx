@@ -8,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import {
   ChevronsDownUp,
   ChevronsUpDown,
@@ -110,10 +110,8 @@ export function GithubBranchManager({
     setIsLoading(true);
     try {
       const [localResult, remoteBranches] = await Promise.all([
-        IpcClient.getInstance().listLocalGithubBranches(appId),
-        IpcClient.getInstance()
-          .listRemoteGithubBranches(appId)
-          .catch(() => []),
+        ipc.github.listLocalBranches({ appId }),
+        ipc.github.listRemoteBranches({ appId }).catch(() => []),
       ]);
 
       // Merge local and remote branches, removing duplicates
@@ -137,11 +135,11 @@ export function GithubBranchManager({
     setIsCreating(true);
     const branchName = newBranchName.trim();
     try {
-      await IpcClient.getInstance().createGithubBranch(
+      await ipc.github.createBranch({
         appId,
-        branchName,
-        sourceBranch || undefined,
-      );
+        branch: branchName,
+        from: sourceBranch || undefined,
+      });
       showSuccess(`Branch '${branchName}' created`);
       setNewBranchName("");
       setSourceBranch(""); // Reset source branch selection
@@ -162,7 +160,7 @@ export function GithubBranchManager({
     setIsSwitching(true);
     try {
       const switchBranch = async () =>
-        await IpcClient.getInstance().switchGithubBranch(appId, branch);
+        await ipc.github.switchBranch({ appId, branch });
 
       try {
         await switchBranch();
@@ -181,7 +179,7 @@ export function GithubBranchManager({
           | undefined;
         if (!errorCode) {
           try {
-            const state = await IpcClient.getInstance().getGithubState(appId);
+            const state = await ipc.github.getGitState({ appId });
             if (state.rebaseInProgress) inferredCode = "REBASE_IN_PROGRESS";
             else if (state.mergeInProgress) inferredCode = "MERGE_IN_PROGRESS";
           } catch {
@@ -197,8 +195,7 @@ export function GithubBranchManager({
           // Check if there are unresolved conflicts
           let hasConflicts = false;
           try {
-            const conflicts =
-              await IpcClient.getInstance().getGithubMergeConflicts(appId);
+            const conflicts = await ipc.github.getConflicts({ appId });
             hasConflicts = conflicts.length > 0;
           } catch {
             // If we can't get conflicts, assume there might be conflicts to be safe
@@ -219,8 +216,7 @@ export function GithubBranchManager({
           // Check if there are unresolved conflicts
           let hasConflicts = false;
           try {
-            const conflicts =
-              await IpcClient.getInstance().getGithubMergeConflicts(appId);
+            const conflicts = await ipc.github.getConflicts({ appId });
             hasConflicts = conflicts.length > 0;
           } catch {
             // If we can't get conflicts, assume there might be conflicts to be safe
@@ -255,14 +251,14 @@ export function GithubBranchManager({
     try {
       // Abort the operation - both methods throw on error
       if (operationType === "rebase") {
-        await IpcClient.getInstance().abortGithubRebase(appId);
+        await ipc.github.rebaseAbort({ appId });
       } else {
-        await IpcClient.getInstance().abortGithubMerge(appId);
+        await ipc.github.mergeAbort({ appId });
       }
 
       // Now switch to the target branch
       try {
-        await IpcClient.getInstance().switchGithubBranch(appId, targetBranch);
+        await ipc.github.switchBranch({ appId, branch: targetBranch });
         showSuccess(
           `Aborted ongoing ${operationType} and switched to branch '${targetBranch}'`,
         );
@@ -291,7 +287,7 @@ export function GithubBranchManager({
 
     setIsDeleting(true);
     try {
-      await IpcClient.getInstance().deleteGithubBranch(appId, branchToDelete);
+      await ipc.github.deleteBranch({ appId, branch: branchToDelete });
       showSuccess(`Branch '${branchToDelete}' deleted`);
       setBranchToDelete(null);
       await loadBranches();
@@ -307,11 +303,11 @@ export function GithubBranchManager({
     setIsRenaming(true);
     try {
       const trimmedNewName = renameBranchName.trim();
-      await IpcClient.getInstance().renameGithubBranch(
+      await ipc.github.renameBranch({
         appId,
-        branchToRename,
-        trimmedNewName,
-      );
+        oldBranch: branchToRename,
+        newBranch: trimmedNewName,
+      });
       showSuccess(`Renamed '${branchToRename}' to '${trimmedNewName}'`);
       setBranchToRename(null);
       setRenameBranchName("");
@@ -328,7 +324,7 @@ export function GithubBranchManager({
     setIsMerging(true);
     setConflicts([]); // Clear conflicts when starting a new merge operation
     try {
-      await IpcClient.getInstance().mergeGithubBranch(appId, branchToMerge);
+      await ipc.github.mergeBranch({ appId, branch: branchToMerge });
       showSuccess(`Merged '${branchToMerge}' into '${currentBranch}'`);
       setConflicts([]); // Clear conflicts on successful merge
       setBranchToMerge(null);
@@ -343,8 +339,7 @@ export function GithubBranchManager({
         showInfo("Merge conflict detected. Please resolve them in the editor.");
         // Show conflicts dialog
         try {
-          const conflicts =
-            await IpcClient.getInstance().getGithubMergeConflicts(appId);
+          const conflicts = await ipc.github.getConflicts({ appId });
 
           if (conflicts.length > 0) {
             setConflicts(conflicts);

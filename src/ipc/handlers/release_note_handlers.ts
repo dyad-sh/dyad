@@ -1,17 +1,15 @@
 import log from "electron-log";
 import fetch from "node-fetch";
-import { createLoggedHandler } from "./safe_handle";
-import { DoesReleaseNoteExistParams } from "../ipc_types";
 import { IS_TEST_BUILD } from "../utils/test_utils";
+import { createTypedHandler } from "./base";
+import { systemContracts } from "../types/system";
 
 const logger = log.scope("release_note_handlers");
 
-const handle = createLoggedHandler(logger);
-
 export function registerReleaseNoteHandlers() {
-  handle(
-    "does-release-note-exist",
-    async (_, params: DoesReleaseNoteExistParams) => {
+  createTypedHandler(
+    systemContracts.doesReleaseNoteExist,
+    async (_, params) => {
       const { version } = params;
 
       if (!version || typeof version !== "string") {

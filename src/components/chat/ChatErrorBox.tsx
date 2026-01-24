@@ -1,4 +1,4 @@
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
 import {
   X,
@@ -155,10 +155,8 @@ function ExternalLink({
 
   return (
     <a
-      className={`${baseClasses} ${
-        variant === "primary" ? primaryClasses : secondaryClasses
-      }`}
-      onClick={() => IpcClient.getInstance().openExternalUrl(href)}
+      className={`${baseClasses} ${variant === "primary" ? primaryClasses : secondaryClasses}`}
+      onClick={() => ipc.system.openExternalUrl(href)}
     >
       <span>{children}</span>
       {iconElement}
@@ -193,7 +191,7 @@ function ChatErrorContainer({
                     onClick={(e) => {
                       e.preventDefault();
                       if (props.href) {
-                        IpcClient.getInstance().openExternalUrl(props.href);
+                        ipc.system.openExternalUrl(props.href);
                       }
                     }}
                     className="text-blue-500 hover:text-blue-700"

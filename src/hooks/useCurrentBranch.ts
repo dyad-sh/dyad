@@ -1,6 +1,6 @@
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc, type BranchResult } from "@/ipc/types";
 import { useQuery } from "@tanstack/react-query";
-import type { BranchResult } from "@/ipc/ipc_types";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function useCurrentBranch(appId: number | null) {
   const {
@@ -8,15 +8,14 @@ export function useCurrentBranch(appId: number | null) {
     isLoading,
     refetch: refetchBranchInfo,
   } = useQuery<BranchResult, Error>({
-    queryKey: ["currentBranch", appId],
+    queryKey: queryKeys.branches.current({ appId }),
     queryFn: async (): Promise<BranchResult> => {
       if (appId === null) {
         // This case should ideally be handled by the `enabled` option
         // but as a safeguard, and to ensure queryFn always has a valid appId if called.
         throw new Error("appId is null, cannot fetch current branch.");
       }
-      const ipcClient = IpcClient.getInstance();
-      return ipcClient.getCurrentBranch(appId);
+      return ipc.version.getCurrentBranch({ appId });
     },
     enabled: appId !== null,
     meta: { showErrorToast: true },

@@ -2,9 +2,9 @@ import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Terminal } from "lucide-react";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc, type AppUpgrade } from "@/ipc/types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AppUpgrade } from "@/ipc/ipc_types";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function AppUpgrades({ appId }: { appId: number | null }) {
   const queryClient = useQueryClient();
@@ -14,12 +14,12 @@ export function AppUpgrades({ appId }: { appId: number | null }) {
     isLoading,
     error: queryError,
   } = useQuery({
-    queryKey: ["app-upgrades", appId],
+    queryKey: queryKeys.appUpgrades.byApp({ appId }),
     queryFn: () => {
       if (!appId) {
         return Promise.resolve([]);
       }
-      return IpcClient.getInstance().getAppUpgrades({ appId });
+      return ipc.upgrade.getAppUpgrades({ appId });
     },
     enabled: !!appId,
   });
@@ -34,19 +34,25 @@ export function AppUpgrades({ appId }: { appId: number | null }) {
       if (!appId) {
         throw new Error("appId is not set");
       }
-      return IpcClient.getInstance().executeAppUpgrade({
+      return ipc.upgrade.executeAppUpgrade({
         appId,
         upgradeId,
       });
     },
     onSuccess: (_, upgradeId) => {
-      queryClient.invalidateQueries({ queryKey: ["app-upgrades", appId] });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.appUpgrades.byApp({ appId }),
+      });
       if (upgradeId === "capacitor") {
         // Capacitor upgrade is done, so we need to invalidate the Capacitor
         // query to show the new status.
-        queryClient.invalidateQueries({ queryKey: ["is-capacitor", appId] });
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.appUpgrades.isCapacitor({ appId }),
+        });
       }
-      queryClient.invalidateQueries({ queryKey: ["versions", appId] });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.versions.list({ appId }),
+      });
     },
   });
 
@@ -125,7 +131,7 @@ export function AppUpgrades({ appId }: { appId: number | null }) {
                       <a
                         onClick={(e) => {
                           e.stopPropagation();
-                          IpcClient.getInstance().openExternalUrl(
+                          ipc.system.openExternalUrl(
                             upgrade.manualUpgradeUrl ?? "https://dyad.sh/docs",
                           );
                         }}

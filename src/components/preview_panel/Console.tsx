@@ -1,7 +1,7 @@
 import { appConsoleEntriesAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
-import type { ConsoleEntry } from "@/ipc/ipc_types";
+import type { ConsoleEntry } from "@/ipc/types";
 import { useAtomValue, useSetAtom } from "jotai";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { useEffect, useRef, useState, useMemo, useCallback, memo } from "react";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 import { ConsoleEntryComponent } from "./ConsoleEntry";
@@ -107,7 +107,7 @@ export const Console = () => {
     if (selectedAppId) {
       try {
         // Clear logs from backend store
-        await IpcClient.getInstance().clearLogs(selectedAppId);
+        await ipc.misc.clearLogs({ appId: selectedAppId });
         // Clear logs from UI
         setConsoleEntries([]);
       } catch (error) {

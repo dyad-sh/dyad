@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import type { AgentTodo } from "@/ipc/ipc_types";
+import type { AgentTodo } from "@/ipc/types";
 import {
   CheckCircle2,
   Circle,

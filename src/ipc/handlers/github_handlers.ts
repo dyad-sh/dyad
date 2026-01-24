@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, IpcMainInvokeEvent } from "electron";
+import { BrowserWindow, IpcMainInvokeEvent } from "electron";
 import fetch from "node-fetch"; // Use node-fetch for making HTTP requests in main process
 import { writeSettings, readSettings } from "../../main/settings";
 import {
@@ -27,13 +27,15 @@ import fs from "node:fs";
 import { getDyadAppPath } from "../../paths/paths";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
-import type { CloneRepoParams, CloneRepoReturnType } from "@/ipc/ipc_types";
 import { eq } from "drizzle-orm";
 import { GithubUser } from "../../lib/schemas";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import path from "node:path";
 import { withLock } from "../utils/lock_utils";
+import { createTypedHandler } from "./base";
+import { githubContracts } from "../types/github";
+import type { CloneRepoParams, CloneRepoResult } from "../types/github";
 
 const logger = log.scope("github_handlers");
 
@@ -362,9 +364,7 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
             `Unknown GitHub error: ${data.error_description || data.error}`,
           );
           event.sender.send("github:flow-error", {
-            error: `GitHub authorization error: ${
-              data.error_description || data.error
-            }`,
+            error: `GitHub authorization error: ${data.error_description || data.error}`,
           });
           stopPolling();
           break;
@@ -1149,7 +1149,7 @@ async function handleDisconnectGithubRepo(
 async function handleCloneRepoFromUrl(
   event: IpcMainInvokeEvent,
   params: CloneRepoParams,
-): Promise<CloneRepoReturnType> {
+): Promise<CloneRepoResult> {
   const { url, installCommand, startCommand, appName } = params;
   try {
     const settings = readSettings();
@@ -1254,38 +1254,86 @@ async function handleCloneRepoFromUrl(
 
 // --- Registration ---
 export function registerGithubHandlers() {
-  ipcMain.handle("github:start-flow", handleStartGithubFlow);
-  ipcMain.handle("github:list-repos", handleListGithubRepos);
-  ipcMain.handle(
-    "github:get-repo-branches",
-    (event, args: { owner: string; repo: string }) =>
-      handleGetRepoBranches(event, args),
+  createTypedHandler(githubContracts.startFlow, async (event, params) => {
+    return handleStartGithubFlow(event, params);
+  });
+
+  createTypedHandler(githubContracts.listRepos, async () => {
+    return handleListGithubRepos();
+  });
+
+  createTypedHandler(githubContracts.getRepoBranches, async (event, params) => {
+    return handleGetRepoBranches(event, params);
+  });
+
+  createTypedHandler(githubContracts.isRepoAvailable, async (event, params) => {
+    return handleIsRepoAvailable(event, params);
+  });
+
+  createTypedHandler(githubContracts.createRepo, async (event, params) => {
+    return handleCreateRepo(event, params);
+  });
+
+  createTypedHandler(
+    githubContracts.connectExistingRepo,
+    async (event, params) => {
+      return handleConnectToExistingRepo(event, params);
+    },
   );
-  ipcMain.handle("github:is-repo-available", handleIsRepoAvailable);
-  ipcMain.handle("github:create-repo", handleCreateRepo);
-  ipcMain.handle(
-    "github:connect-existing-repo",
-    (
-      event,
-      args: { owner: string; repo: string; branch: string; appId: number },
-    ) => handleConnectToExistingRepo(event, args),
+
+  createTypedHandler(githubContracts.push, async (event, params) => {
+    return handlePushToGithub(event, params);
+  });
+
+  createTypedHandler(githubContracts.rebase, async (event, params) => {
+    return handleRebaseFromGithub(event, params);
+  });
+
+  createTypedHandler(githubContracts.rebaseAbort, async (event, params) => {
+    return handleAbortRebase(event, params);
+  });
+
+  createTypedHandler(githubContracts.rebaseContinue, async (event, params) => {
+    return handleContinueRebase(event, params);
+  });
+
+  createTypedHandler(
+    githubContracts.listCollaborators,
+    async (event, params) => {
+      return handleListCollaborators(event, params);
+    },
   );
-  ipcMain.handle("github:push", handlePushToGithub);
-  ipcMain.handle("github:rebase", handleRebaseFromGithub);
-  ipcMain.handle("github:rebase-abort", handleAbortRebase);
-  ipcMain.handle("github:rebase-continue", handleContinueRebase);
-  ipcMain.handle("github:list-collaborators", handleListCollaborators);
-  ipcMain.handle("github:invite-collaborator", handleInviteCollaborator);
-  ipcMain.handle("github:remove-collaborator", handleRemoveCollaborator);
-  ipcMain.handle("github:get-conflicts", handleGetMergeConflicts);
-  ipcMain.handle("github:get-git-state", handleGetGitState);
-  ipcMain.handle("github:disconnect", (event, args: { appId: number }) =>
-    handleDisconnectGithubRepo(event, args),
+
+  createTypedHandler(
+    githubContracts.inviteCollaborator,
+    async (event, params) => {
+      return handleInviteCollaborator(event, params);
+    },
   );
-  ipcMain.handle(
-    "github:clone-repo-from-url",
-    async (event, args: CloneRepoParams) => {
-      return await handleCloneRepoFromUrl(event, args);
+
+  createTypedHandler(
+    githubContracts.removeCollaborator,
+    async (event, params) => {
+      return handleRemoveCollaborator(event, params);
+    },
+  );
+
+  createTypedHandler(githubContracts.getConflicts, async (event, params) => {
+    return handleGetMergeConflicts(event, params);
+  });
+
+  createTypedHandler(githubContracts.getGitState, async (event, params) => {
+    return handleGetGitState(event, params);
+  });
+
+  createTypedHandler(githubContracts.disconnect, async (event, params) => {
+    return handleDisconnectGithubRepo(event, params);
+  });
+
+  createTypedHandler(
+    githubContracts.cloneRepoFromUrl,
+    async (event, params) => {
+      return handleCloneRepoFromUrl(event, params);
     },
   );
 }

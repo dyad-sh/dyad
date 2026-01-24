@@ -978,9 +978,8 @@ src/file2.ts
 
   describe("hasExternalChanges", () => {
     it("should default to true when no assistant message has commitHash", async () => {
-      const { getCurrentCommitHash, isGitStatusClean } = await import(
-        "@/ipc/utils/git_utils"
-      );
+      const { getCurrentCommitHash, isGitStatusClean } =
+        await import("@/ipc/utils/git_utils");
       const mockGetCurrentCommitHash = vi.mocked(getCurrentCommitHash);
       const mockIsGitStatusClean = vi.mocked(isGitStatusClean);
 
@@ -1011,9 +1010,8 @@ src/file2.ts
     });
 
     it("should be false when latest assistant commit matches current and git status is clean", async () => {
-      const { getCurrentCommitHash, isGitStatusClean } = await import(
-        "@/ipc/utils/git_utils"
-      );
+      const { getCurrentCommitHash, isGitStatusClean } =
+        await import("@/ipc/utils/git_utils");
       const mockGetCurrentCommitHash = vi.mocked(getCurrentCommitHash);
       const mockIsGitStatusClean = vi.mocked(isGitStatusClean);
 
@@ -1047,9 +1045,8 @@ src/file2.ts
     });
 
     it("should be true when latest assistant commit differs from current", async () => {
-      const { getCurrentCommitHash, isGitStatusClean } = await import(
-        "@/ipc/utils/git_utils"
-      );
+      const { getCurrentCommitHash, isGitStatusClean } =
+        await import("@/ipc/utils/git_utils");
       const mockGetCurrentCommitHash = vi.mocked(getCurrentCommitHash);
       const mockIsGitStatusClean = vi.mocked(isGitStatusClean);
 
@@ -1083,9 +1080,8 @@ src/file2.ts
     });
 
     it("should be true when git status is dirty even if commits match", async () => {
-      const { getCurrentCommitHash, isGitStatusClean } = await import(
-        "@/ipc/utils/git_utils"
-      );
+      const { getCurrentCommitHash, isGitStatusClean } =
+        await import("@/ipc/utils/git_utils");
       const mockGetCurrentCommitHash = vi.mocked(getCurrentCommitHash);
       const mockIsGitStatusClean = vi.mocked(isGitStatusClean);
 

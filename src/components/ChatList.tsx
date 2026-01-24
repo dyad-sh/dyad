@@ -7,7 +7,7 @@ import { useAtom } from "jotai";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { dropdownOpenAtom } from "@/atoms/uiAtoms";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { showError, showSuccess } from "@/lib/toast";
 import { useSettings } from "@/hooks/useSettings";
 import { getEffectiveDefaultChatMode } from "@/lib/schemas";
@@ -88,7 +88,7 @@ export function ChatList({ show }: { show?: boolean }) {
     if (selectedAppId) {
       try {
         // Create a new chat with an empty title for now
-        const chatId = await IpcClient.getInstance().createChat(selectedAppId);
+        const chatId = await ipc.chat.createChat(selectedAppId);
 
         // Set the default chat mode for the new chat
         if (settings) {
@@ -117,7 +117,7 @@ export function ChatList({ show }: { show?: boolean }) {
 
   const handleDeleteChat = async (chatId: number) => {
     try {
-      await IpcClient.getInstance().deleteChat(chatId);
+      await ipc.chat.deleteChat(chatId);
       showSuccess("Chat deleted successfully");
 
       // If the deleted chat was selected, navigate to home

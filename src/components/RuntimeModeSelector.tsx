@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/select";
 import { useSettings } from "@/hooks/useSettings";
 import { showError } from "@/lib/toast";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 
 export function RuntimeModeSelector() {
   const { settings, updateSettings } = useSettings();
@@ -59,7 +59,7 @@ export function RuntimeModeSelector() {
             type="button"
             className="underline font-medium cursor-pointer"
             onClick={() =>
-              IpcClient.getInstance().openExternalUrl(
+              ipc.system.openExternalUrl(
                 "https://www.docker.com/products/docker-desktop/",
               )
             }

@@ -1,5 +1,5 @@
 import { atom } from "jotai";
-import { type LocalModel } from "@/ipc/ipc_types";
+import { type LocalModel } from "@/ipc/types";
 
 export const localModelsAtom = atom<LocalModel[]>([]);
 export const localModelsLoadingAtom = atom<boolean>(false);

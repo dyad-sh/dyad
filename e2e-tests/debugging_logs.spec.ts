@@ -17,7 +17,9 @@ testSkipIfWindows(
     const iframe = po.getPreviewIframeElement();
     await expect(
       iframe.contentFrame().getByText("Console Logs Test App"),
-    ).toBeVisible({ timeout: Timeout.MEDIUM });
+    ).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
 
     // Open the system messages console
     // Logs are generated in useEffect when component mounts, so they may already exist
@@ -99,7 +101,9 @@ testSkipIfWindows(
     const iframeFrame = iframe.contentFrame();
     await expect(
       iframeFrame.getByText("Network Requests Test App"),
-    ).toBeVisible({ timeout: Timeout.MEDIUM });
+    ).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
 
     // Wait for service worker to be ready
     // Service worker registration is async, so we wait for it to be active
@@ -261,7 +265,9 @@ testSkipIfWindows("clear logs button clears all logs", async ({ po }) => {
   const iframe = po.getPreviewIframeElement();
   await expect(
     iframe.contentFrame().getByText("Console Logs Test App"),
-  ).toBeVisible({ timeout: Timeout.MEDIUM });
+  ).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
 
   // Open the system messages console
   const consoleHeader = po.page.locator('text="System Messages"').first();

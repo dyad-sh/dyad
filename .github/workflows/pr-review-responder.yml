@@ -1,0 +1,165 @@
+# VERY IMPORTANT:
+# This workflow has a lot of permissions!
+# It should ONLY run on trusted maintainers code (e.g. wwwillchen)
+name: PR Review Responder
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    # Regardless of success or fail, we want to run this workflow.
+    # Why?
+    # If it's failure, we want to fix the errors.
+    # If it's success, we want to address the PR review comments from the AI code reviewers.
+    #
+    # The CI workflow is almost always the last workflow to finish, so that's why we wait for it.
+    types: [completed]
+
+jobs:
+  respond-to-pr:
+    environment: ai-bots
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Get PR info and check labels
+        id: pr-info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+
+            // Get PR associated with this workflow run
+            // Note: run.pull_requests can be empty for cross-repo PRs (forks)
+            // So we also search by head SHA as a fallback
+            let prNumber;
+
+            if (run.pull_requests && run.pull_requests.length > 0) {
+              prNumber = run.pull_requests[0].number;
+            } else {
+              // Search for PRs with matching head branch
+              // Note: head_repository can be null if the fork was deleted
+              if (!run.head_repository) {
+                console.log('Head repository not available');
+                core.setOutput('should_continue', 'false');
+                return;
+              }
+              const { data: prs } = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                head: `${run.head_repository.owner.login}:${run.head_branch}`
+              });
+
+              if (prs.length === 0) {
+                console.log('No pull requests found for this workflow run');
+                core.setOutput('should_continue', 'false');
+                return;
+              }
+              prNumber = prs[0].number;
+            }
+
+            // Fetch full PR details to get labels
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+
+            // Only allow wwwillchen to use this workflow
+            if (pr.user.login !== 'wwwillchen') {
+              console.log(`PR #${prNumber} author ${pr.user.login} is not allowed to use this workflow`);
+              core.setOutput('should_continue', 'false');
+              return;
+            }
+
+            const hasRequestLabel = pr.labels.some(label => label.name === 'cc:request');
+
+            if (!hasRequestLabel) {
+              console.log(`PR #${prNumber} does not have the cc:request label`);
+              core.setOutput('should_continue', 'false');
+              return;
+            }
+
+            console.log(`PR #${prNumber} has cc:request label, proceeding with pr-fix`);
+            core.setOutput('pr_number', prNumber);
+            core.setOutput('should_continue', 'true');
+
+      - name: Checkout repository
+        if: steps.pr-info.outputs.should_continue == 'true'
+        uses: actions/checkout@v5
+        with:
+          # Security note: The pr.user.login check verifies who opened the PR, but this
+          # checks out code from whoever last pushed. If "Allow edits from maintainers" is
+          # enabled, other maintainers could push to the branch. This is acceptable because
+          # maintainers already have write access to the repo and are trusted.
+          repository: ${{ github.event.workflow_run.head_repository.full_name }}
+          ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
+
+      - name: Record HEAD before Claude Code
+        if: steps.pr-info.outputs.should_continue == 'true'
+        id: before-claude
+        run: echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Update labels to pending
+        if: steps.pr-info.outputs.should_continue == 'true'
+        run: |
+          gh pr edit ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }} --remove-label "cc:request" --add-label "cc:pending"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run PR Fix
+        if: steps.pr-info.outputs.should_continue == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            /dyad:pr-fix ${{ steps.pr-info.outputs.pr_number }}
+
+      - name: Re-trigger CI if commits were pushed
+        # Use always() to ensure commits get tested even if Claude Code fails partway through
+        if: steps.pr-info.outputs.should_continue == 'true' && always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Fetch using the PR's head ref to handle both fork and same-repo PRs correctly
+          # Use the GitHub API to get the current head SHA, avoiding race conditions with git fetch
+          PR_HEAD_SHA=$(gh pr view ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }} --json headRefOid --jq '.headRefOid')
+          if [ -z "$PR_HEAD_SHA" ]; then
+            echo "Failed to get PR head SHA, falling back to git fetch"
+            git fetch origin ${{ github.event.workflow_run.head_branch }} || git fetch origin
+            PR_HEAD_SHA=$(git rev-parse FETCH_HEAD 2>/dev/null || git rev-parse origin/${{ github.event.workflow_run.head_branch }})
+          fi
+
+          if [ "${{ steps.before-claude.outputs.sha }}" != "$PR_HEAD_SHA" ]; then
+            echo "Claude pushed new commits (before: ${{ steps.before-claude.outputs.sha }}, after: $PR_HEAD_SHA)"
+            echo "Re-triggering CI by closing and reopening PR"
+            if gh pr close ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }}; then
+              if ! gh pr reopen ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }}; then
+                echo "::warning::Failed to reopen PR after close. Attempting recovery..."
+                # Retry reopen once after a short delay
+                sleep 2
+                gh pr reopen ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }} || echo "::error::PR may be left closed. Manual intervention required."
+              fi
+            else
+              echo "::warning::Failed to close PR, skipping re-trigger"
+            fi
+          else
+            echo "No new commits pushed, skipping CI re-trigger"
+          fi
+
+      - name: Update labels to done
+        if: steps.pr-info.outputs.should_continue == 'true' && success()
+        run: |
+          gh pr edit ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }} --remove-label "cc:pending" --add-label "cc:done"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update labels to failed
+        if: steps.pr-info.outputs.should_continue == 'true' && failure()
+        run: |
+          gh pr edit ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }} --remove-label "cc:pending" --add-label "cc:failed"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

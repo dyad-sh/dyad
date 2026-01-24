@@ -702,7 +702,9 @@ describe("processFullResponse", () => {
 
     expect(fs.mkdirSync).toHaveBeenCalledWith(
       "/mock/user/data/path/mock-app-path/src",
-      { recursive: true },
+      {
+        recursive: true,
+      },
     );
     expect(fs.writeFileSync).toHaveBeenCalledWith(
       "/mock/user/data/path/mock-app-path/src/file1.js",
@@ -759,15 +761,21 @@ describe("processFullResponse", () => {
     // Check that directories were created for each file path
     expect(fs.mkdirSync).toHaveBeenCalledWith(
       "/mock/user/data/path/mock-app-path/src",
-      { recursive: true },
+      {
+        recursive: true,
+      },
     );
     expect(fs.mkdirSync).toHaveBeenCalledWith(
       "/mock/user/data/path/mock-app-path/src/utils",
-      { recursive: true },
+      {
+        recursive: true,
+      },
     );
     expect(fs.mkdirSync).toHaveBeenCalledWith(
       "/mock/user/data/path/mock-app-path/src/components",
-      { recursive: true },
+      {
+        recursive: true,
+      },
     );
 
     // Using toHaveBeenNthCalledWith to check each specific call
@@ -824,7 +832,9 @@ describe("processFullResponse", () => {
 
     expect(fs.mkdirSync).toHaveBeenCalledWith(
       "/mock/user/data/path/mock-app-path/src/components",
-      { recursive: true },
+      {
+        recursive: true,
+      },
     );
     expect(fs.renameSync).toHaveBeenCalledWith(
       "/mock/user/data/path/mock-app-path/src/components/OldComponent.jsx",

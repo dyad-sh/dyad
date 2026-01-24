@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import {
   Popover,
   PopoverContent,
@@ -53,7 +53,7 @@ export function ProviderSettingsHeader({
   const handleGetApiKeyClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     if (providerWebsiteUrl) {
-      IpcClient.getInstance().openExternalUrl(providerWebsiteUrl);
+      ipc.system.openExternalUrl(providerWebsiteUrl);
     }
   };
 

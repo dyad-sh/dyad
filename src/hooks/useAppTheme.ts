@@ -1,24 +1,22 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { IpcClient } from "@/ipc/ipc_client";
-
-export const APP_THEME_QUERY_KEY = (appId: number | undefined) => [
-  "app-theme",
-  appId,
-];
+import { ipc } from "@/ipc/types";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function useAppTheme(appId: number | undefined) {
   const queryClient = useQueryClient();
 
   const query = useQuery({
-    queryKey: APP_THEME_QUERY_KEY(appId),
+    queryKey: queryKeys.appTheme.byApp({ appId }),
     queryFn: async (): Promise<string | null> => {
-      return IpcClient.getInstance().getAppTheme({ appId: appId! });
+      return ipc.template.getAppTheme({ appId: appId! });
     },
     enabled: !!appId,
   });
 
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: APP_THEME_QUERY_KEY(appId) });
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.appTheme.byApp({ appId }),
+    });
   };
 
   return {

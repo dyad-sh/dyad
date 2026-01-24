@@ -2,22 +2,17 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { lastLogTimestampAtom } from "@/atoms/supabaseAtoms";
 import { appConsoleEntriesAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
-import { IpcClient } from "@/ipc/ipc_client";
 import {
+  ipc,
   SetSupabaseAppProjectParams,
   DeleteSupabaseOrganizationParams,
   SupabaseOrganizationInfo,
   SupabaseProject,
   SupabaseBranch,
-} from "@/ipc/ipc_types";
+} from "@/ipc/types";
 import { useSettings } from "./useSettings";
 import { isSupabaseConnected } from "@/lib/schemas";
-
-const SUPABASE_QUERY_KEYS = {
-  organizations: ["supabase", "organizations"] as const,
-  projects: ["supabase", "projects"] as const,
-  branches: (projectId: string) => ["supabase", "branches", projectId] as const,
-};
+import { queryKeys } from "@/lib/queryKeys";
 
 export interface UseSupabaseOptions {
   branchesProjectId?: string | null;
@@ -37,10 +32,9 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
   // Query: Load all connected Supabase organizations
   // Only runs when Supabase is connected to avoid unnecessary API calls
   const organizationsQuery = useQuery<SupabaseOrganizationInfo[], Error>({
-    queryKey: SUPABASE_QUERY_KEYS.organizations,
+    queryKey: queryKeys.supabase.organizations,
     queryFn: async () => {
-      const ipcClient = IpcClient.getInstance();
-      return ipcClient.listSupabaseOrganizations();
+      return ipc.supabase.listOrganizations();
     },
     enabled: isConnected,
     meta: { showErrorToast: true },
@@ -49,10 +43,9 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
   // Query: Load Supabase projects from all connected organizations
   // Only runs when there are connected organizations to avoid unauthorized errors
   const projectsQuery = useQuery<SupabaseProject[], Error>({
-    queryKey: SUPABASE_QUERY_KEYS.projects,
+    queryKey: queryKeys.supabase.projects,
     queryFn: async () => {
-      const ipcClient = IpcClient.getInstance();
-      return ipcClient.listAllSupabaseProjects();
+      return ipc.supabase.listAllProjects();
     },
     enabled: (organizationsQuery.data?.length ?? 0) > 0,
     meta: { showErrorToast: true },
@@ -65,14 +58,13 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
     DeleteSupabaseOrganizationParams
   >({
     mutationFn: async (params) => {
-      const ipcClient = IpcClient.getInstance();
-      await ipcClient.deleteSupabaseOrganization(params);
+      await ipc.supabase.deleteOrganization(params);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: SUPABASE_QUERY_KEYS.organizations,
+        queryKey: queryKeys.supabase.organizations,
       });
-      queryClient.invalidateQueries({ queryKey: SUPABASE_QUERY_KEYS.projects });
+      queryClient.invalidateQueries({ queryKey: queryKeys.supabase.projects });
     },
     meta: { showErrorToast: true },
   });
@@ -84,8 +76,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
     SetSupabaseAppProjectParams
   >({
     mutationFn: async (params) => {
-      const ipcClient = IpcClient.getInstance();
-      await ipcClient.setSupabaseAppProject(params);
+      await ipc.supabase.setAppProject(params);
     },
     meta: { showErrorToast: true },
   });
@@ -93,21 +84,19 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
   // Mutation: Remove a Supabase project association from an app
   const unsetAppProjectMutation = useMutation<void, Error, number>({
     mutationFn: async (appId) => {
-      const ipcClient = IpcClient.getInstance();
-      await ipcClient.unsetSupabaseAppProject(appId);
+      await ipc.supabase.unsetAppProject({ app: appId });
     },
     meta: { showErrorToast: true },
   });
 
   // Query: Load branches for a Supabase project
   const branchesQuery = useQuery<SupabaseBranch[], Error>({
-    queryKey: [
-      ...SUPABASE_QUERY_KEYS.branches(branchesProjectId ?? ""),
-      branchesOrganizationSlug ?? null,
-    ],
+    queryKey: queryKeys.supabase.branches({
+      projectId: branchesProjectId ?? "",
+      organizationSlug: branchesOrganizationSlug ?? null,
+    }),
     queryFn: async () => {
-      const ipcClient = IpcClient.getInstance();
-      const list = await ipcClient.listSupabaseBranches({
+      const list = await ipc.supabase.listBranches({
         projectId: branchesProjectId!,
         organizationSlug: branchesOrganizationSlug ?? null,
       });
@@ -127,13 +116,11 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
     mutationFn: async ({ projectId, organizationSlug }) => {
       if (!selectedAppId) return;
 
-      const ipcClient = IpcClient.getInstance();
-
       // Use last timestamp if available, otherwise fetch logs from the past 10 minutes
       const lastTimestamp = lastLogTimestamp[projectId];
       const timestampStart = lastTimestamp ?? Date.now() - 10 * 60 * 1000;
 
-      const logs = await ipcClient.getSupabaseEdgeLogs({
+      const logs = await ipc.supabase.getEdgeLogs({
         projectId,
         timestampStart,
         appId: selectedAppId,
@@ -152,7 +139,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
       }
 
       logs.forEach((log) => {
-        IpcClient.getInstance().addLog(log);
+        ipc.misc.addLog(log);
       });
       setConsoleEntries((prev) => [...prev, ...logs]);
 

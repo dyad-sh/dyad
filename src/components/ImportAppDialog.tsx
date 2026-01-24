@@ -8,7 +8,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { useMutation } from "@tanstack/react-query";
 import { showError, showSuccess } from "@/lib/toast";
 import { Folder, X, Loader2, Info } from "lucide-react";
@@ -19,7 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@radix-ui/react-label";
 import { useNavigate } from "@tanstack/react-router";
 import { useStreamChat } from "@/hooks/useStreamChat";
-import type { GithubRepository } from "@/ipc/ipc_types";
+import type { GithubRepository } from "@/ipc/types";
 import {
   Tooltip,
   TooltipContent,
@@ -90,7 +90,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
   const fetchRepos = async () => {
     setLoading(true);
     try {
-      const fetchedRepos = await IpcClient.getInstance().listGithubRepos();
+      const fetchedRepos = await ipc.github.listRepos();
       setRepos(fetchedRepos);
     } catch (err: unknown) {
       showError("Failed to fetch repositories.: " + (err as any).toString());
@@ -105,7 +105,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       setGithubAppName(repoName);
       setIsCheckingGithubName(true);
       try {
-        const result = await IpcClient.getInstance().checkAppName({
+        const result = await ipc.import.checkAppName({
           appName: repoName,
         });
         setGithubNameExists(result.exists);
@@ -126,7 +126,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       const match = extractRepoNameFromUrl(url);
       const repoName = match ? match[2] : "";
       const appName = githubAppName.trim() || repoName;
-      const result = await IpcClient.getInstance().cloneRepoFromUrl({
+      const result = await ipc.github.cloneRepoFromUrl({
         url,
         installCommand: installCommand.trim() || undefined,
         startCommand: startCommand.trim() || undefined,
@@ -139,7 +139,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       }
       setSelectedAppId(result.app.id);
       showSuccess(`Successfully imported ${result.app.name}`);
-      const chatId = await IpcClient.getInstance().createChat(result.app.id);
+      const chatId = await ipc.chat.createChat(result.app.id);
       navigate({ to: "/chat", search: { id: chatId } });
       if (!result.hasAiRules) {
         streamMessage({
@@ -160,7 +160,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
 
     try {
       const appName = githubAppName.trim() || repo.name;
-      const result = await IpcClient.getInstance().cloneRepoFromUrl({
+      const result = await ipc.github.cloneRepoFromUrl({
         url: `https://github.com/${repo.full_name}.git`,
         installCommand: installCommand.trim() || undefined,
         startCommand: startCommand.trim() || undefined,
@@ -173,7 +173,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       }
       setSelectedAppId(result.app.id);
       showSuccess(`Successfully imported ${result.app.name}`);
-      const chatId = await IpcClient.getInstance().createChat(result.app.id);
+      const chatId = await ipc.chat.createChat(result.app.id);
       navigate({ to: "/chat", search: { id: chatId } });
       if (!result.hasAiRules) {
         streamMessage({
@@ -197,7 +197,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     if (newName.trim()) {
       setIsCheckingGithubName(true);
       try {
-        const result = await IpcClient.getInstance().checkAppName({
+        const result = await ipc.import.checkAppName({
           appName: newName,
         });
         setGithubNameExists(result.exists);
@@ -218,7 +218,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
   }): Promise<void> => {
     setIsCheckingName(true);
     try {
-      const result = await IpcClient.getInstance().checkAppName({
+      const result = await ipc.import.checkAppName({
         appName: name,
         skipCopy,
       });
@@ -231,12 +231,12 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
   };
   const selectFolderMutation = useMutation({
     mutationFn: async () => {
-      const result = await IpcClient.getInstance().selectAppFolder();
+      const result = await ipc.system.selectAppFolder();
       if (!result.path || !result.name) {
         // User cancelled the folder selection dialog
         return null;
       }
-      const aiRulesCheck = await IpcClient.getInstance().checkAiRules({
+      const aiRulesCheck = await ipc.import.checkAiRules({
         path: result.path,
       });
       setHasAiRules(aiRulesCheck.exists);
@@ -255,7 +255,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
   const importAppMutation = useMutation({
     mutationFn: async () => {
       if (!selectedPath) throw new Error("No folder selected");
-      return IpcClient.getInstance().importApp({
+      return ipc.import.importApp({
         path: selectedPath,
         appName: customAppName,
         installCommand: installCommand || undefined,

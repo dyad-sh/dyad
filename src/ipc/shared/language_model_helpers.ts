@@ -3,7 +3,7 @@ import {
   language_model_providers as languageModelProvidersSchema,
   language_models as languageModelsSchema,
 } from "@/db/schema";
-import type { LanguageModelProvider, LanguageModel } from "@/ipc/ipc_types";
+import type { LanguageModelProvider, LanguageModel } from "@/ipc/types";
 import { eq } from "drizzle-orm";
 import {
   LOCAL_PROVIDERS,

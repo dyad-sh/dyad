@@ -1,0 +1,128 @@
+# Commands that should be BLOCKED due to security bypass attempts
+# These test the new security features (shell injection, -m, -c, interactive mode)
+# Format: one command per line, lines starting with # are comments
+
+# =============================================================================
+# SHELL INJECTION / COMMAND CHAINING
+# =============================================================================
+
+# Command separator
+python .claude/script.py; malicious_command
+python3 .claude/script.py; rm -rf /
+
+# Logical AND
+python .claude/script.py && malicious_command
+python3 .claude/script.py && rm -rf /
+
+# Logical OR
+python .claude/script.py || malicious_command
+python3 .claude/script.py || rm -rf /
+
+# Pipe to another command
+python .claude/script.py | cat
+python3 .claude/script.py | sh
+
+# Background + another command
+python .claude/script.py & malicious_command
+python3 .claude/script.py &rm -rf /
+
+# Command substitution with $()
+python .claude/script.py $(rm -rf /)
+python3 .claude/script.py $(malicious_command)
+
+# Command substitution with backticks
+python .claude/script.py `rm -rf /`
+python3 .claude/script.py `malicious_command`
+
+# Process substitution
+python <(echo "malicious code")
+python3 <(cat /tmp/malicious.py)
+
+# Input redirection (stdin)
+python < /tmp/malicious.py
+python3 < /tmp/script.py
+python < script.py
+python3 </tmp/malicious.py
+
+# Newline command separation (encoded)
+# Note: actual newlines in test file would break parsing
+
+# =============================================================================
+# MODULE EXECUTION (-m flag)
+# =============================================================================
+
+python -m http.server
+python3 -m http.server
+python -m pip install malicious_package
+python3 -m pip install malicious_package
+python -m runpy /tmp/malicious.py
+python3 -m runpy script_outside_claude.py
+python -m unittest discover
+
+# =============================================================================
+# INLINE CODE EXECUTION (-c flag)
+# =============================================================================
+
+python -c "print('hello')"
+python3 -c "print('hello')"
+python -c 'import os; os.system("rm -rf /")'
+python3 -c 'exec(open("/tmp/malicious.py").read())'
+python -c "import subprocess; subprocess.call(['malicious'])"
+python3 -c "__import__('os').system('whoami')"
+
+# =============================================================================
+# INTERACTIVE MODE (stdin redirection risk)
+# =============================================================================
+
+python
+python3
+
+# =============================================================================
+# ENV PYTHON WITH DANGEROUS FLAGS
+# =============================================================================
+
+env python -m http.server
+env python3 -c "print('hello')"
+/usr/bin/env python -m pip install malicious
+/usr/bin/env python3 -c "import os"
+
+# =============================================================================
+# HEREDOC / HERE-STRING ATTEMPTS
+# =============================================================================
+
+python <<EOF
+python3 <<'EOF'
+python <<<'print(1)'
+python3 <<<"import os"
+
+# =============================================================================
+# COMBINED FLAGS BYPASS ATTEMPTS
+# =============================================================================
+
+# Combined -c flag (e.g., -Bc = -B + -c)
+python -Bc "print('hello')"
+python3 -Bc "import os"
+python -uBc "malicious code"
+python3 -OBc "__import__('os').system('whoami')"
+
+# Combined -m flag (e.g., -um = -u + -m)
+python -um http.server
+python3 -Bm pip install malicious
+python -uBm runpy /tmp/malicious.py
+
+# =============================================================================
+# PYTEST WITH PATHS OUTSIDE PROJECT
+# =============================================================================
+
+# Absolute path outside project
+python -m pytest /tmp/malicious_tests
+python3 -m pytest /etc/tests
+python -m pytest /home/user/malicious
+
+# Path traversal attempts
+python -m pytest ../../../tmp/tests
+python3 -m pytest ../../malicious_tests
+
+# Dangerous pytest options
+python -m pytest --pyargs malicious_package
+python3 -m pytest --pyargs os

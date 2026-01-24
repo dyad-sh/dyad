@@ -1,6 +1,6 @@
 import { useAtom, useAtomValue } from "jotai";
 import { previewModeAtom, selectedAppIdAtom } from "../../atoms/appAtoms";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 
 import {
   Eye,
@@ -87,8 +87,7 @@ export const ActionHeader = () => {
   const useClearSessionData = () => {
     return useMutation({
       mutationFn: () => {
-        const ipcClient = IpcClient.getInstance();
-        return ipcClient.clearSessionData();
+        return ipc.system.clearSessionData();
       },
       onSuccess: async () => {
         await refreshAppIframe();

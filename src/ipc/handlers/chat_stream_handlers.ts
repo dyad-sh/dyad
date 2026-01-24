@@ -1,5 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { ipcMain, IpcMainInvokeEvent } from "electron";
+import { createTypedHandler } from "./base";
+import { chatContracts } from "../types/chat";
 import {
   ModelMessage,
   TextPart,
@@ -27,7 +29,7 @@ import {
 } from "../../prompts/supabase_prompt";
 import { getDyadAppPath } from "../../paths/paths";
 import { readSettings } from "../../main/settings";
-import type { ChatResponseEnd, ChatStreamParams } from "../ipc_types";
+import type { ChatResponseEnd, ChatStreamParams } from "@/ipc/types";
 import {
   CodebaseFile,
   extractCodebase,
@@ -231,6 +233,9 @@ export function registerChatStreamHandlers() {
       // Create an AbortController for this stream
       const abortController = new AbortController();
       activeStreams.set(req.chatId, abortController);
+
+      // Notify renderer that stream is starting
+      safeSend(event.sender, "chat:stream:start", { chatId: req.chatId });
 
       // Get the chat to check for existing messages
       const chat = await db.query.chats.findFirst({
@@ -1491,6 +1496,9 @@ ${problemReport.problems
       // Clean up the abort controller
       activeStreams.delete(req.chatId);
 
+      // Notify renderer that stream has ended
+      safeSend(event.sender, "chat:stream:end", { chatId: req.chatId });
+
       // Clean up any temporary files
       if (attachmentPaths.length > 0) {
         for (const filePath of attachmentPaths) {
@@ -1515,7 +1523,7 @@ ${problemReport.problems
   });
 
   // Handler to cancel an ongoing stream
-  ipcMain.handle("chat:cancel", async (event, chatId: number) => {
+  createTypedHandler(chatContracts.cancelStream, async (event, chatId) => {
     const abortController = activeStreams.get(chatId);
 
     if (abortController) {
@@ -1532,6 +1540,9 @@ ${problemReport.problems
       chatId,
       updatedFiles: false,
     } satisfies ChatResponseEnd);
+
+    // Also emit stream:end so cleanup listeners (e.g., pending agent consents) fire
+    safeSend(event.sender, "chat:stream:end", { chatId });
 
     return true;
   });

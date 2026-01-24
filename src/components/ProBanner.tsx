@@ -4,7 +4,7 @@ import openAiLogo from "../../assets/ai-logos/openai-logo.svg";
 import googleLogo from "../../assets/ai-logos/google-logo.svg";
 // @ts-ignore
 import anthropicLogo from "../../assets/ai-logos/anthropic-logo.svg";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { useState } from "react";
 import { ArrowUpRight, KeyRound, Wallet } from "lucide-react";
 
@@ -48,9 +48,7 @@ export function ManageDyadProButton({ className }: { className?: string }) {
         className,
       )}
       onClick={() => {
-        IpcClient.getInstance().openExternalUrl(
-          "https://academy.dyad.sh/subscription",
-        );
+        ipc.system.openExternalUrl("https://academy.dyad.sh/subscription");
       }}
     >
       <Wallet aria-hidden="true" className="w-5 h-5" />
@@ -67,9 +65,7 @@ export function SetupDyadProButton() {
       size="lg"
       className="cursor-pointer w-full mt-4 bg-(--background-lighter) text-primary"
       onClick={() => {
-        IpcClient.getInstance().openExternalUrl(
-          "https://academy.dyad.sh/settings",
-        );
+        ipc.system.openExternalUrl("https://academy.dyad.sh/settings");
       }}
     >
       <KeyRound aria-hidden="true" />
@@ -83,7 +79,7 @@ export function AiAccessBanner() {
     <div
       className="w-full py-2 sm:py-2.5 md:py-3 rounded-lg bg-gradient-to-br from-white via-indigo-50 to-sky-100 dark:from-indigo-700 dark:via-indigo-700 dark:to-indigo-900 flex items-center justify-center relative overflow-hidden ring-1 ring-inset ring-black/5 dark:ring-white/10 shadow-sm cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-[1px]"
       onClick={() => {
-        IpcClient.getInstance().openExternalUrl(
+        ipc.system.openExternalUrl(
           "https://www.dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=in-app-banner-ai-access",
         );
       }}
@@ -149,7 +145,7 @@ export function SmartContextBanner() {
     <div
       className="w-full py-2 sm:py-2.5 md:py-3 rounded-lg bg-gradient-to-br from-emerald-50 via-emerald-100 to-emerald-200 dark:from-emerald-700 dark:via-emerald-700 dark:to-emerald-900 flex items-center justify-center relative overflow-hidden ring-1 ring-inset ring-emerald-900/10 dark:ring-white/10 shadow-sm cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-[1px]"
       onClick={() => {
-        IpcClient.getInstance().openExternalUrl(
+        ipc.system.openExternalUrl(
           "https://www.dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=in-app-banner-smart-context",
         );
       }}
@@ -190,7 +186,7 @@ export function TurboBanner() {
     <div
       className="w-full py-2 sm:py-2.5 md:py-3 rounded-lg bg-gradient-to-br from-rose-50 via-rose-100 to-rose-200 dark:from-rose-800 dark:via-fuchsia-800 dark:to-rose-800 flex items-center justify-center relative overflow-hidden ring-1 ring-inset ring-rose-900/10 dark:ring-white/5 shadow-sm cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-[1px]"
       onClick={() => {
-        IpcClient.getInstance().openExternalUrl(
+        ipc.system.openExternalUrl(
           "https://www.dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=in-app-banner-turbo",
         );
       }}

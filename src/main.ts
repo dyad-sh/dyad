@@ -94,11 +94,13 @@ export async function onReady() {
 
   const settings = readSettings();
 
-  // Add dyad-apps directory to git safe.directory (required for Windows)
+  // Add dyad-apps directory to git safe.directory (required for Windows).
+  // The trailing /* allows access to all repositories under the named directory.
+  // See: https://git-scm.com/docs/git-config#Documentation/git-config.txt-safedirectory
   if (settings.enableNativeGit) {
     // Don't need to await because this only needs to run before
     // the user starts interacting with Dyad app and uses a git-related feature.
-    gitAddSafeDirectory(getDyadAppsBaseDirectory());
+    gitAddSafeDirectory(`${getDyadAppsBaseDirectory()}/*`);
   }
 
   // Check if app was force-closed
@@ -120,6 +122,7 @@ export async function onReady() {
 
   await onFirstRunMaybe(settings);
   createWindow();
+  createApplicationMenu();
 
   logger.info("Auto-update enabled=", settings.enableAutoUpdate);
   if (settings.enableAutoUpdate) {
@@ -293,6 +296,87 @@ const createWindow = () => {
     const menu = Menu.buildFromTemplate(template);
     menu.popup({ window: mainWindow! });
   });
+};
+
+/**
+ * Create application menu with Edit shortcuts (Undo, Redo, Cut, Copy, Paste, etc.)
+ * This enables standard keyboard shortcuts like Cmd/Ctrl+C, Cmd/Ctrl+V, etc.
+ */
+const createApplicationMenu = () => {
+  const isMac = process.platform === "darwin";
+
+  const template: Electron.MenuItemConstructorOptions[] = [
+    // App menu (macOS only)
+    ...(isMac
+      ? [
+          {
+            label: app.name,
+            submenu: [
+              { role: "about" as const },
+              { type: "separator" as const },
+              { role: "services" as const },
+              { type: "separator" as const },
+              { role: "hide" as const },
+              { role: "hideOthers" as const },
+              { role: "unhide" as const },
+              { type: "separator" as const },
+              { role: "quit" as const },
+            ],
+          },
+        ]
+      : []),
+    // Edit menu - enables keyboard shortcuts for clipboard operations
+    {
+      label: "Edit",
+      submenu: [
+        { role: "undo" as const },
+        { role: "redo" as const },
+        { type: "separator" as const },
+        { role: "cut" as const },
+        { role: "copy" as const },
+        { role: "paste" as const },
+        { role: "delete" as const },
+        { type: "separator" as const },
+        { role: "selectAll" as const },
+      ],
+    },
+    // View menu
+    {
+      label: "View",
+      submenu: [
+        { role: "reload" as const },
+        { role: "forceReload" as const },
+        ...(process.env.NODE_ENV === "development"
+          ? [{ role: "toggleDevTools" as const }]
+          : []),
+        { type: "separator" as const },
+        { role: "resetZoom" as const },
+        { role: "zoomIn" as const },
+        { role: "zoomOut" as const },
+        { type: "separator" as const },
+        { role: "togglefullscreen" as const },
+      ],
+    },
+    // Window menu
+    {
+      label: "Window",
+      submenu: [
+        { role: "minimize" as const },
+        { role: "zoom" as const },
+        ...(isMac
+          ? [
+              { type: "separator" as const },
+              { role: "front" as const },
+              { type: "separator" as const },
+              { role: "window" as const },
+            ]
+          : [{ role: "close" as const }]),
+      ],
+    },
+  ];
+
+  const appMenu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(appMenu);
 };
 
 const gotTheLock = app.requestSingleInstanceLock();

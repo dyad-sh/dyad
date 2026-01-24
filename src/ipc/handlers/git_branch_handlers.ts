@@ -1,4 +1,4 @@
-import { ipcMain, IpcMainInvokeEvent } from "electron";
+import { IpcMainInvokeEvent } from "electron";
 import { readSettings } from "../../main/settings";
 import {
   gitMergeAbort,
@@ -19,7 +19,6 @@ import {
   gitAddAll,
   gitCommit,
 } from "../utils/git_utils";
-import type { UncommittedFile } from "../ipc_types";
 import { getDyadAppPath } from "../../paths/paths";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
@@ -27,12 +26,15 @@ import { eq } from "drizzle-orm";
 import log from "electron-log";
 import { withLock } from "../utils/lock_utils";
 import { updateAppGithubRepo, ensureCleanWorkspace } from "./github_handlers";
+import { createTypedHandler } from "./base";
+import { githubContracts, gitContracts } from "../types/github";
 import type {
   GitBranchAppIdParams,
   CreateGitBranchParams,
   GitBranchParams,
   RenameGitBranchParams,
-} from "../ipc_types";
+  UncommittedFile,
+} from "../types/github";
 
 const logger = log.scope("git_branch_handlers");
 
@@ -348,15 +350,24 @@ async function handleCommitChanges(
 
 // --- Registration ---
 export function registerGithubBranchHandlers() {
-  ipcMain.handle("github:merge-abort", handleAbortMerge);
-  ipcMain.handle("github:fetch", handleFetchFromGithub);
-  ipcMain.handle("github:create-branch", handleCreateBranch);
-  ipcMain.handle("github:delete-branch", handleDeleteBranch);
-  ipcMain.handle("github:switch-branch", handleSwitchBranch);
-  ipcMain.handle("github:rename-branch", handleRenameBranch);
-  ipcMain.handle("github:merge-branch", handleMergeBranch);
-  ipcMain.handle("github:list-local-branches", handleListLocalBranches);
-  ipcMain.handle("github:list-remote-branches", handleListRemoteBranches);
-  ipcMain.handle("git:get-uncommitted-files", handleGetUncommittedFiles);
-  ipcMain.handle("git:commit-changes", handleCommitChanges);
+  createTypedHandler(githubContracts.mergeAbort, handleAbortMerge);
+  createTypedHandler(githubContracts.fetch, handleFetchFromGithub);
+  createTypedHandler(githubContracts.createBranch, handleCreateBranch);
+  createTypedHandler(githubContracts.deleteBranch, handleDeleteBranch);
+  createTypedHandler(githubContracts.switchBranch, handleSwitchBranch);
+  createTypedHandler(githubContracts.renameBranch, handleRenameBranch);
+  createTypedHandler(githubContracts.mergeBranch, handleMergeBranch);
+  createTypedHandler(
+    githubContracts.listLocalBranches,
+    handleListLocalBranches,
+  );
+  createTypedHandler(
+    githubContracts.listRemoteBranches,
+    handleListRemoteBranches,
+  );
+  createTypedHandler(
+    gitContracts.getUncommittedFiles,
+    handleGetUncommittedFiles,
+  );
+  createTypedHandler(gitContracts.commitChanges, handleCommitChanges);
 }

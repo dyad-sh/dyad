@@ -2,7 +2,7 @@ import { useNavigate, useRouter, useSearch } from "@tanstack/react-router";
 import { normalizePath } from "../../shared/normalizePath";
 import { useAtom, useSetAtom } from "jotai";
 import { appsListAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -81,7 +81,7 @@ export default function AppDetailsPage() {
 
     try {
       setIsDeleting(true);
-      await IpcClient.getInstance().deleteApp(appId);
+      await ipc.app.deleteApp({ appId });
       setIsDeleteDialogOpen(false);
       await refreshApps();
       navigate({ to: "/", search: {} });
@@ -118,7 +118,7 @@ export default function AppDetailsPage() {
       // Determine the new path based on user's choice
       const appPath = renameFolder ? newAppName : selectedApp.path;
 
-      await IpcClient.getInstance().renameApp({
+      await ipc.app.renameApp({
         appId,
         appName: newAppName,
         appPath,
@@ -143,7 +143,7 @@ export default function AppDetailsPage() {
 
     try {
       setIsRenamingFolder(true);
-      await IpcClient.getInstance().renameApp({
+      await ipc.app.renameApp({
         appId,
         appName: selectedApp.name, // Keep the app name the same
         appPath: newFolderName, // Change only the folder path
@@ -183,8 +183,9 @@ export default function AppDetailsPage() {
         ? currentPath.replace(/[/\\][^/\\]*$/, "") // Remove last path component
         : undefined;
 
-      const response =
-        await IpcClient.getInstance().selectAppLocation(currentParentDir);
+      const response = await ipc.app.selectAppLocation({
+        defaultPath: currentParentDir,
+      });
       if (!response.canceled && response.path) {
         await changeLocationMutation.mutateAsync({
           appId,
@@ -206,7 +207,7 @@ export default function AppDetailsPage() {
       if (!appId || !newCopyAppName.trim()) {
         throw new Error("Invalid app ID or name for copying.");
       }
-      return IpcClient.getInstance().copyApp({
+      return ipc.app.copyApp({
         appId,
         newAppName: newCopyAppName,
         withHistory,
@@ -217,7 +218,7 @@ export default function AppDetailsPage() {
       setSelectedAppId(appId);
       await invalidateAppQuery(queryClient, { appId });
       await refreshApps();
-      await IpcClient.getInstance().createChat(appId);
+      await ipc.chat.createChat(appId);
       setIsCopyDialogOpen(false);
       navigate({ to: "/app-details", search: { appId } });
     },
@@ -228,7 +229,7 @@ export default function AppDetailsPage() {
 
   const changeLocationMutation = useMutation({
     mutationFn: async (params: { appId: number; parentDirectory: string }) => {
-      return IpcClient.getInstance().changeAppLocation(params);
+      return ipc.app.changeAppLocation(params);
     },
     onSuccess: async () => {
       await invalidateAppQuery(queryClient, { appId });
@@ -365,7 +366,7 @@ export default function AppDetailsPage() {
                 size="icon"
                 className="ml-[-8px] p-0.5 h-auto cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                 onClick={() => {
-                  IpcClient.getInstance().showItemInFolder(currentAppPath);
+                  ipc.system.showItemInFolder(currentAppPath);
                 }}
                 title="Show in folder"
               >

@@ -15,7 +15,7 @@ import { safeJoin } from "@/ipc/utils/path_utils";
 import {
   AnalyseComponentParams,
   ApplyVisualEditingChangesParams,
-} from "@/ipc/ipc_types";
+} from "@/ipc/types";
 import {
   transformContent,
   analyzeComponent,

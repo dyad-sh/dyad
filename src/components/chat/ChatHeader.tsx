@@ -16,7 +16,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../ui/tooltip";
-import { IpcClient } from "@/ipc/ipc_client";
+import { ipc } from "@/ipc/types";
 import { useRouter } from "@tanstack/react-router";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useChats } from "@/hooks/useChats";
@@ -84,7 +84,7 @@ export function ChatHeader({
   const handleNewChat = async () => {
     if (appId) {
       try {
-        const chatId = await IpcClient.getInstance().createChat(appId);
+        const chatId = await ipc.chat.createChat(appId);
         setSelectedChatId(chatId);
         navigate({
           to: "/chat",

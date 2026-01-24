@@ -227,6 +227,8 @@ test.describe("Git Collaboration", () => {
     await po.waitForToast("success");
     await expect(
       po.page.getByTestId(`collaborator-item-${fakeUser}`),
-    ).not.toBeVisible({ timeout: 5000 });
+    ).not.toBeVisible({
+      timeout: 5000,
+    });
   });
 });

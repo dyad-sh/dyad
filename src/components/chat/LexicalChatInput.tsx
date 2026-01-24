@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   $getRoot,
   $createParagraphNode,
@@ -27,6 +27,7 @@ import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { MENTION_REGEX, parseAppMentions } from "@/shared/parse_mention_apps";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import { HistoryNavigation, HISTORY_TRIGGER } from "./HistoryNavigation";
 
 // Define the theme for mentions
 const beautifulMentionsTheme: BeautifulMentionsTheme = {
@@ -41,8 +42,27 @@ const CustomMenuItem = forwardRef<
 >(({ selected, item, ...props }, ref) => {
   const isPrompt = item.data?.type === "prompt";
   const isApp = item.data?.type === "app";
-  const label = isPrompt ? "Prompt" : isApp ? "App" : "File";
+  const isHistory = item.data?.type === "history";
+  const label = isPrompt ? "Prompt" : isApp ? "App" : isHistory ? "" : "File";
   const value = (item as any)?.value;
+
+  // For history items, show full text without label
+  if (isHistory) {
+    return (
+      <li
+        className={`m-0 px-3 py-2 cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis ${
+          selected
+            ? "bg-accent text-accent-foreground"
+            : "bg-popover text-popover-foreground hover:bg-accent/50"
+        }`}
+        {...props}
+        ref={ref}
+      >
+        <span className="truncate text-sm">{value}</span>
+      </li>
+    );
+  }
+
   return (
     <li
       className={`m-0 flex items-center px-3 py-2 cursor-pointer whitespace-nowrap ${
@@ -236,6 +256,7 @@ interface LexicalChatInputProps {
   onPaste?: (e: React.ClipboardEvent) => void;
   placeholder?: string;
   disabled?: boolean;
+  messageHistory: string[];
   excludeCurrentApp: boolean;
   disableSendButton: boolean;
 }
@@ -253,17 +274,28 @@ export function LexicalChatInput({
   placeholder = "Ask Dyad to build...",
   disabled = false,
   disableSendButton,
+  messageHistory = [],
 }: LexicalChatInputProps) {
   const { apps } = useLoadApps();
   const { prompts } = usePrompts();
   const [shouldClear, setShouldClear] = useState(false);
+  const historyTriggerActiveRef = useRef(false);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { app } = useLoadApp(selectedAppId);
   const appFiles = app?.files;
 
   // Prepare mention items - convert apps to mention format
   const mentionItems = React.useMemo(() => {
-    if (!apps) return { "@": [] };
+    const result: Record<string, any[]> = { "@": [], [HISTORY_TRIGGER]: [] };
+
+    // Add history items under the history trigger - always available regardless of app loading
+    const historyItems = (messageHistory || []).map((item) => ({
+      value: item,
+      type: "history",
+    }));
+    result[HISTORY_TRIGGER] = historyItems;
+
+    if (!apps) return result;
 
     // Get current app name
     const currentApp = apps.find((app) => app.id === selectedAppId);
@@ -304,10 +336,18 @@ export function LexicalChatInput({
       type: "file",
     }));
 
-    return {
-      "@": [...appMentions, ...promptItems, ...fileItems],
-    };
-  }, [apps, selectedAppId, value, excludeCurrentApp, prompts, appFiles]);
+    result["@"] = [...appMentions, ...promptItems, ...fileItems];
+
+    return result;
+  }, [
+    apps,
+    selectedAppId,
+    value,
+    excludeCurrentApp,
+    prompts,
+    appFiles,
+    messageHistory,
+  ]);
 
   const initialConfig = {
     namespace: "ChatInput",
@@ -324,6 +364,21 @@ export function LexicalChatInput({
       editorState.read(() => {
         const root = $getRoot();
         let textContent = root.getTextContent();
+
+        // If the history trigger is active, keep the input value empty while the
+        // menu is open, and always strip the invisible trigger from the value.
+        if (historyTriggerActiveRef.current) {
+          const hasTrigger = textContent.includes(HISTORY_TRIGGER);
+          const withoutTrigger = textContent.split(HISTORY_TRIGGER).join("");
+          if (!hasTrigger) {
+            historyTriggerActiveRef.current = false;
+          }
+          if (withoutTrigger.replace(/\s/g, "") === "") {
+            textContent = "";
+          } else {
+            textContent = withoutTrigger;
+          }
+        }
 
         // Transform @AppName mentions to @app:AppName format
         // This regex matches @AppName where AppName is one of our actual app names
@@ -423,6 +478,15 @@ export function LexicalChatInput({
         <ClearEditorPlugin
           shouldClear={shouldClear}
           onCleared={handleCleared}
+        />
+        <HistoryNavigation
+          messageHistory={messageHistory}
+          onTriggerInserted={() => {
+            historyTriggerActiveRef.current = true;
+          }}
+          onTriggerCleared={() => {
+            historyTriggerActiveRef.current = false;
+          }}
         />
       </div>
     </LexicalComposer>

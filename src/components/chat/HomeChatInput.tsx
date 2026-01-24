@@ -98,6 +98,7 @@ export function HomeChatInput({
               disabled={isStreaming}
               excludeCurrentApp={false}
               disableSendButton={false}
+              messageHistory={[]}
             />
 
             {isStreaming ? (

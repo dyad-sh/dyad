@@ -27,17 +27,15 @@ export function VoiceWaveform({ analyser }: VoiceWaveformProps) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       const barWidth = (canvas.width / bufferLength) * 2.5;
+      const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      gradient.addColorStop(0, "#a855f7"); // Purple
+      gradient.addColorStop(1, "#3b82f6"); // Blue
       let barHeight;
       let x = 0;
 
       // Draw bars
       for (let i = 0; i < bufferLength; i++) {
         barHeight = dataArray[i] / 2; // Scale down height
-
-        // Create gradient
-        const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-        gradient.addColorStop(0, "#a855f7"); // Purple
-        gradient.addColorStop(1, "#3b82f6"); // Blue
 
         ctx.fillStyle = gradient;
 

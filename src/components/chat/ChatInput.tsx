@@ -74,16 +74,13 @@ import {
 } from "@/atoms/previewAtoms";
 import { SelectedComponentsDisplay } from "./SelectedComponentDisplay";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
-import { LexicalChatInput } from "./LexicalChatInput";
 import { AuxiliaryActionsMenu } from "./AuxiliaryActionsMenu";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
 import { VisualEditingChangesDialog } from "@/components/preview_panel/VisualEditingChangesDialog";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
-import { useVoiceInput } from "@/hooks/useAudioRecorder";
-import { VoiceWaveform } from "./VoiceWaveform";
-import { VoiceInputButton } from "./VoiceInputButton";
+import { LexicalVoiceInputRow } from "./LexicalVoiceInputRow";
 
 const showTokenBarAtom = atom(false);
 
@@ -165,15 +162,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     messageId === lastMessage.id;
 
   const { userBudget } = useUserBudgetInfo();
-
-  const { isTranscribing, isRecording, analyser, handleMicClick } =
-    useVoiceInput({
-      appendText: (text) => {
-        if (text) {
-          setInputValue((prev) => (prev ? `${prev} ${text}` : text));
-        }
-      },
-    });
 
   useEffect(() => {
     if (error) {
@@ -454,22 +442,20 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           {/* Use the DragDropOverlay component */}
           <DragDropOverlay isDraggingOver={isDraggingOver} />
 
-          <div className="flex items-start space-x-2 ">
-            {isRecording ? (
-              <VoiceWaveform analyser={analyser} />
-            ) : (
-              <LexicalChatInput
-                value={inputValue}
-                onChange={setInputValue}
-                onSubmit={handleSubmit}
-                onPaste={handlePaste}
-                placeholder="Ask Dyad to build..."
-                excludeCurrentApp={true}
-                disableSendButton={disableSendButton}
-              />
-            )}
-
-            {isStreaming ? (
+          <LexicalVoiceInputRow
+            value={inputValue}
+            setValue={setInputValue}
+            onSubmit={handleSubmit}
+            onPaste={handlePaste}
+            placeholder="Ask Dyad to build..."
+            isStreaming={isStreaming}
+            disableSend={
+              (!inputValue.trim() && attachments.length === 0) ||
+              disableSendButton
+            }
+            excludeCurrentApp={true}
+            disableLexicalSendButton={disableSendButton}
+            cancelButton={
               <button
                 onClick={handleCancel}
                 className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg"
@@ -477,27 +463,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               >
                 <StopCircleIcon size={20} />
               </button>
-            ) : (
-              <div className="flex items-center mt-1 mr-1">
-                <VoiceInputButton
-                  isRecording={isRecording}
-                  isTranscribing={isTranscribing}
-                  onClick={handleMicClick}
-                />
-                <button
-                  onClick={handleSubmit}
-                  disabled={
-                    (!inputValue.trim() && attachments.length === 0) ||
-                    disableSendButton
-                  }
-                  className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
-                  title="Send message"
-                >
-                  <SendHorizontalIcon size={20} />
-                </button>
-              </div>
-            )}
-          </div>
+            }
+            sendIcon={<SendHorizontalIcon size={20} />}
+          />
           <div className="pl-2 pr-1 flex items-center justify-between pb-2">
             <div className="flex items-center">
               <ChatInputControls showContextFilesPicker={false} />

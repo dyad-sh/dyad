@@ -66,9 +66,7 @@ export function VoiceInputButton({
     </button>
   );
 
-  return proModeTogglable ? (
-    button
-  ) : (
+  return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>{button}</TooltipTrigger>

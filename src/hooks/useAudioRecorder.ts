@@ -1,8 +1,8 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { ipc } from "@/ipc/types";
 
 export interface AudioRecorderState {
   isRecording: boolean;
-  recordingTime: number;
   audioBlob: Blob | null;
 }
 
@@ -15,18 +15,49 @@ type UseVoiceInputOptions = {
 
 export function useAudioRecorder(onRecordingComplete?: (blob: Blob) => void) {
   const [isRecording, setIsRecording] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const isMountedRef = useRef(true);
+  const isStartingRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      if (mediaRecorderRef.current) {
+        mediaRecorderRef.current.ondataavailable = null;
+        mediaRecorderRef.current.onstop = null;
+        if (mediaRecorderRef.current.state !== "inactive") {
+          try {
+            mediaRecorderRef.current.stop();
+          } catch (error) {
+            console.warn("Failed to stop media recorder on unmount", error);
+          }
+        }
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
+      analyserRef.current = null;
+    };
+  }, []);
 
   const startRecording = useCallback(async () => {
+    if (isStartingRef.current || isRecording) return;
+    isStartingRef.current = true;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      streamRef.current = stream;
 
       // Setup Audio Context for visualization
       const audioContext = new AudioContext();
@@ -49,15 +80,15 @@ export function useAudioRecorder(onRecordingComplete?: (blob: Blob) => void) {
         }
       };
 
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        setAudioBlob(blob);
-        if (onRecordingComplete) {
-          onRecordingComplete(blob);
+      mediaRecorder.onerror = (event) => {
+        console.error("MediaRecorder error:", event);
+        if (isMountedRef.current) {
+          setIsRecording(false);
         }
         stream.getTracks().forEach((track) => track.stop());
-
-        // Cleanup AudioContext
+        if (streamRef.current === stream) {
+          streamRef.current = null;
+        }
         if (audioContextRef.current) {
           audioContextRef.current.close();
           audioContextRef.current = null;
@@ -65,34 +96,61 @@ export function useAudioRecorder(onRecordingComplete?: (blob: Blob) => void) {
         analyserRef.current = null;
       };
 
+      const recorderAudioContext = audioContext;
+      const recorderAnalyser = analyser;
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        if (isMountedRef.current) {
+          setIsRecording(false);
+          setAudioBlob(blob);
+          if (onRecordingComplete) {
+            onRecordingComplete(blob);
+          }
+        }
+        stream.getTracks().forEach((track) => track.stop());
+        if (streamRef.current === stream) {
+          streamRef.current = null;
+        }
+
+        // Cleanup AudioContext
+        if (audioContextRef.current === recorderAudioContext) {
+          audioContextRef.current.close();
+          audioContextRef.current = null;
+        }
+        if (analyserRef.current === recorderAnalyser) {
+          analyserRef.current = null;
+        }
+      };
+
       mediaRecorder.start();
       setIsRecording(true);
-      setRecordingTime(0);
       setAudioBlob(null);
-
-      timerRef.current = setInterval(() => {
-        setRecordingTime((prev) => prev + 1);
-      }, 1000);
     } catch (err) {
       console.error("Error starting recording:", err);
       throw err;
+    } finally {
+      isStartingRef.current = false;
     }
-  }, [onRecordingComplete]);
+  }, [isRecording, onRecordingComplete]);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
+      if (mediaRecorderRef.current.state !== "inactive") {
+        try {
+          mediaRecorderRef.current.requestData();
+          mediaRecorderRef.current.stop();
+        } catch (error) {
+          console.warn("Failed to stop media recorder", error);
+        }
       }
+      setIsRecording(false);
+      isStartingRef.current = false;
     }
   }, [isRecording]);
 
   return {
     isRecording,
-    recordingTime,
     audioBlob,
     startRecording,
     stopRecording,
@@ -131,15 +189,7 @@ export function useVoiceInput({ appendText, onError }: UseVoiceInputOptions) {
               return;
             }
 
-            const text = await (
-              window as unknown as {
-                electron: {
-                  ipcRenderer: {
-                    invoke: (channel: string, data: unknown) => Promise<string>;
-                  };
-                };
-              }
-            ).electron.ipcRenderer.invoke("chat:transcribe", {
+            const text = await ipc.misc.transcribeAudio({
               audioData: base64Content,
               format: "webm",
             });

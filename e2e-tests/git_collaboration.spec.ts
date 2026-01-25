@@ -63,7 +63,7 @@ async function createGitConflict(po: PageObject) {
   await po.page.getByTestId(`branch-actions-${featureBranch}`).click();
   await po.page.getByTestId("merge-branch-menu-item").click();
   await po.page.getByTestId("merge-branch-submit-button").click();
-  return { conflictFile };
+  return { conflictFile, appPath };
 }
 
 test.describe("Git Collaboration", () => {
@@ -295,7 +295,7 @@ test.describe("Git Collaboration", () => {
   });
 
   test("should resolve merge conflicts with AI", async ({ po }) => {
-    await createGitConflict(po);
+    const { conflictFile, appPath } = await createGitConflict(po);
     // Verify Conflict Dialog appears
     await expect(po.page.getByText("Resolve Conflicts")).toBeVisible({
       timeout: Timeout.MEDIUM,
@@ -303,6 +303,25 @@ test.describe("Git Collaboration", () => {
     // Use AI to resolve conflicts
     await po.page.getByRole("button", { name: "Auto-Resolve with AI" }).click();
     await po.waitForToastWithText("AI suggested a resolution");
+    await expect(po.page.getByText("AI Suggested Resolution")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+    await po.page.getByRole("button", { name: "Approve" }).click();
+    await po.waitForToastWithText("Applied AI suggestion via approval.");
+    await expect(po.page.getByText("Resolve Conflicts")).not.toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+    const conflictFilePath = path.join(appPath, conflictFile);
+    await expect
+      .poll(() => fs.readFileSync(conflictFilePath, "utf-8"), {
+        timeout: Timeout.MEDIUM,
+      })
+      .not.toMatch(/<<<<<<<|=======|>>>>>>>/);
+    await expect
+      .poll(() => fs.existsSync(path.join(appPath, ".git", "MERGE_HEAD")), {
+        timeout: Timeout.MEDIUM,
+      })
+      .toBe(false);
   });
 
   test("should resolve merge conflicts manually", async ({ po }) => {

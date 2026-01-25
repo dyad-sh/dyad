@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { ipc } from "@/ipc/types";
 import { AlertTriangle, Wand2, Hand } from "lucide-react";
@@ -47,20 +47,6 @@ export function GithubConflictResolver({
   const isMountedRef = useRef(true);
   const currentFileRef = useRef(currentFile);
 
-  useEffect(() => {
-    isMountedRef.current = true;
-    currentFileRef.current = currentFile;
-
-    loadFileContent();
-    setIsAiResolving(false);
-    setIsManualResolving(false);
-    setIsResolving(false);
-
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, [currentFile, appId]);
-
   const ensureChatId = async () => {
     if (aiChatId) return aiChatId;
     const newChatId = await ipc.chat.createChat(appId);
@@ -86,7 +72,7 @@ export function GithubConflictResolver({
     }
   };
 
-  const loadFileContent = async () => {
+  const loadFileContent = useCallback(async () => {
     if (!currentFile) return;
     const fileForThisRequest = currentFile;
     try {
@@ -106,7 +92,21 @@ export function GithubConflictResolver({
     } catch (error: any) {
       showError(`Failed to load file ${currentFile}: ${error.message}`);
     }
-  };
+  }, [appId, currentFile]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    currentFileRef.current = currentFile;
+
+    loadFileContent();
+    setIsAiResolving(false);
+    setIsManualResolving(false);
+    setIsResolving(false);
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, [currentFile, appId, loadFileContent]);
 
   const extractConflictParts = (content: string) => {
     const conflicts: Array<{ current: string; incoming: string }> = [];
@@ -189,7 +189,6 @@ The full file content is attached. Review the entire file and resolve all confli
               !isMountedRef.current ||
               fileForThisRequest !== currentFileRef.current
             ) {
-              setIsAiResolving(false);
               return;
             }
 
@@ -209,7 +208,6 @@ The full file content is attached. Review the entire file and resolve all confli
                     !isMountedRef.current ||
                     fileForThisRequest !== currentFileRef.current
                   ) {
-                    setIsAiResolving(false);
                     return;
                   }
 
@@ -232,17 +230,11 @@ The full file content is attached. Review the entire file and resolve all confli
                       const allRemainingConflicts =
                         await ipc.github.getConflicts({ appId });
                       if (allRemainingConflicts.length === 0) {
-                        if (currentConflictIndex < conflicts.length - 1) {
-                          setCurrentConflictIndex(currentConflictIndex + 1);
-                        } else {
-                          onResolve();
-                        }
+                        onResolve();
+                      } else if (currentConflictIndex < conflicts.length - 1) {
+                        setCurrentConflictIndex(currentConflictIndex + 1);
                       } else {
-                        if (currentConflictIndex < conflicts.length - 1) {
-                          setCurrentConflictIndex(currentConflictIndex + 1);
-                        } else {
-                          onResolve();
-                        }
+                        onResolve();
                       }
                       setIsAiResolving(false);
                       return;
@@ -273,7 +265,6 @@ The full file content is attached. Review the entire file and resolve all confli
               !isMountedRef.current ||
               fileForThisRequest !== currentFileRef.current
             ) {
-              setIsAiResolving(false);
               return;
             }
             showError(error || "Failed to resolve with AI");
@@ -307,30 +298,24 @@ The full file content is attached. Review the entire file and resolve all confli
       const remainingConflicts = await ipc.github.getConflicts({ appId });
       if (remainingConflicts.length === 0) {
         // All conflicts resolved, complete the merge
-        if (currentConflictIndex < conflicts.length - 1) {
-          setCurrentConflictIndex(currentConflictIndex + 1);
-        } else {
-          onResolve();
-        }
-      } else {
+        onResolve();
+      } else if (currentConflictIndex < conflicts.length - 1) {
         // Update conflicts list and move to next conflict if available
-        if (currentConflictIndex < conflicts.length - 1) {
-          setCurrentConflictIndex(currentConflictIndex + 1);
+        setCurrentConflictIndex(currentConflictIndex + 1);
+      } else {
+        // All conflicts in the list are resolved, but there might be more files
+        // Refresh the conflicts list
+        const updatedConflicts = await ipc.github.getConflicts({ appId });
+        if (updatedConflicts.length > 0) {
+          // There are more conflicts in other files, show them
+          showError(
+            `Resolved current file, but ${updatedConflicts.length} file(s) still have conflicts.`,
+          );
+          // The parent component should handle updating the conflicts list
+          onResolve();
         } else {
-          // All conflicts in the list are resolved, but there might be more files
-          // Refresh the conflicts list
-          const updatedConflicts = await ipc.github.getConflicts({ appId });
-          if (updatedConflicts.length > 0) {
-            // There are more conflicts in other files, show them
-            showError(
-              `Resolved current file, but ${updatedConflicts.length} file(s) still have conflicts.`,
-            );
-            // The parent component should handle updating the conflicts list
-            onResolve();
-          } else {
-            // All conflicts resolved
-            onResolve();
-          }
+          // All conflicts resolved
+          onResolve();
         }
       }
     } catch (error: any) {
@@ -361,30 +346,24 @@ The full file content is attached. Review the entire file and resolve all confli
       const remainingConflicts = await ipc.github.getConflicts({ appId });
       if (remainingConflicts.length === 0) {
         // All conflicts resolved, complete the merge
-        if (currentConflictIndex < conflicts.length - 1) {
-          setCurrentConflictIndex(currentConflictIndex + 1);
-        } else {
-          onResolve();
-        }
-      } else {
+        onResolve();
+      } else if (currentConflictIndex < conflicts.length - 1) {
         // Update conflicts list and move to next conflict if available
-        if (currentConflictIndex < conflicts.length - 1) {
-          setCurrentConflictIndex(currentConflictIndex + 1);
+        setCurrentConflictIndex(currentConflictIndex + 1);
+      } else {
+        // All conflicts in the list are resolved, but there might be more files
+        // Refresh the conflicts list
+        const updatedConflicts = await ipc.github.getConflicts({ appId });
+        if (updatedConflicts.length > 0) {
+          // There are more conflicts in other files, show them
+          showError(
+            `Resolved current file, but ${updatedConflicts.length} file(s) still have conflicts.`,
+          );
+          // The parent component should handle updating the conflicts list
+          onResolve();
         } else {
-          // All conflicts in the list are resolved, but there might be more files
-          // Refresh the conflicts list
-          const updatedConflicts = await ipc.github.getConflicts({ appId });
-          if (updatedConflicts.length > 0) {
-            // There are more conflicts in other files, show them
-            showError(
-              `Resolved current file, but ${updatedConflicts.length} file(s) still have conflicts.`,
-            );
-            // The parent component should handle updating the conflicts list
-            onResolve();
-          } else {
-            // All conflicts resolved
-            onResolve();
-          }
+          // All conflicts resolved
+          onResolve();
         }
       }
     } catch (error: any) {

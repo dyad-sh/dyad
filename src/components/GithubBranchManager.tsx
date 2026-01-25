@@ -687,9 +687,16 @@ export function GithubBranchManager({
               if (!gitState.mergeInProgress && !gitState.rebaseInProgress) {
                 // Merge/rebase already completed (possibly auto-completed)
                 // Check if there are any remaining conflicts
-                const remainingConflicts = await ipc.github.getConflicts({
-                  appId,
-                });
+                let remainingConflicts: string[] = [];
+                try {
+                  remainingConflicts = await ipc.github.getConflicts({
+                    appId,
+                  });
+                } catch (error: any) {
+                  showError(
+                    error?.message || "Failed to check for remaining conflicts",
+                  );
+                }
                 if (remainingConflicts.length === 0) {
                   showSuccess("All conflicts resolved");
                   await loadBranches();
@@ -714,9 +721,16 @@ export function GithubBranchManager({
               }
             } catch (error: any) {
               showError(error.message || "Failed to complete merge");
-              const remainingConflicts = await ipc.github.getConflicts({
-                appId,
-              });
+              let remainingConflicts: string[] = [];
+              try {
+                remainingConflicts = await ipc.github.getConflicts({
+                  appId,
+                });
+              } catch (error: any) {
+                showError(
+                  error?.message || "Failed to refresh conflict status",
+                );
+              }
               if (remainingConflicts.length > 0) {
                 setConflicts(remainingConflicts);
               } else {

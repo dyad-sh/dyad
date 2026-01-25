@@ -21,7 +21,6 @@ import {
   isGitMergeInProgress,
   isGitRebaseInProgress,
   GitConflictError,
-  gitAddAll,
   gitCommit,
   gitAdd,
 } from "../utils/git_utils";
@@ -1203,7 +1202,9 @@ async function handleCompleteMerge(
       );
     }
 
-    await gitAddAll({ path: appPath });
+    for (const file of conflicts) {
+      await gitAdd({ path: appPath, filepath: file });
+    }
 
     if (rebaseInProgress) {
       await gitRebaseContinue({ path: appPath });

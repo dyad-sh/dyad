@@ -135,10 +135,12 @@ function ConnectedGitHubConnector({
         // This is important because gitPull can throw GitConflictError which might not
         // be properly serialized through IPC
         let conflictsDetected: string[] = [];
+        let conflictCheckError: unknown = null;
         try {
           conflictsDetected = await ipc.github.getConflicts({ appId });
-        } catch {
-          // If conflict check fails, continue with original error handling below
+        } catch (error) {
+          // If conflict check fails, keep the error to surface it with the sync failure.
+          conflictCheckError = error;
         }
 
         if (conflictsDetected.length > 0) {
@@ -192,7 +194,14 @@ function ConnectedGitHubConnector({
           inferredRebaseInProgress ||
           messageIndicatesRebase;
 
-        const finalErrorMessage = err.message || "Failed to sync to GitHub.";
+        const baseErrorMessage = err.message || "Failed to sync to GitHub.";
+        const conflictCheckMessage =
+          conflictCheckError instanceof Error
+            ? ` Conflict check failed: ${conflictCheckError.message}`
+            : conflictCheckError
+              ? " Conflict check failed."
+              : "";
+        const finalErrorMessage = `${baseErrorMessage}${conflictCheckMessage}`;
         setSyncError(finalErrorMessage);
         setRebaseInProgress(rebaseInProgressState);
         setRebaseStatusMessage(null);
@@ -494,6 +503,8 @@ function ConnectedGitHubConnector({
                 });
                 if (remainingConflicts.length === 0) {
                   showSuccess("All conflicts resolved");
+                  setRebaseInProgress(false);
+                  setRebaseStatusMessage(null);
                   refreshApp();
                   if (onAutoSyncComplete) {
                     onAutoSyncComplete();
@@ -510,15 +521,24 @@ function ConnectedGitHubConnector({
               // Merge/rebase is still in progress, complete it
               await ipc.github.completeMerge({ appId });
               showSuccess("Conflicts resolved and merge completed");
+              setRebaseInProgress(false);
+              setRebaseStatusMessage(null);
               refreshApp();
               if (onAutoSyncComplete) {
                 onAutoSyncComplete();
               }
             } catch (error: any) {
               setSyncError(error.message || "Failed to complete merge");
-              const remainingConflicts = await ipc.github.getConflicts({
-                appId,
-              });
+              let remainingConflicts: string[] = [];
+              try {
+                remainingConflicts = await ipc.github.getConflicts({
+                  appId,
+                });
+              } catch (conflictError: any) {
+                setSyncError(
+                  conflictError?.message || "Failed to refresh conflict status",
+                );
+              }
               if (remainingConflicts.length > 0) {
                 setConflicts(remainingConflicts);
               } else {

@@ -1,6 +1,8 @@
 # @dyad-sh/nextjs-webpack-component-tagger
 
-A webpack loader for Next.js that automatically adds `data-dyad-id` and `data-dyad-name` attributes to your React components. This is useful for identifying components in the DOM, for example for testing or analytics.
+A loader for Next.js that automatically adds `data-dyad-id` and `data-dyad-name` attributes to your React components. This is useful for identifying components in the DOM, for example for testing or analytics.
+
+This loader works with both **webpack** (default) and **Turbopack** (`next dev --turbo`).
 
 ## Installation
 
@@ -14,7 +16,34 @@ pnpm add @dyad-sh/nextjs-webpack-component-tagger
 
 ## Usage
 
-Add the loader to your `next.config.js` file:
+### With Turbopack (Recommended)
+
+If you're using Turbopack (`next dev --turbo`), add the loader to the `turbopack.rules` configuration in your `next.config.ts` file:
+
+```ts
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  turbopack: {
+    rules: {
+      "*.tsx": {
+        loaders: ["@dyad-sh/nextjs-webpack-component-tagger"],
+        as: "*.tsx",
+      },
+      "*.jsx": {
+        loaders: ["@dyad-sh/nextjs-webpack-component-tagger"],
+        as: "*.jsx",
+      },
+    },
+  },
+};
+
+export default nextConfig;
+```
+
+### With Webpack
+
+If you're using webpack (the default bundler), add the loader to your `next.config.ts` file:
 
 ```ts
 import type { NextConfig } from "next";
@@ -35,6 +64,46 @@ const nextConfig: NextConfig = {
 
 export default nextConfig;
 ```
+
+### Supporting Both Webpack and Turbopack
+
+If you want your app to work with both bundlers, you can include both configurations:
+
+```ts
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  // Turbopack configuration (for next dev --turbo)
+  turbopack: {
+    rules: {
+      "*.tsx": {
+        loaders: ["@dyad-sh/nextjs-webpack-component-tagger"],
+        as: "*.tsx",
+      },
+      "*.jsx": {
+        loaders: ["@dyad-sh/nextjs-webpack-component-tagger"],
+        as: "*.jsx",
+      },
+    },
+  },
+  // Webpack configuration (for next dev without --turbo)
+  webpack: (config) => {
+    if (process.env.NODE_ENV === "development") {
+      config.module.rules.push({
+        test: /\.(jsx|tsx)$/,
+        exclude: /node_modules/,
+        enforce: "pre",
+        use: "@dyad-sh/nextjs-webpack-component-tagger",
+      });
+    }
+    return config;
+  },
+};
+
+export default nextConfig;
+```
+
+## How It Works
 
 The loader will automatically add `data-dyad-id` and `data-dyad-name` to all your React components.
 

@@ -48,7 +48,26 @@ function isViteApp(appPath: string): boolean {
   return fs.existsSync(viteConfigPathTs) || fs.existsSync(viteConfigPathJs);
 }
 
-function isComponentTaggerUpgradeNeeded(appPath: string): boolean {
+function getNextConfigPath(appPath: string): string | null {
+  const nextConfigPathTs = path.join(appPath, "next.config.ts");
+  const nextConfigPathMjs = path.join(appPath, "next.config.mjs");
+  const nextConfigPathJs = path.join(appPath, "next.config.js");
+
+  if (fs.existsSync(nextConfigPathTs)) {
+    return nextConfigPathTs;
+  } else if (fs.existsSync(nextConfigPathMjs)) {
+    return nextConfigPathMjs;
+  } else if (fs.existsSync(nextConfigPathJs)) {
+    return nextConfigPathJs;
+  }
+  return null;
+}
+
+function isNextApp(appPath: string): boolean {
+  return getNextConfigPath(appPath) !== null;
+}
+
+function isViteComponentTaggerUpgradeNeeded(appPath: string): boolean {
   const viteConfigPathJs = path.join(appPath, "vite.config.js");
   const viteConfigPathTs = path.join(appPath, "vite.config.ts");
 
@@ -68,6 +87,35 @@ function isComponentTaggerUpgradeNeeded(appPath: string): boolean {
     logger.error("Error reading vite config", e);
     return false;
   }
+}
+
+function isNextComponentTaggerUpgradeNeeded(appPath: string): boolean {
+  const nextConfigPath = getNextConfigPath(appPath);
+  if (!nextConfigPath) {
+    return false;
+  }
+
+  try {
+    const nextConfigContent = fs.readFileSync(nextConfigPath, "utf-8");
+    return !nextConfigContent.includes(
+      "@dyad-sh/nextjs-webpack-component-tagger",
+    );
+  } catch (e) {
+    logger.error("Error reading next config", e);
+    return false;
+  }
+}
+
+function isComponentTaggerUpgradeNeeded(appPath: string): boolean {
+  // Check Vite apps first
+  if (isViteApp(appPath)) {
+    return isViteComponentTaggerUpgradeNeeded(appPath);
+  }
+  // Check Next.js apps
+  if (isNextApp(appPath)) {
+    return isNextComponentTaggerUpgradeNeeded(appPath);
+  }
+  return false;
 }
 
 function isCapacitorUpgradeNeeded(appPath: string): boolean {
@@ -93,7 +141,7 @@ function isCapacitorUpgradeNeeded(appPath: string): boolean {
   return true;
 }
 
-async function applyComponentTagger(appPath: string) {
+async function applyViteComponentTagger(appPath: string) {
   const viteConfigPathJs = path.join(appPath, "vite.config.js");
   const viteConfigPathTs = path.join(appPath, "vite.config.ts");
 
@@ -148,10 +196,99 @@ async function applyComponentTagger(appPath: string) {
   await fs.promises.writeFile(viteConfigPath, content);
 
   // Install the dependency
+  await installComponentTaggerDependency(
+    appPath,
+    "@dyad-sh/react-vite-component-tagger",
+  );
+}
+
+async function applyNextComponentTagger(appPath: string) {
+  const nextConfigPath = getNextConfigPath(appPath);
+  if (!nextConfigPath) {
+    throw new Error(
+      "Could not find next.config.ts, next.config.mjs, or next.config.js",
+    );
+  }
+
+  let content = await fs.promises.readFile(nextConfigPath, "utf-8");
+
+  // Check if turbopack config already exists
+  const hasTurbopackConfig =
+    content.includes("turbopack:") || content.includes("turbopack :");
+
+  if (hasTurbopackConfig) {
+    // Need to add rules to existing turbopack config
+    // This is more complex, so we'll just check if rules exist
+    if (content.includes("rules:") || content.includes("rules :")) {
+      throw new Error(
+        "Turbopack rules already exist. Manual installation required. See https://dyad.sh/docs/upgrades/select-component",
+      );
+    }
+    // Add rules to existing turbopack config
+    content = content.replace(
+      /turbopack\s*:\s*\{/,
+      `turbopack: {
+    rules: {
+      "*.tsx": {
+        loaders: ["@dyad-sh/nextjs-webpack-component-tagger"],
+        as: "*.tsx",
+      },
+      "*.jsx": {
+        loaders: ["@dyad-sh/nextjs-webpack-component-tagger"],
+        as: "*.jsx",
+      },
+    },`,
+    );
+  } else {
+    // Need to add turbopack config to nextConfig
+    // Find the nextConfig object and add turbopack config
+    const nextConfigMatch = content.match(
+      /(const\s+nextConfig\s*[=:][^{]*\{|export\s+default\s*\{)/,
+    );
+    if (nextConfigMatch) {
+      const insertPosition =
+        (nextConfigMatch.index ?? 0) + nextConfigMatch[0].length;
+      const turbopackConfig = `
+  turbopack: {
+    rules: {
+      "*.tsx": {
+        loaders: ["@dyad-sh/nextjs-webpack-component-tagger"],
+        as: "*.tsx",
+      },
+      "*.jsx": {
+        loaders: ["@dyad-sh/nextjs-webpack-component-tagger"],
+        as: "*.jsx",
+      },
+    },
+  },`;
+      content =
+        content.slice(0, insertPosition) +
+        turbopackConfig +
+        content.slice(insertPosition);
+    } else {
+      throw new Error(
+        "Could not find nextConfig object in next.config file. Manual installation required.",
+      );
+    }
+  }
+
+  await fs.promises.writeFile(nextConfigPath, content);
+
+  // Install the dependency
+  await installComponentTaggerDependency(
+    appPath,
+    "@dyad-sh/nextjs-webpack-component-tagger",
+  );
+}
+
+async function installComponentTaggerDependency(
+  appPath: string,
+  packageName: string,
+) {
   await new Promise<void>((resolve, reject) => {
-    logger.info("Installing component-tagger dependency");
-    const process = spawn(
-      "pnpm add -D @dyad-sh/react-vite-component-tagger || npm install --save-dev --legacy-peer-deps @dyad-sh/react-vite-component-tagger",
+    logger.info(`Installing ${packageName} dependency`);
+    const childProcess = spawn(
+      `pnpm add -D ${packageName} || npm install --save-dev --legacy-peer-deps ${packageName}`,
       {
         cwd: appPath,
         shell: true,
@@ -159,12 +296,12 @@ async function applyComponentTagger(appPath: string) {
       },
     );
 
-    process.stdout?.on("data", (data) => logger.info(data.toString()));
-    process.stderr?.on("data", (data) => logger.error(data.toString()));
+    childProcess.stdout?.on("data", (data) => logger.info(data.toString()));
+    childProcess.stderr?.on("data", (data) => logger.error(data.toString()));
 
-    process.on("close", (code) => {
+    childProcess.on("close", (code) => {
       if (code === 0) {
-        logger.info("component-tagger dependency installed successfully");
+        logger.info(`${packageName} dependency installed successfully`);
         resolve();
       } else {
         logger.error(`Failed to install dependency, exit code ${code}`);
@@ -172,11 +309,23 @@ async function applyComponentTagger(appPath: string) {
       }
     });
 
-    process.on("error", (err) => {
+    childProcess.on("error", (err) => {
       logger.error("Failed to spawn pnpm", err);
       reject(err);
     });
   });
+}
+
+async function applyComponentTagger(appPath: string) {
+  if (isViteApp(appPath)) {
+    await applyViteComponentTagger(appPath);
+  } else if (isNextApp(appPath)) {
+    await applyNextComponentTagger(appPath);
+  } else {
+    throw new Error(
+      "Could not find vite.config or next.config. Manual installation required.",
+    );
+  }
 
   // Commit changes
   try {

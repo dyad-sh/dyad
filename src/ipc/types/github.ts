@@ -258,6 +258,18 @@ export const githubContracts = {
     output: z.array(z.string()),
   }),
 
+  resolveConflict: defineContract({
+    channel: "github:resolve-conflict",
+    input: z.object({ appId: z.number(), file: z.string() }),
+    output: z.string(),
+  }),
+
+  completeMerge: defineContract({
+    channel: "github:complete-merge",
+    input: z.object({ appId: z.number() }),
+    output: z.string().optional(),
+  }),
+
   getGitState: defineContract({
     channel: "github:get-git-state",
     input: z.object({ appId: z.number() }),

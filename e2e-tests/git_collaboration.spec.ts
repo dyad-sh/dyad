@@ -1,8 +1,70 @@
 import { expect } from "@playwright/test";
 import { test, Timeout } from "./helpers/test_helper";
+import type { PageObject } from "./helpers/test_helper";
 import fs from "fs";
 import path from "path";
 import { execSync } from "child_process";
+
+async function createGitConflict(po: PageObject) {
+  await po.setUp({ disableNativeGit: false });
+  await po.sendPrompt("tc=basic");
+
+  await po.getTitleBarAppNameButton().click();
+  await po.githubConnector.connect();
+
+  const repoName = "test-git-conflict-" + Date.now();
+  await po.githubConnector.fillCreateRepoName(repoName);
+  await po.githubConnector.clickCreateRepoButton();
+  await expect(po.page.getByTestId("github-connected-repo")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
+
+  const appPath = await po.getCurrentAppPath();
+  if (!appPath) throw new Error("App path not found");
+
+  // Setup conflict
+  const conflictFile = "conflict.txt";
+  const conflictFilePath = path.join(appPath, conflictFile);
+
+  // Configure git user for commits
+  execSync("git config user.email 'test@example.com'", { cwd: appPath });
+  execSync("git config user.name 'Test User'", { cwd: appPath });
+  execSync("git config commit.gpgsign false", { cwd: appPath });
+
+  // 1. Create file on main
+  fs.writeFileSync(conflictFilePath, "Line 1\nLine 2\nLine 3");
+  execSync(`git add ${conflictFile} && git commit -m "Add conflict file"`, {
+    cwd: appPath,
+  });
+
+  // 2. Create feature branch
+  const featureBranch = "feature-conflict";
+  execSync(`git checkout -b ${featureBranch}`, { cwd: appPath });
+  fs.writeFileSync(conflictFilePath, "Line 1\nLine 2 Modified Feature\nLine 3");
+  execSync(`git add ${conflictFile} && git commit -m "Modify on feature"`, {
+    cwd: appPath,
+  });
+
+  // 3. Switch back to main and modify
+  execSync(`git checkout main`, { cwd: appPath });
+  fs.writeFileSync(conflictFilePath, "Line 1\nLine 2 Modified Main\nLine 3");
+  execSync(`git add ${conflictFile} && git commit -m "Modify on main"`, {
+    cwd: appPath,
+  });
+
+  // 4. Try to merge feature into main via UI
+  await po.goToChatTab();
+  await po.getTitleBarAppNameButton().click(); // Open Publish Panel
+
+  // Open branches accordion
+  const branchesCard = po.page.getByTestId("branches-header");
+  await branchesCard.click();
+
+  await po.page.getByTestId(`branch-actions-${featureBranch}`).click();
+  await po.page.getByTestId("merge-branch-menu-item").click();
+  await po.page.getByTestId("merge-branch-submit-button").click();
+  return { conflictFile };
+}
 
 test.describe("Git Collaboration", () => {
   //create git conflict helper function
@@ -230,5 +292,29 @@ test.describe("Git Collaboration", () => {
     ).not.toBeVisible({
       timeout: 5000,
     });
+  });
+
+  test("should resolve merge conflicts with AI", async ({ po }) => {
+    await createGitConflict(po);
+    // Verify Conflict Dialog appears
+    await expect(po.page.getByText("Resolve Conflicts")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+    // Use AI to resolve conflicts
+    await po.page.getByRole("button", { name: "Auto-Resolve with AI" }).click();
+    await po.waitForToastWithText("AI suggested a resolution");
+  });
+
+  test("should resolve merge conflicts manually", async ({ po }) => {
+    await createGitConflict(po);
+    // Verify Conflict Dialog appears
+    await expect(po.page.getByText("Resolve Conflicts")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+    // Use Manual resolution
+    await po.page
+      .getByRole("button", { name: "Accept Current Changes" })
+      .click();
+    await po.waitForToastWithText("Applied manual conflict resolution");
   });
 });

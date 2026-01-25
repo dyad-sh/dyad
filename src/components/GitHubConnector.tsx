@@ -29,6 +29,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GithubBranchManager } from "@/components/GithubBranchManager";
+import { GithubConflictResolver } from "@/components/GithubConflictResolver";
+import { showSuccess } from "@/lib/toast";
 
 type SyncResult =
   | { error: Error; handled?: boolean }
@@ -128,22 +130,39 @@ function ConnectedGitHubConnector({
         setRebaseStatusMessage(null);
         return {};
       } catch (err: any) {
-        if (err?.name === "GitConflictError") {
-          try {
-            const mergeConflicts = await ipc.github.getConflicts({ appId });
-            if (mergeConflicts.length > 0) {
-              setConflicts(mergeConflicts);
-              setSyncError(
-                "Merge conflicts detected. Please resolve them in the editor.",
-              );
-              (err as Error & { handled?: boolean }).handled = true;
-              return { error: err, handled: true };
-            }
-          } catch {
-            // If getGithubMergeConflicts fails, fall through to handle the original GitConflictError
-            // The error from getGithubMergeConflicts is intentionally not handled here
-            // so the original GitConflictError can be displayed to the user
-          }
+        // Always check for conflicts when sync fails, regardless of error type
+        // IPC serialization may not preserve error.name, so we check conflicts directly
+        // This is important because gitPull can throw GitConflictError which might not
+        // be properly serialized through IPC
+        let conflictsDetected: string[] = [];
+        try {
+          conflictsDetected = await ipc.github.getConflicts({ appId });
+        } catch {
+          // If conflict check fails, continue with original error handling below
+        }
+
+        if (conflictsDetected.length > 0) {
+          // Conflicts were detected - show the resolver
+          setConflicts(conflictsDetected);
+          setSyncError(
+            "Merge conflicts detected. Please resolve them in the dialog.",
+          );
+          (err as Error & { handled?: boolean }).handled = true;
+          return { error: err, handled: true };
+        }
+
+        // Check if it's a known conflict error for user messaging
+        // (even if conflicts check failed or returned empty)
+        const errorName = err?.name || "";
+        const isConflict = errorName === "GitConflictError";
+
+        if (isConflict) {
+          // Conflict error detected but no conflicts found - this shouldn't happen
+          // but we'll show an error message
+          setSyncError(
+            "Merge conflict detected, but no conflicting files were returned. Please check git status and try again.",
+          );
+          return { error: err };
         }
 
         // Check for structured error codes instead of parsing error messages
@@ -173,8 +192,8 @@ function ConnectedGitHubConnector({
           inferredRebaseInProgress ||
           messageIndicatesRebase;
 
-        const errorMessage = err.message || "Failed to sync to GitHub.";
-        setSyncError(errorMessage);
+        const finalErrorMessage = err.message || "Failed to sync to GitHub.";
+        setSyncError(finalErrorMessage);
         setRebaseInProgress(rebaseInProgressState);
         setRebaseStatusMessage(null);
         return { error: err };
@@ -458,11 +477,60 @@ function ConnectedGitHubConnector({
       )}
       {/* Conflict Resolver */}
       {conflicts.length > 0 && (
-        //show a message that there are conflicts and to resolve them in Editor
-        <p className="text-sm text-red-600">
-          There are conflicts in the repository. Please resolve them in the
-          editor.
-        </p>
+        <GithubConflictResolver
+          appId={appId}
+          conflicts={conflicts}
+          onResolve={async () => {
+            setConflicts([]);
+            setSyncError(null);
+            try {
+              // Check if merge/rebase is still in progress before completing
+              const gitState = await ipc.github.getGitState({ appId });
+              if (!gitState.mergeInProgress && !gitState.rebaseInProgress) {
+                // Merge/rebase already completed (possibly auto-completed)
+                // Check if there are any remaining conflicts
+                const remainingConflicts = await ipc.github.getConflicts({
+                  appId,
+                });
+                if (remainingConflicts.length === 0) {
+                  showSuccess("All conflicts resolved");
+                  refreshApp();
+                  if (onAutoSyncComplete) {
+                    onAutoSyncComplete();
+                  }
+                  return;
+                } else {
+                  // Still have conflicts but merge state is gone - this is an error state
+                  throw new Error(
+                    "Merge state lost but conflicts remain. Please check git status.",
+                  );
+                }
+              }
+
+              // Merge/rebase is still in progress, complete it
+              await ipc.github.completeMerge({ appId });
+              showSuccess("Conflicts resolved and merge completed");
+              refreshApp();
+              if (onAutoSyncComplete) {
+                onAutoSyncComplete();
+              }
+            } catch (error: any) {
+              setSyncError(error.message || "Failed to complete merge");
+              const remainingConflicts = await ipc.github.getConflicts({
+                appId,
+              });
+              if (remainingConflicts.length > 0) {
+                setConflicts(remainingConflicts);
+              } else {
+                setConflicts([]);
+              }
+            }
+          }}
+          onCancel={() => {
+            setConflicts([]);
+            setSyncError(null);
+          }}
+        />
       )}
       {rebaseStatusMessage && (
         <p className="text-sm text-gray-700 dark:text-gray-300 mt-2">

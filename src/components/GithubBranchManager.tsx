@@ -67,6 +67,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { GithubConflictResolver } from "@/components/GithubConflictResolver";
 
 interface BranchManagerProps {
   appId: number;
@@ -330,34 +331,33 @@ export function GithubBranchManager({
       setBranchToMerge(null);
       await loadBranches(); // Refresh to see any status changes if we implement them
     } catch (error: any) {
-      // Check if it's a merge conflict error (handler converts GitConflictError to MergeConflictError)
+      // Always check for conflicts when merge fails, regardless of error type
+      // IPC serialization may not preserve error.name, so we check conflicts directly
+      let conflictsDetected: string[] = [];
+      try {
+        conflictsDetected = await ipc.github.getConflicts({ appId });
+      } catch {
+        // If conflict check fails, continue with original error handling below
+      }
+
+      if (conflictsDetected.length > 0) {
+        // Conflicts were detected - show the resolver
+        setConflicts(conflictsDetected);
+        setBranchToMerge(null);
+        showInfo("Merge conflict detected. Please resolve them in the dialog.");
+        return;
+      }
+
+      // No conflicts found - show the original error
+      // Check if it's a merge conflict error for user messaging
+      const errorName = error?.name || "";
       const isConflict =
-        error?.name === "MergeConflictError" ||
-        error?.name === "GitConflictError";
+        errorName === "MergeConflictError" || errorName === "GitConflictError";
 
       if (isConflict) {
-        showInfo("Merge conflict detected. Please resolve them in the editor.");
-        // Show conflicts dialog
-        try {
-          const conflicts = await ipc.github.getConflicts({ appId });
-
-          if (conflicts.length > 0) {
-            setConflicts(conflicts);
-            // Close the merge modal since user has been notified
-            setBranchToMerge(null);
-            return;
-          }
-          setConflicts([]);
-          showError(
-            "Merge conflict detected, but no conflicting files were returned. Please check git status and try again.",
-          );
-        } catch (fetchError: any) {
-          setConflicts([]);
-          showError(
-            fetchError.message ||
-              "Merge conflict detected, but failed to fetch conflicting files. Please try again.",
-          );
-        }
+        showError(
+          "Merge conflict detected, but no conflicting files were returned. Please check git status and try again.",
+        );
       } else {
         showError(error.message || "Failed to merge branch");
       }
@@ -676,10 +676,58 @@ export function GithubBranchManager({
 
       {/* Conflict Resolver */}
       {conflicts.length > 0 && (
-        <p className="text-sm text-red-600">
-          There are conflicts in the repository. Please resolve them in the
-          editor.
-        </p>
+        <GithubConflictResolver
+          appId={appId}
+          conflicts={conflicts}
+          onResolve={async () => {
+            setConflicts([]);
+            try {
+              // Check if merge/rebase is still in progress before completing
+              const gitState = await ipc.github.getGitState({ appId });
+              if (!gitState.mergeInProgress && !gitState.rebaseInProgress) {
+                // Merge/rebase already completed (possibly auto-completed)
+                // Check if there are any remaining conflicts
+                const remainingConflicts = await ipc.github.getConflicts({
+                  appId,
+                });
+                if (remainingConflicts.length === 0) {
+                  showSuccess("All conflicts resolved");
+                  await loadBranches();
+                  if (onBranchChange) {
+                    onBranchChange();
+                  }
+                  return;
+                } else {
+                  // Still have conflicts but merge state is gone - this is an error state
+                  throw new Error(
+                    "Merge state lost but conflicts remain. Please check git status.",
+                  );
+                }
+              }
+
+              // Merge/rebase is still in progress, complete it
+              await ipc.github.completeMerge({ appId });
+              showSuccess("Conflicts resolved and merge completed");
+              await loadBranches();
+              if (onBranchChange) {
+                onBranchChange();
+              }
+            } catch (error: any) {
+              showError(error.message || "Failed to complete merge");
+              const remainingConflicts = await ipc.github.getConflicts({
+                appId,
+              });
+              if (remainingConflicts.length > 0) {
+                setConflicts(remainingConflicts);
+              } else {
+                setConflicts([]);
+              }
+            }
+          }}
+          onCancel={() => {
+            setConflicts([]);
+          }}
+        />
       )}
 
       <Card className="transition-all duration-200">

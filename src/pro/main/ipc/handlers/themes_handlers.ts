@@ -21,6 +21,7 @@ import type {
   DeleteCustomThemeParams,
   GenerateThemePromptParams,
   GenerateThemePromptResult,
+  GenerateThemeFromUrlParams,
   SaveThemeImageParams,
   SaveThemeImageResult,
   CleanupThemeImagesParams,
@@ -129,6 +130,98 @@ OUTPUT RULES
   - Uses hard, enforceable rules only
   - Is technical and unambiguous
   - Never mentions the image 
+  - Avoids vague language ("might", "appears", etc.)
+
+REQUIRED STRUCTURE
+- Visual Objective
+- Layout & Spacing Rules
+- Typography System
+- Color & Surfaces
+- Components & Shape Language
+- Motion & Interaction
+- Forbidden Patterns
+- Self-Check
+`;
+
+// Web crawl "inspired" mode prompt - separate from image-based prompt
+const WEB_CRAWL_THEME_GENERATION_META_PROMPT = `PURPOSE
+- Generate a strict SYSTEM PROMPT that extracts a reusable UI DESIGN SYSTEM from a crawled website.
+- You are provided with a screenshot image and markdown representation of a live website.
+- This is a visual ruleset, not a website blueprint.
+- Extract constraints, scales, and principles from the visual appearance.
+- You are NOT recreating, cloning, or reverse-engineering the specific website.
+- The resulting system must be applicable to unrelated products without visual resemblance.
+
+INPUTS
+- Screenshot image of the website (PRIMARY reference for visual style)
+- Markdown text content (for understanding structure and hierarchy)
+- Optional keywords for style guidance
+
+SCOPE & LIMITATIONS (MANDATORY)
+- Do NOT reproduce:
+  - Page layouts
+  - Component hierarchies
+  - Spatial arrangements
+  - Relative positioning between elements
+  - Information architecture
+- Do NOT describe the original interface or reference the crawled URL.
+- The output must remain abstract, systemic, and transferable.
+
+FIXED TECH STACK
+- Assume React + Tailwind CSS + shadcn/ui.
+- Hard Rules:
+  - Never ship default shadcn styles
+  - No inline styles
+  - No arbitrary values outside defined scales
+  - All styling must be token-driven
+
+OUTPUT RULES
+- Wrap the entire output in <theme></theme> tags.
+- Output exactly ONE SYSTEM PROMPT that:
+  - Names any inspiration strictly as a stylistic reference, not a target
+  - Defines enforceable rules, never descriptions
+  - Uses imperative language only ("must", "never", "always")
+  - Never mentions the screenshot, URL, or crawled content
+  - Produces a system that cannot recreate the original UI even if followed precisely
+
+REQUIRED STRUCTURE
+- Visual Objective (abstract, non-descriptive)
+- Layout & Spacing Rules (scales only, no patterns)
+- Typography System (roles, hierarchy, constraints)
+- Color & Surfaces (tokens, elevation logic)
+- Components & Shape Language (geometry, affordances — no layouts)
+- Motion & Interaction (timing, intent, limits)
+- Forbidden Patterns (explicit anti-cloning rules)
+- Self-Check (verifies abstraction & non-replication)
+`;
+
+// Web crawl "high-fidelity" mode prompt - separate from image-based prompt
+const WEB_CRAWL_HIGH_FIDELITY_META_PROMPT = `PURPOSE
+- Generate a strict SYSTEM PROMPT that allows an AI to recreate a UI visual system from a crawled website.
+- You are provided with a screenshot image and markdown representation of a live website.
+- This is a visual subsystem. Do not define roles or personas.
+- Extract rules, not descriptions. Use the screenshot as primary visual reference.
+
+INPUTS
+- Screenshot image of the website (PRIMARY reference - use for visual accuracy)
+- Markdown text content (supplementary - for text hierarchy)
+- Optional reference name for the design inspiration
+- Screenshot always takes priority over markdown.
+
+FIXED TECH STACK
+- Assume React + Tailwind CSS + shadcn/ui.
+- Rules:
+  - Never ship default shadcn styles
+  - No inline styles
+  - No arbitrary values outside defined scales
+
+OUTPUT RULES
+- Wrap the entire output in <theme></theme> tags.
+- Output one SYSTEM PROMPT that:
+  - Explicitly names the inspiration as a guiding reference
+  - Uses hard, enforceable rules only
+  - Is technical and unambiguous
+  - Never mentions the screenshot or crawled URL
   - Avoids vague language ("might", "appears", etc.)
 
 REQUIRED STRUCTURE
@@ -555,6 +648,172 @@ images: ${imagesPart}`;
           error instanceof Error
             ? error.message
             : "Failed to process images for theme generation. Please try with fewer or smaller images, or use manual mode.",
+        );
+      }
+    },
+  );
+
+  // Generate theme prompt from website URL via web crawl
+  handle(
+    "generate-theme-from-url",
+    async (
+      _,
+      params: GenerateThemeFromUrlParams,
+    ): Promise<GenerateThemePromptResult> => {
+      const settings = readSettings();
+
+      // Return mock response in test mode
+      if (IS_TEST_BUILD) {
+        return {
+          prompt: `<theme>
+# Test Mode Theme (from URL)
+
+## Visual Objective
+Modern theme extracted from website for testing.
+
+</theme>`,
+        };
+      }
+
+      if (!settings.enableDyadPro) {
+        throw new Error(
+          "Dyad Pro is required for AI theme generation. Please enable Dyad Pro in Settings.",
+        );
+      }
+
+      // Validate URL format
+      try {
+        new URL(params.url);
+      } catch {
+        throw new Error("Invalid URL format. Please enter a valid URL.");
+      }
+
+      // Validate keywords length
+      if (params.keywords.length > 500) {
+        throw new Error("Keywords must be less than 500 characters");
+      }
+
+      // Validate generation mode
+      if (!["inspired", "high-fidelity"].includes(params.generationMode)) {
+        throw new Error("Invalid generation mode");
+      }
+
+      // Validate and map model selection
+      const modelMap: Record<string, { provider: string; name: string }> = {
+        "gemini-3-pro": { provider: "google", name: "gemini-3-pro-preview" },
+        "claude-opus-4.5": {
+          provider: "anthropic",
+          name: "claude-opus-4-5",
+        },
+        "gpt-5.2": { provider: "openai", name: "gpt-5.2" },
+      };
+
+      const selectedModel = modelMap[params.model];
+      if (!selectedModel) {
+        throw new Error("Invalid model selection");
+      }
+
+      // Get API key for Dyad Engine
+      const apiKey = settings.providerSettings?.auto?.apiKey?.value;
+      if (!apiKey) {
+        throw new Error("Dyad Pro API key is required");
+      }
+
+      // Crawl the website
+      logger.log(`Crawling website for theme: ${params.url}`);
+
+      const DYAD_ENGINE_URL =
+        process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1";
+
+      const crawlResponse = await fetch(`${DYAD_ENGINE_URL}/tools/web-crawl`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+          "X-Dyad-Request-Id": `theme-crawl-${Date.now()}`,
+        },
+        body: JSON.stringify({ url: params.url }),
+      });
+
+      if (!crawlResponse.ok) {
+        const errorText = await crawlResponse.text();
+        throw new Error(
+          `Failed to crawl website: ${crawlResponse.status} - ${errorText}`,
+        );
+      }
+
+      const crawlResult = (await crawlResponse.json()) as {
+        rootUrl: string;
+        html?: string;
+        markdown?: string;
+        screenshot?: string;
+      };
+
+      if (!crawlResult.screenshot) {
+        throw new Error(
+          "Failed to capture website screenshot. Please try a different URL.",
+        );
+      }
+
+      if (!crawlResult.markdown) {
+        throw new Error(
+          "Failed to extract website content. Please try a different URL.",
+        );
+      }
+
+      logger.log(`Website crawled successfully: ${params.url}`);
+
+      // Use the selected model for theme generation
+      const { modelClient } = await getModelClient(selectedModel, settings);
+
+      // Select system prompt based on generation mode
+      const systemPrompt =
+        params.generationMode === "high-fidelity"
+          ? WEB_CRAWL_HIGH_FIDELITY_META_PROMPT
+          : WEB_CRAWL_THEME_GENERATION_META_PROMPT;
+
+      // Build the user input prompt
+      const keywordsPart = params.keywords.trim() || "N/A";
+      const userInput = `inspired by: ${keywordsPart}
+source: Live website (screenshot and content provided)`;
+
+      // Truncate markdown if too long (consistent with existing web_crawl.ts)
+      const MAX_MARKDOWN_LENGTH = 16000;
+      const truncatedMarkdown =
+        crawlResult.markdown.length > MAX_MARKDOWN_LENGTH
+          ? crawlResult.markdown.slice(0, MAX_MARKDOWN_LENGTH) +
+            "\n<!-- truncated -->"
+          : crawlResult.markdown;
+
+      // Build content parts
+      const contentParts: (TextPart | ImagePart)[] = [
+        { type: "text", text: userInput },
+        {
+          type: "image",
+          image: crawlResult.screenshot,
+        } as ImagePart,
+        {
+          type: "text",
+          text: `Website content (markdown):\n\`\`\`markdown\n${truncatedMarkdown}\n\`\`\``,
+        },
+      ];
+
+      try {
+        const stream = streamText({
+          model: modelClient.model,
+          system: systemPrompt,
+          maxRetries: 1,
+          messages: [{ role: "user", content: contentParts }],
+        });
+
+        const result = await stream.text;
+
+        return { prompt: result };
+      } catch (error) {
+        throw new Error(
+          error instanceof Error
+            ? error.message
+            : "Failed to generate theme from website. Please try again.",
         );
       }
     },

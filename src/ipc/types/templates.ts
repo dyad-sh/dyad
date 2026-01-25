@@ -100,6 +100,19 @@ export const ThemeGenerationModelSchema = z.enum([
 ]);
 export type ThemeGenerationModel = z.infer<typeof ThemeGenerationModelSchema>;
 
+// Theme input source (images or URL)
+export const ThemeInputSourceSchema = z.enum(["images", "url"]);
+export type ThemeInputSource = z.infer<typeof ThemeInputSourceSchema>;
+
+// Crawl status for UI feedback
+export const CrawlStatusSchema = z.enum([
+  "crawling",
+  "generating",
+  "complete",
+  "error",
+]);
+export type CrawlStatus = z.infer<typeof CrawlStatusSchema>;
+
 export const GenerateThemePromptParamsSchema = z.object({
   imagePaths: z.array(z.string()),
   keywords: z.string(),
@@ -117,6 +130,18 @@ export const GenerateThemePromptResultSchema = z.object({
 
 export type GenerateThemePromptResult = z.infer<
   typeof GenerateThemePromptResultSchema
+>;
+
+// URL-based theme generation params
+export const GenerateThemeFromUrlParamsSchema = z.object({
+  url: z.string().url(),
+  keywords: z.string(),
+  generationMode: ThemeGenerationModeSchema,
+  model: ThemeGenerationModelSchema,
+});
+
+export type GenerateThemeFromUrlParams = z.infer<
+  typeof GenerateThemeFromUrlParamsSchema
 >;
 
 export const SaveThemeImageParamsSchema = z.object({
@@ -198,6 +223,12 @@ export const templateContracts = {
   generateThemePrompt: defineContract({
     channel: "generate-theme-prompt",
     input: GenerateThemePromptParamsSchema,
+    output: GenerateThemePromptResultSchema,
+  }),
+
+  generateThemeFromUrl: defineContract({
+    channel: "generate-theme-from-url",
+    input: GenerateThemeFromUrlParamsSchema,
     output: GenerateThemePromptResultSchema,
   }),
 

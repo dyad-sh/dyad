@@ -3,14 +3,31 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Loader2, Upload, X, Sparkles, Lock } from "lucide-react";
-import { useGenerateThemePrompt } from "@/hooks/useCustomThemes";
+import {
+  Loader2,
+  Upload,
+  X,
+  Sparkles,
+  Lock,
+  Link,
+  CheckCircle2,
+  XCircle,
+} from "lucide-react";
+import {
+  useGenerateThemePrompt,
+  useGenerateThemeFromUrl,
+} from "@/hooks/useCustomThemes";
 import { ipc } from "@/ipc/types";
 import { showError } from "@/lib/toast";
 import { toast } from "sonner";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { AiAccessBanner } from "./ProBanner";
-import type { ThemeGenerationMode, ThemeGenerationModel } from "@/ipc/types";
+import type {
+  ThemeGenerationMode,
+  ThemeGenerationModel,
+  ThemeInputSource,
+  CrawlStatus,
+} from "@/ipc/types";
 
 // Image upload constants
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per image (raw file size)
@@ -60,8 +77,15 @@ export function AIGeneratorTab({
   // Track if dialog is open to prevent orphaned uploads from adding images after close
   const isDialogOpenRef = useRef(isDialogOpen);
 
+  // URL-based generation state
+  const [inputSource, setInputSource] = useState<ThemeInputSource>("images");
+  const [websiteUrl, setWebsiteUrl] = useState("");
+  const [crawlStatus, setCrawlStatus] = useState<CrawlStatus | null>(null);
+
   const generatePromptMutation = useGenerateThemePrompt();
-  const isGenerating = generatePromptMutation.isPending;
+  const generateFromUrlMutation = useGenerateThemeFromUrl();
+  const isGenerating =
+    generatePromptMutation.isPending || generateFromUrlMutation.isPending;
   const { userBudget } = useUserBudgetInfo();
 
   // Cleanup function to revoke blob URLs and delete temp files
@@ -92,14 +116,19 @@ export function AIGeneratorTab({
     isDialogOpenRef.current = isDialogOpen;
   }, [isDialogOpen]);
 
-  // Cleanup images when dialog closes
+  // Cleanup images and reset state when dialog closes
   useEffect(() => {
-    if (!isDialogOpen && aiImages.length > 0) {
-      cleanupImages(aiImages);
-      setAiImages([]);
+    if (!isDialogOpen) {
+      if (aiImages.length > 0) {
+        cleanupImages(aiImages);
+        setAiImages([]);
+      }
       setAiKeywords("");
       setAiGenerationMode("inspired");
       setAiSelectedModel(DEFAULT_THEME_GENERATION_MODEL);
+      setInputSource("images");
+      setWebsiteUrl("");
+      setCrawlStatus(null);
     }
   }, [isDialogOpen, aiImages, cleanupImages]);
 
@@ -219,31 +248,61 @@ export function AIGeneratorTab({
   );
 
   const handleGenerate = useCallback(async () => {
-    if (aiImages.length === 0) {
-      showError("Please upload at least one image");
-      return;
-    }
+    if (inputSource === "images") {
+      // Image-based generation
+      if (aiImages.length === 0) {
+        showError("Please upload at least one image");
+        return;
+      }
 
-    try {
-      const result = await generatePromptMutation.mutateAsync({
-        imagePaths: aiImages.map((img) => img.path),
-        keywords: aiKeywords,
-        generationMode: aiGenerationMode,
-        model: aiSelectedModel,
-      });
-      setAiGeneratedPrompt(result.prompt);
-      toast.success("Theme prompt generated successfully");
-    } catch (error) {
-      showError(
-        `Failed to generate theme: ${error instanceof Error ? error.message : "Unknown error"}`,
-      );
+      try {
+        const result = await generatePromptMutation.mutateAsync({
+          imagePaths: aiImages.map((img) => img.path),
+          keywords: aiKeywords,
+          generationMode: aiGenerationMode,
+          model: aiSelectedModel,
+        });
+        setAiGeneratedPrompt(result.prompt);
+        toast.success("Theme prompt generated successfully");
+      } catch (error) {
+        showError(
+          `Failed to generate theme: ${error instanceof Error ? error.message : "Unknown error"}`,
+        );
+      }
+    } else {
+      // URL-based generation
+      if (!websiteUrl.trim()) {
+        showError("Please enter a website URL");
+        return;
+      }
+
+      try {
+        setCrawlStatus("crawling");
+        const result = await generateFromUrlMutation.mutateAsync({
+          url: websiteUrl,
+          keywords: aiKeywords,
+          generationMode: aiGenerationMode,
+          model: aiSelectedModel,
+        });
+        setCrawlStatus("complete");
+        setAiGeneratedPrompt(result.prompt);
+        toast.success("Theme prompt generated from website");
+      } catch (error) {
+        setCrawlStatus("error");
+        showError(
+          `Failed to generate theme: ${error instanceof Error ? error.message : "Unknown error"}`,
+        );
+      }
     }
   }, [
+    inputSource,
     aiImages,
+    websiteUrl,
     aiKeywords,
     aiGenerationMode,
     aiSelectedModel,
     generatePromptMutation,
+    generateFromUrlMutation,
     setAiGeneratedPrompt,
   ]);
 
@@ -291,64 +350,167 @@ export function AIGeneratorTab({
         />
       </div>
 
-      {/* Image Upload Section */}
-      <div className="space-y-2">
-        <Label>Reference Images</Label>
-        <div
-          className={`border-2 border-dashed border-muted-foreground/25 rounded-lg p-4 text-center cursor-pointer hover:border-muted-foreground/50 transition-colors ${isUploading ? "opacity-50 pointer-events-none" : ""}`}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={handleImageUpload}
-            disabled={isUploading}
-          />
-          {isUploading ? (
-            <Loader2 className="h-8 w-8 mx-auto text-muted-foreground mb-2 animate-spin" />
-          ) : (
-            <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-          )}
-          <p className="text-sm text-muted-foreground">
-            {isUploading ? "Uploading..." : "Click to upload images"}
-          </p>
-          <p className="text-xs text-muted-foreground/70 mt-1">
-            Upload UI screenshots to inspire your theme
-          </p>
+      {/* Input Source Toggle */}
+      <div className="space-y-3">
+        <Label>Reference Source</Label>
+        <div className="grid grid-cols-2 gap-4">
+          <button
+            type="button"
+            onClick={() => setInputSource("images")}
+            className={`flex flex-col items-center rounded-lg border p-3 text-center transition-colors ${
+              inputSource === "images"
+                ? "border-primary bg-primary/5"
+                : "hover:bg-muted/50"
+            }`}
+          >
+            <Upload className="h-5 w-5 mb-1" />
+            <span className="font-medium text-sm">Upload Images</span>
+            <span className="text-xs text-muted-foreground mt-1">
+              Use screenshots from your device
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setInputSource("url")}
+            className={`flex flex-col items-center rounded-lg border p-3 text-center transition-colors ${
+              inputSource === "url"
+                ? "border-primary bg-primary/5"
+                : "hover:bg-muted/50"
+            }`}
+          >
+            <Link className="h-5 w-5 mb-1" />
+            <span className="font-medium text-sm">Website URL</span>
+            <span className="text-xs text-muted-foreground mt-1">
+              Extract design from a live website
+            </span>
+          </button>
         </div>
-
-        {/* Image counter */}
-        <p className="text-xs text-muted-foreground mt-2 text-center">
-          {aiImages.length} / {MAX_IMAGES} images
-          {aiImages.length >= MAX_IMAGES && (
-            <span className="text-destructive ml-2">• Maximum reached</span>
-          )}
-        </p>
-
-        {/* Image Preview */}
-        {aiImages.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-2">
-            {aiImages.map((img, index) => (
-              <div key={img.path} className="relative group">
-                <img
-                  src={img.preview}
-                  alt={`Upload ${index + 1}`}
-                  className="h-16 w-16 object-cover rounded-md border"
-                />
-                <button
-                  onClick={() => handleRemoveImage(index)}
-                  className="absolute -top-2 -right-2 bg-destructive text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
+
+      {/* Image Upload Section - only shown when inputSource is "images" */}
+      {inputSource === "images" && (
+        <div className="space-y-2">
+          <Label>Reference Images</Label>
+          <div
+            className={`border-2 border-dashed border-muted-foreground/25 rounded-lg p-4 text-center cursor-pointer hover:border-muted-foreground/50 transition-colors ${isUploading ? "opacity-50 pointer-events-none" : ""}`}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={handleImageUpload}
+              disabled={isUploading}
+            />
+            {isUploading ? (
+              <Loader2 className="h-8 w-8 mx-auto text-muted-foreground mb-2 animate-spin" />
+            ) : (
+              <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+            )}
+            <p className="text-sm text-muted-foreground">
+              {isUploading ? "Uploading..." : "Click to upload images"}
+            </p>
+            <p className="text-xs text-muted-foreground/70 mt-1">
+              Upload UI screenshots to inspire your theme
+            </p>
+          </div>
+
+          {/* Image counter */}
+          <p className="text-xs text-muted-foreground mt-2 text-center">
+            {aiImages.length} / {MAX_IMAGES} images
+            {aiImages.length >= MAX_IMAGES && (
+              <span className="text-destructive ml-2">• Maximum reached</span>
+            )}
+          </p>
+
+          {/* Image Preview */}
+          {aiImages.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-2">
+              {aiImages.map((img, index) => (
+                <div key={img.path} className="relative group">
+                  <img
+                    src={img.preview}
+                    alt={`Upload ${index + 1}`}
+                    className="h-16 w-16 object-cover rounded-md border"
+                  />
+                  <button
+                    onClick={() => handleRemoveImage(index)}
+                    className="absolute -top-2 -right-2 bg-destructive text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* URL Input Section - only shown when inputSource is "url" */}
+      {inputSource === "url" && (
+        <div className="space-y-2">
+          <Label htmlFor="website-url">Website URL</Label>
+          <Input
+            id="website-url"
+            type="url"
+            placeholder="https://example.com"
+            value={websiteUrl}
+            onChange={(e) => setWebsiteUrl(e.target.value)}
+            disabled={isGenerating}
+          />
+          <p className="text-xs text-muted-foreground">
+            Enter a website URL to extract its design system
+          </p>
+
+          {/* Crawl Status Indicator */}
+          {crawlStatus && (
+            <div
+              className={`flex items-center gap-2 p-3 rounded-md ${
+                crawlStatus === "crawling" || crawlStatus === "generating"
+                  ? "bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800"
+                  : crawlStatus === "complete"
+                    ? "bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800"
+                    : "bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800"
+              }`}
+            >
+              {crawlStatus === "crawling" && (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" />
+                  <span className="text-sm text-blue-700 dark:text-blue-300">
+                    Crawling website...
+                  </span>
+                </>
+              )}
+              {crawlStatus === "generating" && (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" />
+                  <span className="text-sm text-blue-700 dark:text-blue-300">
+                    Generating theme...
+                  </span>
+                </>
+              )}
+              {crawlStatus === "complete" && (
+                <>
+                  <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+                  <span className="text-sm text-green-700 dark:text-green-300">
+                    Theme generated successfully
+                  </span>
+                </>
+              )}
+              {crawlStatus === "error" && (
+                <>
+                  <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                  <span className="text-sm text-red-700 dark:text-red-300">
+                    Failed to generate theme
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Keywords Input */}
       <div className="space-y-2">
@@ -452,14 +614,20 @@ export function AIGeneratorTab({
       {/* Generate Button */}
       <Button
         onClick={handleGenerate}
-        disabled={isGenerating || aiImages.length === 0}
+        disabled={
+          isGenerating ||
+          (inputSource === "images" && aiImages.length === 0) ||
+          (inputSource === "url" && !websiteUrl.trim())
+        }
         variant="secondary"
         className="w-full"
       >
         {isGenerating ? (
           <>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Generating prompt...
+            {inputSource === "url"
+              ? "Generating from website..."
+              : "Generating prompt..."}
           </>
         ) : (
           <>
@@ -481,9 +649,11 @@ export function AIGeneratorTab({
             placeholder="Generated prompt will appear here..."
           />
         ) : (
-          <div className="min-h-[100px] border rounded-md p-4 flex items-center justify-center text-muted-foreground text-sm">
-            No prompt generated yet. Upload images and click "Generate" to
-            create a theme prompt.
+          <div className="min-h-[100px] border rounded-md p-4 flex items-center justify-center text-muted-foreground text-sm text-center">
+            No prompt generated yet.{" "}
+            {inputSource === "images"
+              ? 'Upload images and click "Generate" to create a theme prompt.'
+              : 'Enter a website URL and click "Generate" to extract a theme.'}
           </div>
         )}
       </div>

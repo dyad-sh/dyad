@@ -179,7 +179,8 @@ export function isN8nRunning(): boolean {
 async function n8nApiRequest<T>(
   method: string,
   endpoint: string,
-  body?: unknown
+  body?: unknown,
+  timeoutMs: number = 10000
 ): Promise<T> {
   const url = `${n8nConfig.baseUrl}/api/v1${endpoint}`;
   
@@ -191,53 +192,108 @@ async function n8nApiRequest<T>(
     headers["X-N8N-API-KEY"] = n8nConfig.apiKey;
   }
 
-  const response = await fetch(url, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  try {
+    const response = await fetch(url, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`n8n API error: ${response.status} - ${error}`);
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`n8n API error: ${response.status} - ${error}`);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") {
+      throw new Error(`n8n API request timed out after ${timeoutMs}ms`);
+    }
+    throw error;
   }
-
-  return response.json();
 }
 
 // ============================================================================
 // Workflow Management
 // ============================================================================
 
-export async function createWorkflow(workflow: N8nWorkflow): Promise<N8nWorkflow> {
+/**
+ * Check if n8n is available before making API calls
+ * Returns empty data instead of throwing if n8n is not running
+ */
+async function checkN8nAvailable(): Promise<boolean> {
+  try {
+    const response = await fetch(`${n8nConfig.baseUrl}/healthz`, {
+      signal: AbortSignal.timeout(2000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function createWorkflow(workflow: N8nWorkflow): Promise<N8nWorkflow | null> {
+  if (!await checkN8nAvailable()) {
+    logger.warn("n8n not available, cannot create workflow");
+    return null;
+  }
   return n8nApiRequest<N8nWorkflow>("POST", "/workflows", workflow);
 }
 
-export async function updateWorkflow(id: string, workflow: N8nWorkflow): Promise<N8nWorkflow> {
+export async function updateWorkflow(id: string, workflow: N8nWorkflow): Promise<N8nWorkflow | null> {
+  if (!await checkN8nAvailable()) {
+    logger.warn("n8n not available, cannot update workflow");
+    return null;
+  }
   return n8nApiRequest<N8nWorkflow>("PATCH", `/workflows/${id}`, workflow);
 }
 
-export async function getWorkflow(id: string): Promise<N8nWorkflow> {
+export async function getWorkflow(id: string): Promise<N8nWorkflow | null> {
+  if (!await checkN8nAvailable()) {
+    logger.warn("n8n not available, skipping getWorkflow");
+    return null;
+  }
   return n8nApiRequest<N8nWorkflow>("GET", `/workflows/${id}`);
 }
 
 export async function listWorkflows(): Promise<{ data: N8nWorkflow[] }> {
+  if (!await checkN8nAvailable()) {
+    logger.debug("n8n not available, returning empty workflow list");
+    return { data: [] };
+  }
   return n8nApiRequest<{ data: N8nWorkflow[] }>("GET", "/workflows");
 }
 
-export async function deleteWorkflow(id: string): Promise<void> {
+export async function deleteWorkflow(id: string): Promise<{ success: boolean; error?: string }> {
+  if (!await checkN8nAvailable()) {
+    return { success: false, error: "n8n is not running" };
+  }
   await n8nApiRequest<void>("DELETE", `/workflows/${id}`);
+  return { success: true };
 }
 
-export async function activateWorkflow(id: string): Promise<N8nWorkflow> {
+export async function activateWorkflow(id: string): Promise<N8nWorkflow | null> {
+  if (!await checkN8nAvailable()) {
+    logger.warn("n8n not available, cannot activate workflow");
+    return null;
+  }
   return n8nApiRequest<N8nWorkflow>("POST", `/workflows/${id}/activate`);
 }
 
-export async function deactivateWorkflow(id: string): Promise<N8nWorkflow> {
+export async function deactivateWorkflow(id: string): Promise<N8nWorkflow | null> {
+  if (!await checkN8nAvailable()) {
+    logger.warn("n8n not available, cannot deactivate workflow");
+    return null;
+  }
   return n8nApiRequest<N8nWorkflow>("POST", `/workflows/${id}/deactivate`);
 }
 
-export async function executeWorkflow(id: string, data?: Record<string, unknown>): Promise<N8nExecutionResult> {
+export async function executeWorkflow(id: string, data?: Record<string, unknown>): Promise<N8nExecutionResult | null> {
+  if (!await checkN8nAvailable()) {
+    logger.warn("n8n not available, cannot execute workflow");
+    return null;
+  }
   return n8nApiRequest<N8nExecutionResult>("POST", `/workflows/${id}/execute`, { data });
 }
 

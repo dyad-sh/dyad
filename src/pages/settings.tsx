@@ -20,6 +20,7 @@ import { SupabaseIntegration } from "@/components/SupabaseIntegration";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { AutoFixProblemsSwitch } from "@/components/AutoFixProblemsSwitch";
+import { AutoExpandPreviewSwitch } from "@/components/AutoExpandPreviewSwitch";
 import { AutoUpdateSwitch } from "@/components/AutoUpdateSwitch";
 import { ReleaseChannelSelector } from "@/components/ReleaseChannelSelector";
 import { NeonIntegration } from "@/components/NeonIntegration";
@@ -327,6 +328,13 @@ export function WorkflowSettings() {
         <AutoFixProblemsSwitch />
         <div className="text-sm text-gray-500 dark:text-gray-400">
           This will automatically fix TypeScript errors.
+        </div>
+      </div>
+
+      <div className="space-y-1 mt-4">
+        <AutoExpandPreviewSwitch />
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          Automatically expand the preview panel when code changes are made.
         </div>
       </div>
     </div>

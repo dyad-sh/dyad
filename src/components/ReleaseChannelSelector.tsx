@@ -27,7 +27,7 @@ export function ReleaseChannelSelector() {
         action: {
           label: "Download Stable",
           onClick: () => {
-            IpcClient.getInstance().openExternalUrl("https://dyad.sh/download");
+            IpcClient.getInstance().openExternalUrl("https://joycreate.app/download");
           },
         },
       });
@@ -38,7 +38,7 @@ export function ReleaseChannelSelector() {
         action: {
           label: "restart JoyCreate",
           onClick: () => {
-            IpcClient.getInstance().restartDyad();
+            IpcClient.getInstance().restartJoy();
           },
         },
       });

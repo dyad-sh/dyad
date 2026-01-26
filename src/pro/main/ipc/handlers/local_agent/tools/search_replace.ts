@@ -44,7 +44,7 @@ export const searchReplaceTool: ToolDefinition<
   buildXml: (args, isComplete) => {
     if (!args.path) return undefined;
 
-    let xml = `<dyad-search-replace path="${escapeXmlAttr(args.path)}" description="${escapeXmlAttr(args.description ?? "")}">\n<<<<<<< SEARCH\n${args.search ?? ""}`;
+    let xml = `<joy-search-replace path="${escapeXmlAttr(args.path)}" description="${escapeXmlAttr(args.description ?? "")}">\n<<<<<<< SEARCH\n${args.search ?? ""}`;
 
     // Add separator and replace content if replace has started
     if (args.replace !== undefined) {
@@ -55,7 +55,7 @@ export const searchReplaceTool: ToolDefinition<
       if (args.replace == undefined) {
         xml += "\n=======\n";
       }
-      xml += "\n>>>>>>> REPLACE\n</dyad-search-replace>";
+      xml += "\n>>>>>>> REPLACE\n</joy-search-replace>";
     }
 
     return xml;

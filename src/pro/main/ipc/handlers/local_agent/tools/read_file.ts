@@ -21,7 +21,7 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
 
   buildXml: (args, _isComplete) => {
     if (!args.path) return undefined;
-    return `<dyad-read path="${escapeXmlAttr(args.path)}"></dyad-read>`;
+    return `<joy-read path="${escapeXmlAttr(args.path)}"></joy-read>`;
   },
 
   execute: async (args, ctx: AgentContext) => {

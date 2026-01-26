@@ -4,7 +4,7 @@ import { writeSettings, readSettings } from "../../main/settings";
 import { gitSetRemoteUrl, gitPush, gitClone } from "../utils/git_utils";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
-import { getDyadAppPath } from "../../paths/paths";
+import { getJoyAppPath } from "../../paths/paths";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import type { CloneRepoParams, CloneRepoReturnType } from "@/ipc/ipc_types";
@@ -566,7 +566,7 @@ async function handlePushToGithub(
     if (!app || !app.githubOrg || !app.githubRepo) {
       return { success: false, error: "App is not linked to a GitHub repo." };
     }
-    const appPath = getDyadAppPath(app.path);
+    const appPath = getJoyAppPath(app.path);
     const branch = app.githubBranch || "main";
 
     // Set up remote URL with token
@@ -663,7 +663,7 @@ async function handleCloneRepoFromUrl(
       return { error: `An app named "${finalAppName}" already exists.` };
     }
 
-    const appPath = getDyadAppPath(finalAppName);
+    const appPath = getJoyAppPath(finalAppName);
     // Ensure the app directory exists if native git is disabled
     if (!settings.enableNativeGit) {
       if (!fs.existsSync(appPath)) {

@@ -11,7 +11,7 @@ If you want to add a new tool, you will want to create a new tool in the `src/pr
 
 Then, import the tool and include it in `src/pro/main/ipc/handlers/local_agent/tool_definitions.ts`
 
-Finally, you will need to define how to render the custom XML tag (e.g. `<dyad-$foo-tool-name>`) inside `src/components/chat/DyadMarkdownParser.tsx` which will typically involve creating a new React component to render the custom XML tag.
+Finally, you will need to define how to render the custom XML tag (e.g. `<dyad-$foo-tool-name>`) inside `src/components/chat/JoyMarkdownParser.tsx` which will typically involve creating a new React component to render the custom XML tag.
 
 ## Testing
 

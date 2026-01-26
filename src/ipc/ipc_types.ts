@@ -151,7 +151,7 @@ export interface SystemDebugInfo {
   telemetryId: string;
   telemetryConsent: string;
   telemetryUrl: string;
-  dyadVersion: string;
+  joyVersion: string;
   platform: string;
   architecture: string;
   logs: string;

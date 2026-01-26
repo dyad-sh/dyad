@@ -12,7 +12,7 @@ import {
   writeSettings,
 } from "./main/settings";
 import { handleSupabaseOAuthReturn } from "./supabase_admin/supabase_return_handler";
-import { handleDyadProReturn } from "./main/pro";
+import { handleJoyProReturn } from "./main/pro";
 import { IS_TEST_BUILD } from "./ipc/utils/test_utils";
 import { BackupManager } from "./backup_manager";
 import { getDatabasePath, initializeDatabase } from "./db";
@@ -371,13 +371,13 @@ async function handleDeepLinkReturn(url: string) {
     return;
   }
   // joycreate://joycreate-pro-return?key=123&budget_reset_at=2025-05-26T16:31:13.492000Z&max_budget=100
-  if (parsed.hostname === "dyad-pro-return") {
+  if (parsed.hostname === "joy-pro-return") {
     const apiKey = parsed.searchParams.get("key");
     if (!apiKey) {
       dialog.showErrorBox("Invalid URL", "Expected key");
       return;
     }
-    handleDyadProReturn({
+    handleJoyProReturn({
       apiKey,
     });
     // Send message to renderer to trigger re-render

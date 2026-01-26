@@ -20,7 +20,7 @@ export const listFilesTool: ToolDefinition<z.infer<typeof listFilesSchema>> = {
     const dirAttr = args.directory
       ? ` directory="${escapeXmlAttr(args.directory)}"`
       : "";
-    return `<dyad-list-files${dirAttr}></dyad-list-files>`;
+    return `<joy-list-files${dirAttr}></joy-list-files>`;
   },
 
   execute: async (args, ctx: AgentContext) => {

@@ -199,11 +199,11 @@ export const ExperimentsSchema = z.object({
 });
 export type Experiments = z.infer<typeof ExperimentsSchema>;
 
-export const DyadProBudgetSchema = z.object({
+export const JoyBudgetSchema = z.object({
   budgetResetAt: z.string(),
   maxBudget: z.number(),
 });
-export type DyadProBudget = z.infer<typeof DyadProBudgetSchema>;
+export type JoyBudget = z.infer<typeof JoyBudgetSchema>;
 
 export const GlobPathSchema = z.object({
   globPath: z.string(),
@@ -261,7 +261,7 @@ export const UserSettingsSchema = z.object({
   telemetryConsent: z.enum(["opted_in", "opted_out", "unset"]).optional(),
   telemetryUserId: z.string().optional(),
   hasRunBefore: z.boolean().optional(),
-  enableDyadPro: z.boolean().optional(),
+  enableJoyPro: z.boolean().optional(),
   experiments: ExperimentsSchema.optional(),
   lastShownReleaseNotesVersion: z.string().optional(),
   maxChatTurnsInContext: z.number().optional(),
@@ -310,7 +310,7 @@ export const UserSettingsSchema = z.object({
   // DEPRECATED.
   ////////////////////////////////
   enableProSaverMode: z.boolean().optional(),
-  dyadProBudget: DyadProBudgetSchema.optional(),
+  joyBudget: JoyBudgetSchema.optional(),
   runtimeMode: RuntimeModeSchema.optional(),
 });
 
@@ -323,14 +323,14 @@ export type UserSettings = z.infer<typeof UserSettingsSchema>;
  * All Pro features are now free in JoyCreate
  * This function always returns true to enable all features
  */
-export function isDyadProEnabled(_settings: UserSettings): boolean {
+export function isJoyProEnabled(_settings: UserSettings): boolean {
   return true; // All features are free in JoyCreate
 }
 
 /**
  * Check if user has a Pro API key (legacy, not required anymore)
  */
-export function hasDyadProKey(settings: UserSettings): boolean {
+export function hasJoyKey(settings: UserSettings): boolean {
   return true; // All features work without a key in JoyCreate
 }
 

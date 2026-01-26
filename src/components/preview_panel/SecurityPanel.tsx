@@ -29,7 +29,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { SecurityFinding, SecurityReviewResult } from "@/ipc/ipc_types";
 import { useState, useEffect } from "react";
-import { VanillaMarkdownParser } from "@/components/chat/DyadMarkdownParser";
+import { VanillaMarkdownParser } from "@/components/chat/JoyMarkdownParser";
 import { showSuccess, showWarning } from "@/lib/toast";
 import { useLoadAppFile } from "@/hooks/useLoadAppFile";
 import { useQueryClient } from "@tanstack/react-query";
@@ -251,7 +251,7 @@ function SecurityHeader({
                 className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
                 onClick={() =>
                   IpcClient.getInstance().openExternalUrl(
-                    "https://www.dyad.sh/docs/guides/security-review",
+                    "https://www.joycreate.app/docs/guides/security-review",
                   )
                 }
               >

@@ -16,10 +16,10 @@ Do *not* tell the user to run shell commands. Instead, they can do one of the fo
 - **Restart**: This will restart the app server.
 - **Refresh**: This will refresh the app preview page.
 
-You can suggest one of these commands by using the <dyad-command> tag like this:
-<dyad-command type="rebuild"></dyad-command>
-<dyad-command type="restart"></dyad-command>
-<dyad-command type="refresh"></dyad-command>
+You can suggest one of these commands by using the <joy-command> tag like this:
+<joy-command type="rebuild"></joy-command>
+<joy-command type="restart"></joy-command>
+<joy-command type="refresh"></joy-command>
 
 If you output one of these commands, tell the user to look for the action button above the chat input.
 </app_commands>

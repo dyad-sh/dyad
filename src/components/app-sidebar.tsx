@@ -24,6 +24,7 @@ import {
   ChevronUp,
   Radio,
   Cpu,
+  Plug,
 } from "lucide-react";
 import { Link, useRouterState, useRouter } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -224,6 +225,15 @@ const menuCategories = [
         hoverBg: "hover:bg-pink-500/10",
         activeBg: "bg-pink-500/15",
         activeText: "text-pink-600 dark:text-pink-400",
+      },
+      {
+        title: "MCP Hub",
+        to: "/mcp-hub",
+        icon: Plug,
+        gradient: "from-indigo-500 to-violet-500",
+        hoverBg: "hover:bg-indigo-500/10",
+        activeBg: "bg-indigo-500/15",
+        activeText: "text-indigo-600 dark:text-indigo-400",
       },
     ],
   },

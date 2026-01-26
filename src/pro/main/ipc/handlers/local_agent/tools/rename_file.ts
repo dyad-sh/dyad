@@ -36,7 +36,7 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
 
     buildXml: (args, _isComplete) => {
       if (!args.from || !args.to) return undefined;
-      return `<dyad-rename from="${escapeXmlAttr(args.from)}" to="${escapeXmlAttr(args.to)}"></dyad-rename>`;
+      return `<joy-rename from="${escapeXmlAttr(args.from)}" to="${escapeXmlAttr(args.to)}"></joy-rename>`;
     },
 
     execute: async (args, ctx: AgentContext) => {

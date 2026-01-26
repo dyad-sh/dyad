@@ -24,7 +24,7 @@ export function AutoUpdateSwitch() {
             action: {
               label: "restart JoyCreate",
               onClick: () => {
-                IpcClient.getInstance().restartDyad();
+                IpcClient.getInstance().restartJoy();
               },
             },
           });

@@ -198,7 +198,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     // Clear overlays in the preview iframe
     if (previewIframeRef?.contentWindow) {
       previewIframeRef.contentWindow.postMessage(
-        { type: "clear-dyad-component-overlays" },
+        { type: "clear-joy-component-overlays" },
         "*",
       );
     }
@@ -297,7 +297,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         <ChatErrorBox
           onDismiss={dismissError}
           error={error}
-          isDyadProEnabled={settings.enableDyadPro ?? false}
+          isJoyProEnabled={settings.enableJoyPro ?? false}
         />
       )}
       {/* Display loading or error state for proposal */}
@@ -392,7 +392,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                 // Deactivate component selector in iframe
                 if (previewIframeRef?.contentWindow) {
                   previewIframeRef.contentWindow.postMessage(
-                    { type: "deactivate-dyad-component-selector" },
+                    { type: "deactivate-joy-component-selector" },
                     "*",
                   );
                 }
@@ -584,7 +584,7 @@ function WriteCodeProperlyButton() {
       return;
     }
     streamMessage({
-      prompt: `Write the code in the previous message in the correct format using \`<dyad-write>\` tags!`,
+      prompt: `Write the code in the previous message in the correct format using \`<joy-write>\` tags!`,
       chatId,
       redo: false,
     });

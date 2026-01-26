@@ -257,7 +257,7 @@ export function buildAgentToolSet(ctx: AgentContext) {
           const errorStack =
             error instanceof Error && error.stack ? error.stack : "";
           ctx.onXmlComplete(
-            `<dyad-output type="error" message="Tool '${tool.name}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorStack || errorMessage)}</dyad-output>`,
+            `<joy-output type="error" message="Tool '${tool.name}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorStack || errorMessage)}</joy-output>`,
           );
           throw error;
         }

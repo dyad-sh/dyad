@@ -41,9 +41,9 @@ export const createDocumentTool: ToolDefinition<z.infer<typeof createDocumentSch
     const typeLabel = args.type === "document" ? "Document" : 
                       args.type === "spreadsheet" ? "Spreadsheet" : "Presentation";
     
-    let xml = `<dyad-document type="${escapeXmlAttr(args.type || "document")}" name="${escapeXmlAttr(args.name)}" description="${escapeXmlAttr(args.description ?? "")}">`;
+    let xml = `<joy-document type="${escapeXmlAttr(args.type || "document")}" name="${escapeXmlAttr(args.name)}" description="${escapeXmlAttr(args.description ?? "")}">`;
     if (isComplete) {
-      xml += `</dyad-document>`;
+      xml += `</joy-document>`;
     }
     return xml;
   },
@@ -96,7 +96,7 @@ export const createDocumentTool: ToolDefinition<z.infer<typeof createDocumentSch
                         args.type === "spreadsheet" ? "Spreadsheet" : "Presentation";
       
       ctx.onXmlComplete(
-        `<dyad-document type="${escapeXmlAttr(args.type)}" name="${escapeXmlAttr(args.name)}" id="${doc.id}" description="${escapeXmlAttr(args.description ?? "")}"></dyad-document>`
+        `<joy-document type="${escapeXmlAttr(args.type)}" name="${escapeXmlAttr(args.name)}" id="${doc.id}" description="${escapeXmlAttr(args.description ?? "")}"></joy-document>`
       );
 
       return `Successfully created ${typeLabel} "${args.name}" (ID: ${doc.id}). The user can view it in Libre Studio.`;

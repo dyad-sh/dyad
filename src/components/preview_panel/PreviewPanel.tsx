@@ -110,25 +110,16 @@ export function PreviewPanel() {
     // runApp/stopApp are stable due to useCallback.
   }, [selectedAppId, runApp, stopApp]);
 
-  // Load edge logs if app has Supabase project configured
+  // Load edge logs once on mount if app has Supabase project configured
   useEffect(() => {
     const projectId = app?.supabaseProjectId;
     const organizationSlug = app?.supabaseOrganizationSlug ?? undefined;
     if (!projectId) return;
 
-    // Load logs immediately
+    // Load logs immediately (once) - users can manually refresh via the Console button
     loadEdgeLogs({ projectId, organizationSlug }).catch((error) => {
       console.error("Failed to load edge logs:", error);
     });
-
-    // Poll for new logs every 5 seconds
-    const intervalId = setInterval(() => {
-      loadEdgeLogs({ projectId, organizationSlug }).catch((error) => {
-        console.error("Failed to load edge logs:", error);
-      });
-    }, 5000);
-
-    return () => clearInterval(intervalId);
   }, [app?.supabaseProjectId, app?.supabaseOrganizationSlug, loadEdgeLogs]);
 
   return (

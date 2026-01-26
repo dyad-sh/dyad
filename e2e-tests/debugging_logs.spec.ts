@@ -298,3 +298,37 @@ testSkipIfWindows("clear logs button clears all logs", async ({ po }) => {
     expect(countAfterClear).toBe(0);
   }).toPass({ timeout: Timeout.MEDIUM });
 });
+
+testSkipIfWindows(
+  "fetch edge logs button is visible when Supabase project is connected",
+  async ({ po }) => {
+    await po.setUp({ autoApprove: true });
+    await po.sendPrompt("tc=add-supabase");
+
+    // Connect to Supabase
+    await po.page.getByText("Set up supabase").click();
+    await po.clickConnectSupabaseButton();
+    await po.clickBackButton();
+
+    // Wait for app to run
+    const picker = po.page.getByTestId("preview-pick-element-button");
+    await expect(picker).toBeEnabled({ timeout: Timeout.EXTRA_LONG });
+
+    // Wait for iframe to load
+    const iframe = po.getPreviewIframeElement();
+    await expect(iframe.contentFrame().locator("body")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+
+    // Open console panel
+    const consoleHeader = po.page.locator('text="System Messages"').first();
+    await consoleHeader.click();
+
+    // Verify the fetch edge logs button is visible
+    const fetchButton = po.page.getByTestId("fetch-edge-logs-button");
+    await expect(fetchButton).toBeVisible({ timeout: Timeout.MEDIUM });
+
+    // Verify button has the expected text
+    await expect(fetchButton).toContainText("Edge Logs");
+  },
+);

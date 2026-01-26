@@ -1,10 +1,13 @@
-import { Filter, X, Trash2 } from "lucide-react";
+import { Filter, X, Trash2, RefreshCw } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+
+// @ts-ignore
+import supabaseIcon from "../../../assets/supabase/supabase-icon.svg";
 
 interface ConsoleFiltersProps {
   levelFilter: "all" | "info" | "warn" | "error";
@@ -25,6 +28,9 @@ interface ConsoleFiltersProps {
   uniqueSources: string[];
   totalLogs: number;
   showFilters: boolean;
+  onFetchEdgeLogs?: () => void;
+  isFetchingEdgeLogs?: boolean;
+  hasSupabaseProject?: boolean;
 }
 
 export const ConsoleFilters = ({
@@ -39,6 +45,9 @@ export const ConsoleFilters = ({
   uniqueSources,
   totalLogs,
   showFilters,
+  onFetchEdgeLogs,
+  isFetchingEdgeLogs,
+  hasSupabaseProject,
 }: ConsoleFiltersProps) => {
   const hasActiveFilters =
     levelFilter !== "all" || typeFilter !== "all" || sourceFilter !== "";
@@ -129,6 +138,35 @@ export const ConsoleFilters = ({
           <TooltipContent>Clear logs</TooltipContent>
         </Tooltip>
       </TooltipProvider>
+
+      {/* Fetch edge logs button */}
+      {hasSupabaseProject && (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={onFetchEdgeLogs}
+                disabled={isFetchingEdgeLogs}
+                className="flex items-center gap-1.5 px-2 py-1 text-xs border border-border rounded bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                data-testid="fetch-edge-logs-button"
+              >
+                <img
+                  src={supabaseIcon}
+                  alt="Supabase"
+                  style={{ height: 14, width: "auto" }}
+                  className="shrink-0"
+                />
+                <span>Edge Logs</span>
+                <RefreshCw
+                  size={12}
+                  className={isFetchingEdgeLogs ? "animate-spin" : ""}
+                />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Fetch Supabase Edge Function Logs</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
 
       <div className="ml-auto text-xs text-gray-500">{totalLogs} logs</div>
     </div>

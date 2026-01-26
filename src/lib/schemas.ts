@@ -336,24 +336,48 @@ export function hasDyadProKey(settings: UserSettings): boolean {
 }
 
 /**
- * Gets the effective default chat mode based on settings and pro status.
+ * Gets the effective default chat mode based on settings, pro status, and free quota availability.
  * - If defaultChatMode is set and valid for the user's Pro status, use it
- * - If defaultChatMode is "local-agent" but user doesn't have Pro, fall back to "build"
- * - If defaultChatMode is NOT set but user has Dyad Pro enabled, treat as "local-agent"
- * - If not pro, treat as "build"
+ * - If defaultChatMode is "local-agent" but user doesn't have Pro:
+ *   - If free agent quota available, use "local-agent" (basic agent mode)
+ *   - If quota exceeded, fall back to "build"
+ * - If defaultChatMode is NOT set:
+ *   - Pro users: use "local-agent"
+ *   - Non-Pro users with quota: use "local-agent" (basic agent mode)
+ *   - Non-Pro users without quota: use "build"
  */
-export function getEffectiveDefaultChatMode(settings: UserSettings): ChatMode {
+export function getEffectiveDefaultChatMode(
+  settings: UserSettings,
+  freeAgentQuotaAvailable?: boolean,
+): ChatMode {
+  const isPro = isDyadProEnabled(settings);
+
   if (settings.defaultChatMode) {
-    // "local-agent" requires Pro - fall back to "build" if user lost Pro access
-    if (
-      settings.defaultChatMode === "local-agent" &&
-      !isDyadProEnabled(settings)
-    ) {
+    // "local-agent" requires either Pro OR available free quota
+    if (settings.defaultChatMode === "local-agent") {
+      if (isPro) return "local-agent";
+      if (freeAgentQuotaAvailable) return "local-agent";
       return "build";
     }
     return settings.defaultChatMode;
   }
-  return isDyadProEnabled(settings) ? "local-agent" : "build";
+
+  // No explicit default set
+  if (isPro) return "local-agent";
+  if (freeAgentQuotaAvailable) return "local-agent";
+  return "build";
+}
+
+/**
+ * Determines if the current session is using Basic Agent mode (free tier with quota).
+ * Basic Agent mode is when:
+ * - User is NOT a Pro subscriber
+ * - User is using local-agent chat mode
+ */
+export function isBasicAgentMode(settings: UserSettings): boolean {
+  return (
+    !isDyadProEnabled(settings) && settings.selectedChatMode === "local-agent"
+  );
 }
 
 export function isSupabaseConnected(settings: UserSettings | null): boolean {

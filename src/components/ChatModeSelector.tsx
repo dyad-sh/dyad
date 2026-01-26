@@ -11,6 +11,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useSettings } from "@/hooks/useSettings";
+import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import type { ChatMode } from "@/lib/schemas";
 import { isDyadProEnabled } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
@@ -39,6 +40,7 @@ export function ChatModeSelector() {
 
   const selectedMode = settings?.selectedChatMode || "build";
   const isProEnabled = settings ? isDyadProEnabled(settings) : false;
+  const { messagesRemaining, isQuotaExceeded } = useFreeAgentQuota();
 
   const handleModeChange = (value: string) => {
     const newMode = value as ChatMode;
@@ -81,7 +83,8 @@ export function ChatModeSelector() {
       case "agent":
         return "Build (MCP)";
       case "local-agent":
-        return "Agent";
+        // Show "Basic Agent" for non-Pro users, "Agent" for Pro users
+        return isProEnabled ? "Agent" : "Basic Agent";
       default:
         return "Build";
     }
@@ -124,6 +127,23 @@ export function ChatModeSelector() {
               </div>
               <span className="text-xs text-muted-foreground">
                 Better at bigger tasks and debugging
+              </span>
+            </div>
+          </SelectItem>
+        )}
+        {!isProEnabled && (
+          <SelectItem value="local-agent" disabled={isQuotaExceeded}>
+            <div className="flex flex-col items-start">
+              <div className="flex items-center gap-1.5">
+                <span className="font-medium">Basic Agent</span>
+                <span className="text-xs text-muted-foreground">
+                  ({isQuotaExceeded ? "0" : messagesRemaining}/5 remaining)
+                </span>
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {isQuotaExceeded
+                  ? "Daily limit reached"
+                  : "Try our AI agent for free"}
               </span>
             </div>
           </SelectItem>

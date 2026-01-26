@@ -7,7 +7,7 @@ import customLogo from "../../assets/smileyone.png";
 import { cn } from "@/lib/utils";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
 import { useEffect, useState } from "react";
-import { DyadProSuccessDialog } from "@/components/DyadProSuccessDialog";
+import { JoyProSuccessDialog } from "@/components/JoyProSuccessDialog";
 import { useTheme } from "@/contexts/ThemeContext";
 import { IpcClient } from "@/ipc/ipc_client";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -43,24 +43,24 @@ export const TitleBar = () => {
     checkPlatform();
   }, []);
 
-  const showDyadProSuccessDialog = () => {
+  const showJoyProSuccessDialog = () => {
     setIsSuccessDialogOpen(true);
   };
 
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
   useEffect(() => {
     const handleDeepLink = async () => {
-      if (lastDeepLink?.type === "dyad-pro-return") {
+      if (lastDeepLink?.type === "joy-pro-return") {
         await refreshSettings();
-        showDyadProSuccessDialog();
+        showJoyProSuccessDialog();
         clearLastDeepLink();
       }
     };
     handleDeepLink();
   }, [lastDeepLink?.timestamp]);
 
-  const isDyadPro = !!settings?.providerSettings?.auto?.apiKey?.value;
-  const isDyadProEnabled = Boolean(settings?.enableDyadPro);
+  const isJoyPro = !!settings?.providerSettings?.auto?.apiKey?.value;
+  const isJoyProEnabled = Boolean(settings?.enableJoyPro);
 
   return (
     <>
@@ -101,7 +101,7 @@ export const TitleBar = () => {
           </TooltipContent>
         </Tooltip>
 
-        {isDyadPro && <DyadProButton isDyadProEnabled={isDyadProEnabled} />}
+        {isJoyPro && <JoyProButton isJoyProEnabled={isJoyProEnabled} />}
 
         {/* Preview Header */}
         {location.pathname === "/chat" && (
@@ -113,7 +113,7 @@ export const TitleBar = () => {
         {showWindowControls && <WindowsControls />}
       </div>
 
-      <DyadProSuccessDialog
+      <JoyProSuccessDialog
         isOpen={isSuccessDialogOpen}
         onClose={() => setIsSuccessDialogOpen(false)}
       />
@@ -202,16 +202,16 @@ function WindowsControls() {
   );
 }
 
-export function DyadProButton({
-  isDyadProEnabled,
+export function JoyProButton({
+  isJoyProEnabled,
 }: {
-  isDyadProEnabled: boolean;
+  isJoyProEnabled: boolean;
 }) {
   const { navigate } = useRouter();
   const { userBudget } = useUserBudgetInfo();
   return (
     <Button
-      data-testid="title-bar-dyad-pro-button"
+      data-testid="title-bar-joy-pro-button"
       onClick={() => {
         navigate({
           to: providerSettingsRoute.id,
@@ -221,12 +221,12 @@ export function DyadProButton({
       variant="outline"
       className={cn(
         "hidden @2xl:block ml-1 no-app-region-drag h-7 bg-indigo-600 text-white dark:bg-indigo-600 dark:text-white text-xs px-2 pt-1 pb-1",
-        !isDyadProEnabled && "bg-zinc-600 dark:bg-zinc-600",
+        !isJoyProEnabled && "bg-zinc-600 dark:bg-zinc-600",
       )}
       size="sm"
     >
-      {isDyadProEnabled ? "Pro" : "Pro (off)"}
-      {userBudget && isDyadProEnabled && (
+      {isJoyProEnabled ? "Pro" : "Pro (off)"}
+      {userBudget && isJoyProEnabled && (
         <AICreditStatus userBudget={userBudget} />
       )}
     </Button>

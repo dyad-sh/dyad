@@ -1,7 +1,7 @@
 /**
  * Advanced Code Generation Service
  * 
- * Provides superior code generation capabilities that surpass Lovable.dev and Dyad Pro:
+ * Provides superior code generation capabilities:
  * - Multi-file project generation
  * - Smart refactoring with context awareness
  * - Test generation

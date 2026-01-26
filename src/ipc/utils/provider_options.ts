@@ -11,12 +11,12 @@ export interface MentionedAppCodebase {
 }
 
 export interface GetProviderOptionsParams {
-  dyadAppId: number;
-  dyadRequestId?: string;
-  dyadDisableFiles?: boolean;
-  smartContextMode?: SmartContextMode;
-  files: CodebaseFile[];
-  versionedFiles?: VersionedFiles;
+  joyAppId: number;
+  joyRequestId?: string;
+  joyDisableFiles?: boolean;
+  joySmartContextMode?: SmartContextMode;
+  joyFiles: CodebaseFile[];
+  joyVersionedFiles?: VersionedFiles;
   mentionedAppsCodebases: MentionedAppCodebase[];
   builtinProviderId: string | undefined;
   settings: UserSettings;
@@ -27,30 +27,30 @@ export interface GetProviderOptionsParams {
  * Handles provider-specific configuration including thinking configs for Google/Vertex.
  */
 export function getProviderOptions({
-  dyadAppId,
-  dyadRequestId,
-  dyadDisableFiles,
-  smartContextMode,
-  files,
-  versionedFiles,
+  joyAppId,
+  joyRequestId,
+  joyDisableFiles,
+  joySmartContextMode,
+  joyFiles,
+  joyVersionedFiles,
   mentionedAppsCodebases,
   builtinProviderId,
   settings,
 }: GetProviderOptionsParams): Record<string, any> {
   const providerOptions: Record<string, any> = {
-    "dyad-engine": {
-      dyadAppId,
-      dyadRequestId,
-      dyadDisableFiles,
-      dyadSmartContextMode: smartContextMode,
-      dyadFiles: versionedFiles ? undefined : files,
-      dyadVersionedFiles: versionedFiles,
-      dyadMentionedApps: mentionedAppsCodebases.map(({ files, appName }) => ({
+    "joy-engine": {
+      joyAppId,
+      joyRequestId,
+      joyDisableFiles,
+      joySmartContextMode,
+      joyFiles: joyVersionedFiles ? undefined : joyFiles,
+      joyVersionedFiles,
+      joyMentionedApps: mentionedAppsCodebases.map(({ files, appName }) => ({
         appName,
         files,
       })),
     },
-    "dyad-gateway": getExtraProviderOptions(builtinProviderId, settings),
+    "joy-gateway": getExtraProviderOptions(builtinProviderId, settings),
     openai: {
       reasoningSummary: "auto",
     } satisfies OpenAIResponsesProviderOptions,

@@ -1,7 +1,7 @@
 export function cleanFullResponse(text: string): string {
-  // Replace < characters inside dyad-* attributes with fullwidth less-than sign ＜
+  // Replace < characters inside joy-* attributes with fullwidth less-than sign ＜
   // This prevents parsing issues when attributes contain HTML tags like <a> or <div>
-  return text.replace(/<dyad-[^<>]*(?:"[^"]*"[^<>]*)*>/g, (match: string) => {
+  return text.replace(/<joy-[^<>]*(?:"[^"]*"[^<>]*)*>/g, (match: string) => {
     // Find all attribute values (content within quotes) and replace < with ＜ and > with ＞
     const processedMatch = match.replace(
       /="([^"]*)"/g,

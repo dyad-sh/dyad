@@ -55,7 +55,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const supportsCustomModels =
     providerData?.type === "custom" || providerData?.type === "cloud";
 
-  const isDyad = provider === "auto";
+  const isJoy = provider === "auto";
 
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -63,14 +63,14 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const router = useRouter();
 
   // Use fetched data (or defaults for Joy)
-  const providerDisplayName = isDyad
+  const providerDisplayName = isJoy
     ? "Joy"
     : (providerData?.name ?? "Unknown Provider");
-  const providerWebsiteUrl = isDyad
+  const providerWebsiteUrl = isJoy
     ? "https://joycreate.app/settings"
     : providerData?.websiteUrl;
-  const hasFreeTier = isDyad ? false : providerData?.hasFreeTier;
-  const envVarName = isDyad ? undefined : providerData?.envVarName;
+  const hasFreeTier = isJoy ? false : providerData?.hasFreeTier;
+  const envVarName = isJoy ? undefined : providerData?.envVarName;
 
   // Use provider ID (which is the 'provider' prop)
   const userApiKey = settings?.providerSettings?.[provider]?.apiKey?.value;
@@ -137,8 +137,8 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
           },
         },
       };
-      if (isDyad) {
-        settingsUpdate.enableDyadPro = true;
+      if (isJoy) {
+        settingsUpdate.enableJoyPro = true;
       }
       await updateSettings(settingsUpdate);
       setApiKeyInput(""); // Clear input on success
@@ -175,11 +175,11 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   };
 
   // --- Toggle JoyCreate Pro Handler ---
-  const handleToggleDyadPro = async (enabled: boolean) => {
+  const handleToggleJoyPro = async (enabled: boolean) => {
     setIsSaving(true);
     try {
       await updateSettings({
-        enableDyadPro: enabled,
+        enableJoyPro: enabled,
       });
     } catch (error: any) {
       showError(`Error toggling JoyCreate Pro: ${error}`);
@@ -241,7 +241,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   }
 
   // Handle case where provider is not found (e.g., invalid ID in URL)
-  if (!providerData && !isDyad) {
+  if (!providerData && !isJoy) {
     return (
       <div className="min-h-screen px-8 py-4">
         <div className="max-w-4xl mx-auto">
@@ -278,7 +278,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
           isLoading={settingsLoading}
           hasFreeTier={hasFreeTier}
           providerWebsiteUrl={providerWebsiteUrl}
-          isDyad={isDyad}
+          isJoy={isJoy}
           onBackClick={() => router.history.back()}
         />
 
@@ -306,12 +306,12 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
             onApiKeyInputChange={setApiKeyInput}
             onSaveKey={handleSaveKey}
             onDeleteKey={handleDeleteKey}
-            isDyad={isDyad}
+            isJoy={isJoy}
             updateSettings={updateSettings}
           />
         )}
 
-        {isDyad && !settingsLoading && (
+        {isJoy && !settingsLoading && (
           <div className="mt-6 flex items-center justify-between p-4 bg-(--background-lightest) rounded-lg border">
             <div>
               <h3 className="font-medium">Enable JoyCreate Pro</h3>
@@ -320,8 +320,8 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
               </p>
             </div>
             <Switch
-              checked={settings?.enableDyadPro}
-              onCheckedChange={handleToggleDyadPro}
+              checked={settings?.enableJoyPro}
+              onCheckedChange={handleToggleJoyPro}
               disabled={isSaving}
             />
           </div>

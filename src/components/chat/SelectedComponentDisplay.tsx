@@ -25,7 +25,7 @@ export function SelectedComponentsDisplay() {
     if (previewIframeRef?.contentWindow) {
       previewIframeRef.contentWindow.postMessage(
         {
-          type: "remove-dyad-component-overlay",
+          type: "remove-joy-component-overlay",
           componentId: componentToRemove.id,
         },
         "*",
@@ -38,7 +38,7 @@ export function SelectedComponentsDisplay() {
     setVisualEditingSelectedComponent(null);
     if (previewIframeRef?.contentWindow) {
       previewIframeRef.contentWindow.postMessage(
-        { type: "clear-dyad-component-overlays" },
+        { type: "clear-joy-component-overlays" },
         "*",
       );
     }

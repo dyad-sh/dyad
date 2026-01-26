@@ -45,7 +45,7 @@ export function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { settings } = useSettings();
   const { userBudget } = useUserBudgetInfo();
-  const isDyadProUser = settings?.providerSettings?.["auto"]?.apiKey?.value;
+  const isJoyProUser = settings?.providerSettings?.["auto"]?.apiKey?.value;
 
   // Function to reset all dialog state
   const resetDialogState = () => {
@@ -98,7 +98,7 @@ Issues that do not meet these requirements will be closed and may need to be res
 <!-- Screenshot of the bug -->
 
 ## System Information
-- JoyCreate Version: ${debugInfo.dyadVersion}
+- JoyCreate Version: ${debugInfo.joyVersion}
 - Platform: ${debugInfo.platform}
 - Architecture: ${debugInfo.architecture}
 - Node Version: ${debugInfo.nodeVersion || "n/a"}
@@ -118,7 +118,7 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
       const encodedBody = encodeURIComponent(issueBody);
       const encodedTitle = encodeURIComponent("[bug] <WRITE TITLE HERE>");
       const labels = ["bug"];
-      if (isDyadProUser) {
+      if (isJoyProUser) {
         labels.push("pro");
       }
       const githubIssueUrl = `https://github.com/dyad-sh/dyad/issues/new?title=${encodedTitle}&labels=${labels}&body=${encodedBody}`;
@@ -243,7 +243,7 @@ Pro User ID: ${userBudget?.redactedUserId || "n/a"}
     const encodedBody = encodeURIComponent(issueBody);
     const encodedTitle = encodeURIComponent("[session report] <add title>");
     const labels = ["support"];
-    if (isDyadProUser) {
+    if (isJoyProUser) {
       labels.push("pro");
     }
     const githubIssueUrl = `https://github.com/dyad-sh/dyad/issues/new?title=${encodedTitle}&labels=${labels}&body=${encodedBody}`;
@@ -348,7 +348,7 @@ Pro User ID: ${userBudget?.redactedUserId || "n/a"}
             <div className="border rounded-md p-3">
               <h3 className="font-medium mb-2">System Information</h3>
               <div className="text-sm bg-slate-50 dark:bg-slate-900 rounded p-2 max-h-32 overflow-y-auto">
-                <p>JoyCreate Version: {chatLogsData.debugInfo.dyadVersion}</p>
+                <p>JoyCreate Version: {chatLogsData.debugInfo.joyVersion}</p>
                 <p>Platform: {chatLogsData.debugInfo.platform}</p>
                 <p>Architecture: {chatLogsData.debugInfo.architecture}</p>
                 <p>
@@ -396,7 +396,7 @@ Pro User ID: ${userBudget?.redactedUserId || "n/a"}
           If you need help or want to report an issue, here are some options:
         </DialogDescription>
         <div className="flex flex-col space-y-4 w-full">
-          {isDyadProUser ? (
+          {isJoyProUser ? (
             <div className="flex flex-col space-y-2">
               <Button
                 variant="default"
@@ -419,7 +419,7 @@ Pro User ID: ${userBudget?.redactedUserId || "n/a"}
                 variant="outline"
                 onClick={() => {
                   IpcClient.getInstance().openExternalUrl(
-                    "https://www.dyad.sh/docs",
+                    "https://www.joycreate.app/docs",
                   );
                 }}
                 className="w-full py-6 bg-(--background-lightest)"

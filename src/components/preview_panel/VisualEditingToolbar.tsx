@@ -103,7 +103,7 @@ export function VisualEditingToolbar({
     if (iframeRef.current?.contentWindow) {
       iframeRef.current.contentWindow.postMessage(
         {
-          type: "remove-dyad-component-overlay",
+          type: "remove-joy-component-overlay",
           componentId: selectedComponent.id,
         },
         "*",
@@ -123,7 +123,7 @@ export function VisualEditingToolbar({
 
     iframeRef.current.contentWindow.postMessage(
       {
-        type: "modify-dyad-component-styles",
+        type: "modify-joy-component-styles",
         data: {
           elementId: selectedComponent.id,
           runtimeId: selectedComponent.runtimeId,
@@ -135,7 +135,7 @@ export function VisualEditingToolbar({
 
     iframeRef.current.contentWindow.postMessage(
       {
-        type: "update-dyad-overlay-positions",
+        type: "update-joy-overlay-positions",
       },
       "*",
     );
@@ -180,7 +180,7 @@ export function VisualEditingToolbar({
     try {
       iframeRef.current.contentWindow.postMessage(
         {
-          type: "get-dyad-component-styles",
+          type: "get-joy-component-styles",
           data: {
             elementId: selectedComponent.id,
             runtimeId: selectedComponent.runtimeId,
@@ -213,7 +213,7 @@ export function VisualEditingToolbar({
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === "dyad-component-styles") {
+      if (event.data?.type === "joy-component-styles") {
         const { margin, padding, border, backgroundColor, text } =
           event.data.data;
 

@@ -26,12 +26,12 @@ export function useRunApp() {
 
   const processProxyServerOutput = (output: AppOutput) => {
     const matchesProxyServerStart = output.message.includes(
-      "[dyad-proxy-server]started=[",
+      "[joy-proxy-server]started=[",
     );
     if (matchesProxyServerStart) {
       // Extract both proxy URL and original URL using regex
       const proxyUrlMatch = output.message.match(
-        /\[dyad-proxy-server\]started=\[(.*?)\]/,
+        /\[joy-proxy-server\]started=\[(.*?)\]/,
       );
       const originalUrlMatch = output.message.match(/original=\[(.*?)\]/);
 
@@ -119,10 +119,10 @@ export function useRunApp() {
         console.error(`Error running app ${appId}:`, error);
         setPreviewErrorMessage(
           error instanceof Error
-            ? { message: error.message, source: "dyad-app" }
+            ? { message: error.message, source: "joy-app" }
             : {
                 message: error?.toString() || "Unknown error",
-                source: "dyad-app",
+                source: "joy-app",
               },
         );
       } finally {
@@ -147,10 +147,10 @@ export function useRunApp() {
       console.error(`Error stopping app ${appId}:`, error);
       setPreviewErrorMessage(
         error instanceof Error
-          ? { message: error.message, source: "dyad-app" }
+          ? { message: error.message, source: "joy-app" }
           : {
               message: error?.toString() || "Unknown error",
-              source: "dyad-app",
+              source: "joy-app",
             },
       );
     } finally {
@@ -212,10 +212,10 @@ export function useRunApp() {
         console.error(`Error restarting app ${appId}:`, error);
         setPreviewErrorMessage(
           error instanceof Error
-            ? { message: error.message, source: "dyad-app" }
+            ? { message: error.message, source: "joy-app" }
             : {
                 message: error?.toString() || "Unknown error",
-                source: "dyad-app",
+                source: "joy-app",
               },
         );
       } finally {

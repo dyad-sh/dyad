@@ -14,11 +14,11 @@ make sure you ALSO add this dependency: @supabase/supabase-js.
 
 Example output:
 
-<dyad-write path="src/integrations/supabase/client.ts" description="Creating a supabase client.">
+<joy-write path="src/integrations/supabase/client.ts" description="Creating a supabase client.">
 $$SUPABASE_CLIENT_CODE$$
-</dyad-write>
+</joy-write>
 
-<dyad-add-dependency packages="@supabase/supabase-js"></dyad-add-dependency>
+<joy-add-dependency packages="@supabase/supabase-js"></joy-add-dependency>
 
 ## Auth
 
@@ -80,7 +80,7 @@ useEffect(() => {
 
 Login page (NOTE: THIS FILE DOES NOT EXIST. YOU MUST GENERATE IT YOURSELF.):
 
-<dyad-write path="src/pages/Login.tsx" description="Creating a login page.">
+<joy-write path="src/pages/Login.tsx" description="Creating a login page.">
 import { Auth } from '@supabase/auth-ui-react';
 import { ThemeSupa } from '@supabase/auth-ui-shared';
 function Login() {
@@ -96,16 +96,16 @@ function Login() {
     />
   );
 }
-</dyad-write>
+</joy-write>
 
 
 ## Database
 
 If the user wants to use the database, use the following syntax:
 
-<dyad-execute-sql description="Get all users">
+<joy-execute-sql description="Get all users">
 SELECT * FROM users;
-</dyad-execute-sql>
+</joy-execute-sql>
 
 The description should be a short description of what the code is doing and be understandable by semi-technical users.
 
@@ -120,9 +120,9 @@ Row Level Security (RLS) is MANDATORY for all tables in Supabase. Without RLS po
 #### RLS Best Practices (REQUIRED):
 
 1. **Enable RLS on Every Table:**
-<dyad-execute-sql description="Enable RLS on table">
+<joy-execute-sql description="Enable RLS on table">
 ALTER TABLE table_name ENABLE ROW LEVEL SECURITY;
-</dyad-execute-sql>
+</joy-execute-sql>
 
 2. **Create Appropriate Policies for Each Operation:**
    - SELECT policies (who can read data)
@@ -133,12 +133,12 @@ ALTER TABLE table_name ENABLE ROW LEVEL SECURITY;
 3. **Common RLS Policy Patterns:**
 
    **Public Read Access:** (ONLY USE THIS IF SPECIFICALLY REQUESTED)
-<dyad-execute-sql description="Create public read access policy">
+<joy-execute-sql description="Create public read access policy">
 CREATE POLICY "Public read access" ON table_name FOR SELECT USING (true);
-</dyad-execute-sql>
+</joy-execute-sql>
 
    **User-specific Data Access:**
-<dyad-execute-sql description="Create user-specific data access policy">
+<joy-execute-sql description="Create user-specific data access policy">
 CREATE POLICY "Users can only see their own data" ON table_name 
 FOR SELECT TO authenticated USING (auth.uid() = user_id);
 
@@ -150,13 +150,13 @@ FOR UPDATE TO authenticated USING (auth.uid() = user_id);
 
 CREATE POLICY "Users can only delete their own data" ON table_name 
 FOR DELETE TO authenticated USING (auth.uid() = user_id);
-</dyad-execute-sql>
+</joy-execute-sql>
 
 #### RLS Policy Creation Template:
 
 When creating any table, ALWAYS follow this pattern:
 
-<dyad-execute-sql description="Create table">
+<joy-execute-sql description="Create table">
 -- Create table
 CREATE TABLE table_name (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -180,7 +180,7 @@ FOR UPDATE TO authenticated USING (auth.uid() = user_id);
 
 CREATE POLICY "policy_name_delete" ON table_name 
 FOR DELETE TO authenticated USING (auth.uid() = user_id);
-</dyad-execute-sql>
+</joy-execute-sql>
 
 **REMINDER: If you create a table without proper RLS policies, any user can access, modify, or delete ALL data in that table.**
 
@@ -205,7 +205,7 @@ If the user wants to create a user profile, use the following code:
 
 ### Create profiles table in public schema with proper RLS
 
-<dyad-execute-sql description="Create profiles table with proper RLS security">
+<joy-execute-sql description="Create profiles table with proper RLS security">
 -- Create profiles table
 CREATE TABLE public.profiles (
   id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -231,15 +231,15 @@ FOR UPDATE TO authenticated USING (auth.uid() = id);
 
 CREATE POLICY "profiles_delete_policy" ON public.profiles 
 FOR DELETE TO authenticated USING (auth.uid() = id);
-</dyad-execute-sql>
+</joy-execute-sql>
 
 **SECURITY NOTE:** These policies ensure users can only access, modify, and delete their own profile data. If you need public profile visibility (e.g., for a social app), add an additional public read policy only if specifically required:
 
-<dyad-execute-sql description="Optional: Add public read access (only if needed)">
+<joy-execute-sql description="Optional: Add public read access (only if needed)">
 -- ONLY add this policy if public profile viewing is specifically required
 CREATE POLICY "profiles_public_read_policy" ON public.profiles 
 FOR SELECT USING (true);
-</dyad-execute-sql>
+</joy-execute-sql>
 
 **IMPORTANT:** For security, Auth schema isn't exposed in the API. Create user tables in public schema to access user data via API.
 
@@ -249,7 +249,7 @@ FOR SELECT USING (true);
 
 ### Function to insert profile when user signs up
 
-<dyad-execute-sql description="Create function to insert profile when user signs up">
+<joy-execute-sql description="Create function to insert profile when user signs up">
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER
 LANGUAGE PLPGSQL
@@ -271,7 +271,7 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
-</dyad-execute-sql>
+</joy-execute-sql>
 
 ## Server-side Edge Functions
 
@@ -288,8 +288,8 @@ CREATE TRIGGER on_auth_user_created
 - Write functions in the supabase/functions folder
 - Each function should be in a standalone directory where the main file is index.ts (e.g., supabase/functions/hello/index.ts)
 - Reusable utilities belong in the supabase/functions/_shared folder. Import them in your edge functions with relative paths like ../_shared/logger.ts.
-- Make sure you use <dyad-write> tags to make changes to edge functions. 
-- The function will be deployed automatically when the user approves the <dyad-write> changes for edge functions.
+- Make sure you use <joy-write> tags to make changes to edge functions. 
+- The function will be deployed automatically when the user approves the <joy-write> changes for edge functions.
 - Do NOT tell the user to manually deploy the edge function using the CLI or Supabase Console. It's unhelpful and not needed.
 
 2. Configuration:
@@ -377,7 +377,7 @@ Use <resource-link> to link to the relevant edge function
 
 12. Edge Function Template:
 
-<dyad-write path="supabase/functions/hello.ts" description="Creating a hello world edge function.">
+<joy-write path="supabase/functions/hello.ts" description="Creating a hello world edge function.">
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0'
 
@@ -402,7 +402,7 @@ serve(async (req) => {
   
   // ... function logic
 })
-</dyad-write>
+</joy-write>
 `;
 
 export const SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT = `
@@ -411,7 +411,7 @@ tell them that they need to add supabase to their app.
 
 The following response will show a button that allows the user to add supabase to their app.
 
-<dyad-add-integration provider="supabase"></dyad-add-integration>
+<joy-add-integration provider="supabase"></joy-add-integration>
 
 # Examples
 
@@ -425,7 +425,7 @@ I want to use supabase in my app.
 
 You need to first add Supabase to your app.
 
-<dyad-add-integration provider="supabase"></dyad-add-integration>
+<joy-add-integration provider="supabase"></joy-add-integration>
 
 ## Example 2: User wants to add auth to their app
 
@@ -437,5 +437,5 @@ I want to add auth to my app.
 
 You need to first add Supabase to your app and then we can add auth.
 
-<dyad-add-integration provider="supabase"></dyad-add-integration>
+<joy-add-integration provider="supabase"></joy-add-integration>
 `;

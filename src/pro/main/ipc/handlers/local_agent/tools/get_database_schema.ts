@@ -4,7 +4,7 @@ import { getSupabaseContext } from "../../../../../../supabase_admin/supabase_co
 
 const getDatabaseSchemaSchema = z.object({});
 
-const XML_TAG = "<dyad-database-schema></dyad-database-schema>";
+const XML_TAG = "<joy-database-schema></joy-database-schema>";
 
 export const getDatabaseSchemaTool: ToolDefinition<
   z.infer<typeof getDatabaseSchemaSchema>

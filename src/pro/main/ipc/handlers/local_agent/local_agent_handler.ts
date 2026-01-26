@@ -10,9 +10,9 @@ import { db } from "@/db";
 import { chats, messages } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
-import { isDyadProEnabled } from "@/lib/schemas";
+import { isJoyProEnabled } from "@/lib/schemas";
 import { readSettings } from "@/main/settings";
-import { getDyadAppPath } from "@/paths/paths";
+import { getJoyAppPath } from "@/paths/paths";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import { safeSend } from "@/ipc/utils/safe_sender";
 import { getMaxTokens, getTemperature } from "@/ipc/utils/token_utils";
@@ -113,7 +113,7 @@ export async function handleLocalAgentStream(
     throw new Error(`Chat not found: ${req.chatId}`);
   }
 
-  const appPath = getDyadAppPath(chat.app.path);
+  const appPath = getJoyAppPath(chat.app.path);
 
   // Generate request ID
 
@@ -190,8 +190,8 @@ export async function handleLocalAgentStream(
         builtinProviderId: modelClient.builtinProviderId,
       }),
       providerOptions: getProviderOptions({
-        dyadAppId: chat.app.id,
-        dyadDisableFiles: true, // Local agent uses tools, not file injection
+        joyAppId: chat.app.id,
+        joyDisableFiles: true, // Local agent uses tools, not file injection
         files: [],
         mentionedAppsCodebases: [],
         builtinProviderId: modelClient.builtinProviderId,
@@ -488,7 +488,7 @@ async function getMcpTools(
               const { serverName, toolName } = parseMcpToolKey(key);
               const content = JSON.stringify(args, null, 2);
               ctx.onXmlComplete(
-                `<dyad-mcp-tool-call server="${serverName}" tool="${toolName}">\n${content}\n</dyad-mcp-tool-call>`,
+                `<joy-mcp-tool-call server="${serverName}" tool="${toolName}">\n${content}\n</joy-mcp-tool-call>`,
               );
 
               const res = await original.execute?.(args, execCtx);
@@ -496,7 +496,7 @@ async function getMcpTools(
                 typeof res === "string" ? res : JSON.stringify(res);
 
               ctx.onXmlComplete(
-                `<dyad-mcp-tool-result server="${serverName}" tool="${toolName}">\n${resultStr}\n</dyad-mcp-tool-result>`,
+                `<joy-mcp-tool-result server="${serverName}" tool="${toolName}">\n${resultStr}\n</joy-mcp-tool-result>`,
               );
 
               return resultStr;
@@ -506,7 +506,7 @@ async function getMcpTools(
               const errorStack =
                 error instanceof Error && error.stack ? error.stack : "";
               ctx.onXmlComplete(
-                `<dyad-output type="error" message="MCP tool '${key}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorStack || errorMessage)}</dyad-output>`,
+                `<joy-output type="error" message="MCP tool '${key}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorStack || errorMessage)}</joy-output>`,
               );
               throw error;
             }

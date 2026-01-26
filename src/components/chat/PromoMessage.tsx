@@ -91,8 +91,8 @@ export const REDDIT_TIP: MessageConfig = {
     },
     {
       type: "link",
-      content: "Dyad subreddit",
-      url: "https://www.reddit.com/r/dyadbuilders/",
+      content: "JoyCreate community",
+      url: "https://community.joycreate.app/",
     },
   ],
 };
@@ -125,7 +125,7 @@ export const BUILD_A_BIBLE_APP_TIP: MessageConfig = {
     },
     {
       type: "text",
-      content: " the creator of Dyad build a Bible app step-by-step",
+      content: " the creator of JoyCreate build a Bible app step-by-step",
     },
   ],
 };

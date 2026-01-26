@@ -11,7 +11,7 @@ import * as fs from "fs-extra";
 import * as path from "path";
 import log from "electron-log";
 import AdmZip from "adm-zip";
-import { getDyadAppPath } from "../../paths/paths";
+import { getJoyAppPath } from "../../paths/paths";
 import type {
   PublishAppRequest,
   PublishAppResponse,
@@ -116,7 +116,7 @@ async function bundleApp(appId: number): Promise<AppBundle> {
     throw new Error("App not found");
   }
 
-  const appPath = getDyadAppPath(appRecord.path);
+  const appPath = getJoyAppPath(appRecord.path);
   
   if (!await fs.pathExists(appPath)) {
     throw new Error("App directory not found");
@@ -193,7 +193,7 @@ async function createAppZip(appId: number): Promise<string> {
     throw new Error("App not found");
   }
 
-  const appPath = getDyadAppPath(appRecord.path);
+  const appPath = getJoyAppPath(appRecord.path);
   const tempDir = path.join(app.getPath("temp"), "joycreate-exports");
   await fs.ensureDir(tempDir);
   

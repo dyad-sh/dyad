@@ -6,6 +6,7 @@ import { settingsRoute } from "./routes/settings";
 import { providerSettingsRoute } from "./routes/settings/providers/$provider";
 import { appDetailsRoute } from "./routes/app-details";
 import { hubRoute } from "./routes/hub";
+import { mcpHubRoute } from "./routes/mcp-hub";
 import { libraryRoute } from "./routes/library";
 import { agentsRoute, agentEditorRoute, agentTestRoute } from "./routes/agents";
 import { workflowsRoute } from "./routes/workflows";
@@ -24,6 +25,7 @@ import { computeNetworkRoute } from "./routes/compute-network";
 const routeTree = rootRoute.addChildren([
   homeRoute,
   hubRoute,
+  mcpHubRoute,
   libraryRoute,
   chatRoute,
   appDetailsRoute,

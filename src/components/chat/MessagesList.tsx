@@ -234,7 +234,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
       )}
 
       {isStreaming &&
-        !settings?.enableDyadPro &&
+        !settings?.enableJoyPro &&
         !userBudget &&
         messages.length > 0 && (
           <PromoMessage

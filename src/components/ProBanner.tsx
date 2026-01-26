@@ -79,11 +79,11 @@ function FeatureCard({ to, icon, title, description }: FeatureCardProps) {
 }
 
 // Keep legacy exports for compatibility but they do nothing now
-export function ManageDyadProButton() {
+export function ManageJoyButton() {
   return null;
 }
 
-export function SetupDyadProButton() {
+export function SetupJoyButton() {
   return null;
 }
 

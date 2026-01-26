@@ -8,7 +8,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { app } from "electron";
 import log from "electron-log";
-import { getDyadAppPath } from "@/paths/paths";
+import { getJoyAppPath } from "@/paths/paths";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
@@ -618,7 +618,7 @@ async function deployToPlatform(
     };
   }
 
-  const appPath = getDyadAppPath(request.appId.toString());
+  const appPath = getJoyAppPath(request.appId.toString());
   const outputPath = path.join(appPath, request.outputDir || "dist");
 
   // Build if needed

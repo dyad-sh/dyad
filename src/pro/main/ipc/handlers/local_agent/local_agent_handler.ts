@@ -124,7 +124,7 @@ export async function handleLocalAgentStream(
      */
     messageOverride?: ModelMessage[];
   },
-): Promise<void> {
+): Promise<boolean> {
   const settings = readSettings();
 
   // Check Pro status or Basic Agent mode
@@ -135,7 +135,7 @@ export async function handleLocalAgentStream(
       error:
         "Agent v2 requires Dyad Pro. Please enable Dyad Pro in Settings → Pro.",
     });
-    return;
+    return false;
   }
 
   // Get the chat and app
@@ -460,7 +460,7 @@ export async function handleLocalAgentStream(
       updatedFiles: !readOnly,
     } satisfies ChatResponseEnd);
 
-    return;
+    return true;
   } catch (error) {
     // Clean up any pending consent requests for this chat to prevent
     // stale UI banners and orphaned promises
@@ -474,7 +474,7 @@ export async function handleLocalAgentStream(
           .set({ content: `${fullResponse}\n\n[Response cancelled by user]` })
           .where(eq(messages.id, placeholderMessageId));
       }
-      return;
+      return false;
     }
 
     logger.error("Local agent error:", error);
@@ -482,7 +482,7 @@ export async function handleLocalAgentStream(
       chatId: req.chatId,
       error: `Error: ${error}`,
     });
-    return;
+    return false;
   }
 }
 

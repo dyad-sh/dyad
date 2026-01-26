@@ -1066,18 +1066,32 @@ This conversation includes one or more image attachments. When the user uploads 
               });
               return;
             }
+
+            // Mark quota BEFORE starting the stream to prevent race condition
+            // Multiple parallel requests could otherwise all pass the quota check
+            if (userMessageId) {
+              await markMessageAsUsingFreeAgentQuota(userMessageId);
+            }
           }
 
-          await handleLocalAgentStream(event, req, abortController, {
-            placeholderMessageId: placeholderAssistantMessage.id,
-            systemPrompt,
-            dyadRequestId: dyadRequestId ?? "[no-request-id]",
-            messageOverride: isSummarizeIntent ? chatMessages : undefined,
-          });
+          const success = await handleLocalAgentStream(
+            event,
+            req,
+            abortController,
+            {
+              placeholderMessageId: placeholderAssistantMessage.id,
+              systemPrompt,
+              dyadRequestId: dyadRequestId ?? "[no-request-id]",
+              messageOverride: isSummarizeIntent ? chatMessages : undefined,
+            },
+          );
 
-          // Mark the user message as using quota for Basic Agent mode
-          if (isBasicAgentModeRequest && userMessageId) {
-            await markMessageAsUsingFreeAgentQuota(userMessageId);
+          // If the stream failed or was aborted, unmark the quota usage
+          if (isBasicAgentModeRequest && userMessageId && !success) {
+            await db
+              .update(messages)
+              .set({ usingFreeAgentModeQuota: false })
+              .where(eq(messages.id, userMessageId));
           }
 
           return;

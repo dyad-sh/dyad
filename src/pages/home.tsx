@@ -40,6 +40,7 @@ import {
   SetupDyadProButton,
 } from "@/components/ProBanner";
 import { hasDyadProKey, getEffectiveDefaultChatMode } from "@/lib/schemas";
+import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 
 // Adding an export for attachments
 export interface HomeSubmitOptions {
@@ -58,6 +59,7 @@ export default function HomePage() {
   const [isLoading, setIsLoading] = useState(false);
   const [forceCloseDialogOpen, setForceCloseDialogOpen] = useState(false);
   const [performanceData, setPerformanceData] = useState<any>(undefined);
+  const { isQuotaExceeded } = useFreeAgentQuota();
   const { streamMessage } = useStreamChat({ hasChatId: false });
   const posthog = usePostHog();
   const appVersion = useAppVersion();
@@ -143,12 +145,15 @@ export default function HomePage() {
   useEffect(() => {
     if (settings && !hasAppliedDefaultChatMode.current) {
       hasAppliedDefaultChatMode.current = true;
-      const effectiveDefaultMode = getEffectiveDefaultChatMode(settings);
+      const effectiveDefaultMode = getEffectiveDefaultChatMode(
+        settings,
+        !isQuotaExceeded,
+      );
       if (settings.selectedChatMode !== effectiveDefaultMode) {
         updateSettings({ selectedChatMode: effectiveDefaultMode });
       }
     }
-  }, [settings, updateSettings]);
+  }, [settings, updateSettings, isQuotaExceeded]);
 
   const handleSubmit = async (options?: HomeSubmitOptions) => {
     const attachments = options?.attachments || [];

@@ -8,16 +8,21 @@ import {
 } from "@/components/ui/select";
 import type { ChatMode } from "@/lib/schemas";
 import { isDyadProEnabled, getEffectiveDefaultChatMode } from "@/lib/schemas";
+import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 
 export function DefaultChatModeSelector() {
   const { settings, updateSettings } = useSettings();
+  const { isQuotaExceeded } = useFreeAgentQuota();
 
   if (!settings) {
     return null;
   }
 
   const isProEnabled = isDyadProEnabled(settings);
-  const effectiveDefault = getEffectiveDefaultChatMode(settings);
+  const effectiveDefault = getEffectiveDefaultChatMode(
+    settings,
+    !isQuotaExceeded,
+  );
 
   const handleDefaultChatModeChange = (value: ChatMode) => {
     updateSettings({ defaultChatMode: value });

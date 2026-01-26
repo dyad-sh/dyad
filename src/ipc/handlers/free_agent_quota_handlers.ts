@@ -17,64 +17,7 @@ export function registerFreeAgentQuotaHandlers() {
   createTypedHandler(
     freeAgentQuotaContracts.getFreeAgentQuotaStatus,
     async () => {
-      // Get all messages with usingFreeAgentModeQuota = true, ordered by creation time
-      const quotaMessages = await db
-        .select({
-          createdAt: messages.createdAt,
-        })
-        .from(messages)
-        .where(eq(messages.usingFreeAgentModeQuota, true))
-        .orderBy(messages.createdAt);
-
-      // If there are no quota messages, quota is fresh
-      if (quotaMessages.length === 0) {
-        return {
-          messagesUsed: 0,
-          messagesLimit: FREE_AGENT_QUOTA_LIMIT,
-          isQuotaExceeded: false,
-          windowStartTime: null,
-          resetTime: null,
-          hoursUntilReset: null,
-        };
-      }
-
-      // Check if the oldest message is >= 24 hours old
-      // If so, all 5 messages are released at once (quota resets)
-      const oldestMessage = quotaMessages[0];
-      const windowStartTime = oldestMessage.createdAt.getTime();
-      const resetTime = windowStartTime + QUOTA_WINDOW_MS;
-      const now = Date.now();
-
-      if (now >= resetTime) {
-        // Quota has reset - all messages are released
-        return {
-          messagesUsed: 0,
-          messagesLimit: FREE_AGENT_QUOTA_LIMIT,
-          isQuotaExceeded: false,
-          windowStartTime: null,
-          resetTime: null,
-          hoursUntilReset: null,
-        };
-      }
-
-      // Quota has not reset - count all quota messages
-      const messagesUsed = quotaMessages.length;
-      const isQuotaExceeded = messagesUsed >= FREE_AGENT_QUOTA_LIMIT;
-      let hoursUntilReset = Math.ceil((resetTime - now) / (60 * 60 * 1000));
-      if (hoursUntilReset < 0) hoursUntilReset = 0;
-
-      logger.log(
-        `Free agent quota status: ${messagesUsed}/${FREE_AGENT_QUOTA_LIMIT} used, exceeded: ${isQuotaExceeded}`,
-      );
-
-      return {
-        messagesUsed,
-        messagesLimit: FREE_AGENT_QUOTA_LIMIT,
-        isQuotaExceeded,
-        windowStartTime,
-        resetTime,
-        hoursUntilReset,
-      };
+      return await getFreeAgentQuotaStatus();
     },
   );
 }
@@ -102,14 +45,16 @@ export async function markMessageAsUsingFreeAgentQuota(
  * since the oldest message was sent (not a rolling window).
  */
 export async function getFreeAgentQuotaStatus() {
-  // Get all messages with usingFreeAgentModeQuota = true, ordered by creation time
+  // Get quota messages ordered by creation time
+  // Limit to FREE_AGENT_QUOTA_LIMIT + 1 for efficiency (we only need to know if >= limit)
   const quotaMessages = await db
     .select({
       createdAt: messages.createdAt,
     })
     .from(messages)
     .where(eq(messages.usingFreeAgentModeQuota, true))
-    .orderBy(messages.createdAt);
+    .orderBy(messages.createdAt)
+    .limit(FREE_AGENT_QUOTA_LIMIT + 1);
 
   // If there are no quota messages, quota is fresh
   if (quotaMessages.length === 0) {
@@ -131,7 +76,14 @@ export async function getFreeAgentQuotaStatus() {
   const now = Date.now();
 
   if (now >= resetTime) {
-    // Quota has reset - all messages are released
+    // Quota has reset - clear all old quota flags to prevent bypass
+    await db
+      .update(messages)
+      .set({ usingFreeAgentModeQuota: false })
+      .where(eq(messages.usingFreeAgentModeQuota, true));
+
+    logger.log("Quota window reset - cleared all quota flags");
+
     return {
       messagesUsed: 0,
       messagesLimit: FREE_AGENT_QUOTA_LIMIT,

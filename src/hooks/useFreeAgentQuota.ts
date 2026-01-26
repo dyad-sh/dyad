@@ -51,7 +51,7 @@ export function useFreeAgentQuota() {
     messagesUsed: quotaStatus?.messagesUsed ?? 0,
     messagesLimit: quotaStatus?.messagesLimit ?? 5,
     messagesRemaining: quotaStatus
-      ? quotaStatus.messagesLimit - quotaStatus.messagesUsed
+      ? Math.max(0, quotaStatus.messagesLimit - quotaStatus.messagesUsed)
       : 5,
     hoursUntilReset: quotaStatus?.hoursUntilReset ?? null,
     resetTime: quotaStatus?.resetTime ?? null,

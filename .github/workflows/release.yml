@@ -100,6 +100,9 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          # Vault zero-config: inject Supabase credentials at build time
+          ABBA_VAULT_SUPABASE_URL: ${{ secrets.ABBA_VAULT_SUPABASE_URL }}
+          ABBA_VAULT_SUPABASE_ANON_KEY: ${{ secrets.ABBA_VAULT_SUPABASE_ANON_KEY }}
         # Don't use npm run because we don't get logs
         # https://github.com/electron/forge/blob/main/SUPPORT.md
         run: ./node_modules/.bin/electron-forge publish

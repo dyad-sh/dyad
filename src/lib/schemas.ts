@@ -200,6 +200,8 @@ export const VaultAuthSessionSchema = z.object({
   refreshToken: SecretSchema,
   userEmail: z.string(),
   expiresAt: z.number(), // Unix timestamp
+  isAnonymous: z.boolean().optional(), // True if signed in anonymously
+  userId: z.string().optional(), // Supabase user ID (auth.uid)
 });
 export type VaultAuthSession = z.infer<typeof VaultAuthSessionSchema>;
 

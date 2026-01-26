@@ -4,6 +4,7 @@ import {
   validateSupabaseAnonKey,
   validateVaultConfig,
   maskKey,
+  isVaultConfigured,
 } from "../vault/vault_config";
 
 describe("vault_config", () => {
@@ -177,6 +178,34 @@ describe("vault_config", () => {
       expect(maskKey(null)).toBe("***");
       // @ts-expect-error testing undefined handling
       expect(maskKey(undefined)).toBe("***");
+    });
+  });
+
+  describe("isVaultConfigured", () => {
+    it("should return true when both URL and key are present", () => {
+      const result = isVaultConfigured(
+        "https://test.supabase.co",
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test.test",
+      );
+      expect(result).toBe(true);
+    });
+
+    it("should return false when URL is empty", () => {
+      expect(isVaultConfigured("", "some-key")).toBe(false);
+    });
+
+    it("should return false when key is empty", () => {
+      expect(isVaultConfigured("https://test.supabase.co", "")).toBe(false);
+    });
+
+    it("should return false when both are empty", () => {
+      expect(isVaultConfigured("", "")).toBe(false);
+    });
+
+    it("should trim whitespace-only values as empty", () => {
+      expect(isVaultConfigured("   ", "   ")).toBe(false);
+      expect(isVaultConfigured("https://test.supabase.co", "   ")).toBe(false);
+      expect(isVaultConfigured("   ", "some-key")).toBe(false);
     });
   });
 });

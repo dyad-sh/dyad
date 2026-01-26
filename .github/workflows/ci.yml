@@ -51,6 +51,8 @@ jobs:
         run: node scripts/verify-icon-hashes.mjs
       - name: Verify Vault configuration (fast guardrail)
         run: node scripts/verify-vault-config.mjs
+      - name: Verify CSP connect-src (fast guardrail)
+        run: node scripts/verify-csp-connect-src.mjs
       - name: Presubmit (prettier:check + lint)
         run: npm run presubmit
       - name: Type-checking

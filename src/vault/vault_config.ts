@@ -153,8 +153,39 @@ export function maskKey(key: string): string {
 }
 
 /**
- * Default Vault configuration from environment
+ * Default Vault configuration from environment.
+ * These values are injected at build time via GitHub Actions secrets.
+ *
+ * Env var names:
+ * - ABBA_VAULT_SUPABASE_URL: The Supabase project URL
+ * - ABBA_VAULT_SUPABASE_ANON_KEY: The Supabase anon/public key (safe for client)
+ *
+ * Fallbacks for backwards compatibility:
+ * - VAULT_SUPABASE_URL
+ * - VAULT_SUPABASE_ANON_KEY
  */
 export const DEFAULT_VAULT_URL =
-  process.env.VAULT_SUPABASE_URL || "https://shyspsgqbhiuntdjgfro.supabase.co";
-export const DEFAULT_VAULT_ANON_KEY = process.env.VAULT_SUPABASE_ANON_KEY || "";
+  process.env.ABBA_VAULT_SUPABASE_URL ||
+  process.env.VAULT_SUPABASE_URL ||
+  "https://shyspsgqbhiuntdjgfro.supabase.co";
+export const DEFAULT_VAULT_ANON_KEY =
+  process.env.ABBA_VAULT_SUPABASE_ANON_KEY ||
+  process.env.VAULT_SUPABASE_ANON_KEY ||
+  "";
+
+/**
+ * Check if we have valid default configuration from environment.
+ * Used for zero-config auto-population.
+ */
+export function hasEnvDefaults(): boolean {
+  return !!DEFAULT_VAULT_URL && !!DEFAULT_VAULT_ANON_KEY;
+}
+
+/**
+ * Check if the Vault is fully configured (URL and key present).
+ */
+export function isVaultConfigured(url: string, anonKey: string): boolean {
+  return (
+    !!url && url.trim().length > 0 && !!anonKey && anonKey.trim().length > 0
+  );
+}

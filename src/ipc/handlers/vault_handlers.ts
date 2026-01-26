@@ -16,6 +16,8 @@ import {
   maskKey,
   DEFAULT_VAULT_URL,
   DEFAULT_VAULT_ANON_KEY,
+  hasEnvDefaults,
+  isVaultConfigured,
 } from "../../vault/vault_config";
 import type { VaultAuthSession } from "../../lib/schemas";
 
@@ -25,6 +27,7 @@ import type { VaultAuthSession } from "../../lib/schemas";
  */
 export type VaultAuthReason =
   | "AUTHENTICATED"
+  | "AUTHENTICATED_ANONYMOUS"
   | "NO_SESSION"
   | "SESSION_EXPIRED"
   | "TOKEN_REFRESH_FAILED"
@@ -272,6 +275,169 @@ function signOutFromVault(): void {
 }
 
 /**
+ * Sign in anonymously to Vault.
+ * Creates a new anonymous user that can use RLS-protected resources.
+ * Anonymous users have auth.uid() but no email.
+ */
+async function signInAnonymously(): Promise<VaultAuthSession> {
+  const { url, anonKey } = createVaultSupabaseClient();
+
+  logger.info("Attempting anonymous sign-in to Vault...");
+
+  const response = await fetch(`${url}/auth/v1/signup`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: anonKey,
+    },
+    body: JSON.stringify({
+      // Supabase anonymous sign-in uses empty email/password or special endpoint
+      // For Supabase, we use the signUp endpoint with a flag for anonymous
+      data: { is_anonymous: true },
+    }),
+  });
+
+  // If standard signup doesn't support anonymous, try the dedicated endpoint
+  if (!response.ok) {
+    // Try the anonymous sign-in endpoint (Supabase v2.64+)
+    const anonResponse = await fetch(
+      `${url}/auth/v1/token?grant_type=anonymous`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: anonKey,
+        },
+        body: JSON.stringify({}),
+      },
+    );
+
+    if (!anonResponse.ok) {
+      const error = await anonResponse.json().catch(() => ({}));
+      logger.error("Anonymous sign-in failed:", error);
+      throw new Error(
+        error.error_description ||
+          error.message ||
+          "Anonymous sign-in not supported. Enable anonymous sign-ins in Supabase Dashboard.",
+      );
+    }
+
+    const anonData = await anonResponse.json();
+    return createAnonymousSession(anonData);
+  }
+
+  const data = await response.json();
+  return createAnonymousSession(data);
+}
+
+/**
+ * Helper to create and persist an anonymous session.
+ */
+function createAnonymousSession(data: any): VaultAuthSession {
+  const session: VaultAuthSession = {
+    accessToken: { value: data.access_token },
+    refreshToken: { value: data.refresh_token },
+    userEmail: "anonymous",
+    expiresAt: Date.now() + (data.expires_in || 3600) * 1000,
+    isAnonymous: true,
+    userId: data.user?.id,
+  };
+
+  // Store session in settings
+  const settings = readSettings();
+  writeSettings({
+    vault: {
+      ...settings.vault,
+      authSession: session,
+    },
+  });
+
+  logger.info(
+    "Anonymous sign-in successful, userId:",
+    data.user?.id?.slice(0, 8),
+  );
+  return session;
+}
+
+/**
+ * Auto-initialize Vault configuration from environment defaults.
+ * Called on first Vault access if saved config is missing but env defaults exist.
+ * Returns true if config was auto-populated.
+ */
+function autoInitializeVaultConfig(): boolean {
+  const settings = readSettings();
+  const hasExistingConfig = isVaultConfigured(
+    settings.vault?.supabaseUrl || "",
+    settings.vault?.supabaseAnonKey?.value || "",
+  );
+
+  if (hasExistingConfig) {
+    logger.debug("Vault already configured, skipping auto-init");
+    return false;
+  }
+
+  if (!hasEnvDefaults()) {
+    logger.debug("No env defaults available for Vault auto-init");
+    return false;
+  }
+
+  // Auto-populate from environment
+  logger.info("Auto-initializing Vault config from environment defaults");
+  writeSettings({
+    vault: {
+      ...settings.vault,
+      supabaseUrl: DEFAULT_VAULT_URL,
+      supabaseAnonKey: { value: DEFAULT_VAULT_ANON_KEY },
+    },
+  });
+
+  return true;
+}
+
+/**
+ * Ensure Vault has a valid auth session.
+ * If no session exists and config is valid, attempt anonymous sign-in.
+ * Returns the access token or throws if authentication fails.
+ */
+async function ensureVaultAuth(): Promise<string> {
+  // First, try auto-init if needed
+  autoInitializeVaultConfig();
+
+  // Check current auth status
+  const authStatus = getVaultAuthStatus();
+
+  if (authStatus.isAuthenticated) {
+    const token = await getVaultAccessToken();
+    if (token) return token;
+  }
+
+  // If session expired, try to refresh
+  if (authStatus.reason === "SESSION_EXPIRED") {
+    const settings = readSettings();
+    const refreshToken = settings.vault?.authSession?.refreshToken?.value;
+    if (refreshToken) {
+      logger.info("Session expired, attempting refresh...");
+      const refreshed = await refreshVaultSession(refreshToken);
+      if (refreshed) {
+        return refreshed.accessToken.value;
+      }
+    }
+  }
+
+  // No valid session - try anonymous sign-in
+  logger.info("No valid session, attempting anonymous sign-in...");
+  try {
+    const session = await signInAnonymously();
+    return session.accessToken.value;
+  } catch (error) {
+    logger.error("Failed to establish Vault auth:", error);
+    throw new Error(
+      "Not authenticated. Please sign in to use Vault, or enable anonymous sign-ins in your Supabase project.",
+    );
+  }
+}
+
+/**
  * Structured Vault auth status result
  */
 export interface VaultAuthStatusResult {
@@ -280,6 +446,7 @@ export interface VaultAuthStatusResult {
   userEmail?: string;
   userId?: string;
   expiresAt?: number;
+  isAnonymous?: boolean;
 }
 
 /**
@@ -313,14 +480,17 @@ function getVaultAuthStatus(): VaultAuthStatusResult {
       reason: "SESSION_EXPIRED",
       userEmail: session.userEmail,
       expiresAt: session.expiresAt,
+      isAnonymous: session.isAnonymous,
     };
   }
 
   return {
     isAuthenticated: true,
-    reason: "AUTHENTICATED",
+    reason: session.isAnonymous ? "AUTHENTICATED_ANONYMOUS" : "AUTHENTICATED",
     userEmail: session.userEmail,
+    userId: session.userId,
     expiresAt: session.expiresAt,
+    isAnonymous: session.isAnonymous,
   };
 }
 
@@ -387,10 +557,13 @@ export interface VaultDiagnostics {
   maskedAnonKey: string;
   isAuthenticated: boolean;
   authReason: VaultAuthReason;
+  isAnonymous: boolean;
+  userId: string | null;
   userEmail: string | null;
   expiresAt: string | null; // ISO timestamp or null
   supabaseOrgSlug: string | null;
   lastError: string | null;
+  autoConfigAvailable: boolean;
 }
 
 export function registerVaultHandlers() {
@@ -718,10 +891,13 @@ export function registerVaultHandlers() {
       maskedAnonKey: maskKey(config.anonKey),
       isAuthenticated: authStatus.isAuthenticated,
       authReason: authStatus.reason,
+      isAnonymous: authStatus.isAnonymous || false,
+      userId: authStatus.userId || null,
       userEmail: authStatus.userEmail || null,
       expiresAt: expiresAtFormatted,
       supabaseOrgSlug: orgSlugs[0] || null,
       lastError: null,
+      autoConfigAvailable: hasEnvDefaults(),
     };
   });
 
@@ -790,6 +966,65 @@ export function registerVaultHandlers() {
         const message =
           error instanceof Error ? error.message : "Refresh failed";
         logger.error(`Manual session refresh failed: ${message}`);
+        return { success: false, error: message };
+      }
+    },
+  );
+
+  /**
+   * Sign in anonymously to Vault.
+   * Creates a new anonymous user session.
+   */
+  handle(
+    "vault:auth-anonymous",
+    async (): Promise<{
+      success: boolean;
+      error?: string;
+      userId?: string;
+    }> => {
+      try {
+        const session = await signInAnonymously();
+        return { success: true, userId: session.userId };
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Anonymous sign-in failed";
+        logger.error(`Vault anonymous auth failed: ${message}`);
+        return { success: false, error: message };
+      }
+    },
+  );
+
+  /**
+   * Auto-initialize Vault configuration from environment defaults.
+   * Returns true if config was auto-populated.
+   */
+  handle(
+    "vault:auto-init",
+    async (): Promise<{ success: boolean; wasInitialized: boolean }> => {
+      const wasInitialized = autoInitializeVaultConfig();
+      return { success: true, wasInitialized };
+    },
+  );
+
+  /**
+   * Ensure Vault has a valid auth session.
+   * Attempts auto-config and anonymous sign-in if needed.
+   */
+  handle(
+    "vault:ensure-auth",
+    async (): Promise<{
+      success: boolean;
+      error?: string;
+      authStatus?: VaultAuthStatusResult;
+    }> => {
+      try {
+        await ensureVaultAuth();
+        const authStatus = getVaultAuthStatus();
+        return { success: true, authStatus };
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to establish auth";
+        logger.error(`Vault ensure-auth failed: ${message}`);
         return { success: false, error: message };
       }
     },

@@ -64,6 +64,31 @@ describe("VaultAuthSession Schema", () => {
     const result = VaultAuthSessionSchema.safeParse(invalidSession);
     expect(result.success).toBe(false);
   });
+
+  it("should accept session with isAnonymous flag", () => {
+    const anonymousSession = {
+      ...validSession,
+      userEmail: "anonymous",
+      isAnonymous: true,
+      userId: "123e4567-e89b-12d3-a456-426614174000",
+    };
+    const result = VaultAuthSessionSchema.safeParse(anonymousSession);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.isAnonymous).toBe(true);
+      expect(result.data.userId).toBeDefined();
+    }
+  });
+
+  it("should accept session without optional isAnonymous and userId", () => {
+    // isAnonymous and userId are optional for backwards compatibility
+    const result = VaultAuthSessionSchema.safeParse(validSession);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.isAnonymous).toBeUndefined();
+      expect(result.data.userId).toBeUndefined();
+    }
+  });
 });
 
 describe("VaultSettings Schema with authSession", () => {
@@ -156,23 +181,37 @@ describe("Vault Auth IPC Channels", () => {
     "vault:auth-sign-out",
     "vault:auth-status",
     "vault:auth-refresh",
+    "vault:auth-anonymous",
   ];
 
-  it("should have consistent channel naming", () => {
+  const ZERO_CONFIG_CHANNELS = ["vault:auto-init", "vault:ensure-auth"];
+
+  it("should have consistent channel naming for auth", () => {
     AUTH_CHANNELS.forEach((channel) => {
       expect(channel).toMatch(/^vault:auth-[a-z-]+$/);
     });
   });
 
-  it("should have four auth channels", () => {
-    expect(AUTH_CHANNELS).toHaveLength(4);
+  it("should have consistent channel naming for zero-config", () => {
+    ZERO_CONFIG_CHANNELS.forEach((channel) => {
+      expect(channel).toMatch(/^vault:[a-z-]+$/);
+    });
+  });
+
+  it("should have five auth channels", () => {
+    expect(AUTH_CHANNELS).toHaveLength(5);
+  });
+
+  it("should have two zero-config channels", () => {
+    expect(ZERO_CONFIG_CHANNELS).toHaveLength(2);
   });
 });
 
 describe("VaultAuthReason Types", () => {
-  // Valid auth reason values
+  // Valid auth reason values (including new AUTHENTICATED_ANONYMOUS)
   const VALID_REASONS = [
     "AUTHENTICATED",
+    "AUTHENTICATED_ANONYMOUS",
     "NO_SESSION",
     "SESSION_EXPIRED",
     "TOKEN_REFRESH_FAILED",
@@ -183,18 +222,20 @@ describe("VaultAuthReason Types", () => {
 
   it("should define all expected auth reasons", () => {
     expect(VALID_REASONS).toContain("AUTHENTICATED");
+    expect(VALID_REASONS).toContain("AUTHENTICATED_ANONYMOUS");
     expect(VALID_REASONS).toContain("NO_SESSION");
     expect(VALID_REASONS).toContain("SESSION_EXPIRED");
     expect(VALID_REASONS).toContain("TOKEN_REFRESH_FAILED");
     expect(VALID_REASONS).toContain("CONFIG_MISSING");
   });
 
-  it("should have exactly 5 auth reasons", () => {
-    expect(VALID_REASONS).toHaveLength(5);
+  it("should have exactly 6 auth reasons", () => {
+    expect(VALID_REASONS).toHaveLength(6);
   });
 
   const authReasonMessages: Record<VaultAuthReason, string> = {
     AUTHENTICATED: "User is authenticated and session is valid",
+    AUTHENTICATED_ANONYMOUS: "User is authenticated anonymously",
     NO_SESSION: "No active session found - user needs to sign in",
     SESSION_EXPIRED: "Session has expired - user needs to sign in again",
     TOKEN_REFRESH_FAILED:

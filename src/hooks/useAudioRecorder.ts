@@ -1,5 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import log from "electron-log";
 import { ipc } from "@/ipc/types";
+
+const logger = log.scope("useAudioRecorder");
 
 export interface AudioRecorderState {
   isRecording: boolean;
@@ -13,7 +16,10 @@ type UseVoiceInputOptions = {
   onError?: (message: string) => void;
 };
 
-export function useAudioRecorder(onRecordingComplete?: (blob: Blob) => void) {
+export function useAudioRecorder(
+  onRecordingComplete?: (blob: Blob) => void,
+  onError?: (message: string) => void,
+) {
   const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
 
@@ -35,7 +41,7 @@ export function useAudioRecorder(onRecordingComplete?: (blob: Blob) => void) {
           try {
             mediaRecorderRef.current.stop();
           } catch (error) {
-            console.warn("Failed to stop media recorder on unmount", error);
+            logger.warn("Failed to stop media recorder on unmount", error);
           }
         }
       }
@@ -81,7 +87,8 @@ export function useAudioRecorder(onRecordingComplete?: (blob: Blob) => void) {
       };
 
       mediaRecorder.onerror = (event) => {
-        console.error("MediaRecorder error:", event);
+        logger.error("MediaRecorder error:", event);
+        onError?.("Recording failed unexpectedly.");
         if (isMountedRef.current) {
           setIsRecording(false);
         }
@@ -104,9 +111,9 @@ export function useAudioRecorder(onRecordingComplete?: (blob: Blob) => void) {
         if (isMountedRef.current) {
           setIsRecording(false);
           setAudioBlob(blob);
-          if (onRecordingComplete) {
-            onRecordingComplete(blob);
-          }
+        }
+        if (onRecordingComplete) {
+          onRecordingComplete(blob);
         }
         stream.getTracks().forEach((track) => track.stop());
         if (streamRef.current === stream) {
@@ -127,12 +134,12 @@ export function useAudioRecorder(onRecordingComplete?: (blob: Blob) => void) {
       setIsRecording(true);
       setAudioBlob(null);
     } catch (err) {
-      console.error("Error starting recording:", err);
+      logger.error("Error starting recording:", err);
       throw err;
     } finally {
       isStartingRef.current = false;
     }
-  }, [isRecording, onRecordingComplete]);
+  }, [isRecording, onError, onRecordingComplete]);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
@@ -141,7 +148,7 @@ export function useAudioRecorder(onRecordingComplete?: (blob: Blob) => void) {
           mediaRecorderRef.current.requestData();
           mediaRecorderRef.current.stop();
         } catch (error) {
-          console.warn("Failed to stop media recorder", error);
+          logger.warn("Failed to stop media recorder", error);
         }
       }
       setIsRecording(false);
@@ -165,56 +172,48 @@ export function useVoiceInput({ appendText, onError }: UseVoiceInputOptions) {
     async (blob: Blob) => {
       setIsTranscribing(true);
       try {
-        const reader = new FileReader();
-        reader.readAsDataURL(blob);
-
-        reader.onerror = () => {
-          console.error("FileReader error:", reader.error);
-          onError?.("Failed to read audio file");
-          setIsTranscribing(false);
-        };
-
-        reader.onload = async () => {
-          try {
+        const base64Content = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onerror = () => {
+            reject(new Error("Failed to read audio file"));
+          };
+          reader.onload = () => {
             const base64data = reader.result as string | null;
             if (!base64data) {
-              onError?.("Failed to convert audio to base64");
-              setIsTranscribing(false);
+              reject(new Error("Failed to convert audio to base64"));
               return;
             }
-            const base64Content = base64data.split(",")[1];
-            if (!base64Content) {
-              onError?.("Invalid audio data format");
-              setIsTranscribing(false);
+            const content = base64data.split(",")[1];
+            if (!content) {
+              reject(new Error("Invalid audio data format"));
               return;
             }
+            resolve(content);
+          };
+          reader.readAsDataURL(blob);
+        });
 
-            const text = await ipc.misc.transcribeAudio({
-              audioData: base64Content,
-              format: "webm",
-            });
+        const text = await ipc.misc.transcribeAudio({
+          audioData: base64Content,
+          format: "webm",
+        });
 
-            if (text) {
-              appendText(text);
-            }
-          } catch (err) {
-            console.error("Transcription failed", err);
-            onError?.("Failed to transcribe audio");
-          } finally {
-            setIsTranscribing(false);
-          }
-        };
+        if (text) {
+          appendText(text);
+        }
       } catch (err) {
-        console.error("Transcription failed", err);
-        onError?.("Failed to transcribe audio");
-        setIsTranscribing(false);
+        logger.error("Transcription failed", err);
+        onError?.(
+          err instanceof Error ? err.message : "Failed to transcribe audio",
+        );
       }
+      setIsTranscribing(false);
     },
     [appendText, onError],
   );
 
   const { isRecording, startRecording, stopRecording, analyser } =
-    useAudioRecorder(handleRecordingComplete);
+    useAudioRecorder(handleRecordingComplete, onError);
 
   const handleMicClick = async () => {
     if (isRecording) {
@@ -223,7 +222,7 @@ export function useVoiceInput({ appendText, onError }: UseVoiceInputOptions) {
       try {
         await startRecording();
       } catch (err) {
-        console.error("Failed to start recording:", err);
+        logger.error("Failed to start recording:", err);
         onError?.("Failed to start recording. Check microphone permissions.");
       }
     }

@@ -301,5 +301,8 @@ export async function transcribeWithDyadEngine(
     );
   }
   const data = (await response.json()) as { text: string };
+  if (requestId) {
+    transcriptionRequestIdAttempts.delete(requestId);
+  }
   return data.text;
 }

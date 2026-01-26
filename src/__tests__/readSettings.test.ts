@@ -32,6 +32,7 @@ describe("readSettings", () => {
     vi.clearAllMocks();
     mockGetUserDataPath.mockReturnValue(mockUserDataPath);
     mockPath.join.mockReturnValue(mockSettingsPath);
+    mockPath.dirname.mockReturnValue(mockUserDataPath);
     mockSafeStorage.isEncryptionAvailable.mockReturnValue(true);
   });
 
@@ -42,11 +43,17 @@ describe("readSettings", () => {
   describe("when settings file does not exist", () => {
     it("should create default settings file and return default settings", () => {
       mockFs.existsSync.mockReturnValue(false);
+      mockFs.mkdirSync.mockImplementation(
+        () => undefined as unknown as string | undefined,
+      );
       mockFs.writeFileSync.mockImplementation(() => {});
 
       const result = readSettings();
 
       expect(mockFs.existsSync).toHaveBeenCalledWith(mockSettingsPath);
+      expect(mockFs.mkdirSync).toHaveBeenCalledWith(mockUserDataPath, {
+        recursive: true,
+      });
       expect(mockFs.writeFileSync).toHaveBeenCalledWith(
         mockSettingsPath,
         expect.stringContaining('"selectedModel"'),

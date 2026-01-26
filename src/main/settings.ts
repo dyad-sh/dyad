@@ -53,6 +53,7 @@ export function readSettings(): UserSettings {
   try {
     const filePath = getSettingsFilePath();
     if (!fs.existsSync(filePath)) {
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
       fs.writeFileSync(filePath, JSON.stringify(DEFAULT_SETTINGS, null, 2));
       return DEFAULT_SETTINGS;
     }
@@ -242,6 +243,7 @@ export function writeSettings(settings: Partial<UserSettings>): void {
       }
     }
     const validatedSettings = UserSettingsSchema.parse(newSettings);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, JSON.stringify(validatedSettings, null, 2));
   } catch (error) {
     logger.error("Error writing settings:", error);

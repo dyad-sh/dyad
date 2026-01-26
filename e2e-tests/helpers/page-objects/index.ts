@@ -11,6 +11,7 @@ export { ContextFilesPickerDialog, ProModesDialog } from "./dialogs";
 // Component page objects
 export {
   GitHubConnector,
+  VercelConnector,
   ChatActions,
   PreviewPanel,
   CodeEditor,

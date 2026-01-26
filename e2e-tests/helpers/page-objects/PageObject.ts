@@ -30,6 +30,7 @@ import { ModelPicker } from "./components/ModelPicker";
 import { Settings } from "./components/Settings";
 import { AppManagement } from "./components/AppManagement";
 import { PromptLibrary } from "./components/PromptLibrary";
+import { VercelConnector } from "./components/VercelConnector";
 
 // Import dialog page objects
 import { ContextFilesPickerDialog } from "./dialogs/ContextFilesPickerDialog";
@@ -41,6 +42,7 @@ export class PageObject {
 
   // Component page objects (exposed for direct access)
   public githubConnector: GitHubConnector;
+  public vercelConnector: VercelConnector;
   public chatActions: ChatActions;
   public previewPanel: PreviewPanel;
   public codeEditor: CodeEditor;
@@ -63,6 +65,7 @@ export class PageObject {
 
     // Initialize component page objects
     this.githubConnector = new GitHubConnector(this.page, fakeLlmPort);
+    this.vercelConnector = new VercelConnector(this.page);
     this.chatActions = new ChatActions(this.page);
     this.previewPanel = new PreviewPanel(this.page);
     this.codeEditor = new CodeEditor(this.page);
@@ -463,6 +466,10 @@ export class PageObject {
 
   async importApp(appDir: string) {
     return this.appManagement.importApp(appDir);
+  }
+
+  getTitleBarAppNameButton() {
+    return this.appManagement.getTitleBarAppNameButton();
   }
 
   // ================================

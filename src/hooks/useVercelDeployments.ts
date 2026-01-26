@@ -12,7 +12,7 @@ export function useVercelDeployments(appId: number) {
     refetch,
   } = useQuery<VercelDeployment[], Error>({
     queryKey: queryKeys.vercel.deployments({ appId }),
-    queryFn: async () => {
+    queryFn: () => {
       return ipc.vercel.getDeployments({ appId });
     },
     // enabled: false, // Don't auto-fetch, only fetch when explicitly requested

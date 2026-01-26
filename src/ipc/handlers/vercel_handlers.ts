@@ -22,6 +22,7 @@ import {
   DisconnectVercelProjectParams,
   VercelProject,
   VercelDeployment,
+  VercelAccountStatus,
 } from "../types/vercel";
 
 const logger = log.scope("vercel_handlers");
@@ -531,6 +532,58 @@ async function handleDisconnectVercelProject(
     .where(eq(apps.id, appId));
 }
 
+// --- Vercel Get Account Status Handler ---
+async function handleGetAccountStatus(): Promise<VercelAccountStatus> {
+  try {
+    const settings = readSettings();
+    const accessToken = settings.vercelAccessToken?.value;
+    if (!accessToken) {
+      throw new Error("Not authenticated with Vercel.");
+    }
+
+    logger.info("Getting Vercel account status");
+
+    const vercel = createVercelClient(accessToken);
+    const response = await vercel.user.getAuthUser();
+    const authUser = response.user;
+
+    // Type guard to check if we have the full AuthUser (not AuthUserLimited)
+    const hasFullUserInfo = "softBlock" in authUser && "username" in authUser;
+
+    if (!hasFullUserInfo) {
+      // Limited user info - we can't get soft block status
+      return {
+        softBlock: null,
+        username: "id" in authUser ? String(authUser.id) : "unknown",
+        email: "email" in authUser ? String(authUser.email) : "unknown",
+      };
+    }
+
+    return {
+      softBlock: authUser.softBlock
+        ? {
+            blockedAt: authUser.softBlock.blockedAt,
+            reason: authUser.softBlock
+              .reason as VercelAccountStatus["softBlock"] extends null
+              ? never
+              : NonNullable<VercelAccountStatus["softBlock"]>["reason"],
+            blockedDueToOverageType: authUser.softBlock
+              .blockedDueToOverageType as VercelAccountStatus["softBlock"] extends null
+              ? never
+              : NonNullable<
+                  VercelAccountStatus["softBlock"]
+                >["blockedDueToOverageType"],
+          }
+        : null,
+      username: authUser.username,
+      email: authUser.email,
+    };
+  } catch (err: any) {
+    logger.error("[Vercel Handler] Failed to get account status:", err);
+    throw new Error(err.message || "Failed to get Vercel account status.");
+  }
+}
+
 // --- Registration ---
 export function registerVercelHandlers() {
   // DO NOT LOG this handler because tokens are sensitive
@@ -566,6 +619,10 @@ export function registerVercelHandlers() {
 
   createTypedHandler(vercelContracts.disconnect, async (event, params) => {
     await handleDisconnectVercelProject(event, params);
+  });
+
+  createTypedHandler(vercelContracts.getAccountStatus, async () => {
+    return handleGetAccountStatus();
   });
 
   logger.debug("Registered Vercel IPC handlers");

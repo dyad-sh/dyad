@@ -188,6 +188,7 @@ export async function handleLocalAgentStream(
       isSharedModulesChanged: false,
       todos: [],
       dyadRequestId,
+      isBasicAgentMode: isBasicAgentMode(settings),
       onXmlStream: (accumulatedXml: string) => {
         // Stream accumulated XML to UI without persisting
         streamingPreview = accumulatedXml;

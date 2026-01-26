@@ -41,6 +41,11 @@ export interface AgentContext {
   /** Request ID for tracking requests to the Dyad engine */
   dyadRequestId: string;
   /**
+   * If true, this is Basic Agent mode (free tier with quota).
+   * Engine-dependent tools are disabled in this mode.
+   */
+  isBasicAgentMode: boolean;
+  /**
    * Streams accumulated XML to UI without persisting to DB (for live preview).
    * Call this repeatedly with the full accumulated XML so far.
    */

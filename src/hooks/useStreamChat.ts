@@ -194,6 +194,11 @@ export function useStreamChat({
 
               refetchUserBudget();
 
+              // Invalidate free agent quota to update the UI after message
+              queryClient.invalidateQueries({
+                queryKey: queryKeys.freeAgentQuota.status,
+              });
+
               // Keep the same as below
               setIsStreamingById((prev) => {
                 const next = new Map(prev);

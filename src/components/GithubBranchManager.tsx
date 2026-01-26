@@ -696,6 +696,7 @@ export function GithubBranchManager({
                   showError(
                     error?.message || "Failed to check for remaining conflicts",
                   );
+                  return;
                 }
                 if (remainingConflicts.length === 0) {
                   showSuccess("All conflicts resolved");
@@ -730,6 +731,7 @@ export function GithubBranchManager({
                 showError(
                   error?.message || "Failed to refresh conflict status",
                 );
+                return;
               }
               if (remainingConflicts.length > 0) {
                 setConflicts(remainingConflicts);
@@ -738,8 +740,20 @@ export function GithubBranchManager({
               }
             }
           }}
-          onCancel={() => {
+          onCancel={async () => {
             setConflicts([]);
+            try {
+              const state = await ipc.github.getGitState({ appId });
+              if (state.rebaseInProgress) {
+                await ipc.github.rebaseAbort({ appId });
+              } else if (state.mergeInProgress) {
+                await ipc.github.mergeAbort({ appId });
+              }
+            } catch (error: any) {
+              showError(
+                error?.message || "Failed to abort merge/rebase operation",
+              );
+            }
           }}
         />
       )}

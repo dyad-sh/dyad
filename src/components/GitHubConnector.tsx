@@ -546,9 +546,23 @@ function ConnectedGitHubConnector({
               }
             }
           }}
-          onCancel={() => {
+          onCancel={async () => {
             setConflicts([]);
             setSyncError(null);
+            try {
+              const state = await ipc.github.getGitState({ appId });
+              if (state.rebaseInProgress) {
+                await ipc.github.rebaseAbort({ appId });
+                setRebaseInProgress(false);
+                setRebaseStatusMessage("Rebase aborted.");
+              } else if (state.mergeInProgress) {
+                await ipc.github.mergeAbort({ appId });
+              }
+            } catch (error: any) {
+              setSyncError(
+                error?.message || "Failed to abort merge/rebase operation",
+              );
+            }
           }}
         />
       )}

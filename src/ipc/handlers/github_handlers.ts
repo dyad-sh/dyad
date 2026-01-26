@@ -1202,10 +1202,6 @@ async function handleCompleteMerge(
       );
     }
 
-    for (const file of conflicts) {
-      await gitAdd({ path: appPath, filepath: file });
-    }
-
     if (rebaseInProgress) {
       await gitRebaseContinue({ path: appPath });
       return undefined;

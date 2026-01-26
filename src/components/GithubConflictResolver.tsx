@@ -14,7 +14,7 @@ import {
 import { DyadMarkdownParser } from "@/components/chat/DyadMarkdownParser";
 import type { FileAttachment, ChatAttachment } from "@/ipc/types/chat";
 import { selectedChatIdAtom, chatMessagesByIdAtom } from "@/atoms/chatAtoms";
-import { useAtom, useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { useProposal } from "@/hooks/useProposal";
 import { useSettings } from "@/hooks/useSettings";
 
@@ -36,9 +36,13 @@ export function GithubConflictResolver({
   const [isResolving, setIsResolving] = useState(false);
   const [isAiResolving, setIsAiResolving] = useState(false);
   const [isManualResolving, setIsManualResolving] = useState(false);
-  const [aiChatId, setAiChatId] = useAtom(selectedChatIdAtom);
+  const selectedChatId = useAtomValue(selectedChatIdAtom);
+  const [aiChatId, setAiChatId] = useState<number | null>(selectedChatId);
   const [aiMessageId, setAiMessageId] = useState<number | null>(null);
   const [aiResolution, setAiResolution] = useState<string | null>(null);
+  const [autoApproveStatus, setAutoApproveStatus] = useState<
+    "idle" | "pending" | "applied" | "timed_out"
+  >("idle");
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const { refreshProposal } = useProposal(aiChatId || undefined);
   const { settings } = useSettings();
@@ -53,6 +57,21 @@ export function GithubConflictResolver({
     setAiChatId(newChatId);
     return newChatId;
   };
+
+  const getNextConflictIndex = useCallback(
+    (remainingConflicts: string[]) => {
+      if (remainingConflicts.length === 0) return null;
+      const remainingSet = new Set(remainingConflicts);
+      for (let i = currentConflictIndex + 1; i < conflicts.length; i += 1) {
+        if (remainingSet.has(conflicts[i])) return i;
+      }
+      for (let i = 0; i < currentConflictIndex; i += 1) {
+        if (remainingSet.has(conflicts[i])) return i;
+      }
+      return null;
+    },
+    [conflicts, currentConflictIndex],
+  );
 
   const countConflicts = (content: string): number => {
     const matches = content.match(/<<<<<<<[^\n]*\n/g);
@@ -102,6 +121,7 @@ export function GithubConflictResolver({
     setIsAiResolving(false);
     setIsManualResolving(false);
     setIsResolving(false);
+    setAutoApproveStatus("idle");
 
     return () => {
       isMountedRef.current = false;
@@ -126,6 +146,7 @@ export function GithubConflictResolver({
 
   const handleAiResolve = async () => {
     setIsAiResolving(true);
+    setAutoApproveStatus(isAutoApproveEnabled ? "pending" : "idle");
     try {
       const chatId = await ensureChatId();
       const fileForThisRequest = currentFile;
@@ -225,16 +246,22 @@ The full file content is attached. Review the entire file and resolve all confli
                       setFileContent(updatedContent);
                       setAiResolution(null);
                       setAiMessageId(null);
+                      setAutoApproveStatus("applied");
                       showSuccess("AI resolution automatically applied");
 
                       const allRemainingConflicts =
                         await ipc.github.getConflicts({ appId });
                       if (allRemainingConflicts.length === 0) {
                         onResolve();
-                      } else if (currentConflictIndex < conflicts.length - 1) {
-                        setCurrentConflictIndex(currentConflictIndex + 1);
                       } else {
-                        onResolve();
+                        const nextIndex = getNextConflictIndex(
+                          allRemainingConflicts,
+                        );
+                        if (nextIndex === null) {
+                          onResolve();
+                        } else {
+                          setCurrentConflictIndex(nextIndex);
+                        }
                       }
                       setIsAiResolving(false);
                       return;
@@ -250,6 +277,7 @@ The full file content is attached. Review the entire file and resolve all confli
                 // Timeout reached
                 if (isMountedRef.current) {
                   showSuccess("AI suggested a resolution");
+                  setAutoApproveStatus("timed_out");
                   setIsAiResolving(false);
                 }
               };
@@ -257,6 +285,7 @@ The full file content is attached. Review the entire file and resolve all confli
               await pollForChanges();
             } else {
               showSuccess("AI suggested a resolution");
+              setAutoApproveStatus("idle");
               setIsAiResolving(false);
             }
           },
@@ -268,12 +297,14 @@ The full file content is attached. Review the entire file and resolve all confli
               return;
             }
             showError(error || "Failed to resolve with AI");
+            setAutoApproveStatus("idle");
             setIsAiResolving(false);
           },
         },
       );
     } catch (error: any) {
       showError(error.message || "Failed to resolve with AI");
+      setAutoApproveStatus("idle");
       setIsAiResolving(false);
     }
   };
@@ -299,23 +330,15 @@ The full file content is attached. Review the entire file and resolve all confli
       if (remainingConflicts.length === 0) {
         // All conflicts resolved, complete the merge
         onResolve();
-      } else if (currentConflictIndex < conflicts.length - 1) {
-        // Update conflicts list and move to next conflict if available
-        setCurrentConflictIndex(currentConflictIndex + 1);
       } else {
-        // All conflicts in the list are resolved, but there might be more files
-        // Refresh the conflicts list
-        const updatedConflicts = await ipc.github.getConflicts({ appId });
-        if (updatedConflicts.length > 0) {
-          // There are more conflicts in other files, show them
+        const nextIndex = getNextConflictIndex(remainingConflicts);
+        if (nextIndex === null) {
           showError(
-            `Resolved current file, but ${updatedConflicts.length} file(s) still have conflicts.`,
+            `Resolved current file, but ${remainingConflicts.length} file(s) still have conflicts.`,
           );
-          // The parent component should handle updating the conflicts list
           onResolve();
         } else {
-          // All conflicts resolved
-          onResolve();
+          setCurrentConflictIndex(nextIndex);
         }
       }
     } catch (error: any) {
@@ -339,6 +362,7 @@ The full file content is attached. Review the entire file and resolve all confli
       await refreshChatMessages(aiChatId);
       setAiResolution(null);
       setAiMessageId(null);
+      setAutoApproveStatus("idle");
       refreshProposal();
       showSuccess("Applied AI suggestion via approval.");
 
@@ -347,23 +371,15 @@ The full file content is attached. Review the entire file and resolve all confli
       if (remainingConflicts.length === 0) {
         // All conflicts resolved, complete the merge
         onResolve();
-      } else if (currentConflictIndex < conflicts.length - 1) {
-        // Update conflicts list and move to next conflict if available
-        setCurrentConflictIndex(currentConflictIndex + 1);
       } else {
-        // All conflicts in the list are resolved, but there might be more files
-        // Refresh the conflicts list
-        const updatedConflicts = await ipc.github.getConflicts({ appId });
-        if (updatedConflicts.length > 0) {
-          // There are more conflicts in other files, show them
+        const nextIndex = getNextConflictIndex(remainingConflicts);
+        if (nextIndex === null) {
           showError(
-            `Resolved current file, but ${updatedConflicts.length} file(s) still have conflicts.`,
+            `Resolved current file, but ${remainingConflicts.length} file(s) still have conflicts.`,
           );
-          // The parent component should handle updating the conflicts list
           onResolve();
         } else {
-          // All conflicts resolved
-          onResolve();
+          setCurrentConflictIndex(nextIndex);
         }
       }
     } catch (error: any) {
@@ -504,7 +520,9 @@ The full file content is attached. Review the entire file and resolve all confli
             <div className="border rounded-md p-3 bg-white dark:bg-gray-900">
               <div className="flex flex-wrap justify-between items-center mb-2 gap-2">
                 <div className="font-semibold">AI Suggested Resolution</div>
-                {!isAutoApproveEnabled && (
+                {(!isAutoApproveEnabled ||
+                  autoApproveStatus === "idle" ||
+                  autoApproveStatus === "timed_out") && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -514,9 +532,19 @@ The full file content is attached. Review the entire file and resolve all confli
                     Approve
                   </Button>
                 )}
-                {isAutoApproveEnabled && (
+                {isAutoApproveEnabled && autoApproveStatus === "pending" && (
+                  <span className="text-xs text-gray-500">
+                    Auto-approving...
+                  </span>
+                )}
+                {isAutoApproveEnabled && autoApproveStatus === "applied" && (
                   <span className="text-xs text-gray-500">
                     Auto-approved - changes applied automatically
+                  </span>
+                )}
+                {isAutoApproveEnabled && autoApproveStatus === "timed_out" && (
+                  <span className="text-xs text-gray-500">
+                    Auto-approval timed out. Review and approve manually.
                   </span>
                 )}
               </div>

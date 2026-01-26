@@ -56,7 +56,17 @@ testSkipIfWindows(
       po.page.getByRole("button", { name: "Switch back to Build mode" }),
     ).toBeVisible();
 
-    // 6. Click "Switch back to Build mode" and verify mode changes
+    // 6. Try to send a 6th message - should be blocked with error
+    await po.sendPrompt("tc=local-agent/simple-response message 6");
+    // Verify error message appears indicating quota exceeded
+    await expect(po.page.getByTestId("chat-error-box")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+    await expect(po.page.getByTestId("chat-error-box")).toContainText(
+      "You have used all 5 free Agent messages for today",
+    );
+
+    // 8. Click "Switch back to Build mode" and verify mode changes
     await po.page
       .getByRole("button", { name: "Switch back to Build mode" })
       .click();
@@ -67,7 +77,7 @@ testSkipIfWindows(
       po.page.getByTestId("free-agent-quota-banner"),
     ).not.toBeVisible();
 
-    // 7. Verify user can still send messages in Build mode
+    // 9. Verify user can still send messages in Build mode
     await po.sendPrompt("[dyad-qa=write] create a simple file");
     await po.waitForChatCompletion();
   },

@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "58bbbbba-abef-41e9-b0f8-000fbb4f59ac",
+  "id": "b80ad345-8182-4b8f-b579-4fe0a0780cb4",
   "prevId": "ce28ff48-ebcb-4c8e-90aa-623ebe456839",
   "tables": {
     "apps": {
@@ -487,13 +487,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "headers_json": {
-          "name": "headers_json",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "url": {
           "name": "url",
           "type": "text",
@@ -678,6 +671,13 @@
         "ai_messages_json": {
           "name": "ai_messages_json",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "using_free_agent_mode_quota": {
+          "name": "using_free_agent_mode_quota",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

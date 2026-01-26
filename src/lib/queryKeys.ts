@@ -177,6 +177,13 @@ export const queryKeys = {
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Free Agent Quota
+  // ─────────────────────────────────────────────────────────────────────────────
+  freeAgentQuota: {
+    status: ["freeAgentQuotaStatus"] as const,
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // Vercel Deployments
   // ─────────────────────────────────────────────────────────────────────────────
   vercel: {
@@ -285,6 +292,9 @@ export type AppQueryKey =
       (typeof queryKeys.languageModels)[keyof typeof queryKeys.languageModels]
     >
   | QueryKeyOf<(typeof queryKeys.userBudget)[keyof typeof queryKeys.userBudget]>
+  | QueryKeyOf<
+      (typeof queryKeys.freeAgentQuota)[keyof typeof queryKeys.freeAgentQuota]
+    >
   | QueryKeyOf<(typeof queryKeys.vercel)[keyof typeof queryKeys.vercel]>
   | QueryKeyOf<
       (typeof queryKeys.appUpgrades)[keyof typeof queryKeys.appUpgrades]

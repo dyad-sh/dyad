@@ -97,6 +97,10 @@ export const messages = sqliteTable("messages", {
   aiMessagesJson: text("ai_messages_json", {
     mode: "json",
   }).$type<AiMessagesJsonV6 | null>(),
+  // Track if this message used the free agent quota (for non-Pro users)
+  usingFreeAgentModeQuota: integer("using_free_agent_mode_quota", {
+    mode: "boolean",
+  }),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),

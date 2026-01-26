@@ -18,7 +18,7 @@ import { db } from "@/db";
 import { chats, messages } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
-import { isDyadProEnabled } from "@/lib/schemas";
+import { isDyadProEnabled, isBasicAgentMode } from "@/lib/schemas";
 import { readSettings } from "@/main/settings";
 import { getDyadAppPath } from "@/paths/paths";
 import { getModelClient } from "@/ipc/utils/get_model_client";
@@ -129,8 +129,9 @@ export async function handleLocalAgentStream(
 ): Promise<void> {
   const settings = readSettings();
 
-  // Check Pro status
-  if (!isDyadProEnabled(settings)) {
+  // Check Pro status or Basic Agent mode
+  // Basic Agent mode allows non-Pro users with quota (quota check is done in chat_stream_handlers)
+  if (!isDyadProEnabled(settings) && !isBasicAgentMode(settings)) {
     safeSend(event.sender, "chat:response:error", {
       chatId: req.chatId,
       error:

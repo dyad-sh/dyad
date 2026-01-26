@@ -153,8 +153,7 @@ export const ConsoleFilters = ({
                 <img
                   src={supabaseIcon}
                   alt="Supabase"
-                  style={{ height: 14, width: "auto" }}
-                  className="shrink-0"
+                  className="shrink-0 h-3.5 w-auto"
                 />
                 <span>Edge Logs</span>
                 <RefreshCw

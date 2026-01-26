@@ -18,6 +18,7 @@ import { useRunApp } from "@/hooks/useRunApp";
 import { PublishPanel } from "./PublishPanel";
 import { SecurityPanel } from "./SecurityPanel";
 import { useSupabase } from "@/hooks/useSupabase";
+import { showError } from "@/lib/toast";
 
 interface ConsoleHeaderProps {
   isOpen: boolean;
@@ -110,15 +111,15 @@ export function PreviewPanel() {
     // runApp/stopApp are stable due to useCallback.
   }, [selectedAppId, runApp, stopApp]);
 
-  // Load edge logs once on mount if app has Supabase project configured
+  // Load edge logs once when Supabase configuration changes
   useEffect(() => {
     const projectId = app?.supabaseProjectId;
     const organizationSlug = app?.supabaseOrganizationSlug ?? undefined;
     if (!projectId) return;
 
     // Load logs immediately (once) - users can manually refresh via the Console button
-    loadEdgeLogs({ projectId, organizationSlug }).catch((error) => {
-      console.error("Failed to load edge logs:", error);
+    loadEdgeLogs({ projectId, organizationSlug }).catch((_error) => {
+      showError("Failed to load edge logs");
     });
   }, [app?.supabaseProjectId, app?.supabaseOrganizationSlug, loadEdgeLogs]);
 

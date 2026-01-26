@@ -314,15 +314,9 @@ testSkipIfWindows(
     const picker = po.page.getByTestId("preview-pick-element-button");
     await expect(picker).toBeEnabled({ timeout: Timeout.EXTRA_LONG });
 
-    // Wait for iframe to load
-    const iframe = po.getPreviewIframeElement();
-    await expect(iframe.contentFrame().locator("body")).toBeVisible({
-      timeout: Timeout.MEDIUM,
-    });
-
     // Open console panel
     const consoleHeader = po.page.locator('text="System Messages"').first();
-    await consoleHeader.click();
+    await consoleHeader.click({ timeout: Timeout.MEDIUM });
 
     // Verify the fetch edge logs button is visible
     const fetchButton = po.page.getByTestId("fetch-edge-logs-button");

@@ -26,9 +26,19 @@ export function registerTrustlessInferenceHandlers(): void {
   // ============================================================================
 
   ipcMain.handle("trustless:initialize", async () => {
-    logger.info("Initializing trustless inference service");
-    await trustlessInferenceService.initialize();
-    return { success: true };
+    try {
+      logger.info("Initializing trustless inference service");
+      await trustlessInferenceService.initialize();
+      return { success: true };
+    } catch (error) {
+      // Gracefully handle missing dependencies (e.g., node-datachannel)
+      logger.warn("Failed to initialize trustless inference service (some features may not be available):", error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : "Failed to initialize",
+        message: "Decentralized features are unavailable. Local inference still works."
+      };
+    }
   });
 
   ipcMain.handle("trustless:shutdown", async () => {

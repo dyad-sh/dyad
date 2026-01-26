@@ -20,7 +20,7 @@ export function ChatModeSelector() {
   const { settings, updateSettings } = useSettings();
 
   const selectedMode = settings?.selectedChatMode || "build";
-  const isProEnabled = settings ? isDyadProEnabled(settings) : false;
+  // All features are free in JoyCreate - no Pro check needed
 
   const handleModeChange = (value: string) => {
     updateSettings({ selectedChatMode: value as ChatMode });
@@ -93,16 +93,14 @@ export function ChatModeSelector() {
             </span>
           </div>
         </SelectItem>
-        {isProEnabled && settings?.experiments?.enableLocalAgent && (
-          <SelectItem value="local-agent">
-            <div className="flex flex-col items-start">
-              <span className="font-medium">Agent v2 (experimental)</span>
-              <span className="text-xs text-muted-foreground">
-                More autonomous (note: may have bugs)
-              </span>
-            </div>
-          </SelectItem>
-        )}
+        <SelectItem value="local-agent">
+          <div className="flex flex-col items-start">
+            <span className="font-medium">Agent v2</span>
+            <span className="text-xs text-muted-foreground">
+              More autonomous agent with advanced capabilities
+            </span>
+          </div>
+        </SelectItem>
       </SelectContent>
     </Select>
   );

@@ -42,6 +42,12 @@ class HybridBridgeClient {
   private setupEventListener(): void {
     // Listen for bridge events from main process
     this.ipcRenderer.on("hybrid-bridge:event", (_event: unknown, bridgeEvent: HybridBridgeEvent) => {
+      // Guard against undefined events from IPC
+      if (!bridgeEvent || typeof bridgeEvent !== "object") {
+        console.warn("[HybridBridgeClient] Received invalid event:", bridgeEvent);
+        return;
+      }
+      
       this.notifyListeners(bridgeEvent);
       
       // Update connection state
@@ -52,6 +58,12 @@ class HybridBridgeClient {
   }
 
   private notifyListeners(event: HybridBridgeEvent): void {
+    // Guard against missing type property
+    if (!event || !event.type) {
+      console.warn("[HybridBridgeClient] Event missing type:", event);
+      return;
+    }
+
     // Notify all listeners
     const allListeners = this.eventListeners.get("*");
     if (allListeners) {

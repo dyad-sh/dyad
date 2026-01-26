@@ -48,6 +48,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -91,9 +92,9 @@ const DOCUMENT_TYPE_ICON_COLORS: Record<DocumentType, string> = {
 };
 
 const EXPORT_FORMATS: Record<DocumentType, ExportFormat[]> = {
-  document: ["pdf", "docx", "odt", "html", "txt"],
-  spreadsheet: ["pdf", "xlsx", "ods", "csv"],
-  presentation: ["pdf", "pptx", "odp"],
+  document: ["pdf", "docx", "odt", "html", "txt", "xml"],
+  spreadsheet: ["pdf", "xlsx", "ods", "csv", "json", "xml"],
+  presentation: ["pdf", "pptx", "odp", "xml"],
 };
 
 export default function DocumentsPage() {
@@ -164,21 +165,35 @@ export default function DocumentsPage() {
   const exportDocMutation = useMutation({
     mutationFn: ({ id, format }: { id: number; format: ExportFormat }) =>
       libreOfficeClient.exportDocument({ documentId: id, format }),
-    onSuccess: (result) => {
+    onSuccess: (result, { format }) => {
       if (result.success) {
-        showSuccess(`Exported to ${result.filePath}`);
+        showSuccess(`Successfully exported as ${format.toUpperCase()} to ${result.filePath}`);
       } else {
-        showError(result.error || "Failed to export document");
+        // Show helpful error with guidance
+        const errorMsg = result.error || "Failed to export document";
+        showError(errorMsg);
       }
+    },
+    onError: (error) => {
+      showError(`Export failed: ${error}`);
     },
   });
 
   // Open document mutation
   const openDocMutation = useMutation({
     mutationFn: (id: number) => libreOfficeClient.openDocument(id),
-    onSuccess: (result) => {
-      if (!result.success) {
+    onSuccess: (result: { success: boolean; error?: string; alternativeAction?: string }) => {
+      if (result.success) {
+        if (result.alternativeAction) {
+          // Opened with alternative method
+          showSuccess(result.alternativeAction);
+        }
+      } else {
         showError(result.error || "Failed to open document");
+        // If alternativeAction suggests showing in folder, do it
+        if (result.alternativeAction === "show-in-folder") {
+          showSuccess("Opening folder location instead...");
+        }
       }
     },
   });
@@ -280,9 +295,13 @@ export default function DocumentsPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="border-border/50 bg-background/95 backdrop-blur-sm">
-              <DropdownMenuItem onClick={() => openDocMutation.mutate(doc.id)}>
+              <DropdownMenuItem 
+                onClick={() => openDocMutation.mutate(doc.id)}
+                disabled={!loStatus?.installed}
+                className={!loStatus?.installed ? "text-muted-foreground" : ""}
+              >
                 <ExternalLink className="h-4 w-4 mr-2" />
-                Open in LibreOffice
+                {loStatus?.installed ? "Open in LibreOffice" : "Open (LibreOffice required)"}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => downloadDocMutation.mutate(doc.id)}>
                 <Download className="h-4 w-4 mr-2" />
@@ -293,15 +312,36 @@ export default function DocumentsPage() {
                 Show in Folder
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              {EXPORT_FORMATS[doc.type].map((format) => (
-                <DropdownMenuItem
-                  key={format}
-                  onClick={() => exportDocMutation.mutate({ id: doc.id, format })}
-                >
-                  <FileDown className="h-4 w-4 mr-2" />
-                  Export as {format.toUpperCase()}
-                </DropdownMenuItem>
-              ))}
+              <DropdownMenuLabel className="text-xs text-muted-foreground">
+                Export Options
+              </DropdownMenuLabel>
+              {getAvailableExportFormats(doc.type).map((format) => {
+                const isNative = getNativeExportFormats(doc.type).includes(format);
+                return (
+                  <DropdownMenuItem
+                    key={format}
+                    onClick={() => exportDocMutation.mutate({ id: doc.id, format })}
+                  >
+                    <FileDown className="h-4 w-4 mr-2" />
+                    Export as {format.toUpperCase()}
+                    {isNative && !loStatus?.installed && (
+                      <span className="ml-2 text-xs text-emerald-500">✓</span>
+                    )}
+                  </DropdownMenuItem>
+                );
+              })}
+              {!loStatus?.installed && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-amber-600 text-xs"
+                    onClick={() => window.open("https://www.libreoffice.org/download/", "_blank")}
+                  >
+                    <AlertCircle className="h-3 w-3 mr-2" />
+                    Install LibreOffice for PDF, DOCX, XLSX
+                  </DropdownMenuItem>
+                </>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="text-destructive"
@@ -337,55 +377,26 @@ export default function DocumentsPage() {
     </Card>
   );
 
-  // Show installation prompt if LibreOffice is not installed
-  if (!isStatusLoading && !loStatus?.installed) {
-    return (
-      <div className="flex flex-col h-full">
-        <div className="border-b border-border/50 p-6 bg-gradient-to-r from-blue-500/5 via-cyan-500/5 to-teal-500/5">
-          <div className="flex items-center gap-4">
-            <div className="p-3 rounded-xl bg-gradient-to-br from-blue-500/20 via-cyan-500/20 to-teal-500/20 border border-blue-500/20">
-              <FileText className="h-7 w-7 text-blue-500" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 via-cyan-600 to-teal-600 bg-clip-text text-transparent">
-                Document Studio
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                Create documents, spreadsheets, and presentations with AI
-              </p>
-            </div>
-          </div>
-        </div>
+  // Helper to get export formats that work without LibreOffice
+  const getNativeExportFormats = (docType: DocumentType): ExportFormat[] => {
+    const nativeFormats: ExportFormat[] = ["xml"];
+    if (docType === "spreadsheet") {
+      nativeFormats.push("csv", "json");
+    }
+    if (docType === "document") {
+      nativeFormats.push("txt");
+    }
+    return nativeFormats;
+  };
 
-        <div className="flex-1 flex items-center justify-center p-8">
-          <Card className="max-w-md border-border/50 bg-gradient-to-br from-amber-500/5 via-orange-500/5 to-red-500/5">
-            <CardHeader className="text-center">
-              <div className="mx-auto p-4 rounded-2xl bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/20 mb-4">
-                <AlertCircle className="h-10 w-10 text-amber-500" />
-              </div>
-              <CardTitle className="text-xl">LibreOffice Required</CardTitle>
-              <CardDescription>
-                Install LibreOffice to create and edit documents, spreadsheets, and presentations.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="text-center space-y-4">
-              <p className="text-sm text-muted-foreground">
-                JoyCreate uses LibreOffice Headless to power the Document Studio. It's free and
-                open-source.
-              </p>
-              <Button
-                className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 border-0"
-                onClick={() => window.open("https://www.libreoffice.org/download/", "_blank")}
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Download LibreOffice
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
-  }
+  // Get available export formats based on LibreOffice status
+  const getAvailableExportFormats = (docType: DocumentType): ExportFormat[] => {
+    if (loStatus?.installed) {
+      return EXPORT_FORMATS[docType];
+    }
+    // Only native formats available
+    return getNativeExportFormats(docType);
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -407,14 +418,26 @@ export default function DocumentsPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* LibreOffice Status */}
-            <Badge
-              variant="secondary"
-              className="bg-emerald-500/20 text-emerald-600 border-emerald-500/30"
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-500 mr-2 animate-pulse" />
-              LibreOffice {loStatus?.version}
-            </Badge>
+            {/* LibreOffice Status Badge */}
+            {loStatus?.installed ? (
+              <Badge
+                variant="secondary"
+                className="bg-emerald-500/20 text-emerald-600 border-emerald-500/30"
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-500 mr-2 animate-pulse" />
+                LibreOffice {loStatus?.version}
+              </Badge>
+            ) : (
+              <Badge
+                variant="secondary"
+                className="bg-amber-500/20 text-amber-600 border-amber-500/30 cursor-pointer hover:bg-amber-500/30"
+                onClick={() => window.open("https://www.libreoffice.org/download/", "_blank")}
+                title="Click to download LibreOffice for PDF, DOCX, and XLSX export"
+              >
+                <AlertCircle className="w-3 h-3 mr-2" />
+                Basic Mode (Install LibreOffice for full features)
+              </Badge>
+            )}
 
             {/* AI Generate Button */}
             <Dialog open={aiDialogOpen} onOpenChange={setAiDialogOpen}>

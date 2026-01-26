@@ -102,9 +102,12 @@ class HeliaVerificationService {
       const blockstore = new FsBlockstore(blockstorePath);
       const datastore = new FsDatastore(datastorePath);
 
+      // Create Helia in offline mode (no libp2p networking)
+      // This avoids node-datachannel dependency
       this.helia = await createHelia({
         blockstore,
         datastore,
+        start: false, // Don't start libp2p automatically
       });
 
       this.jsonCodec = json(this.helia);
@@ -113,12 +116,13 @@ class HeliaVerificationService {
       // Load existing records
       await this.loadRecords();
 
-      logger.info("Helia verification service started", {
-        peerId: this.helia.libp2p.peerId.toString(),
+      logger.info("Helia verification service started (offline mode)", {
+        storagePath: this.storagePath,
       });
     } catch (error) {
-      logger.error("Failed to start Helia:", error);
-      throw error;
+      logger.warn("Failed to start Helia (decentralized features unavailable):", error);
+      // Don't throw - allow app to continue without decentralized features
+      // The service will operate in degraded mode
     }
   }
 

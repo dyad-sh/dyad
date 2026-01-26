@@ -1144,9 +1144,20 @@ export default function LocalModelsPage() {
 
   // Initialize service on mount
   useEffect(() => {
-    trustlessInferenceClient.initialize().catch(console.error);
+    // Initialize trustless inference (optional - works without it)
+    trustlessInferenceClient.initialize()
+      .then(() => {
+        console.log("Trustless inference initialized successfully");
+      })
+      .catch((error) => {
+        console.warn("Trustless inference unavailable (decentralized features disabled):", error);
+        // App continues to work - local model inference still functional
+      });
+    
     return () => {
-      trustlessInferenceClient.shutdown().catch(console.error);
+      trustlessInferenceClient.shutdown().catch(() => {
+        // Ignore shutdown errors
+      });
     };
   }, []);
 

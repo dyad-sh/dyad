@@ -442,8 +442,8 @@ export async function extractCodebase({
   files: CodebaseFile[];
 }> {
   const settings = readSettings();
-  const isSmartContextEnabled =
-    settings?.enableDyadPro && settings?.enableProSmartFilesContextMode;
+  // Smart context is now always enabled in JoyCreate (was Pro-only in Dyad)
+  const isSmartContextEnabled = settings?.enableProSmartFilesContextMode ?? true;
 
   try {
     await fsAsync.access(appPath);

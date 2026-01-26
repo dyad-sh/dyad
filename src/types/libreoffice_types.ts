@@ -10,7 +10,7 @@ export type DocumentFormat =
   | "ods" | "xlsx" | "xls" | "csv"                           // Spreadsheets
   | "odp" | "pptx" | "ppt";                                  // Presentations
 
-export type ExportFormat = "pdf" | "docx" | "xlsx" | "pptx" | "odt" | "ods" | "odp" | "html" | "txt" | "csv";
+export type ExportFormat = "pdf" | "docx" | "xlsx" | "pptx" | "odt" | "ods" | "odp" | "html" | "txt" | "csv" | "xml" | "json";
 
 // Document Status
 export type DocumentStatus = "draft" | "generating" | "ready" | "error";
@@ -231,6 +231,19 @@ export interface LibreOfficeStatus {
   version?: string;
   path?: string;
   headlessSupport: boolean;
+  // Capabilities based on what's available
+  capabilities: {
+    createDocuments: boolean;      // Always true (native ODF creation)
+    editInLibreOffice: boolean;    // Requires LibreOffice
+    exportToPdf: boolean;          // Requires LibreOffice
+    exportToDocx: boolean;         // Requires LibreOffice
+    exportToXlsx: boolean;         // Requires LibreOffice
+    exportToCsv: boolean;          // Always true (native)
+    exportToTxt: boolean;          // Always true (native)
+    exportToJson: boolean;         // Always true (native)
+    exportToXml: boolean;          // Always true (native)
+  };
+  message?: string;  // User-friendly status message
 }
 
 // Operation Results

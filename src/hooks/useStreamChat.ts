@@ -12,6 +12,7 @@ import {
   isStreamingByIdAtom,
   recentStreamChatIdsAtom,
   queuedMessageByIdAtom,
+  streamCompletedSuccessfullyByIdAtom,
   type QueuedMessage,
 } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
@@ -65,6 +66,8 @@ export function useStreamChat({
   const [queuedMessageById, setQueuedMessageById] = useAtom(
     queuedMessageByIdAtom,
   );
+  const [streamCompletedSuccessfullyById, setStreamCompletedSuccessfullyById] =
+    useAtom(streamCompletedSuccessfullyByIdAtom);
 
   const posthog = usePostHog();
   const queryClient = useQueryClient();
@@ -128,6 +131,12 @@ export function useStreamChat({
         next.set(chatId, true);
         return next;
       });
+      // Reset the successful completion flag when starting a new stream
+      setStreamCompletedSuccessfullyById((prev) => {
+        const next = new Map(prev);
+        next.set(chatId, false);
+        return next;
+      });
 
       // Convert FileAttachment[] (with File objects) to ChatAttachment[] (base64 encoded)
       let convertedAttachments: ChatAttachment[] | undefined;
@@ -182,6 +191,12 @@ export function useStreamChat({
             onEnd: (response: ChatResponseEnd) => {
               // Remove from pending set now that stream is complete
               pendingStreamChatIds.delete(chatId);
+              // Mark stream as completed successfully (not cancelled or errored)
+              setStreamCompletedSuccessfullyById((prev) => {
+                const next = new Map(prev);
+                next.set(chatId, true);
+                return next;
+              });
 
               // Show native notification if enabled and window is not focused
               // Fire-and-forget to avoid blocking UI updates
@@ -310,6 +325,7 @@ export function useStreamChat({
       setMessagesById,
       setIsStreamingById,
       setIsPreviewOpen,
+      setStreamCompletedSuccessfullyById,
       checkProblems,
       selectedAppId,
       refetchUserBudget,
@@ -323,12 +339,23 @@ export function useStreamChat({
     if (!chatId || !shouldProcessQueue) return;
 
     const queuedMessage = queuedMessageById.get(chatId);
-    const isStreaming = isStreamingById.get(chatId);
-    const hasError = errorById.get(chatId);
+    const completedSuccessfully =
+      streamCompletedSuccessfullyById.get(chatId) ?? false;
 
-    // Only process queue if streaming ended successfully (no error)
-    if (queuedMessage && !isStreaming && !hasError) {
-      // Clear queue first to prevent loops
+    // Only process queue if we have confirmation that the stream completed successfully
+    // This prevents race conditions where the queue might be processed during cancellation
+    if (queuedMessage && completedSuccessfully) {
+      // Clear the successful completion flag first to prevent loops
+      setStreamCompletedSuccessfullyById((prev) => {
+        const next = new Map(prev);
+        next.set(chatId, false);
+        return next;
+      });
+
+      // Save a reference to the message before clearing (for error recovery)
+      const messageToSend = { ...queuedMessage };
+
+      // Clear queue
       setQueuedMessageById((prev) => {
         const next = new Map(prev);
         next.delete(chatId);
@@ -339,20 +366,20 @@ export function useStreamChat({
 
       // Send the message
       streamMessage({
-        prompt: queuedMessage.prompt,
+        prompt: messageToSend.prompt,
         chatId,
         redo: false,
-        attachments: queuedMessage.attachments,
-        selectedComponents: queuedMessage.selectedComponents,
+        attachments: messageToSend.attachments,
+        selectedComponents: messageToSend.selectedComponents,
       });
     }
   }, [
     chatId,
     queuedMessageById,
-    isStreamingById,
-    errorById,
+    streamCompletedSuccessfullyById,
     streamMessage,
     setQueuedMessageById,
+    setStreamCompletedSuccessfullyById,
     posthog,
     settings?.selectedChatMode,
     shouldProcessQueue,

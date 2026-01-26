@@ -283,22 +283,12 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     }
 
     const currentInput = inputValue;
-    setInputValue("");
 
     // Use all selected components for multi-component editing
     const componentsToSend =
       selectedComponents && selectedComponents.length > 0
         ? selectedComponents
         : [];
-    setSelectedComponents([]);
-    setVisualEditingSelectedComponent(null);
-    // Clear overlays in the preview iframe
-    if (previewIframeRef?.contentWindow) {
-      previewIframeRef.contentWindow.postMessage(
-        { type: "clear-dyad-component-overlays" },
-        "*",
-      );
-    }
 
     // If streaming, queue the message instead of sending immediately
     if (isStreaming) {
@@ -308,9 +298,34 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         selectedComponents: componentsToSend,
       });
       if (queued) {
+        // Only clear input, attachments, and components on successful queue
+        setInputValue("");
         clearAttachments();
+        setSelectedComponents([]);
+        setVisualEditingSelectedComponent(null);
+        // Clear overlays in the preview iframe
+        if (previewIframeRef?.contentWindow) {
+          previewIframeRef.contentWindow.postMessage(
+            { type: "clear-dyad-component-overlays" },
+            "*",
+          );
+        }
       }
+      // If queue failed, leave input/attachments intact for the user
       return;
+    }
+
+    // Not streaming - send immediately
+    // Clear input and components before sending
+    setInputValue("");
+    setSelectedComponents([]);
+    setVisualEditingSelectedComponent(null);
+    // Clear overlays in the preview iframe
+    if (previewIframeRef?.contentWindow) {
+      previewIframeRef.contentWindow.postMessage(
+        { type: "clear-dyad-component-overlays" },
+        "*",
+      );
     }
 
     // Send message with attachments and clear them after sending

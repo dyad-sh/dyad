@@ -98,7 +98,8 @@ export function registerTokenCountHandlers() {
           chatContext: validateChatContext(chat.app.chatContext),
         });
         codebaseInfo = formattedOutput;
-        if (settings.enableDyadPro && settings.enableProSmartFilesContextMode) {
+        // Smart files context is now always enabled in JoyCreate (was Pro-only)
+        if (settings.enableProSmartFilesContextMode ?? true) {
           codebaseTokens = estimateTokens(
             files
               // It doesn't need to be the exact format but it's just to get a token estimate

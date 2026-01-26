@@ -498,6 +498,52 @@ const validInvokeChannels = [
   "webrtc:call:end",
   "webrtc:call:mute",
   "webrtc:call:video",
+  // JoyCreate Node (JCN) - Local Asset Publishing & Inference
+  "jcn:auth:createToken",
+  "jcn:auth:verifyToken",
+  "jcn:auth:signMessage",
+  "jcn:publish:asset",
+  "jcn:publish:getStatus",
+  "jcn:publish:list",
+  "jcn:publish:retry",
+  "jcn:job:submit",
+  "jcn:job:getStatus",
+  "jcn:job:list",
+  "jcn:job:cancel",
+  "jcn:bundle:build",
+  "jcn:bundle:verify",
+  "jcn:bundle:get",
+  "jcn:bundle:list",
+  "jcn:storage:pin",
+  "jcn:storage:fetch",
+  "jcn:storage:verify",
+  "jcn:license:register",
+  "jcn:license:verify",
+  "jcn:license:list",
+  "jcn:license:revoke",
+  "jcn:key:generate",
+  "jcn:key:import",
+  "jcn:key:list",
+  "jcn:key:delete",
+  "jcn:key:sign",
+  "jcn:key:verify",
+  "jcn:key:rotate",
+  "jcn:admin:auditLog",
+  "jcn:admin:replay",
+  "jcn:admin:recover",
+  "jcn:admin:stats",
+  "jcn:chain:pollPending",
+  "jcn:chain:checkReorgs",
+  // Smart Router (Intelligent Local/Cloud Routing)
+  "smart-router:route",
+  "smart-router:record-result",
+  "smart-router:list-providers",
+  "smart-router:get-provider",
+  "smart-router:register-provider",
+  "smart-router:update-provider-status",
+  "smart-router:get-config",
+  "smart-router:update-config",
+  "smart-router:get-stats",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because
@@ -538,6 +584,10 @@ const validReceiveChannels = [
   "compute-network:event",
   // WebRTC events
   "webrtc:event",
+  // JCN events (publish progress, job completion, etc.)
+  "jcn:event",
+  // Smart Router events
+  "smart-router:event",
 ] as const;
 
 type ValidInvokeChannel = (typeof validInvokeChannels)[number];

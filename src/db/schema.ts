@@ -1112,3 +1112,384 @@ export const provenanceRecordsRelations = relations(provenanceRecords, ({ one })
     references: [datasetItems.id],
   }),
 }));
+
+// =============================================================================
+// JCN (JoyCreate Node) TABLES
+// Production-grade state machines for publishing, jobs, and verification
+// =============================================================================
+
+/**
+ * JCN Publish State Machine
+ * Tracks the complete lifecycle of asset publishing with crash recovery
+ */
+export const jcnPublishRecords = sqliteTable("jcn_publish_records", {
+  id: text("id").primaryKey(), // UUID v4
+  requestId: text("request_id").notNull().unique(), // Idempotency key
+  traceId: text("trace_id").notNull(),
+  
+  // Current state
+  state: text("state", {
+    enum: ["INIT", "BUNDLE_BUILT", "PINNED", "VERIFIED", "MINTED", "INDEXED", "COMPLETE", "FAILED", "RETRYABLE"]
+  }).notNull().default("INIT"),
+  
+  // State history (JSON array)
+  stateHistoryJson: text("state_history_json", { mode: "json" })
+    .$type<Array<{ state: string; timestamp: number; event?: string; metadata?: Record<string, unknown> }>>()
+    .notNull()
+    .default([]),
+  
+  // Context
+  storeId: text("store_id").notNull(),
+  publisherWallet: text("publisher_wallet").notNull(),
+  bundleType: text("bundle_type", {
+    enum: ["ai_agent", "ai_model", "dataset", "prompt", "tool", "workflow"]
+  }).notNull(),
+  
+  // Source
+  sourcePath: text("source_path"),
+  sourceType: text("source_type", { enum: ["local_path", "cid"] }).notNull().default("local_path"),
+  
+  // Bundle data
+  bundleCid: text("bundle_cid"),
+  manifestCid: text("manifest_cid"),
+  manifestHash: text("manifest_hash"),
+  merkleRoot: text("merkle_root"),
+  totalSize: integer("total_size"),
+  
+  // Mint data
+  mintTxHash: text("mint_tx_hash"),
+  tokenId: text("token_id"),
+  collectionContract: text("collection_contract"),
+  
+  // Marketplace data
+  marketplaceAssetId: text("marketplace_asset_id"),
+  
+  // Metadata (JSON)
+  metadataJson: text("metadata_json", { mode: "json" })
+    .$type<{ name: string; description?: string; version: string; license: string; tags?: string[] }>(),
+  
+  // Pricing (JSON)
+  pricingJson: text("pricing_json", { mode: "json" })
+    .$type<{ model: string; amount?: number; currency?: string }>(),
+  
+  // Error tracking
+  errorCode: text("error_code"),
+  errorMessage: text("error_message"),
+  errorRetryable: integer("error_retryable", { mode: "boolean" }).default(false),
+  retryCount: integer("retry_count").notNull().default(0),
+  lastRetryAt: integer("last_retry_at", { mode: "timestamp" }),
+  
+  // Checkpoint for recovery
+  checkpointJson: text("checkpoint_json", { mode: "json" })
+    .$type<{ lastCompletedStep: string; data: Record<string, unknown> }>(),
+  
+  // Timestamps
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  completedAt: integer("completed_at", { mode: "timestamp" }),
+});
+
+/**
+ * JCN Job State Machine
+ * Tracks inference job execution with verification
+ */
+export const jcnJobRecords = sqliteTable("jcn_job_records", {
+  id: text("id").primaryKey(), // UUID v4
+  requestId: text("request_id").notNull().unique(), // Idempotency key
+  traceId: text("trace_id").notNull(),
+  
+  // Current state
+  state: text("state", {
+    enum: ["PENDING", "VALIDATING", "FETCHING", "EXECUTING", "FINALIZING", "COMPLETED", "FAILED", "CANCELLED", "RETRYABLE"]
+  }).notNull().default("PENDING"),
+  
+  // State history
+  stateHistoryJson: text("state_history_json", { mode: "json" })
+    .$type<Array<{ state: string; timestamp: number; event?: string; metadata?: Record<string, unknown> }>>()
+    .notNull()
+    .default([]),
+  
+  // Job ticket (JSON)
+  ticketJson: text("ticket_json", { mode: "json" }).notNull(),
+  
+  // Validation results
+  ticketValid: integer("ticket_valid", { mode: "boolean" }),
+  licenseValid: integer("license_valid", { mode: "boolean" }),
+  bundleVerified: integer("bundle_verified", { mode: "boolean" }),
+  
+  // Execution
+  containerId: text("container_id"),
+  inputCid: text("input_cid"),
+  outputCid: text("output_cid"),
+  outputHash: text("output_hash"),
+  
+  // Metrics
+  startedAt: integer("started_at", { mode: "timestamp" }),
+  executionDurationMs: integer("execution_duration_ms"),
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
+  memoryPeakMb: integer("memory_peak_mb"),
+  
+  // Receipt
+  receiptJson: text("receipt_json", { mode: "json" }),
+  receiptCid: text("receipt_cid"),
+  
+  // Error tracking
+  errorCode: text("error_code"),
+  errorMessage: text("error_message"),
+  errorRetryable: integer("error_retryable", { mode: "boolean" }).default(false),
+  retryCount: integer("retry_count").notNull().default(0),
+  
+  // Timestamps
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  completedAt: integer("completed_at", { mode: "timestamp" }),
+});
+
+/**
+ * JCN Bundle Registry
+ * Tracks all bundles pinned/verified by this node
+ */
+export const jcnBundles = sqliteTable("jcn_bundles", {
+  id: text("id").primaryKey(), // UUID v4
+  
+  // Bundle identity
+  bundleCid: text("bundle_cid").notNull().unique(),
+  manifestCid: text("manifest_cid"),
+  manifestHash: text("manifest_hash").notNull(),
+  merkleRoot: text("merkle_root").notNull(),
+  
+  // Bundle metadata
+  bundleType: text("bundle_type", {
+    enum: ["ai_agent", "ai_model", "dataset", "prompt", "tool", "workflow"]
+  }).notNull(),
+  name: text("name").notNull(),
+  version: text("version").notNull(),
+  description: text("description"),
+  creator: text("creator").notNull(), // Wallet address
+  
+  // Content
+  totalSize: integer("total_size").notNull(),
+  fileCount: integer("file_count").notNull(),
+  chunkCount: integer("chunk_count"),
+  entryPoint: text("entry_point"),
+  
+  // Manifest (full JSON)
+  manifestJson: text("manifest_json", { mode: "json" }),
+  
+  // Verification
+  verified: integer("verified", { mode: "boolean" }).notNull().default(false),
+  verifiedAt: integer("verified_at", { mode: "timestamp" }),
+  signatureValid: integer("signature_valid", { mode: "boolean" }),
+  
+  // Pin status (JSON array)
+  pinStatusJson: text("pin_status_json", { mode: "json" })
+    .$type<Array<{ provider: string; pinned: boolean; pinId?: string; verifiedAt?: number }>>()
+    .default([]),
+  
+  // Timestamps
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+/**
+ * JCN License Cache
+ * Caches license validation results
+ */
+export const jcnLicenses = sqliteTable("jcn_licenses", {
+  id: text("id").primaryKey(), // License ID
+  
+  // License identity
+  licenseType: text("license_type", { enum: ["registry", "token", "signature"] }).notNull(),
+  assetId: text("asset_id").notNull(), // Bundle CID or asset ID
+  licensee: text("licensee").notNull(), // Wallet address
+  licensor: text("licensor").notNull(), // Wallet address
+  
+  // Scope
+  scope: text("scope").notNull(),
+  
+  // Limits (JSON)
+  limitsJson: text("limits_json", { mode: "json" })
+    .$type<{ maxInferences?: number; maxTokens?: number; expiresAt?: number }>(),
+  
+  // Usage tracking
+  inferencesUsed: integer("inferences_used").notNull().default(0),
+  tokensUsed: integer("tokens_used").notNull().default(0),
+  
+  // Verification
+  verificationMethod: text("verification_method", {
+    enum: ["contract_call", "token_ownership", "signature"]
+  }).notNull(),
+  contractAddress: text("contract_address"),
+  tokenId: text("token_id"),
+  signature: text("signature"),
+  
+  // Status
+  valid: integer("valid", { mode: "boolean" }).notNull(),
+  validatedAt: integer("validated_at", { mode: "timestamp" }).notNull(),
+  expiresAt: integer("expires_at", { mode: "timestamp" }),
+  
+  // Timestamps
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+}, (table) => [
+  unique("license_asset_licensee").on(table.assetId, table.licensee),
+]);
+
+/**
+ * JCN Chain Transactions
+ * Tracks blockchain transactions with reorg handling
+ */
+export const jcnChainTransactions = sqliteTable("jcn_chain_transactions", {
+  id: text("id").primaryKey(), // UUID v4
+  
+  // Transaction identity
+  txHash: text("tx_hash").notNull().unique(),
+  network: text("network", {
+    enum: ["polygon", "polygon_mumbai", "ethereum", "base"]
+  }).notNull(),
+  
+  // Status
+  status: text("status", {
+    enum: ["pending", "confirmed", "failed", "dropped", "reorged"]
+  }).notNull().default("pending"),
+  
+  // Confirmation tracking
+  blockNumber: integer("block_number"),
+  confirmations: integer("confirmations").notNull().default(0),
+  requiredConfirmations: integer("required_confirmations").notNull(),
+  
+  // Transaction type
+  txType: text("tx_type", {
+    enum: ["mint", "transfer", "list", "delist", "payout", "other"]
+  }).notNull(),
+  
+  // Related record
+  relatedRecordId: text("related_record_id"),
+  relatedRecordType: text("related_record_type", {
+    enum: ["publish", "job", "payout"]
+  }),
+  
+  // Gas info
+  gasUsed: text("gas_used"),
+  gasPrice: text("gas_price"),
+  
+  // Timestamps
+  submittedAt: integer("submitted_at", { mode: "timestamp" }).notNull(),
+  confirmedAt: integer("confirmed_at", { mode: "timestamp" }),
+  lastCheckedAt: integer("last_checked_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+/**
+ * JCN Audit Log
+ * Immutable audit trail for all significant actions
+ */
+export const jcnAuditLog = sqliteTable("jcn_audit_log", {
+  id: text("id").primaryKey(), // UUID v4
+  
+  // Timestamp
+  timestamp: integer("timestamp", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  
+  // Action
+  action: text("action").notNull(),
+  
+  // Actor
+  actorType: text("actor_type", { enum: ["user", "system", "admin"] }).notNull(),
+  actorId: text("actor_id").notNull(),
+  actorWallet: text("actor_wallet"),
+  
+  // Target
+  targetType: text("target_type", {
+    enum: ["publish", "job", "bundle", "license", "key", "config"]
+  }).notNull(),
+  targetId: text("target_id").notNull(),
+  
+  // State change
+  oldStateJson: text("old_state_json", { mode: "json" }),
+  newStateJson: text("new_state_json", { mode: "json" }),
+  
+  // Context
+  requestId: text("request_id"),
+  traceId: text("trace_id"),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  
+  // Metadata
+  metadataJson: text("metadata_json", { mode: "json" }),
+});
+
+/**
+ * JCN Key Metadata
+ * Tracks signing keys (actual keys stored in OS keyring/HSM)
+ */
+export const jcnKeys = sqliteTable("jcn_keys", {
+  keyId: text("key_id").primaryKey(),
+  
+  // Key info
+  keyType: text("key_type", { enum: ["signing", "encryption", "chain"] }).notNull(),
+  algorithm: text("algorithm", { enum: ["secp256k1", "ed25519", "aes-256-gcm"] }).notNull(),
+  backend: text("backend", { enum: ["os_keyring", "encrypted_vault", "hsm"] }).notNull(),
+  
+  // Public info (never store private keys here!)
+  publicKey: text("public_key"),
+  walletAddress: text("wallet_address"),
+  
+  // Status
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
+  
+  // Rotation
+  version: integer("version").notNull().default(1),
+  lastRotatedAt: integer("last_rotated_at", { mode: "timestamp" }),
+  
+  // Timestamps
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+/**
+ * JCN Rate Limits
+ * Tracks rate limit state per scope
+ */
+export const jcnRateLimits = sqliteTable("jcn_rate_limits", {
+  id: text("id").primaryKey(), // scope:endpoint:identifier
+  
+  // Scope
+  scope: text("scope", { enum: ["user", "global", "store"] }).notNull(),
+  endpoint: text("endpoint").notNull(),
+  identifier: text("identifier").notNull(), // User ID, store ID, or "global"
+  
+  // State
+  count: integer("count").notNull().default(0),
+  windowStart: integer("window_start", { mode: "timestamp" }).notNull(),
+  
+  // Config
+  maxRequests: integer("max_requests").notNull(),
+  windowSec: integer("window_sec").notNull(),
+});

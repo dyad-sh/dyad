@@ -42,11 +42,22 @@ class DecentralizedChatClient {
 
   private setupEventListener(): void {
     this.ipcRenderer.on("decentralized-chat:event", (_event: unknown, chatEvent: ChatEvent) => {
+      // Guard against undefined events from IPC
+      if (!chatEvent || typeof chatEvent !== "object") {
+        console.warn("[DecentralizedChatClient] Received invalid event:", chatEvent);
+        return;
+      }
       this.notifyListeners(chatEvent);
     });
   }
 
   private notifyListeners(event: ChatEvent): void {
+    // Guard against missing type property
+    if (!event || !event.type) {
+      console.warn("[DecentralizedChatClient] Event missing type:", event);
+      return;
+    }
+
     // Notify all listeners
     const allListeners = this.eventListeners.get("*");
     if (allListeners) {

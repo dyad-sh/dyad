@@ -70,6 +70,8 @@ const EXPORT_FILTERS: Record<ExportFormat, string> = {
   html: "HTML (StarWriter)",
   txt: "Text",
   csv: "Text - txt - csv (StarCalc)",
+  xml: "", // Handled natively
+  json: "", // Handled natively
 };
 
 class LibreOfficeManager {
@@ -119,13 +121,13 @@ class LibreOfficeManager {
     // Try to find via command
     try {
       if (platform === "win32") {
-        const { stdout } = await execAsync("where soffice.exe 2>nul");
+        const { stdout } = await execAsync("where soffice.exe 2>nul", { windowsHide: true });
         if (stdout.trim()) {
           this.libreOfficePath = stdout.trim().split("\n")[0];
           return this.libreOfficePath;
         }
       } else {
-        const { stdout } = await execAsync("which soffice 2>/dev/null || which libreoffice 2>/dev/null");
+        const { stdout } = await execAsync("which soffice 2>/dev/null || which libreoffice 2>/dev/null", { windowsHide: true });
         if (stdout.trim()) {
           this.libreOfficePath = stdout.trim();
           return this.libreOfficePath;
@@ -141,15 +143,41 @@ class LibreOfficeManager {
   async getStatus(): Promise<LibreOfficeStatus> {
     const loPath = await this.findLibreOffice();
     
+    // Native capabilities always available
+    const nativeCapabilities = {
+      createDocuments: true,      // Native ODF creation
+      exportToCsv: true,          // Native CSV export
+      exportToTxt: true,          // Native TXT export
+      exportToJson: true,         // Native JSON export
+      exportToXml: true,          // Native XML export
+    };
+    
     if (!loPath) {
       return {
         installed: false,
         headlessSupport: false,
+        capabilities: {
+          ...nativeCapabilities,
+          editInLibreOffice: false,
+          exportToPdf: false,
+          exportToDocx: false,
+          exportToXlsx: false,
+        },
+        message: "LibreOffice not installed. You can still create documents and export to CSV, TXT, JSON, and XML formats. Install LibreOffice for PDF, DOCX, and XLSX export.",
       };
     }
 
     try {
-      const { stdout } = await execAsync(`"${loPath}" --version`);
+      // Use --headless to prevent "Press Enter to continue" prompt on Windows
+      // Also pipe from nul/dev/null to prevent stdin waiting
+      const versionCmd = process.platform === "win32" 
+        ? `"${loPath}" --headless --version < nul`
+        : `"${loPath}" --version < /dev/null`;
+      
+      const { stdout } = await execAsync(versionCmd, { 
+        windowsHide: true,
+        timeout: 10000, // 10 second timeout to prevent hanging
+      });
       const versionMatch = stdout.match(/LibreOffice\s+([\d.]+)/);
       
       return {
@@ -157,12 +185,29 @@ class LibreOfficeManager {
         version: versionMatch ? versionMatch[1] : "unknown",
         path: loPath,
         headlessSupport: true,
+        capabilities: {
+          ...nativeCapabilities,
+          editInLibreOffice: true,
+          exportToPdf: true,
+          exportToDocx: true,
+          exportToXlsx: true,
+        },
+        message: `LibreOffice ${versionMatch ? versionMatch[1] : ""} ready. All features available.`,
       };
     } catch (error) {
+      // Even if version check fails, LibreOffice exists at the path
       return {
         installed: true,
         path: loPath,
         headlessSupport: true,
+        capabilities: {
+          ...nativeCapabilities,
+          editInLibreOffice: true,
+          exportToPdf: true,
+          exportToDocx: true,
+          exportToXlsx: true,
+        },
+        message: "LibreOffice found. All features available.",
       };
     }
   }
@@ -171,14 +216,10 @@ class LibreOfficeManager {
     request: CreateDocumentRequest
   ): Promise<DocumentOperationResult> {
     const db = getDb();
-    const loPath = await this.findLibreOffice();
-
-    if (!loPath) {
-      return {
-        success: false,
-        error: "LibreOffice is not installed. Please install LibreOffice to create documents.",
-      };
-    }
+    // Note: LibreOffice is NOT required for document creation.
+    // We create native ODF files using adm-zip. LibreOffice is only needed for:
+    // - Converting to other formats (docx, xlsx, pdf, etc.)
+    // - Opening documents in LibreOffice's editor
 
     try {
       const format = request.format || FORMAT_EXTENSIONS[request.type];
@@ -631,16 +672,197 @@ PARAGRAPH: Conclusion text here.`;
     await zip.writeZipPromise(filePath);
   }
 
+  /**
+   * Native CSV export from spreadsheet without LibreOffice
+   */
+  private async exportSpreadsheetToCsv(filePath: string, outputPath: string): Promise<void> {
+    const AdmZip = require("adm-zip");
+    const zip = new AdmZip(filePath);
+    const contentXml = zip.readAsText("content.xml");
+    
+    // Parse spreadsheet data from ODF XML
+    const rows: string[][] = [];
+    
+    // Simple XML parsing for table cells
+    const tableRowRegex = /<table:table-row[^>]*>([\s\S]*?)<\/table:table-row>/g;
+    const tableCellRegex = /<table:table-cell[^>]*>(?:<text:p[^>]*>(.*?)<\/text:p>)?<\/table:table-cell>/g;
+    
+    let rowMatch;
+    while ((rowMatch = tableRowRegex.exec(contentXml)) !== null) {
+      const rowContent = rowMatch[1];
+      const row: string[] = [];
+      
+      let cellMatch;
+      const cellRegex = /<table:table-cell[^>]*>(?:<text:p[^>]*>(.*?)<\/text:p>)?<\/table:table-cell>/g;
+      while ((cellMatch = cellRegex.exec(rowContent)) !== null) {
+        const cellValue = cellMatch[1] || "";
+        row.push(cellValue.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"'));
+      }
+      
+      if (row.length > 0) {
+        rows.push(row);
+      }
+    }
+    
+    // Convert to CSV
+    const csvContent = rows.map(row => 
+      row.map(cell => {
+        if (cell.includes(",") || cell.includes('"') || cell.includes("\n")) {
+          return `"${cell.replace(/"/g, '""')}"`;
+        }
+        return cell;
+      }).join(",")
+    ).join("\n");
+    
+    await fs.writeFile(outputPath, csvContent, "utf-8");
+  }
+
+  /**
+   * Native text export from document without LibreOffice
+   */
+  private async exportDocumentToTxt(filePath: string, outputPath: string): Promise<void> {
+    const AdmZip = require("adm-zip");
+    const zip = new AdmZip(filePath);
+    const contentXml = zip.readAsText("content.xml");
+    
+    // Extract text content from ODF XML
+    const paragraphs: string[] = [];
+    const paraRegex = /<text:(?:p|h)[^>]*>(.*?)<\/text:(?:p|h)>/g;
+    
+    let match;
+    while ((match = paraRegex.exec(contentXml)) !== null) {
+      let text = match[1] || "";
+      // Remove nested tags and decode entities
+      text = text.replace(/<[^>]+>/g, "");
+      text = text.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+      if (text.trim()) {
+        paragraphs.push(text);
+      }
+    }
+    
+    await fs.writeFile(outputPath, paragraphs.join("\n\n"), "utf-8");
+  }
+
+  /**
+   * Export spreadsheet to JSON format
+   */
+  private async exportSpreadsheetToJson(filePath: string, outputPath: string): Promise<void> {
+    const AdmZip = require("adm-zip");
+    const zip = new AdmZip(filePath);
+    const contentXml = zip.readAsText("content.xml");
+    
+    // Parse spreadsheet data from ODF XML
+    const rows: Record<string, string>[] = [];
+    const headers: string[] = [];
+    
+    const tableRowRegex = /<table:table-row[^>]*>([\s\S]*?)<\/table:table-row>/g;
+    
+    let rowIndex = 0;
+    let rowMatch;
+    while ((rowMatch = tableRowRegex.exec(contentXml)) !== null) {
+      const rowContent = rowMatch[1];
+      const cells: string[] = [];
+      
+      const cellRegex = /<table:table-cell[^>]*>(?:<text:p[^>]*>(.*?)<\/text:p>)?<\/table:table-cell>/g;
+      let cellMatch;
+      while ((cellMatch = cellRegex.exec(rowContent)) !== null) {
+        const cellValue = cellMatch[1] || "";
+        cells.push(cellValue.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"'));
+      }
+      
+      if (cells.length > 0) {
+        if (rowIndex === 0) {
+          // First row is headers
+          headers.push(...cells);
+        } else {
+          // Data rows
+          const row: Record<string, string> = {};
+          cells.forEach((cell, i) => {
+            const header = headers[i] || `column_${i}`;
+            row[header] = cell;
+          });
+          rows.push(row);
+        }
+        rowIndex++;
+      }
+    }
+    
+    await fs.writeFile(outputPath, JSON.stringify(rows, null, 2), "utf-8");
+  }
+
+  /**
+   * Export document to structured XML
+   */
+  private async exportToXml(filePath: string, outputPath: string, docType: DocumentType): Promise<void> {
+    const AdmZip = require("adm-zip");
+    const zip = new AdmZip(filePath);
+    const contentXml = zip.readAsText("content.xml");
+    
+    if (docType === "spreadsheet") {
+      // Parse spreadsheet to clean XML
+      const rows: string[][] = [];
+      const tableRowRegex = /<table:table-row[^>]*>([\s\S]*?)<\/table:table-row>/g;
+      
+      let rowMatch;
+      while ((rowMatch = tableRowRegex.exec(contentXml)) !== null) {
+        const rowContent = rowMatch[1];
+        const cells: string[] = [];
+        
+        const cellRegex = /<table:table-cell[^>]*>(?:<text:p[^>]*>(.*?)<\/text:p>)?<\/table:table-cell>/g;
+        let cellMatch;
+        while ((cellMatch = cellRegex.exec(rowContent)) !== null) {
+          const cellValue = cellMatch[1] || "";
+          cells.push(this.escapeXML(cellValue.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')));
+        }
+        
+        if (cells.length > 0) {
+          rows.push(cells);
+        }
+      }
+      
+      const headers = rows[0] || [];
+      const dataRows = rows.slice(1);
+      
+      let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<dataset>\n';
+      for (const row of dataRows) {
+        xml += '  <record>\n';
+        row.forEach((cell, i) => {
+          const tag = headers[i]?.replace(/[^a-zA-Z0-9_]/g, "_") || `field_${i}`;
+          xml += `    <${tag}>${cell}</${tag}>\n`;
+        });
+        xml += '  </record>\n';
+      }
+      xml += '</dataset>';
+      
+      await fs.writeFile(outputPath, xml, "utf-8");
+    } else {
+      // For documents, extract and structure content
+      const sections: Array<{ type: string; content: string }> = [];
+      const contentRegex = /<text:(p|h)[^>]*>(.*?)<\/text:(p|h)>/g;
+      
+      let match;
+      while ((match = contentRegex.exec(contentXml)) !== null) {
+        const type = match[1] === "h" ? "heading" : "paragraph";
+        let text = match[2] || "";
+        text = text.replace(/<[^>]+>/g, "");
+        text = text.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+        if (text.trim()) {
+          sections.push({ type, content: text.trim() });
+        }
+      }
+      
+      let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<document>\n';
+      for (const section of sections) {
+        xml += `  <${section.type}>${this.escapeXML(section.content)}</${section.type}>\n`;
+      }
+      xml += '</document>';
+      
+      await fs.writeFile(outputPath, xml, "utf-8");
+    }
+  }
+
   async exportDocument(request: ExportDocumentRequest): Promise<DocumentOperationResult> {
     const db = getDb();
-    const loPath = await this.findLibreOffice();
-
-    if (!loPath) {
-      return {
-        success: false,
-        error: "LibreOffice is not installed",
-      };
-    }
 
     try {
       const [doc] = await db
@@ -654,8 +876,38 @@ PARAGRAPH: Conclusion text here.`;
       }
 
       const outputDir = request.outputPath || path.join(this.documentsDir, "exports");
+      await fs.mkdir(outputDir, { recursive: true });
       const outputFileName = `${path.basename(doc.filePath, path.extname(doc.filePath))}.${request.format}`;
       const outputPath = path.join(outputDir, outputFileName);
+
+      // Check if we can export natively without LibreOffice
+      const canExportNatively = 
+        (request.format === "csv" && doc.type === "spreadsheet") ||
+        (request.format === "txt" && doc.type === "document") ||
+        (request.format === "json" && doc.type === "spreadsheet") ||
+        request.format === "xml";
+
+      if (canExportNatively) {
+        if (request.format === "csv") {
+          await this.exportSpreadsheetToCsv(doc.filePath, outputPath);
+        } else if (request.format === "txt") {
+          await this.exportDocumentToTxt(doc.filePath, outputPath);
+        } else if (request.format === "json") {
+          await this.exportSpreadsheetToJson(doc.filePath, outputPath);
+        } else if (request.format === "xml") {
+          await this.exportToXml(doc.filePath, outputPath, doc.type as DocumentType);
+        }
+        return { success: true, filePath: outputPath };
+      }
+
+      // For other formats, check if LibreOffice is available
+      const loPath = await this.findLibreOffice();
+      if (!loPath) {
+        return {
+          success: false,
+          error: "LibreOffice is required to export to this format. Please install LibreOffice or export as CSV/TXT/JSON/XML.",
+        };
+      }
 
       // Use LibreOffice headless to convert
       const filter = EXPORT_FILTERS[request.format] || "writer_pdf_Export";
@@ -670,7 +922,7 @@ PARAGRAPH: Conclusion text here.`;
           doc.filePath,
         ];
 
-        const proc = spawn(loPath, args);
+        const proc = spawn(loPath, args, { windowsHide: true });
         
         proc.on("close", (code) => {
           if (code === 0) {
@@ -794,12 +1046,36 @@ PARAGRAPH: Conclusion text here.`;
     }
   }
 
-  async openDocument(id: number): Promise<{ success: boolean; error?: string }> {
+  async openDocument(id: number): Promise<{ success: boolean; error?: string; alternativeAction?: string }> {
     const db = getDb();
     const loPath = await this.findLibreOffice();
 
     if (!loPath) {
-      return { success: false, error: "LibreOffice is not installed" };
+      // Try to open with system default application instead
+      try {
+        const [doc] = await db
+          .select()
+          .from(documents)
+          .where(eq(documents.id, id))
+          .limit(1);
+
+        if (!doc) {
+          return { success: false, error: "Document not found" };
+        }
+
+        // Try opening with system default app
+        await shell.openPath(doc.filePath);
+        return { 
+          success: true,
+          alternativeAction: "Opened with system default application. Install LibreOffice for better editing support."
+        };
+      } catch {
+        return { 
+          success: false, 
+          error: "LibreOffice is not installed. Please install LibreOffice to edit documents, or use 'Show in Folder' to open manually.",
+          alternativeAction: "show-in-folder"
+        };
+      }
     }
 
     try {
@@ -813,8 +1089,15 @@ PARAGRAPH: Conclusion text here.`;
         return { success: false, error: "Document not found" };
       }
 
+      // Check if file exists
+      try {
+        await fs.access(doc.filePath);
+      } catch {
+        return { success: false, error: "Document file not found on disk. It may have been moved or deleted." };
+      }
+
       // Open in LibreOffice
-      spawn(loPath, [doc.filePath], { detached: true, stdio: "ignore" }).unref();
+      spawn(loPath, [doc.filePath], { detached: true, stdio: "ignore", windowsHide: true }).unref();
 
       return { success: true };
     } catch (error) {

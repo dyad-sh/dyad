@@ -73,6 +73,8 @@ import { registerOrchestratorCoreHandlers } from "./handlers/orchestrator_core_h
 import { registerAgentBuilderSystemHandlers } from "./handlers/agent_builder_system_handlers";
 import { registerTaskExecutionHandlers } from "./handlers/task_execution_handlers";
 import { registerN8nIntegrationHandlers } from "./handlers/n8n_integration_handlers";
+import { registerJcnHandlers } from "./handlers/jcn_handlers";
+import { registerSmartRouterHandlers } from "./handlers/smart_router_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -157,4 +159,10 @@ export function registerIpcHandlers() {
   registerAgentBuilderSystemHandlers();
   registerTaskExecutionHandlers();
   registerN8nIntegrationHandlers();
+  
+  // JoyCreate Node (JCN) - Local Asset Publishing & Inference
+  registerJcnHandlers();
+  
+  // Smart Router - Intelligent Local/Cloud Routing
+  registerSmartRouterHandlers();
 }

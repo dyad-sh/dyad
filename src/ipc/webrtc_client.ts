@@ -44,11 +44,22 @@ class WebRTCClient {
 
   private setupEventListener(): void {
     this.ipcRenderer.on("webrtc:event", (event: WebRTCEvent) => {
+      // Guard against undefined events from IPC
+      if (!event || typeof event !== "object") {
+        console.warn("[WebRTCClient] Received invalid event:", event);
+        return;
+      }
       this.notifyListeners(event);
     });
   }
 
   private notifyListeners(event: WebRTCEvent): void {
+    // Guard against missing type property
+    if (!event || !event.type) {
+      console.warn("[WebRTCClient] Event missing type:", event);
+      return;
+    }
+
     // Notify all listeners
     const allListeners = this.eventListeners.get("*");
     if (allListeners) {

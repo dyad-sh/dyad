@@ -186,12 +186,15 @@ export function useStreamChat({
             onEnd: (response: ChatResponseEnd) => {
               // Remove from pending set now that stream is complete
               pendingStreamChatIds.delete(chatId);
-              // Mark stream as completed successfully (not cancelled or errored)
-              setStreamCompletedSuccessfullyById((prev) => {
-                const next = new Map(prev);
-                next.set(chatId, true);
-                return next;
-              });
+              // Only mark as successful if NOT cancelled - wasCancelled flag is set
+              // by the backend when user cancels the stream
+              if (!response.wasCancelled) {
+                setStreamCompletedSuccessfullyById((prev) => {
+                  const next = new Map(prev);
+                  next.set(chatId, true);
+                  return next;
+                });
+              }
 
               if (response.updatedFiles) {
                 setIsPreviewOpen(true);

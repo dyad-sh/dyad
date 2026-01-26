@@ -253,10 +253,16 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                               assistantMessageIndex !== -1;
 
                             // Find the user message that triggered this assistant response
-                            // so we can delete it along with subsequent messages
-                            const userMessage =
+                            // so we can delete it along with subsequent messages.
+                            // Validate that the previous message is actually a user message
+                            // to handle edge cases like consecutive assistant messages.
+                            const previousMessage =
                               assistantMessageIndex > 0
                                 ? currentChatMessages[assistantMessageIndex - 1]
+                                : undefined;
+                            const userMessage =
+                              previousMessage?.role === "user"
+                                ? previousMessage
                                 : undefined;
 
                             await revertVersion({
@@ -270,6 +276,13 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                                       messageId: userMessage.id,
                                     }
                                   : undefined,
+                              // Only refresh the current chat if the version is from it.
+                              // When restoring from a different chat, we'll create a new chat
+                              // after this mutation completes, so refreshing the old chat
+                              // would cause a race condition with stale data.
+                              chatIdToRefresh: versionInCurrentChat
+                                ? (selectedChatId ?? undefined)
+                                : undefined,
                             });
                             setSelectedVersionId(null);
                             // Close the pane after revert to force a refresh on next open

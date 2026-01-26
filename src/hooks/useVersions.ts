@@ -1,16 +1,15 @@
 import { useEffect } from "react";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtom, useSetAtom } from "jotai";
 import { versionsListAtom } from "@/atoms/appAtoms";
 import { ipc, type RevertVersionResponse, type Version } from "@/ipc/types";
 
-import { chatMessagesByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { toast } from "sonner";
 
 export function useVersions(appId: number | null) {
   const [, setVersionsAtom] = useAtom(versionsListAtom);
-  const selectedChatId = useAtomValue(selectedChatIdAtom);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const queryClient = useQueryClient();
 
@@ -44,6 +43,10 @@ export function useVersions(appId: number | null) {
     {
       versionId: string;
       currentChatMessageId?: { chatId: number; messageId: number };
+      // Optional: Explicitly specify which chat to refresh after revert.
+      // If not provided, no chat messages will be refreshed.
+      // This avoids race conditions when navigating to a new chat after revert.
+      chatIdToRefresh?: number;
     }
   >({
     mutationFn: async ({
@@ -52,6 +55,7 @@ export function useVersions(appId: number | null) {
     }: {
       versionId: string;
       currentChatMessageId?: { chatId: number; messageId: number };
+      chatIdToRefresh?: number;
     }) => {
       const currentAppId = appId;
       if (currentAppId === null) {
@@ -63,7 +67,7 @@ export function useVersions(appId: number | null) {
         currentChatMessageId,
       });
     },
-    onSuccess: async (result) => {
+    onSuccess: async (result, variables) => {
       if ("successMessage" in result) {
         toast.success(result.successMessage);
       } else if ("warningMessage" in result) {
@@ -75,11 +79,14 @@ export function useVersions(appId: number | null) {
       await queryClient.invalidateQueries({
         queryKey: queryKeys.branches.current({ appId }),
       });
-      if (selectedChatId) {
-        const chat = await ipc.chat.getChat(selectedChatId);
+      // Only refresh messages for the explicitly provided chat ID.
+      // This avoids race conditions when the caller creates a new chat after revert.
+      const chatIdToRefresh = variables.chatIdToRefresh;
+      if (chatIdToRefresh) {
+        const chat = await ipc.chat.getChat(chatIdToRefresh);
         setMessagesById((prev) => {
           const next = new Map(prev);
-          next.set(selectedChatId, chat.messages);
+          next.set(chatIdToRefresh, chat.messages);
           return next;
         });
       }

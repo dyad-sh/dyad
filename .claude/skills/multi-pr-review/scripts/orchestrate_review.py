@@ -32,8 +32,8 @@ DEDUP_MODEL = "claude-sonnet-4-5"
 
 # Extended thinking configuration (interleaved thinking with max effort)
 # Using maximum values for most thorough analysis
-THINKING_BUDGET_TOKENS = 128000  # Maximum thinking budget for deepest analysis
-MAX_TOKENS = 128000  # Maximum output tokens
+THINKING_BUDGET_TOKENS = 64_000  # Maximum thinking budget for deepest analysis
+MAX_TOKENS = 48_000  # Maximum output tokens
 
 SEVERITY_RANK = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
 

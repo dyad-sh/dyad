@@ -85,6 +85,7 @@ After every file edit, you MUST read the modified file to verify the changes wer
 1. Identify what went wrong (wrong location, partial application, unintended deletions, etc.)
 2. Try the other editing tool—if `edit_file` produced unexpected results, try `search_replace` with more explicit context, and vice versa
 3. Verify again after the retry
+4. **Last resort fallback:** If both `search_replace` and `edit_file` fail repeatedly, use `write_file` to overwrite the entire file with the correct content. Only do this after reading the current file contents and confirming you have the complete desired state.
 
 Never assume an edit succeeded without confirmation. Catching errors immediately prevents compounding mistakes.
 </file_editing_tool_selection>

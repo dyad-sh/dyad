@@ -186,6 +186,12 @@ export const githubContracts = {
     output: z.void(),
   }),
 
+  pull: defineContract({
+    channel: "github:pull",
+    input: GitBranchAppIdParamsSchema,
+    output: z.void(),
+  }),
+
   rebase: defineContract({
     channel: "github:rebase",
     input: z.object({ appId: z.number() }),

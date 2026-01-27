@@ -21,6 +21,8 @@ import {
   Edit2,
   MoreHorizontal,
   AlertCircle,
+  GitPullRequestArrow,
+  EllipsisVertical,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useSettings } from "@/hooks/useSettings";
@@ -38,7 +40,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -98,6 +99,7 @@ export function GithubBranchManager({
   const [branchToMerge, setBranchToMerge] = useState<string | null>(null);
   const [isMerging, setIsMerging] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isPulling, setIsPulling] = useState(false);
   // State for abort confirmation dialog
   const [abortConfirmation, setAbortConfirmation] = useState<{
     show: boolean;
@@ -368,6 +370,19 @@ export function GithubBranchManager({
     }
   };
 
+  const handleGitPull = async () => {
+    setIsPulling(true);
+    try {
+      await ipc.github.pull({ appId });
+      showSuccess("Pulled latest changes from remote");
+      await loadBranches();
+    } catch (error: any) {
+      showError(error.message || "Failed to pull changes");
+    } finally {
+      setIsPulling(false);
+    }
+  };
+
   return (
     <div className="space-y-2">
       <div className="flex gap-2">
@@ -380,7 +395,8 @@ export function GithubBranchManager({
             isRenaming ||
             isMerging ||
             isCreating ||
-            isLoading
+            isLoading ||
+            isPulling
           }
         >
           <SelectTrigger className="w-full" data-testid="branch-select-trigger">
@@ -402,45 +418,56 @@ export function GithubBranchManager({
           </SelectContent>
         </Select>
 
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={loadBranches}
-                disabled={isLoading}
-                title="Refresh branches"
-                data-testid="refresh-branches-button"
-              >
-                <RefreshCw
-                  className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
-                />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Refresh branches</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-
-        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DropdownMenu>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <DialogTrigger asChild>
+                <DropdownMenuTrigger asChild>
                   <Button
                     variant="outline"
                     size="icon"
-                    title="Create new branch"
-                    data-testid="create-branch-trigger"
+                    title="Branch actions"
+                    data-testid="branch-actions-menu-trigger"
                   >
-                    <Plus className="h-4 w-4" />
+                    <EllipsisVertical className="h-4 w-4" />
                   </Button>
-                </DialogTrigger>
+                </DropdownMenuTrigger>
               </TooltipTrigger>
-              <TooltipContent>Create new branch</TooltipContent>
+              <TooltipContent>Branch actions</TooltipContent>
             </Tooltip>
           </TooltipProvider>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={() => setShowCreateDialog(true)}
+              data-testid="create-branch-trigger"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Create new branch
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={loadBranches}
+              disabled={isLoading}
+              data-testid="refresh-branches-button"
+            >
+              <RefreshCw
+                className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
+              />
+              Refresh branches
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={handleGitPull}
+              disabled={isPulling}
+              data-testid="git-pull-button"
+            >
+              <GitPullRequestArrow
+                className={`mr-2 h-4 w-4 ${isPulling ? "animate-spin" : ""}`}
+              />
+              Git pull
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
+        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Create New Branch</DialogTitle>

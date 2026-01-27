@@ -79,19 +79,19 @@ export function extractFunctionNameFromPath(filePath: string): string {
  * @param appPath - The absolute path to the app directory
  * @param supabaseProjectId - The Supabase project ID
  * @param supabaseOrganizationSlug - The Supabase organization slug
- * @param skipPruneEdgeFunctions - If false (default), delete any deployed edge functions that are not in the codebase
+ * @param skipPruneEdgeFunctions - If false, delete any deployed edge functions that are not in the codebase
  * @returns An array of error messages for functions that failed to deploy (empty if all succeeded)
  */
 export async function deployAllSupabaseFunctions({
   appPath,
   supabaseProjectId,
   supabaseOrganizationSlug,
-  skipPruneEdgeFunctions = false,
+  skipPruneEdgeFunctions,
 }: {
   appPath: string;
   supabaseProjectId: string;
   supabaseOrganizationSlug: string | null;
-  skipPruneEdgeFunctions?: boolean;
+  skipPruneEdgeFunctions: boolean;
 }): Promise<string[]> {
   const functionsDir = path.join(appPath, "supabase", "functions");
 

@@ -315,8 +315,10 @@ testSkipIfWindows(
     await expect(picker).toBeEnabled({ timeout: Timeout.EXTRA_LONG });
 
     // Open console panel
+    // Use force: true because after navigating back from Supabase setup,
+    // the sidebar or chat panel may briefly overlap the System Messages header
     const consoleHeader = po.page.locator('text="System Messages"').first();
-    await consoleHeader.click({ timeout: Timeout.MEDIUM });
+    await consoleHeader.click({ force: true, timeout: Timeout.MEDIUM });
 
     // Verify the fetch edge logs button is visible
     const fetchButton = po.page.getByTestId("fetch-edge-logs-button");

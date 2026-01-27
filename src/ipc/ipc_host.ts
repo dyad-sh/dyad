@@ -84,6 +84,8 @@ import { registerDesignSystemHandlers } from "./handlers/design_system_handlers"
 import { registerSecretsVaultHandlers } from "./handlers/secrets_vault_handlers";
 import { registerOfflineDocsHandlers } from "./handlers/offline_docs_handlers";
 import { registerAILearningHandlers } from "./handlers/ai_learning_handlers";
+import { registerAgentSwarmHandlers } from "./handlers/agent_swarm_handlers";
+import { registerAutonomousAgentHandlers } from "./handlers/autonomous_agent_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -201,4 +203,10 @@ export function registerIpcHandlers() {
   
   // AI Learning Mode - Personalized AI behavior learning
   registerAILearningHandlers();
+  
+  // Agent Swarm System - Self-replicating agent orchestration
+  registerAgentSwarmHandlers();
+  
+  // Autonomous Agent System - Fully autonomous AI agents
+  registerAutonomousAgentHandlers();
 }

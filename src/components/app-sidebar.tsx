@@ -25,6 +25,8 @@ import {
   Radio,
   Cpu,
   Plug,
+  Network,
+  Brain,
 } from "lucide-react";
 import { Link, useRouterState, useRouter } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -84,6 +86,24 @@ const menuCategories = [
         hoverBg: "hover:bg-violet-500/10",
         activeBg: "bg-violet-500/15",
         activeText: "text-violet-600 dark:text-violet-400",
+      },
+      {
+        title: "Agent Swarm",
+        to: "/agent-swarm",
+        icon: Network,
+        gradient: "from-fuchsia-500 to-violet-500",
+        hoverBg: "hover:bg-fuchsia-500/10",
+        activeBg: "bg-fuchsia-500/15",
+        activeText: "text-fuchsia-600 dark:text-fuchsia-400",
+      },
+      {
+        title: "Autonomous AI",
+        to: "/autonomous-agent",
+        icon: Brain,
+        gradient: "from-rose-500 to-pink-500",
+        hoverBg: "hover:bg-rose-500/10",
+        activeBg: "bg-rose-500/15",
+        activeText: "text-rose-600 dark:text-rose-400",
       },
       {
         title: "Workflows",

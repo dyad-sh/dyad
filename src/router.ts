@@ -21,6 +21,7 @@ import { dataSovereigntyRoute } from "./routes/data-sovereignty";
 import { decentralizedDeployRoute } from "./routes/decentralized-deploy";
 import { decentralizedChatRoute } from "./routes/decentralized-chat";
 import { computeNetworkRoute } from "./routes/compute-network";
+import { agentSwarmRoute } from "./routes/agent-swarm";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -45,6 +46,7 @@ const routeTree = rootRoute.addChildren([
   decentralizedDeployRoute,
   decentralizedChatRoute,
   computeNetworkRoute,
+  agentSwarmRoute,
 ]);
 
 // src/components/NotFoundRedirect.tsx

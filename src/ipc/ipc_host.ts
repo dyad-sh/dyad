@@ -75,6 +75,15 @@ import { registerTaskExecutionHandlers } from "./handlers/task_execution_handler
 import { registerN8nIntegrationHandlers } from "./handlers/n8n_integration_handlers";
 import { registerJcnHandlers } from "./handlers/jcn_handlers";
 import { registerSmartRouterHandlers } from "./handlers/smart_router_handlers";
+import { registerVoiceAssistantHandlers } from "./handlers/voice_assistant_handlers";
+import { registerMemorySystemHandlers } from "./handlers/memory_system_handlers";
+import { registerPluginHandlers } from "./handlers/plugin_handlers";
+import { registerBenchmarkHandlers } from "./handlers/benchmark_handlers";
+import { registerCodingAgentHandlers } from "./handlers/coding_agent_handlers";
+import { registerDesignSystemHandlers } from "./handlers/design_system_handlers";
+import { registerSecretsVaultHandlers } from "./handlers/secrets_vault_handlers";
+import { registerOfflineDocsHandlers } from "./handlers/offline_docs_handlers";
+import { registerAILearningHandlers } from "./handlers/ai_learning_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -165,4 +174,31 @@ export function registerIpcHandlers() {
   
   // Smart Router - Intelligent Local/Cloud Routing
   registerSmartRouterHandlers();
+  
+  // Voice Assistant - Speech-to-text and text-to-speech
+  registerVoiceAssistantHandlers();
+  
+  // Memory System - Persistent AI memory across sessions
+  registerMemorySystemHandlers();
+  
+  // Plugin System - Plugin marketplace and management
+  registerPluginHandlers();
+  
+  // Model Benchmark - Performance testing for local models
+  registerBenchmarkHandlers();
+  
+  // AI Coding Agent - Autonomous code generation and editing
+  registerCodingAgentHandlers();
+  
+  // Design System Generator - Auto-generate component libraries
+  registerDesignSystemHandlers();
+  
+  // Secrets Vault - Secure local credential storage
+  registerSecretsVaultHandlers();
+  
+  // Offline Docs Hub - Searchable offline documentation
+  registerOfflineDocsHandlers();
+  
+  // AI Learning Mode - Personalized AI behavior learning
+  registerAILearningHandlers();
 }

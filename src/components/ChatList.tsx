@@ -39,7 +39,7 @@ export function ChatList({ show }: { show?: boolean }) {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
   const [, setIsDropdownOpen] = useAtom(dropdownOpenAtom);
   const { settings, updateSettings } = useSettings();
-  const { isQuotaExceeded } = useFreeAgentQuota();
+  const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
 
   const { chats, loading, invalidateChats } = useChats(selectedAppId);
   const routerState = useRouterState();
@@ -93,10 +93,12 @@ export function ChatList({ show }: { show?: boolean }) {
         const chatId = await ipc.chat.createChat(selectedAppId);
 
         // Set the default chat mode for the new chat
+        // Only consider quota available if it has finished loading and is not exceeded
         if (settings) {
+          const freeAgentQuotaAvailable = !isQuotaLoading && !isQuotaExceeded;
           const effectiveDefaultMode = getEffectiveDefaultChatMode(
             settings,
-            !isQuotaExceeded,
+            freeAgentQuotaAvailable,
           );
           updateSettings({ selectedChatMode: effectiveDefaultMode });
         }

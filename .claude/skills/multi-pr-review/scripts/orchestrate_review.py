@@ -27,7 +27,8 @@ except ImportError:
 NUM_AGENTS = 3
 CONSENSUS_THRESHOLD = 2
 MIN_SEVERITY = "MEDIUM"
-MODEL = "claude-opus-4-5-20251101"
+REVIEW_MODEL = "claude-opus-4-5"
+DEDUP_MODEL = "claude-sonnet-4-5"
 
 # Extended thinking configuration (interleaved thinking with max effort)
 # Using maximum values for most thorough analysis
@@ -36,25 +37,75 @@ MAX_TOKENS = 128000  # Maximum output tokens
 
 SEVERITY_RANK = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
 
-# Path to the review prompt markdown file (relative to this script)
+# Paths to the review prompt markdown files (relative to this script)
 SCRIPT_DIR = Path(__file__).parent
-REVIEW_PROMPT_PATH = SCRIPT_DIR.parent / "references" / "review_prompt.md"
+REFERENCES_DIR = SCRIPT_DIR.parent / "references"
+DEFAULT_PROMPT_PATH = REFERENCES_DIR / "review_prompt_default.md"
+CODE_HEALTH_PROMPT_PATH = REFERENCES_DIR / "review_prompt_code_health.md"
 
 
-def load_review_prompt() -> str:
-    """Load the system prompt from review_prompt.md."""
-    if not REVIEW_PROMPT_PATH.exists():
-        raise FileNotFoundError(f"Review prompt not found: {REVIEW_PROMPT_PATH}")
+def load_review_prompt(code_health: bool = False) -> str:
+    """Load the system prompt from the appropriate review prompt file.
 
-    content = REVIEW_PROMPT_PATH.read_text()
+    Args:
+        code_health: If True, load the code health agent prompt instead.
+    """
+    prompt_path = CODE_HEALTH_PROMPT_PATH if code_health else DEFAULT_PROMPT_PATH
+
+    if not prompt_path.exists():
+        raise FileNotFoundError(f"Review prompt not found: {prompt_path}")
+
+    content = prompt_path.read_text()
 
     # Extract the system prompt from the first code block after "## System Prompt"
-    # The format is: ## System Prompt\n\n```\n<prompt>\n```
     match = re.search(r'## System Prompt\s*\n+```\n(.*?)\n```', content, re.DOTALL)
     if not match:
-        raise ValueError("Could not extract system prompt from review_prompt.md")
+        raise ValueError(f"Could not extract system prompt from {prompt_path.name}")
 
     return match.group(1).strip()
+
+
+def fetch_existing_comments(repo: str, pr_number: int) -> dict:
+    """Fetch existing review comments from the PR to avoid duplicates."""
+    import subprocess
+
+    try:
+        # Fetch review comments (inline comments on code)
+        result = subprocess.run(
+            ['gh', 'api', f'repos/{repo}/pulls/{pr_number}/comments',
+             '--paginate', '-q', '.[] | {path, line, body}'],
+            capture_output=True, text=True
+        )
+
+        comments = []
+        if result.returncode == 0 and result.stdout.strip():
+            for line in result.stdout.strip().split('\n'):
+                if line:
+                    try:
+                        comments.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        pass
+
+        # Also fetch PR comments (general comments) for summary deduplication
+        result2 = subprocess.run(
+            ['gh', 'api', f'repos/{repo}/issues/{pr_number}/comments',
+             '--paginate', '-q', '.[] | {body}'],
+            capture_output=True, text=True
+        )
+
+        pr_comments = []
+        if result2.returncode == 0 and result2.stdout.strip():
+            for line in result2.stdout.strip().split('\n'):
+                if line:
+                    try:
+                        pr_comments.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        pass
+
+        return {'review_comments': comments, 'pr_comments': pr_comments}
+    except FileNotFoundError:
+        print("Warning: gh CLI not found, cannot fetch existing comments")
+        return {'review_comments': [], 'pr_comments': []}
 
 
 @dataclass
@@ -174,7 +225,7 @@ async def run_sub_agent(
     try:
         # Build API call parameters
         api_params = {
-            "model": MODEL,
+            "model": REVIEW_MODEL,
             "max_tokens": MAX_TOKENS,
             "messages": [{"role": "user", "content": prompt}]
         }
@@ -250,94 +301,159 @@ async def run_sub_agent(
         return []
 
 
-def issues_match(a: Issue, b: Issue, line_tolerance: int = 5) -> bool:
-    """Check if two issues refer to the same problem."""
-    if a.file != b.file:
-        return False
-    
-    # Check line overlap with tolerance (applied symmetrically to both issues)
-    a_range = set(range(max(1, a.line_start - line_tolerance), a.line_end + line_tolerance + 1))
-    b_range = set(range(max(1, b.line_start - line_tolerance), b.line_end + line_tolerance + 1))
-    if not a_range.intersection(b_range):
-        return False
-    
-    # Same category is a strong signal
-    if a.category == b.category:
-        return True
-    
-    # Check for similar titles (simple word overlap)
-    a_words = set(a.title.lower().split())
-    b_words = set(b.title.lower().split())
-    overlap = len(a_words.intersection(b_words))
-    if overlap >= 2 or (overlap >= 1 and len(a_words) <= 3):
-        return True
-    
-    return False
+async def group_similar_issues(
+    client: anthropic.AsyncAnthropic,
+    issues: list[Issue]
+) -> list[list[int]]:
+    """Use Sonnet to group similar issues by semantic similarity.
+
+    Returns a list of groups, where each group is a list of issue indices
+    that refer to the same underlying problem.
+    """
+    if not issues:
+        return []
+
+    # Build issue descriptions for the LLM
+    issue_descriptions = []
+    for i, issue in enumerate(issues):
+        issue_descriptions.append(
+            f"Issue {i}: file={issue.file}, lines={issue.line_start}-{issue.line_end}, "
+            f"severity={issue.severity}, category={issue.category}, "
+            f"title=\"{issue.title}\", description=\"{issue.description}\""
+        )
+
+    prompt = f"""You are analyzing code review issues to identify duplicates.
+
+Multiple reviewers have identified issues in a code review. Some issues may refer to the same underlying problem, even if described differently.
+
+Group the following issues by whether they refer to the SAME underlying problem. Issues should be grouped together if:
+- They point to the same file and similar line ranges (within ~10 lines)
+- They describe the same fundamental issue (even if worded differently)
+- They would result in the same fix
+
+Do NOT group issues that:
+- Are in different files
+- Are in the same file but describe different problems
+- Point to significantly different line ranges (>20 lines apart)
+
+Issues to analyze:
+{chr(10).join(issue_descriptions)}
+
+Output a JSON array of groups. Each group is an array of issue indices (0-based) that refer to the same problem.
+Every issue index must appear in exactly one group. Single-issue groups are valid.
+
+Example output format:
+[[0, 3, 5], [1], [2, 4]]
+
+Output ONLY the JSON array, no other text."""
+
+    try:
+        response = await client.messages.create(
+            model=DEDUP_MODEL,
+            max_tokens=4096,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        # Extract text content from response
+        content = None
+        for block in response.content:
+            if block.type == "text":
+                content = block.text.strip()
+                break
+
+        if content is None:
+            raise ValueError("No text response from deduplication model")
+
+        # Handle potential markdown code blocks
+        if content.startswith('```'):
+            content = re.sub(r'^```\w*\n?', '', content)
+            content = re.sub(r'\n?```$', '', content)
+
+        groups = json.loads(content)
+
+        # Validate the response
+        if not isinstance(groups, list):
+            raise ValueError("Expected a list of groups")
+
+        seen_indices = set()
+        for group in groups:
+            if not isinstance(group, list):
+                raise ValueError("Each group must be a list")
+            for idx in group:
+                if not isinstance(idx, int) or idx < 0 or idx >= len(issues):
+                    raise ValueError(f"Invalid index: {idx}")
+                if idx in seen_indices:
+                    raise ValueError(f"Duplicate index: {idx}")
+                seen_indices.add(idx)
+
+        # If any indices are missing, add them as single-issue groups
+        for i in range(len(issues)):
+            if i not in seen_indices:
+                groups.append([i])
+
+        return groups
+
+    except (json.JSONDecodeError, ValueError) as e:
+        print(f"  Warning: Failed to parse deduplication response: {e}")
+        # Fall back to treating each issue as unique
+        return [[i] for i in range(len(issues))]
+    except Exception as e:
+        print(f"  Warning: Deduplication failed: {e}")
+        return [[i] for i in range(len(issues))]
 
 
-def aggregate_issues(
+async def aggregate_issues(
+    client: anthropic.AsyncAnthropic,
     all_issues: list[list[Issue]],
     consensus_threshold: int = CONSENSUS_THRESHOLD,
     min_severity: str = MIN_SEVERITY
 ) -> list[dict]:
-    """Aggregate issues using consensus voting."""
+    """Aggregate issues using LLM-based deduplication and consensus voting."""
     # Flatten all issues with their source agent
     flat_issues = []
     for agent_issues in all_issues:
         flat_issues.extend(agent_issues)
-    
+
     if not flat_issues:
         return []
-    
-    # Group similar issues
-    groups = []
-    used = set()
-    
-    for i, issue in enumerate(flat_issues):
-        if i in used:
-            continue
-        
-        group = [issue]
-        used.add(i)
-        
-        for j, other in enumerate(flat_issues):
-            if j in used:
-                continue
-            if issues_match(issue, other):
-                group.append(other)
-                used.add(j)
-        
-        groups.append(group)
-    
+
+    # Use LLM to group similar issues
+    print("  Using Sonnet to identify duplicate issues...")
+    groups_indices = await group_similar_issues(client, flat_issues)
+
+    # Convert indices to actual issue objects
+    groups = [[flat_issues[i] for i in group] for group in groups_indices]
+    print(f"  Grouped {len(flat_issues)} issues into {len(groups)} unique issues")
+
     # Filter by consensus and severity
     min_rank = SEVERITY_RANK.get(min_severity, 2)
     consensus_issues = []
-    
+
     for group in groups:
         # Count unique agents
         agents = set(issue.agent_id for issue in group)
         if len(agents) < consensus_threshold:
             continue
-        
+
         # Check if any agent rated it at min_severity or above
         max_severity = max(SEVERITY_RANK.get(i.severity, 0) for i in group)
         if max_severity < min_rank:
             continue
-        
+
         # Use the highest-severity version as the representative
         representative = max(group, key=lambda i: SEVERITY_RANK.get(i.severity, 0))
-        
+
         consensus_issues.append({
             **asdict(representative),
             'consensus_count': len(agents),
             'all_severities': [i.severity for i in group]
         })
-    
+
     # Sort by severity (highest first), then by file
     consensus_issues.sort(
         key=lambda x: (-SEVERITY_RANK.get(x['severity'], 0), x['file'], x['line_start'])
     )
-    
+
     return consensus_issues
 
 
@@ -431,28 +547,41 @@ async def main():
     # Create shuffled orderings
     orderings = create_shuffled_orderings(files, args.num_agents)
 
-    # Load review prompt from markdown file
-    print("Loading review prompt from references/review_prompt.md...")
+    # Load review prompts from markdown files
+    print("Loading review prompts...")
     try:
-        system_prompt = load_review_prompt()
+        default_prompt = load_review_prompt(code_health=False)
+        code_health_prompt = load_review_prompt(code_health=True)
     except (FileNotFoundError, ValueError) as e:
         print(f"Error loading review prompt: {e}")
         sys.exit(1)
 
+    # Fetch existing comments to avoid duplicates
+    print(f"Fetching existing PR comments...")
+    existing_comments = fetch_existing_comments(args.repo, args.pr_number)
+    print(f"  Found {len(existing_comments['review_comments'])} existing review comments")
+
     # Run sub-agents in parallel
+    # Agent 1 gets the code health role, others get the default role
     print(f"\nSpawning {args.num_agents} review agents...")
+    print(f"  Agent 1: Code Health focus")
+    print(f"  Agents 2-{args.num_agents}: Default focus")
     client = anthropic.AsyncAnthropic()
 
-    tasks = [
-        run_sub_agent(client, i + 1, ordering, system_prompt, use_thinking, thinking_budget)
-        for i, ordering in enumerate(orderings)
-    ]
+    tasks = []
+    for i, ordering in enumerate(orderings):
+        # Agent 1 (index 0) gets the code health prompt
+        prompt = code_health_prompt if i == 0 else default_prompt
+        tasks.append(
+            run_sub_agent(client, i + 1, ordering, prompt, use_thinking, thinking_budget)
+        )
     
     all_results = await asyncio.gather(*tasks)
     
     # Aggregate results
     print(f"\nAggregating results...")
-    consensus_issues = aggregate_issues(
+    consensus_issues = await aggregate_issues(
+        client,
         all_results,
         consensus_threshold=args.threshold,
         min_severity=args.min_severity
@@ -471,6 +600,7 @@ async def main():
         'thinking_budget': thinking_budget if use_thinking else None,
         'total_issues_per_agent': [len(r) for r in all_results],
         'consensus_issues': consensus_issues,
+        'existing_comments': existing_comments,
         'comment_body': format_pr_comment(consensus_issues)
     }
     

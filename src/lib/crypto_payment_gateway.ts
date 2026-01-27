@@ -18,6 +18,7 @@ import type {
   PaymentGatewayConfig,
   Payment,
   PaymentStatus,
+  PaymentNetwork,
   Subscription,
   PaymentStream,
   Webhook,
@@ -33,14 +34,16 @@ const logger = log.scope("crypto_payment_gateway");
 const DEFAULT_PAYMENTS_DIR = path.join(app.getPath("userData"), "payments");
 
 // Supported chains and their configurations
-const CHAIN_CONFIGS: Record<number, {
+const CHAIN_CONFIGS: Record<PaymentNetwork, {
+  chainId: number;
   name: string;
   rpcUrl: string;
   explorerUrl: string;
   nativeCurrency: { name: string; symbol: string; decimals: number };
   stablecoins: Record<string, string>; // symbol -> contract address
 }> = {
-  1: {
+  ethereum: {
+    chainId: 1,
     name: "Ethereum",
     rpcUrl: "https://eth.llamarpc.com",
     explorerUrl: "https://etherscan.io",
@@ -51,7 +54,8 @@ const CHAIN_CONFIGS: Record<number, {
       DAI: "0x6B175474E89094C44Da98b954EescdeCB5b3d5D4C4B",
     },
   },
-  137: {
+  polygon: {
+    chainId: 137,
     name: "Polygon",
     rpcUrl: "https://polygon.llamarpc.com",
     explorerUrl: "https://polygonscan.com",
@@ -62,18 +66,18 @@ const CHAIN_CONFIGS: Record<number, {
       DAI: "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063",
     },
   },
-  56: {
-    name: "BNB Chain",
-    rpcUrl: "https://bsc-dataseed.binance.org",
-    explorerUrl: "https://bscscan.com",
-    nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 },
+  base: {
+    chainId: 8453,
+    name: "Base",
+    rpcUrl: "https://mainnet.base.org",
+    explorerUrl: "https://basescan.org",
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
     stablecoins: {
-      USDC: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
-      USDT: "0x55d398326f99059fF775485246999027B3197955",
-      BUSD: "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56",
+      USDC: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     },
   },
-  42161: {
+  arbitrum: {
+    chainId: 42161,
     name: "Arbitrum",
     rpcUrl: "https://arb1.arbitrum.io/rpc",
     explorerUrl: "https://arbiscan.io",
@@ -83,7 +87,8 @@ const CHAIN_CONFIGS: Record<number, {
       USDT: "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9",
     },
   },
-  10: {
+  optimism: {
+    chainId: 10,
     name: "Optimism",
     rpcUrl: "https://mainnet.optimism.io",
     explorerUrl: "https://optimistic.etherscan.io",
@@ -93,16 +98,35 @@ const CHAIN_CONFIGS: Record<number, {
       USDT: "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58",
     },
   },
-  8453: {
-    name: "Base",
-    rpcUrl: "https://mainnet.base.org",
-    explorerUrl: "https://basescan.org",
-    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  solana: {
+    chainId: 0, // Solana doesn't use EVM chain ID
+    name: "Solana",
+    rpcUrl: "https://api.mainnet-beta.solana.com",
+    explorerUrl: "https://solscan.io",
+    nativeCurrency: { name: "SOL", symbol: "SOL", decimals: 9 },
     stablecoins: {
-      USDC: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      USDC: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
     },
   },
+  bitcoin: {
+    chainId: 0, // Bitcoin doesn't use EVM chain ID
+    name: "Bitcoin",
+    rpcUrl: "", // Would use different protocol
+    explorerUrl: "https://blockstream.info",
+    nativeCurrency: { name: "Bitcoin", symbol: "BTC", decimals: 8 },
+    stablecoins: {},
+  },
 };
+
+// Helper function to get network from chainId
+function getNetworkFromChainId(chainId: number): PaymentNetwork {
+  for (const [network, config] of Object.entries(CHAIN_CONFIGS)) {
+    if (config.chainId === chainId) {
+      return network as PaymentNetwork;
+    }
+  }
+  return "ethereum"; // Default fallback
+}
 
 // ERC20 ABI for token transfers
 const ERC20_ABI = [
@@ -129,7 +153,7 @@ export class CryptoPaymentGateway extends EventEmitter {
   private webhooks: Map<string, Webhook> = new Map();
   private providers: Map<number, ethers.JsonRpcProvider> = new Map();
   private watchedAddresses: Map<string, { chainId: number; callback: (payment: Payment) => void }> = new Map();
-  private blockWatchers: Map<number, NodeJS.Timer> = new Map();
+  private blockWatchers: Map<number, ReturnType<typeof setInterval>> = new Map();
   
   constructor(paymentsDir?: string) {
     super();
@@ -197,7 +221,7 @@ export class CryptoPaymentGateway extends EventEmitter {
     await this.saveConfig();
     
     // Initialize providers for enabled chains
-    for (const chainId of config.supportedChains) {
+    for (const chainId of config.supportedChains || []) {
       await this.getProvider(chainId);
     }
     
@@ -215,9 +239,10 @@ export class CryptoPaymentGateway extends EventEmitter {
     return this.config;
   }
   
-  getSupportedChains(): Array<{ chainId: number; name: string; stablecoins: string[] }> {
-    return Object.entries(CHAIN_CONFIGS).map(([chainId, config]) => ({
-      chainId: parseInt(chainId),
+  getSupportedChains(): Array<{ chainId: number; network: PaymentNetwork; name: string; stablecoins: string[] }> {
+    return Object.entries(CHAIN_CONFIGS).map(([network, config]) => ({
+      chainId: config.chainId,
+      network: network as PaymentNetwork,
       name: config.name,
       stablecoins: Object.keys(config.stablecoins),
     }));
@@ -227,19 +252,19 @@ export class CryptoPaymentGateway extends EventEmitter {
   // PROVIDER MANAGEMENT
   // ===========================================================================
   
-  private async getProvider(chainId: number): Promise<ethers.JsonRpcProvider> {
-    let provider = this.providers.get(chainId);
-    if (provider) return provider;
-    
-    const chainConfig = CHAIN_CONFIGS[chainId];
+  private async getProvider(network: PaymentNetwork): Promise<ethers.JsonRpcProvider> {
+    const chainConfig = CHAIN_CONFIGS[network];
     if (!chainConfig) {
-      throw new Error(`Unsupported chain: ${chainId}`);
+      throw new Error(`Unsupported network: ${network}`);
     }
     
+    let provider = this.providers.get(chainConfig.chainId);
+    if (provider) return provider;
+    
     // Use custom RPC if configured
-    const rpcUrl = this.config?.customRpcUrls?.[chainId] || chainConfig.rpcUrl;
+    const rpcUrl = this.config?.customRpcUrls?.[network] || chainConfig.rpcUrl;
     provider = new ethers.JsonRpcProvider(rpcUrl);
-    this.providers.set(chainId, provider);
+    this.providers.set(chainConfig.chainId, provider);
     
     return provider;
   }
@@ -251,7 +276,7 @@ export class CryptoPaymentGateway extends EventEmitter {
   async createPayment(params: {
     amount: string;
     currency: string;
-    chainId: number;
+    network: PaymentNetwork;
     merchantOrderId?: string;
     description?: string;
     metadata?: Record<string, unknown>;
@@ -262,16 +287,16 @@ export class CryptoPaymentGateway extends EventEmitter {
       throw new Error("Payment gateway not configured");
     }
     
-    if (!this.config.supportedChains.includes(params.chainId)) {
-      throw new Error(`Chain not supported: ${params.chainId}`);
+    if (!(this.config.supportedChains || []).includes(params.network)) {
+      throw new Error(`Network not supported: ${params.network}`);
     }
     
-    const chainConfig = CHAIN_CONFIGS[params.chainId];
+    const chainConfig = CHAIN_CONFIGS[params.network];
     const isNative = params.currency === chainConfig.nativeCurrency.symbol;
     
     // Validate currency
     if (!isNative && !chainConfig.stablecoins[params.currency]) {
-      throw new Error(`Currency not supported on chain ${params.chainId}: ${params.currency}`);
+      throw new Error(`Currency not supported on network ${params.network}: ${params.currency}`);
     }
     
     const paymentId = crypto.randomUUID() as PaymentId;
@@ -281,15 +306,19 @@ export class CryptoPaymentGateway extends EventEmitter {
     
     const payment: Payment = {
       id: paymentId,
+      requestId: paymentId,
       merchantId: this.config.merchantId,
       merchantOrderId: params.merchantOrderId,
+      requestedAmount: params.amount,
       amount: params.amount,
       currency: params.currency,
-      chainId: params.chainId,
+      chainId: chainConfig.chainId,
+      network: params.network,
       status: "pending",
+      confirmations: 0,
+      toAddress: paymentAddress,
       paymentAddress,
       tokenAddress: isNative ? undefined : chainConfig.stablecoins[params.currency],
-      description: params.description,
       metadata: params.metadata,
       expiresAt: params.expiresIn ? Date.now() + params.expiresIn * 1000 : undefined,
       callbackUrl: params.callbackUrl,
@@ -338,14 +367,14 @@ export class CryptoPaymentGateway extends EventEmitter {
     
     const key = `${payment.chainId}:${payment.paymentAddress}:${payment.id}`;
     this.watchedAddresses.set(key, {
-      chainId: payment.chainId,
+      chainId: payment.chainId ?? 1,
       callback: (confirmedPayment) => {
         this.handlePaymentReceived(confirmedPayment);
       },
     });
     
     // Ensure we're watching this chain's blocks
-    this.startBlockWatcher(payment.chainId);
+    this.startBlockWatcher(payment.chainId ?? 1);
   }
   
   private startBlockWatcher(chainId: number): void {
@@ -363,8 +392,9 @@ export class CryptoPaymentGateway extends EventEmitter {
   }
   
   private async checkPendingPayments(chainId: number): Promise<void> {
-    const provider = await this.getProvider(chainId);
-    const chainConfig = CHAIN_CONFIGS[chainId];
+    const network = getNetworkFromChainId(chainId);
+    const provider = await this.getProvider(network);
+    const chainConfig = CHAIN_CONFIGS[network];
     
     // Get pending payments for this chain
     const pendingPayments = Array.from(this.payments.values())
@@ -383,9 +413,9 @@ export class CryptoPaymentGateway extends EventEmitter {
       try {
         // Check for native currency payment
         if (!payment.tokenAddress) {
-          const balance = await provider.getBalance(payment.paymentAddress);
+          const balance = await provider.getBalance(payment.paymentAddress!);
           const requiredAmount = ethers.parseUnits(
-            payment.amount,
+            payment.amount || payment.requestedAmount,
             chainConfig.nativeCurrency.decimals
           );
           
@@ -401,11 +431,11 @@ export class CryptoPaymentGateway extends EventEmitter {
           );
           
           const [balance, decimals] = await Promise.all([
-            tokenContract.balanceOf(payment.paymentAddress),
+            tokenContract.balanceOf(payment.paymentAddress!),
             tokenContract.decimals(),
           ]);
           
-          const requiredAmount = ethers.parseUnits(payment.amount, decimals);
+          const requiredAmount = ethers.parseUnits(payment.amount || payment.requestedAmount, decimals);
           
           if (balance >= requiredAmount) {
             await this.confirmPayment(payment, balance.toString());
@@ -538,6 +568,7 @@ export class CryptoPaymentGateway extends EventEmitter {
     
     const subscription: Subscription = {
       id: subscriptionId,
+      customerId: params.subscriberAddress,
       merchantId: this.config?.merchantId || "",
       planId: params.planId,
       planName: params.planName,
@@ -549,6 +580,7 @@ export class CryptoPaymentGateway extends EventEmitter {
       status: "active",
       currentPeriodStart: Date.now(),
       currentPeriodEnd: this.calculatePeriodEnd(Date.now(), params.interval),
+      cancelAtPeriodEnd: false,
       nextPaymentDate: this.calculatePeriodEnd(Date.now(), params.interval),
       payments: [],
       metadata: params.metadata,
@@ -606,10 +638,10 @@ export class CryptoPaymentGateway extends EventEmitter {
       subs = subs.filter((s) => s.status === filters.status);
     }
     if (filters?.subscriberAddress) {
-      subs = subs.filter((s) => s.subscriberAddress.toLowerCase() === filters.subscriberAddress!.toLowerCase());
+      subs = subs.filter((s) => s.subscriberAddress?.toLowerCase() === filters.subscriberAddress!.toLowerCase());
     }
     
-    return subs.sort((a, b) => b.createdAt - a.createdAt);
+    return subs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   }
   
   async cancelSubscription(subscriptionId: string): Promise<Subscription> {
@@ -618,7 +650,7 @@ export class CryptoPaymentGateway extends EventEmitter {
       throw new Error(`Subscription not found: ${subscriptionId}`);
     }
     
-    subscription.status = "cancelled";
+    subscription.status = "canceled";
     subscription.cancelledAt = Date.now();
     subscription.updatedAt = Date.now();
     await this.saveSubscription(subscription);
@@ -636,10 +668,10 @@ export class CryptoPaymentGateway extends EventEmitter {
     // Generate a payment link that can be shared
     const params = new URLSearchParams({
       paymentId: payment.id,
-      amount: payment.amount,
-      currency: payment.currency,
-      chainId: String(payment.chainId),
-      address: payment.paymentAddress,
+      amount: payment.amount || payment.requestedAmount,
+      currency: payment.currency || "ETH",
+      chainId: String(payment.chainId || 1),
+      address: payment.paymentAddress || "",
     });
     
     if (payment.tokenAddress) {
@@ -651,14 +683,17 @@ export class CryptoPaymentGateway extends EventEmitter {
   }
   
   generateQRCodeData(payment: Payment): string {
-    const chainConfig = CHAIN_CONFIGS[payment.chainId];
+    const network = payment.network || getNetworkFromChainId(payment.chainId || 1);
+    const chainConfig = CHAIN_CONFIGS[network];
+    const amount = payment.amount || payment.requestedAmount;
+    const chainId = payment.chainId || chainConfig.chainId;
     
     if (payment.tokenAddress) {
       // ERC-681 token transfer URI
-      return `ethereum:${payment.tokenAddress}@${payment.chainId}/transfer?address=${payment.paymentAddress}&uint256=${ethers.parseUnits(payment.amount, 18)}`;
+      return `ethereum:${payment.tokenAddress}@${chainId}/transfer?address=${payment.paymentAddress || ""}&uint256=${ethers.parseUnits(amount, 18)}`;
     } else {
       // ERC-681 native transfer URI
-      return `ethereum:${payment.paymentAddress}@${payment.chainId}?value=${ethers.parseUnits(payment.amount, chainConfig.nativeCurrency.decimals)}`;
+      return `ethereum:${payment.paymentAddress || ""}@${chainId}?value=${ethers.parseUnits(amount, chainConfig.nativeCurrency.decimals)}`;
     }
   }
   
@@ -676,8 +711,7 @@ export class CryptoPaymentGateway extends EventEmitter {
       url: params.url,
       events: params.events,
       secret: crypto.randomBytes(32).toString("hex"),
-      enabled: true,
-      metadata: params.metadata,
+      active: true,
       createdAt: Date.now(),
     };
     
@@ -750,14 +784,16 @@ export class CryptoPaymentGateway extends EventEmitter {
     
     for (const payment of payments) {
       // Volume by currency
-      const currentVolume = parseFloat(totalVolume[payment.currency] || "0");
-      totalVolume[payment.currency] = (currentVolume + parseFloat(payment.amountReceived || payment.amount)).toString();
+      const currency = payment.currency || "ETH";
+      const currentVolume = parseFloat(totalVolume[currency] || "0");
+      totalVolume[currency] = (currentVolume + parseFloat(payment.amountReceived || payment.amount || payment.requestedAmount)).toString();
       
       // By status
       paymentsByStatus[payment.status] = (paymentsByStatus[payment.status] || 0) + 1;
       
       // By chain
-      paymentsByChain[payment.chainId] = (paymentsByChain[payment.chainId] || 0) + 1;
+      const chainId = payment.chainId || 1;
+      paymentsByChain[chainId] = (paymentsByChain[chainId] || 0) + 1;
       
       // Confirmation time
       if (payment.confirmedAt) {
@@ -797,9 +833,10 @@ export class CryptoPaymentGateway extends EventEmitter {
       throw new Error(`Cannot refund payment with status: ${payment.status}`);
     }
     
-    const refundAmount = params.amount || payment.amountReceived || payment.amount;
-    const chainConfig = CHAIN_CONFIGS[payment.chainId];
-    const provider = await this.getProvider(payment.chainId);
+    const refundAmount = params.amount || payment.amountReceived || payment.amount || payment.requestedAmount;
+    const network = payment.network || getNetworkFromChainId(payment.chainId || 1);
+    const chainConfig = CHAIN_CONFIGS[network];
+    const provider = await this.getProvider(network);
     const wallet = new ethers.Wallet(params.privateKey, provider);
     
     let tx: ethers.TransactionResponse;
@@ -810,11 +847,11 @@ export class CryptoPaymentGateway extends EventEmitter {
       const decimals = await tokenContract.decimals();
       const amount = ethers.parseUnits(refundAmount, decimals);
       
-      tx = await tokenContract.transfer(payment.metadata?.senderAddress || payment.paymentAddress, amount);
+      tx = await tokenContract.transfer((payment.metadata?.senderAddress as string) || payment.paymentAddress || "", amount);
     } else {
       // Native refund
       tx = await wallet.sendTransaction({
-        to: payment.metadata?.senderAddress || payment.paymentAddress,
+        to: (payment.metadata?.senderAddress as string) || payment.paymentAddress || "",
         value: ethers.parseUnits(refundAmount, chainConfig.nativeCurrency.decimals),
       });
     }
@@ -856,7 +893,8 @@ export class CryptoPaymentGateway extends EventEmitter {
   }
   
   async estimateGasFee(chainId: number): Promise<{ gasPrice: string; estimatedFee: string }> {
-    const provider = await this.getProvider(chainId);
+    const network = getNetworkFromChainId(chainId);
+    const provider = await this.getProvider(network);
     const feeData = await provider.getFeeData();
     
     const gasPrice = ethers.formatUnits(feeData.gasPrice || 0, "gwei");

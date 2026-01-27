@@ -143,6 +143,17 @@ export class IpcClient {
   private telemetryEventHandlers: Set<(payload: TelemetryEventPayload) => void>;
   // Global handlers called for any chat stream completion (used for cleanup)
   private globalChatStreamEndHandlers: Set<(chatId: number) => void>;
+  // Centralized event handler sets to avoid adding multiple ipcRenderer listeners
+  private githubFlowUpdateHandlers: Set<
+    (data: GitHubDeviceFlowUpdateData) => void
+  >;
+  private githubFlowSuccessHandlers: Set<
+    (data: GitHubDeviceFlowSuccessData) => void
+  >;
+  private githubFlowErrorHandlers: Set<
+    (data: GitHubDeviceFlowErrorData) => void
+  >;
+  private forceCloseHandlers: Set<(data: any) => void>;
   private constructor() {
     this.ipcRenderer = (window as any).electron.ipcRenderer as IpcRenderer;
     this.chatStreams = new Map();
@@ -152,6 +163,10 @@ export class IpcClient {
     this.agentConsentHandlers = new Map();
     this.telemetryEventHandlers = new Set();
     this.globalChatStreamEndHandlers = new Set();
+    this.githubFlowUpdateHandlers = new Set();
+    this.githubFlowSuccessHandlers = new Set();
+    this.githubFlowErrorHandlers = new Set();
+    this.forceCloseHandlers = new Set();
     // Set up listeners for stream events
     this.ipcRenderer.on("chat:response:chunk", (data) => {
       if (
@@ -305,6 +320,33 @@ export class IpcClient {
         for (const handler of this.telemetryEventHandlers) {
           handler(payload as TelemetryEventPayload);
         }
+      }
+    });
+
+    // Centralized GitHub Device Flow listeners
+    this.ipcRenderer.on("github:flow-update", (data) => {
+      console.log("github:flow-update", data);
+      for (const handler of this.githubFlowUpdateHandlers) {
+        handler(data as GitHubDeviceFlowUpdateData);
+      }
+    });
+    this.ipcRenderer.on("github:flow-success", (data) => {
+      console.log("github:flow-success", data);
+      for (const handler of this.githubFlowSuccessHandlers) {
+        handler(data as GitHubDeviceFlowSuccessData);
+      }
+    });
+    this.ipcRenderer.on("github:flow-error", (data) => {
+      console.log("github:flow-error", data);
+      for (const handler of this.githubFlowErrorHandlers) {
+        handler(data as GitHubDeviceFlowErrorData);
+      }
+    });
+
+    // Centralized force-close listener
+    this.ipcRenderer.on("force-close-detected", (data) => {
+      for (const handler of this.forceCloseHandlers) {
+        handler(data);
       }
     });
   }
@@ -556,8 +598,10 @@ export class IpcClient {
     appId: number,
     onOutput: (output: AppOutput) => void,
   ): Promise<void> {
-    await this.ipcRenderer.invoke("run-app", { appId });
+    // Register the output handler BEFORE invoking run-app
+    // so we don't miss any messages that arrive during startup
     this.appStreams.set(appId, { onOutput });
+    await this.ipcRenderer.invoke("run-app", { appId });
   }
 
   // Stop a running app
@@ -572,11 +616,13 @@ export class IpcClient {
     removeNodeModules?: boolean,
   ): Promise<{ success: boolean }> {
     try {
+      // Register the output handler BEFORE invoking restart-app
+      // so we don't miss any messages that arrive during startup
+      this.appStreams.set(appId, { onOutput });
       const result = await this.ipcRenderer.invoke("restart-app", {
         appId,
         removeNodeModules,
       });
-      this.appStreams.set(appId, { onOutput });
       return result;
     } catch (error) {
       showError(error);
@@ -732,40 +778,30 @@ export class IpcClient {
   public onGithubDeviceFlowUpdate(
     callback: (data: GitHubDeviceFlowUpdateData) => void,
   ): () => void {
-    const listener = (data: any) => {
-      console.log("github:flow-update", data);
-      callback(data as GitHubDeviceFlowUpdateData);
-    };
-    this.ipcRenderer.on("github:flow-update", listener);
-    // Return a function to remove the listener
+    // Use centralized handler set instead of adding new ipcRenderer listener
+    this.githubFlowUpdateHandlers.add(callback);
     return () => {
-      this.ipcRenderer.removeListener("github:flow-update", listener);
+      this.githubFlowUpdateHandlers.delete(callback);
     };
   }
 
   public onGithubDeviceFlowSuccess(
     callback: (data: GitHubDeviceFlowSuccessData) => void,
   ): () => void {
-    const listener = (data: any) => {
-      console.log("github:flow-success", data);
-      callback(data as GitHubDeviceFlowSuccessData);
-    };
-    this.ipcRenderer.on("github:flow-success", listener);
+    // Use centralized handler set instead of adding new ipcRenderer listener
+    this.githubFlowSuccessHandlers.add(callback);
     return () => {
-      this.ipcRenderer.removeListener("github:flow-success", listener);
+      this.githubFlowSuccessHandlers.delete(callback);
     };
   }
 
   public onGithubDeviceFlowError(
     callback: (data: GitHubDeviceFlowErrorData) => void,
   ): () => void {
-    const listener = (data: any) => {
-      console.log("github:flow-error", data);
-      callback(data as GitHubDeviceFlowErrorData);
-    };
-    this.ipcRenderer.on("github:flow-error", listener);
+    // Use centralized handler set instead of adding new ipcRenderer listener
+    this.githubFlowErrorHandlers.add(callback);
     return () => {
-      this.ipcRenderer.removeListener("github:flow-error", listener);
+      this.githubFlowErrorHandlers.delete(callback);
     };
   }
   // --- End GitHub Device Flow ---
@@ -1157,15 +1193,29 @@ export class IpcClient {
   }
 
   public async listLocalOllamaModels(): Promise<LocalModel[]> {
-    const response = await this.ipcRenderer.invoke("local-models:list-ollama");
-    return response?.models || [];
+    try {
+      const response = await this.ipcRenderer.invoke("local-models:list-ollama");
+      const models = response?.models || [];
+      console.log(`[IpcClient] Ollama models fetched: ${models.length} models`);
+      return models;
+    } catch (error) {
+      console.error("[IpcClient] Error fetching Ollama models:", error);
+      return [];
+    }
   }
 
   public async listLocalLMStudioModels(): Promise<LocalModel[]> {
-    const response = await this.ipcRenderer.invoke(
-      "local-models:list-lmstudio",
-    );
-    return response?.models || [];
+    try {
+      const response = await this.ipcRenderer.invoke(
+        "local-models:list-lmstudio",
+      );
+      const models = response?.models || [];
+      console.log(`[IpcClient] LM Studio models fetched: ${models.length} models`);
+      return models;
+    } catch (error) {
+      console.error("[IpcClient] Error fetching LM Studio models:", error);
+      return [];
+    }
   }
 
   // Listen for deep link events
@@ -1194,12 +1244,10 @@ export class IpcClient {
       };
     }) => void,
   ): () => void {
-    const listener = (data: any) => {
-      callback(data);
-    };
-    this.ipcRenderer.on("force-close-detected", listener);
+    // Use centralized handler set instead of adding new ipcRenderer listener
+    this.forceCloseHandlers.add(callback);
     return () => {
-      this.ipcRenderer.removeListener("force-close-detected", listener);
+      this.forceCloseHandlers.delete(callback);
     };
   }
 

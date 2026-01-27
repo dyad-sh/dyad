@@ -611,7 +611,8 @@ export class MemorySystem extends EventEmitter {
     
     if (!context) {
       // Try loading from database
-      context = await this.loadContext(chatId);
+      const loadedContext = await this.loadContext(chatId);
+      context = loadedContext ?? undefined;
       
       if (!context) {
         context = {

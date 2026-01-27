@@ -174,7 +174,7 @@ export interface InferenceResponse {
 // =============================================================================
 
 export type VectorBackend = "sqlite-vss" | "faiss" | "annoy" | "hnswlib" | "chromadb-local";
-export type DistanceMetric = "cosine" | "euclidean" | "dot_product" | "manhattan";
+export type DistanceMetric = "cosine" | "euclidean" | "dot_product" | "dot" | "manhattan";
 
 export interface VectorCollection {
   id: CollectionId;
@@ -195,6 +195,10 @@ export interface VectorCollection {
   documentCount: number;
   chunkCount: number;
   totalSize: number;
+  vectorCount?: number;
+  
+  // Chunking config
+  chunkingConfig?: ChunkingConfig;
   
   // Metadata
   metadata?: Record<string, unknown>;
@@ -206,10 +210,12 @@ export interface VectorDocument {
   id: string;
   collectionId: CollectionId;
   content: string;
+  title?: string;
   metadata?: Record<string, unknown>;
+  chunkCount?: number;
   
   // Source info
-  source?: {
+  source?: string | {
     type: "file" | "url" | "text" | "api";
     path?: string;
     url?: string;
@@ -254,6 +260,7 @@ export interface VectorSearchRequest {
   // Filtering
   filter?: Record<string, unknown>;
   minScore?: number;
+  threshold?: number;
   
   // Options
   includeMetadata?: boolean;
@@ -269,16 +276,20 @@ export interface VectorSearchResult {
   score: number;
   metadata?: Record<string, unknown>;
   embedding?: number[];
+  source?: string;
 }
 
 export interface RAGRequest {
   collectionIds: CollectionId[];
+  collectionId?: CollectionId;
   query: string;
   modelId: ModelId;
   
   // Retrieval
   topK?: number;
   minScore?: number;
+  threshold?: number;
+  filter?: Record<string, unknown>;
   rerank?: boolean;
   
   // Generation
@@ -295,6 +306,13 @@ export interface RAGResponse {
   answer: string;
   sources: VectorSearchResult[];
   modelResponse: InferenceResponse;
+  citations?: {
+    documentId: string;
+    chunkId: string;
+    content: string;
+    score: number;
+    source?: string;
+  }[];
 }
 
 // =============================================================================
@@ -303,10 +321,12 @@ export interface RAGResponse {
 
 export type ComponentType = 
   | "layout" | "container" | "grid" | "flex" | "stack"
+  | "row" | "column"
   | "text" | "heading" | "paragraph" | "link" | "code"
   | "button" | "input" | "textarea" | "select" | "checkbox" | "radio" | "switch" | "slider"
   | "form" | "table" | "list" | "card" | "modal" | "drawer" | "tabs" | "accordion"
   | "image" | "video" | "audio" | "file" | "icon"
+  | "badge" | "avatar" | "divider" | "progress" | "spinner"
   | "chart" | "graph" | "map"
   | "custom" | "agent" | "workflow";
 
@@ -350,22 +370,36 @@ export interface ComponentStyles {
   height?: string;
   minWidth?: string;
   maxWidth?: string;
+  minHeight?: string;
+  maxHeight?: string;
   
   // Appearance
   backgroundColor?: string;
   color?: string;
   borderRadius?: string;
   border?: string;
+  borderTop?: string;
+  borderBottom?: string;
+  borderLeft?: string;
+  borderRight?: string;
   boxShadow?: string;
+  opacity?: string;
   
   // Typography
   fontSize?: string;
   fontWeight?: string;
+  fontFamily?: string;
   textAlign?: string;
   lineHeight?: string;
+  textDecoration?: string;
   
-  // Custom
-  custom?: Record<string, string>;
+  // Positioning
+  overflow?: string;
+  cursor?: string;
+  borderCollapse?: string;
+  
+  // Custom - allows any CSS property
+  [key: string]: string | Record<string, string> | undefined;
 }
 
 export interface ResponsiveStyles {
@@ -406,12 +440,17 @@ export interface AppProject {
   id: string;
   name: string;
   description?: string;
+  version?: string;
   
   // Pages
   pages: AppPage[];
   
   // Global
-  globalStyles: string;
+  globalStyles: string | {
+    fontFamily?: string;
+    colors?: Record<string, string>;
+    spacing?: Record<string, string>;
+  };
   globalVariables: Record<string, unknown>;
   
   // Data
@@ -438,6 +477,8 @@ export interface AppPage {
   components: AppComponent[];
   variables: Record<string, unknown>;
   onLoad?: EventAction[];
+  metadata?: Record<string, unknown>;
+  updatedAt?: number;
 }
 
 export interface ApiEndpoint {
@@ -475,7 +516,10 @@ export interface BuildConfig {
 // =============================================================================
 
 export type ContractLanguage = "solidity" | "vyper" | "ink" | "move" | "rust";
-export type ContractTemplate = 
+
+// Note: ContractTemplateType is the string enum for template selection
+// ContractTemplate interface is defined later in the file with full details
+export type ContractTemplateType = 
   | "erc20" | "erc721" | "erc1155" | "erc4626"
   | "marketplace" | "auction" | "crowdfund"
   | "dao" | "governor" | "timelock"
@@ -487,7 +531,7 @@ export interface SmartContract {
   name: string;
   description?: string;
   language: ContractLanguage;
-  template?: ContractTemplate;
+  template?: ContractTemplateType;
   
   // Source
   sourceCode: string;
@@ -499,6 +543,7 @@ export interface SmartContract {
   optimizerRuns?: number;
   compiled: boolean;
   compiledAt?: number;
+  lastCompiled?: number;
   
   // Deployment
   deployments: ContractDeployment[];
@@ -512,13 +557,16 @@ export interface SmartContract {
   updatedAt: number;
 }
 
-export interface ContractABI {
-  name: string;
+export interface ContractABIEntry {
+  name?: string;
   type: "function" | "event" | "constructor" | "fallback" | "receive";
-  inputs: ABIParam[];
+  inputs?: ABIParam[];
   outputs?: ABIParam[];
   stateMutability?: "pure" | "view" | "nonpayable" | "payable";
 }
+
+// ContractABI is an array of ABI entries
+export type ContractABI = ContractABIEntry[];
 
 export interface ABIParam {
   name: string;
@@ -538,6 +586,7 @@ export interface ContractDeployment {
   constructorArgs: unknown[];
   deployedAt: number;
   blockNumber: number;
+  verification?: ContractVerification;
 }
 
 export interface ContractInteraction {
@@ -565,42 +614,68 @@ export interface ContractTestCase {
 
 export type PipelineStage = "checkout" | "install" | "lint" | "test" | "build" | "deploy" | "notify";
 export type PipelineTrigger = "manual" | "push" | "schedule" | "webhook" | "file_change";
-export type PipelineStatus = "idle" | "queued" | "running" | "success" | "failed" | "cancelled";
+export type PipelineStatus = "idle" | "queued" | "running" | "success" | "failed" | "cancelled" | "pending" | "skipped";
+
+export interface PipelineStep {
+  id: string;
+  name: string;
+  type?: PipelineStage | "build" | "test" | "deploy" | "script" | "approval";
+  command?: string;
+  windowsCommand?: string;
+  script?: string;
+  continueOnError?: boolean;
+  condition?: string;
+  timeout?: number;
+  retries?: number;
+  env?: Record<string, string>;
+  environment?: Record<string, string>;
+  dependsOn?: string[];
+}
 
 export interface Pipeline {
   id: PipelineId;
   name: string;
   description?: string;
-  projectId: string;
+  projectId?: string;
+  
+  // Steps (used by implementation)
+  steps: PipelineStep[];
   
   // Triggers
   triggers: PipelineTriggerConfig[];
   
-  // Stages
-  stages: PipelineStageConfig[];
-  
   // Environment
-  environment: Record<string, string>;
-  secrets: string[];
+  environment?: Record<string, string>;
+  env: Record<string, string>;  // Alias for compatibility
+  secrets?: string[];
   
   // Config
-  timeout: number;
-  concurrent: boolean;
+  timeout?: number;
+  concurrent?: boolean;
+  enabled: boolean;
+  workingDirectory: string;
+  
+  // Artifacts
+  artifacts?: ArtifactConfig[];
   
   // Stats
   lastRunAt?: number;
+  lastRunNumber?: number;
   lastStatus?: PipelineStatus;
-  successCount: number;
-  failureCount: number;
+  successCount?: number;
+  failureCount?: number;
   
   createdAt: number;
   updatedAt: number;
 }
 
 export interface PipelineTriggerConfig {
+  id?: string;
   type: PipelineTrigger;
+  enabled?: boolean;
   branch?: string;
   paths?: string[];
+  patterns?: string[];
   schedule?: string;
   webhookSecret?: string;
 }
@@ -623,26 +698,54 @@ export interface PipelineStageConfig {
   };
   
   // Artifacts
-  artifacts?: {
-    paths: string[];
-    expireIn?: string;
-  };
+  artifacts?: ArtifactConfig;
   
   // Parallel
   parallel?: boolean;
   matrix?: Record<string, string[]>;
 }
 
+export interface ArtifactConfig {
+  name?: string;
+  paths: string[];
+  expireIn?: string;
+}
+
+export interface StepResult {
+  stepId: string;
+  name: string;
+  status: PipelineStatus;
+  startedAt?: number;
+  finishedAt?: number;
+  duration?: number;
+  logs: string;
+  exitCode?: number;
+  error?: string;
+  skippedReason?: string;
+  output?: string;
+  logFile?: string;
+}
+
+export interface PipelineRunArtifact {
+  name: string;
+  path: string;
+  size: number;
+}
+
 export interface PipelineRun {
   id: string;
   pipelineId: PipelineId;
+  runNumber: number;
   status: PipelineStatus;
   trigger: PipelineTrigger;
   triggeredBy?: string;
   
   // Progress
-  currentStage?: string;
-  stageResults: StageResult[];
+  currentStep?: string;
+  steps: StepResult[];
+  
+  // Environment
+  env: Record<string, string>;
   
   // Timing
   startedAt: number;
@@ -650,18 +753,11 @@ export interface PipelineRun {
   duration?: number;
   
   // Artifacts
-  artifacts: string[];
+  artifacts: PipelineRunArtifact[];
   logs: string;
-}
-
-export interface StageResult {
-  name: string;
-  status: PipelineStatus;
-  startedAt: number;
-  finishedAt?: number;
-  duration?: number;
-  logs: string;
-  exitCode?: number;
+  
+  // Errors
+  error?: string;
 }
 
 // =============================================================================
@@ -669,8 +765,9 @@ export interface StageResult {
 // =============================================================================
 
 export type PaymentNetwork = "ethereum" | "polygon" | "arbitrum" | "optimism" | "base" | "solana" | "bitcoin";
-export type PaymentStatus = "pending" | "confirming" | "confirmed" | "failed" | "expired" | "refunded";
+export type PaymentStatus = "pending" | "confirming" | "confirmed" | "failed" | "expired" | "refunded" | "cancelled";
 export type PaymentType = "one_time" | "subscription" | "escrow" | "streaming";
+export type PaymentMethod = "crypto" | "fiat" | "lightning" | "layer2";
 
 export interface PaymentGatewayConfig {
   enabledNetworks: PaymentNetwork[];
@@ -678,6 +775,8 @@ export interface PaymentGatewayConfig {
   
   // Wallet
   receiverWallet: string;
+  merchantWallet?: string;
+  merchantId?: string;
   
   // Callbacks
   webhookUrl?: string;
@@ -687,6 +786,11 @@ export interface PaymentGatewayConfig {
   autoConvert?: boolean;
   convertTo?: string;
   minConfirmations: number;
+  confirmationsRequired?: number;
+  
+  // Additional
+  supportedChains?: PaymentNetwork[];
+  customRpcUrls?: Record<string, string>;
 }
 
 export interface TokenConfig {
@@ -737,18 +841,39 @@ export interface Payment {
   requestedAmount: string;
   paidAmount?: string;
   feeAmount?: string;
+  amount?: string;
+  amountReceived?: string;
+  
+  // Currency
+  currency?: string;
   
   // Addresses
   fromAddress?: string;
   toAddress: string;
+  paymentAddress?: string;
+  tokenAddress?: string;
+  
+  // Chain/Network info
+  chainId?: number;
+  network?: PaymentNetwork;
   
   // Timing
   createdAt: number;
+  updatedAt?: number;
   paidAt?: number;
   confirmedAt?: number;
+  expiresAt?: number;
+  
+  // Refund info
+  refundedAmount?: string;
+  refundTransactionHash?: string;
+  refundReason?: string;
   
   // Metadata
   metadata?: Record<string, unknown>;
+  merchantId?: string;
+  merchantOrderId?: string;
+  callbackUrl?: string;
 }
 
 export interface PaymentInvoice {
@@ -781,12 +906,35 @@ export interface InvoiceItem {
   total: string;
 }
 
+export interface PaymentStream {
+  id: string;
+  sender: string;
+  receiver: string;
+  token: string;
+  flowRate: string;
+  startTime: number;
+  endTime?: number;
+  status: "active" | "paused" | "cancelled" | "completed";
+  totalAmount: string;
+  claimedAmount: string;
+}
+
+export interface Webhook {
+  id: string;
+  url: string;
+  events: string[];
+  secret?: string;
+  active: boolean;
+  createdAt: number;
+  lastTriggeredAt?: number;
+}
+
 // =============================================================================
 // COLLABORATIVE WORKSPACE (CRDT)
 // =============================================================================
 
 export type ConflictResolution = "last_write_wins" | "first_write_wins" | "merge" | "manual";
-export type SyncStatus = "synced" | "syncing" | "pending" | "conflict" | "offline";
+// SyncStatus is defined later as an interface to support both string literals and object format
 
 export interface Workspace {
   id: WorkspaceId;
@@ -795,18 +943,21 @@ export interface Workspace {
   
   // Ownership
   ownerId: string;
-  members: WorkspaceMember[];
+  members?: WorkspaceMember[];
+  collaborators?: Collaborator[];
   
   // Documents
   documents: CollaborativeDocument[];
   
   // Sync
-  syncEnabled: boolean;
+  syncEnabled?: boolean;
   lastSyncAt?: number;
-  syncStatus: SyncStatus;
+  syncStatus?: SyncStatus;
   
   // Config
-  conflictResolution: ConflictResolution;
+  conflictResolution?: ConflictResolution;
+  isPublic?: boolean;
+  metadata?: Record<string, unknown>;
   
   createdAt: number;
   updatedAt: number;
@@ -823,25 +974,33 @@ export interface CollaborativeDocument {
   id: string;
   workspaceId: WorkspaceId;
   name: string;
-  type: "text" | "json" | "code" | "canvas" | "table";
+  type: "text" | "json" | "code" | "canvas" | "table" | "markdown";
   
   // Content (CRDT state)
   content: unknown;
-  crdtState?: Uint8Array;
+  crdtState?: Uint8Array | CRDTState;
   
   // Version
   version: number;
-  localVersion: number;
+  localVersion?: number;
   
   // Cursors
-  cursors: UserCursor[];
+  cursors?: UserCursor[];
   
   // History
-  history: DocumentChange[];
+  history?: DocumentChange[];
+  operations?: DocumentOperation[];
   
   // Sync
-  syncStatus: SyncStatus;
-  pendingChanges: DocumentChange[];
+  syncStatus?: SyncStatus;
+  pendingChanges?: DocumentChange[];
+  
+  // Comments
+  comments?: Comment[];
+  
+  // Metadata
+  lastEditedBy?: string;
+  metadata?: Record<string, unknown>;
   
   createdAt: number;
   updatedAt: number;
@@ -875,7 +1034,7 @@ export type CRDTOperation =
 // =============================================================================
 
 export type FineTuneMethod = "lora" | "qlora" | "full" | "adapter" | "prefix";
-export type FineTuneStatus = "pending" | "preparing" | "training" | "evaluating" | "completed" | "failed";
+export type FineTuneStatus = "pending" | "preparing" | "running" | "training" | "evaluating" | "completed" | "failed" | "cancelled";
 
 export interface FineTuneJob {
   id: FineTuneJobId;
@@ -884,6 +1043,8 @@ export interface FineTuneJob {
   
   // Base model
   baseModelId: ModelId;
+  baseModel?: string;
+  baseModelPath?: string;
   outputModelId?: ModelId;
   
   // Method
@@ -895,11 +1056,16 @@ export interface FineTuneJob {
   
   // Hyperparameters
   hyperparameters: FineTuneHyperparameters;
+  config?: TrainingConfig;
   
   // Status
   status: FineTuneStatus;
-  progress: number;
+  progress: number | TrainingProgress;
   currentEpoch?: number;
+  error?: string;
+  
+  // Output
+  outputPath?: string;
   
   // Metrics
   trainingMetrics: TrainingMetrics[];
@@ -916,6 +1082,9 @@ export interface FineTuneJob {
   // Timing
   startedAt?: number;
   completedAt?: number;
+  
+  // Metadata
+  metadata?: Record<string, unknown>;
   
   createdAt: number;
   updatedAt: number;
@@ -1001,10 +1170,10 @@ export interface MediaGenerationJob {
   id: MediaJobId;
   type: MediaType;
   model: string;
-  status: "pending" | "processing" | "completed" | "failed";
+  status: "pending" | "processing" | "running" | "completed" | "failed" | "cancelled";
   
   // Input
-  prompt: string;
+  prompt?: string;
   negativePrompt?: string;
   inputMedia?: string;
   
@@ -1018,6 +1187,9 @@ export interface MediaGenerationJob {
   progress: number;
   currentStep?: number;
   totalSteps?: number;
+  
+  // Error
+  error?: string;
   
   // Timing
   startedAt?: number;
@@ -1053,7 +1225,7 @@ export interface MediaGenerationConfig {
 
 export interface GeneratedMedia {
   id: string;
-  jobId: MediaJobId;
+  jobId?: MediaJobId;
   type: MediaType;
   path: string;
   url?: string;
@@ -1062,12 +1234,14 @@ export interface GeneratedMedia {
   width?: number;
   height?: number;
   duration?: number;
-  size: number;
-  format: string;
+  size?: number;
+  format?: string;
   
   // Generation info
-  seed: number;
-  prompt: string;
+  seed?: number;
+  prompt?: string;
+  model?: string;
+  parameters?: Record<string, unknown>;
   
   createdAt: number;
 }
@@ -1120,14 +1294,14 @@ export type AnalyticsEventType =
   | "agent_run" | "workflow_run" | "model_inference" | "media_generation";
 
 export interface AnalyticsEvent {
-  id: AnalyticsId;
-  type: AnalyticsEventType;
-  name: string;
+  id: AnalyticsId | string;
+  type?: AnalyticsEventType;
+  name?: string;
   
   // Context
   sessionId: string;
   userId?: string;
-  anonymousId: string;
+  anonymousId?: string;
   
   // Page
   page?: {
@@ -1137,14 +1311,21 @@ export interface AnalyticsEvent {
   };
   
   // Properties
-  properties: Record<string, unknown>;
+  properties?: Record<string, unknown>;
+  
+  // Legacy / simplified event tracking
+  category?: string;
+  action?: string;
+  label?: string;
+  value?: number;
+  metadata?: Record<string, unknown>;
   
   // Timing
   timestamp: number;
   duration?: number;
   
   // Device
-  device: DeviceInfo;
+  device?: DeviceInfo;
   
   // Geo
   geo?: GeoInfo;
@@ -1189,7 +1370,24 @@ export interface AnalyticsQuery {
 export type AnalyticsMetric = 
   | "count" | "unique_users" | "unique_sessions"
   | "avg_duration" | "total_duration"
-  | "sum" | "avg" | "min" | "max";
+  | "sum" | "avg" | "min" | "max"
+  // Also used as an interface-like record in self_hosted_analytics
+  | AnalyticsMetricRecord;
+
+export interface AnalyticsMetricRecord {
+  id: string;
+  name: string;
+  value: number;
+  tags?: Record<string, string>;
+  interval: "minute" | "hour" | "day" | "week" | "month";
+  periodStart: number;
+  periodEnd: number;
+  count: number;
+  sum: number;
+  min: number;
+  max: number;
+  avg: number;
+}
 
 export interface AnalyticsFilter {
   field: string;
@@ -1260,4 +1458,506 @@ export interface SovereignStackConfig {
   // Analytics
   analyticsEnabled: boolean;
   analyticsRetentionDays: number;
+}
+// =============================================================================
+// ADDITIONAL EXPORTS FOR COMPATIBILITY
+// =============================================================================
+
+// Project types
+export type ProjectId = Brand<string, "ProjectId">;
+export type AppId = Brand<string, "AppId">;
+
+// Model download progress
+export interface ModelDownloadProgress {
+  modelId: ModelId;
+  progress: number;
+  downloadedBytes: number;
+  totalBytes: number;
+  speed: number;
+  eta: number;
+  status: "pending" | "downloading" | "extracting" | "complete" | "error";
+  error?: string;
+}
+
+// Inference types
+export interface InferenceOptions {
+  temperature?: number;
+  maxTokens?: number;
+  topP?: number;
+  topK?: number;
+  repeatPenalty?: number;
+  stop?: string[];
+  stream?: boolean;
+}
+
+export interface InferenceResult {
+  text: string;
+  finishReason: "stop" | "length" | "tool_call";
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+  toolCalls?: ToolCall[];
+}
+
+// Document types
+export interface Document {
+  id: string;
+  content: string;
+  metadata?: Record<string, unknown>;
+  embedding?: number[];
+}
+
+// Search types
+export interface SearchResult {
+  document: Document;
+  score: number;
+  highlights?: string[];
+}
+
+// RAG types
+export interface RAGOptions {
+  topK?: number;
+  threshold?: number;
+  filter?: Record<string, unknown>;
+  rerank?: boolean;
+}
+
+export interface RAGResult {
+  answer: string;
+  sources: SearchResult[];
+  context: string;
+}
+
+// Component types
+export interface ComponentProperty {
+  name: string;
+  type: "string" | "number" | "boolean" | "object" | "array" | "function";
+  default?: unknown;
+  required?: boolean;
+  description?: string;
+}
+
+// Export types
+export type AppExportFormat = "react" | "vue" | "svelte" | "html" | "react-native";
+
+export interface AppExportOptions {
+  format: AppExportFormat;
+  outputDir: string;
+  minify?: boolean;
+  sourceMaps?: boolean;
+}
+
+export interface ExportOptions extends AppExportOptions {}
+
+export interface ExportResult {
+  success: boolean;
+  outputPath: string;
+  files: string[];
+  errors?: string[];
+}
+
+// Contract types
+export interface ContractTemplate {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  language: ContractLanguage;
+  code: string;
+  parameters: ContractParameter[];
+  dependencies: string[];
+}
+
+export interface ContractParameter {
+  name: string;
+  type: string;
+  description: string;
+  default?: string;
+}
+
+export interface CompilationResult {
+  success: boolean;
+  bytecode?: string;
+  abi?: ContractABI;
+  errors?: CompilationError[];
+  warnings?: string[];
+}
+
+export interface CompilationError {
+  severity: "error" | "warning";
+  message: string;
+  line?: number;
+  column?: number;
+}
+
+export interface ContractVerification {
+  verified: boolean;
+  explorerUrl?: string;
+  contractAddress: string;
+  network: number;
+  verifiedAt?: number;
+}
+
+export interface DeploymentResult {
+  success: boolean;
+  address?: string;
+  transactionHash?: string;
+  blockNumber?: number;
+  gasUsed?: number;
+  error?: string;
+}
+
+// Pipeline types (merged with main PipelineStep interface above)
+// Extending PipelineStep with additional step types
+// Main interface is defined in LOCAL CI/CD PIPELINE section
+
+export interface BuildArtifact {
+  id: string;
+  name: string;
+  path: string;
+  size: number;
+  checksum: string;
+  createdAt: number;
+}
+
+// Payment types
+export interface PaymentConfig {
+  gateway: "stripe" | "crypto" | "custom";
+  apiKey?: string;
+  webhookSecret?: string;
+  currencies: string[];
+}
+
+export interface Subscription {
+  id: string;
+  customerId: string;
+  planId: string;
+  planName?: string;
+  amount?: string;
+  currency?: string;
+  chainId?: number;
+  interval?: "daily" | "weekly" | "monthly" | "yearly";
+  status: "active" | "canceled" | "past_due" | "paused";
+  currentPeriodStart: number;
+  currentPeriodEnd: number;
+  cancelAtPeriodEnd: boolean;
+  nextPaymentDate?: number;
+  payments?: string[];
+  merchantId?: string;
+  subscriberAddress?: string;
+  metadata?: Record<string, unknown>;
+  createdAt?: number;
+  cancelledAt?: number;
+  updatedAt?: number;
+}
+
+export interface PaymentWebhook {
+  id: string;
+  event: string;
+  payload: Record<string, unknown>;
+  signature: string;
+  receivedAt: number;
+  processed: boolean;
+}
+
+export interface PaymentAnalytics {
+  totalRevenue: number;
+  activeSubscriptions: number;
+  churnRate: number;
+  averageOrderValue: number;
+  revenueByPeriod: Record<string, number>;
+}
+
+// Collaboration types
+export interface DocumentOperation {
+  type: "insert" | "delete" | "retain" | "format";
+  position?: number;
+  content?: string;
+  length?: number;
+  attributes?: Record<string, unknown>;
+  // CRDT-specific fields
+  id?: string;
+  char?: string;
+  afterId?: string;
+  timestamp?: string | number;
+}
+
+export interface CRDTState {
+  version?: number;
+  operations?: DocumentOperation[];
+  snapshot?: string;
+  nodes?: Record<string, unknown>;
+  head?: string;
+  timestamp?: string;
+}
+
+export interface Collaborator {
+  id: string;
+  name: string;
+  email?: string;
+  avatar?: string;
+  role: "owner" | "editor" | "viewer";
+  color?: string;
+  joinedAt?: number;
+  online?: boolean;
+}
+
+export interface PresenceInfo {
+  id?: string;
+  collaborator: Collaborator;
+  cursor?: { line: number; column: number };
+  selection?: { start: number; end: number };
+  lastActive: number;
+  lastActiveAt?: number;
+}
+
+export interface Comment {
+  id: string;
+  content: string;
+  author: Collaborator;
+  createdAt: number;
+  updatedAt?: number;
+  resolved: boolean;
+  resolvedAt?: number;
+  resolvedBy?: string;
+  replies?: Comment[];
+  anchor?: { start: number; end: number };
+}
+
+export interface SyncStatus {
+  status?: "synced" | "syncing" | "pending" | "error" | "conflict" | "offline";
+  synced?: boolean;
+  pendingChanges?: number;
+  pendingOperations?: number;
+  lastSyncedAt?: number;
+  error?: string;
+}
+
+// Fine-tuning types
+export interface TrainingDataset {
+  id: string;
+  name: string;
+  description?: string;
+  path: string;
+  format: "jsonl" | "csv" | "parquet" | "custom" | "alpaca" | "sharegpt" | "oasst";
+  sampleCount?: number;
+  trainSamples?: number;
+  validationSamples?: number;
+  validationSplit?: number;
+  statistics?: {
+    totalSamples: number;
+    avgInputLength: number;
+    avgOutputLength: number;
+    maxInputLength: number;
+    maxOutputLength: number;
+  };
+  metadata?: Record<string, unknown>;
+  createdAt?: number;
+}
+
+export interface TrainingConfig {
+  baseModel: ModelId;
+  dataset: TrainingDataset;
+  hyperparameters: FineTuneHyperparameters;
+  outputDir: string;
+  
+  // Convenience aliases for hyperparameters (for flat access in code)
+  batchSize?: number;
+  epochs?: number;
+  learningRate?: number;
+  warmupSteps?: number;
+  maxGradNorm?: number;
+  gradientAccumulationSteps?: number;
+  
+  // LoRA settings
+  loraR?: number;
+  loraAlpha?: number;
+  loraDropout?: number;
+  targetModules?: string[];
+  
+  // QLoRA settings  
+  doublequant?: boolean;
+  nf4?: boolean;
+  
+  // Optimization
+  optimizer?: string;
+  scheduler?: string;
+}
+
+export interface TrainingProgress {
+  epoch: number;
+  step: number;
+  totalSteps: number;
+  loss: number;
+  learningRate: number;
+  eta: number;
+  currentStep?: number;
+  currentEpoch?: number;
+  totalEpochs?: number;
+  elapsedTime?: number;
+}
+
+export interface ModelAdapter {
+  id: string;
+  name: string;
+  baseModel: ModelId;
+  type: "lora" | "qlora" | "full";
+  path: string;
+  rank?: number;
+  alpha?: number;
+  method?: string;
+  config?: TrainingConfig;
+}
+
+export interface EvaluationResult {
+  id?: string;
+  modelPath?: string;
+  adapterId?: string;
+  datasetId?: string;
+  completedAt?: number;
+  metrics: EvaluationMetrics;
+  samples?: { input: string; expected: string; actual: string; score: number }[];
+}
+
+// Media types
+export type MediaGenerationId = MediaJobId;
+
+export interface ImageGenerationJob extends MediaGenerationJob {
+  type: "image";
+  // Flat config properties for convenience
+  width?: number;
+  height?: number;
+  steps?: number;
+  cfgScale?: number;
+  sampler?: string;
+  seed?: number;
+  batchSize?: number;
+  scheduler?: string;
+  clipSkip?: number;
+  loraModels?: Array<{ name: string; weight: number }>;
+  controlnet?: { model: string; image: string; weight: number };
+  img2img?: { image: string; denoisingStrength: number };
+  inpaint?: { image: string; mask: string };
+  metadata?: Record<string, unknown>;
+}
+
+export interface AudioGenerationJob extends MediaGenerationJob {
+  type: "audio";
+  // Audio-specific properties
+  audioType?: "tts" | "music" | "sound" | "transcribe";
+  audioFile?: string;
+  text?: string;
+  voice?: string;
+  language?: string;
+  transcript?: string;
+  output?: string;
+  duration?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface VideoGenerationJob extends MediaGenerationJob {
+  type: "video";
+  // Video-specific properties
+  image?: string;
+  frames?: number;
+  fps?: number;
+  width?: number;
+  height?: number;
+  seed?: number;
+  output?: string;
+}
+
+export interface MediaModel {
+  id: string;
+  name: string;
+  type: "image" | "audio" | "video" | "multimodal";
+  backend?: string;
+  capabilities: string[];
+  size?: string;
+  requirements?: { vram: string; platform: string[] };
+  localPath?: string;
+}
+
+// Analytics dashboard types
+export interface Dashboard {
+  id: string;
+  name: string;
+  description?: string;
+  widgets: DashboardWidget[];
+  layout?: { columns: number; rows: number } | Record<string, unknown>;
+  refreshInterval?: number;
+  isDefault?: boolean;
+  metadata?: Record<string, unknown>;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+export interface DashboardWidget {
+  id: string;
+  type: "chart" | "metric" | "table" | "map" | "text";
+  title: string;
+  query?: AnalyticsQuery;
+  position: { x: number; y: number; w?: number; h?: number };
+  size?: { width: number; height: number };
+  config?: Record<string, unknown>;
+  // Widget-specific fields for simplified usage
+  metric?: string;
+  timeRange?: TimeRange;
+  chartType?: "line" | "bar" | "area" | "pie";
+  groupBy?: string;
+}
+
+export interface TimeRange {
+  start: number;
+  end: number;
+  preset?: "today" | "yesterday" | "last7days" | "last30days" | "thisMonth" | "lastMonth";
+}
+
+export interface AggregatedData {
+  dimensions?: Record<string, string>;
+  metrics?: Record<string, number>;
+  // Used by self_hosted_analytics aggregation
+  periodStart?: number;
+  periodEnd?: number;
+  count?: number;
+  values?: Record<string, number>;
+}
+
+export interface UserBehavior {
+  userId?: string;
+  sessionId?: string;
+  sessions?: number;
+  pageViews?: number;
+  avgSessionDuration?: number;
+  bounceRate?: number;
+  lastActive?: number;
+  // Used by self_hosted_analytics
+  feature?: string;
+  usageCount?: number;
+  totalDuration?: number;
+  lastUsed?: number;
+  firstUsed?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface PerformanceMetric {
+  name: string;
+  value: number;
+  unit?: string;
+  trend?: "up" | "down" | "stable";
+  percentChange?: number;
+  context?: Record<string, unknown>;
+  timestamp?: number;
+}
+
+// Vector store additional types
+export type VectorStoreBackend = VectorBackend;
+
+export interface ChunkingConfig {
+  strategy: "fixed" | "sentence" | "paragraph" | "semantic" | "code" | "markdown";
+  chunkSize: number;
+  chunkOverlap: number;
+  separators?: string[];
 }

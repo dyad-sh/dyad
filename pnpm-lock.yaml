@@ -271,7 +271,7 @@ importers:
         version: 16.6.1
       drizzle-orm:
         specifier: ^0.45.1
-        version: 0.45.1(@neondatabase/serverless@1.0.2)(@opentelemetry/api@1.9.0)(@types/better-sqlite3@7.6.13)(@types/pg@8.16.0)(@xata.io/client@0.28.4(typescript@5.9.3))(better-sqlite3@12.5.0)(gel@2.2.0)(mysql2@3.15.0)(pg@8.12.0)(sqlite3@5.1.7)
+        version: 0.45.1(@neondatabase/serverless@1.0.2)(@opentelemetry/api@1.9.0)(@types/better-sqlite3@7.6.13)(@types/pg@8.16.0)(@xata.io/client@0.28.4(typescript@5.9.3))(better-sqlite3@12.5.0)(gel@2.2.0)(mysql2@3.15.0)(pg@8.12.0)(sql.js@1.13.0)(sqlite3@5.1.7)
       dugite:
         specifier: ^3.0.0
         version: 3.0.0
@@ -474,6 +474,9 @@ importers:
       '@types/glob':
         specifier: ^8.1.0
         version: 8.1.0
+      '@types/jsonwebtoken':
+        specifier: ^9.0.10
+        version: 9.0.10
       '@types/kill-port':
         specifier: ^2.0.3
         version: 2.0.3
@@ -531,6 +534,9 @@ importers:
       rimraf:
         specifier: ^6.0.1
         version: 6.1.2
+      sql.js:
+        specifier: ^1.13.0
+        version: 1.13.0
       typescript:
         specifier: ^5.8.3
         version: 5.9.3
@@ -5652,6 +5658,9 @@ packages:
 
   '@types/jsonfile@6.1.4':
     resolution: {integrity: sha512-D5qGUYwjvnNNextdU59/+fI+spnwtTFmyQP0h+PfIOSkNfpU6AOICUOkm4i0OnSk+NyjdPJrxCDro0sJsWlRpQ==}
+
+  '@types/jsonwebtoken@9.0.10':
+    resolution: {integrity: sha512-asx5hIG9Qmf/1oStypjanR7iKTv0gXQ1Ov/jfrX6kS/EO0OFni8orbmGCn0672NHR3kXHwpAwR+B368ZGN/2rA==}
 
   '@types/keyv@3.1.4':
     resolution: {integrity: sha512-BQ5aZNSCpj7D6K2ksrRCTmKRLEpnPvWDiLPfoGyhZ++8YtiK9d/3DBKPJgry359X/P1PfruyYwvnvwFjuEiEIg==}
@@ -11990,6 +11999,9 @@ packages:
 
   sprintf-js@1.1.3:
     resolution: {integrity: sha512-Oo+0REFV59/rz3gfJNKQiBlwfHaSESl1pcGyABQsnnIfWOFt6JNj5gCog2U6MLZ//IGYD+nA8nI+mTShREReaA==}
+
+  sql.js@1.13.0:
+    resolution: {integrity: sha512-RJbVP1HRDlUUXahJ7VMTcu9Rm1Nzw+EBpoPr94vnbD4LwR715F3CcxE2G2k45PewcaZ57pjetYa+LoSJLAASgA==}
 
   sqlite3@5.1.7:
     resolution: {integrity: sha512-GGIyOiFaG+TUra3JIfkI/zGP8yZYLPQ0pl1bH+ODjiX57sPhrLU5sQJn1y9bDKZUFYkX1crlrPfSYt0BKKdkog==}
@@ -20745,6 +20757,11 @@ snapshots:
     dependencies:
       '@types/node': 22.19.3
 
+  '@types/jsonwebtoken@9.0.10':
+    dependencies:
+      '@types/ms': 2.1.0
+      '@types/node': 22.19.3
+
   '@types/keyv@3.1.4':
     dependencies:
       '@types/node': 22.19.3
@@ -22656,7 +22673,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  drizzle-orm@0.45.1(@neondatabase/serverless@1.0.2)(@opentelemetry/api@1.9.0)(@types/better-sqlite3@7.6.13)(@types/pg@8.16.0)(@xata.io/client@0.28.4(typescript@5.9.3))(better-sqlite3@12.5.0)(gel@2.2.0)(mysql2@3.15.0)(pg@8.12.0)(sqlite3@5.1.7):
+  drizzle-orm@0.45.1(@neondatabase/serverless@1.0.2)(@opentelemetry/api@1.9.0)(@types/better-sqlite3@7.6.13)(@types/pg@8.16.0)(@xata.io/client@0.28.4(typescript@5.9.3))(better-sqlite3@12.5.0)(gel@2.2.0)(mysql2@3.15.0)(pg@8.12.0)(sql.js@1.13.0)(sqlite3@5.1.7):
     optionalDependencies:
       '@neondatabase/serverless': 1.0.2
       '@opentelemetry/api': 1.9.0
@@ -22667,6 +22684,7 @@ snapshots:
       gel: 2.2.0
       mysql2: 3.15.0
       pg: 8.12.0
+      sql.js: 1.13.0
       sqlite3: 5.1.7
 
   duck@0.1.12:
@@ -28945,6 +28963,8 @@ snapshots:
   sprintf-js@1.0.3: {}
 
   sprintf-js@1.1.3: {}
+
+  sql.js@1.13.0: {}
 
   sqlite3@5.1.7:
     dependencies:

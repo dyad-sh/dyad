@@ -35,7 +35,7 @@ import {
   Loader2,
   Volume2,
   VolumeX,
-  Waveform,
+  AudioWaveform,
   Download,
   Check,
   AlertCircle,
@@ -292,7 +292,7 @@ export function VoiceInputButton({
 
 interface VoiceSettingsProps {
   config: ReturnType<typeof useVoiceInput>["config"];
-  onUpdate: (updates: Partial<NonNullable<typeof config>>) => Promise<void>;
+  onUpdate: (updates: Partial<NonNullable<ReturnType<typeof useVoiceInput>["config"]>>) => Promise<void>;
   onDownloadModel: (model: "tiny" | "base" | "small" | "medium" | "large") => Promise<void>;
   installedModels: { whisper: string[]; tts: string[] } | null;
 }

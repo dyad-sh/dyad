@@ -1,7 +1,6 @@
 import { db } from "../../db";
 import { mcpServers } from "../../db/schema";
 import { experimental_createMCPClient } from "@ai-sdk/mcp";
-import type { Awaited } from "@ai-sdk/provider-utils";
 import { eq } from "drizzle-orm";
 
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";

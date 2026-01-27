@@ -42,7 +42,7 @@ const CHAIN_CONFIGS: Record<ChainNetwork, ChainConfig> = {
     network: "polygon",
     chainId: 137,
     rpcUrl: POLYGON_MAINNET.rpcUrl,
-    marketplaceContract: CONTRACT_ADDRESSES.JOYMARKETPLACE_PROXY as WalletAddress,
+    marketplaceContract: CONTRACT_ADDRESSES.ENHANCED_MODEL_MARKETPLACE as WalletAddress,
     confirmationBlocks: 12,
   },
   polygon_mumbai: {
@@ -237,7 +237,7 @@ export class JcnChainAdapter {
       // Get or validate collection contract
       let collectionAddress = request.collectionContract;
       if (!collectionAddress) {
-        collectionAddress = await this.getStoreCollection(request.storeId, network);
+        collectionAddress = (await this.getStoreCollection(request.storeId, network)) ?? undefined;
         if (!collectionAddress) {
           return {
             success: false,

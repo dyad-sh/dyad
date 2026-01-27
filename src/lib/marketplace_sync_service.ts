@@ -461,6 +461,7 @@ export class MarketplaceSyncService {
     } catch (error) {
       logger.error(`Failed to ingest receipt:`, error);
       return {
+        localAssetId: receipt.model?.id || cid,
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
       };

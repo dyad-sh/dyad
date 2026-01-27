@@ -21,7 +21,9 @@ import type {
   PipelineRun,
   StepResult,
   PipelineTrigger,
+  PipelineTriggerConfig,
   ArtifactConfig,
+  PipelineRunArtifact,
 } from "@/types/sovereign_stack_types";
 
 const execAsync = promisify(exec);
@@ -349,7 +351,7 @@ export class LocalCICDPipeline extends EventEmitter {
     workingDirectory: string;
     templateId?: string;
     steps?: PipelineStep[];
-    triggers?: PipelineTrigger[];
+    triggers?: PipelineTriggerConfig[];
     env?: Record<string, string>;
     artifacts?: ArtifactConfig[];
   }): Promise<Pipeline> {
@@ -537,15 +539,16 @@ export class LocalCICDPipeline extends EventEmitter {
       pipelineId,
       runNumber,
       status: "pending",
-      trigger: params?.trigger || "manual",
-      branch: params?.branch,
-      commit: params?.commit,
+      trigger: (params?.trigger || "manual") as PipelineTrigger,
       env: { ...pipeline.env, ...params?.env },
       steps: pipeline.steps.map((step) => ({
         stepId: step.id,
         name: step.name,
-        status: "pending",
+        status: "pending" as const,
+        logs: "",
       })),
+      artifacts: [],
+      logs: "",
       startedAt: Date.now(),
     };
     
@@ -648,8 +651,8 @@ export class LocalCICDPipeline extends EventEmitter {
       await this.saveRun(run);
       this.emit("step:completed", { runId: run.id, stepId: step.id, result: stepResult });
       
-      // Cancel if cancelled externally
-      if (run.status === "cancelled") {
+      // Cancel if cancelled externally (status can be mutated by cancelRun)
+      if ((run.status as string) === "cancelled") {
         break;
       }
     }
@@ -660,7 +663,8 @@ export class LocalCICDPipeline extends EventEmitter {
     }
     
     // Finalize run
-    run.status = run.status === "cancelled" ? "cancelled" : allPassed ? "success" : "failed";
+    const currentStatus = run.status as string;
+    run.status = currentStatus === "cancelled" ? "cancelled" : allPassed ? "success" : "failed";
     run.finishedAt = Date.now();
     run.duration = run.finishedAt - run.startedAt!;
     
@@ -681,11 +685,16 @@ export class LocalCICDPipeline extends EventEmitter {
     step: PipelineStep,
     workingDirectory: string,
     env: Record<string, string>,
-    logStream: fs.FileHandle | NodeJS.WritableStream
+    logStream: NodeJS.WritableStream
   ): Promise<{ success: boolean; exitCode: number; output: string; error?: string }> {
     return new Promise((resolve) => {
       const isWindows = process.platform === "win32";
       const command = isWindows && step.windowsCommand ? step.windowsCommand : step.command;
+      
+      if (!command) {
+        resolve({ success: false, exitCode: 1, output: "", error: "No command specified for step" });
+        return;
+      }
       
       // Expand environment variables in command
       const expandedCommand = this.expandEnvVars(command, env);
@@ -707,17 +716,13 @@ export class LocalCICDPipeline extends EventEmitter {
       proc.stdout?.on("data", (data) => {
         const text = data.toString();
         output += text;
-        if ("write" in logStream) {
-          logStream.write(text);
-        }
+        logStream.write(text);
       });
       
       proc.stderr?.on("data", (data) => {
         const text = data.toString();
         errorOutput += text;
-        if ("write" in logStream) {
-          logStream.write(`[STDERR] ${text}`);
-        }
+        logStream.write(`[STDERR] ${text}`);
       });
       
       const timeout = setTimeout(() => {
@@ -763,30 +768,34 @@ export class LocalCICDPipeline extends EventEmitter {
     run.artifacts = [];
     
     for (const artifact of pipeline.artifacts || []) {
-      const sourcePath = path.join(pipeline.workingDirectory, artifact.path);
-      
-      if (!existsSync(sourcePath)) {
-        logger.warn("Artifact not found", { path: sourcePath });
-        continue;
-      }
-      
-      const destPath = path.join(artifactsDir, artifact.name);
-      
-      try {
-        const stat = await fs.stat(sourcePath);
-        if (stat.isDirectory()) {
-          await this.copyDirectory(sourcePath, destPath);
-        } else {
-          await fs.copyFile(sourcePath, destPath);
+      // ArtifactConfig has paths array, iterate through each path
+      for (const artifactPath of artifact.paths) {
+        const sourcePath = path.join(pipeline.workingDirectory, artifactPath);
+        
+        if (!existsSync(sourcePath)) {
+          logger.warn("Artifact not found", { path: sourcePath });
+          continue;
         }
         
-        run.artifacts.push({
-          name: artifact.name,
-          path: destPath,
-          size: stat.size,
-        });
-      } catch (error) {
-        logger.warn("Failed to collect artifact", { artifact: artifact.name, error });
+        const artifactName = artifact.name || path.basename(artifactPath);
+        const destPath = path.join(artifactsDir, artifactName);
+        
+        try {
+          const stat = await fs.stat(sourcePath);
+          if (stat.isDirectory()) {
+            await this.copyDirectory(sourcePath, destPath);
+          } else {
+            await fs.copyFile(sourcePath, destPath);
+          }
+          
+          run.artifacts.push({
+            name: artifactName,
+            path: destPath,
+            size: stat.size,
+          });
+        } catch (error) {
+          logger.warn("Failed to collect artifact", { artifact: artifactName, error });
+        }
       }
     }
   }
@@ -892,7 +901,7 @@ export class LocalCICDPipeline extends EventEmitter {
   // TRIGGERS
   // ===========================================================================
   
-  async setupTrigger(pipelineId: PipelineId, trigger: PipelineTrigger): Promise<void> {
+  async setupTrigger(pipelineId: PipelineId, trigger: PipelineTriggerConfig): Promise<void> {
     const pipeline = this.pipelines.get(pipelineId);
     if (!pipeline) {
       throw new Error(`Pipeline not found: ${pipelineId}`);
@@ -919,7 +928,7 @@ export class LocalCICDPipeline extends EventEmitter {
         logger.info("Webhook trigger configured", { pipelineId });
         break;
       
-      case "file-watch":
+      case "file_change":
         // In production, this would set up file watchers
         logger.info("File watch trigger configured", { pipelineId, patterns: trigger.patterns });
         break;

@@ -12,7 +12,9 @@
 import * as fs from "fs-extra";
 import * as path from "path";
 import log from "electron-log";
+// @ts-ignore - formdata-node types not properly exported
 import { FormData, File } from "formdata-node";
+// @ts-ignore - formdata-node types not properly exported
 import { fileFromPath } from "formdata-node/file-from-path";
 
 import { sha256, sha256File } from "./jcn_bundle_builder";
@@ -251,7 +253,7 @@ async function pinToWeb3Storage(
         "Authorization": `Bearer ${credentials.token}`,
         "X-Name": encodeURIComponent(name),
       },
-      body: data,
+      body: new Uint8Array(data),
     });
     
     if (!response.ok) {
@@ -634,7 +636,7 @@ export class JcnStorageAdapter {
     
     for (const provider of providers) {
       try {
-        const gatewayUrl = this.getGatewayUrl(provider, cid);
+        const gatewayUrl = this.getGatewayUrl(provider as StorageProvider, cid);
         const response = await fetch(gatewayUrl);
         
         if (response.ok) {

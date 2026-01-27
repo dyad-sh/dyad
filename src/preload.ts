@@ -767,6 +767,35 @@ const validInvokeChannels = [
   "autonomous-agent:subscribe",
   "autonomous-agent:unsubscribe",
   "autonomous-agent:inference-response",
+  // Autonomous Agent Production - Resource monitoring, security, scheduling, approvals, etc.
+  "autonomous-prod:initialize",
+  "autonomous-prod:shutdown",
+  "autonomous-prod:get-resources",
+  "autonomous-prod:get-throttle-state",
+  "autonomous-prod:check-permission",
+  "autonomous-prod:get-audit-log",
+  "autonomous-prod:create-schedule",
+  "autonomous-prod:get-schedules",
+  "autonomous-prod:request-approval",
+  "autonomous-prod:respond-approval",
+  "autonomous-prod:get-pending-approvals",
+  "autonomous-prod:get-templates",
+  "autonomous-prod:get-template",
+  "autonomous-prod:create-notification",
+  "autonomous-prod:get-notifications",
+  "autonomous-prod:mark-notification-read",
+  "autonomous-prod:get-system-health",
+  "autonomous-prod:check-quota",
+  "autonomous-prod:record-quota-usage",
+  "autonomous-prod:add-knowledge-node",
+  "autonomous-prod:add-knowledge-edge",
+  "autonomous-prod:query-knowledge",
+  "autonomous-prod:record-event",
+  "autonomous-prod:get-metrics",
+  "autonomous-prod:create-backup",
+  "autonomous-prod:list-backups",
+  "autonomous-prod:subscribe",
+  "autonomous-prod:unsubscribe",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because
@@ -834,6 +863,8 @@ const validReceiveChannels = [
   // Autonomous Agent System events
   "autonomous-agent:event",
   "autonomous-agent:inference-request",
+  // Autonomous Agent Production System events
+  "autonomous-prod:event",
 ] as const;
 
 type ValidInvokeChannel = (typeof validInvokeChannels)[number];

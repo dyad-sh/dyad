@@ -1330,8 +1330,9 @@ export function usePipelineRunStatus(runId: string) {
     queryKey: pipelineKeys.runStatus(runId),
     queryFn: () => client.pipelineGetRunStatus(runId),
     enabled: !!runId,
-    refetchInterval: (data) => {
+    refetchInterval: (query) => {
       // Auto-refresh while running
+      const data = query.state?.data;
       if (data?.status === "running" || data?.status === "pending") {
         return 2000;
       }

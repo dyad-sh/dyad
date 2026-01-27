@@ -25,6 +25,7 @@ import type {
   RateLimitScope,
   WalletAddress,
   StoreId,
+  TraceId,
 } from "@/types/jcn_types";
 
 const logger = log.scope("jcn_auth_gateway");
@@ -90,6 +91,25 @@ const ROLE_PERMISSIONS: Record<JcnRole, JcnPermission[]> = {
     "license:read",
     "bundle:read",
     "audit:read",
+  ],
+  admin: [
+    "publish:create",
+    "publish:read",
+    "publish:update",
+    "publish:delete",
+    "job:create",
+    "job:read",
+    "job:cancel",
+    "license:create",
+    "license:read",
+    "license:revoke",
+    "bundle:create",
+    "bundle:read",
+    "bundle:verify",
+    "config:read",
+    "config:update",
+    "audit:read",
+    "audit:write",
   ],
 };
 
@@ -174,12 +194,17 @@ export class JcnAuthGateway {
       }) as jwt.JwtPayload;
       
       return {
-        authenticated: true,
+        method: "jwt" as const,
+        principalId: decoded.sub || "",
+        walletAddress: decoded.sub as WalletAddress,
         wallet: decoded.sub as WalletAddress,
-        roles: decoded.roles as JcnRole[],
-        permissions: this.getRolePermissions(decoded.roles as JcnRole[]),
         storeId: decoded.storeId as StoreId | undefined,
-        tokenExpiry: decoded.exp ? decoded.exp * 1000 : undefined,
+        roles: decoded.roles as JcnRole[],
+        authorizedStores: decoded.stores as StoreId[] || [],
+        expiresAt: decoded.exp ? decoded.exp * 1000 : undefined,
+        traceId: crypto.randomUUID() as TraceId,
+        authenticated: true,
+        permissions: this.getRolePermissions(decoded.roles as JcnRole[]),
         metadata: decoded.metadata,
       };
     } catch (error) {
@@ -243,11 +268,15 @@ export class JcnAuthGateway {
       const roles = await this.getUserRoles(params.wallet);
       
       return {
-        authenticated: true,
+        method: "signed_message" as const,
+        principalId: params.wallet,
+        walletAddress: params.wallet,
         wallet: params.wallet,
         roles,
+        authorizedStores: [],
+        traceId: crypto.randomUUID() as TraceId,
+        authenticated: true,
         permissions: this.getRolePermissions(roles),
-        authMethod: "signature",
       };
     } catch (error) {
       logger.error("Signature authentication failed", { error });
@@ -384,35 +413,37 @@ export class JcnAuthGateway {
     operation: string
   ): Promise<{ allowed: boolean; remaining: number; resetAt: number }> {
     const config = RATE_LIMITS[operation] || RATE_LIMITS.default;
-    const key = `${scope}:${scopeId}:${operation}`;
+    const key = `${scope}:${operation}:${scopeId}`;
     const now = Date.now();
-    const windowStart = now - config.windowMs;
+    const windowStartTime = now - config.windowMs;
     
     // Get current rate limit state
     const [record] = await db.select()
       .from(jcnRateLimits)
-      .where(eq(jcnRateLimits.key, key))
+      .where(eq(jcnRateLimits.id, key))
       .limit(1);
     
-    if (!record || record.windowStart!.getTime() < windowStart) {
+    if (!record || record.windowStart.getTime() < windowStartTime) {
       // Start new window
+      const windowSec = Math.floor(config.windowMs / 1000);
       await db.insert(jcnRateLimits)
         .values({
-          id: crypto.randomUUID(),
+          id: key,
           scope,
-          scopeId,
-          operation,
-          key,
-          requestCount: 1,
+          identifier: scopeId,
+          endpoint: operation,
+          count: 1,
           windowStart: new Date(now),
-          windowEnd: new Date(now + config.windowMs),
+          maxRequests: config.maxRequests,
+          windowSec,
         })
         .onConflictDoUpdate({
-          target: [jcnRateLimits.key],
+          target: [jcnRateLimits.id],
           set: {
-            requestCount: 1,
+            count: 1,
             windowStart: new Date(now),
-            windowEnd: new Date(now + config.windowMs),
+            maxRequests: config.maxRequests,
+            windowSec,
           },
         });
       
@@ -423,25 +454,26 @@ export class JcnAuthGateway {
       };
     }
     
-    const currentCount = record.requestCount || 0;
+    const currentCount = record.count || 0;
+    const windowEnd = record.windowStart.getTime() + (record.windowSec * 1000);
     
     if (currentCount >= config.maxRequests) {
       return {
         allowed: false,
         remaining: 0,
-        resetAt: record.windowEnd!.getTime(),
+        resetAt: windowEnd,
       };
     }
     
     // Increment counter
     await db.update(jcnRateLimits)
-      .set({ requestCount: currentCount + 1 })
-      .where(eq(jcnRateLimits.key, key));
+      .set({ count: currentCount + 1 })
+      .where(eq(jcnRateLimits.id, key));
     
     return {
       allowed: true,
       remaining: config.maxRequests - currentCount - 1,
-      resetAt: record.windowEnd!.getTime(),
+      resetAt: windowEnd,
     };
   }
   
@@ -450,13 +482,13 @@ export class JcnAuthGateway {
    */
   async resetRateLimit(scope: RateLimitScope, scopeId: string, operation?: string): Promise<void> {
     if (operation) {
-      const key = `${scope}:${scopeId}:${operation}`;
-      await db.delete(jcnRateLimits).where(eq(jcnRateLimits.key, key));
+      const key = `${scope}:${operation}:${scopeId}`;
+      await db.delete(jcnRateLimits).where(eq(jcnRateLimits.id, key));
     } else {
       await db.delete(jcnRateLimits)
         .where(and(
           eq(jcnRateLimits.scope, scope),
-          eq(jcnRateLimits.scopeId, scopeId)
+          eq(jcnRateLimits.identifier, scopeId)
         ));
     }
   }
@@ -501,8 +533,12 @@ export class JcnAuthGateway {
     
     // Return unauthenticated context
     return {
-      authenticated: false,
+      method: "jwt" as const,
+      principalId: "",
       roles: [],
+      authorizedStores: [],
+      traceId: crypto.randomUUID() as TraceId,
+      authenticated: false,
       permissions: [],
     };
   }
@@ -571,7 +607,7 @@ export class JcnAuthGateway {
       newStateJson: {
         authenticated: auth.authenticated,
         roles: auth.roles,
-        method: auth.authMethod,
+        method: auth.method,
         ...details,
       },
     });

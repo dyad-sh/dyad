@@ -154,7 +154,36 @@ async function executeAppLocalNode({
   installCommand?: string | null;
   startCommand?: string | null;
 }): Promise<void> {
+  // Validate that the app path exists before trying to spawn
+  if (!fs.existsSync(appPath)) {
+    logger.error(
+      `App path does not exist for app ${appId}: "${appPath}". ` +
+      `Please verify the app was created correctly or recreate it.`
+    );
+    throw new Error(
+      `App directory not found: "${appPath}". ` +
+      `The app may have been moved or deleted. Please recreate the app.`
+    );
+  }
+
+  // Check if it's actually a directory
+  const stats = fs.statSync(appPath);
+  if (!stats.isDirectory()) {
+    logger.error(
+      `App path is not a directory for app ${appId}: "${appPath}"`
+    );
+    throw new Error(
+      `App path is not a directory: "${appPath}". ` +
+      `Expected a folder containing the app files.`
+    );
+  }
+
   const command = getCommand({ appId, installCommand, startCommand });
+  
+  logger.debug(
+    `Spawning process for app ${appId}. Command="${command}", CWD="${appPath}"`
+  );
+
   const spawnedProcess = spawn(command, [], {
     cwd: appPath,
     shell: true,

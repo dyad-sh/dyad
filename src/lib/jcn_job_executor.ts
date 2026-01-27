@@ -50,6 +50,24 @@ const logger = log.scope("jcn_job_executor");
 // JOB STATE TRANSITIONS
 // =============================================================================
 
+/**
+ * Extended job state updates for internal state transitions
+ */
+interface JobStateUpdates extends Partial<JobStateRecord> {
+  errorCode?: string;
+  errorMessage?: string;
+  errorRetryable?: boolean;
+  workDir?: string;
+  bundlePath?: string;
+  extractDir?: string;
+  manifest?: Record<string, unknown>;
+  licenseId?: string;
+  licenseVerified?: boolean;
+  output?: Record<string, unknown>;
+  metrics?: UsageMetrics;
+  receiptCid?: string;
+}
+
 const VALID_JOB_TRANSITIONS: Record<JobState, JobState[]> = {
   PENDING: ["VALIDATING", "CANCELLED", "FAILED"],
   VALIDATING: ["FETCHING", "FAILED"],
@@ -60,6 +78,7 @@ const VALID_JOB_TRANSITIONS: Record<JobState, JobState[]> = {
   FAILED: [], // Terminal
   CANCELLED: [], // Terminal
   TIMEOUT: ["PENDING", "FAILED"], // Can retry
+  RETRYABLE: ["PENDING", "FAILED"], // Can retry
 };
 
 function isValidJobTransition(from: JobState, to: JobState): boolean {
@@ -238,26 +257,32 @@ export class JcnJobExecutor {
     }
     
     // 2. Verify license
-    const license = await this.verifyLicense(ticket.licenseId, ticket.bundleCid, ticket.requesterWallet);
+    const licenseId = ticket.licenseId;
+    const requesterWallet = ticket.requesterWallet;
+    if (!licenseId || !requesterWallet) {
+      throw new Error("Missing licenseId or requesterWallet in ticket");
+    }
+    const license = await this.verifyLicense(licenseId, ticket.bundleCid, requesterWallet);
     
     if (!license) {
-      throw new Error(`Invalid or expired license: ${ticket.licenseId}`);
+      throw new Error(`Invalid or expired license: ${licenseId}`);
     }
     
     // 3. Check usage limits
-    if (license.usageLimit !== null && license.currentUsage >= license.usageLimit) {
+    const usageLimit = license.usageLimit ?? Infinity;
+    const currentUsage = license.currentUsage ?? 0;
+    if (usageLimit !== Infinity && currentUsage >= usageLimit) {
       throw new Error("License usage limit exceeded");
     }
     
     // 4. Verify bundle exists and is accessible
     const bundleExists = await jcnStorageAdapter.fetch(ticket.bundleCid);
-    if (!bundleExists.data) {
+    if (!bundleExists) {
       throw new Error(`Bundle not found: ${ticket.bundleCid}`);
     }
     
     return this.transitionJobState(record, "FETCHING", "validation_passed", {
-      licenseId: ticket.licenseId,
-      licenseVerified: true,
+      licenseValid: true,
     });
   }
   
@@ -277,12 +302,12 @@ export class JcnJobExecutor {
     
     // Fetch bundle from IPFS
     const fetchResult = await jcnStorageAdapter.fetch(ticket.bundleCid);
-    if (!fetchResult.data) {
-      throw new Error(`Failed to fetch bundle: ${fetchResult.error}`);
+    if (!fetchResult) {
+      throw new Error(`Failed to fetch bundle: ${ticket.bundleCid}`);
     }
     
     // Write bundle to disk
-    await fs.writeFile(bundlePath, fetchResult.data);
+    await fs.writeFile(bundlePath, fetchResult);
     
     // Verify bundle integrity if merkle root provided
     if (ticket.inputHash) {
@@ -399,16 +424,20 @@ export class JcnJobExecutor {
           // These are data bundles, just return the content
           output = {
             type: "data",
-            data: await this.loadDataBundle(extractDir, manifest),
+            data: await this.loadDataBundle(extractDir, manifest) as Record<string, unknown>,
             format: "json",
           };
           metrics = {
+            cpuTimeMs: Date.now() - startTime,
+            memoryPeakMb: 0,
+            ioReadBytes: 0,
+            ioWriteBytes: 0,
+            networkBytes: 0,
             executionTimeMs: Date.now() - startTime,
             inputTokens: 0,
             outputTokens: 0,
             totalTokens: 0,
             memoryUsedMb: 0,
-            cpuTimeMs: 0,
           };
           break;
           
@@ -475,16 +504,20 @@ export class JcnJobExecutor {
     return {
       output: {
         type: "agent_response",
-        data: result,
+        data: result as Record<string, unknown>,
         format: "json",
       },
       metrics: {
+        cpuTimeMs: executionTime,
+        memoryPeakMb: process.memoryUsage().heapUsed / 1024 / 1024,
+        ioReadBytes: 0,
+        ioWriteBytes: 0,
+        networkBytes: 0,
         executionTimeMs: executionTime,
         inputTokens: this.estimateTokens(JSON.stringify(input)),
         outputTokens: this.estimateTokens(JSON.stringify(result)),
-        totalTokens: 0, // Calculated below
+        totalTokens: 0,
         memoryUsedMb: process.memoryUsage().heapUsed / 1024 / 1024,
-        cpuTimeMs: executionTime, // Approximation
       },
     };
   }
@@ -570,7 +603,8 @@ export class JcnJobExecutor {
       
       proc.stdout.on("data", (data) => {
         stdout += data.toString();
-        if (stdout.length > config.maxOutputBytes) {
+        const maxBytes = config.maxOutputBytes ?? 10 * 1024 * 1024;
+        if (stdout.length > maxBytes) {
           proc.kill();
           clearTimeout(timeout);
           reject(new Error("Output size limit exceeded"));
@@ -633,12 +667,16 @@ export class JcnJobExecutor {
         format: "json",
       },
       metrics: {
+        cpuTimeMs: 0,
+        memoryPeakMb: 0,
+        ioReadBytes: 0,
+        ioWriteBytes: 0,
+        networkBytes: 0,
         executionTimeMs: Date.now() - startTime,
         inputTokens: this.estimateTokens(JSON.stringify(input)),
         outputTokens: 0,
         totalTokens: 0,
         memoryUsedMb: 0,
-        cpuTimeMs: 0,
       },
     };
   }
@@ -728,33 +766,47 @@ export class JcnJobExecutor {
     metrics?: UsageMetrics
   ): Promise<InferenceReceipt> {
     const ticket = record.ticket;
+    const now = Date.now();
     
     // Compute output hash
     const outputBytes = Buffer.from(JSON.stringify(output.data));
     const outputHash = crypto.createHash("sha256").update(outputBytes).digest("hex") as Sha256Hash;
     
-    // Create receipt
+    // Pin output to IPFS
+    const outputPinResults = await jcnStorageAdapter.pinJson(output, ["4everland"], {
+      name: `output-${record.id}.json`,
+    });
+    const outputCid = outputPinResults.find((r) => r.success)?.cid || ("" as Cid);
+    
+    // Create receipt matching InferenceReceipt interface
     const receipt: InferenceReceipt = {
-      version: 1,
+      v: 1,
+      type: "inference-receipt",
       jobId: record.id,
       ticketId: ticket.ticketId,
       bundleCid: ticket.bundleCid,
-      bundleVersion: ticket.bundleVersion,
+      merkleRoot: ticket.merkleRoot || ("" as any),
       inputHash: ticket.inputHash,
+      outputCid: outputCid,
       outputHash,
+      licenseId: ticket.licenseId || "",
+      executor: (process.env.JCN_EXECUTOR_WALLET as WalletAddress) || ("0x0000000000000000000000000000000000000000" as WalletAddress),
       executorNode: process.env.JCN_NODE_ID || "local",
-      executorWallet: process.env.JCN_EXECUTOR_WALLET as WalletAddress || "0x0000000000000000000000000000000000000000" as WalletAddress,
-      timestamp: Date.now(),
-      metrics: metrics || {
-        executionTimeMs: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-        totalTokens: 0,
-        memoryUsedMb: 0,
-        cpuTimeMs: 0,
+      requester: ticket.requesterWallet || ("0x0000000000000000000000000000000000000000" as WalletAddress),
+      timestamp: now,
+      metrics: {
+        startedAt: metrics?.startedAt || now,
+        completedAt: metrics?.completedAt || now,
+        durationMs: metrics?.durationMs || metrics?.executionTimeMs || 0,
+        inputTokens: metrics?.inputTokens,
+        outputTokens: metrics?.outputTokens,
+        gpuTimeMs: metrics?.gpuTimeMs,
+        memoryPeakMb: metrics?.memoryPeakMb,
       },
-      signature: "" as unknown as `0x${string}`,
-      receiptCid: "" as Cid,
+      signature: {
+        algorithm: "eip191",
+        value: "",
+      },
     };
     
     // Sign receipt
@@ -773,10 +825,11 @@ export class JcnJobExecutor {
     if (signingKey) {
       const wallet = new ethers.Wallet(signingKey);
       const messageHash = ethers.hashMessage(receiptData);
-      receipt.signature = await wallet.signMessage(ethers.getBytes(messageHash)) as `0x${string}`;
+      const sig = await wallet.signMessage(ethers.getBytes(messageHash));
+      receipt.signature = { algorithm: "eip191", value: sig };
     } else {
       // Generate placeholder signature for testing
-      receipt.signature = `0x${crypto.randomBytes(65).toString("hex")}` as `0x${string}`;
+      receipt.signature = { algorithm: "eip191", value: `0x${crypto.randomBytes(65).toString("hex")}` };
     }
     
     // Pin receipt to IPFS
@@ -805,13 +858,13 @@ export class JcnJobExecutor {
         requesterWallet: ticket.requesterWallet,
         inputHash: ticket.inputHash,
         expiresAt: ticket.expiresAt,
-        nonce: ticket.nonce,
       });
       
       const messageHash = ethers.hashMessage(ticketData);
-      const recoveredAddress = ethers.recoverAddress(messageHash, ticket.signature);
+      const recoveredAddress = ethers.recoverAddress(messageHash, ticket.signature.value);
       
-      return recoveredAddress.toLowerCase() === ticket.requesterWallet.toLowerCase();
+      const requester = ticket.requesterWallet || "";
+      return recoveredAddress.toLowerCase() === requester.toLowerCase();
     } catch (error) {
       logger.error("Ticket signature verification failed", { error });
       return false;
@@ -822,35 +875,35 @@ export class JcnJobExecutor {
    * Verify license
    */
   private async verifyLicense(
-    licenseId: LicenseId,
+    licenseId: string,
     bundleCid: Cid,
     holderWallet: WalletAddress
   ): Promise<LicenseRecord | null> {
     const now = Date.now();
     
-    // Check local cache first
+    // Check local cache first (using correct schema field names)
     const [cached] = await db.select()
       .from(jcnLicenses)
       .where(and(
-        eq(jcnLicenses.licenseId, licenseId),
-        eq(jcnLicenses.bundleCid, bundleCid),
-        eq(jcnLicenses.holderWallet, holderWallet),
-        eq(jcnLicenses.revoked, false)
+        eq(jcnLicenses.id, licenseId),
+        eq(jcnLicenses.assetId, bundleCid),
+        eq(jcnLicenses.licensee, holderWallet),
+        eq(jcnLicenses.valid, true)
       ))
       .limit(1);
     
-    if (cached && (!cached.validUntil || cached.validUntil.getTime() > now)) {
+    if (cached && (!cached.expiresAt || cached.expiresAt.getTime() > now)) {
       return {
-        licenseId: cached.licenseId as LicenseId,
-        bundleCid: cached.bundleCid as Cid,
+        licenseId: cached.id as LicenseId,
+        bundleCid: cached.assetId as Cid,
         licenseType: cached.licenseType as "perpetual" | "subscription" | "usage_based",
-        holderWallet: cached.holderWallet as WalletAddress,
-        grantedAt: cached.grantedAt?.getTime() || now,
-        validUntil: cached.validUntil?.getTime(),
-        usageLimit: cached.usageLimit ?? undefined,
-        currentUsage: cached.currentUsage || 0,
-        revoked: cached.revoked || false,
-        onChain: cached.onChain || false,
+        holderWallet: cached.licensee as WalletAddress,
+        grantedAt: cached.createdAt?.getTime() || now,
+        validUntil: cached.expiresAt?.getTime(),
+        usageLimit: cached.limitsJson?.maxInferences ?? undefined,
+        currentUsage: cached.inferencesUsed || 0,
+        revoked: !cached.valid,
+        onChain: cached.verificationMethod === "contract_call" || cached.verificationMethod === "token_ownership",
         contractAddress: cached.contractAddress as WalletAddress | undefined,
         tokenId: cached.tokenId ?? undefined,
       };
@@ -865,19 +918,26 @@ export class JcnJobExecutor {
    * Update license usage
    */
   private async updateLicenseUsage(
-    licenseId: LicenseId | undefined,
+    licenseId: string | undefined,
     bundleCid: Cid,
     metrics?: UsageMetrics
   ): Promise<void> {
     if (!licenseId) return;
     
-    // Increment usage counter
-    await db.update(jcnLicenses)
-      .set({
-        currentUsage: db.raw(`current_usage + 1`),
-        lastUsedAt: new Date(),
-      })
-      .where(eq(jcnLicenses.licenseId, licenseId));
+    // Increment usage counter using SQL increment
+    const [current] = await db.select({ inferencesUsed: jcnLicenses.inferencesUsed })
+      .from(jcnLicenses)
+      .where(eq(jcnLicenses.id, licenseId))
+      .limit(1);
+    
+    if (current) {
+      await db.update(jcnLicenses)
+        .set({
+          inferencesUsed: (current.inferencesUsed || 0) + 1,
+          updatedAt: new Date(),
+        })
+        .where(eq(jcnLicenses.id, licenseId));
+    }
   }
   
   /**
@@ -900,12 +960,7 @@ export class JcnJobExecutor {
       traceId,
       state: "PENDING",
       stateHistoryJson: [{ state: "PENDING", timestamp: Date.now(), event: "created" }],
-      ticketJson: request.ticket,
-      ticketSignature: request.ticket.signature,
-      bundleCid: request.ticket.bundleCid,
-      requesterWallet: request.ticket.requesterWallet,
-      priority: request.priority || 0,
-      sandboxConfigJson: request.sandboxOverrides,
+      ticketJson: request.ticket as unknown,
     };
     
     await db.insert(jcnJobRecords).values(record);
@@ -920,11 +975,6 @@ export class JcnJobExecutor {
       state: "PENDING" as JobState,
       stateHistory: [{ state: "PENDING" as JobState, timestamp: Date.now(), event: "created" }],
       ticket: request.ticket,
-      bundleCid: request.ticket.bundleCid,
-      requesterWallet: request.ticket.requesterWallet,
-      licenseVerified: false,
-      sandboxConfig: { ...DEFAULT_SANDBOX_CONFIG, ...request.sandboxOverrides },
-      priority: request.priority || 0,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -937,7 +987,7 @@ export class JcnJobExecutor {
     record: JobStateRecord,
     newState: JobState,
     event: string,
-    updates: Partial<JobStateRecord> = {}
+    updates: JobStateUpdates = {}
   ): Promise<JobStateRecord> {
     const oldState = record.state;
     
@@ -952,7 +1002,7 @@ export class JcnJobExecutor {
     ];
     
     const updateData: Partial<typeof jcnJobRecords.$inferInsert> = {
-      state: newState,
+      state: newState === "TIMEOUT" ? "FAILED" : newState, // Map TIMEOUT to FAILED for DB
       stateHistoryJson: newHistory,
       updatedAt: new Date(now),
     };
@@ -967,31 +1017,24 @@ export class JcnJobExecutor {
       updateData.errorRetryable = updates.errorRetryable;
     }
     
-    if (updates.licenseId !== undefined) {
-      updateData.licenseId = updates.licenseId;
-      updateData.licenseVerified = updates.licenseVerified;
+    if (updates.licenseValid !== undefined) {
+      updateData.licenseValid = updates.licenseValid;
     }
     
     if (updates.output) {
-      updateData.outputJson = updates.output;
+      updateData.receiptJson = updates.output;
     }
     
     if (updates.metrics) {
-      updateData.metricsJson = updates.metrics;
+      updateData.executionDurationMs = updates.metrics.executionTimeMs;
+      updateData.inputTokens = updates.metrics.inputTokens;
+      updateData.outputTokens = updates.metrics.outputTokens;
+      updateData.memoryPeakMb = updates.metrics.memoryPeakMb;
     }
     
     if (updates.receipt) {
       updateData.receiptJson = updates.receipt;
       updateData.receiptCid = updates.receiptCid;
-    }
-    
-    if (updates.workDir || updates.bundlePath || updates.extractDir || updates.manifest) {
-      updateData.checkpointJson = {
-        workDir: updates.workDir,
-        bundlePath: updates.bundlePath,
-        extractDir: updates.extractDir,
-        manifest: updates.manifest,
-      };
     }
     
     await db.update(jcnJobRecords)
@@ -1054,31 +1097,33 @@ export class JcnJobExecutor {
    * Convert DB record to state record
    */
   private recordToStateRecord(record: typeof jcnJobRecords.$inferSelect): JobStateRecord {
+    // Extract values from the ticket JSON since they're not stored separately
+    const ticket = record.ticketJson as JobTicket | null;
+    
     return {
       id: record.id,
       requestId: record.requestId as RequestId,
       traceId: record.traceId as TraceId,
       state: record.state as JobState,
-      stateHistory: record.stateHistoryJson || [],
-      ticket: record.ticketJson as JobTicket,
-      bundleCid: record.bundleCid as Cid,
-      requesterWallet: record.requesterWallet as WalletAddress,
-      licenseId: record.licenseId as LicenseId | undefined,
-      licenseVerified: record.licenseVerified || false,
-      sandboxConfig: record.sandboxConfigJson as SandboxConfig | undefined,
-      priority: record.priority || 0,
-      startedAt: record.startedAt?.getTime(),
-      completedAt: record.completedAt?.getTime(),
-      output: record.outputJson as ExecutionOutput | undefined,
-      metrics: record.metricsJson as UsageMetrics | undefined,
+      stateHistory: (record.stateHistoryJson || []).map(entry => ({
+        ...entry,
+        state: entry.state as JobState,
+      })),
+      ticket: ticket as JobTicket,
+      ticketValid: record.ticketValid ?? undefined,
+      licenseValid: record.licenseValid ?? undefined,
+      bundleVerified: record.bundleVerified ?? undefined,
+      containerId: record.containerId ?? undefined,
+      outputCid: record.outputCid as Cid | undefined,
       receipt: record.receiptJson as InferenceReceipt | undefined,
       receiptCid: record.receiptCid as Cid | undefined,
       error: record.errorCode ? {
         code: record.errorCode,
         message: record.errorMessage || "Unknown error",
         retryable: record.errorRetryable || false,
+        retryCount: record.retryCount,
       } : undefined,
-      checkpoint: record.checkpointJson as JobStateRecord["checkpoint"],
+      completedAt: record.completedAt?.getTime(),
       createdAt: record.createdAt?.getTime() || Date.now(),
       updatedAt: record.updatedAt?.getTime() || Date.now(),
     };
@@ -1166,7 +1211,13 @@ export class JcnJobExecutor {
     let query = db.select().from(jcnJobRecords);
     
     if (options?.state) {
-      query = query.where(eq(jcnJobRecords.state, options.state)) as typeof query;
+      // Map TIMEOUT to FAILED since DB doesn't have TIMEOUT state
+      const dbState = options.state === "TIMEOUT" ? "FAILED" : options.state;
+      // Only filter if state is in DB enum
+      const validDbStates = ["PENDING", "VALIDATING", "FETCHING", "EXECUTING", "FINALIZING", "COMPLETED", "FAILED", "CANCELLED", "RETRYABLE"] as const;
+      if (validDbStates.includes(dbState as typeof validDbStates[number])) {
+        query = query.where(eq(jcnJobRecords.state, dbState as typeof validDbStates[number])) as typeof query;
+      }
     }
     
     const records = await query.limit(options?.limit || 100);
@@ -1177,26 +1228,50 @@ export class JcnJobExecutor {
    * Register a license in local cache
    */
   async registerLicense(license: Omit<LicenseRecord, "currentUsage">): Promise<void> {
+    const id = license.id || license.licenseId || crypto.randomUUID();
+    const assetId = license.assetId || license.bundleCid || "";
+    const licensee = license.licensee || license.holderWallet || "";
+    
+    // Map license type to DB enum values (registry, token, signature)
+    const mapLicenseType = (type?: string): "registry" | "token" | "signature" => {
+      if (type === "registry" || type === "token" || type === "signature") {
+        return type;
+      }
+      // Map other license types
+      if (type === "perpetual") return "registry";
+      if (type === "subscription") return "token";
+      if (type === "usage_based") return "signature";
+      return "registry"; // default
+    };
+    
+    const licenseType = mapLicenseType(license.type || license.licenseType);
+    
+    // Simplify valid check to avoid unnecessary null coalescing
+    const isValid = license.valid !== undefined ? license.valid : (license.revoked !== undefined ? !license.revoked : true);
+    
     await db.insert(jcnLicenses).values({
-      id: crypto.randomUUID(),
-      licenseId: license.licenseId,
-      bundleCid: license.bundleCid,
-      licenseType: license.licenseType,
-      holderWallet: license.holderWallet,
-      grantedAt: new Date(license.grantedAt),
-      validUntil: license.validUntil ? new Date(license.validUntil) : undefined,
-      usageLimit: license.usageLimit,
-      currentUsage: 0,
-      revoked: license.revoked,
-      onChain: license.onChain,
-      contractAddress: license.contractAddress,
-      tokenId: license.tokenId,
+      id,
+      licenseType,
+      assetId,
+      licensee,
+      licensor: license.licensor || "",
+      scope: license.scope || "full",
+      limitsJson: license.limits || (license.usageLimit ? { maxInferences: license.usageLimit } : undefined),
+      inferencesUsed: 0,
+      tokensUsed: 0,
+      verificationMethod: license.verification?.method || (license.onChain ? "contract_call" : "signature"),
+      contractAddress: license.verification?.contractAddress || license.contractAddress,
+      tokenId: license.verification?.tokenId || license.tokenId,
+      signature: license.verification?.signature,
+      valid: isValid,
+      validatedAt: license.validatedAt ? new Date(license.validatedAt) : new Date(),
+      expiresAt: license.validUntil ? new Date(license.validUntil) : (license.limits?.expiresAt ? new Date(license.limits.expiresAt) : undefined),
     }).onConflictDoUpdate({
-      target: [jcnLicenses.licenseId],
+      target: [jcnLicenses.id],
       set: {
-        validUntil: license.validUntil ? new Date(license.validUntil) : undefined,
-        usageLimit: license.usageLimit,
-        revoked: license.revoked,
+        valid: isValid,
+        expiresAt: license.validUntil ? new Date(license.validUntil) : undefined,
+        limitsJson: license.limits || (license.usageLimit ? { maxInferences: license.usageLimit } : undefined),
       },
     });
   }

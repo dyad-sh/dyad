@@ -103,23 +103,23 @@ export const AppService = {
   },
   
   onAppStateChange(callback: (state: AppState) => void): () => void {
-    const listener = App.addListener('appStateChange', callback);
-    return () => listener.remove();
+    const listenerPromise = App.addListener('appStateChange', callback);
+    return () => { listenerPromise.then(listener => listener.remove()); };
   },
   
   onAppUrlOpen(callback: (data: { url: string }) => void): () => void {
-    const listener = App.addListener('appUrlOpen', callback);
-    return () => listener.remove();
+    const listenerPromise = App.addListener('appUrlOpen', callback);
+    return () => { listenerPromise.then(listener => listener.remove()); };
   },
   
   onBackButton(callback: () => void): () => void {
-    const listener = App.addListener('backButton', callback);
-    return () => listener.remove();
+    const listenerPromise = App.addListener('backButton', callback);
+    return () => { listenerPromise.then(listener => listener.remove()); };
   },
   
   onAppRestoredResult(callback: (data: any) => void): () => void {
-    const listener = App.addListener('appRestoredResult', callback);
-    return () => listener.remove();
+    const listenerPromise = App.addListener('appRestoredResult', callback);
+    return () => { listenerPromise.then(listener => listener.remove()); };
   },
 };
 
@@ -343,8 +343,8 @@ export const NetworkService = {
   },
   
   onNetworkStatusChange(callback: (status: ConnectionStatus) => void): () => void {
-    const listener = Network.addListener('networkStatusChange', callback);
-    return () => listener.remove();
+    const listenerPromise = Network.addListener('networkStatusChange', callback);
+    return () => { listenerPromise.then(listener => listener.remove()); };
   },
 };
 
@@ -422,23 +422,23 @@ export const KeyboardService = {
   },
   
   onKeyboardWillShow(callback: (info: KeyboardInfo) => void): () => void {
-    const listener = Keyboard.addListener('keyboardWillShow', callback);
-    return () => listener.remove();
+    const listenerPromise = Keyboard.addListener('keyboardWillShow', callback);
+    return () => { listenerPromise.then(listener => listener.remove()); };
   },
   
   onKeyboardDidShow(callback: (info: KeyboardInfo) => void): () => void {
-    const listener = Keyboard.addListener('keyboardDidShow', callback);
-    return () => listener.remove();
+    const listenerPromise = Keyboard.addListener('keyboardDidShow', callback);
+    return () => { listenerPromise.then(listener => listener.remove()); };
   },
   
   onKeyboardWillHide(callback: () => void): () => void {
-    const listener = Keyboard.addListener('keyboardWillHide', callback);
-    return () => listener.remove();
+    const listenerPromise = Keyboard.addListener('keyboardWillHide', callback);
+    return () => { listenerPromise.then(listener => listener.remove()); };
   },
   
   onKeyboardDidHide(callback: () => void): () => void {
-    const listener = Keyboard.addListener('keyboardDidHide', callback);
-    return () => listener.remove();
+    const listenerPromise = Keyboard.addListener('keyboardDidHide', callback);
+    return () => { listenerPromise.then(listener => listener.remove()); };
   },
 };
 
@@ -535,13 +535,13 @@ export const BrowserService = {
   },
   
   onBrowserFinished(callback: () => void): () => void {
-    const listener = Browser.addListener('browserFinished', callback);
-    return () => listener.remove();
+    const listenerPromise = Browser.addListener('browserFinished', callback);
+    return () => { listenerPromise.then(listener => listener.remove()); };
   },
   
   onBrowserPageLoaded(callback: () => void): () => void {
-    const listener = Browser.addListener('browserPageLoaded', callback);
-    return () => listener.remove();
+    const listenerPromise = Browser.addListener('browserPageLoaded', callback);
+    return () => { listenerPromise.then(listener => listener.remove()); };
   },
 };
 
@@ -572,22 +572,22 @@ export const LocalNotificationsService = {
     await LocalNotifications.cancel({ notifications });
   },
   
-  async requestPermissions(): Promise<{ display: 'granted' | 'denied' | 'prompt' }> {
+  async requestPermissions(): Promise<{ display: 'granted' | 'denied' | 'prompt' | 'prompt-with-rationale' }> {
     return LocalNotifications.requestPermissions();
   },
   
-  async checkPermissions(): Promise<{ display: 'granted' | 'denied' | 'prompt' }> {
+  async checkPermissions(): Promise<{ display: 'granted' | 'denied' | 'prompt' | 'prompt-with-rationale' }> {
     return LocalNotifications.checkPermissions();
   },
   
   onLocalNotificationReceived(callback: (notification: LocalNotificationSchema) => void): () => void {
-    const listener = LocalNotifications.addListener('localNotificationReceived', callback);
-    return () => listener.remove();
+    const listenerPromise = LocalNotifications.addListener('localNotificationReceived', callback);
+    return () => { listenerPromise.then(listener => listener.remove()); };
   },
   
   onLocalNotificationActionPerformed(callback: (action: { notification: LocalNotificationSchema; actionId: string; inputValue?: string }) => void): () => void {
-    const listener = LocalNotifications.addListener('localNotificationActionPerformed', callback);
-    return () => listener.remove();
+    const listenerPromise = LocalNotifications.addListener('localNotificationActionPerformed', callback);
+    return () => { listenerPromise.then(listener => listener.remove()); };
   },
 };
 
@@ -600,32 +600,32 @@ export const PushNotificationsService = {
     await PushNotifications.register();
   },
   
-  async requestPermissions(): Promise<{ receive: 'granted' | 'denied' | 'prompt' }> {
+  async requestPermissions(): Promise<{ receive: 'granted' | 'denied' | 'prompt' | 'prompt-with-rationale' }> {
     return PushNotifications.requestPermissions();
   },
   
-  async checkPermissions(): Promise<{ receive: 'granted' | 'denied' | 'prompt' }> {
+  async checkPermissions(): Promise<{ receive: 'granted' | 'denied' | 'prompt' | 'prompt-with-rationale' }> {
     return PushNotifications.checkPermissions();
   },
   
   onRegistration(callback: (token: Token) => void): () => void {
-    const listener = PushNotifications.addListener('registration', callback);
-    return () => listener.remove();
+    const listenerPromise = PushNotifications.addListener('registration', callback);
+    return () => { listenerPromise.then(listener => listener.remove()); };
   },
   
   onRegistrationError(callback: (error: any) => void): () => void {
-    const listener = PushNotifications.addListener('registrationError', callback);
-    return () => listener.remove();
+    const listenerPromise = PushNotifications.addListener('registrationError', callback);
+    return () => { listenerPromise.then(listener => listener.remove()); };
   },
   
   onPushNotificationReceived(callback: (notification: PushNotificationSchema) => void): () => void {
-    const listener = PushNotifications.addListener('pushNotificationReceived', callback);
-    return () => listener.remove();
+    const listenerPromise = PushNotifications.addListener('pushNotificationReceived', callback);
+    return () => { listenerPromise.then(listener => listener.remove()); };
   },
   
   onPushNotificationActionPerformed(callback: (action: { notification: PushNotificationSchema; actionId: string; inputValue?: string }) => void): () => void {
-    const listener = PushNotifications.addListener('pushNotificationActionPerformed', callback);
-    return () => listener.remove();
+    const listenerPromise = PushNotifications.addListener('pushNotificationActionPerformed', callback);
+    return () => { listenerPromise.then(listener => listener.remove()); };
   },
 };
 

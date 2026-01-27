@@ -187,33 +187,38 @@ class RGADocument {
   }
   
   applyOperation(op: DocumentOperation): void {
-    this.clock.update(op.timestamp);
+    if (!op.timestamp || !op.id) return;
+    
+    this.clock.update(String(op.timestamp));
     
     if (op.type === "insert") {
       if (this.nodes.has(op.id)) return; // Already applied
       
       const node: RGANode = {
         id: op.id,
-        value: op.char!,
+        value: op.char ?? null,
         next: null,
         deleted: false,
-        timestamp: op.timestamp,
+        timestamp: String(op.timestamp),
       };
       
       // Find correct insertion point (may differ from afterId due to concurrent ops)
-      let afterId = op.afterId!;
+      let afterId = op.afterId ?? this.head;
       let afterNode = this.nodes.get(afterId);
       
       if (!afterNode) {
         // If afterId not found, insert at head
-        afterNode = this.nodes.get(this.head)!;
+        afterNode = this.nodes.get(this.head);
         afterId = this.head;
       }
       
+      if (!afterNode) return; // Safety check
+      
       // Find correct position based on timestamp ordering
       while (afterNode.next) {
-        const nextNode = this.nodes.get(afterNode.next)!;
-        if (this.clock.compare(op.timestamp, nextNode.timestamp) > 0) {
+        const nextNode = this.nodes.get(afterNode.next);
+        if (!nextNode) break;
+        if (this.clock.compare(String(op.timestamp), nextNode.timestamp) > 0) {
           break;
         }
         afterNode = nextNode;
@@ -251,14 +256,14 @@ class RGADocument {
     let currentId: string | null = this.head;
     
     while (currentId) {
-      const node = this.nodes.get(currentId)!;
-      if (!node.deleted && node.value !== null) {
+      const node: RGANode | undefined = this.nodes.get(currentId);
+      if (node && !node.deleted && node.value !== null) {
         if (count === position) {
           return currentId;
         }
         count++;
       }
-      currentId = node.next;
+      currentId = node?.next ?? null;
     }
     
     // Return the last non-deleted node
@@ -267,15 +272,19 @@ class RGADocument {
   
   getState(): CRDTState {
     return {
-      nodes: Object.fromEntries(this.nodes),
+      nodes: Object.fromEntries(this.nodes) as Record<string, unknown>,
       head: this.head,
-      timestamp: this.clock.getTimestamp(),
+      timestamp: String(this.clock.getTimestamp()),
     };
   }
   
   loadState(state: CRDTState): void {
-    this.nodes = new Map(Object.entries(state.nodes));
-    this.head = state.head;
+    if (state.nodes) {
+      this.nodes = new Map(Object.entries(state.nodes)) as Map<string, RGANode>;
+    }
+    if (state.head) {
+      this.head = state.head;
+    }
   }
 }
 
@@ -433,6 +442,9 @@ export class CollaborativeWorkspace extends EventEmitter {
       online: false,
     };
     
+    if (!workspace.collaborators) {
+      workspace.collaborators = [];
+    }
     workspace.collaborators.push(newCollaborator);
     await this.saveWorkspace(workspace);
     
@@ -447,7 +459,7 @@ export class CollaborativeWorkspace extends EventEmitter {
       throw new Error(`Workspace not found: ${workspaceId}`);
     }
     
-    workspace.collaborators = workspace.collaborators.filter((c) => c.id !== collaboratorId);
+    workspace.collaborators = (workspace.collaborators || []).filter((c) => c.id !== collaboratorId);
     await this.saveWorkspace(workspace);
     
     this.emit("collaborator:removed", { workspaceId, collaboratorId });
@@ -463,7 +475,7 @@ export class CollaborativeWorkspace extends EventEmitter {
       throw new Error(`Workspace not found: ${workspaceId}`);
     }
     
-    const collaborator = workspace.collaborators.find((c) => c.id === collaboratorId);
+    const collaborator = (workspace.collaborators || []).find((c) => c.id === collaboratorId);
     if (collaborator) {
       collaborator.role = role;
       await this.saveWorkspace(workspace);
@@ -498,7 +510,7 @@ export class CollaborativeWorkspace extends EventEmitter {
       let afterId = "HEAD";
       for (const char of params.initialContent) {
         const op = rgaDoc.insert(char, afterId);
-        afterId = op.id;
+        afterId = op.id!;
       }
     }
     
@@ -524,11 +536,7 @@ export class CollaborativeWorkspace extends EventEmitter {
     await fs.writeFile(docPath, JSON.stringify(document, null, 2));
     
     // Update workspace
-    workspace.documents.push({
-      id: docId,
-      name: params.name,
-      type: params.type,
-    });
+    workspace.documents.push(document);
     await this.saveWorkspace(workspace);
     
     this.emit("document:created", { workspaceId, document });
@@ -548,8 +556,8 @@ export class CollaborativeWorkspace extends EventEmitter {
     // Load CRDT document
     if (!this.documents.has(documentId)) {
       const rgaDoc = new RGADocument(this.nodeId);
-      if (document.crdtState) {
-        rgaDoc.loadState(document.crdtState);
+      if (document.crdtState && !(document.crdtState instanceof Uint8Array)) {
+        rgaDoc.loadState(document.crdtState as CRDTState);
       }
       this.documents.set(documentId, rgaDoc);
     }
@@ -606,7 +614,7 @@ export class CollaborativeWorkspace extends EventEmitter {
     for (const char of text) {
       const op = rgaDoc.insert(char, afterId);
       operations.push(op);
-      afterId = op.id;
+      afterId = op.id!;
     }
     
     // Save document
@@ -703,7 +711,8 @@ export class CollaborativeWorkspace extends EventEmitter {
       this.presence.set(documentId, new Map());
     }
     
-    this.presence.get(documentId)!.set(presence.id, {
+    const presenceId = presence.id || presence.collaborator.id;
+    this.presence.get(documentId)!.set(presenceId, {
       ...presence,
       lastActiveAt: Date.now(),
     });
@@ -734,7 +743,7 @@ export class CollaborativeWorkspace extends EventEmitter {
     const activePresences: PresenceInfo[] = [];
     
     for (const [userId, presence] of docPresence) {
-      if (now - presence.lastActiveAt < 30000) {
+      if (now - (presence.lastActiveAt || 0) < 30000) {
         activePresences.push(presence);
       } else {
         docPresence.delete(userId);

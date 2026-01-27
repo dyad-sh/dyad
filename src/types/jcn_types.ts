@@ -40,6 +40,43 @@ export type Sha256Hash = string;
 /** Transaction hash */
 export type TxHash = string;
 
+/** License identifier */
+export type LicenseId = string;
+
+/** Key type for cryptographic operations */
+export type KeyType = "signing" | "encryption" | "identity" | "node_identity";
+
+/** Key algorithm for cryptographic operations */
+export type KeyAlgorithm = "ed25519" | "secp256k1" | "rsa" | "ecdsa" | "rsa-2048" | "aes-256-gcm";
+
+/** Usage metrics for tracking job execution */
+export interface UsageMetrics {
+  cpuTimeMs: number;
+  memoryPeakMb: number;
+  ioReadBytes: number;
+  ioWriteBytes: number;
+  networkBytes: number;
+  executionTimeMs?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  memoryUsedMb?: number;
+  startedAt?: number;
+  completedAt?: number;
+  durationMs?: number;
+  gpuTimeMs?: number;
+}
+
+/** Execution output from a job */
+export interface ExecutionOutput {
+  stdout?: string;
+  stderr?: string;
+  exitCode?: number;
+  data?: Record<string, unknown>;
+  type?: string;
+  [key: string]: unknown;
+}
+
 // =============================================================================
 // AUTHORIZATION & AUTHENTICATION
 // =============================================================================
@@ -54,6 +91,29 @@ export type Role =
   | "auditor"
   | "admin";
 
+/** Alias for Role */
+export type JcnRole = Role;
+
+export type JcnPermission = 
+  | "publish:create"
+  | "publish:read"
+  | "publish:update"
+  | "publish:delete"
+  | "job:create"
+  | "job:read"
+  | "job:cancel"
+  | "bundle:create"
+  | "bundle:read"
+  | "bundle:verify"
+  | "license:create"
+  | "license:read"
+  | "license:revoke"
+  | "audit:read"
+  | "audit:write"
+  | string;
+
+export type RateLimitScope = "user" | "global" | "store";
+
 export interface AuthContext {
   /** Authentication method used */
   method: AuthMethod;
@@ -61,6 +121,10 @@ export interface AuthContext {
   principalId: string;
   /** Wallet address if applicable */
   walletAddress?: WalletAddress;
+  /** Wallet address shorthand */
+  wallet?: WalletAddress;
+  /** Store ID */
+  storeId?: StoreId;
   /** Roles assigned to principal */
   roles: Role[];
   /** Store IDs the principal has access to */
@@ -71,6 +135,12 @@ export interface AuthContext {
   certFingerprint?: string;
   /** Request trace ID */
   traceId: TraceId;
+  /** Whether authenticated */
+  authenticated?: boolean;
+  /** Permissions granted to principal */
+  permissions?: string[];
+  /** Additional metadata */
+  metadata?: Record<string, unknown>;
 }
 
 export interface AuthorizationCheck {
@@ -120,7 +190,14 @@ export interface KeyRotationConfig {
 // BUNDLE & MANIFEST
 // =============================================================================
 
-export type BundleType = "ai_agent" | "ai_model" | "dataset" | "prompt" | "tool" | "workflow";
+export type BundleType = 
+  | "ai_agent" | "agent"
+  | "ai_model" | "model"
+  | "dataset" 
+  | "prompt" | "prompt_library"
+  | "tool" 
+  | "workflow"
+  | "knowledge_pack";
 
 export interface BundleFile {
   /** Relative path within bundle */
@@ -292,6 +369,23 @@ export interface PublishStateRecord {
     lastCompletedStep: string;
     data: Record<string, unknown>;
   };
+  /** Source type */
+  sourceType?: "local_path" | "cid";
+  /** Metadata JSON */
+  metadataJson?: {
+    name: string;
+    description?: string;
+    version: string;
+    license: string;
+    licenseUrl?: string;
+    tags?: string[];
+  };
+  /** Pricing JSON */
+  pricingJson?: {
+    model: string;
+    amount?: number;
+    currency?: string;
+  };
   /** Timestamps */
   createdAt: number;
   updatedAt: number;
@@ -311,6 +405,7 @@ export type JobState =
   | "COMPLETED"
   | "FAILED"
   | "CANCELLED"
+  | "TIMEOUT"
   | "RETRYABLE";
 
 export interface JobTicket {
@@ -320,14 +415,24 @@ export interface JobTicket {
   type: "job-ticket";
   /** Unique job ID */
   jobId: JcnId;
+  /** Ticket ID */
+  ticketId?: string;
   /** Bundle CID to execute */
   bundleCid: Cid;
+  /** Bundle version */
+  bundleVersion?: string;
   /** Merkle root for verification */
   merkleRoot: MerkleRoot;
   /** Input CID (if applicable) */
   inputCid?: Cid;
+  /** Input hash */
+  inputHash?: Sha256Hash;
+  /** Input JSON */
+  inputJson?: Record<string, unknown>;
   /** Requester wallet */
   requester: WalletAddress;
+  /** Requester wallet (alias) */
+  requesterWallet?: WalletAddress;
   /** Authorized executors (empty = any) */
   authorizedExecutors?: WalletAddress[];
   /** License ID */
@@ -365,12 +470,18 @@ export interface InferenceReceipt {
   type: "inference-receipt";
   /** Job ID */
   jobId: JcnId;
+  /** Ticket ID */
+  ticketId?: string;
+  /** Receipt CID (after pinning) */
+  receiptCid?: Cid;
   /** Bundle CID executed */
   bundleCid: Cid;
   /** Merkle root verified */
   merkleRoot: MerkleRoot;
   /** Input CID */
   inputCid?: Cid;
+  /** Input hash */
+  inputHash?: Sha256Hash;
   /** Output CID */
   outputCid: Cid;
   /** Output hash */
@@ -379,6 +490,8 @@ export interface InferenceReceipt {
   licenseId: string;
   /** Executor wallet */
   executor: WalletAddress;
+  /** Executor node address */
+  executorNode?: string;
   /** Execution metrics */
   metrics: {
     startedAt: number;
@@ -422,6 +535,8 @@ export interface JobStateRecord {
   ticketValid?: boolean;
   /** License validation result */
   licenseValid?: boolean;
+  /** License ID */
+  licenseId?: string;
   /** Bundle verification result */
   bundleVerified?: boolean;
   /** Execution container ID */
@@ -432,6 +547,19 @@ export interface JobStateRecord {
   receipt?: InferenceReceipt;
   /** Receipt CID (after pinning) */
   receiptCid?: Cid;
+  /** Checkpoint data */
+  checkpoint?: {
+    workDir?: string;
+    bundlePath?: string;
+    extractDir?: string;
+    manifest?: Record<string, unknown>;
+  };
+  /** Sandbox configuration */
+  sandboxConfig?: SandboxConfig;
+  /** Execution output */
+  output?: ExecutionOutput;
+  /** Execution metrics */
+  metrics?: UsageMetrics;
   /** Error information */
   error?: {
     code: string;
@@ -449,21 +577,33 @@ export interface JobStateRecord {
 // LICENSE VALIDATION
 // =============================================================================
 
-export type LicenseType = "registry" | "token" | "signature";
+export type LicenseType = "registry" | "token" | "signature" | "perpetual" | "subscription" | "usage_based";
 
 export interface LicenseRecord {
   /** License ID */
-  id: string;
+  id?: string;
+  /** License ID (legacy alias) */
+  licenseId?: string;
   /** License type */
-  type: LicenseType;
+  type?: LicenseType;
+  /** License type (legacy alias) */
+  licenseType?: "perpetual" | "subscription" | "usage_based";
   /** Licensed asset (bundle CID or asset ID) */
-  assetId: string;
+  assetId?: string;
+  /** Bundle CID (legacy alias) */
+  bundleCid?: Cid;
   /** Licensee wallet */
-  licensee: WalletAddress;
+  licensee?: WalletAddress;
+  /** Holder wallet (legacy alias) */
+  holderWallet?: WalletAddress;
   /** Licensor wallet */
-  licensor: WalletAddress;
+  licensor?: WalletAddress;
   /** License scope */
-  scope: string;
+  scope?: string;
+  /** Usage limit */
+  usageLimit?: number | null;
+  /** Current usage */
+  currentUsage?: number;
   /** Usage limits */
   limits?: {
     maxInferences?: number;
@@ -476,16 +616,28 @@ export interface LicenseRecord {
     tokensUsed: number;
   };
   /** Verification data */
-  verification: {
+  verification?: {
     method: "contract_call" | "token_ownership" | "signature";
     contractAddress?: WalletAddress;
     tokenId?: string;
     signature?: string;
   };
   /** Is valid */
-  valid: boolean;
+  valid?: boolean;
+  /** Revoked status (legacy alias for valid: false) */
+  revoked?: boolean;
   /** Validation timestamp */
-  validatedAt: number;
+  validatedAt?: number;
+  /** Granted at timestamp */
+  grantedAt?: number;
+  /** Valid until timestamp */
+  validUntil?: number;
+  /** On chain flag */
+  onChain?: boolean;
+  /** Contract address */
+  contractAddress?: WalletAddress;
+  /** Token ID */
+  tokenId?: string;
 }
 
 // =============================================================================
@@ -612,30 +764,48 @@ export interface ChainTransaction {
 // =============================================================================
 
 export interface SandboxConfig {
-  /** Container image */
-  image: string;
-  /** CPU limit (cores) */
-  cpuLimit: number;
-  /** Memory limit (MB) */
-  memoryLimitMb: number;
+  /** Container image (for Docker-based execution) */
+  image?: string;
+  /** CPU limit (cores) - Docker mode */
+  cpuLimit?: number;
+  /** Memory limit (MB) - Docker mode */
+  memoryLimitMb?: number;
+  /** Max memory (MB) - local execution */
+  maxMemoryMb?: number;
+  /** Max CPU percent - local execution */
+  maxCpuPercent?: number;
+  /** Max execution time (ms) */
+  maxExecutionMs?: number;
+  /** Max output bytes */
+  maxOutputBytes?: number;
   /** GPU access */
-  gpuEnabled: boolean;
+  gpuEnabled?: boolean;
   /** GPU memory limit (MB) */
   gpuMemoryLimitMb?: number;
   /** Network access */
-  networkEnabled: boolean;
+  networkEnabled?: boolean;
+  /** Allow network - local execution */
+  allowNetwork?: boolean;
   /** Allowed hosts (if network enabled) */
   allowedHosts?: string[];
+  /** Allowed network domains - local execution */
+  allowedNetworkDomains?: string[];
   /** Read-only filesystem */
-  readOnlyFs: boolean;
+  readOnlyFs?: boolean;
+  /** Allow filesystem - local execution */
+  allowFileSystem?: boolean;
   /** Writable paths */
-  writablePaths: string[];
-  /** Timeout (seconds) */
-  timeoutSec: number;
+  writablePaths?: string[];
+  /** Allowed paths - local execution */
+  allowedPaths?: string[];
+  /** Timeout (seconds) - Docker mode */
+  timeoutSec?: number;
   /** Seccomp profile */
   seccompProfile?: string;
   /** AppArmor profile */
   apparmorProfile?: string;
+  /** Environment variables */
+  envVars?: Record<string, string>;
 }
 
 export interface SandboxExecution {

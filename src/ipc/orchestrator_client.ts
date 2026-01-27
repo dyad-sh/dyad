@@ -3,8 +3,6 @@
  * Client-side wrapper for orchestration, agent management, tasks, and n8n integration
  */
 
-import { IpcClient } from "../ipc_client";
-
 // ============================================================================
 // Types - Orchestrator
 // ============================================================================
@@ -288,12 +286,14 @@ export interface N8nMapping {
 // Client Class
 // ============================================================================
 
+type IpcInvoker = { invoke: (channel: string, ...args: unknown[]) => Promise<any> };
+
 export class OrchestratorClient {
   private static instance: OrchestratorClient;
-  private ipc: IpcClient;
+  private ipc: IpcInvoker;
 
   private constructor() {
-    this.ipc = IpcClient.getInstance();
+    this.ipc = (window as any).electron?.ipcRenderer ?? { invoke: async () => { throw new Error("IPC not available"); } };
   }
 
   static getInstance(): OrchestratorClient {

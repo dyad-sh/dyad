@@ -56,10 +56,13 @@ interface OllamaModel {
 }
 
 export async function fetchOllamaModels(): Promise<LocalModelListResponse> {
+  const apiUrl = `${getOllamaApiUrl()}/api/tags`;
+  logger.info(`Fetching Ollama models from: ${apiUrl}`);
   try {
-    const response = await fetch(`${getOllamaApiUrl()}/api/tags`);
+    const response = await fetch(apiUrl);
     if (!response.ok) {
-      throw new Error(`Failed to fetch model: ${response.statusText}`);
+      logger.warn("Ollama not available or returned error status");
+      return { models: [] };
     }
 
     const data = await response.json();
@@ -84,15 +87,16 @@ export async function fetchOllamaModels(): Promise<LocalModelListResponse> {
     logger.info(`Successfully fetched ${models.length} models from Ollama`);
     return { models };
   } catch (error) {
+    // Ollama is not running or not available - this is expected
     if (
       error instanceof TypeError &&
       (error as Error).message.includes("fetch failed")
     ) {
-      throw new Error(
-        "Could not connect to Ollama. Make sure it's running at http://localhost:11434",
-      );
+      logger.debug("Ollama not available (this is normal if not running)");
+    } else {
+      logger.warn("Failed to fetch models from Ollama:", error);
     }
-    throw new Error("Failed to fetch models from Ollama");
+    return { models: [] };
   }
 }
 
@@ -100,7 +104,10 @@ export function registerOllamaHandlers() {
   ipcMain.handle(
     "local-models:list-ollama",
     async (): Promise<LocalModelListResponse> => {
-      return fetchOllamaModels();
+      logger.info("Fetching Ollama models...");
+      const result = await fetchOllamaModels();
+      logger.info(`Returning ${result.models.length} Ollama models`);
+      return result;
     },
   );
 }

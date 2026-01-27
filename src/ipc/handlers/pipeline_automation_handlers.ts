@@ -1329,7 +1329,7 @@ async function executeSplitStep(config: Record<string, any>, datasetId?: string)
     .where(inArray(datasetItems.id, splits.train));
   
   await db.update(datasetItems)
-    .set({ split: "validation" })
+    .set({ split: "val" })
     .where(inArray(datasetItems.id, splits.val));
   
   await db.update(datasetItems)

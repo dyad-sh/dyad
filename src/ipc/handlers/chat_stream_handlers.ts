@@ -94,6 +94,7 @@ import {
 import {
   getFreeAgentQuotaStatus,
   markMessageAsUsingFreeAgentQuota,
+  unmarkMessageAsUsingFreeAgentQuota,
 } from "./free_agent_quota_handlers";
 import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
 import { getCurrentCommitHash } from "../utils/git_utils";
@@ -1068,16 +1069,27 @@ This conversation includes one or more image attachments. When the user uploads 
             }
           }
 
-          await handleLocalAgentStream(event, req, abortController, {
-            placeholderMessageId: placeholderAssistantMessage.id,
-            systemPrompt,
-            dyadRequestId: dyadRequestId ?? "[no-request-id]",
-            messageOverride: isSummarizeIntent ? chatMessages : undefined,
-          });
-
-          // Mark the user message as using quota for Basic Agent mode
+          // Mark the user message as using quota BEFORE starting the stream
+          // to prevent race conditions with parallel requests
           if (isBasicAgentModeRequest && userMessageId) {
             await markMessageAsUsingFreeAgentQuota(userMessageId);
+          }
+
+          const streamSuccess = await handleLocalAgentStream(
+            event,
+            req,
+            abortController,
+            {
+              placeholderMessageId: placeholderAssistantMessage.id,
+              systemPrompt,
+              dyadRequestId: dyadRequestId ?? "[no-request-id]",
+              messageOverride: isSummarizeIntent ? chatMessages : undefined,
+            },
+          );
+
+          // If the stream failed or was aborted, refund the quota
+          if (isBasicAgentModeRequest && userMessageId && !streamSuccess) {
+            await unmarkMessageAsUsingFreeAgentQuota(userMessageId);
           }
 
           return;

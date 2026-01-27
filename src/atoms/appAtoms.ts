@@ -24,6 +24,10 @@ export const envVarsAtom = atom<Record<string, string | undefined>>({});
 
 export const previewPanelKeyAtom = atom<number>(0);
 
+// Stores the current preview URL to preserve route across HMR-induced remounts
+// Maps appId to the current URL for that app
+export const previewCurrentUrlAtom = atom<Record<number, string>>({});
+
 export const previewErrorMessageAtom = atom<
   { message: string; source: "preview-app" | "dyad-app" } | undefined
 >(undefined);

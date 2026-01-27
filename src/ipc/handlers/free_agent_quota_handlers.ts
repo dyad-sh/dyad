@@ -4,6 +4,8 @@ import { eq } from "drizzle-orm";
 import { createTypedHandler } from "./base";
 import { freeAgentQuotaContracts } from "../types/free_agent_quota";
 import log from "electron-log";
+import { ipcMain } from "electron";
+import { IS_TEST_BUILD } from "../utils/test_utils";
 
 const logger = log.scope("free_agent_quota_handlers");
 
@@ -20,6 +22,26 @@ export function registerFreeAgentQuotaHandlers() {
       return getFreeAgentQuotaStatus();
     },
   );
+
+  // Test-only handler to simulate time passing for quota tests
+  if (IS_TEST_BUILD) {
+    ipcMain.handle(
+      "test:simulateQuotaTimeElapsed",
+      async (_event, hoursAgo: number) => {
+        const secondsAgo = hoursAgo * 60 * 60;
+        const newTimestamp = Math.floor(Date.now() / 1000) - secondsAgo;
+
+        db.$client.exec(
+          `UPDATE messages SET created_at = ${newTimestamp} WHERE using_free_agent_mode_quota = 1`,
+        );
+
+        logger.log(
+          `[TEST] Simulated ${hoursAgo} hours elapsed for quota messages`,
+        );
+        return { success: true };
+      },
+    );
+  }
 }
 
 /**

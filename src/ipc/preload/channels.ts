@@ -46,6 +46,9 @@ import { freeAgentQuotaContracts } from "../types/free_agent_quota";
 const CHAT_STREAM_CHANNELS = getStreamChannels(chatStreamContract);
 const HELP_STREAM_CHANNELS = getStreamChannels(helpStreamContract);
 
+// Test-only channels (handler only registered in E2E test builds, but channel always allowed)
+const TEST_INVOKE_CHANNELS = ["test:simulateQuotaTimeElapsed"] as const;
+
 /**
  * All valid invoke channels derived from contracts.
  * Used by preload.ts to whitelist IPC channels.
@@ -85,6 +88,9 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(securityContracts),
   ...getInvokeChannels(miscContracts),
   ...getInvokeChannels(freeAgentQuotaContracts),
+
+  // Test-only channels
+  ...TEST_INVOKE_CHANNELS,
 ] as const;
 
 // =============================================================================

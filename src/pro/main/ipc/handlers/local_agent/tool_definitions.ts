@@ -20,6 +20,7 @@ import { setChatSummaryTool } from "./tools/set_chat_summary";
 import { addIntegrationTool } from "./tools/add_integration";
 import { readLogsTool } from "./tools/read_logs";
 import { editFileTool } from "./tools/edit_file";
+import { searchReplaceStrictTool } from "./tools/search_replace_strict";
 import { webSearchTool } from "./tools/web_search";
 import { webCrawlTool } from "./tools/web_crawl";
 import { updateTodosTool } from "./tools/update_todos";
@@ -40,6 +41,7 @@ import { getSupabaseClientCode } from "@/supabase_admin/supabase_context";
 export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   writeFileTool,
   editFileTool,
+  searchReplaceStrictTool,
   deleteFileTool,
   renameFileTool,
   addDependencyTool,

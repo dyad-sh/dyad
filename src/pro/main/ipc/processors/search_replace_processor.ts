@@ -7,6 +7,23 @@ import log from "electron-log";
 
 const logger = log.scope("search_replace_processor");
 
+// ============================================================================
+// Options Interface
+// ============================================================================
+
+export interface SearchReplaceOptions {
+  /**
+   * If true, only exact string matching is used.
+   * Lenient (whitespace-tolerant) and fuzzy (Levenshtein) fallbacks are skipped.
+   */
+  exactMatchOnly?: boolean;
+  /**
+   * If true, returns an error when search and replace content are identical.
+   * By default, identical content is allowed (treated as a no-op with warning).
+   */
+  rejectIdentical?: boolean;
+}
+
 // Minimum similarity threshold for fuzzy matching (0 to 1, where 1 is exact match)
 const FUZZY_MATCH_THRESHOLD = 0.9;
 
@@ -168,6 +185,7 @@ function fastFuzzySearch(
 export function applySearchReplace(
   originalContent: string,
   diffContent: string,
+  options: SearchReplaceOptions = {},
 ): {
   success: boolean;
   content?: string;
@@ -204,8 +222,14 @@ export function applySearchReplace(
       };
     }
 
-    // If search and replace are identical, it's a no-op and is just treated as a warning
+    // If search and replace are identical, it's either an error or a no-op warning
     if (searchLines.join("\n") === replaceLines.join("\n")) {
+      if (options.rejectIdentical) {
+        return {
+          success: false,
+          error: "Search and replace content are identical",
+        };
+      }
       logger.warn("Search and replace blocks are identical");
     }
 
@@ -234,6 +258,15 @@ export function applySearchReplace(
     if (exactPositions.length === 1) {
       const pos = exactPositions[0];
       matchIndex = hay.substring(0, pos).split("\n").length - 1;
+    }
+
+    // If exactMatchOnly is enabled, skip lenient and fuzzy fallbacks
+    if (matchIndex === -1 && options.exactMatchOnly) {
+      return {
+        success: false,
+        error:
+          "Search content did not match exactly. Ensure the content matches the file exactly, including all whitespace and indentation.",
+      };
     }
 
     if (matchIndex === -1) {

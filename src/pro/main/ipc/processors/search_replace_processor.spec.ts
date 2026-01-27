@@ -299,3 +299,130 @@ REPLACEMENT
     expect(error).toMatch(/empty SEARCH block is not allowed/i);
   });
 });
+
+describe("search_replace_processor - options", () => {
+  describe("exactMatchOnly option", () => {
+    it("succeeds with exact match when exactMatchOnly is true", () => {
+      const original = ["alpha", "beta", "gamma"].join("\n");
+      const diff = `
+<<<<<<< SEARCH
+beta
+=======
+BETA
+>>>>>>> REPLACE
+`;
+      const { success, content } = applySearchReplace(original, diff, {
+        exactMatchOnly: true,
+      });
+      expect(success).toBe(true);
+      expect(content).toBe(["alpha", "BETA", "gamma"].join("\n"));
+    });
+
+    it("fails when only lenient match exists and exactMatchOnly is true", () => {
+      // Original has tab indentation, search uses spaces
+      const original = ["\tif (ready) {", "\t\tstart();", "\t}"].join("\n");
+
+      const diff = `
+<<<<<<< SEARCH
+  if (ready) {
+    start();
+  }
+=======
+  if (ready) {
+    launch();
+  }
+>>>>>>> REPLACE
+`;
+
+      // Without exactMatchOnly, this would succeed via lenient matching
+      const lenientResult = applySearchReplace(original, diff);
+      expect(lenientResult.success).toBe(true);
+
+      // With exactMatchOnly, it should fail
+      const { success, error } = applySearchReplace(original, diff, {
+        exactMatchOnly: true,
+      });
+      expect(success).toBe(false);
+      expect(error).toMatch(/did not match exactly/i);
+    });
+
+    it("fails when only fuzzy match exists and exactMatchOnly is true", () => {
+      // Original has a minor typo that fuzzy matching would accept
+      const original = [
+        "function test() {",
+        "  console.log('helo');",
+        "}",
+      ].join("\n");
+
+      const diff = `
+<<<<<<< SEARCH
+function test() {
+  console.log('hello');
+}
+=======
+function test() {
+  console.log('goodbye');
+}
+>>>>>>> REPLACE
+`;
+
+      // With exactMatchOnly, fuzzy matching is skipped
+      const { success, error } = applySearchReplace(original, diff, {
+        exactMatchOnly: true,
+      });
+      expect(success).toBe(false);
+      expect(error).toMatch(/did not match exactly/i);
+    });
+  });
+
+  describe("rejectIdentical option", () => {
+    it("errors when search and replace are identical with rejectIdentical", () => {
+      const original = ["x", "middle", "z"].join("\n");
+      const diff = `
+<<<<<<< SEARCH
+middle
+=======
+middle
+>>>>>>> REPLACE
+`;
+      const { success, error } = applySearchReplace(original, diff, {
+        rejectIdentical: true,
+      });
+      expect(success).toBe(false);
+      expect(error).toMatch(/identical/i);
+    });
+
+    it("succeeds when search and replace are identical without rejectIdentical", () => {
+      const original = ["x", "middle", "z"].join("\n");
+      const diff = `
+<<<<<<< SEARCH
+middle
+=======
+middle
+>>>>>>> REPLACE
+`;
+      const { success, content } = applySearchReplace(original, diff);
+      expect(success).toBe(true);
+      expect(content).toBe(original);
+    });
+  });
+
+  describe("combined options", () => {
+    it("applies both options together", () => {
+      const original = ["line1", "line2", "line3"].join("\n");
+      const diff = `
+<<<<<<< SEARCH
+line2
+=======
+line2
+>>>>>>> REPLACE
+`;
+      const { success, error } = applySearchReplace(original, diff, {
+        exactMatchOnly: true,
+        rejectIdentical: true,
+      });
+      expect(success).toBe(false);
+      expect(error).toMatch(/identical/i);
+    });
+  });
+});

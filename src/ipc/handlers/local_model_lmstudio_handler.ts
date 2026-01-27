@@ -19,31 +19,41 @@ export interface LMStudioModel {
 }
 
 export async function fetchLMStudioModels(): Promise<LocalModelListResponse> {
-  const modelsResponse: Response = await fetch(
-    `${LM_STUDIO_BASE_URL}/api/v0/models`,
-  );
-  if (!modelsResponse.ok) {
-    throw new Error("Failed to fetch models from LM Studio");
-  }
-  const modelsJson = await modelsResponse.json();
-  const downloadedModels = modelsJson.data as LMStudioModel[];
-  const models: LocalModel[] = downloadedModels
-    .filter((model: any) => model.type === "llm")
-    .map((model: any) => ({
-      modelName: model.id,
-      displayName: model.id,
-      provider: "lmstudio",
-    }));
+  try {
+    const modelsResponse: Response = await fetch(
+      `${LM_STUDIO_BASE_URL}/api/v0/models`,
+    );
+    if (!modelsResponse.ok) {
+      logger.warn("LM Studio not available or returned error status");
+      return { models: [] };
+    }
+    const modelsJson = await modelsResponse.json();
+    const downloadedModels = modelsJson.data as LMStudioModel[];
+    const models: LocalModel[] = downloadedModels
+      .filter((model: any) => model.type === "llm")
+      .map((model: any) => ({
+        modelName: model.id,
+        displayName: model.id,
+        provider: "lmstudio",
+      }));
 
-  logger.info(`Successfully fetched ${models.length} models from LM Studio`);
-  return { models };
+    logger.info(`Successfully fetched ${models.length} models from LM Studio`);
+    return { models };
+  } catch (error) {
+    // LM Studio is not running or not available - this is expected
+    logger.debug("LM Studio not available (this is normal if not running)");
+    return { models: [] };
+  }
 }
 
 export function registerLMStudioHandlers() {
   ipcMain.handle(
     "local-models:list-lmstudio",
     async (): Promise<LocalModelListResponse> => {
-      return fetchLMStudioModels();
+      logger.info("Fetching LM Studio models...");
+      const result = await fetchLMStudioModels();
+      logger.info(`Returning ${result.models.length} LM Studio models`);
+      return result;
     },
   );
 }

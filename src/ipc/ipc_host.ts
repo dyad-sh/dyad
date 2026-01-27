@@ -86,6 +86,7 @@ import { registerOfflineDocsHandlers } from "./handlers/offline_docs_handlers";
 import { registerAILearningHandlers } from "./handlers/ai_learning_handlers";
 import { registerAgentSwarmHandlers } from "./handlers/agent_swarm_handlers";
 import { registerAutonomousAgentHandlers } from "./handlers/autonomous_agent_handlers";
+import { registerAutonomousAgentProductionHandlers } from "./handlers/autonomous_agent_production_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -209,4 +210,7 @@ export function registerIpcHandlers() {
   
   // Autonomous Agent System - Fully autonomous AI agents
   registerAutonomousAgentHandlers();
+  
+  // Autonomous Agent Production - Resource monitoring, security, scheduling, backups
+  registerAutonomousAgentProductionHandlers();
 }

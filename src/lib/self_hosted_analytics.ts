@@ -675,8 +675,9 @@ export class SelfHostedAnalytics extends EventEmitter {
       const bucketStart = this.getPeriodBounds(row.timestamp, params.groupBy).start;
       const bucket = buckets.get(bucketStart);
       if (bucket) {
-        bucket.count += row.count;
+        bucket.count = (bucket.count || 0) + row.count;
         const key = `${row.category}:${row.action}`;
+        if (!bucket.values) bucket.values = {};
         bucket.values[key] = (bucket.values[key] || 0) + row.count;
       }
     }
@@ -907,13 +908,15 @@ export class SelfHostedAnalytics extends EventEmitter {
   }
   
   private getWidgetMetricData(widget: DashboardWidget): unknown {
+    const timeRange = widget.timeRange ?? { start: Date.now() - 7 * 24 * 60 * 60 * 1000, end: Date.now() };
+    
     if (widget.metric === "session_count") {
       if (!this.db) return { value: 0 };
       const row = this.db.prepare(`
         SELECT COUNT(DISTINCT session_id) as count 
         FROM events 
         WHERE timestamp >= ? AND timestamp <= ?
-      `).get(widget.timeRange.start, widget.timeRange.end) as { count: number };
+      `).get(timeRange.start, timeRange.end) as { count: number };
       return { value: row?.count || 0 };
     }
     
@@ -923,7 +926,7 @@ export class SelfHostedAnalytics extends EventEmitter {
         SELECT COUNT(*) as count 
         FROM events 
         WHERE timestamp >= ? AND timestamp <= ?
-      `).get(widget.timeRange.start, widget.timeRange.end) as { count: number };
+      `).get(timeRange.start, timeRange.end) as { count: number };
       return { value: row?.count || 0 };
     }
     
@@ -931,11 +934,12 @@ export class SelfHostedAnalytics extends EventEmitter {
   }
   
   private getWidgetChartData(widget: DashboardWidget): unknown {
-    const groupBy = widget.groupBy || "day";
+    const groupBy = (widget.groupBy || "day") as "minute" | "hour" | "day" | "week" | "month";
+    const timeRange = widget.timeRange ?? { start: Date.now() - 7 * 24 * 60 * 60 * 1000, end: Date.now() };
     
     if (widget.metric === "event_count") {
       return this.aggregateEvents({
-        timeRange: widget.timeRange,
+        timeRange,
         groupBy,
       });
     }
@@ -946,7 +950,7 @@ export class SelfHostedAnalytics extends EventEmitter {
     
     if (widget.metric === "performance") {
       return this.getPerformanceMetrics({
-        timeRange: widget.timeRange,
+        timeRange,
       });
     }
     
@@ -954,9 +958,11 @@ export class SelfHostedAnalytics extends EventEmitter {
   }
   
   private getWidgetTableData(widget: DashboardWidget): unknown {
+    const timeRange = widget.timeRange ?? { start: Date.now() - 7 * 24 * 60 * 60 * 1000, end: Date.now() };
+    
     if (widget.metric === "events") {
       return this.queryEvents({
-        timeRange: widget.timeRange,
+        timeRange,
         limit: 100,
       });
     }

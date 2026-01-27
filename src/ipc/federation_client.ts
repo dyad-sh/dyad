@@ -13,7 +13,6 @@ import type {
   P2PPricing,
   P2PLicense,
   P2PTransaction,
-  P2PEscrow,
   P2PMessage,
   P2PConversation,
   DHTRecord,

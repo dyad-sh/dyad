@@ -59,6 +59,28 @@ function isValidTransition(from: PublishState, to: PublishState): boolean {
 }
 
 // =============================================================================
+// BUNDLE TYPE NORMALIZATION
+// =============================================================================
+
+type DBBundleType = "ai_agent" | "ai_model" | "dataset" | "prompt" | "tool" | "workflow";
+
+function normalizeToDBBundleType(bundleType: BundleType): DBBundleType {
+  const mapping: Record<string, DBBundleType> = {
+    agent: "ai_agent",
+    ai_agent: "ai_agent",
+    model: "ai_model",
+    ai_model: "ai_model",
+    prompt_library: "prompt",
+    prompt: "prompt",
+    knowledge_pack: "dataset",
+    dataset: "dataset",
+    tool: "tool",
+    workflow: "workflow",
+  };
+  return mapping[bundleType] || "prompt";
+}
+
+// =============================================================================
 // PUBLISH REQUEST
 // =============================================================================
 
@@ -254,7 +276,7 @@ export class JcnPublishStateMachine {
       // Fetch and use existing bundle
       return this.transitionState(record, "BUNDLE_BUILT", "bundle_from_cid", {
         bundleCid: record.sourcePath as Cid,
-        checkpoint: { lastCompletedStep: "bundle_built", data: { cid: record.sourcePath } },
+        checkpointJson: { lastCompletedStep: "bundle_built", data: { cid: record.sourcePath } },
       });
     }
     
@@ -284,7 +306,7 @@ export class JcnPublishStateMachine {
       merkleRoot: result.merkleRoot,
       manifestHash: result.manifestHash,
       totalSize: result.totalSize,
-      checkpoint: {
+      checkpointJson: {
         lastCompletedStep: "bundle_built",
         data: {
           bundlePath: result.bundlePath,
@@ -301,7 +323,7 @@ export class JcnPublishStateMachine {
   private async pinBundle(record: PublishStateRecord): Promise<PublishStateRecord> {
     logger.info("Pinning bundle", { id: record.id });
     
-    const checkpoint = record.checkpointJson;
+    const checkpoint = record.checkpoint;
     if (!checkpoint?.data?.bundlePath) {
       throw new Error("Bundle path not found in checkpoint");
     }
@@ -338,7 +360,7 @@ export class JcnPublishStateMachine {
     return this.transitionState(record, "PINNED", "pin_success", {
       bundleCid: successfulBundlePin.cid,
       manifestCid: successfulManifestPin.cid,
-      checkpoint: {
+      checkpointJson: {
         ...checkpoint,
         lastCompletedStep: "pinned",
         data: {
@@ -357,7 +379,7 @@ export class JcnPublishStateMachine {
   private async verifyBundle(record: PublishStateRecord): Promise<PublishStateRecord> {
     logger.info("Verifying bundle", { id: record.id });
     
-    const checkpoint = record.checkpointJson;
+    const checkpoint = record.checkpoint;
     if (!checkpoint?.data?.bundlePath || !checkpoint?.data?.manifest) {
       throw new Error("Bundle data not found in checkpoint");
     }
@@ -379,7 +401,7 @@ export class JcnPublishStateMachine {
     });
     
     return this.transitionState(record, "VERIFIED", "verification_passed", {
-      checkpoint: {
+      checkpointJson: {
         ...checkpoint,
         lastCompletedStep: "verified",
         data: { ...checkpoint.data, verification },
@@ -450,11 +472,11 @@ export class JcnPublishStateMachine {
         mintTxHash: confirmed.txHash,
         tokenId: confirmed.tokenId,
         collectionContract: confirmed.collectionContract || mintResult.collectionContract,
-        checkpoint: {
-          ...record.checkpointJson,
+        checkpointJson: {
+          ...record.checkpoint,
           lastCompletedStep: "minted",
           data: {
-            ...record.checkpointJson?.data,
+            ...record.checkpoint?.data,
             mintResult: confirmed,
             metadataCid,
           },
@@ -490,7 +512,7 @@ export class JcnPublishStateMachine {
    * Retry from checkpoint
    */
   private async retryFromCheckpoint(record: PublishStateRecord): Promise<PublishStateRecord> {
-    const checkpoint = record.checkpointJson;
+    const checkpoint = record.checkpoint;
     
     if (!checkpoint?.lastCompletedStep) {
       // Start from beginning
@@ -575,7 +597,7 @@ export class JcnPublishStateMachine {
       stateHistoryJson: [{ state: "INIT", timestamp: Date.now(), event: "created" }],
       storeId: request.storeId,
       publisherWallet: request.publisherWallet,
-      bundleType: request.bundleType,
+      bundleType: normalizeToDBBundleType(request.bundleType),
       sourceType: request.source.type,
       sourcePath: request.source.value,
       metadataJson: request.metadata,
@@ -587,7 +609,7 @@ export class JcnPublishStateMachine {
     // Audit log
     await this.auditLog("publish_created", "system", "system", "publish", id, null, record, request.requestId, traceId);
     
-    return this.recordToStateRecord(record);
+    return this.recordToStateRecord(record as typeof jcnPublishRecords.$inferSelect);
   }
   
   /**
@@ -692,7 +714,7 @@ export class JcnPublishStateMachine {
       manifestCid: record.manifestCid || undefined,
       manifestHash: manifest.manifestHash || "",
       merkleRoot: manifest.merkleRoot,
-      bundleType: manifest.type,
+      bundleType: normalizeToDBBundleType(manifest.type),
       name: manifest.name,
       version: manifest.bundleVersion,
       description: manifest.description,
@@ -731,11 +753,15 @@ export class JcnPublishStateMachine {
       requestId: record.requestId as RequestId,
       traceId: record.traceId as TraceId,
       state: record.state as PublishState,
-      stateHistory: record.stateHistoryJson || [],
+      stateHistory: (record.stateHistoryJson || []).map(h => ({
+        ...h,
+        state: h.state as PublishState,
+      })),
       storeId: record.storeId as StoreId,
       publisherWallet: record.publisherWallet as WalletAddress,
       bundleType: record.bundleType as BundleType,
       sourcePath: record.sourcePath || undefined,
+      sourceType: record.sourceType as "local_path" | "cid" | undefined,
       bundleCid: record.bundleCid as Cid | undefined,
       manifestCid: record.manifestCid as Cid | undefined,
       manifestHash: record.manifestHash as Sha256Hash | undefined,
@@ -751,8 +777,8 @@ export class JcnPublishStateMachine {
         retryCount: record.retryCount || 0,
       } : undefined,
       checkpoint: record.checkpointJson || undefined,
-      metadataJson: record.metadataJson,
-      pricingJson: record.pricingJson,
+      metadataJson: record.metadataJson || undefined,
+      pricingJson: record.pricingJson || undefined,
       createdAt: record.createdAt?.getTime() || Date.now(),
       updatedAt: record.updatedAt?.getTime() || Date.now(),
       completedAt: record.completedAt?.getTime(),

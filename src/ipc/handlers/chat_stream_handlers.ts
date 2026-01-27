@@ -93,6 +93,17 @@ type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
 const logger = log.scope("chat_stream_handlers");
 
+// Local model providers that may not support function calling
+const LOCAL_MODEL_PROVIDERS = ["ollama", "lmstudio"];
+
+/**
+ * Check if the selected model is a local model (Ollama, LM Studio, etc.)
+ * Local models often don't support function calling/tools
+ */
+function isLocalModel(provider: string): boolean {
+  return LOCAL_MODEL_PROVIDERS.includes(provider);
+}
+
 // Track active streams for cancellation
 const activeStreams = new Map<number, AbortController>();
 
@@ -867,9 +878,9 @@ This conversation includes one or more image attachments. When the user uploads 
             joyAppId: updatedChat.app.id,
             joyRequestId,
             joyDisableFiles,
-            smartContextMode,
-            files,
-            versionedFiles,
+            joySmartContextMode: smartContextMode,
+            joyFiles: files,
+            joyVersionedFiles: versionedFiles,
             mentionedAppsCodebases,
             builtinProviderId: modelClient.builtinProviderId,
             settings,
@@ -921,7 +932,15 @@ This conversation includes one or more image attachments. When the user uploads 
               if (errorMessage && responseBody) {
                 errorMessage += "\n\nDetails: " + responseBody;
               }
-              const message = errorMessage || JSON.stringify(error);
+              let message = errorMessage || JSON.stringify(error);
+              
+              // Check for "does not support tools" error and provide helpful message
+              if (message.includes("does not support tools")) {
+                const modelMatch = message.match(/([^\s]+) does not support tools/);
+                const modelName = modelMatch ? modelMatch[1] : "This model";
+                message = `${modelName} does not support function calling/tools. Try:\n• Using a model with tool support (GPT-4, Claude 3.5, Gemini Pro)\n• Or switch to a simpler chat mode without tools`;
+              }
+              
               const requestIdPrefix = isEngineEnabled
                 ? `[Request ID: ${joyRequestId}] `
                 : "";
@@ -998,9 +1017,14 @@ This conversation includes one or more image attachments. When the user uploads 
         // Handle local-agent mode (Agent v2)
         // Mentioned apps can't be handled by the local agent (defer to balanced smart context
         // in build mode)
+        // Note: For local models (Ollama, LM Studio), we skip local-agent mode as they 
+        // typically don't support function calling
+        const isLocal = isLocalModel(settings.selectedModel.provider);
+        
         if (
           settings.selectedChatMode === "local-agent" &&
-          !mentionedAppsCodebases.length
+          !mentionedAppsCodebases.length &&
+          !isLocal // Skip local-agent for local models - they don't support tools
         ) {
           await handleLocalAgentStream(event, req, abortController, {
             placeholderMessageId: placeholderAssistantMessage.id,
@@ -1009,7 +1033,8 @@ This conversation includes one or more image attachments. When the user uploads 
           return;
         }
 
-        if (settings.selectedChatMode === "agent") {
+        // For agent mode, skip tools for local models (they don't support function calling)
+        if (settings.selectedChatMode === "agent" && !isLocal) {
           const tools = await getMcpTools(event);
 
           const { fullStream } = await simpleStreamText({

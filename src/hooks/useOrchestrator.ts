@@ -164,8 +164,8 @@ export function useExecution(executionId: string) {
     queryKey: orchestratorKeys.executionDetail(executionId),
     queryFn: () => client.getExecution(executionId),
     enabled: !!executionId,
-    refetchInterval: (data) => {
-      const execution = data as WorkflowExecution | undefined;
+    refetchInterval: (query) => {
+      const execution = query.state?.data as WorkflowExecution | undefined;
       return execution?.status === "running" ? 1000 : false;
     },
   });
@@ -327,8 +327,8 @@ export function useTask(taskId: string) {
     queryKey: orchestratorKeys.taskDetail(taskId),
     queryFn: () => client.getTask(taskId),
     enabled: !!taskId,
-    refetchInterval: (data) => {
-      const task = data as Task | undefined;
+    refetchInterval: (query) => {
+      const task = query.state?.data as Task | undefined;
       return task?.status === "running" || task?.status === "queued" ? 1000 : false;
     },
   });
@@ -465,8 +465,8 @@ export function useBatch(batchId: string) {
     queryKey: orchestratorKeys.batchDetail(batchId),
     queryFn: () => client.getBatch(batchId),
     enabled: !!batchId,
-    refetchInterval: (data) => {
-      const batch = data as TaskBatch | undefined;
+    refetchInterval: (query) => {
+      const batch = query.state?.data as TaskBatch | undefined;
       return batch?.status === "running" ? 1000 : false;
     },
   });

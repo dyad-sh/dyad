@@ -106,7 +106,7 @@ export function registerMarketplaceSyncHandlers() {
       });
 
       // Initialize sync service
-      await marketplaceSyncService.initialize(apiKey, data.publisherId);
+      await marketplaceSyncService.initialize(apiKey);
 
       logger.info("Connected to JoyMarketplace");
       
@@ -187,16 +187,8 @@ export function registerMarketplaceSyncHandlers() {
     }
 
     // Initialize service if needed
-    if (marketplaceConfig.apiKey && marketplaceConfig.publisherId) {
-      await marketplaceSyncService.initialize(
-        marketplaceConfig.apiKey,
-        marketplaceConfig.publisherId
-      );
-    }
-
-    // Use default store if not provided
-    if (!listing.store && marketplaceConfig.defaultStore) {
-      listing.store = marketplaceConfig.defaultStore;
+    if (marketplaceConfig.apiKey) {
+      await marketplaceSyncService.initialize(marketplaceConfig.apiKey);
     }
 
     return marketplaceSyncService.syncListing(listing);
@@ -215,20 +207,11 @@ export function registerMarketplaceSyncHandlers() {
       }));
     }
 
-    if (marketplaceConfig.apiKey && marketplaceConfig.publisherId) {
-      await marketplaceSyncService.initialize(
-        marketplaceConfig.apiKey,
-        marketplaceConfig.publisherId
-      );
+    if (marketplaceConfig.apiKey) {
+      await marketplaceSyncService.initialize(marketplaceConfig.apiKey);
     }
 
-    // Apply default store to listings without one
-    const processedListings = listings.map(listing => ({
-      ...listing,
-      store: listing.store || marketplaceConfig.defaultStore!,
-    }));
-
-    return marketplaceSyncService.batchSyncListings(processedListings);
+    return marketplaceSyncService.batchSyncListings(listings);
   });
 
   // ===========================================================================
@@ -248,10 +231,7 @@ export function registerMarketplaceSyncHandlers() {
       };
     }
 
-    await marketplaceSyncService.initialize(
-      marketplaceConfig.apiKey,
-      marketplaceConfig.publisherId
-    );
+    await marketplaceSyncService.initialize(marketplaceConfig.apiKey);
 
     return marketplaceSyncService.ingestReceipt(receipt, cid);
   });
@@ -266,10 +246,7 @@ export function registerMarketplaceSyncHandlers() {
       return { verified: false };
     }
 
-    await marketplaceSyncService.initialize(
-      marketplaceConfig.apiKey,
-      marketplaceConfig.publisherId
-    );
+    await marketplaceSyncService.initialize(marketplaceConfig.apiKey);
 
     return marketplaceSyncService.verifyReceipt(cid);
   });

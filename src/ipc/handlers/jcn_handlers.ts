@@ -6,8 +6,9 @@
  * All operations require proper authentication and authorization.
  */
 
-import { ipcMain, type IpcMainInvokeEvent } from "electron";
+import { ipcMain, type IpcMainInvokeEvent, app } from "electron";
 import * as crypto from "crypto";
+import * as path from "path";
 import log from "electron-log";
 
 import { jcnPublishStateMachine, type PublishRequest } from "@/lib/jcn_publish_state_machine";
@@ -19,7 +20,7 @@ import { jcnBundleBuilder } from "@/lib/jcn_bundle_builder";
 import { jcnChainAdapter } from "@/lib/jcn_chain_adapter";
 import { db } from "@/db";
 import { jcnAuditLog, jcnPublishRecords, jcnJobRecords, jcnBundles, jcnLicenses } from "@/db/schema";
-import { eq, desc, and, gte, lte } from "drizzle-orm";
+import { eq, desc, and, gte, lte, count } from "drizzle-orm";
 
 import type {
   AuthContext,
@@ -224,7 +225,7 @@ export function registerJcnHandlers(): void {
     
     // Check rate limit
     const rateLimit = await jcnAuthGateway.checkRateLimit(
-      "wallet",
+      "user",
       auth.wallet || "anonymous",
       "publish:create"
     );
@@ -332,7 +333,7 @@ export function registerJcnHandlers(): void {
     
     // Check rate limit
     const rateLimit = await jcnAuthGateway.checkRateLimit(
-      "wallet",
+      "user",
       auth.wallet || "anonymous",
       "job:create"
     );
@@ -416,9 +417,9 @@ export function registerJcnHandlers(): void {
       name: params.name,
       version: params.version,
       description: params.description,
-      creator: params.creator || auth.wallet,
+      creator: (params.creator || auth.wallet || auth.walletAddress || "") as WalletAddress,
       license: params.license || "MIT",
-      outputDir: params.outputDir,
+      outputDir: params.outputDir || path.join(app.getPath("temp"), "jcn-bundles"),
     });
   });
   
@@ -460,7 +461,11 @@ export function registerJcnHandlers(): void {
     let query = db.select().from(jcnBundles);
     
     if (params.bundleType) {
-      query = query.where(eq(jcnBundles.bundleType, params.bundleType)) as typeof query;
+      // Map bundle type to schema enum values
+      const schemaType = params.bundleType === "model" ? "ai_model" 
+        : params.bundleType === "agent" ? "ai_agent"
+        : params.bundleType as "ai_agent" | "ai_model" | "dataset" | "prompt" | "tool" | "workflow";
+      query = query.where(eq(jcnBundles.bundleType, schemaType)) as typeof query;
     }
     
     if (params.creator) {
@@ -487,7 +492,12 @@ export function registerJcnHandlers(): void {
       ? params.data 
       : Buffer.from(params.data);
     
-    return jcnStorageAdapter.pin(dataBuffer, params.providers, params.options);
+    return jcnStorageAdapter.pin({
+      content: dataBuffer,
+      providers: params.providers || ["ipfs_local"],
+      name: params.options?.name,
+      verification: params.options?.verify ? { enabled: true, maxRetries: 3 } : undefined,
+    });
   });
   
   ipcMain.handle(CHANNELS.STORAGE_FETCH, async (_event, params: {
@@ -498,7 +508,7 @@ export function registerJcnHandlers(): void {
     const auth = await extractAuth({ token: params.token });
     jcnAuthGateway.requireAuth(auth);
     
-    return jcnStorageAdapter.fetch(params.cid, params.providers);
+    return jcnStorageAdapter.fetch(params.cid, params.providers?.[0]);
   });
   
   ipcMain.handle(CHANNELS.STORAGE_VERIFY, async (_event, params: {
@@ -509,7 +519,8 @@ export function registerJcnHandlers(): void {
     const auth = await extractAuth({ token: params.token });
     jcnAuthGateway.requireAuth(auth);
     
-    return jcnStorageAdapter.verifyPin(params.cid, params.providers);
+    const provider: StorageProvider = params.providers?.[0] || "ipfs_local";
+    return jcnStorageAdapter.verifyPin(provider, params.cid);
   });
   
   // =========================================================================
@@ -560,11 +571,11 @@ export function registerJcnHandlers(): void {
     let query = db.select().from(jcnLicenses);
     
     if (params.holderWallet) {
-      query = query.where(eq(jcnLicenses.holderWallet, params.holderWallet)) as typeof query;
+      query = query.where(eq(jcnLicenses.licensee, params.holderWallet)) as typeof query;
     }
     
     if (params.bundleCid) {
-      query = query.where(eq(jcnLicenses.bundleCid, params.bundleCid)) as typeof query;
+      query = query.where(eq(jcnLicenses.assetId, params.bundleCid)) as typeof query;
     }
     
     return query.limit(params.limit || 100);
@@ -578,8 +589,8 @@ export function registerJcnHandlers(): void {
     jcnAuthGateway.requirePermission(auth, "license:revoke");
     
     await db.update(jcnLicenses)
-      .set({ revoked: true, revokedAt: new Date() })
-      .where(eq(jcnLicenses.licenseId, params.licenseId));
+      .set({ valid: false, updatedAt: new Date() })
+      .where(eq(jcnLicenses.id, params.licenseId));
     
     return { success: true };
   });
@@ -590,8 +601,8 @@ export function registerJcnHandlers(): void {
   
   ipcMain.handle(CHANNELS.KEY_GENERATE, async (_event, params: {
     token?: string;
-    type: "signing" | "encryption" | "node_identity";
-    algorithm: "secp256k1" | "ed25519" | "rsa-2048" | "aes-256-gcm";
+    type: "signing" | "encryption" | "chain";
+    algorithm: "secp256k1" | "ed25519" | "aes-256-gcm";
     name?: string;
     expiresInDays?: number;
   }) => {
@@ -601,7 +612,6 @@ export function registerJcnHandlers(): void {
     return jcnKeyManager.generateKey({
       type: params.type,
       algorithm: params.algorithm,
-      name: params.name,
       expiresInDays: params.expiresInDays,
       storeInKeyring: true,
     });
@@ -609,7 +619,7 @@ export function registerJcnHandlers(): void {
   
   ipcMain.handle(CHANNELS.KEY_LIST, async (_event, params: {
     token?: string;
-    type?: "signing" | "encryption" | "node_identity";
+    type?: "signing" | "encryption" | "chain";
   }) => {
     const auth = await extractAuth({ token: params.token });
     jcnAuthGateway.requireAuth(auth);
@@ -705,19 +715,19 @@ export function registerJcnHandlers(): void {
     jcnAuthGateway.requirePermission(auth, "audit:read");
     
     const [publishCounts] = await db.select({
-      total: db.fn.count(),
+      total: count(),
     }).from(jcnPublishRecords);
     
     const [jobCounts] = await db.select({
-      total: db.fn.count(),
+      total: count(),
     }).from(jcnJobRecords);
     
     const [bundleCounts] = await db.select({
-      total: db.fn.count(),
+      total: count(),
     }).from(jcnBundles);
     
     const [licenseCounts] = await db.select({
-      total: db.fn.count(),
+      total: count(),
     }).from(jcnLicenses);
     
     return {
@@ -758,12 +768,12 @@ export function registerJcnHandlers(): void {
   
   ipcMain.handle(CHANNELS.CHAIN_CHECK_REORGS, async (_event, params: {
     token?: string;
-    blockNumber: number;
+    blockNumber?: number;
   }) => {
     const auth = await extractAuth({ token: params.token });
     jcnAuthGateway.requireAuth(auth);
     
-    return jcnChainAdapter.checkForReorgs(params.blockNumber);
+    return jcnChainAdapter.checkForReorgs();
   });
   
   logger.info("JCN IPC handlers registered");

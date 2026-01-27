@@ -15,6 +15,7 @@ import { EventEmitter } from "events";
 import type {
   AppId,
   AppComponent,
+  ComponentId,
   ComponentType,
   ComponentStyles,
   ComponentEvent,
@@ -561,16 +562,19 @@ export class VisualAppBuilder extends EventEmitter {
       name: "Home",
       path: "/",
       components: [],
+      variables: {},
       metadata: {},
-      createdAt: Date.now(),
       updatedAt: Date.now(),
     };
+    
+    // Filter framework to valid values (react-native not supported in AppProject)
+    const validFramework = params.framework === "react-native" ? "react" : (params.framework || "react") as "react" | "vue" | "svelte" | "html";
     
     const project: AppProject = {
       id,
       name: params.name,
       description: params.description,
-      framework: params.framework || "react",
+      version: "1.0.0",
       pages: [homePage],
       globalStyles: {
         fontFamily: "Inter, system-ui, sans-serif",
@@ -591,17 +595,26 @@ export class VisualAppBuilder extends EventEmitter {
           xl: "32px",
         },
       },
-      state: {},
-      actions: [],
-      dataSources: [],
-      metadata: params.metadata,
-      version: "1.0.0",
+      globalVariables: {},
+      apiEndpoints: [],
+      dataStores: [],
+      agents: [],
+      workflows: [],
+      framework: validFramework,
+      buildConfig: {
+        outputDir: "dist",
+        minify: true,
+        sourceMaps: false,
+        ssr: false,
+        pwa: false,
+        target: "web",
+      },
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
     
     await this.saveProject(project);
-    this.projects.set(id, project);
+    this.projects.set(project.id as AppId, project);
     this.emit("project:created", project);
     
     return project;
@@ -617,7 +630,7 @@ export class VisualAppBuilder extends EventEmitter {
       JSON.stringify(project, null, 2)
     );
     
-    this.projects.set(project.id, project);
+    this.projects.set(project.id as AppId, project);
   }
   
   listProjects(): AppProject[] {
@@ -657,8 +670,8 @@ export class VisualAppBuilder extends EventEmitter {
       name: params.name,
       path: params.path,
       components: [],
+      variables: {},
       metadata: params.metadata || {},
-      createdAt: Date.now(),
       updatedAt: Date.now(),
     };
     
@@ -715,16 +728,14 @@ export class VisualAppBuilder extends EventEmitter {
     }
     
     return {
-      id: crypto.randomUUID(),
+      id: crypto.randomUUID() as ComponentId,
       type,
       name: def.name,
       props: { ...def.defaultProps, ...overrides?.props },
-      styles: { ...def.defaultStyles, ...overrides?.styles },
+      styles: { ...def.defaultStyles, ...overrides?.styles } as ComponentStyles,
       children: def.allowChildren ? [] : undefined,
       events: [],
-      bindings: {},
-      visible: true,
-      locked: false,
+      bindings: [],
     };
   }
   
@@ -744,9 +755,10 @@ export class VisualAppBuilder extends EventEmitter {
       throw new Error(`Page not found: ${pageId}`);
     }
     
-    if (parentId === null) {
-      page.components.push(component);
-    } else {
+    // Always add component to the flat list
+    page.components.push(component);
+    
+    if (parentId !== null) {
       const parent = this.findComponent(page.components, parentId);
       if (!parent) {
         throw new Error(`Parent component not found: ${parentId}`);
@@ -754,7 +766,10 @@ export class VisualAppBuilder extends EventEmitter {
       if (!parent.children) {
         parent.children = [];
       }
-      parent.children.push(component);
+      // Store component ID in parent's children array
+      parent.children.push(component.id);
+      // Set parentId reference
+      component.parentId = parentId as ComponentId;
     }
     
     page.updatedAt = Date.now();
@@ -811,27 +826,26 @@ export class VisualAppBuilder extends EventEmitter {
   }
   
   private findComponent(components: AppComponent[], id: string): AppComponent | null {
-    for (const comp of components) {
-      if (comp.id === id) return comp;
-      if (comp.children) {
-        const found = this.findComponent(comp.children, id);
-        if (found) return found;
-      }
-    }
-    return null;
+    // Components are stored in a flat list, just find by ID
+    return components.find((comp) => comp.id === id) || null;
   }
   
   private removeComponent(components: AppComponent[], id: string): boolean {
     const index = components.findIndex((c) => c.id === id);
     if (index !== -1) {
+      const removed = components[index];
+      // Also remove from parent's children array if it has a parent
+      if (removed.parentId) {
+        const parent = this.findComponent(components, removed.parentId);
+        if (parent && parent.children) {
+          const childIndex = parent.children.indexOf(removed.id);
+          if (childIndex !== -1) {
+            parent.children.splice(childIndex, 1);
+          }
+        }
+      }
       components.splice(index, 1);
       return true;
-    }
-    
-    for (const comp of components) {
-      if (comp.children && this.removeComponent(comp.children, id)) {
-        return true;
-      }
     }
     
     return false;
@@ -847,7 +861,7 @@ export class VisualAppBuilder extends EventEmitter {
       throw new Error(`Project not found: ${projectId}`);
     }
     
-    const outputDir = options.outputPath || path.join(this.appsDir, projectId, "export");
+    const outputDir = options.outputDir || path.join(this.appsDir, projectId, "export");
     await fs.mkdir(outputDir, { recursive: true });
     
     switch (options.format) {
@@ -989,7 +1003,11 @@ ${project.pages.map((p) => `        <Route path="${p.path}" element={<${this.pag
   
   private generateReactPage(page: AppPage): string {
     const imports = new Set<string>();
-    const componentCode = page.components.map((c) => this.generateReactComponent(c, imports)).join("\n");
+    // Create a map of component ID to component for efficient lookup
+    const componentMap = new Map(page.components.map(c => [c.id as string, c]));
+    // Get root components (those without a parent)
+    const rootComponents = page.components.filter(c => !c.parentId);
+    const componentCode = rootComponents.map((c) => this.generateReactComponent(c, componentMap, imports)).join("\n");
     
     return `
 import React from 'react';
@@ -1005,7 +1023,7 @@ ${componentCode}
 `;
   }
   
-  private generateReactComponent(component: AppComponent, imports: Set<string>, indent = 6): string {
+  private generateReactComponent(component: AppComponent, componentMap: Map<string, AppComponent>, imports: Set<string>, indent = 6): string {
     const spaces = " ".repeat(indent);
     const def = this.getComponentDefinition(component.type);
     const styleAttr = Object.keys(component.styles || {}).length > 0
@@ -1015,7 +1033,11 @@ ${componentCode}
     let children = "";
     if (component.children && component.children.length > 0) {
       children = "\n" + component.children
-        .map((c) => this.generateReactComponent(c, imports, indent + 2))
+        .map((childId) => {
+          const childComponent = componentMap.get(childId as string);
+          return childComponent ? this.generateReactComponent(childComponent, componentMap, imports, indent + 2) : "";
+        })
+        .filter(Boolean)
         .join("\n") + "\n" + spaces;
     }
     
@@ -1026,7 +1048,7 @@ ${componentCode}
         return `${spaces}<div${styleAttr}>${children}</div>`;
       
       case "text":
-        const variant = component.props.variant || "body";
+        const variant = String(component.props.variant || "body");
         const tag = variant.startsWith("h") ? variant : "p";
         return `${spaces}<${tag}${styleAttr}>${component.props.content || ""}</${tag}>`;
       
@@ -1128,7 +1150,11 @@ createApp(App).use(router).mount('#app');
   }
   
   private generateVuePage(page: AppPage): string {
-    const templateContent = page.components.map((c) => this.generateVueComponent(c)).join("\n");
+    // Create a map of component ID to component for efficient lookup
+    const componentMap = new Map(page.components.map(c => [c.id as string, c]));
+    // Get root components (those without a parent)
+    const rootComponents = page.components.filter(c => !c.parentId);
+    const templateContent = rootComponents.map((c) => this.generateVueComponent(c, componentMap)).join("\n");
     
     return `<template>
   <div class="page">
@@ -1147,7 +1173,7 @@ ${templateContent}
 `;
   }
   
-  private generateVueComponent(component: AppComponent, indent = 4): string {
+  private generateVueComponent(component: AppComponent, componentMap: Map<string, AppComponent>, indent = 4): string {
     const spaces = " ".repeat(indent);
     const styleAttr = Object.keys(component.styles || {}).length > 0
       ? ` :style="${JSON.stringify(component.styles).replace(/"/g, "'")}"`
@@ -1156,13 +1182,17 @@ ${templateContent}
     let children = "";
     if (component.children && component.children.length > 0) {
       children = "\n" + component.children
-        .map((c) => this.generateVueComponent(c, indent + 2))
+        .map((childId) => {
+          const childComponent = componentMap.get(childId as string);
+          return childComponent ? this.generateVueComponent(childComponent, componentMap, indent + 2) : "";
+        })
+        .filter(Boolean)
         .join("\n") + "\n" + spaces;
     }
     
     switch (component.type) {
       case "text":
-        const variant = component.props.variant || "body";
+        const variant = String(component.props.variant || "body");
         const tag = variant.startsWith("h") ? variant : "p";
         return `${spaces}<${tag}${styleAttr}>${component.props.content || ""}</${tag}>`;
       
@@ -1217,7 +1247,11 @@ ${templateContent}
   }
   
   private generateSveltePage(page: AppPage): string {
-    const content = page.components.map((c) => this.generateSvelteComponent(c)).join("\n");
+    // Create a map of component ID to component for efficient lookup
+    const componentMap = new Map(page.components.map(c => [c.id as string, c]));
+    // Get root components (those without a parent)
+    const rootComponents = page.components.filter(c => !c.parentId);
+    const content = rootComponents.map((c) => this.generateSvelteComponent(c, componentMap)).join("\n");
     
     return `<script lang="ts">
 </script>
@@ -1234,7 +1268,7 @@ ${content}
 `;
   }
   
-  private generateSvelteComponent(component: AppComponent, indent = 2): string {
+  private generateSvelteComponent(component: AppComponent, componentMap: Map<string, AppComponent>, indent = 2): string {
     const spaces = " ".repeat(indent);
     const styleAttr = Object.keys(component.styles || {}).length > 0
       ? ` style="${this.stylesToCss(component.styles)}"`
@@ -1243,13 +1277,17 @@ ${content}
     let children = "";
     if (component.children && component.children.length > 0) {
       children = "\n" + component.children
-        .map((c) => this.generateSvelteComponent(c, indent + 2))
+        .map((childId) => {
+          const childComponent = componentMap.get(childId as string);
+          return childComponent ? this.generateSvelteComponent(childComponent, componentMap, indent + 2) : "";
+        })
+        .filter(Boolean)
         .join("\n") + "\n" + spaces;
     }
     
     switch (component.type) {
       case "text":
-        const variant = component.props.variant || "body";
+        const variant = String(component.props.variant || "body");
         const tag = variant.startsWith("h") ? variant : "p";
         return `${spaces}<${tag}${styleAttr}>${component.props.content || ""}</${tag}>`;
       
@@ -1272,7 +1310,11 @@ ${content}
     // Generate single HTML file
     const css = this.generateGlobalStyles(project);
     const pages = project.pages.map((page) => {
-      const content = page.components.map((c) => this.generateHtmlComponent(c)).join("\n");
+      // Create a map of component ID to component for efficient lookup
+      const componentMap = new Map(page.components.map(c => [c.id as string, c]));
+      // Get root components (those without a parent)
+      const rootComponents = page.components.filter(c => !c.parentId);
+      const content = rootComponents.map((c) => this.generateHtmlComponent(c, componentMap)).join("\n");
       return `
   <section id="${page.path.replace(/\//g, "-") || "home"}" class="page">
 ${content}
@@ -1298,7 +1340,7 @@ ${pages}
     await fs.writeFile(path.join(outputDir, "index.html"), html);
   }
   
-  private generateHtmlComponent(component: AppComponent, indent = 4): string {
+  private generateHtmlComponent(component: AppComponent, componentMap: Map<string, AppComponent>, indent = 4): string {
     const spaces = " ".repeat(indent);
     const styleAttr = Object.keys(component.styles || {}).length > 0
       ? ` style="${this.stylesToCss(component.styles)}"`
@@ -1307,13 +1349,17 @@ ${pages}
     let children = "";
     if (component.children && component.children.length > 0) {
       children = "\n" + component.children
-        .map((c) => this.generateHtmlComponent(c, indent + 2))
+        .map((childId) => {
+          const childComponent = componentMap.get(childId as string);
+          return childComponent ? this.generateHtmlComponent(childComponent, componentMap, indent + 2) : "";
+        })
+        .filter(Boolean)
         .join("\n") + "\n" + spaces;
     }
     
     switch (component.type) {
       case "text":
-        const variant = component.props.variant || "body";
+        const variant = String(component.props.variant || "body");
         const tag = variant.startsWith("h") ? variant : "p";
         return `${spaces}<${tag}${styleAttr}>${component.props.content || ""}</${tag}>`;
       
@@ -1396,7 +1442,11 @@ ${project.pages.map((p) => `        <Stack.Screen name="${p.name}" component={${
   }
   
   private generateReactNativeScreen(page: AppPage): string {
-    const content = page.components.map((c) => this.generateReactNativeComponent(c)).join("\n");
+    // Create a map of component ID to component for efficient lookup
+    const componentMap = new Map(page.components.map(c => [c.id as string, c]));
+    // Get root components (those without a parent)
+    const rootComponents = page.components.filter(c => !c.parentId);
+    const content = rootComponents.map((c) => this.generateReactNativeComponent(c, componentMap)).join("\n");
     
     return `
 import React from 'react';
@@ -1419,13 +1469,17 @@ const styles = StyleSheet.create({
 `;
   }
   
-  private generateReactNativeComponent(component: AppComponent, indent = 6): string {
+  private generateReactNativeComponent(component: AppComponent, componentMap: Map<string, AppComponent>, indent = 6): string {
     const spaces = " ".repeat(indent);
     
     let children = "";
     if (component.children && component.children.length > 0) {
       children = "\n" + component.children
-        .map((c) => this.generateReactNativeComponent(c, indent + 2))
+        .map((childId) => {
+          const childComponent = componentMap.get(childId as string);
+          return childComponent ? this.generateReactNativeComponent(childComponent, componentMap, indent + 2) : "";
+        })
+        .filter(Boolean)
         .join("\n") + "\n" + spaces;
     }
     
@@ -1470,12 +1524,18 @@ const styles = StyleSheet.create({
   }
   
   private generateGlobalStyles(project: AppProject): string {
-    const colors = project.globalStyles.colors || {};
-    const spacing = project.globalStyles.spacing || {};
+    // globalStyles can be a string or an object
+    if (typeof project.globalStyles === "string") {
+      return project.globalStyles;
+    }
+    
+    const styles = project.globalStyles;
+    const colors = styles.colors || {};
+    const spacing = styles.spacing || {};
     
     return `
 :root {
-  --font-family: ${project.globalStyles.fontFamily || "system-ui, sans-serif"};
+  --font-family: ${styles.fontFamily || "system-ui, sans-serif"};
   --color-primary: ${colors.primary || "#3b82f6"};
   --color-secondary: ${colors.secondary || "#6b7280"};
   --color-success: ${colors.success || "#10b981"};

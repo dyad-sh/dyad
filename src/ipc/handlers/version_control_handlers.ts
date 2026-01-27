@@ -227,7 +227,7 @@ export function registerVersionControlHandlers() {
       const items = await db.select().from(datasetItems).where(eq(datasetItems.datasetId, datasetId));
       
       // Calculate stats
-      const prevVersion = branch.headVersionId ? versions.get(branch.headVersionId) : null;
+      const prevVersion = branch.headVersionId ? versions.get(branch.headVersionId) ?? null : null;
       const stats = await calculateVersionStats(datasetId, items, prevVersion);
       
       // Create snapshot
@@ -247,7 +247,6 @@ export function registerVersionControlHandlers() {
           split: item.split,
           sourceType: item.sourceType,
           byteSize: item.byteSize,
-          metadataJson: item.metadataJson,
           labelsJson: item.labelsJson,
           qualitySignalsJson: item.qualitySignalsJson,
           lineageJson: item.lineageJson,
@@ -637,7 +636,6 @@ export function registerVersionControlHandlers() {
             split: item.split,
             sourceType: item.sourceType,
             byteSize: item.byteSize,
-            metadataJson: item.metadataJson,
             labelsJson: item.labelsJson,
             qualitySignalsJson: item.qualitySignalsJson,
             lineageJson: item.lineageJson,
@@ -711,7 +709,6 @@ export function registerVersionControlHandlers() {
               split: item.split,
               sourceType: item.sourceType,
               byteSize: item.byteSize,
-              metadataJson: item.metadataJson,
               labelsJson: item.labelsJson,
               qualitySignalsJson: item.qualitySignalsJson,
               lineageJson: item.lineageJson,
@@ -774,8 +771,12 @@ export function registerVersionControlHandlers() {
       const conflicts: ConflictEntry[] = [];
       
       // Detect conflicts (items modified in both branches since common ancestor)
-      const sourceItemMap = new Map(sourceSnapshot.items.map((i: any) => [i.id, i]));
-      const targetItemMap = new Map(targetSnapshot.items.map((i: any) => [i.id, i]));
+      const sourceItemMap = new Map<string, { id: string; contentHash: string; [key: string]: any }>(
+        sourceSnapshot.items.map((i: any) => [i.id, i])
+      );
+      const targetItemMap = new Map<string, { id: string; contentHash: string; [key: string]: any }>(
+        targetSnapshot.items.map((i: any) => [i.id, i])
+      );
       
       for (const item of diff.modified) {
         const sourceItem = sourceItemMap.get(item.itemId);
@@ -849,7 +850,6 @@ export function registerVersionControlHandlers() {
             split: item.split,
             sourceType: item.sourceType,
             byteSize: item.byteSize,
-            metadataJson: item.metadataJson,
             labelsJson: item.labelsJson,
             qualitySignalsJson: item.qualitySignalsJson,
             lineageJson: item.lineageJson,
@@ -1046,7 +1046,9 @@ async function calculateVersionStats(
   
   try {
     const prevSnapshot = await fs.readJson(prevVersion.snapshotPath);
-    const prevItemMap = new Map(prevSnapshot.items.map((i: any) => [i.id, i]));
+    const prevItemMap = new Map<string, { id: string; contentHash: string }>(
+      prevSnapshot.items.map((i: any) => [i.id, i])
+    );
     const currentItemMap = new Map(items.map(i => [i.id, i]));
     
     for (const item of items) {
@@ -1054,7 +1056,7 @@ async function calculateVersionStats(
         stats.addedItems++;
       } else {
         const prevItem = prevItemMap.get(item.id);
-        if (prevItem.contentHash !== item.contentHash) {
+        if (prevItem && prevItem.contentHash !== item.contentHash) {
           stats.modifiedItems++;
         }
       }

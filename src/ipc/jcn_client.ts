@@ -142,6 +142,12 @@ export interface JcnStats {
 
 class JcnClient {
   private token?: string;
+  private ipcRenderer: { invoke: (channel: string, ...args: unknown[]) => Promise<any> };
+  
+  constructor() {
+    // Access IPC renderer through window.electron
+    this.ipcRenderer = (window as any).electron?.ipcRenderer ?? { invoke: async () => { throw new Error("IPC not available"); } };
+  }
   
   /**
    * Set the auth token for subsequent requests
@@ -179,7 +185,7 @@ class JcnClient {
     timestamp: number;
     requestedRoles?: JcnRole[];
   }): Promise<{ token: string; auth: AuthContext }> {
-    const result = await window.electron.invoke(CHANNELS.AUTH_CREATE_TOKEN, params);
+    const result = await this.ipcRenderer.invoke(CHANNELS.AUTH_CREATE_TOKEN, params);
     this.token = result.token;
     return result;
   }
@@ -188,7 +194,7 @@ class JcnClient {
    * Verify a token
    */
   async verifyToken(token?: string): Promise<AuthContext | null> {
-    return window.electron.invoke(CHANNELS.AUTH_VERIFY_TOKEN, {
+    return this.ipcRenderer.invoke(CHANNELS.AUTH_VERIFY_TOKEN, {
       token: token || this.token,
     });
   }
@@ -197,7 +203,7 @@ class JcnClient {
    * Sign a message with a key
    */
   async signMessage(message: string, keyId?: string): Promise<string> {
-    const result = await window.electron.invoke(CHANNELS.AUTH_SIGN_MESSAGE, {
+    const result = await this.ipcRenderer.invoke(CHANNELS.AUTH_SIGN_MESSAGE, {
       token: this.token,
       message,
       keyId,
@@ -235,7 +241,7 @@ class JcnClient {
     storageProviders?: StorageProvider[];
     requestId?: RequestId;
   }): Promise<PublishResult> {
-    return window.electron.invoke(CHANNELS.PUBLISH_ASSET, {
+    return this.ipcRenderer.invoke(CHANNELS.PUBLISH_ASSET, {
       token: this.token,
       ...params,
     });
@@ -245,7 +251,7 @@ class JcnClient {
    * Get publish status
    */
   async getPublishStatus(publishId: string): Promise<unknown> {
-    return window.electron.invoke(CHANNELS.PUBLISH_GET_STATUS, {
+    return this.ipcRenderer.invoke(CHANNELS.PUBLISH_GET_STATUS, {
       token: this.token,
       publishId,
     });
@@ -259,7 +265,7 @@ class JcnClient {
     storeId?: StoreId;
     limit?: number;
   }): Promise<unknown[]> {
-    return window.electron.invoke(CHANNELS.PUBLISH_LIST, {
+    return this.ipcRenderer.invoke(CHANNELS.PUBLISH_LIST, {
       token: this.token,
       ...params,
     });
@@ -269,7 +275,7 @@ class JcnClient {
    * Retry a failed publish
    */
   async retryPublish(publishId: string): Promise<PublishResult> {
-    return window.electron.invoke(CHANNELS.PUBLISH_RETRY, {
+    return this.ipcRenderer.invoke(CHANNELS.PUBLISH_RETRY, {
       token: this.token,
       publishId,
     });
@@ -293,7 +299,7 @@ class JcnClient {
     priority?: number;
     requestId?: RequestId;
   }): Promise<JobResult> {
-    return window.electron.invoke(CHANNELS.JOB_SUBMIT, {
+    return this.ipcRenderer.invoke(CHANNELS.JOB_SUBMIT, {
       token: this.token,
       ...params,
     });
@@ -303,7 +309,7 @@ class JcnClient {
    * Get job status
    */
   async getJobStatus(jobId: string): Promise<unknown> {
-    return window.electron.invoke(CHANNELS.JOB_GET_STATUS, {
+    return this.ipcRenderer.invoke(CHANNELS.JOB_GET_STATUS, {
       token: this.token,
       jobId,
     });
@@ -316,7 +322,7 @@ class JcnClient {
     state?: JobState;
     limit?: number;
   }): Promise<unknown[]> {
-    return window.electron.invoke(CHANNELS.JOB_LIST, {
+    return this.ipcRenderer.invoke(CHANNELS.JOB_LIST, {
       token: this.token,
       ...params,
     });
@@ -326,7 +332,7 @@ class JcnClient {
    * Cancel a job
    */
   async cancelJob(jobId: string): Promise<{ success: boolean }> {
-    return window.electron.invoke(CHANNELS.JOB_CANCEL, {
+    return this.ipcRenderer.invoke(CHANNELS.JOB_CANCEL, {
       token: this.token,
       jobId,
     });
@@ -357,7 +363,7 @@ class JcnClient {
     manifestHash: string;
     totalSize: number;
   }> {
-    return window.electron.invoke(CHANNELS.BUNDLE_BUILD, {
+    return this.ipcRenderer.invoke(CHANNELS.BUNDLE_BUILD, {
       token: this.token,
       ...params,
     });
@@ -377,7 +383,7 @@ class JcnClient {
     errors: string[];
     warnings: string[];
   }> {
-    return window.electron.invoke(CHANNELS.BUNDLE_VERIFY, {
+    return this.ipcRenderer.invoke(CHANNELS.BUNDLE_VERIFY, {
       token: this.token,
       bundlePath,
       manifest,
@@ -388,7 +394,7 @@ class JcnClient {
    * Get bundle info
    */
   async getBundle(bundleCid: Cid): Promise<unknown | null> {
-    return window.electron.invoke(CHANNELS.BUNDLE_GET, {
+    return this.ipcRenderer.invoke(CHANNELS.BUNDLE_GET, {
       token: this.token,
       bundleCid,
     });
@@ -402,7 +408,7 @@ class JcnClient {
     creator?: WalletAddress;
     limit?: number;
   }): Promise<unknown[]> {
-    return window.electron.invoke(CHANNELS.BUNDLE_LIST, {
+    return this.ipcRenderer.invoke(CHANNELS.BUNDLE_LIST, {
       token: this.token,
       ...params,
     });
@@ -420,7 +426,7 @@ class JcnClient {
     providers?: StorageProvider[],
     options?: { name?: string; verify?: boolean }
   ): Promise<PinResult[]> {
-    return window.electron.invoke(CHANNELS.STORAGE_PIN, {
+    return this.ipcRenderer.invoke(CHANNELS.STORAGE_PIN, {
       token: this.token,
       data,
       providers,
@@ -435,7 +441,7 @@ class JcnClient {
     cid: Cid,
     providers?: StorageProvider[]
   ): Promise<FetchResult> {
-    return window.electron.invoke(CHANNELS.STORAGE_FETCH, {
+    return this.ipcRenderer.invoke(CHANNELS.STORAGE_FETCH, {
       token: this.token,
       cid,
       providers,
@@ -449,7 +455,7 @@ class JcnClient {
     cid: Cid,
     providers?: StorageProvider[]
   ): Promise<{ provider: StorageProvider; pinned: boolean }[]> {
-    return window.electron.invoke(CHANNELS.STORAGE_VERIFY, {
+    return this.ipcRenderer.invoke(CHANNELS.STORAGE_VERIFY, {
       token: this.token,
       cid,
       providers,
@@ -474,7 +480,7 @@ class JcnClient {
     contractAddress?: WalletAddress;
     tokenId?: string;
   }): Promise<{ success: boolean }> {
-    return window.electron.invoke(CHANNELS.LICENSE_REGISTER, {
+    return this.ipcRenderer.invoke(CHANNELS.LICENSE_REGISTER, {
       token: this.token,
       ...params,
     });
@@ -488,7 +494,7 @@ class JcnClient {
     bundleCid?: Cid;
     limit?: number;
   }): Promise<unknown[]> {
-    return window.electron.invoke(CHANNELS.LICENSE_LIST, {
+    return this.ipcRenderer.invoke(CHANNELS.LICENSE_LIST, {
       token: this.token,
       ...params,
     });
@@ -498,7 +504,7 @@ class JcnClient {
    * Revoke a license
    */
   async revokeLicense(licenseId: LicenseId): Promise<{ success: boolean }> {
-    return window.electron.invoke(CHANNELS.LICENSE_REVOKE, {
+    return this.ipcRenderer.invoke(CHANNELS.LICENSE_REVOKE, {
       token: this.token,
       licenseId,
     });
@@ -517,7 +523,7 @@ class JcnClient {
     name?: string;
     expiresInDays?: number;
   }): Promise<KeyMetadata> {
-    return window.electron.invoke(CHANNELS.KEY_GENERATE, {
+    return this.ipcRenderer.invoke(CHANNELS.KEY_GENERATE, {
       token: this.token,
       ...params,
     });
@@ -527,7 +533,7 @@ class JcnClient {
    * List keys
    */
   async listKeys(type?: KeyType): Promise<KeyMetadata[]> {
-    return window.electron.invoke(CHANNELS.KEY_LIST, {
+    return this.ipcRenderer.invoke(CHANNELS.KEY_LIST, {
       token: this.token,
       type,
     });
@@ -537,7 +543,7 @@ class JcnClient {
    * Delete a key
    */
   async deleteKey(keyId: string): Promise<boolean> {
-    return window.electron.invoke(CHANNELS.KEY_DELETE, {
+    return this.ipcRenderer.invoke(CHANNELS.KEY_DELETE, {
       token: this.token,
       keyId,
     });
@@ -547,7 +553,7 @@ class JcnClient {
    * Sign with a key
    */
   async signWithKey(keyId: string, message: string): Promise<string> {
-    const result = await window.electron.invoke(CHANNELS.KEY_SIGN, {
+    const result = await this.ipcRenderer.invoke(CHANNELS.KEY_SIGN, {
       token: this.token,
       keyId,
       message,
@@ -563,7 +569,7 @@ class JcnClient {
     message: string,
     signature: string
   ): Promise<boolean> {
-    const result = await window.electron.invoke(CHANNELS.KEY_VERIFY, {
+    const result = await this.ipcRenderer.invoke(CHANNELS.KEY_VERIFY, {
       token: this.token,
       keyId,
       message,
@@ -576,7 +582,7 @@ class JcnClient {
    * Rotate a key
    */
   async rotateKey(keyId: string): Promise<KeyMetadata> {
-    return window.electron.invoke(CHANNELS.KEY_ROTATE, {
+    return this.ipcRenderer.invoke(CHANNELS.KEY_ROTATE, {
       token: this.token,
       keyId,
     });
@@ -596,7 +602,7 @@ class JcnClient {
     endTime?: number;
     limit?: number;
   }): Promise<unknown[]> {
-    return window.electron.invoke(CHANNELS.ADMIN_AUDIT_LOG, {
+    return this.ipcRenderer.invoke(CHANNELS.ADMIN_AUDIT_LOG, {
       token: this.token,
       ...params,
     });
@@ -606,7 +612,7 @@ class JcnClient {
    * Get stats
    */
   async getStats(): Promise<JcnStats> {
-    return window.electron.invoke(CHANNELS.ADMIN_STATS, {
+    return this.ipcRenderer.invoke(CHANNELS.ADMIN_STATS, {
       token: this.token,
     });
   }
@@ -618,7 +624,7 @@ class JcnClient {
     type: "publish" | "job",
     id: string
   ): Promise<PublishResult | JobResult> {
-    return window.electron.invoke(CHANNELS.ADMIN_RECOVER, {
+    return this.ipcRenderer.invoke(CHANNELS.ADMIN_RECOVER, {
       token: this.token,
       type,
       id,
@@ -637,7 +643,7 @@ class JcnClient {
     confirmed: number;
     failed: number;
   }> {
-    return window.electron.invoke(CHANNELS.CHAIN_POLL_PENDING, {
+    return this.ipcRenderer.invoke(CHANNELS.CHAIN_POLL_PENDING, {
       token: this.token,
     });
   }
@@ -649,7 +655,7 @@ class JcnClient {
     reorgDetected: boolean;
     affectedTransactions: string[];
   }> {
-    return window.electron.invoke(CHANNELS.CHAIN_CHECK_REORGS, {
+    return this.ipcRenderer.invoke(CHANNELS.CHAIN_CHECK_REORGS, {
       token: this.token,
       blockNumber,
     });

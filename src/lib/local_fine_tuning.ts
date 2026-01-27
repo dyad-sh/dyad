@@ -21,6 +21,7 @@ import type {
   TrainingProgress,
   ModelAdapter,
   EvaluationResult,
+  ModelId,
 } from "@/types/sovereign_stack_types";
 
 const logger = log.scope("local_fine_tuning");
@@ -423,24 +424,43 @@ export class LocalFineTuning extends EventEmitter {
       ...params.config,
     } as TrainingConfig;
     
+    const totalSteps = Math.ceil((dataset.trainSamples || dataset.sampleCount || 1000) / (config.batchSize || 4)) * (config.epochs || 3);
+    
     const job: FineTuneJob = {
       id,
       name: params.name,
       baseModel: params.baseModel,
+      baseModelId: params.baseModel as unknown as ModelId,
       baseModelPath: params.baseModelPath,
       datasetId: params.datasetId,
       method: params.method,
       config,
+      hyperparameters: {
+        epochs: config.epochs || 3,
+        batchSize: config.batchSize || 4,
+        learningRate: config.learningRate || 2e-4,
+        warmupSteps: config.warmupSteps || 50,
+        weightDecay: 0.01,
+        loraRank: config.loraR,
+        loraAlpha: config.loraAlpha,
+        loraDropout: config.loraDropout,
+        targetModules: config.targetModules,
+      },
       status: "pending",
       progress: {
-        currentStep: 0,
-        totalSteps: Math.ceil(dataset.trainSamples / (config.batchSize || 4)) * (config.epochs || 3),
-        currentEpoch: 0,
-        totalEpochs: config.epochs || 3,
+        epoch: 0,
+        step: 0,
+        totalSteps,
         loss: 0,
         learningRate: config.learningRate || 2e-4,
+        eta: 0,
+        currentStep: 0,
+        currentEpoch: 0,
+        totalEpochs: config.epochs || 3,
         elapsedTime: 0,
       },
+      trainingMetrics: [],
+      checkpoints: [],
       outputPath: jobDir,
       metadata: params.metadata,
       createdAt: Date.now(),
@@ -491,6 +511,10 @@ export class LocalFineTuning extends EventEmitter {
   }
   
   private async runTraining(job: FineTuneJob, dataset: TrainingDataset): Promise<void> {
+    if (!job.outputPath) {
+      throw new Error("Job output path not set");
+    }
+    
     // Generate training script
     const scriptContent = this.generateTrainingScript(job, dataset);
     const scriptPath = path.join(job.outputPath, "train.py");
@@ -507,10 +531,11 @@ export class LocalFineTuning extends EventEmitter {
     
     // Check if Python is available
     const pythonCommand = process.platform === "win32" ? "python" : "python3";
+    const outputPath = job.outputPath;
     
     return new Promise((resolve, reject) => {
       const proc = spawn(pythonCommand, [scriptPath], {
-        cwd: job.outputPath,
+        cwd: outputPath,
         env: {
           ...process.env,
           TRANSFORMERS_CACHE: path.join(this.fineTuningDir, "cache"),
@@ -526,7 +551,7 @@ export class LocalFineTuning extends EventEmitter {
         
         // Parse progress from output
         const progress = this.parseTrainingProgress(output);
-        if (progress) {
+        if (progress && typeof job.progress === "object") {
           job.progress = { ...job.progress, ...progress };
           job.updatedAt = Date.now();
           this.emit("job:progress", { job, progress: job.progress });
@@ -571,7 +596,9 @@ export class LocalFineTuning extends EventEmitter {
   }
   
   private generateTrainingScript(job: FineTuneJob, dataset: TrainingDataset): string {
-    const config = job.config;
+    const config = job.config || {} as TrainingConfig;
+    const baseModelPath = job.baseModelPath || "";
+    const outputPath = job.outputPath || "";
     
     if (job.method === "qlora") {
       return `
@@ -597,9 +624,9 @@ from transformers import (
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
 # Configuration
-MODEL_PATH = "${job.baseModelPath.replace(/\\/g, "/")}"
+MODEL_PATH = "${baseModelPath.replace(/\\/g, "/")}"
 DATASET_PATH = "${dataset.path.replace(/\\/g, "/")}"
-OUTPUT_DIR = "${job.outputPath.replace(/\\/g, "/")}"
+OUTPUT_DIR = "${outputPath.replace(/\\/g, "/")}"
 
 # QLoRA config
 LORA_R = ${config.loraR || 16}
@@ -753,9 +780,9 @@ from transformers import (
 from peft import LoraConfig, get_peft_model
 
 # Configuration
-MODEL_PATH = "${job.baseModelPath.replace(/\\/g, "/")}"
+MODEL_PATH = "${baseModelPath.replace(/\\/g, "/")}"
 DATASET_PATH = "${dataset.path.replace(/\\/g, "/")}"
-OUTPUT_DIR = "${job.outputPath.replace(/\\/g, "/")}"
+OUTPUT_DIR = "${outputPath.replace(/\\/g, "/")}"
 
 # LoRA config
 LORA_R = ${config.loraR || 8}
@@ -878,9 +905,9 @@ from transformers import (
 )
 
 # Configuration
-MODEL_PATH = "${job.baseModelPath.replace(/\\/g, "/")}"
+MODEL_PATH = "${baseModelPath.replace(/\\/g, "/")}"
 DATASET_PATH = "${dataset.path.replace(/\\/g, "/")}"
-OUTPUT_DIR = "${job.outputPath.replace(/\\/g, "/")}"
+OUTPUT_DIR = "${outputPath.replace(/\\/g, "/")}"
 
 def main():
     print(f"[PROGRESS] status=initializing")
@@ -979,17 +1006,20 @@ if __name__ == "__main__":
   }
   
   private async createAdapter(job: FineTuneJob): Promise<ModelAdapter> {
+    if (!job.outputPath) {
+      throw new Error("Job output path not set");
+    }
+    
     const adapterPath = path.join(job.outputPath, "adapter");
     
     const adapter: ModelAdapter = {
       id: job.id,
       name: job.name,
-      baseModel: job.baseModel,
+      baseModel: (job.baseModel || job.baseModelId) as ModelId,
+      type: job.method === "full" ? "full" : job.method === "qlora" ? "qlora" : "lora",
       method: job.method,
       path: adapterPath,
       config: job.config,
-      jobId: job.id,
-      createdAt: Date.now(),
     };
     
     // Copy adapter to adapters directory
@@ -1034,8 +1064,9 @@ if __name__ == "__main__":
       await this.stopTraining(id);
       
       // Delete job files
-      if (existsSync(job.outputPath)) {
-        await fs.rm(job.outputPath, { recursive: true, force: true });
+      const outputPath = job.outputPath;
+      if (outputPath && existsSync(outputPath)) {
+        await fs.rm(outputPath, { recursive: true, force: true });
       }
     }
     

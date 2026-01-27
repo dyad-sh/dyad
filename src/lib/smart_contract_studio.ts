@@ -685,6 +685,8 @@ contract ${params.name} {
       language,
       sourceCode: code,
       compilerVersion: language === "solidity" ? "0.8.20" : "0.3.10",
+      compiled: false,
+      verified: false,
       deployments: [],
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -828,9 +830,9 @@ contract ${params.name} {
     
     return {
       success: true,
-      abi,
+      abi: abi as unknown as import("@/types/sovereign_stack_types").ContractABI,
       bytecode: "0x", // Would be actual bytecode
-      warnings: [{ message: "Using simplified compilation - consider setting up full solc", severity: "warning" }],
+      warnings: ["Using simplified compilation - consider setting up full solc"],
     };
   }
   
@@ -935,7 +937,7 @@ contract ${params.name} {
     
     // Create contract factory
     const factory = new ethers.ContractFactory(
-      contract.abi!,
+      contract.abi as ethers.InterfaceAbi,
       contract.bytecode,
       wallet
     );
@@ -957,14 +959,13 @@ contract ${params.name} {
       id: crypto.randomUUID(),
       contractId,
       chainId: params.chainId,
+      chainName: chainConfig?.name || `Chain ${params.chainId}`,
       address,
-      transactionHash: txHash,
-      deployerAddress: wallet.address,
-      constructorArgs: params.constructorArgs,
+      txHash,
+      deployer: wallet.address,
+      constructorArgs: params.constructorArgs || [],
       blockNumber: deployedContract.deploymentTransaction()?.blockNumber || 0,
-      gasUsed: 0, // Would get from receipt
-      status: "confirmed",
-      createdAt: Date.now(),
+      deployedAt: Date.now(),
     };
     
     // Update contract
@@ -1019,7 +1020,7 @@ contract ${params.name} {
       runs: String(contract.optimizerRuns || 200),
       constructorArguements: deployment.constructorArgs
         ? ethers.AbiCoder.defaultAbiCoder().encode(
-            (contract.abi as Array<{ type: string; inputs?: Array<{ type: string }> }>).find((a) => a.type === "constructor")?.inputs?.map((i) => i.type) || [],
+            ((contract.abi || []) as unknown as Array<{ type: string; inputs?: Array<{ type: string }> }>).find((a) => a.type === "constructor")?.inputs?.map((i) => i.type) || [],
             deployment.constructorArgs
           ).slice(2)
         : "",
@@ -1035,10 +1036,9 @@ contract ${params.name} {
     const result = await response.json();
     
     const verification: ContractVerification = {
-      id: crypto.randomUUID(),
-      deploymentId,
-      status: result.status === "1" ? "verified" : "failed",
-      guid: result.result,
+      verified: result.status === "1",
+      contractAddress: deployment.address,
+      network: deployment.chainId,
       explorerUrl: `${chainConfig.explorerUrl}/address/${deployment.address}#code`,
       verifiedAt: result.status === "1" ? Date.now() : undefined,
     };
@@ -1078,7 +1078,7 @@ contract ${params.name} {
     }
     
     const provider = new ethers.JsonRpcProvider(chainConfig.rpcUrl);
-    const contractInstance = new ethers.Contract(deployment.address, contract.abi!, provider);
+    const contractInstance = new ethers.Contract(deployment.address, contract.abi as ethers.InterfaceAbi, provider);
     
     return contractInstance[functionName](...args);
   }
@@ -1111,7 +1111,7 @@ contract ${params.name} {
     
     const provider = new ethers.JsonRpcProvider(chainConfig.rpcUrl);
     const wallet = new ethers.Wallet(params.privateKey, provider);
-    const contractInstance = new ethers.Contract(deployment.address, contract.abi!, wallet);
+    const contractInstance = new ethers.Contract(deployment.address, contract.abi as ethers.InterfaceAbi, wallet);
     
     const txParams: Record<string, unknown> = {};
     if (params.value) txParams.value = ethers.parseEther(params.value);

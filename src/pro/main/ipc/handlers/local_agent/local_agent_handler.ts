@@ -46,6 +46,17 @@ import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
 
 const logger = log.scope("local_agent_handler");
 
+// Local model providers that may not support function calling
+const LOCAL_MODEL_PROVIDERS = ["ollama", "lmstudio"];
+
+/**
+ * Check if the selected model is a local model (Ollama, LM Studio, etc.)
+ * Local models often don't support function calling/tools
+ */
+function isLocalModel(provider: string): boolean {
+  return LOCAL_MODEL_PROVIDERS.includes(provider);
+}
+
 // ============================================================================
 // Tool Streaming State Management
 // ============================================================================
@@ -173,10 +184,18 @@ export async function handleLocalAgentStream(
       },
     };
 
-    // Build tool set (agent tools + MCP tools)
-    const agentTools = buildAgentToolSet(ctx);
-    const mcpTools = await getMcpTools(event, ctx);
-    const allTools: ToolSet = { ...agentTools, ...mcpTools };
+    // Check if this is a local model that may not support tools
+    const isLocal = isLocalModel(settings.selectedModel.provider);
+    
+    // Build tool set (agent tools + MCP tools) - only if not a local model
+    let allTools: ToolSet | undefined;
+    if (!isLocal) {
+      const agentTools = buildAgentToolSet(ctx);
+      const mcpTools = await getMcpTools(event, ctx);
+      allTools = { ...agentTools, ...mcpTools };
+    } else {
+      logger.info("Local model detected, skipping tools (no function calling support)");
+    }
 
     // Prepare message history with graceful fallback
     const messageHistory: ModelMessage[] = chat.messages
@@ -202,8 +221,7 @@ export async function handleLocalAgentStream(
       maxRetries: 2,
       system: systemPrompt,
       messages: messageHistory,
-      tools: allTools,
-      stopWhen: stepCountIs(25), // Allow multiple tool call rounds
+      ...(allTools ? { tools: allTools, stopWhen: stepCountIs(25) } : {}), // Only include tools if not a local model
       abortSignal: abortController.signal,
       onFinish: async (response) => {
         const totalTokens = response.usage?.totalTokens;
@@ -228,11 +246,21 @@ export async function handleLocalAgentStream(
         }
       },
       onError: (error: any) => {
-        const errorMessage = error?.error?.message || JSON.stringify(error);
+        const errorMessage = error?.error?.message || error?.message || JSON.stringify(error);
         logger.error("Local agent stream error:", errorMessage);
+        
+        // Check for "does not support tools" error
+        let userFriendlyError = errorMessage;
+        if (errorMessage.includes("does not support tools")) {
+          // Extract model name from error message if present
+          const modelMatch = errorMessage.match(/([^\s]+) does not support tools/);
+          const modelName = modelMatch ? modelMatch[1] : "This model";
+          userFriendlyError = `${modelName} does not support function calling/tools. Agent mode requires a model with tool support. Try using a different model like:\n• GPT-4 or GPT-4o (OpenAI)\n• Claude 3.5 (Anthropic)\n• Gemini Pro (Google)\n• Llama 3.1 or Mistral (with function calling support)\n\nOr switch to Chat mode which doesn't require tools.`;
+        }
+        
         safeSend(event.sender, "chat:response:error", {
           chatId: req.chatId,
-          error: `AI error: ${errorMessage}`,
+          error: userFriendlyError,
         });
       },
     });

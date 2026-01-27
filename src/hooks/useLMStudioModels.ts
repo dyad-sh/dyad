@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useAtom } from "jotai";
 import {
   lmStudioModelsAtom,
@@ -12,21 +12,28 @@ export function useLocalLMSModels() {
   const [loading, setLoading] = useAtom(lmStudioModelsLoadingAtom);
   const [error, setError] = useAtom(lmStudioModelsErrorAtom);
 
-  const ipcClient = IpcClient.getInstance();
+  // Get stable reference to IPC client
+  const ipcClient = useMemo(() => IpcClient.getInstance(), []);
 
   /**
-   * Load local models from Ollama
+   * Load local models from LM Studio
    */
   const loadModels = useCallback(async () => {
+    console.log("[useLMStudioModels] Loading LM Studio models...");
     setLoading(true);
     try {
       const modelList = await ipcClient.listLocalLMStudioModels();
+      console.log(`[useLMStudioModels] Loaded ${modelList.length} LM Studio models`);
       setModels(modelList);
       setError(null);
 
       return modelList;
     } catch (error) {
-      console.error("Error loading local LMStudio models:", error);
+      // Only log if it's not a "fetch failed" error (LMStudio not running)
+      const isFetchError = error instanceof Error && error.message.includes("fetch failed");
+      if (!isFetchError) {
+        console.error("Error loading local LMStudio models:", error);
+      }
       setError(error instanceof Error ? error : new Error(String(error)));
       return [];
     } finally {

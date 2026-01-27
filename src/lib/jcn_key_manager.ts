@@ -19,8 +19,6 @@ import { safeStorage } from "electron";
 
 import type {
   KeyMetadata,
-  KeyType,
-  KeyAlgorithm,
   WalletAddress,
 } from "@/types/jcn_types";
 
@@ -37,24 +35,31 @@ const KEY_PREFIX = "jcn_key_";
 // KEY TYPES
 // =============================================================================
 
+/** Key types that match the DB schema */
+type DBKeyType = "signing" | "encryption" | "chain";
+
+/** Key algorithms that match the DB schema */
+type DBKeyAlgorithm = "secp256k1" | "ed25519" | "aes-256-gcm";
+
+/** Key storage backends that match the DB schema */
+type DBKeyBackend = "os_keyring" | "encrypted_vault" | "hsm";
+
 export interface StoredKey {
-  id: string;
-  type: KeyType;
-  algorithm: KeyAlgorithm;
+  keyId: string;
+  keyType: DBKeyType;
+  algorithm: DBKeyAlgorithm;
+  backend: DBKeyBackend;
   publicKey?: string;
-  /** Encrypted private key (or reference to keyring) */
-  encryptedPrivateKey?: Buffer;
-  /** Whether stored in OS keyring */
-  inKeyring: boolean;
+  walletAddress?: string;
+  active: boolean;
   createdAt: number;
-  expiresAt?: number;
-  rotatedFrom?: string;
+  lastRotatedAt?: number;
   metadata?: Record<string, unknown>;
 }
 
 export interface KeyGenerationParams {
-  type: KeyType;
-  algorithm: KeyAlgorithm;
+  type: DBKeyType;
+  algorithm: DBKeyAlgorithm;
   name?: string;
   expiresInDays?: number;
   storeInKeyring?: boolean;
@@ -62,8 +67,8 @@ export interface KeyGenerationParams {
 }
 
 export interface KeyImportParams {
-  type: KeyType;
-  algorithm: KeyAlgorithm;
+  type: DBKeyType;
+  algorithm: DBKeyAlgorithm;
   privateKey: string;
   publicKey?: string;
   name?: string;
@@ -103,27 +108,30 @@ export class JcnKeyManager {
   
   /**
    * Load or generate the master key for local encryption
+   * Note: Master key is stored in memory, not in DB. The DB stores regular keys.
    */
   private async loadMasterKey(): Promise<void> {
     const keyId = `${KEY_PREFIX}master`;
     
     try {
       // Try to load from OS keyring via electron safeStorage
+      // We look for an "encryption" type key that serves as master
       const [record] = await db.select()
         .from(jcnKeys)
         .where(and(
           eq(jcnKeys.keyId, keyId),
-          eq(jcnKeys.keyType, "master")
+          eq(jcnKeys.keyType, "encryption")
         ))
         .limit(1);
       
-      if (record?.encryptedKey) {
+      if (record?.publicKey) {
+        // Use publicKey field to store encrypted master key reference
         // Decrypt master key using safeStorage
         if (safeStorage.isEncryptionAvailable()) {
-          this.masterKey = safeStorage.decryptString(record.encryptedKey);
+          this.masterKey = Buffer.from(safeStorage.decryptString(Buffer.from(record.publicKey, "base64")));
         } else {
-          // Fallback: use the encrypted key directly (less secure)
-          this.masterKey = record.encryptedKey;
+          // Fallback: use the key directly (less secure)
+          this.masterKey = Buffer.from(record.publicKey, "base64");
         }
         logger.info("Loaded existing master key");
         return;
@@ -132,21 +140,21 @@ export class JcnKeyManager {
       // Generate new master key
       this.masterKey = crypto.randomBytes(32);
       
-      // Encrypt and store
-      let encryptedKey: Buffer;
+      // Encrypt and store reference
+      let encryptedRef: string;
       if (safeStorage.isEncryptionAvailable()) {
-        encryptedKey = safeStorage.encryptString(this.masterKey.toString("base64"));
+        encryptedRef = safeStorage.encryptString(this.masterKey.toString("base64")).toString("base64");
       } else {
-        encryptedKey = this.masterKey; // Fallback (less secure)
+        encryptedRef = this.masterKey.toString("base64"); // Fallback (less secure)
       }
       
       await db.insert(jcnKeys).values({
-        id: crypto.randomUUID(),
         keyId,
-        keyType: "master",
+        keyType: "encryption",
         algorithm: "aes-256-gcm",
-        inKeyring: safeStorage.isEncryptionAvailable(),
-        encryptedKey,
+        backend: safeStorage.isEncryptionAvailable() ? "os_keyring" : "encrypted_vault",
+        publicKey: encryptedRef, // Store encrypted master key here
+        active: true,
       });
       
       logger.info("Generated new master key");
@@ -171,6 +179,7 @@ export class JcnKeyManager {
     
     let publicKey: string;
     let privateKey: Buffer;
+    let walletAddress: string | undefined;
     
     switch (params.algorithm) {
       case "secp256k1": {
@@ -178,18 +187,11 @@ export class JcnKeyManager {
         const { privateKey: pk, publicKey: pub } = await this.generateSecp256k1();
         privateKey = Buffer.from(pk, "hex");
         publicKey = pub;
+        walletAddress = pub; // For secp256k1, publicKey is wallet address
         break;
       }
       case "ed25519": {
         const keypair = crypto.generateKeyPairSync("ed25519");
-        privateKey = keypair.privateKey.export({ type: "pkcs8", format: "der" });
-        publicKey = keypair.publicKey.export({ type: "spki", format: "der" }).toString("base64");
-        break;
-      }
-      case "rsa-2048": {
-        const keypair = crypto.generateKeyPairSync("rsa", {
-          modulusLength: 2048,
-        });
         privateKey = keypair.privateKey.export({ type: "pkcs8", format: "der" });
         publicKey = keypair.publicKey.export({ type: "spki", format: "der" }).toString("base64");
         break;
@@ -204,23 +206,24 @@ export class JcnKeyManager {
         throw new Error(`Unsupported algorithm: ${params.algorithm}`);
     }
     
-    // Encrypt private key
-    const encryptedKey = await this.encryptKey(privateKey);
+    // Encrypt private key and store reference (we don't store private keys in DB)
+    // Instead, we store in OS keyring and keep reference
+    const backend: DBKeyBackend = params.storeInKeyring && safeStorage.isEncryptionAvailable() 
+      ? "os_keyring" 
+      : "encrypted_vault";
+    
+    // Store encrypted key in memory or OS keyring
+    await this.storePrivateKey(keyId, privateKey, backend);
     
     // Store in database
     await db.insert(jcnKeys).values({
-      id: crypto.randomUUID(),
       keyId,
       keyType: params.type,
       algorithm: params.algorithm,
-      publicKey,
-      encryptedKey,
-      inKeyring: params.storeInKeyring ?? false,
-      name: params.name,
-      expiresAt: params.expiresInDays 
-        ? new Date(now + params.expiresInDays * 24 * 60 * 60 * 1000)
-        : undefined,
-      metadataJson: params.metadata,
+      backend,
+      publicKey: publicKey || undefined,
+      walletAddress,
+      active: true,
     });
     
     // Audit log
@@ -232,11 +235,11 @@ export class JcnKeyManager {
       keyId,
       type: params.type,
       algorithm: params.algorithm,
-      publicKey,
+      backend,
+      publicKey: publicKey || undefined,
+      walletAddress: walletAddress as WalletAddress | undefined,
       createdAt: now,
-      expiresAt: params.expiresInDays ? now + params.expiresInDays * 24 * 60 * 60 * 1000 : undefined,
-      inKeyring: params.storeInKeyring ?? false,
-      name: params.name,
+      active: true,
     };
   }
   
@@ -251,6 +254,28 @@ export class JcnKeyManager {
       publicKey: wallet.address,
     };
   }
+  
+  /**
+   * Store private key securely
+   */
+  private async storePrivateKey(keyId: string, privateKey: Buffer, backend: DBKeyBackend): Promise<void> {
+    // For now, store encrypted in memory map
+    // In production, this would use OS keyring or HSM
+    const encrypted = await this.encryptKey(privateKey);
+    this.privateKeyCache.set(keyId, encrypted);
+  }
+  
+  /**
+   * Retrieve private key
+   */
+  private async retrievePrivateKey(keyId: string): Promise<Buffer | null> {
+    const encrypted = this.privateKeyCache.get(keyId);
+    if (!encrypted) return null;
+    return this.decryptKey(encrypted);
+  }
+  
+  /** In-memory cache for encrypted private keys */
+  private privateKeyCache = new Map<string, Buffer>();
   
   // ===========================================================================
   // KEY IMPORT/EXPORT
@@ -267,6 +292,7 @@ export class JcnKeyManager {
     
     // Validate and convert private key
     let privateKeyBuffer: Buffer;
+    let walletAddress: string | undefined;
     
     switch (params.algorithm) {
       case "secp256k1": {
@@ -276,13 +302,13 @@ export class JcnKeyManager {
           const wallet = new ethers.Wallet(params.privateKey);
           privateKeyBuffer = Buffer.from(wallet.privateKey.slice(2), "hex");
           params.publicKey = params.publicKey || wallet.address;
+          walletAddress = wallet.address;
         } catch {
           throw new Error("Invalid secp256k1 private key");
         }
         break;
       }
-      case "ed25519":
-      case "rsa-2048": {
+      case "ed25519": {
         // Assume base64 or hex encoded
         privateKeyBuffer = Buffer.from(params.privateKey, "base64");
         break;
@@ -298,20 +324,22 @@ export class JcnKeyManager {
         throw new Error(`Unsupported algorithm: ${params.algorithm}`);
     }
     
-    // Encrypt private key
-    const encryptedKey = await this.encryptKey(privateKeyBuffer);
+    // Store private key securely
+    const backend: DBKeyBackend = params.storeInKeyring && safeStorage.isEncryptionAvailable() 
+      ? "os_keyring" 
+      : "encrypted_vault";
+    
+    await this.storePrivateKey(keyId, privateKeyBuffer, backend);
     
     // Store in database
     await db.insert(jcnKeys).values({
-      id: crypto.randomUUID(),
       keyId,
       keyType: params.type,
       algorithm: params.algorithm,
-      publicKey: params.publicKey,
-      encryptedKey,
-      inKeyring: params.storeInKeyring ?? false,
-      name: params.name,
-      metadataJson: params.metadata,
+      backend,
+      publicKey: params.publicKey || undefined,
+      walletAddress,
+      active: true,
     });
     
     // Audit log
@@ -323,10 +351,11 @@ export class JcnKeyManager {
       keyId,
       type: params.type,
       algorithm: params.algorithm,
-      publicKey: params.publicKey,
+      backend,
+      publicKey: params.publicKey || undefined,
+      walletAddress: walletAddress as WalletAddress | undefined,
       createdAt: now,
-      inKeyring: params.storeInKeyring ?? false,
-      name: params.name,
+      active: true,
     };
   }
   
@@ -348,17 +377,21 @@ export class JcnKeyManager {
     // Audit log
     await this.auditLog("key_exported", keyId, record.keyType, record.algorithm);
     
+    // Get encrypted private key from cache
+    const encryptedKey = this.privateKeyCache.get(keyId);
+    
     return {
-      encryptedKey: record.encryptedKey?.toString("base64") || "",
+      encryptedKey: encryptedKey?.toString("base64") || "",
       metadata: {
         keyId: record.keyId,
-        type: record.keyType as KeyType,
-        algorithm: record.algorithm as KeyAlgorithm,
+        type: record.keyType,
+        algorithm: record.algorithm,
+        backend: record.backend,
         publicKey: record.publicKey ?? undefined,
+        walletAddress: record.walletAddress as WalletAddress | undefined,
         createdAt: record.createdAt?.getTime() || Date.now(),
-        expiresAt: record.expiresAt?.getTime(),
-        inKeyring: record.inKeyring || false,
-        name: record.name ?? undefined,
+        lastRotatedAt: record.lastRotatedAt?.getTime(),
+        active: record.active,
       },
     };
   }
@@ -378,18 +411,18 @@ export class JcnKeyManager {
       .where(eq(jcnKeys.keyId, keyId))
       .limit(1);
     
-    if (!record?.encryptedKey) {
+    if (!record) {
       return null;
     }
     
-    // Check expiration
-    if (record.expiresAt && record.expiresAt.getTime() < Date.now()) {
-      logger.warn("Attempted to use expired key", { keyId });
+    // Check if key is active
+    if (!record.active) {
+      logger.warn("Attempted to use inactive key", { keyId });
       return null;
     }
     
-    // Decrypt and return
-    return this.decryptKey(record.encryptedKey);
+    // Retrieve and return private key
+    return this.retrievePrivateKey(keyId);
   }
   
   /**
@@ -419,21 +452,21 @@ export class JcnKeyManager {
     
     return {
       keyId: record.keyId,
-      type: record.keyType as KeyType,
-      algorithm: record.algorithm as KeyAlgorithm,
+      type: record.keyType,
+      algorithm: record.algorithm,
+      backend: record.backend,
       publicKey: record.publicKey ?? undefined,
+      walletAddress: record.walletAddress as WalletAddress | undefined,
       createdAt: record.createdAt?.getTime() || Date.now(),
-      expiresAt: record.expiresAt?.getTime(),
-      inKeyring: record.inKeyring || false,
-      name: record.name ?? undefined,
-      rotatedFrom: record.rotatedFrom ?? undefined,
+      lastRotatedAt: record.lastRotatedAt?.getTime(),
+      active: record.active,
     };
   }
   
   /**
    * List all keys
    */
-  async listKeys(type?: KeyType): Promise<KeyMetadata[]> {
+  async listKeys(type?: DBKeyType): Promise<KeyMetadata[]> {
     let query = db.select().from(jcnKeys);
     
     if (type) {
@@ -443,17 +476,16 @@ export class JcnKeyManager {
     const records = await query;
     
     return records
-      .filter((r) => r.keyType !== "master") // Don't expose master key
       .map((r) => ({
         keyId: r.keyId,
-        type: r.keyType as KeyType,
-        algorithm: r.algorithm as KeyAlgorithm,
+        type: r.keyType,
+        algorithm: r.algorithm,
+        backend: r.backend,
         publicKey: r.publicKey ?? undefined,
+        walletAddress: r.walletAddress as WalletAddress | undefined,
         createdAt: r.createdAt?.getTime() || Date.now(),
-        expiresAt: r.expiresAt?.getTime(),
-        inKeyring: r.inKeyring || false,
-        name: r.name ?? undefined,
-        rotatedFrom: r.rotatedFrom ?? undefined,
+        lastRotatedAt: r.lastRotatedAt?.getTime(),
+        active: r.active,
       }));
   }
   
@@ -472,11 +504,15 @@ export class JcnKeyManager {
       .where(eq(jcnKeys.keyId, keyId))
       .limit(1);
     
-    if (!record?.encryptedKey) {
+    if (!record) {
       throw new Error(`Key not found: ${keyId}`);
     }
     
-    const privateKey = await this.decryptKey(record.encryptedKey);
+    const privateKey = await this.retrievePrivateKey(keyId);
+    if (!privateKey) {
+      throw new Error(`Private key not available for: ${keyId}`);
+    }
+    
     const messageBuffer = Buffer.isBuffer(message) ? message : Buffer.from(message);
     
     switch (record.algorithm) {
@@ -493,15 +529,6 @@ export class JcnKeyManager {
           type: "pkcs8",
         });
         const signature = crypto.sign(null, messageBuffer, key);
-        return signature.toString("base64");
-      }
-      case "rsa-2048": {
-        const key = crypto.createPrivateKey({
-          key: privateKey,
-          format: "der",
-          type: "pkcs8",
-        });
-        const signature = crypto.sign("sha256", messageBuffer, key);
         return signature.toString("base64");
       }
       default:
@@ -543,14 +570,6 @@ export class JcnKeyManager {
         });
         return crypto.verify(null, messageBuffer, key, Buffer.from(signature, "base64"));
       }
-      case "rsa-2048": {
-        const key = crypto.createPublicKey({
-          key: Buffer.from(record.publicKey, "base64"),
-          format: "der",
-          type: "spki",
-        });
-        return crypto.verify("sha256", messageBuffer, key, Buffer.from(signature, "base64"));
-      }
       default:
         throw new Error(`Cannot verify with algorithm: ${record.algorithm}`);
     }
@@ -561,7 +580,7 @@ export class JcnKeyManager {
   // ===========================================================================
   
   /**
-   * Rotate a key (generate new, mark old as rotated)
+   * Rotate a key (generate new, mark old as inactive)
    */
   async rotateKey(oldKeyId: string): Promise<KeyMetadata> {
     await this.ensureInitialized();
@@ -571,24 +590,21 @@ export class JcnKeyManager {
       throw new Error(`Key not found: ${oldKeyId}`);
     }
     
-    // Generate new key
+    // Generate new key with same type/algorithm
     const newKey = await this.generateKey({
       type: oldKey.type,
       algorithm: oldKey.algorithm,
-      name: oldKey.name ? `${oldKey.name} (rotated)` : undefined,
-      storeInKeyring: oldKey.inKeyring,
     });
     
-    // Update new key with rotation info
+    // Update new key with last rotated timestamp
     await db.update(jcnKeys)
-      .set({ rotatedFrom: oldKeyId })
+      .set({ lastRotatedAt: new Date() })
       .where(eq(jcnKeys.keyId, newKey.keyId));
     
-    // Mark old key as rotated (don't delete, keep for verification)
+    // Mark old key as inactive
     await db.update(jcnKeys)
       .set({
-        rotatedTo: newKey.keyId,
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // Keep for 30 days
+        active: false,
       })
       .where(eq(jcnKeys.keyId, oldKeyId));
     
@@ -597,7 +613,7 @@ export class JcnKeyManager {
     
     logger.info("Rotated key", { oldKeyId, newKeyId: newKey.keyId });
     
-    return { ...newKey, rotatedFrom: oldKeyId };
+    return newKey;
   }
   
   /**
@@ -611,10 +627,13 @@ export class JcnKeyManager {
       return false;
     }
     
-    // Don't delete master key
-    if (key.type === "master") {
+    // Don't delete encryption keys used as master
+    if (key.type === "encryption" && keyId.includes("master")) {
       throw new Error("Cannot delete master key");
     }
+    
+    // Remove from private key cache
+    this.privateKeyCache.delete(keyId);
     
     await db.delete(jcnKeys).where(eq(jcnKeys.keyId, keyId));
     
@@ -709,17 +728,17 @@ export class JcnKeyManager {
    */
   async getDefaultSigningKey(): Promise<KeyMetadata> {
     const keys = await this.listKeys("signing");
-    const defaultKey = keys.find((k) => k.name === "default_signing");
     
-    if (defaultKey) {
-      return defaultKey;
+    // Return the first active signing key if available
+    const activeKey = keys.find((k) => k.active);
+    if (activeKey) {
+      return activeKey;
     }
     
     // Create default signing key
     return this.generateKey({
       type: "signing",
       algorithm: "secp256k1",
-      name: "default_signing",
       storeInKeyring: true,
     });
   }

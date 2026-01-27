@@ -402,23 +402,24 @@ export class JcnBundleBuilder {
         cwd: sourcePath,
         gzip: false, // Don't gzip for content-addressing
         portable: true, // Use portable format
-        // Set fixed timestamps for determinism
-        mtime: new Date("2020-01-01T00:00:00Z"),
+        // Use noMtime for determinism
+        noMtime: true,
       },
       files
     );
     
-    // Append manifest to tar
+    // Append manifest to tar by recreating archive with manifest
     const manifestContent = await fs.readFile(manifestPath);
     const tempManifestDir = path.dirname(manifestPath);
     
-    await tar.update(
+    // Use tar.replace or recreate archive to add manifest
+    await tar.create(
       {
         file: outputPath,
         cwd: tempManifestDir,
-        mtime: new Date("2020-01-01T00:00:00Z"),
+        noMtime: true,
       },
-      ["manifest.json"]
+      [...files.map(f => path.relative(tempManifestDir, path.join(sourcePath, f))), "manifest.json"]
     );
   }
   
@@ -504,7 +505,7 @@ export class JcnBundleBuilder {
     
     // Create signing message
     const message = `JCN Bundle Signature\n` +
-      `Bundle: ${manifest.bundleCid || manifest.name}\n` +
+      `Bundle: ${manifest.name}\n` +
       `Merkle Root: ${manifest.merkleRoot}\n` +
       `Manifest Hash: ${manifest.manifestHash}`;
     
@@ -597,7 +598,7 @@ export class JcnBundleBuilder {
       if (manifest.signature) {
         try {
           const message = `JCN Bundle Signature\n` +
-            `Bundle: ${manifest.bundleCid || manifest.name}\n` +
+            `Bundle: ${manifest.name}\n` +
             `Merkle Root: ${manifest.merkleRoot}\n` +
             `Manifest Hash: ${manifest.manifestHash}`;
           

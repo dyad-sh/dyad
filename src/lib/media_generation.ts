@@ -334,6 +334,8 @@ export class MediaGeneration extends EventEmitter {
       img2img: params.img2img,
       inpaint: params.inpaint,
       progress: 0,
+      config: {},
+      outputs: [],
       metadata: params.metadata,
       createdAt: Date.now(),
     };
@@ -401,19 +403,20 @@ export class MediaGeneration extends EventEmitter {
           
           // Find generated images
           const files = await fs.readdir(outputPath);
-          job.outputs = files
+          const outputPaths = files
             .filter((f) => f.endsWith(".png") || f.endsWith(".jpg"))
             .map((f) => path.join(outputPath, f));
           
-          // Save to generated media
-          for (let i = 0; i < job.outputs.length; i++) {
+          // Build outputs and save to generated media
+          job.outputs = [];
+          for (let i = 0; i < outputPaths.length; i++) {
             const media: GeneratedMedia = {
               id: `${job.id}_${i}`,
               type: "image",
-              path: job.outputs[i],
+              path: outputPaths[i],
               prompt: job.prompt,
               model: job.model,
-              seed: job.seed + i,
+              seed: (job.seed || 0) + i,
               parameters: {
                 width: job.width,
                 height: job.height,
@@ -423,6 +426,7 @@ export class MediaGeneration extends EventEmitter {
               },
               createdAt: Date.now(),
             };
+            job.outputs.push(media);
             this.generatedMedia.set(media.id, media);
           }
           
@@ -464,7 +468,7 @@ from diffusers import (
 
 OUTPUT_DIR = "${path.join(this.outputDir, job.id).replace(/\\/g, "/")}"
 MODEL = "${job.model}"
-PROMPT = """${job.prompt.replace(/"/g, '\\"')}"""
+PROMPT = """${(job.prompt || "").replace(/"/g, '\\"')}"""
 NEGATIVE_PROMPT = """${job.negativePrompt?.replace(/"/g, '\\"') || ""}"""
 WIDTH = ${job.width}
 HEIGHT = ${job.height}
@@ -563,6 +567,7 @@ if __name__ == "__main__":
       type: "audio",
       audioType: params.type,
       status: "pending",
+      prompt: params.text || "",
       text: params.text,
       audioFile: params.audioFile,
       model: params.model || (params.type === "transcribe" ? "whisper-base" : "bark"),
@@ -570,6 +575,8 @@ if __name__ == "__main__":
       language: params.language,
       duration: params.duration,
       progress: 0,
+      config: {},
+      outputs: [],
       metadata: params.metadata,
       createdAt: Date.now(),
     };
@@ -840,7 +847,7 @@ if __name__ == "__main__":
       type: "video",
       videoType: params.type,
       status: "pending",
-      prompt: params.prompt,
+      prompt: params.prompt || "",
       image: params.image,
       model: params.model || "stable-video-diffusion",
       frames: params.frames || 25,
@@ -849,9 +856,11 @@ if __name__ == "__main__":
       height: params.height || 576,
       seed: params.seed || Math.floor(Math.random() * 2147483647),
       progress: 0,
+      config: {},
+      outputs: [],
       metadata: params.metadata,
       createdAt: Date.now(),
-    };
+    } as VideoGenerationJob;
     
     this.jobQueue.set(id, job);
     this.emit("job:created", job);

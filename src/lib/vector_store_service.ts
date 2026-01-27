@@ -317,11 +317,14 @@ export class VectorStoreService extends EventEmitter {
       name: params.name,
       description: params.description,
       backend: params.backend || "sqlite-vss",
+      embeddingModel: "builtin",
       dimension: params.dimension || 384, // all-minilm-l6-v2 default
       distanceMetric: params.distanceMetric || "cosine",
+      indexType: "flat",
       documentCount: 0,
+      chunkCount: 0,
+      totalSize: 0,
       vectorCount: 0,
-      sizeBytes: 0,
       chunkingConfig: params.chunkingConfig || {
         strategy: "sentence",
         chunkSize: DEFAULT_CHUNK_SIZE,
@@ -477,9 +480,16 @@ export class VectorStoreService extends EventEmitter {
     const db = await this.getDatabase(collectionId);
     const results: VectorDocument[] = [];
     
+    // Ensure we have a chunking config
+    const chunkingConfig = collection.chunkingConfig || {
+      strategy: "sentence" as const,
+      chunkSize: DEFAULT_CHUNK_SIZE,
+      chunkOverlap: DEFAULT_CHUNK_OVERLAP,
+    };
+    
     for (const doc of documents) {
       const docId = crypto.randomUUID();
-      const chunks = this.chunkText(doc.content, collection.chunkingConfig);
+      const chunks = this.chunkText(doc.content, chunkingConfig);
       
       // Insert document
       db.prepare(`
@@ -517,6 +527,7 @@ export class VectorStoreService extends EventEmitter {
         `).run(chunkIds[i], embeddingBuffer);
       }
       
+      const now = Date.now();
       const vectorDoc: VectorDocument = {
         id: docId,
         collectionId,
@@ -525,7 +536,8 @@ export class VectorStoreService extends EventEmitter {
         source: doc.source,
         metadata: doc.metadata,
         chunkCount: chunks.length,
-        createdAt: Date.now(),
+        createdAt: now,
+        updatedAt: now,
       };
       
       results.push(vectorDoc);
@@ -533,7 +545,7 @@ export class VectorStoreService extends EventEmitter {
     
     // Update collection stats
     collection.documentCount += documents.length;
-    collection.vectorCount += results.reduce((sum, d) => sum + d.chunkCount, 0);
+    collection.vectorCount = (collection.vectorCount || 0) + results.reduce((sum, d) => sum + (d.chunkCount || 0), 0);
     collection.updatedAt = Date.now();
     
     await this.saveCollectionConfig(collection);
@@ -573,7 +585,7 @@ export class VectorStoreService extends EventEmitter {
     
     // Update stats
     collection.documentCount -= 1;
-    collection.vectorCount -= chunkCount.count;
+    collection.vectorCount = (collection.vectorCount || 0) - chunkCount.count;
     collection.updatedAt = Date.now();
     
     await this.saveCollectionConfig(collection);
@@ -611,6 +623,7 @@ export class VectorStoreService extends EventEmitter {
       metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
       chunkCount: row.chunk_count,
       createdAt: row.created_at,
+      updatedAt: row.created_at, // Use created_at as updatedAt for simplicity
     }));
   }
   
@@ -692,6 +705,11 @@ export class VectorStoreService extends EventEmitter {
    * Perform RAG query
    */
   async rag(request: RAGRequest): Promise<RAGResponse> {
+    // Ensure collectionId is provided
+    if (!request.collectionId) {
+      throw new Error("Collection ID required for RAG");
+    }
+    
     // Search for relevant context
     const searchResults = await this.search({
       collectionId: request.collectionId,
@@ -721,7 +739,7 @@ Answer based on the context above:`;
       throw new Error("Model ID required for RAG");
     }
     
-    const response = await localModelManager.inference({
+    const modelResponse = await localModelManager.inference({
       modelId: request.modelId,
       prompt,
       systemPrompt,
@@ -739,11 +757,10 @@ Answer based on the context above:`;
     }));
     
     return {
-      answer: response.content,
+      answer: modelResponse.content,
+      sources: searchResults,
+      modelResponse,
       citations,
-      confidence: this.calculateConfidence(searchResults),
-      modelId: request.modelId,
-      usage: response.usage,
     };
   }
   
@@ -824,7 +841,9 @@ Answer based on the context above:`;
   
   private chunkText(text: string, config: ChunkingConfig): string[] {
     const strategy = config.strategy || "sentence";
-    const chunker = ChunkingStrategies[strategy] || ChunkingStrategies.fixedSize;
+    // Map 'fixed' to 'fixedSize' for compatibility
+    const strategyKey = strategy === "fixed" ? "fixedSize" : strategy;
+    const chunker = ChunkingStrategies[strategyKey as keyof typeof ChunkingStrategies] || ChunkingStrategies.fixedSize;
     return chunker.call(ChunkingStrategies, text, config);
   }
   

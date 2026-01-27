@@ -38,7 +38,7 @@ export function ChatList({ show }: { show?: boolean }) {
   const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
   const [selectedAppId] = useAtom(selectedAppIdAtom);
   const [, setIsDropdownOpen] = useAtom(dropdownOpenAtom);
-  const { settings, updateSettings } = useSettings();
+  const { settings, updateSettings, envVars } = useSettings();
   const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
 
   const { chats, loading, invalidateChats } = useChats(selectedAppId);
@@ -98,6 +98,7 @@ export function ChatList({ show }: { show?: boolean }) {
           const freeAgentQuotaAvailable = !isQuotaLoading && !isQuotaExceeded;
           const effectiveDefaultMode = getEffectiveDefaultChatMode(
             settings,
+            envVars,
             freeAgentQuotaAvailable,
           );
           updateSettings({ selectedChatMode: effectiveDefaultMode });

@@ -53,7 +53,7 @@ export default function HomePage() {
   const search = useSearch({ from: "/" });
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const { refreshApps } = useLoadApps();
-  const { settings, updateSettings } = useSettings();
+  const { settings, updateSettings, envVars } = useSettings();
   const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
 
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
@@ -149,6 +149,7 @@ export default function HomePage() {
       hasAppliedDefaultChatMode.current = true;
       const effectiveDefaultMode = getEffectiveDefaultChatMode(
         settings,
+        envVars,
         !isQuotaExceeded,
       );
       if (settings.selectedChatMode !== effectiveDefaultMode) {

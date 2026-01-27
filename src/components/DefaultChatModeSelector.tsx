@@ -11,7 +11,7 @@ import type { ChatMode } from "@/lib/schemas";
 import { isDyadProEnabled, getEffectiveDefaultChatMode } from "@/lib/schemas";
 
 export function DefaultChatModeSelector() {
-  const { settings, updateSettings } = useSettings();
+  const { settings, updateSettings, envVars } = useSettings();
   const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
 
   if (!settings) {
@@ -23,6 +23,7 @@ export function DefaultChatModeSelector() {
   const freeAgentQuotaAvailable = !isQuotaLoading && !isQuotaExceeded;
   const effectiveDefault = getEffectiveDefaultChatMode(
     settings,
+    envVars,
     freeAgentQuotaAvailable,
   );
   // Show Basic Agent option if user is Pro OR if they have free quota available

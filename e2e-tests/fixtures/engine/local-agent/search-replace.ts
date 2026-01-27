@@ -21,6 +21,8 @@ export const fixture: LocalAgentFixture = {
           name: "search_replace",
           args: {
             file_path: "src/App.tsx",
+            // NOTE: This old_string must exactly match the content of the 'minimal' template's src/App.tsx
+            // If the minimal template changes, this fixture must be updated accordingly
             old_string: `const App = () => <div>Minimal imported app</div>;
 
 export default App;`,

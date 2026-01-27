@@ -13,6 +13,7 @@ vi.mock("node:fs", async () => {
       writeFileSync: vi.fn(),
       promises: {
         readFile: vi.fn(),
+        writeFile: vi.fn(),
       },
     },
   };
@@ -32,6 +33,16 @@ vi.mock("electron-log", () => ({
 // Mock path utils
 vi.mock("@/ipc/utils/path_utils", () => ({
   safeJoin: (base: string, path: string) => `${base}/${path}`,
+}));
+
+// Mock Supabase utilities
+vi.mock("../../../../../../supabase_admin/supabase_management_client", () => ({
+  deploySupabaseFunction: vi.fn(),
+}));
+
+vi.mock("../../../../../../supabase_admin/supabase_utils", () => ({
+  isServerFunction: vi.fn().mockReturnValue(false),
+  isSharedServerModule: vi.fn().mockReturnValue(false),
 }));
 
 describe("searchReplaceStrictTool", () => {
@@ -158,7 +169,7 @@ describe("searchReplaceStrictTool", () => {
         ),
       ).resolves.toContain("Successfully");
 
-      expect(fs.writeFileSync).toHaveBeenCalled();
+      expect(fs.promises.writeFile).toHaveBeenCalled();
     });
 
     it("errors when file does not exist", async () => {
@@ -200,7 +211,7 @@ describe("searchReplaceStrictTool", () => {
       );
 
       expect(result).toContain("Successfully");
-      expect(fs.writeFileSync).toHaveBeenCalledWith(
+      expect(fs.promises.writeFile).toHaveBeenCalledWith(
         "/test/app/test.ts",
         expect.stringContaining("const a = 10"),
       );

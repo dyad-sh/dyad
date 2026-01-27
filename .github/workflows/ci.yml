@@ -16,7 +16,61 @@ defaults:
     shell: bash
 
 jobs:
+  check-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run_tests: ${{ steps.check.outputs.should_run_tests }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check if only .claude files changed
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            # Always run tests on pushes to main
+            echo "should_run_tests=true" >> $GITHUB_OUTPUT
+            echo "Running tests: push to main branch"
+            exit 0
+          fi
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            # For push events, compare with parent commit
+            BASE_SHA="${{ github.event.before }}"
+            HEAD_SHA="${{ github.sha }}"
+          fi
+
+          # Get list of changed files
+          CHANGED_FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" 2>/dev/null || echo "")
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "should_run_tests=true" >> $GITHUB_OUTPUT
+            echo "Running tests: could not determine changed files"
+            exit 0
+          fi
+
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+
+          # Check if all changed files are in .claude directory
+          NON_CLAUDE_FILES=$(echo "$CHANGED_FILES" | grep -v "^\.claude/" || true)
+
+          if [ -z "$NON_CLAUDE_FILES" ]; then
+            echo "should_run_tests=false" >> $GITHUB_OUTPUT
+            echo "Skipping tests: all changed files are in .claude/"
+          else
+            echo "should_run_tests=true" >> $GITHUB_OUTPUT
+            echo "Running tests: found non-.claude files:"
+            echo "$NON_CLAUDE_FILES"
+          fi
+
   test:
+    needs: [check-changes]
+    if: needs.check-changes.outputs.should_run_tests == 'true'
     # Why Mac and Windows?
     # I can't run electron playwright on ubuntu-latest and
     # Linux support for Dyad is experimental so not as important
@@ -110,8 +164,9 @@ jobs:
 
   merge-reports:
     # Merge reports after playwright-tests, even if some shards have failed
-    if: ${{ !cancelled() }}
-    needs: [test]
+    # Skip if tests were skipped (only .claude files changed)
+    if: ${{ !cancelled() && needs.check-changes.outputs.should_run_tests == 'true' }}
+    needs: [check-changes, test]
     permissions:
       contents: read
       pull-requests: write

@@ -63,6 +63,30 @@ testSkipIfWindows("mcp - call calculator via http", async ({ po }) => {
     stdio: "pipe",
   });
 
+  // Wait for the HTTP server to be ready by checking stdout for the ready message
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error("HTTP MCP server failed to start within timeout"));
+    }, 10000);
+
+    httpServerProcess.stdout?.on("data", (data: Buffer) => {
+      console.log("HTTP MCP server stdout:", data.toString());
+      if (data.toString().includes("HTTP MCP server running")) {
+        clearTimeout(timeout);
+        resolve();
+      }
+    });
+
+    httpServerProcess.stderr?.on("data", (data: Buffer) => {
+      console.error("HTTP MCP server stderr:", data.toString());
+    });
+
+    httpServerProcess.on("error", (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+  });
+
   try {
     await po.setUp();
     await po.goToSettingsTab();
@@ -73,9 +97,7 @@ testSkipIfWindows("mcp - call calculator via http", async ({ po }) => {
       .getByRole("textbox", { name: "My MCP Server" })
       .fill("testing-mcp-server");
 
-    await po.page
-      .locator('div:has-text("Transport") select')
-      .selectOption("http");
+    await po.page.getByTestId("mcp-transport-select").selectOption("http");
 
     const urlInput = po.page.getByPlaceholder("http://localhost:3000");
     await expect(urlInput).toBeVisible();
@@ -83,7 +105,10 @@ testSkipIfWindows("mcp - call calculator via http", async ({ po }) => {
 
     await po.page.getByRole("button", { name: "Add Server" }).click();
 
-    await po.page.getByRole("button", { name: "Add Header" }).click();
+    // Wait for the server to be created and the "Add Header" button to become visible
+    const addHeaderButton = po.page.getByRole("button", { name: "Add Header" });
+    await expect(addHeaderButton).toBeVisible({ timeout: 10000 });
+    await addHeaderButton.click();
     await po.page.getByRole("textbox", { name: "Key" }).fill("Authorization");
     await po.page.getByRole("textbox", { name: "Value" }).fill("testValue1");
     await po.page.getByRole("button", { name: "Save" }).click();

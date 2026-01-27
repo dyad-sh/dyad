@@ -53,7 +53,6 @@ await server.connect(transport);
 
 // Create HTTP server
 const httpServer = createServer(async (req, res) => {
-    
   // Only handle requests to /mcp endpoint
   if (req.url !== "/mcp") {
     res.writeHead(404, { "Content-Type": "text/plain" });
@@ -111,4 +110,3 @@ process.on("SIGTERM", async () => {
     process.exit(0);
   });
 });
-

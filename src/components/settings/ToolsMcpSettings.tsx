@@ -388,8 +388,10 @@ export function ToolsMcpSettings() {
             />
           </div>
           <div>
-            <Label>Transport</Label>
+            <Label htmlFor="mcp-transport-select">Transport</Label>
             <select
+              id="mcp-transport-select"
+              data-testid="mcp-transport-select"
               value={transport}
               onChange={(e) => setTransport(e.target.value as Transport)}
               className="w-full h-9 rounded-md border bg-transparent px-3 text-sm"

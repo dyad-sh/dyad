@@ -176,8 +176,7 @@ export function useStreamChat({
               pendingStreamChatIds.delete(chatId);
 
               if (response.updatedFiles) {
-                // Only auto-expand preview if setting is enabled (default: true)
-                if (settings?.autoExpandPreviewPanel !== false) {
+                if (settings?.autoExpandPreviewPanel) {
                   setIsPreviewOpen(true);
                 }
                 refreshAppIframe();

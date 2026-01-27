@@ -36,6 +36,10 @@ jobs:
 
       - name: PR Review
         uses: anthropics/claude-code-action@v1
+        env:
+          # Default is 32,000 which Claude willl sometimes hit.
+          # https://code.claude.com/docs/en/settings
+          CLAUDE_CODE_MAX_OUTPUT_TOKENS: 48000
         with:
           # anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -48,7 +52,7 @@ jobs:
           track_progress: false
 
           prompt: |
-            /multi-pr-review ${{ github.event.pull_request.number }}
+            /dyad:multi-pr-review ${{ github.event.pull_request.number }}
 
           # Uses .claude/settings.json for permissions; only add MCP tool not in settings
           claude_args: |

@@ -52,6 +52,11 @@ Fix failing CI checks and GitHub Actions on a Pull Request.
    - Check if the failures are snapshot-related by examining the CI logs or PR comments
    - If snapshots need updating, run the `/dyad:e2e-rebase` skill to fix them
    - If the failures are not snapshot-related:
+     - **IMPORTANT:** First build the application before running E2E tests:
+       ```
+       npm run build
+       ```
+       E2E tests run against the built binary. If you make any changes to application code (anything outside of `e2e-tests/`), you MUST re-run `npm run build` before running E2E tests again.
      - Run the failing tests locally with debug output:
        ```
        DEBUG=pw:browser PLAYWRIGHT_HTML_OPEN=never npm run e2e -- <test-file>

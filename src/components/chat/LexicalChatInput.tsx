@@ -289,10 +289,14 @@ export function LexicalChatInput({
     const result: Record<string, any[]> = { "@": [], [HISTORY_TRIGGER]: [] };
 
     // Add history items under the history trigger - always available regardless of app loading
-    const historyItems = (messageHistory || []).map((item) => ({
-      value: item,
-      type: "history",
-    }));
+    // Reverse so most recent appears at the bottom
+    const historyItems = (messageHistory || [])
+      .slice()
+      .reverse()
+      .map((item) => ({
+        value: item,
+        type: "history",
+      }));
     result[HISTORY_TRIGGER] = historyItems;
 
     if (!apps) return result;
@@ -373,7 +377,7 @@ export function LexicalChatInput({
           if (!hasTrigger) {
             historyTriggerActiveRef.current = false;
           }
-          if (withoutTrigger.replace(/\s/g, "") === "") {
+          if (withoutTrigger.trim() === "") {
             textContent = "";
           } else {
             textContent = withoutTrigger;

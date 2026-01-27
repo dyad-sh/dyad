@@ -77,8 +77,7 @@ export function HistoryNavigation({
         editor.getEditorState().read(() => {
           const root = $getRoot();
           const textContent = root.getTextContent();
-          const normalized = textContent.replace(/\s/g, "");
-          isTriggerOnly = normalized === HISTORY_TRIGGER;
+          isTriggerOnly = textContent.trim() === HISTORY_TRIGGER;
         });
 
         if (!isTriggerOnly) {

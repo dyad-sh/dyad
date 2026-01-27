@@ -30,7 +30,9 @@ test("should open history menu when pressing up arrow with empty input", async (
   await expect(menuItems).toHaveCount(2);
 
   // Verify we can see the prompt text in the menu
-  await expect(menuItems.nth(0)).toContainText("Second test message");
+  // Most recent should be at the bottom (index 1)
+  await expect(menuItems.nth(1)).toContainText("Second test message");
+  await expect(menuItems.nth(0)).toContainText("First test message");
 });
 
 test("should navigate history with keyboard arrows and show selection", async ({
@@ -53,18 +55,18 @@ test("should navigate history with keyboard arrows and show selection", async ({
 
   const menuItems = po.page.locator('[data-mentions-menu="true"] li');
 
-  // First item should be highlighted
+  // First item should be highlighted (oldest at top)
   const firstItem = menuItems.nth(0);
   await expect(firstItem).toHaveClass(/bg-accent/);
-  await expect(firstItem).toContainText("Prompt B");
+  await expect(firstItem).toContainText("Prompt A");
 
   // Press down arrow
   await po.page.keyboard.press("ArrowDown");
 
-  // Second item should now be highlighted
+  // Second item should now be highlighted (most recent at bottom)
   const secondItem = menuItems.nth(1);
   await expect(secondItem).toHaveClass(/bg-accent/);
-  await expect(secondItem).toContainText("Prompt A");
+  await expect(secondItem).toContainText("Prompt B");
 
   // Press down again - should wrap or stay at end
   await po.page.keyboard.press("ArrowDown");
@@ -97,11 +99,6 @@ test("should select and insert history item with enter key", async ({ po }) => {
   // Wait for the menu to close and text to be inserted
   const historyMenu = po.page.locator('[data-mentions-menu="true"]');
   await expect(historyMenu).not.toBeVisible({ timeout: Timeout.MEDIUM });
-
-  // Menu should be gone
-  await expect(po.page.locator('[data-mentions-menu="true"]')).not.toBeVisible({
-    timeout: Timeout.MEDIUM,
-  });
 
   // Verify content was inserted using toContainText
   await expect(chatInput).toContainText(historyPrompt, {
@@ -186,8 +183,7 @@ test("should not open history menu if input has content", async ({ po }) => {
 
   // No visible mentions menu
   const mentionsMenu = po.page.locator('[data-mentions-menu="true"]');
-  const isVisible = await mentionsMenu.isVisible().catch(() => false);
-  expect(isVisible).toBe(false);
+  await expect(mentionsMenu).not.toBeVisible();
 });
 
 test("should not open history menu if history is empty", async ({ po }) => {
@@ -205,8 +201,7 @@ test("should not open history menu if history is empty", async ({ po }) => {
 
   // No visible mentions menu
   const mentionsMenu = po.page.locator('[data-mentions-menu="true"]');
-  const isVisible = await mentionsMenu.isVisible().catch(() => false);
-  expect(isVisible).toBe(false);
+  await expect(mentionsMenu).not.toBeVisible();
 });
 
 test("should close history menu and allow sending regular messages", async ({

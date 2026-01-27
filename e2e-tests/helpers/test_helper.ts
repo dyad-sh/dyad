@@ -349,10 +349,12 @@ export class PageObject {
     autoApprove = false,
     disableNativeGit = false,
     enableAutoFixProblems = false,
+    enableBasicAgent = false,
   }: {
     autoApprove?: boolean;
     disableNativeGit?: boolean;
     enableAutoFixProblems?: boolean;
+    enableBasicAgent?: boolean;
   } = {}) {
     await this.baseSetup();
     await this.goToSettingsTab();
@@ -367,8 +369,10 @@ export class PageObject {
     }
     await this.setUpTestProvider();
     await this.setUpTestModel();
-
     await this.goToAppsTab();
+    if (!enableBasicAgent) {
+      await this.selectChatMode("build");
+    }
     await this.selectTestModel();
   }
 

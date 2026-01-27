@@ -53,8 +53,8 @@ testSkipIfWindows("refresh preserves current route", async ({ po }) => {
     po.getPreviewIframeElement().contentFrame().getByText("About Page"),
   ).toBeVisible({ timeout: Timeout.MEDIUM });
 
-  // Wait to see if the page stays on About Page (reproducing local issue)
-  await po.page.waitForTimeout(10000);
+  // Wait to see if the page stays on About Page (reproducing local issue with HMR)
+  await po.page.waitForTimeout(5_000);
 
   // Verify it's STILL on About Page after waiting - check that About Page heading is visible
   // and the Home Page heading is not (use getByRole to match the heading, not the link text)

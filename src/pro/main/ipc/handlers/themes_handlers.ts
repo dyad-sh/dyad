@@ -12,6 +12,8 @@ import { streamText, TextPart, ImagePart } from "ai";
 import { readSettings } from "../../../../main/settings";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { getModelClient } from "../../../../ipc/utils/get_model_client";
+import { v4 as uuidv4 } from "uuid";
+import { z } from "zod";
 import type {
   SetAppThemeParams,
   GetAppThemeParams,
@@ -29,6 +31,53 @@ import type {
 
 const logger = log.scope("themes_handlers");
 const handle = createLoggedHandler(logger);
+
+// Shared model map for theme generation (used by both image and URL handlers)
+const THEME_GENERATION_MODEL_MAP: Record<
+  string,
+  { provider: string; name: string }
+> = {
+  "gemini-3-pro": { provider: "google", name: "gemini-3-pro-preview" },
+  "claude-opus-4.5": {
+    provider: "anthropic",
+    name: "claude-opus-4-5",
+  },
+  "gpt-5.2": { provider: "openai", name: "gpt-5.2" },
+};
+
+// Zod schema for validating web crawl response from Dyad Engine
+const WebCrawlResponseSchema = z.object({
+  rootUrl: z.string(),
+  html: z.string().optional(),
+  markdown: z.string().optional(),
+  screenshot: z.string().optional(),
+});
+
+// Timeout for web crawl requests (60 seconds)
+const WEB_CRAWL_TIMEOUT_MS = 60000;
+
+/**
+ * Sanitizes external content before including it in LLM prompts.
+ * Escapes markdown code block delimiters to prevent prompt injection.
+ */
+function sanitizeForPrompt(content: string): string {
+  // Escape backtick sequences that could break out of code blocks
+  // Replace ``` with escaped version to prevent code block injection
+  return content.replace(/`{3,}/g, (match) => "\\`".repeat(match.length));
+}
+
+/**
+ * Sanitizes user-provided keywords for use in prompts.
+ * Limits length and removes potentially dangerous patterns.
+ */
+function sanitizeKeywords(keywords: string): string {
+  // Trim and limit length
+  let sanitized = keywords.trim().slice(0, 500);
+  // Remove potential prompt injection patterns
+  sanitized = sanitized.replace(/<\/?[^>]+(>|$)/g, ""); // Strip HTML-like tags
+  sanitized = sanitized.replace(/`{3,}/g, ""); // Remove code block markers
+  return sanitized;
+}
 
 // Directory for storing temporary theme images
 const THEME_IMAGES_TEMP_DIR = path.join(os.tmpdir(), "dyad-theme-images");
@@ -564,16 +613,7 @@ Modern dark theme with purple accents for testing.
       }
 
       // Validate and map model selection
-      const modelMap: Record<string, { provider: string; name: string }> = {
-        "gemini-3-pro": { provider: "google", name: "gemini-3-pro-preview" },
-        "claude-opus-4.5": {
-          provider: "anthropic",
-          name: "claude-opus-4-5",
-        },
-        "gpt-5.2": { provider: "openai", name: "gpt-5.2" },
-      };
-
-      const selectedModel = modelMap[params.model];
+      const selectedModel = THEME_GENERATION_MODEL_MAP[params.model];
       if (!selectedModel) {
         throw new Error("Invalid model selection");
       }
@@ -587,8 +627,8 @@ Modern dark theme with purple accents for testing.
           ? HIGH_FIDELITY_META_PROMPT
           : THEME_GENERATION_META_PROMPT;
 
-      // Build the user input prompt
-      const keywordsPart = params.keywords.trim() || "N/A";
+      // Build the user input prompt (sanitize user-provided keywords)
+      const keywordsPart = sanitizeKeywords(params.keywords) || "N/A";
       const imagesPart =
         params.imagePaths.length > 0
           ? `${params.imagePaths.length} image(s) attached`
@@ -681,11 +721,19 @@ Modern theme extracted from website for testing.
         );
       }
 
-      // Validate URL format
+      // Validate URL format and protocol
+      let parsedUrl: URL;
       try {
-        new URL(params.url);
+        parsedUrl = new URL(params.url);
       } catch {
         throw new Error("Invalid URL format. Please enter a valid URL.");
+      }
+
+      // Only allow HTTP/HTTPS protocols (security: prevent file://, javascript://, etc.)
+      if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+        throw new Error(
+          "Invalid URL protocol. Only HTTP and HTTPS URLs are supported.",
+        );
       }
 
       // Validate keywords length
@@ -699,16 +747,7 @@ Modern theme extracted from website for testing.
       }
 
       // Validate and map model selection
-      const modelMap: Record<string, { provider: string; name: string }> = {
-        "gemini-3-pro": { provider: "google", name: "gemini-3-pro-preview" },
-        "claude-opus-4.5": {
-          provider: "anthropic",
-          name: "claude-opus-4-5",
-        },
-        "gpt-5.2": { provider: "openai", name: "gpt-5.2" },
-      };
-
-      const selectedModel = modelMap[params.model];
+      const selectedModel = THEME_GENERATION_MODEL_MAP[params.model];
       if (!selectedModel) {
         throw new Error("Invalid model selection");
       }
@@ -725,15 +764,35 @@ Modern theme extracted from website for testing.
       const DYAD_ENGINE_URL =
         process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1";
 
-      const crawlResponse = await fetch(`${DYAD_ENGINE_URL}/tools/web-crawl`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-          "X-Dyad-Request-Id": `theme-crawl-${Date.now()}`,
-        },
-        body: JSON.stringify({ url: params.url }),
-      });
+      // Create AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(
+        () => controller.abort(),
+        WEB_CRAWL_TIMEOUT_MS,
+      );
+
+      let crawlResponse: Response;
+      try {
+        crawlResponse = await fetch(`${DYAD_ENGINE_URL}/tools/web-crawl`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+            "X-Dyad-Request-Id": `theme-crawl-${uuidv4()}`,
+          },
+          body: JSON.stringify({ url: params.url }),
+          signal: controller.signal,
+        });
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          throw new Error(
+            "Website crawl timed out. The website may be too slow or unresponsive.",
+          );
+        }
+        throw error;
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       if (!crawlResponse.ok) {
         const errorText = await crawlResponse.text();
@@ -742,12 +801,16 @@ Modern theme extracted from website for testing.
         );
       }
 
-      const crawlResult = (await crawlResponse.json()) as {
-        rootUrl: string;
-        html?: string;
-        markdown?: string;
-        screenshot?: string;
-      };
+      // Validate response with Zod schema
+      const rawCrawlResult = await crawlResponse.json();
+      const parseResult = WebCrawlResponseSchema.safeParse(rawCrawlResult);
+      if (!parseResult.success) {
+        logger.error("Invalid crawl response structure:", parseResult.error);
+        throw new Error(
+          "Received invalid response from crawl service. Please try again.",
+        );
+      }
+      const crawlResult = parseResult.data;
 
       if (!crawlResult.screenshot) {
         throw new Error(
@@ -772,8 +835,8 @@ Modern theme extracted from website for testing.
           ? WEB_CRAWL_HIGH_FIDELITY_META_PROMPT
           : WEB_CRAWL_THEME_GENERATION_META_PROMPT;
 
-      // Build the user input prompt
-      const keywordsPart = params.keywords.trim() || "N/A";
+      // Build the user input prompt (sanitize user-provided keywords)
+      const keywordsPart = sanitizeKeywords(params.keywords) || "N/A";
       const userInput = `inspired by: ${keywordsPart}
 source: Live website (screenshot and content provided)`;
 
@@ -785,6 +848,9 @@ source: Live website (screenshot and content provided)`;
             "\n<!-- truncated -->"
           : crawlResult.markdown;
 
+      // Sanitize crawled content to prevent prompt injection
+      const sanitizedMarkdown = sanitizeForPrompt(truncatedMarkdown);
+
       // Build content parts
       const contentParts: (TextPart | ImagePart)[] = [
         { type: "text", text: userInput },
@@ -794,7 +860,7 @@ source: Live website (screenshot and content provided)`;
         } as ImagePart,
         {
           type: "text",
-          text: `Website content (markdown):\n\`\`\`markdown\n${truncatedMarkdown}\n\`\`\``,
+          text: `Website content (markdown):\n\`\`\`markdown\n${sanitizedMarkdown}\n\`\`\``,
         },
       ];
 

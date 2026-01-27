@@ -116,11 +116,19 @@ export function AIGeneratorTab({
     isDialogOpenRef.current = isDialogOpen;
   }, [isDialogOpen]);
 
+  // Keep a ref to current images for cleanup without causing effect re-runs
+  const aiImagesRef = useRef<ThemeImage[]>([]);
+  useEffect(() => {
+    aiImagesRef.current = aiImages;
+  }, [aiImages]);
+
   // Cleanup images and reset state when dialog closes
   useEffect(() => {
     if (!isDialogOpen) {
-      if (aiImages.length > 0) {
-        cleanupImages(aiImages);
+      // Use ref to get current images to avoid dependency on aiImages
+      const imagesToCleanup = aiImagesRef.current;
+      if (imagesToCleanup.length > 0) {
+        cleanupImages(imagesToCleanup);
         setAiImages([]);
       }
       setAiKeywords("");
@@ -130,7 +138,7 @@ export function AIGeneratorTab({
       setWebsiteUrl("");
       setCrawlStatus(null);
     }
-  }, [isDialogOpen, aiImages, cleanupImages]);
+  }, [isDialogOpen, cleanupImages]);
 
   const handleImageUpload = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -278,12 +286,20 @@ export function AIGeneratorTab({
 
       try {
         setCrawlStatus("crawling");
+        // Use a timer to transition from "crawling" to "generating" status
+        // This provides better user feedback since the backend does both in one call
+        const statusTimer = setTimeout(() => {
+          setCrawlStatus("generating");
+        }, 3000); // Transition to "generating" after 3 seconds
+
         const result = await generateFromUrlMutation.mutateAsync({
           url: websiteUrl,
           keywords: aiKeywords,
           generationMode: aiGenerationMode,
           model: aiSelectedModel,
         });
+
+        clearTimeout(statusTimer);
         setCrawlStatus("complete");
         setAiGeneratedPrompt(result.prompt);
         toast.success("Theme prompt generated from website");

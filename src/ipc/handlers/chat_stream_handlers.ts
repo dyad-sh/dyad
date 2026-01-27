@@ -1075,21 +1075,24 @@ This conversation includes one or more image attachments. When the user uploads 
             await markMessageAsUsingFreeAgentQuota(userMessageId);
           }
 
-          const streamSuccess = await handleLocalAgentStream(
-            event,
-            req,
-            abortController,
-            {
-              placeholderMessageId: placeholderAssistantMessage.id,
-              systemPrompt,
-              dyadRequestId: dyadRequestId ?? "[no-request-id]",
-              messageOverride: isSummarizeIntent ? chatMessages : undefined,
-            },
-          );
-
-          // If the stream failed or was aborted, refund the quota
-          if (isBasicAgentModeRequest && userMessageId && !streamSuccess) {
-            await unmarkMessageAsUsingFreeAgentQuota(userMessageId);
+          let streamSuccess = false;
+          try {
+            streamSuccess = await handleLocalAgentStream(
+              event,
+              req,
+              abortController,
+              {
+                placeholderMessageId: placeholderAssistantMessage.id,
+                systemPrompt,
+                dyadRequestId: dyadRequestId ?? "[no-request-id]",
+                messageOverride: isSummarizeIntent ? chatMessages : undefined,
+              },
+            );
+          } finally {
+            // If the stream failed, was aborted, or threw, refund the quota
+            if (isBasicAgentModeRequest && userMessageId && !streamSuccess) {
+              await unmarkMessageAsUsingFreeAgentQuota(userMessageId);
+            }
           }
 
           return;

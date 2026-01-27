@@ -54,7 +54,7 @@ export default function HomePage() {
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const { refreshApps } = useLoadApps();
   const { settings, updateSettings } = useSettings();
-  const { isQuotaExceeded } = useFreeAgentQuota();
+  const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
 
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const [isLoading, setIsLoading] = useState(false);
@@ -141,9 +141,11 @@ export default function HomePage() {
   }, [appId, navigate]);
 
   // Apply default chat mode when navigating to home page
+  // Wait for quota status to load to avoid race condition where we default to Basic Agent
+  // before knowing if quota is actually exceeded
   const hasAppliedDefaultChatMode = useRef(false);
   useEffect(() => {
-    if (settings && !hasAppliedDefaultChatMode.current) {
+    if (settings && !hasAppliedDefaultChatMode.current && !isQuotaLoading) {
       hasAppliedDefaultChatMode.current = true;
       const effectiveDefaultMode = getEffectiveDefaultChatMode(
         settings,
@@ -153,7 +155,7 @@ export default function HomePage() {
         updateSettings({ selectedChatMode: effectiveDefaultMode });
       }
     }
-  }, [settings, updateSettings, isQuotaExceeded]);
+  }, [settings, updateSettings, isQuotaExceeded, isQuotaLoading]);
 
   const handleSubmit = async (options?: HomeSubmitOptions) => {
     const attachments = options?.attachments || [];

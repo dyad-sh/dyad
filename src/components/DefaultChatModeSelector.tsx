@@ -12,17 +12,21 @@ import { isDyadProEnabled, getEffectiveDefaultChatMode } from "@/lib/schemas";
 
 export function DefaultChatModeSelector() {
   const { settings, updateSettings } = useSettings();
-  const { isQuotaExceeded } = useFreeAgentQuota();
+  const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
 
   if (!settings) {
     return null;
   }
 
   const isProEnabled = isDyadProEnabled(settings);
+  // Wait for quota status to load before determining effective default
+  const freeAgentQuotaAvailable = !isQuotaLoading && !isQuotaExceeded;
   const effectiveDefault = getEffectiveDefaultChatMode(
     settings,
-    !isQuotaExceeded,
+    freeAgentQuotaAvailable,
   );
+  // Show Basic Agent option if user is Pro OR if they have free quota available
+  const showBasicAgentOption = isProEnabled || freeAgentQuotaAvailable;
 
   const handleDefaultChatModeChange = (value: ChatMode) => {
     updateSettings({ defaultChatMode: value });
@@ -59,12 +63,16 @@ export function DefaultChatModeSelector() {
             <SelectValue>{getModeDisplayName(effectiveDefault)}</SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {isProEnabled && (
+            {showBasicAgentOption && (
               <SelectItem value="local-agent">
                 <div className="flex flex-col items-start">
-                  <span className="font-medium">Agent</span>
+                  <span className="font-medium">
+                    {isProEnabled ? "Agent" : "Basic Agent"}
+                  </span>
                   <span className="text-xs text-muted-foreground">
-                    Better at bigger tasks
+                    {isProEnabled
+                      ? "Better at bigger tasks"
+                      : "Free tier (5 messages/day)"}
                   </span>
                 </div>
               </SelectItem>

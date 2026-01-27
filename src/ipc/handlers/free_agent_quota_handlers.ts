@@ -113,6 +113,15 @@ export async function getFreeAgentQuotaStatus() {
   const now = Date.now();
 
   if (now >= resetTime) {
+    // Clean up expired quota messages before returning fresh quota
+    // This prevents stale messages from accumulating and causing incorrect window calculations
+    await db
+      .update(messages)
+      .set({ usingFreeAgentModeQuota: false })
+      .where(eq(messages.usingFreeAgentModeQuota, true));
+
+    logger.log("Quota reset: cleaned up expired quota messages");
+
     // Quota has reset - all messages are released
     return {
       messagesUsed: 0,

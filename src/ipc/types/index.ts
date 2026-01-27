@@ -174,6 +174,10 @@ export type {
   CreateVercelProjectParams,
   GetVercelDeploymentsParams,
   DisconnectVercelProjectParams,
+  VercelAccountStatus,
+  VercelSoftBlock,
+  VercelSoftBlockReason,
+  VercelBlockedDueToOverageType,
 } from "./vercel";
 
 // Supabase types

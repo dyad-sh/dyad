@@ -84,6 +84,83 @@ export type DisconnectVercelProjectParams = z.infer<
 >;
 
 // =============================================================================
+// Vercel Account Status Types
+// =============================================================================
+
+export const VercelSoftBlockReasonSchema = z.enum([
+  "SUBSCRIPTION_CANCELED",
+  "SUBSCRIPTION_EXPIRED",
+  "UNPAID_INVOICE",
+  "ENTERPRISE_TRIAL_ENDED",
+  "FAIR_USE_LIMITS_EXCEEDED",
+  "BLOCKED_FOR_PLATFORM_ABUSE",
+]);
+
+export type VercelSoftBlockReason = z.infer<typeof VercelSoftBlockReasonSchema>;
+
+export const VercelBlockedDueToOverageTypeSchema = z.enum([
+  "analyticsUsage",
+  "artifacts",
+  "bandwidth",
+  "blobTotalAdvancedRequests",
+  "blobTotalAvgSizeInBytes",
+  "blobTotalGetResponseObjectSizeInBytes",
+  "blobTotalSimpleRequests",
+  "connectDataTransfer",
+  "dataCacheRead",
+  "dataCacheWrite",
+  "edgeConfigRead",
+  "edgeConfigWrite",
+  "edgeFunctionExecutionUnits",
+  "edgeMiddlewareInvocations",
+  "edgeRequestAdditionalCpuDuration",
+  "edgeRequest",
+  "elasticConcurrencyBuildSlots",
+  "fastDataTransfer",
+  "fastOriginTransfer",
+  "fluidCpuDuration",
+  "fluidDuration",
+  "functionDuration",
+  "functionInvocation",
+  "imageOptimizationCacheRead",
+  "imageOptimizationCacheWrite",
+  "imageOptimizationTransformation",
+  "logDrainsVolume",
+  "monitoringMetric",
+  "blobDataTransfer",
+  "observabilityEvent",
+  "onDemandConcurrencyMinutes",
+  "runtimeCacheRead",
+  "runtimeCacheWrite",
+  "serverlessFunctionExecution",
+  "sourceImages",
+  "wafOwaspExcessBytes",
+  "wafOwaspRequests",
+  "wafRateLimitRequest",
+  "webAnalyticsEvent",
+]);
+
+export type VercelBlockedDueToOverageType = z.infer<
+  typeof VercelBlockedDueToOverageTypeSchema
+>;
+
+export const VercelSoftBlockSchema = z.object({
+  blockedAt: z.number(),
+  reason: VercelSoftBlockReasonSchema,
+  blockedDueToOverageType: VercelBlockedDueToOverageTypeSchema.optional(),
+});
+
+export type VercelSoftBlock = z.infer<typeof VercelSoftBlockSchema>;
+
+export const VercelAccountStatusSchema = z.object({
+  softBlock: VercelSoftBlockSchema.nullable(),
+  username: z.string(),
+  email: z.string(),
+});
+
+export type VercelAccountStatus = z.infer<typeof VercelAccountStatusSchema>;
+
+// =============================================================================
 // Vercel Contracts
 // =============================================================================
 
@@ -128,6 +205,12 @@ export const vercelContracts = {
     channel: "vercel:disconnect",
     input: DisconnectVercelProjectParamsSchema,
     output: z.void(),
+  }),
+
+  getAccountStatus: defineContract({
+    channel: "vercel:get-account-status",
+    input: z.void(),
+    output: VercelAccountStatusSchema,
   }),
 } as const;
 

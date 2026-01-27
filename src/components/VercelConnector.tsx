@@ -1,10 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Globe } from "lucide-react";
+import { Globe, AlertTriangle, ExternalLink } from "lucide-react";
 import { ipc, App } from "@/ipc/types";
 import { useSettings } from "@/hooks/useSettings";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useVercelDeployments } from "@/hooks/useVercelDeployments";
+import {
+  useVercelAccountStatus,
+  getSoftBlockMessage,
+} from "@/hooks/useVercelAccountStatus";
 import {
   Select,
   SelectContent,
@@ -39,6 +43,46 @@ interface UnconnectedVercelConnectorProps {
   settings: any;
   refreshSettings: () => void;
   refreshApp: () => void;
+}
+
+function VercelAccountWarning() {
+  const { isSoftBlocked, softBlockReason, blockedDueToOverageType } =
+    useVercelAccountStatus(true);
+
+  if (!isSoftBlocked || !softBlockReason) {
+    return null;
+  }
+
+  const message = getSoftBlockMessage(softBlockReason, blockedDueToOverageType);
+
+  return (
+    <div
+      className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 mb-4"
+      data-testid="vercel-account-warning"
+    >
+      <div className="flex items-start gap-3">
+        <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+        <div className="flex-1">
+          <h3 className="text-sm font-medium text-amber-800 dark:text-amber-200">
+            Vercel Account Warning
+          </h3>
+          <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+            {message}
+          </p>
+          <Button
+            variant="link"
+            className="p-0 h-auto text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-100 mt-2"
+            onClick={() => {
+              ipc.system.openExternalUrl("https://vercel.com/dashboard");
+            }}
+          >
+            <ExternalLink className="w-4 h-4 mr-1" />
+            View Vercel Dashboard
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function ConnectedVercelConnector({
@@ -81,6 +125,7 @@ function ConnectedVercelConnector({
       className="mt-4 w-full rounded-md"
       data-testid="vercel-connected-project"
     >
+      <VercelAccountWarning />
       <p className="text-sm text-gray-600 dark:text-gray-300">
         Connected to Vercel Project:
       </p>

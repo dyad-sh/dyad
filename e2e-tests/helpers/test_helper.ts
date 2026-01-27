@@ -1129,6 +1129,27 @@ export class PageObject {
     return this.getAppPath({ appName: currentAppName });
   }
 
+  async configureGitUser({
+    email = "test@example.com",
+    name = "Test User",
+    disableGpgSign = true,
+  }: {
+    email?: string;
+    name?: string;
+    disableGpgSign?: boolean;
+  } = {}) {
+    const appPath = await this.getCurrentAppPath();
+    if (!appPath) {
+      throw new Error("App path not found");
+    }
+
+    execSync(`git config user.email '${email}'`, { cwd: appPath });
+    execSync(`git config user.name '${name}'`, { cwd: appPath });
+    if (disableGpgSign) {
+      execSync("git config commit.gpgsign false", { cwd: appPath });
+    }
+  }
+
   getAppPath({ appName }: { appName: string }) {
     return path.join(this.userDataDir, "dyad-apps", appName);
   }

@@ -627,6 +627,42 @@ export async function deleteSupabaseFunction({
   );
 }
 
+export async function listSupabaseFunctions({
+  supabaseProjectId,
+  organizationSlug,
+}: {
+  supabaseProjectId: string;
+  organizationSlug: string | null;
+}): Promise<DeployedFunctionResponse[]> {
+  if (IS_TEST_BUILD) {
+    return [];
+  }
+
+  logger.info(`Listing Supabase functions for project: ${supabaseProjectId}`);
+  const supabase = await getSupabaseClient({ organizationSlug });
+
+  const response = await fetchWithRetry(
+    `https://api.supabase.com/v1/projects/${supabaseProjectId}/functions`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${(supabase as any).options.accessToken}`,
+      },
+    },
+    `List Supabase functions for ${supabaseProjectId}`,
+  );
+
+  if (response.status !== 200) {
+    throw await createResponseError(response, "list functions");
+  }
+
+  const functions: DeployedFunctionResponse[] = await response.json();
+  logger.info(
+    `Found ${functions.length} functions for project: ${supabaseProjectId}`,
+  );
+  return functions;
+}
+
 export async function listSupabaseBranches({
   supabaseProjectId,
   organizationSlug,

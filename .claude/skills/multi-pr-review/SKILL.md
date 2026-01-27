@@ -1,6 +1,6 @@
 ---
 name: dyad:multi-pr-review
-description: Multi-agent code review system that spawns three independent Claude sub-agents to review PR diffs. Each agent receives files in different randomized order to reduce ordering bias. Issues are classified as high/medium/low severity. Results are aggregated using consensus voting - only issues identified by 2+ agents where at least one rated it medium or higher severity are reported and posted as PR comments. Use when reviewing PRs, performing code review with multiple perspectives, or when consensus-based issue detection is needed.
+description: Multi-agent code review system that spawns three independent Claude sub-agents to review PR diffs. Each agent receives files in different randomized order to reduce ordering bias. One agent focuses specifically on code health and maintainability. Issues are classified as high/medium/low severity (sloppy code that hurts maintainability is MEDIUM). Results are aggregated using consensus voting - only issues identified by 2+ agents where at least one rated it medium or higher severity are reported. Automatically deduplicates against existing PR comments. Always posts a summary (even if no new issues), with low priority issues mentioned in a collapsible section.
 ---
 
 # Multi-Agent PR Review
@@ -9,11 +9,14 @@ This skill creates three independent sub-agents to review code changes, then agg
 
 ## Overview
 
-1. Fetch PR diff files
+1. Fetch PR diff files and existing comments
 2. Spawn 3 sub-agents, each receiving files in different randomized order
+   - **Agent 1**: Code Health focus (maintainability, clarity, abstractions)
+   - **Agents 2-3**: Default focus (correctness, bugs, security)
 3. Each agent reviews and classifies issues (high/medium/low criticality)
-4. Aggregate results: report issues where 2+ agents agree on medium+ severity
-5. Post findings: one summary comment + inline comments on specific lines
+4. Aggregate results: report issues where 2+ agents agree
+5. Filter out issues already commented on (deduplication)
+6. Post findings: summary table + inline comments for HIGH/MEDIUM issues
 
 ## Workflow
 
@@ -45,36 +48,45 @@ The orchestrator:
 3. Spawns 3 parallel sub-agent API calls
 4. Collects and aggregates results
 
-### Step 3: Review Prompt Template
+### Step 3: Review Prompt Templates
 
-Each sub-agent receives this prompt (see `references/review_prompt.md`):
+Sub-agents receive role-specific prompts (see `references/review_prompt.md`):
+
+**Agent 1 (Code Health):**
+
+- Focuses on maintainability, code clarity, abstractions, debugging ease
+- Rates sloppy code that hurts maintainability as MEDIUM severity
+
+**Agents 2-3 (Default):**
+
+- Focus on correctness, bugs, security, edge cases
+- Also flag significant maintainability issues as MEDIUM
 
 ```
-Review these code changes for correctness issues. For each issue found:
-1. Identify the file and line(s)
-2. Describe the issue
-3. Classify criticality: HIGH / MEDIUM / LOW
-
-HIGH: Security vulnerabilities, data loss risks, crashes, broken core functionality
-MEDIUM: Logic errors, edge cases, performance issues, maintainability concerns
-LOW: Style issues, minor improvements, documentation gaps
+Severity levels:
+HIGH: Security vulnerabilities, data loss risks, crashes, broken functionality
+MEDIUM: Logic errors, edge cases, performance issues, AND sloppy code that
+        significantly hurts maintainability (confusing logic, poor abstractions)
+LOW: Minor style issues, nitpicks, minor improvements
 
 Output JSON array of issues.
 ```
 
-### Step 4: Consensus Aggregation
+### Step 4: Consensus Aggregation & Deduplication
 
 Issues are matched across agents by file + approximate line range + issue type. An issue is reported only if:
 
 - 2+ agents identified it AND
 - At least one agent rated it MEDIUM or higher
 
+**Deduplication:** Before posting, the script fetches existing PR comments and filters out issues that have already been commented on (matching by file, line, and issue keywords). This prevents duplicate comments when re-running the review.
+
 ### Step 5: Post PR Comments
 
 The script posts two types of comments:
 
-1. **Summary comment**: Overview with issue counts by severity
-2. **Inline comments**: Detailed feedback on specific lines of code
+1. **Summary comment**: Overview table with issue counts (always posted, even if no new issues)
+2. **Inline comments**: Detailed feedback on specific lines (HIGH/MEDIUM only)
 
 ```bash
 python3 scripts/post_comment.py \
@@ -87,6 +99,42 @@ Options:
 
 - `--dry-run`: Preview comments without posting
 - `--summary-only`: Only post summary, skip inline comments
+
+#### Example Summary Comment
+
+```markdown
+## :mag: Multi-Agent Code Review
+
+Found **4** new issue(s) flagged by 3 independent reviewers.
+(2 issue(s) skipped - already commented)
+
+### Summary
+
+| Severity               | Count |
+| ---------------------- | ----- |
+| :red_circle: HIGH      | 1     |
+| :yellow_circle: MEDIUM | 2     |
+| :green_circle: LOW     | 1     |
+
+### Issues to Address
+
+| Severity               | File                     | Issue                                    |
+| ---------------------- | ------------------------ | ---------------------------------------- |
+| :red_circle: HIGH      | `src/auth/login.ts:45`   | SQL injection in user lookup             |
+| :yellow_circle: MEDIUM | `src/utils/cache.ts:112` | Missing error handling for Redis failure |
+| :yellow_circle: MEDIUM | `src/api/handler.ts:89`  | Confusing control flow - hard to debug   |
+
+<details>
+<summary>:green_circle: Low Priority Issues (1 items)</summary>
+
+- **Inconsistent naming convention** - `src/utils/helpers.ts:23`
+
+</details>
+
+See inline comments for details.
+
+_Generated by multi-agent consensus review_
+```
 
 ## File Structure
 

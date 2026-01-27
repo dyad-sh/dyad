@@ -3,6 +3,7 @@ import {
   appUrlAtom,
   appConsoleEntriesAtom,
   previewErrorMessageAtom,
+  previewCurrentUrlAtom,
 } from "@/atoms/appAtoms";
 import { useAtomValue, useSetAtom, useAtom } from "jotai";
 import { useEffect, useRef, useState } from "react";
@@ -184,13 +185,29 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const { userBudget } = useUserBudgetInfo();
   const isProMode = !!userBudget;
 
-  // Navigation state
+  // Preserved URL state (persists across HMR-induced remounts)
+  const [preservedUrls, setPreservedUrls] = useAtom(previewCurrentUrlAtom);
+
+  // Get the initial URL to use - check if we have a preserved URL from before HMR remount
+  const initialUrl = selectedAppId ? preservedUrls[selectedAppId] : null;
+
+  // Navigation state - initialize with preserved URL if available
   const [isComponentSelectorInitialized, setIsComponentSelectorInitialized] =
     useState(false);
-  const [canGoBack, setCanGoBack] = useState(false);
+  const [canGoBack, setCanGoBack] = useState(!!initialUrl);
   const [canGoForward, setCanGoForward] = useState(false);
-  const [navigationHistory, setNavigationHistory] = useState<string[]>([]);
-  const [currentHistoryPosition, setCurrentHistoryPosition] = useState(0);
+  const [navigationHistory, setNavigationHistory] = useState<string[]>(() => {
+    if (appUrl && initialUrl && initialUrl !== appUrl) {
+      return [appUrl, initialUrl];
+    }
+    return appUrl ? [appUrl] : [];
+  });
+  const [currentHistoryPosition, setCurrentHistoryPosition] = useState(() => {
+    if (appUrl && initialUrl && initialUrl !== appUrl) {
+      return 1;
+    }
+    return 0;
+  });
   const setSelectedComponentsPreview = useSetAtom(
     selectedComponentsPreviewAtom,
   );
@@ -201,6 +218,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   );
   const setPreviewIframeRef = useSetAtom(previewIframeRefAtom);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  // Ref to store the URL that the iframe should be showing - initialize with preserved URL if available
+  // This is different from appUrl - it tracks the CURRENT route, not just the base URL
+  const currentIframeUrlRef = useRef<string | null>(initialUrl || appUrl);
   const [isPicking, setIsPicking] = useState(false);
   const [annotatorMode, setAnnotatorMode] = useAtom(annotatorModeAtom);
   const [screenshotDataUrl, setScreenshotDataUrl] = useAtom(
@@ -595,8 +615,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         // Also update UI state
         setConsoleEntries((prev) => [...prev, logEntry]);
       } else if (type === "pushState" || type === "replaceState") {
-        console.debug(`Navigation event: ${type}`, payload);
-
         // Update navigation history based on the type of state change
         if (type === "pushState" && payload?.newUrl) {
           // For pushState, we trim any forward history and add the new URL
@@ -606,11 +624,58 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           ];
           setNavigationHistory(newHistory);
           setCurrentHistoryPosition(newHistory.length - 1);
+          // Update the current iframe URL ref to match the navigation
+          currentIframeUrlRef.current = payload.newUrl;
+          // Preserve URL for HMR remounts - only if it's a different route from root
+          // Compare origins and check if there's a meaningful path
+          if (selectedAppId && appUrl) {
+            try {
+              const newUrlObj = new URL(payload.newUrl);
+              const appUrlObj = new URL(appUrl);
+              // Only preserve if there's a non-root path
+              if (
+                newUrlObj.origin === appUrlObj.origin &&
+                newUrlObj.pathname !== "/" &&
+                newUrlObj.pathname !== ""
+              ) {
+                const urlToPreserve = payload.newUrl;
+                setPreservedUrls((prev) => ({
+                  ...prev,
+                  [selectedAppId]: urlToPreserve,
+                }));
+              }
+            } catch {
+              // Invalid URL, don't preserve
+            }
+          }
         } else if (type === "replaceState" && payload?.newUrl) {
           // For replaceState, we replace the current URL
           const newHistory = [...navigationHistory];
           newHistory[currentHistoryPosition] = payload.newUrl;
           setNavigationHistory(newHistory);
+          // Update the current iframe URL ref to match the navigation
+          currentIframeUrlRef.current = payload.newUrl;
+          // Preserve URL for HMR remounts - only if it's a different route from root
+          if (selectedAppId && appUrl) {
+            try {
+              const newUrlObj = new URL(payload.newUrl);
+              const appUrlObj = new URL(appUrl);
+              // Only preserve if there's a non-root path
+              if (
+                newUrlObj.origin === appUrlObj.origin &&
+                newUrlObj.pathname !== "/" &&
+                newUrlObj.pathname !== ""
+              ) {
+                const urlToPreserve = payload.newUrl;
+                setPreservedUrls((prev) => ({
+                  ...prev,
+                  [selectedAppId]: urlToPreserve,
+                }));
+              }
+            } catch {
+              // Invalid URL, don't preserve
+            }
+          }
         }
       }
     };
@@ -621,11 +686,13 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     navigationHistory,
     currentHistoryPosition,
     selectedAppId,
+    appUrl,
     errorMessage,
     setErrorMessage,
     setIsComponentSelectorInitialized,
     setSelectedComponentsPreview,
     setVisualEditingSelectedComponent,
+    setPreservedUrls,
   ]);
 
   useEffect(() => {
@@ -634,13 +701,17 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     setCanGoForward(currentHistoryPosition < navigationHistory.length - 1);
   }, [navigationHistory, currentHistoryPosition]);
 
-  // Initialize navigation history when iframe loads
+  // Reset navigation when appUrl changes (different app selected)
+  const prevAppUrlRef = useRef(appUrl);
   useEffect(() => {
-    if (appUrl) {
+    if (appUrl && appUrl !== prevAppUrlRef.current) {
+      prevAppUrlRef.current = appUrl;
       setNavigationHistory([appUrl]);
       setCurrentHistoryPosition(0);
       setCanGoBack(false);
       setCanGoForward(false);
+      // Reset iframe URL to the new app's base URL
+      currentIframeUrlRef.current = appUrl;
     }
   }, [appUrl]);
 
@@ -740,14 +811,38 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
   // Function to handle reload
   const handleReload = () => {
+    // Store the current URL to preserve the route during reload
+    const currentUrl = navigationHistory[currentHistoryPosition] || appUrl;
+
+    // Validate that the URL is same-origin as appUrl to prevent XSS/URL injection
+    if (currentUrl && appUrl) {
+      try {
+        const currentOrigin = new URL(currentUrl).origin;
+        const appOrigin = new URL(appUrl).origin;
+
+        // Only use the current URL if it has the same origin as the app URL
+        if (currentOrigin === appOrigin) {
+          currentIframeUrlRef.current = currentUrl;
+        } else {
+          console.warn(
+            `Rejecting reload URL ${currentUrl} - origin mismatch with app URL ${appUrl}`,
+          );
+          currentIframeUrlRef.current = appUrl;
+        }
+      } catch (e) {
+        console.error("Invalid URL during reload validation", e);
+        currentIframeUrlRef.current = appUrl;
+      }
+    } else {
+      currentIframeUrlRef.current = currentUrl || null;
+    }
+
     setReloadKey((prevKey) => prevKey + 1);
     setErrorMessage(undefined);
     // Reset visual editing state
     setVisualEditingSelectedComponent(null);
     setPendingChanges(new Map());
     setCurrentComponentCoordinates(null);
-    // Optionally, add logic here if you need to explicitly stop/start the app again
-    // For now, just changing the key should remount the iframe
     console.debug("Reloading iframe preview for app", selectedAppId);
   };
 
@@ -805,6 +900,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const onRestart = () => {
     restartApp();
   };
+
+  // Convert null to undefined for iframe src prop compatibility
+  const iframeSrc = currentIframeUrlRef.current ?? appUrl ?? undefined;
 
   return (
     <div className="flex flex-col h-full">
@@ -904,7 +1002,10 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <div className="flex items-center justify-between px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-700 dark:text-gray-200 cursor-pointer w-full min-w-0">
-                  <span className="truncate flex-1 mr-2 min-w-0">
+                  <span
+                    className="truncate flex-1 mr-2 min-w-0"
+                    data-testid="preview-address-bar-path"
+                  >
                     {navigationHistory[currentHistoryPosition]
                       ? new URL(navigationHistory[currentHistoryPosition])
                           .pathname
@@ -1099,6 +1200,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                   data-testid="preview-iframe-element"
                   onLoad={() => {
                     setErrorMessage(undefined);
+                    // Note: We don't clear currentIframeUrlRef - it tracks the URL the iframe is showing
+                    // This prevents re-renders from accidentally changing the iframe src
                   }}
                   ref={iframeRef}
                   key={reloadKey}
@@ -1109,7 +1212,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                       ? {}
                       : { width: `${deviceWidthConfig[deviceMode]}px` }
                   }
-                  src={appUrl}
+                  src={iframeSrc}
                   allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
                 />
                 {/* Visual Editing Toolbar */}

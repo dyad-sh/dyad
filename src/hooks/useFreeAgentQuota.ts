@@ -4,7 +4,7 @@ import { queryKeys } from "@/lib/queryKeys";
 import { useSettings } from "./useSettings";
 import { isDyadProEnabled } from "@/lib/schemas";
 
-const ONE_MINUTE_IN_MS = 60 * 1000;
+const THIRTY_MINUTES_IN_MS = 30 * 60 * 1000;
 // In test mode, use very short staleTime for faster E2E tests
 const STALE_TIME_MS = 30_000;
 const TEST_STALE_TIME_MS = 500;
@@ -13,7 +13,7 @@ const TEST_STALE_TIME_MS = 500;
  * Hook to get the free agent quota status for non-Pro users.
  *
  * - Only fetches for non-Pro users (Pro users have unlimited access)
- * - Refetches every minute to update the UI when quota resets
+ * - Refetches every 30 minutes to update the UI when quota resets
  * - Returns quota status including messages used, limit, and time until reset
  */
 export function useFreeAgentQuota() {
@@ -32,7 +32,7 @@ export function useFreeAgentQuota() {
     // Only fetch for non-Pro users
     enabled: !isPro && !!settings,
     // Refetch periodically to check for quota reset
-    refetchInterval: ONE_MINUTE_IN_MS,
+    refetchInterval: THIRTY_MINUTES_IN_MS,
     // Consider stale after 30 seconds (500ms in test mode for faster E2E tests)
     staleTime: isTestMode ? TEST_STALE_TIME_MS : STALE_TIME_MS,
     // Don't retry on error (e.g., if there's an issue with the DB)

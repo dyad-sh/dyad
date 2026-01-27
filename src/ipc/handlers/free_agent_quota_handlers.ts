@@ -64,8 +64,12 @@ async function getServerTime(): Promise<number> {
 /** Maximum number of free agent messages per 24-hour window */
 export const FREE_AGENT_QUOTA_LIMIT = 5;
 
-/** Duration of the quota window in milliseconds (24 hours) */
-export const QUOTA_WINDOW_MS = 24 * 60 * 60 * 1000;
+/**
+ * Duration of the quota window in milliseconds (23 hours).
+ * We use 23 hours instead of 24 to provide a fudge factor since the client
+ * only polls every 30 minutes, ensuring users don't wait longer than expected.
+ */
+export const QUOTA_WINDOW_MS = 23 * 60 * 60 * 1000;
 
 export function registerFreeAgentQuotaHandlers() {
   createTypedHandler(

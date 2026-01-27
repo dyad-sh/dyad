@@ -221,8 +221,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // Ref to store the URL that the iframe should be showing - initialize with preserved URL if available
   // This is different from appUrl - it tracks the CURRENT route, not just the base URL
   const currentIframeUrlRef = useRef<string | null>(initialUrl || appUrl);
-  // Track if we've consumed the initial preserved URL
-  const consumedInitialUrlRef = useRef(false);
   const [isPicking, setIsPicking] = useState(false);
   const [annotatorMode, setAnnotatorMode] = useAtom(annotatorModeAtom);
   const [screenshotDataUrl, setScreenshotDataUrl] = useAtom(
@@ -702,15 +700,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     setCanGoBack(currentHistoryPosition > 0);
     setCanGoForward(currentHistoryPosition < navigationHistory.length - 1);
   }, [navigationHistory, currentHistoryPosition]);
-
-  // Mark that we've consumed the initial preserved URL (but don't clear it - keep for future HMR remounts)
-  useEffect(() => {
-    if (selectedAppId && initialUrl && !consumedInitialUrlRef.current) {
-      consumedInitialUrlRef.current = true;
-      // Note: We don't clear the preserved URL - it stays until user navigates elsewhere
-      // This ensures subsequent HMR remounts still have access to the preserved route
-    }
-  }, [selectedAppId, initialUrl]);
 
   // Reset navigation when appUrl changes (different app selected)
   const prevAppUrlRef = useRef(appUrl);

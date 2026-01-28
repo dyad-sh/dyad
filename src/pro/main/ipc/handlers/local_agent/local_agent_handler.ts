@@ -464,29 +464,30 @@ export async function handleLocalAgentStream(
           sessionDataCollector.startToolCall(
             part.toolCallId,
             part.toolName,
-            part.args,
+            part.input,
           );
           break;
 
         case "tool-result":
           // Track tool result
           if (
-            part.result &&
-            typeof part.result === "object" &&
-            "isError" in part.result &&
-            part.result.isError
+            part.output &&
+            typeof part.output === "object" &&
+            "isError" in part.output &&
+            part.output.isError
           ) {
             sessionDataCollector.endToolCall(
               part.toolCallId,
               "failed",
-              part.result,
-              part.result.text || "Tool execution failed",
+              part.output,
+              (part.output as { text?: string }).text ||
+                "Tool execution failed",
             );
           } else {
             sessionDataCollector.endToolCall(
               part.toolCallId,
               "success",
-              part.result,
+              part.output,
             );
           }
           break;
@@ -553,7 +554,7 @@ export async function handleLocalAgentStream(
     }
 
     // End session data collection
-    sessionDataCollector.endMessage(false, false);
+    sessionDataCollector.endMessage(abortController.signal.aborted, false);
 
     // Log session data summary for debugging
     const sessionSummary = {
@@ -739,15 +740,13 @@ async function getMcpTools(
               );
 
               // Track error if not already tracked (e.g., consent denial)
-              const toolCall = ctx.sessionDataCollector?.getToolCallCount();
-              if (toolCall !== undefined) {
-                ctx.sessionDataCollector?.endToolCall(
-                  toolCallId,
-                  "failed",
-                  null,
-                  error instanceof Error ? error : errorMessage,
-                );
-              }
+              // Note: endToolCall is idempotent - it won't overwrite if already completed
+              ctx.sessionDataCollector?.endToolCall(
+                toolCallId,
+                "failed",
+                null,
+                error instanceof Error ? error : errorMessage,
+              );
 
               throw error;
             }

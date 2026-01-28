@@ -233,6 +233,8 @@ export const TokenUsageSchema = z.object({
   /** Cache hit ratio (cachedInputTokens / inputTokens). Between 0 and 1. */
   cacheHitRatio: z
     .number()
+    .min(0)
+    .max(1)
     .nullable()
     .optional()
     .describe("Cache hit ratio (0-1)"),

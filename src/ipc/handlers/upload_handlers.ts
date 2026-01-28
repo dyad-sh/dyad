@@ -12,7 +12,13 @@ export function registerUploadHandlers() {
     logger.debug("IPC: upload-to-signed-url called");
 
     // Validate the signed URL
-    if (!url || typeof url !== "string" || !url.startsWith("https://")) {
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      throw new Error("Invalid signed URL provided");
+    }
+    if (parsedUrl.protocol !== "https:") {
       throw new Error("Invalid signed URL provided");
     }
 
@@ -72,7 +78,13 @@ export function registerUploadHandlers() {
       });
 
       // Validate the signed URL
-      if (!url || typeof url !== "string" || !url.startsWith("https://")) {
+      let parsedUrl: URL;
+      try {
+        parsedUrl = new URL(url);
+      } catch {
+        throw new Error("Invalid signed URL provided");
+      }
+      if (parsedUrl.protocol !== "https:") {
         throw new Error("Invalid signed URL provided");
       }
 

@@ -306,7 +306,10 @@ export class SessionDataCollector {
     error?: Error | string,
   ): void {
     const toolCall = this.toolCalls.get(id);
-    if (toolCall) {
+    // Guard against double-ending: if already completed, don't overwrite
+    // This can happen when e.g. consent denial calls endToolCall, then the
+    // thrown error propagates to a catch block that also calls endToolCall
+    if (toolCall && !toolCall.completedAt) {
       toolCall.completedAt = new Date();
       toolCall.status = status;
       toolCall.output = output ?? null;

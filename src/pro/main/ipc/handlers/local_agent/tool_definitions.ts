@@ -26,6 +26,9 @@ import { updateTodosTool } from "./tools/update_todos";
 import { runTypeChecksTool } from "./tools/run_type_checks";
 import { grepTool } from "./tools/grep";
 import { codeSearchTool } from "./tools/code_search";
+import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
+import { writePlanTool } from "./tools/write_plan";
+import { exitPlanTool } from "./tools/exit_plan";
 import type { LanguageModelV3ToolResultOutput } from "@ai-sdk/provider";
 import {
   escapeXmlAttr,
@@ -59,6 +62,10 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   webCrawlTool,
   updateTodosTool,
   runTypeChecksTool,
+  // Plan mode tools
+  planningQuestionnaireTool,
+  writePlanTool,
+  exitPlanTool,
 ];
 // ============================================================================
 // Agent Tool Name Type (derived from TOOL_DEFINITIONS)
@@ -261,7 +268,27 @@ export interface BuildAgentToolSetOptions {
    * Used for read-only modes like "ask" mode.
    */
   readOnly?: boolean;
+  /**
+   * If true, only include tools that are allowed in plan mode.
+   * Plan mode has access to read-only tools plus planning-specific tools.
+   */
+  planModeOnly?: boolean;
 }
+
+/**
+ * Tools allowed in plan mode.
+ * Includes read-only exploration tools and planning-specific tools.
+ */
+const PLAN_MODE_TOOLS = [
+  "planning_questionnaire",
+  "write_plan",
+  "exit_plan",
+  "read_file",
+  "list_files",
+  "grep",
+  "code_search",
+  "set_chat_summary",
+];
 
 /**
  * Build ToolSet for AI SDK from tool definitions
@@ -275,6 +302,11 @@ export function buildAgentToolSet(
   for (const tool of TOOL_DEFINITIONS) {
     const consent = getAgentToolConsent(tool.name);
     if (consent === "never") {
+      continue;
+    }
+
+    // In plan mode, only include allowed tools
+    if (options.planModeOnly && !PLAN_MODE_TOOLS.includes(tool.name)) {
       continue;
     }
 

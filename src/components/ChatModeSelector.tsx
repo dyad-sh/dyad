@@ -82,6 +82,8 @@ export function ChatModeSelector() {
         return "Build (MCP)";
       case "local-agent":
         return "Agent";
+      case "plan":
+        return "Plan";
       default:
         return "Build";
     }
@@ -96,7 +98,9 @@ export function ChatModeSelector() {
             data-testid="chat-mode-selector"
             className={cn(
               "h-6 w-fit px-1.5 py-0 text-xs-sm font-medium shadow-none gap-0.5",
-              selectedMode === "build" || selectedMode === "local-agent"
+              selectedMode === "build" ||
+                selectedMode === "local-agent" ||
+                selectedMode === "plan"
                 ? "bg-background hover:bg-muted/50 focus:bg-muted/50"
                 : "bg-primary/10 hover:bg-primary/20 focus:bg-primary/20 text-primary border-primary/20 dark:bg-primary/20 dark:hover:bg-primary/30 dark:focus:bg-primary/30",
             )}
@@ -116,17 +120,30 @@ export function ChatModeSelector() {
       </Tooltip>
       <SelectContent align="start" onCloseAutoFocus={(e) => e.preventDefault()}>
         {isProEnabled && (
-          <SelectItem value="local-agent">
-            <div className="flex flex-col items-start">
-              <div className="flex items-center gap-1.5">
-                <span className="font-medium">Agent v2</span>
-                <NewBadge />
+          <>
+            <SelectItem value="local-agent">
+              <div className="flex flex-col items-start">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-medium">Agent v2</span>
+                  <NewBadge />
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  Better at bigger tasks and debugging
+                </span>
               </div>
-              <span className="text-xs text-muted-foreground">
-                Better at bigger tasks and debugging
-              </span>
-            </div>
-          </SelectItem>
+            </SelectItem>
+            <SelectItem value="plan">
+              <div className="flex flex-col items-start">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-medium">Plan</span>
+                  <NewBadge />
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  Design before you build
+                </span>
+              </div>
+            </SelectItem>
+          </>
         )}
         <SelectItem value="build">
           <div className="flex flex-col items-start">

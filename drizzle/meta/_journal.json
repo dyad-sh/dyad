@@ -162,6 +162,13 @@
       "when": 1768924462154,
       "tag": "0022_loving_wendigo",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1769551422118,
+      "tag": "0023_romantic_mantis",
+      "breakpoints": true
     }
   ]
 }

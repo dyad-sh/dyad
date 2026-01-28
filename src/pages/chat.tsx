@@ -13,6 +13,7 @@ import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { useChats } from "@/hooks/useChats";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { usePlanImplementation } from "@/hooks/usePlanImplementation";
 
 export default function ChatPage() {
   let { id: chatId } = useSearch({ from: "/chat" });
@@ -22,6 +23,9 @@ export default function ChatPage() {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const { chats, loading } = useChats(selectedAppId);
+
+  // Handle plan implementation when a plan is accepted
+  usePlanImplementation();
 
   useEffect(() => {
     if (!chatId && chats.length && !loading) {

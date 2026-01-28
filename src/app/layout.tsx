@@ -16,6 +16,7 @@ import { useSettings } from "@/hooks/useSettings";
 import type { ZoomLevel } from "@/lib/schemas";
 import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
 import { chatInputValueAtom } from "@/atoms/chatAtoms";
+import { usePlanEvents } from "@/hooks/usePlanEvents";
 
 const DEFAULT_ZOOM_LEVEL: ZoomLevel = "100";
 
@@ -31,6 +32,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   const setChatInput = useSetAtom(chatInputValueAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
+
+  // Initialize plan events listener
+  usePlanEvents();
 
   useEffect(() => {
     const zoomLevel = settings?.zoomLevel ?? DEFAULT_ZOOM_LEVEL;

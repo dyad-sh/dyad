@@ -34,6 +34,8 @@ import { DyadDatabaseSchema } from "./DyadDatabaseSchema";
 import { DyadSupabaseTableSchema } from "./DyadSupabaseTableSchema";
 import { DyadSupabaseProjectInfo } from "./DyadSupabaseProjectInfo";
 import { DyadStatus } from "./DyadStatus";
+import { DyadWritePlan } from "./DyadWritePlan";
+import { DyadExitPlan } from "./DyadExitPlan";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
@@ -69,6 +71,9 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-supabase-table-schema",
   "dyad-supabase-project-info",
   "dyad-status",
+  // Plan mode tags
+  "dyad-write-plan",
+  "dyad-exit-plan",
 ];
 
 interface DyadMarkdownParserProps {
@@ -707,6 +712,32 @@ function renderCustomTag(
         >
           {content}
         </DyadStatus>
+      );
+
+    case "dyad-write-plan":
+      return (
+        <DyadWritePlan
+          node={{
+            properties: {
+              title: attributes.title || "Implementation Plan",
+              summary: attributes.summary,
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadWritePlan>
+      );
+
+    case "dyad-exit-plan":
+      return (
+        <DyadExitPlan
+          node={{
+            properties: {
+              notes: attributes.notes,
+            },
+          }}
+        />
       );
 
     default:

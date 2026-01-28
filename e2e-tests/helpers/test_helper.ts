@@ -451,11 +451,8 @@ export class PageObject {
   }
 
   async setUpDyadProvider() {
-    await this.page
-      .locator("div")
-      .filter({ hasText: /^DyadNeeds Setup$/ })
-      .nth(1)
-      .click();
+    // Click on the Dyad provider card that shows "Needs Setup"
+    await this.page.getByRole("heading", { name: /Dyad/ }).click();
     await this.page.getByRole("textbox", { name: "Set Dyad API Key" }).click();
     await this.page
       .getByRole("textbox", { name: "Set Dyad API Key" })
@@ -996,8 +993,13 @@ export class PageObject {
 
   async selectTestModel() {
     await this.page.getByRole("button", { name: "Model: Auto" }).click();
-    await this.page.getByText("test-provider").click();
-    await this.page.getByText("test-model").click();
+    // Click the submenu trigger for test-provider
+    await this.page.getByRole("menuitem", { name: /test-provider/ }).click();
+    // Wait for submenu to open and click the model
+    // Use force click in case a toast notification is in the way
+    await this.page
+      .getByText("test-model", { exact: true })
+      .click({ force: true });
   }
 
   async selectTestOllamaModel() {
@@ -1037,7 +1039,9 @@ export class PageObject {
   }
 
   async setUpTestProvider() {
-    await this.page.getByText("Add custom providerConnect to").click();
+    // Navigate to Model Providers tab
+    await this.page.getByRole("button", { name: "Model Providers" }).click();
+    await this.page.getByText("Add custom provider", { exact: true }).click();
     // Fill out provider dialog
     await this.page
       .getByRole("textbox", { name: "Provider ID" })
@@ -1046,7 +1050,7 @@ export class PageObject {
     await this.page
       .getByRole("textbox", { name: "Display Name" })
       .fill("test-provider");
-    await this.page.getByText("API Base URLThe base URL for").click();
+    await this.page.getByRole("textbox", { name: "API Base URL" }).click();
     await this.page
       .getByRole("textbox", { name: "API Base URL" })
       .fill("http://localhost:3500/v1");
@@ -1207,19 +1211,26 @@ export class PageObject {
   ////////////////////////////////
 
   async toggleAutoApprove() {
-    await this.page.getByRole("switch", { name: "Auto-approve" }).click();
+    // Navigate to Workflow tab first since Auto-approve is there
+    await this.page.getByRole("button", { name: "Workflow" }).click();
+    // Click the label which will toggle the switch
+    await this.page.getByText("Auto-approve", { exact: true }).click();
   }
 
   async toggleLocalAgentMode() {
-    await this.page.getByRole("switch", { name: "Enable Agent v2" }).click();
+    await this.page.getByText("Enable Agent v2", { exact: true }).click();
   }
 
   async toggleNativeGit() {
-    await this.page.getByRole("switch", { name: "Enable Native Git" }).click();
+    // Navigate to Experiments tab first since Native Git is there
+    await this.page.getByRole("button", { name: "Experiments" }).click();
+    await this.page.getByText("Enable Native Git", { exact: true }).click();
   }
 
   async toggleAutoFixProblems() {
-    await this.page.getByRole("switch", { name: "Auto-fix problems" }).click();
+    // Navigate to Workflow tab first since Auto-fix problems is there
+    await this.page.getByRole("button", { name: "Workflow" }).click();
+    await this.page.getByText("Auto-fix problems", { exact: true }).click();
   }
 
   /**

@@ -155,11 +155,14 @@ function DropdownMenuLabel({
   className,
   inset,
   ...props
-}: React.ComponentProps<typeof MenuPrimitive.GroupLabel> & {
+}: React.ComponentProps<"div"> & {
   inset?: boolean;
 }) {
+  // Using a plain div instead of MenuPrimitive.GroupLabel because
+  // GroupLabel requires being inside a Menu.Group context, but
+  // DropdownMenuLabel is often used standalone in the codebase
   return (
-    <MenuPrimitive.GroupLabel
+    <div
       data-slot="dropdown-menu-label"
       data-inset={inset}
       className={cn(
@@ -235,16 +238,18 @@ function DropdownMenuSubContent({
   ...props
 }: React.ComponentProps<typeof MenuPrimitive.Popup>) {
   return (
-    <MenuPrimitive.Positioner>
-      <MenuPrimitive.Popup
-        data-slot="dropdown-menu-sub-content"
-        className={cn(
-          "bg-popover text-popover-foreground data-[open]:animate-in data-[ending-style]:animate-out data-[ending-style]:fade-out-0 data-[open]:fade-in-0 data-[ending-style]:zoom-out-95 data-[open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-[8rem] overflow-hidden rounded-md border p-1 shadow-lg",
-          className,
-        )}
-        {...props}
-      />
-    </MenuPrimitive.Positioner>
+    <MenuPrimitive.Portal>
+      <MenuPrimitive.Positioner>
+        <MenuPrimitive.Popup
+          data-slot="dropdown-menu-sub-content"
+          className={cn(
+            "bg-popover text-popover-foreground data-[open]:animate-in data-[ending-style]:animate-out data-[ending-style]:fade-out-0 data-[open]:fade-in-0 data-[ending-style]:zoom-out-95 data-[open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-[8rem] overflow-hidden rounded-md border p-1 shadow-lg",
+            className,
+          )}
+          {...props}
+        />
+      </MenuPrimitive.Positioner>
+    </MenuPrimitive.Portal>
   );
 }
 

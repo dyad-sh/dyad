@@ -24,18 +24,12 @@ function TooltipProvider({
 
 function Tooltip({
   delay: _delay,
-  children,
   ...props
-}: Omit<React.ComponentProps<typeof TooltipPrimitive.Root>, "children"> & {
+}: React.ComponentProps<typeof TooltipPrimitive.Root> & {
   delay?: number;
-  children?: React.ReactNode;
 }) {
   // Delay is passed to trigger via context, not to Root in Base UI
-  return (
-    <TooltipPrimitive.Root data-slot="tooltip" {...props}>
-      {children}
-    </TooltipPrimitive.Root>
-  );
+  return <TooltipPrimitive.Root data-slot="tooltip" {...props} />;
 }
 
 function TooltipTrigger({

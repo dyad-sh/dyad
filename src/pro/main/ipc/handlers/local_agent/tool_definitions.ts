@@ -34,6 +34,8 @@ import {
   type ToolDefinition,
   type AgentContext,
   type ToolResult,
+  type FileEditToolName,
+  FILE_EDIT_TOOL_NAMES,
 } from "./tools/types";
 import { AgentToolConsent } from "@/lib/schemas";
 import { getSupabaseClientCode } from "@/supabase_admin/supabase_context";
@@ -263,6 +265,33 @@ export interface BuildAgentToolSetOptions {
   readOnly?: boolean;
 }
 
+const FILE_EDIT_TOOLS: Set<FileEditToolName> = new Set(FILE_EDIT_TOOL_NAMES);
+
+/**
+ * Track file edit tool usage for telemetry
+ */
+function trackFileEditTool(
+  ctx: AgentContext,
+  toolName: string,
+  args: { file_path?: string; path?: string },
+): void {
+  if (!FILE_EDIT_TOOLS.has(toolName as FileEditToolName)) {
+    return;
+  }
+  const filePath = args.file_path ?? args.path;
+  if (!filePath) {
+    return;
+  }
+  if (!ctx.fileEditTracker[filePath]) {
+    ctx.fileEditTracker[filePath] = {
+      write_file: 0,
+      edit_file: 0,
+      search_replace: 0,
+    };
+  }
+  ctx.fileEditTracker[filePath][toolName as FileEditToolName]++;
+}
+
 /**
  * Build ToolSet for AI SDK from tool definitions
  */
@@ -304,7 +333,12 @@ export function buildAgentToolSet(
             throw new Error(`User denied permission for ${tool.name}`);
           }
 
+          // Track file edit tool usage before execution to capture all attempts
+          // (including failures) for retry/fallback telemetry
+          trackFileEditTool(ctx, tool.name, processedArgs);
+
           const result = await tool.execute(processedArgs, ctx);
+
           return convertToolResultForAiSdk(result);
         } catch (error) {
           const errorMessage =

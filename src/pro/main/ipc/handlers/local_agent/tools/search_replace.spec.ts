@@ -47,6 +47,7 @@ describe("searchReplaceTool", () => {
     isSharedModulesChanged: false,
     todos: [],
     dyadRequestId: "test-request",
+    fileEditTracker: {},
     onXmlStream: vi.fn(),
     onXmlComplete: vi.fn(),
     requireConsent: vi.fn().mockResolvedValue(true),

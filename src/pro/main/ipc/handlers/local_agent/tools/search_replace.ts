@@ -16,6 +16,7 @@ import {
   isServerFunction,
   isSharedServerModule,
 } from "@/supabase_admin/supabase_utils";
+import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 
 const logger = log.scope("search_replace");
 
@@ -114,6 +115,10 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
     const result = applySearchReplace(original, operations);
 
     if (!result.success || typeof result.content !== "string") {
+      sendTelemetryEvent("local_agent:search_replace:failure", {
+        filePath: args.file_path,
+        error: result.error ?? "unknown",
+      });
       throw new Error(
         `Failed to apply search-replace: ${result.error ?? "unknown"}`,
       );
@@ -121,6 +126,9 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
 
     await fs.promises.writeFile(fullFilePath, result.content);
     logger.log(`Successfully applied search-replace to: ${fullFilePath}`);
+    sendTelemetryEvent("local_agent:search_replace:success", {
+      filePath: args.file_path,
+    });
 
     // Deploy Supabase function if applicable
     if (

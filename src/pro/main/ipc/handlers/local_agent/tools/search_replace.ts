@@ -19,8 +19,6 @@ import {
 
 const logger = log.scope("search_replace");
 
-const MIN_CONTEXT_LINES = 3;
-
 const searchReplaceSchema = z.object({
   file_path: z
     .string()
@@ -93,17 +91,6 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
     // Validate old_string !== new_string
     if (args.old_string === args.new_string) {
       throw new Error("old_string and new_string must be different");
-    }
-
-    // Validate minimum line count for context (excluding empty lines)
-    const meaningfulLines = args.old_string
-      .split(/\r\n|\r|\n/)
-      .filter((line) => line.trim().length > 0).length;
-    if (meaningfulLines < MIN_CONTEXT_LINES) {
-      throw new Error(
-        `old_string must include at least ${MIN_CONTEXT_LINES} non-empty lines of context for unambiguous matching. ` +
-          `Current: ${meaningfulLines} non-empty line(s). Include surrounding context lines.`,
-      );
     }
 
     const fullFilePath = safeJoin(ctx.appPath, args.file_path);

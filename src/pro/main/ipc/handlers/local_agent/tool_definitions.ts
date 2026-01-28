@@ -20,6 +20,7 @@ import { setChatSummaryTool } from "./tools/set_chat_summary";
 import { addIntegrationTool } from "./tools/add_integration";
 import { readLogsTool } from "./tools/read_logs";
 import { editFileTool } from "./tools/edit_file";
+import { searchReplaceTool } from "./tools/search_replace";
 import { webSearchTool } from "./tools/web_search";
 import { webCrawlTool } from "./tools/web_crawl";
 import { updateTodosTool } from "./tools/update_todos";
@@ -40,12 +41,11 @@ import { getSupabaseClientCode } from "@/supabase_admin/supabase_context";
 export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   writeFileTool,
   editFileTool,
+  searchReplaceTool,
   deleteFileTool,
   renameFileTool,
   addDependencyTool,
   executeSqlTool,
-  // Do not enable search-replace tool for now due to concerns around reliability
-  // searchReplaceTool,
   readFileTool,
   listFilesTool,
   grepTool,

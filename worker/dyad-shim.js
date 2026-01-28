@@ -67,8 +67,17 @@
 
   // --- Listener for Back/Forward Navigation (popstate event) ---
   window.addEventListener("popstate", () => {
+    const oldUrl = previousUrl;
     const currentUrl = window.location.href;
     previousUrl = currentUrl;
+    // Notify parent about the navigation change (for back/forward button support)
+    window.parent.postMessage(
+      {
+        type: "replaceState",
+        payload: { oldUrl: oldUrl, newUrl: currentUrl },
+      },
+      PARENT_TARGET_ORIGIN,
+    );
   });
 
   // --- Listener for Commands from Parent ---
@@ -80,9 +89,20 @@
     )
       return;
     if (event.data.type === "navigate") {
-      const direction = event.data.payload?.direction;
-      if (direction === "forward") history.forward();
-      else if (direction === "backward") history.back();
+      const { direction, url } = event.data.payload || {};
+      // If a URL is provided, use location.replace for navigation
+      // (browser history.back()/forward() doesn't work reliably in Electron iframes)
+      if (url) {
+        // Use location.replace to avoid adding to history
+        window.location.replace(url);
+      } else {
+        // Fallback to history API if no URL provided
+        if (direction === "forward") {
+          window.history.go(1);
+        } else if (direction === "backward") {
+          window.history.go(-1);
+        }
+      }
     }
   });
 

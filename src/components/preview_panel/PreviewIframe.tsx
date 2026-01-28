@@ -774,38 +774,48 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // Function to navigate back
   const handleNavigateBack = () => {
     if (canGoBack && iframeRef.current?.contentWindow) {
+      const newPosition = currentHistoryPosition - 1;
+      const targetUrl = navigationHistory[newPosition];
+
+      // Send the target URL to navigate to (browser history.back() doesn't work in Electron iframes)
       iframeRef.current.contentWindow.postMessage(
         {
           type: "navigate",
-          payload: { direction: "backward" },
+          payload: { direction: "backward", url: targetUrl },
         },
         "*",
       );
 
       // Update our local state
-      setCurrentHistoryPosition((prev) => prev - 1);
-      setCanGoBack(currentHistoryPosition - 1 > 0);
+      setCurrentHistoryPosition(newPosition);
+      setCanGoBack(newPosition > 0);
       setCanGoForward(true);
+      // Update iframe URL ref to match
+      currentIframeUrlRef.current = targetUrl;
     }
   };
 
   // Function to navigate forward
   const handleNavigateForward = () => {
     if (canGoForward && iframeRef.current?.contentWindow) {
+      const newPosition = currentHistoryPosition + 1;
+      const targetUrl = navigationHistory[newPosition];
+
+      // Send the target URL to navigate to (browser history.forward() doesn't work in Electron iframes)
       iframeRef.current.contentWindow.postMessage(
         {
           type: "navigate",
-          payload: { direction: "forward" },
+          payload: { direction: "forward", url: targetUrl },
         },
         "*",
       );
 
       // Update our local state
-      setCurrentHistoryPosition((prev) => prev + 1);
+      setCurrentHistoryPosition(newPosition);
       setCanGoBack(true);
-      setCanGoForward(
-        currentHistoryPosition + 1 < navigationHistory.length - 1,
-      );
+      setCanGoForward(newPosition < navigationHistory.length - 1);
+      // Update iframe URL ref to match
+      currentIframeUrlRef.current = targetUrl;
     }
   };
 

@@ -11,9 +11,9 @@ import {
   chatStreamCountByIdAtom,
   isStreamingByIdAtom,
   recentStreamChatIdsAtom,
-  queuedMessageByIdAtom,
+  queuedMessagesByIdAtom,
   streamCompletedSuccessfullyByIdAtom,
-  type QueuedMessage,
+  type QueuedMessageItem,
 } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
@@ -23,7 +23,7 @@ import { useChats } from "./useChats";
 import { useLoadApp } from "./useLoadApp";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "./useVersions";
-import { showExtraFilesToast, showWarning } from "@/lib/toast";
+import { showExtraFilesToast } from "@/lib/toast";
 import { useSearch } from "@tanstack/react-router";
 import { useRunApp } from "./useRunApp";
 import { useCountTokens } from "./useCountTokens";
@@ -63,8 +63,8 @@ export function useStreamChat({
   const { checkProblems } = useCheckProblems(selectedAppId);
   const { settings } = useSettings();
   const setRecentStreamChatIds = useSetAtom(recentStreamChatIdsAtom);
-  const [queuedMessageById, setQueuedMessageById] = useAtom(
-    queuedMessageByIdAtom,
+  const [queuedMessagesById, setQueuedMessagesById] = useAtom(
+    queuedMessagesByIdAtom,
   );
   const [streamCompletedSuccessfullyById, setStreamCompletedSuccessfullyById] =
     useAtom(streamCompletedSuccessfullyByIdAtom);
@@ -337,17 +337,17 @@ export function useStreamChat({
     ],
   );
 
-  // Process queued message when streaming ends successfully
+  // Process first queued message when streaming ends successfully
   useEffect(() => {
     if (!chatId || !shouldProcessQueue) return;
 
-    const queuedMessage = queuedMessageById.get(chatId);
+    const queuedMessages = queuedMessagesById.get(chatId) ?? [];
     const completedSuccessfully =
       streamCompletedSuccessfullyById.get(chatId) ?? false;
 
     // Only process queue if we have confirmation that the stream completed successfully
     // This prevents race conditions where the queue might be processed during cancellation
-    if (queuedMessage && completedSuccessfully) {
+    if (queuedMessages.length > 0 && completedSuccessfully) {
       // Clear the successful completion flag first to prevent loops
       setStreamCompletedSuccessfullyById((prev) => {
         const next = new Map(prev);
@@ -355,33 +355,37 @@ export function useStreamChat({
         return next;
       });
 
-      // Save a reference to the message before clearing (for error recovery)
-      const messageToSend = { ...queuedMessage };
+      // Get the first message and remove it from the queue
+      const [firstMessage, ...remainingMessages] = queuedMessages;
 
-      // Clear queue
-      setQueuedMessageById((prev) => {
+      // Update queue to remove the first message
+      setQueuedMessagesById((prev) => {
         const next = new Map(prev);
-        next.delete(chatId);
+        if (remainingMessages.length > 0) {
+          next.set(chatId, remainingMessages);
+        } else {
+          next.delete(chatId);
+        }
         return next;
       });
 
       posthog.capture("chat:submit", { chatMode: settings?.selectedChatMode });
 
-      // Send the message
+      // Send the first message
       streamMessage({
-        prompt: messageToSend.prompt,
+        prompt: firstMessage.prompt,
         chatId,
         redo: false,
-        attachments: messageToSend.attachments,
-        selectedComponents: messageToSend.selectedComponents,
+        attachments: firstMessage.attachments,
+        selectedComponents: firstMessage.selectedComponents,
       });
     }
   }, [
     chatId,
-    queuedMessageById,
+    queuedMessagesById,
     streamCompletedSuccessfullyById,
     streamMessage,
-    setQueuedMessageById,
+    setQueuedMessagesById,
     setStreamCompletedSuccessfullyById,
     posthog,
     settings?.selectedChatMode,
@@ -410,29 +414,78 @@ export function useStreamChat({
         if (chatId !== undefined) next.set(chatId, value);
         return next;
       }),
-    queuedMessage:
+    // Multi-message queue support
+    queuedMessages:
       hasChatId && chatId !== undefined
-        ? (queuedMessageById.get(chatId) ?? null)
-        : null,
-    queueMessage: (message: QueuedMessage) => {
+        ? (queuedMessagesById.get(chatId) ?? [])
+        : [],
+    queueMessage: (message: Omit<QueuedMessageItem, "id">): boolean => {
       if (chatId === undefined) return false;
-      const existingMessage = queuedMessageById.get(chatId);
-      if (existingMessage) {
-        showWarning(
-          "A message is already queued. Wait for it to be sent or clear it.",
-        );
-        return false;
-      }
-      setQueuedMessageById((prev) => {
+      const newItem: QueuedMessageItem = {
+        ...message,
+        id: crypto.randomUUID(),
+      };
+      setQueuedMessagesById((prev) => {
         const next = new Map(prev);
-        next.set(chatId, message);
+        const existing = prev.get(chatId) ?? [];
+        next.set(chatId, [...existing, newItem]);
         return next;
       });
       return true;
     },
-    clearQueuedMessage: () => {
+    updateQueuedMessage: (
+      id: string,
+      updates: Partial<
+        Pick<QueuedMessageItem, "prompt" | "attachments" | "selectedComponents">
+      >,
+    ) => {
       if (chatId === undefined) return;
-      setQueuedMessageById((prev) => {
+      setQueuedMessagesById((prev) => {
+        const next = new Map(prev);
+        const existing = prev.get(chatId) ?? [];
+        const updated = existing.map((msg) =>
+          msg.id === id ? { ...msg, ...updates } : msg,
+        );
+        next.set(chatId, updated);
+        return next;
+      });
+    },
+    removeQueuedMessage: (id: string) => {
+      if (chatId === undefined) return;
+      setQueuedMessagesById((prev) => {
+        const next = new Map(prev);
+        const existing = prev.get(chatId) ?? [];
+        const filtered = existing.filter((msg) => msg.id !== id);
+        if (filtered.length > 0) {
+          next.set(chatId, filtered);
+        } else {
+          next.delete(chatId);
+        }
+        return next;
+      });
+    },
+    reorderQueuedMessages: (fromIndex: number, toIndex: number) => {
+      if (chatId === undefined) return;
+      setQueuedMessagesById((prev) => {
+        const next = new Map(prev);
+        const existing = [...(prev.get(chatId) ?? [])];
+        if (
+          fromIndex < 0 ||
+          fromIndex >= existing.length ||
+          toIndex < 0 ||
+          toIndex >= existing.length
+        ) {
+          return prev;
+        }
+        const [removed] = existing.splice(fromIndex, 1);
+        existing.splice(toIndex, 0, removed);
+        next.set(chatId, existing);
+        return next;
+      });
+    },
+    clearAllQueuedMessages: () => {
+      if (chatId === undefined) return;
+      setQueuedMessagesById((prev) => {
         const next = new Map(prev);
         next.delete(chatId);
         return next;

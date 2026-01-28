@@ -828,9 +828,11 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                     data-testid="preview-toggle-chat-panel-button"
                   >
                     {isChatPanelHidden ? (
-                      <Minimize2 size={16} />
-                    ) : (
+                      // Panel is hidden: show maximize/expand icon
                       <Maximize2 size={16} />
+                    ) : (
+                      // Panel is visible: show minimize/collapse icon
+                      <Minimize2 size={16} />
                     )}
                   </button>
                 </TooltipTrigger>

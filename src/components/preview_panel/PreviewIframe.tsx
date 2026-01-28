@@ -996,9 +996,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               title={isChatPanelHidden ? "Show chat" : "Hide chat"}
             >
               {isChatPanelHidden ? (
-                <Minimize2 size={16} />
-              ) : (
                 <Maximize2 size={16} />
+              ) : (
+                <Minimize2 size={16} />
               )}
             </button>
             <button

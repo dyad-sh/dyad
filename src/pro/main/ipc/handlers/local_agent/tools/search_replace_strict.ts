@@ -91,12 +91,14 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
       throw new Error("old_string and new_string must be different");
     }
 
-    // Validate minimum line count for context
-    const lineCount = args.old_string.split(/\r?\n/).length;
-    if (lineCount < MIN_CONTEXT_LINES) {
+    // Validate minimum line count for context (excluding empty lines)
+    const meaningfulLines = args.old_string
+      .split(/\r\n|\r|\n/)
+      .filter((line) => line.trim().length > 0).length;
+    if (meaningfulLines < MIN_CONTEXT_LINES) {
       throw new Error(
-        `old_string must include at least ${MIN_CONTEXT_LINES} lines of context for unambiguous matching. ` +
-          `Current: ${lineCount} line(s). Include surrounding context lines.`,
+        `old_string must include at least ${MIN_CONTEXT_LINES} non-empty lines of context for unambiguous matching. ` +
+          `Current: ${meaningfulLines} non-empty line(s). Include surrounding context lines.`,
       );
     }
 

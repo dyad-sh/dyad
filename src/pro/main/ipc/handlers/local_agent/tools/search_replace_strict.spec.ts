@@ -117,7 +117,7 @@ describe("searchReplaceStrictTool", () => {
       ).rejects.toThrow("old_string and new_string must be different");
     });
 
-    it("errors when old_string has fewer than 3 lines", async () => {
+    it("errors when old_string has fewer than 3 non-empty lines", async () => {
       await expect(
         searchReplaceStrictTool.execute(
           {
@@ -127,7 +127,7 @@ describe("searchReplaceStrictTool", () => {
           },
           mockContext,
         ),
-      ).rejects.toThrow(/must include at least 3 lines/);
+      ).rejects.toThrow(/must include at least 3 non-empty lines/);
 
       await expect(
         searchReplaceStrictTool.execute(
@@ -138,7 +138,33 @@ describe("searchReplaceStrictTool", () => {
           },
           mockContext,
         ),
-      ).rejects.toThrow(/must include at least 3 lines/);
+      ).rejects.toThrow(/must include at least 3 non-empty lines/);
+    });
+
+    it("errors when old_string has 3 lines but only 2 non-empty lines", async () => {
+      // Trailing newlines should not count as meaningful context
+      await expect(
+        searchReplaceStrictTool.execute(
+          {
+            file_path: "test.ts",
+            old_string: "line1\nline2\n",
+            new_string: "replacement",
+          },
+          mockContext,
+        ),
+      ).rejects.toThrow(/must include at least 3 non-empty lines/);
+
+      // Whitespace-only lines should not count
+      await expect(
+        searchReplaceStrictTool.execute(
+          {
+            file_path: "test.ts",
+            old_string: "line1\n   \nline2",
+            new_string: "replacement",
+          },
+          mockContext,
+        ),
+      ).rejects.toThrow(/must include at least 3 non-empty lines/);
     });
 
     it("passes validation with exactly 3 lines", async () => {

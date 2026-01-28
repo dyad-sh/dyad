@@ -5,7 +5,7 @@ on:
     branches:
       - main
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, closed]
+    types: [opened, synchronize, reopened, closed]
 
 concurrency:
   # Use PR number for pull_request events to enable cancellation when PR is merged
@@ -18,12 +18,8 @@ defaults:
 
 jobs:
   check-changes:
-    # Skip if:
-    # - This is a closed PR event (we only listen to 'closed' to trigger cancellation of in-progress runs)
-    # - This is a draft PR (run when marked ready for review via ready_for_review event)
-    if: >-
-      github.event.action != 'closed' &&
-      (github.event_name != 'pull_request' || github.event.pull_request.draft != true)
+    # Skip closed PR events (we only listen to 'closed' to trigger cancellation of in-progress runs)
+    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     outputs:
       should_run_tests: ${{ steps.check.outputs.should_run_tests }}

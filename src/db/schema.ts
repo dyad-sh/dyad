@@ -220,6 +220,10 @@ export const mcpServers = sqliteTable("mcp_servers", {
     string,
     string
   > | null>(),
+  headersJson: text("headers_json", { mode: "json" }).$type<Record<
+    string,
+    string
+  > | null>(),
   url: text("url"),
   enabled: integer("enabled", { mode: "boolean" })
     .notNull()

@@ -472,12 +472,11 @@ export class PageObject {
     await this.page.getByRole("button", { name: "Import" }).click();
   }
 
-  async selectChatMode(mode: "build" | "ask" | "agent" | "local-agent") {
+  async selectChatMode(mode: "build" | "ask" | "local-agent") {
     await this.page.getByTestId("chat-mode-selector").click();
     const mapping = {
       build: "Build Generate and edit code",
       ask: "Ask Ask",
-      agent: "Build with MCP",
       "local-agent": "Agent v2",
     };
     const optionName = mapping[mode];

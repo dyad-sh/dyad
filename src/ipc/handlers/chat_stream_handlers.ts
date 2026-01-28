@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { ipcMain, IpcMainInvokeEvent } from "electron";
+import { ipcMain } from "electron";
 import { createTypedHandler } from "./base";
 import { chatContracts } from "../types/chat";
 import {
@@ -11,7 +11,6 @@ import {
   TextStreamPart,
   stepCountIs,
   hasToolCall,
-  type ToolExecutionOptions,
 } from "ai";
 
 import { db } from "../../db";
@@ -59,8 +58,6 @@ import { getMaxTokens, getTemperature } from "../utils/token_utils";
 import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 import { validateChatContext } from "../utils/context_paths_utils";
 import { getProviderOptions, getAiHeaders } from "../utils/provider_options";
-import { mcpServers } from "../../db/schema";
-import { requireMcpToolConsent } from "../utils/mcp_consent";
 
 import { handleLocalAgentStream } from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
 
@@ -83,8 +80,6 @@ import { parseAppMentions } from "@/shared/parse_mention_apps";
 import { prompts as promptsTable } from "../../db/schema";
 import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
-import { mcpManager } from "../utils/mcp_manager";
-import z from "zod";
 import {
   isDyadProEnabled,
   isSupabaseConnected,
@@ -624,10 +619,7 @@ ${componentSnippet}
 
         let systemPrompt = constructSystemPrompt({
           aiRules,
-          chatMode:
-            settings.selectedChatMode === "agent"
-              ? "build"
-              : settings.selectedChatMode,
+          chatMode: settings.selectedChatMode,
           enableTurboEditsV2: isTurboEditsV2Enabled(settings),
           themePrompt,
         });
@@ -1053,48 +1045,6 @@ This conversation includes one or more image attachments. When the user uploads 
             messageOverride: isSummarizeIntent ? chatMessages : undefined,
           });
           return;
-        }
-
-        if (settings.selectedChatMode === "agent") {
-          const tools = await getMcpTools(event);
-
-          const { fullStream } = await simpleStreamText({
-            chatMessages: limitedHistoryChatMessages,
-            modelClient,
-            tools: {
-              ...tools,
-              "generate-code": {
-                description:
-                  "ALWAYS use this tool whenever generating or editing code for the codebase.",
-                inputSchema: z.object({}),
-                execute: async () => "",
-              },
-            },
-            systemPromptOverride: constructSystemPrompt({
-              aiRules: await readAiRules(getDyadAppPath(updatedChat.app.path)),
-              chatMode: "agent",
-              enableTurboEditsV2: false,
-            }),
-            files: files,
-            dyadDisableFiles: true,
-          });
-
-          const result = await processStreamChunks({
-            fullStream,
-            fullResponse,
-            abortController,
-            chatId: req.chatId,
-            processResponseChunkUpdate,
-          });
-          fullResponse = result.fullResponse;
-          chatMessages.push({
-            role: "assistant",
-            content: fullResponse,
-          });
-          chatMessages.push({
-            role: "user",
-            content: "OK.",
-          });
         }
 
         // When calling streamText, the messages need to be properly formatted for mixed content
@@ -1744,48 +1694,4 @@ These are the other apps that I've mentioned in my prompt. These other apps' cod
 
 ${otherAppsCodebaseInfo}
 `;
-}
-
-async function getMcpTools(event: IpcMainInvokeEvent): Promise<ToolSet> {
-  const mcpToolSet: ToolSet = {};
-  try {
-    const servers = await db
-      .select()
-      .from(mcpServers)
-      .where(eq(mcpServers.enabled, true as any));
-    for (const s of servers) {
-      const client = await mcpManager.getClient(s.id);
-      const toolSet = await client.tools();
-      for (const [name, mcpTool] of Object.entries(toolSet)) {
-        const key = `${String(s.name || "").replace(/[^a-zA-Z0-9_-]/g, "-")}__${String(name).replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-        mcpToolSet[key] = {
-          description: mcpTool.description,
-          inputSchema: mcpTool.inputSchema,
-          execute: async (args: unknown, execCtx: ToolExecutionOptions) => {
-            const inputPreview =
-              typeof args === "string"
-                ? args
-                : Array.isArray(args)
-                  ? args.join(" ")
-                  : JSON.stringify(args).slice(0, 500);
-            const ok = await requireMcpToolConsent(event, {
-              serverId: s.id,
-              serverName: s.name,
-              toolName: name,
-              toolDescription: mcpTool.description,
-              inputPreview,
-            });
-
-            if (!ok) throw new Error(`User declined running tool ${key}`);
-            const res = await mcpTool.execute(args, execCtx);
-
-            return typeof res === "string" ? res : JSON.stringify(res);
-          },
-        };
-      }
-    }
-  } catch (e) {
-    logger.warn("Failed building MCP toolset", e);
-  }
-  return mcpToolSet;
 }

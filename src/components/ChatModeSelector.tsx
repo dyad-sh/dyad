@@ -78,8 +78,6 @@ export function ChatModeSelector() {
         return "Build";
       case "ask":
         return "Ask";
-      case "agent":
-        return "Build (MCP)";
       case "local-agent":
         return "Agent";
       default:
@@ -141,16 +139,6 @@ export function ChatModeSelector() {
             <span className="font-medium">Ask</span>
             <span className="text-xs text-muted-foreground">
               Ask questions about the app
-            </span>
-          </div>
-        </SelectItem>
-        <SelectItem value="agent">
-          <div className="flex flex-col items-start">
-            <div className="flex items-center gap-1.5">
-              <span className="font-medium">Build with MCP</span>
-            </div>
-            <span className="text-xs text-muted-foreground">
-              Like Build, but can use tools (MCP) to generate code
             </span>
           </div>
         </SelectItem>

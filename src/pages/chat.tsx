@@ -13,6 +13,7 @@ import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { isPreviewOpenAtom, isChatPanelHiddenAtom } from "@/atoms/viewAtoms";
 import { useChats } from "@/hooks/useChats";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { usePlanImplementation } from "@/hooks/usePlanImplementation";
 
 const DEFAULT_CHAT_PANEL_SIZE = 50;
 
@@ -29,6 +30,9 @@ export default function ChatPage() {
   const { chats, loading } = useChats(selectedAppId);
   const previousSizeRef = useRef<number>(DEFAULT_CHAT_PANEL_SIZE);
   const isInitialMountRef = useRef(true);
+
+  // Handle plan implementation when a plan is accepted
+  usePlanImplementation();
 
   useEffect(() => {
     if (!chatId && chats.length && !loading) {

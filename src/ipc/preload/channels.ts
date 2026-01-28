@@ -38,6 +38,7 @@ import { visualEditingContracts } from "../types/visual-editing";
 import { securityContracts } from "../types/security";
 import { miscContracts, miscEvents } from "../types/misc";
 import { freeAgentQuotaContracts } from "../types/free_agent_quota";
+import { planEvents, planContracts } from "../types/plan";
 
 // =============================================================================
 // Invoke Channels (derived from all contracts)
@@ -91,6 +92,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(securityContracts),
   ...getInvokeChannels(miscContracts),
   ...getInvokeChannels(freeAgentQuotaContracts),
+  ...getInvokeChannels(planContracts),
 
   // Test-only channels
   ...TEST_INVOKE_CHANNELS,
@@ -115,6 +117,7 @@ export const VALID_RECEIVE_CHANNELS = [
   ...getReceiveChannels(mcpEvents),
   ...getReceiveChannels(systemEvents),
   ...getReceiveChannels(miscEvents),
+  ...getReceiveChannels(planEvents),
 ] as const;
 
 // =============================================================================

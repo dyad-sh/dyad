@@ -110,6 +110,7 @@ export async function handleLocalAgentStream(
     systemPrompt,
     dyadRequestId,
     readOnly = false,
+    planModeOnly = false,
     messageOverride,
   }: {
     placeholderMessageId: number;
@@ -120,6 +121,11 @@ export async function handleLocalAgentStream(
      * State-modifying tools are disabled, and no commits/deploys are made.
      */
     readOnly?: boolean;
+    /**
+     * If true, only include tools allowed in plan mode.
+     * This includes read-only exploration tools and planning-specific tools.
+     */
+    planModeOnly?: boolean;
     /**
      * If provided, use these messages instead of fetching from the database.
      * Used for summarization where messages need to be transformed.
@@ -237,8 +243,10 @@ export async function handleLocalAgentStream(
     // Build tool set (agent tools + MCP tools)
     // In read-only mode, only include read-only tools and skip MCP tools
     // (since we can't determine if MCP tools modify state)
-    const agentTools = buildAgentToolSet(ctx, { readOnly });
-    const mcpTools = readOnly ? {} : await getMcpTools(event, ctx);
+    // In plan mode, only include planning tools (read + questionnaire/plan tools)
+    const agentTools = buildAgentToolSet(ctx, { readOnly, planModeOnly });
+    const mcpTools =
+      readOnly || planModeOnly ? {} : await getMcpTools(event, ctx);
     const allTools: ToolSet = { ...agentTools, ...mcpTools };
 
     // Prepare message history with graceful fallback

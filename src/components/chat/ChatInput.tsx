@@ -59,6 +59,7 @@ import { ChatInputControls } from "../ChatInputControls";
 import { ChatErrorBox } from "./ChatErrorBox";
 import { AgentConsentBanner } from "./AgentConsentBanner";
 import { TodoList } from "./TodoList";
+import { QuestionnaireInput } from "./QuestionnaireInput";
 import {
   selectedComponentsPreviewAtom,
   previewIframeRefAtom,
@@ -389,6 +390,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
+          {/* Show active questionnaire if exists */}
+          <QuestionnaireInput />
+
           {/* Show todo list if there are todos for this chat */}
           {chatTodos.length > 0 && <TodoList todos={chatTodos} />}
           {/* Show agent consent banner if there's a pending consent request */}

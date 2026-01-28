@@ -256,6 +256,42 @@ export const mcpToolConsents = sqliteTable(
   (table) => [unique("uniq_mcp_consent").on(table.serverId, table.toolName)],
 );
 
+// --- Plans table ---
+export const plans = sqliteTable("plans", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  appId: integer("app_id")
+    .notNull()
+    .references(() => apps.id, { onDelete: "cascade" }),
+  chatId: integer("chat_id").references(() => chats.id, {
+    onDelete: "set null",
+  }),
+  title: text("title").notNull(),
+  summary: text("summary"),
+  content: text("content").notNull(),
+  status: text("status", {
+    enum: ["draft", "accepted", "rejected", "implemented"],
+  })
+    .notNull()
+    .default("draft"),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+export const plansRelations = relations(plans, ({ one }) => ({
+  app: one(apps, {
+    fields: [plans.appId],
+    references: [apps.id],
+  }),
+  chat: one(chats, {
+    fields: [plans.chatId],
+    references: [chats.id],
+  }),
+}));
+
 // --- Custom Themes table ---
 export const customThemes = sqliteTable("custom_themes", {
   id: integer("id").primaryKey({ autoIncrement: true }),

@@ -1073,6 +1073,30 @@ This conversation includes one or more image attachments. When the user uploads 
           return;
         }
 
+        // Handle plan mode: use local-agent with plan tools only
+        // Plan mode is for requirements gathering and creating implementation plans
+        if (
+          settings.selectedChatMode === "plan" &&
+          !mentionedAppsCodebases.length
+        ) {
+          // Reconstruct system prompt for plan mode
+          const planModeSystemPrompt = constructSystemPrompt({
+            aiRules,
+            chatMode: "plan",
+            enableTurboEditsV2: false,
+            themePrompt,
+          });
+
+          await handleLocalAgentStream(event, req, abortController, {
+            placeholderMessageId: placeholderAssistantMessage.id,
+            systemPrompt: planModeSystemPrompt,
+            dyadRequestId: dyadRequestId ?? "[no-request-id]",
+            planModeOnly: true,
+            messageOverride: isSummarizeIntent ? chatMessages : undefined,
+          });
+          return;
+        }
+
         // Handle local-agent mode (Agent v2)
         // Mentioned apps can't be handled by the local agent (defer to balanced smart context
         // in build mode)

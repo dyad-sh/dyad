@@ -11,7 +11,8 @@
  * Handles: & " < >
  */
 export function escapeXmlAttr(str: string): string {
-  return str
+  if (str == null) return "";
+  return String(str)
     .replace(/&/g, "&amp;")
     .replace(/"/g, "&quot;")
     .replace(/</g, "&lt;")
@@ -35,7 +36,11 @@ export function unescapeXmlAttr(str: string): string {
  * Handles: & < >
  */
 export function escapeXmlContent(str: string): string {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  if (str == null) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 /**

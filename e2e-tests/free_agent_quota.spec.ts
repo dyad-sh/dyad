@@ -119,9 +119,9 @@ testSkipIfWindows(
       );
     });
 
-    // 4. Wait for React Query cache to become stale (staleTime is 30s) then navigate
-    // to force a refetch with the updated timestamps
-    await po.page.waitForTimeout(31000);
+    // 4. Wait for React Query cache to become stale (staleTime is 500ms in test mode)
+    // then navigate to force a refetch with the updated timestamps
+    await po.page.waitForTimeout(1000);
     await po.goToSettingsTab();
     await po.page.waitForTimeout(500);
     await po.goToChatTab();

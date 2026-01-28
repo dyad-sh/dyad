@@ -137,7 +137,8 @@ export function ChatModeSelector() {
               <div className="flex items-center gap-1.5">
                 <span className="font-medium">Basic Agent</span>
                 <span className="text-xs text-muted-foreground">
-                  ({isQuotaExceeded ? "0" : messagesRemaining}/5 remaining)
+                  ({isQuotaExceeded ? "0" : messagesRemaining}/5 remaining for
+                  today)
                 </span>
               </div>
               <span className="text-xs text-muted-foreground">

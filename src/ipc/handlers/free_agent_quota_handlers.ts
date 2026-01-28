@@ -6,8 +6,60 @@ import { freeAgentQuotaContracts } from "../types/free_agent_quota";
 import log from "electron-log";
 import { ipcMain } from "electron";
 import { IS_TEST_BUILD } from "../utils/test_utils";
+import fetch from "node-fetch";
 
 const logger = log.scope("free_agent_quota_handlers");
+
+/** Timeout for server time fetch in milliseconds */
+const SERVER_TIME_TIMEOUT_MS = 5000;
+
+/**
+ * Fetches the current time from a trusted server to prevent clock manipulation.
+ * Uses the HTTP Date header from api.dyad.sh.
+ * Falls back to local time if the server is unreachable (but logs a warning).
+ */
+async function getServerTime(): Promise<number> {
+  // In test builds, use local time to allow test manipulation
+  if (IS_TEST_BUILD) {
+    return Date.now();
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      SERVER_TIME_TIMEOUT_MS,
+    );
+
+    const response = await fetch("https://api.dyad.sh/health", {
+      method: "HEAD",
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    const dateHeader = response.headers.get("Date");
+    if (dateHeader) {
+      const serverTime = new Date(dateHeader).getTime();
+      if (!isNaN(serverTime)) {
+        logger.debug(
+          `Server time fetched: ${new Date(serverTime).toISOString()}`,
+        );
+        return serverTime;
+      }
+    }
+
+    logger.warn(
+      "Server response missing valid Date header, falling back to local time",
+    );
+    return Date.now();
+  } catch (error) {
+    logger.warn(
+      `Failed to fetch server time, falling back to local time: ${error}`,
+    );
+    return Date.now();
+  }
+}
 
 /** Maximum number of free agent messages per 24-hour window */
 export const FREE_AGENT_QUOTA_LIMIT = 5;
@@ -107,10 +159,11 @@ export async function getFreeAgentQuotaStatus() {
 
   // Check if the oldest message is >= 24 hours old
   // If so, all 5 messages are released at once (quota resets)
+  // Uses server time to prevent clock manipulation cheating
   const oldestMessage = quotaMessages[0];
   const windowStartTime = oldestMessage.createdAt.getTime();
   const resetTime = windowStartTime + QUOTA_WINDOW_MS;
-  const now = Date.now();
+  const now = await getServerTime();
 
   if (now >= resetTime) {
     // Clean up expired quota messages before returning fresh quota

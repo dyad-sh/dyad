@@ -104,8 +104,9 @@ references/
 
 Environment variables:
 
-- `ANTHROPIC_API_KEY` - Required for sub-agent API calls
 - `GITHUB_TOKEN` - Required for PR access and commenting
+
+Note: `ANTHROPIC_API_KEY` is **not required** - sub-agents spawned via the Task tool automatically have access to Anthropic.
 
 Optional tuning in `orchestrate_review.py`:
 

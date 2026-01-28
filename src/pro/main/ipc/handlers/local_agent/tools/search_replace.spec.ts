@@ -25,6 +25,7 @@ vi.mock("electron-log", () => ({
       log: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
+      debug: vi.fn(),
     }),
   },
 }));
@@ -254,6 +255,90 @@ describe("searchReplaceTool", () => {
           mockContext,
         ),
       ).rejects.toThrow(/did not match exactly/i);
+    });
+
+    it("matches when old_string has extra trailing newline not in source", async () => {
+      const originalContent = [
+        "function test() {",
+        "  const x = 1;",
+        "  return x;",
+        "}",
+      ].join("\n");
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(originalContent);
+
+      // old_string has trailing newline that doesn't exist in file - should still match
+      const result = await searchReplaceTool.execute(
+        {
+          file_path: "test.ts",
+          old_string: "  const x = 1;\n  return x;\n", // Extra trailing newline
+          new_string: "  const y = 2;\n  return y;",
+        },
+        mockContext,
+      );
+
+      expect(result).toContain("Successfully");
+      expect(fs.promises.writeFile).toHaveBeenCalledWith(
+        "/test/app/test.ts",
+        expect.stringContaining("const y = 2"),
+      );
+    });
+
+    it("matches when old_string has extra leading newline not in source", async () => {
+      const originalContent = [
+        "function test() {",
+        "  const x = 1;",
+        "  return x;",
+        "}",
+      ].join("\n");
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(originalContent);
+
+      // old_string has leading newline that doesn't exist in file - should still match
+      const result = await searchReplaceTool.execute(
+        {
+          file_path: "test.ts",
+          old_string: "\n  const x = 1;\n  return x;", // Extra leading newline
+          new_string: "  const y = 2;\n  return y;",
+        },
+        mockContext,
+      );
+
+      expect(result).toContain("Successfully");
+      expect(fs.promises.writeFile).toHaveBeenCalledWith(
+        "/test/app/test.ts",
+        expect.stringContaining("const y = 2"),
+      );
+    });
+
+    it("matches when old_string has both leading and trailing newlines", async () => {
+      const originalContent = [
+        "function test() {",
+        "  const x = 1;",
+        "  return x;",
+        "}",
+      ].join("\n");
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(originalContent);
+
+      // old_string has both leading and trailing newlines - should still match
+      const result = await searchReplaceTool.execute(
+        {
+          file_path: "test.ts",
+          old_string: "\n\n  const x = 1;\n  return x;\n\n", // Extra newlines on both ends
+          new_string: "  const y = 2;\n  return y;",
+        },
+        mockContext,
+      );
+
+      expect(result).toContain("Successfully");
+      expect(fs.promises.writeFile).toHaveBeenCalledWith(
+        "/test/app/test.ts",
+        expect.stringContaining("const y = 2"),
+      );
     });
   });
 

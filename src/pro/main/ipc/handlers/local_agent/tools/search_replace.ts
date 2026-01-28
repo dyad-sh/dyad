@@ -88,6 +88,9 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
   },
 
   execute: async (args, ctx: AgentContext) => {
+    console.log("search_replace***", args);
+    console.log("OLDSTRING", args.old_string, "END");
+
     // Validate old_string !== new_string
     if (args.old_string === args.new_string) {
       throw new Error("old_string and new_string must be different");

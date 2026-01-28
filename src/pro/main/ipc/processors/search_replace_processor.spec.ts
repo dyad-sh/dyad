@@ -525,4 +525,90 @@ line2
       expect(error).toMatch(/identical/i);
     });
   });
+
+  describe("leading/trailing empty line trimming", () => {
+    it("matches when search has extra trailing newline", () => {
+      const original = ["function test() {", "  return 1;", "}"].join("\n");
+      const diff = `
+<<<<<<< SEARCH
+  return 1;
+
+=======
+  return 2;
+>>>>>>> REPLACE
+`;
+      const { success, content } = applySearchReplace(original, diff);
+      expect(success).toBe(true);
+      expect(content).toContain("return 2");
+    });
+
+    it("matches when search has extra leading newline", () => {
+      const original = ["function test() {", "  return 1;", "}"].join("\n");
+      const diff = `
+<<<<<<< SEARCH
+
+  return 1;
+=======
+  return 2;
+>>>>>>> REPLACE
+`;
+      const { success, content } = applySearchReplace(original, diff);
+      expect(success).toBe(true);
+      expect(content).toContain("return 2");
+    });
+
+    it("matches when search has both leading and trailing empty lines", () => {
+      const original = ["function test() {", "  return 1;", "}"].join("\n");
+      const diff = `
+<<<<<<< SEARCH
+
+
+  return 1;
+
+
+=======
+  return 2;
+>>>>>>> REPLACE
+`;
+      const { success, content } = applySearchReplace(original, diff);
+      expect(success).toBe(true);
+      expect(content).toContain("return 2");
+    });
+
+    it("uses trimmed match only when exact match fails", () => {
+      // File does NOT have a leading empty line before the target
+      const original = ["function test() {", "  return 1;", "}"].join("\n");
+      // Search has leading empty line that doesn't exist in file
+      const diff = `
+<<<<<<< SEARCH
+
+  return 1;
+=======
+  return 2;
+>>>>>>> REPLACE
+`;
+      const { success, content } = applySearchReplace(original, diff);
+      expect(success).toBe(true);
+      // Should match via trimming since exact match with empty line fails
+      expect(content).toContain("return 2");
+      // Original structure preserved (no extra empty lines added)
+      expect(content).toBe(
+        ["function test() {", "  return 2;", "}"].join("\n"),
+      );
+    });
+
+    it("does not trim if exact match succeeds", () => {
+      const original = ["line1", "line2", "line3"].join("\n");
+      const diff = `
+<<<<<<< SEARCH
+line2
+=======
+REPLACED
+>>>>>>> REPLACE
+`;
+      const { success, content } = applySearchReplace(original, diff);
+      expect(success).toBe(true);
+      expect(content).toBe(["line1", "REPLACED", "line3"].join("\n"));
+    });
+  });
 });

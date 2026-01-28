@@ -89,6 +89,20 @@ const MATCHING_PASSES: Array<{ name: string; comparator: LineComparator }> = [
 ];
 
 /**
+ * Trim leading and trailing empty lines from an array of lines
+ */
+function trimEmptyLines(lines: string[]): string[] {
+  const result = [...lines];
+  while (result.length > 0 && result[0] === "") {
+    result.shift();
+  }
+  while (result.length > 0 && result[result.length - 1] === "") {
+    result.pop();
+  }
+  return result;
+}
+
+/**
  * Find all positions where searchLines match against resultLines using the given comparator
  */
 function findMatchPositions(
@@ -214,11 +228,30 @@ export function applySearchReplace(
     }
 
     // Use cascading fuzzy matching to find the match
-    const matchResult = cascadingMatch(
+    let matchResult = cascadingMatch(
       resultLines,
       searchLines,
       options.exactMatchOnly ?? false,
     );
+
+    // If no match found, try with trimmed leading/trailing empty lines as a fallback
+    if (matchResult.error && !matchResult.error.includes("ambiguous")) {
+      const trimmedSearchLines = trimEmptyLines(searchLines);
+      if (trimmedSearchLines.length !== searchLines.length) {
+        const trimmedResult = cascadingMatch(
+          resultLines,
+          trimmedSearchLines,
+          options.exactMatchOnly ?? false,
+        );
+        if (!trimmedResult.error) {
+          matchResult = trimmedResult;
+          searchLines = trimmedSearchLines;
+          logger.debug(
+            "Matched after trimming leading/trailing empty lines from search content",
+          );
+        }
+      }
+    }
 
     if (matchResult.error) {
       return {

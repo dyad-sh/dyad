@@ -8,6 +8,8 @@ import {
 } from "@/components/ui/select";
 import type { ChatMode } from "@/lib/schemas";
 import { isDyadProEnabled, getEffectiveDefaultChatMode } from "@/lib/schemas";
+import { getModeIcon } from "./ChatModeSelector";
+import { Hammer, Plug, Sparkles } from "lucide-react";
 
 export function DefaultChatModeSelector() {
   const { settings, updateSettings } = useSettings();
@@ -50,34 +52,49 @@ export function DefaultChatModeSelector() {
           value={effectiveDefault}
           onValueChange={handleDefaultChatModeChange}
         >
-          <SelectTrigger className="w-40" id="default-chat-mode">
-            <SelectValue>{getModeDisplayName(effectiveDefault)}</SelectValue>
+          <SelectTrigger className="w-44" id="default-chat-mode">
+            <div className="flex items-center gap-2">
+              {(() => {
+                const Icon = getModeIcon(effectiveDefault);
+                return <Icon className="h-4 w-4" />;
+              })()}
+              <SelectValue>{getModeDisplayName(effectiveDefault)}</SelectValue>
+            </div>
           </SelectTrigger>
           <SelectContent>
             {isProEnabled && (
               <SelectItem value="local-agent">
-                <div className="flex flex-col items-start">
-                  <span className="font-medium">Agent</span>
-                  <span className="text-xs text-muted-foreground">
-                    Better at bigger tasks
-                  </span>
+                <div className="flex items-start gap-2">
+                  <Sparkles className="h-4 w-4 mt-0.5 shrink-0" />
+                  <div className="flex flex-col items-start">
+                    <span className="font-medium">Agent</span>
+                    <span className="text-xs text-muted-foreground">
+                      Better at bigger tasks
+                    </span>
+                  </div>
                 </div>
               </SelectItem>
             )}
             <SelectItem value="build">
-              <div className="flex flex-col items-start">
-                <span className="font-medium">Build</span>
-                <span className="text-xs text-muted-foreground">
-                  Generate and edit code
-                </span>
+              <div className="flex items-start gap-2">
+                <Hammer className="h-4 w-4 mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                <div className="flex flex-col items-start">
+                  <span className="font-medium">Build</span>
+                  <span className="text-xs text-muted-foreground">
+                    Generate and edit code
+                  </span>
+                </div>
               </div>
             </SelectItem>
             <SelectItem value="agent">
-              <div className="flex flex-col items-start">
-                <span className="font-medium">Build with MCP</span>
-                <span className="text-xs text-muted-foreground">
-                  Build with tools (MCP)
-                </span>
+              <div className="flex items-start gap-2">
+                <Plug className="h-4 w-4 mt-0.5 shrink-0 text-purple-600 dark:text-purple-400" />
+                <div className="flex flex-col items-start">
+                  <span className="font-medium">Build with MCP</span>
+                  <span className="text-xs text-muted-foreground">
+                    Build with tools (MCP)
+                  </span>
+                </div>
               </div>
             </SelectItem>
           </SelectContent>

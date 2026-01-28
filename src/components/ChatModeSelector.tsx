@@ -20,6 +20,37 @@ import { toast } from "sonner";
 import { LocalAgentNewChatToast } from "./LocalAgentNewChatToast";
 import { useAtomValue } from "jotai";
 import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
+import { Hammer, MessageCircle, Plug, Sparkles } from "lucide-react";
+
+export function getModeIcon(mode: ChatMode) {
+  switch (mode) {
+    case "build":
+      return Hammer;
+    case "ask":
+      return MessageCircle;
+    case "agent":
+      return Plug;
+    case "local-agent":
+      return Sparkles;
+    default:
+      return Hammer;
+  }
+}
+
+export function getModeColorClasses(mode: ChatMode) {
+  switch (mode) {
+    case "build":
+      return "bg-emerald-500/10 hover:bg-emerald-500/20 focus:bg-emerald-500/20 text-emerald-600 border-emerald-500/20 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 dark:focus:bg-emerald-500/30 dark:text-emerald-400";
+    case "ask":
+      return "bg-blue-500/10 hover:bg-blue-500/20 focus:bg-blue-500/20 text-blue-600 border-blue-500/20 dark:bg-blue-500/20 dark:hover:bg-blue-500/30 dark:focus:bg-blue-500/30 dark:text-blue-400";
+    case "agent":
+      return "bg-purple-500/10 hover:bg-purple-500/20 focus:bg-purple-500/20 text-purple-600 border-purple-500/20 dark:bg-purple-500/20 dark:hover:bg-purple-500/30 dark:focus:bg-purple-500/30 dark:text-purple-400";
+    case "local-agent":
+      return "bg-background hover:bg-muted/50 focus:bg-muted/50";
+    default:
+      return "bg-background hover:bg-muted/50 focus:bg-muted/50";
+  }
+}
 
 function NewBadge() {
   return (
@@ -88,6 +119,8 @@ export function ChatModeSelector() {
   };
   const isMac = detectIsMac();
 
+  const ModeIcon = getModeIcon(selectedMode);
+
   return (
     <Select value={selectedMode} onValueChange={handleModeChange}>
       <Tooltip>
@@ -95,13 +128,12 @@ export function ChatModeSelector() {
           <MiniSelectTrigger
             data-testid="chat-mode-selector"
             className={cn(
-              "h-6 w-fit px-1.5 py-0 text-xs-sm font-medium shadow-none gap-0.5",
-              selectedMode === "build" || selectedMode === "local-agent"
-                ? "bg-background hover:bg-muted/50 focus:bg-muted/50"
-                : "bg-primary/10 hover:bg-primary/20 focus:bg-primary/20 text-primary border-primary/20 dark:bg-primary/20 dark:hover:bg-primary/30 dark:focus:bg-primary/30",
+              "h-6 w-fit px-1.5 py-0 text-xs-sm font-medium shadow-none gap-1",
+              getModeColorClasses(selectedMode),
             )}
             size="sm"
           >
+            <ModeIcon className="h-3.5 w-3.5" />
             <SelectValue>{getModeDisplayName(selectedMode)}</SelectValue>
           </MiniSelectTrigger>
         </TooltipTrigger>
@@ -117,41 +149,53 @@ export function ChatModeSelector() {
       <SelectContent align="start" onCloseAutoFocus={(e) => e.preventDefault()}>
         {isProEnabled && (
           <SelectItem value="local-agent">
-            <div className="flex flex-col items-start">
-              <div className="flex items-center gap-1.5">
-                <span className="font-medium">Agent v2</span>
-                <NewBadge />
+            <div className="flex items-start gap-2">
+              <Sparkles className="h-4 w-4 mt-0.5 shrink-0" />
+              <div className="flex flex-col items-start">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-medium">Agent v2</span>
+                  <NewBadge />
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  Better at bigger tasks and debugging
+                </span>
               </div>
-              <span className="text-xs text-muted-foreground">
-                Better at bigger tasks and debugging
-              </span>
             </div>
           </SelectItem>
         )}
         <SelectItem value="build">
-          <div className="flex flex-col items-start">
-            <span className="font-medium">Build</span>
-            <span className="text-xs text-muted-foreground">
-              Generate and edit code
-            </span>
+          <div className="flex items-start gap-2">
+            <Hammer className="h-4 w-4 mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+            <div className="flex flex-col items-start">
+              <span className="font-medium">Build</span>
+              <span className="text-xs text-muted-foreground">
+                Generate and edit code
+              </span>
+            </div>
           </div>
         </SelectItem>
         <SelectItem value="ask">
-          <div className="flex flex-col items-start">
-            <span className="font-medium">Ask</span>
-            <span className="text-xs text-muted-foreground">
-              Ask questions about the app
-            </span>
+          <div className="flex items-start gap-2">
+            <MessageCircle className="h-4 w-4 mt-0.5 shrink-0 text-blue-600 dark:text-blue-400" />
+            <div className="flex flex-col items-start">
+              <span className="font-medium">Ask</span>
+              <span className="text-xs text-muted-foreground">
+                Ask questions about the app
+              </span>
+            </div>
           </div>
         </SelectItem>
         <SelectItem value="agent">
-          <div className="flex flex-col items-start">
-            <div className="flex items-center gap-1.5">
-              <span className="font-medium">Build with MCP</span>
+          <div className="flex items-start gap-2">
+            <Plug className="h-4 w-4 mt-0.5 shrink-0 text-purple-600 dark:text-purple-400" />
+            <div className="flex flex-col items-start">
+              <div className="flex items-center gap-1.5">
+                <span className="font-medium">Build with MCP</span>
+              </div>
+              <span className="text-xs text-muted-foreground">
+                Like Build, but can use tools (MCP) to generate code
+              </span>
             </div>
-            <span className="text-xs text-muted-foreground">
-              Like Build, but can use tools (MCP) to generate code
-            </span>
           </div>
         </SelectItem>
       </SelectContent>

@@ -11,7 +11,8 @@
  *
  * The corresponding unescape step lives in the processor (`unescapeMarkers`).
  */
-export function escapeSearchReplaceMarkers(content: string): string {
+export function escapeSearchReplaceMarkers(content: string | null): string {
+  if (!content) return "";
   return content.replace(
     /^(\\)?(<<<<<<<|=======|>>>>>>>)/gm,
     (full, maybeSlash: string | undefined, marker: string) =>

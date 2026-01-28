@@ -178,7 +178,7 @@ export async function handleLocalAgentStream(
     );
 
     // Build tool execute context
-    const fileEditTracker: FileEditTracker = {};
+    const fileEditTracker: FileEditTracker = Object.create(null);
     const ctx: AgentContext = {
       event,
       appId: chat.app.id,
@@ -462,9 +462,7 @@ export async function handleLocalAgentStream(
       if (toolsUsed.length >= 2) {
         sendTelemetryEvent("local_agent:file_edit_retry", {
           filePath,
-          write_file: counts.write_file,
-          edit_file: counts.edit_file,
-          search_replace: counts.search_replace,
+          ...counts,
         });
       }
     }

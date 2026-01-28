@@ -792,6 +792,31 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       setCanGoForward(true);
       // Update iframe URL ref to match
       currentIframeUrlRef.current = targetUrl;
+
+      // Update preservedUrls to match navigation (for HMR remounts)
+      if (selectedAppId && appUrl) {
+        try {
+          const targetUrlObj = new URL(targetUrl);
+          const appUrlObj = new URL(appUrl);
+          if (targetUrlObj.origin === appUrlObj.origin) {
+            // Clear preserved URL if navigating back to root, otherwise update it
+            if (targetUrlObj.pathname === "/" || targetUrlObj.pathname === "") {
+              setPreservedUrls((prev) => {
+                const newUrls = { ...prev };
+                delete newUrls[selectedAppId];
+                return newUrls;
+              });
+            } else {
+              setPreservedUrls((prev) => ({
+                ...prev,
+                [selectedAppId]: targetUrl,
+              }));
+            }
+          }
+        } catch {
+          // Invalid URL, don't update preservedUrls
+        }
+      }
     }
   };
 
@@ -816,6 +841,31 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       setCanGoForward(newPosition < navigationHistory.length - 1);
       // Update iframe URL ref to match
       currentIframeUrlRef.current = targetUrl;
+
+      // Update preservedUrls to match navigation (for HMR remounts)
+      if (selectedAppId && appUrl) {
+        try {
+          const targetUrlObj = new URL(targetUrl);
+          const appUrlObj = new URL(appUrl);
+          if (targetUrlObj.origin === appUrlObj.origin) {
+            // Clear preserved URL if navigating forward to root, otherwise update it
+            if (targetUrlObj.pathname === "/" || targetUrlObj.pathname === "") {
+              setPreservedUrls((prev) => {
+                const newUrls = { ...prev };
+                delete newUrls[selectedAppId];
+                return newUrls;
+              });
+            } else {
+              setPreservedUrls((prev) => ({
+                ...prev,
+                [selectedAppId]: targetUrl,
+              }));
+            }
+          }
+        } catch {
+          // Invalid URL, don't update preservedUrls
+        }
+      }
     }
   };
 

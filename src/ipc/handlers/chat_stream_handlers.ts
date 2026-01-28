@@ -636,6 +636,7 @@ ${componentSnippet}
               : settings.selectedChatMode,
           enableTurboEditsV2: isTurboEditsV2Enabled(settings),
           themePrompt,
+          basicAgentMode: isBasicAgentMode(settings),
         });
 
         // Add information about mentioned apps if any

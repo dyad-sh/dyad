@@ -105,12 +105,7 @@ export const ThemeInputSourceSchema = z.enum(["images", "url"]);
 export type ThemeInputSource = z.infer<typeof ThemeInputSourceSchema>;
 
 // Crawl status for UI feedback
-export const CrawlStatusSchema = z.enum([
-  "crawling",
-  "generating",
-  "complete",
-  "error",
-]);
+export const CrawlStatusSchema = z.enum(["crawling", "complete", "error"]);
 export type CrawlStatus = z.infer<typeof CrawlStatusSchema>;
 
 export const GenerateThemePromptParamsSchema = z.object({

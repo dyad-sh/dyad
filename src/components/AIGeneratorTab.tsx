@@ -3,16 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import {
-  Loader2,
-  Upload,
-  X,
-  Sparkles,
-  Lock,
-  Link,
-  CheckCircle2,
-  XCircle,
-} from "lucide-react";
+import { Loader2, Upload, X, Sparkles, Lock, Link } from "lucide-react";
 import {
   useGenerateThemePrompt,
   useGenerateThemeFromUrl,
@@ -26,7 +17,6 @@ import type {
   ThemeGenerationMode,
   ThemeGenerationModel,
   ThemeInputSource,
-  CrawlStatus,
 } from "@/ipc/types";
 
 // Image upload constants
@@ -80,7 +70,6 @@ export function AIGeneratorTab({
   // URL-based generation state
   const [inputSource, setInputSource] = useState<ThemeInputSource>("images");
   const [websiteUrl, setWebsiteUrl] = useState("");
-  const [crawlStatus, setCrawlStatus] = useState<CrawlStatus | null>(null);
 
   const generatePromptMutation = useGenerateThemePrompt();
   const generateFromUrlMutation = useGenerateThemeFromUrl();
@@ -136,7 +125,6 @@ export function AIGeneratorTab({
       setAiSelectedModel(DEFAULT_THEME_GENERATION_MODEL);
       setInputSource("images");
       setWebsiteUrl("");
-      setCrawlStatus(null);
     }
   }, [isDialogOpen, cleanupImages]);
 
@@ -285,13 +273,6 @@ export function AIGeneratorTab({
       }
 
       try {
-        setCrawlStatus("crawling");
-        // Use a timer to transition from "crawling" to "generating" status
-        // This provides better user feedback since the backend does both in one call
-        const statusTimer = setTimeout(() => {
-          setCrawlStatus("generating");
-        }, 3000); // Transition to "generating" after 3 seconds
-
         const result = await generateFromUrlMutation.mutateAsync({
           url: websiteUrl,
           keywords: aiKeywords,
@@ -299,12 +280,9 @@ export function AIGeneratorTab({
           model: aiSelectedModel,
         });
 
-        clearTimeout(statusTimer);
-        setCrawlStatus("complete");
         setAiGeneratedPrompt(result.prompt);
         toast.success("Theme prompt generated from website");
       } catch (error) {
-        setCrawlStatus("error");
         showError(
           `Failed to generate theme: ${error instanceof Error ? error.message : "Unknown error"}`,
         );
@@ -479,52 +457,6 @@ export function AIGeneratorTab({
           <p className="text-xs text-muted-foreground">
             Enter a website URL to extract its design system
           </p>
-
-          {/* Crawl Status Indicator */}
-          {crawlStatus && (
-            <div
-              className={`flex items-center gap-2 p-3 rounded-md ${
-                crawlStatus === "crawling" || crawlStatus === "generating"
-                  ? "bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800"
-                  : crawlStatus === "complete"
-                    ? "bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800"
-                    : "bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800"
-              }`}
-            >
-              {crawlStatus === "crawling" && (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" />
-                  <span className="text-sm text-blue-700 dark:text-blue-300">
-                    Crawling website...
-                  </span>
-                </>
-              )}
-              {crawlStatus === "generating" && (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" />
-                  <span className="text-sm text-blue-700 dark:text-blue-300">
-                    Generating theme...
-                  </span>
-                </>
-              )}
-              {crawlStatus === "complete" && (
-                <>
-                  <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-                  <span className="text-sm text-green-700 dark:text-green-300">
-                    Theme generated successfully
-                  </span>
-                </>
-              )}
-              {crawlStatus === "error" && (
-                <>
-                  <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
-                  <span className="text-sm text-red-700 dark:text-red-300">
-                    Failed to generate theme
-                  </span>
-                </>
-              )}
-            </div>
-          )}
         </div>
       )}
 

@@ -38,11 +38,14 @@ function DropdownMenuContent({
   className,
   sideOffset = 4,
   align,
+  // Note: onCloseAutoFocus is accepted for Radix API compatibility but not supported by Base UI.
+  // Focus management behavior may differ from Radix UI.
   onCloseAutoFocus: _onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof MenuPrimitive.Popup> & {
   sideOffset?: number;
   align?: "start" | "center" | "end";
+  /** @deprecated Not supported in Base UI - accepted for Radix API compatibility only */
   onCloseAutoFocus?: (e: Event) => void;
 }) {
   return (

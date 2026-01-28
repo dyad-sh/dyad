@@ -108,11 +108,14 @@ function SelectContent({
   children,
   position = "popper",
   align,
+  // Note: onCloseAutoFocus is accepted for Radix API compatibility but not supported by Base UI.
+  // Focus management behavior may differ from Radix UI.
   onCloseAutoFocus: _onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Popup> & {
   position?: "popper" | "item-aligned";
   align?: "start" | "center" | "end";
+  /** @deprecated Not supported in Base UI - accepted for Radix API compatibility only */
   onCloseAutoFocus?: (e: Event) => void;
 }) {
   return (

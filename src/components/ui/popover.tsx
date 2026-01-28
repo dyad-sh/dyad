@@ -32,6 +32,8 @@ function PopoverContent({
   align = "center",
   side,
   sideOffset = 4,
+  // Note: These props are accepted for Radix API compatibility but not supported by Base UI.
+  // Focus management and outside interaction behavior may differ from Radix UI.
   onOpenAutoFocus: _onOpenAutoFocus,
   onInteractOutside: _onInteractOutside,
   ...props
@@ -39,8 +41,9 @@ function PopoverContent({
   align?: "start" | "center" | "end";
   side?: "top" | "right" | "bottom" | "left";
   sideOffset?: number;
-  // These props are accepted for Radix compatibility but not implemented in Base UI
+  /** @deprecated Not supported in Base UI - accepted for Radix API compatibility only */
   onOpenAutoFocus?: (event: Event) => void;
+  /** @deprecated Not supported in Base UI - accepted for Radix API compatibility only */
   onInteractOutside?: (event: Event) => void;
 }) {
   return (

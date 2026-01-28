@@ -10,9 +10,9 @@ vi.mock("node:fs", async () => {
     ...actual,
     default: {
       existsSync: vi.fn(),
-      writeFileSync: vi.fn(),
       promises: {
         readFile: vi.fn(),
+        writeFile: vi.fn(),
       },
     },
   };
@@ -158,7 +158,7 @@ describe("searchReplaceStrictTool", () => {
         ),
       ).resolves.toContain("Successfully");
 
-      expect(fs.writeFileSync).toHaveBeenCalled();
+      expect(fs.promises.writeFile).toHaveBeenCalled();
     });
 
     it("errors when file does not exist", async () => {
@@ -200,7 +200,7 @@ describe("searchReplaceStrictTool", () => {
       );
 
       expect(result).toContain("Successfully");
-      expect(fs.writeFileSync).toHaveBeenCalledWith(
+      expect(fs.promises.writeFile).toHaveBeenCalledWith(
         "/test/app/test.ts",
         expect.stringContaining("const a = 10"),
       );

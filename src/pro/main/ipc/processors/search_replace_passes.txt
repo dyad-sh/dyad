@@ -1,0 +1,1045 @@
+--- Test case name: simple single line replacement ---
+<original_file>
+hello world
+goodbye world
+</original_file>
+<<<<<<< SEARCH
+hello world
+=======
+hi world
+>>>>>>> REPLACE
+<output_file>
+hi world
+goodbye world
+</output_file>
+
+--- Test case name: multi-line search and replace ---
+<original_file>
+function calculate_total(items):
+    total = 0
+    for item in items:
+        total += item
+    return total
+</original_file>
+<<<<<<< SEARCH
+function calculate_total(items):
+    total = 0
+=======
+function calculate_sum(items):
+    total = 0
+>>>>>>> REPLACE
+<output_file>
+function calculate_sum(items):
+    total = 0
+    for item in items:
+        total += item
+    return total
+</output_file>
+
+--- Test case name: delete lines (empty replace) ---
+<original_file>
+line one
+line two
+line three
+</original_file>
+<<<<<<< SEARCH
+line two
+=======
+>>>>>>> REPLACE
+<output_file>
+line one
+line three
+</output_file>
+
+--- Test case name: preserve indentation ---
+<original_file>
+function test() {
+  if (x) {
+    doThing();
+  }
+}
+</original_file>
+<<<<<<< SEARCH
+  if (x) {
+    doThing();
+=======
+  if (x) {
+    doOther();
+>>>>>>> REPLACE
+<output_file>
+function test() {
+  if (x) {
+    doOther();
+  }
+}
+</output_file>
+
+--- Test case name: multiple blocks applied in sequence ---
+<original_file>
+1
+2
+3
+4
+5
+</original_file>
+<<<<<<< SEARCH
+1
+=======
+ONE
+>>>>>>> REPLACE
+
+<<<<<<< SEARCH
+4
+=======
+FOUR
+>>>>>>> REPLACE
+<output_file>
+ONE
+2
+3
+FOUR
+5
+</output_file>
+
+--- Test case name: trailing whitespace ignored ---
+<original_file>
+hello world   
+goodbye
+</original_file>
+<<<<<<< SEARCH
+hello world
+=======
+hi world
+>>>>>>> REPLACE
+<output_file>
+hi world
+goodbye
+</output_file>
+
+--- Test case name: leading and trailing whitespace ignored ---
+<original_file>
+  hello world  
+goodbye
+</original_file>
+<<<<<<< SEARCH
+hello world
+=======
+hi world
+>>>>>>> REPLACE
+<output_file>
+  hi world
+goodbye
+</output_file>
+
+--- Test case name: unicode smart quotes normalized ---
+<original_file>
+console.log("hello")
+other line
+</original_file>
+<<<<<<< SEARCH
+console.log("hello")
+=======
+console.log("goodbye")
+>>>>>>> REPLACE
+<output_file>
+console.log("goodbye")
+other line
+</output_file>
+
+--- Test case name: preserves CRLF line endings ---
+<original_file>
+a
+b
+c
+</original_file>
+<<<<<<< SEARCH
+b
+=======
+B
+>>>>>>> REPLACE
+<output_file>
+a
+B
+c
+</output_file>
+
+--- Test case name: escaped markers in search content ---
+<original_file>
+begin
+>>>>>>> REPLACE
+end
+</original_file>
+<<<<<<< SEARCH
+\>>>>>>> REPLACE
+=======
+LITERAL MARKER
+>>>>>>> REPLACE
+<output_file>
+begin
+LITERAL MARKER
+end
+</output_file>
+
+--- Test case name: search and replace identical is no-op ---
+<original_file>
+x
+middle
+z
+</original_file>
+<<<<<<< SEARCH
+middle
+=======
+middle
+>>>>>>> REPLACE
+<output_file>
+x
+middle
+z
+</output_file>
+
+--- Test case name: tabs vs spaces whitespace normalization ---
+<original_file>
+	if (ready) {
+		start();
+	}
+</original_file>
+<<<<<<< SEARCH
+  if (ready) {
+    start();
+  }
+=======
+  if (ready) {
+    launch();
+  }
+>>>>>>> REPLACE
+<output_file>
+	if (ready) {
+	  launch();
+	}
+</output_file>
+
+--- Test case name: extra leading newline in search trimmed ---
+<original_file>
+function test() {
+  return 1;
+}
+</original_file>
+<<<<<<< SEARCH
+
+  return 1;
+=======
+  return 2;
+>>>>>>> REPLACE
+<output_file>
+function test() {
+  return 2;
+}
+</output_file>
+
+--- Test case name: extra trailing newline in search trimmed ---
+<original_file>
+function test() {
+  return 1;
+}
+</original_file>
+<<<<<<< SEARCH
+  return 1;
+
+=======
+  return 2;
+>>>>>>> REPLACE
+<output_file>
+function test() {
+  return 2;
+}
+</output_file>
+
+--- Test case name: both leading and trailing empty lines in search trimmed ---
+<original_file>
+function test() {
+  return 1;
+}
+</original_file>
+<<<<<<< SEARCH
+
+
+  return 1;
+
+
+=======
+  return 2;
+>>>>>>> REPLACE
+<output_file>
+function test() {
+  return 2;
+}
+</output_file>
+
+--- Test case name: replace at beginning of file ---
+<original_file>
+first line
+second line
+third line
+</original_file>
+<<<<<<< SEARCH
+first line
+=======
+FIRST LINE
+>>>>>>> REPLACE
+<output_file>
+FIRST LINE
+second line
+third line
+</output_file>
+
+--- Test case name: replace at end of file ---
+<original_file>
+first line
+second line
+last line
+</original_file>
+<<<<<<< SEARCH
+last line
+=======
+LAST LINE
+>>>>>>> REPLACE
+<output_file>
+first line
+second line
+LAST LINE
+</output_file>
+
+--- Test case name: replace entire file content ---
+<original_file>
+old content
+</original_file>
+<<<<<<< SEARCH
+old content
+=======
+completely new content
+>>>>>>> REPLACE
+<output_file>
+completely new content
+</output_file>
+
+--- Test case name: multi-line to single-line replacement ---
+<original_file>
+before
+line one
+line two
+line three
+after
+</original_file>
+<<<<<<< SEARCH
+line one
+line two
+line three
+=======
+single line
+>>>>>>> REPLACE
+<output_file>
+before
+single line
+after
+</output_file>
+
+--- Test case name: single-line to multi-line replacement ---
+<original_file>
+before
+single line
+after
+</original_file>
+<<<<<<< SEARCH
+single line
+=======
+expanded line one
+expanded line two
+expanded line three
+>>>>>>> REPLACE
+<output_file>
+before
+expanded line one
+expanded line two
+expanded line three
+after
+</output_file>
+
+--- Test case name: deeply nested code indentation ---
+<original_file>
+class MyClass {
+  constructor() {
+    if (condition) {
+      while (true) {
+        doSomething();
+      }
+    }
+  }
+}
+</original_file>
+<<<<<<< SEARCH
+      while (true) {
+        doSomething();
+      }
+=======
+      for (let i = 0; i < 10; i++) {
+        doSomethingElse(i);
+      }
+>>>>>>> REPLACE
+<output_file>
+class MyClass {
+  constructor() {
+    if (condition) {
+      for (let i = 0; i < 10; i++) {
+        doSomethingElse(i);
+      }
+    }
+  }
+}
+</output_file>
+
+--- Test case name: search without indentation matches deeply indented code ---
+<original_file>
+class Outer {
+  constructor() {
+    if (condition) {
+      while (true) {
+        for (let i = 0; i < 10; i++) {
+          doSomething(i);
+        }
+      }
+    }
+  }
+}
+</original_file>
+<<<<<<< SEARCH
+for (let i = 0; i < 10; i++) {
+  doSomething(i);
+}
+=======
+for (let i = 0; i < 10; i++) {
+  doSomethingElse(i);
+  logProgress(i);
+}
+>>>>>>> REPLACE
+<output_file>
+class Outer {
+  constructor() {
+    if (condition) {
+      while (true) {
+        for (let i = 0; i < 10; i++) {
+          doSomethingElse(i);
+          logProgress(i);
+        }
+      }
+    }
+  }
+}
+</output_file>
+
+--- Test case name: search with extra indentation normalized to original ---
+<original_file>
+function test() {
+  if (x) {
+    doThing();
+  }
+}
+</original_file>
+<<<<<<< SEARCH
+        if (x) {
+          doThing();
+        }
+=======
+        if (x) {
+          doOther();
+          doMore();
+        }
+>>>>>>> REPLACE
+<output_file>
+function test() {
+  if (x) {
+    doOther();
+    doMore();
+  }
+}
+</output_file>
+
+--- Test case name: regex special characters treated as literal ---
+<original_file>
+const pattern = /.*[](){}^$/;
+const result = text.match(pattern);
+</original_file>
+<<<<<<< SEARCH
+const pattern = /.*[](){}^$/;
+=======
+const pattern = /[a-z]+/;
+>>>>>>> REPLACE
+<output_file>
+const pattern = /[a-z]+/;
+const result = text.match(pattern);
+</output_file>
+
+--- Test case name: code with brackets parentheses braces ---
+<original_file>
+function foo(a, b) {
+  return { x: [1, 2, 3], y: (a + b) };
+}
+</original_file>
+<<<<<<< SEARCH
+  return { x: [1, 2, 3], y: (a + b) };
+=======
+  return { x: [4, 5, 6], y: (a * b) };
+>>>>>>> REPLACE
+<output_file>
+function foo(a, b) {
+  return { x: [4, 5, 6], y: (a * b) };
+}
+</output_file>
+
+--- Test case name: string literals with various quotes ---
+<original_file>
+const single = 'hello';
+const double = "world";
+const template = `foo ${bar}`;
+</original_file>
+<<<<<<< SEARCH
+const single = 'hello';
+const double = "world";
+=======
+const single = 'goodbye';
+const double = "universe";
+>>>>>>> REPLACE
+<output_file>
+const single = 'goodbye';
+const double = "universe";
+const template = `foo ${bar}`;
+</output_file>
+
+--- Test case name: em-dash to regular dash normalization ---
+<original_file>
+const range = 10—20;
+</original_file>
+<<<<<<< SEARCH
+const range = 10-20;
+=======
+const range = 5-15;
+>>>>>>> REPLACE
+<output_file>
+const range = 5-15;
+</output_file>
+
+--- Test case name: ellipsis character normalization ---
+<original_file>
+console.log("Loading…");
+</original_file>
+<<<<<<< SEARCH
+console.log("Loading...");
+=======
+console.log("Done!");
+>>>>>>> REPLACE
+<output_file>
+console.log("Done!");
+</output_file>
+
+--- Test case name: non-breaking space normalization ---
+<original_file>
+const value = 100 units;
+</original_file>
+<<<<<<< SEARCH
+const value = 100 units;
+=======
+const value = 200 units;
+>>>>>>> REPLACE
+<output_file>
+const value = 200 units;
+</output_file>
+
+--- Test case name: very long line replacement ---
+<original_file>
+const longString = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+</original_file>
+<<<<<<< SEARCH
+const longString = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+=======
+const longString = "short";
+>>>>>>> REPLACE
+<output_file>
+const longString = "short";
+</output_file>
+
+--- Test case name: file with single line no trailing newline ---
+<original_file>
+single line content</original_file>
+<<<<<<< SEARCH
+single line content
+=======
+replaced content
+>>>>>>> REPLACE
+<output_file>
+replaced content</output_file>
+
+--- Test case name: replacement adds content to empty lines area ---
+<original_file>
+header
+
+footer
+</original_file>
+<<<<<<< SEARCH
+header
+=======
+header
+new middle content
+>>>>>>> REPLACE
+<output_file>
+header
+new middle content
+
+footer
+</output_file>
+
+--- Test case name: multiple sequential blocks non-overlapping ---
+<original_file>
+aaa
+bbb
+ccc
+ddd
+eee
+</original_file>
+<<<<<<< SEARCH
+aaa
+=======
+AAA
+>>>>>>> REPLACE
+
+<<<<<<< SEARCH
+ccc
+=======
+CCC
+>>>>>>> REPLACE
+
+<<<<<<< SEARCH
+eee
+=======
+EEE
+>>>>>>> REPLACE
+<output_file>
+AAA
+bbb
+CCC
+ddd
+EEE
+</output_file>
+
+--- Test case name: preserve blank lines in replacement ---
+<original_file>
+function foo() {
+  // old comment
+  return 1;
+}
+</original_file>
+<<<<<<< SEARCH
+  // old comment
+  return 1;
+=======
+  // new comment
+
+  return 2;
+>>>>>>> REPLACE
+<output_file>
+function foo() {
+  // new comment
+
+  return 2;
+}
+</output_file>
+
+--- Test case name: match with mixed indent styles in file ---
+<original_file>
+function mixed() {
+	tabIndent();
+  spaceIndent();
+}
+</original_file>
+<<<<<<< SEARCH
+  spaceIndent();
+=======
+  newSpaceIndent();
+>>>>>>> REPLACE
+<output_file>
+function mixed() {
+	tabIndent();
+  newSpaceIndent();
+}
+</output_file>
+
+--- Test case name: python style indentation ---
+<original_file>
+def greet(name):
+    if name:
+        print(f"Hello, {name}")
+    else:
+        print("Hello, stranger")
+</original_file>
+<<<<<<< SEARCH
+    if name:
+        print(f"Hello, {name}")
+    else:
+        print("Hello, stranger")
+=======
+    greeting = f"Hello, {name}" if name else "Hello, stranger"
+    print(greeting)
+>>>>>>> REPLACE
+<output_file>
+def greet(name):
+    greeting = f"Hello, {name}" if name else "Hello, stranger"
+    print(greeting)
+</output_file>
+
+--- Test case name: jsx component replacement ---
+<original_file>
+function App() {
+  return (
+    <div className="container">
+      <OldComponent prop="value" />
+    </div>
+  );
+}
+</original_file>
+<<<<<<< SEARCH
+      <OldComponent prop="value" />
+=======
+      <NewComponent prop="newValue" />
+>>>>>>> REPLACE
+<output_file>
+function App() {
+  return (
+    <div className="container">
+      <NewComponent prop="newValue" />
+    </div>
+  );
+}
+</output_file>
+
+--- Test case name: sql query replacement ---
+<original_file>
+SELECT id, name
+FROM users
+WHERE active = true
+ORDER BY name;
+</original_file>
+<<<<<<< SEARCH
+WHERE active = true
+=======
+WHERE active = true AND role = 'admin'
+>>>>>>> REPLACE
+<output_file>
+SELECT id, name
+FROM users
+WHERE active = true AND role = 'admin'
+ORDER BY name;
+</output_file>
+
+--- Test case name: json structure replacement ---
+<original_file>
+{
+  "name": "old-name",
+  "version": "1.0.0",
+  "description": "Old description"
+}
+</original_file>
+<<<<<<< SEARCH
+  "name": "old-name",
+=======
+  "name": "new-name",
+>>>>>>> REPLACE
+<output_file>
+{
+  "name": "new-name",
+  "version": "1.0.0",
+  "description": "Old description"
+}
+</output_file>
+
+--- Test case name: yaml indentation preservation ---
+<original_file>
+services:
+  web:
+    image: nginx
+    ports:
+      - "80:80"
+</original_file>
+<<<<<<< SEARCH
+    image: nginx
+=======
+    image: apache
+>>>>>>> REPLACE
+<output_file>
+services:
+  web:
+    image: apache
+    ports:
+      - "80:80"
+</output_file>
+
+--- Test case name: markdown code block replacement ---
+<original_file>
+# Example
+
+```javascript
+const old = true;
+```
+
+More text.
+</original_file>
+<<<<<<< SEARCH
+```javascript
+const old = true;
+```
+=======
+```typescript
+const updated: boolean = true;
+```
+>>>>>>> REPLACE
+<output_file>
+# Example
+
+```typescript
+const updated: boolean = true;
+```
+
+More text.
+</output_file>
+
+--- Test case name: single character search ---
+<original_file>
+a
+b
+c
+</original_file>
+<<<<<<< SEARCH
+b
+=======
+X
+>>>>>>> REPLACE
+<output_file>
+a
+X
+c
+</output_file>
+
+--- Test case name: emoji unicode characters ---
+<original_file>
+const status = "🚀 launching";
+console.log(status);
+</original_file>
+<<<<<<< SEARCH
+const status = "🚀 launching";
+=======
+const status = "✅ complete";
+>>>>>>> REPLACE
+<output_file>
+const status = "✅ complete";
+console.log(status);
+</output_file>
+
+--- Test case name: CJK unicode characters ---
+<original_file>
+const greeting = "你好世界";
+print(greeting);
+</original_file>
+<<<<<<< SEARCH
+const greeting = "你好世界";
+=======
+const greeting = "こんにちは";
+>>>>>>> REPLACE
+<output_file>
+const greeting = "こんにちは";
+print(greeting);
+</output_file>
+
+--- Test case name: URL strings in code ---
+<original_file>
+const apiUrl = "https://api.example.com/v1/users?id=123&format=json";
+fetch(apiUrl);
+</original_file>
+<<<<<<< SEARCH
+const apiUrl = "https://api.example.com/v1/users?id=123&format=json";
+=======
+const apiUrl = "https://api.example.com/v2/users?id=123&format=json";
+>>>>>>> REPLACE
+<output_file>
+const apiUrl = "https://api.example.com/v2/users?id=123&format=json";
+fetch(apiUrl);
+</output_file>
+
+--- Test case name: backslash escape sequences ---
+<original_file>
+const pattern = "line1\nline2\ttabbed";
+const path = "C:\\Users\\name";
+</original_file>
+<<<<<<< SEARCH
+const pattern = "line1\nline2\ttabbed";
+=======
+const pattern = "line1\n\nline2";
+>>>>>>> REPLACE
+<output_file>
+const pattern = "line1\n\nline2";
+const path = "C:\\Users\\name";
+</output_file>
+
+--- Test case name: windows paths with backslashes ---
+<original_file>
+const configPath = "C:\\Program Files\\App\\config.json";
+loadConfig(configPath);
+</original_file>
+<<<<<<< SEARCH
+const configPath = "C:\\Program Files\\App\\config.json";
+=======
+const configPath = "D:\\Data\\App\\config.json";
+>>>>>>> REPLACE
+<output_file>
+const configPath = "D:\\Data\\App\\config.json";
+loadConfig(configPath);
+</output_file>
+
+--- Test case name: HTML angle brackets ---
+<original_file>
+const template = "<div class=\"container\"><span>Hello</span></div>";
+render(template);
+</original_file>
+<<<<<<< SEARCH
+const template = "<div class=\"container\"><span>Hello</span></div>";
+=======
+const template = "<section class=\"wrapper\"><p>Hello</p></section>";
+>>>>>>> REPLACE
+<output_file>
+const template = "<section class=\"wrapper\"><p>Hello</p></section>";
+render(template);
+</output_file>
+
+--- Test case name: XML content ---
+<original_file>
+<?xml version="1.0"?>
+<root>
+  <item id="1">Value</item>
+</root>
+</original_file>
+<<<<<<< SEARCH
+  <item id="1">Value</item>
+=======
+  <item id="2">New Value</item>
+>>>>>>> REPLACE
+<output_file>
+<?xml version="1.0"?>
+<root>
+  <item id="2">New Value</item>
+</root>
+</output_file>
+
+--- Test case name: C style block comments ---
+<original_file>
+/* This is a comment
+   spanning multiple lines */
+int main() {
+  return 0;
+}
+</original_file>
+<<<<<<< SEARCH
+/* This is a comment
+   spanning multiple lines */
+=======
+/* Updated comment */
+>>>>>>> REPLACE
+<output_file>
+/* Updated comment */
+int main() {
+  return 0;
+}
+</output_file>
+
+--- Test case name: shell style comments ---
+<original_file>
+#!/bin/bash
+# This is a comment
+echo "Hello"
+# Another comment
+</original_file>
+<<<<<<< SEARCH
+# This is a comment
+=======
+# Updated comment
+>>>>>>> REPLACE
+<output_file>
+#!/bin/bash
+# Updated comment
+echo "Hello"
+# Another comment
+</output_file>
+
+--- Test case name: consecutive blank lines in middle of search ---
+<original_file>
+header
+
+content
+
+footer
+</original_file>
+<<<<<<< SEARCH
+header
+
+content
+=======
+HEADER
+
+CONTENT
+>>>>>>> REPLACE
+<output_file>
+HEADER
+
+CONTENT
+
+footer
+</output_file>
+
+--- Test case name: cascading edits second block targets first output ---
+<original_file>
+original
+</original_file>
+<<<<<<< SEARCH
+original
+=======
+intermediate
+>>>>>>> REPLACE
+
+<<<<<<< SEARCH
+intermediate
+=======
+final
+>>>>>>> REPLACE
+<output_file>
+final
+</output_file>
+
+--- Test case name: cascading edits three blocks ---
+<original_file>
+step1
+</original_file>
+<<<<<<< SEARCH
+step1
+=======
+step2
+>>>>>>> REPLACE
+
+<<<<<<< SEARCH
+step2
+=======
+step3
+>>>>>>> REPLACE
+
+<<<<<<< SEARCH
+step3
+=======
+step4
+>>>>>>> REPLACE
+<output_file>
+step4
+</output_file>

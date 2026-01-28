@@ -9,6 +9,8 @@
 - button:
   - img
 - img
+- text: Approved
+- img
 - text: claude-opus-4-5
 - img
 - text: less than a minute ago
@@ -22,7 +24,7 @@
 - img
 - text: Turbo Edit App.tsx
 - img
-- text: "src/App.tsx Summary: Update welcome message"
+- text: src/App.tsx
 - paragraph: Done! I've updated the title from 'Minimal imported app' to 'UPDATED imported app'. The change has been applied successfully.
 - button:
   - img

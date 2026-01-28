@@ -1,0 +1,4 @@
+=== src/App.tsx ===
+const App = () => <div>Updated via search_replace</div>;
+
+export default App;

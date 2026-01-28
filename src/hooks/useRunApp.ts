@@ -14,37 +14,42 @@ import { showInputRequest } from "@/lib/toast";
 
 const useRunAppLoadingAtom = atom(false);
 
-export function useRunApp() {
-  const [loading, setLoading] = useAtom(useRunAppLoadingAtom);
-  const [app, setApp] = useAtom(currentAppAtom);
+/**
+ * Hook to subscribe to app output events from the main process.
+ * IMPORTANT: This hook should only be called ONCE in the app (in layout.tsx)
+ * to avoid duplicate event subscriptions causing duplicate log entries.
+ */
+export function useAppOutputSubscription() {
   const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
   const [, setAppUrlObj] = useAtom(appUrlAtom);
   const setPreviewPanelKey = useSetAtom(previewPanelKeyAtom);
   const appId = useAtomValue(selectedAppIdAtom);
-  const setPreviewErrorMessage = useSetAtom(previewErrorMessageAtom);
 
-  const processProxyServerOutput = (output: AppOutput) => {
-    const matchesProxyServerStart = output.message.includes(
-      "[dyad-proxy-server]started=[",
-    );
-    if (matchesProxyServerStart) {
-      // Extract both proxy URL and original URL using regex
-      const proxyUrlMatch = output.message.match(
-        /\[dyad-proxy-server\]started=\[(.*?)\]/,
+  const processProxyServerOutput = useCallback(
+    (output: AppOutput) => {
+      const matchesProxyServerStart = output.message.includes(
+        "[dyad-proxy-server]started=[",
       );
-      const originalUrlMatch = output.message.match(/original=\[(.*?)\]/);
+      if (matchesProxyServerStart) {
+        // Extract both proxy URL and original URL using regex
+        const proxyUrlMatch = output.message.match(
+          /\[dyad-proxy-server\]started=\[(.*?)\]/,
+        );
+        const originalUrlMatch = output.message.match(/original=\[(.*?)\]/);
 
-      if (proxyUrlMatch && proxyUrlMatch[1]) {
-        const proxyUrl = proxyUrlMatch[1];
-        const originalUrl = originalUrlMatch && originalUrlMatch[1];
-        setAppUrlObj({
-          appUrl: proxyUrl,
-          appId: output.appId,
-          originalUrl: originalUrl!,
-        });
+        if (proxyUrlMatch && proxyUrlMatch[1]) {
+          const proxyUrl = proxyUrlMatch[1];
+          const originalUrl = originalUrlMatch && originalUrlMatch[1];
+          setAppUrlObj({
+            appUrl: proxyUrl,
+            appId: output.appId,
+            originalUrl: originalUrl!,
+          });
+        }
       }
-    }
-  };
+    },
+    [setAppUrlObj],
+  );
 
   const onHotModuleReload = useCallback(() => {
     setPreviewPanelKey((prevKey) => prevKey + 1);
@@ -93,7 +98,7 @@ export function useRunApp() {
       // Process proxy server output
       processProxyServerOutput(output);
     },
-    [setConsoleEntries],
+    [setConsoleEntries, processProxyServerOutput],
   );
 
   // Subscribe to app output events from main process
@@ -114,6 +119,16 @@ export function useRunApp() {
 
     return unsubscribe;
   }, [appId, processAppOutput, onHotModuleReload]);
+}
+
+export function useRunApp() {
+  const [loading, setLoading] = useAtom(useRunAppLoadingAtom);
+  const [app, setApp] = useAtom(currentAppAtom);
+  const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
+  const [, setAppUrlObj] = useAtom(appUrlAtom);
+  const setPreviewPanelKey = useSetAtom(previewPanelKeyAtom);
+  const appId = useAtomValue(selectedAppIdAtom);
+  const setPreviewErrorMessage = useSetAtom(previewErrorMessageAtom);
 
   const runApp = useCallback(async (appId: number) => {
     setLoading(true);

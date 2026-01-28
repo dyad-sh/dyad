@@ -1248,10 +1248,12 @@ export function registerAppHandlers() {
           logger.info(
             `Shared module ${filePath} modified, redeploying all Supabase functions`,
           );
+          const settings = readSettings();
           const deployErrors = await deployAllSupabaseFunctions({
             appPath,
             supabaseProjectId: app.supabaseProjectId,
             supabaseOrganizationSlug: app.supabaseOrganizationSlug ?? null,
+            skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
           });
           if (deployErrors.length > 0) {
             return {

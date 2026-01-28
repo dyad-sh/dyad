@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { DyadWrite } from "./DyadWrite";
 import { DyadRename } from "./DyadRename";
@@ -108,6 +109,7 @@ const customLink = ({
 export const VanillaMarkdownParser = ({ content }: { content: string }) => {
   return (
     <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
       components={{
         code: CodeHighlight,
         a: customLink,
@@ -166,6 +168,7 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
           {piece.type === "markdown"
             ? piece.content && (
                 <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
                   components={{
                     code: CodeHighlight,
                     a: customLink,

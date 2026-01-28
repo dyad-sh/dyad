@@ -44,7 +44,19 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    **IMPORTANT:** Do NOT stop after lint passes. You MUST continue to step 4.
 
-4. **If lint made changes, amend the last commit:**
+4. **Run tests:**
+
+   Run the test suite to ensure nothing is broken:
+
+   ```
+   npm test
+   ```
+
+   If any tests fail, fix them before proceeding. Do NOT skip failing tests.
+
+   **IMPORTANT:** Do NOT stop after tests pass. You MUST continue to step 5.
+
+5. **If lint made changes, amend the last commit:**
 
    If the lint checks made any changes, stage and amend them into the last commit:
 
@@ -53,9 +65,9 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
    git commit --amend --no-edit
    ```
 
-   **IMPORTANT:** Do NOT stop here. You MUST continue to step 5 to push.
+   **IMPORTANT:** Do NOT stop here. You MUST continue to step 6 to push.
 
-5. **Push the branch (REQUIRED):**
+6. **Push the branch (REQUIRED):**
 
    You MUST push the branch to GitHub. Do NOT skip this step or ask for confirmation.
 
@@ -71,7 +83,7 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    Note: `--force-with-lease` is used because the commit may have been amended. It's safer than `--force` as it will fail if someone else has pushed to the branch.
 
-6. **Create or update the PR (REQUIRED):**
+7. **Create or update the PR (REQUIRED):**
 
    **CRITICAL:** Do NOT tell the user to visit a URL to create a PR. You MUST create it automatically.
 
@@ -100,10 +112,11 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    Use the commit messages and changed files to write a good title and summary.
 
-7. **Summarize the results:**
+8. **Summarize the results:**
    - Report if a new feature branch was created (and its name)
    - Report any uncommitted changes that were committed in step 2
    - Report any files that were IGNORED and not committed (if any), explaining why they were skipped
    - Report any lint fixes that were applied
+   - Confirm tests passed
    - Confirm the branch has been pushed
    - **Include the PR URL** (either newly created or existing)

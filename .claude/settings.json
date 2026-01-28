@@ -50,6 +50,8 @@
       "Bash(npm update:*)",
       "Bash(npm ls:*)",
       "Bash(DEBUG=pw:browser npm run e2e:*)",
+      "Bash(PLAYWRIGHT_HTML_OPEN=never npm run e2e:*)",
+      "Bash(DEBUG=pw:browser PLAYWRIGHT_HTML_OPEN=never npm run e2e:*)",
       "Bash(npx playwright show-trace:*)",
 
       "Bash(git:*)",

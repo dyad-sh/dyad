@@ -64,6 +64,17 @@ export function SupabaseIntegration() {
     }
   };
 
+  const handleSkipPruneSettingChange = async (enabled: boolean) => {
+    try {
+      await updateSettings({
+        skipPruneEdgeFunctions: enabled,
+      });
+      showSuccess("Setting updated");
+    } catch (err: any) {
+      showError(err.message || "Failed to update setting");
+    }
+  };
+
   if (!isConnected) {
     return null;
   }
@@ -142,6 +153,29 @@ export function SupabaseIntegration() {
               This helps you track database changes in version control, though
               these files aren't used for chat context, which uses the live
               schema.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <div className="flex items-center space-x-3">
+          <Switch
+            id="skip-prune-edge-functions"
+            checked={!!settings?.skipPruneEdgeFunctions}
+            onCheckedChange={handleSkipPruneSettingChange}
+          />
+          <div className="space-y-1">
+            <Label
+              htmlFor="skip-prune-edge-functions"
+              className="text-sm font-medium"
+            >
+              Keep extra Supabase edge functions
+            </Label>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              When disabled, edge functions deployed to Supabase but not present
+              in your codebase will be automatically deleted during sync
+              operations (e.g., after reverting or modifying shared modules).
             </p>
           </div>
         </div>

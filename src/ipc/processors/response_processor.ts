@@ -487,11 +487,13 @@ export async function processFullResponseActions(
         logger.info(
           "Shared modules changed, redeploying all Supabase functions",
         );
+        const settings = readSettings();
         const deployErrors = await deployAllSupabaseFunctions({
           appPath,
           supabaseProjectId: chatWithApp.app.supabaseProjectId,
           supabaseOrganizationSlug:
             chatWithApp.app.supabaseOrganizationSlug ?? null,
+          skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
         });
         if (deployErrors.length > 0) {
           for (const err of deployErrors) {

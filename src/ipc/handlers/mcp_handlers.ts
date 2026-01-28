@@ -32,7 +32,16 @@ export function registerMcpHandlers() {
   });
 
   createTypedHandler(mcpContracts.createServer, async (_, params) => {
-    const { name, transport, command, args, envJson, url, enabled } = params;
+    const {
+      name,
+      transport,
+      command,
+      args,
+      envJson,
+      headersJson,
+      url,
+      enabled,
+    } = params;
     // Handle args: can be string (JSON), array, or null/undefined
     const parsedArgs = args
       ? typeof args === "string"
@@ -45,6 +54,12 @@ export function registerMcpHandlers() {
         ? (JSON.parse(envJson) as Record<string, string>)
         : envJson
       : null;
+    // Handle headersJson: can be string (JSON), object, or null/undefined
+    const parsedHeadersJson = headersJson
+      ? typeof headersJson === "string"
+        ? (JSON.parse(headersJson) as Record<string, string>)
+        : headersJson
+      : null;
     const result = await db
       .insert(mcpServers)
       .values({
@@ -53,6 +68,7 @@ export function registerMcpHandlers() {
         command: command || null,
         args: parsedArgs,
         envJson: parsedEnvJson,
+        headersJson: parsedHeadersJson,
         url: url || null,
         enabled: !!enabled,
       })
@@ -77,6 +93,12 @@ export function registerMcpHandlers() {
         ? typeof params.envJson === "string"
           ? JSON.parse(params.envJson)
           : params.envJson
+        : null;
+    if (params.headersJson !== undefined)
+      update.headersJson = params.headersJson
+        ? typeof params.headersJson === "string"
+          ? JSON.parse(params.headersJson)
+          : params.headersJson
         : null;
     if (params.url !== undefined) update.url = params.url;
     if (params.enabled !== undefined) update.enabled = !!params.enabled;

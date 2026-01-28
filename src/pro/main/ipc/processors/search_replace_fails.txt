@@ -1,0 +1,221 @@
+--- Test case name: empty search block not allowed ---
+<original_file>
+a
+b
+</original_file>
+<<<<<<< SEARCH
+=======
+REPLACEMENT
+>>>>>>> REPLACE
+<error_pattern>
+empty SEARCH block is not allowed
+</error_pattern>
+
+--- Test case name: search block does not match any content ---
+<original_file>
+foo
+bar
+baz
+</original_file>
+<<<<<<< SEARCH
+NOT IN FILE
+=======
+STILL NOT
+>>>>>>> REPLACE
+<error_pattern>
+Search block did not match any content
+</error_pattern>
+
+--- Test case name: ambiguous match multiple locations ---
+<original_file>
+foo
+bar
+baz
+bar
+qux
+</original_file>
+<<<<<<< SEARCH
+bar
+=======
+BAR
+>>>>>>> REPLACE
+<error_pattern>
+ambiguous|multiple
+</error_pattern>
+
+--- Test case name: ambiguous match with whitespace normalization ---
+<original_file>
+	if (ready) {
+		start();   
+	}
+  if (ready) {
+    start();   
+  }
+</original_file>
+<<<<<<< SEARCH
+if (ready) {
+  start();
+}
+=======
+if (ready) {
+  launch();
+}
+>>>>>>> REPLACE
+<error_pattern>
+ambiguous
+</error_pattern>
+
+--- Test case name: invalid diff format missing markers ---
+<original_file>
+some content
+</original_file>
+this is not a valid diff format
+<error_pattern>
+Invalid diff format.*missing required sections
+</error_pattern>
+
+--- Test case name: case mismatch is case sensitive ---
+<original_file>
+Hello World
+goodbye
+</original_file>
+<<<<<<< SEARCH
+hello world
+=======
+hi world
+>>>>>>> REPLACE
+<error_pattern>
+Search block did not match any content
+</error_pattern>
+
+--- Test case name: partial line does not match ---
+<original_file>
+the quick brown fox jumps
+over the lazy dog
+</original_file>
+<<<<<<< SEARCH
+brown fox
+=======
+red fox
+>>>>>>> REPLACE
+<error_pattern>
+Search block did not match any content
+</error_pattern>
+
+--- Test case name: search with extra context that does not exist ---
+<original_file>
+line one
+line two
+line three
+</original_file>
+<<<<<<< SEARCH
+line zero
+line one
+line two
+=======
+replaced
+>>>>>>> REPLACE
+<error_pattern>
+Search block did not match any content
+</error_pattern>
+
+--- Test case name: three or more identical matches ---
+<original_file>
+item
+---
+item
+---
+item
+</original_file>
+<<<<<<< SEARCH
+item
+=======
+ITEM
+>>>>>>> REPLACE
+<error_pattern>
+ambiguous|multiple
+</error_pattern>
+
+--- Test case name: only search marker no replace ---
+<original_file>
+content here
+</original_file>
+<<<<<<< SEARCH
+content here
+<error_pattern>
+Invalid diff format.*missing required sections
+</error_pattern>
+
+--- Test case name: only separator no markers ---
+<original_file>
+content here
+</original_file>
+=======
+replacement
+<error_pattern>
+Invalid diff format.*missing required sections
+</error_pattern>
+
+--- Test case name: search content is just empty lines ---
+<original_file>
+line one
+
+line three
+</original_file>
+<<<<<<< SEARCH
+
+
+=======
+replaced
+>>>>>>> REPLACE
+<error_pattern>
+empty SEARCH block is not allowed
+</error_pattern>
+
+--- Test case name: multiline search partial match fails ---
+<original_file>
+alpha
+beta
+gamma
+delta
+</original_file>
+<<<<<<< SEARCH
+beta
+gamma
+epsilon
+=======
+replaced
+>>>>>>> REPLACE
+<error_pattern>
+Search block did not match any content
+</error_pattern>
+
+--- Test case name: search matches but wrong line count ---
+<original_file>
+function foo() {
+  return 1;
+}
+</original_file>
+<<<<<<< SEARCH
+function foo() {
+  return 1;
+}
+extra line that does not exist
+=======
+replaced
+>>>>>>> REPLACE
+<error_pattern>
+Search block did not match any content
+</error_pattern>
+
+--- Test case name: empty original file cannot match search ---
+<original_file>
+</original_file>
+<<<<<<< SEARCH
+some content
+=======
+replacement
+>>>>>>> REPLACE
+<error_pattern>
+Search block did not match any content
+</error_pattern>

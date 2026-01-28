@@ -133,6 +133,12 @@ If you would need to mock a lot of things to unit test a feature, prefer to writ
 
 Do NOT write lots of e2e test cases for one feature. Each e2e test case adds a significant amount of overhead, so instead prefer just one or two E2E test cases that each have broad coverage of the feature in question.
 
+**IMPORTANT: You MUST run `npm run build` before running E2E tests.** E2E tests run against the built application binary, not the source code. If you make any changes to application code (anything outside of `e2e-tests/`), you MUST re-run `npm run build` before running E2E tests, otherwise you'll be testing the old version of the application.
+
+```sh
+npm run build
+```
+
 To run e2e tests without opening the HTML report (which blocks the terminal), use:
 
 ```sh

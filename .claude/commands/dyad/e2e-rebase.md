@@ -12,11 +12,13 @@ Rebase E2E test snapshots based on failed tests from the PR comments.
 
 3. If no failed tests are found in the PR comments, inform the user and stop.
 
-4. Run the pre-e2e setup:
+4. **Build the application binary:**
 
    ```
-   npm run pre:e2e
+   npm run build
    ```
+
+   **IMPORTANT:** E2E tests run against the built binary. If any application code (anything outside of `e2e-tests/`) has changed, you MUST run this build step before running E2E tests, otherwise you'll be testing the old version.
 
 5. For each failed test file, run the e2e test with snapshot update:
 

@@ -3,6 +3,7 @@ import { readSettings } from "../../main/settings";
 import {
   gitMergeAbort,
   gitFetch,
+  gitPull,
   gitCreateBranch,
   gitDeleteBranch,
   gitCheckout,
@@ -348,10 +349,59 @@ async function handleCommitChanges(
   });
 }
 
+// --- GitHub Pull Handler ---
+async function handlePullFromGithub(
+  event: IpcMainInvokeEvent,
+  { appId }: GitBranchAppIdParams,
+): Promise<void> {
+  const settings = readSettings();
+  const accessToken = settings.githubAccessToken?.value;
+  if (!accessToken) {
+    throw new Error("Not authenticated with GitHub.");
+  }
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app || !app.githubOrg || !app.githubRepo) {
+    throw new Error("App is not linked to a GitHub repo.");
+  }
+  const appPath = getDyadAppPath(app.path);
+  const currentBranch = await gitCurrentBranch({ path: appPath });
+
+  try {
+    await gitPull({
+      path: appPath,
+      remote: "origin",
+      branch: currentBranch || "main",
+      accessToken,
+    });
+  } catch (pullError: any) {
+    // Check if it's a missing remote branch error
+    const errorMessage = pullError?.message || "";
+    const isMissingRemoteBranch =
+      pullError?.code === "MissingRefError" ||
+      (pullError?.code === "NotFoundError" &&
+        (errorMessage.includes("remote ref") ||
+          errorMessage.includes("remote branch"))) ||
+      errorMessage.includes("couldn't find remote ref") ||
+      errorMessage.includes("Cannot read properties of null");
+
+    // If the remote branch doesn't exist yet, we can ignore this
+    // (e.g., user hasn't pushed the branch yet)
+    if (!isMissingRemoteBranch) {
+      throw pullError;
+    } else {
+      logger.debug(
+        "[GitHub Handler] Remote branch missing during pull, continuing",
+        errorMessage,
+      );
+    }
+  }
+}
+
 // --- Registration ---
 export function registerGithubBranchHandlers() {
   createTypedHandler(githubContracts.mergeAbort, handleAbortMerge);
   createTypedHandler(githubContracts.fetch, handleFetchFromGithub);
+  createTypedHandler(githubContracts.pull, handlePullFromGithub);
   createTypedHandler(githubContracts.createBranch, handleCreateBranch);
   createTypedHandler(githubContracts.deleteBranch, handleDeleteBranch);
   createTypedHandler(githubContracts.switchBranch, handleSwitchBranch);

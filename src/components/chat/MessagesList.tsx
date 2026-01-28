@@ -14,7 +14,7 @@ import { useVersions } from "@/hooks/useVersions";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { showError, showWarning } from "@/lib/toast";
 import { ipc } from "@/ipc/types";
-import { chatMessagesByIdAtom, type QueuedMessage } from "@/atoms/chatAtoms";
+import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useSettings } from "@/hooks/useSettings";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
@@ -38,7 +38,6 @@ interface FooterContext {
   messages: Message[];
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
   isStreaming: boolean;
-  error: string | null;
   tokenCountResult: ReturnType<typeof useCountTokens>["result"];
   isUndoLoading: boolean;
   isRetryLoading: boolean;
@@ -53,8 +52,6 @@ interface FooterContext {
   settings: ReturnType<typeof useSettings>["settings"];
   userBudget: ReturnType<typeof useUserBudgetInfo>["userBudget"];
   renderSetupBanner: () => React.ReactNode;
-  queuedMessage: QueuedMessage | null;
-  clearQueuedMessage: () => void;
 }
 
 // Footer component for Virtuoso - receives context via props
@@ -65,7 +62,6 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     messages,
     messagesEndRef,
     isStreaming,
-    error,
     tokenCountResult,
     isUndoLoading,
     isRetryLoading,
@@ -80,8 +76,6 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     settings,
     userBudget,
     renderSetupBanner,
-    queuedMessage,
-    clearQueuedMessage,
   } = context;
 
   return (
@@ -248,31 +242,6 @@ function FooterComponent({ context }: { context?: FooterContext }) {
             seed={messages.length * (appId ?? 1) * (selectedChatId ?? 1)}
           />
         )}
-      {/* Show queued message with pending style */}
-      {queuedMessage && (
-        <div className="px-4">
-          <div className="max-w-3xl mx-auto relative my-2">
-            <div className="opacity-60 border border-dashed border-border rounded-lg p-4 bg-muted/30">
-              <div className="text-sm text-muted-foreground mb-2">
-                <span>
-                  {error
-                    ? "Queued - will send after a successful response"
-                    : "Queued - will send after current response"}
-                </span>
-              </div>
-              <div className="text-sm whitespace-pre-wrap break-words pb-6">
-                {queuedMessage.prompt}
-              </div>
-            </div>
-            <button
-              onClick={clearQueuedMessage}
-              className="absolute bottom-2 right-2 px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors cursor-pointer"
-            >
-              Clear
-            </button>
-          </div>
-        </div>
-      )}
       <div ref={messagesEndRef} />
       {renderSetupBanner()}
     </>
@@ -292,13 +261,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
   ) {
     const appId = useAtomValue(selectedAppIdAtom);
     const { versions, revertVersion } = useVersions(appId);
-    const {
-      streamMessage,
-      isStreaming,
-      error,
-      queuedMessage,
-      clearQueuedMessage,
-    } = useStreamChat();
+    const { streamMessage, isStreaming } = useStreamChat();
     const { isAnyProviderSetup, isProviderSetup } = useLanguageModelProviders();
     const { settings } = useSettings();
     const setMessagesById = useSetAtom(chatMessagesByIdAtom);
@@ -372,7 +335,6 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         messages,
         messagesEndRef,
         isStreaming,
-        error,
         tokenCountResult,
         isUndoLoading,
         isRetryLoading,
@@ -387,14 +349,11 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         settings,
         userBudget,
         renderSetupBanner,
-        queuedMessage,
-        clearQueuedMessage,
       }),
       [
         messages,
         messagesEndRef,
         isStreaming,
-        error,
         tokenCountResult,
         isUndoLoading,
         isRetryLoading,
@@ -409,8 +368,6 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         settings,
         userBudget,
         renderSetupBanner,
-        queuedMessage,
-        clearQueuedMessage,
       ],
     );
 

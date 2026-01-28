@@ -40,7 +40,7 @@ export function DefaultChatModeSelector() {
       case "agent":
         return "Build (MCP)";
       case "local-agent":
-        return "Agent";
+        return isProEnabled ? "Agent" : "Basic Agent";
       case "ask":
       default:
         throw new Error(`Unknown chat mode: ${mode}`);

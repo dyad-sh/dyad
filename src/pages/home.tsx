@@ -156,7 +156,7 @@ export default function HomePage() {
         updateSettings({ selectedChatMode: effectiveDefaultMode });
       }
     }
-  }, [settings, updateSettings, isQuotaExceeded, isQuotaLoading]);
+  }, [settings, updateSettings, isQuotaExceeded, isQuotaLoading, envVars]);
 
   const handleSubmit = async (options?: HomeSubmitOptions) => {
     const attachments = options?.attachments || [];

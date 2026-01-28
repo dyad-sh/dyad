@@ -87,9 +87,11 @@ export function registerFreeAgentQuotaHandlers() {
         const secondsAgo = hoursAgo * 60 * 60;
         const newTimestamp = Math.floor(Date.now() / 1000) - secondsAgo;
 
-        db.$client.exec(
-          `UPDATE messages SET created_at = ${newTimestamp} WHERE using_free_agent_mode_quota = 1`,
-        );
+        db.$client
+          .prepare(
+            `UPDATE messages SET created_at = ? WHERE using_free_agent_mode_quota = 1`,
+          )
+          .run(newTimestamp);
 
         logger.log(
           `[TEST] Simulated ${hoursAgo} hours elapsed for quota messages`,

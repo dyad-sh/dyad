@@ -67,8 +67,17 @@
 
   // --- Listener for Back/Forward Navigation (popstate event) ---
   window.addEventListener("popstate", () => {
+    const oldUrl = previousUrl;
     const currentUrl = window.location.href;
     previousUrl = currentUrl;
+    // Notify parent about the navigation change (for back/forward button support)
+    window.parent.postMessage(
+      {
+        type: "replaceState",
+        payload: { oldUrl: oldUrl, newUrl: currentUrl },
+      },
+      PARENT_TARGET_ORIGIN,
+    );
   });
 
   // --- Listener for Commands from Parent ---
@@ -80,9 +89,38 @@
     )
       return;
     if (event.data.type === "navigate") {
-      const direction = event.data.payload?.direction;
-      if (direction === "forward") history.forward();
-      else if (direction === "backward") history.back();
+      const { direction, url } = event.data.payload || {};
+      // If a URL is provided, use location.replace for navigation
+      // (browser history.back()/forward() doesn't work reliably in Electron iframes)
+      if (url && typeof url === "string") {
+        try {
+          // Validate URL and ensure it's same-origin to prevent javascript:/data: injection
+          const parsedUrl = new URL(url, window.location.href);
+          if (
+            parsedUrl.protocol === "http:" ||
+            parsedUrl.protocol === "https:"
+          ) {
+            // Use location.replace to avoid adding to history
+            window.location.replace(parsedUrl.href);
+          } else {
+            console.warn(
+              "[dyad-shim] Blocked navigation to unsafe URL protocol:",
+              parsedUrl.protocol,
+            );
+          }
+        } catch (e) {
+          console.error("[dyad-shim] Invalid navigation URL:", e);
+        }
+      } else if (url) {
+        console.warn("[dyad-shim] Invalid URL type:", typeof url);
+      } else {
+        // Fallback to history API if no URL provided
+        if (direction === "forward") {
+          window.history.go(1);
+        } else if (direction === "backward") {
+          window.history.go(-1);
+        }
+      }
     }
   });
 

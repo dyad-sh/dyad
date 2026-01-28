@@ -105,39 +105,20 @@ You have tools at your disposal to solve the coding task. Follow these rules reg
 </tool_calling_best_practices>
 
 <file_editing_tool_selection>
-You have two tools for editing files: \`edit_file\` and \`search_replace\`. Choose the appropriate tool based on the nature of your edit:
+You have three tools for editing files. Choose based on the scope of your change:
 
-**Use \`search_replace\` when:**
-- Making a small, targeted change to a specific location (e.g., fixing a typo, changing a variable name, updating a single value)
-- The change is localized to one spot with clear surrounding context
-- You can uniquely identify the exact text with 3-5 lines of context before and after
-- You want maximum precision for a surgical edit
+| Scope | Tool | Examples |
+|-------|------|----------|
+| **Small** (a few lines) | \`search_replace\` or \`edit_file\` | Fix a typo, rename a variable, update a value, change an import |
+| **Medium** (one function or section) | \`edit_file\` | Rewrite a function, add a new component, modify multiple related lines |
+| **Large** (most of the file) | \`write_file\` | Major refactor, rewrite a module, create a new file |
 
-**Use \`edit_file\` when:**
-- Making multiple changes to different parts of the same file (use \`// ... existing code ...\` markers between edits)
-- Adding new code blocks such as functions, classes, or larger sections
-- Creating a new file from scratch
-- Restructuring code where showing the edit pattern is clearer than literal search/replace
-- Changes span multiple non-contiguous sections
-
-**Quick reference:**
-| Scenario | Tool |
-|----------|------|
-| Fix one line or small section | \`search_replace\` |
-| Change multiple places in one file | \`edit_file\` |
-| Create new file | \`edit_file\` |
-| Add new function/class | \`edit_file\` |
-| Rename a variable in one spot | \`search_replace\` |
-| Update a config value | \`search_replace\` |
+**Tips:**
+- \`edit_file\` supports \`// ... existing code ...\` markers to skip unchanged sections
+- When in doubt, prefer \`search_replace\` for precision or \`write_file\` for simplicity
 
 **Post-edit verification (REQUIRED):**
-After every file edit, you MUST read the modified file to verify the changes were applied correctly. If the edit result is not what you expected:
-1. Identify what went wrong (wrong location, partial application, unintended deletions, etc.)
-2. Try the other editing tool—if \`edit_file\` produced unexpected results, try \`search_replace\` with more explicit context, and vice versa
-3. Verify again after the retry
-4. **Last resort fallback:** If both \`search_replace\` and \`edit_file\` fail repeatedly, use \`write_file\` to overwrite the entire file with the correct content. Only do this after reading the current file contents and confirming you have the complete desired state.
-
-Never assume an edit succeeded without confirmation. Catching errors immediately prevents compounding mistakes.
+After every edit, read the file to verify changes applied correctly. If something went wrong, try a different tool and verify again.
 </file_editing_tool_selection>
 
 <development_workflow>

@@ -775,7 +775,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const handleNavigateBack = () => {
     if (canGoBack && iframeRef.current?.contentWindow) {
       const newPosition = currentHistoryPosition - 1;
+      if (newPosition < 0 || newPosition >= navigationHistory.length) return;
       const targetUrl = navigationHistory[newPosition];
+      if (!targetUrl) return;
 
       // Send the target URL to navigate to (browser history.back() doesn't work in Electron iframes)
       iframeRef.current.contentWindow.postMessage(
@@ -824,7 +826,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const handleNavigateForward = () => {
     if (canGoForward && iframeRef.current?.contentWindow) {
       const newPosition = currentHistoryPosition + 1;
+      if (newPosition < 0 || newPosition >= navigationHistory.length) return;
       const targetUrl = navigationHistory[newPosition];
+      if (!targetUrl) return;
 
       // Send the target URL to navigate to (browser history.forward() doesn't work in Electron iframes)
       iframeRef.current.contentWindow.postMessage(

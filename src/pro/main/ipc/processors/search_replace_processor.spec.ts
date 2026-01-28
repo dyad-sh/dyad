@@ -259,7 +259,7 @@ BAR
     expect(error).toMatch(/(ambiguous|multiple)/i);
   });
 
-  it("errors when SEARCH block fuzzy matches multiple locations (ambiguous)", () => {
+  it("errors when SEARCH block matches multiple locations with whitespace normalization (ambiguous)", () => {
     const original = [
       "\tif (ready) {",
       "\t\tstart();   ",
@@ -283,7 +283,7 @@ if (ready) {
 
     const { success, error } = applySearchReplace(original, diff);
     expect(success).toBe(false);
-    expect(error).toMatch(/fuzzy matched/i);
+    expect(error).toMatch(/ambiguous/i);
   });
 
   it("errors when SEARCH block is empty", () => {
@@ -297,6 +297,106 @@ REPLACEMENT
     const { success, error } = applySearchReplace(original, diff);
     expect(success).toBe(false);
     expect(error).toMatch(/empty SEARCH block is not allowed/i);
+  });
+});
+
+describe("search_replace_processor - cascading matching passes", () => {
+  it("Pass 1: matches exactly when content is identical", () => {
+    const original = ["  hello world", "  goodbye"].join("\n");
+    const diff = `
+<<<<<<< SEARCH
+  hello world
+=======
+  hi world
+>>>>>>> REPLACE
+`;
+    const { success, content } = applySearchReplace(original, diff);
+    expect(success).toBe(true);
+    expect(content).toContain("hi world");
+  });
+
+  it("Pass 2: matches when only trailing whitespace differs", () => {
+    const original = ["hello world   ", "goodbye"].join("\n"); // trailing spaces in file
+    const diff = `
+<<<<<<< SEARCH
+hello world
+=======
+hi world
+>>>>>>> REPLACE
+`;
+    const { success, content } = applySearchReplace(original, diff);
+    expect(success).toBe(true);
+    expect(content).toContain("hi world");
+  });
+
+  it("Pass 3: matches when leading/trailing whitespace differs", () => {
+    const original = ["  hello world  ", "goodbye"].join("\n"); // spaces on both ends
+    const diff = `
+<<<<<<< SEARCH
+hello world
+=======
+hi world
+>>>>>>> REPLACE
+`;
+    const { success, content } = applySearchReplace(original, diff);
+    expect(success).toBe(true);
+    expect(content).toContain("hi world");
+  });
+
+  it("Pass 4: matches with unicode normalization (smart quotes)", () => {
+    const original = ['console.log("hello")', "other line"].join("\n"); // smart quotes
+    const diff = `
+<<<<<<< SEARCH
+console.log("hello")
+=======
+console.log("goodbye")
+>>>>>>> REPLACE
+`;
+    const { success, content } = applySearchReplace(original, diff);
+    expect(success).toBe(true);
+    expect(content).toContain('console.log("goodbye")');
+  });
+
+  it("Pass 4: matches with unicode normalization (en-dash/em-dash)", () => {
+    const original = ["value = 10–20", "other line"].join("\n"); // en-dash
+    const diff = `
+<<<<<<< SEARCH
+value = 10-20
+=======
+value = 5-15
+>>>>>>> REPLACE
+`;
+    const { success, content } = applySearchReplace(original, diff);
+    expect(success).toBe(true);
+    expect(content).toContain("value = 5-15");
+  });
+
+  it("Pass 4: matches with unicode normalization (non-breaking space)", () => {
+    const original = ["hello\u00A0world", "other line"].join("\n"); // non-breaking space
+    const diff = `
+<<<<<<< SEARCH
+hello world
+=======
+hi world
+>>>>>>> REPLACE
+`;
+    const { success, content } = applySearchReplace(original, diff);
+    expect(success).toBe(true);
+    expect(content).toContain("hi world");
+  });
+
+  it("fails when no pass matches", () => {
+    const original = ["completely different content", "more lines"].join("\n");
+    const diff = `
+<<<<<<< SEARCH
+this does not exist
+=======
+replacement
+>>>>>>> REPLACE
+`;
+    const { success, error } = applySearchReplace(original, diff);
+    expect(success).toBe(false);
+    expect(error).toMatch(/did not match any content/i);
   });
 });
 

@@ -1,7 +1,6 @@
 /* eslint-disable no-irregular-whitespace */
 
 import { parseSearchReplaceBlocks } from "@/pro/shared/search_replace_parser";
-import { distance } from "fastest-levenshtein";
 import { normalizeString } from "@/utils/text_normalization";
 import log from "electron-log";
 
@@ -13,8 +12,8 @@ const logger = log.scope("search_replace_processor");
 
 export interface SearchReplaceOptions {
   /**
-   * If true, only exact string matching is used.
-   * Lenient (whitespace-tolerant) and fuzzy (Levenshtein) fallbacks are skipped.
+   * If true, only exact string matching is used (Pass 1 only).
+   * All cascading fuzzy matching passes are skipped.
    */
   exactMatchOnly?: boolean;
   /**
@@ -24,15 +23,6 @@ export interface SearchReplaceOptions {
   rejectIdentical?: boolean;
 }
 
-// Minimum similarity threshold for fuzzy matching (0 to 1, where 1 is exact match)
-const FUZZY_MATCH_THRESHOLD = 0.9;
-
-// Early termination threshold - stop searching if we find a match this good
-const EARLY_STOP_THRESHOLD = 0.95;
-
-// Maximum time to spend on fuzzy matching (in milliseconds)
-const MAX_FUZZY_SEARCH_TIME_MS = 10_000; // 10 seconds
-
 function unescapeMarkers(content: string): string {
   return content
     .replace(/^\\<<<<<<</gm, "<<<<<<<")
@@ -40,146 +30,136 @@ function unescapeMarkers(content: string): string {
     .replace(/^\\>>>>>>>/gm, ">>>>>>>");
 }
 
-/**
- * Calculate similarity between two strings using Levenshtein distance
- * Returns a value between 0 and 1, where 1 is an exact match
- */
-function getSimilarity(original: string, search: string): number {
-  // Empty searches are no longer supported
-  if (search === "") {
-    return 0;
-  }
+// ============================================================================
+// Cascading Fuzzy Matching
+// ============================================================================
+// The tool locates where to apply changes by matching context lines against the file.
+// Implements cascading fuzzy matching with decreasing strictness:
+//
+// Pass 1: Exact Match
+// Pass 2: Trailing Whitespace Ignored
+// Pass 3: All Edge Whitespace Ignored
+// Pass 4: Unicode Normalization
+// ============================================================================
 
-  // Use the normalizeString utility to handle smart quotes and other special characters
-  const normalizedOriginal = normalizeString(original);
-  const normalizedSearch = normalizeString(search);
-
-  if (normalizedOriginal === normalizedSearch) {
-    return 1;
-  }
-
-  // Calculate Levenshtein distance using fastest-levenshtein's distance function
-  const dist = distance(normalizedOriginal, normalizedSearch);
-
-  // Calculate similarity ratio (0 to 1, where 1 is an exact match)
-  const maxLength = Math.max(
-    normalizedOriginal.length,
-    normalizedSearch.length,
-  );
-  return 1 - dist / maxLength;
-}
+type LineComparator = (fileLine: string, patternLine: string) => boolean;
 
 /**
- * Quick scoring function that counts how many lines exactly match.
- * This is much faster than Levenshtein and serves as a good pre-filter.
+ * Pass 1: Exact Match
+ * file_line == pattern_line
  */
-function quickScoreByExactLines(
-  targetLines: string[],
+const exactMatch: LineComparator = (fileLine, patternLine) =>
+  fileLine === patternLine;
+
+/**
+ * Pass 2: Trailing Whitespace Ignored
+ * file_line.trimEnd() == pattern_line.trimEnd()
+ */
+const trailingWhitespaceIgnored: LineComparator = (fileLine, patternLine) =>
+  fileLine.trimEnd() === patternLine.trimEnd();
+
+/**
+ * Pass 3: All Edge Whitespace Ignored
+ * file_line.trim() == pattern_line.trim()
+ */
+const allEdgeWhitespaceIgnored: LineComparator = (fileLine, patternLine) =>
+  fileLine.trim() === patternLine.trim();
+
+/**
+ * Pass 4: Unicode Normalization
+ * Normalize common Unicode variants to ASCII before comparing:
+ * - En-dash, em-dash, etc. → -
+ * - Smart quotes → " '
+ * - Non-breaking space → regular space
+ */
+const unicodeNormalized: LineComparator = (fileLine, patternLine) =>
+  normalizeString(fileLine.trim()) === normalizeString(patternLine.trim());
+
+/**
+ * All matching passes in order of decreasing strictness
+ */
+const MATCHING_PASSES: Array<{ name: string; comparator: LineComparator }> = [
+  { name: "exact", comparator: exactMatch },
+  {
+    name: "trailing-whitespace-ignored",
+    comparator: trailingWhitespaceIgnored,
+  },
+  { name: "all-edge-whitespace-ignored", comparator: allEdgeWhitespaceIgnored },
+  { name: "unicode-normalized", comparator: unicodeNormalized },
+];
+
+/**
+ * Find all positions where searchLines match against resultLines using the given comparator
+ */
+function findMatchPositions(
+  resultLines: string[],
   searchLines: string[],
-  startIdx: number,
-): number {
-  let exactMatches = 0;
+  comparator: LineComparator,
+): number[] {
+  const positions: number[] = [];
 
-  for (let i = 0; i < searchLines.length; i++) {
-    if (startIdx + i >= targetLines.length) break;
-
-    if (
-      normalizeString(targetLines[startIdx + i]) ===
-      normalizeString(searchLines[i])
-    ) {
-      exactMatches++;
-    }
-  }
-
-  return exactMatches / searchLines.length;
-}
-
-/**
- * Fast fuzzy search using a two-pass approach:
- * 1. Quick pre-filter pass: Count exact line matches (fast)
- * 2. Detailed pass: Only compute Levenshtein on promising candidates (expensive)
- *
- * The key insight: If two blocks are similar enough for fuzzy matching (e.g., 90%),
- * then likely at least 60% of their lines will match exactly.
- */
-function fastFuzzySearch(
-  lines: string[],
-  searchChunk: string,
-  startIndex: number,
-  endIndex: number,
-) {
-  const searchLines = searchChunk.split(/\r?\n/);
-  const searchLen = searchLines.length;
-
-  // Track start time for timeout
-  const startTime = performance.now();
-
-  // Quick threshold: require at least 60% exact line matches to be a candidate
-  const QUICK_THRESHOLD = 0.6;
-
-  // First pass: find candidates with high exact line match ratio (very fast)
-  const candidates: Array<{ index: number; quickScore: number }> = [];
-
-  for (let i = startIndex; i <= endIndex - searchLen; i++) {
-    // Check time limit
-    const elapsed = performance.now() - startTime;
-    if (elapsed > MAX_FUZZY_SEARCH_TIME_MS) {
-      console.warn(
-        `Fast fuzzy search timed out during pre-filter after ${(elapsed / 1000).toFixed(1)}s`,
-      );
-      break;
-    }
-
-    const quickScore = quickScoreByExactLines(lines, searchLines, i);
-
-    if (quickScore >= QUICK_THRESHOLD) {
-      candidates.push({ index: i, quickScore });
-    }
-  }
-
-  // Sort candidates by quick score (best first)
-  candidates.sort((a, b) => b.quickScore - a.quickScore);
-
-  // Second pass: only compute expensive Levenshtein on top candidates
-  let bestScore = 0;
-  let bestMatchIndex = -1;
-
-  const MAX_CANDIDATES_TO_CHECK = 10; // Only check top 10 candidates
-
-  for (
-    let i = 0;
-    i < Math.min(candidates.length, MAX_CANDIDATES_TO_CHECK);
-    i++
-  ) {
-    const candidate = candidates[i];
-
-    // Check time limit
-    const elapsed = performance.now() - startTime;
-    if (elapsed > MAX_FUZZY_SEARCH_TIME_MS) {
-      console.warn(
-        `Fast fuzzy search timed out during detailed pass after ${(elapsed / 1000).toFixed(1)}s. Best match: ${(bestScore * 100).toFixed(1)}%`,
-      );
-      break;
-    }
-
-    const originalChunk = lines
-      .slice(candidate.index, candidate.index + searchLen)
-      .join("\n");
-
-    const similarity = getSimilarity(originalChunk, searchChunk);
-
-    if (similarity > bestScore) {
-      bestScore = similarity;
-      bestMatchIndex = candidate.index;
-
-      // Early exit if we found a very good match
-      if (bestScore >= EARLY_STOP_THRESHOLD) {
-        return { bestScore, bestMatchIndex };
+  for (let i = 0; i <= resultLines.length - searchLines.length; i++) {
+    let allMatch = true;
+    for (let j = 0; j < searchLines.length; j++) {
+      if (!comparator(resultLines[i + j], searchLines[j])) {
+        allMatch = false;
+        break;
       }
     }
+    if (allMatch) {
+      positions.push(i);
+      // For ambiguity detection, we only need to know if there's more than one
+      if (positions.length > 1) break;
+    }
   }
 
-  return { bestScore, bestMatchIndex };
+  return positions;
+}
+
+/**
+ * Cascading fuzzy matching: try each pass in order until we find a match
+ * Returns the match index or -1 if no match found, along with any error
+ */
+function cascadingMatch(
+  resultLines: string[],
+  searchLines: string[],
+  exactMatchOnly: boolean,
+): { matchIndex: number; error?: string; passName?: string } {
+  const passesToTry = exactMatchOnly ? [MATCHING_PASSES[0]] : MATCHING_PASSES;
+
+  for (const pass of passesToTry) {
+    const positions = findMatchPositions(
+      resultLines,
+      searchLines,
+      pass.comparator,
+    );
+
+    if (positions.length > 1) {
+      return {
+        matchIndex: -1,
+        error: `Search block matched multiple locations in the target file (ambiguous, detected in ${pass.name} pass)`,
+      };
+    }
+
+    if (positions.length === 1) {
+      return { matchIndex: positions[0], passName: pass.name };
+    }
+  }
+
+  // No match found in any pass
+  if (exactMatchOnly) {
+    return {
+      matchIndex: -1,
+      error:
+        "Search content did not match exactly. Ensure the content matches the file exactly, including all whitespace and indentation.",
+    };
+  }
+
+  return {
+    matchIndex: -1,
+    error:
+      "Search block did not match any content in the target file after trying all matching passes (exact, trailing-whitespace-ignored, all-edge-whitespace-ignored, unicode-normalized)",
+  };
 }
 
 export function applySearchReplace(
@@ -233,96 +213,21 @@ export function applySearchReplace(
       logger.warn("Search and replace blocks are identical");
     }
 
-    let matchIndex = -1;
+    // Use cascading fuzzy matching to find the match
+    const matchResult = cascadingMatch(
+      resultLines,
+      searchLines,
+      options.exactMatchOnly ?? false,
+    );
 
-    const target = searchLines.join("\n");
-    const hay = resultLines.join("\n");
-
-    // Try exact string matching first and detect ambiguity
-    const exactPositions: number[] = [];
-    let fromIndex = 0;
-    while (true) {
-      const found = hay.indexOf(target, fromIndex);
-      if (found === -1) break;
-      exactPositions.push(found);
-      fromIndex = found + 1;
-    }
-
-    if (exactPositions.length > 1) {
+    if (matchResult.error) {
       return {
         success: false,
-        error:
-          "Search block matched multiple locations in the target file (ambiguous)",
-      };
-    }
-    if (exactPositions.length === 1) {
-      const pos = exactPositions[0];
-      matchIndex = hay.substring(0, pos).split("\n").length - 1;
-    }
-
-    // If exactMatchOnly is enabled, skip lenient and fuzzy fallbacks
-    if (matchIndex === -1 && options.exactMatchOnly) {
-      return {
-        success: false,
-        error:
-          "Search content did not match exactly. Ensure the content matches the file exactly, including all whitespace and indentation.",
+        error: matchResult.error,
       };
     }
 
-    if (matchIndex === -1) {
-      // Lenient fallback: ignore leading indentation and trailing whitespace
-      const normalizeForMatch = (line: string) =>
-        line.replace(/^[\t ]*/, "").replace(/[\t ]+$/, "");
-
-      const normalizedSearch = searchLines.map(normalizeForMatch);
-
-      const candidates: number[] = [];
-      for (let i = 0; i <= resultLines.length - searchLines.length; i++) {
-        let allMatch = true;
-        for (let j = 0; j < searchLines.length; j++) {
-          if (normalizeForMatch(resultLines[i + j]) !== normalizedSearch[j]) {
-            allMatch = false;
-            break;
-          }
-        }
-        if (allMatch) {
-          candidates.push(i);
-          if (candidates.length > 1) break; // we only care if >1 for ambiguity
-        }
-      }
-
-      if (candidates.length > 1) {
-        return {
-          success: false,
-          error:
-            "Search block fuzzy matched multiple locations in the target file (ambiguous)",
-        };
-      }
-
-      if (candidates.length === 1) {
-        matchIndex = candidates[0];
-      }
-    }
-
-    // If still no match, try fuzzy matching with Levenshtein distance
-    if (matchIndex === -1) {
-      const searchChunk = searchLines.join("\n");
-      const { bestScore, bestMatchIndex } = fastFuzzySearch(
-        resultLines,
-        searchChunk,
-        0,
-        resultLines.length,
-      );
-
-      if (bestScore >= FUZZY_MATCH_THRESHOLD) {
-        matchIndex = bestMatchIndex;
-      } else {
-        return {
-          success: false,
-          error: `Search block did not match any content in the target file. Best fuzzy match had similarity of ${(bestScore * 100).toFixed(1)}% (threshold: ${(FUZZY_MATCH_THRESHOLD * 100).toFixed(1)}%)`,
-        };
-      }
-    }
+    const matchIndex = matchResult.matchIndex;
 
     const matchedLines = resultLines.slice(
       matchIndex,

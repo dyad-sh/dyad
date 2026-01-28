@@ -11,8 +11,14 @@ import {
   hasToolCall,
   ModelMessage,
   type ToolExecutionOptions,
+  type StepResult,
 } from "ai";
 import log from "electron-log";
+import { SessionDataCollector } from "./session_data_collector";
+import type {
+  TokenUsage,
+  AiCallFinishReason,
+} from "@/ipc/types/session_upload";
 
 import { db } from "@/db";
 import { chats, messages } from "@/db/schema";
@@ -170,12 +176,23 @@ export async function handleLocalAgentStream(
   // Store injected messages with their insertion index to re-inject at the same spot each step
   const allInjectedMessages: InjectedMessage[] = [];
 
+  // Create session data collector for tracking AI calls, tool calls, and timing
+  const sessionDataCollector = new SessionDataCollector(
+    placeholderMessageId,
+    settings.selectedModel.name,
+    dyadRequestId,
+  );
+  sessionDataCollector.startMessage();
+
   try {
     // Get model client
     const { modelClient } = await getModelClient(
       settings.selectedModel,
       settings,
     );
+
+    // Start tracking the first AI call
+    sessionDataCollector.startAiCall(settings.selectedModel.name);
 
     // Build tool execute context
     const fileEditTracker: FileEditTracker = Object.create(null);
@@ -229,6 +246,7 @@ export async function handleLocalAgentStream(
           todos,
         });
       },
+      sessionDataCollector,
     };
 
     // Build tool set (agent tools + MCP tools)
@@ -275,6 +293,44 @@ export async function handleLocalAgentStream(
       // We track the insertion index so messages appear at the same position each step.
       prepareStep: (options) =>
         prepareStepMessages(options, pendingUserMessages, allInjectedMessages),
+      onStepFinish: (stepResult: StepResult<any>) => {
+        // Track token usage for the completed step (AI call)
+        const usage = stepResult.usage;
+        const tokenUsage: TokenUsage | null = usage
+          ? {
+              inputTokens: usage.inputTokens ?? 0,
+              outputTokens: usage.outputTokens ?? 0,
+              totalTokens: usage.totalTokens ?? 0,
+              cachedInputTokens: usage.cachedInputTokens ?? null,
+              cacheHitRatio:
+                usage.inputTokens && usage.cachedInputTokens
+                  ? usage.cachedInputTokens / usage.inputTokens
+                  : null,
+            }
+          : null;
+
+        // Determine finish reason
+        let finishReason: AiCallFinishReason = "unknown";
+        if (stepResult.finishReason === "stop") {
+          finishReason = "stop";
+        } else if (stepResult.finishReason === "tool-calls") {
+          finishReason = "tool-calls";
+        } else if (stepResult.finishReason === "length") {
+          finishReason = "length";
+        } else if (stepResult.finishReason === "content-filter") {
+          finishReason = "content-filter";
+        } else if (stepResult.finishReason === "error") {
+          finishReason = "error";
+        }
+
+        sessionDataCollector.endAiCall(finishReason, tokenUsage);
+
+        // Start a new AI call if this wasn't the final step
+        // (AI SDK will continue processing for tool calls)
+        if (finishReason === "tool-calls") {
+          sessionDataCollector.startAiCall(settings.selectedModel.name);
+        }
+      },
       onFinish: async (response) => {
         const totalTokens = response.usage?.totalTokens;
         const inputTokens = response.usage?.inputTokens;
@@ -300,6 +356,7 @@ export async function handleLocalAgentStream(
       onError: (error: any) => {
         const errorMessage = error?.error?.message || JSON.stringify(error);
         logger.error("Local agent stream error:", errorMessage);
+        sessionDataCollector.recordAiCallError(errorMessage, "AI_STREAM_ERROR");
         safeSend(event.sender, "chat:response:error", {
           chatId: req.chatId,
           error: `AI error: ${errorMessage}`,
@@ -333,6 +390,8 @@ export async function handleLocalAgentStream(
 
       switch (part.type) {
         case "text-delta":
+          sessionDataCollector.recordFirstToken();
+          sessionDataCollector.recordTextDelta();
           chunk += part.text;
           break;
 
@@ -344,6 +403,8 @@ export async function handleLocalAgentStream(
           break;
 
         case "reasoning-delta":
+          sessionDataCollector.recordFirstToken();
+          sessionDataCollector.recordReasoningDelta();
           if (!inThinkingBlock) {
             chunk = "<think>";
             inThinkingBlock = true;
@@ -399,11 +460,35 @@ export async function handleLocalAgentStream(
         }
 
         case "tool-call":
-          // Tool execution happens via execute callbacks
+          // Track tool call start - execution happens via execute callbacks
+          sessionDataCollector.startToolCall(
+            part.toolCallId,
+            part.toolName,
+            part.args,
+          );
           break;
 
         case "tool-result":
-          // Tool results are already handled by the execute callback
+          // Track tool result
+          if (
+            part.result &&
+            typeof part.result === "object" &&
+            "isError" in part.result &&
+            part.result.isError
+          ) {
+            sessionDataCollector.endToolCall(
+              part.toolCallId,
+              "failed",
+              part.result,
+              part.result.text || "Tool execution failed",
+            );
+          } else {
+            sessionDataCollector.endToolCall(
+              part.toolCallId,
+              "success",
+              part.result,
+            );
+          }
           break;
       }
 
@@ -467,6 +552,28 @@ export async function handleLocalAgentStream(
       }
     }
 
+    // End session data collection
+    sessionDataCollector.endMessage(false, false);
+
+    // Log session data summary for debugging
+    const sessionSummary = {
+      aiCalls: sessionDataCollector.getCurrentAiCallIndex() + 1,
+      toolCalls: sessionDataCollector.getToolCallCount(),
+      successfulToolCalls: sessionDataCollector.getSuccessfulToolCallCount(),
+      failedToolCalls: sessionDataCollector.getFailedToolCallCount(),
+      errors: sessionDataCollector.getErrorCount(),
+    };
+    logger.log("Session data summary:", sessionSummary);
+
+    // Emit session data for potential upload
+    // The session data is available via sessionDataCollector.getAssistantMessageData()
+    // but we don't persist it here - it's emitted for external consumers
+    safeSend(event.sender, "chat:session-data", {
+      chatId: req.chatId,
+      messageId: placeholderMessageId,
+      summary: sessionSummary,
+    });
+
     // Send completion
     safeSend(event.sender, "chat:response:end", {
       chatId: req.chatId,
@@ -481,6 +588,7 @@ export async function handleLocalAgentStream(
 
     if (abortController.signal.aborted) {
       // Handle cancellation
+      sessionDataCollector.endMessage(true, false);
       if (fullResponse) {
         await db
           .update(messages)
@@ -489,6 +597,13 @@ export async function handleLocalAgentStream(
       }
       return;
     }
+
+    // Track the error in session data
+    sessionDataCollector.recordError(
+      error instanceof Error ? error : String(error),
+      "LOCAL_AGENT_ERROR",
+    );
+    sessionDataCollector.endMessage(false, false);
 
     logger.error("Local agent error:", error);
     safeSend(event.sender, "chat:response:error", {
@@ -549,6 +664,9 @@ async function getMcpTools(
           description: mcpTool.description,
           inputSchema: mcpTool.inputSchema,
           execute: async (args: unknown, execCtx: ToolExecutionOptions) => {
+            // Generate a unique tool call ID for tracking
+            const toolCallId = `mcp_${s.id}_${name}_${Date.now()}`;
+
             try {
               const inputPreview =
                 typeof args === "string"
@@ -556,6 +674,12 @@ async function getMcpTools(
                   : Array.isArray(args)
                     ? args.join(" ")
                     : JSON.stringify(args).slice(0, 500);
+
+              // Track MCP tool call start
+              ctx.sessionDataCollector?.startToolCall(toolCallId, key, args, {
+                isMcpTool: true,
+                mcpServerName: s.name,
+              });
 
               const ok = await requireMcpToolConsent(event, {
                 serverId: s.id,
@@ -565,7 +689,22 @@ async function getMcpTools(
                 inputPreview,
               });
 
-              if (!ok) throw new Error(`User declined running tool ${key}`);
+              // Track consent decision
+              ctx.sessionDataCollector?.recordToolConsent(
+                toolCallId,
+                true,
+                ok ? "accept-once" : "decline",
+              );
+
+              if (!ok) {
+                ctx.sessionDataCollector?.endToolCall(
+                  toolCallId,
+                  "denied",
+                  null,
+                  "User declined running tool",
+                );
+                throw new Error(`User declined running tool ${key}`);
+              }
 
               // Emit XML for UI (MCP tools don't stream, so use onXmlComplete directly)
               const { serverName, toolName } = parseMcpToolKey(key);
@@ -582,6 +721,13 @@ async function getMcpTools(
                 `<dyad-mcp-tool-result server="${serverName}" tool="${toolName}">\n${resultStr}\n</dyad-mcp-tool-result>`,
               );
 
+              // Track successful completion
+              ctx.sessionDataCollector?.endToolCall(
+                toolCallId,
+                "success",
+                resultStr,
+              );
+
               return resultStr;
             } catch (error) {
               const errorMessage =
@@ -591,6 +737,18 @@ async function getMcpTools(
               ctx.onXmlComplete(
                 `<dyad-output type="error" message="MCP tool '${key}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorStack || errorMessage)}</dyad-output>`,
               );
+
+              // Track error if not already tracked (e.g., consent denial)
+              const toolCall = ctx.sessionDataCollector?.getToolCallCount();
+              if (toolCall !== undefined) {
+                ctx.sessionDataCollector?.endToolCall(
+                  toolCallId,
+                  "failed",
+                  null,
+                  error instanceof Error ? error : errorMessage,
+                );
+              }
+
               throw error;
             }
           },

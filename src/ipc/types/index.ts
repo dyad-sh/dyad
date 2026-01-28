@@ -49,6 +49,7 @@ export { upgradeContracts } from "./upgrade";
 export { visualEditingContracts } from "./visual-editing";
 export { securityContracts } from "./security";
 export { miscContracts, miscEvents } from "./misc";
+export { sessionUploadContracts } from "./session_upload";
 
 // =============================================================================
 // Client Exports
@@ -77,6 +78,7 @@ export { upgradeClient } from "./upgrade";
 export { visualEditingClient } from "./visual-editing";
 export { securityClient } from "./security";
 export { miscClient, miscEventClient } from "./misc";
+export { sessionUploadClient } from "./session_upload";
 
 // =============================================================================
 // Type Exports
@@ -276,6 +278,29 @@ export type { SecurityReviewResult } from "./security";
 // Misc types
 export type { ChatLogsData, DeepLinkData, AppOutput, EnvVar } from "./misc";
 
+// Session upload types
+export type {
+  SessionUploadPayload,
+  SessionSummary,
+  AppInfo,
+  ChatInfo,
+  MessageInfo,
+  UserMessageInfo,
+  AssistantMessageInfo,
+  AiCallInfo,
+  ToolCallInfo,
+  ErrorInfo,
+  TokenUsage,
+  Timing,
+  StreamTiming,
+  SettingsSnapshot,
+  ClientInfo,
+  AttachmentInfo,
+  ComponentSelectionInfo,
+  AiCallFinishReason,
+  ToolCallStatus,
+} from "./session_upload";
+
 // =============================================================================
 // Schema Exports (for validation in handlers/components)
 // =============================================================================
@@ -304,6 +329,27 @@ export {
 
 export { UserBudgetInfoSchema } from "./system";
 
+export {
+  SESSION_UPLOAD_SCHEMA_VERSION,
+  SessionUploadPayloadSchema,
+  SessionSummarySchema,
+  AppInfoSchema,
+  ChatInfoSchema,
+  MessageInfoSchema,
+  UserMessageInfoSchema,
+  AssistantMessageInfoSchema,
+  AiCallInfoSchema,
+  ToolCallInfoSchema,
+  ErrorInfoSchema,
+  TokenUsageSchema,
+  TimingSchema,
+  StreamTimingSchema,
+  SettingsSnapshotSchema,
+  ClientInfoSchema,
+  AttachmentInfoSchema,
+  ComponentSelectionInfoSchema,
+} from "./session_upload";
+
 // =============================================================================
 // Aggregated IPC Client
 // =============================================================================
@@ -331,6 +377,7 @@ import { upgradeClient } from "./upgrade";
 import { visualEditingClient } from "./visual-editing";
 import { securityClient } from "./security";
 import { miscClient, miscEventClient } from "./misc";
+import { sessionUploadClient } from "./session_upload";
 
 /**
  * Unified IPC client with all domains organized by namespace.
@@ -385,6 +432,9 @@ export const ipc = {
   visualEditing: visualEditingClient,
   security: securityClient,
   misc: miscClient,
+
+  // Session upload
+  sessionUpload: sessionUploadClient,
 
   // Event clients for main->renderer pub/sub
   events: {

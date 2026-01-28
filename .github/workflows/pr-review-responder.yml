@@ -138,24 +138,28 @@ jobs:
             echo "Re-triggering workflows via workflow_dispatch"
             # Use workflow_dispatch to trigger workflows - this works with GITHUB_TOKEN unlike PR events
             # which are blocked to prevent infinite loops
+            #
+            # Note: We use the default branch (no --ref) instead of head_branch because for fork PRs,
+            # head_branch only exists in the fork repo, not the main repo. The workflows will checkout
+            # the correct PR code using the pr_number input.
 
             # Trigger CI
             gh workflow run ci.yml \
               --repo ${{ github.repository }} \
-              --ref "${{ github.event.workflow_run.head_branch }}" \
-              -f pr_number=${{ steps.pr-info.outputs.pr_number }}
+              -f pr_number=${{ steps.pr-info.outputs.pr_number }} \
+              || echo "::warning::Failed to trigger CI workflow"
 
             # Trigger BugBot
             gh workflow run bugbot-trigger.yml \
               --repo ${{ github.repository }} \
-              --ref "${{ github.event.workflow_run.head_branch }}" \
-              -f pr_number=${{ steps.pr-info.outputs.pr_number }}
+              -f pr_number=${{ steps.pr-info.outputs.pr_number }} \
+              || echo "::warning::Failed to trigger BugBot workflow"
 
             # Trigger Claude PR Review
             gh workflow run claude-pr-review.yml \
               --repo ${{ github.repository }} \
-              --ref "${{ github.event.workflow_run.head_branch }}" \
-              -f pr_number=${{ steps.pr-info.outputs.pr_number }}
+              -f pr_number=${{ steps.pr-info.outputs.pr_number }} \
+              || echo "::warning::Failed to trigger Claude PR Review workflow"
           else
             echo "No new commits pushed, skipping workflow re-triggers"
           fi

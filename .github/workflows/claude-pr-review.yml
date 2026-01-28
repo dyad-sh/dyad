@@ -41,7 +41,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PR_DATA=$(gh pr view ${{ inputs.pr_number }} --repo ${{ github.repository }} --json headRefName,headRepository,headRepositoryOwner)
+          PR_DATA=$(gh pr view "${{ inputs.pr_number }}" --repo "${{ github.repository }}" --json headRefName,headRepository,headRepositoryOwner) || {
+            echo "::error::Failed to fetch PR info for PR #${{ inputs.pr_number }}"
+            exit 1
+          }
           echo "head_ref=$(echo "$PR_DATA" | jq -r '.headRefName')" >> $GITHUB_OUTPUT
           echo "head_repo=$(echo "$PR_DATA" | jq -r '.headRepositoryOwner.login + "/" + .headRepository.name')" >> $GITHUB_OUTPUT
 

@@ -14,7 +14,7 @@ jobs:
   trigger-bugbot:
     environment: ai-bots
     # Only review code from regular contributors since bug bot has a capped # of PR reviews.
-    # For workflow_dispatch, we trust the caller (pr-review-responder) has already validated.
+    # For workflow_dispatch, we check skip tags below since the caller may not have validated them.
     if: |
       github.event_name == 'workflow_dispatch' ||
       ((github.event.pull_request.user.login == 'wwwillchen' ||
@@ -26,7 +26,22 @@ jobs:
     permissions:
       pull-requests: write
     steps:
+      - name: Check skip tags for workflow_dispatch
+        if: github.event_name == 'workflow_dispatch'
+        id: check-skip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_BODY=$(gh pr view "${{ inputs.pr_number }}" --repo "${{ github.repository }}" --json body --jq '.body' || echo "")
+          if echo "$PR_BODY" | grep -qE '#skip-bugbot|#skip-bb'; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "Skipping BugBot: PR contains skip tag"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Comment @BugBot run
+        if: steps.check-skip.outputs.skip != 'true'
         uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 # v5
         with:
           # Use a PAT from wwwillchen to post on their behalf

@@ -29,10 +29,27 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should_run_tests: ${{ steps.check.outputs.should_run_tests }}
+      pr_head_ref: ${{ steps.pr-info.outputs.head_ref }}
+      pr_head_repo: ${{ steps.pr-info.outputs.head_repo }}
     steps:
+      - name: Get PR info for workflow_dispatch
+        if: github.event_name == 'workflow_dispatch' && inputs.pr_number != ''
+        id: pr-info
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_DATA=$(gh pr view "${{ inputs.pr_number }}" --repo "${{ github.repository }}" --json headRefName,headRepository,headRepositoryOwner) || {
+            echo "::error::Failed to fetch PR info for PR #${{ inputs.pr_number }}"
+            exit 1
+          }
+          echo "head_ref=$(echo "$PR_DATA" | jq -r '.headRefName')" >> $GITHUB_OUTPUT
+          echo "head_repo=$(echo "$PR_DATA" | jq -r '.headRepositoryOwner.login + "/" + .headRepository.name')" >> $GITHUB_OUTPUT
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          repository: ${{ steps.pr-info.outputs.head_repo || github.repository }}
+          ref: ${{ steps.pr-info.outputs.head_ref || '' }}
           fetch-depth: 0
       - name: Check if only .claude files changed
         id: check
@@ -108,6 +125,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.check-changes.outputs.pr_head_repo || github.repository }}
+          ref: ${{ needs.check-changes.outputs.pr_head_ref || '' }}
       - name: Initialize environment
         uses: actions/setup-node@v4
         with:

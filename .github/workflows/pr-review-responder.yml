@@ -118,7 +118,7 @@ jobs:
           prompt: |
             /dyad:pr-fix ${{ steps.pr-info.outputs.pr_number }}
 
-      - name: Re-trigger CI if commits were pushed
+      - name: Re-trigger workflows if commits were pushed
         # Use always() to ensure commits get tested even if Claude Code fails partway through
         if: steps.pr-info.outputs.should_continue == 'true' && always()
         env:
@@ -135,15 +135,29 @@ jobs:
 
           if [ "${{ steps.before-claude.outputs.sha }}" != "$PR_HEAD_SHA" ]; then
             echo "Claude pushed new commits (before: ${{ steps.before-claude.outputs.sha }}, after: $PR_HEAD_SHA)"
-            echo "Re-triggering CI via workflow_dispatch"
-            # Use workflow_dispatch to trigger CI - this works with GITHUB_TOKEN unlike PR events
+            echo "Re-triggering workflows via workflow_dispatch"
+            # Use workflow_dispatch to trigger workflows - this works with GITHUB_TOKEN unlike PR events
             # which are blocked to prevent infinite loops
+
+            # Trigger CI
             gh workflow run ci.yml \
               --repo ${{ github.repository }} \
               --ref "${{ github.event.workflow_run.head_branch }}" \
               -f pr_number=${{ steps.pr-info.outputs.pr_number }}
+
+            # Trigger BugBot
+            gh workflow run bugbot-trigger.yml \
+              --repo ${{ github.repository }} \
+              --ref "${{ github.event.workflow_run.head_branch }}" \
+              -f pr_number=${{ steps.pr-info.outputs.pr_number }}
+
+            # Trigger Claude PR Review
+            gh workflow run claude-pr-review.yml \
+              --repo ${{ github.repository }} \
+              --ref "${{ github.event.workflow_run.head_branch }}" \
+              -f pr_number=${{ steps.pr-info.outputs.pr_number }}
           else
-            echo "No new commits pushed, skipping CI re-trigger"
+            echo "No new commits pushed, skipping workflow re-triggers"
           fi
 
       - name: Update labels to done

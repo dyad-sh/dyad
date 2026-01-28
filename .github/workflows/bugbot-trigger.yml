@@ -3,17 +3,25 @@ name: BugBot Trigger
 on:
   pull_request_target:
     types: [opened, synchronize, ready_for_review, reopened]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to trigger BugBot on (used by pr-review-responder)"
+        required: true
+        type: string
 
 jobs:
   trigger-bugbot:
     environment: ai-bots
     # Only review code from regular contributors since bug bot has a capped # of PR reviews.
+    # For workflow_dispatch, we trust the caller (pr-review-responder) has already validated.
     if: |
-      (github.event.pull_request.user.login == 'wwwillchen' ||
+      github.event_name == 'workflow_dispatch' ||
+      ((github.event.pull_request.user.login == 'wwwillchen' ||
       github.event.pull_request.user.login == 'azizmejri1' ||
       github.event.pull_request.user.login == 'princeaden1') &&
       !contains(github.event.pull_request.body, '#skip-bugbot') &&
-      !contains(github.event.pull_request.body, '#skip-bb')
+      !contains(github.event.pull_request.body, '#skip-bb'))
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
@@ -23,5 +31,5 @@ jobs:
         with:
           # Use a PAT from wwwillchen to post on their behalf
           token: ${{ secrets.WWWILLCHEN_PR_RW_PAT }}
-          issue-number: ${{ github.event.pull_request.number }}
+          issue-number: ${{ github.event.pull_request.number || inputs.pr_number }}
           body: "@BugBot run"

@@ -5,9 +5,15 @@ name: Claude PR Review
 on:
   pull_request_target:
     types: [opened, synchronize, ready_for_review, reopened]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to review (used by pr-review-responder)"
+        required: true
+        type: string
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || inputs.pr_number }}
   cancel-in-progress: true
 
 jobs:
@@ -17,8 +23,10 @@ jobs:
     # Only review code from regular contributors since claude code has non-trivial costs.
     # It's also a safe-guard for preventing malicious PRs from doing bad things although we restrict
     # the permissions and tools allowed in this job.
+    # For workflow_dispatch, we trust the caller (pr-review-responder) has already validated.
     # https://github.com/anthropics/claude-code-action/blob/main/examples/pr-review-filtered-authors.yml
     if: |
+      github.event_name == 'workflow_dispatch' ||
       github.event.pull_request.user.login == 'wwwillchen' ||
       github.event.pull_request.user.login == 'azizmejri1' ||
       github.event.pull_request.user.login == 'princeaden1'
@@ -27,11 +35,21 @@ jobs:
       contents: read
       pull-requests: write
     steps:
+      - name: Get PR info for workflow_dispatch
+        if: github.event_name == 'workflow_dispatch'
+        id: pr-info
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_DATA=$(gh pr view ${{ inputs.pr_number }} --repo ${{ github.repository }} --json headRefName,headRepository,headRepositoryOwner)
+          echo "head_ref=$(echo "$PR_DATA" | jq -r '.headRefName')" >> $GITHUB_OUTPUT
+          echo "head_repo=$(echo "$PR_DATA" | jq -r '.headRepositoryOwner.login + "/" + .headRepository.name')" >> $GITHUB_OUTPUT
+
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || steps.pr-info.outputs.head_repo }}
+          ref: ${{ github.event.pull_request.head.ref || steps.pr-info.outputs.head_ref }}
           fetch-depth: 1
 
       - name: PR Review
@@ -52,7 +70,7 @@ jobs:
           track_progress: false
 
           prompt: |
-            /dyad:multi-pr-review ${{ github.event.pull_request.number }}
+            /dyad:multi-pr-review ${{ github.event.pull_request.number || inputs.pr_number }}
 
           # Uses .claude/settings.json for permissions; only add MCP tool not in settings
           claude_args: |

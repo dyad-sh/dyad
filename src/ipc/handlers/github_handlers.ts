@@ -46,7 +46,7 @@ const logger = log.scope("github_handlers");
  * @returns The normalized repository name with spaces replaced by hyphens
  */
 export function normalizeGitHubRepoName(repoName: string): string {
-  return repoName.replace(/\s+/g, "-");
+  return repoName.trim().replace(/\s+/g, "-");
 }
 
 // --- GitHub Device Flow Constants ---
@@ -601,7 +601,7 @@ async function handleIsRepoAvailable(
         .then((r) => r.json())
         .then((u) => u.login));
     // Check if repo exists (using normalized name)
-    const url = `${GITHUB_API_BASE}/repos/${owner}/${normalizedRepo}`;
+    const url = `${GITHUB_API_BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(normalizedRepo)}`;
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });

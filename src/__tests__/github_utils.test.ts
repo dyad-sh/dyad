@@ -23,7 +23,7 @@ describe("normalizeGitHubRepoName", () => {
   });
 
   it("should handle leading and trailing spaces", () => {
-    expect(normalizeGitHubRepoName(" my app ")).toBe("-my-app-");
+    expect(normalizeGitHubRepoName(" my app ")).toBe("my-app");
   });
 
   it("should handle tabs as whitespace", () => {

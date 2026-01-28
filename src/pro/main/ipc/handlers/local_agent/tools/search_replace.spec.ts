@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
-import { searchReplaceStrictTool } from "./search_replace_strict";
+import { searchReplaceTool } from "./search_replace";
 import type { AgentContext } from "./types";
 
 // Mock fs module
@@ -34,7 +34,7 @@ vi.mock("@/ipc/utils/path_utils", () => ({
   safeJoin: (base: string, path: string) => `${base}/${path}`,
 }));
 
-describe("searchReplaceStrictTool", () => {
+describe("searchReplaceTool", () => {
   const mockContext: AgentContext = {
     event: {} as any,
     appId: 1,
@@ -63,15 +63,15 @@ describe("searchReplaceStrictTool", () => {
 
   describe("schema validation", () => {
     it("has the correct name", () => {
-      expect(searchReplaceStrictTool.name).toBe("search_replace");
+      expect(searchReplaceTool.name).toBe("search_replace");
     });
 
     it("has modifiesState set to true", () => {
-      expect(searchReplaceStrictTool.modifiesState).toBe(true);
+      expect(searchReplaceTool.modifiesState).toBe(true);
     });
 
     it("validates required fields", () => {
-      const schema = searchReplaceStrictTool.inputSchema;
+      const schema = searchReplaceTool.inputSchema;
 
       // Missing all fields
       expect(() => schema.parse({})).toThrow();
@@ -106,7 +106,7 @@ describe("searchReplaceStrictTool", () => {
   describe("execute validation", () => {
     it("errors when old_string equals new_string", async () => {
       await expect(
-        searchReplaceStrictTool.execute(
+        searchReplaceTool.execute(
           {
             file_path: "test.ts",
             old_string: "same content\nline2\nline3",
@@ -119,7 +119,7 @@ describe("searchReplaceStrictTool", () => {
 
     it("errors when old_string has fewer than 3 non-empty lines", async () => {
       await expect(
-        searchReplaceStrictTool.execute(
+        searchReplaceTool.execute(
           {
             file_path: "test.ts",
             old_string: "single line",
@@ -130,7 +130,7 @@ describe("searchReplaceStrictTool", () => {
       ).rejects.toThrow(/must include at least 3 non-empty lines/);
 
       await expect(
-        searchReplaceStrictTool.execute(
+        searchReplaceTool.execute(
           {
             file_path: "test.ts",
             old_string: "line1\nline2",
@@ -144,7 +144,7 @@ describe("searchReplaceStrictTool", () => {
     it("errors when old_string has 3 lines but only 2 non-empty lines", async () => {
       // Trailing newlines should not count as meaningful context
       await expect(
-        searchReplaceStrictTool.execute(
+        searchReplaceTool.execute(
           {
             file_path: "test.ts",
             old_string: "line1\nline2\n",
@@ -156,7 +156,7 @@ describe("searchReplaceStrictTool", () => {
 
       // Whitespace-only lines should not count
       await expect(
-        searchReplaceStrictTool.execute(
+        searchReplaceTool.execute(
           {
             file_path: "test.ts",
             old_string: "line1\n   \nline2",
@@ -174,7 +174,7 @@ describe("searchReplaceStrictTool", () => {
       );
 
       await expect(
-        searchReplaceStrictTool.execute(
+        searchReplaceTool.execute(
           {
             file_path: "test.ts",
             old_string: "line1\nline2\nline3",
@@ -191,7 +191,7 @@ describe("searchReplaceStrictTool", () => {
       vi.mocked(fs.existsSync).mockReturnValue(false);
 
       await expect(
-        searchReplaceStrictTool.execute(
+        searchReplaceTool.execute(
           {
             file_path: "nonexistent.ts",
             old_string: "line1\nline2\nline3",
@@ -216,7 +216,7 @@ describe("searchReplaceStrictTool", () => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
       vi.mocked(fs.promises.readFile).mockResolvedValue(originalContent);
 
-      const result = await searchReplaceStrictTool.execute(
+      const result = await searchReplaceTool.execute(
         {
           file_path: "test.ts",
           old_string: "  const x = 1;\n  const y = 2;\n  return x + y;",
@@ -230,6 +230,47 @@ describe("searchReplaceStrictTool", () => {
         "/test/app/test.ts",
         expect.stringContaining("const a = 10"),
       );
+    });
+
+    it("escapes marker-like lines inside content to avoid parser splitting", async () => {
+      const originalContent = [
+        "start",
+        "<<<<<<< HEAD",
+        "const x = 1;",
+        "=======",
+        "const x = 2;",
+        ">>>>>>> branch",
+        "end",
+      ].join("\n");
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(originalContent);
+
+      const result = await searchReplaceTool.execute(
+        {
+          file_path: "test.ts",
+          old_string: [
+            "<<<<<<< HEAD",
+            "const x = 1;",
+            "=======",
+            "const x = 2;",
+            ">>>>>>> branch",
+          ].join("\n"),
+          new_string: "const x = 42;",
+        },
+        mockContext,
+      );
+
+      expect(result).toContain("Successfully");
+      expect(fs.promises.writeFile).toHaveBeenCalledWith(
+        "/test/app/test.ts",
+        expect.stringContaining("const x = 42;"),
+      );
+
+      const written = vi.mocked(fs.promises.writeFile).mock.calls[0]?.[1];
+      expect(String(written)).not.toContain("<<<<<<< HEAD");
+      expect(String(written)).not.toContain("=======");
+      expect(String(written)).not.toContain(">>>>>>> branch");
     });
 
     it("errors on ambiguous matches (multiple occurrences)", async () => {
@@ -248,7 +289,7 @@ describe("searchReplaceStrictTool", () => {
       vi.mocked(fs.promises.readFile).mockResolvedValue(originalContent);
 
       await expect(
-        searchReplaceStrictTool.execute(
+        searchReplaceTool.execute(
           {
             file_path: "test.ts",
             old_string: "  console.log('hello');\n  return true;\n}",
@@ -272,7 +313,7 @@ describe("searchReplaceStrictTool", () => {
 
       // Using spaces instead of tabs - would match with lenient mode but not exact
       await expect(
-        searchReplaceStrictTool.execute(
+        searchReplaceTool.execute(
           {
             file_path: "test.ts",
             old_string:
@@ -288,12 +329,12 @@ describe("searchReplaceStrictTool", () => {
 
   describe("buildXml", () => {
     it("returns undefined when file_path is missing", () => {
-      const result = searchReplaceStrictTool.buildXml?.({}, false);
+      const result = searchReplaceTool.buildXml?.({}, false);
       expect(result).toBeUndefined();
     });
 
     it("builds partial XML during streaming", () => {
-      const result = searchReplaceStrictTool.buildXml?.(
+      const result = searchReplaceTool.buildXml?.(
         {
           file_path: "test.ts",
           old_string: "old content",
@@ -307,7 +348,7 @@ describe("searchReplaceStrictTool", () => {
     });
 
     it("builds complete XML on finish", () => {
-      const result = searchReplaceStrictTool.buildXml?.(
+      const result = searchReplaceTool.buildXml?.(
         {
           file_path: "test.ts",
           old_string: "old content",
@@ -327,7 +368,7 @@ describe("searchReplaceStrictTool", () => {
 
   describe("getConsentPreview", () => {
     it("returns preview with file path", () => {
-      const preview = searchReplaceStrictTool.getConsentPreview?.({
+      const preview = searchReplaceTool.getConsentPreview?.({
         file_path: "src/test.ts",
         old_string: "old",
         new_string: "new",

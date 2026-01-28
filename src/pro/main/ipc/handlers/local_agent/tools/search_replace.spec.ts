@@ -231,7 +231,7 @@ describe("searchReplaceTool", () => {
       ).rejects.toThrow(/ambiguous|multiple/i);
     });
 
-    it("errors when no exact match found (no fuzzy fallback)", async () => {
+    it("matches with fuzzy matching when whitespace differs", async () => {
       const originalContent = [
         "function test() {",
         "\tconsole.log('hello');", // Tab indentation
@@ -242,19 +242,23 @@ describe("searchReplaceTool", () => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
       vi.mocked(fs.promises.readFile).mockResolvedValue(originalContent);
 
-      // Using spaces instead of tabs - would match with lenient mode but not exact
-      await expect(
-        searchReplaceTool.execute(
-          {
-            file_path: "test.ts",
-            old_string:
-              "function test() {\n  console.log('hello');\n  return true;",
-            new_string:
-              "function test() {\n  console.log('goodbye');\n  return false;",
-          },
-          mockContext,
-        ),
-      ).rejects.toThrow(/did not match exactly/i);
+      // Using spaces instead of tabs - matches via fuzzy matching
+      const result = await searchReplaceTool.execute(
+        {
+          file_path: "test.ts",
+          old_string:
+            "function test() {\n  console.log('hello');\n  return true;",
+          new_string:
+            "function test() {\n  console.log('goodbye');\n  return false;",
+        },
+        mockContext,
+      );
+
+      expect(result).toContain("Successfully");
+      expect(fs.promises.writeFile).toHaveBeenCalledWith(
+        "/test/app/test.ts",
+        expect.stringContaining("console.log('goodbye')"),
+      );
     });
 
     it("matches when old_string has extra trailing newline not in source", async () => {

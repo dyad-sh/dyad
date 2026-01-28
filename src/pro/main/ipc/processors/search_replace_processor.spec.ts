@@ -1,6 +1,27 @@
-import { describe, it, expect } from "vitest";
-import { applySearchReplace } from "@/pro/main/ipc/processors/search_replace_processor";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { parseSearchReplaceBlocks } from "@/pro/shared/search_replace_parser";
+
+// Create mock logger functions that we can spy on
+const mockError = vi.fn();
+const mockWarn = vi.fn();
+const mockDebug = vi.fn();
+
+// Mock electron-log - must be before importing the module that uses it
+vi.mock("electron-log", () => {
+  return {
+    default: {
+      scope: () => ({
+        log: vi.fn(),
+        warn: (...args: unknown[]) => mockWarn(...args),
+        error: (...args: unknown[]) => mockError(...args),
+        debug: (...args: unknown[]) => mockDebug(...args),
+      }),
+    },
+  };
+});
+
+// Import after mock is set up
+import { applySearchReplace } from "@/pro/main/ipc/processors/search_replace_processor";
 
 describe("search_replace_processor - parseSearchReplaceBlocks", () => {
   it("parses multiple blocks with start_line in ascending order", () => {
@@ -401,131 +422,6 @@ replacement
 });
 
 describe("search_replace_processor - options", () => {
-  describe("exactMatchOnly option", () => {
-    it("succeeds with exact match when exactMatchOnly is true", () => {
-      const original = ["alpha", "beta", "gamma"].join("\n");
-      const diff = `
-<<<<<<< SEARCH
-beta
-=======
-BETA
->>>>>>> REPLACE
-`;
-      const { success, content } = applySearchReplace(original, diff, {
-        exactMatchOnly: true,
-      });
-      expect(success).toBe(true);
-      expect(content).toBe(["alpha", "BETA", "gamma"].join("\n"));
-    });
-
-    it("fails when only lenient match exists and exactMatchOnly is true", () => {
-      // Original has tab indentation, search uses spaces
-      const original = ["\tif (ready) {", "\t\tstart();", "\t}"].join("\n");
-
-      const diff = `
-<<<<<<< SEARCH
-  if (ready) {
-    start();
-  }
-=======
-  if (ready) {
-    launch();
-  }
->>>>>>> REPLACE
-`;
-
-      // Without exactMatchOnly, this would succeed via lenient matching
-      const lenientResult = applySearchReplace(original, diff);
-      expect(lenientResult.success).toBe(true);
-
-      // With exactMatchOnly, it should fail
-      const { success, error } = applySearchReplace(original, diff, {
-        exactMatchOnly: true,
-      });
-      expect(success).toBe(false);
-      expect(error).toMatch(/did not match exactly/i);
-    });
-
-    it("fails when only fuzzy match exists and exactMatchOnly is true", () => {
-      // Original has a minor typo that fuzzy matching would accept
-      const original = [
-        "function test() {",
-        "  console.log('helo');",
-        "}",
-      ].join("\n");
-
-      const diff = `
-<<<<<<< SEARCH
-function test() {
-  console.log('hello');
-}
-=======
-function test() {
-  console.log('goodbye');
-}
->>>>>>> REPLACE
-`;
-
-      // With exactMatchOnly, fuzzy matching is skipped
-      const { success, error } = applySearchReplace(original, diff, {
-        exactMatchOnly: true,
-      });
-      expect(success).toBe(false);
-      expect(error).toMatch(/did not match exactly/i);
-    });
-  });
-
-  describe("rejectIdentical option", () => {
-    it("errors when search and replace are identical with rejectIdentical", () => {
-      const original = ["x", "middle", "z"].join("\n");
-      const diff = `
-<<<<<<< SEARCH
-middle
-=======
-middle
->>>>>>> REPLACE
-`;
-      const { success, error } = applySearchReplace(original, diff, {
-        rejectIdentical: true,
-      });
-      expect(success).toBe(false);
-      expect(error).toMatch(/identical/i);
-    });
-
-    it("succeeds when search and replace are identical without rejectIdentical", () => {
-      const original = ["x", "middle", "z"].join("\n");
-      const diff = `
-<<<<<<< SEARCH
-middle
-=======
-middle
->>>>>>> REPLACE
-`;
-      const { success, content } = applySearchReplace(original, diff);
-      expect(success).toBe(true);
-      expect(content).toBe(original);
-    });
-  });
-
-  describe("combined options", () => {
-    it("applies both options together", () => {
-      const original = ["line1", "line2", "line3"].join("\n");
-      const diff = `
-<<<<<<< SEARCH
-line2
-=======
-line2
->>>>>>> REPLACE
-`;
-      const { success, error } = applySearchReplace(original, diff, {
-        exactMatchOnly: true,
-        rejectIdentical: true,
-      });
-      expect(success).toBe(false);
-      expect(error).toMatch(/identical/i);
-    });
-  });
-
   describe("leading/trailing empty line trimming", () => {
     it("matches when search has extra trailing newline", () => {
       const original = ["function test() {", "  return 1;", "}"].join("\n");
@@ -610,5 +506,175 @@ REPLACED
       expect(success).toBe(true);
       expect(content).toBe(["line1", "REPLACED", "line3"].join("\n"));
     });
+  });
+});
+
+describe("search_replace_processor - detailed failure logging", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("logs detailed diagnostic information when search block does not match", () => {
+    const original = [
+      "function greet() {",
+      "  console.log('Hello');",
+      "  return true;",
+      "}",
+      "",
+      "function farewell() {",
+      "  console.log('Goodbye');",
+      "  return false;",
+      "}",
+    ].join("\n");
+
+    const diff = `
+<<<<<<< SEARCH
+function greet() {
+  console.log('Hi there');
+  return true;
+}
+=======
+function greet() {
+  console.log('Hello World');
+  return true;
+}
+>>>>>>> REPLACE
+`;
+
+    const { success, error } = applySearchReplace(original, diff);
+    expect(success).toBe(false);
+    expect(error).toContain("did not match");
+
+    // Verify detailed logging was called with expected diagnostic information
+    const allErrorCalls = mockError.mock.calls
+      .map((call) => call[0])
+      .join("\n");
+    expect(allErrorCalls).toMatchInlineSnapshot(`
+      "=== SEARCH/REPLACE MATCH FAILURE (Block 1) ===
+
+      --- SEARCH CONTENT (4 lines) ---
+          1: "function greet() {"
+          2: "  console.log('Hi there');"
+          3: "  return true;"
+          4: "}"
+
+      --- BEST PARTIAL MATCH: 3/4 lines match ---
+          Location: lines 1-4 of original file
+          First mismatch at search line: 2
+
+      --- ORIGINAL FILE (lines 1-9, match region marked with >) ---
+        >    1: "function greet() {"
+        X    2: "  console.log('Hello');"
+        >    3: "  return true;"
+        >    4: "}"
+             5: ""
+             6: "function farewell() {"
+             7: "  console.log('Goodbye');"
+             8: "  return false;"
+             9: "}"
+
+      --- FIRST MISMATCH DETAILS ---
+        Search line 2: "  console.log('Hi there');"
+        File line 2:   "  console.log('Hello');"
+
+      === END MATCH FAILURE ===
+      "
+    `);
+  });
+
+  it("logs the correct number of matching lines in partial match", () => {
+    const original = [
+      "line one",
+      "line two",
+      "line three",
+      "line four",
+      "line five",
+    ].join("\n");
+
+    // Search for content where 2 out of 3 lines match
+    const diff = `
+<<<<<<< SEARCH
+line two
+WRONG LINE
+line four
+=======
+replaced
+>>>>>>> REPLACE
+`;
+
+    const { success } = applySearchReplace(original, diff);
+    expect(success).toBe(false);
+
+    // Verify logging shows partial match info
+    const allErrorCalls = mockError.mock.calls
+      .map((call) => call[0])
+      .join("\n");
+    expect(allErrorCalls).toMatchInlineSnapshot(`
+      "=== SEARCH/REPLACE MATCH FAILURE (Block 1) ===
+
+      --- SEARCH CONTENT (3 lines) ---
+          1: "line two"
+          2: "WRONG LINE"
+          3: "line four"
+
+      --- BEST PARTIAL MATCH: 2/3 lines match ---
+          Location: lines 2-4 of original file
+          First mismatch at search line: 2
+
+      --- ORIGINAL FILE (lines 1-5, match region marked with >) ---
+             1: "line one"
+        >    2: "line two"
+        X    3: "line three"
+        >    4: "line four"
+             5: "line five"
+
+      --- FIRST MISMATCH DETAILS ---
+        Search line 2: "WRONG LINE"
+        File line 3:   "line three"
+
+      === END MATCH FAILURE ===
+      "
+    `);
+  });
+
+  it("logs with JSON escaping to show invisible characters", () => {
+    const original = "hello\tworld\ntest";
+
+    const diff = `
+<<<<<<< SEARCH
+hello world
+=======
+replaced
+>>>>>>> REPLACE
+`;
+
+    const { success } = applySearchReplace(original, diff);
+    expect(success).toBe(false);
+
+    // Verify JSON.stringify is used (shows \t as escaped in the output)
+    const allErrorCalls = mockError.mock.calls
+      .map((call) => call[0])
+      .join("\n");
+    expect(allErrorCalls).toMatchInlineSnapshot(`
+      "=== SEARCH/REPLACE MATCH FAILURE (Block 1) ===
+
+      --- SEARCH CONTENT (1 lines) ---
+          1: "hello world"
+
+      --- BEST PARTIAL MATCH: 0/1 lines match ---
+          Location: lines 1-1 of original file
+          First mismatch at search line: 1
+
+      --- ORIGINAL FILE (lines 1-2, match region marked with >) ---
+        X    1: "hello\\tworld"
+             2: "test"
+
+      --- FIRST MISMATCH DETAILS ---
+        Search line 1: "hello world"
+        File line 1:   "hello\\tworld"
+
+      === END MATCH FAILURE ===
+      "
+    `);
   });
 });

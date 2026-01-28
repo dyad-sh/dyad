@@ -88,9 +88,6 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
   },
 
   execute: async (args, ctx: AgentContext) => {
-    console.log("search_replace***", args);
-    console.log("OLDSTRING", args.old_string, "END");
-
     // Validate old_string !== new_string
     if (args.old_string === args.new_string) {
       throw new Error("old_string and new_string must be different");
@@ -114,10 +111,7 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
     const escapedNew = escapeSearchReplaceMarkers(args.new_string);
     const operations = `<<<<<<< SEARCH\n${escapedOld}\n=======\n${escapedNew}\n>>>>>>> REPLACE`;
 
-    const result = applySearchReplace(original, operations, {
-      exactMatchOnly: true,
-      rejectIdentical: true,
-    });
+    const result = applySearchReplace(original, operations);
 
     if (!result.success || typeof result.content !== "string") {
       throw new Error(

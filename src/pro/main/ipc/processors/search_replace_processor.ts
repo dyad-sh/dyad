@@ -10,19 +10,6 @@ const logger = log.scope("search_replace_processor");
 // Options Interface
 // ============================================================================
 
-export interface SearchReplaceOptions {
-  /**
-   * If true, only exact string matching is used (Pass 1 only).
-   * All cascading fuzzy matching passes are skipped.
-   */
-  exactMatchOnly?: boolean;
-  /**
-   * If true, returns an error when search and replace content are identical.
-   * By default, identical content is allowed (treated as a no-op with warning).
-   */
-  rejectIdentical?: boolean;
-}
-
 function unescapeMarkers(content: string): string {
   return content
     .replace(/^\\<<<<<<</gm, "<<<<<<<")
@@ -131,15 +118,132 @@ function findMatchPositions(
 }
 
 /**
+ * Find the best partial match - the position in resultLines where the most
+ * consecutive lines from searchLines match (using unicode-normalized comparison)
+ */
+function findBestPartialMatch(
+  resultLines: string[],
+  searchLines: string[],
+): { startIndex: number; matchingLines: number; firstMismatchIndex: number } {
+  let bestStartIndex = 0;
+  let bestMatchingLines = 0;
+  let bestFirstMismatchIndex = 0;
+
+  for (let i = 0; i < resultLines.length; i++) {
+    let matchingLines = 0;
+    let firstMismatchIndex = -1;
+
+    for (let j = 0; j < searchLines.length && i + j < resultLines.length; j++) {
+      if (unicodeNormalized(resultLines[i + j], searchLines[j])) {
+        matchingLines++;
+      } else {
+        if (firstMismatchIndex === -1) {
+          firstMismatchIndex = j;
+        }
+        // Continue counting to find total matching lines, not just consecutive
+      }
+    }
+
+    if (matchingLines > bestMatchingLines) {
+      bestMatchingLines = matchingLines;
+      bestStartIndex = i;
+      bestFirstMismatchIndex =
+        firstMismatchIndex === -1 ? searchLines.length : firstMismatchIndex;
+    }
+  }
+
+  return {
+    startIndex: bestStartIndex,
+    matchingLines: bestMatchingLines,
+    firstMismatchIndex: bestFirstMismatchIndex,
+  };
+}
+
+/**
+ * Log detailed information about a failed match to help diagnose issues
+ */
+function logMatchFailure(
+  resultLines: string[],
+  searchLines: string[],
+  blockIndex: number,
+): void {
+  logger.error(
+    `=== SEARCH/REPLACE MATCH FAILURE (Block ${blockIndex + 1}) ===`,
+  );
+
+  // Log search content
+  logger.error(`\n--- SEARCH CONTENT (${searchLines.length} lines) ---`);
+  searchLines.forEach((line, i) => {
+    logger.error(`  ${String(i + 1).padStart(3)}: ${JSON.stringify(line)}`);
+  });
+
+  // Find best partial match
+  const bestMatch = findBestPartialMatch(resultLines, searchLines);
+
+  logger.error(
+    `\n--- BEST PARTIAL MATCH: ${bestMatch.matchingLines}/${searchLines.length} lines match ---`,
+  );
+  logger.error(
+    `    Location: lines ${bestMatch.startIndex + 1}-${bestMatch.startIndex + searchLines.length} of original file`,
+  );
+  logger.error(
+    `    First mismatch at search line: ${bestMatch.firstMismatchIndex + 1}`,
+  );
+
+  // Show the relevant section of the original file with context
+  const contextLines = 5;
+  const startLine = Math.max(0, bestMatch.startIndex - contextLines);
+  const endLine = Math.min(
+    resultLines.length,
+    bestMatch.startIndex + searchLines.length + contextLines,
+  );
+
+  logger.error(
+    `\n--- ORIGINAL FILE (lines ${startLine + 1}-${endLine}, match region marked with >) ---`,
+  );
+  for (let i = startLine; i < endLine; i++) {
+    const isInMatchRegion =
+      i >= bestMatch.startIndex &&
+      i < bestMatch.startIndex + searchLines.length;
+    const searchLineIndex = i - bestMatch.startIndex;
+    const matchesSearch =
+      isInMatchRegion &&
+      searchLineIndex < searchLines.length &&
+      unicodeNormalized(resultLines[i], searchLines[searchLineIndex]);
+
+    const marker = isInMatchRegion ? (matchesSearch ? ">" : "X") : " ";
+    logger.error(
+      `  ${marker} ${String(i + 1).padStart(4)}: ${JSON.stringify(resultLines[i])}`,
+    );
+  }
+
+  // If there's a mismatch, show the specific comparison
+  if (bestMatch.firstMismatchIndex < searchLines.length) {
+    const mismatchFileIndex =
+      bestMatch.startIndex + bestMatch.firstMismatchIndex;
+    if (mismatchFileIndex < resultLines.length) {
+      logger.error(`\n--- FIRST MISMATCH DETAILS ---`);
+      logger.error(
+        `  Search line ${bestMatch.firstMismatchIndex + 1}: ${JSON.stringify(searchLines[bestMatch.firstMismatchIndex])}`,
+      );
+      logger.error(
+        `  File line ${mismatchFileIndex + 1}:   ${JSON.stringify(resultLines[mismatchFileIndex])}`,
+      );
+    }
+  }
+
+  logger.error(`\n=== END MATCH FAILURE ===\n`);
+}
+
+/**
  * Cascading fuzzy matching: try each pass in order until we find a match
  * Returns the match index or -1 if no match found, along with any error
  */
 function cascadingMatch(
   resultLines: string[],
   searchLines: string[],
-  exactMatchOnly: boolean,
 ): { matchIndex: number; error?: string; passName?: string } {
-  const passesToTry = exactMatchOnly ? [MATCHING_PASSES[0]] : MATCHING_PASSES;
+  const passesToTry = MATCHING_PASSES;
 
   for (const pass of passesToTry) {
     const positions = findMatchPositions(
@@ -160,26 +264,15 @@ function cascadingMatch(
     }
   }
 
-  // No match found in any pass
-  if (exactMatchOnly) {
-    return {
-      matchIndex: -1,
-      error:
-        "Search content did not match exactly. Ensure the content matches the file exactly, including all whitespace and indentation.",
-    };
-  }
-
   return {
     matchIndex: -1,
-    error:
-      "Search block did not match any content in the target file after trying all matching passes (exact, trailing-whitespace-ignored, all-edge-whitespace-ignored, unicode-normalized)",
+    error: "Search block did not match any content in the target file.",
   };
 }
 
 export function applySearchReplace(
   originalContent: string,
   diffContent: string,
-  options: SearchReplaceOptions = {},
 ): {
   success: boolean;
   content?: string;
@@ -218,31 +311,17 @@ export function applySearchReplace(
 
     // If search and replace are identical, it's either an error or a no-op warning
     if (searchLines.join("\n") === replaceLines.join("\n")) {
-      if (options.rejectIdentical) {
-        return {
-          success: false,
-          error: "Search and replace content are identical",
-        };
-      }
       logger.warn("Search and replace blocks are identical");
     }
 
     // Use cascading fuzzy matching to find the match
-    let matchResult = cascadingMatch(
-      resultLines,
-      searchLines,
-      options.exactMatchOnly ?? false,
-    );
+    let matchResult = cascadingMatch(resultLines, searchLines);
 
     // If no match found, try with trimmed leading/trailing empty lines as a fallback
     if (matchResult.error && !matchResult.error.includes("ambiguous")) {
       const trimmedSearchLines = trimEmptyLines(searchLines);
       if (trimmedSearchLines.length !== searchLines.length) {
-        const trimmedResult = cascadingMatch(
-          resultLines,
-          trimmedSearchLines,
-          options.exactMatchOnly ?? false,
-        );
+        const trimmedResult = cascadingMatch(resultLines, trimmedSearchLines);
         if (!trimmedResult.error) {
           matchResult = trimmedResult;
           searchLines = trimmedSearchLines;
@@ -254,6 +333,8 @@ export function applySearchReplace(
     }
 
     if (matchResult.error) {
+      // Log detailed diagnostic information for debugging
+      logMatchFailure(resultLines, searchLines, appliedCount);
       return {
         success: false,
         error: matchResult.error,

@@ -176,7 +176,9 @@ export function useStreamChat({
               pendingStreamChatIds.delete(chatId);
 
               if (response.updatedFiles) {
-                setIsPreviewOpen(true);
+                if (settings?.autoExpandPreviewPanel) {
+                  setIsPreviewOpen(true);
+                }
                 refreshAppIframe();
                 if (settings?.enableAutoFixProblems) {
                   checkProblems();

@@ -40,6 +40,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   lastKnownPerformance: undefined,
   // Enabled by default in 0.33.0-beta.1
   enableNativeGit: true,
+  autoExpandPreviewPanel: true,
 };
 
 const SETTINGS_FILE = "user-settings.json";

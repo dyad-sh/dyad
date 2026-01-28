@@ -256,7 +256,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       setError((err as Error)?.message || "An error occurred while approving");
     } finally {
       setIsApproving(false);
-      setIsPreviewOpen(true);
+      if (settings?.autoExpandPreviewPanel) {
+        setIsPreviewOpen(true);
+      }
       refreshVersions();
       if (settings?.enableAutoFixProblems) {
         checkProblems();

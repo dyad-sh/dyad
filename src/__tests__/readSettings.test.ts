@@ -53,6 +53,7 @@ describe("readSettings", () => {
       );
       expect(scrubSettings(result)).toMatchInlineSnapshot(`
         {
+          "autoExpandPreviewPanel": true,
           "enableAutoFixProblems": false,
           "enableAutoUpdate": true,
           "enableNativeGit": true,
@@ -308,6 +309,7 @@ describe("readSettings", () => {
 
       expect(scrubSettings(result)).toMatchInlineSnapshot(`
         {
+          "autoExpandPreviewPanel": true,
           "enableAutoFixProblems": false,
           "enableAutoUpdate": true,
           "enableNativeGit": true,

@@ -135,17 +135,13 @@ jobs:
 
           if [ "${{ steps.before-claude.outputs.sha }}" != "$PR_HEAD_SHA" ]; then
             echo "Claude pushed new commits (before: ${{ steps.before-claude.outputs.sha }}, after: $PR_HEAD_SHA)"
-            echo "Re-triggering CI by closing and reopening PR"
-            if gh pr close ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }}; then
-              if ! gh pr reopen ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }}; then
-                echo "::warning::Failed to reopen PR after close. Attempting recovery..."
-                # Retry reopen once after a short delay
-                sleep 2
-                gh pr reopen ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }} || echo "::error::PR may be left closed. Manual intervention required."
-              fi
-            else
-              echo "::warning::Failed to close PR, skipping re-trigger"
-            fi
+            echo "Re-triggering CI via workflow_dispatch"
+            # Use workflow_dispatch to trigger CI - this works with GITHUB_TOKEN unlike PR events
+            # which are blocked to prevent infinite loops
+            gh workflow run ci.yml \
+              --repo ${{ github.repository }} \
+              --ref "${{ github.event.workflow_run.head_branch }}" \
+              -f pr_number=${{ steps.pr-info.outputs.pr_number }}
           else
             echo "No new commits pushed, skipping CI re-trigger"
           fi

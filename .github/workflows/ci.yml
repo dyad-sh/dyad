@@ -6,6 +6,12 @@ on:
       - main
   pull_request:
     types: [opened, synchronize, reopened, closed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number for CI re-run (used by pr-review-responder)"
+        required: false
+        type: string
 
 concurrency:
   # Use PR number for pull_request events to enable cancellation when PR is merged
@@ -31,6 +37,13 @@ jobs:
       - name: Check if only .claude files changed
         id: check
         run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Always run tests for manual workflow dispatch (e.g., from pr-review-responder)
+            echo "should_run_tests=true" >> $GITHUB_OUTPUT
+            echo "Running tests: manual workflow dispatch"
+            exit 0
+          fi
+
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
             # Always run tests on pushes to main
             echo "should_run_tests=true" >> $GITHUB_OUTPUT
@@ -222,6 +235,8 @@ jobs:
         uses: actions/github-script@v7
         env:
           PLAYWRIGHT_RUN_ID: ${{ github.run_id }}
+          # Pass PR number for workflow_dispatch triggers (from pr-review-responder)
+          PR_NUMBER: ${{ inputs.pr_number }}
         with:
           script: |
             const { run } = require('./scripts/generate-playwright-summary.js');

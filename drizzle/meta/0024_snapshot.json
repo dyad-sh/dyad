@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "58bbbbba-abef-41e9-b0f8-000fbb4f59ac",
-  "prevId": "ce28ff48-ebcb-4c8e-90aa-623ebe456839",
+  "id": "39604cc7-898f-4dde-a4dd-a46a8cc7680a",
+  "prevId": "58bbbbba-abef-41e9-b0f8-000fbb4f59ac",
   "tables": {
     "apps": {
       "name": "apps",
@@ -678,6 +678,13 @@
         "ai_messages_json": {
           "name": "ai_messages_json",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "using_free_agent_mode_quota": {
+          "name": "using_free_agent_mode_quota",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

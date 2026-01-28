@@ -122,18 +122,24 @@ function AlertDialogDescription({
   asChild?: boolean;
 }) {
   // Base UI doesn't support asChild on Description, so we handle it manually
+  // We must keep the Description wrapper to maintain accessibility (aria-describedby)
   if (asChild && React.isValidElement(children)) {
-    return React.cloneElement(
-      children as React.ReactElement<{ className?: string }>,
-      {
-        className: cn(
-          "text-muted-foreground text-sm",
-          className,
-          (children as React.ReactElement<{ className?: string }>).props
-            .className,
-        ),
-        ...props,
-      },
+    return (
+      <AlertDialogPrimitive.Description
+        data-slot="alert-dialog-description"
+        className={cn("text-muted-foreground text-sm", className)}
+        {...props}
+      >
+        {React.cloneElement(
+          children as React.ReactElement<{ className?: string }>,
+          {
+            className: cn(
+              (children as React.ReactElement<{ className?: string }>).props
+                .className,
+            ),
+          },
+        )}
+      </AlertDialogPrimitive.Description>
     );
   }
   return (

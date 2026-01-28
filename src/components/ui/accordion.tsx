@@ -27,7 +27,8 @@ function Accordion({
   const baseUiDefaultValue = React.useMemo(() => {
     if (defaultValue === undefined) return undefined;
     if (typeof defaultValue === "string") {
-      return [defaultValue];
+      // Empty string should become empty array, not [""]
+      return defaultValue === "" ? [] : [defaultValue];
     }
     return defaultValue;
   }, [defaultValue]);
@@ -35,7 +36,8 @@ function Accordion({
   const baseUiValue = React.useMemo(() => {
     if (value === undefined) return undefined;
     if (typeof value === "string") {
-      return [value];
+      // Empty string should become empty array, not [""]
+      return value === "" ? [] : [value];
     }
     return value;
   }, [value]);

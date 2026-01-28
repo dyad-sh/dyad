@@ -13,18 +13,58 @@ function Slot({
   if (React.isValidElement(children)) {
     const childProps = (children as React.ReactElement<Record<string, unknown>>)
       .props;
-    // Destructure children from childProps to avoid overriding
-    const { children: childChildren, ...restChildProps } = childProps as {
+    // Destructure children and ref from childProps
+    const {
+      children: childChildren,
+      ref: childRef,
+      ...restChildProps
+    } = childProps as {
       children?: React.ReactNode;
+      ref?: React.Ref<unknown>;
       [key: string]: unknown;
     };
+
+    // Extract ref from props if it exists
+    const { ref: propsRef, ...restProps } = props as {
+      ref?: React.Ref<unknown>;
+      [key: string]: unknown;
+    };
+
+    // Compose refs - child props override parent props, but refs need to be merged
+    const composedRef = React.useMemo(() => {
+      if (!propsRef && !childRef) return undefined;
+      return (node: unknown) => {
+        // Call parent ref first
+        if (typeof propsRef === "function") {
+          propsRef(node);
+        } else if (
+          propsRef &&
+          typeof propsRef === "object" &&
+          "current" in propsRef
+        ) {
+          (propsRef as React.MutableRefObject<unknown>).current = node;
+        }
+        // Then call child ref
+        if (typeof childRef === "function") {
+          childRef(node);
+        } else if (
+          childRef &&
+          typeof childRef === "object" &&
+          "current" in childRef
+        ) {
+          (childRef as React.MutableRefObject<unknown>).current = node;
+        }
+      };
+    }, [propsRef, childRef]);
+
     return React.cloneElement(
       children as React.ReactElement<Record<string, unknown>>,
       {
-        ...props,
+        ...restProps,
         ...restChildProps,
+        ref: composedRef,
         className: [
-          props.className,
+          restProps.className,
           (children as React.ReactElement<{ className?: string }>).props
             .className,
         ]

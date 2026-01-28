@@ -397,6 +397,72 @@ class MyClass {
 }
 </output_file>
 
+--- Test case name: search without indentation matches deeply indented code ---
+<original_file>
+class Outer {
+  constructor() {
+    if (condition) {
+      while (true) {
+        for (let i = 0; i < 10; i++) {
+          doSomething(i);
+        }
+      }
+    }
+  }
+}
+</original_file>
+<<<<<<< SEARCH
+for (let i = 0; i < 10; i++) {
+  doSomething(i);
+}
+=======
+for (let i = 0; i < 10; i++) {
+  doSomethingElse(i);
+  logProgress(i);
+}
+>>>>>>> REPLACE
+<output_file>
+class Outer {
+  constructor() {
+    if (condition) {
+      while (true) {
+        for (let i = 0; i < 10; i++) {
+          doSomethingElse(i);
+          logProgress(i);
+        }
+      }
+    }
+  }
+}
+</output_file>
+
+--- Test case name: search with extra indentation normalized to original ---
+<original_file>
+function test() {
+  if (x) {
+    doThing();
+  }
+}
+</original_file>
+<<<<<<< SEARCH
+        if (x) {
+          doThing();
+        }
+=======
+        if (x) {
+          doOther();
+          doMore();
+        }
+>>>>>>> REPLACE
+<output_file>
+function test() {
+  if (x) {
+    doOther();
+    doMore();
+  }
+}
+</output_file>
+
 --- Test case name: regex special characters treated as literal ---
 <original_file>
 const pattern = /.*[](){}^$/;

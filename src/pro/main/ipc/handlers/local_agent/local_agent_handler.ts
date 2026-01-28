@@ -48,7 +48,9 @@ import {
   escapeXmlAttr,
   escapeXmlContent,
   UserMessageContentPart,
+  FileEditTracker,
 } from "./tools/types";
+import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import {
   prepareStepMessages,
   type InjectedMessage,
@@ -176,6 +178,7 @@ export async function handleLocalAgentStream(
     );
 
     // Build tool execute context
+    const fileEditTracker: FileEditTracker = {};
     const ctx: AgentContext = {
       event,
       appId: chat.app.id,
@@ -187,6 +190,7 @@ export async function handleLocalAgentStream(
       isSharedModulesChanged: false,
       todos: [],
       dyadRequestId,
+      fileEditTracker,
       onXmlStream: (accumulatedXml: string) => {
         // Stream accumulated XML to UI without persisting
         streamingPreview = accumulatedXml;
@@ -451,6 +455,19 @@ export async function handleLocalAgentStream(
       .update(messages)
       .set({ approvalState: "approved" })
       .where(eq(messages.id, placeholderMessageId));
+
+    // Send telemetry for files with multiple edit tool types
+    for (const [filePath, counts] of Object.entries(fileEditTracker)) {
+      const toolsUsed = Object.entries(counts).filter(([, count]) => count > 0);
+      if (toolsUsed.length >= 2) {
+        sendTelemetryEvent("local_agent:file_edit_retry", {
+          filePath,
+          write_file: counts.write_file,
+          edit_file: counts.edit_file,
+          search_replace: counts.search_replace,
+        });
+      }
+    }
 
     // Send completion
     safeSend(event.sender, "chat:response:end", {

@@ -26,6 +26,16 @@ export {
 // Re-export AgentTodo as Todo for backwards compatibility within this module
 export type Todo = AgentTodo;
 
+/** Tracks which file-editing tools were used on each file path */
+export type FileEditToolName = "write_file" | "edit_file" | "search_replace";
+export interface FileEditTracker {
+  [filePath: string]: {
+    write_file: number;
+    edit_file: number;
+    search_replace: number;
+  };
+}
+
 export interface AgentContext {
   event: IpcMainInvokeEvent;
   appId: number;
@@ -40,6 +50,8 @@ export interface AgentContext {
   todos: Todo[];
   /** Request ID for tracking requests to the Dyad engine */
   dyadRequestId: string;
+  /** Tracks file edit tool usage per file for telemetry */
+  fileEditTracker: FileEditTracker;
   /**
    * Streams accumulated XML to UI without persisting to DB (for live preview).
    * Call this repeatedly with the full accumulated XML so far.

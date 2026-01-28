@@ -1,2 +1,4 @@
+- "selectedChatMode": "build"
++ "selectedChatMode": "local-agent"
 - "selectedTemplateId": "react"
 + "selectedTemplateId": "next"

@@ -129,7 +129,20 @@ export type GenerateThemePromptResult = z.infer<
 
 // URL-based theme generation params
 export const GenerateThemeFromUrlParamsSchema = z.object({
-  url: z.string().url(),
+  url: z
+    .string()
+    .url()
+    .refine(
+      (url) => {
+        try {
+          const parsed = new URL(url);
+          return parsed.protocol === "http:" || parsed.protocol === "https:";
+        } catch {
+          return false;
+        }
+      },
+      { message: "Only HTTP and HTTPS URLs are supported" },
+    ),
   keywords: z.string(),
   generationMode: ThemeGenerationModeSchema,
   model: ThemeGenerationModelSchema,

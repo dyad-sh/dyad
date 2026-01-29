@@ -736,6 +736,22 @@ Modern theme extracted from website for testing.
         );
       }
 
+      // SSRF protection: block internal/private network addresses
+      const hostname = parsedUrl.hostname.toLowerCase();
+      const blockedPatterns = [
+        /^localhost$/i,
+        /^127\.\d+\.\d+\.\d+$/,
+        /^10\.\d+\.\d+\.\d+$/,
+        /^192\.168\.\d+\.\d+$/,
+        /^172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+$/,
+        /^169\.254\.\d+\.\d+$/,
+        /^::1$/,
+        /\.local$/i,
+      ];
+      if (blockedPatterns.some((p) => p.test(hostname))) {
+        throw new Error("Cannot crawl internal network addresses.");
+      }
+
       // Validate keywords length
       if (params.keywords.length > 500) {
         throw new Error("Keywords must be less than 500 characters");
@@ -789,7 +805,9 @@ Modern theme extracted from website for testing.
             "Website crawl timed out. The website may be too slow or unresponsive.",
           );
         }
-        throw error;
+        throw new Error(
+          "Failed to connect to crawl service. Please check your internet connection and try again.",
+        );
       } finally {
         clearTimeout(timeoutId);
       }
@@ -857,6 +875,7 @@ source: Live website (screenshot and content provided)`;
         {
           type: "image",
           image: crawlResult.screenshot,
+          mimeType: "image/png",
         } as ImagePart,
         {
           type: "text",

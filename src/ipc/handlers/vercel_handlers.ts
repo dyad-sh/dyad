@@ -249,9 +249,7 @@ async function pollDeploymentStatus(
   intervalMs: number = 3000,
 ): Promise<{ url: string; readyState: string }> {
   for (let i = 0; i < maxAttempts; i++) {
-    const url = new URL(
-      `${VERCEL_API_BASE}/v13/deployments/${deploymentId}`,
-    );
+    const url = new URL(`${VERCEL_API_BASE}/v13/deployments/${deploymentId}`);
     if (teamId) {
       url.searchParams.set("teamId", teamId);
     }
@@ -710,7 +708,9 @@ async function handleTestConnection(): Promise<VercelTestConnectionResult> {
   const accessToken = settings.vercelAccessToken?.value;
 
   if (!accessToken) {
-    throw new Error("Not authenticated with Vercel. Please add your access token in Settings → Integrations.");
+    throw new Error(
+      "Not authenticated with Vercel. Please add your access token in Settings → Integrations.",
+    );
   }
 
   try {
@@ -734,7 +734,9 @@ async function handleDeploy(
   const accessToken = settings.vercelAccessToken?.value;
 
   if (!accessToken) {
-    throw new Error("Not authenticated with Vercel. Please add your access token in Settings → Integrations.");
+    throw new Error(
+      "Not authenticated with Vercel. Please add your access token in Settings → Integrations.",
+    );
   }
 
   // Get app details
@@ -818,7 +820,11 @@ async function handleDeploy(
     const stat = fs.statSync(fullPath);
 
     try {
-      const sha = await uploadFileToVercel(accessToken, fullPath, resolvedTeamId);
+      const sha = await uploadFileToVercel(
+        accessToken,
+        fullPath,
+        resolvedTeamId,
+      );
       uploadedFiles.push({
         file: relativePath,
         sha,
@@ -826,14 +832,17 @@ async function handleDeploy(
       });
     } catch (uploadError: any) {
       logger.error(`Failed to upload ${relativePath}:`, uploadError);
-      throw new Error(`Failed to upload ${relativePath}: ${uploadError.message}`);
+      throw new Error(
+        `Failed to upload ${relativePath}: ${uploadError.message}`,
+      );
     }
   }
 
   logger.info(`Uploaded ${uploadedFiles.length} files`);
 
   // Create deployment
-  const projectName = app.vercelProjectName || app.name.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+  const projectName =
+    app.vercelProjectName || app.name.toLowerCase().replace(/[^a-z0-9-]/g, "-");
   logger.info(`Creating deployment for project: ${projectName}`);
 
   const deployment = await createVercelDeployment(

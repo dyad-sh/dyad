@@ -142,9 +142,10 @@ describe("Vercel Deploy Configuration", () => {
         message: "Unauthorized",
       };
 
-      const userMessage = authError.status === 401
-        ? "Authentication failed. Please check your Vercel access token."
-        : authError.message;
+      const userMessage =
+        authError.status === 401
+          ? "Authentication failed. Please check your Vercel access token."
+          : authError.message;
 
       expect(userMessage).toContain("Authentication failed");
     });
@@ -155,9 +156,10 @@ describe("Vercel Deploy Configuration", () => {
         message: "Too Many Requests",
       };
 
-      const userMessage = quotaError.status === 429
-        ? "Rate limit exceeded. Please try again later."
-        : quotaError.message;
+      const userMessage =
+        quotaError.status === 429
+          ? "Rate limit exceeded. Please try again later."
+          : quotaError.message;
 
       expect(userMessage).toContain("Rate limit");
     });
@@ -211,7 +213,8 @@ describe("Vercel Deploy Configuration", () => {
 
     it("should continue polling for BUILDING status", () => {
       const status: string = "BUILDING";
-      const shouldPoll = status !== "READY" && status !== "ERROR" && status !== "CANCELED";
+      const shouldPoll =
+        status !== "READY" && status !== "ERROR" && status !== "CANCELED";
 
       expect(shouldPoll).toBe(true);
     });

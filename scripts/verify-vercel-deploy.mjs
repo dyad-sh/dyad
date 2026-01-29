@@ -163,9 +163,7 @@ function checkTokenLeakage() {
     } else if (matches && isSoft) {
       // Check if it's actually dangerous by examining context
       // For now, just warn
-      logWarning(
-        `Potential issue found: ${name}. Manual review recommended.`,
-      );
+      logWarning(`Potential issue found: ${name}. Manual review recommended.`);
     }
   }
 
@@ -174,7 +172,9 @@ function checkTokenLeakage() {
   }
 
   // Check that DO NOT LOG comment exists for sensitive handler
-  if (content.includes("DO NOT LOG this handler because tokens are sensitive")) {
+  if (
+    content.includes("DO NOT LOG this handler because tokens are sensitive")
+  ) {
     logSuccess("Token handler has security comment");
   } else {
     logWarning(
@@ -222,9 +222,7 @@ function checkDocumentation() {
   const docPath = path.join(ROOT_DIR, "docs/VERCEL_DEPLOY.md");
 
   if (!fs.existsSync(docPath)) {
-    logWarning(
-      "VERCEL_DEPLOY.md documentation not found. Consider adding it.",
-    );
+    logWarning("VERCEL_DEPLOY.md documentation not found. Consider adding it.");
     return;
   }
 

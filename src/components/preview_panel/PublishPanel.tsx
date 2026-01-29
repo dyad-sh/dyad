@@ -12,7 +12,13 @@ import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManage
 import { Button } from "@/components/ui/button";
 import { showSuccess, showError } from "@/lib/toast";
 
-type DeployStatus = "idle" | "building" | "uploading" | "deploying" | "ready" | "error";
+type DeployStatus =
+  | "idle"
+  | "building"
+  | "uploading"
+  | "deploying"
+  | "ready"
+  | "error";
 
 export const PublishPanel = () => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
@@ -204,11 +210,17 @@ export const PublishPanel = () => {
                 <div className="flex flex-col gap-3">
                   <Button
                     onClick={handleDirectDeploy}
-                    disabled={deployStatus !== "idle" && deployStatus !== "ready" && deployStatus !== "error"}
+                    disabled={
+                      deployStatus !== "idle" &&
+                      deployStatus !== "ready" &&
+                      deployStatus !== "error"
+                    }
                     className="w-full"
                     data-testid="vercel-deploy-button"
                   >
-                    {deployStatus === "idle" || deployStatus === "ready" || deployStatus === "error" ? (
+                    {deployStatus === "idle" ||
+                    deployStatus === "ready" ||
+                    deployStatus === "error" ? (
                       <>
                         <svg
                           className="w-4 h-4 mr-2"
@@ -306,7 +318,10 @@ export const PublishPanel = () => {
                     <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
                       Or connect to a GitHub-linked Vercel project:
                     </p>
-                    <VercelConnector appId={selectedAppId} folderName={app.name} />
+                    <VercelConnector
+                      appId={selectedAppId}
+                      folderName={app.name}
+                    />
                   </div>
                 )}
               </div>
@@ -331,7 +346,8 @@ export const PublishPanel = () => {
                       Connect to Vercel
                     </h3>
                     <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-                      To deploy your app, first connect to Vercel in Settings → Integrations.
+                      To deploy your app, first connect to Vercel in Settings →
+                      Integrations.
                     </p>
                     <Button
                       variant="outline"

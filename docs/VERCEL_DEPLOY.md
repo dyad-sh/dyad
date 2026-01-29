@@ -20,6 +20,7 @@ ABBA AI supports direct deployment to Vercel without requiring a GitHub reposito
 ### Required Permissions
 
 The access token needs the following permissions:
+
 - **Deployments**: Create and manage deployments
 - **Projects**: Read project information
 
@@ -37,6 +38,7 @@ With "Full Account" scope, you'll have all necessary permissions.
 ### Connection Status
 
 After connecting, you'll see:
+
 - Your Vercel username
 - Options to test connection or copy diagnostics
 - A disconnect button if you need to remove the connection
@@ -54,6 +56,7 @@ After connecting, you'll see:
 ### Deployment Process
 
 The deployment process:
+
 1. **Build**: Runs `npm run build` if no build output exists
 2. **Upload**: Uploads all files from your `dist`, `build`, `out`, or `.next` directory
 3. **Deploy**: Creates a deployment on Vercel
@@ -70,6 +73,7 @@ If you also have GitHub connected, you can optionally link your Vercel project t
 **Problem**: The token is missing or invalid.
 
 **Solution**:
+
 1. Go to Settings → Integrations
 2. Check if Vercel is connected
 3. If not, add your access token
@@ -80,6 +84,7 @@ If you also have GitHub connected, you can optionally link your Vercel project t
 **Problem**: Your app couldn't be built.
 
 **Solution**:
+
 1. Check if your app has a `build` script in `package.json`
 2. Try running `npm run build` manually in your terminal
 3. Fix any build errors before deploying
@@ -89,6 +94,7 @@ If you also have GitHub connected, you can optionally link your Vercel project t
 **Problem**: The build completed but no deployable files were found.
 
 **Solution**:
+
 1. Ensure your build creates one of: `dist`, `build`, `out`, or `.next`
 2. Check your build configuration (e.g., `vite.config.ts` or `next.config.js`)
 
@@ -97,6 +103,7 @@ If you also have GitHub connected, you can optionally link your Vercel project t
 **Problem**: Too many deployment requests.
 
 **Solution**:
+
 1. Wait a few minutes before trying again
 2. Check your Vercel plan limits at [vercel.com/dashboard](https://vercel.com/dashboard)
 
@@ -105,6 +112,7 @@ If you also have GitHub connected, you can optionally link your Vercel project t
 **Problem**: Vercel encountered an error during deployment.
 
 **Solution**:
+
 1. Check the error message for details
 2. Verify your app's build output is valid
 3. Check Vercel's status page for any ongoing issues
@@ -114,6 +122,7 @@ If you also have GitHub connected, you can optionally link your Vercel project t
 If you need help debugging, use the **Copy Diagnostics** button in Settings → Integrations. This copies safe diagnostic information (no secrets) that you can share when asking for help.
 
 The diagnostics include:
+
 - Connection status
 - Whether a token is set (not the actual token)
 - Last test result
@@ -128,19 +137,20 @@ The diagnostics include:
 
 ABBA AI automatically detects your framework and configures Vercel accordingly:
 
-| Framework | Detection |
-|-----------|-----------|
-| Next.js | `next.config.js/mjs/ts` |
-| Vite | `vite.config.js/ts/mjs` |
-| Nuxt | `nuxt.config.js/ts` |
-| Astro | `astro.config.js/mjs/ts` |
-| Svelte | `svelte.config.js` |
+| Framework        | Detection                  |
+| ---------------- | -------------------------- |
+| Next.js          | `next.config.js/mjs/ts`    |
+| Vite             | `vite.config.js/ts/mjs`    |
+| Nuxt             | `nuxt.config.js/ts`        |
+| Astro            | `astro.config.js/mjs/ts`   |
+| Svelte           | `svelte.config.js`         |
 | Create React App | `react-scripts` dependency |
-| Gatsby | `gatsby` dependency |
+| Gatsby           | `gatsby` dependency        |
 
 ## Environment Variables
 
 If your app requires environment variables:
+
 1. Set them in your Vercel project settings at [vercel.com/dashboard](https://vercel.com/dashboard)
 2. Or use the `.env.local` file locally (won't be deployed)
 

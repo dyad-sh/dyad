@@ -64,9 +64,7 @@ export function VercelIntegration() {
 
   const handleCopyDiagnostics = () => {
     const token = settings?.vercelAccessToken?.value || "";
-    const maskedToken = token
-      ? `***...${token.slice(-4)}`
-      : "(not set)";
+    const maskedToken = token ? `***...${token.slice(-4)}` : "(not set)";
 
     const diagnostics = {
       connected: isConnected,
@@ -117,7 +115,11 @@ export function VercelIntegration() {
               Connect to Vercel to deploy your apps directly.
             </p>
           </div>
-          <svg className="h-5 w-5 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+          <svg
+            className="h-5 w-5 text-gray-400"
+            fill="currentColor"
+            viewBox="0 0 24 24"
+          >
             <path d="M24 22.525H0l12-21.05 12 21.05z" />
           </svg>
         </div>
@@ -184,7 +186,11 @@ export function VercelIntegration() {
               : "Your account is connected to Vercel."}
           </p>
         </div>
-        <svg className="h-5 w-5 text-green-500" fill="currentColor" viewBox="0 0 24 24">
+        <svg
+          className="h-5 w-5 text-green-500"
+          fill="currentColor"
+          viewBox="0 0 24 24"
+        >
           <path d="M24 22.525H0l12-21.05 12 21.05z" />
         </svg>
       </div>
@@ -206,11 +212,7 @@ export function VercelIntegration() {
         >
           {isTesting ? "Testing..." : "Test Connection"}
         </Button>
-        <Button
-          onClick={handleCopyDiagnostics}
-          variant="outline"
-          size="sm"
-        >
+        <Button onClick={handleCopyDiagnostics} variant="outline" size="sm">
           Copy Diagnostics
         </Button>
         <Button

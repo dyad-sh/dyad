@@ -150,4 +150,3 @@ If you're interested in contributing, please read our [contributing](./CONTRIBUT
 2. [Release workflow](https://github.com/yosiwizman/dyad/actions/workflows/release.yml) builds Windows + macOS installers
 3. Assets are verified, then published to [GitHub Releases](https://github.com/yosiwizman/dyad/releases)
 4. E2E results (if any) are reviewed separately and do not block the release
-

@@ -90,6 +90,37 @@ The diagnostics output (Settings → Vault → Copy Diagnostics) now includes:
 3. **Tokens are encrypted locally**: Using Electron's safeStorage API
 4. **Anonymous users have limited permissions**: RLS policies control what anonymous users can do
 
+## Backup Path Resolution
+
+Vault backups operate on the **app workspace path**, which is:
+
+- **Default location**: `~/abba-ai-apps/<app-name>` (e.g., `C:\Users\you\abba-ai-apps\calm-zebra-wiggle`)
+- **Custom location**: If you moved an app, the absolute path stored in settings
+
+**Important**: Backups do NOT use Electron's userData path (`AppData/Local/abba_ai/app-x.x.x/...`). The workspace path is where your actual source code and project files live.
+
+### "Project folder not found" Error
+
+If you see this error when creating a backup:
+
+```
+Project folder not found: /path/to/your/app.
+The app "app-name" may have been moved or deleted.
+Please rebuild the app or update its location in settings.
+```
+
+**Causes:**
+
+- The app folder was manually moved or deleted
+- The app was renamed outside of ABBA AI
+- Drive letter changed (Windows)
+
+**Solutions:**
+
+1. **Rebuild the app**: This recreates the project folder
+2. **Update location**: Settings → Apps → Select app → Change location
+3. **Restore from backup**: If you have a previous backup, restore it to a new location
+
 ## Troubleshooting
 
 ### "Anonymous sign-in not supported"

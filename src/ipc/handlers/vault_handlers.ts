@@ -20,6 +20,8 @@ import {
   isVaultConfigured,
 } from "../../vault/vault_config";
 import type { VaultAuthSession } from "../../lib/schemas";
+import { getAbbaAppPath } from "../../paths/paths";
+import * as fs from "fs";
 
 /**
  * Vault authentication status reason codes.
@@ -611,14 +613,40 @@ export function registerVaultHandlers() {
         throw new Error(`App not found: ${appId}`);
       }
 
+      // IMPORTANT: Resolve the app path using getAbbaAppPath.
+      // appData.path may be relative (e.g., "calm-zebra-wiggle") which resolves
+      // to ~/abba-ai-apps/calm-zebra-wiggle, or absolute (used as-is).
+      // Do NOT use app.getPath('userData') or Electron version paths.
+      const resolvedProjectPath = getAbbaAppPath(appData.path);
+
+      // Verify the project directory exists before attempting backup
+      if (!fs.existsSync(resolvedProjectPath)) {
+        const errorInfo = {
+          appId,
+          appName: appData.name,
+          storedPath: appData.path,
+          resolvedPath: resolvedProjectPath,
+        };
+        logger.error(
+          `Project folder not found for backup: ${JSON.stringify(errorInfo)}`,
+        );
+        throw new Error(
+          `Project folder not found: ${resolvedProjectPath}. ` +
+            `The app "${appData.name}" may have been moved or deleted. ` +
+            `Please rebuild the app or update its location in settings.`,
+        );
+      }
+
       const client = createVaultClient();
       const appVersion = app.getVersion();
 
-      logger.info(`Creating backup for app: ${appData.name} (${appId})`);
+      logger.info(
+        `Creating backup for app: ${appData.name} (${appId}) at ${resolvedProjectPath}`,
+      );
 
       const backup = await client.createBackup({
         projectName: appData.name,
-        projectPath: appData.path,
+        projectPath: resolvedProjectPath,
         appVersion,
         notes,
         onProgress: (stage, progress) => {

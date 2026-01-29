@@ -133,7 +133,7 @@ function verifyVaultBackupListCTA() {
 }
 
 /**
- * Verify vault:create-backup IPC handler exists
+ * Verify vault:create-backup IPC handler exists and uses correct path resolution
  */
 function verifyBackupIPCHandler() {
   console.log("\n📄 Checking vault_handlers.ts for create-backup handler...\n");
@@ -157,6 +157,37 @@ function verifyBackupIPCHandler() {
     logSuccess("vault_handlers.ts has vault:create-backup handler");
   } else {
     logError("vault_handlers.ts is missing vault:create-backup handler");
+  }
+
+  // CRITICAL: Verify backup uses getAbbaAppPath for path resolution
+  // This prevents the ENOENT bug where backup tried to use Electron userData paths
+  // instead of the real app workspace path (~/abba-ai-apps/<app-name>)
+  if (content.includes("getAbbaAppPath")) {
+    logSuccess(
+      "vault_handlers.ts uses getAbbaAppPath for path resolution (required)",
+    );
+  } else {
+    logError(
+      "vault_handlers.ts MUST use getAbbaAppPath to resolve app paths. " +
+        "Without this, backup will fail with ENOENT on Windows because it would " +
+        "try to use Electron userData paths (AppData/Local/abba_ai/app-x.x.x/) " +
+        "instead of the real workspace path (~/abba-ai-apps/<app-name>).",
+    );
+  }
+
+  // Verify existence check is present
+  if (
+    content.includes("fs.existsSync") &&
+    content.includes("Project folder not found")
+  ) {
+    logSuccess(
+      "vault_handlers.ts validates project folder exists before backup",
+    );
+  } else {
+    logError(
+      "vault_handlers.ts should check if project folder exists before backup " +
+        "and provide a clear error message if it's missing.",
+    );
   }
 }
 

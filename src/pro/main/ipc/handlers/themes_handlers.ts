@@ -45,8 +45,8 @@ const THEME_GENERATION_MODEL_MAP: Record<
   "gpt-5.2": { provider: "openai", name: "gpt-5.2" },
 };
 
-// Timeout for web crawl requests (60 seconds)
-const WEB_CRAWL_TIMEOUT_MS = 60000;
+// Timeout for web crawl requests (120 seconds)
+const WEB_CRAWL_TIMEOUT_MS = 120_000;
 
 /**
  * Sanitizes external content before including it in LLM prompts.

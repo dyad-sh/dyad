@@ -2,6 +2,9 @@
 #
 # Builds and publishes Windows + macOS installers to GitHub Releases.
 # Triggers on version tags (v*.*.*) or manual workflow dispatch.
+#
+# NOTE: electron-forge creates DRAFT releases. The publish-release job
+# converts the draft to a public release after all builds complete.
 
 permissions:
   contents: write
@@ -12,6 +15,11 @@ on:
     tags:
       - "v*.*.*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g., v0.2.8). Leave empty to use package.json version."
+        required: false
+        type: string
 
 jobs:
   build:
@@ -107,9 +115,83 @@ jobs:
         # https://github.com/electron/forge/blob/main/SUPPORT.md
         run: ./node_modules/.bin/electron-forge publish
 
+  publish-release:
+    name: Publish Release
+    needs: build
+    runs-on: ubuntu-latest
+    outputs:
+      release_url: ${{ steps.publish.outputs.release_url }}
+      tag_name: ${{ steps.get-tag.outputs.tag }}
+    steps:
+      - name: Github checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Get tag name
+        id: get-tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          elif [ -n "${{ github.ref_name }}" ] && [[ "${{ github.ref_name }}" == v* ]]; then
+            TAG="${{ github.ref_name }}"
+          else
+            # Fallback to package.json version
+            TAG="v$(jq -r .version package.json)"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Using tag: $TAG"
+        shell: bash
+
+      - name: Find and publish draft release
+        id: publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.get-tag.outputs.tag }}"
+          VERSION="${TAG#v}"
+          echo "Looking for draft release for tag: $TAG (version: $VERSION)"
+
+          # Find draft releases that match our version by asset names
+          DRAFT_RELEASES=$(gh api repos/${{ github.repository }}/releases --jq '.[] | select(.draft == true)')
+
+          # Find the one with matching version in asset names
+          RELEASE_ID=""
+          while IFS= read -r release; do
+            if [ -z "$release" ]; then continue; fi
+            
+            # Check if any asset contains our version
+            HAS_VERSION_ASSET=$(echo "$release" | jq -r ".assets[] | select(.name | contains(\"$VERSION\")) | .name" | head -1)
+            if [ -n "$HAS_VERSION_ASSET" ]; then
+              RELEASE_ID=$(echo "$release" | jq -r '.id')
+              CURRENT_TAG=$(echo "$release" | jq -r '.tag_name')
+              echo "Found draft release ID: $RELEASE_ID (current tag: $CURRENT_TAG)"
+              break
+            fi
+          done <<< "$DRAFT_RELEASES"
+
+          if [ -z "$RELEASE_ID" ]; then
+            echo "ERROR: No draft release found with assets matching version $VERSION"
+            echo "Available draft releases:"
+            gh api repos/${{ github.repository }}/releases --jq '.[] | select(.draft == true) | "ID: \(.id), Tag: \(.tag_name), Assets: \([.assets[].name] | join(", "))"'
+            exit 1
+          fi
+
+          # Update release: set correct tag and publish (draft: false)
+          echo "Publishing release with tag: $TAG"
+          gh api repos/${{ github.repository }}/releases/$RELEASE_ID \
+            -X PATCH \
+            -f tag_name="$TAG" \
+            -f name="$TAG" \
+            -F draft=false \
+            -F prerelease=false
+
+          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/$TAG"
+          echo "release_url=$RELEASE_URL" >> $GITHUB_OUTPUT
+          echo "Release published: $RELEASE_URL"
+        shell: bash
+
   verify-assets:
     name: Verify Release Assets
-    needs: build
+    needs: publish-release
     runs-on: ubuntu-latest
     steps:
       - name: Github checkout
@@ -121,4 +203,5 @@ jobs:
       - name: Verify all release assets are uploaded
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXPECTED_TAG: ${{ needs.publish-release.outputs.tag_name }}
         run: node scripts/verify-release-assets.js

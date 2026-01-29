@@ -29,7 +29,10 @@ async function verifyReleaseAssets() {
     const packageJson = JSON.parse(fs.readFileSync(packagePath, "utf8"));
     const version = packageJson.version;
 
-    console.log(`🔍 Verifying release assets for version ${version}...`);
+    // Use EXPECTED_TAG env var if provided (from publish-release job), otherwise derive from version
+    const expectedTag = process.env.EXPECTED_TAG || `v${version}`;
+
+    console.log(`🔍 Verifying release assets for tag ${expectedTag}...`);
     console.log(
       `⏳ Waiting ${INITIAL_DELAY_MS / 1000}s for all platform builds to upload...`,
     );
@@ -45,7 +48,7 @@ async function verifyReleaseAssets() {
     }
 
     // Fetch all releases (including drafts)
-    const tagName = `v${version}`;
+    const tagName = expectedTag;
 
     console.log(`📡 Fetching all releases to find: ${tagName}`);
 
@@ -77,6 +80,14 @@ async function verifyReleaseAssets() {
 
     console.log(`📦 Found ${assets.length} assets in release ${tagName}`);
     console.log(`📄 Release status: ${release.draft ? "DRAFT" : "PUBLISHED"}`);
+
+    // GUARDRAIL: Fail if release is still a draft
+    if (release.draft) {
+      throw new Error(
+        `Release ${tagName} is still a DRAFT. The publish-release job should have published it. ` +
+          `This is a critical error - users cannot download installers from draft releases.`,
+      );
+    }
 
     // Handle beta naming conventions (NuGet removes the dot)
     const normalizeVersionForNupkg = (version) => {

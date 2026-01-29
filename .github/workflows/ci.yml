@@ -10,7 +10,7 @@ on:
     inputs:
       pr_number:
         description: "PR number for CI re-run (used by pr-review-responder)"
-        required: false
+        required: true
         type: string
 
 concurrency:
@@ -33,12 +33,6 @@ jobs:
       pr_head_ref: ${{ steps.pr-info.outputs.head_ref }}
       pr_head_repo: ${{ steps.pr-info.outputs.head_repo }}
     steps:
-      - name: Validate pr_number for workflow_dispatch
-        if: github.event_name == 'workflow_dispatch' && inputs.pr_number == ''
-        run: |
-          echo "::error::pr_number is required for workflow_dispatch"
-          exit 1
-
       - name: Get PR info for workflow_dispatch
         if: github.event_name == 'workflow_dispatch' && inputs.pr_number != ''
         id: pr-info
@@ -55,8 +49,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          repository: ${{ steps.pr-info.outputs.head_repo || github.repository }}
-          ref: ${{ steps.pr-info.outputs.head_ref || '' }}
+          repository: ${{ steps.pr-info.outputs.head_repo || github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ steps.pr-info.outputs.head_ref || github.event.pull_request.head.ref || '' }}
           fetch-depth: 0
       - name: Check if only .claude files changed
         id: check
@@ -133,8 +127,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          repository: ${{ needs.check-changes.outputs.pr_head_repo || github.repository }}
-          ref: ${{ needs.check-changes.outputs.pr_head_ref || '' }}
+          repository: ${{ needs.check-changes.outputs.pr_head_repo || github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ needs.check-changes.outputs.pr_head_ref || github.event.pull_request.head.ref || '' }}
       - name: Initialize environment
         uses: actions/setup-node@v4
         with:
@@ -219,8 +213,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: ${{ needs.check-changes.outputs.pr_head_repo || github.repository }}
-          ref: ${{ needs.check-changes.outputs.pr_head_ref || '' }}
+          repository: ${{ needs.check-changes.outputs.pr_head_repo || github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ needs.check-changes.outputs.pr_head_ref || github.event.pull_request.head.ref || '' }}
       - uses: actions/setup-node@v4
         with:
           node-version: lts/*

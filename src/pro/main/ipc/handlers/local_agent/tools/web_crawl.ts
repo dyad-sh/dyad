@@ -9,7 +9,7 @@ const webCrawlSchema = z.object({
   url: z.string().describe("URL to crawl"),
 });
 
-const webCrawlResponseSchema = z.object({
+export const webCrawlResponseSchema = z.object({
   rootUrl: z.string(),
   html: z.string().optional(),
   markdown: z.string().optional(),

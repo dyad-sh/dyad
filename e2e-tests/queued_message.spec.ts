@@ -19,8 +19,9 @@ test("queued message gets added and sent after stream completes", async ({
   await po.getChatInput().press("Enter");
 
   // Verify the queued message indicator is visible
+  // The UI shows "{count} Queued" followed by "- {status}"
   await expect(
-    po.page.getByText("Queued - will send after current response"),
+    po.page.getByText(/\d+ Queued.*will send after current response/),
   ).toBeVisible();
 
   // Wait for the first stream to complete
@@ -28,7 +29,7 @@ test("queued message gets added and sent after stream completes", async ({
 
   // Verify the queued message indicator is gone (message is now being sent)
   await expect(
-    po.page.getByText("Queued - will send after current response"),
+    po.page.getByText(/\d+ Queued.*will send after current response/),
   ).not.toBeVisible();
 
   // Wait for the queued message to also complete

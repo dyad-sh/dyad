@@ -229,6 +229,18 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     [queuedMessages, reorderQueuedMessages],
   );
 
+  const handleDeleteQueuedMessage = useCallback(
+    (id: string) => {
+      // Clear editing state if deleting the message being edited
+      if (editingQueuedMessageId === id) {
+        setEditingQueuedMessageId(null);
+        setInputValue("");
+      }
+      removeQueuedMessage(id);
+    },
+    [editingQueuedMessageId, removeQueuedMessage, setInputValue],
+  );
+
   const handleSubmit = async () => {
     if ((!inputValue.trim() && attachments.length === 0) || !chatId) {
       return;
@@ -448,7 +460,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             <QueuedMessagesList
               messages={queuedMessages}
               onEdit={handleEditQueuedMessage}
-              onDelete={removeQueuedMessage}
+              onDelete={handleDeleteQueuedMessage}
               onMoveUp={handleMoveUp}
               onMoveDown={handleMoveDown}
               isStreaming={isStreaming}

@@ -17,6 +17,8 @@ import {
   gitListBranches,
   gitListRemoteBranches,
   isGitStatusClean,
+  gitAddAll,
+  gitCommit,
   getCurrentCommitHash,
   isGitMergeInProgress,
   isGitRebaseInProgress,
@@ -118,7 +120,7 @@ export async function getGithubUser(): Promise<GithubUser | null> {
   }
 }
 
-async function prepareLocalBranch({
+export async function prepareLocalBranch({
   appId,
   branch,
   remoteUrl,
@@ -166,7 +168,42 @@ async function prepareLocalBranch({
     // Use locking to prevent race conditions when multiple operations attempt to modify the repository
     // This ensures atomicity and prevents conflicts between concurrent operations
     await withLock(appId, async () => {
-      // Check for uncommitted changes
+      const isClean = await isGitStatusClean({ path: appPath });
+      if (!isClean) {
+        if (isGitMergeInProgress({ path: appPath })) {
+          throw new Error(
+            "Cannot auto-commit changes because a merge is in progress. " +
+              "Please complete or abort the merge and try again.",
+          );
+        }
+        if (isGitRebaseInProgress({ path: appPath })) {
+          throw new Error(
+            "Cannot auto-commit changes because a rebase is in progress. " +
+              "Please complete or abort the rebase and try again.",
+          );
+        }
+
+        try {
+          await gitAddAll({ path: appPath });
+          const commitHash = await gitCommit({
+            path: appPath,
+            message:
+              "chore: auto-commit local changes before connecting to GitHub",
+          });
+          logger.info(
+            `[GitHub Handler] Auto-committed local changes (${commitHash}) before preparing branch '${targetBranch}'.`,
+          );
+        } catch (commitError) {
+          logger.error(
+            "[GitHub Handler] Failed to auto-commit local changes before preparing branch:",
+            commitError,
+          );
+          throw new Error(
+            "Failed to auto-commit uncommitted changes. Please commit or stash your changes manually and try again.",
+          );
+        }
+      }
+
       await ensureCleanWorkspace(appPath, `preparing branch '${targetBranch}'`);
 
       // List branches and check if target branch exists

@@ -118,7 +118,7 @@ jobs:
           prompt: |
             /dyad:pr-fix ${{ steps.pr-info.outputs.pr_number }}
 
-      - name: Re-trigger CI if commits were pushed
+      - name: Re-trigger workflows if commits were pushed
         # Use always() to ensure commits get tested even if Claude Code fails partway through
         if: steps.pr-info.outputs.should_continue == 'true' && always()
         env:
@@ -135,19 +135,33 @@ jobs:
 
           if [ "${{ steps.before-claude.outputs.sha }}" != "$PR_HEAD_SHA" ]; then
             echo "Claude pushed new commits (before: ${{ steps.before-claude.outputs.sha }}, after: $PR_HEAD_SHA)"
-            echo "Re-triggering CI by closing and reopening PR"
-            if gh pr close ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }}; then
-              if ! gh pr reopen ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }}; then
-                echo "::warning::Failed to reopen PR after close. Attempting recovery..."
-                # Retry reopen once after a short delay
-                sleep 2
-                gh pr reopen ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }} || echo "::error::PR may be left closed. Manual intervention required."
-              fi
-            else
-              echo "::warning::Failed to close PR, skipping re-trigger"
-            fi
+            echo "Re-triggering workflows via workflow_dispatch"
+            # Use workflow_dispatch to trigger workflows - this works with GITHUB_TOKEN unlike PR events
+            # which are blocked to prevent infinite loops
+            #
+            # Note: We use the default branch (no --ref) instead of head_branch because for fork PRs,
+            # head_branch only exists in the fork repo, not the main repo. The workflows will checkout
+            # the correct PR code using the pr_number input.
+
+            # Trigger CI
+            gh workflow run ci.yml \
+              --repo ${{ github.repository }} \
+              -f pr_number=${{ steps.pr-info.outputs.pr_number }} \
+              || echo "::warning::Failed to trigger CI workflow"
+
+            # Trigger BugBot
+            gh workflow run bugbot-trigger.yml \
+              --repo ${{ github.repository }} \
+              -f pr_number=${{ steps.pr-info.outputs.pr_number }} \
+              || echo "::warning::Failed to trigger BugBot workflow"
+
+            # Trigger Claude PR Review
+            gh workflow run claude-pr-review.yml \
+              --repo ${{ github.repository }} \
+              -f pr_number=${{ steps.pr-info.outputs.pr_number }} \
+              || echo "::warning::Failed to trigger Claude PR Review workflow"
           else
-            echo "No new commits pushed, skipping CI re-trigger"
+            echo "No new commits pushed, skipping workflow re-triggers"
           fi
 
       - name: Update labels to done

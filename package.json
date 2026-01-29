@@ -1,6 +1,6 @@
 {
   "name": "dyad",
-  "version": "0.34.0-beta.1",
+  "version": "0.35.0-beta.1",
   "description": "Free, local, open-source AI app builder",
   "keywords": [],
   "license": "MIT",
@@ -38,6 +38,7 @@
     "test:ui": "vitest --ui",
     "extract-codebase": "ts-node scripts/extract-codebase.ts",
     "init-precommit": "husky",
+    "build": "npm run pre:e2e",
     "pre:e2e": "cross-env E2E_TEST_BUILD=true npm run package",
     "e2e": "playwright test",
     "e2e:shard": "playwright test --shard"
@@ -99,7 +100,6 @@
     "electron-playwright-helpers": "^2.1.0",
     "electron-squirrel-startup": "^1.0.1",
     "esbuild-register": "^3.6.0",
-    "fastest-levenshtein": "^1.0.16",
     "fix-path": "^4.0.0",
     "framer-motion": "^12.6.3",
     "geist": "^1.3.1",

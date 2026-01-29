@@ -162,6 +162,20 @@
       "when": 1768924462154,
       "tag": "0022_loving_wendigo",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1769188144685,
+      "tag": "0023_pale_red_hulk",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1769582904159,
+      "tag": "0024_useful_skin",
+      "breakpoints": true
     }
   ]
 }

@@ -37,6 +37,7 @@ import { upgradeContracts } from "../types/upgrade";
 import { visualEditingContracts } from "../types/visual-editing";
 import { securityContracts } from "../types/security";
 import { miscContracts, miscEvents } from "../types/misc";
+import { freeAgentQuotaContracts } from "../types/free_agent_quota";
 
 // =============================================================================
 // Invoke Channels (derived from all contracts)
@@ -44,6 +45,9 @@ import { miscContracts, miscEvents } from "../types/misc";
 
 const CHAT_STREAM_CHANNELS = getStreamChannels(chatStreamContract);
 const HELP_STREAM_CHANNELS = getStreamChannels(helpStreamContract);
+
+// Test-only channels (handler only registered in E2E test builds, but channel always allowed)
+const TEST_INVOKE_CHANNELS = ["test:simulateQuotaTimeElapsed"] as const;
 
 /**
  * All valid invoke channels derived from contracts.
@@ -83,6 +87,10 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(visualEditingContracts),
   ...getInvokeChannels(securityContracts),
   ...getInvokeChannels(miscContracts),
+  ...getInvokeChannels(freeAgentQuotaContracts),
+
+  // Test-only channels
+  ...TEST_INVOKE_CHANNELS,
 ] as const;
 
 // =============================================================================

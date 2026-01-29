@@ -25,10 +25,10 @@ Identify and fix flaky E2E tests by running them repeatedly and investigating fa
 3. **Build the app binary:**
 
    ```
-   npm run pre:e2e
+   npm run build
    ```
 
-   This step is required before running E2E tests.
+   **IMPORTANT:** This step is required before running E2E tests. E2E tests run against the built binary. If you make any changes to application code (anything outside of `e2e-tests/`), you MUST re-run `npm run build` before running E2E tests again, otherwise you'll be testing the old version.
 
 4. **Run tests repeatedly to detect flakiness:**
 

@@ -349,10 +349,12 @@ export class PageObject {
     autoApprove = false,
     disableNativeGit = false,
     enableAutoFixProblems = false,
+    enableBasicAgent = false,
   }: {
     autoApprove?: boolean;
     disableNativeGit?: boolean;
     enableAutoFixProblems?: boolean;
+    enableBasicAgent?: boolean;
   } = {}) {
     await this.baseSetup();
     await this.goToSettingsTab();
@@ -367,8 +369,10 @@ export class PageObject {
     }
     await this.setUpTestProvider();
     await this.setUpTestModel();
-
     await this.goToAppsTab();
+    if (!enableBasicAgent) {
+      await this.selectChatMode("build");
+    }
     await this.selectTestModel();
   }
 
@@ -472,18 +476,21 @@ export class PageObject {
     await this.page.getByRole("button", { name: "Import" }).click();
   }
 
-  async selectChatMode(mode: "build" | "ask" | "agent" | "local-agent") {
+  async selectChatMode(
+    mode: "build" | "ask" | "agent" | "local-agent" | "basic-agent",
+  ) {
     await this.page.getByTestId("chat-mode-selector").click();
-    const mapping = {
+    const mapping: Record<string, string> = {
       build: "Build Generate and edit code",
       ask: "Ask Ask",
       agent: "Build with MCP",
       "local-agent": "Agent v2",
+      "basic-agent": "Basic Agent", // For free users
     };
     const optionName = mapping[mode];
     await this.page
       .getByRole("option", {
-        name: optionName,
+        name: new RegExp(optionName),
       })
       .click();
   }
@@ -1127,6 +1134,27 @@ export class PageObject {
       throw new Error("No current app name found");
     }
     return this.getAppPath({ appName: currentAppName });
+  }
+
+  async configureGitUser({
+    email = "test@example.com",
+    name = "Test User",
+    disableGpgSign = true,
+  }: {
+    email?: string;
+    name?: string;
+    disableGpgSign?: boolean;
+  } = {}) {
+    const appPath = await this.getCurrentAppPath();
+    if (!appPath) {
+      throw new Error("App path not found");
+    }
+
+    execSync(`git config user.email '${email}'`, { cwd: appPath });
+    execSync(`git config user.name '${name}'`, { cwd: appPath });
+    if (disableGpgSign) {
+      execSync("git config commit.gpgsign false", { cwd: appPath });
+    }
   }
 
   getAppPath({ appName }: { appName: string }) {

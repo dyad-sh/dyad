@@ -1,6 +1,5 @@
 import {
   Home,
-  Inbox,
   Settings,
   HelpCircle,
   Store,
@@ -24,8 +23,7 @@ import {
   SidebarRail,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { ChatList } from "./ChatList";
-import { AppList } from "./AppList";
+import { AppsPanel } from "./AppsPanel";
 import { HelpDialog } from "./HelpDialog"; // Import the new dialog
 import { SettingsList } from "./SettingsList";
 import { LibraryList } from "./LibraryList";
@@ -36,11 +34,6 @@ const items = [
     title: "Apps",
     to: "/",
     icon: Home,
-  },
-  {
-    title: "Chat",
-    to: "/chat",
-    icon: Inbox,
   },
   {
     title: "Settings",
@@ -62,7 +55,6 @@ const items = [
 // Hover state types
 type HoverState =
   | "start-hover:app"
-  | "start-hover:chat"
   | "start-hover:settings"
   | "start-hover:library"
   | "clear-hover"
@@ -95,8 +87,8 @@ export function AppSidebar() {
   const routerState = useRouterState();
   const isAppRoute =
     routerState.location.pathname === "/" ||
-    routerState.location.pathname.startsWith("/app-details");
-  const isChatRoute = routerState.location.pathname === "/chat";
+    routerState.location.pathname.startsWith("/app-details") ||
+    routerState.location.pathname === "/chat";
   const isSettingsRoute = routerState.location.pathname.startsWith("/settings");
   const isLibraryRoute =
     routerState.location.pathname.startsWith("/library") ||
@@ -105,8 +97,6 @@ export function AppSidebar() {
   let selectedItem: string | null = null;
   if (hoverState === "start-hover:app") {
     selectedItem = "Apps";
-  } else if (hoverState === "start-hover:chat") {
-    selectedItem = "Chat";
   } else if (hoverState === "start-hover:settings") {
     selectedItem = "Settings";
   } else if (hoverState === "start-hover:library") {
@@ -114,8 +104,6 @@ export function AppSidebar() {
   } else if (state === "expanded") {
     if (isAppRoute) {
       selectedItem = "Apps";
-    } else if (isChatRoute) {
-      selectedItem = "Chat";
     } else if (isSettingsRoute) {
       selectedItem = "Settings";
     } else if (isLibraryRoute) {
@@ -143,10 +131,9 @@ export function AppSidebar() {
             />
             <AppIcons onHoverChange={setHoverState} />
           </div>
-          {/* Right Column: Chat List Section */}
+          {/* Right Column: Apps/Chat List Section */}
           <div className="w-[240px]">
-            <AppList show={selectedItem === "Apps"} />
-            <ChatList show={selectedItem === "Chat"} />
+            <AppsPanel show={selectedItem === "Apps"} />
             <SettingsList show={selectedItem === "Settings"} />
             <LibraryList show={selectedItem === "Library"} />
           </div>
@@ -213,8 +200,6 @@ function AppIcons({
                     onMouseEnter={() => {
                       if (item.title === "Apps") {
                         onHoverChange("start-hover:app");
-                      } else if (item.title === "Chat") {
-                        onHoverChange("start-hover:chat");
                       } else if (item.title === "Settings") {
                         onHoverChange("start-hover:settings");
                       } else if (item.title === "Library") {

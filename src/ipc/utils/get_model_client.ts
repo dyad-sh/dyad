@@ -37,20 +37,20 @@ const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
 
 const AUTO_MODELS = [
   {
-    provider: "google",
-    name: "gemini-2.5-flash",
-  },
-  {
-    provider: "openrouter",
-    name: "qwen/qwen3-coder:free",
+    provider: "openai",
+    name: GPT_5_2_MODEL_NAME,
   },
   {
     provider: "anthropic",
-    name: "claude-sonnet-4-20250514",
+    name: SONNET_4_5,
   },
   {
-    provider: "openai",
-    name: "gpt-4.1",
+    provider: "google",
+    name: GEMINI_3_FLASH,
+  },
+  {
+    provider: "google",
+    name: "gemini-2.5-flash",
   },
 ];
 

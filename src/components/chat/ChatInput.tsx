@@ -404,12 +404,14 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   };
 
   const handleCancel = () => {
+    // Clear all queued messages first, BEFORE the IPC call, to ensure
+    // the queue is empty even if the backend response arrives quickly.
+    // This prevents race conditions where the queue-processing effect
+    // could potentially run if the backend responds before queue clearing.
+    clearAllQueuedMessages();
     if (chatId) {
       ipc.chat.cancelStream(chatId);
     }
-    // Clear all queued messages before updating streaming state to prevent
-    // the queue-processing effect from auto-sending cancelled messages
-    clearAllQueuedMessages();
     setIsStreaming(false);
   };
 

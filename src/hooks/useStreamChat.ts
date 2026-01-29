@@ -355,15 +355,15 @@ export function useStreamChat({
         return next;
       });
 
-      // Get the first message to send
-      const firstMessage = queuedMessages[0];
-
-      // Update queue to remove the first message - compute remaining from prev
-      // inside the setter to avoid dropping newly queued messages
+      // Get and remove the first message atomically by extracting it inside the setter
+      // This prevents race conditions where the queue might be modified between
+      // reading firstMessage and updating the queue
+      let messageToSend: QueuedMessageItem | undefined;
       setQueuedMessagesById((prev) => {
         const next = new Map(prev);
         const current = prev.get(chatId) ?? [];
-        const [, ...remainingMessages] = current;
+        const [first, ...remainingMessages] = current;
+        messageToSend = first;
         if (remainingMessages.length > 0) {
           next.set(chatId, remainingMessages);
         } else {
@@ -372,15 +372,17 @@ export function useStreamChat({
         return next;
       });
 
+      if (!messageToSend) return;
+
       posthog.capture("chat:submit", { chatMode: settings?.selectedChatMode });
 
       // Send the first message
       streamMessage({
-        prompt: firstMessage.prompt,
+        prompt: messageToSend.prompt,
         chatId,
         redo: false,
-        attachments: firstMessage.attachments,
-        selectedComponents: firstMessage.selectedComponents,
+        attachments: messageToSend.attachments,
+        selectedComponents: messageToSend.selectedComponents,
       });
     }
   }, [

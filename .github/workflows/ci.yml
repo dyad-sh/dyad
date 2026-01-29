@@ -6,10 +6,17 @@ on:
       - main
   pull_request:
     types: [opened, synchronize, reopened, closed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number for CI re-run (used by pr-review-responder)"
+        required: true
+        type: string
 
 concurrency:
-  # Use PR number for pull_request events to enable cancellation when PR is merged
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # Use PR number for pull_request/workflow_dispatch events to enable proper per-PR cancellation
+  # For workflow_dispatch, inputs.pr_number ensures different PRs don't cancel each other
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}
   cancel-in-progress: true
 
 defaults:
@@ -23,14 +30,38 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should_run_tests: ${{ steps.check.outputs.should_run_tests }}
+      pr_head_ref: ${{ steps.pr-info.outputs.head_ref }}
+      pr_head_repo: ${{ steps.pr-info.outputs.head_repo }}
     steps:
+      - name: Get PR info for workflow_dispatch
+        if: github.event_name == 'workflow_dispatch' && inputs.pr_number != ''
+        id: pr-info
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_DATA=$(gh pr view "${{ inputs.pr_number }}" --repo "${{ github.repository }}" --json headRefName,headRepository,headRepositoryOwner) || {
+            echo "::error::Failed to fetch PR info for PR #${{ inputs.pr_number }}"
+            exit 1
+          }
+          echo "head_ref=$(echo "$PR_DATA" | jq -r '.headRefName')" >> $GITHUB_OUTPUT
+          echo "head_repo=$(echo "$PR_DATA" | jq -r '.headRepositoryOwner.login + "/" + .headRepository.name')" >> $GITHUB_OUTPUT
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          repository: ${{ steps.pr-info.outputs.head_repo || github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ steps.pr-info.outputs.head_ref || github.event.pull_request.head.ref || '' }}
           fetch-depth: 0
       - name: Check if only .claude files changed
         id: check
         run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Always run tests for manual workflow dispatch (e.g., from pr-review-responder)
+            echo "should_run_tests=true" >> $GITHUB_OUTPUT
+            echo "Running tests: manual workflow dispatch"
+            exit 0
+          fi
+
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
             # Always run tests on pushes to main
             echo "should_run_tests=true" >> $GITHUB_OUTPUT
@@ -95,6 +126,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.check-changes.outputs.pr_head_repo || github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ needs.check-changes.outputs.pr_head_ref || github.event.pull_request.head.ref || '' }}
       - name: Initialize environment
         uses: actions/setup-node@v4
         with:
@@ -178,6 +212,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.check-changes.outputs.pr_head_repo || github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ needs.check-changes.outputs.pr_head_ref || github.event.pull_request.head.ref || '' }}
       - uses: actions/setup-node@v4
         with:
           node-version: lts/*
@@ -222,6 +259,8 @@ jobs:
         uses: actions/github-script@v7
         env:
           PLAYWRIGHT_RUN_ID: ${{ github.run_id }}
+          # Pass PR number for workflow_dispatch triggers (from pr-review-responder)
+          PR_NUMBER: ${{ inputs.pr_number }}
         with:
           script: |
             const { run } = require('./scripts/generate-playwright-summary.js');

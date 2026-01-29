@@ -18,7 +18,7 @@ import {
   Lock,
 } from "lucide-react";
 import type React from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 
 import { useSettings } from "@/hooks/useSettings";
 import { ipc } from "@/ipc/types";
@@ -160,6 +160,16 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     !!proposal &&
     proposal.type === "code-proposal" &&
     messageId === lastMessage.id;
+
+  // Extract user message history for terminal-style navigation
+  const userMessageHistory = useMemo(() => {
+    if (!chatId) return [];
+    const messages = messagesById.get(chatId) ?? [];
+    return messages
+      .filter((msg) => msg.role === "user")
+      .map((msg) => msg.content)
+      .reverse(); // Most recent first
+  }, [chatId, messagesById]);
 
   const { userBudget } = useUserBudgetInfo();
 
@@ -451,6 +461,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               placeholder="Ask Dyad to build..."
               excludeCurrentApp={true}
               disableSendButton={disableSendButton}
+              messageHistory={userMessageHistory}
             />
 
             {isStreaming ? (

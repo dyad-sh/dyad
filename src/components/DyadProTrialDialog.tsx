@@ -47,7 +47,7 @@ export function DyadProTrialDialog({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-md overflow-hidden border-0 p-0 shadow-2xl">
         {/* Header */}
-        <div className="relative bg-muted/50 px-6 pb-5 pt-6">
+        <div className="relative bg-muted/50 px-6 pt-6">
           {/* Subtle accent line */}
           <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-violet-500" />
 
@@ -63,7 +63,7 @@ export function DyadProTrialDialog({
         </div>
 
         {/* Content */}
-        <div className="px-6 py-6">
+        <div className="px-6 pb-6">
           {/* Features */}
           <div className="space-y-3">
             {features.map((feature) => (

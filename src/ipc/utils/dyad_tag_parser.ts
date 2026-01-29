@@ -180,6 +180,24 @@ export function getDyadCommandTags(fullResponse: string): string[] {
   return commands;
 }
 
+export function getDyadPromptSuggestionTags(fullResponse: string): {
+  summary: string;
+  prompt: string;
+}[] {
+  const regex =
+    /<dyad-prompt-suggestion\s+summary="([^"]*)">([\s\S]*?)<\/dyad-prompt-suggestion>/gi;
+  let match;
+  const tags: { summary: string; prompt: string }[] = [];
+  while ((match = regex.exec(fullResponse)) !== null) {
+    const summary = unescapeXmlAttr(match[1].trim());
+    const prompt = unescapeXmlContent(match[2].trim());
+    if (summary && prompt) {
+      tags.push({ summary, prompt });
+    }
+  }
+  return tags;
+}
+
 export function getDyadSearchReplaceTags(fullResponse: string): {
   path: string;
   content: string;

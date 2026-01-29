@@ -79,11 +79,17 @@ export const ProposalSchema = z.union([
   TipProposalSchema,
 ]);
 
+export const PromptSuggestionSchema = z.object({
+  summary: z.string(),
+  prompt: z.string(),
+});
+
 export const ProposalResultSchema = z
   .object({
     proposal: ProposalSchema,
     chatId: z.number(),
     messageId: z.number(),
+    promptSuggestions: z.array(PromptSuggestionSchema).optional(),
   })
   .nullable();
 

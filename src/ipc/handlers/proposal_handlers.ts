@@ -19,6 +19,7 @@ import {
   getDyadChatSummaryTag,
   getDyadCommandTags,
   getDyadSearchReplaceTags,
+  getDyadPromptSuggestionTags,
 } from "../utils/dyad_tag_parser";
 import log from "electron-log";
 import { isServerFunction } from "../../supabase_admin/supabase_utils";
@@ -213,10 +214,12 @@ const getProposalHandler = async (
             proposal.packagesAdded.length,
           );
 
+          const promptSuggestions = getDyadPromptSuggestionTags(messageContent);
           return {
             proposal: proposal,
             chatId,
             messageId,
+            ...(promptSuggestions.length > 0 ? { promptSuggestions } : {}),
           };
         } else {
           logger.log(
@@ -315,6 +318,9 @@ const getProposalHandler = async (
         actions.push({
           id: "keep-going",
         });
+        const promptSuggestions = latestAssistantMessage.content
+          ? getDyadPromptSuggestionTags(latestAssistantMessage.content)
+          : [];
         return {
           proposal: {
             type: "action-proposal",
@@ -322,6 +328,7 @@ const getProposalHandler = async (
           },
           chatId,
           messageId: latestAssistantMessage.id,
+          ...(promptSuggestions.length > 0 ? { promptSuggestions } : {}),
         };
       }
       return null;

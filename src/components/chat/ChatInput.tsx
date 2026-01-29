@@ -94,6 +94,7 @@ import { useChats } from "@/hooks/useChats";
 import { useRouter } from "@tanstack/react-router";
 import { showError as showErrorToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
+import { PromptSuggestionButtons } from "./PromptSuggestionButtons";
 
 const showTokenBarAtom = atom(false);
 
@@ -184,6 +185,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     refreshProposal,
   } = useProposal(chatId);
   const { proposal, messageId } = proposalResult ?? {};
+  const promptSuggestions = proposalResult?.promptSuggestions ?? [];
   useChatModeToggle();
 
   const lastMessage = (chatId ? (messagesById.get(chatId) ?? []) : []).at(-1);
@@ -621,8 +623,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           {!pendingAgentConsent &&
             proposal &&
             proposalResult?.chatId === chatId &&
-            settings.selectedChatMode !== "ask" &&
-            settings.selectedChatMode !== "local-agent" && (
+            settings?.selectedChatMode !== "ask" &&
+            settings?.selectedChatMode !== "local-agent" && (
               <ChatInputActions
                 proposal={proposal}
                 onApprove={handleApprove}
@@ -706,6 +708,18 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             onConfirm={confirmPendingFiles}
             onCancel={cancelPendingFiles}
           />
+
+          {chatId &&
+            settings?.selectedChatMode !== "ask" &&
+            settings?.selectedChatMode !== "local-agent" &&
+            proposalResult?.chatId === chatId &&
+            promptSuggestions.length > 0 && (
+              <PromptSuggestionButtons
+                suggestions={promptSuggestions}
+                onSelect={(prompt) => setInputValue(prompt)}
+                disabled={isStreaming}
+              />
+            )}
 
           <div className="flex items-end gap-1">
             <LexicalChatInput

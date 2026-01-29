@@ -82,6 +82,7 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-write-plan",
   "dyad-exit-plan",
   "dyad-questionnaire",
+  "dyad-prompt-suggestion",
 ];
 
 interface DyadMarkdownParserProps {
@@ -662,6 +663,9 @@ function renderCustomTag(
 
     case "dyad-chat-summary":
       // Don't render anything for dyad-chat-summary
+      return null;
+    case "dyad-prompt-suggestion":
+      // Don't render anything for dyad-prompt-suggestion
       return null;
 
     case "dyad-command":

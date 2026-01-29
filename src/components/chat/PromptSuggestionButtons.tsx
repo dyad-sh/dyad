@@ -24,8 +24,8 @@ export function PromptSuggestionButtons({
       data-testid="prompt-suggestion-buttons"
     >
       <TooltipProvider>
-        {suggestions.map((suggestion, index) => (
-          <Tooltip key={index}>
+        {suggestions.map((suggestion) => (
+          <Tooltip key={suggestion.prompt}>
             <TooltipTrigger asChild>
               <Button
                 variant="outline"

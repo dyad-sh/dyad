@@ -180,16 +180,31 @@ export function getDyadCommandTags(fullResponse: string): string[] {
   return commands;
 }
 
+/**
+ * Parses <dyad-prompt-suggestion summary="...">...</dyad-prompt-suggestion> tags.
+ * Attribute order is flexible (matches getDyadWriteTags / getDyadSearchReplaceTags).
+ * Summary must not contain unescaped double quotes; use &quot; in attribute values if needed.
+ */
 export function getDyadPromptSuggestionTags(fullResponse: string): {
   summary: string;
   prompt: string;
 }[] {
-  const regex =
-    /<dyad-prompt-suggestion\s+summary="([^"]*)">([\s\S]*?)<\/dyad-prompt-suggestion>/gi;
+  const dyadPromptSuggestionRegex =
+    /<dyad-prompt-suggestion([^>]*)>([\s\S]*?)<\/dyad-prompt-suggestion>/gi;
+  const summaryRegex = /summary="([^"]*)"/;
   let match;
   const tags: { summary: string; prompt: string }[] = [];
-  while ((match = regex.exec(fullResponse)) !== null) {
-    const summary = unescapeXmlAttr(match[1].trim());
+  while ((match = dyadPromptSuggestionRegex.exec(fullResponse)) !== null) {
+    const attributesString = match[1] || "";
+    const summaryMatch = summaryRegex.exec(attributesString);
+    if (!summaryMatch || !summaryMatch[1]) {
+      logger.warn(
+        "Found <dyad-prompt-suggestion> tag without a valid 'summary' attribute:",
+        match[0],
+      );
+      continue;
+    }
+    const summary = unescapeXmlAttr(summaryMatch[1].trim());
     const prompt = unescapeXmlContent(match[2].trim());
     if (summary && prompt) {
       tags.push({ summary, prompt });

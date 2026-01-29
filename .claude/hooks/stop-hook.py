@@ -6,7 +6,9 @@ This is a Stop hook that runs when Claude is about to stop working.
 It uses Claude Sonnet to analyze the transcript and determine whether
 Claude should continue working or is allowed to stop.
 
-The hook is designed to catch premature stopping when tasks are incomplete.
+The hook collects all Task* tool calls (TaskCreate, TaskUpdate, etc.) and
+sends them inline with the conversation context to the LLM for analysis,
+rather than parsing task state deterministically.
 
 Usage:
     Receives JSON on stdin with session info including transcript_path
@@ -20,20 +22,19 @@ import sys
 from pathlib import Path
 
 
-def extract_task_state(transcript_path: str) -> dict:
-    """Extract task state from TaskCreate and TaskUpdate tool calls.
+def extract_task_tool_calls(transcript_path: str) -> list[dict]:
+    """Extract all Task* tool calls from the transcript.
 
-    Returns a dict with:
-        - tasks: dict mapping task_id to {subject, status}
-        - remaining: list of (task_id, subject, status) for incomplete tasks
-        - total: total number of tasks created
+    Returns a list of dicts with:
+        - tool_name: name of the tool (TaskCreate, TaskUpdate, etc.)
+        - input: the tool input parameters
     """
-    tasks: dict[str, dict] = {}
+    task_calls: list[dict] = []
 
     try:
         path = Path(transcript_path).expanduser()
         if not path.exists():
-            return {"tasks": {}, "remaining": [], "total": 0}
+            return []
 
         lines = path.read_text().strip().split("\n")
 
@@ -49,43 +50,19 @@ def extract_task_state(transcript_path: str) -> dict:
                         continue
 
                     tool_name = part.get("name", "")
-                    tool_input = part.get("input", {})
-
-                    if tool_name == "TaskCreate":
-                        # TaskCreate assigns sequential IDs starting from 1
-                        task_id = str(len(tasks) + 1)
-                        subject = tool_input.get("subject", f"Task {task_id}")
-                        tasks[task_id] = {
-                            "subject": subject,
-                            "status": "pending"
-                        }
-
-                    elif tool_name == "TaskUpdate":
-                        task_id = tool_input.get("taskId", "")
-                        if task_id and task_id in tasks:
-                            if "status" in tool_input:
-                                tasks[task_id]["status"] = tool_input["status"]
-                            if "subject" in tool_input:
-                                tasks[task_id]["subject"] = tool_input["subject"]
+                    if tool_name.startswith("Task"):
+                        task_calls.append({
+                            "tool_name": tool_name,
+                            "input": part.get("input", {})
+                        })
 
             except json.JSONDecodeError:
                 continue
 
     except Exception:
-        return {"tasks": {}, "remaining": [], "total": 0}
+        return []
 
-    # Find remaining (non-completed) tasks
-    remaining = [
-        (task_id, info["subject"], info["status"])
-        for task_id, info in tasks.items()
-        if info["status"] != "completed"
-    ]
-
-    return {
-        "tasks": tasks,
-        "remaining": remaining,
-        "total": len(tasks)
-    }
+    return task_calls
 
 
 def get_claude_path() -> str | None:
@@ -172,7 +149,7 @@ def read_transcript(transcript_path: str, max_chars: int = 32000) -> str:
         return ""
 
 
-def analyze_with_claude(transcript: str, cwd: str) -> dict | None:
+def analyze_with_claude(transcript: str, task_calls: list[dict], cwd: str) -> dict | None:
     """
     Use Claude CLI to analyze whether Claude should continue working.
     Returns dict with 'continue' (bool) and 'reason' (str) or None on failure.
@@ -186,11 +163,26 @@ def analyze_with_claude(transcript: str, cwd: str) -> dict | None:
 
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR", cwd)
 
+    # Format task tool calls section
+    task_section = ""
+    if task_calls:
+        task_lines = []
+        for call in task_calls:
+            tool_name = call["tool_name"]
+            tool_input = json.dumps(call["input"], indent=2)
+            task_lines.append(f"### {tool_name}\n```json\n{tool_input}\n```")
+        task_section = f"""
+## Task Tool Calls
+The following Task* tool calls were made during this session:
+
+{chr(10).join(task_lines)}
+"""
+
     prompt = f"""You are evaluating whether Claude Code should stop working or continue.
 
 ## Recent Conversation
 {transcript}
-
+{task_section}
 ## Analysis Instructions
 
 Analyze the conversation above and determine if Claude should CONTINUE working or is allowed to STOP.
@@ -202,12 +194,20 @@ CONTINUE (block stopping) if ANY of these are true:
 - There are obvious next steps that should be done
 - Work quality appears partial or incomplete
 - There are failing tests or unresolved issues
+- Task tool calls show tasks that were created but not marked as completed
 
 ALLOW STOP if ALL of these are true:
 - All requested tasks are genuinely, fully complete
 - No unresolved errors exist
 - No obvious follow-up work remains
 - Claude has provided a clear summary or completion message
+- All tasks created via TaskCreate have been marked completed via TaskUpdate (if any were created)
+
+ALSO ALLOW STOP if Claude is in plan mode and:
+- Has presented a plan or questions to the user
+- Is waiting for user approval, feedback, or decisions
+- Has used ExitPlanMode or AskUserQuestion to request user input
+(In plan mode, stopping to get user input is correct behavior, not premature stopping)
 
 Respond with ONLY a JSON object:
 {{"continue": true, "reason": "specific explanation of what still needs to be done"}}
@@ -308,32 +308,16 @@ def main():
     transcript_path = input_data.get("transcript_path", "")
     cwd = input_data.get("cwd", os.getcwd())
 
-    # First, check for remaining tasks (deterministic check)
-    if transcript_path:
-        task_state = extract_task_state(transcript_path)
-        remaining = task_state["remaining"]
-        total = task_state["total"]
-
-        if remaining:
-            # Build detailed reason with remaining tasks
-            task_list = "\n".join(
-                f"  - Task {task_id}: \"{subject}\" (status: {status})"
-                for task_id, subject, status in remaining
-            )
-            reason = (
-                f"{len(remaining)} of {total} tasks remaining:\n{task_list}\n\n"
-                f"Please complete all tasks before stopping."
-            )
-            print(json.dumps(make_block_decision(reason)))
-            sys.exit(0)
-
-    # If no remaining tasks (or no tasks at all), fall back to AI analysis
+    # Read transcript and extract task tool calls
     transcript = read_transcript(transcript_path)
     if not transcript:
         # No transcript to analyze, allow stop
         sys.exit(0)
 
-    result = analyze_with_claude(transcript, cwd)
+    task_calls = extract_task_tool_calls(transcript_path) if transcript_path else []
+
+    # Send transcript and task calls to AI for analysis
+    result = analyze_with_claude(transcript, task_calls, cwd)
 
     if result is None:
         # Analysis failed, allow stop

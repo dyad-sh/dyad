@@ -63,7 +63,7 @@ export function SetupDyadProButton() {
     <Button
       variant="outline"
       size="lg"
-      className="cursor-pointer w-full mt-4 bg-(--background-lighter) text-primary"
+      className="cursor-pointer w-full bg-(--background-lighter) text-primary"
       onClick={() => {
         ipc.system.openExternalUrl("https://academy.dyad.sh/settings");
       }}

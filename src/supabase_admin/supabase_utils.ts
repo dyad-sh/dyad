@@ -3,7 +3,9 @@ import path from "node:path";
 import log from "electron-log";
 import {
   bulkUpdateFunctions,
+  deleteSupabaseFunction,
   deploySupabaseFunction,
+  listSupabaseFunctions,
   type DeployedFunctionResponse,
 } from "./supabase_management_client";
 
@@ -76,16 +78,20 @@ export function extractFunctionNameFromPath(filePath: string): string {
  * Deploys all Supabase edge functions found in the app's supabase/functions directory
  * @param appPath - The absolute path to the app directory
  * @param supabaseProjectId - The Supabase project ID
+ * @param supabaseOrganizationSlug - The Supabase organization slug
+ * @param skipPruneEdgeFunctions - If false, delete any deployed edge functions that are not in the codebase
  * @returns An array of error messages for functions that failed to deploy (empty if all succeeded)
  */
 export async function deployAllSupabaseFunctions({
   appPath,
   supabaseProjectId,
   supabaseOrganizationSlug,
+  skipPruneEdgeFunctions,
 }: {
   appPath: string;
   supabaseProjectId: string;
   supabaseOrganizationSlug: string | null;
+  skipPruneEdgeFunctions: boolean;
 }): Promise<string[]> {
   const functionsDir = path.join(appPath, "supabase", "functions");
 
@@ -183,6 +189,49 @@ export async function deployAllSupabaseFunctions({
       } catch (error: any) {
         const errorMessage = `Failed to bulk update functions: ${error.message}`;
         logger.error(errorMessage, error);
+        errors.push(errorMessage);
+      }
+    }
+
+    // Prune dangling edge functions (deployed but not in codebase)
+    if (!skipPruneEdgeFunctions) {
+      try {
+        logger.info("Checking for dangling edge functions to prune...");
+        const deployedFunctions = await listSupabaseFunctions({
+          supabaseProjectId,
+          organizationSlug: supabaseOrganizationSlug,
+        });
+
+        const localFunctionNames = new Set(validFunctions);
+        const danglingFunctions = deployedFunctions.filter(
+          (fn) => !localFunctionNames.has(fn.slug),
+        );
+
+        if (danglingFunctions.length > 0) {
+          logger.info(
+            `Found ${danglingFunctions.length} dangling edge functions to prune: ${danglingFunctions.map((fn) => fn.slug).join(", ")}`,
+          );
+
+          for (const fn of danglingFunctions) {
+            try {
+              await deleteSupabaseFunction({
+                supabaseProjectId,
+                functionName: fn.slug,
+                organizationSlug: supabaseOrganizationSlug,
+              });
+              logger.info(`Pruned dangling edge function: ${fn.slug}`);
+            } catch (deleteError: any) {
+              const errorMessage = `Failed to prune edge function ${fn.slug}: ${deleteError.message}`;
+              logger.error(errorMessage, deleteError);
+              errors.push(errorMessage);
+            }
+          }
+        } else {
+          logger.info("No dangling edge functions found");
+        }
+      } catch (pruneError: any) {
+        const errorMessage = `Failed to check for dangling edge functions: ${pruneError.message}`;
+        logger.error(errorMessage, pruneError);
         errors.push(errorMessage);
       }
     }

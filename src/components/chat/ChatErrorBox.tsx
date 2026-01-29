@@ -106,6 +106,24 @@ export function ChatErrorBox({
   if (error.includes(fallbackPrefix)) {
     error = error.split(fallbackPrefix)[0];
   }
+  // Handle FREE_AGENT_QUOTA_EXCEEDED error (Basic Agent mode quota exceeded)
+  if (error.includes("FREE_AGENT_QUOTA_EXCEEDED")) {
+    return (
+      <ChatErrorContainer onDismiss={onDismiss}>
+        You have used all 5 free Agent messages for today. Please upgrade to
+        Dyad Pro for unlimited access or switch to Build mode.
+        <div className="mt-2 space-y-2 space-x-2">
+          <ExternalLink
+            href="https://dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=free-agent-quota-exceeded"
+            variant="primary"
+          >
+            Upgrade to Dyad Pro
+          </ExternalLink>
+        </div>
+      </ChatErrorContainer>
+    );
+  }
+
   return (
     <ChatErrorContainer onDismiss={onDismiss}>
       {error}
@@ -172,7 +190,10 @@ function ChatErrorContainer({
   children: React.ReactNode | string;
 }) {
   return (
-    <div className="relative mt-2 bg-red-50 border border-red-200 rounded-md shadow-sm p-2 mx-4">
+    <div
+      data-testid="chat-error-box"
+      className="relative mt-2 bg-red-50 border border-red-200 rounded-md shadow-sm p-2 mx-4"
+    >
       <button
         onClick={onDismiss}
         className="absolute top-2.5 left-2 p-1 hover:bg-red-100 rounded"

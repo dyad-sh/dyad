@@ -9,6 +9,7 @@ import {
   getGitUncommittedFiles,
 } from "@/ipc/utils/git_utils";
 import { deployAllSupabaseFunctions } from "../../../../../../supabase_admin/supabase_utils";
+import { readSettings } from "../../../../../../main/settings";
 import type { AgentContext } from "../tools/types";
 
 const logger = log.scope("file_operations");
@@ -37,10 +38,12 @@ export async function deployAllFunctionsIfNeeded(
 
   try {
     logger.info("Shared modules changed, redeploying all Supabase functions");
+    const settings = readSettings();
     const deployErrors = await deployAllSupabaseFunctions({
       appPath: ctx.appPath,
       supabaseProjectId: ctx.supabaseProjectId,
       supabaseOrganizationSlug: ctx.supabaseOrganizationSlug ?? null,
+      skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
     });
 
     if (deployErrors.length > 0) {

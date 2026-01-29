@@ -18,7 +18,7 @@ import { db } from "@/db";
 import { chats, messages } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
-import { isDyadProEnabled } from "@/lib/schemas";
+import { isDyadProEnabled, isBasicAgentMode } from "@/lib/schemas";
 import { readSettings } from "@/main/settings";
 import { getDyadAppPath } from "@/paths/paths";
 import { getModelClient } from "@/ipc/utils/get_model_client";
@@ -48,7 +48,9 @@ import {
   escapeXmlAttr,
   escapeXmlContent,
   UserMessageContentPart,
+  FileEditTracker,
 } from "./tools/types";
+import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import {
   prepareStepMessages,
   type InjectedMessage,
@@ -124,17 +126,18 @@ export async function handleLocalAgentStream(
      */
     messageOverride?: ModelMessage[];
   },
-): Promise<void> {
+): Promise<boolean> {
   const settings = readSettings();
 
-  // Check Pro status
-  if (!isDyadProEnabled(settings)) {
+  // Check Pro status or Basic Agent mode
+  // Basic Agent mode allows non-Pro users with quota (quota check is done in chat_stream_handlers)
+  if (!isDyadProEnabled(settings) && !isBasicAgentMode(settings)) {
     safeSend(event.sender, "chat:response:error", {
       chatId: req.chatId,
       error:
         "Agent v2 requires Dyad Pro. Please enable Dyad Pro in Settings → Pro.",
     });
-    return;
+    return false;
   }
 
   // Get the chat and app
@@ -176,6 +179,7 @@ export async function handleLocalAgentStream(
     );
 
     // Build tool execute context
+    const fileEditTracker: FileEditTracker = Object.create(null);
     const ctx: AgentContext = {
       event,
       appId: chat.app.id,
@@ -187,6 +191,8 @@ export async function handleLocalAgentStream(
       isSharedModulesChanged: false,
       todos: [],
       dyadRequestId,
+      fileEditTracker,
+      isBasicAgentMode: isBasicAgentMode(settings),
       onXmlStream: (accumulatedXml: string) => {
         // Stream accumulated XML to UI without persisting
         streamingPreview = accumulatedXml;
@@ -452,13 +458,24 @@ export async function handleLocalAgentStream(
       .set({ approvalState: "approved" })
       .where(eq(messages.id, placeholderMessageId));
 
+    // Send telemetry for files with multiple edit tool types
+    for (const [filePath, counts] of Object.entries(fileEditTracker)) {
+      const toolsUsed = Object.entries(counts).filter(([, count]) => count > 0);
+      if (toolsUsed.length >= 2) {
+        sendTelemetryEvent("local_agent:file_edit_retry", {
+          filePath,
+          ...counts,
+        });
+      }
+    }
+
     // Send completion
     safeSend(event.sender, "chat:response:end", {
       chatId: req.chatId,
       updatedFiles: !readOnly,
     } satisfies ChatResponseEnd);
 
-    return;
+    return true; // Success
   } catch (error) {
     // Clean up any pending consent requests for this chat to prevent
     // stale UI banners and orphaned promises
@@ -472,7 +489,7 @@ export async function handleLocalAgentStream(
           .set({ content: `${fullResponse}\n\n[Response cancelled by user]` })
           .where(eq(messages.id, placeholderMessageId));
       }
-      return;
+      return false; // Cancelled - don't consume quota
     }
 
     logger.error("Local agent error:", error);
@@ -480,7 +497,7 @@ export async function handleLocalAgentStream(
       chatId: req.chatId,
       error: `Error: ${error}`,
     });
-    return;
+    return false; // Error - don't consume quota
   }
 }
 

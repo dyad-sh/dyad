@@ -73,6 +73,7 @@ export const UserBudgetInfoSchema = z
     totalCredits: z.number(),
     budgetResetDate: z.date(),
     redactedUserId: z.string(),
+    isTrial: z.boolean(),
   })
   .nullable();
 

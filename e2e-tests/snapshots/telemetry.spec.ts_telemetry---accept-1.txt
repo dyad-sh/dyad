@@ -1,3 +1,5 @@
 + "lastShownReleaseNotesVersion": "[scrubbed]"
+- "selectedChatMode": "build"
++ "selectedChatMode": "local-agent"
 - "telemetryConsent": "unset"
 + "telemetryConsent": "opted_in"

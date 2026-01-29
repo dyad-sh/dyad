@@ -17,6 +17,8 @@ import {
   gitListBranches,
   gitListRemoteBranches,
   isGitStatusClean,
+  gitAddAll,
+  gitCommit,
   getCurrentCommitHash,
   isGitMergeInProgress,
   isGitRebaseInProgress,
@@ -38,6 +40,16 @@ import { githubContracts } from "../types/github";
 import type { CloneRepoParams, CloneRepoResult } from "../types/github";
 
 const logger = log.scope("github_handlers");
+
+/**
+ * Normalizes a GitHub repository name to match GitHub's automatic normalization rules.
+ * GitHub converts spaces to hyphens when creating repositories.
+ * @param repoName - The original repository name
+ * @returns The normalized repository name with spaces replaced by hyphens
+ */
+export function normalizeGitHubRepoName(repoName: string): string {
+  return repoName.trim().replace(/\s+/g, "-");
+}
 
 // --- GitHub Device Flow Constants ---
 // TODO: Fetch this securely, e.g., from environment variables or a config file
@@ -108,7 +120,7 @@ export async function getGithubUser(): Promise<GithubUser | null> {
   }
 }
 
-async function prepareLocalBranch({
+export async function prepareLocalBranch({
   appId,
   branch,
   remoteUrl,
@@ -156,7 +168,42 @@ async function prepareLocalBranch({
     // Use locking to prevent race conditions when multiple operations attempt to modify the repository
     // This ensures atomicity and prevents conflicts between concurrent operations
     await withLock(appId, async () => {
-      // Check for uncommitted changes
+      const isClean = await isGitStatusClean({ path: appPath });
+      if (!isClean) {
+        if (isGitMergeInProgress({ path: appPath })) {
+          throw new Error(
+            "Cannot auto-commit changes because a merge is in progress. " +
+              "Please complete or abort the merge and try again.",
+          );
+        }
+        if (isGitRebaseInProgress({ path: appPath })) {
+          throw new Error(
+            "Cannot auto-commit changes because a rebase is in progress. " +
+              "Please complete or abort the rebase and try again.",
+          );
+        }
+
+        try {
+          await gitAddAll({ path: appPath });
+          const commitHash = await gitCommit({
+            path: appPath,
+            message:
+              "chore: auto-commit local changes before connecting to GitHub",
+          });
+          logger.info(
+            `[GitHub Handler] Auto-committed local changes (${commitHash}) before preparing branch '${targetBranch}'.`,
+          );
+        } catch (commitError) {
+          logger.error(
+            "[GitHub Handler] Failed to auto-commit local changes before preparing branch:",
+            commitError,
+          );
+          throw new Error(
+            "Failed to auto-commit uncommitted changes. Please commit or stash your changes manually and try again.",
+          );
+        }
+      }
+
       await ensureCleanWorkspace(appPath, `preparing branch '${targetBranch}'`);
 
       // List branches and check if target branch exists
@@ -572,6 +619,9 @@ async function handleIsRepoAvailable(
   event: IpcMainInvokeEvent,
   { org, repo }: { org: string; repo: string },
 ): Promise<{ available: boolean; error?: string }> {
+  // Normalize the repo name to match GitHub's automatic normalization
+  const normalizedRepo = normalizeGitHubRepoName(repo);
+
   try {
     // Get access token from settings
     const settings = readSettings();
@@ -587,8 +637,8 @@ async function handleIsRepoAvailable(
       })
         .then((r) => r.json())
         .then((u) => u.login));
-    // Check if repo exists
-    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}`;
+    // Check if repo exists (using normalized name)
+    const url = `${GITHUB_API_BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(normalizedRepo)}`;
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -615,6 +665,10 @@ async function handleCreateRepo(
     branch,
   }: { org: string; repo: string; appId: number; branch?: string },
 ): Promise<void> {
+  // Normalize the repo name to match GitHub's automatic normalization
+  // GitHub converts spaces to hyphens when creating repositories
+  const normalizedRepo = normalizeGitHubRepoName(repo);
+
   // Get access token from settings
   const settings = readSettings();
   const accessToken = settings.githubAccessToken?.value;
@@ -642,7 +696,7 @@ async function handleCreateRepo(
       Accept: "application/vnd.github+json",
     },
     body: JSON.stringify({
-      name: repo,
+      name: normalizedRepo,
       private: true,
     }),
   });
@@ -689,8 +743,8 @@ async function handleCreateRepo(
 
   // Set up remote URL before preparing branch
   const remoteUrl = IS_TEST_BUILD
-    ? `${GITHUB_GIT_BASE}/${owner}/${repo}.git`
-    : `https://${accessToken}:x-oauth-basic@github.com/${owner}/${repo}.git`;
+    ? `${GITHUB_GIT_BASE}/${owner}/${normalizedRepo}.git`
+    : `https://${accessToken}:x-oauth-basic@github.com/${owner}/${normalizedRepo}.git`;
 
   // Prepare local branch with remote URL set up
   await prepareLocalBranch({
@@ -700,8 +754,13 @@ async function handleCreateRepo(
     accessToken,
   });
 
-  // Store org, repo, and branch in the app's DB row (apps table)
-  await updateAppGithubRepo({ appId, org: owner, repo, branch });
+  // Store org, repo (normalized), and branch in the app's DB row (apps table)
+  await updateAppGithubRepo({
+    appId,
+    org: owner,
+    repo: normalizedRepo,
+    branch,
+  });
 }
 
 // --- GitHub Connect to Existing Repo Handler ---

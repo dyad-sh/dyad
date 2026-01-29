@@ -355,12 +355,15 @@ export function useStreamChat({
         return next;
       });
 
-      // Get the first message and remove it from the queue
-      const [firstMessage, ...remainingMessages] = queuedMessages;
+      // Get the first message to send
+      const firstMessage = queuedMessages[0];
 
-      // Update queue to remove the first message
+      // Update queue to remove the first message - compute remaining from prev
+      // inside the setter to avoid dropping newly queued messages
       setQueuedMessagesById((prev) => {
         const next = new Map(prev);
+        const current = prev.get(chatId) ?? [];
+        const [, ...remainingMessages] = current;
         if (remainingMessages.length > 0) {
           next.set(chatId, remainingMessages);
         } else {

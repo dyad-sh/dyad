@@ -7,6 +7,7 @@ import { IpcMainInvokeEvent } from "electron";
 import { jsonrepair } from "jsonrepair";
 import { AgentToolConsent } from "@/lib/schemas";
 import { AgentTodo } from "@/ipc/types";
+import type { SessionDataCollector } from "../session_data_collector";
 
 // ============================================================================
 // XML Escape Helpers
@@ -83,6 +84,11 @@ export interface AgentContext {
    * Call this when todos are updated to show them in the chat input area.
    */
   onUpdateTodos: (todos: Todo[]) => void;
+  /**
+   * Optional session data collector for tracking AI calls, tool calls, and timing.
+   * Used for session upload and debugging.
+   */
+  sessionDataCollector?: SessionDataCollector;
 }
 
 // ============================================================================

@@ -141,6 +141,10 @@ const getProposalHandler = async (
         },
       });
 
+      const promptSuggestions = latestAssistantMessage?.content
+        ? getDyadPromptSuggestionTags(latestAssistantMessage.content)
+        : [];
+
       if (
         latestAssistantMessage?.content &&
         latestAssistantMessage.id &&
@@ -214,7 +218,6 @@ const getProposalHandler = async (
             proposal.packagesAdded.length,
           );
 
-          const promptSuggestions = getDyadPromptSuggestionTags(messageContent);
           return {
             proposal: proposal,
             chatId,
@@ -318,9 +321,6 @@ const getProposalHandler = async (
         actions.push({
           id: "keep-going",
         });
-        const promptSuggestions = latestAssistantMessage.content
-          ? getDyadPromptSuggestionTags(latestAssistantMessage.content)
-          : [];
         return {
           proposal: {
             type: "action-proposal",

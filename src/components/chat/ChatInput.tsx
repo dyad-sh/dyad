@@ -646,8 +646,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           {!pendingAgentConsent &&
             proposal &&
             proposalResult?.chatId === chatId &&
-            settings?.selectedChatMode !== "ask" &&
-            settings?.selectedChatMode !== "local-agent" && (
+            settings.selectedChatMode !== "ask" &&
+            settings.selectedChatMode !== "local-agent" && (
               <ChatInputActions
                 proposal={proposal}
                 onApprove={handleApprove}
@@ -733,8 +733,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           />
 
           {chatId &&
-            settings?.selectedChatMode !== "ask" &&
-            settings?.selectedChatMode !== "local-agent" &&
+            settings.selectedChatMode !== "ask" &&
+            settings.selectedChatMode !== "local-agent" &&
             proposalResult?.chatId === chatId &&
             promptSuggestions.length > 0 && (
               <PromptSuggestionButtons

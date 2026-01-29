@@ -84,6 +84,40 @@ test("create and sync to new repo - custom branch", async ({ po }) => {
   });
 });
 
+test("create repo with spaces in name - should normalize to hyphens", async ({
+  po,
+}) => {
+  await po.setUp();
+  await po.sendPrompt("tc=basic");
+
+  await po.getTitleBarAppNameButton().click();
+  await po.githubConnector.connect();
+
+  // Enter a repo name with spaces - GitHub normalizes these to hyphens
+  await po.githubConnector.fillCreateRepoName("my new repo");
+
+  // Wait for availability check
+  await po.page.waitForSelector("text=Repository name is available!", {
+    timeout: 5000,
+  });
+
+  // Click create repo button
+  await po.githubConnector.clickCreateRepoButton();
+
+  // Verify the connected repo shows the normalized name (with hyphens, not spaces)
+  await expect(po.page.locator("text=testuser/my-new-repo")).toBeVisible();
+
+  // Sync to GitHub
+  await po.githubConnector.clickSyncToGithubButton();
+
+  // Verify the push was received with the normalized repo name
+  await po.githubConnector.verifyPushEvent({
+    repo: "my-new-repo",
+    branch: "main",
+    operation: "create",
+  });
+});
+
 test("disconnect from repo", async ({ po }) => {
   await po.setUp();
   await po.sendPrompt("tc=basic");

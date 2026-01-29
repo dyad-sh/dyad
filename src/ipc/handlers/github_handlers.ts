@@ -41,6 +41,16 @@ import type { CloneRepoParams, CloneRepoResult } from "../types/github";
 
 const logger = log.scope("github_handlers");
 
+/**
+ * Normalizes a GitHub repository name to match GitHub's automatic normalization rules.
+ * GitHub converts spaces to hyphens when creating repositories.
+ * @param repoName - The original repository name
+ * @returns The normalized repository name with spaces replaced by hyphens
+ */
+export function normalizeGitHubRepoName(repoName: string): string {
+  return repoName.trim().replace(/\s+/g, "-");
+}
+
 // --- GitHub Device Flow Constants ---
 // TODO: Fetch this securely, e.g., from environment variables or a config file
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || "Ov23liWV2HdC0RBLecWx";
@@ -609,6 +619,9 @@ async function handleIsRepoAvailable(
   event: IpcMainInvokeEvent,
   { org, repo }: { org: string; repo: string },
 ): Promise<{ available: boolean; error?: string }> {
+  // Normalize the repo name to match GitHub's automatic normalization
+  const normalizedRepo = normalizeGitHubRepoName(repo);
+
   try {
     // Get access token from settings
     const settings = readSettings();
@@ -624,8 +637,8 @@ async function handleIsRepoAvailable(
       })
         .then((r) => r.json())
         .then((u) => u.login));
-    // Check if repo exists
-    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}`;
+    // Check if repo exists (using normalized name)
+    const url = `${GITHUB_API_BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(normalizedRepo)}`;
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -652,6 +665,10 @@ async function handleCreateRepo(
     branch,
   }: { org: string; repo: string; appId: number; branch?: string },
 ): Promise<void> {
+  // Normalize the repo name to match GitHub's automatic normalization
+  // GitHub converts spaces to hyphens when creating repositories
+  const normalizedRepo = normalizeGitHubRepoName(repo);
+
   // Get access token from settings
   const settings = readSettings();
   const accessToken = settings.githubAccessToken?.value;
@@ -679,7 +696,7 @@ async function handleCreateRepo(
       Accept: "application/vnd.github+json",
     },
     body: JSON.stringify({
-      name: repo,
+      name: normalizedRepo,
       private: true,
     }),
   });
@@ -726,8 +743,8 @@ async function handleCreateRepo(
 
   // Set up remote URL before preparing branch
   const remoteUrl = IS_TEST_BUILD
-    ? `${GITHUB_GIT_BASE}/${owner}/${repo}.git`
-    : `https://${accessToken}:x-oauth-basic@github.com/${owner}/${repo}.git`;
+    ? `${GITHUB_GIT_BASE}/${owner}/${normalizedRepo}.git`
+    : `https://${accessToken}:x-oauth-basic@github.com/${owner}/${normalizedRepo}.git`;
 
   // Prepare local branch with remote URL set up
   await prepareLocalBranch({
@@ -737,8 +754,13 @@ async function handleCreateRepo(
     accessToken,
   });
 
-  // Store org, repo, and branch in the app's DB row (apps table)
-  await updateAppGithubRepo({ appId, org: owner, repo, branch });
+  // Store org, repo (normalized), and branch in the app's DB row (apps table)
+  await updateAppGithubRepo({
+    appId,
+    org: owner,
+    repo: normalizedRepo,
+    branch,
+  });
 }
 
 // --- GitHub Connect to Existing Repo Handler ---

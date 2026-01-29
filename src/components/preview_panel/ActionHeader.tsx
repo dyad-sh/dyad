@@ -1,5 +1,9 @@
 import { useAtom, useAtomValue } from "jotai";
-import { previewModeAtom, selectedAppIdAtom } from "../../atoms/appAtoms";
+import {
+  previewModeAtom,
+  selectedAppIdAtom,
+  currentAppAtom,
+} from "../../atoms/appAtoms";
 import { IpcClient } from "@/ipc/ipc_client";
 
 import {
@@ -12,6 +16,8 @@ import {
   Wrench,
   Globe,
   Shield,
+  CloudUpload,
+  Loader2,
 } from "lucide-react";
 import { ChatActivityButton } from "@/components/chat/ChatActivity";
 import { motion } from "framer-motion";
@@ -31,8 +37,19 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { showError, showSuccess } from "@/lib/toast";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 
 export type PreviewMode =
@@ -48,6 +65,10 @@ export const ActionHeader = () => {
   const [previewMode, setPreviewMode] = useAtom(previewModeAtom);
   const [isPreviewOpen, setIsPreviewOpen] = useAtom(isPreviewOpenAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const currentApp = useAtomValue(currentAppAtom);
+  const queryClient = useQueryClient();
+  const [isBackupDialogOpen, setIsBackupDialogOpen] = useState(false);
+  const [backupNotes, setBackupNotes] = useState("");
   const previewRef = useRef<HTMLButtonElement>(null);
   const codeRef = useRef<HTMLButtonElement>(null);
   const problemsRef = useRef<HTMLButtonElement>(null);
@@ -105,6 +126,35 @@ export const ActionHeader = () => {
   const onClearSessionData = useCallback(() => {
     clearSessionData();
   }, [clearSessionData]);
+
+  const backupMutation = useMutation({
+    mutationFn: async ({ appId, notes }: { appId: number; notes?: string }) => {
+      const ipcClient = IpcClient.getInstance();
+      return ipcClient.invoke<void>("vault:create-backup", { appId, notes });
+    },
+    onSuccess: () => {
+      showSuccess(`Backup created for "${currentApp?.name || "app"}"`);
+      queryClient.invalidateQueries({ queryKey: ["vault-backups"] });
+      setIsBackupDialogOpen(false);
+      setBackupNotes("");
+    },
+    onError: (error: Error) => {
+      showError(error.message || "Failed to create backup");
+    },
+  });
+
+  const onBackupToVault = useCallback(() => {
+    setIsBackupDialogOpen(true);
+  }, []);
+
+  const handleBackupConfirm = useCallback(() => {
+    if (selectedAppId) {
+      backupMutation.mutate({
+        appId: selectedAppId,
+        notes: backupNotes || undefined,
+      });
+    }
+  }, [selectedAppId, backupNotes, backupMutation]);
 
   // Get the problem count for the selected app
   const problemCount = problemReport ? problemReport.problems.length : 0;
@@ -303,10 +353,75 @@ export const ActionHeader = () => {
                   </span>
                 </div>
               </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={onBackupToVault}
+                data-testid="backup-to-vault-menu-item"
+              >
+                <CloudUpload size={16} />
+                <div className="flex flex-col">
+                  <span>Backup to Vault</span>
+                  <span className="text-xs text-muted-foreground">
+                    Create a cloud backup of this app
+                  </span>
+                </div>
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </div>
+
+      {/* Backup to Vault Dialog */}
+      <Dialog open={isBackupDialogOpen} onOpenChange={setIsBackupDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Backup to Vault</DialogTitle>
+            <DialogDescription>
+              Create a cloud backup of "{currentApp?.name || "this app"}" to
+              Vault. You can restore this backup later.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="backup-notes">Notes (optional)</Label>
+              <Input
+                id="backup-notes"
+                placeholder="e.g., Before major refactor..."
+                value={backupNotes}
+                onChange={(e) => setBackupNotes(e.target.value)}
+                disabled={backupMutation.isPending}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsBackupDialogOpen(false)}
+              disabled={backupMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleBackupConfirm}
+              disabled={backupMutation.isPending}
+              className="flex items-center gap-2"
+            >
+              {backupMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Backing up...
+                </>
+              ) : (
+                <>
+                  <CloudUpload className="h-4 w-4" />
+                  Create Backup
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </TooltipProvider>
   );
 };

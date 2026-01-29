@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   CloudDownload,
+  CloudUpload,
   Trash2,
   RefreshCw,
   Calendar,
@@ -9,12 +10,32 @@ import {
   Package,
   WifiOff,
   KeyRound,
+  Loader2,
+  Plus,
 } from "lucide-react";
 import { IpcClient } from "@/ipc/ipc_client";
 import { showSuccess, showError } from "@/lib/toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import ConfirmationDialog from "@/components/ConfirmationDialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useLoadApps } from "@/hooks/useLoadApps";
 
 interface VaultBackup {
   id: string;
@@ -39,6 +60,11 @@ export function VaultBackupList() {
   const queryClient = useQueryClient();
   const [deleteBackupId, setDeleteBackupId] = useState<string | null>(null);
   const [_restoreBackupId, setRestoreBackupId] = useState<string | null>(null);
+  const [isCreateBackupDialogOpen, setIsCreateBackupDialogOpen] =
+    useState(false);
+  const [selectedAppId, setSelectedAppId] = useState<string>("");
+  const [backupNotes, setBackupNotes] = useState("");
+  const { apps } = useLoadApps();
 
   // Fetch backups
   const {
@@ -68,6 +94,26 @@ export function VaultBackupList() {
     onError: (error: Error) => {
       showError(error.message || "Failed to delete backup");
       setDeleteBackupId(null);
+    },
+  });
+
+  // Create backup mutation
+  const createBackupMutation = useMutation({
+    mutationFn: async ({ appId, notes }: { appId: number; notes?: string }) => {
+      const ipcClient = IpcClient.getInstance();
+      return ipcClient.invoke<void>("vault:create-backup", { appId, notes });
+    },
+    onSuccess: () => {
+      const appName =
+        apps.find((a) => a.id === parseInt(selectedAppId))?.name || "app";
+      showSuccess(`Backup created for "${appName}"`);
+      queryClient.invalidateQueries({ queryKey: ["vault-backups"] });
+      setIsCreateBackupDialogOpen(false);
+      setSelectedAppId("");
+      setBackupNotes("");
+    },
+    onError: (error: Error) => {
+      showError(error.message || "Failed to create backup");
     },
   });
 
@@ -112,6 +158,87 @@ export function VaultBackupList() {
       restoreMutation.mutate({ backupId: backup.id, targetPath });
     }
   };
+
+  const handleCreateBackup = () => {
+    if (selectedAppId) {
+      createBackupMutation.mutate({
+        appId: parseInt(selectedAppId),
+        notes: backupNotes || undefined,
+      });
+    }
+  };
+
+  const renderCreateBackupDialog = () => (
+    <Dialog
+      open={isCreateBackupDialogOpen}
+      onOpenChange={setIsCreateBackupDialogOpen}
+    >
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Create Backup</DialogTitle>
+          <DialogDescription>
+            Select an app to back up to Vault. You can restore this backup
+            later.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4 py-4">
+          <div className="grid gap-2">
+            <Label htmlFor="app-select">App to backup</Label>
+            <Select value={selectedAppId} onValueChange={setSelectedAppId}>
+              <SelectTrigger id="app-select">
+                <SelectValue placeholder="Select an app..." />
+              </SelectTrigger>
+              <SelectContent>
+                {apps.map((app) => (
+                  <SelectItem key={app.id} value={String(app.id)}>
+                    {app.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="backup-notes">Notes (optional)</Label>
+            <Input
+              id="backup-notes"
+              placeholder="e.g., Before major refactor..."
+              value={backupNotes}
+              onChange={(e) => setBackupNotes(e.target.value)}
+              disabled={createBackupMutation.isPending}
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => setIsCreateBackupDialogOpen(false)}
+            disabled={createBackupMutation.isPending}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleCreateBackup}
+            disabled={!selectedAppId || createBackupMutation.isPending}
+            className="flex items-center gap-2"
+          >
+            {createBackupMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Backing up...
+              </>
+            ) : (
+              <>
+                <CloudUpload className="h-4 w-4" />
+                Create Backup
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 
   if (isLoading) {
     return (
@@ -194,13 +321,25 @@ export function VaultBackupList() {
 
   if (!backups || backups.length === 0) {
     return (
-      <div className="p-4 text-center text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-md">
-        <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
-        <p className="text-sm">No backups yet</p>
-        <p className="text-xs mt-1">
-          Create a backup from an app's menu to get started
-        </p>
-      </div>
+      <>
+        <div className="p-4 text-center text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-md">
+          <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
+          <p className="text-sm">No backups yet</p>
+          <p className="text-xs mt-1 mb-3">
+            Create a backup from an app's menu, or click below to get started
+          </p>
+          <Button
+            onClick={() => setIsCreateBackupDialogOpen(true)}
+            size="sm"
+            className="flex items-center gap-2 mx-auto"
+            data-testid="vault-create-backup-cta"
+          >
+            <Plus className="h-4 w-4" />
+            Create Backup
+          </Button>
+        </div>
+        {renderCreateBackupDialog()}
+      </>
     );
   }
 

@@ -53,6 +53,8 @@ jobs:
         run: node scripts/verify-vault-config.mjs
       - name: Verify CSP connect-src (fast guardrail)
         run: node scripts/verify-csp-connect-src.mjs
+      - name: Verify backup entrypoints (fast guardrail)
+        run: node scripts/verify-backup-entrypoints.mjs
       - name: Presubmit (prettier:check + lint)
         run: npm run presubmit
       - name: Type-checking

@@ -310,15 +310,13 @@ testSkipIfWindows(
     await po.clickConnectSupabaseButton();
     await po.clickBackButton();
 
-    // Wait for app to run
-    const picker = po.page.getByTestId("preview-pick-element-button");
-    await expect(picker).toBeEnabled({ timeout: Timeout.EXTRA_LONG });
+    // We should click continue after connecting Supabase
+    await po.page.getByRole("button", { name: "Continue" }).click();
 
     // Open console panel
-    // Use force: true because after navigating back from Supabase setup,
     // the sidebar or chat panel may briefly overlap the System Messages header
     const consoleHeader = po.page.locator('text="System Messages"').first();
-    await consoleHeader.click({ force: true, timeout: Timeout.MEDIUM });
+    await consoleHeader.click({ timeout: Timeout.MEDIUM });
 
     // Verify the fetch edge logs button is visible
     const fetchButton = po.page.getByTestId("fetch-edge-logs-button");

@@ -10,7 +10,7 @@ test("AI prompt suggestions: visible after AI response, hover shows full prompt,
   await po.setUp({ autoApprove: true });
   await po.importApp("minimal");
   await po.clickNewChat();
-
+  await po.selectChatMode("build");
   await po.sendPrompt("tc=prompt-suggestions");
   await po.waitForChatCompletion();
 

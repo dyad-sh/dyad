@@ -1,29 +1,70 @@
 import * as React from "react";
-import * as PopoverPrimitive from "@radix-ui/react-popover";
+import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 
 import { cn } from "@/lib/utils";
+import { getRenderProps } from "@/lib/slot";
 
-const Popover = PopoverPrimitive.Root;
+function Popover({
+  ...props
+}: React.ComponentProps<typeof PopoverPrimitive.Root>) {
+  return <PopoverPrimitive.Root data-slot="popover" {...props} />;
+}
 
-const PopoverTrigger = PopoverPrimitive.Trigger;
-
-const PopoverContent = React.forwardRef<
-  React.ElementRef<typeof PopoverPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
->(({ className, align = "center", sideOffset = 4, ...props }, ref) => (
-  <PopoverPrimitive.Portal>
-    <PopoverPrimitive.Content
-      ref={ref}
-      align={align}
-      sideOffset={sideOffset}
-      className={cn(
-        "z-50 w-72 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
-        className,
-      )}
+function PopoverTrigger({
+  asChild,
+  children,
+  ...props
+}: React.ComponentProps<typeof PopoverPrimitive.Trigger> & {
+  asChild?: boolean;
+}) {
+  const renderProps = getRenderProps(asChild, children);
+  return (
+    <PopoverPrimitive.Trigger
+      data-slot="popover-trigger"
       {...props}
+      {...renderProps}
     />
-  </PopoverPrimitive.Portal>
-));
-PopoverContent.displayName = PopoverPrimitive.Content.displayName;
+  );
+}
+
+function PopoverContent({
+  className,
+  align = "center",
+  side,
+  sideOffset = 4,
+  // Note: These props are accepted for Radix API compatibility but not supported by Base UI.
+  // Focus management and outside interaction behavior may differ from Radix UI.
+  onOpenAutoFocus: _onOpenAutoFocus,
+  onInteractOutside: _onInteractOutside,
+  ...props
+}: React.ComponentProps<typeof PopoverPrimitive.Popup> & {
+  align?: "start" | "center" | "end";
+  side?: "top" | "right" | "bottom" | "left";
+  sideOffset?: number;
+  /** @deprecated Not supported in Base UI - accepted for Radix API compatibility only */
+  onOpenAutoFocus?: (event: Event) => void;
+  /** @deprecated Not supported in Base UI - accepted for Radix API compatibility only */
+  onInteractOutside?: (event: Event) => void;
+}) {
+  return (
+    <PopoverPrimitive.Portal>
+      <PopoverPrimitive.Positioner
+        align={align}
+        side={side}
+        sideOffset={sideOffset}
+        data-slot="popover-positioner"
+      >
+        <PopoverPrimitive.Popup
+          data-slot="popover-content"
+          className={cn(
+            "z-50 w-72 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-none data-[open]:animate-in data-[ending-style]:animate-out data-[ending-style]:fade-out-0 data-[open]:fade-in-0 data-[ending-style]:zoom-out-95 data-[open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+            className,
+          )}
+          {...props}
+        />
+      </PopoverPrimitive.Positioner>
+    </PopoverPrimitive.Portal>
+  );
+}
 
 export { Popover, PopoverTrigger, PopoverContent };

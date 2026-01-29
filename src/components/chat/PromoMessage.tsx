@@ -55,19 +55,38 @@ export function Message({ spans }: MessageConfig) {
 // Predefined message configurations
 export const TURBO_EDITS_PROMO_MESSAGE: MessageConfig = {
   spans: [
-    { type: "text", content: "Tired of waiting on AI?" },
-    { type: "link", content: " Get Dyad Pro", url: "https://dyad.sh/pro#ai" },
-    { type: "text", content: " for faster edits with Turbo Edits." },
+    { type: "text", content: "Waiting too long for edits? " },
+    { type: "link", content: "Dyad Pro", url: "https://dyad.sh/pro" },
+    { type: "text", content: "'s Turbo Edits makes changes 4–10x faster." },
   ],
 };
 
 export const SMART_CONTEXT_PROMO_MESSAGE: MessageConfig = {
   spans: [
-    { type: "text", content: "Save up to 3x on AI costs with " },
+    { type: "text", content: "Working with a large codebase? " },
     {
       type: "link",
-      content: "Dyad Pro's Smart Context",
-      url: "https://dyad.sh/pro#ai",
+      content: "Smart Context",
+      url: "https://dyad.sh/pro",
+    },
+    {
+      type: "text",
+      content: " scales to millions of tokens & saves up to 3x.",
+    },
+  ],
+};
+
+export const ALL_MODELS_PROMO_MESSAGE: MessageConfig = {
+  spans: [
+    { type: "text", content: "Stop juggling API keys. " },
+    {
+      type: "link",
+      content: "Dyad Pro",
+      url: "https://dyad.sh/pro",
+    },
+    {
+      type: "text",
+      content: " gives you GPT, Claude, and Gemini in one plan.",
     },
   ],
 };
@@ -200,6 +219,7 @@ export const GITHUB_TIP: MessageConfig = {
 const ALL_MESSAGES = [
   TURBO_EDITS_PROMO_MESSAGE,
   SMART_CONTEXT_PROMO_MESSAGE,
+  ALL_MODELS_PROMO_MESSAGE,
   DIFFERENT_MODEL_TIP,
   REDDIT_TIP,
   REPORT_A_BUG_TIP,

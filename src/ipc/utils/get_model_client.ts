@@ -37,12 +37,12 @@ const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
 
 const AUTO_MODELS = [
   {
-    provider: "anthropic",
-    name: SONNET_4_5,
-  },
-  {
     provider: "openai",
     name: GPT_5_2_MODEL_NAME,
+  },
+  {
+    provider: "anthropic",
+    name: SONNET_4_5,
   },
   {
     provider: "google",

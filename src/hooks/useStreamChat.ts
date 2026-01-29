@@ -1,9 +1,5 @@
-import { useCallback } from "react";
-import type {
-  ComponentSelection,
-  FileAttachment,
-  ChatAttachment,
-} from "@/ipc/types";
+import { useCallback, useEffect } from "react";
+import type { FileAttachment, ComponentSelection } from "@/ipc/types";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   chatErrorByIdAtom,
@@ -11,10 +7,13 @@ import {
   chatStreamCountByIdAtom,
   isStreamingByIdAtom,
   recentStreamChatIdsAtom,
+  queuedMessagesByIdAtom,
+  streamCompletedSuccessfullyByIdAtom,
+  type QueuedMessageItem,
 } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
-import type { ChatResponseEnd } from "@/ipc/types";
+import type { ChatResponseEnd, ChatAttachment } from "@/ipc/types";
 import { useChats } from "./useChats";
 import { useLoadApp } from "./useLoadApp";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -40,7 +39,8 @@ const pendingStreamChatIds = new Set<number>();
 
 export function useStreamChat({
   hasChatId = true,
-}: { hasChatId?: boolean } = {}) {
+  shouldProcessQueue = false,
+}: { hasChatId?: boolean; shouldProcessQueue?: boolean } = {}) {
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
   const setIsStreamingById = useSetAtom(isStreamingByIdAtom);
@@ -58,6 +58,12 @@ export function useStreamChat({
   const { checkProblems } = useCheckProblems(selectedAppId);
   const { settings } = useSettings();
   const setRecentStreamChatIds = useSetAtom(recentStreamChatIdsAtom);
+  const [queuedMessagesById, setQueuedMessagesById] = useAtom(
+    queuedMessagesByIdAtom,
+  );
+  const [streamCompletedSuccessfullyById, setStreamCompletedSuccessfullyById] =
+    useAtom(streamCompletedSuccessfullyByIdAtom);
+
   const posthog = usePostHog();
   const queryClient = useQueryClient();
   let chatId: number | undefined;
@@ -120,6 +126,12 @@ export function useStreamChat({
         next.set(chatId, true);
         return next;
       });
+      // Reset the successful completion flag when starting a new stream
+      setStreamCompletedSuccessfullyById((prev) => {
+        const next = new Map(prev);
+        next.set(chatId, false);
+        return next;
+      });
 
       // Convert FileAttachment[] (with File objects) to ChatAttachment[] (base64 encoded)
       let convertedAttachments: ChatAttachment[] | undefined;
@@ -174,6 +186,15 @@ export function useStreamChat({
             onEnd: (response: ChatResponseEnd) => {
               // Remove from pending set now that stream is complete
               pendingStreamChatIds.delete(chatId);
+              // Only mark as successful if NOT cancelled - wasCancelled flag is set
+              // by the backend when user cancels the stream
+              if (!response.wasCancelled) {
+                setStreamCompletedSuccessfullyById((prev) => {
+                  const next = new Map(prev);
+                  next.set(chatId, true);
+                  return next;
+                });
+              }
 
               if (response.updatedFiles) {
                 setIsPreviewOpen(true);
@@ -272,6 +293,7 @@ export function useStreamChat({
       setMessagesById,
       setIsStreamingById,
       setIsPreviewOpen,
+      setStreamCompletedSuccessfullyById,
       checkProblems,
       selectedAppId,
       refetchUserBudget,
@@ -279,6 +301,66 @@ export function useStreamChat({
       queryClient,
     ],
   );
+
+  // Process first queued message when streaming ends successfully
+  useEffect(() => {
+    if (!chatId || !shouldProcessQueue) return;
+
+    const queuedMessages = queuedMessagesById.get(chatId) ?? [];
+    const completedSuccessfully =
+      streamCompletedSuccessfullyById.get(chatId) ?? false;
+
+    // Only process queue if we have confirmation that the stream completed successfully
+    // This prevents race conditions where the queue might be processed during cancellation
+    if (queuedMessages.length > 0 && completedSuccessfully) {
+      // Clear the successful completion flag first to prevent loops
+      setStreamCompletedSuccessfullyById((prev) => {
+        const next = new Map(prev);
+        next.set(chatId, false);
+        return next;
+      });
+
+      // Get and remove the first message atomically by extracting it inside the setter
+      // This prevents race conditions where the queue might be modified between
+      // reading firstMessage and updating the queue
+      let messageToSend: QueuedMessageItem | undefined;
+      setQueuedMessagesById((prev) => {
+        const next = new Map(prev);
+        const current = prev.get(chatId) ?? [];
+        const [first, ...remainingMessages] = current;
+        messageToSend = first;
+        if (remainingMessages.length > 0) {
+          next.set(chatId, remainingMessages);
+        } else {
+          next.delete(chatId);
+        }
+        return next;
+      });
+
+      if (!messageToSend) return;
+
+      posthog.capture("chat:submit", { chatMode: settings?.selectedChatMode });
+
+      // Send the first message
+      streamMessage({
+        prompt: messageToSend.prompt,
+        chatId,
+        redo: false,
+        attachments: messageToSend.attachments,
+        selectedComponents: messageToSend.selectedComponents,
+      });
+    }
+  }, [
+    chatId,
+    queuedMessagesById,
+    streamCompletedSuccessfullyById,
+    streamMessage,
+    setQueuedMessagesById,
+    setStreamCompletedSuccessfullyById,
+    posthog,
+    settings?.selectedChatMode,
+    shouldProcessQueue,
+  ]);
 
   return {
     streamMessage,
@@ -302,5 +384,82 @@ export function useStreamChat({
         if (chatId !== undefined) next.set(chatId, value);
         return next;
       }),
+    // Multi-message queue support
+    queuedMessages:
+      hasChatId && chatId !== undefined
+        ? (queuedMessagesById.get(chatId) ?? [])
+        : [],
+    queueMessage: (message: Omit<QueuedMessageItem, "id">): boolean => {
+      if (chatId === undefined) return false;
+      const newItem: QueuedMessageItem = {
+        ...message,
+        id: crypto.randomUUID(),
+      };
+      setQueuedMessagesById((prev) => {
+        const next = new Map(prev);
+        const existing = prev.get(chatId) ?? [];
+        next.set(chatId, [...existing, newItem]);
+        return next;
+      });
+      return true;
+    },
+    updateQueuedMessage: (
+      id: string,
+      updates: Partial<
+        Pick<QueuedMessageItem, "prompt" | "attachments" | "selectedComponents">
+      >,
+    ) => {
+      if (chatId === undefined) return;
+      setQueuedMessagesById((prev) => {
+        const next = new Map(prev);
+        const existing = prev.get(chatId) ?? [];
+        const updated = existing.map((msg) =>
+          msg.id === id ? { ...msg, ...updates } : msg,
+        );
+        next.set(chatId, updated);
+        return next;
+      });
+    },
+    removeQueuedMessage: (id: string) => {
+      if (chatId === undefined) return;
+      setQueuedMessagesById((prev) => {
+        const next = new Map(prev);
+        const existing = prev.get(chatId) ?? [];
+        const filtered = existing.filter((msg) => msg.id !== id);
+        if (filtered.length > 0) {
+          next.set(chatId, filtered);
+        } else {
+          next.delete(chatId);
+        }
+        return next;
+      });
+    },
+    reorderQueuedMessages: (fromIndex: number, toIndex: number) => {
+      if (chatId === undefined) return;
+      setQueuedMessagesById((prev) => {
+        const next = new Map(prev);
+        const existing = [...(prev.get(chatId) ?? [])];
+        if (
+          fromIndex < 0 ||
+          fromIndex >= existing.length ||
+          toIndex < 0 ||
+          toIndex >= existing.length
+        ) {
+          return prev;
+        }
+        const [removed] = existing.splice(fromIndex, 1);
+        existing.splice(toIndex, 0, removed);
+        next.set(chatId, existing);
+        return next;
+      });
+    },
+    clearAllQueuedMessages: () => {
+      if (chatId === undefined) return;
+      setQueuedMessagesById((prev) => {
+        const next = new Map(prev);
+        next.delete(chatId);
+        return next;
+      });
+    },
   };
 }

@@ -108,6 +108,8 @@ export const ChatResponseEndSchema = z.object({
   extraFilesError: z.string().optional(),
   totalTokens: z.number().optional(),
   contextWindow: z.number().optional(),
+  /** Indicates the stream was cancelled by the user, not completed successfully */
+  wasCancelled: z.boolean().optional(),
 });
 
 export type ChatResponseEnd = z.infer<typeof ChatResponseEndSchema>;

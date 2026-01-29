@@ -796,6 +796,55 @@ const validInvokeChannels = [
   "autonomous-prod:list-backups",
   "autonomous-prod:subscribe",
   "autonomous-prod:unsubscribe",
+  // Model Factory - LoRA/QLoRA training for low GPU systems
+  "model-factory:get-system-info",
+  "model-factory:create-job",
+  "model-factory:start-training",
+  "model-factory:cancel-training",
+  "model-factory:get-job",
+  "model-factory:list-jobs",
+  "model-factory:export-model",
+  "model-factory:import-adapter",
+  "model-factory:list-adapters",
+  "model-factory:delete-adapter",
+  // Agent Factory - Custom AI agent creation and training
+  "agent-factory:create",
+  "agent-factory:get",
+  "agent-factory:list",
+  "agent-factory:update",
+  "agent-factory:delete",
+  "agent-factory:duplicate",
+  "agent-factory:start-training",
+  "agent-factory:training-status",
+  "agent-factory:cancel-training",
+  "agent-factory:add-skill",
+  "agent-factory:remove-skill",
+  "agent-factory:list-skills",
+  "agent-factory:add-tool",
+  "agent-factory:remove-tool",
+  "agent-factory:list-tools",
+  "agent-factory:test",
+  "agent-factory:set-adapter",
+  "agent-factory:list-templates",
+  "agent-factory:create-from-template",
+  "agent-factory:export",
+  "agent-factory:import",
+  // Privacy-Preserving Inference Bridge - Local-first AI
+  "privacy-inference:initialize",
+  "privacy-inference:get-state",
+  "privacy-inference:update-config",
+  "privacy-inference:get-config",
+  "privacy-inference:infer",
+  "privacy-inference:local-complete",
+  "privacy-inference:agent-task",
+  "privacy-inference:get-stats",
+  "privacy-inference:reset-stats",
+  "privacy-inference:register-adapter",
+  "privacy-inference:register-agent",
+  "privacy-inference:add-trusted-peer",
+  "privacy-inference:remove-trusted-peer",
+  "privacy-inference:get-privacy-profiles",
+  "privacy-inference:get-routing-profiles",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because
@@ -865,6 +914,11 @@ const validReceiveChannels = [
   "autonomous-agent:inference-request",
   // Autonomous Agent Production System events
   "autonomous-prod:event",
+  // Model Factory training events
+  "model-factory:training-progress",
+  "model-factory:training-completed",
+  // Agent Factory events
+  "agent-factory:event",
 ] as const;
 
 type ValidInvokeChannel = (typeof validInvokeChannels)[number];

@@ -839,6 +839,14 @@ export class IpcClient {
   // --- End GitHub Device Flow ---
 
   // --- GitHub Repo Management ---
+  /**
+   * Get the GitHub login (username) of the authenticated user.
+   * @returns The GitHub username or null if not authenticated.
+   */
+  public async getGithubUserLogin(): Promise<string | null> {
+    return this.ipcRenderer.invoke("github:get-user-login");
+  }
+
   public async listGithubRepos(): Promise<
     { name: string; full_name: string; private: boolean }[]
   > {

@@ -37,12 +37,75 @@ import { withLock } from "../utils/lock_utils";
 
 const logger = log.scope("github_handlers");
 
-// --- GitHub Device Flow Constants ---
-// TODO: Fetch this securely, e.g., from environment variables or a config file
-const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || "Ov23liWV2HdC0RBLecWx";
+// --- GitHub OAuth Configuration ---
+// The old Dyad client ID that must not be used in production builds
+const DYAD_LEGACY_CLIENT_ID = "Ov23liWV2HdC0RBLecWx";
+
+/**
+ * Get the GitHub OAuth client ID from environment variables.
+ * Prefers ABBA_GITHUB_OAUTH_CLIENT_ID over the legacy GITHUB_CLIENT_ID.
+ * Returns null if no valid client ID is configured.
+ */
+function getGithubClientId(): string | null {
+  const abbaClientId = process.env.ABBA_GITHUB_OAUTH_CLIENT_ID;
+  const legacyClientId = process.env.GITHUB_CLIENT_ID;
+
+  // Prefer ABBA-specific env var
+  if (abbaClientId && abbaClientId.trim() !== "") {
+    return abbaClientId.trim();
+  }
+
+  // Fall back to legacy env var if set (but not the Dyad default)
+  if (
+    legacyClientId &&
+    legacyClientId.trim() !== "" &&
+    legacyClientId.trim() !== DYAD_LEGACY_CLIENT_ID
+  ) {
+    return legacyClientId.trim();
+  }
+
+  // In test builds, allow using a test client ID
+  if (IS_TEST_BUILD) {
+    return "test-client-id";
+  }
+
+  return null;
+}
+
+/**
+ * Validate GitHub OAuth configuration.
+ * Throws if client_id is missing or is the old Dyad value.
+ */
+export function validateGithubOAuthConfig(): {
+  clientId: string;
+  scopes: string;
+} {
+  const clientId = getGithubClientId();
+
+  if (!clientId) {
+    throw new Error(
+      "GitHub OAuth client ID not configured. " +
+        "Set ABBA_GITHUB_OAUTH_CLIENT_ID environment variable.",
+    );
+  }
+
+  if (clientId === DYAD_LEGACY_CLIENT_ID) {
+    throw new Error(
+      "GitHub OAuth client ID is set to the legacy Dyad value. " +
+        "Please configure ABBA_GITHUB_OAUTH_CLIENT_ID with your own GitHub OAuth App client ID.",
+    );
+  }
+
+  return {
+    clientId,
+    scopes: GITHUB_SCOPES,
+  };
+}
+
+// Get the client ID (may be null if not configured)
+const GITHUB_CLIENT_ID = getGithubClientId();
 
 // Use test server URLs when in test mode
-
 const TEST_SERVER_BASE = "http://localhost:3500";
 
 const GITHUB_DEVICE_CODE_URL = IS_TEST_BUILD
@@ -58,7 +121,12 @@ const GITHUB_GIT_BASE = IS_TEST_BUILD
   ? `${TEST_SERVER_BASE}/github/git`
   : "https://github.com";
 
-const GITHUB_SCOPES = "repo,user,workflow"; // Define the scopes needed
+// GitHub OAuth scopes - minimum required for:
+// - read:user - Get authenticated user info (login, email)
+// - user:email - Access user email addresses (for git commits)
+// - repo - Full control of private repositories (create, push, read)
+// Note: 'workflow' scope removed as it's not needed for basic publish flow
+const GITHUB_SCOPES = "read:user,user:email,repo";
 
 // --- State Management (Simple in-memory, consider alternatives for robustness) ---
 interface DeviceFlowState {
@@ -76,8 +144,8 @@ let currentFlowState: DeviceFlowState | null = null;
 // --- Helper Functions ---
 
 /**
- * Fetches the GitHub username of the currently authenticated user (using the stored access token).
- * @returns {Promise<string|null>} The GitHub username, or null if not authenticated or on error.
+ * Fetches the GitHub user info (email) of the currently authenticated user.
+ * @returns {Promise<GithubUser|null>} The GitHub user info, or null if not authenticated or on error.
  */
 export async function getGithubUser(): Promise<GithubUser | null> {
   const settings = readSettings();
@@ -102,6 +170,29 @@ export async function getGithubUser(): Promise<GithubUser | null> {
     return { email };
   } catch (err) {
     logger.error("[GitHub Handler] Failed to get GitHub username:", err);
+    return null;
+  }
+}
+
+/**
+ * Fetches the GitHub login (username) of the currently authenticated user.
+ * @returns {Promise<string|null>} The GitHub login, or null if not authenticated or on error.
+ */
+export async function getGithubUserLogin(): Promise<string | null> {
+  try {
+    const settings = readSettings();
+    const accessToken = settings.githubAccessToken?.value;
+    if (!accessToken) return null;
+
+    const res = await fetch(`${GITHUB_API_BASE}/user`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return null;
+
+    const user = await res.json();
+    return user.login || null;
+  } catch (err) {
+    logger.error("[GitHub Handler] Failed to get GitHub user login:", err);
     return null;
   }
 }
@@ -402,6 +493,16 @@ function handleStartGithubFlow(
   args: { appId: number | null },
 ) {
   logger.debug(`Received github:start-flow for appId: ${args.appId}`);
+
+  // Validate OAuth configuration before starting the flow
+  if (!GITHUB_CLIENT_ID) {
+    logger.error("GitHub OAuth client ID not configured.");
+    event.sender.send("github:flow-error", {
+      error:
+        "GitHub integration not configured. Please set ABBA_GITHUB_OAUTH_CLIENT_ID environment variable.",
+    });
+    return;
+  }
 
   // If a flow is already in progress, maybe cancel it or send an error
   if (currentFlowState && currentFlowState.isPolling) {
@@ -1255,6 +1356,7 @@ async function handleCloneRepoFromUrl(
 // --- Registration ---
 export function registerGithubHandlers() {
   ipcMain.handle("github:start-flow", handleStartGithubFlow);
+  ipcMain.handle("github:get-user-login", getGithubUserLogin);
   ipcMain.handle("github:list-repos", handleListGithubRepos);
   ipcMain.handle(
     "github:get-repo-branches",

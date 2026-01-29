@@ -563,8 +563,8 @@ export function UnconnectedGitHubConnector({
   const [createRepoError, setCreateRepoError] = useState<string | null>(null);
   const [createRepoSuccess, setCreateRepoSuccess] = useState<boolean>(false);
 
-  // Assume org is the authenticated user for now (could add org input later)
-  const githubOrg = ""; // Use empty string for now (GitHub API will default to the authenticated user)
+  // GitHub org/owner - defaults to authenticated user's login
+  const [githubOrg, setGithubOrg] = useState<string>("");
 
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -645,6 +645,23 @@ export function UnconnectedGitHubConnector({
       setGithubStatusMessage(null);
     };
   }, []); // Re-run effect if appId changes
+
+  // Fetch authenticated user's login when GitHub is connected
+  useEffect(() => {
+    const fetchUserLogin = async () => {
+      if (settings?.githubAccessToken) {
+        try {
+          const login = await IpcClient.getInstance().getGithubUserLogin();
+          if (login) {
+            setGithubOrg(login);
+          }
+        } catch (error) {
+          console.error("Failed to fetch GitHub user login:", error);
+        }
+      }
+    };
+    fetchUserLogin();
+  }, [settings?.githubAccessToken]);
 
   // Load available repos when GitHub is connected
   useEffect(() => {

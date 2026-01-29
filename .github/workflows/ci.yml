@@ -55,6 +55,8 @@ jobs:
         run: node scripts/verify-csp-connect-src.mjs
       - name: Verify backup entrypoints (fast guardrail)
         run: node scripts/verify-backup-entrypoints.mjs
+      - name: Verify GitHub OAuth config (fast guardrail)
+        run: node scripts/verify-github-oauth-config.mjs
       - name: Presubmit (prettier:check + lint)
         run: npm run presubmit
       - name: Type-checking

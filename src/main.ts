@@ -211,6 +211,7 @@ const createWindow = () => {
       preload: path.join(__dirname, "preload.js"),
       // transparent: true,
     },
+    icon: "./assets/icon/logo.png",
     // backgroundColor: "#00000001",
     // frame: false,
   });

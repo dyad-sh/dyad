@@ -142,6 +142,9 @@ export const editFileTool: ToolDefinition<z.infer<typeof editFileSchema>> = {
   defaultConsent: "always",
   modifiesState: true,
 
+  // Disable in Basic Agent mode (free tier) - requires engine
+  isEnabled: (ctx) => !ctx.isBasicAgentMode,
+
   getConsentPreview: (args) => `Edit ${args.path}`,
 
   buildXml: (args, isComplete) => {

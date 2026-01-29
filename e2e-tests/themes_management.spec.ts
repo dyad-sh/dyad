@@ -271,3 +271,68 @@ test("themes management - AI generator flow", async ({ po }) => {
   await expect(po.page.getByText("AI Generated Theme")).toBeVisible();
   await expect(po.page.getByText("Created via AI generator")).toBeVisible();
 });
+
+test("themes management - AI generator from website URL", async ({ po }) => {
+  await po.setUpDyadPro();
+
+  // Navigate to Themes page via Library sidebar
+  await po.goToLibraryTab();
+  await po.page.getByRole("link", { name: "Themes" }).click();
+  await expect(po.page.getByRole("heading", { name: "Themes" })).toBeVisible();
+
+  // Click New Theme button
+  await po.page.getByRole("button", { name: "New Theme" }).click();
+
+  // Wait for dialog to open
+  await expect(
+    po.page.getByRole("dialog").getByText("Create Custom Theme"),
+  ).toBeVisible();
+
+  // Verify AI-Powered Generator tab is active by default
+  const aiTab = po.page.getByRole("tab", { name: "AI-Powered Generator" });
+  await expect(aiTab).toHaveAttribute("data-state", "active");
+
+  // Switch to Website URL input source
+  await po.page.getByRole("button", { name: "Website URL" }).click();
+
+  // Verify URL input is visible
+  const urlInput = po.page.getByLabel("Website URL");
+  await expect(urlInput).toBeVisible();
+
+  // Verify Generate button is disabled before entering URL
+  const generateButton = po.page.getByRole("button", {
+    name: "Generate Theme Prompt",
+  });
+  await expect(generateButton).toBeDisabled();
+
+  // Fill in theme details
+  await po.page.getByLabel("Theme Name").fill("Website Theme");
+  await po.page
+    .getByLabel("Description (optional)")
+    .fill("Generated from website");
+
+  // Enter a website URL
+  await urlInput.fill("https://example.com");
+
+  // Verify Generate button is now enabled
+  await expect(generateButton).toBeEnabled();
+
+  // Click Generate to get mock theme prompt (test mode returns mock response)
+  await generateButton.click();
+
+  // Wait for generation to complete - the generated prompt textarea should appear
+  await expect(po.page.locator("#ai-prompt")).toBeVisible({ timeout: 10000 });
+
+  // Verify the mock theme content is displayed (URL-specific mock)
+  await expect(po.page.getByText("Test Mode Theme (from URL)")).toBeVisible();
+
+  // Save the theme
+  await po.page.getByRole("button", { name: "Save Theme" }).click();
+
+  // Verify dialog closes and theme card appears
+  await expect(po.page.getByRole("dialog")).not.toBeVisible();
+  const themeCard = po.page.getByTestId("theme-card");
+  await expect(themeCard).toBeVisible();
+  await expect(themeCard.getByText("Website Theme")).toBeVisible();
+  await expect(themeCard.getByText("Generated from website")).toBeVisible();
+});

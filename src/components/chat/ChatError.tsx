@@ -11,7 +11,10 @@ export function ChatError({ error, onDismiss }: ChatErrorProps) {
   }
 
   return (
-    <div className="relative flex items-start text-red-600 bg-red-100 border border-red-500 rounded-md text-sm p-3 mx-4 mb-2 shadow-sm">
+    <div
+      data-testid="chat-error"
+      className="relative flex items-start text-red-600 bg-red-100 border border-red-500 rounded-md text-sm p-3 mx-4 mb-2 shadow-sm"
+    >
       <AlertTriangle
         className="h-5 w-5 mr-2 flex-shrink-0"
         aria-hidden="true"

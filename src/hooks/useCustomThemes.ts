@@ -6,6 +6,7 @@ import type {
   UpdateCustomThemeParams,
   GenerateThemePromptParams,
   GenerateThemePromptResult,
+  GenerateThemeFromUrlParams,
 } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 
@@ -89,6 +90,16 @@ export function useGenerateThemePrompt() {
       params: GenerateThemePromptParams,
     ): Promise<GenerateThemePromptResult> => {
       return ipc.template.generateThemePrompt(params);
+    },
+  });
+}
+
+export function useGenerateThemeFromUrl() {
+  return useMutation({
+    mutationFn: async (
+      params: GenerateThemeFromUrlParams,
+    ): Promise<GenerateThemePromptResult> => {
+      return ipc.template.generateThemeFromUrl(params);
     },
   });
 }

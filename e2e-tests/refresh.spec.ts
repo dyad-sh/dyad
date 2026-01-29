@@ -71,3 +71,73 @@ testSkipIfWindows("refresh preserves current route", async ({ po }) => {
       .getByRole("heading", { name: "Home Page" }),
   ).not.toBeVisible();
 });
+
+testSkipIfWindows(
+  "preview navigation - forward and back buttons work",
+  async ({ po }) => {
+    await po.setUp({ autoApprove: true });
+
+    // Create a multi-page app with react-router navigation
+    await po.sendPrompt("tc=multi-page");
+
+    // Wait for the preview iframe to be visible and loaded
+    await po.expectPreviewIframeIsVisible();
+
+    // Wait for the Home Page content to be visible in the iframe
+    await expect(
+      po.getPreviewIframeElement().contentFrame().getByText("Home Page"),
+    ).toBeVisible({ timeout: Timeout.LONG });
+
+    // Verify back button is disabled initially (no history)
+    await expect(
+      po.page.getByTestId("preview-navigate-back-button"),
+    ).toBeDisabled();
+
+    // Click on the navigation link to go to /about
+    await po
+      .getPreviewIframeElement()
+      .contentFrame()
+      .getByText("Go to About Page")
+      .click();
+
+    // Wait for the About Page content to be visible
+    await expect(
+      po
+        .getPreviewIframeElement()
+        .contentFrame()
+        .getByRole("heading", { name: "About Page" }),
+    ).toBeVisible({ timeout: Timeout.MEDIUM });
+
+    // Now back button should be enabled
+    await expect(
+      po.page.getByTestId("preview-navigate-back-button"),
+    ).toBeEnabled();
+
+    // Click back button to go back to Home Page
+    await po.clickPreviewNavigateBack();
+
+    // Verify we're back on Home Page
+    await expect(
+      po
+        .getPreviewIframeElement()
+        .contentFrame()
+        .getByRole("heading", { name: "Home Page" }),
+    ).toBeVisible({ timeout: Timeout.MEDIUM });
+
+    // Now forward button should be enabled
+    await expect(
+      po.page.getByTestId("preview-navigate-forward-button"),
+    ).toBeEnabled();
+
+    // Click forward button to go back to About Page
+    await po.clickPreviewNavigateForward();
+
+    // Verify we're on About Page again
+    await expect(
+      po
+        .getPreviewIframeElement()
+        .contentFrame()
+        .getByRole("heading", { name: "About Page" }),
+    ).toBeVisible({ timeout: Timeout.MEDIUM });
+  },
+);

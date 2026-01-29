@@ -87,9 +87,15 @@ import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
 import {
   isDyadProEnabled,
+  isBasicAgentMode,
   isSupabaseConnected,
   isTurboEditsV2Enabled,
 } from "@/lib/schemas";
+import {
+  getFreeAgentQuotaStatus,
+  markMessageAsUsingFreeAgentQuota,
+  unmarkMessageAsUsingFreeAgentQuota,
+} from "./free_agent_quota_handlers";
 import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
 import { getCurrentCommitHash } from "../utils/git_utils";
 import {
@@ -630,6 +636,7 @@ ${componentSnippet}
               : settings.selectedChatMode,
           enableTurboEditsV2: isTurboEditsV2Enabled(settings),
           themePrompt,
+          basicAgentMode: isBasicAgentMode(settings),
         });
 
         // Add information about mentioned apps if any
@@ -1046,12 +1053,49 @@ This conversation includes one or more image attachments. When the user uploads 
           settings.selectedChatMode === "local-agent" &&
           !mentionedAppsCodebases.length
         ) {
-          await handleLocalAgentStream(event, req, abortController, {
-            placeholderMessageId: placeholderAssistantMessage.id,
-            systemPrompt,
-            dyadRequestId: dyadRequestId ?? "[no-request-id]",
-            messageOverride: isSummarizeIntent ? chatMessages : undefined,
-          });
+          // Check quota for Basic Agent mode (non-Pro users)
+          const isBasicAgentModeRequest = isBasicAgentMode(settings);
+          if (isBasicAgentModeRequest) {
+            const quotaStatus = await getFreeAgentQuotaStatus();
+            if (quotaStatus.isQuotaExceeded) {
+              safeSend(event.sender, "chat:response:error", {
+                chatId: req.chatId,
+                error: JSON.stringify({
+                  type: "FREE_AGENT_QUOTA_EXCEEDED",
+                  hoursUntilReset: quotaStatus.hoursUntilReset,
+                  resetTime: quotaStatus.resetTime,
+                }),
+              });
+              return;
+            }
+          }
+
+          // Mark the user message as using quota BEFORE starting the stream
+          // to prevent race conditions with parallel requests
+          if (isBasicAgentModeRequest && userMessageId) {
+            await markMessageAsUsingFreeAgentQuota(userMessageId);
+          }
+
+          let streamSuccess = false;
+          try {
+            streamSuccess = await handleLocalAgentStream(
+              event,
+              req,
+              abortController,
+              {
+                placeholderMessageId: placeholderAssistantMessage.id,
+                systemPrompt,
+                dyadRequestId: dyadRequestId ?? "[no-request-id]",
+                messageOverride: isSummarizeIntent ? chatMessages : undefined,
+              },
+            );
+          } finally {
+            // If the stream failed, was aborted, or threw, refund the quota
+            if (isBasicAgentModeRequest && userMessageId && !streamSuccess) {
+              await unmarkMessageAsUsingFreeAgentQuota(userMessageId);
+            }
+          }
+
           return;
         }
 

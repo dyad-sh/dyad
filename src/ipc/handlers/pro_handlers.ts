@@ -11,6 +11,7 @@ export const UserInfoResponseSchema = z.object({
   totalCredits: z.number(),
   budgetResetDate: z.string(), // ISO date string from API
   userId: z.string(),
+  isTrial: z.boolean().optional().default(false),
 });
 export type UserInfoResponse = z.infer<typeof UserInfoResponseSchema>;
 
@@ -30,6 +31,7 @@ export function registerProHandlers() {
         totalCredits: 1000,
         budgetResetDate: resetDate,
         redactedUserId: "<redacted-user-id-testing>",
+        isTrial: false,
       };
     }
     logger.info("Attempting to fetch user budget information.");
@@ -83,6 +85,7 @@ export function registerProHandlers() {
         totalCredits: data.totalCredits,
         budgetResetDate: new Date(data.budgetResetDate),
         redactedUserId: redactedUserId,
+        isTrial: data.isTrial,
       });
 
       return userBudgetInfo;

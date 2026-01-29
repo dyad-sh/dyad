@@ -85,6 +85,7 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-questionnaire",
   // Step limit notification
   "dyad-step-limit",
+  "dyad-prompt-suggestion",
 ];
 
 interface DyadMarkdownParserProps {
@@ -665,6 +666,9 @@ function renderCustomTag(
 
     case "dyad-chat-summary":
       // Don't render anything for dyad-chat-summary
+      return null;
+    case "dyad-prompt-suggestion":
+      // Don't render anything for dyad-prompt-suggestion
       return null;
 
     case "dyad-command":

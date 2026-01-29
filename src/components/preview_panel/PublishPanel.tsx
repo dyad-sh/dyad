@@ -1,16 +1,72 @@
 import { useAtomValue } from "jotai";
+import { useState } from "react";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import { useSettings } from "@/hooks/useSettings";
 import { GitHubConnector } from "@/components/GitHubConnector";
 import { VercelConnector } from "@/components/VercelConnector";
 import { PortalMigrate } from "@/components/PortalMigrate";
 import { IpcClient } from "@/ipc/ipc_client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManager";
+import { Button } from "@/components/ui/button";
+import { showSuccess, showError } from "@/lib/toast";
+
+type DeployStatus = "idle" | "building" | "uploading" | "deploying" | "ready" | "error";
 
 export const PublishPanel = () => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const { app, loading } = useLoadApp(selectedAppId);
+  const { app, loading, refreshApp } = useLoadApp(selectedAppId);
+  const { settings } = useSettings();
+  const [deployStatus, setDeployStatus] = useState<DeployStatus>("idle");
+  const [deployError, setDeployError] = useState<string | null>(null);
+  const [deployUrl, setDeployUrl] = useState<string | null>(null);
+
+  const isVercelConnected = !!settings?.vercelAccessToken;
+  const hasGitHub = !!(app?.githubOrg && app?.githubRepo);
+
+  const handleDirectDeploy = async () => {
+    if (!selectedAppId) return;
+
+    setDeployStatus("building");
+    setDeployError(null);
+    setDeployUrl(null);
+
+    try {
+      // The deploy handler handles all steps internally
+      setDeployStatus("uploading");
+      const result = await IpcClient.getInstance().deployToVercel({
+        appId: selectedAppId,
+        target: "production",
+      });
+
+      setDeployStatus("ready");
+      setDeployUrl(result.url);
+      showSuccess(`Deployed successfully! ${result.url}`);
+      refreshApp();
+    } catch (err: any) {
+      setDeployStatus("error");
+      setDeployError(err.message || "Deployment failed");
+      showError(err.message || "Deployment failed");
+    }
+  };
+
+  const getStatusDisplay = () => {
+    switch (deployStatus) {
+      case "building":
+        return { text: "Building app...", color: "text-blue-600" };
+      case "uploading":
+        return { text: "Uploading files...", color: "text-blue-600" };
+      case "deploying":
+        return { text: "Creating deployment...", color: "text-blue-600" };
+      case "ready":
+        return { text: "Deployment complete!", color: "text-green-600" };
+      case "error":
+        return { text: "Deployment failed", color: "text-red-600" };
+      default:
+        return null;
+    }
+  };
 
   if (loading) {
     return (
@@ -141,7 +197,120 @@ export const PublishPanel = () => {
               Publish your app by deploying it to Vercel.
             </p>
 
-            {!app?.githubOrg || !app?.githubRepo ? (
+            {/* Direct Deploy Section - works without GitHub */}
+            {isVercelConnected ? (
+              <div className="space-y-4" data-testid="vercel-direct-deploy">
+                {/* Deploy Button */}
+                <div className="flex flex-col gap-3">
+                  <Button
+                    onClick={handleDirectDeploy}
+                    disabled={deployStatus !== "idle" && deployStatus !== "ready" && deployStatus !== "error"}
+                    className="w-full"
+                    data-testid="vercel-deploy-button"
+                  >
+                    {deployStatus === "idle" || deployStatus === "ready" || deployStatus === "error" ? (
+                      <>
+                        <svg
+                          className="w-4 h-4 mr-2"
+                          fill="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path d="M24 22.525H0l12-21.05 12 21.05z" />
+                        </svg>
+                        Deploy to Vercel
+                      </>
+                    ) : (
+                      <>
+                        <svg
+                          className="w-4 h-4 mr-2 animate-spin"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          />
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="m4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 0 1 4 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          />
+                        </svg>
+                        {getStatusDisplay()?.text}
+                      </>
+                    )}
+                  </Button>
+
+                  {/* Status Display */}
+                  {deployStatus !== "idle" && (
+                    <div className={`text-sm ${getStatusDisplay()?.color}`}>
+                      {getStatusDisplay()?.text}
+                    </div>
+                  )}
+
+                  {/* Error Display */}
+                  {deployStatus === "error" && deployError && (
+                    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-3">
+                      <p className="text-sm text-red-800 dark:text-red-200">
+                        {deployError}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Success Display with URL */}
+                  {deployStatus === "ready" && deployUrl && (
+                    <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md p-3">
+                      <p className="text-sm text-green-800 dark:text-green-200">
+                        Deployed successfully!
+                      </p>
+                      <a
+                        onClick={(e) => {
+                          e.preventDefault();
+                          IpcClient.getInstance().openExternalUrl(deployUrl);
+                        }}
+                        className="cursor-pointer text-blue-600 hover:underline dark:text-blue-400 text-sm font-mono block mt-1"
+                      >
+                        {deployUrl}
+                      </a>
+                    </div>
+                  )}
+
+                  {/* Show existing deployment URL */}
+                  {app?.vercelDeploymentUrl && deployStatus === "idle" && (
+                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                      Last deployment:{" "}
+                      <a
+                        onClick={(e) => {
+                          e.preventDefault();
+                          if (app.vercelDeploymentUrl) {
+                            IpcClient.getInstance().openExternalUrl(
+                              app.vercelDeploymentUrl,
+                            );
+                          }
+                        }}
+                        className="cursor-pointer text-blue-600 hover:underline dark:text-blue-400 font-mono"
+                      >
+                        {app.vercelDeploymentUrl}
+                      </a>
+                    </div>
+                  )}
+                </div>
+
+                {/* GitHub-linked Vercel project management (optional) */}
+                {hasGitHub && (
+                  <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                      Or connect to a GitHub-linked Vercel project:
+                    </p>
+                    <VercelConnector appId={selectedAppId} folderName={app.name} />
+                  </div>
+                )}
+              </div>
+            ) : (
               <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
                 <div className="flex items-start gap-3">
                   <svg
@@ -159,17 +328,25 @@ export const PublishPanel = () => {
                   </svg>
                   <div>
                     <h3 className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                      GitHub Required for Vercel Deployment
+                      Connect to Vercel
                     </h3>
                     <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-                      Deploying to Vercel requires connecting to GitHub first.
-                      Please set up your GitHub repository above.
+                      To deploy your app, first connect to Vercel in Settings → Integrations.
                     </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-2"
+                      onClick={() => {
+                        // Navigate to settings
+                        window.location.hash = "#/settings";
+                      }}
+                    >
+                      Go to Settings
+                    </Button>
                   </div>
                 </div>
               </div>
-            ) : (
-              <VercelConnector appId={selectedAppId} folderName={app.name} />
             )}
           </CardContent>
         </Card>

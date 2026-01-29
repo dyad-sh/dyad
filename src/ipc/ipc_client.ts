@@ -53,6 +53,9 @@ import type {
   IsVercelProjectAvailableParams,
   SaveVercelAccessTokenParams,
   VercelProject,
+  VercelTestConnectionResult,
+  VercelDeployParams,
+  VercelDeployResult,
   UpdateChatParams,
   FileAttachment,
   CreateNeonProjectParams,
@@ -1085,6 +1088,18 @@ export class IpcClient {
     params: DisconnectVercelProjectParams,
   ): Promise<void> {
     await this.ipcRenderer.invoke("vercel:disconnect", params);
+  }
+
+  // Test Vercel connection and return user info
+  public async testVercelConnection(): Promise<VercelTestConnectionResult> {
+    return this.ipcRenderer.invoke("vercel:test-connection", undefined);
+  }
+
+  // Deploy app directly to Vercel
+  public async deployToVercel(
+    params: VercelDeployParams,
+  ): Promise<VercelDeployResult> {
+    return this.ipcRenderer.invoke("vercel:deploy", params);
   }
   // --- End Vercel Project Management ---
 

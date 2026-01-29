@@ -17,11 +17,16 @@ import {
   SaveVercelAccessTokenParams,
   VercelDeployment,
   VercelProject,
+  VercelTestConnectionResult,
+  VercelDeployParams,
+  VercelDeployResult,
 } from "../ipc_types";
 import { ConnectToExistingVercelProjectParams } from "../ipc_types";
 import { GetVercelDeploymentsParams } from "../ipc_types";
 import { DisconnectVercelProjectParams } from "../ipc_types";
 import { createLoggedHandler } from "./safe_handle";
+import { simpleSpawn } from "../utils/simpleSpawn";
+import * as crypto from "crypto";
 
 const logger = log.scope("vercel_handlers");
 const handle = createLoggedHandler(logger);
@@ -99,6 +104,193 @@ async function validateVercelToken(token: string): Promise<boolean> {
     logger.error("Error validating Vercel token:", error);
     return false;
   }
+}
+
+/**
+ * Get authenticated user info from Vercel.
+ */
+async function getVercelUser(
+  token: string,
+): Promise<{ username: string; id: string }> {
+  const response = await fetch(`${VERCEL_API_BASE}/v2/user`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `Failed to get Vercel user: ${response.status} ${response.statusText} - ${errorText}`,
+    );
+  }
+
+  const data = await response.json();
+  return {
+    username: data.user?.username || data.user?.name || "unknown",
+    id: data.user?.id || "unknown",
+  };
+}
+
+/**
+ * Recursively enumerate files in a directory.
+ */
+function enumerateFiles(dir: string, basePath: string = ""): string[] {
+  const files: string[] = [];
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const relativePath = basePath ? `${basePath}/${entry.name}` : entry.name;
+    const fullPath = path.join(dir, entry.name);
+
+    if (entry.isDirectory()) {
+      files.push(...enumerateFiles(fullPath, relativePath));
+    } else if (entry.isFile()) {
+      files.push(relativePath);
+    }
+  }
+
+  return files;
+}
+
+/**
+ * Upload a single file to Vercel.
+ */
+async function uploadFileToVercel(
+  token: string,
+  filePath: string,
+  teamId?: string,
+): Promise<string> {
+  const content = fs.readFileSync(filePath);
+  const sha = crypto.createHash("sha1").update(content).digest("hex");
+
+  const url = new URL(`${VERCEL_API_BASE}/v2/files`);
+  if (teamId) {
+    url.searchParams.set("teamId", teamId);
+  }
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/octet-stream",
+      "x-vercel-digest": sha,
+      "Content-Length": content.length.toString(),
+    },
+    body: content,
+  });
+
+  if (!response.ok && response.status !== 409) {
+    // 409 means file already exists, which is fine
+    const errorText = await response.text();
+    throw new Error(
+      `Failed to upload file: ${response.status} ${response.statusText} - ${errorText}`,
+    );
+  }
+
+  return sha;
+}
+
+/**
+ * Create a deployment on Vercel.
+ */
+async function createVercelDeployment(
+  token: string,
+  projectName: string,
+  files: Array<{ file: string; sha: string; size: number }>,
+  target: "production" | "preview",
+  teamId?: string,
+): Promise<{ id: string; url: string; readyState: string }> {
+  const url = new URL(`${VERCEL_API_BASE}/v13/deployments`);
+  if (teamId) {
+    url.searchParams.set("teamId", teamId);
+  }
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: projectName,
+      target,
+      files,
+      projectSettings: {
+        framework: null, // Auto-detect
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `Failed to create deployment: ${response.status} ${response.statusText} - ${errorText}`,
+    );
+  }
+
+  const data = await response.json();
+  return {
+    id: data.id,
+    url: data.url,
+    readyState: data.readyState || "QUEUED",
+  };
+}
+
+/**
+ * Poll deployment status until ready or error.
+ */
+async function pollDeploymentStatus(
+  token: string,
+  deploymentId: string,
+  teamId?: string,
+  maxAttempts: number = 60,
+  intervalMs: number = 3000,
+): Promise<{ url: string; readyState: string }> {
+  for (let i = 0; i < maxAttempts; i++) {
+    const url = new URL(
+      `${VERCEL_API_BASE}/v13/deployments/${deploymentId}`,
+    );
+    if (teamId) {
+      url.searchParams.set("teamId", teamId);
+    }
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `Failed to get deployment status: ${response.status} - ${errorText}`,
+      );
+    }
+
+    const data = await response.json();
+    const readyState = data.readyState;
+
+    logger.info(`Deployment ${deploymentId} status: ${readyState}`);
+
+    if (readyState === "READY") {
+      return {
+        url: `https://${data.url}`,
+        readyState,
+      };
+    }
+
+    if (readyState === "ERROR" || readyState === "CANCELED") {
+      throw new Error(`Deployment failed with status: ${readyState}`);
+    }
+
+    // Wait before next poll
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+
+  throw new Error("Deployment timed out");
 }
 
 async function getDefaultTeamId(token: string): Promise<string> {
@@ -512,6 +704,172 @@ async function handleDisconnectVercelProject(
     .where(eq(apps.id, appId));
 }
 
+// --- Vercel Test Connection Handler ---
+async function handleTestConnection(): Promise<VercelTestConnectionResult> {
+  const settings = readSettings();
+  const accessToken = settings.vercelAccessToken?.value;
+
+  if (!accessToken) {
+    throw new Error("Not authenticated with Vercel. Please add your access token in Settings → Integrations.");
+  }
+
+  try {
+    const user = await getVercelUser(accessToken);
+    return {
+      username: user.username,
+      userId: user.id,
+    };
+  } catch (error: any) {
+    logger.error("Failed to test Vercel connection:", error);
+    throw new Error(`Connection test failed: ${error.message}`);
+  }
+}
+
+// --- Vercel Deploy Handler ---
+async function handleDeploy(
+  event: IpcMainInvokeEvent,
+  { appId, target = "production", teamId }: VercelDeployParams,
+): Promise<VercelDeployResult> {
+  const settings = readSettings();
+  const accessToken = settings.vercelAccessToken?.value;
+
+  if (!accessToken) {
+    throw new Error("Not authenticated with Vercel. Please add your access token in Settings → Integrations.");
+  }
+
+  // Get app details
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) {
+    throw new Error("App not found.");
+  }
+
+  const appPath = getAbbaAppPath(app.path);
+  logger.info(`Starting Vercel deploy for app: ${app.name} at ${appPath}`);
+
+  // Determine build output directory (check for common conventions)
+  const possibleDistDirs = ["dist", "build", "out", ".next"];
+  let distDir: string | null = null;
+
+  for (const dir of possibleDistDirs) {
+    const fullPath = path.join(appPath, dir);
+    if (fs.existsSync(fullPath) && fs.statSync(fullPath).isDirectory()) {
+      distDir = fullPath;
+      break;
+    }
+  }
+
+  // If no dist dir exists, run build
+  if (!distDir) {
+    logger.info("No build output found, running build...");
+    try {
+      await simpleSpawn({
+        command: "npm run build",
+        cwd: appPath,
+        successMessage: "Build completed successfully",
+        errorPrefix: "Build failed",
+      });
+    } catch (buildError: any) {
+      throw new Error(`Failed to build app: ${buildError.message}`);
+    }
+
+    // Check again for dist dir after build
+    for (const dir of possibleDistDirs) {
+      const fullPath = path.join(appPath, dir);
+      if (fs.existsSync(fullPath) && fs.statSync(fullPath).isDirectory()) {
+        distDir = fullPath;
+        break;
+      }
+    }
+
+    if (!distDir) {
+      throw new Error(
+        "Build completed but no output directory found. Expected one of: dist, build, out, .next",
+      );
+    }
+  }
+
+  logger.info(`Using build output directory: ${distDir}`);
+
+  // Enumerate files in dist directory
+  const fileList = enumerateFiles(distDir);
+  logger.info(`Found ${fileList.length} files to upload`);
+
+  if (fileList.length === 0) {
+    throw new Error("No files found in build output directory.");
+  }
+
+  // Use teamId from params or try to get default
+  let resolvedTeamId = teamId;
+  if (!resolvedTeamId) {
+    try {
+      resolvedTeamId = await getDefaultTeamId(accessToken);
+    } catch {
+      // Personal accounts may not have a team, continue without it
+      logger.info("No team found, deploying to personal account");
+    }
+  }
+
+  // Upload files and collect metadata
+  logger.info("Uploading files to Vercel...");
+  const uploadedFiles: Array<{ file: string; sha: string; size: number }> = [];
+
+  for (const relativePath of fileList) {
+    const fullPath = path.join(distDir, relativePath);
+    const stat = fs.statSync(fullPath);
+
+    try {
+      const sha = await uploadFileToVercel(accessToken, fullPath, resolvedTeamId);
+      uploadedFiles.push({
+        file: relativePath,
+        sha,
+        size: stat.size,
+      });
+    } catch (uploadError: any) {
+      logger.error(`Failed to upload ${relativePath}:`, uploadError);
+      throw new Error(`Failed to upload ${relativePath}: ${uploadError.message}`);
+    }
+  }
+
+  logger.info(`Uploaded ${uploadedFiles.length} files`);
+
+  // Create deployment
+  const projectName = app.vercelProjectName || app.name.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+  logger.info(`Creating deployment for project: ${projectName}`);
+
+  const deployment = await createVercelDeployment(
+    accessToken,
+    projectName,
+    uploadedFiles,
+    target,
+    resolvedTeamId,
+  );
+
+  logger.info(`Deployment created: ${deployment.id}, polling for status...`);
+
+  // Poll for deployment completion
+  const result = await pollDeploymentStatus(
+    accessToken,
+    deployment.id,
+    resolvedTeamId,
+  );
+
+  // Update app with deployment URL
+  await db
+    .update(schema.apps)
+    .set({
+      vercelDeploymentUrl: result.url,
+    })
+    .where(eq(schema.apps.id, appId));
+
+  logger.info(`Deployment complete: ${result.url}`);
+
+  return {
+    url: result.url,
+    status: result.readyState,
+    deploymentId: deployment.id,
+  };
+}
+
 // --- Registration ---
 export function registerVercelHandlers() {
   // DO NOT LOG this handler because tokens are sensitive
@@ -524,6 +882,8 @@ export function registerVercelHandlers() {
   handle("vercel:connect-existing-project", handleConnectToExistingProject);
   handle("vercel:get-deployments", handleGetVercelDeployments);
   handle("vercel:disconnect", handleDisconnectVercelProject);
+  handle("vercel:test-connection", handleTestConnection);
+  handle("vercel:deploy", handleDeploy);
 }
 
 export async function updateAppVercelProject({

@@ -397,6 +397,23 @@ export interface VercelProject {
   framework: string | null;
 }
 
+export interface VercelTestConnectionResult {
+  username: string;
+  userId: string;
+}
+
+export interface VercelDeployParams {
+  appId: number;
+  target?: "production" | "preview";
+  teamId?: string;
+}
+
+export interface VercelDeployResult {
+  url: string;
+  status: string;
+  deploymentId: string;
+}
+
 export interface UpdateChatParams {
   chatId: number;
   title: string;

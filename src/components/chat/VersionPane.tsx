@@ -252,11 +252,13 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                             const versionInCurrentChat =
                               assistantMessageIndex !== -1;
 
-                            // Find the user message that triggered this assistant response
-                            // so we can delete it along with subsequent messages
-                            const userMessage =
-                              assistantMessageIndex > 0
-                                ? currentChatMessages[assistantMessageIndex - 1]
+                            // Find the message after this assistant response
+                            // so we can delete it along with all subsequent messages
+                            const nextMessage =
+                              assistantMessageIndex >= 0 &&
+                              assistantMessageIndex <
+                                currentChatMessages.length - 1
+                                ? currentChatMessages[assistantMessageIndex + 1]
                                 : undefined;
 
                             await revertVersion({
@@ -264,10 +266,10 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                               currentChatMessageId:
                                 versionInCurrentChat &&
                                 selectedChatId &&
-                                userMessage
+                                nextMessage
                                   ? {
                                       chatId: selectedChatId,
-                                      messageId: userMessage.id,
+                                      messageId: nextMessage.id,
                                     }
                                   : undefined,
                             });

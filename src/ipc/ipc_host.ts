@@ -87,6 +87,9 @@ import { registerAILearningHandlers } from "./handlers/ai_learning_handlers";
 import { registerAgentSwarmHandlers } from "./handlers/agent_swarm_handlers";
 import { registerAutonomousAgentHandlers } from "./handlers/autonomous_agent_handlers";
 import { registerAutonomousAgentProductionHandlers } from "./handlers/autonomous_agent_production_handlers";
+import { registerModelFactoryHandlers } from "./handlers/model_factory_handlers";
+import { registerAgentFactoryHandlers } from "./handlers/agent_factory_handlers";
+import { registerPrivacyInferenceHandlers } from "./handlers/privacy_inference_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -213,4 +216,13 @@ export function registerIpcHandlers() {
   
   // Autonomous Agent Production - Resource monitoring, security, scheduling, backups
   registerAutonomousAgentProductionHandlers();
+  
+  // Model Factory - LoRA/QLoRA training for low GPU systems
+  registerModelFactoryHandlers();
+  
+  // Agent Factory - Custom AI agent creation and training
+  registerAgentFactoryHandlers();
+  
+  // Privacy-Preserving Inference Bridge - Local-first AI with federated fallback
+  registerPrivacyInferenceHandlers();
 }

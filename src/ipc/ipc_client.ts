@@ -1711,4 +1711,310 @@ export class IpcClient {
   ): Promise<import("../types/project_types").DeleteProjectResult> {
     return this.ipcRenderer.invoke("project:delete", params);
   }
+
+  // ==========================================================================
+  // Model Factory Methods (LoRA/QLoRA Training)
+  // ==========================================================================
+
+  public async getModelFactorySystemInfo(): Promise<
+    import("./ipc_types").ModelFactorySystemInfo
+  > {
+    return this.ipcRenderer.invoke("model-factory:get-system-info");
+  }
+
+  public async createTrainingJob(
+    params: import("./ipc_types").CreateTrainingJobParams
+  ): Promise<import("./ipc_types").TrainingJobInfo> {
+    return this.ipcRenderer.invoke("model-factory:create-job", params);
+  }
+
+  public async startTraining(jobId: string): Promise<void> {
+    return this.ipcRenderer.invoke("model-factory:start-training", jobId);
+  }
+
+  public async cancelTraining(jobId: string): Promise<void> {
+    return this.ipcRenderer.invoke("model-factory:cancel-training", jobId);
+  }
+
+  public async getTrainingJob(
+    jobId: string
+  ): Promise<import("./ipc_types").TrainingJobInfo | null> {
+    return this.ipcRenderer.invoke("model-factory:get-job", jobId);
+  }
+
+  public async listTrainingJobs(): Promise<
+    import("./ipc_types").TrainingJobInfo[]
+  > {
+    return this.ipcRenderer.invoke("model-factory:list-jobs");
+  }
+
+  public async exportTrainedModel(
+    params: import("./ipc_types").ExportModelParams
+  ): Promise<string> {
+    return this.ipcRenderer.invoke("model-factory:export-model", params);
+  }
+
+  public async importAdapter(
+    params: import("./ipc_types").ImportAdapterParams
+  ): Promise<import("./ipc_types").AdapterInfo> {
+    return this.ipcRenderer.invoke("model-factory:import-adapter", params);
+  }
+
+  public async listAdapters(): Promise<import("./ipc_types").AdapterInfo[]> {
+    return this.ipcRenderer.invoke("model-factory:list-adapters");
+  }
+
+  public async deleteAdapter(adapterId: string): Promise<void> {
+    return this.ipcRenderer.invoke("model-factory:delete-adapter", adapterId);
+  }
+
+  public onTrainingProgress(
+    callback: (event: import("./ipc_types").TrainingProgressEvent) => void
+  ): () => void {
+    const handler = (_: unknown, event: import("./ipc_types").TrainingProgressEvent) => {
+      callback(event);
+    };
+    this.ipcRenderer.on("model-factory:training-progress", handler);
+    return () => {
+      this.ipcRenderer.removeListener("model-factory:training-progress", handler);
+    };
+  }
+
+  public onTrainingCompleted(
+    callback: (event: { jobId: string; status: string; outputPath?: string; error?: string }) => void
+  ): () => void {
+    const handler = (_: unknown, event: { jobId: string; status: string; outputPath?: string; error?: string }) => {
+      callback(event);
+    };
+    this.ipcRenderer.on("model-factory:training-completed", handler);
+    return () => {
+      this.ipcRenderer.removeListener("model-factory:training-completed", handler);
+    };
+  }
+
+  // ==========================================================================
+  // Agent Factory Methods (Custom AI Agents)
+  // ==========================================================================
+
+  public async createCustomAgent(
+    params: import("./ipc_types").CreateCustomAgentParams
+  ): Promise<import("./ipc_types").CustomAgentInfo> {
+    return this.ipcRenderer.invoke("agent-factory:create", params);
+  }
+
+  public async getCustomAgent(
+    agentId: string
+  ): Promise<import("./ipc_types").CustomAgentInfo | null> {
+    return this.ipcRenderer.invoke("agent-factory:get", agentId);
+  }
+
+  public async listCustomAgents(): Promise<
+    import("./ipc_types").CustomAgentInfo[]
+  > {
+    return this.ipcRenderer.invoke("agent-factory:list");
+  }
+
+  public async updateCustomAgent(
+    params: import("./ipc_types").UpdateCustomAgentParams
+  ): Promise<import("./ipc_types").CustomAgentInfo> {
+    return this.ipcRenderer.invoke("agent-factory:update", params);
+  }
+
+  public async deleteCustomAgent(agentId: string): Promise<void> {
+    return this.ipcRenderer.invoke("agent-factory:delete", agentId);
+  }
+
+  public async duplicateCustomAgent(
+    agentId: string
+  ): Promise<import("./ipc_types").CustomAgentInfo> {
+    return this.ipcRenderer.invoke("agent-factory:duplicate", agentId);
+  }
+
+  public async startAgentTraining(
+    params: import("./ipc_types").StartAgentTrainingParams
+  ): Promise<{ jobId: string }> {
+    return this.ipcRenderer.invoke("agent-factory:start-training", params);
+  }
+
+  public async getAgentTrainingStatus(
+    agentId: string
+  ): Promise<{ status: string; progress: number; jobId?: string } | null> {
+    return this.ipcRenderer.invoke("agent-factory:training-status", agentId);
+  }
+
+  public async cancelAgentTraining(agentId: string): Promise<void> {
+    return this.ipcRenderer.invoke("agent-factory:cancel-training", agentId);
+  }
+
+  public async addAgentSkill(
+    params: import("./ipc_types").AddAgentSkillParams
+  ): Promise<{ skillId: string }> {
+    return this.ipcRenderer.invoke("agent-factory:add-skill", params);
+  }
+
+  public async removeAgentSkill(
+    agentId: string,
+    skillId: string
+  ): Promise<void> {
+    return this.ipcRenderer.invoke("agent-factory:remove-skill", agentId, skillId);
+  }
+
+  public async listAgentSkills(agentId: string): Promise<unknown[]> {
+    return this.ipcRenderer.invoke("agent-factory:list-skills", agentId);
+  }
+
+  public async addAgentTool(
+    params: import("./ipc_types").AddAgentToolParams
+  ): Promise<{ toolId: string }> {
+    return this.ipcRenderer.invoke("agent-factory:add-tool", params);
+  }
+
+  public async removeAgentTool(agentId: string, toolId: string): Promise<void> {
+    return this.ipcRenderer.invoke("agent-factory:remove-tool", agentId, toolId);
+  }
+
+  public async listAgentTools(agentId: string): Promise<unknown[]> {
+    return this.ipcRenderer.invoke("agent-factory:list-tools", agentId);
+  }
+
+  public async testAgent(
+    params: import("./ipc_types").TestAgentParams
+  ): Promise<import("./ipc_types").TestAgentResult> {
+    return this.ipcRenderer.invoke("agent-factory:test", params);
+  }
+
+  public async setAgentAdapter(
+    agentId: string,
+    adapterId: string | null
+  ): Promise<void> {
+    return this.ipcRenderer.invoke("agent-factory:set-adapter", agentId, adapterId);
+  }
+
+  public async listAgentTemplates(): Promise<
+    Array<{
+      id: string;
+      name: string;
+      description: string;
+      type: string;
+      personality: string;
+      systemPrompt: string;
+      config: { temperature: number; maxTokens: number };
+    }>
+  > {
+    return this.ipcRenderer.invoke("agent-factory:list-templates");
+  }
+
+  public async createAgentFromTemplate(
+    templateId: string,
+    params: { name: string; displayName: string; baseModelId: string }
+  ): Promise<import("./ipc_types").CustomAgentInfo> {
+    return this.ipcRenderer.invoke("agent-factory:create-from-template", templateId, params);
+  }
+
+  public async exportAgent(agentId: string): Promise<string> {
+    return this.ipcRenderer.invoke("agent-factory:export", agentId);
+  }
+
+  public async importAgent(
+    agentJson: string
+  ): Promise<import("./ipc_types").CustomAgentInfo> {
+    return this.ipcRenderer.invoke("agent-factory:import", agentJson);
+  }
+
+  // ===========================================================================
+  // PRIVACY-PRESERVING INFERENCE BRIDGE
+  // Local-first AI with federated fallback, no data harvesting
+  // ===========================================================================
+
+  public async initializeInferenceBridge(): Promise<
+    import("../types/privacy_inference_types").InferenceBridgeState
+  > {
+    return this.ipcRenderer.invoke("privacy-inference:initialize");
+  }
+
+  public async getInferenceBridgeState(): Promise<
+    import("../types/privacy_inference_types").InferenceBridgeState
+  > {
+    return this.ipcRenderer.invoke("privacy-inference:get-state");
+  }
+
+  public async updateInferenceBridgeConfig(
+    config: Partial<import("../types/privacy_inference_types").InferenceBridgeConfig>
+  ): Promise<import("../types/privacy_inference_types").InferenceBridgeConfig> {
+    return this.ipcRenderer.invoke("privacy-inference:update-config", config);
+  }
+
+  public async getInferenceBridgeConfig(): Promise<
+    import("../types/privacy_inference_types").InferenceBridgeConfig
+  > {
+    return this.ipcRenderer.invoke("privacy-inference:get-config");
+  }
+
+  public async privacyInfer(
+    request: import("../types/privacy_inference_types").CreateInferenceRequest
+  ): Promise<import("../types/privacy_inference_types").PrivacyPreservingInferenceResponse> {
+    return this.ipcRenderer.invoke("privacy-inference:infer", request);
+  }
+
+  public async localComplete(
+    prompt: string,
+    modelId?: string
+  ): Promise<import("../types/privacy_inference_types").PrivacyPreservingInferenceResponse> {
+    return this.ipcRenderer.invoke("privacy-inference:local-complete", prompt, modelId);
+  }
+
+  public async agentTask(
+    agentId: string,
+    task: unknown
+  ): Promise<import("../types/privacy_inference_types").PrivacyPreservingInferenceResponse> {
+    return this.ipcRenderer.invoke("privacy-inference:agent-task", agentId, task);
+  }
+
+  public async getInferenceStats(): Promise<
+    import("../types/privacy_inference_types").InferenceBridgeStats
+  > {
+    return this.ipcRenderer.invoke("privacy-inference:get-stats");
+  }
+
+  public async resetInferenceStats(): Promise<
+    import("../types/privacy_inference_types").InferenceBridgeStats
+  > {
+    return this.ipcRenderer.invoke("privacy-inference:reset-stats");
+  }
+
+  public async registerInferenceAdapter(adapter: {
+    id: string;
+    name: string;
+    baseModelId: string;
+    method: string;
+    path: string;
+  }): Promise<boolean> {
+    return this.ipcRenderer.invoke("privacy-inference:register-adapter", adapter);
+  }
+
+  public async registerInferenceAgent(agent: {
+    id: string;
+    name: string;
+    type: string;
+    modelId: string;
+    adapterId?: string;
+  }): Promise<boolean> {
+    return this.ipcRenderer.invoke("privacy-inference:register-agent", agent);
+  }
+
+  public async addTrustedPeer(peerId: string): Promise<string[]> {
+    return this.ipcRenderer.invoke("privacy-inference:add-trusted-peer", peerId);
+  }
+
+  public async removeTrustedPeer(peerId: string): Promise<string[]> {
+    return this.ipcRenderer.invoke("privacy-inference:remove-trusted-peer", peerId);
+  }
+
+  public async getPrivacyProfiles(): Promise<Record<string, unknown>> {
+    return this.ipcRenderer.invoke("privacy-inference:get-privacy-profiles");
+  }
+
+  public async getRoutingProfiles(): Promise<Record<string, unknown>> {
+    return this.ipcRenderer.invoke("privacy-inference:get-routing-profiles");
+  }
 }

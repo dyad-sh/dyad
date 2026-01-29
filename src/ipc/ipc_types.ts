@@ -686,3 +686,223 @@ export interface TelemetryEventPayload {
   eventName: string;
   properties?: Record<string, unknown>;
 }
+
+// ============================================================================
+// Model Factory Types (Training)
+// ============================================================================
+
+export interface ModelFactorySystemInfo {
+  hasGPU: boolean;
+  gpuName?: string;
+  gpuVRAM?: number;
+  cudaVersion?: string;
+  hasPython: boolean;
+  pythonVersion?: string;
+  hasTransformers: boolean;
+  hasBitsAndBytes: boolean;
+  hasUnsloth: boolean;
+  recommendedMethod: string;
+  recommendedQuantization: string;
+  maxBatchSize: number;
+}
+
+export interface CreateTrainingJobParams {
+  name: string;
+  description?: string;
+  baseModelSource: "huggingface" | "local" | "ollama";
+  baseModelId: string;
+  method: "lora" | "qlora" | "dora" | "full";
+  datasetPath: string;
+  datasetFormat: "alpaca" | "sharegpt" | "dolly" | "raw" | "custom";
+  hyperparameters: {
+    epochs: number;
+    batchSize: number;
+    learningRate: number;
+    loraRank?: number;
+    loraAlpha?: number;
+    loraDropout?: number;
+    use4bit?: boolean;
+    use8bit?: boolean;
+    gradientCheckpointing?: boolean;
+  };
+  outputPath?: string;
+  tags?: string[];
+}
+
+export interface TrainingJobInfo {
+  id: string;
+  name: string;
+  description?: string;
+  baseModelId: string;
+  method: string;
+  status: string;
+  progress: number;
+  currentEpoch?: number;
+  totalEpochs?: number;
+  currentStep?: number;
+  totalSteps?: number;
+  currentLoss?: number;
+  gpuMemoryUsed?: number;
+  elapsedTime?: number;
+  estimatedTimeRemaining?: number;
+  error?: string;
+  outputPath?: string;
+  createdAt: number;
+  startedAt?: number;
+  completedAt?: number;
+}
+
+export interface TrainingProgressEvent {
+  jobId: string;
+  status: string;
+  progress: number;
+  currentEpoch: number;
+  totalEpochs: number;
+  currentStep: number;
+  totalSteps: number;
+  loss?: number;
+  learningRate?: number;
+  gpuMemoryUsed?: number;
+  tokensPerSecond?: number;
+}
+
+export interface TrainingMetricsEvent {
+  jobId: string;
+  step: number;
+  epoch: number;
+  trainLoss: number;
+  evalLoss?: number;
+  learningRate: number;
+  gradientNorm?: number;
+}
+
+export interface ExportModelParams {
+  jobId: string;
+  format: "safetensors" | "pytorch" | "gguf" | "onnx";
+  quantization?: string;
+  mergeAdapter?: boolean;
+  outputPath?: string;
+}
+
+export interface ImportAdapterParams {
+  name: string;
+  path: string;
+  baseModelId: string;
+  description?: string;
+}
+
+export interface AdapterInfo {
+  id: string;
+  name: string;
+  description?: string;
+  baseModelId: string;
+  method: string;
+  rank?: number;
+  alpha?: number;
+  path: string;
+  sizeBytes: number;
+  createdAt: number;
+}
+
+// ============================================================================
+// Agent Factory Types
+// ============================================================================
+
+export interface CreateCustomAgentParams {
+  name: string;
+  displayName: string;
+  description: string;
+  type: string;
+  personality?: string;
+  baseModelProvider: "ollama" | "lmstudio" | "transformers" | "custom";
+  baseModelId: string;
+  systemPrompt: string;
+  maxTokens?: number;
+  temperature?: number;
+  adapterId?: string;
+  tags?: string[];
+}
+
+export interface CustomAgentInfo {
+  id: string;
+  name: string;
+  displayName: string;
+  description: string;
+  type: string;
+  personality: string;
+  baseModelId: string;
+  systemPrompt: string;
+  status: string;
+  adapterId?: string;
+  adapterName?: string;
+  version: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface UpdateCustomAgentParams {
+  id: string;
+  name?: string;
+  displayName?: string;
+  description?: string;
+  systemPrompt?: string;
+  maxTokens?: number;
+  temperature?: number;
+  adapterId?: string;
+  tags?: string[];
+}
+
+export interface StartAgentTrainingParams {
+  agentId: string;
+  datasetPath: string;
+  datasetFormat: string;
+  method: "lora" | "qlora" | "dora";
+  hyperparameters: {
+    epochs: number;
+    batchSize: number;
+    learningRate: number;
+    loraRank?: number;
+    loraAlpha?: number;
+    use4bit?: boolean;
+    gradientCheckpointing?: boolean;
+  };
+}
+
+export interface AddAgentSkillParams {
+  agentId: string;
+  name: string;
+  description: string;
+  type: "prompt" | "function" | "tool";
+  implementation: string;
+  examples?: { input: string; output: string }[];
+}
+
+export interface AddAgentToolParams {
+  agentId: string;
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  implementation: {
+    type: "builtin" | "custom" | "mcp" | "api";
+    code?: string;
+    mcpServerId?: number;
+    mcpToolName?: string;
+    apiEndpoint?: string;
+  };
+  requiresApproval?: boolean;
+}
+
+export interface TestAgentParams {
+  agentId: string;
+  input: string;
+  context?: string;
+  useAdapter?: boolean;
+}
+
+export interface TestAgentResult {
+  output: string;
+  reasoning?: string;
+  toolCalls?: unknown[];
+  tokensUsed: number;
+  responseTimeMs: number;
+}

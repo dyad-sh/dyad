@@ -83,6 +83,26 @@ DYAD_ATTACHMENT_0
       await new Promise((resolve) => setTimeout(resolve, 10_000));
     }
 
+    if (
+      lastMessage &&
+      typeof lastMessage.content === "string" &&
+      lastMessage.content.includes("Resolve the Git conflict(s) in ")
+    ) {
+      const conflictPath =
+        lastMessage.content
+          .split("Resolve the Git conflict(s) in ")[1]
+          ?.split("\n")[0]
+          ?.replace(/\.$/, "")
+          .trim() || "conflict.txt";
+      messageContent = `Resolved conflicts in ${conflictPath}.
+<dyad-write path="${conflictPath}" description="Resolve merge conflicts.">
+Line 1
+Line 2 Modified Feature
+Line 3
+</dyad-write>
+`;
+    }
+
     // TS auto-fix prefixes
     if (
       lastMessage &&

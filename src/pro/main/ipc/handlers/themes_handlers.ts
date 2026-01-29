@@ -13,7 +13,6 @@ import { readSettings } from "../../../../main/settings";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 import { getModelClient } from "../../../../ipc/utils/get_model_client";
 import { v4 as uuidv4 } from "uuid";
-import { z } from "zod";
 import type {
   SetAppThemeParams,
   GetAppThemeParams,
@@ -28,6 +27,7 @@ import type {
   SaveThemeImageResult,
   CleanupThemeImagesParams,
 } from "@/ipc/types";
+import { webCrawlResponseSchema } from "./local_agent/tools/web_crawl";
 
 const logger = log.scope("themes_handlers");
 const handle = createLoggedHandler(logger);
@@ -44,14 +44,6 @@ const THEME_GENERATION_MODEL_MAP: Record<
   },
   "gpt-5.2": { provider: "openai", name: "gpt-5.2" },
 };
-
-// Zod schema for validating web crawl response from Dyad Engine
-const WebCrawlResponseSchema = z.object({
-  rootUrl: z.string(),
-  html: z.string().optional(),
-  markdown: z.string().optional(),
-  screenshot: z.string().optional(),
-});
 
 // Timeout for web crawl requests (60 seconds)
 const WEB_CRAWL_TIMEOUT_MS = 60000;
@@ -821,7 +813,7 @@ Modern theme extracted from website for testing.
 
       // Validate response with Zod schema
       const rawCrawlResult = await crawlResponse.json();
-      const parseResult = WebCrawlResponseSchema.safeParse(rawCrawlResult);
+      const parseResult = webCrawlResponseSchema.safeParse(rawCrawlResult);
       if (!parseResult.success) {
         logger.error("Invalid crawl response structure:", parseResult.error);
         throw new Error(

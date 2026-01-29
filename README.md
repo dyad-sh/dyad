@@ -151,9 +151,3 @@ If you're interested in contributing, please read our [contributing](./CONTRIBUT
 3. Assets are verified, then published to [GitHub Releases](https://github.com/yosiwizman/dyad/releases)
 4. E2E results (if any) are reviewed separately and do not block the release
 
-## License
-
-This project is a fork of Dyad. We preserve upstream license notices.
-
-- All the code in this repo outside of `src/pro` is open-source and licensed under Apache 2.0 - see [LICENSE](./LICENSE).
-- All the code in this repo within `src/pro` is fair-source and licensed under [Functional Source License 1.1 Apache 2.0](https://fsl.software/) - see [LICENSE](./src/pro/LICENSE).

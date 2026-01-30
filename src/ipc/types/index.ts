@@ -49,6 +49,7 @@ export { upgradeContracts } from "./upgrade";
 export { visualEditingContracts } from "./visual-editing";
 export { securityContracts } from "./security";
 export { miscContracts, miscEvents } from "./misc";
+export { freeAgentQuotaContracts } from "./free_agent_quota";
 
 // =============================================================================
 // Client Exports
@@ -77,6 +78,7 @@ export { upgradeClient } from "./upgrade";
 export { visualEditingClient } from "./visual-editing";
 export { securityClient } from "./security";
 export { miscClient, miscEventClient } from "./misc";
+export { freeAgentQuotaClient } from "./free_agent_quota";
 
 // =============================================================================
 // Type Exports
@@ -241,8 +243,11 @@ export type {
   DeleteCustomThemeParams,
   ThemeGenerationMode,
   ThemeGenerationModel,
+  ThemeInputSource,
+  CrawlStatus,
   GenerateThemePromptParams,
   GenerateThemePromptResult,
+  GenerateThemeFromUrlParams,
   SaveThemeImageParams,
   SaveThemeImageResult,
   CleanupThemeImagesParams,
@@ -275,6 +280,9 @@ export type { SecurityReviewResult } from "./security";
 
 // Misc types
 export type { ChatLogsData, DeepLinkData, AppOutput, EnvVar } from "./misc";
+
+// Free agent quota types
+export type { FreeAgentQuotaStatus } from "./free_agent_quota";
 
 // =============================================================================
 // Schema Exports (for validation in handlers/components)
@@ -331,6 +339,7 @@ import { upgradeClient } from "./upgrade";
 import { visualEditingClient } from "./visual-editing";
 import { securityClient } from "./security";
 import { miscClient, miscEventClient } from "./misc";
+import { freeAgentQuotaClient } from "./free_agent_quota";
 
 /**
  * Unified IPC client with all domains organized by namespace.
@@ -385,6 +394,7 @@ export const ipc = {
   visualEditing: visualEditingClient,
   security: securityClient,
   misc: miscClient,
+  freeAgentQuota: freeAgentQuotaClient,
 
   // Event clients for main->renderer pub/sub
   events: {

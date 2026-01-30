@@ -216,7 +216,11 @@ export function DyadProButton({
       )}
       size="sm"
     >
-      {isDyadProEnabled ? "Pro" : "Pro (off)"}
+      {isDyadProEnabled
+        ? userBudget?.isTrial
+          ? "Pro Trial"
+          : "Pro"
+        : "Pro (off)"}
       {userBudget && isDyadProEnabled && (
         <AICreditStatus userBudget={userBudget} />
       )}

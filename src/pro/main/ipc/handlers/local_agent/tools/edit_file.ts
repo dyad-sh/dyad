@@ -17,7 +17,12 @@ const logger = log.scope("edit_file");
 const editFileSchema = z.object({
   path: z.string().describe("The file path relative to the app root"),
   content: z.string().describe("The updated code snippet to apply"),
-  description: z.string().optional().describe("Brief description of the edit"),
+  instructions: z
+    .string()
+    .optional()
+    .describe(
+      "Instructions for the edit. A single sentence describing what you are going to do for the sketched edit. This helps the less intelligent model apply the edit correctly. Use first person to describe what you are doing. Don't repeat what you've said in previous messages. Use it to disambiguate any uncertainty in the edit.",
+    ),
 });
 
 const turboFileEditResponseSchema = z.object({
@@ -29,7 +34,7 @@ async function callTurboFileEdit(
     path: string;
     content: string;
     originalContent: string;
-    description?: string;
+    instructions?: string;
   },
   ctx: AgentContext,
 ): Promise<string> {
@@ -39,7 +44,7 @@ async function callTurboFileEdit(
       path: params.path,
       content: params.content,
       originalContent: params.originalContent,
-      description: params.description ?? "",
+      instructions: params.instructions ?? "",
     }),
   });
 
@@ -57,15 +62,16 @@ async function callTurboFileEdit(
 const DESCRIPTION = `
 ## When to Use edit_file
 
-Use the \`edit_file\` tool ONLY when you are editing an existing file. The edit output will be read by a less intelligent model, which will quickly apply the edit. You should make it clear what the edit is, while also minimizing the unchanged code you write.
+Use the \`edit_file\` tool when you need to modify **a section or function** within an existing file. The edit output will be read by a less intelligent model, which will quickly apply the edit. You should make it clear what the edit is, while also minimizing the unchanged code you write.
 
 **Use only ONE edit_file call per file.** If you need to make multiple changes to the same file, include all edits in sequence within a single call using \`// ... existing code ...\` comments between them.
 
 ## When NOT to Use edit_file
 
 Do NOT use this tool when:
-- You are creating a brand-new file (use file creation tools instead).
-- You are rewriting most of an existing file (in those cases, output the complete file instead).
+- You are making a **small, surgical edit** (1-3 lines) like fixing a typo, renaming a variable, updating a single value, or changing an import. Use \`search_replace\` instead for these precise changes.
+- You are creating a brand-new file (use \`write_file\` instead).
+- You are rewriting most of an existing file (in those cases, use \`write_file\` to output the complete file instead).
 
 ## Basic Format
 
@@ -73,7 +79,7 @@ When writing the edit, you should specify each edit in sequence, with the specia
 
 Basic example:
 \`\`\`
-edit_file(path="file.js", description="change code", content="""
+edit_file(path="file.js", instructions="I am adding error handling to the fetchData function and updating the return type.", content="""
 // ... existing code ...
 FIRST_EDIT
 // ... existing code ...
@@ -94,7 +100,7 @@ DO NOT omit spans of pre-existing code without using the // ... existing code ..
 
 ## Example: Basic Edit
 \`\`\`
-edit_file(path="LandingPage.tsx", description="Update title.", content="""
+edit_file(path="LandingPage.tsx", instructions="I am changing the return statement in LandingPage to render a div with 'hello' instead of the previous content.", content="""
 // ... existing code ...
 
 const LandingPage = () => {
@@ -112,7 +118,7 @@ const LandingPage = () => {
 
 **When deleting code, you must provide surrounding context and leave an explicit comment indicating what was removed.**
 \`\`\`
-edit_file(path="utils.ts", description="Remove deprecated helper function", content="""
+edit_file(path="utils.ts", instructions="I am removing the deprecatedHelper function located between currentHelper and anotherHelper.", content="""
 // ... existing code ...
 
 export function currentHelper() {
@@ -136,12 +142,15 @@ export const editFileTool: ToolDefinition<z.infer<typeof editFileSchema>> = {
   defaultConsent: "always",
   modifiesState: true,
 
+  // Disable in Basic Agent mode (free tier) - requires engine
+  isEnabled: (ctx) => !ctx.isBasicAgentMode,
+
   getConsentPreview: (args) => `Edit ${args.path}`,
 
   buildXml: (args, isComplete) => {
     if (!args.path) return undefined;
 
-    let xml = `<dyad-edit path="${escapeXmlAttr(args.path)}" description="${escapeXmlAttr(args.description ?? "")}">\n${args.content ?? ""}`;
+    let xml = `<dyad-edit path="${escapeXmlAttr(args.path)}" description="${escapeXmlAttr(args.instructions ?? "")}">\n${args.content ?? ""}`;
     if (isComplete) {
       xml += "\n</dyad-edit>";
     }
@@ -169,7 +178,7 @@ export const editFileTool: ToolDefinition<z.infer<typeof editFileSchema>> = {
         path: args.path,
         content: args.content,
         originalContent,
-        description: args.description,
+        instructions: args.instructions,
       },
       ctx,
     );

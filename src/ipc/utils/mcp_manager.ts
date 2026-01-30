@@ -36,7 +36,12 @@ class McpManager {
       });
     } else if (s.transport === "http") {
       if (!s.url) throw new Error("HTTP MCP requires url");
-      transport = new StreamableHTTPClientTransport(new URL(s.url as string));
+      const headers = s.headersJson ?? {};
+      transport = new StreamableHTTPClientTransport(new URL(s.url as string), {
+        requestInit: {
+          headers,
+        },
+      });
     } else {
       throw new Error(`Unsupported MCP transport: ${s.transport}`);
     }

@@ -17,8 +17,8 @@ const validReceiveChannels = VALID_RECEIVE_CHANNELS;
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld("electron", {
   ipcRenderer: {
-    invoke: (channel: ValidInvokeChannel, ...args: unknown[]) => {
-      if (validInvokeChannels.includes(channel)) {
+    invoke: (channel: ValidInvokeChannel | string, ...args: unknown[]) => {
+      if ((validInvokeChannels as readonly string[]).includes(channel)) {
         return ipcRenderer.invoke(channel, ...args);
       }
       throw new Error(`Invalid channel: ${channel}`);

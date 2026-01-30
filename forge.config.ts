@@ -148,7 +148,7 @@ const config: ForgeConfig = {
   makers: [
     new MakerSquirrel({
       iconUrl:
-        "https://raw.githubusercontent.com/dyad-sh/dyad/refs/heads/main/assets/icon/logo.ico",
+        "https://raw.githubusercontent.com/dyad-sh/dyad/main/assets/icon/logo.ico",
       setupIcon: "./assets/icon/logo.ico",
     }),
     new MakerZIP({}, ["darwin"]),

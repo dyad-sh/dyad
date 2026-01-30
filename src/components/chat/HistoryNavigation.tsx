@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { $getRoot, $createParagraphNode, $createTextNode } from "lexical";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import {
@@ -9,10 +9,24 @@ import {
 
 export const HISTORY_TRIGGER = "\u200B";
 
+/** Delay (ms) before dispatching KEY_ARROW_UP so the typeahead menu has mounted. */
+const SELECT_LAST_DISPATCH_DELAY_MS = 60;
+
 interface HistoryNavigationProps {
   messageHistory: string[];
   onTriggerInserted: () => void;
   onTriggerCleared: () => void;
+}
+
+function clearSelectLastTimeout(
+  timeoutRef: { current: ReturnType<typeof setTimeout> | null },
+  scheduledRef: { current: boolean },
+) {
+  if (timeoutRef.current != null) {
+    clearTimeout(timeoutRef.current);
+    timeoutRef.current = null;
+  }
+  scheduledRef.current = false;
 }
 
 export function HistoryNavigation({
@@ -21,6 +35,10 @@ export function HistoryNavigation({
   onTriggerCleared,
 }: HistoryNavigationProps) {
   const [editor] = useLexicalComposerContext();
+  const syntheticUpScheduledRef = useRef(false);
+  const selectLastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   const handleArrowUp = useCallback(
     (event: KeyboardEvent) => {
@@ -28,36 +46,45 @@ export function HistoryNavigation({
         return false;
       }
 
-      // Check if input is empty
+      // Ignore our synthetic KEY_ARROW_UP (we dispatch it to select last item).
+      if (syntheticUpScheduledRef.current) {
+        syntheticUpScheduledRef.current = false;
+        return false;
+      }
+
       let isEmpty = false;
       editor.getEditorState().read(() => {
         const root = $getRoot();
         isEmpty = root.getTextContent().trim().length === 0;
       });
 
-      // Only trigger history menu if input is empty
       if (!isEmpty) {
         return false;
       }
 
-      // Prevent default to avoid scrolling or other behavior
       event.preventDefault();
-
-      // Insert an invisible trigger character to open the history menu
       onTriggerInserted();
 
       editor.update(() => {
         const root = $getRoot();
-
-        // Clear existing content and insert trigger
         root.clear();
         const paragraph = $createParagraphNode();
         paragraph.append($createTextNode(HISTORY_TRIGGER));
         root.append(paragraph);
-
-        // Move cursor after the trigger character
         paragraph.selectEnd();
       });
+
+      // Dispatch KEY_ARROW_UP after a short delay so the typeahead menu has
+      // mounted. Store timeout id and clear on unmount or ESC to avoid leaks.
+      syntheticUpScheduledRef.current = true;
+      selectLastTimeoutRef.current = setTimeout(() => {
+        selectLastTimeoutRef.current = null;
+        if (!syntheticUpScheduledRef.current) return;
+        editor.dispatchCommand(
+          KEY_ARROW_UP_COMMAND,
+          new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }),
+        );
+      }, SELECT_LAST_DISPATCH_DELAY_MS);
 
       return true;
     },
@@ -85,6 +112,7 @@ export function HistoryNavigation({
         }
 
         event.preventDefault();
+        clearSelectLastTimeout(selectLastTimeoutRef, syntheticUpScheduledRef);
         editor.update(() => {
           const root = $getRoot();
           root.clear();
@@ -100,6 +128,7 @@ export function HistoryNavigation({
     return () => {
       unregisterArrowUp();
       unregisterEscape();
+      clearSelectLastTimeout(selectLastTimeoutRef, syntheticUpScheduledRef);
     };
   }, [editor, handleArrowUp, onTriggerCleared]);
 

@@ -50,28 +50,25 @@ test("should navigate history with keyboard arrows and show selection", async ({
   await chatInput.click();
   await chatInput.fill("");
 
-  // Open history menu
+  // Open history menu (up-arrow). We default-select the last (bottom) item.
   await po.page.keyboard.press("ArrowUp");
 
   const menuItems = po.page.locator('[data-mentions-menu="true"] li');
+  const lastItem = menuItems.nth(1);
 
-  // First item should be highlighted (oldest at top)
+  // Use a longer timeout because of the 60ms delay in HistoryNavigation.tsx
+  await expect(lastItem).toContainText("Prompt B", { timeout: 500 });
+  await expect(lastItem).toHaveClass(/bg-accent/);
+
+  // Press up arrow → first item (oldest at top)
+  await po.page.keyboard.press("ArrowUp");
   const firstItem = menuItems.nth(0);
   await expect(firstItem).toHaveClass(/bg-accent/);
   await expect(firstItem).toContainText("Prompt A");
 
-  // Press down arrow
-  await po.page.keyboard.press("ArrowDown");
-
-  // Second item should now be highlighted (most recent at bottom)
-  const secondItem = menuItems.nth(1);
-  await expect(secondItem).toHaveClass(/bg-accent/);
-  await expect(secondItem).toContainText("Prompt B");
-
-  // Press down again - should wrap or stay at end
-  await po.page.keyboard.press("ArrowDown");
-  // Still at last item
-  await expect(secondItem).toHaveClass(/bg-accent/);
+  // Press up again → wrap to last item
+  await po.page.keyboard.press("ArrowUp");
+  await expect(lastItem).toHaveClass(/bg-accent/);
 });
 
 test("should select and insert history item with enter key", async ({ po }) => {

@@ -1,0 +1,72 @@
+name: Closed Issue Comment Handler
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  handle-comment:
+    # Only run on closed issues (not PRs)
+    if: github.event.issue.state == 'closed' && !github.event.issue.pull_request
+    environment: ai-bots
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: anthropics/claude-code-base-action@beta
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          model: claude-sonnet-4-20250514
+          allowed_tools: "Bash(gh issue:*)"
+          prompt: |
+            # Closed Issue Comment Handler
+
+            ## Context
+
+            ```
+            REPO: ${{ github.repository }}
+            ISSUE NUMBER: ${{ github.event.issue.number }}
+            ISSUE AUTHOR: ${{ github.event.issue.user.login }}
+            COMMENT AUTHOR: ${{ github.event.comment.user.login }}
+            COMMENT BODY: ${{ github.event.comment.body }}
+            ```
+
+            ## Task
+
+            A comment was left on a **closed** issue. Determine the appropriate response.
+
+            ### Case 1: Comment is from the original issue author
+
+            If `COMMENT AUTHOR` matches `ISSUE AUTHOR`, analyze the comment to determine if the author:
+            - Expresses that the issue is still occurring
+            - Has a follow-up question about the issue
+            - Indicates the fix didn't work
+            - Shows any sign that the issue isn't fully resolved for them
+
+            If any of these are true:
+            1. Re-open the issue:
+               ```bash
+               gh issue reopen ${{ github.event.issue.number }}
+               ```
+            2. Leave a comment:
+               ```bash
+               gh issue comment ${{ github.event.issue.number }} --body "Hi! Thanks for responding, we've re-opened the issue. If this is a different issue than the original one, please file a new issue and we'll take a look!"
+               ```
+
+            If the author's comment is just a thank you, acknowledgment, or doesn't indicate any ongoing problem, do nothing.
+
+            ### Case 2: Comment is from someone other than the original author
+
+            If `COMMENT AUTHOR` does NOT match `ISSUE AUTHOR`, leave a comment directing them to open a new issue:
+            ```bash
+            gh issue comment ${{ github.event.issue.number }} --body "Hey! We typically don't look at closed issues so please open a new issue if you'd like us to take a look. Thanks!"
+            ```
+
+            ## Guidelines
+
+            - Be concise in your analysis
+            - Only take action if you're confident about the intent
+            - Do not leave multiple comments

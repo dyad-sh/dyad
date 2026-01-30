@@ -7,6 +7,8 @@ export function useAttachments() {
   const [attachments, setAttachments] = useAtom(attachmentsAtom);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  // Store pending files that need user confirmation for attachment type
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
   const handleAttachmentClick = () => {
     fileInputRef.current?.click();
@@ -53,17 +55,15 @@ export function useAttachments() {
     setIsDraggingOver(false);
   };
 
+  // Modified to store files as pending instead of immediately adding
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDraggingOver(false);
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const files = Array.from(e.dataTransfer.files);
-      const fileAttachments: FileAttachment[] = files.map((file) => ({
-        file,
-        type: "chat-context" as const,
-      }));
-      setAttachments((attachments) => [...attachments, ...fileAttachments]);
+      // Set pending files to trigger the dialog
+      setPendingFiles(files);
     }
   };
 
@@ -82,6 +82,7 @@ export function useAttachments() {
     setAttachments((attachments) => [...attachments, ...fileAttachments]);
   };
 
+  // Modified to store files as pending instead of immediately adding
   const handlePaste = async (e: React.ClipboardEvent) => {
     const clipboardData = e.clipboardData;
     if (!clipboardData) return;
@@ -115,17 +116,31 @@ export function useAttachments() {
       }
 
       if (imageFiles.length > 0) {
-        addAttachments(imageFiles, "chat-context");
-        // Show a brief toast or indication that image was pasted
+        // Set pending files to trigger the dialog
+        setPendingFiles(imageFiles);
         console.log(`Pasted ${imageFiles.length} image(s) from clipboard`);
       }
     }
+  };
+
+  // Confirm pending files with the selected type
+  const confirmPendingFiles = (type: "chat-context" | "upload-to-codebase") => {
+    if (pendingFiles.length > 0) {
+      addAttachments(pendingFiles, type);
+      setPendingFiles([]);
+    }
+  };
+
+  // Cancel pending files
+  const cancelPendingFiles = () => {
+    setPendingFiles([]);
   };
 
   return {
     attachments,
     fileInputRef,
     isDraggingOver,
+    pendingFiles,
     handleAttachmentClick,
     handleFileChange,
     handleFileSelect,
@@ -136,5 +151,7 @@ export function useAttachments() {
     clearAttachments,
     handlePaste,
     addAttachments,
+    confirmPendingFiles,
+    cancelPendingFiles,
   };
 }

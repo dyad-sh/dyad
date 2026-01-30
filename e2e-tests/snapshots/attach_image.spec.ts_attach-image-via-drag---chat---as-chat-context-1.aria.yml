@@ -1,0 +1,35 @@
+- paragraph: basic
+- img
+- text: file1.txt
+- button "Edit":
+  - img
+- img
+- text: file1.txt
+- paragraph: More EOM
+- button:
+  - img
+- img
+- text: Approved
+- img
+- text: test-model
+- img
+- text: less than a minute ago
+- img
+- text: wrote 1 file(s)
+- paragraph: "[dump]"
+- paragraph: "Attachments:"
+- list:
+  - listitem: logo.png (image/png)
+- paragraph: "[[dyad-dump-path=*]]"
+- button:
+  - img
+- img
+- text: Approved
+- img
+- text: test-model
+- img
+- text: less than a minute ago
+- button "Undo":
+  - img
+- button "Retry":
+  - img

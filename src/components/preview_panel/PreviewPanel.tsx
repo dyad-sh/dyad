@@ -121,8 +121,10 @@ export function PreviewPanel() {
     if (!projectId) return;
 
     // Load logs immediately (once) - users can manually refresh via the Console button
-    loadEdgeLogs({ projectId, organizationSlug }).catch((_error) => {
-      showError("Failed to load edge logs");
+    loadEdgeLogs({ projectId, organizationSlug }).catch((error) => {
+      showError(
+        error instanceof Error ? error.message : "Failed to load edge logs",
+      );
     });
   }, [
     app?.supabaseProjectId,

@@ -6,7 +6,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-// @ts-ignore
 import supabaseIcon from "../../../assets/supabase/supabase-icon.svg";
 
 interface ConsoleFiltersProps {

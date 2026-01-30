@@ -70,12 +70,21 @@ function parseTestTitle(fullTitle) {
   return { specFile, testName };
 }
 
-// Generate copy-paste command for updating snapshots
-function generateUpdateCommand(fullTitle) {
+// Generate copy-paste command for running a specific test
+function generateTestCommand(fullTitle) {
   const { specFile, testName } = parseTestTitle(fullTitle);
   // Escape special characters in testName for the grep pattern
   const escapedTestName = testName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return `npm run e2e e2e-tests/${specFile} -- --g="${escapedTestName}" --update-snapshots`;
+  return `npm run e2e e2e-tests/${specFile} -- -g "${escapedTestName}"`;
+}
+
+// Generate both run and update commands for a test
+function generateCommands(fullTitle) {
+  const testCmd = generateTestCommand(fullTitle);
+  return {
+    run: testCmd,
+    update: `${testCmd} --update-snapshots`,
+  };
 }
 
 function detectOperatingSystemsFromReport(report) {
@@ -369,22 +378,25 @@ async function run({ github, context, core }) {
     // Add macOS copy-paste commands section
     const macOsFailures = resultsByOs["macOS"]?.failures || [];
     if (macOsFailures.length > 0) {
-      comment += "### 📋 Update Snapshot Commands (macOS)\n\n";
+      comment += "### 📋 Test Commands (macOS)\n\n";
       comment +=
-        "Copy and paste these commands to update snapshots for failed tests:\n\n";
+        "Copy and paste these commands to run or update snapshots for failed tests:\n\n";
 
       if (macOsFailures.length > 5) {
-        comment += `<details>\n<summary>Show all ${macOsFailures.length} commands</summary>\n\n`;
+        comment += `<details>\n<summary>Show all ${macOsFailures.length} test commands</summary>\n\n`;
       }
 
-      comment += "```bash\n";
       for (const f of macOsFailures) {
-        comment += generateUpdateCommand(f.title) + "\n";
+        const cmds = generateCommands(f.title);
+        comment += `**\`${f.title}\`**\n`;
+        comment += "```bash\n";
+        comment += `# Run test\n${cmds.run}\n\n`;
+        comment += `# Update snapshots\n${cmds.update}\n`;
+        comment += "```\n\n";
       }
-      comment += "```\n";
 
       if (macOsFailures.length > 5) {
-        comment += "\n</details>\n";
+        comment += "</details>\n";
       }
       comment += "\n";
     }

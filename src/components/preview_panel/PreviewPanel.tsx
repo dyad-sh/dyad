@@ -18,6 +18,8 @@ import { useRunApp } from "@/hooks/useRunApp";
 import { PublishPanel } from "./PublishPanel";
 import { SecurityPanel } from "./SecurityPanel";
 import { useSupabase } from "@/hooks/useSupabase";
+import { useSettings } from "@/hooks/useSettings";
+import { showError } from "@/lib/toast";
 
 interface ConsoleHeaderProps {
   isOpen: boolean;
@@ -56,6 +58,7 @@ export function PreviewPanel() {
   const [isConsoleOpen, setIsConsoleOpen] = useState(false);
   const { runApp, stopApp, loading, app } = useRunApp();
   const { loadEdgeLogs } = useSupabase();
+  const { settings } = useSettings();
   const runningAppIdRef = useRef<number | null>(null);
   const key = useAtomValue(previewPanelKeyAtom);
   const consoleEntries = useAtomValue(appConsoleEntriesAtom);
@@ -110,26 +113,25 @@ export function PreviewPanel() {
     // runApp/stopApp are stable due to useCallback.
   }, [selectedAppId, runApp, stopApp]);
 
-  // Load edge logs if app has Supabase project configured
+  // Load edge logs once when Supabase configuration changes
   useEffect(() => {
+    if (settings?.isTestMode) return; // Skip in test mode
     const projectId = app?.supabaseProjectId;
     const organizationSlug = app?.supabaseOrganizationSlug ?? undefined;
     if (!projectId) return;
 
-    // Load logs immediately
+    // Load logs immediately (once) - users can manually refresh via the Console button
     loadEdgeLogs({ projectId, organizationSlug }).catch((error) => {
-      console.error("Failed to load edge logs:", error);
+      showError(
+        error instanceof Error ? error.message : "Failed to load edge logs",
+      );
     });
-
-    // Poll for new logs every 5 seconds
-    const intervalId = setInterval(() => {
-      loadEdgeLogs({ projectId, organizationSlug }).catch((error) => {
-        console.error("Failed to load edge logs:", error);
-      });
-    }, 5000);
-
-    return () => clearInterval(intervalId);
-  }, [app?.supabaseProjectId, app?.supabaseOrganizationSlug, loadEdgeLogs]);
+  }, [
+    app?.supabaseProjectId,
+    app?.supabaseOrganizationSlug,
+    loadEdgeLogs,
+    settings?.isTestMode,
+  ]);
 
   return (
     <div className="flex flex-col h-full">

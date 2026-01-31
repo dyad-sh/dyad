@@ -575,8 +575,23 @@
       );
       return;
     }
-    setTimeout(() => {
+
+    const INIT_TIMEOUT_MS = 5000; // Wait up to 5 seconds for tagged elements
+    let observer = null;
+    let timeoutId = null;
+
+    function checkForTaggedElements() {
       if (document.body.querySelector("[data-dyad-id]")) {
+        // Clean up observer and timeout
+        if (observer) {
+          observer.disconnect();
+          observer = null;
+        }
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+
         window.parent.postMessage(
           {
             type: "dyad-component-selector-initialized",
@@ -584,11 +599,46 @@
           "*",
         );
         console.debug("Dyad component selector initialized");
-      } else {
-        console.warn(
-          "Dyad component selector not initialized because no DOM elements were tagged",
-        );
+        return true;
       }
+      return false;
+    }
+
+    // First, try immediately
+    setTimeout(() => {
+      if (checkForTaggedElements()) {
+        return;
+      }
+
+      // If not found, set up MutationObserver to watch for tagged elements
+      console.debug(
+        "Dyad component selector waiting for tagged elements to appear...",
+      );
+
+      observer = new MutationObserver(() => {
+        checkForTaggedElements();
+      });
+
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["data-dyad-id"],
+      });
+
+      // Set a timeout to give up after INIT_TIMEOUT_MS
+      timeoutId = setTimeout(() => {
+        if (observer) {
+          observer.disconnect();
+          observer = null;
+        }
+        // Only warn if we never found tagged elements
+        if (!document.body.querySelector("[data-dyad-id]")) {
+          console.warn(
+            "Dyad component selector not initialized because no DOM elements were tagged",
+          );
+        }
+      }, INIT_TIMEOUT_MS);
     }, 0);
   }
 

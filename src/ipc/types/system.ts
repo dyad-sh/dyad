@@ -238,6 +238,13 @@ export const systemContracts = {
     input: z.void(),
     output: z.void(),
   }),
+
+  // Window focus
+  isWindowFocused: defineContract({
+    channel: "is-window-focused",
+    input: z.void(),
+    output: z.boolean(),
+  }),
 } as const;
 
 // =============================================================================

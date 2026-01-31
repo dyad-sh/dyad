@@ -117,7 +117,7 @@ export const miscContracts = {
   getEnvVars: defineContract({
     channel: "get-env-vars",
     input: z.void(),
-    output: z.record(z.string().optional()),
+    output: z.record(z.string(), z.string().optional()),
   }),
 
   // App-specific env vars

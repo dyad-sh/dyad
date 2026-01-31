@@ -31,7 +31,7 @@ export function createTypedHandler<
       // Runtime validation of input
       const parsed = contract.input.safeParse(rawInput);
       if (!parsed.success) {
-        const errorMessage = parsed.error.errors
+        const errorMessage = parsed.error.issues
           .map((e) => `${e.path.join(".")}: ${e.message}`)
           .join("; ");
         throw new Error(`[${contract.channel}] Invalid input: ${errorMessage}`);
@@ -43,7 +43,7 @@ export function createTypedHandler<
       if (process.env.NODE_ENV === "development") {
         const outputParsed = contract.output.safeParse(result);
         if (!outputParsed.success) {
-          const errorMessage = outputParsed.error.errors
+          const errorMessage = outputParsed.error.issues
             .map((e) => `${e.path.join(".")}: ${e.message}`)
             .join("; ");
           console.error(
@@ -88,7 +88,7 @@ export function createLoggedTypedHandler(logger: {
         // Runtime validation of input
         const parsed = contract.input.safeParse(rawInput);
         if (!parsed.success) {
-          const errorMessage = parsed.error.errors
+          const errorMessage = parsed.error.issues
             .map((e) => `${e.path.join(".")}: ${e.message}`)
             .join("; ");
           const error = new Error(
@@ -106,7 +106,7 @@ export function createLoggedTypedHandler(logger: {
           if (process.env.NODE_ENV === "development") {
             const outputParsed = contract.output.safeParse(result);
             if (!outputParsed.success) {
-              const errorMessage = outputParsed.error.errors
+              const errorMessage = outputParsed.error.issues
                 .map((e) => `${e.path.join(".")}: ${e.message}`)
                 .join("; ");
               console.error(
@@ -148,7 +148,7 @@ export function registerTypedHandlers<
   for (const [key, contract] of Object.entries(contracts)) {
     const handler = handlers[key as keyof typeof handlers];
     if (handler) {
-      createTypedHandler(contract, handler);
+      createTypedHandler(contract, handler as any);
     }
   }
 }

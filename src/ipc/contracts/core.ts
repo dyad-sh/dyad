@@ -268,7 +268,8 @@ export function createStreamClient<
   const getIpcRenderer = () => (window as any).electron?.ipcRenderer;
 
   type Input = z.infer<TInput>;
-  type KeyValue = Input[TKey];
+  // Use unknown for KeyValue to avoid complex type inference issues
+  type KeyValue = unknown;
 
   const streams = new Map<
     KeyValue,
@@ -333,13 +334,17 @@ export function createStreamClient<
       const ipcRenderer = getIpcRenderer();
       if (!ipcRenderer) {
         callbacks.onError({
-          [contract.keyField]: input[contract.keyField as keyof Input],
+          [contract.keyField]: (input as Record<string, unknown>)[
+            contract.keyField
+          ],
           error: "IPC renderer not available",
         } as any);
         return;
       }
 
-      const key = input[contract.keyField as keyof Input] as KeyValue;
+      const key = (input as Record<string, unknown>)[
+        contract.keyField
+      ] as KeyValue;
       streams.set(key, callbacks);
 
       ipcRenderer.invoke(contract.channel, input).catch((err: Error) => {

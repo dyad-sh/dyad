@@ -59,6 +59,7 @@ import { useVersions } from "@/hooks/useVersions";
 import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
+import { AttachmentTypeDialog } from "./AttachmentTypeDialog";
 import { showExtraFilesToast } from "@/lib/toast";
 import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
 import { ChatInputControls } from "../ChatInputControls";
@@ -133,6 +134,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const {
     attachments,
     isDraggingOver,
+    pendingFiles,
     handleFileSelect,
     removeAttachment,
     handleDragOver,
@@ -140,6 +142,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     handleDrop,
     clearAttachments,
     handlePaste,
+    confirmPendingFiles,
+    cancelPendingFiles,
   } = useAttachments();
 
   // Use the hook to fetch the proposal
@@ -300,6 +304,13 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   return (
     <>
+      {/* Attachment type disambiguation dialog */}
+      <AttachmentTypeDialog
+        open={pendingFiles.length > 0}
+        files={pendingFiles}
+        onSelect={confirmPendingFiles}
+        onCancel={cancelPendingFiles}
+      />
       {error && showError && (
         <ChatErrorBox
           onDismiss={dismissError}

@@ -7,6 +7,7 @@ import { useStreamChat } from "@/hooks/useStreamChat";
 import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
+import { AttachmentTypeDialog } from "./AttachmentTypeDialog";
 import { usePostHog } from "posthog-js/react";
 import { HomeSubmitOptions } from "@/pages/home";
 import { ChatInputControls } from "../ChatInputControls";
@@ -39,6 +40,7 @@ export function HomeChatInput({
   const {
     attachments,
     isDraggingOver,
+    pendingFiles,
     handleFileSelect,
     removeAttachment,
     handleDragOver,
@@ -46,6 +48,8 @@ export function HomeChatInput({
     handleDrop,
     clearAttachments,
     handlePaste,
+    confirmPendingFiles,
+    cancelPendingFiles,
   } = useAttachments();
 
   // Custom submit function that wraps the provided onSubmit
@@ -70,6 +74,13 @@ export function HomeChatInput({
 
   return (
     <>
+      {/* Attachment type disambiguation dialog */}
+      <AttachmentTypeDialog
+        open={pendingFiles.length > 0}
+        files={pendingFiles}
+        onSelect={confirmPendingFiles}
+        onCancel={cancelPendingFiles}
+      />
       <div className="p-4" data-testid="home-chat-input-container">
         <div
           className={`relative flex flex-col space-y-2 border border-border rounded-lg bg-(--background-lighter) shadow-sm ${

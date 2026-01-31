@@ -171,9 +171,28 @@ export function useStreamChat({
                 return next;
               });
             },
-            onEnd: (response: ChatResponseEnd) => {
+            onEnd: async (response: ChatResponseEnd) => {
               // Remove from pending set now that stream is complete
               pendingStreamChatIds.delete(chatId);
+
+              // Show native notification if enabled and window is not focused
+              const notificationsEnabled =
+                settings?.enableChatCompletionNotifications !== false;
+              if (notificationsEnabled) {
+                try {
+                  const isWindowFocused = await ipc.system.isWindowFocused();
+                  if (!isWindowFocused) {
+                    new Notification("Dyad", {
+                      body: "Chat response completed",
+                    });
+                  }
+                } catch (error) {
+                  console.error(
+                    "[CHAT] Failed to show completion notification:",
+                    error,
+                  );
+                }
+              }
 
               if (response.updatedFiles) {
                 if (settings?.autoExpandPreviewPanel) {

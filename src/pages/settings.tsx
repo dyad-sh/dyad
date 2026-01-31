@@ -21,6 +21,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { AutoFixProblemsSwitch } from "@/components/AutoFixProblemsSwitch";
 import { AutoExpandPreviewSwitch } from "@/components/AutoExpandPreviewSwitch";
+import { ChatCompletionNotificationSwitch } from "@/components/ChatCompletionNotificationSwitch";
 import { AutoUpdateSwitch } from "@/components/AutoUpdateSwitch";
 import { ReleaseChannelSelector } from "@/components/ReleaseChannelSelector";
 import { NeonIntegration } from "@/components/NeonIntegration";
@@ -335,6 +336,14 @@ export function WorkflowSettings() {
         <AutoExpandPreviewSwitch />
         <div className="text-sm text-gray-500 dark:text-gray-400">
           Automatically expand the preview panel when code changes are made.
+        </div>
+      </div>
+
+      <div className="space-y-1 mt-4">
+        <ChatCompletionNotificationSwitch />
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          Show a native notification when a chat response completes while the
+          app is not focused.
         </div>
       </div>
     </div>

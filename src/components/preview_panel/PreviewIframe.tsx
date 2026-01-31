@@ -25,6 +25,8 @@ import {
   Tablet,
   Smartphone,
   Pen,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { CopyErrorMessage } from "@/components/CopyErrorMessage";
@@ -47,6 +49,7 @@ import {
   screenshotDataUrlAtom,
   pendingVisualChangesAtom,
 } from "@/atoms/previewAtoms";
+import { isChatPanelHiddenAtom } from "@/atoms/viewAtoms";
 import { ComponentSelection } from "@/ipc/types";
 import {
   Tooltip,
@@ -225,6 +228,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [annotatorMode, setAnnotatorMode] = useAtom(annotatorModeAtom);
   const [screenshotDataUrl, setScreenshotDataUrl] = useAtom(
     screenshotDataUrlAtom,
+  );
+  const [isChatPanelHidden, setIsChatPanelHidden] = useAtom(
+    isChatPanelHiddenAtom,
   );
 
   const { addAttachments } = useAttachments();
@@ -975,6 +981,28 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         <div className="flex items-center p-2 border-b space-x-2">
           {/* Navigation Buttons */}
           <div className="flex space-x-1">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setIsChatPanelHidden(!isChatPanelHidden)}
+                    className="p-1 rounded transition-colors duration-200 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+                    data-testid="preview-toggle-chat-panel-button"
+                  >
+                    {isChatPanelHidden ? (
+                      // Panel is hidden: show maximize/expand icon
+                      <Maximize2 size={16} />
+                    ) : (
+                      // Panel is visible: show minimize/collapse icon
+                      <Minimize2 size={16} />
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{isChatPanelHidden ? "Show chat" : "Hide chat"}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>

@@ -534,6 +534,11 @@ ${componentSnippet}
           mentionedAppNames,
           updatedChat.app.id, // Exclude current app
         );
+        const willUseLocalAgentStream =
+          settings.selectedChatMode === "local-agent" ||
+          (settings.selectedChatMode === "ask" &&
+            isDyadProEnabled(settings) &&
+            !mentionedAppsCodebases.length);
 
         const isDeepContextEnabled =
           isEngineEnabled &&
@@ -725,7 +730,20 @@ ${componentSnippet}
         // Usually, AI models will want to use the image as reference to generate code (e.g. UI mockups) anyways, so
         // it's not that critical to include the image analysis instructions.
         if (hasUploadedAttachments) {
-          systemPrompt += `
+          if (willUseLocalAgentStream) {
+            systemPrompt += `
+
+When files are attached to this conversation, upload them to the codebase using the \`write_file\` tool.
+Use the attachment ID (e.g., DYAD_ATTACHMENT_0) as the content, and it will be automatically resolved to the actual file content.
+
+Example for file with id of DYAD_ATTACHMENT_0:
+\`\`\`
+write_file(path="src/components/Button.jsx", content="DYAD_ATTACHMENT_0", description="Upload file to codebase")
+\`\`\`
+
+`;
+          } else {
+            systemPrompt += `
   
 When files are attached to this conversation, upload them to the codebase using this exact format:
 
@@ -739,6 +757,7 @@ DYAD_ATTACHMENT_0
 </dyad-write>
 
   `;
+          }
         } else if (hasImageAttachments) {
           systemPrompt += `
 
@@ -819,11 +838,7 @@ This conversation includes one or more image attachments. When the user uploads 
             }
             // Save aiMessagesJson for modes that use handleLocalAgentStream
             // (which reads from DB and needs structured image content)
-            const willUseLocalAgentStream =
-              settings.selectedChatMode === "local-agent" ||
-              (settings.selectedChatMode === "ask" &&
-                isDyadProEnabled(settings) &&
-                !mentionedAppsCodebases.length);
+
             if (willUseLocalAgentStream) {
               // Insert into DB (with size guard)
               const userAiMessagesJson = getAiMessagesJsonIfWithinLimit([

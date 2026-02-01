@@ -8,14 +8,8 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Send,
+  ArrowLeft,
   ArrowRight,
   ClipboardList,
   ChevronDown,
@@ -62,10 +56,18 @@ export function QuestionnaireInput() {
   // Calculate if we're on the last question
   const isLastQuestion = currentIndex === questionnaire.questions.length - 1;
 
+  // Sentinel value for the custom free-form radio option
+  const CUSTOM_OPTION = "__custom__";
+
   // Get the final response value (combining selected option with additional text)
   const getFinalResponse = (questionId: string): string => {
     const response = responses[questionId];
     const additionalText = additionalTexts[questionId];
+
+    // For radio/select: if custom option selected, use the typed text
+    if (response === CUSTOM_OPTION) {
+      return additionalText || "(no answer)";
+    }
 
     let formattedResponse: string;
     if (Array.isArray(response)) {
@@ -74,10 +76,10 @@ export function QuestionnaireInput() {
       formattedResponse = response || "";
     }
 
-    // If there's additional text, append it
+    // For checkbox: append additional text if present
     if (additionalText) {
       if (formattedResponse) {
-        return `${formattedResponse}\nAdditional notes: ${additionalText}`;
+        return `${formattedResponse}, ${additionalText}`;
       }
       return additionalText;
     }
@@ -85,21 +87,26 @@ export function QuestionnaireInput() {
     return formattedResponse || "(no answer)";
   };
 
-  const handleNext = () => {
-    // Validate current response if required
+  // Check if the current question has a valid answer
+  const hasValidAnswer = (): boolean => {
     const currentResponse = responses[currentQuestion.id];
     const additionalText = additionalTexts[currentQuestion.id];
+
+    // Custom option requires typed text
+    if (currentResponse === CUSTOM_OPTION) {
+      return !!additionalText;
+    }
+
     const hasResponse = Array.isArray(currentResponse)
       ? currentResponse.length > 0
       : !!currentResponse;
     const hasAdditionalText = !!additionalText;
 
-    // Allow either a selected option or free-form text
-    if (
-      currentQuestion.required !== false &&
-      !hasResponse &&
-      !hasAdditionalText
-    ) {
+    return hasResponse || hasAdditionalText;
+  };
+
+  const handleNext = () => {
+    if (currentQuestion.required !== false && !hasValidAnswer()) {
       return;
     }
 
@@ -131,19 +138,9 @@ export function QuestionnaireInput() {
 
   // Helper to determine if Next button should be disabled
   const isNextDisabled = () => {
-    // Only block submit (last question) during streaming, allow navigation to next questions
     if (isStreaming && isLastQuestion) return true;
     if (currentQuestion.required === false) return false;
-
-    const currentResponse = responses[currentQuestion.id];
-    const additionalText = additionalTexts[currentQuestion.id];
-    const hasResponse = Array.isArray(currentResponse)
-      ? currentResponse.length > 0
-      : !!currentResponse;
-    const hasAdditionalText = !!additionalText;
-
-    // Allow either a selected option or free-form text
-    return !hasResponse && !hasAdditionalText;
+    return !hasValidAnswer();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -209,7 +206,7 @@ export function QuestionnaireInput() {
                 </p>
               )}
 
-              <div className="mt-2 space-y-3">
+              <div className="mt-2">
                 {currentQuestion.type === "text" && (
                   <Input
                     autoFocus
@@ -225,111 +222,126 @@ export function QuestionnaireInput() {
                   />
                 )}
 
-                {currentQuestion.type === "radio" &&
+                {(currentQuestion.type === "radio" ||
+                  currentQuestion.type === "select") &&
                   currentQuestion.options && (
-                    <>
-                      <RadioGroup
-                        value={(responses[currentQuestion.id] as string) || ""}
-                        onValueChange={(value) =>
-                          setResponses((prev) => ({
+                    <RadioGroup
+                      value={(responses[currentQuestion.id] as string) || ""}
+                      onValueChange={(value) => {
+                        setResponses((prev) => ({
+                          ...prev,
+                          [currentQuestion.id]: value,
+                        }));
+                        // Clear custom text when selecting a predefined option
+                        if (value !== CUSTOM_OPTION) {
+                          setAdditionalTexts((prev) => ({
                             ...prev,
-                            [currentQuestion.id]: value,
-                          }))
+                            [currentQuestion.id]: "",
+                          }));
                         }
-                        className="space-y-1.5"
-                      >
-                        {currentQuestion.options.map((option) => (
-                          <div
-                            key={option}
-                            className="flex items-center space-x-2 p-2 rounded hover:bg-muted/50 transition-colors"
+                      }}
+                      className="space-y-1.5"
+                    >
+                      {currentQuestion.options.slice(0, 3).map((option) => (
+                        <div
+                          key={option}
+                          className="flex items-center space-x-2 p-2 rounded hover:bg-muted/50 transition-colors"
+                        >
+                          <RadioGroupItem
+                            value={option}
+                            id={`${currentQuestion.id}-${option}`}
+                          />
+                          <Label
+                            htmlFor={`${currentQuestion.id}-${option}`}
+                            className="text-sm font-normal cursor-pointer flex-1"
                           >
-                            <RadioGroupItem
-                              value={option}
-                              id={`${currentQuestion.id}-${option}`}
-                            />
-                            <Label
-                              htmlFor={`${currentQuestion.id}-${option}`}
-                              className="text-sm font-normal cursor-pointer flex-1"
-                            >
-                              {option}
-                            </Label>
-                          </div>
-                        ))}
-                      </RadioGroup>
-                      {/* Always show free-form text input */}
-                      <div className="pt-2 border-t border-border/50">
-                        <Label className="text-xs text-muted-foreground mb-1.5 block">
-                          Or provide your own answer:
-                        </Label>
+                            {option}
+                          </Label>
+                        </div>
+                      ))}
+                      {/* Custom free-form option integrated as a radio item */}
+                      <div className="flex items-center space-x-2 p-2 rounded hover:bg-muted/50 transition-colors">
+                        <RadioGroupItem
+                          value={CUSTOM_OPTION}
+                          id={`${currentQuestion.id}-custom`}
+                        />
                         <Input
-                          placeholder="Type a custom answer..."
+                          placeholder="Other..."
+                          className="flex-1 h-7 text-sm"
                           value={additionalTexts[currentQuestion.id] || ""}
-                          onChange={(e) =>
+                          onFocus={() => {
+                            // Auto-select the custom radio when input is focused
+                            setResponses((prev) => ({
+                              ...prev,
+                              [currentQuestion.id]: CUSTOM_OPTION,
+                            }));
+                          }}
+                          onChange={(e) => {
                             setAdditionalTexts((prev) => ({
                               ...prev,
                               [currentQuestion.id]: e.target.value,
-                            }))
-                          }
+                            }));
+                            // Auto-select the custom radio when typing
+                            setResponses((prev) => ({
+                              ...prev,
+                              [currentQuestion.id]: CUSTOM_OPTION,
+                            }));
+                          }}
                           onKeyDown={handleKeyDown}
                         />
                       </div>
-                    </>
+                    </RadioGroup>
                   )}
 
                 {currentQuestion.type === "checkbox" &&
                   currentQuestion.options && (
-                    <>
-                      <div className="space-y-1.5">
-                        {currentQuestion.options.map((option) => (
-                          <div
-                            key={option}
-                            className="flex items-center space-x-2 p-2 rounded hover:bg-muted/50 transition-colors"
-                          >
-                            <Checkbox
-                              id={`${currentQuestion.id}-${option}`}
-                              checked={(
-                                (responses[currentQuestion.id] as string[]) ||
-                                []
-                              ).includes(option)}
-                              onCheckedChange={(checked) => {
-                                setResponses((prev) => {
-                                  const current =
-                                    (prev[currentQuestion.id] as string[]) ||
-                                    [];
-                                  if (checked) {
-                                    return {
-                                      ...prev,
-                                      [currentQuestion.id]: [
-                                        ...current,
-                                        option,
-                                      ],
-                                    };
-                                  }
+                    <div className="space-y-1.5">
+                      {currentQuestion.options.slice(0, 3).map((option) => (
+                        <div
+                          key={option}
+                          className="flex items-center space-x-2 p-2 rounded hover:bg-muted/50 transition-colors"
+                        >
+                          <Checkbox
+                            id={`${currentQuestion.id}-${option}`}
+                            checked={(
+                              (responses[currentQuestion.id] as
+                                | string[]
+                                | undefined) || []
+                            ).includes(option)}
+                            onCheckedChange={(checked) => {
+                              setResponses((prev) => {
+                                const current =
+                                  (prev[currentQuestion.id] as
+                                    | string[]
+                                    | undefined) || [];
+                                if (checked) {
                                   return {
                                     ...prev,
-                                    [currentQuestion.id]: current.filter(
-                                      (o) => o !== option,
-                                    ),
+                                    [currentQuestion.id]: [...current, option],
                                   };
-                                });
-                              }}
-                            />
-                            <Label
-                              htmlFor={`${currentQuestion.id}-${option}`}
-                              className="text-sm font-normal cursor-pointer flex-1"
-                            >
-                              {option}
-                            </Label>
-                          </div>
-                        ))}
-                      </div>
-                      {/* Always show free-form text input */}
-                      <div className="pt-2 border-t border-border/50">
-                        <Label className="text-xs text-muted-foreground mb-1.5 block">
-                          Or add additional details:
-                        </Label>
+                                }
+                                return {
+                                  ...prev,
+                                  [currentQuestion.id]: current.filter(
+                                    (o) => o !== option,
+                                  ),
+                                };
+                              });
+                            }}
+                          />
+                          <Label
+                            htmlFor={`${currentQuestion.id}-${option}`}
+                            className="text-sm font-normal cursor-pointer flex-1"
+                          >
+                            {option}
+                          </Label>
+                        </div>
+                      ))}
+                      {/* Free-form text input as an inline row (no checkbox) */}
+                      <div className="flex items-center p-2 rounded hover:bg-muted/50 transition-colors">
                         <Input
-                          placeholder="Type additional details..."
+                          placeholder="Other..."
+                          className="flex-1 h-7 text-sm"
                           value={additionalTexts[currentQuestion.id] || ""}
                           onChange={(e) =>
                             setAdditionalTexts((prev) => ({
@@ -340,55 +352,21 @@ export function QuestionnaireInput() {
                           onKeyDown={handleKeyDown}
                         />
                       </div>
-                    </>
-                  )}
-
-                {currentQuestion.type === "select" &&
-                  currentQuestion.options && (
-                    <>
-                      <Select
-                        value={(responses[currentQuestion.id] as string) || ""}
-                        onValueChange={(value) =>
-                          setResponses((prev) => ({
-                            ...prev,
-                            [currentQuestion.id]: value,
-                          }))
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select an option..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {currentQuestion.options.map((option) => (
-                            <SelectItem key={option} value={option}>
-                              {option}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {/* Always show free-form text input */}
-                      <div className="pt-2 border-t border-border/50">
-                        <Label className="text-xs text-muted-foreground mb-1.5 block">
-                          Or provide your own answer:
-                        </Label>
-                        <Input
-                          placeholder="Type a custom answer..."
-                          value={additionalTexts[currentQuestion.id] || ""}
-                          onChange={(e) =>
-                            setAdditionalTexts((prev) => ({
-                              ...prev,
-                              [currentQuestion.id]: e.target.value,
-                            }))
-                          }
-                          onKeyDown={handleKeyDown}
-                        />
-                      </div>
-                    </>
+                    </div>
                   )}
               </div>
             </div>
 
-            <div className="flex justify-end">
+            <div className="flex justify-between">
+              <Button
+                onClick={() => setCurrentIndex((prev) => prev - 1)}
+                disabled={currentIndex === 0}
+                variant="ghost"
+                size="sm"
+              >
+                <ArrowLeft size={14} className="mr-1.5" />
+                Back
+              </Button>
               <Button
                 onClick={handleNext}
                 disabled={isNextDisabled()}

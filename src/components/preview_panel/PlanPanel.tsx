@@ -1,22 +1,35 @@
 import React, { useEffect } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Check, FileText, Save } from "lucide-react";
 import { VanillaMarkdownParser } from "@/components/chat/DyadMarkdownParser";
 import { planStateAtom } from "@/atoms/planAtoms";
-import { previewModeAtom } from "@/atoms/appAtoms";
+import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
+import { planClient } from "@/ipc/types/plan";
 
 export const PlanPanel: React.FC = () => {
   const chatId = useAtomValue(selectedChatIdAtom);
+  const appId = useAtomValue(selectedAppIdAtom);
   const planState = useAtomValue(planStateAtom);
   const setPlanState = useSetAtom(planStateAtom);
   const previewMode = useAtomValue(previewModeAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
   const { streamMessage, isStreaming } = useStreamChat();
+
+  // Check if a plan was already saved for this chat
+  const { data: savedPlan } = useQuery({
+    queryKey: ["plan", "for-chat", appId, chatId],
+    queryFn: () =>
+      appId && chatId
+        ? planClient.getPlanForChat({ appId, chatId })
+        : Promise.resolve(null),
+    enabled: !!appId && !!chatId,
+  });
 
   const planData = chatId ? planState.plansByChatId.get(chatId) : null;
   const currentPlan = planData?.content ?? null;
@@ -24,6 +37,8 @@ export const PlanPanel: React.FC = () => {
   const currentSummary = planData?.summary ?? null;
   const shouldPersist = planState.shouldPersist;
   const isAccepted = chatId ? planState.acceptedChatIds.has(chatId) : false;
+  // Plan was already saved if we found it in the filesystem
+  const isSavedPlan = !!savedPlan;
 
   // If there's no plan content, switch back to preview mode
   useEffect(() => {
@@ -86,6 +101,11 @@ export const PlanPanel: React.FC = () => {
             <span className="text-sm font-medium">
               Plan accepted — implementation started in a new chat
             </span>
+          </div>
+        ) : isSavedPlan ? (
+          <div className="flex items-center gap-2 text-primary">
+            <Save size={16} />
+            <span className="text-sm font-medium">Plan already saved</span>
           </div>
         ) : (
           <>

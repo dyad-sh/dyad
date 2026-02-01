@@ -721,6 +721,7 @@ function renderCustomTag(
             properties: {
               title: attributes.title || "Implementation Plan",
               summary: attributes.summary,
+              complete: attributes.complete,
               state: getState({ isStreaming, inProgress }),
             },
           }}

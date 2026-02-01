@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { FileText, Eye, ChevronDown, ChevronUp } from "lucide-react";
+import { FileText, Eye, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { useSetAtom, useAtomValue } from "jotai";
 import { useQuery } from "@tanstack/react-query";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -110,12 +110,26 @@ export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
             </button>
           )}
           {isInProgress && (
-            <span className="text-xs text-primary px-3 py-1 bg-primary/20 rounded-md font-medium">
-              Writing...
+            <span className="flex items-center gap-1.5 text-xs text-primary px-3 py-1 bg-primary/20 rounded-md font-medium">
+              <Loader2 size={12} className="animate-spin" />
+              Generating plan...
             </span>
           )}
         </div>
       </div>
+      {isInProgress && (
+        <div className="px-4 pb-3">
+          <div
+            className="h-1.5 w-full rounded-full overflow-hidden"
+            style={{
+              background:
+                "linear-gradient(90deg, transparent 0%, hsl(var(--primary) / 0.3) 50%, transparent 100%)",
+              backgroundSize: "200% 100%",
+              animation: "shimmer 1.5s ease-in-out infinite",
+            }}
+          />
+        </div>
+      )}
       {summary && showSummary && (
         <div className="px-4 pb-3 pt-0">
           <p className="text-sm text-muted-foreground pl-7">{summary}</p>

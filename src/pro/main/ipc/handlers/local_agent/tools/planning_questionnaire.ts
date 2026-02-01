@@ -15,10 +15,10 @@ const QuestionSchema = z.object({
   question: z.string().describe("The question text to display to the user"),
   options: z
     .array(z.string())
-    .max(6)
+    .max(3)
     .optional()
     .describe(
-      "Options for radio, checkbox, or select question types. Keep to max 6 options to avoid overwhelming users. Users can always provide a custom answer via the free-form text input.",
+      "Options for radio, checkbox, or select question types. Keep to max 3 options — users can always provide a custom answer via the free-form text input.",
     ),
   required: z
     .boolean()
@@ -67,7 +67,7 @@ Question Types:
 
 Best Practices:
 - Ask 1-3 focused questions at a time
-- Keep options to a maximum of 6 per question to avoid overwhelming users
+- Keep options to a maximum of 3 per question — users can always type a custom answer
 - Users can always type a custom answer, so you don't need to cover every possible option
 - Group related questions together
 - Provide clear options when using radio/checkbox/select
@@ -82,14 +82,14 @@ Example:
       "id": "auth_method",
       "type": "radio",
       "question": "Which authentication method would you prefer?",
-      "options": ["Email/Password", "OAuth (Google, GitHub)", "Magic Link", "SSO/SAML"],
+      "options": ["Email/Password", "OAuth (Google, GitHub)", "Magic Link"],
       "required": true
     },
     {
       "id": "session_duration",
       "type": "select",
       "question": "How long should user sessions last?",
-      "options": ["1 hour", "24 hours", "7 days", "30 days", "Until logout"],
+      "options": ["1 hour", "24 hours", "7 days"],
       "required": true
     }
   ]

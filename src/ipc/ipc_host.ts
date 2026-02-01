@@ -90,6 +90,9 @@ import { registerAutonomousAgentProductionHandlers } from "./handlers/autonomous
 import { registerModelFactoryHandlers } from "./handlers/model_factory_handlers";
 import { registerAgentFactoryHandlers } from "./handlers/agent_factory_handlers";
 import { registerPrivacyInferenceHandlers } from "./handlers/privacy_inference_handlers";
+import { registerDeployedContractHandlers } from "./handlers/deployed_contract_handlers";
+import { registerHyperLiquidHandlers } from "./handlers/hyper_liquid_handlers";
+import { registerDataSovereigntyHandlers } from "./handlers/data_sovereignty_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -225,4 +228,13 @@ export function registerIpcHandlers() {
   
   // Privacy-Preserving Inference Bridge - Local-first AI with federated fallback
   registerPrivacyInferenceHandlers();
+
+  // Deployed Contracts & NFT-Gated Inference Access Control
+  registerDeployedContractHandlers();
+
+  // Hyper Liquid Data Pipeline - Local to Marketplace Flow
+  registerHyperLiquidHandlers();
+
+  // Data Sovereignty & Monetization - Complete data protection
+  registerDataSovereigntyHandlers();
 }

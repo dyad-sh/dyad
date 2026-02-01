@@ -2017,4 +2017,366 @@ export class IpcClient {
   public async getRoutingProfiles(): Promise<Record<string, unknown>> {
     return this.ipcRenderer.invoke("privacy-inference:get-routing-profiles");
   }
+
+  // ===========================================================================
+  // DEPLOYED CONTRACTS & NFT-GATED INFERENCE ACCESS
+  // ===========================================================================
+
+  public async configureContractClient(
+    apiKey: string,
+    publisherId?: string
+  ): Promise<{ success: boolean }> {
+    return this.ipcRenderer.invoke("contracts:configure", apiKey, publisherId);
+  }
+
+  public async fetchDeployedContracts(
+    query?: import("../types/deployed_contract_types").ContractQuery
+  ): Promise<import("../types/deployed_contract_types").DeployedContract[]> {
+    return this.ipcRenderer.invoke("contracts:fetch-deployed", query);
+  }
+
+  public async fetchInferenceAccessNFTs(
+    query?: import("../types/deployed_contract_types").NFTAccessQuery
+  ): Promise<import("../types/deployed_contract_types").InferenceAccessNFT[]> {
+    return this.ipcRenderer.invoke("contracts:fetch-inference-nfts", query);
+  }
+
+  public async getOwnedInferenceNFTs(
+    walletAddress: string
+  ): Promise<import("../types/deployed_contract_types").InferenceAccessNFT[]> {
+    return this.ipcRenderer.invoke("contracts:get-owned-nfts", walletAddress);
+  }
+
+  public async getContractForAsset(
+    assetCid: string
+  ): Promise<import("../types/deployed_contract_types").DeployedContract | null> {
+    return this.ipcRenderer.invoke("contracts:get-for-asset", assetCid);
+  }
+
+  public async verifyInferenceAccess(
+    request: import("../types/deployed_contract_types").InferenceAccessRequest
+  ): Promise<import("../types/deployed_contract_types").InferenceAccessVerification> {
+    return this.ipcRenderer.invoke("contracts:verify-access", request);
+  }
+
+  public async requestDecryptionKey(
+    params: import("../types/deployed_contract_types").RequestDecryptionKeyParams
+  ): Promise<import("../types/deployed_contract_types").DecryptionKeyResponse> {
+    return this.ipcRenderer.invoke("contracts:request-decryption-key", params);
+  }
+
+  public async deployInferenceContract(
+    request: import("../types/deployed_contract_types").DeployContractRequest
+  ): Promise<import("../types/deployed_contract_types").DeployContractResult> {
+    return this.ipcRenderer.invoke("contracts:deploy", request);
+  }
+
+  public async mintInferenceAccessNFT(
+    request: import("../types/deployed_contract_types").MintInferenceNFTRequest
+  ): Promise<import("../types/deployed_contract_types").MintInferenceNFTResult> {
+    return this.ipcRenderer.invoke("contracts:mint-access-nft", request);
+  }
+
+  public async recordInferenceUsage(
+    tokenId: string,
+    contractAddress: string,
+    usage: { inputTokens: number; outputTokens: number; computeMs: number }
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.ipcRenderer.invoke("contracts:record-usage", tokenId, contractAddress, usage);
+  }
+
+  public async getContractAuditLogs(
+    contractAddress?: string,
+    startDate?: string,
+    endDate?: string
+  ): Promise<import("../types/deployed_contract_types").ContractAuditEntry[]> {
+    return this.ipcRenderer.invoke("contracts:get-audit-logs", contractAddress, startDate, endDate);
+  }
+
+  // ===========================================================================
+  // HYPER LIQUID DATA PIPELINE (LOCAL → MARKETPLACE)
+  // ===========================================================================
+
+  public async getHyperLiquidPipelines(): Promise<import("../types/hyper_liquid_types").LiquidityPipelineConfig[]> {
+    return this.ipcRenderer.invoke("hyper-liquid:get-pipelines");
+  }
+
+  public async getHyperLiquidPipeline(
+    pipelineId: string
+  ): Promise<import("../types/hyper_liquid_types").LiquidityPipelineConfig | null> {
+    return this.ipcRenderer.invoke("hyper-liquid:get-pipeline", pipelineId);
+  }
+
+  public async createHyperLiquidPipeline(
+    config: import("../types/hyper_liquid_types").LiquidityPipelineConfig
+  ): Promise<import("../types/hyper_liquid_types").LiquidityPipelineConfig> {
+    return this.ipcRenderer.invoke("hyper-liquid:create-pipeline", config);
+  }
+
+  public async updateHyperLiquidPipeline(
+    config: import("../types/hyper_liquid_types").LiquidityPipelineConfig
+  ): Promise<import("../types/hyper_liquid_types").LiquidityPipelineConfig> {
+    return this.ipcRenderer.invoke("hyper-liquid:update-pipeline", config);
+  }
+
+  public async deleteHyperLiquidPipeline(pipelineId: string): Promise<boolean> {
+    return this.ipcRenderer.invoke("hyper-liquid:delete-pipeline", pipelineId);
+  }
+
+  public async startHyperLiquidPipeline(pipelineId: string): Promise<boolean> {
+    return this.ipcRenderer.invoke("hyper-liquid:start-pipeline", pipelineId);
+  }
+
+  public async stopHyperLiquidPipeline(
+    pipelineId: string,
+    graceful?: boolean
+  ): Promise<boolean> {
+    return this.ipcRenderer.invoke("hyper-liquid:stop-pipeline", pipelineId, graceful);
+  }
+
+  public async pauseHyperLiquidPipeline(pipelineId: string): Promise<boolean> {
+    return this.ipcRenderer.invoke("hyper-liquid:pause-pipeline", pipelineId);
+  }
+
+  public async resumeHyperLiquidPipeline(pipelineId: string): Promise<boolean> {
+    return this.ipcRenderer.invoke("hyper-liquid:resume-pipeline", pipelineId);
+  }
+
+  public async startHyperLiquidFlow(
+    request: import("../types/hyper_liquid_types").StartFlowRequest
+  ): Promise<import("../types/hyper_liquid_types").StartFlowResponse> {
+    return this.ipcRenderer.invoke("hyper-liquid:start-flow", request);
+  }
+
+  public async batchHyperLiquidFlow(
+    request: import("../types/hyper_liquid_types").BatchFlowRequest
+  ): Promise<import("../types/hyper_liquid_types").BatchFlowResponse> {
+    return this.ipcRenderer.invoke("hyper-liquid:batch-flow", request);
+  }
+
+  public async getHyperLiquidFlow(
+    flowId: string
+  ): Promise<import("../types/hyper_liquid_types").LiquidDataContainer | null> {
+    return this.ipcRenderer.invoke("hyper-liquid:get-flow", flowId);
+  }
+
+  public async getHyperLiquidFlows(
+    pipelineId?: string
+  ): Promise<import("../types/hyper_liquid_types").LiquidDataContainer[]> {
+    return this.ipcRenderer.invoke("hyper-liquid:get-flows", pipelineId);
+  }
+
+  public async cancelHyperLiquidFlow(flowId: string): Promise<boolean> {
+    return this.ipcRenderer.invoke("hyper-liquid:cancel-flow", flowId);
+  }
+
+  public async retryHyperLiquidFlow(flowId: string): Promise<boolean> {
+    return this.ipcRenderer.invoke("hyper-liquid:retry-flow", flowId);
+  }
+
+  public async getHyperLiquidQueue(
+    pipelineId: string
+  ): Promise<import("../types/hyper_liquid_types").FlowQueue | null> {
+    return this.ipcRenderer.invoke("hyper-liquid:get-queue", pipelineId);
+  }
+
+  public async getHyperLiquidQueues(): Promise<import("../types/hyper_liquid_types").FlowQueue[]> {
+    return this.ipcRenderer.invoke("hyper-liquid:get-queues");
+  }
+
+  public async getHyperLiquidStats(
+    period?: "hour" | "day" | "week" | "month" | "all"
+  ): Promise<import("../types/hyper_liquid_types").LiquidityStats> {
+    return this.ipcRenderer.invoke("hyper-liquid:get-stats", period);
+  }
+
+  public async resetHyperLiquidStats(): Promise<import("../types/hyper_liquid_types").LiquidityStats> {
+    return this.ipcRenderer.invoke("hyper-liquid:reset-stats");
+  }
+
+  public async checkHyperLiquidDedup(
+    dataId: string
+  ): Promise<import("../types/hyper_liquid_types").ContentDeduplication> {
+    return this.ipcRenderer.invoke("hyper-liquid:check-dedup", dataId);
+  }
+
+  public async getHyperLiquidCheckpoint(
+    flowId: string
+  ): Promise<import("../types/hyper_liquid_types").FlowCheckpoint | null> {
+    return this.ipcRenderer.invoke("hyper-liquid:get-checkpoint", flowId);
+  }
+
+  public async resumeHyperLiquidFromCheckpoint(
+    flowId: string
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.ipcRenderer.invoke("hyper-liquid:resume-from-checkpoint", flowId);
+  }
+
+  public async getHyperLiquidStatus(): Promise<{
+    running: boolean;
+    activePipeline?: string;
+    totalPipelines: number;
+    totalFlows: number;
+    activeFlows: number;
+    stats: import("../types/hyper_liquid_types").LiquidityStats;
+  }> {
+    return this.ipcRenderer.invoke("hyper-liquid:status");
+  }
+
+  // =============================================================================
+  // DATA SOVEREIGNTY & MONETIZATION (COMPLETE USER DATA PROTECTION)
+  // =============================================================================
+
+  /**
+   * Create or get user's data sovereignty vault
+   */
+  public async getSovereigntyVault(
+    owner: string
+  ): Promise<import("../types/data_sovereignty_types").DataSovereigntyVault> {
+    return this.ipcRenderer.invoke("sovereignty:get-vault", owner);
+  }
+
+  /**
+   * Update vault settings
+   */
+  public async updateSovereigntyVault(
+    vaultId: string,
+    updates: Partial<import("../types/data_sovereignty_types").DataSovereigntyVault>
+  ): Promise<import("../types/data_sovereignty_types").DataSovereigntyVault> {
+    return this.ipcRenderer.invoke("sovereignty:update-vault", vaultId, updates);
+  }
+
+  /**
+   * Protect data with encryption and access control
+   */
+  public async protectData(
+    request: import("../types/data_sovereignty_types").ProtectDataRequest
+  ): Promise<import("../types/data_sovereignty_types").ProtectDataResult> {
+    return this.ipcRenderer.invoke("sovereignty:protect", request);
+  }
+
+  /**
+   * Batch protect multiple files
+   */
+  public async batchProtectData(
+    request: import("../types/data_sovereignty_types").BatchProtectRequest
+  ): Promise<import("../types/data_sovereignty_types").BatchProtectResult> {
+    return this.ipcRenderer.invoke("sovereignty:batch-protect", request);
+  }
+
+  /**
+   * List all protected assets for an owner
+   */
+  public async listProtectedAssets(
+    owner: string
+  ): Promise<import("../types/data_sovereignty_types").ProtectedDataAsset[]> {
+    return this.ipcRenderer.invoke("sovereignty:list-assets", owner);
+  }
+
+  /**
+   * Get a single protected asset
+   */
+  public async getProtectedAsset(
+    assetId: string
+  ): Promise<import("../types/data_sovereignty_types").ProtectedDataAsset | null> {
+    return this.ipcRenderer.invoke("sovereignty:get-asset", assetId);
+  }
+
+  /**
+   * Delete a protected asset
+   */
+  public async deleteProtectedAsset(assetId: string): Promise<boolean> {
+    return this.ipcRenderer.invoke("sovereignty:delete-asset", assetId);
+  }
+
+  /**
+   * Verify access to an asset
+   */
+  public async verifySovereigntyAccess(
+    request: import("../types/data_sovereignty_types").VerifyAccessRequest
+  ): Promise<import("../types/data_sovereignty_types").VerifyAccessResult> {
+    return this.ipcRenderer.invoke("sovereignty:verify-access", request);
+  }
+
+  /**
+   * Grant access to a wallet
+   */
+  public async grantSovereigntyAccess(
+    assetId: string,
+    wallet: string
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.ipcRenderer.invoke("sovereignty:grant-access", assetId, wallet);
+  }
+
+  /**
+   * Revoke access to an asset
+   */
+  public async revokeSovereigntyAccess(
+    request: import("../types/data_sovereignty_types").RevokeAccessRequest
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.ipcRenderer.invoke("sovereignty:revoke-access", request);
+  }
+
+  /**
+   * Enable monetization on an asset
+   */
+  public async enableMonetization(
+    assetId: string,
+    config: Partial<import("../types/data_sovereignty_types").DataMonetization>
+  ): Promise<{ success: boolean; asset?: import("../types/data_sovereignty_types").ProtectedDataAsset; error?: string }> {
+    return this.ipcRenderer.invoke("sovereignty:enable-monetization", assetId, config);
+  }
+
+  /**
+   * Update monetization settings
+   */
+  public async updateMonetization(
+    request: import("../types/data_sovereignty_types").UpdateMonetizationRequest
+  ): Promise<{ success: boolean; asset?: import("../types/data_sovereignty_types").ProtectedDataAsset; error?: string }> {
+    return this.ipcRenderer.invoke("sovereignty:update-monetization", request);
+  }
+
+  /**
+   * Update anti-harvesting settings
+   */
+  public async updateAntiHarvesting(
+    vaultId: string,
+    config: Partial<import("../types/data_sovereignty_types").AntiHarvestingConfig>
+  ): Promise<import("../types/data_sovereignty_types").AntiHarvestingConfig> {
+    return this.ipcRenderer.invoke("sovereignty:update-anti-harvesting", vaultId, config);
+  }
+
+  /**
+   * Report a harvester
+   */
+  public async reportHarvester(identifier: string, reason: string): Promise<boolean> {
+    return this.ipcRenderer.invoke("sovereignty:report-harvester", identifier, reason);
+  }
+
+  /**
+   * Get blocked harvesters list
+   */
+  public async getHarvesterBlocklist(): Promise<string[]> {
+    return this.ipcRenderer.invoke("sovereignty:get-blocklist");
+  }
+
+  /**
+   * Get sovereignty analytics
+   */
+  public async getSovereigntyAnalytics(
+    owner: string,
+    period?: "day" | "week" | "month" | "year" | "all"
+  ): Promise<import("../types/data_sovereignty_types").SovereigntyAnalytics> {
+    return this.ipcRenderer.invoke("sovereignty:get-analytics", owner, period);
+  }
+
+  /**
+   * Get access logs for an asset
+   */
+  public async getAccessLogs(
+    assetId: string,
+    limit?: number
+  ): Promise<import("../types/data_sovereignty_types").AccessLogEntry[]> {
+    return this.ipcRenderer.invoke("sovereignty:get-access-logs", assetId, limit);
+  }
 }

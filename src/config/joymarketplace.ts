@@ -56,6 +56,14 @@ export const CONTRACT_ADDRESSES = {
   
   // Governance
   LIQUID_DEMOCRACY: "0x1d0Dc4E05AbC328dEa803FCDbA48f2095740fdc4",
+  
+  // NFT-Gated Inference Access Control
+  INFERENCE_ACCESS_NFT: "0xE4A7d4b22c5f6c3D9a8F0b1C2d3E4F5a6B7c8D9e",
+  INFERENCE_LICENSE_REGISTRY: "0x1F2A3B4C5D6E7F8A9B0C1D2E3F4A5B6C7D8E9F0A",
+  DATA_ENCRYPTION_ESCROW: "0x2B3C4D5E6F7A8B9C0D1E2F3A4B5C6D7E8F9A0B1C",
+  AGENT_PERMISSION_MANAGER: "0x3C4D5E6F7A8B9C0D1E2F3A4B5C6D7E8F9A0B1C2D",
+  USAGE_METERING: "0x4D5E6F7A8B9C0D1E2F3A4B5C6D7E8F9A0B1C2D3E",
+  REVENUE_SPLITTER: "0x5E6F7A8B9C0D1E2F3A4B5C6D7E8F9A0B1C2D3E4F",
 };
 
 // =============================================================================
@@ -292,6 +300,135 @@ export const CONTRACT_ABIS = {
     "function getUserPins(address user) view returns (uint256[])",
     "event ContentPinned(uint256 indexed pinId, string cid, address indexed pinner)",
     "event ContentUnpinned(uint256 indexed pinId, string cid)",
+  ],
+  
+  // NFT-Gated Inference Access Contract ABI
+  INFERENCE_ACCESS_NFT: [
+    // ERC721 Standard
+    "function name() view returns (string)",
+    "function symbol() view returns (string)",
+    "function tokenURI(uint256 tokenId) view returns (string)",
+    "function ownerOf(uint256 tokenId) view returns (address)",
+    "function balanceOf(address owner) view returns (uint256)",
+    "function totalSupply() view returns (uint256)",
+    // Minting
+    "function mint(address to, string assetCid, bytes32 licenseHash, bytes32 dataHash) returns (uint256)",
+    "function mintWithLimits(address to, string assetCid, bytes32 licenseHash, bytes32 dataHash, uint256 maxInferences, uint256 maxTokens, uint256 expiresAt) returns (uint256)",
+    // Access verification
+    "function verifyAccess(uint256 tokenId, address requester) view returns (bool hasAccess, uint256 remainingInferences, uint256 remainingTokens)",
+    "function getAccessDetails(uint256 tokenId) view returns (string assetCid, bytes32 licenseHash, bytes32 dataHash, uint256 maxInferences, uint256 usedInferences, uint256 maxTokens, uint256 usedTokens, uint256 expiresAt, bool isActive)",
+    "function hasValidAccess(address wallet, string assetCid) view returns (bool)",
+    // Usage tracking
+    "function recordUsage(uint256 tokenId, uint256 inputTokens, uint256 outputTokens, uint256 computeMs)",
+    "function getUsageStats(uint256 tokenId) view returns (uint256 totalInferences, uint256 totalInputTokens, uint256 totalOutputTokens, uint256 totalComputeMs)",
+    // License management
+    "function getLicense(uint256 tokenId) view returns (bytes32 licenseHash, string licenseCid, uint8 licenseType, bool transferable, bool sublicensable)",
+    "function setLicenseCid(uint256 tokenId, string licenseCid)",
+    // Data protection
+    "function getDataProtection(uint256 tokenId) view returns (bytes32 dataHash, bytes32 merkleRoot, bool encrypted, address keyEscrow)",
+    "function setKeyEscrow(uint256 tokenId, address keyEscrow)",
+    // Agent permissions
+    "function allowAgent(uint256 tokenId, address agent)",
+    "function revokeAgent(uint256 tokenId, address agent)",
+    "function isAgentAllowed(uint256 tokenId, address agent) view returns (bool)",
+    "function getAllowedAgents(uint256 tokenId) view returns (address[])",
+    // Revocation
+    "function revoke(uint256 tokenId)",
+    "function isRevoked(uint256 tokenId) view returns (bool)",
+    // Events
+    "event InferenceAccessMinted(uint256 indexed tokenId, address indexed owner, string assetCid, bytes32 licenseHash)",
+    "event UsageRecorded(uint256 indexed tokenId, uint256 inputTokens, uint256 outputTokens, uint256 computeMs)",
+    "event AgentPermissionChanged(uint256 indexed tokenId, address indexed agent, bool allowed)",
+    "event AccessRevoked(uint256 indexed tokenId)",
+    "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
+  ],
+  
+  // Inference License Registry ABI
+  INFERENCE_LICENSE_REGISTRY: [
+    // License registration
+    "function registerLicense(bytes32 licenseHash, string licenseCid, uint8 licenseType, string scope, bool transferable, bool sublicensable, uint16 creatorRoyaltyBps) returns (uint256)",
+    "function getLicense(bytes32 licenseHash) view returns (uint256 id, string licenseCid, uint8 licenseType, string scope, bool transferable, bool sublicensable, uint16 creatorRoyaltyBps, address creator, uint256 createdAt)",
+    "function verifyLicense(bytes32 licenseHash) view returns (bool valid, string reason)",
+    // License templates
+    "function createTemplate(string name, uint8 licenseType, string scope, string terms, uint16 defaultRoyaltyBps) returns (uint256)",
+    "function getTemplate(uint256 templateId) view returns (string name, uint8 licenseType, string scope, string terms, uint16 defaultRoyaltyBps)",
+    "function listTemplates() view returns (uint256[])",
+    // Events
+    "event LicenseRegistered(bytes32 indexed licenseHash, uint8 licenseType, address indexed creator)",
+    "event TemplateCreated(uint256 indexed templateId, string name, uint8 licenseType)",
+  ],
+  
+  // Data Encryption Key Escrow ABI
+  DATA_ENCRYPTION_ESCROW: [
+    // Key storage
+    "function storeKey(uint256 tokenId, bytes encryptedKey, bytes32 keyHash) returns (bool)",
+    "function requestKey(uint256 tokenId, bytes ownershipProof, string purpose) returns (bytes encryptedKey)",
+    "function hasKey(uint256 tokenId) view returns (bool)",
+    // Key rotation
+    "function rotateKey(uint256 tokenId, bytes newEncryptedKey, bytes32 newKeyHash) returns (bool)",
+    "function getKeyVersion(uint256 tokenId) view returns (uint256)",
+    // Access logging
+    "function getAccessLog(uint256 tokenId) view returns (address[] requesters, uint256[] timestamps, string[] purposes)",
+    // Events
+    "event KeyStored(uint256 indexed tokenId, bytes32 keyHash)",
+    "event KeyRequested(uint256 indexed tokenId, address indexed requester, string purpose)",
+    "event KeyRotated(uint256 indexed tokenId, bytes32 newKeyHash, uint256 version)",
+  ],
+  
+  // Agent Permission Manager ABI
+  AGENT_PERMISSION_MANAGER: [
+    // Agent registration
+    "function registerAgent(string agentId, string name, uint8 agentType, address wallet) returns (uint256)",
+    "function getAgent(uint256 id) view returns (string agentId, string name, uint8 agentType, address wallet, uint256 reputationScore, bool verified, bool active)",
+    "function verifyAgent(uint256 id) returns (bool)",
+    // Permission management
+    "function grantPermission(uint256 agentId, uint256 tokenId, uint8 permissionLevel) returns (bool)",
+    "function revokePermission(uint256 agentId, uint256 tokenId) returns (bool)",
+    "function getPermissions(uint256 agentId) view returns (uint256[] tokenIds, uint8[] levels)",
+    "function hasPermission(uint256 agentId, uint256 tokenId, uint8 requiredLevel) view returns (bool)",
+    // Reputation
+    "function updateReputation(uint256 agentId, int256 change, string reason) returns (uint256 newScore)",
+    "function getReputation(uint256 agentId) view returns (uint256 score, uint256 positiveVotes, uint256 negativeVotes)",
+    // Events
+    "event AgentRegistered(uint256 indexed id, string agentId, address indexed wallet)",
+    "event PermissionGranted(uint256 indexed agentId, uint256 indexed tokenId, uint8 level)",
+    "event PermissionRevoked(uint256 indexed agentId, uint256 indexed tokenId)",
+    "event ReputationUpdated(uint256 indexed agentId, int256 change, uint256 newScore)",
+  ],
+  
+  // Usage Metering Contract ABI
+  USAGE_METERING: [
+    // Usage recording
+    "function recordInference(uint256 tokenId, uint256 inputTokens, uint256 outputTokens, uint256 computeMs, bytes32 receiptHash) returns (uint256 recordId)",
+    "function getUsageRecord(uint256 recordId) view returns (uint256 tokenId, uint256 inputTokens, uint256 outputTokens, uint256 computeMs, bytes32 receiptHash, uint256 timestamp)",
+    "function getTokenUsage(uint256 tokenId) view returns (uint256 totalInferences, uint256 totalInputTokens, uint256 totalOutputTokens, uint256 totalComputeMs, uint256 lastUsedAt)",
+    // Aggregations
+    "function getDailyUsage(uint256 tokenId, uint256 date) view returns (uint256 inferences, uint256 tokens, uint256 computeMs)",
+    "function getMonthlyUsage(uint256 tokenId, uint256 year, uint256 month) view returns (uint256 inferences, uint256 tokens, uint256 computeMs)",
+    // Billing
+    "function calculateCost(uint256 tokenId, uint256 inputTokens, uint256 outputTokens) view returns (uint256 costInWei)",
+    "function getOutstandingBalance(uint256 tokenId) view returns (uint256)",
+    // Events
+    "event UsageRecorded(uint256 indexed recordId, uint256 indexed tokenId, uint256 inputTokens, uint256 outputTokens, bytes32 receiptHash)",
+  ],
+  
+  // Revenue Splitter Contract ABI
+  REVENUE_SPLITTER: [
+    // Revenue distribution
+    "function distributeRevenue(uint256 tokenId, uint256 amount) returns (bool)",
+    "function getShares(uint256 tokenId) view returns (address[] recipients, uint256[] shares)",
+    "function setShares(uint256 tokenId, address[] recipients, uint256[] shares) returns (bool)",
+    // Withdrawals
+    "function withdraw() returns (uint256)",
+    "function getBalance(address recipient) view returns (uint256)",
+    "function getPendingRevenue(address recipient) view returns (uint256)",
+    // Stats
+    "function getTotalDistributed(uint256 tokenId) view returns (uint256)",
+    "function getCreatorEarnings(address creator) view returns (uint256 total, uint256 pending, uint256 withdrawn)",
+    // Events
+    "event RevenueDistributed(uint256 indexed tokenId, uint256 amount, uint256 creatorShare, uint256 platformShare)",
+    "event Withdrawn(address indexed recipient, uint256 amount)",
+    "event SharesUpdated(uint256 indexed tokenId, address[] recipients, uint256[] shares)",
   ],
 };
 

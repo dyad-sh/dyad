@@ -22,7 +22,7 @@ export const DyadExitPlan: React.FC<DyadExitPlanProps> = ({ node }) => {
           </span>
           <ArrowRight className="text-green-500" size={16} />
           <span className="text-green-700 dark:text-green-300">
-            Switching to implementation mode
+            Opening new chat for implementation
           </span>
         </div>
         {notes && (

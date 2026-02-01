@@ -94,7 +94,8 @@ export function QuestionnaireInput() {
 
   // Helper to determine if Next button should be disabled
   const isNextDisabled = () => {
-    if (isStreaming) return true;
+    // Only block submit (last question) during streaming, allow navigation to next questions
+    if (isStreaming && isLastQuestion) return true;
     if (currentQuestion.required === false) return false;
 
     const currentResponse = responses[currentQuestion.id];
@@ -134,14 +135,14 @@ export function QuestionnaireInput() {
                 {currentQuestion.question}
               </span>
               <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
-                ({currentIndex}/{questionnaire.questions.length})
+                ({currentIndex + 1}/{questionnaire.questions.length})
               </span>
             </>
           )}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0 ml-3">
           <span className="text-xs text-muted-foreground tabular-nums">
-            {currentIndex} of {questionnaire.questions.length}
+            {currentIndex + 1} of {questionnaire.questions.length}
           </span>
           {isExpanded ? (
             <ChevronUp className="w-4 h-4 text-muted-foreground" />
@@ -181,7 +182,6 @@ export function QuestionnaireInput() {
                       }))
                     }
                     onKeyDown={handleKeyDown}
-                    disabled={isStreaming}
                   />
                 )}
 
@@ -195,7 +195,6 @@ export function QuestionnaireInput() {
                           [currentQuestion.id]: value,
                         }))
                       }
-                      disabled={isStreaming}
                       className="space-y-1.5"
                     >
                       {currentQuestion.options.map((option) => (
@@ -249,7 +248,6 @@ export function QuestionnaireInput() {
                                 };
                               });
                             }}
-                            disabled={isStreaming}
                           />
                           <Label
                             htmlFor={`${currentQuestion.id}-${option}`}
@@ -272,7 +270,6 @@ export function QuestionnaireInput() {
                           [currentQuestion.id]: value,
                         }))
                       }
-                      disabled={isStreaming}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select an option..." />

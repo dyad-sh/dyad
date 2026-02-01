@@ -38,8 +38,8 @@ const planningQuestionnaireSchema = z.object({
   questions: z
     .array(QuestionSchema)
     .min(1)
-    .max(5)
-    .describe("Array of 1-5 questions to present to the user"),
+    .max(3)
+    .describe("Array of 1-3 questions to present to the user"),
 });
 
 const DESCRIPTION = `
@@ -61,7 +61,7 @@ Question Types:
 - \`select\`: Dropdown selection for single choice with many options
 
 Best Practices:
-- Ask 2-4 focused questions at a time
+- Ask 1-3 focused questions at a time
 - Group related questions together
 - Provide clear options when using radio/checkbox/select
 - Explain why you're asking if it's not obvious

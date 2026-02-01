@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -10,7 +10,9 @@ import {
   planTitleByChatIdAtom,
   planSummaryByChatIdAtom,
   planShouldPersistAtom,
+  acceptedPlanChatIdsAtom,
 } from "@/atoms/planAtoms";
+import { previewModeAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
 
@@ -21,11 +23,21 @@ export const PlanPanel: React.FC = () => {
   const planSummary = useAtomValue(planSummaryByChatIdAtom);
   const shouldPersist = useAtomValue(planShouldPersistAtom);
   const setShouldPersist = useSetAtom(planShouldPersistAtom);
+  const acceptedChatIds = useAtomValue(acceptedPlanChatIdsAtom);
+  const setPreviewMode = useSetAtom(previewModeAtom);
   const { streamMessage, isStreaming } = useStreamChat();
 
   const currentPlan = chatId ? planContent.get(chatId) : null;
   const currentTitle = chatId ? planTitle.get(chatId) : null;
   const currentSummary = chatId ? planSummary.get(chatId) : null;
+  const isAccepted = chatId ? acceptedChatIds.has(chatId) : false;
+
+  // If there's no plan content, switch back to preview mode
+  useEffect(() => {
+    if (!currentPlan) {
+      setPreviewMode("preview");
+    }
+  }, [currentPlan, setPreviewMode]);
 
   const handleAccept = () => {
     if (!chatId) return;
@@ -37,17 +49,9 @@ export const PlanPanel: React.FC = () => {
     });
   };
 
+  // Don't render anything if there's no plan - effect will switch to preview mode
   if (!currentPlan) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-        <FileText className="text-muted-foreground mb-4" size={48} />
-        <h3 className="text-lg font-medium mb-2">No Plan Yet</h3>
-        <p className="text-muted-foreground text-sm max-w-md">
-          The implementation plan will appear here once the AI creates it. Start
-          by describing what you want to build in the chat.
-        </p>
-      </div>
-    );
+    return null;
   }
 
   return (
@@ -76,33 +80,46 @@ export const PlanPanel: React.FC = () => {
       </div>
 
       <div className="border-t p-4 space-y-4 bg-background">
-        <div className="flex items-center space-x-2">
-          <Checkbox
-            id="persist-plan"
-            checked={shouldPersist}
-            onCheckedChange={(checked) => setShouldPersist(checked === true)}
-          />
-          <Label
-            htmlFor="persist-plan"
-            className="text-sm font-normal cursor-pointer"
-          >
-            <div className="flex items-center gap-1">
-              <Save size={14} />
-              Save plan for later reference
+        {isAccepted ? (
+          <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
+            <Check size={16} />
+            <span className="text-sm font-medium">
+              Plan accepted — implementation started in a new chat
+            </span>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="persist-plan"
+                checked={shouldPersist}
+                onCheckedChange={(checked) =>
+                  setShouldPersist(checked === true)
+                }
+              />
+              <Label
+                htmlFor="persist-plan"
+                className="text-sm font-normal cursor-pointer"
+              >
+                <div className="flex items-center gap-1">
+                  <Save size={14} />
+                  Save plan for later reference
+                </div>
+              </Label>
             </div>
-          </Label>
-        </div>
 
-        <div className="flex gap-2">
-          <Button
-            onClick={handleAccept}
-            disabled={isStreaming}
-            className="flex-1"
-          >
-            <Check size={16} className="mr-2" />
-            Accept Plan
-          </Button>
-        </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleAccept}
+                disabled={isStreaming}
+                className="flex-1"
+              >
+                <Check size={16} className="mr-2" />
+                Accept Plan
+              </Button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

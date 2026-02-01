@@ -62,15 +62,15 @@ export type PlanQuestionnairePayload = z.infer<typeof PlanQuestionnaireSchema>;
  * Schema for a persisted plan.
  */
 export const PlanSchema = z.object({
-  id: z.number(),
+  id: z.string(),
   appId: z.number(),
   chatId: z.number().nullable(),
   title: z.string(),
   summary: z.string().nullable(),
   content: z.string(),
   status: z.enum(["draft", "accepted", "rejected", "implemented"]),
-  createdAt: z.date(),
-  updatedAt: z.date(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
 });
 
 export type Plan = z.infer<typeof PlanSchema>;
@@ -92,7 +92,8 @@ export type CreatePlanParams = z.infer<typeof CreatePlanParamsSchema>;
  * Schema for updating a plan.
  */
 export const UpdatePlanParamsSchema = z.object({
-  id: z.number(),
+  appId: z.number(),
+  id: z.string(),
   title: z.string().optional(),
   summary: z.string().optional(),
   content: z.string().optional(),
@@ -142,7 +143,7 @@ export const planContracts = {
   createPlan: defineContract({
     channel: "plan:create",
     input: CreatePlanParamsSchema,
-    output: z.number(), // Returns plan ID
+    output: z.string(), // Returns plan slug
   }),
 
   /**
@@ -150,7 +151,7 @@ export const planContracts = {
    */
   getPlan: defineContract({
     channel: "plan:get",
-    input: z.number(), // planId
+    input: z.object({ appId: z.number(), planId: z.string() }),
     output: PlanSchema,
   }),
 
@@ -161,6 +162,16 @@ export const planContracts = {
     channel: "plan:get-for-app",
     input: z.number(), // appId
     output: z.array(PlanSchema),
+  }),
+
+  /**
+   * Get a plan by chat ID.
+   * Returns null if no plan exists for the chat.
+   */
+  getPlanForChat: defineContract({
+    channel: "plan:get-for-chat",
+    input: z.object({ appId: z.number(), chatId: z.number() }),
+    output: PlanSchema.nullable(),
   }),
 
   /**
@@ -177,7 +188,7 @@ export const planContracts = {
    */
   deletePlan: defineContract({
     channel: "plan:delete",
-    input: z.number(), // planId
+    input: z.object({ appId: z.number(), planId: z.string() }),
     output: z.void(),
   }),
 } as const;

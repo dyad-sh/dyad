@@ -13,19 +13,20 @@ const writePlanSchema = z.object({
   plan: z
     .string()
     .describe(
-      "Full implementation plan in markdown format. Include sections for overview, technical approach, implementation steps, and testing strategy.",
+      "Full implementation plan in markdown format. Include sections for: feature overview, UI/UX design, considerations, technical approach, implementation steps, code changes, and testing strategy. Put product/UX sections first, technical sections last.",
     ),
 });
 
 const DESCRIPTION = `
 Present an implementation plan to the user in the preview panel.
 
-The plan should be comprehensive and include:
+The plan should be comprehensive and include (in this order — product/UX first, technical last):
 - **Feature Overview**: Clear description of what will be built
+- **UI/UX Design**: User flows, layout, component placement, interactions
+- **Considerations**: Potential challenges, trade-offs, edge cases, or alternatives
 - **Technical Approach**: Architecture decisions, patterns to use, libraries needed
 - **Implementation Steps**: Ordered, granular tasks with file-level specificity
 - **Code Changes**: Specific files to modify/create and what changes are needed
-- **Considerations**: Potential challenges, trade-offs, or alternatives
 - **Testing Strategy**: How the feature should be validated
 
 Format the plan in markdown for clear readability. Use headers, bullet points, and code blocks for file paths.

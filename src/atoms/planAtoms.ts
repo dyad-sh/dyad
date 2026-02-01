@@ -21,6 +21,11 @@ export const planSummaryByChatIdAtom = atom<Map<number, string>>(new Map());
 export const planShouldPersistAtom = atom<boolean>(false);
 
 /**
+ * Tracks which chat plans have been accepted (chatId set).
+ */
+export const acceptedPlanChatIdsAtom = atom<Set<number>>(new Set<number>());
+
+/**
  * Signals that we should start implementation with the accepted plan.
  * Set by usePlanEvents when plan is accepted, consumed by usePlanImplementation.
  */

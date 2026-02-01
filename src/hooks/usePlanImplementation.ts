@@ -25,6 +25,15 @@ export function usePlanImplementation() {
   const hasTriggeredRef = useRef(false);
   // Track the previous streaming state for the pending chat
   const wasStreamingRef = useRef(false);
+  // Track mounted state to prevent state updates after unmount
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     // Reset trigger flag when pending plan changes
@@ -56,20 +65,23 @@ export function usePlanImplementation() {
       // Set immediately to prevent duplicate scheduling on rapid re-renders
       hasTriggeredRef.current = true;
 
+      // Capture pending plan value before the timeout to avoid stale closure
+      const planToImplement = pendingPlan;
+
       // Add a small delay to ensure React state has settled after mode switch
       timeoutId = setTimeout(() => {
-        const chatId = pendingPlan.chatId;
+        const chatId = planToImplement.chatId;
 
         // Build the implementation prompt with the plan content
-        const notesSection = pendingPlan.implementationNotes
-          ? `\n\n**Implementation notes from planning phase:**\n${pendingPlan.implementationNotes}`
+        const notesSection = planToImplement.implementationNotes
+          ? `\n\n**Implementation notes from planning phase:**\n${planToImplement.implementationNotes}`
           : "";
 
         const prompt = `Please implement the following plan:
 
-## ${pendingPlan.title}
+## ${planToImplement.title}
 
-${pendingPlan.plan}${notesSection}
+${planToImplement.plan}${notesSection}
 
 Start implementing this plan now. Follow the steps outlined and create/modify the necessary files.`;
 
@@ -97,6 +109,7 @@ Start implementing this plan now. Follow the steps outlined and create/modify th
           },
           {
             onChunk: ({ messages: updatedMessages }) => {
+              if (!isMountedRef.current) return;
               // Update the messages so the UI shows the streaming response
               setMessagesById((prev) => {
                 const next = new Map(prev);
@@ -105,6 +118,7 @@ Start implementing this plan now. Follow the steps outlined and create/modify th
               });
             },
             onEnd: () => {
+              if (!isMountedRef.current) return;
               // Stream completed - update streaming state
               setIsStreamingById((prev) => {
                 const next = new Map(prev);
@@ -113,6 +127,7 @@ Start implementing this plan now. Follow the steps outlined and create/modify th
               });
             },
             onError: ({ error }) => {
+              if (!isMountedRef.current) return;
               console.error("Plan implementation stream error:", error);
               // Update error state
               setErrorById((prev) => {

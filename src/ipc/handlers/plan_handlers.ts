@@ -81,7 +81,7 @@ export function registerPlanHandlers() {
     }
 
     const mdFiles = files.filter((f) => f.endsWith(".md"));
-    const plans = await Promise.all(
+    const planResults = await Promise.allSettled(
       mdFiles.map(async (file) => {
         const filePath = path.join(planDir, file);
         const raw = await fs.promises.readFile(filePath, "utf-8");
@@ -106,6 +106,13 @@ export function registerPlanHandlers() {
         };
       }),
     );
+
+    const plans = [];
+    for (const result of planResults) {
+      if (result.status === "fulfilled") {
+        plans.push(result.value);
+      }
+    }
 
     // Sort by createdAt descending
     plans.sort((a, b) => b.createdAt.localeCompare(a.createdAt));

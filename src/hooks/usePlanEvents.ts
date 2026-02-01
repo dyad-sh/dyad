@@ -122,34 +122,35 @@ export function usePlanEvents() {
         setPreviewMode("preview");
 
         // Create a new chat for implementation and navigate to it
-        if (planData && selectedAppIdRef.current) {
-          try {
-            const newChatId = await ipc.chat.createChat(
-              selectedAppIdRef.current,
-            );
+        if (!planData || !selectedAppIdRef.current) {
+          console.error("Failed to start implementation: missing plan data", {
+            hasContent: !!planData,
+            hasAppId: !!selectedAppIdRef.current,
+          });
+          return;
+        }
 
-            // Navigate to the new chat
-            setSelectedChatId(newChatId);
-            navigate({ to: "/chat", search: { id: newChatId } });
+        try {
+          const newChatId = await ipc.chat.createChat(selectedAppIdRef.current);
 
-            // Refresh the chat list so the new chat appears in the sidebar
-            queryClient.invalidateQueries({
-              queryKey: queryKeys.chats.all,
-            });
+          // Navigate to the new chat
+          setSelectedChatId(newChatId);
+          navigate({ to: "/chat", search: { id: newChatId } });
 
-            // Queue the plan for implementation in the new chat
-            setPendingPlanImplementation({
-              chatId: newChatId,
-              title: planData.title,
-              plan: planData.content,
-              implementationNotes: payload.implementationNotes,
-            });
-          } catch (error) {
-            console.error(
-              "Failed to create new chat for implementation:",
-              error,
-            );
-          }
+          // Refresh the chat list so the new chat appears in the sidebar
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.chats.all,
+          });
+
+          // Queue the plan for implementation in the new chat
+          setPendingPlanImplementation({
+            chatId: newChatId,
+            title: planData.title,
+            plan: planData.content,
+            implementationNotes: payload.implementationNotes,
+          });
+        } catch (error) {
+          console.error("Failed to create new chat for implementation:", error);
         }
       },
     );

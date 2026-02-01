@@ -27,7 +27,7 @@ export function buildFrontmatter(meta: Record<string, string>): string {
  * Validate that a plan ID is safe (alphanumeric and hyphens only)
  */
 export function validatePlanId(planId: string): void {
-  if (!/^[a-z0-9-]+$/i.test(planId)) {
+  if (!/^[a-z0-9-]+$/.test(planId)) {
     throw new Error("Invalid plan ID");
   }
 }
@@ -47,7 +47,9 @@ export function parsePlanFile(raw: string): {
     if (idx > 0) {
       const key = line.slice(0, idx).trim();
       let val = line.slice(idx + 1).trim();
-      if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
+      if (val.startsWith('"') && val.endsWith('"')) {
+        val = val.slice(1, -1).replace(/\\"/g, '"');
+      }
       meta[key] = val;
     }
   }

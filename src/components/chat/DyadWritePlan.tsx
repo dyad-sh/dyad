@@ -7,6 +7,7 @@ import { planStateAtom } from "@/atoms/planAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { CustomTagState } from "./stateTypes";
 import { planClient } from "@/ipc/types/plan";
+import { queryKeys } from "@/lib/queryKeys";
 
 interface DyadWritePlanProps {
   node: {
@@ -35,7 +36,10 @@ export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
 
   // Query for saved plan in .dyad/plans/ files
   const { data: savedPlan } = useQuery({
-    queryKey: ["plan", "forChat", appId, chatId],
+    queryKey: queryKeys.plans.forChat({
+      appId: appId ?? null,
+      chatId: chatId ?? null,
+    }),
     queryFn: async () => {
       if (!appId || !chatId) return null;
       return planClient.getPlanForChat({ appId, chatId });

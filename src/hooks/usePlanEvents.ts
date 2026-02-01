@@ -5,13 +5,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useSettings } from "./useSettings";
 import { queryKeys } from "@/lib/queryKeys";
 import {
-  planContentByChatIdAtom,
-  planTitleByChatIdAtom,
-  planSummaryByChatIdAtom,
-  planShouldPersistAtom,
+  planStateAtom,
   pendingPlanImplementationAtom,
   pendingQuestionnaireAtom,
-  acceptedPlanChatIdsAtom,
 } from "@/atoms/planAtoms";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
@@ -29,64 +25,44 @@ import { ipc } from "@/ipc/types";
  * Should be called at the app root level to listen for plan events.
  */
 export function usePlanEvents() {
-  const setPlanContent = useSetAtom(planContentByChatIdAtom);
-  const setPlanTitle = useSetAtom(planTitleByChatIdAtom);
-  const setPlanSummary = useSetAtom(planSummaryByChatIdAtom);
+  const setPlanState = useSetAtom(planStateAtom);
+  const planState = useAtomValue(planStateAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
-  const setShouldPersist = useSetAtom(planShouldPersistAtom);
-  const shouldPersist = useAtomValue(planShouldPersistAtom);
-  const planContent = useAtomValue(planContentByChatIdAtom);
-  const planTitle = useAtomValue(planTitleByChatIdAtom);
-  const planSummary = useAtomValue(planSummaryByChatIdAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const setPendingPlanImplementation = useSetAtom(
     pendingPlanImplementationAtom,
   );
   const setPendingQuestionnaire = useSetAtom(pendingQuestionnaireAtom);
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
-  const setAcceptedPlanChatIds = useSetAtom(acceptedPlanChatIdsAtom);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { updateSettings } = useSettings();
 
   // Use refs for values accessed in event handlers to avoid stale closures
-  const planContentRef = useRef(planContent);
-  const planTitleRef = useRef(planTitle);
-  const planSummaryRef = useRef(planSummary);
-  const shouldPersistRef = useRef(shouldPersist);
+  const planStateRef = useRef(planState);
   const selectedAppIdRef = useRef(selectedAppId);
 
   // Keep refs up to date
-  planContentRef.current = planContent;
-  planTitleRef.current = planTitle;
-  planSummaryRef.current = planSummary;
-  shouldPersistRef.current = shouldPersist;
+  planStateRef.current = planState;
   selectedAppIdRef.current = selectedAppId;
 
   useEffect(() => {
     // Handle plan updates
     const unsubscribeUpdate = planEventClient.onUpdate(
       (payload: PlanUpdatePayload) => {
-        // Update plan atoms
-        setPlanContent((prev) => {
-          const next = new Map(prev);
-          next.set(payload.chatId, payload.plan);
-          return next;
-        });
-
-        setPlanTitle((prev) => {
-          const next = new Map(prev);
-          next.set(payload.chatId, payload.title);
-          return next;
-        });
-
-        if (payload.summary) {
-          setPlanSummary((prev) => {
-            const next = new Map(prev);
-            next.set(payload.chatId, payload.summary!);
-            return next;
+        // Update plan state
+        setPlanState((prev) => {
+          const nextPlans = new Map(prev.plansByChatId);
+          nextPlans.set(payload.chatId, {
+            content: payload.plan,
+            title: payload.title,
+            summary: payload.summary,
           });
-        }
+          return {
+            ...prev,
+            plansByChatId: nextPlans,
+          };
+        });
 
         // Switch to plan preview mode
         setPreviewMode("plan");
@@ -97,10 +73,13 @@ export function usePlanEvents() {
     const unsubscribeExit = planEventClient.onExit(
       async (payload: PlanExitPayload) => {
         // Mark this chat's plan as accepted
-        setAcceptedPlanChatIds((prev) => {
-          const next = new Set(prev);
-          next.add(payload.chatId);
-          return next;
+        setPlanState((prev) => {
+          const nextAccepted = new Set(prev.acceptedChatIds);
+          nextAccepted.add(payload.chatId);
+          return {
+            ...prev,
+            acceptedChatIds: nextAccepted,
+          };
         });
 
         // Immediately cancel the current stream so we can start the plan implementation
@@ -111,28 +90,29 @@ export function usePlanEvents() {
         }
 
         // Read latest values from refs to avoid stale closure
-        const content = planContentRef.current.get(payload.chatId);
-        const title = planTitleRef.current.get(payload.chatId);
-        const summary = planSummaryRef.current.get(payload.chatId);
+        const currentState = planStateRef.current;
+        const planData = currentState.plansByChatId.get(payload.chatId);
+        const shouldPersist = currentState.shouldPersist;
 
         // Persist the plan to .dyad/plans/ if flag is set
-        if (shouldPersistRef.current && selectedAppIdRef.current) {
-          if (content && title) {
-            try {
-              await planClient.createPlan({
-                appId: selectedAppIdRef.current,
-                chatId: payload.chatId,
-                title,
-                summary,
-                content,
-              });
-            } catch (error) {
-              console.error("Failed to save plan:", error);
-            }
+        if (shouldPersist && selectedAppIdRef.current && planData) {
+          try {
+            await planClient.createPlan({
+              appId: selectedAppIdRef.current,
+              chatId: payload.chatId,
+              title: planData.title,
+              summary: planData.summary,
+              content: planData.content,
+            });
+          } catch (error) {
+            console.error("Failed to save plan:", error);
           }
 
           // Reset persist flag after saving
-          setShouldPersist(false);
+          setPlanState((prev) => ({
+            ...prev,
+            shouldPersist: false,
+          }));
         }
 
         // Switch chat mode to local-agent for implementation
@@ -142,7 +122,7 @@ export function usePlanEvents() {
         setPreviewMode("preview");
 
         // Create a new chat for implementation and navigate to it
-        if (content && title && selectedAppIdRef.current) {
+        if (planData && selectedAppIdRef.current) {
           try {
             const newChatId = await ipc.chat.createChat(
               selectedAppIdRef.current,
@@ -160,8 +140,8 @@ export function usePlanEvents() {
             // Queue the plan for implementation in the new chat
             setPendingPlanImplementation({
               chatId: newChatId,
-              title,
-              plan: content,
+              title: planData.title,
+              plan: planData.content,
               implementationNotes: payload.implementationNotes,
             });
           } catch (error) {
@@ -188,16 +168,12 @@ export function usePlanEvents() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    setPlanContent,
-    setPlanTitle,
-    setPlanSummary,
+    setPlanState,
     setPreviewMode,
     updateSettings,
-    setShouldPersist,
     setPendingPlanImplementation,
     setPendingQuestionnaire,
     setSelectedChatId,
-    setAcceptedPlanChatIds,
     navigate,
   ]);
 }

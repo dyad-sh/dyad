@@ -35,6 +35,10 @@ export function QuestionnaireInput() {
   const [responses, setResponses] = useState<Record<string, string | string[]>>(
     {},
   );
+  // Store additional free-form text for each question
+  const [additionalTexts, setAdditionalTexts] = useState<
+    Record<string, string>
+  >({});
   // Expand/collapse state
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -42,6 +46,7 @@ export function QuestionnaireInput() {
   useEffect(() => {
     setCurrentIndex(0);
     setResponses({});
+    setAdditionalTexts({});
     setIsExpanded(true);
   }, [questionnaire?.chatId, questionnaire?.title]);
 
@@ -57,15 +62,44 @@ export function QuestionnaireInput() {
   // Calculate if we're on the last question
   const isLastQuestion = currentIndex === questionnaire.questions.length - 1;
 
+  // Get the final response value (combining selected option with additional text)
+  const getFinalResponse = (questionId: string): string => {
+    const response = responses[questionId];
+    const additionalText = additionalTexts[questionId];
+
+    let formattedResponse: string;
+    if (Array.isArray(response)) {
+      formattedResponse = response.join(", ");
+    } else {
+      formattedResponse = response || "";
+    }
+
+    // If there's additional text, append it
+    if (additionalText) {
+      if (formattedResponse) {
+        return `${formattedResponse}\nAdditional notes: ${additionalText}`;
+      }
+      return additionalText;
+    }
+
+    return formattedResponse || "(no answer)";
+  };
+
   const handleNext = () => {
     // Validate current response if required
     const currentResponse = responses[currentQuestion.id];
+    const additionalText = additionalTexts[currentQuestion.id];
     const hasResponse = Array.isArray(currentResponse)
       ? currentResponse.length > 0
       : !!currentResponse;
+    const hasAdditionalText = !!additionalText;
 
-    if (currentQuestion.required !== false && !hasResponse) {
-      // Could show error state here
+    // Allow either a selected option or free-form text
+    if (
+      currentQuestion.required !== false &&
+      !hasResponse &&
+      !hasAdditionalText
+    ) {
       return;
     }
 
@@ -81,11 +115,8 @@ export function QuestionnaireInput() {
 
     const formattedResponses = questionnaire.questions
       .map((q) => {
-        const answer = responses[q.id];
-        const formattedAnswer = Array.isArray(answer)
-          ? answer.join(", ")
-          : answer || "(no answer)";
-        return `**${q.question}**\n${formattedAnswer}`;
+        const answer = getFinalResponse(q.id);
+        return `**${q.question}**\n${answer}`;
       })
       .join("\n\n");
 
@@ -105,11 +136,14 @@ export function QuestionnaireInput() {
     if (currentQuestion.required === false) return false;
 
     const currentResponse = responses[currentQuestion.id];
+    const additionalText = additionalTexts[currentQuestion.id];
     const hasResponse = Array.isArray(currentResponse)
       ? currentResponse.length > 0
       : !!currentResponse;
+    const hasAdditionalText = !!additionalText;
 
-    return !hasResponse;
+    // Allow either a selected option or free-form text
+    return !hasResponse && !hasAdditionalText;
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -175,7 +209,7 @@ export function QuestionnaireInput() {
                 </p>
               )}
 
-              <div className="mt-2">
+              <div className="mt-2 space-y-3">
                 {currentQuestion.type === "text" && (
                   <Input
                     autoFocus
@@ -193,101 +227,163 @@ export function QuestionnaireInput() {
 
                 {currentQuestion.type === "radio" &&
                   currentQuestion.options && (
-                    <RadioGroup
-                      value={(responses[currentQuestion.id] as string) || ""}
-                      onValueChange={(value) =>
-                        setResponses((prev) => ({
-                          ...prev,
-                          [currentQuestion.id]: value,
-                        }))
-                      }
-                      className="space-y-1.5"
-                    >
-                      {currentQuestion.options.map((option) => (
-                        <div
-                          key={option}
-                          className="flex items-center space-x-2 p-2 rounded hover:bg-muted/50 transition-colors"
-                        >
-                          <RadioGroupItem
-                            value={option}
-                            id={`${currentQuestion.id}-${option}`}
-                          />
-                          <Label
-                            htmlFor={`${currentQuestion.id}-${option}`}
-                            className="text-sm font-normal cursor-pointer flex-1"
+                    <>
+                      <RadioGroup
+                        value={(responses[currentQuestion.id] as string) || ""}
+                        onValueChange={(value) =>
+                          setResponses((prev) => ({
+                            ...prev,
+                            [currentQuestion.id]: value,
+                          }))
+                        }
+                        className="space-y-1.5"
+                      >
+                        {currentQuestion.options.map((option) => (
+                          <div
+                            key={option}
+                            className="flex items-center space-x-2 p-2 rounded hover:bg-muted/50 transition-colors"
                           >
-                            {option}
-                          </Label>
-                        </div>
-                      ))}
-                    </RadioGroup>
+                            <RadioGroupItem
+                              value={option}
+                              id={`${currentQuestion.id}-${option}`}
+                            />
+                            <Label
+                              htmlFor={`${currentQuestion.id}-${option}`}
+                              className="text-sm font-normal cursor-pointer flex-1"
+                            >
+                              {option}
+                            </Label>
+                          </div>
+                        ))}
+                      </RadioGroup>
+                      {/* Always show free-form text input */}
+                      <div className="pt-2 border-t border-border/50">
+                        <Label className="text-xs text-muted-foreground mb-1.5 block">
+                          Or provide your own answer:
+                        </Label>
+                        <Input
+                          placeholder="Type a custom answer..."
+                          value={additionalTexts[currentQuestion.id] || ""}
+                          onChange={(e) =>
+                            setAdditionalTexts((prev) => ({
+                              ...prev,
+                              [currentQuestion.id]: e.target.value,
+                            }))
+                          }
+                          onKeyDown={handleKeyDown}
+                        />
+                      </div>
+                    </>
                   )}
 
                 {currentQuestion.type === "checkbox" &&
                   currentQuestion.options && (
-                    <div className="space-y-1.5">
-                      {currentQuestion.options.map((option) => (
-                        <div
-                          key={option}
-                          className="flex items-center space-x-2 p-2 rounded hover:bg-muted/50 transition-colors"
-                        >
-                          <Checkbox
-                            id={`${currentQuestion.id}-${option}`}
-                            checked={(
-                              (responses[currentQuestion.id] as string[]) || []
-                            ).includes(option)}
-                            onCheckedChange={(checked) => {
-                              setResponses((prev) => {
-                                const current =
-                                  (prev[currentQuestion.id] as string[]) || [];
-                                if (checked) {
+                    <>
+                      <div className="space-y-1.5">
+                        {currentQuestion.options.map((option) => (
+                          <div
+                            key={option}
+                            className="flex items-center space-x-2 p-2 rounded hover:bg-muted/50 transition-colors"
+                          >
+                            <Checkbox
+                              id={`${currentQuestion.id}-${option}`}
+                              checked={(
+                                (responses[currentQuestion.id] as string[]) ||
+                                []
+                              ).includes(option)}
+                              onCheckedChange={(checked) => {
+                                setResponses((prev) => {
+                                  const current =
+                                    (prev[currentQuestion.id] as string[]) ||
+                                    [];
+                                  if (checked) {
+                                    return {
+                                      ...prev,
+                                      [currentQuestion.id]: [
+                                        ...current,
+                                        option,
+                                      ],
+                                    };
+                                  }
                                   return {
                                     ...prev,
-                                    [currentQuestion.id]: [...current, option],
+                                    [currentQuestion.id]: current.filter(
+                                      (o) => o !== option,
+                                    ),
                                   };
-                                }
-                                return {
-                                  ...prev,
-                                  [currentQuestion.id]: current.filter(
-                                    (o) => o !== option,
-                                  ),
-                                };
-                              });
-                            }}
-                          />
-                          <Label
-                            htmlFor={`${currentQuestion.id}-${option}`}
-                            className="text-sm font-normal cursor-pointer flex-1"
-                          >
-                            {option}
-                          </Label>
-                        </div>
-                      ))}
-                    </div>
+                                });
+                              }}
+                            />
+                            <Label
+                              htmlFor={`${currentQuestion.id}-${option}`}
+                              className="text-sm font-normal cursor-pointer flex-1"
+                            >
+                              {option}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                      {/* Always show free-form text input */}
+                      <div className="pt-2 border-t border-border/50">
+                        <Label className="text-xs text-muted-foreground mb-1.5 block">
+                          Or add additional details:
+                        </Label>
+                        <Input
+                          placeholder="Type additional details..."
+                          value={additionalTexts[currentQuestion.id] || ""}
+                          onChange={(e) =>
+                            setAdditionalTexts((prev) => ({
+                              ...prev,
+                              [currentQuestion.id]: e.target.value,
+                            }))
+                          }
+                          onKeyDown={handleKeyDown}
+                        />
+                      </div>
+                    </>
                   )}
 
                 {currentQuestion.type === "select" &&
                   currentQuestion.options && (
-                    <Select
-                      value={(responses[currentQuestion.id] as string) || ""}
-                      onValueChange={(value) =>
-                        setResponses((prev) => ({
-                          ...prev,
-                          [currentQuestion.id]: value,
-                        }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select an option..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {currentQuestion.options.map((option) => (
-                          <SelectItem key={option} value={option}>
-                            {option}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <>
+                      <Select
+                        value={(responses[currentQuestion.id] as string) || ""}
+                        onValueChange={(value) =>
+                          setResponses((prev) => ({
+                            ...prev,
+                            [currentQuestion.id]: value,
+                          }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select an option..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {currentQuestion.options.map((option) => (
+                            <SelectItem key={option} value={option}>
+                              {option}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {/* Always show free-form text input */}
+                      <div className="pt-2 border-t border-border/50">
+                        <Label className="text-xs text-muted-foreground mb-1.5 block">
+                          Or provide your own answer:
+                        </Label>
+                        <Input
+                          placeholder="Type a custom answer..."
+                          value={additionalTexts[currentQuestion.id] || ""}
+                          onChange={(e) =>
+                            setAdditionalTexts((prev) => ({
+                              ...prev,
+                              [currentQuestion.id]: e.target.value,
+                            }))
+                          }
+                          onKeyDown={handleKeyDown}
+                        />
+                      </div>
+                    </>
                   )}
               </div>
             </div>

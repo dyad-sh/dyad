@@ -1,29 +1,35 @@
 import { atom } from "jotai";
+import type { PlanQuestionnairePayload } from "@/ipc/types/plan";
 
 /**
- * Stores the current plan content per chat (chatId -> markdown content)
+ * Represents the state for a single plan
  */
-export const planContentByChatIdAtom = atom<Map<number, string>>(new Map());
+export interface PlanData {
+  content: string;
+  title: string;
+  summary?: string;
+}
 
 /**
- * Stores the plan title per chat (chatId -> title)
+ * Unified plan state for all chats
  */
-export const planTitleByChatIdAtom = atom<Map<number, string>>(new Map());
+export interface PlanState {
+  /** Plan data per chat (chatId -> PlanData) */
+  plansByChatId: Map<number, PlanData>;
+  /** Whether the user wants to persist the current plan */
+  shouldPersist: boolean;
+  /** Chat IDs where plans have been accepted */
+  acceptedChatIds: Set<number>;
+}
 
 /**
- * Stores the plan summary per chat (chatId -> summary)
+ * Unified plan state atom
  */
-export const planSummaryByChatIdAtom = atom<Map<number, string>>(new Map());
-
-/**
- * Whether the user wants to persist the current plan to database
- */
-export const planShouldPersistAtom = atom<boolean>(false);
-
-/**
- * Tracks which chat plans have been accepted (chatId set).
- */
-export const acceptedPlanChatIdsAtom = atom<Set<number>>(new Set<number>());
+export const planStateAtom = atom<PlanState>({
+  plansByChatId: new Map(),
+  shouldPersist: false,
+  acceptedChatIds: new Set<number>(),
+});
 
 /**
  * Signals that we should start implementation with the accepted plan.
@@ -42,7 +48,6 @@ export const pendingPlanImplementationAtom =
  * Stores the pending questionnaire payload per chat.
  * Used to render the questionnaire input above the chat.
  */
-import type { PlanQuestionnairePayload } from "@/ipc/types/plan";
 export const pendingQuestionnaireAtom = atom<PlanQuestionnairePayload | null>(
   null,
 );

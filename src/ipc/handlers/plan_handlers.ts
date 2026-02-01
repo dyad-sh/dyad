@@ -7,16 +7,14 @@ import { getDyadAppPath } from "../../paths/paths";
 import log from "electron-log";
 import { createTypedHandler } from "./base";
 import { planContracts } from "../types/plan";
+import {
+  slugify,
+  buildFrontmatter,
+  validatePlanId,
+  parsePlanFile,
+} from "./planUtils";
 
 const logger = log.scope("plan_handlers");
-
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .substring(0, 60);
-}
 
 async function getPlanDir(appId: number): Promise<string> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
@@ -25,38 +23,6 @@ async function getPlanDir(appId: number): Promise<string> {
   const planDir = path.join(appPath, ".dyad", "plans");
   await fs.promises.mkdir(planDir, { recursive: true });
   return planDir;
-}
-
-function buildFrontmatter(meta: Record<string, string>): string {
-  const lines = Object.entries(meta).map(
-    ([k, v]) => `${k}: "${v.replace(/"/g, '\\"')}"`,
-  );
-  return `---\n${lines.join("\n")}\n---\n\n`;
-}
-
-function validatePlanId(planId: string): void {
-  if (!/^[a-z0-9-]+$/i.test(planId)) {
-    throw new Error("Invalid plan ID");
-  }
-}
-
-function parsePlanFile(raw: string): {
-  meta: Record<string, string>;
-  content: string;
-} {
-  const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n+([\s\S]*)$/);
-  if (!match) return { meta: {}, content: raw };
-  const meta: Record<string, string> = {};
-  for (const line of match[1].split(/\r?\n/)) {
-    const idx = line.indexOf(":");
-    if (idx > 0) {
-      const key = line.slice(0, idx).trim();
-      let val = line.slice(idx + 1).trim();
-      if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
-      meta[key] = val;
-    }
-  }
-  return { meta, content: match[2].trim() };
 }
 
 export function registerPlanHandlers() {

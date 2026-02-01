@@ -5,33 +5,25 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Check, FileText, Save } from "lucide-react";
 import { VanillaMarkdownParser } from "@/components/chat/DyadMarkdownParser";
-import {
-  planContentByChatIdAtom,
-  planTitleByChatIdAtom,
-  planSummaryByChatIdAtom,
-  planShouldPersistAtom,
-  acceptedPlanChatIdsAtom,
-} from "@/atoms/planAtoms";
+import { planStateAtom } from "@/atoms/planAtoms";
 import { previewModeAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
 
 export const PlanPanel: React.FC = () => {
   const chatId = useAtomValue(selectedChatIdAtom);
-  const planContent = useAtomValue(planContentByChatIdAtom);
-  const planTitle = useAtomValue(planTitleByChatIdAtom);
-  const planSummary = useAtomValue(planSummaryByChatIdAtom);
-  const shouldPersist = useAtomValue(planShouldPersistAtom);
-  const setShouldPersist = useSetAtom(planShouldPersistAtom);
-  const acceptedChatIds = useAtomValue(acceptedPlanChatIdsAtom);
+  const planState = useAtomValue(planStateAtom);
+  const setPlanState = useSetAtom(planStateAtom);
   const previewMode = useAtomValue(previewModeAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
   const { streamMessage, isStreaming } = useStreamChat();
 
-  const currentPlan = chatId ? planContent.get(chatId) : null;
-  const currentTitle = chatId ? planTitle.get(chatId) : null;
-  const currentSummary = chatId ? planSummary.get(chatId) : null;
-  const isAccepted = chatId ? acceptedChatIds.has(chatId) : false;
+  const planData = chatId ? planState.plansByChatId.get(chatId) : null;
+  const currentPlan = planData?.content ?? null;
+  const currentTitle = planData?.title ?? null;
+  const currentSummary = planData?.summary ?? null;
+  const shouldPersist = planState.shouldPersist;
+  const isAccepted = chatId ? planState.acceptedChatIds.has(chatId) : false;
 
   // If there's no plan content, switch back to preview mode
   useEffect(() => {
@@ -48,6 +40,13 @@ export const PlanPanel: React.FC = () => {
       prompt:
         "I accept this implementation plan. Please proceed with the implementation.",
     });
+  };
+
+  const handlePersistChange = (checked: boolean) => {
+    setPlanState((prev) => ({
+      ...prev,
+      shouldPersist: checked,
+    }));
   };
 
   // Don't render anything if there's no plan - effect will switch to preview mode
@@ -95,7 +94,7 @@ export const PlanPanel: React.FC = () => {
                 id="persist-plan"
                 checked={shouldPersist}
                 onCheckedChange={(checked) =>
-                  setShouldPersist(checked === true)
+                  handlePersistChange(checked === true)
                 }
               />
               <Label

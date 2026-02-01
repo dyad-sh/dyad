@@ -3,11 +3,7 @@ import { FileText, Eye, ChevronDown, ChevronUp } from "lucide-react";
 import { useSetAtom, useAtomValue } from "jotai";
 import { useQuery } from "@tanstack/react-query";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
-import {
-  planContentByChatIdAtom,
-  planTitleByChatIdAtom,
-  planSummaryByChatIdAtom,
-} from "@/atoms/planAtoms";
+import { planStateAtom } from "@/atoms/planAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { CustomTagState } from "./stateTypes";
 import { planClient } from "@/ipc/types/plan";
@@ -30,16 +26,14 @@ export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
   const setPreviewMode = useSetAtom(previewModeAtom);
   const chatId = useAtomValue(selectedChatIdAtom);
   const appId = useAtomValue(selectedAppIdAtom);
-  const planContent = useAtomValue(planContentByChatIdAtom);
-  const setPlanContent = useSetAtom(planContentByChatIdAtom);
-  const setPlanTitle = useSetAtom(planTitleByChatIdAtom);
-  const setPlanSummary = useSetAtom(planSummaryByChatIdAtom);
+  const planState = useAtomValue(planStateAtom);
+  const setPlanState = useSetAtom(planStateAtom);
 
   // Consider in progress if state is pending OR complete is explicitly "false"
   const isInProgress = state === "pending" || complete === "false";
-  const hasPlanInMemory = chatId ? planContent.has(chatId) : false;
+  const hasPlanInMemory = chatId ? planState.plansByChatId.has(chatId) : false;
 
-  // Query for saved plan in database
+  // Query for saved plan in .dyad/plans/ files
   const { data: savedPlan } = useQuery({
     queryKey: ["plan", "forChat", appId, chatId],
     queryFn: async () => {
@@ -50,35 +44,23 @@ export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 
-  // Load saved plan into memory atoms if found
+  // Load saved plan into memory state if found
   useEffect(() => {
     if (savedPlan && chatId && !hasPlanInMemory) {
-      setPlanContent((prev) => {
-        const next = new Map(prev);
-        next.set(chatId, savedPlan.content);
-        return next;
-      });
-      setPlanTitle((prev) => {
-        const next = new Map(prev);
-        next.set(chatId, savedPlan.title);
-        return next;
-      });
-      if (savedPlan.summary) {
-        setPlanSummary((prev) => {
-          const next = new Map(prev);
-          next.set(chatId, savedPlan.summary!);
-          return next;
+      setPlanState((prev) => {
+        const nextPlans = new Map(prev.plansByChatId);
+        nextPlans.set(chatId, {
+          content: savedPlan.content,
+          title: savedPlan.title,
+          summary: savedPlan.summary ?? undefined,
         });
-      }
+        return {
+          ...prev,
+          plansByChatId: nextPlans,
+        };
+      });
     }
-  }, [
-    savedPlan,
-    chatId,
-    hasPlanInMemory,
-    setPlanContent,
-    setPlanTitle,
-    setPlanSummary,
-  ]);
+  }, [savedPlan, chatId, hasPlanInMemory, setPlanState]);
 
   const hasPlan = hasPlanInMemory || !!savedPlan;
 

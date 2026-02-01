@@ -15,8 +15,11 @@ const QuestionSchema = z.object({
   question: z.string().describe("The question text to display to the user"),
   options: z
     .array(z.string())
+    .max(6)
     .optional()
-    .describe("Options for radio, checkbox, or select question types"),
+    .describe(
+      "Options for radio, checkbox, or select question types. Keep to max 6 options to avoid overwhelming users. Users can always provide a custom answer via the free-form text input.",
+    ),
   required: z
     .boolean()
     .optional()
@@ -56,12 +59,16 @@ Use this tool to collect specific information about:
 
 Question Types:
 - \`text\`: Free-form text input for open-ended questions
-- \`radio\`: Single choice from multiple options
-- \`checkbox\`: Multiple choice (select multiple options)
-- \`select\`: Dropdown selection for single choice with many options
+- \`radio\`: Single choice from multiple options (with additional free-form text input)
+- \`checkbox\`: Multiple choice (with additional free-form text input)
+- \`select\`: Dropdown selection (with additional free-form text input)
+
+**NOTE**: All question types (except pure text) include a free-form text input where users can provide custom answers or additional details. This ensures users are never limited to just the predefined options.
 
 Best Practices:
 - Ask 1-3 focused questions at a time
+- Keep options to a maximum of 6 per question to avoid overwhelming users
+- Users can always type a custom answer, so you don't need to cover every possible option
 - Group related questions together
 - Provide clear options when using radio/checkbox/select
 - Explain why you're asking if it's not obvious
@@ -75,7 +82,7 @@ Example:
       "id": "auth_method",
       "type": "radio",
       "question": "Which authentication method would you prefer?",
-      "options": ["Email/Password", "OAuth (Google, GitHub)", "Magic Link", "All of the above"],
+      "options": ["Email/Password", "OAuth (Google, GitHub)", "Magic Link", "SSO/SAML"],
       "required": true
     },
     {

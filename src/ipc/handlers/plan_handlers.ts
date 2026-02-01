@@ -28,8 +28,16 @@ async function getPlanDir(appId: number): Promise<string> {
 }
 
 function buildFrontmatter(meta: Record<string, string>): string {
-  const lines = Object.entries(meta).map(([k, v]) => `${k}: "${v}"`);
+  const lines = Object.entries(meta).map(
+    ([k, v]) => `${k}: "${v.replace(/"/g, '\\"')}"`,
+  );
   return `---\n${lines.join("\n")}\n---\n\n`;
+}
+
+function validatePlanId(planId: string): void {
+  if (!/^[a-z0-9-]+$/i.test(planId)) {
+    throw new Error("Invalid plan ID");
+  }
 }
 
 function parsePlanFile(raw: string): {
@@ -76,6 +84,7 @@ export function registerPlanHandlers() {
   });
 
   createTypedHandler(planContracts.getPlan, async (_, { appId, planId }) => {
+    validatePlanId(planId);
     const planDir = await getPlanDir(appId);
     const filePath = path.join(planDir, `${planId}.md`);
     const raw = await fs.promises.readFile(filePath, "utf-8");
@@ -185,6 +194,7 @@ export function registerPlanHandlers() {
 
   createTypedHandler(planContracts.updatePlan, async (_, params) => {
     const { appId, id, ...updates } = params;
+    validatePlanId(id);
     const planDir = await getPlanDir(appId);
     const filePath = path.join(planDir, `${id}.md`);
     const raw = await fs.promises.readFile(filePath, "utf-8");
@@ -204,6 +214,7 @@ export function registerPlanHandlers() {
   });
 
   createTypedHandler(planContracts.deletePlan, async (_, { appId, planId }) => {
+    validatePlanId(planId);
     const planDir = await getPlanDir(appId);
     const filePath = path.join(planDir, `${planId}.md`);
     await fs.promises.unlink(filePath);

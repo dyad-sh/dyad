@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -49,6 +49,20 @@ export function usePlanEvents() {
   const queryClient = useQueryClient();
   const { updateSettings } = useSettings();
 
+  // Use refs for values accessed in event handlers to avoid stale closures
+  const planContentRef = useRef(planContent);
+  const planTitleRef = useRef(planTitle);
+  const planSummaryRef = useRef(planSummary);
+  const shouldPersistRef = useRef(shouldPersist);
+  const selectedAppIdRef = useRef(selectedAppId);
+
+  // Keep refs up to date
+  planContentRef.current = planContent;
+  planTitleRef.current = planTitle;
+  planSummaryRef.current = planSummary;
+  shouldPersistRef.current = shouldPersist;
+  selectedAppIdRef.current = selectedAppId;
+
   useEffect(() => {
     // Handle plan updates
     const unsubscribeUpdate = planEventClient.onUpdate(
@@ -90,18 +104,23 @@ export function usePlanEvents() {
         });
 
         // Immediately cancel the current stream so we can start the plan implementation
-        await ipc.chat.cancelStream(payload.chatId);
+        try {
+          await ipc.chat.cancelStream(payload.chatId);
+        } catch (error) {
+          console.error("Failed to cancel stream:", error);
+        }
 
-        const content = planContent.get(payload.chatId);
-        const title = planTitle.get(payload.chatId);
-        const summary = planSummary.get(payload.chatId);
+        // Read latest values from refs to avoid stale closure
+        const content = planContentRef.current.get(payload.chatId);
+        const title = planTitleRef.current.get(payload.chatId);
+        const summary = planSummaryRef.current.get(payload.chatId);
 
         // Persist the plan to .dyad/plans/ if flag is set
-        if (shouldPersist && selectedAppId) {
+        if (shouldPersistRef.current && selectedAppIdRef.current) {
           if (content && title) {
             try {
               await planClient.createPlan({
-                appId: selectedAppId,
+                appId: selectedAppIdRef.current,
                 chatId: payload.chatId,
                 title,
                 summary,
@@ -123,9 +142,11 @@ export function usePlanEvents() {
         setPreviewMode("preview");
 
         // Create a new chat for implementation and navigate to it
-        if (content && title && selectedAppId) {
+        if (content && title && selectedAppIdRef.current) {
           try {
-            const newChatId = await ipc.chat.createChat(selectedAppId);
+            const newChatId = await ipc.chat.createChat(
+              selectedAppIdRef.current,
+            );
 
             // Navigate to the new chat
             setSelectedChatId(newChatId);
@@ -165,17 +186,13 @@ export function usePlanEvents() {
       unsubscribeExit();
       unsubscribeQuestionnaire();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     setPlanContent,
     setPlanTitle,
     setPlanSummary,
     setPreviewMode,
     updateSettings,
-    shouldPersist,
-    selectedAppId,
-    planContent,
-    planTitle,
-    planSummary,
     setShouldPersist,
     setPendingPlanImplementation,
     setPendingQuestionnaire,

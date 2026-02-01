@@ -24,6 +24,7 @@ export const PlanPanel: React.FC = () => {
   const shouldPersist = useAtomValue(planShouldPersistAtom);
   const setShouldPersist = useSetAtom(planShouldPersistAtom);
   const acceptedChatIds = useAtomValue(acceptedPlanChatIdsAtom);
+  const previewMode = useAtomValue(previewModeAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
   const { streamMessage, isStreaming } = useStreamChat();
 
@@ -34,10 +35,10 @@ export const PlanPanel: React.FC = () => {
 
   // If there's no plan content, switch back to preview mode
   useEffect(() => {
-    if (!currentPlan) {
+    if (!currentPlan && previewMode === "plan") {
       setPreviewMode("preview");
     }
-  }, [currentPlan, setPreviewMode]);
+  }, [currentPlan, previewMode, setPreviewMode]);
 
   const handleAccept = () => {
     if (!chatId) return;

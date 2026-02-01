@@ -47,15 +47,17 @@ export function usePlanImplementation() {
     const streamJustCompleted = wasStreaming && !isNowStreaming;
     const neverWasStreaming = !wasStreaming && !isNowStreaming;
 
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
     if (
       !hasTriggeredRef.current &&
       (streamJustCompleted || neverWasStreaming)
     ) {
-      // Add a small delay to ensure React state has settled after mode switch
-      const timeoutId = setTimeout(() => {
-        if (hasTriggeredRef.current) return; // Double-check in case of race
-        hasTriggeredRef.current = true;
+      // Set immediately to prevent duplicate scheduling on rapid re-renders
+      hasTriggeredRef.current = true;
 
+      // Add a small delay to ensure React state has settled after mode switch
+      timeoutId = setTimeout(() => {
         const chatId = pendingPlan.chatId;
 
         // Build the implementation prompt with the plan content
@@ -131,9 +133,13 @@ Start implementing this plan now. Follow the steps outlined and create/modify th
         // Clear the pending plan after triggering
         setPendingPlan(null);
       }, 100); // Small delay to let state settle
-
-      return () => clearTimeout(timeoutId);
     }
+
+    return () => {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+    };
   }, [
     pendingPlan,
     isStreamingById,

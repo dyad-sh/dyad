@@ -48,6 +48,12 @@ export function QuestionnaireInput() {
   if (!questionnaire || questionnaire.chatId !== chatId) return null;
 
   const currentQuestion = questionnaire.questions[currentIndex];
+
+  // Guard against empty questions array or out-of-bounds index
+  if (!currentQuestion) {
+    return null;
+  }
+
   // Calculate if we're on the last question
   const isLastQuestion = currentIndex === questionnaire.questions.length - 1;
 

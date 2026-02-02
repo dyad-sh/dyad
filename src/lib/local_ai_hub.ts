@@ -26,6 +26,16 @@ import type {
 
 const logger = log.scope("local_ai_hub");
 
+// Lazy import to avoid circular dependencies
+let OpenClawIntegration: any = null;
+const getOpenClawIntegration = async () => {
+  if (!OpenClawIntegration) {
+    const module = await import("@/lib/openclaw_system_integration");
+    OpenClawIntegration = module.getOpenClawSystemIntegration();
+  }
+  return OpenClawIntegration;
+};
+
 // =============================================================================
 // EXTENDED PROVIDER TYPES
 // =============================================================================
@@ -989,6 +999,150 @@ export class LocalAIHub extends EventEmitter {
 
   getProviderConfigs(): Record<ExtendedLocalProvider, LocalProviderConfig> {
     return PROVIDER_CONFIGS;
+  }
+
+  // ============================================================================
+  // OpenClaw INTEGRATION
+  // ============================================================================
+
+  /**
+   * Register LocalAIHub with OpenClaw system integration
+   * This allows OpenClaw to route requests through LocalAIHub for local inference
+   */
+  async registerWithOpenClaw(): Promise<void> {
+    try {
+      const OpenClaw = await getOpenClawIntegration();
+      
+      // Listen for OpenClaw events that need local processing
+      OpenClaw.on("local:inference:request", async (request: InferenceRequest) => {
+        try {
+          const response = await this.chat(request);
+          OpenClaw.emit("local:inference:response", response);
+        } catch (error) {
+          OpenClaw.emit("local:inference:error", {
+            requestId: request.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      });
+
+      logger.info("LocalAIHub registered with OpenClaw system integration");
+    } catch (error) {
+      logger.warn("Failed to register with OpenClaw:", error);
+    }
+  }
+
+  /**
+   * Chat through OpenClaw with fallback to cloud
+   * Uses OpenClaw's smart routing: local first, cloud fallback
+   */
+  async OpenClawChat(request: InferenceRequest): Promise<InferenceResponse> {
+    try {
+      const OpenClaw = await getOpenClawIntegration();
+      
+      // Try OpenClaw first (handles local + cloud routing)
+      const result = await OpenClaw.execute({
+        id: request.id || crypto.randomUUID(),
+        type: "chat",
+        source: "system",
+        prompt: request.prompt,
+        messages: request.messages,
+        systemPrompt: request.systemPrompt,
+        metadata: {
+          modelConfig: request.modelConfig,
+          preferLocal: true,
+        },
+        timestamp: Date.now(),
+      });
+
+      // Convert to InferenceResponse format
+      return {
+        id: result.id,
+        requestId: request.id || result.requestId,
+        modelInfo: {
+          id: request.modelConfig.modelId,
+          name: result.provider,
+          provider: result.localProcessed ? "ollama" : "anthropic" as any,
+        },
+        output: result.content || "",
+        promptTokens: result.tokens?.prompt || 0,
+        completionTokens: result.tokens?.completion || 0,
+        totalTokens: result.tokens?.total || 0,
+        generationTimeMs: result.latencyMs,
+        timestamp: Date.now(),
+        finishReason: result.success ? "stop" : "error",
+      };
+    } catch (error) {
+      logger.warn("OpenClaw chat failed, falling back to direct local:", error);
+      // Fallback to direct local chat
+      return this.chat(request);
+    }
+  }
+
+  /**
+   * Stream chat through OpenClaw with fallback
+   */
+  async OpenClawStreamChat(
+    request: InferenceRequest,
+    onChunk: (chunk: string) => void
+  ): Promise<InferenceResponse> {
+    try {
+      const OpenClaw = await getOpenClawIntegration();
+      
+      // For streaming, we still use local hub directly but notify OpenClaw
+      const response = await this.streamChat(request, onChunk);
+      
+      // Log the operation with OpenClaw
+      OpenClaw.emit("operation:completed", {
+        id: response.id,
+        requestId: request.id,
+        success: true,
+        provider: "local",
+        localProcessed: true,
+        tokens: {
+          prompt: response.promptTokens,
+          completion: response.completionTokens,
+          total: response.totalTokens,
+        },
+        latencyMs: response.generationTimeMs,
+      });
+      
+      return response;
+    } catch (error) {
+      logger.error("OpenClaw stream chat failed:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get combined stats from LocalAIHub and OpenClaw
+   */
+  async getCombinedStats(): Promise<{
+    local: {
+      availableProviders: ExtendedLocalProvider[];
+      totalModels: number;
+    };
+    OpenClaw: {
+      totalOperations: number;
+      localOperations: number;
+      cloudOperations: number;
+      totalTokens: number;
+      totalCost: number;
+    } | null;
+  }> {
+    const localStats = {
+      availableProviders: this.getAvailableProviders(),
+      totalModels: Array.from(this.providerStatus.values())
+        .reduce((sum, s) => sum + s.models.length, 0),
+    };
+
+    try {
+      const OpenClaw = await getOpenClawIntegration();
+      const OpenClawStats = OpenClaw.getStats();
+      return { local: localStats, OpenClaw: OpenClawStats };
+    } catch {
+      return { local: localStats, OpenClaw: null };
+    }
   }
 }
 

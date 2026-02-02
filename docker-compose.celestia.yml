@@ -1,0 +1,38 @@
+services:
+  celestia-light-node:
+    container_name: celestia-mainnet-node
+    image: ghcr.io/celestiaorg/celestia-node:v0.21.3
+    restart: unless-stopped
+    ports:
+      - "26658:26658"  # RPC port
+      - "2121:2121"    # P2P port
+    volumes:
+      # Mount existing wallet keys from WSL
+      - ~/.celestia-light:/root/.celestia-light
+      # Persist node data
+      - celestia-data:/root/.celestia-light-mainnet
+    environment:
+      - NODE_TYPE=light
+      - P2P_NETWORK=celestia
+    command: >
+      celestia light start
+      --core.ip consensus.lunaroasis.net
+      --p2p.network celestia
+      --rpc.addr 0.0.0.0
+      --rpc.port 26658
+      --node.store /root/.celestia-light
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:26658/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  celestia-data:
+    driver: local

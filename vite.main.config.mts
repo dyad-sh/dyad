@@ -20,6 +20,9 @@ export default defineConfig({
         "datastore-fs",
         "multiformats",
         "@libp2p/crypto",
+        // WebSocket optional native modules (ws package)
+        "bufferutil",
+        "utf-8-validate",
       ],
     },
   },

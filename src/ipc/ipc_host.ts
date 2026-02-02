@@ -93,6 +93,10 @@ import { registerPrivacyInferenceHandlers } from "./handlers/privacy_inference_h
 import { registerDeployedContractHandlers } from "./handlers/deployed_contract_handlers";
 import { registerHyperLiquidHandlers } from "./handlers/hyper_liquid_handlers";
 import { registerDataSovereigntyHandlers } from "./handlers/data_sovereignty_handlers";
+import { registerOpenClawHandlers } from "./handlers/openclaw_handlers";
+import { registerOpenClawIPCHandlers } from "./handlers/openclaw_ipc_handlers";
+import { registerOpenClawCNSHandlers } from "./handlers/openclaw_cns_handlers";
+import { registerStudioAIHandlers } from "./handlers/studio_ai_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -237,4 +241,22 @@ export function registerIpcHandlers() {
 
   // Data Sovereignty & Monetization - Complete data protection
   registerDataSovereigntyHandlers();
+
+  // OpenClaw Gateway - Local AI Gateway with n8n integration
+  // Supports Ollama (local), Anthropic (cloud), and Claude Code (agentic)
+  registerOpenClawHandlers();
+
+  // OpenClaw Integration - Personal AI Assistant (Central Nervous System)
+  // Multi-channel messaging, AI agents, memory, plugins
+  // 🦞 EXFOLIATE! EXFOLIATE!
+  registerOpenClawIPCHandlers();
+
+  // OpenClaw CNS - Central Nervous System with Ollama & N8n integration
+  // Unified AI routing: Ollama (local) ↔ Cloud (Anthropic) with N8n automation
+  // 🦞 The brain that coordinates everything!
+  registerOpenClawCNSHandlers();
+
+  // Studio AI Service - Claude Code + Ollama integration across all studios
+  // Data Studio, Document Studio, Asset Studio, Agent Swarms, Dataset Studio
+  registerStudioAIHandlers();
 }

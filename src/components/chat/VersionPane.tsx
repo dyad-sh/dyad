@@ -1,5 +1,6 @@
 import { useAtom, useAtomValue } from "jotai";
 import { selectedAppIdAtom, selectedVersionIdAtom } from "@/atoms/appAtoms";
+import { selectedChatIdAtom, chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 import { useVersions } from "@/hooks/useVersions";
 import { formatDistanceToNow } from "date-fns";
 import { RotateCcw, X, Database, Loader2 } from "lucide-react";
@@ -13,8 +14,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useNavigate } from "@tanstack/react-router";
+import { ipc } from "@/ipc/types";
+import { toast } from "sonner";
+import { showError } from "@/lib/toast";
 
 import { useRunApp } from "@/hooks/useRunApp";
+import { useChats } from "@/hooks/useChats";
 
 interface VersionPaneProps {
   isVisible: boolean;
@@ -25,6 +31,10 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
   const appId = useAtomValue(selectedAppIdAtom);
   const { refreshApp, app } = useLoadApp(appId);
   const { restartApp } = useRunApp();
+  const navigate = useNavigate();
+  const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
+  const messagesById = useAtomValue(chatMessagesByIdAtom);
+  const { invalidateChats } = useChats(appId);
   const {
     versions: liveVersions,
     refreshVersions,
@@ -227,14 +237,85 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                           onClick={async (e) => {
                             e.stopPropagation();
 
+                            // Store the previous chat ID before creating a new one
+                            const previousChatId = selectedChatId;
+
+                            // Check if the version was created in the current chat
+                            // by looking for a message with this commit hash
+                            const currentChatMessages = selectedChatId
+                              ? (messagesById.get(selectedChatId) ?? [])
+                              : [];
+                            const assistantMessageIndex =
+                              currentChatMessages.findIndex(
+                                (msg) => msg.commitHash === version.oid,
+                              );
+                            const versionInCurrentChat =
+                              assistantMessageIndex !== -1;
+
+                            // Find the message after this assistant response
+                            // so we can delete it along with all subsequent messages
+                            const nextMessage =
+                              assistantMessageIndex >= 0 &&
+                              assistantMessageIndex <
+                                currentChatMessages.length - 1
+                                ? currentChatMessages[assistantMessageIndex + 1]
+                                : undefined;
+
                             await revertVersion({
                               versionId: version.oid,
+                              currentChatMessageId:
+                                versionInCurrentChat &&
+                                selectedChatId &&
+                                nextMessage
+                                  ? {
+                                      chatId: selectedChatId,
+                                      messageId: nextMessage.id,
+                                    }
+                                  : undefined,
                             });
                             setSelectedVersionId(null);
                             // Close the pane after revert to force a refresh on next open
                             onClose();
                             if (version.dbTimestamp) {
                               await restartApp();
+                            }
+
+                            // Only create a new chat if the version is from a different chat
+                            if (appId && !versionInCurrentChat) {
+                              try {
+                                const newChatId =
+                                  await ipc.chat.createChat(appId);
+                                setSelectedChatId(newChatId);
+                                await navigate({
+                                  to: "/chat",
+                                  search: { id: newChatId },
+                                });
+
+                                // Refresh the chat list
+                                await invalidateChats();
+
+                                // Show toast with action to go back to previous chat
+                                if (previousChatId) {
+                                  toast("Switched to new chat", {
+                                    description:
+                                      "We've switched you to a new chat to give the AI a clean context.",
+                                    action: {
+                                      label: "Go to previous chat",
+                                      onClick: async () => {
+                                        setSelectedChatId(previousChatId);
+                                        await navigate({
+                                          to: "/chat",
+                                          search: { id: previousChatId },
+                                        });
+                                      },
+                                    },
+                                  });
+                                }
+                              } catch (error) {
+                                showError(
+                                  `Failed to create new chat: ${(error as any).toString()}`,
+                                );
+                              }
                             }
                           }}
                           disabled={isRevertingVersion}

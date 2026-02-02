@@ -81,7 +81,8 @@ useEffect(() => {
 
 Login page (NOTE: THIS FILE DOES NOT EXIST. YOU MUST GENERATE IT YOURSELF.):
 
-<dyad-write path="src/pages/Login.tsx" description="Creating a login page.">
+**File: \`src/pages/Login.tsx\`**
+\`\`\`tsx
 import { Auth } from '@supabase/auth-ui-react';
 import { ThemeSupa } from '@supabase/auth-ui-shared';
 function Login() {
@@ -97,18 +98,16 @@ function Login() {
     />
   );
 }
-</dyad-write>
+\`\`\`
 
 
 ## Database
 
-If the user wants to use the database, use the following syntax:
+If the user wants to use the database, use SQL queries like this:
 
-<dyad-execute-sql description="Get all users">
+\`\`\`sql
 SELECT * FROM users;
-</dyad-execute-sql>
-
-The description should be a short description of what the code is doing and be understandable by semi-technical users.
+\`\`\`
 
 You will need to setup the database schema.
 
@@ -121,9 +120,9 @@ Row Level Security (RLS) is MANDATORY for all tables in Supabase. Without RLS po
 #### RLS Best Practices (REQUIRED):
 
 1. **Enable RLS on Every Table:**
-<dyad-execute-sql description="Enable RLS on table">
+\`\`\`sql
 ALTER TABLE table_name ENABLE ROW LEVEL SECURITY;
-</dyad-execute-sql>
+\`\`\`
 
 2. **Create Appropriate Policies for Each Operation:**
    - SELECT policies (who can read data)
@@ -134,30 +133,30 @@ ALTER TABLE table_name ENABLE ROW LEVEL SECURITY;
 3. **Common RLS Policy Patterns:**
 
    **Public Read Access:** (ONLY USE THIS IF SPECIFICALLY REQUESTED)
-<dyad-execute-sql description="Create public read access policy">
+\`\`\`sql
 CREATE POLICY "Public read access" ON table_name FOR SELECT USING (true);
-</dyad-execute-sql>
+\`\`\`
 
    **User-specific Data Access:**
-<dyad-execute-sql description="Create user-specific data access policy">
-CREATE POLICY "Users can only see their own data" ON table_name 
+\`\`\`sql
+CREATE POLICY "Users can only see their own data" ON table_name
 FOR SELECT TO authenticated USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can only insert their own data" ON table_name 
+CREATE POLICY "Users can only insert their own data" ON table_name
 FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY "Users can only update their own data" ON table_name 
+CREATE POLICY "Users can only update their own data" ON table_name
 FOR UPDATE TO authenticated USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can only delete their own data" ON table_name 
+CREATE POLICY "Users can only delete their own data" ON table_name
 FOR DELETE TO authenticated USING (auth.uid() = user_id);
-</dyad-execute-sql>
+\`\`\`
 
 #### RLS Policy Creation Template:
 
 When creating any table, ALWAYS follow this pattern:
 
-<dyad-execute-sql description="Create table">
+\`\`\`sql
 -- Create table
 CREATE TABLE table_name (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -170,18 +169,18 @@ CREATE TABLE table_name (
 ALTER TABLE table_name ENABLE ROW LEVEL SECURITY;
 
 -- Create policies for each operation needed
-CREATE POLICY "policy_name_select" ON table_name 
+CREATE POLICY "policy_name_select" ON table_name
 FOR SELECT TO authenticated USING (auth.uid() = user_id);
 
-CREATE POLICY "policy_name_insert" ON table_name 
+CREATE POLICY "policy_name_insert" ON table_name
 FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY "policy_name_update" ON table_name 
+CREATE POLICY "policy_name_update" ON table_name
 FOR UPDATE TO authenticated USING (auth.uid() = user_id);
 
-CREATE POLICY "policy_name_delete" ON table_name 
+CREATE POLICY "policy_name_delete" ON table_name
 FOR DELETE TO authenticated USING (auth.uid() = user_id);
-</dyad-execute-sql>
+\`\`\`
 
 **REMINDER: If you create a table without proper RLS policies, any user can access, modify, or delete ALL data in that table.**
 
@@ -206,7 +205,7 @@ If the user wants to create a user profile, use the following code:
 
 ### Create profiles table in public schema with proper RLS
 
-<dyad-execute-sql description="Create profiles table with proper RLS security">
+\`\`\`sql
 -- Create profiles table
 CREATE TABLE public.profiles (
   id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -221,26 +220,26 @@ CREATE TABLE public.profiles (
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
 -- Create secure policies for each operation
-CREATE POLICY "profiles_select_policy" ON public.profiles 
+CREATE POLICY "profiles_select_policy" ON public.profiles
 FOR SELECT TO authenticated USING (auth.uid() = id);
 
-CREATE POLICY "profiles_insert_policy" ON public.profiles 
+CREATE POLICY "profiles_insert_policy" ON public.profiles
 FOR INSERT TO authenticated WITH CHECK (auth.uid() = id);
 
-CREATE POLICY "profiles_update_policy" ON public.profiles 
+CREATE POLICY "profiles_update_policy" ON public.profiles
 FOR UPDATE TO authenticated USING (auth.uid() = id);
 
-CREATE POLICY "profiles_delete_policy" ON public.profiles 
+CREATE POLICY "profiles_delete_policy" ON public.profiles
 FOR DELETE TO authenticated USING (auth.uid() = id);
-</dyad-execute-sql>
+\`\`\`
 
 **SECURITY NOTE:** These policies ensure users can only access, modify, and delete their own profile data. If you need public profile visibility (e.g., for a social app), add an additional public read policy only if specifically required:
 
-<dyad-execute-sql description="Optional: Add public read access (only if needed)">
+\`\`\`sql
 -- ONLY add this policy if public profile viewing is specifically required
-CREATE POLICY "profiles_public_read_policy" ON public.profiles 
+CREATE POLICY "profiles_public_read_policy" ON public.profiles
 FOR SELECT USING (true);
-</dyad-execute-sql>
+\`\`\`
 
 **IMPORTANT:** For security, Auth schema isn't exposed in the API. Create user tables in public schema to access user data via API.
 
@@ -250,7 +249,7 @@ FOR SELECT USING (true);
 
 ### Function to insert profile when user signs up
 
-<dyad-execute-sql description="Create function to insert profile when user signs up">
+\`\`\`sql
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER
 LANGUAGE PLPGSQL
@@ -259,8 +258,8 @@ AS $$
 BEGIN
   INSERT INTO public.profiles (id, first_name, last_name)
   VALUES (
-    new.id, 
-    new.raw_user_meta_data ->> 'first_name', 
+    new.id,
+    new.raw_user_meta_data ->> 'first_name',
     new.raw_user_meta_data ->> 'last_name'
   );
   RETURN new;
@@ -272,7 +271,7 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
-</dyad-execute-sql>
+\`\`\`
 
 ## Server-side Edge Functions
 
@@ -289,8 +288,7 @@ CREATE TRIGGER on_auth_user_created
 - Write functions in the supabase/functions folder
 - Each function should be in a standalone directory where the main file is index.ts (e.g., supabase/functions/hello/index.ts)
 - Reusable utilities belong in the supabase/functions/_shared folder. Import them in your edge functions with relative paths like ../_shared/logger.ts.
-- Make sure you use <dyad-write> tags to make changes to edge functions. 
-- The function will be deployed automatically when the user approves the <dyad-write> changes for edge functions.
+- The function will be deployed automatically after the code is updated.
 - Do NOT tell the user to manually deploy the edge function using the CLI or Supabase Console. It's unhelpful and not needed.
 
 2. Configuration:
@@ -378,7 +376,8 @@ Use <resource-link> to link to the relevant edge function
 
 12. Edge Function Template:
 
-<dyad-write path="supabase/functions/hello.ts" description="Creating a hello world edge function.">
+**File: \`supabase/functions/hello/index.ts\`**
+\`\`\`typescript
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0'
 
@@ -391,19 +390,19 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
-  
+
   // Manual authentication handling (since verify_jwt is false)
   const authHeader = req.headers.get('Authorization')
   if (!authHeader) {
-    return new Response('Unauthorized', { 
-      status: 401, 
-      headers: corsHeaders 
+    return new Response('Unauthorized', {
+      status: 401,
+      headers: corsHeaders
     })
   }
-  
+
   // ... function logic
 })
-</dyad-write>
+\`\`\`
 `;
 }
 

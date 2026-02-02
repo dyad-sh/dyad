@@ -80,6 +80,9 @@ import {
   shouldShowContextLimitBanner,
 } from "./ContextLimitBanner";
 import { useCountTokens } from "@/hooks/useCountTokens";
+import { useChats } from "@/hooks/useChats";
+import { useRouter } from "@tanstack/react-router";
+import { showError as showErrorToast } from "@/lib/toast";
 
 const showTokenBarAtom = atom(false);
 
@@ -128,6 +131,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const chatTodos = chatId ? (agentTodosByChatId.get(chatId) ?? []) : [];
   const { checkProblems } = useCheckProblems(appId);
   const { refreshAppIframe } = useRunApp();
+  const { navigate } = useRouter();
+  const setSelectedChatId = useSetAtom(selectedChatIdAtom);
+  const { invalidateChats } = useChats(appId);
   // Use the attachments hook
   const {
     attachments,
@@ -254,6 +260,26 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     setShowError(false);
   };
 
+  const handleNewChat = async () => {
+    if (appId) {
+      try {
+        const newChatId = await ipc.chat.createChat(appId);
+        setSelectedChatId(newChatId);
+        navigate({
+          to: "/chat",
+          search: { id: newChatId },
+        });
+        await invalidateChats();
+      } catch (err) {
+        showErrorToast(
+          `Failed to create new chat: ${(err as Error).toString()}`,
+        );
+      }
+    } else {
+      navigate({ to: "/" });
+    }
+  };
+
   const handleApprove = async () => {
     if (!chatId || !messageId || isApproving || isRejecting || isStreaming)
       return;
@@ -328,6 +354,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           onDismiss={dismissError}
           error={error}
           isDyadProEnabled={settings.enableDyadPro ?? false}
+          onStartNewChat={handleNewChat}
         />
       )}
       {/* Display loading or error state for proposal */}

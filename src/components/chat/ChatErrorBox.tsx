@@ -4,18 +4,26 @@ import {
   X,
   ExternalLink as ExternalLinkIcon,
   CircleArrowUp,
+  MessageSquarePlus,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export function ChatErrorBox({
   onDismiss,
   error,
   isDyadProEnabled,
+  onStartNewChat,
 }: {
   onDismiss: () => void;
   error: string;
   isDyadProEnabled: boolean;
+  onStartNewChat?: () => void;
 }) {
   if (error.includes("doesn't have a free quota tier")) {
     return (
@@ -138,6 +146,22 @@ export function ChatErrorBox({
               Upgrade to Dyad Pro
             </ExternalLink>
           )}
+        {isDyadProEnabled && onStartNewChat && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={onStartNewChat}
+                className="cursor-pointer inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium shadow-sm focus:outline-none focus:ring-2 bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500"
+              >
+                <span>Start new chat</span>
+                <MessageSquarePlus size={18} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              Starting a new chat can fix some issues
+            </TooltipContent>
+          </Tooltip>
+        )}
         <ExternalLink href="https://www.dyad.sh/docs/faq">
           Read docs
         </ExternalLink>

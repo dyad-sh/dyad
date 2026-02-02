@@ -1,5 +1,4 @@
 import React from "react";
-import { Button } from "@/components/ui/button";
 import { Trash2, Loader2 } from "lucide-react";
 import {
   AlertDialog,
@@ -36,19 +35,16 @@ export function DeleteConfirmationDialog({
   return (
     <AlertDialog>
       {trigger ? (
-        <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>
+        <AlertDialogTrigger>{trigger}</AlertDialogTrigger>
       ) : (
         <Tooltip>
-          <TooltipTrigger asChild>
-            <AlertDialogTrigger asChild>
-              <Button
-                size="icon"
-                variant="ghost"
-                data-testid="delete-prompt-button"
-                disabled={isDeleting}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+          <TooltipTrigger>
+            <AlertDialogTrigger
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-9 w-9"
+              data-testid="delete-prompt-button"
+              disabled={isDeleting}
+            >
+              <Trash2 className="h-4 w-4" />
             </AlertDialogTrigger>
           </TooltipTrigger>
           <TooltipContent>

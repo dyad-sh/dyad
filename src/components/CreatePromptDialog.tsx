@@ -166,24 +166,19 @@ export function CreateOrEditPromptDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       {trigger ? (
-        <DialogTrigger asChild>{trigger}</DialogTrigger>
+        <DialogTrigger>{trigger}</DialogTrigger>
       ) : mode === "create" ? (
-        <DialogTrigger asChild>
-          <Button>
-            <Plus className="mr-2 h-4 w-4" /> New Prompt
-          </Button>
+        <DialogTrigger className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 px-4 py-2">
+          <Plus className="mr-2 h-4 w-4" /> New Prompt
         </DialogTrigger>
       ) : (
         <Tooltip>
-          <TooltipTrigger asChild>
-            <DialogTrigger asChild>
-              <Button
-                size="icon"
-                variant="ghost"
-                data-testid="edit-prompt-button"
-              >
-                <Edit2 className="h-4 w-4" />
-              </Button>
+          <TooltipTrigger>
+            <DialogTrigger
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-9 w-9"
+              data-testid="edit-prompt-button"
+            >
+              <Edit2 className="h-4 w-4" />
             </DialogTrigger>
           </TooltipTrigger>
           <TooltipContent>

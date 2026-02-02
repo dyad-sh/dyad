@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@radix-ui/react-label";
+import { Label } from "@/components/ui/label";
 import { useNavigate } from "@tanstack/react-router";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import type { GithubRepository } from "@/ipc/types";
@@ -446,7 +446,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                       </div>
                     </div>
 
-                    <Accordion type="single" collapsible>
+                    <Accordion>
                       <AccordionItem value="advanced-options">
                         <AccordionTrigger className="text-xs sm:text-sm hover:no-underline">
                           Advanced options
@@ -491,8 +491,8 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                       <Alert className="border-yellow-500/20 text-yellow-500 flex items-start gap-2">
                         <TooltipProvider>
                           <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Info className="h-4 w-4 flex-shrink-0 mt-1" />
+                            <TooltipTrigger className="flex-shrink-0 mt-1">
+                              <Info className="h-4 w-4" />
                             </TooltipTrigger>
                             <TooltipContent>
                               <p className="text-xs">
@@ -622,7 +622,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
 
                   {repos.length > 0 && (
                     <>
-                      <Accordion type="single" collapsible>
+                      <Accordion>
                         <AccordionItem value="advanced-options">
                           <AccordionTrigger className="text-xs sm:text-sm hover:no-underline">
                             Advanced options
@@ -705,7 +705,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                 )}
               </div>
 
-              <Accordion type="single" collapsible>
+              <Accordion>
                 <AccordionItem value="advanced-options">
                   <AccordionTrigger className="text-xs sm:text-sm hover:no-underline">
                     Advanced options

@@ -193,7 +193,7 @@ export const ActionHeader = () => {
     if (isCompact) {
       return (
         <Tooltip>
-          <TooltipTrigger asChild>{buttonContent}</TooltipTrigger>
+          <TooltipTrigger>{buttonContent}</TooltipTrigger>
           <TooltipContent>
             <p>{text}</p>
           </TooltipContent>
@@ -274,7 +274,7 @@ export const ActionHeader = () => {
         <div className="flex items-center gap-1">
           <ChatActivityButton />
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+            <DropdownMenuTrigger>
               <button
                 data-testid="preview-more-options-button"
                 className="no-app-region-drag flex items-center justify-center p-1.5 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"

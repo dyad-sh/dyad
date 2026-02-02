@@ -92,7 +92,7 @@ export function ApiKeyConfiguration({
 
   return (
     <Accordion
-      type="multiple"
+      multiple
       className="w-full space-y-4"
       defaultValue={defaultAccordionValue}
     >
@@ -147,7 +147,7 @@ export function ApiKeyConfiguration({
                 className={`flex-grow ${saveError ? "border-red-500" : ""}`}
               />
               <Tooltip>
-                <TooltipTrigger asChild>
+                <TooltipTrigger>
                   <Button
                     onClick={async () => {
                       try {

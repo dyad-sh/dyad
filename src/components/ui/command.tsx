@@ -36,17 +36,22 @@ function CommandDialog({
   className,
   showCloseButton = true,
   filter,
+  open,
+  onOpenChange,
   ...props
-}: React.ComponentProps<typeof Dialog> & {
+}: {
   title?: string;
   description?: string;
   className?: string;
   showCloseButton?: boolean;
   filter?: (value: string, search: string, keywords?: string[]) => number;
   "data-testid"?: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  children?: React.ReactNode;
 }) {
   return (
-    <Dialog {...props}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogHeader className="sr-only">
         <DialogTitle>{title}</DialogTitle>
         <DialogDescription>{description}</DialogDescription>

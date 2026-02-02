@@ -1,5 +1,4 @@
 import type * as React from "react";
-import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
@@ -36,17 +35,19 @@ const buttonVariants = cva(
   },
 );
 
-function Button({
+type ButtonProps<T extends React.ElementType = "button"> = {
+  as?: T;
+} & Omit<React.ComponentPropsWithoutRef<T>, "as"> &
+  VariantProps<typeof buttonVariants>;
+
+function Button<T extends React.ElementType = "button">({
   className,
   variant,
   size,
-  asChild = false,
+  as,
   ...props
-}: React.ComponentProps<"button"> &
-  VariantProps<typeof buttonVariants> & {
-    asChild?: boolean;
-  }) {
-  const Comp = asChild ? Slot : "button";
+}: ButtonProps<T>) {
+  const Comp = as || "button";
 
   return (
     <Comp

@@ -54,7 +54,7 @@ export const AnnotatorToolbar = ({
         {/* Tool Selection Buttons */}
         <div className="flex space-x-1">
           <Tooltip>
-            <TooltipTrigger asChild>
+            <TooltipTrigger>
               <button
                 onClick={() => onToolChange("select")}
                 aria-label="Select"
@@ -74,7 +74,7 @@ export const AnnotatorToolbar = ({
           </Tooltip>
 
           <Tooltip>
-            <TooltipTrigger asChild>
+            <TooltipTrigger>
               <button
                 onClick={() => onToolChange("draw")}
                 aria-label="Draw"
@@ -94,7 +94,7 @@ export const AnnotatorToolbar = ({
           </Tooltip>
 
           <Tooltip>
-            <TooltipTrigger asChild>
+            <TooltipTrigger>
               <button
                 onClick={() => onToolChange("text")}
                 aria-label="Text"
@@ -114,7 +114,7 @@ export const AnnotatorToolbar = ({
           </Tooltip>
 
           <Tooltip>
-            <TooltipTrigger asChild>
+            <TooltipTrigger>
               <div className="p-1 rounded transition-colors duration-200 hover:bg-purple-200 dark:hover:bg-purple-900">
                 <ToolbarColorPicker color={color} onChange={onColorChange} />
               </div>
@@ -127,7 +127,7 @@ export const AnnotatorToolbar = ({
           <div className="w-px bg-gray-200 dark:bg-gray-700 h-4" />
 
           <Tooltip>
-            <TooltipTrigger asChild>
+            <TooltipTrigger>
               <button
                 onClick={onDelete}
                 aria-label="Delete"
@@ -145,7 +145,7 @@ export const AnnotatorToolbar = ({
           <div className="w-px bg-gray-200 dark:bg-gray-700 h-4" />
 
           <Tooltip>
-            <TooltipTrigger asChild>
+            <TooltipTrigger>
               <button
                 onClick={onUndo}
                 aria-label="Undo"
@@ -161,7 +161,7 @@ export const AnnotatorToolbar = ({
           </Tooltip>
 
           <Tooltip>
-            <TooltipTrigger asChild>
+            <TooltipTrigger>
               <button
                 onClick={onRedo}
                 aria-label="Redo"
@@ -179,7 +179,7 @@ export const AnnotatorToolbar = ({
           <div className="w-px bg-gray-200 dark:bg-gray-700 h-4" />
 
           <Tooltip>
-            <TooltipTrigger asChild>
+            <TooltipTrigger>
               <button
                 onClick={onSubmit}
                 aria-label="Add to Chat"
@@ -194,7 +194,7 @@ export const AnnotatorToolbar = ({
             </TooltipContent>
           </Tooltip>
           <Tooltip>
-            <TooltipTrigger asChild>
+            <TooltipTrigger>
               <button
                 onClick={onDeactivate}
                 aria-label="Close Annotator"

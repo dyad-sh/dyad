@@ -412,7 +412,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               <div className="border-b border-border p-3 bg-muted/30">
                 <TooltipProvider>
                   <Tooltip>
-                    <TooltipTrigger asChild>
+                    <TooltipTrigger>
                       <button
                         onClick={() => {
                           ipc.system.openExternalUrl("https://dyad.sh/pro");
@@ -510,7 +510,7 @@ function SuggestionButton({
   return (
     <TooltipProvider>
       <Tooltip>
-        <TooltipTrigger asChild>
+        <TooltipTrigger>
           <Button
             disabled={isStreaming}
             variant="outline"

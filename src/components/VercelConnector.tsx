@@ -578,7 +578,7 @@ function UnconnectedVercelConnector({
                   </Label>
                   <Select
                     value={selectedProject}
-                    onValueChange={setSelectedProject}
+                    onValueChange={(v) => setSelectedProject(v ?? "")}
                     disabled={isLoadingProjects}
                   >
                     <SelectTrigger

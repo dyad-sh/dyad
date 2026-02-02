@@ -130,7 +130,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
                 !isStreaming && (
                   <TooltipProvider>
                     <Tooltip>
-                      <TooltipTrigger asChild>
+                      <TooltipTrigger>
                         <button
                           data-testid="copy-message-button"
                           onClick={handleCopyFormatted}
@@ -188,7 +188,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
                 <GitCommit className="h-3 w-3" />
                 {messageVersion && messageVersion.message && (
                   <Tooltip>
-                    <TooltipTrigger asChild>
+                    <TooltipTrigger>
                       <span className="max-w-50 truncate font-medium">
                         {
                           messageVersion.message
@@ -205,7 +205,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
             {message.requestId && (
               <TooltipProvider>
                 <Tooltip>
-                  <TooltipTrigger asChild>
+                  <TooltipTrigger>
                     <button
                       onClick={() => {
                         if (!message.requestId) return;
@@ -248,7 +248,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
             {isLastMessage && message.totalTokens && (
               <TooltipProvider>
                 <Tooltip>
-                  <TooltipTrigger asChild>
+                  <TooltipTrigger>
                     <div className="flex items-center space-x-1 px-1 py-0.5">
                       <Info className="h-3 w-3" />
                     </div>

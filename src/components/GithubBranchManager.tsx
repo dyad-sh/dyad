@@ -388,7 +388,7 @@ export function GithubBranchManager({
       <div className="flex gap-2">
         <Select
           value={currentBranch || ""}
-          onValueChange={handleSwitchBranch}
+          onValueChange={(v) => v && handleSwitchBranch(v)}
           disabled={
             isSwitching ||
             isDeleting ||
@@ -421,16 +421,13 @@ export function GithubBranchManager({
         <DropdownMenu>
           <TooltipProvider>
             <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    title="Branch actions"
-                    data-testid="branch-actions-menu-trigger"
-                  >
-                    <EllipsisVertical className="h-4 w-4" />
-                  </Button>
+              <TooltipTrigger>
+                <DropdownMenuTrigger
+                  className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-9 w-9"
+                  title="Branch actions"
+                  data-testid="branch-actions-menu-trigger"
+                >
+                  <EllipsisVertical className="h-4 w-4" />
                 </DropdownMenuTrigger>
               </TooltipTrigger>
               <TooltipContent>Branch actions</TooltipContent>
@@ -487,7 +484,10 @@ export function GithubBranchManager({
               </div>
               <div>
                 <Label htmlFor="source-branch">Source Branch</Label>
-                <Select value={sourceBranch} onValueChange={setSourceBranch}>
+                <Select
+                  value={sourceBranch}
+                  onValueChange={(v) => setSourceBranch(v ?? "")}
+                >
                   <SelectTrigger
                     className="mt-2"
                     data-testid="source-branch-select-trigger"
@@ -790,15 +790,11 @@ export function GithubBranchManager({
                             if (open) setIsExpanded(true);
                           }}
                         >
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6"
-                              data-testid={`branch-actions-${branch}`}
-                            >
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
+                          <DropdownMenuTrigger
+                            className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-6 w-6"
+                            data-testid={`branch-actions-${branch}`}
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem

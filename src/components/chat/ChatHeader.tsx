@@ -119,7 +119,7 @@ export function ChatHeader({
                 <>
                   <TooltipProvider>
                     <Tooltip>
-                      <TooltipTrigger asChild>
+                      <TooltipTrigger>
                         <span className="flex items-center  gap-1">
                           {isAnyCheckoutVersionInProgress ? (
                             <>

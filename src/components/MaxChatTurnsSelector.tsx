@@ -76,7 +76,10 @@ export const MaxChatTurnsSelector: React.FC = () => {
         >
           Maximum number of chat turns used in context
         </label>
-        <Select value={currentValue} onValueChange={handleValueChange}>
+        <Select
+          value={currentValue}
+          onValueChange={(v) => v && handleValueChange(v)}
+        >
           <SelectTrigger className="w-[180px]" id="max-chat-turns">
             <SelectValue placeholder="Select turns" />
           </SelectTrigger>

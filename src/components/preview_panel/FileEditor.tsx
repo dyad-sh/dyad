@@ -59,7 +59,7 @@ const Breadcrumb: React.FC<BreadcrumbProps> = ({
         </div>
         <div className="flex items-center gap-2 flex-shrink-0 ml-2">
           <Tooltip>
-            <TooltipTrigger asChild>
+            <TooltipTrigger>
               <Button
                 variant="ghost"
                 size="sm"

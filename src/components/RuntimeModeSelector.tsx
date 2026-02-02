@@ -36,7 +36,7 @@ export function RuntimeModeSelector() {
           </Label>
           <Select
             value={settings.runtimeMode2 ?? "host"}
-            onValueChange={handleRuntimeModeChange}
+            onValueChange={(v) => v && handleRuntimeModeChange(v)}
           >
             <SelectTrigger className="w-48" id="runtime-mode">
               <SelectValue />

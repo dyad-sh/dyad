@@ -116,7 +116,7 @@ export function ProviderSettingsHeader({
         !isLoading &&
         (!isConfigured ? (
           <Popover defaultOpen>
-            <PopoverTrigger asChild>{ConfigureButton}</PopoverTrigger>
+            <PopoverTrigger>{ConfigureButton}</PopoverTrigger>
             <PopoverContent
               side="bottom"
               align="center"

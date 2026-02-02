@@ -31,7 +31,7 @@ const EnvironmentVariablesTitle = () => (
     <span className="text-lg font-semibold">Environment Variables</span>
     <span className="text-sm text-muted-foreground font-normal">Local</span>
     <Tooltip>
-      <TooltipTrigger asChild>
+      <TooltipTrigger>
         <HelpCircle size={16} className="text-muted-foreground cursor-help" />
       </TooltipTrigger>
       <TooltipContent>

@@ -218,6 +218,16 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
   ],
   openrouter: [
+    // https://openrouter.ai/moonshotai/kimi-k2.5
+    {
+      name: "moonshotai/kimi-k2.5",
+      displayName: "Kimi K2.5",
+      description: "Moonshot AI's latest and most capable model",
+      maxOutputTokens: 32_000,
+      contextWindow: 256_000,
+      temperature: 0,
+      dollarSigns: 2,
+    },
     {
       name: "qwen/qwen3-coder:free",
       displayName: "Qwen3 Coder (free)",

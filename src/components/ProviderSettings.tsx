@@ -129,7 +129,7 @@ export function ProviderSettingsGrid() {
                       onClick={(e) => e.stopPropagation()}
                     >
                       <Tooltip>
-                        <TooltipTrigger asChild>
+                        <TooltipTrigger>
                           <Button
                             data-testid="edit-custom-provider"
                             variant="ghost"
@@ -143,7 +143,7 @@ export function ProviderSettingsGrid() {
                         <TooltipContent>Edit Provider</TooltipContent>
                       </Tooltip>
                       <Tooltip>
-                        <TooltipTrigger asChild>
+                        <TooltipTrigger>
                           <Button
                             data-testid="delete-custom-provider"
                             variant="ghost"

@@ -33,8 +33,8 @@ export function ChatActivityButton() {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
+        <TooltipTrigger>
+          <PopoverTrigger>
             <button
               className="no-app-region-drag relative flex items-center justify-center p-1.5 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
               data-testid="chat-activity-button"

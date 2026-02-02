@@ -120,14 +120,12 @@ export function ContextFilesPicker() {
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <div
-          className="flex items-center py-2 px-3 hover:bg-accent hover:text-accent-foreground rounded-sm cursor-pointer text-sm"
-          data-testid="codebase-context-trigger"
-        >
-          <Settings2 className="size-4 mr-2" />
-          Codebase context
-        </div>
+      <DialogTrigger
+        className="flex items-center py-2 px-3 hover:bg-accent hover:text-accent-foreground rounded-sm cursor-pointer text-sm"
+        data-testid="codebase-context-trigger"
+      >
+        <Settings2 className="size-4 mr-2" />
+        Codebase context
       </DialogTrigger>
 
       <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
@@ -138,8 +136,8 @@ export function ContextFilesPicker() {
               Select the files to use as context.{" "}
               <TooltipProvider>
                 <Tooltip>
-                  <TooltipTrigger asChild>
-                    <InfoIcon className="size-4 cursor-help" />
+                  <TooltipTrigger className="cursor-help">
+                    <InfoIcon className="size-4" />
                   </TooltipTrigger>
                   <TooltipContent className="max-w-[300px]">
                     {isSmartContextEnabled ? (
@@ -189,10 +187,8 @@ export function ContextFilesPicker() {
                   >
                     <div className="flex flex-1 flex-col overflow-hidden">
                       <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="truncate font-mono text-sm">
-                            {p.globPath}
-                          </span>
+                        <TooltipTrigger className="truncate font-mono text-sm text-left">
+                          {p.globPath}
                         </TooltipTrigger>
                         <TooltipContent>
                           <p>{p.globPath}</p>
@@ -234,8 +230,8 @@ export function ContextFilesPicker() {
                   These files will be excluded from the context.{" "}
                   <TooltipProvider>
                     <Tooltip>
-                      <TooltipTrigger asChild>
-                        <InfoIcon className="size-4 cursor-help" />
+                      <TooltipTrigger className="cursor-help">
+                        <InfoIcon className="size-4" />
                       </TooltipTrigger>
                       <TooltipContent className="max-w-[300px]">
                         <p>
@@ -281,10 +277,8 @@ export function ContextFilesPicker() {
                     >
                       <div className="flex flex-1 flex-col overflow-hidden">
                         <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="truncate font-mono text-sm text-red-600">
-                              {p.globPath}
-                            </span>
+                          <TooltipTrigger className="truncate font-mono text-sm text-red-600 text-left">
+                            {p.globPath}
                           </TooltipTrigger>
                           <TooltipContent>
                             <p>{p.globPath}</p>
@@ -320,8 +314,8 @@ export function ContextFilesPicker() {
                     These files will always be included in the context.{" "}
                     <TooltipProvider>
                       <Tooltip>
-                        <TooltipTrigger asChild>
-                          <InfoIcon className="size-4 cursor-help" />
+                        <TooltipTrigger className="cursor-help">
+                          <InfoIcon className="size-4" />
                         </TooltipTrigger>
                         <TooltipContent className="max-w-[300px]">
                           <p>
@@ -368,10 +362,8 @@ export function ContextFilesPicker() {
                       >
                         <div className="flex flex-1 flex-col overflow-hidden">
                           <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="truncate font-mono text-sm">
-                                {p.globPath}
-                              </span>
+                            <TooltipTrigger className="truncate font-mono text-sm text-left">
+                              {p.globPath}
                             </TooltipTrigger>
                             <TooltipContent>
                               <p>{p.globPath}</p>

@@ -59,7 +59,10 @@ export const ThinkingBudgetSelector: React.FC = () => {
         >
           Thinking Budget
         </label>
-        <Select value={currentValue} onValueChange={handleValueChange}>
+        <Select
+          value={currentValue}
+          onValueChange={(v) => v && handleValueChange(v)}
+        >
           <SelectTrigger className="w-[180px]" id="thinking-budget">
             <SelectValue placeholder="Select budget" />
           </SelectTrigger>

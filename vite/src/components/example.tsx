@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/utils";
 
 function ExampleWrapper({ className, ...props }: React.ComponentProps<"div">) {
   return (
@@ -8,12 +8,12 @@ function ExampleWrapper({ className, ...props }: React.ComponentProps<"div">) {
         className={cn(
           "mx-auto grid min-h-screen w-full max-w-5xl min-w-0 content-center items-start gap-8 p-4 pt-2 sm:gap-12 sm:p-6 md:grid-cols-2 md:gap-8 lg:p-12 2xl:max-w-6xl",
 
-          className
+          className,
         )}
         {...props}
       />
     </div>
-  )
+  );
 }
 
 function Example({
@@ -23,15 +23,15 @@ function Example({
   containerClassName,
   ...props
 }: React.ComponentProps<"div"> & {
-  title?: string
-  containerClassName?: string
+  title?: string;
+  containerClassName?: string;
 }) {
   return (
     <div
       data-slot="example"
       className={cn(
         "mx-auto flex w-full max-w-lg min-w-0 flex-col gap-1 self-stretch lg:max-w-none",
-        containerClassName
+        containerClassName,
       )}
       {...props}
     >
@@ -44,13 +44,13 @@ function Example({
         data-slot="example-content"
         className={cn(
           "bg-background text-foreground flex min-w-0 flex-1 flex-col items-start gap-6 border border-dashed p-4 sm:p-6 *:[div:not([class*='w-'])]:w-full",
-          className
+          className,
         )}
       >
         {children}
       </div>
     </div>
-  )
+  );
 }
 
-export { ExampleWrapper, Example }
+export { ExampleWrapper, Example };

@@ -72,8 +72,8 @@ export function AgentConsentBanner({
           {toolDescription && (
             <TooltipProvider>
               <Tooltip>
-                <TooltipTrigger asChild>
-                  <Info className="w-3.5 h-3.5 text-muted-foreground cursor-help" />
+                <TooltipTrigger className="cursor-help">
+                  <Info className="w-3.5 h-3.5 text-muted-foreground" />
                 </TooltipTrigger>
                 <TooltipContent side="top" className="max-w-xs">
                   <p className="text-xs">{toolDescription}</p>

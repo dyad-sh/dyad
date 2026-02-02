@@ -14,16 +14,16 @@ Migrate all shadcn UI components in `src/components/ui/` from Radix UI primitive
 
 ## Key Migration Patterns
 
-| Radix UI | Base UI |
-|----------|---------|
-| `@radix-ui/react-dialog` | `@base-ui/react/dialog` |
-| `DialogPrimitive.Overlay` | `DialogPrimitive.Backdrop` |
-| `DialogPrimitive.Content` | `DialogPrimitive.Popup` |
-| `data-[state=open]` | `data-open` |
-| `data-[state=checked]` | `data-checked` |
-| `asChild` prop | `render={<Component />}` prop |
-| Direct Content positioning | `Positioner` + `Popup` wrapper |
-| `--radix-*` CSS vars | `--available-height`, `--anchor-width` |
+| Radix UI                   | Base UI                                |
+| -------------------------- | -------------------------------------- |
+| `@radix-ui/react-dialog`   | `@base-ui/react/dialog`                |
+| `DialogPrimitive.Overlay`  | `DialogPrimitive.Backdrop`             |
+| `DialogPrimitive.Content`  | `DialogPrimitive.Popup`                |
+| `data-[state=open]`        | `data-open`                            |
+| `data-[state=checked]`     | `data-checked`                         |
+| `asChild` prop             | `render={<Component />}` prop          |
+| Direct Content positioning | `Positioner` + `Popup` wrapper         |
+| `--radix-*` CSS vars       | `--available-height`, `--anchor-width` |
 
 ## Migration Phases
 
@@ -87,6 +87,7 @@ Migrate all shadcn UI components in `src/components/ui/` from Radix UI primitive
 ## Files to Modify
 
 ### Component Files (`src/components/ui/`)
+
 - `accordion.tsx`
 - `alert-dialog.tsx`
 - `button.tsx`
@@ -107,15 +108,18 @@ Migrate all shadcn UI components in `src/components/ui/` from Radix UI primitive
 - `tooltip.tsx`
 
 ### Configuration Files
+
 - `package.json` - Update dependencies
 
 ### Potential CSS/Tailwind Updates
+
 - Any files using `data-[state=*]` selectors need updating to `data-*` selectors
 - CSS variable references: `--radix-*` → Base UI equivalents
 
 ## Reference Templates
 
 Use `vite/src/components/ui/` as templates. For each component:
+
 1. Compare vite version with current src version
 2. Copy Base UI import pattern and component structure
 3. Preserve any project-specific customizations (e.g., `MiniSelectTrigger` in select.tsx)
@@ -124,6 +128,7 @@ Use `vite/src/components/ui/` as templates. For each component:
 ## API Breaking Changes to Handle
 
 1. **`asChild` → `render` prop** - Components using `asChild` pattern need updates:
+
    ```tsx
    // Before
    <DialogClose asChild><Button>Close</Button></DialogClose>
@@ -139,12 +144,14 @@ Use `vite/src/components/ui/` as templates. For each component:
 ## Verification Plan
 
 After each phase:
+
 1. **Type check:** `npm run ts`
 2. **Lint:** `npm run lint`
 3. **Build:** `npm run build`
 4. **E2E tests:** `PLAYWRIGHT_HTML_OPEN=never npm run e2e`
 
 ### Manual Testing Checklist
+
 - [ ] Dialogs open/close with animation
 - [ ] Escape key dismisses overlays
 - [ ] Click outside dismisses overlays

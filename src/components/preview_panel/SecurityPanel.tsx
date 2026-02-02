@@ -687,7 +687,7 @@ function FindingDetailsDialog({
               <>Fix Issue</>
             )}
           </Button>
-          <DialogClose asChild>
+          <DialogClose>
             <Button variant="outline">Close</Button>
           </DialogClose>
         </DialogFooter>
@@ -988,7 +988,7 @@ ${issuesList}`;
               />
             </div>
             <DialogFooter>
-              <DialogClose asChild>
+              <DialogClose>
                 <Button variant="outline">Cancel</Button>
               </DialogClose>
               <Button

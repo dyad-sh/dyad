@@ -92,9 +92,12 @@ export function ChatModeSelector() {
   const isMac = detectIsMac();
 
   return (
-    <Select value={selectedMode} onValueChange={handleModeChange}>
+    <Select
+      value={selectedMode}
+      onValueChange={(v) => v && handleModeChange(v)}
+    >
       <Tooltip>
-        <TooltipTrigger asChild>
+        <TooltipTrigger>
           <MiniSelectTrigger
             data-testid="chat-mode-selector"
             className={cn(
@@ -117,7 +120,7 @@ export function ChatModeSelector() {
           </div>
         </TooltipContent>
       </Tooltip>
-      <SelectContent align="start" onCloseAutoFocus={(e) => e.preventDefault()}>
+      <SelectContent align="start">
         {isProEnabled && (
           <SelectItem value="local-agent">
             <div className="flex flex-col items-start">

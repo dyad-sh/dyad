@@ -45,7 +45,7 @@ export function ContextLimitBanner({
     >
       <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
         <Tooltip>
-          <TooltipTrigger asChild>
+          <TooltipTrigger>
             <Button
               variant="ghost"
               size="icon"

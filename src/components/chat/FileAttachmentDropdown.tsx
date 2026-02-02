@@ -48,7 +48,7 @@ export function FileAttachmentDropdown({
     <>
       <TooltipProvider>
         <Tooltip>
-          <TooltipTrigger asChild>
+          <TooltipTrigger>
             <DropdownMenuItem
               onSelect={(e) => {
                 // Prevent default so menu doesn't close in order to keep the hidden inputs in the DOM
@@ -70,7 +70,7 @@ export function FileAttachmentDropdown({
 
       <TooltipProvider>
         <Tooltip>
-          <TooltipTrigger asChild>
+          <TooltipTrigger>
             <DropdownMenuItem
               onSelect={(e) => {
                 // Prevent default so menu doesn't close in order to keep the hidden inputs in the DOM

@@ -322,7 +322,7 @@ export function VisualEditingToolbar({
     >
       <TooltipProvider>
         <Tooltip>
-          <TooltipTrigger asChild>
+          <TooltipTrigger>
             <button
               onClick={handleDeselectComponent}
               className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-[#7f22fe] dark:text-gray-200"

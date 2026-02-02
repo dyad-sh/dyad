@@ -1,6 +1,5 @@
 import { ipc } from "@/ipc/types";
-import { Dialog, DialogTitle } from "@radix-ui/react-dialog";
-import { DialogContent, DialogHeader } from "./ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { BugIcon, Camera } from "lucide-react";
 import { useState } from "react";

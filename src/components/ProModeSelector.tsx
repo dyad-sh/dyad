@@ -63,16 +63,10 @@ export function ProModeSelector() {
   return (
     <Popover>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="has-[>svg]:px-1.5 flex items-center gap-1.5 h-8 border-primary/50 hover:bg-primary/10 font-medium shadow-sm shadow-primary/10 transition-all hover:shadow-md hover:shadow-primary/15"
-            >
-              <Sparkles className="h-4 w-4 text-primary" />
-              <span className="text-primary font-medium text-xs-sm">Pro</span>
-            </Button>
+        <TooltipTrigger>
+          <PopoverTrigger className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-primary/50 bg-background shadow-sm hover:bg-primary/10 h-8 px-1.5 gap-1.5 shadow-primary/10 hover:shadow-md hover:shadow-primary/15">
+            <Sparkles className="h-4 w-4 text-primary" />
+            <span className="text-primary font-medium text-xs-sm">Pro</span>
           </PopoverTrigger>
         </TooltipTrigger>
         <TooltipContent>Configure Dyad Pro settings</TooltipContent>
@@ -89,7 +83,7 @@ export function ProModeSelector() {
           {!hasProKey && (
             <div className="text-sm text-center text-muted-foreground">
               <Tooltip>
-                <TooltipTrigger asChild>
+                <TooltipTrigger>
                   <a
                     className="inline-flex items-center justify-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
                     onClick={() => {
@@ -165,7 +159,7 @@ function SelectorRow({
           {label}
         </Label>
         <Tooltip>
-          <TooltipTrigger asChild>
+          <TooltipTrigger>
             <Info
               className={`h-4 w-4 cursor-help ${!isTogglable ? "text-muted-foreground/50" : "text-muted-foreground"}`}
             />
@@ -219,7 +213,7 @@ function TurboEditsSelector({
           Turbo Edits
         </Label>
         <Tooltip>
-          <TooltipTrigger asChild>
+          <TooltipTrigger>
             <Info
               className={`h-4 w-4 cursor-help ${!isTogglable ? "text-muted-foreground/50" : "text-muted-foreground"}`}
             />
@@ -243,7 +237,7 @@ function TurboEditsSelector({
         data-testid="turbo-edits-selector"
       >
         <Tooltip>
-          <TooltipTrigger asChild>
+          <TooltipTrigger>
             <Button
               variant={currentValue === "off" ? "default" : "ghost"}
               size="sm"
@@ -257,7 +251,7 @@ function TurboEditsSelector({
           <TooltipContent>Disable Turbo Edits</TooltipContent>
         </Tooltip>
         <Tooltip>
-          <TooltipTrigger asChild>
+          <TooltipTrigger>
             <Button
               variant={currentValue === "v1" ? "default" : "ghost"}
               size="sm"
@@ -273,7 +267,7 @@ function TurboEditsSelector({
           </TooltipContent>
         </Tooltip>
         <Tooltip>
-          <TooltipTrigger asChild>
+          <TooltipTrigger>
             <Button
               variant={currentValue === "v2" ? "default" : "ghost"}
               size="sm"
@@ -326,7 +320,7 @@ function SmartContextSelector({
           Smart Context
         </Label>
         <Tooltip>
-          <TooltipTrigger asChild>
+          <TooltipTrigger>
             <Info
               className={`h-4 w-4 cursor-help ${!isTogglable ? "text-muted-foreground/50" : "text-muted-foreground"}`}
             />
@@ -342,7 +336,7 @@ function SmartContextSelector({
         data-testid="smart-context-selector"
       >
         <Tooltip>
-          <TooltipTrigger asChild>
+          <TooltipTrigger>
             <Button
               variant={currentValue === "off" ? "default" : "ghost"}
               size="sm"
@@ -356,7 +350,7 @@ function SmartContextSelector({
           <TooltipContent>Disable Smart Context</TooltipContent>
         </Tooltip>
         <Tooltip>
-          <TooltipTrigger asChild>
+          <TooltipTrigger>
             <Button
               variant={currentValue === "balanced" ? "default" : "ghost"}
               size="sm"
@@ -372,7 +366,7 @@ function SmartContextSelector({
           </TooltipContent>
         </Tooltip>
         <Tooltip>
-          <TooltipTrigger asChild>
+          <TooltipTrigger>
             <Button
               variant={currentValue === "deep" ? "default" : "ghost"}
               size="sm"

@@ -117,7 +117,7 @@ export const ConsoleFilters = ({
       {/* Clear logs button */}
       <TooltipProvider>
         <Tooltip>
-          <TooltipTrigger asChild>
+          <TooltipTrigger>
             <button
               onClick={onClearLogs}
               className="p-1 border border-border rounded bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"

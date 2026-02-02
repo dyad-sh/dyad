@@ -154,7 +154,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                           Date.now() - timestampMs > 24 * 60 * 60 * 1000;
                         return (
                           <Tooltip>
-                            <TooltipTrigger asChild>
+                            <TooltipTrigger>
                               <div
                                 className={cn(
                                   "inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded-md",
@@ -222,7 +222,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                   <div className="flex items-center gap-1">
                     {/* Restore button */}
                     <Tooltip>
-                      <TooltipTrigger asChild>
+                      <TooltipTrigger>
                         <button
                           onClick={async (e) => {
                             e.stopPropagation();

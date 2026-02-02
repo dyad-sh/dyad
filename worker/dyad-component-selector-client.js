@@ -576,7 +576,12 @@
       return;
     }
 
-    const INIT_TIMEOUT_MS = 5000; // Wait up to 5 seconds for tagged elements
+    // Usually the tagged elements are added right away, but in some cases (e.g.
+    // supabase auth loading), it can take a while and thus we use a timeout/observer
+    // to wait for tagged elements to appear.
+    //
+    // see: https://github.com/dyad-sh/dyad/issues/2231
+    const INIT_TIMEOUT_MS = 60_000; // Wait up to 60 seconds for tagged elements
     let observer = null;
     let timeoutId = null;
 

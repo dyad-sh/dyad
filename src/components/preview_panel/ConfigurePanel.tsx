@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAtomValue } from "jotai";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import {
   X,
   HelpCircle,
   ArrowRight,
+  Terminal,
 } from "lucide-react";
 import { showError, showSuccess } from "@/lib/toast";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -25,6 +26,271 @@ import { ipc } from "@/ipc/types";
 import { useNavigate } from "@tanstack/react-router";
 import { NeonConfigure } from "./NeonConfigure";
 import { queryKeys } from "@/lib/queryKeys";
+
+const AppCommandsTitle = () => (
+  <div className="flex items-center gap-2">
+    <Terminal size={18} className="text-muted-foreground" />
+    <span className="text-lg font-semibold">App Commands</span>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <HelpCircle size={16} className="text-muted-foreground cursor-help" />
+      </TooltipTrigger>
+      <TooltipContent>
+        <p>
+          Configure custom install and start commands for your app.
+          <br />
+          Leave empty to use the default pnpm commands.
+        </p>
+      </TooltipContent>
+    </Tooltip>
+  </div>
+);
+
+const AppCommandsSection = ({
+  selectedAppId,
+}: {
+  selectedAppId: number | null;
+}) => {
+  const queryClient = useQueryClient();
+  const [installCommand, setInstallCommand] = useState("");
+  const [startCommand, setStartCommand] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
+
+  // Query to get app details including commands
+  const { data: app, isLoading: isLoadingApp } = useQuery({
+    queryKey: queryKeys.apps.detail({ appId: selectedAppId }),
+    queryFn: async () => {
+      if (!selectedAppId) return null;
+      return await ipc.app.getApp(selectedAppId);
+    },
+    enabled: !!selectedAppId,
+  });
+
+  // Sync local state with app data when it changes
+  useEffect(() => {
+    if (app) {
+      setInstallCommand(app.installCommand || "");
+      setStartCommand(app.startCommand || "");
+    }
+  }, [app]);
+
+  // Mutation to update commands
+  const updateCommandsMutation = useMutation({
+    mutationFn: async ({
+      installCmd,
+      startCmd,
+    }: {
+      installCmd: string;
+      startCmd: string;
+    }) => {
+      if (!selectedAppId) throw new Error("No app selected");
+      return await ipc.app.updateAppCommands({
+        appId: selectedAppId,
+        installCommand: installCmd.trim() || null,
+        startCommand: startCmd.trim() || null,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.apps.detail({ appId: selectedAppId }),
+      });
+      showSuccess("App commands saved");
+      setIsEditing(false);
+    },
+    onError: (error) => {
+      showError(`Failed to save app commands: ${error}`);
+    },
+  });
+
+  const handleSave = useCallback(() => {
+    const hasInstallCommand = installCommand.trim().length > 0;
+    const hasStartCommand = startCommand.trim().length > 0;
+
+    // Both commands must be provided together, or both must be empty
+    if (hasInstallCommand !== hasStartCommand) {
+      showError(
+        "Both install and start commands are required when customizing",
+      );
+      return;
+    }
+
+    updateCommandsMutation.mutate({
+      installCmd: installCommand,
+      startCmd: startCommand,
+    });
+  }, [installCommand, startCommand, updateCommandsMutation]);
+
+  const handleCancel = useCallback(() => {
+    // Reset to original values
+    setInstallCommand(app?.installCommand || "");
+    setStartCommand(app?.startCommand || "");
+    setIsEditing(false);
+  }, [app]);
+
+  const handleClear = useCallback(() => {
+    setInstallCommand("");
+    setStartCommand("");
+    updateCommandsMutation.mutate({
+      installCmd: "",
+      startCmd: "",
+    });
+  }, [updateCommandsMutation]);
+
+  if (!selectedAppId) {
+    return null;
+  }
+
+  if (isLoadingApp) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            <AppCommandsTitle />
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-4">
+            <div className="text-sm text-muted-foreground">
+              Loading app commands...
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const hasCustomCommands = app?.installCommand || app?.startCommand;
+  const hasInstallCommand = installCommand.trim().length > 0;
+  const hasStartCommand = startCommand.trim().length > 0;
+  const commandsValid = hasInstallCommand === hasStartCommand;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          <AppCommandsTitle />
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isEditing ? (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="install-command">Install Command</Label>
+              <Input
+                id="install-command"
+                data-testid="install-command-input"
+                placeholder="pnpm install"
+                value={installCommand}
+                onChange={(e) => setInstallCommand(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="start-command">Start Command</Label>
+              <Input
+                id="start-command"
+                data-testid="start-command-input"
+                placeholder="pnpm dev"
+                value={startCommand}
+                onChange={(e) => setStartCommand(e.target.value)}
+              />
+            </div>
+            {!commandsValid && (
+              <p className="text-sm text-red-500">
+                Both commands are required when customizing.
+              </p>
+            )}
+            <div className="flex gap-2">
+              <Button
+                data-testid="save-app-commands"
+                onClick={handleSave}
+                size="sm"
+                disabled={updateCommandsMutation.isPending || !commandsValid}
+              >
+                <Save size={14} />
+                {updateCommandsMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+              <Button
+                data-testid="cancel-edit-app-commands"
+                onClick={handleCancel}
+                variant="outline"
+                size="sm"
+              >
+                <X size={14} />
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : hasCustomCommands ? (
+          <div className="space-y-3">
+            <div className="p-3 border rounded-md bg-muted/30">
+              <div className="space-y-2">
+                <div>
+                  <span className="text-xs text-muted-foreground">
+                    Install Command
+                  </span>
+                  <p
+                    data-testid="current-install-command"
+                    className="font-mono text-sm truncate"
+                  >
+                    {app.installCommand}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-xs text-muted-foreground">
+                    Start Command
+                  </span>
+                  <p
+                    data-testid="current-start-command"
+                    className="font-mono text-sm truncate"
+                  >
+                    {app.startCommand}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                data-testid="edit-app-commands"
+                onClick={() => setIsEditing(true)}
+                variant="outline"
+                size="sm"
+              >
+                <Edit2 size={14} />
+                Edit
+              </Button>
+              <Button
+                data-testid="clear-app-commands"
+                onClick={handleClear}
+                variant="outline"
+                size="sm"
+                disabled={updateCommandsMutation.isPending}
+              >
+                <Trash2 size={14} />
+                Clear
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Using default commands (pnpm install && pnpm dev)
+            </p>
+            <Button
+              data-testid="configure-app-commands"
+              onClick={() => setIsEditing(true)}
+              variant="outline"
+              className="w-full"
+            >
+              <Plus size={14} />
+              Configure Custom Commands
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
 
 const EnvironmentVariablesTitle = () => (
   <div className="flex items-center gap-2">
@@ -397,8 +663,10 @@ export const ConfigurePanel = () => {
         </CardContent>
       </Card>
 
+      {/* App Commands Configuration */}
+      <AppCommandsSection selectedAppId={selectedAppId} />
+
       {/* Neon Database Configuration */}
-      {/* Neon Connector */}
       <div className="grid grid-cols-1 gap-6">
         <NeonConfigure />
       </div>

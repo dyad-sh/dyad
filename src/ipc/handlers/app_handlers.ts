@@ -1834,6 +1834,32 @@ export function registerAppHandlers() {
     },
   );
 
+  createTypedHandler(appContracts.updateAppCommands, async (_, params) => {
+    const { appId, installCommand, startCommand } = params;
+
+    return withLock(appId, async () => {
+      const app = await db.query.apps.findFirst({
+        where: eq(apps.id, appId),
+      });
+
+      if (!app) {
+        throw new Error("App not found");
+      }
+
+      await db
+        .update(apps)
+        .set({
+          installCommand: installCommand?.trim() || null,
+          startCommand: startCommand?.trim() || null,
+        })
+        .where(eq(apps.id, appId));
+
+      logger.info(
+        `Updated commands for app ${appId}: install="${installCommand}", start="${startCommand}"`,
+      );
+    });
+  });
+
   createTypedHandler(appContracts.changeAppLocation, async (_, params) => {
     const { appId, parentDirectory } = params;
 

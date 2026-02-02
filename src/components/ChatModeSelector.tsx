@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useSettings } from "@/hooks/useSettings";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
+import { useMcp } from "@/hooks/useMcp";
 import type { ChatMode } from "@/lib/schemas";
 import { isDyadProEnabled } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
@@ -38,9 +39,13 @@ export function ChatModeSelector() {
   const chatId = routerState.location.search.id as number | undefined;
   const currentChatMessages = chatId ? (messagesById.get(chatId) ?? []) : [];
 
-  const selectedMode = settings?.selectedChatMode || "build";
+  // Treat "agent" mode as "build" for UI purposes (backwards compatibility)
+  const rawSelectedMode = settings?.selectedChatMode || "build";
+  const selectedMode = rawSelectedMode === "agent" ? "build" : rawSelectedMode;
   const isProEnabled = settings ? isDyadProEnabled(settings) : false;
   const { messagesRemaining, isQuotaExceeded } = useFreeAgentQuota();
+  const { servers } = useMcp();
+  const enabledMcpServersCount = servers.filter((s) => s.enabled).length;
 
   const handleModeChange = (value: string) => {
     const newMode = value as ChatMode;
@@ -77,11 +82,10 @@ export function ChatModeSelector() {
   const getModeDisplayName = (mode: ChatMode) => {
     switch (mode) {
       case "build":
+      case "agent": // backwards compatibility - treat as build
         return "Build";
       case "ask":
         return "Ask";
-      case "agent":
-        return "Build (MCP)";
       case "local-agent":
         // Show "Basic Agent" for non-Pro users, "Agent" for Pro users
         return isProEnabled ? "Agent" : "Basic Agent";
@@ -92,90 +96,107 @@ export function ChatModeSelector() {
   const isMac = detectIsMac();
 
   return (
-    <Select value={selectedMode} onValueChange={handleModeChange}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <MiniSelectTrigger
-            data-testid="chat-mode-selector"
-            className={cn(
-              "h-6 w-fit px-1.5 py-0 text-xs-sm font-medium shadow-none gap-0.5",
-              selectedMode === "build" || selectedMode === "local-agent"
-                ? "bg-background hover:bg-muted/50 focus:bg-muted/50"
-                : "bg-primary/10 hover:bg-primary/20 focus:bg-primary/20 text-primary border-primary/20 dark:bg-primary/20 dark:hover:bg-primary/30 dark:focus:bg-primary/30",
-            )}
-            size="sm"
-          >
-            <SelectValue>{getModeDisplayName(selectedMode)}</SelectValue>
-          </MiniSelectTrigger>
-        </TooltipTrigger>
-        <TooltipContent>
-          <div className="flex flex-col">
-            <span>Open mode menu</span>
-            <span className="text-xs text-gray-200 dark:text-gray-500">
-              {isMac ? "⌘ + ." : "Ctrl + ."} to toggle
-            </span>
-          </div>
-        </TooltipContent>
-      </Tooltip>
-      <SelectContent align="start" onCloseAutoFocus={(e) => e.preventDefault()}>
-        {isProEnabled && (
-          <SelectItem value="local-agent">
-            <div className="flex flex-col items-start">
-              <div className="flex items-center gap-1.5">
-                <span className="font-medium">Agent v2</span>
-                <NewBadge />
-              </div>
-              <span className="text-xs text-muted-foreground">
-                Better at bigger tasks and debugging
+    <div className="flex items-center gap-1.5">
+      <Select value={selectedMode} onValueChange={handleModeChange}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <MiniSelectTrigger
+              data-testid="chat-mode-selector"
+              className={cn(
+                "h-6 w-fit px-1.5 py-0 text-xs-sm font-medium shadow-none gap-0.5",
+                selectedMode === "build" || selectedMode === "local-agent"
+                  ? "bg-background hover:bg-muted/50 focus:bg-muted/50"
+                  : "bg-primary/10 hover:bg-primary/20 focus:bg-primary/20 text-primary border-primary/20 dark:bg-primary/20 dark:hover:bg-primary/30 dark:focus:bg-primary/30",
+              )}
+              size="sm"
+            >
+              <SelectValue>{getModeDisplayName(selectedMode)}</SelectValue>
+            </MiniSelectTrigger>
+          </TooltipTrigger>
+          <TooltipContent>
+            <div className="flex flex-col">
+              <span>Open mode menu</span>
+              <span className="text-xs text-gray-200 dark:text-gray-500">
+                {isMac ? "⌘ + ." : "Ctrl + ."} to toggle
               </span>
             </div>
-          </SelectItem>
-        )}
-        {!isProEnabled && (
-          <SelectItem value="local-agent" disabled={isQuotaExceeded}>
-            <div className="flex flex-col items-start">
-              <div className="flex items-center gap-1.5">
-                <span className="font-medium">Basic Agent</span>
+          </TooltipContent>
+        </Tooltip>
+        <SelectContent
+          align="start"
+          onCloseAutoFocus={(e) => e.preventDefault()}
+        >
+          {isProEnabled && (
+            <SelectItem value="local-agent">
+              <div className="flex flex-col items-start">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-medium">Agent v2</span>
+                  <NewBadge />
+                </div>
                 <span className="text-xs text-muted-foreground">
-                  ({isQuotaExceeded ? "0" : messagesRemaining}/5 remaining for
-                  today)
+                  Better at bigger tasks and debugging
                 </span>
               </div>
+            </SelectItem>
+          )}
+          {!isProEnabled && (
+            <SelectItem value="local-agent" disabled={isQuotaExceeded}>
+              <div className="flex flex-col items-start">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-medium">Basic Agent</span>
+                  <span className="text-xs text-muted-foreground">
+                    ({isQuotaExceeded ? "0" : messagesRemaining}/5 remaining for
+                    today)
+                  </span>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {isQuotaExceeded
+                    ? "Daily limit reached"
+                    : "Try our AI agent for free"}
+                </span>
+              </div>
+            </SelectItem>
+          )}
+          <SelectItem value="build">
+            <div className="flex flex-col items-start">
+              <span className="font-medium">Build</span>
               <span className="text-xs text-muted-foreground">
-                {isQuotaExceeded
-                  ? "Daily limit reached"
-                  : "Try our AI agent for free"}
+                Generate and edit code
               </span>
             </div>
           </SelectItem>
-        )}
-        <SelectItem value="build">
-          <div className="flex flex-col items-start">
-            <span className="font-medium">Build</span>
-            <span className="text-xs text-muted-foreground">
-              Generate and edit code
-            </span>
-          </div>
-        </SelectItem>
-        <SelectItem value="ask">
-          <div className="flex flex-col items-start">
-            <span className="font-medium">Ask</span>
-            <span className="text-xs text-muted-foreground">
-              Ask questions about the app
-            </span>
-          </div>
-        </SelectItem>
-        <SelectItem value="agent">
-          <div className="flex flex-col items-start">
-            <div className="flex items-center gap-1.5">
-              <span className="font-medium">Build with MCP</span>
+          <SelectItem value="ask">
+            <div className="flex flex-col items-start">
+              <span className="font-medium">Ask</span>
+              <span className="text-xs text-muted-foreground">
+                Ask questions about the app
+              </span>
             </div>
-            <span className="text-xs text-muted-foreground">
-              Like Build, but can use tools (MCP) to generate code
-            </span>
-          </div>
-        </SelectItem>
-      </SelectContent>
-    </Select>
+          </SelectItem>
+        </SelectContent>
+      </Select>
+      {selectedMode === "build" && <McpChip count={enabledMcpServersCount} />}
+    </div>
+  );
+}
+
+function McpChip({ count }: { count: number }) {
+  if (count === 0) return null;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          data-testid="mcp-servers-chip"
+          className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400 border border-purple-200 dark:border-purple-800 cursor-default"
+        >
+          {count} MCP
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>
+        <span>
+          {count} MCP server{count !== 1 ? "s" : ""} enabled
+        </span>
+      </TooltipContent>
+    </Tooltip>
   );
 }

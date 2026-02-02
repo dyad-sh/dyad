@@ -30,7 +30,7 @@ testSkipIfWindows("mcp - call calculator", async ({ po }) => {
   await po.page.getByRole("textbox", { name: "Value" }).fill("testValue1");
   await po.page.getByRole("button", { name: "Save" }).click();
   await po.goToAppsTab();
-  await po.selectChatMode("agent");
+  await po.selectChatMode("build");
   await po.sendPrompt("[call_tool=calculator_add]", {
     skipWaitForCompletion: true,
   });
@@ -115,7 +115,7 @@ testSkipIfWindows("mcp - call calculator via http", async ({ po }) => {
     await po.goToSettingsTab();
     await po.page.getByRole("button", { name: "Tools (MCP)" }).click();
     await po.goToAppsTab();
-    await po.selectChatMode("agent");
+    await po.selectChatMode("build");
     await po.sendPrompt("[call_tool=calculator_add]", {
       skipWaitForCompletion: true,
     });

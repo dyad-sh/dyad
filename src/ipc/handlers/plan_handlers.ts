@@ -35,7 +35,6 @@ export function registerPlanHandlers() {
     const frontmatter = buildFrontmatter({
       title,
       summary: summary ?? "",
-      status: "draft",
       chatId: String(chatId ?? ""),
       createdAt: now,
       updatedAt: now,
@@ -63,61 +62,9 @@ export function registerPlanHandlers() {
       title: meta.title ?? "",
       summary: meta.summary || null,
       content,
-      status:
-        (meta.status as "draft" | "accepted" | "rejected" | "implemented") ??
-        "draft",
       createdAt: meta.createdAt ?? new Date().toISOString(),
       updatedAt: meta.updatedAt ?? new Date().toISOString(),
     };
-  });
-
-  createTypedHandler(planContracts.getPlansForApp, async (_, appId) => {
-    const planDir = await getPlanDir(appId);
-    let files: string[];
-    try {
-      files = await fs.promises.readdir(planDir);
-    } catch {
-      return [];
-    }
-
-    const mdFiles = files.filter((f) => f.endsWith(".md"));
-    const planResults = await Promise.allSettled(
-      mdFiles.map(async (file) => {
-        const filePath = path.join(planDir, file);
-        const raw = await fs.promises.readFile(filePath, "utf-8");
-        const { meta, content } = parsePlanFile(raw);
-        const slug = file.replace(/\.md$/, "");
-
-        return {
-          id: slug,
-          appId,
-          chatId: meta.chatId ? Number(meta.chatId) : null,
-          title: meta.title ?? "",
-          summary: meta.summary || null,
-          content,
-          status:
-            (meta.status as
-              | "draft"
-              | "accepted"
-              | "rejected"
-              | "implemented") ?? "draft",
-          createdAt: meta.createdAt ?? new Date().toISOString(),
-          updatedAt: meta.updatedAt ?? new Date().toISOString(),
-        };
-      }),
-    );
-
-    const plans = [];
-    for (const result of planResults) {
-      if (result.status === "fulfilled") {
-        plans.push(result.value);
-      }
-    }
-
-    // Sort by createdAt descending
-    plans.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-
-    return plans;
   });
 
   createTypedHandler(
@@ -149,12 +96,6 @@ export function registerPlanHandlers() {
             title: meta.title ?? "",
             summary: meta.summary || null,
             content,
-            status:
-              (meta.status as
-                | "draft"
-                | "accepted"
-                | "rejected"
-                | "implemented") ?? "draft",
             createdAt: meta.createdAt ?? new Date().toISOString(),
             updatedAt: meta.updatedAt ?? new Date().toISOString(),
           };
@@ -175,7 +116,6 @@ export function registerPlanHandlers() {
 
     if (updates.title !== undefined) meta.title = updates.title;
     if (updates.summary !== undefined) meta.summary = updates.summary;
-    if (updates.status !== undefined) meta.status = updates.status;
     meta.updatedAt = new Date().toISOString();
 
     const newContent =

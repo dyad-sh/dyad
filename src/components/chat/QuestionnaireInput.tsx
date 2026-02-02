@@ -222,8 +222,7 @@ export function QuestionnaireInput() {
                   />
                 )}
 
-                {(currentQuestion.type === "radio" ||
-                  currentQuestion.type === "select") &&
+                {currentQuestion.type === "radio" &&
                   currentQuestion.options && (
                     <RadioGroup
                       value={(responses[currentQuestion.id] as string) || ""}

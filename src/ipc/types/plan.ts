@@ -37,7 +37,7 @@ export type PlanExitPayload = z.infer<typeof PlanExitSchema>;
  */
 export const QuestionSchema = z.object({
   id: z.string(),
-  type: z.enum(["text", "radio", "checkbox", "select"]),
+  type: z.enum(["text", "radio", "checkbox"]),
   question: z.string(),
   options: z.array(z.string()).optional(),
   required: z.boolean().optional(),
@@ -68,7 +68,6 @@ export const PlanSchema = z.object({
   title: z.string(),
   summary: z.string().nullable(),
   content: z.string(),
-  status: z.enum(["draft", "accepted", "rejected", "implemented"]),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -97,7 +96,6 @@ export const UpdatePlanParamsSchema = z.object({
   title: z.string().optional(),
   summary: z.string().optional(),
   content: z.string().optional(),
-  status: z.enum(["draft", "accepted", "rejected", "implemented"]).optional(),
 });
 
 export type UpdatePlanParams = z.infer<typeof UpdatePlanParamsSchema>;
@@ -156,15 +154,6 @@ export const planContracts = {
   }),
 
   /**
-   * Get all plans for an app.
-   */
-  getPlansForApp: defineContract({
-    channel: "plan:get-for-app",
-    input: z.number(), // appId
-    output: z.array(PlanSchema),
-  }),
-
-  /**
    * Get a plan by chat ID.
    * Returns null if no plan exists for the chat.
    */
@@ -213,6 +202,6 @@ export const planEventClient = createEventClient(planEvents);
  *
  * @example
  * const planId = await planClient.createPlan({ appId, title, content });
- * const plans = await planClient.getPlansForApp(appId);
+ * const plan = await planClient.getPlanForChat({ appId, chatId });
  */
 export const planClient = createClient(planContracts);

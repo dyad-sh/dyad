@@ -21,7 +21,7 @@ const DESCRIPTION = `
 Present an implementation plan to the user in the preview panel.
 
 The plan should be comprehensive and include (in this order — product/UX first, technical last):
-- **Feature Overview**: Clear description of what will be built
+- **Overview**: Clear description of what will be built or changed
 - **UI/UX Design**: User flows, layout, component placement, interactions
 - **Considerations**: Potential challenges, trade-offs, edge cases, or alternatives
 - **Technical Approach**: Architecture decisions, patterns to use, libraries needed

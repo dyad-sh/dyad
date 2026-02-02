@@ -8,9 +8,9 @@ const logger = log.scope("planning_questionnaire");
 const QuestionSchema = z.object({
   id: z.string().describe("Unique identifier for this question"),
   type: z
-    .enum(["text", "radio", "checkbox", "select"])
+    .enum(["text", "radio", "checkbox"])
     .describe(
-      "Type of input: text for free-form, radio for single choice, checkbox for multiple choice, select for dropdown",
+      "Type of input: text for free-form, radio for single choice, checkbox for multiple choice",
     ),
   question: z.string().describe("The question text to display to the user"),
   options: z
@@ -18,7 +18,7 @@ const QuestionSchema = z.object({
     .max(3)
     .optional()
     .describe(
-      "Options for radio, checkbox, or select question types. Keep to max 3 options — users can always provide a custom answer via the free-form text input.",
+      "Options for radio or checkbox question types. Keep to max 3 options — users can always provide a custom answer via the free-form text input.",
     ),
   required: z
     .boolean()
@@ -61,7 +61,6 @@ Question Types:
 - \`text\`: Free-form text input for open-ended questions
 - \`radio\`: Single choice from multiple options (with additional free-form text input)
 - \`checkbox\`: Multiple choice (with additional free-form text input)
-- \`select\`: Dropdown selection (with additional free-form text input)
 
 **NOTE**: All question types (except pure text) include a free-form text input where users can provide custom answers or additional details. This ensures users are never limited to just the predefined options.
 
@@ -70,7 +69,7 @@ Best Practices:
 - Keep options to a maximum of 3 per question — users can always type a custom answer
 - Users can always type a custom answer, so you don't need to cover every possible option
 - Group related questions together
-- Provide clear options when using radio/checkbox/select
+- Provide clear options when using radio/checkbox
 - Explain why you're asking if it's not obvious
 
 Example:
@@ -83,13 +82,6 @@ Example:
       "type": "radio",
       "question": "Which authentication method would you prefer?",
       "options": ["Email/Password", "OAuth (Google, GitHub)", "Magic Link"],
-      "required": true
-    },
-    {
-      "id": "session_duration",
-      "type": "select",
-      "question": "How long should user sessions last?",
-      "options": ["1 hour", "24 hours", "7 days"],
       "required": true
     }
   ]

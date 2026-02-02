@@ -55,6 +55,7 @@
     "@ai-sdk/provider-utils": "^4.0.13",
     "@ai-sdk/xai": "^3.0.46",
     "@babel/parser": "^7.28.5",
+    "@base-ui/react": "^1.1.0",
     "@biomejs/biome": "^1.9.4",
     "@dyad-sh/supabase-management-js": "v1.0.1",
     "@lexical/react": "^0.33.1",

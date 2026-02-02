@@ -1,3 +1,4 @@
+import { windowsSign } from "./windowsSign";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
@@ -94,6 +95,7 @@ const isEndToEndTestBuild = process.env.E2E_TEST_BUILD === "true";
 
 const config: ForgeConfig = {
   packagerConfig: {
+    windowsSign,
     protocols: [
       {
         name: "Dyad",
@@ -146,7 +148,10 @@ const config: ForgeConfig = {
     },
   },
   makers: [
-    new MakerSquirrel({}),
+    new MakerSquirrel({
+      // @ts-expect-error - incorrect types exported by MakerSquirrel
+      windowsSign,
+    }),
     new MakerZIP({}, ["darwin"]),
     new MakerRpm({}),
     new MakerDeb({

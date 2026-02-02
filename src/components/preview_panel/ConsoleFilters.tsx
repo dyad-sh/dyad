@@ -159,9 +159,15 @@ export const ConsoleFilters = ({
                   size={12}
                   className={isFetchingEdgeLogs ? "animate-spin" : ""}
                 />
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse"
+                  title="Polling active"
+                />
               </button>
             </TooltipTrigger>
-            <TooltipContent>Fetch Supabase Edge Function Logs</TooltipContent>
+            <TooltipContent>
+              Fetch Supabase Edge Function Logs (auto-polling every 5s)
+            </TooltipContent>
           </Tooltip>
         </TooltipProvider>
       )}

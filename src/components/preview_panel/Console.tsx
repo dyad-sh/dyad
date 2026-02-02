@@ -136,6 +136,29 @@ export const Console = () => {
     }
   }, [app?.supabaseProjectId, app?.supabaseOrganizationSlug, loadEdgeLogs]);
 
+  // Poll for new edge logs every 5 seconds when a Supabase project is connected
+  const isPollingRef = useRef(false);
+  useEffect(() => {
+    const projectId = app?.supabaseProjectId;
+    const organizationSlug = app?.supabaseOrganizationSlug ?? undefined;
+    if (!projectId) return;
+
+    const poll = async () => {
+      if (isPollingRef.current) return;
+      isPollingRef.current = true;
+      try {
+        await loadEdgeLogs({ projectId, organizationSlug });
+      } catch {
+        // Silently ignore errors during polling to avoid spamming toasts
+      } finally {
+        isPollingRef.current = false;
+      }
+    };
+
+    const intervalId = setInterval(poll, 5000);
+    return () => clearInterval(intervalId);
+  }, [app?.supabaseProjectId, app?.supabaseOrganizationSlug, loadEdgeLogs]);
+
   useEffect(() => {
     const container = containerRef.current?.parentElement;
     if (!container) return;

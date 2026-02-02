@@ -12,6 +12,7 @@ import {
   Wrench,
   Globe,
   Shield,
+  Database,
 } from "lucide-react";
 import { ChatActivityButton } from "@/components/chat/ChatActivity";
 import { motion } from "framer-motion";
@@ -41,7 +42,8 @@ export type PreviewMode =
   | "problems"
   | "configure"
   | "publish"
-  | "security";
+  | "security"
+  | "database";
 
 // Preview Header component with preview mode toggle
 export const ActionHeader = () => {
@@ -54,6 +56,7 @@ export const ActionHeader = () => {
   const configureRef = useRef<HTMLButtonElement>(null);
   const publishRef = useRef<HTMLButtonElement>(null);
   const securityRef = useRef<HTMLButtonElement>(null);
+  const databaseRef = useRef<HTMLButtonElement>(null);
   const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 });
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const { problemReport } = useCheckProblems(selectedAppId);
@@ -140,6 +143,9 @@ export const ActionHeader = () => {
           break;
         case "security":
           targetRef = securityRef;
+          break;
+        case "database":
+          targetRef = databaseRef;
           break;
         default:
           return;
@@ -261,6 +267,13 @@ export const ActionHeader = () => {
             <Shield size={iconSize} />,
             "Security",
             "security-mode-button",
+          )}
+          {renderButton(
+            "database",
+            databaseRef,
+            <Database size={iconSize} />,
+            "Database",
+            "database-mode-button",
           )}
           {renderButton(
             "publish",

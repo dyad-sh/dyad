@@ -655,7 +655,8 @@ export class PageObject {
       | "preview"
       | "configure"
       | "security"
-      | "publish",
+      | "publish"
+      | "database",
   ) {
     await this.page.getByTestId(`${mode}-mode-button`).click();
   }

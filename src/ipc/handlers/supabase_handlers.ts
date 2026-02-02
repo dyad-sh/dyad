@@ -8,6 +8,7 @@ import {
   getSupabaseProjectLogs,
   getOrganizationDetails,
   getOrganizationMembers,
+  executeSupabaseSql,
   type SupabaseProjectLog,
 } from "../../supabase_admin/supabase_management_client";
 import { extractFunctionName } from "../../supabase_admin/supabase_utils";
@@ -216,6 +217,82 @@ export function registerSupabaseHandlers() {
       .where(eq(apps.id, app));
 
     logger.info(`Removed Supabase project association for app ${app}`);
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Database Viewer Handlers
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  // List public tables for a Supabase project
+  createTypedHandler(supabaseContracts.listTables, async (_, params) => {
+    const { projectId, organizationSlug } = params;
+    const query = `
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+        AND table_type = 'BASE TABLE'
+      ORDER BY table_name;
+    `;
+    const result = await executeSupabaseSql({
+      supabaseProjectId: projectId,
+      query,
+      organizationSlug,
+    });
+    const parsed = JSON.parse(result);
+    return (parsed ?? []).map((row: { table_name: string }) => row.table_name);
+  });
+
+  // Get table schema (columns) for a specific table
+  createTypedHandler(supabaseContracts.getTableSchema, async (_, params) => {
+    const { projectId, organizationSlug, table } = params;
+    // Validate table name (alphanumeric + underscore only, must start with letter or underscore)
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(table)) {
+      throw new Error("supabase:get-table-schema: Invalid table name");
+    }
+    const query = `
+      SELECT 
+        column_name as name, 
+        data_type as type, 
+        is_nullable = 'YES' as nullable, 
+        column_default as "defaultValue"
+      FROM information_schema.columns 
+      WHERE table_schema = 'public' AND table_name = '${table}'
+      ORDER BY ordinal_position;
+    `;
+    const result = await executeSupabaseSql({
+      supabaseProjectId: projectId,
+      query,
+      organizationSlug,
+    });
+    return JSON.parse(result) ?? [];
+  });
+
+  // Query table rows with pagination
+  createTypedHandler(supabaseContracts.queryTableRows, async (_, params) => {
+    const { projectId, organizationSlug, table, limit, offset } = params;
+    // Validate table name (alphanumeric + underscore only, must start with letter or underscore)
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(table)) {
+      throw new Error("supabase:query-table-rows: Invalid table name");
+    }
+
+    // Get total count
+    const countQuery = `SELECT COUNT(*) as count FROM "${table}";`;
+    const countResult = await executeSupabaseSql({
+      supabaseProjectId: projectId,
+      query: countQuery,
+      organizationSlug,
+    });
+    const total = JSON.parse(countResult)?.[0]?.count ?? null;
+
+    // Get rows with pagination
+    const rowsQuery = `SELECT * FROM "${table}" LIMIT ${limit} OFFSET ${offset};`;
+    const rowsResult = await executeSupabaseSql({
+      supabaseProjectId: projectId,
+      query: rowsQuery,
+      organizationSlug,
+    });
+
+    return { rows: JSON.parse(rowsResult) ?? [], total: Number(total) };
   });
 
   testOnlyHandle(

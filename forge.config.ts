@@ -1,3 +1,4 @@
+import { windowsSign } from "./windowsSign";
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { MakerSquirrel } from "@electron-forge/maker-squirrel";
 import { MakerZIP } from "@electron-forge/maker-zip";
@@ -8,44 +9,6 @@ import { VitePlugin } from "@electron-forge/plugin-vite";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { AutoUnpackNativesPlugin } from "@electron-forge/plugin-auto-unpack-natives";
-import { execSync } from "child_process";
-import path from "path";
-
-// Path to signtool.exe bundled with electron-winstaller
-// On GitHub Actions, this is the full path:
-// D:\a\dyad\dyad\node_modules\electron-winstaller\vendor\signtool.exe
-const SIGNTOOL_PATH = path.join(
-  __dirname,
-  "node_modules",
-  "electron-winstaller",
-  "vendor",
-  "signtool.exe",
-);
-
-/**
- * Signs a Windows executable using DigiCert's signtool.
- */
-function signWindowsExecutable(filePath: string): void {
-  const certHash = process.env.SM_CODE_SIGNING_CERT_SHA1_HASH;
-  if (!certHash) {
-    console.log(
-      `[postMake] SM_CODE_SIGNING_CERT_SHA1_HASH not set, skipping signing`,
-    );
-    return;
-  }
-
-  console.log(`[postMake] Signing: ${filePath}`);
-  const signParams = `/sha1 ${certHash} /tr http://timestamp.digicert.com /td SHA256 /fd SHA256`;
-  const cmd = `"${SIGNTOOL_PATH}" sign ${signParams} "${filePath}"`;
-
-  try {
-    execSync(cmd, { stdio: "inherit" });
-    console.log(`[postMake] Signing successful: ${filePath}`);
-  } catch (error) {
-    console.error(`[postMake] Signing failed for ${filePath}:`, error);
-    throw error;
-  }
-}
 
 // Based on https://github.com/electron/forge/blob/6b2d547a7216c30fde1e1fddd1118eee5d872945/packages/plugin/vite/src/VitePlugin.ts#L124
 const ignore = (file: string) => {
@@ -94,6 +57,7 @@ const isEndToEndTestBuild = process.env.E2E_TEST_BUILD === "true";
 
 const config: ForgeConfig = {
   packagerConfig: {
+    windowsSign,
     protocols: [
       {
         name: "Dyad",
@@ -123,30 +87,11 @@ const config: ForgeConfig = {
     extraModules: ["better-sqlite3"],
     force: true,
   },
-  hooks: {
-    postMake: async (_forgeConfig, makeResults) => {
-      for (const result of makeResults) {
-        // Only sign Windows artifacts
-        if (result.platform !== "win32") {
-          continue;
-        }
-
-        console.log(
-          `[postMake] Processing Windows artifacts for ${result.arch}`,
-        );
-        for (const artifact of result.artifacts) {
-          const fileName = path.basename(artifact).toLowerCase();
-          // Sign .exe files (the Squirrel installer and Setup.exe)
-          if (fileName.endsWith(".exe")) {
-            signWindowsExecutable(artifact);
-          }
-        }
-      }
-      return makeResults;
-    },
-  },
   makers: [
-    new MakerSquirrel({}),
+    new MakerSquirrel({
+      // @ts-expect-error - incorrect types exported by MakerSquirrel
+      windowsSign,
+    }),
     new MakerZIP({}, ["darwin"]),
     new MakerRpm({}),
     new MakerDeb({

@@ -643,6 +643,13 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                   ...prev,
                   [selectedAppId]: urlToPreserve,
                 }));
+              } else if (newUrlObj.origin === appUrlObj.origin) {
+                // Clear preserved URL when navigating back to root
+                setPreservedUrls((prev) => {
+                  const next = { ...prev };
+                  delete next[selectedAppId];
+                  return next;
+                });
               }
             } catch {
               // Invalid URL, don't preserve
@@ -671,6 +678,13 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                   ...prev,
                   [selectedAppId]: urlToPreserve,
                 }));
+              } else if (newUrlObj.origin === appUrlObj.origin) {
+                // Clear preserved URL when navigating back to root
+                setPreservedUrls((prev) => {
+                  const next = { ...prev };
+                  delete next[selectedAppId];
+                  return next;
+                });
               }
             } catch {
               // Invalid URL, don't preserve

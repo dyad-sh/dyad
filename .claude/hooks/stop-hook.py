@@ -21,6 +21,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Allow disabling this hook via environment variable
+if os.environ.get("DISABLE_DYAD_STOP_HOOK", "").lower() in ("true", "1", "yes"):
+    sys.exit(0)
+
 
 def extract_task_tool_calls(transcript_path: str) -> list[dict]:
     """Extract all Task* tool calls from the transcript.

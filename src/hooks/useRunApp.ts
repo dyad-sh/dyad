@@ -7,6 +7,7 @@ import {
   currentAppAtom,
   previewPanelKeyAtom,
   previewErrorMessageAtom,
+  previewCurrentUrlAtom,
   selectedAppIdAtom,
 } from "@/atoms/appAtoms";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
@@ -127,6 +128,7 @@ export function useRunApp() {
   const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
   const [, setAppUrlObj] = useAtom(appUrlAtom);
   const setPreviewPanelKey = useSetAtom(previewPanelKeyAtom);
+  const setPreservedUrls = useSetAtom(previewCurrentUrlAtom);
   const appId = useAtomValue(selectedAppIdAtom);
   const setPreviewErrorMessage = useSetAtom(previewErrorMessageAtom);
 
@@ -218,6 +220,13 @@ export function useRunApp() {
         // Clear the URL and add restart message
         setAppUrlObj({ appUrl: null, appId: null, originalUrl: null });
 
+        // Clear preserved URL to prevent stale route restoration after restart
+        setPreservedUrls((prev) => {
+          const next = { ...prev };
+          delete next[appId];
+          return next;
+        });
+
         // Clear logs in both the backend store and UI state
         await ipc.misc.clearLogs({ appId });
         setConsoleEntries([]);
@@ -254,7 +263,14 @@ export function useRunApp() {
         setLoading(false);
       }
     },
-    [appId, setApp, setConsoleEntries, setAppUrlObj, setPreviewPanelKey],
+    [
+      appId,
+      setApp,
+      setConsoleEntries,
+      setAppUrlObj,
+      setPreviewPanelKey,
+      setPreservedUrls,
+    ],
   );
 
   const refreshAppIframe = useCallback(async () => {

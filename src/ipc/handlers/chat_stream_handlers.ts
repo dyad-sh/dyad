@@ -86,7 +86,6 @@ import { replacePromptReference } from "../utils/replacePromptReference";
 import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
 import {
-  isDyadProEnabled,
   isBasicAgentMode,
   isSupabaseConnected,
   isTurboEditsV2Enabled,
@@ -536,8 +535,7 @@ ${componentSnippet}
         );
         const willUseLocalAgentStream =
           (settings.selectedChatMode === "local-agent" ||
-            (settings.selectedChatMode === "ask" &&
-              isDyadProEnabled(settings))) &&
+            settings.selectedChatMode === "ask") &&
           !mentionedAppsCodebases.length;
 
         const isDeepContextEnabled =
@@ -1029,11 +1027,11 @@ This conversation includes one or more image attachments. When the user uploads 
           return fullResponse;
         };
 
-        // Handle pro ask mode: use local-agent in read-only mode
-        // This gives pro users access to code reading tools while in ask mode
+        // Handle ask mode: use local-agent in read-only mode
+        // This gives users access to code reading tools while in ask mode
+        // Ask mode does not consume free agent quota
         if (
           settings.selectedChatMode === "ask" &&
-          isDyadProEnabled(settings) &&
           !mentionedAppsCodebases.length
         ) {
           // Reconstruct system prompt for local-agent read-only mode

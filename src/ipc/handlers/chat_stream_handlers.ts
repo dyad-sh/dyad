@@ -535,10 +535,10 @@ ${componentSnippet}
           updatedChat.app.id, // Exclude current app
         );
         const willUseLocalAgentStream =
-          settings.selectedChatMode === "local-agent" ||
-          (settings.selectedChatMode === "ask" &&
-            isDyadProEnabled(settings) &&
-            !mentionedAppsCodebases.length);
+          (settings.selectedChatMode === "local-agent" ||
+            (settings.selectedChatMode === "ask" &&
+              isDyadProEnabled(settings))) &&
+          !mentionedAppsCodebases.length;
 
         const isDeepContextEnabled =
           isEngineEnabled &&

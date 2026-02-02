@@ -620,8 +620,32 @@
         "Dyad component selector waiting for tagged elements to appear...",
       );
 
-      observer = new MutationObserver(() => {
-        checkForTaggedElements();
+      observer = new MutationObserver((mutations) => {
+        // Filter mutations to only process relevant changes
+        const hasRelevantMutation = mutations.some((mutation) => {
+          // Attribute mutation on data-dyad-id (already filtered by attributeFilter)
+          if (mutation.type === "attributes") {
+            return true;
+          }
+          // Check if any added nodes have data-dyad-id
+          if (mutation.type === "childList") {
+            for (const node of mutation.addedNodes) {
+              if (node.nodeType === Node.ELEMENT_NODE) {
+                if (
+                  node.hasAttribute("data-dyad-id") ||
+                  node.querySelector("[data-dyad-id]")
+                ) {
+                  return true;
+                }
+              }
+            }
+          }
+          return false;
+        });
+
+        if (hasRelevantMutation) {
+          checkForTaggedElements();
+        }
       });
 
       observer.observe(document.body, {

@@ -19,6 +19,7 @@ import { EventEmitter } from "node:events";
 import { spawn, ChildProcess, exec } from "node:child_process";
 import { promisify } from "node:util";
 import Database from "better-sqlite3";
+import { getOpenClawSystemIntegration } from "@/lib/openclaw_system_integration";
 
 const execAsync = promisify(exec);
 
@@ -2440,19 +2441,52 @@ Output as tailwind.config.js:
   }
   
   private async runModelInference(agent: AutonomousAgent, prompt: string): Promise<string> {
-    // This would connect to the actual AI model
-    // For now, return a placeholder
-    // In production, this would use the existing chat system or local models
-    
-    // Emit event for external handling
-    this.emit("model:inference:request", {
-      agentId: agent.id,
-      model: agent.config.primaryModel,
-      prompt,
-    });
-    
-    // Wait for response (would be async in production)
-    return `[Model response for: ${prompt.substring(0, 100)}...]`;
+    // Use OpenClaw for AI inference - provides unified access to local (Ollama) and cloud (Anthropic)
+    try {
+      const OpenClaw = getOpenClawSystemIntegration();
+      
+      // Check if OpenClaw is initialized, if not use fallback
+      const config = OpenClaw.getConfig();
+      if (!config.enabled || !config.useForAgents) {
+        // Fallback to event-based handling
+        this.emit("model:inference:request", {
+          agentId: agent.id,
+          model: agent.config.primaryModel,
+          prompt,
+        });
+        return `[Model response for: ${prompt.substring(0, 100)}...]`;
+      }
+      
+      // Build system prompt from agent context
+      const systemPrompt = `You are an autonomous AI agent named "${agent.name}" with the following capabilities: ${agent.capabilities.map(c => c.type).join(", ")}. Your purpose is: ${agent.purpose}. Current state: ${agent.state}.`;
+      
+      // Use OpenClaw for inference - prefers local Ollama, falls back to Anthropic
+      const response = await OpenClaw.agentInference(agent.id, prompt, {
+        systemPrompt,
+        model: agent.config.primaryModel,
+        temperature: agent.config.temperature || 0.7,
+      });
+      
+      // Also emit event for monitoring/logging
+      this.emit("model:inference:completed", {
+        agentId: agent.id,
+        model: agent.config.primaryModel,
+        prompt: prompt.substring(0, 100),
+        responseLength: response.length,
+      });
+      
+      return response;
+    } catch (error) {
+      // Log error and emit event for external handling
+      this.emit("model:inference:error", {
+        agentId: agent.id,
+        model: agent.config.primaryModel,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      
+      // Return placeholder on error (graceful degradation)
+      return `[Model inference failed: ${error instanceof Error ? error.message : "Unknown error"}]`;
+    }
   }
   
   private async executeAnalysis(mission: Mission): Promise<ActionResult> {

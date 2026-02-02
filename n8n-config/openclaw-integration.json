@@ -1,0 +1,442 @@
+{
+  "OpenClaw": {
+    "name": "OpenClaw Gateway",
+    "version": "1.0.0",
+    "description": "Local AI Gateway integration for JoyCreate with n8n workflow support",
+    "defaultPort": 18789,
+    "defaultHost": "127.0.0.1"
+  },
+  "workflowTemplates": [
+    {
+      "id": "OpenClaw-agent-trigger",
+      "name": "OpenClaw Agent Trigger",
+      "description": "Trigger OpenClaw agent tasks from n8n workflows",
+      "category": "ai-agent",
+      "nodes": [
+        {
+          "type": "n8n-nodes-base.webhook",
+          "name": "Agent Request",
+          "position": [0, 0],
+          "parameters": {
+            "path": "OpenClaw/agent",
+            "method": "POST"
+          }
+        },
+        {
+          "type": "n8n-nodes-base.httpRequest",
+          "name": "Execute OpenClaw Task",
+          "position": [200, 0],
+          "parameters": {
+            "method": "POST",
+            "url": "http://localhost:5679/api/OpenClaw/agent",
+            "body": {
+              "type": "={{$json.taskType}}",
+              "objective": "={{$json.objective}}",
+              "context": "={{$json.context}}",
+              "preferLocal": true
+            }
+          }
+        },
+        {
+          "type": "n8n-nodes-base.respondToWebhook",
+          "name": "Return Result",
+          "position": [400, 0]
+        }
+      ],
+      "connections": {
+        "Agent Request": {
+          "main": [[{ "node": "Execute OpenClaw Task", "type": "main", "index": 0 }]]
+        },
+        "Execute OpenClaw Task": {
+          "main": [[{ "node": "Return Result", "type": "main", "index": 0 }]]
+        }
+      }
+    },
+    {
+      "id": "OpenClaw-code-review",
+      "name": "Automated Code Review",
+      "description": "Use OpenClaw to analyze code changes automatically",
+      "category": "ai-agent",
+      "nodes": [
+        {
+          "type": "n8n-nodes-base.githubTrigger",
+          "name": "On PR Created",
+          "position": [0, 0],
+          "parameters": {
+            "events": ["pull_request"],
+            "filter": {
+              "action": "opened"
+            }
+          }
+        },
+        {
+          "type": "n8n-nodes-base.github",
+          "name": "Get PR Files",
+          "position": [200, 0],
+          "parameters": {
+            "operation": "getAll",
+            "resource": "pullRequest"
+          }
+        },
+        {
+          "type": "n8n-nodes-base.httpRequest",
+          "name": "Analyze with OpenClaw",
+          "position": [400, 0],
+          "parameters": {
+            "method": "POST",
+            "url": "http://localhost:5679/api/OpenClaw/analyze",
+            "body": {
+              "files": "={{$json.files}}",
+              "analysisType": "all"
+            }
+          }
+        },
+        {
+          "type": "n8n-nodes-base.github",
+          "name": "Post Review Comment",
+          "position": [600, 0],
+          "parameters": {
+            "operation": "createComment",
+            "resource": "review"
+          }
+        }
+      ]
+    },
+    {
+      "id": "OpenClaw-autonomous-builder",
+      "name": "Autonomous App Builder",
+      "description": "Create apps automatically from descriptions using OpenClaw",
+      "category": "automation",
+      "nodes": [
+        {
+          "type": "n8n-nodes-base.webhook",
+          "name": "Build Request",
+          "position": [0, 0],
+          "parameters": {
+            "path": "OpenClaw/build",
+            "method": "POST"
+          }
+        },
+        {
+          "type": "n8n-nodes-base.httpRequest",
+          "name": "Create App with OpenClaw",
+          "position": [200, 0],
+          "parameters": {
+            "method": "POST",
+            "url": "http://localhost:5679/api/OpenClaw/autonomous/create-app",
+            "body": {
+              "name": "={{$json.name}}",
+              "description": "={{$json.description}}",
+              "features": "={{$json.features}}",
+              "techStack": "={{$json.techStack}}",
+              "useLocal": true
+            }
+          }
+        },
+        {
+          "type": "n8n-nodes-base.code",
+          "name": "Process Results",
+          "position": [400, 0],
+          "parameters": {
+            "jsCode": "const result = $input.first().json;\nreturn [{ json: { success: result.status === 'completed', artifacts: result.artifacts } }];"
+          }
+        },
+        {
+          "type": "n8n-nodes-base.respondToWebhook",
+          "name": "Return Build Result",
+          "position": [600, 0]
+        }
+      ]
+    },
+    {
+      "id": "OpenClaw-chat-bridge",
+      "name": "Chat Platform Bridge",
+      "description": "Bridge messages from chat platforms to OpenClaw",
+      "category": "integration",
+      "nodes": [
+        {
+          "type": "n8n-nodes-base.webhook",
+          "name": "Chat Message",
+          "position": [0, 0],
+          "parameters": {
+            "path": "OpenClaw/chat",
+            "method": "POST"
+          }
+        },
+        {
+          "type": "n8n-nodes-base.httpRequest",
+          "name": "Send to OpenClaw",
+          "position": [200, 0],
+          "parameters": {
+            "method": "POST",
+            "url": "http://localhost:5679/api/OpenClaw/chat",
+            "body": {
+              "messages": [
+                { "role": "user", "content": "={{$json.message}}" }
+              ],
+              "capabilities": ["chat"]
+            }
+          }
+        },
+        {
+          "type": "n8n-nodes-base.respondToWebhook",
+          "name": "Return Response",
+          "position": [400, 0]
+        }
+      ]
+    },
+    {
+      "id": "OpenClaw-scheduled-analysis",
+      "name": "Scheduled Codebase Analysis",
+      "description": "Run periodic codebase analysis with OpenClaw",
+      "category": "automation",
+      "nodes": [
+        {
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "name": "Daily Schedule",
+          "position": [0, 0],
+          "parameters": {
+            "rule": {
+              "interval": [{ "field": "hours", "hoursInterval": 24 }]
+            }
+          }
+        },
+        {
+          "type": "n8n-nodes-base.readBinaryFiles",
+          "name": "Read Project Files",
+          "position": [200, 0],
+          "parameters": {
+            "fileSelector": "src/**/*.{ts,tsx,js,jsx}"
+          }
+        },
+        {
+          "type": "n8n-nodes-base.httpRequest",
+          "name": "Analyze with OpenClaw",
+          "position": [400, 0],
+          "parameters": {
+            "method": "POST",
+            "url": "http://localhost:5679/api/OpenClaw/analyze",
+            "body": {
+              "analysisType": "quality",
+              "useLocal": true
+            }
+          }
+        },
+        {
+          "type": "n8n-nodes-base.slack",
+          "name": "Send Report to Slack",
+          "position": [600, 0],
+          "parameters": {
+            "channel": "#code-reviews",
+            "text": "Daily Code Analysis Report"
+          }
+        }
+      ]
+    }
+  ],
+  "dataPipelineWorkflows": [
+    {
+      "id": "OpenClaw-data-scraper",
+      "name": "AI-Enhanced Web Scraper",
+      "description": "Scrape web content with AI-powered extraction using local Ollama",
+      "category": "data-collection",
+      "nodes": [
+        {
+          "type": "n8n-nodes-base.webhook",
+          "name": "Scrape Request",
+          "position": [0, 0],
+          "parameters": {
+            "path": "OpenClaw/scrape",
+            "method": "POST"
+          }
+        },
+        {
+          "type": "n8n-nodes-base.httpRequest",
+          "name": "Execute AI Scraping",
+          "position": [200, 0],
+          "parameters": {
+            "method": "POST",
+            "url": "http://localhost:5679/api/OpenClaw/data/scrape",
+            "body": {
+              "urls": "={{$json.urls}}",
+              "type": "web",
+              "aiExtraction": {
+                "enabled": true,
+                "preferLocal": true,
+                "instructions": "={{$json.instructions}}"
+              },
+              "output": {
+                "format": "markdown",
+                "includeMetadata": true
+              }
+            }
+          }
+        },
+        {
+          "type": "n8n-nodes-base.respondToWebhook",
+          "name": "Return Scraped Data",
+          "position": [400, 0]
+        }
+      ],
+      "connections": {
+        "Scrape Request": {
+          "main": [[{ "node": "Execute AI Scraping", "type": "main", "index": 0 }]]
+        },
+        "Execute AI Scraping": {
+          "main": [[{ "node": "Return Scraped Data", "type": "main", "index": 0 }]]
+        }
+      }
+    },
+    {
+      "id": "OpenClaw-image-generator",
+      "name": "AI-Enhanced Image Generation",
+      "description": "Generate images with AI-enhanced prompts using local models",
+      "category": "media-generation",
+      "nodes": [
+        {
+          "type": "n8n-nodes-base.webhook",
+          "name": "Image Request",
+          "position": [0, 0],
+          "parameters": {
+            "path": "OpenClaw/image/generate",
+            "method": "POST"
+          }
+        },
+        {
+          "type": "n8n-nodes-base.httpRequest",
+          "name": "Generate with AI Enhancement",
+          "position": [200, 0],
+          "parameters": {
+            "method": "POST",
+            "url": "http://localhost:5679/api/OpenClaw/data/image/generate",
+            "body": {
+              "prompt": "={{$json.prompt}}",
+              "width": "={{$json.width || 1024}}",
+              "height": "={{$json.height || 1024}}",
+              "model": "={{$json.model || 'stable-diffusion-xl'}}",
+              "aiPromptEnhancement": {
+                "enabled": true,
+                "preferLocal": true,
+                "style": "={{$json.style}}",
+                "expandPrompt": true,
+                "addQualityTerms": true
+              }
+            }
+          }
+        },
+        {
+          "type": "n8n-nodes-base.respondToWebhook",
+          "name": "Return Generated Image",
+          "position": [400, 0]
+        }
+      ],
+      "connections": {
+        "Image Request": {
+          "main": [[{ "node": "Generate with AI Enhancement", "type": "main", "index": 0 }]]
+        },
+        "Generate with AI Enhancement": {
+          "main": [[{ "node": "Return Generated Image", "type": "main", "index": 0 }]]
+        }
+      }
+    },
+    {
+      "id": "OpenClaw-data-pipeline",
+      "name": "Data Collection Pipeline",
+      "description": "Run complete data collection pipelines with AI processing",
+      "category": "data-pipeline",
+      "nodes": [
+        {
+          "type": "n8n-nodes-base.scheduleTrigger",
+          "name": "Daily Schedule",
+          "position": [0, 0],
+          "parameters": {
+            "rule": {
+              "interval": [{ "field": "hours", "hoursInterval": 24 }]
+            }
+          }
+        },
+        {
+          "type": "n8n-nodes-base.httpRequest",
+          "name": "Run Scraping Pipeline",
+          "position": [200, 0],
+          "parameters": {
+            "method": "POST",
+            "url": "http://localhost:5679/api/OpenClaw/data/pipeline/run",
+            "body": {
+              "name": "Daily Content Collection",
+              "sources": [
+                {
+                  "type": "scraping",
+                  "config": {
+                    "urls": ["https://example.com/feed"],
+                    "type": "rss",
+                    "aiExtraction": {
+                      "enabled": true,
+                      "preferLocal": true
+                    }
+                  }
+                }
+              ],
+              "processing": [
+                {
+                  "type": "ai-transform",
+                  "config": {
+                    "preferLocal": true,
+                    "instructions": "Extract key information and summarize"
+                  }
+                },
+                {
+                  "type": "dedupe",
+                  "config": {}
+                }
+              ],
+              "output": {
+                "type": "dataset",
+                "config": {}
+              }
+            }
+          }
+        },
+        {
+          "type": "n8n-nodes-base.slack",
+          "name": "Notify Completion",
+          "position": [400, 0],
+          "parameters": {
+            "channel": "#data-collection",
+            "text": "Daily data collection completed"
+          }
+        }
+      ],
+      "connections": {
+        "Daily Schedule": {
+          "main": [[{ "node": "Run Scraping Pipeline", "type": "main", "index": 0 }]]
+        },
+        "Run Scraping Pipeline": {
+          "main": [[{ "node": "Notify Completion", "type": "main", "index": 0 }]]
+        }
+      }
+    }
+  ],
+  "eventMappings": {
+    "OpenClaw:task:completed": {
+      "n8nTrigger": "webhook",
+      "path": "/OpenClaw/events/task-completed"
+    },
+    "OpenClaw:provider:switched": {
+      "n8nTrigger": "webhook",
+      "path": "/OpenClaw/events/provider-switched"
+    },
+    "OpenClaw:error": {
+      "n8nTrigger": "webhook",
+      "path": "/OpenClaw/events/error"
+    },
+    "OpenClaw:data:job:completed": {
+      "n8nTrigger": "webhook",
+      "path": "/OpenClaw/events/data-job-completed"
+    },
+    "OpenClaw:data:pipeline:completed": {
+      "n8nTrigger": "webhook",
+      "path": "/OpenClaw/events/pipeline-completed"
+    }
+  }
+}

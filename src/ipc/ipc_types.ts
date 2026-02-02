@@ -906,3 +906,144 @@ export interface TestAgentResult {
   tokensUsed: number;
   responseTimeMs: number;
 }
+
+// ============================================================================
+// OpenClaw Gateway Types
+// ============================================================================
+
+export interface OpenClawGatewayStatus {
+  status: "disconnected" | "connecting" | "connected" | "reconnecting" | "error";
+  connectedAt?: number;
+  lastHeartbeat?: number;
+  reconnectAttempts: number;
+  error?: string;
+  version?: string;
+  activePlugins: string[];
+  connectedClients: number;
+}
+
+export interface OpenClawProviderStatus {
+  name: string;
+  enabled: boolean;
+  healthy: boolean;
+  type: string;
+}
+
+export interface OpenClawChatParams {
+  messages: Array<{
+    role: "system" | "user" | "assistant" | "tool";
+    content: string;
+    name?: string;
+  }>;
+  provider?: string;
+  model?: string;
+  maxTokens?: number;
+  temperature?: number;
+  stream?: boolean;
+  systemPrompt?: string;
+  capabilities?: string[];
+}
+
+export interface OpenClawChatResult {
+  id: string;
+  message: {
+    role: "assistant";
+    content: string;
+  };
+  finishReason: "stop" | "length" | "tool_calls" | "error";
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+  provider: string;
+  model: string;
+  latencyMs: number;
+  localProcessed: boolean;
+}
+
+export interface OpenClawAgentTaskParams {
+  id?: string;
+  type: "research" | "build" | "analyze" | "optimize" | "automate" | "custom";
+  objective: string;
+  context?: string;
+  constraints?: string[];
+  provider?: string;
+  preferLocal?: boolean;
+  maxIterations?: number;
+  timeout?: number;
+}
+
+export interface OpenClawAgentTaskResult {
+  taskId: string;
+  status: "completed" | "failed" | "timeout" | "cancelled";
+  result?: unknown;
+  artifacts?: Array<{
+    id: string;
+    type: string;
+    name: string;
+    content: string;
+    language?: string;
+  }>;
+  iterations: number;
+  tokensUsed: number;
+  providersUsed: string[];
+  error?: string;
+}
+
+export interface OpenClawClaudeCodeTaskParams {
+  id?: string;
+  type: string;
+  description: string;
+  targetPath?: string;
+  content?: string;
+  searchQuery?: string;
+  command?: string;
+}
+
+export interface OpenClawClaudeCodeResult {
+  taskId: string;
+  success: boolean;
+  changes?: Array<{
+    type: "create" | "modify" | "delete";
+    path: string;
+    diff?: string;
+  }>;
+  output?: string;
+  error?: string;
+}
+
+export interface OpenClawQuickGenerateParams {
+  prompt: string;
+  language?: string;
+  context?: string;
+  useLocal?: boolean;
+}
+
+export interface OpenClawQuickGenerateResult {
+  code: string;
+  provider: string;
+  model: string;
+  localProcessed: boolean;
+}
+
+export interface OpenClawAutonomousAppParams {
+  name: string;
+  description: string;
+  features: string[];
+  techStack?: string[];
+  useLocal?: boolean;
+}
+
+export interface OpenClawConfigureProviderParams {
+  name: string;
+  config: {
+    apiKey?: string;
+    baseURL?: string;
+    model?: string;
+    enabled?: boolean;
+    priority?: number;
+    temperature?: number;
+    maxTokens?: number;
+  };
+}

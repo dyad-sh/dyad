@@ -28,6 +28,7 @@ import { NodePathSelector } from "@/components/NodePathSelector";
 import { ToolsMcpSettings } from "@/components/settings/ToolsMcpSettings";
 import { AgentToolsSettings } from "@/components/settings/AgentToolsSettings";
 import { JoyIdentitySettings } from "@/components/settings/JoyIdentitySettings";
+import { CNSSettings } from "@/components/settings/CNSSettings";
 import { ZoomSelector } from "@/components/ZoomSelector";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
@@ -141,6 +142,14 @@ export default function SettingsPage() {
               <SupabaseIntegration />
               <NeonIntegration />
             </div>
+          </div>
+
+          {/* OpenClaw CNS Settings */}
+          <div id="cns-settings">
+            <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+              OpenClaw CNS
+            </h2>
+            <CNSSettings />
           </div>
 
           {/* Joy Blockchain Identity */}

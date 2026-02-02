@@ -39,6 +39,7 @@ import { useSettings } from "@/hooks/useSettings";
 import { useTemplates } from "@/hooks/useTemplates";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { CNSWidget } from "@/components/openclaw/CNSWidget";
 
 import {
   Sidebar,
@@ -556,6 +557,22 @@ export function AppSidebar() {
               {selectedApp ? `Open ${selectedApp.name} details` : "No app selected"}
             </TooltipContent>
           </Tooltip>
+
+          {/* OpenClaw CNS Widget */}
+          {!isCollapsed ? (
+            <CNSWidget variant="button" showWorkflows={false} />
+          ) : (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex justify-center">
+                  <CNSWidget variant="button" showWorkflows={false} />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="right" sideOffset={8}>
+                OpenClaw CNS - AI Assistant
+              </TooltipContent>
+            </Tooltip>
+          )}
 
           {/* System Status */}
           <div className={cn(

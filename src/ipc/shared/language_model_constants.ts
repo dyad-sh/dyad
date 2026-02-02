@@ -562,4 +562,18 @@ export const LOCAL_PROVIDERS: Record<
     displayName: "LM Studio",
     hasFreeTier: true,
   },
+  OpenClaw: {
+    displayName: "OpenClaw Gateway",
+    hasFreeTier: true,
+  },
+};
+
+// Claude Code integration for agentic coding tasks
+export const CLAUDE_CODE_PROVIDER = {
+  id: "claude-code",
+  displayName: "Claude Code",
+  description: "Agentic coding assistant with file operations",
+  capabilities: ["code", "agentic", "function-calling", "reasoning"],
+  requiresAnthropicKey: true,
+  gatewayUrl: "ws://127.0.0.1:18789",
 };

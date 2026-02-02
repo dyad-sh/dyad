@@ -215,6 +215,7 @@
     "monaco-editor": "^0.52.2",
     "multiformats": "^13.4.2",
     "openai": "^4.91.1",
+    "openclaw": "^2026.2.1",
     "perfect-freehand": "^1.2.2",
     "posthog-js": "^1.236.3",
     "react": "^19.0.0",

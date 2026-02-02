@@ -46,10 +46,12 @@ jobs:
         run: chmod +x tools/add-macos-cert.sh && . ./tools/add-macos-cert.sh
       # Windows only
       - name: Install Azure Trusted Signing
+        if: contains(matrix.os.name, 'windows')
         shell: powershell
         run: |
           winget install Microsoft.AzureTrustedSigning --accept-source-agreements --accept-package-agreements
       - name: Create Azure signing metadata
+        if: contains(matrix.os.name, 'windows')
         shell: powershell
         run: |
           @'

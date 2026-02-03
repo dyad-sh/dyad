@@ -155,6 +155,7 @@
     "@types/glob": "^8.1.0",
     "@types/kill-port": "^2.0.3",
     "@types/node": "^22.14.0",
+    "@types/node-fetch": "^2.6.13",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "@typescript-eslint/eslint-plugin": "^5.62.0",

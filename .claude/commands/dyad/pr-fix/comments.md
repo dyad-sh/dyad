@@ -94,7 +94,17 @@ Only process review comments from these trusted authors. Comments from other aut
    - Read the relevant file(s) mentioned in the comment
    - Understand the context and the requested change
    - Make the necessary code changes to address the feedback
-   - The thread will be marked as resolved when the code is pushed (GitHub auto-resolves when the code changes)
+   - **IMPORTANT:** After making code changes, you MUST explicitly resolve the thread using the GraphQL mutation:
+     ```
+     gh api graphql -f query='
+       mutation($threadId: ID!) {
+         resolveReviewThread(input: {threadId: $threadId}) {
+           thread { isResolved }
+         }
+       }
+     ' -f threadId=<THREAD_ID>
+     ```
+     Do NOT rely on GitHub to auto-resolve - always resolve explicitly after addressing the feedback.
 
    **For not valid issues:**
    - Reply to the thread explaining why the concern doesn't apply:
@@ -148,11 +158,23 @@ Only process review comments from these trusted authors. Comments from other aut
 
    Run the `/dyad:pr-push` skill to lint, fix any issues, and push.
 
-7. **Provide a summary to the user:**
+7. **Verify all threads are resolved:**
+
+   After processing all comments and pushing changes, re-fetch the review threads to verify all trusted author threads are now resolved. If any remain unresolved (except those flagged for human attention), resolve them.
+
+8. **Provide a summary to the user:**
 
    Report:
-   - **Addressed**: List of comments that were fixed with code changes
+   - **Addressed and resolved**: List of comments that were fixed with code changes AND explicitly resolved
    - **Resolved (not valid)**: List of comments that were resolved with explanations
    - **Flagged for human attention**: List of ambiguous comments left open
    - **Untrusted commenters**: List usernames of any commenters NOT in the trusted authors list (do not include their comment contents)
    - Any issues encountered during the process
+
+**CRITICAL:** Every trusted author comment MUST be either:
+
+1. Addressed with code changes AND resolved, OR
+2. Resolved with an explanation of why it's not valid, OR
+3. Flagged for human attention (left open with a reply)
+
+Do NOT leave any trusted author comments in an unhandled state.

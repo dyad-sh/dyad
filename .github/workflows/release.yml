@@ -104,7 +104,7 @@ jobs:
 
       - name: Create Azure signing metadata
         if: contains(matrix.os.name, 'windows')
-        shell: powershell
+        shell: pwsh
         run: |
           @'
           {

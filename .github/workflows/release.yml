@@ -50,6 +50,25 @@ jobs:
         shell: powershell
         run: |
           winget install -e --id Microsoft.Azure.TrustedSigningClientTools --source winget --accept-source-agreements --accept-package-agreements
+
+          # Find the DLL path
+          $dllPath = Get-ChildItem -Path "C:\Program Files" -Recurse -Filter "Azure.CodeSigning.Dlib.dll" -ErrorAction SilentlyContinue | 
+                    Where-Object { $_.FullName -like "*x64*" } |
+                    Select-Object -First 1 -ExpandProperty FullName
+
+          if (-not $dllPath) {
+            $dllPath = Get-ChildItem -Path "$env:LOCALAPPDATA" -Recurse -Filter "Azure.CodeSigning.Dlib.dll" -ErrorAction SilentlyContinue | 
+                      Where-Object { $_.FullName -like "*x64*" } |
+                      Select-Object -First 1 -ExpandProperty FullName
+          }
+
+          if ($dllPath) {
+            echo "Found DLL at: $dllPath"
+            echo "AZURE_CODE_SIGNING_DLIB=$dllPath" >> $env:GITHUB_ENV
+          } else {
+            Write-Error "Could not find Azure.CodeSigning.Dlib.dll"
+            exit 1
+          }
       - name: Create Azure signing metadata
         if: contains(matrix.os.name, 'windows')
         shell: powershell
@@ -94,7 +113,7 @@ jobs:
           max_attempts: 3
           command: ./node_modules/.bin/electron-forge publish
         env:
-          DEBUG: "@electron/*,electron-forge:*,electron-windows-installer:main"
+          DEBUG: "@electron/*,electron-forge:*,electron-windows-installer:main,electron-windows-sign"
           NODE_OPTIONS: "--max-old-space-size=4096"
           # SM_CODE_SIGNING_CERT_SHA1_HASH: ${{ secrets.SM_CODE_SIGNING_CERT_SHA1_HASH }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

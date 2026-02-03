@@ -1,6 +1,7 @@
 import { Loader2 } from "lucide-react";
 import { useSupabaseSchema, useSupabaseRows } from "@/hooks/useSupabaseTables";
 import { PaginationControls } from "./PaginationControls";
+import { formatCellValue } from "@/lib/supabase_utils";
 
 interface TableDetailsProps {
   projectId: string | null;
@@ -10,31 +11,6 @@ interface TableDetailsProps {
   offset: number;
   onLimitChange: (limit: number) => void;
   onOffsetChange: (offset: number) => void;
-}
-
-/**
- * Format a cell value for display.
- * Handles null, undefined, objects, and long strings.
- */
-export function formatCellValue(value: unknown): string {
-  if (value === null) {
-    return "NULL";
-  }
-  if (value === undefined) {
-    return "";
-  }
-  if (typeof value === "object") {
-    try {
-      const json = JSON.stringify(value);
-      // Truncate long JSON
-      return json.length > 100 ? json.slice(0, 100) + "..." : json;
-    } catch {
-      return "[Object]";
-    }
-  }
-  const str = String(value);
-  // Truncate long strings
-  return str.length > 100 ? str.slice(0, 100) + "..." : str;
 }
 
 export function TableDetails({
@@ -188,7 +164,7 @@ export function TableDetails({
               <tbody>
                 {rows.map((row, rowIdx) => (
                   <tr
-                    key={rowIdx}
+                    key={row.id ? String(row.id) : rowIdx}
                     className="border-t border-border/50 hover:bg-muted/30"
                   >
                     {columns.map((col) => (

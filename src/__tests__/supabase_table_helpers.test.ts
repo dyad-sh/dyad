@@ -1,67 +1,9 @@
 import { describe, it, expect } from "vitest";
-
-// Import the helper from TableDetails
-// Note: In a real scenario, you might want to move these helpers to a separate utils file
-// For now, we'll define them here to match the implementation
-
-/**
- * Format a cell value for display.
- * Handles null, undefined, objects, and long strings.
- */
-function formatCellValue(value: unknown): string {
-  if (value === null) {
-    return "NULL";
-  }
-  if (value === undefined) {
-    return "";
-  }
-  if (typeof value === "object") {
-    try {
-      const json = JSON.stringify(value);
-      // Truncate long JSON
-      return json.length > 100 ? json.slice(0, 100) + "..." : json;
-    } catch {
-      return "[Object]";
-    }
-  }
-  const str = String(value);
-  // Truncate long strings
-  return str.length > 100 ? str.slice(0, 100) + "..." : str;
-}
-
-/**
- * Validate table name against allowed pattern.
- * Table names must start with a letter or underscore,
- * followed by alphanumeric characters or underscores.
- */
-function isValidTableName(name: string): boolean {
-  return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name);
-}
-
-/**
- * Calculate pagination info.
- */
-function getPaginationInfo(
-  total: number | null,
-  limit: number,
-  offset: number,
-): {
-  start: number;
-  end: number;
-  hasPrev: boolean;
-  hasNext: boolean;
-  currentPage: number;
-  totalPages: number | null;
-} {
-  const start = offset + 1;
-  const end = total !== null ? Math.min(offset + limit, total) : offset + limit;
-  const hasPrev = offset > 0;
-  const hasNext = total !== null ? offset + limit < total : false;
-  const currentPage = Math.floor(offset / limit) + 1;
-  const totalPages = total !== null ? Math.ceil(total / limit) : null;
-
-  return { start, end, hasPrev, hasNext, currentPage, totalPages };
-}
+import {
+  formatCellValue,
+  isValidTableName,
+  getPaginationInfo,
+} from "../lib/supabase_utils";
 
 describe("formatCellValue", () => {
   it("returns 'NULL' for null values", () => {
@@ -106,7 +48,8 @@ describe("formatCellValue", () => {
   it("handles Date objects", () => {
     const date = new Date("2024-01-15T12:00:00Z");
     const result = formatCellValue(date);
-    expect(result).toContain("2024-01-15");
+    // Date objects are serialized via JSON.stringify which returns ISO string in quotes
+    expect(result).toBe('"2024-01-15T12:00:00.000Z"');
   });
 });
 
@@ -180,7 +123,8 @@ describe("getPaginationInfo", () => {
 
   it("handles empty table", () => {
     const info = getPaginationInfo(0, 25, 0);
-    expect(info.start).toBe(1);
+    // For empty tables, start should be 0 to avoid showing "1-0 of 0"
+    expect(info.start).toBe(0);
     expect(info.end).toBe(0);
     expect(info.hasPrev).toBe(false);
     expect(info.hasNext).toBe(false);

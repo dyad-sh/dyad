@@ -16,6 +16,12 @@ export function DatabasePanel() {
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [offset, setOffset] = useState(DEFAULT_OFFSET);
 
+  // Reset selectedTable when projectId changes to prevent querying stale table against new project
+  useEffect(() => {
+    setSelectedTable(null);
+    setOffset(DEFAULT_OFFSET);
+  }, [projectId]);
+
   // Reset offset when table changes to prevent showing stale data
   useEffect(() => {
     setOffset(DEFAULT_OFFSET);

@@ -702,8 +702,15 @@ function getFakeTestSqlResult(query: string): string {
 
   // Select rows query
   if (normalizedQuery.startsWith("select * from")) {
+    // Parse LIMIT and OFFSET from query
+    const limitMatch = normalizedQuery.match(/limit\s+(\d+)/);
+    const offsetMatch = normalizedQuery.match(/offset\s+(\d+)/);
+    const limit = limitMatch ? parseInt(limitMatch[1], 10) : Infinity;
+    const offset = offsetMatch ? parseInt(offsetMatch[1], 10) : 0;
+
+    let allRows: unknown[] = [];
     if (normalizedQuery.includes("users")) {
-      return JSON.stringify([
+      allRows = [
         {
           id: "550e8400-e29b-41d4-a716-446655440001",
           email: "alice@example.com",
@@ -722,10 +729,9 @@ function getFakeTestSqlResult(query: string): string {
           name: null,
           created_at: "2024-01-17T09:00:00Z",
         },
-      ]);
-    }
-    if (normalizedQuery.includes("posts")) {
-      return JSON.stringify([
+      ];
+    } else if (normalizedQuery.includes("posts")) {
+      allRows = [
         {
           id: "660e8400-e29b-41d4-a716-446655440001",
           title: "Hello World",
@@ -740,10 +746,9 @@ function getFakeTestSqlResult(query: string): string {
           author_id: "550e8400-e29b-41d4-a716-446655440002",
           created_at: "2024-01-16T15:00:00Z",
         },
-      ]);
-    }
-    if (normalizedQuery.includes("comments")) {
-      return JSON.stringify([
+      ];
+    } else if (normalizedQuery.includes("comments")) {
+      allRows = [
         {
           id: "770e8400-e29b-41d4-a716-446655440001",
           post_id: "660e8400-e29b-41d4-a716-446655440001",
@@ -772,9 +777,10 @@ function getFakeTestSqlResult(query: string): string {
           content: "Very helpful.",
           created_at: "2024-01-16T17:00:00Z",
         },
-      ]);
+      ];
     }
-    return JSON.stringify([]);
+    // Apply OFFSET and LIMIT
+    return JSON.stringify(allRows.slice(offset, offset + limit));
   }
 
   // Default: empty result

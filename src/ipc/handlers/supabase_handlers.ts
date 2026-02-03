@@ -17,6 +17,7 @@ import { createTestOnlyLoggedHandler } from "./safe_handle";
 import { safeSend } from "../utils/safe_sender";
 import { readSettings, writeSettings } from "../../main/settings";
 import { supabaseContracts } from "../types/supabase";
+import { isValidTableName, safeJsonParse } from "../../lib/supabase_utils";
 
 const logger = log.scope("supabase_handlers");
 const testOnlyHandle = createTestOnlyLoggedHandler(logger);
@@ -227,9 +228,9 @@ export function registerSupabaseHandlers() {
   createTypedHandler(supabaseContracts.listTables, async (_, params) => {
     const { projectId, organizationSlug } = params;
     const query = `
-      SELECT table_name 
-      FROM information_schema.tables 
-      WHERE table_schema = 'public' 
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
         AND table_type = 'BASE TABLE'
       ORDER BY table_name;
     `;
@@ -238,25 +239,30 @@ export function registerSupabaseHandlers() {
       query,
       organizationSlug,
     });
-    const parsed = JSON.parse(result);
-    return (parsed ?? []).map((row: { table_name: string }) => row.table_name);
+    const parsed = safeJsonParse<Array<{ table_name: string }> | null>(
+      result,
+      "Supabase listTables response",
+    );
+    return (parsed ?? []).map((row) => row.table_name);
   });
 
   // Get table schema (columns) for a specific table
   createTypedHandler(supabaseContracts.getTableSchema, async (_, params) => {
     const { projectId, organizationSlug, table } = params;
-    // Validate table name (alphanumeric + underscore only, must start with letter or underscore)
-    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(table)) {
+    // Validate table name using shared utility for defense in depth
+    if (!isValidTableName(table)) {
       throw new Error("supabase:get-table-schema: Invalid table name");
     }
+    // Use parameterized-style escaping: escape single quotes in table name
+    const escapedTable = table.replace(/'/g, "''");
     const query = `
-      SELECT 
-        column_name as name, 
-        data_type as type, 
-        is_nullable = 'YES' as nullable, 
+      SELECT
+        column_name as name,
+        data_type as type,
+        is_nullable = 'YES' as nullable,
         column_default as "defaultValue"
-      FROM information_schema.columns 
-      WHERE table_schema = 'public' AND table_name = '${table}'
+      FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = '${escapedTable}'
       ORDER BY ordinal_position;
     `;
     const result = await executeSupabaseSql({
@@ -264,16 +270,20 @@ export function registerSupabaseHandlers() {
       query,
       organizationSlug,
     });
-    return JSON.parse(result) ?? [];
+    return safeJsonParse(result, "Supabase getTableSchema response") ?? [];
   });
 
   // Query table rows with pagination
   createTypedHandler(supabaseContracts.queryTableRows, async (_, params) => {
     const { projectId, organizationSlug, table, limit, offset } = params;
-    // Validate table name (alphanumeric + underscore only, must start with letter or underscore)
-    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(table)) {
+    // Validate table name using shared utility for defense in depth
+    if (!isValidTableName(table)) {
       throw new Error("supabase:query-table-rows: Invalid table name");
     }
+
+    // Validate numeric params to prevent injection
+    const safeLimit = Math.max(1, Math.min(1000, Math.floor(Number(limit))));
+    const safeOffset = Math.max(0, Math.floor(Number(offset)));
 
     // Get total count
     const countQuery = `SELECT COUNT(*) as count FROM "${table}";`;
@@ -282,17 +292,30 @@ export function registerSupabaseHandlers() {
       query: countQuery,
       organizationSlug,
     });
-    const total = JSON.parse(countResult)?.[0]?.count ?? null;
+    const countParsed = safeJsonParse<Array<{ count: unknown }> | null>(
+      countResult,
+      "Supabase count query response",
+    );
+    const rawTotal = countParsed?.[0]?.count;
+    // Properly handle null total to match schema (total: z.number().nullable())
+    const total =
+      rawTotal === null || rawTotal === undefined ? null : Number(rawTotal);
 
-    // Get rows with pagination
-    const rowsQuery = `SELECT * FROM "${table}" LIMIT ${limit} OFFSET ${offset};`;
+    // Get rows with pagination - use ORDER BY ctid for deterministic ordering
+    // ctid is a system column that provides row physical location, ensuring stable pagination
+    const rowsQuery = `SELECT * FROM "${table}" ORDER BY ctid LIMIT ${safeLimit} OFFSET ${safeOffset};`;
     const rowsResult = await executeSupabaseSql({
       supabaseProjectId: projectId,
       query: rowsQuery,
       organizationSlug,
     });
 
-    return { rows: JSON.parse(rowsResult) ?? [], total: Number(total) };
+    const rows =
+      safeJsonParse<Record<string, unknown>[]>(
+        rowsResult,
+        "Supabase rows query response",
+      ) ?? [];
+    return { rows, total };
   });
 
   testOnlyHandle(

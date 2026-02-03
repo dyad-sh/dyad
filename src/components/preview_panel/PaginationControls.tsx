@@ -19,7 +19,9 @@ export function PaginationControls({
   onOffsetChange,
   isLoading = false,
 }: PaginationControlsProps) {
-  const start = offset + 1;
+  // For empty tables (total=0), start should be 0 to avoid showing "1-0 of 0"
+  const isEmpty = total === 0;
+  const start = isEmpty ? 0 : offset + 1;
   const end = Math.min(offset + limit, total ?? offset + limit);
   const hasPrev = offset > 0;
   const hasNext = total !== null ? offset + limit < total : false;

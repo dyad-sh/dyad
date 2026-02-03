@@ -77,6 +77,46 @@ export type SetSupabaseAppProjectParams = z.infer<
 >;
 
 // =============================================================================
+// Database Viewer Schemas
+// =============================================================================
+
+export const TableColumnSchema = z.object({
+  name: z.string(),
+  type: z.string(),
+  nullable: z.boolean(),
+  defaultValue: z.string().nullable(),
+});
+export type TableColumn = z.infer<typeof TableColumnSchema>;
+
+export const ListTablesParamsSchema = z.object({
+  projectId: z.string(),
+  organizationSlug: z.string().nullable(),
+});
+export type ListTablesParams = z.infer<typeof ListTablesParamsSchema>;
+
+export const GetTableSchemaParamsSchema = z.object({
+  projectId: z.string(),
+  organizationSlug: z.string().nullable(),
+  table: z.string().min(1),
+});
+export type GetTableSchemaParams = z.infer<typeof GetTableSchemaParamsSchema>;
+
+export const QueryTableRowsParamsSchema = z.object({
+  projectId: z.string(),
+  organizationSlug: z.string().nullable(),
+  table: z.string().min(1),
+  limit: z.number().min(1).max(100).default(25),
+  offset: z.number().min(0).default(0),
+});
+export type QueryTableRowsParams = z.infer<typeof QueryTableRowsParamsSchema>;
+
+export const QueryTableRowsResultSchema = z.object({
+  rows: z.array(z.record(z.unknown())),
+  total: z.number().nullable(),
+});
+export type QueryTableRowsResult = z.infer<typeof QueryTableRowsResultSchema>;
+
+// =============================================================================
 // Supabase Contracts
 // =============================================================================
 
@@ -121,6 +161,25 @@ export const supabaseContracts = {
     channel: "supabase:unset-app-project",
     input: z.object({ app: z.number() }),
     output: z.void(),
+  }),
+
+  // Database viewer contracts
+  listTables: defineContract({
+    channel: "supabase:list-tables",
+    input: ListTablesParamsSchema,
+    output: z.array(z.string()),
+  }),
+
+  getTableSchema: defineContract({
+    channel: "supabase:get-table-schema",
+    input: GetTableSchemaParamsSchema,
+    output: z.array(TableColumnSchema),
+  }),
+
+  queryTableRows: defineContract({
+    channel: "supabase:query-table-rows",
+    input: QueryTableRowsParamsSchema,
+    output: QueryTableRowsResultSchema,
   }),
 
   // Test-only channel

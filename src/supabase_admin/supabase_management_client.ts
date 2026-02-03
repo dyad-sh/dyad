@@ -584,6 +584,209 @@ LIMIT 1000`;
   return jsonResponse;
 }
 
+/**
+ * Returns fake SQL results for test builds based on the query type.
+ * This allows e2e tests to verify database viewer functionality without a real database.
+ */
+function getFakeTestSqlResult(query: string): string {
+  const normalizedQuery = query.toLowerCase().trim();
+
+  // List tables query
+  if (
+    normalizedQuery.includes("information_schema.tables") &&
+    normalizedQuery.includes("table_name")
+  ) {
+    return JSON.stringify([
+      { table_name: "users" },
+      { table_name: "posts" },
+      { table_name: "comments" },
+    ]);
+  }
+
+  // Get table schema query
+  if (
+    normalizedQuery.includes("information_schema.columns") &&
+    normalizedQuery.includes("column_name")
+  ) {
+    // Determine which table's schema is being requested
+    if (normalizedQuery.includes("users")) {
+      return JSON.stringify([
+        {
+          name: "id",
+          type: "uuid",
+          nullable: false,
+          defaultValue: "gen_random_uuid()",
+        },
+        { name: "email", type: "text", nullable: false, defaultValue: null },
+        { name: "name", type: "text", nullable: true, defaultValue: null },
+        {
+          name: "created_at",
+          type: "timestamp with time zone",
+          nullable: false,
+          defaultValue: "now()",
+        },
+      ]);
+    }
+    if (normalizedQuery.includes("posts")) {
+      return JSON.stringify([
+        {
+          name: "id",
+          type: "uuid",
+          nullable: false,
+          defaultValue: "gen_random_uuid()",
+        },
+        { name: "title", type: "text", nullable: false, defaultValue: null },
+        { name: "content", type: "text", nullable: true, defaultValue: null },
+        {
+          name: "author_id",
+          type: "uuid",
+          nullable: false,
+          defaultValue: null,
+        },
+        {
+          name: "created_at",
+          type: "timestamp with time zone",
+          nullable: false,
+          defaultValue: "now()",
+        },
+      ]);
+    }
+    if (normalizedQuery.includes("comments")) {
+      return JSON.stringify([
+        {
+          name: "id",
+          type: "uuid",
+          nullable: false,
+          defaultValue: "gen_random_uuid()",
+        },
+        { name: "post_id", type: "uuid", nullable: false, defaultValue: null },
+        {
+          name: "author_id",
+          type: "uuid",
+          nullable: false,
+          defaultValue: null,
+        },
+        { name: "content", type: "text", nullable: false, defaultValue: null },
+        {
+          name: "created_at",
+          type: "timestamp with time zone",
+          nullable: false,
+          defaultValue: "now()",
+        },
+      ]);
+    }
+    // Default schema
+    return JSON.stringify([
+      {
+        name: "id",
+        type: "uuid",
+        nullable: false,
+        defaultValue: "gen_random_uuid()",
+      },
+    ]);
+  }
+
+  // Count query for pagination
+  if (normalizedQuery.includes("count(*)")) {
+    if (normalizedQuery.includes("users")) {
+      return JSON.stringify([{ count: 3 }]);
+    }
+    if (normalizedQuery.includes("posts")) {
+      return JSON.stringify([{ count: 2 }]);
+    }
+    if (normalizedQuery.includes("comments")) {
+      return JSON.stringify([{ count: 4 }]);
+    }
+    return JSON.stringify([{ count: 0 }]);
+  }
+
+  // Select rows query
+  if (normalizedQuery.startsWith("select * from")) {
+    // Parse LIMIT and OFFSET from query
+    const limitMatch = normalizedQuery.match(/limit\s+(\d+)/);
+    const offsetMatch = normalizedQuery.match(/offset\s+(\d+)/);
+    const limit = limitMatch ? parseInt(limitMatch[1], 10) : Infinity;
+    const offset = offsetMatch ? parseInt(offsetMatch[1], 10) : 0;
+
+    let allRows: unknown[] = [];
+    if (normalizedQuery.includes("users")) {
+      allRows = [
+        {
+          id: "550e8400-e29b-41d4-a716-446655440001",
+          email: "alice@example.com",
+          name: "Alice Johnson",
+          created_at: "2024-01-15T10:30:00Z",
+        },
+        {
+          id: "550e8400-e29b-41d4-a716-446655440002",
+          email: "bob@example.com",
+          name: "Bob Smith",
+          created_at: "2024-01-16T14:20:00Z",
+        },
+        {
+          id: "550e8400-e29b-41d4-a716-446655440003",
+          email: "charlie@example.com",
+          name: null,
+          created_at: "2024-01-17T09:00:00Z",
+        },
+      ];
+    } else if (normalizedQuery.includes("posts")) {
+      allRows = [
+        {
+          id: "660e8400-e29b-41d4-a716-446655440001",
+          title: "Hello World",
+          content: "This is my first post!",
+          author_id: "550e8400-e29b-41d4-a716-446655440001",
+          created_at: "2024-01-15T11:00:00Z",
+        },
+        {
+          id: "660e8400-e29b-41d4-a716-446655440002",
+          title: "Learning Supabase",
+          content: "Supabase is great for building apps.",
+          author_id: "550e8400-e29b-41d4-a716-446655440002",
+          created_at: "2024-01-16T15:00:00Z",
+        },
+      ];
+    } else if (normalizedQuery.includes("comments")) {
+      allRows = [
+        {
+          id: "770e8400-e29b-41d4-a716-446655440001",
+          post_id: "660e8400-e29b-41d4-a716-446655440001",
+          author_id: "550e8400-e29b-41d4-a716-446655440002",
+          content: "Great post!",
+          created_at: "2024-01-15T12:00:00Z",
+        },
+        {
+          id: "770e8400-e29b-41d4-a716-446655440002",
+          post_id: "660e8400-e29b-41d4-a716-446655440001",
+          author_id: "550e8400-e29b-41d4-a716-446655440003",
+          content: "Thanks for sharing!",
+          created_at: "2024-01-15T13:00:00Z",
+        },
+        {
+          id: "770e8400-e29b-41d4-a716-446655440003",
+          post_id: "660e8400-e29b-41d4-a716-446655440002",
+          author_id: "550e8400-e29b-41d4-a716-446655440001",
+          content: "I love Supabase too!",
+          created_at: "2024-01-16T16:00:00Z",
+        },
+        {
+          id: "770e8400-e29b-41d4-a716-446655440004",
+          post_id: "660e8400-e29b-41d4-a716-446655440002",
+          author_id: "550e8400-e29b-41d4-a716-446655440003",
+          content: "Very helpful.",
+          created_at: "2024-01-16T17:00:00Z",
+        },
+      ];
+    }
+    // Apply OFFSET and LIMIT
+    return JSON.stringify(allRows.slice(offset, offset + limit));
+  }
+
+  // Default: empty result
+  return JSON.stringify([]);
+}
+
 export async function executeSupabaseSql({
   supabaseProjectId,
   query,
@@ -594,7 +797,7 @@ export async function executeSupabaseSql({
   organizationSlug: string | null;
 }): Promise<string> {
   if (IS_TEST_BUILD) {
-    return "{}";
+    return getFakeTestSqlResult(query);
   }
 
   const supabase = await getSupabaseClient({ organizationSlug });

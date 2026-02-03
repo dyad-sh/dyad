@@ -186,6 +186,11 @@ export type {
   DeleteSupabaseOrganizationParams,
   SetSupabaseAppProjectParams,
   ConsoleEntry,
+  TableColumn,
+  ListTablesParams,
+  GetTableSchemaParams,
+  QueryTableRowsParams,
+  QueryTableRowsResult,
 } from "./supabase";
 
 // Neon types

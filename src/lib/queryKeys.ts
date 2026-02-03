@@ -230,6 +230,45 @@ export const queryKeys = {
       projectId: string;
       organizationSlug: string | null;
     }) => ["supabase", "branches", projectId, organizationSlug] as const,
+    // Database viewer query keys
+    tables: ({
+      projectId,
+      organizationSlug,
+    }: {
+      projectId: string;
+      organizationSlug: string | null;
+    }) => ["supabase", "tables", projectId, organizationSlug] as const,
+    schema: ({
+      projectId,
+      organizationSlug,
+      table,
+    }: {
+      projectId: string;
+      organizationSlug: string | null;
+      table: string;
+    }) => ["supabase", "schema", projectId, organizationSlug, table] as const,
+    rows: ({
+      projectId,
+      organizationSlug,
+      table,
+      limit,
+      offset,
+    }: {
+      projectId: string;
+      organizationSlug: string | null;
+      table: string;
+      limit: number;
+      offset: number;
+    }) =>
+      [
+        "supabase",
+        "rows",
+        projectId,
+        organizationSlug,
+        table,
+        limit,
+        offset,
+      ] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

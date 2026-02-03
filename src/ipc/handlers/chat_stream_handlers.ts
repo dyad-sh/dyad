@@ -1117,55 +1117,60 @@ This conversation includes one or more image attachments. When the user uploads 
         // Use MCP agent code path if:
         // 1. Mode is explicitly "agent" (backwards compatibility for existing settings)
         // 2. Mode is "build" AND there are enabled MCP servers
-        if (
-          settings.selectedChatMode === "agent" ||
-          settings.selectedChatMode === "build"
-        ) {
-          const tools = await getMcpTools(event);
-          const hasEnabledMcpServers = Object.keys(tools).length > 0;
-
-          // Only run MCP agent path if mode is "agent" OR if build mode has enabled MCP servers
-          if (settings.selectedChatMode === "agent" || hasEnabledMcpServers) {
-            const { fullStream } = await simpleStreamText({
-              chatMessages: limitedHistoryChatMessages,
-              modelClient,
-              tools: {
-                ...tools,
-                "generate-code": {
-                  description:
-                    "ALWAYS use this tool whenever generating or editing code for the codebase.",
-                  inputSchema: z.object({}),
-                  execute: async () => "",
-                },
-              },
-              systemPromptOverride: constructSystemPrompt({
-                aiRules: await readAiRules(
-                  getDyadAppPath(updatedChat.app.path),
-                ),
-                chatMode: "agent",
-                enableTurboEditsV2: false,
-              }),
-              files: files,
-              dyadDisableFiles: true,
-            });
-
-            const result = await processStreamChunks({
-              fullStream,
-              fullResponse,
-              abortController,
-              chatId: req.chatId,
-              processResponseChunkUpdate,
-            });
-            fullResponse = result.fullResponse;
-            chatMessages.push({
-              role: "assistant",
-              content: fullResponse,
-            });
-            chatMessages.push({
-              role: "user",
-              content: "OK.",
-            });
+        let agentTools: ToolSet | undefined;
+        if (settings.selectedChatMode === "agent") {
+          agentTools = await getMcpTools(event);
+        } else if (settings.selectedChatMode === "build") {
+          const enabledServers = await db
+            .select({ id: mcpServers.id })
+            .from(mcpServers)
+            .where(eq(mcpServers.enabled, true));
+          if (enabledServers.length > 0) {
+            const tools = await getMcpTools(event);
+            if (Object.keys(tools).length > 0) {
+              agentTools = tools;
+            }
           }
+        }
+
+        if (agentTools) {
+          const { fullStream } = await simpleStreamText({
+            chatMessages: limitedHistoryChatMessages,
+            modelClient,
+            tools: {
+              ...agentTools,
+              "generate-code": {
+                description:
+                  "ALWAYS use this tool whenever generating or editing code for the codebase.",
+                inputSchema: z.object({}),
+                execute: async () => "",
+              },
+            },
+            systemPromptOverride: constructSystemPrompt({
+              aiRules: await readAiRules(getDyadAppPath(updatedChat.app.path)),
+              chatMode: "agent",
+              enableTurboEditsV2: false,
+            }),
+            files: files,
+            dyadDisableFiles: true,
+          });
+
+          const result = await processStreamChunks({
+            fullStream,
+            fullResponse,
+            abortController,
+            chatId: req.chatId,
+            processResponseChunkUpdate,
+          });
+          fullResponse = result.fullResponse;
+          chatMessages.push({
+            role: "assistant",
+            content: fullResponse,
+          });
+          chatMessages.push({
+            role: "user",
+            content: "OK.",
+          });
         }
 
         // When calling streamText, the messages need to be properly formatted for mixed content

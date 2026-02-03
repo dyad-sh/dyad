@@ -41,6 +41,7 @@ export function DefaultChatModeSelector() {
       case "local-agent":
         return isProEnabled ? "Agent" : "Basic Agent";
       case "ask":
+        return "Ask";
       default:
         throw new Error(`Unknown chat mode: ${mode}`);
     }

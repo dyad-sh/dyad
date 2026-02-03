@@ -80,12 +80,12 @@ function useRotatingVerb(verbs: string[]) {
       setIndex((prev) => (prev + 1) % verbs.length);
     }, 5000);
     return () => clearInterval(id);
-  }, [verbs.length]);
+  }, [verbs]);
   return verbs[index];
 }
 
 function useScrambleText(text: string) {
-  const [display, setDisplay] = useState(text);
+  const [display, setDisplay] = useState(text + "...");
   const rafRef = useRef<number>(0);
   const prevTextRef = useRef(text);
 
@@ -126,11 +126,6 @@ function useScrambleText(text: string) {
     }
     return () => cancelAnimationFrame(rafRef.current);
   }, [text, scramble]);
-
-  // Initialize with ellipsis on first render
-  useEffect(() => {
-    setDisplay(text + "...");
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return display;
 }
@@ -175,7 +170,7 @@ function InitialLoadingAnimation() {
               className="absolute -inset-1 rounded-full blur-md"
               style={{
                 background:
-                  "radial-gradient(circle, hsl(var(--primary) / 0.35), transparent 70%)",
+                  "radial-gradient(circle, color-mix(in srgb, var(--primary) 35%, transparent), transparent 70%)",
               }}
               animate={{
                 scale: [1, 1.8, 1],
@@ -193,11 +188,12 @@ function InitialLoadingAnimation() {
             <motion.div
               className="h-2 w-2 rounded-full bg-primary"
               style={{
-                boxShadow: "0 0 6px hsl(var(--primary) / 0.3)",
+                boxShadow:
+                  "0 0 6px color-mix(in srgb, var(--primary) 30%, transparent)",
               }}
               animate={{
                 scale: [1, 1.3, 0.9, 1],
-                opacity: [0.6, 1, 0.6],
+                opacity: [0.6, 1, 0.8, 0.6],
               }}
               transition={{
                 duration: 0.8,

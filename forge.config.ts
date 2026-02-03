@@ -58,7 +58,7 @@ const isGitHubActions = process.env.GITHUB_ACTIONS === "true";
 
 const config: ForgeConfig = {
   packagerConfig: {
-    windowsSign: isGitHubActions ? undefined : windowsSign,
+    windowsSign: isGitHubActions ? windowsSign : undefined,
     protocols: [
       {
         name: "Dyad",
@@ -90,12 +90,12 @@ const config: ForgeConfig = {
   },
   makers: [
     new MakerSquirrel(
+      // @ts-expect-error - incorrect types exported by MakerSquirrel
       isGitHubActions
-        ? {}
-        : {
-            // @ts-expect-error - incorrect types exported by MakerSquirrel
+        ? {
             windowsSign,
-          },
+          }
+        : {},
     ),
     new MakerZIP({}, ["darwin"]),
     new MakerRpm({}),

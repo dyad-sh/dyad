@@ -25,9 +25,7 @@ import { useCountTokens } from "@/hooks/useCountTokens";
 interface MessagesListProps {
   messages: Message[];
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
-  onScrollerRef?: (ref: HTMLElement | Window | null) => void | (() => void);
-  distanceFromBottomRef?: React.MutableRefObject<number>;
-  isUserScrolling?: boolean;
+  onAtBottomChange?: (atBottom: boolean) => void;
 }
 
 // Memoize ChatMessage at module level to prevent recreation on every render
@@ -249,16 +247,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
 }
 
 export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
-  function MessagesList(
-    {
-      messages,
-      messagesEndRef,
-      onScrollerRef,
-      distanceFromBottomRef,
-      isUserScrolling,
-    },
-    ref,
-  ) {
+  function MessagesList({ messages, messagesEndRef, onAtBottomChange }, ref) {
     const appId = useAtomValue(selectedAppIdAtom);
     const { versions, revertVersion } = useVersions(appId);
     const { streamMessage, isStreaming } = useStreamChat();
@@ -435,15 +424,9 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
           itemContent={itemContent}
           components={{ Footer: FooterComponent }}
           context={footerContext}
-          scrollerRef={onScrollerRef}
-          followOutput={() => {
-            const shouldAutoScroll =
-              !isUserScrolling &&
-              isStreaming &&
-              distanceFromBottomRef &&
-              distanceFromBottomRef.current <= 280;
-            return shouldAutoScroll ? "auto" : false;
-          }}
+          atBottomThreshold={80}
+          atBottomStateChange={onAtBottomChange}
+          followOutput={(isAtBottom) => (isAtBottom ? "auto" : false)}
         />
       </div>
     );

@@ -1071,6 +1071,16 @@ export class PageObject {
     await this.page.getByRole("button", { name: "Add Model" }).click();
   }
 
+  async setUpTestProviderApiKey() {
+    // Fill in a test API key for the custom provider
+    await this.page
+      .getByPlaceholder(/Enter new.*API Key here/)
+      .fill("test-api-key-12345");
+    await this.page.getByRole("button", { name: "Save Key" }).click();
+    // Wait for the key to be saved
+    await expect(this.page.getByText("test-api-key-12345")).toBeVisible();
+  }
+
   async goToSettingsTab() {
     await this.page.getByRole("link", { name: "Settings" }).click();
   }
@@ -1422,6 +1432,22 @@ export class PageObject {
 
   async clickAgentConsentDecline() {
     await this.page.getByRole("button", { name: "Decline" }).click();
+  }
+
+  ////////////////////////////////
+  // Test-only: Node.js Mock Control
+  ////////////////////////////////
+
+  /**
+   * Set the mock state for Node.js installation status.
+   * @param installed - true = mock as installed, false = mock as not installed, null = use real check
+   */
+  async setNodeMock(installed: boolean | null) {
+    await this.page.evaluate(async (installed) => {
+      await (window as any).electron.ipcRenderer.invoke("test:set-node-mock", {
+        installed,
+      });
+    }, installed);
   }
 }
 

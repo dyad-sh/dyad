@@ -4,17 +4,19 @@ import { Switch } from "@/components/ui/switch";
 
 export function ChatCompletionNotificationSwitch() {
   const { settings, updateSettings } = useSettings();
-  // Default to true if undefined (for UI display only)
-  const isEnabled = settings?.enableChatCompletionNotifications !== false;
+  const isEnabled = settings?.enableChatCompletionNotifications === true;
 
   return (
     <div className="flex items-center space-x-2">
       <Switch
         id="chat-completion-notifications"
         checked={isEnabled}
-        onCheckedChange={(checked) => {
+        onCheckedChange={async (checked) => {
           if (checked && Notification.permission === "default") {
-            Notification.requestPermission();
+            const permission = await Notification.requestPermission();
+            if (permission !== "granted") {
+              return;
+            }
           }
           updateSettings({
             enableChatCompletionNotifications: checked,

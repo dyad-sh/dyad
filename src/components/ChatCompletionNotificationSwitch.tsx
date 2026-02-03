@@ -12,10 +12,15 @@ export function ChatCompletionNotificationSwitch() {
         id="chat-completion-notifications"
         checked={isEnabled}
         onCheckedChange={async (checked) => {
-          if (checked && Notification.permission === "default") {
-            const permission = await Notification.requestPermission();
-            if (permission !== "granted") {
+          if (checked) {
+            if (Notification.permission === "denied") {
               return;
+            }
+            if (Notification.permission === "default") {
+              const permission = await Notification.requestPermission();
+              if (permission !== "granted") {
+                return;
+              }
             }
           }
           updateSettings({

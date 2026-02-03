@@ -182,37 +182,26 @@ export function useStreamChat({
                 settings?.enableChatCompletionNotifications === true;
               if (
                 notificationsEnabled &&
-                Notification.permission === "granted"
+                Notification.permission === "granted" &&
+                !document.hasFocus()
               ) {
-                ipc.system
-                  .isWindowFocused()
-                  .then((isWindowFocused) => {
-                    if (!isWindowFocused) {
-                      const app = queryClient.getQueryData<App | null>(
-                        queryKeys.apps.detail({ appId: selectedAppId }),
-                      );
-                      const chats = queryClient.getQueryData<ChatSummary[]>(
-                        queryKeys.chats.list({ appId: selectedAppId }),
-                      );
-                      const chat = chats?.find((c) => c.id === chatId);
-                      const appName = app?.name ?? "Dyad";
-                      const rawTitle = response.chatSummary ?? chat?.title;
-                      const body = rawTitle
-                        ? rawTitle.length > 80
-                          ? rawTitle.slice(0, 80) + "…"
-                          : rawTitle
-                        : "Chat response completed";
-                      new Notification(appName, {
-                        body,
-                      });
-                    }
-                  })
-                  .catch((error) => {
-                    console.error(
-                      "[CHAT] Failed to show completion notification:",
-                      error,
-                    );
-                  });
+                const app = queryClient.getQueryData<App | null>(
+                  queryKeys.apps.detail({ appId: selectedAppId }),
+                );
+                const chats = queryClient.getQueryData<ChatSummary[]>(
+                  queryKeys.chats.list({ appId: selectedAppId }),
+                );
+                const chat = chats?.find((c) => c.id === chatId);
+                const appName = app?.name ?? "Dyad";
+                const rawTitle = response.chatSummary ?? chat?.title;
+                const body = rawTitle
+                  ? rawTitle.length > 80
+                    ? rawTitle.slice(0, 80) + "…"
+                    : rawTitle
+                  : "Chat response completed";
+                new Notification(appName, {
+                  body,
+                });
               }
 
               if (response.updatedFiles) {

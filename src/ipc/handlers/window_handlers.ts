@@ -43,15 +43,4 @@ export function registerWindowHandlers() {
   createTypedHandler(systemContracts.getSystemPlatform, async () => {
     return platform();
   });
-
-  createTypedHandler(systemContracts.isWindowFocused, async (event) => {
-    const window = BrowserWindow.fromWebContents(event.sender);
-    if (!window) {
-      logger.error(
-        "Failed to get BrowserWindow instance for isWindowFocused command",
-      );
-      return false;
-    }
-    return window.isFocused();
-  });
 }

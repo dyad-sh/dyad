@@ -1,0 +1,43 @@
+{
+  "title": "Settings",
+  "general": {
+    "title": "General Settings",
+    "language": "Language",
+    "languageDescription": "Choose your preferred display language.",
+    "theme": "Theme",
+    "zoom": "Zoom level",
+    "zoomDescription": "Adjusts the zoom level to make content easier to read.",
+    "appVersion": "App Version:"
+  },
+  "workflow": {
+    "title": "Workflow Settings"
+  },
+  "ai": {
+    "title": "AI Settings"
+  },
+  "telemetry": {
+    "title": "Telemetry",
+    "description": "This records anonymous usage data to improve the product.",
+    "telemetryId": "Telemetry ID:"
+  },
+  "integrations": {
+    "title": "Integrations"
+  },
+  "agentPermissions": {
+    "title": "Agent Permissions (Pro)"
+  },
+  "toolsMcp": {
+    "title": "Tools (MCP)"
+  },
+  "experiments": {
+    "title": "Experiments"
+  },
+  "dangerZone": {
+    "title": "Danger Zone",
+    "resetEverything": "Reset Everything",
+    "resetDescription": "This will delete all your apps, chats, and settings. This action cannot be undone.",
+    "resetConfirmation": "Are you sure you want to reset everything? This will delete all your apps, chats, and settings. This action cannot be undone.",
+    "resetting": "Resetting...",
+    "resetSuccess": "Successfully reset everything. Restart the application."
+  }
+}

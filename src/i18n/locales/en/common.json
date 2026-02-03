@@ -1,0 +1,21 @@
+{
+  "save": "Save",
+  "cancel": "Cancel",
+  "delete": "Delete",
+  "confirm": "Confirm",
+  "loading": "Loading...",
+  "copyToClipboard": "Copy to clipboard",
+  "copied": "Copied!",
+  "close": "Close",
+  "back": "Back",
+  "goBack": "Go Back",
+  "reset": "Reset",
+  "error": "Error",
+  "success": "Success",
+  "warning": "Warning",
+  "info": "Info",
+  "yes": "Yes",
+  "no": "No",
+  "itemCount_one": "{{count}} item",
+  "itemCount_other": "{{count}} items"
+}

@@ -244,6 +244,17 @@ export type ZoomLevel = z.infer<typeof ZoomLevelSchema>;
 export const ZOOM_LEVELS: readonly ZoomLevel[] = ZoomLevelSchema.options;
 export const DEFAULT_ZOOM_LEVEL: ZoomLevel = "100";
 
+export const LanguageSchema = z.enum([
+  "en",
+  "zh-CN",
+  "ja",
+  "ko",
+  "es",
+  "fr",
+  "de",
+]);
+export type Language = z.infer<typeof LanguageSchema>;
+
 export const DeviceModeSchema = z.enum(["desktop", "tablet", "mobile"]);
 export type DeviceMode = z.infer<typeof DeviceModeSchema>;
 
@@ -307,6 +318,7 @@ export const UserSettingsSchema = z
     defaultChatMode: ChatModeSchema.optional(),
     acceptedCommunityCode: z.boolean().optional(),
     zoomLevel: ZoomLevelSchema.optional(),
+    language: LanguageSchema.optional(),
     previewDeviceMode: DeviceModeSchema.optional(),
 
     enableAutoFixProblems: z.boolean().optional(),

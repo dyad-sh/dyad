@@ -18,6 +18,7 @@ import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
 import { chatInputValueAtom } from "@/atoms/chatAtoms";
 import { usePlanEvents } from "@/hooks/usePlanEvents";
 import { useZoomShortcuts } from "@/hooks/useZoomShortcuts";
+import i18n from "@/i18n";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const { refreshAppIframe } = useRunApp();
@@ -62,6 +63,15 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
     return () => {};
   }, [settings?.zoomLevel]);
+
+  // Sync i18n language with persisted user setting
+  useEffect(() => {
+    const language = settings?.language ?? "en";
+    if (i18n.language !== language) {
+      i18n.changeLanguage(language);
+    }
+  }, [settings?.language]);
+
   // Global keyboard listener for refresh events
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

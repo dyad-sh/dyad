@@ -14,6 +14,8 @@ import { isPreviewOpenAtom, isChatPanelHiddenAtom } from "@/atoms/viewAtoms";
 import { useChats } from "@/hooks/useChats";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 
+const DEFAULT_CHAT_PANEL_SIZE = 50;
+
 export default function ChatPage() {
   const { id: chatId } = useSearch({ from: "/chat" });
   const navigate = useNavigate();
@@ -25,6 +27,8 @@ export default function ChatPage() {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const { chats, loading } = useChats(selectedAppId);
+  const previousSizeRef = useRef<number>(DEFAULT_CHAT_PANEL_SIZE);
+  const isInitialMountRef = useRef(true);
 
   useEffect(() => {
     if (!chatId && chats.length && !loading) {
@@ -48,12 +52,22 @@ export default function ChatPage() {
   // Keep chat panel size in sync with hidden state (from toolbar button / other views)
   useEffect(() => {
     if (!chatPanelRef.current) return;
+    // Skip the initial mount to preserve persisted panel size from autoSaveId
+    if (isInitialMountRef.current) {
+      isInitialMountRef.current = false;
+      return;
+    }
     if (isChatPanelHidden) {
+      // Save current size before collapsing
+      const currentSize = chatPanelRef.current.getSize();
+      if (currentSize > 5) {
+        previousSizeRef.current = currentSize;
+      }
       // Visually collapsed but keep a sliver so the handle is usable
       chatPanelRef.current.resize(1);
     } else {
-      // Restore to a reasonable default when re-opened via button
-      chatPanelRef.current.resize(50);
+      // Restore to previous size when re-opened via button
+      chatPanelRef.current.resize(previousSizeRef.current);
     }
   }, [isChatPanelHidden]);
 

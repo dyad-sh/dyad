@@ -131,7 +131,8 @@ export async function handleLocalAgentStream(
 
   // Check Pro status or Basic Agent mode
   // Basic Agent mode allows non-Pro users with quota (quota check is done in chat_stream_handlers)
-  if (!isDyadProEnabled(settings) && !isBasicAgentMode(settings)) {
+  // Read-only mode (ask mode) is allowed for all users without Pro
+  if (!readOnly && !isDyadProEnabled(settings) && !isBasicAgentMode(settings)) {
     safeSend(event.sender, "chat:response:error", {
       chatId: req.chatId,
       error:

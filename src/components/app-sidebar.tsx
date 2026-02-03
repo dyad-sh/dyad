@@ -1,10 +1,4 @@
-import {
-  Home,
-  Settings,
-  HelpCircle,
-  Store,
-  BookOpen,
-} from "lucide-react";
+import { Home, Settings, HelpCircle, Store, BookOpen } from "lucide-react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar"; // import useSidebar hook
 import { useEffect, useState, useRef } from "react";

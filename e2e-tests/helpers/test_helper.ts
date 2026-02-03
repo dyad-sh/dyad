@@ -1063,7 +1063,7 @@ export class PageObject {
     await this.page.getByRole("button", { name: "Add Provider" }).click();
   }
 
-  async setUpTestModel() {
+  async setUpTestModel({ contextWindow }: { contextWindow?: number } = {}) {
     await this.page.getByRole("heading", { name: "test-provider" }).click();
     await this.page.getByRole("button", { name: "Add Custom Model" }).click();
     await this.page
@@ -1071,6 +1071,11 @@ export class PageObject {
       .fill("test-model");
     await this.page.getByRole("textbox", { name: "Model ID*" }).press("Tab");
     await this.page.getByRole("textbox", { name: "Name*" }).fill("test-model");
+    if (contextWindow != null) {
+      await this.page
+        .getByRole("spinbutton", { name: "Context Window" })
+        .fill(contextWindow.toString());
+    }
     await this.page.getByRole("button", { name: "Add Model" }).click();
   }
 

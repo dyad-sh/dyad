@@ -1532,11 +1532,13 @@ ${problemReport.problems
             updatedFiles: status.updatedFiles ?? false,
             extraFiles: status.extraFiles,
             extraFilesError: status.extraFilesError,
+            chatSummary,
           } satisfies ChatResponseEnd);
         } else {
           safeSend(event.sender, "chat:response:end", {
             chatId: req.chatId,
             updatedFiles: false,
+            chatSummary,
           } satisfies ChatResponseEnd);
         }
       }

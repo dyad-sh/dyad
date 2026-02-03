@@ -71,10 +71,12 @@ export function ChatPanel({
   }, [scrollToBottom]);
 
   // Scroll to bottom when a new stream starts (user sent a message)
+  const streamCount = chatId ? (streamCountById.get(chatId) ?? 0) : 0;
   useEffect(() => {
+    isAtBottomRef.current = true;
+    setShowScrollButton(false);
     scrollToBottom();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId, chatId ? (streamCountById.get(chatId) ?? 0) : 0]);
+  }, [chatId, streamCount, scrollToBottom]);
 
   const fetchChatMessages = useCallback(async () => {
     if (!chatId) {
@@ -123,7 +125,7 @@ export function ChatPanel({
     const handleScroll = () => {
       const distanceFromBottom =
         container.scrollHeight - (container.scrollTop + container.clientHeight);
-      handleAtBottomChange(distanceFromBottom <= 150);
+      handleAtBottomChange(distanceFromBottom <= 80);
     };
 
     container.addEventListener("scroll", handleScroll, { passive: true });

@@ -1,14 +1,15 @@
 export function slugify(text: string): string {
-  return text
+  const result = text
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .substring(0, 60);
+  return result || "untitled";
 }
 
 export function buildFrontmatter(meta: Record<string, string>): string {
   const lines = Object.entries(meta).map(
-    ([k, v]) => `${k}: "${v.replace(/"/g, '\\"')}"`,
+    ([k, v]) => `${k}: "${v.replace(/\n/g, " ").replace(/"/g, '\\"')}"`,
   );
   return `---\n${lines.join("\n")}\n---\n\n`;
 }

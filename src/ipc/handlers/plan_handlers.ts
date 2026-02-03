@@ -52,7 +52,15 @@ export function registerPlanHandlers() {
     validatePlanId(planId);
     const planDir = await getPlanDir(appId);
     const filePath = path.join(planDir, `${planId}.md`);
-    const raw = await fs.promises.readFile(filePath, "utf-8");
+    let raw: string;
+    try {
+      raw = await fs.promises.readFile(filePath, "utf-8");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        throw new Error(`Plan not found: ${planId}`);
+      }
+      throw err;
+    }
     const { meta, content } = parsePlanFile(raw);
 
     return {
@@ -130,7 +138,14 @@ export function registerPlanHandlers() {
     validatePlanId(planId);
     const planDir = await getPlanDir(appId);
     const filePath = path.join(planDir, `${planId}.md`);
-    await fs.promises.unlink(filePath);
+    try {
+      await fs.promises.unlink(filePath);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        throw new Error(`Plan not found: ${planId}`);
+      }
+      throw err;
+    }
     logger.info("Deleted plan:", planId);
   });
 }

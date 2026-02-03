@@ -18,6 +18,8 @@ import {
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 
+const MAX_DISPLAYED_OPTIONS = 3;
+
 export function QuestionnaireInput() {
   const [questionnaire, setQuestionnaire] = useAtom(pendingQuestionnaireAtom);
   const chatId = useAtomValue(selectedChatIdAtom);
@@ -241,23 +243,25 @@ export function QuestionnaireInput() {
                       }}
                       className="space-y-1.5"
                     >
-                      {currentQuestion.options.slice(0, 3).map((option) => (
-                        <div
-                          key={option}
-                          className="flex items-center space-x-2 p-2 rounded hover:bg-muted/50 transition-colors"
-                        >
-                          <RadioGroupItem
-                            value={option}
-                            id={`${currentQuestion.id}-${option}`}
-                          />
-                          <Label
-                            htmlFor={`${currentQuestion.id}-${option}`}
-                            className="text-sm font-normal cursor-pointer flex-1"
+                      {currentQuestion.options
+                        .slice(0, MAX_DISPLAYED_OPTIONS)
+                        .map((option) => (
+                          <div
+                            key={option}
+                            className="flex items-center space-x-2 p-2 rounded hover:bg-muted/50 transition-colors"
                           >
-                            {option}
-                          </Label>
-                        </div>
-                      ))}
+                            <RadioGroupItem
+                              value={option}
+                              id={`${currentQuestion.id}-${option}`}
+                            />
+                            <Label
+                              htmlFor={`${currentQuestion.id}-${option}`}
+                              className="text-sm font-normal cursor-pointer flex-1"
+                            >
+                              {option}
+                            </Label>
+                          </div>
+                        ))}
                       {/* Custom free-form option integrated as a radio item */}
                       <div className="flex items-center space-x-2 p-2 rounded hover:bg-muted/50 transition-colors">
                         <RadioGroupItem
@@ -295,47 +299,52 @@ export function QuestionnaireInput() {
                 {currentQuestion.type === "checkbox" &&
                   currentQuestion.options && (
                     <div className="space-y-1.5">
-                      {currentQuestion.options.slice(0, 3).map((option) => (
-                        <div
-                          key={option}
-                          className="flex items-center space-x-2 p-2 rounded hover:bg-muted/50 transition-colors"
-                        >
-                          <Checkbox
-                            id={`${currentQuestion.id}-${option}`}
-                            checked={(
-                              (responses[currentQuestion.id] as
-                                | string[]
-                                | undefined) || []
-                            ).includes(option)}
-                            onCheckedChange={(checked) => {
-                              setResponses((prev) => {
-                                const current =
-                                  (prev[currentQuestion.id] as
-                                    | string[]
-                                    | undefined) || [];
-                                if (checked) {
+                      {currentQuestion.options
+                        .slice(0, MAX_DISPLAYED_OPTIONS)
+                        .map((option) => (
+                          <div
+                            key={option}
+                            className="flex items-center space-x-2 p-2 rounded hover:bg-muted/50 transition-colors"
+                          >
+                            <Checkbox
+                              id={`${currentQuestion.id}-${option}`}
+                              checked={(
+                                (responses[currentQuestion.id] as
+                                  | string[]
+                                  | undefined) || []
+                              ).includes(option)}
+                              onCheckedChange={(checked) => {
+                                setResponses((prev) => {
+                                  const current =
+                                    (prev[currentQuestion.id] as
+                                      | string[]
+                                      | undefined) || [];
+                                  if (checked) {
+                                    return {
+                                      ...prev,
+                                      [currentQuestion.id]: [
+                                        ...current,
+                                        option,
+                                      ],
+                                    };
+                                  }
                                   return {
                                     ...prev,
-                                    [currentQuestion.id]: [...current, option],
+                                    [currentQuestion.id]: current.filter(
+                                      (o) => o !== option,
+                                    ),
                                   };
-                                }
-                                return {
-                                  ...prev,
-                                  [currentQuestion.id]: current.filter(
-                                    (o) => o !== option,
-                                  ),
-                                };
-                              });
-                            }}
-                          />
-                          <Label
-                            htmlFor={`${currentQuestion.id}-${option}`}
-                            className="text-sm font-normal cursor-pointer flex-1"
-                          >
-                            {option}
-                          </Label>
-                        </div>
-                      ))}
+                                });
+                              }}
+                            />
+                            <Label
+                              htmlFor={`${currentQuestion.id}-${option}`}
+                              className="text-sm font-normal cursor-pointer flex-1"
+                            >
+                              {option}
+                            </Label>
+                          </div>
+                        ))}
                       {/* Free-form text input as an inline row (no checkbox) */}
                       <div className="flex items-center p-2 rounded hover:bg-muted/50 transition-colors">
                         <Input

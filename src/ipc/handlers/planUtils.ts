@@ -1,10 +1,3 @@
-/**
- * Utility functions for plan file handling
- */
-
-/**
- * Create a URL-safe slug from text
- */
 export function slugify(text: string): string {
   return text
     .toLowerCase()
@@ -13,9 +6,6 @@ export function slugify(text: string): string {
     .substring(0, 60);
 }
 
-/**
- * Build YAML frontmatter from a metadata object
- */
 export function buildFrontmatter(meta: Record<string, string>): string {
   const lines = Object.entries(meta).map(
     ([k, v]) => `${k}: "${v.replace(/"/g, '\\"')}"`,
@@ -23,18 +13,12 @@ export function buildFrontmatter(meta: Record<string, string>): string {
   return `---\n${lines.join("\n")}\n---\n\n`;
 }
 
-/**
- * Validate that a plan ID is safe (alphanumeric and hyphens only)
- */
 export function validatePlanId(planId: string): void {
   if (!/^[a-z0-9-]+$/.test(planId)) {
     throw new Error("Invalid plan ID");
   }
 }
 
-/**
- * Parse a plan markdown file with YAML frontmatter
- */
 export function parsePlanFile(raw: string): {
   meta: Record<string, string>;
   content: string;

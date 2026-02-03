@@ -61,16 +61,10 @@ export const exitPlanTool: ToolDefinition<z.infer<typeof exitPlanSchema>> = {
   execute: async (args, ctx: AgentContext) => {
     logger.log("Exiting plan mode, transitioning to implementation");
 
-    // Send event to switch mode
     safeSend(ctx.event.sender, "plan:exit", {
       chatId: ctx.chatId,
       implementationNotes: args.implementationNotes,
     });
-
-    // Note: XML is already emitted via buildXml during streaming (tool-input-end handler)
-    // No need to call onXmlComplete here - it would cause duplicate rendering
-
-    logger.log("Plan mode exited successfully");
 
     return "Plan accepted. Switching to Agent v2 mode to begin implementation. The agreed plan will guide the implementation process.";
   },

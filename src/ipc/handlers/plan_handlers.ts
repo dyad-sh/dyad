@@ -133,6 +133,4 @@ export function registerPlanHandlers() {
     await fs.promises.unlink(filePath);
     logger.info("Deleted plan:", planId);
   });
-
-  logger.debug("Registered plan IPC handlers");
 }

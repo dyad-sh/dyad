@@ -6,13 +6,8 @@ import {
   createClient,
 } from "../contracts/core";
 
-// =============================================================================
 // Plan Schemas
-// =============================================================================
 
-/**
- * Schema for plan update payload.
- */
 export const PlanUpdateSchema = z.object({
   chatId: z.number(),
   title: z.string(),
@@ -22,9 +17,6 @@ export const PlanUpdateSchema = z.object({
 
 export type PlanUpdatePayload = z.infer<typeof PlanUpdateSchema>;
 
-/**
- * Schema for plan exit payload.
- */
 export const PlanExitSchema = z.object({
   chatId: z.number(),
   implementationNotes: z.string().optional(),
@@ -32,9 +24,6 @@ export const PlanExitSchema = z.object({
 
 export type PlanExitPayload = z.infer<typeof PlanExitSchema>;
 
-/**
- * Schema for a questionnaire question.
- */
 export const QuestionSchema = z.object({
   id: z.string(),
   type: z.enum(["text", "radio", "checkbox"]),
@@ -46,9 +35,6 @@ export const QuestionSchema = z.object({
 
 export type Question = z.infer<typeof QuestionSchema>;
 
-/**
- * Schema for a planning questionnaire payload.
- */
 export const PlanQuestionnaireSchema = z.object({
   chatId: z.number(),
   title: z.string(),
@@ -58,9 +44,6 @@ export const PlanQuestionnaireSchema = z.object({
 
 export type PlanQuestionnairePayload = z.infer<typeof PlanQuestionnaireSchema>;
 
-/**
- * Schema for a persisted plan.
- */
 export const PlanSchema = z.object({
   id: z.string(),
   appId: z.number(),
@@ -74,9 +57,6 @@ export const PlanSchema = z.object({
 
 export type Plan = z.infer<typeof PlanSchema>;
 
-/**
- * Schema for creating a new plan.
- */
 export const CreatePlanParamsSchema = z.object({
   appId: z.number(),
   chatId: z.number().optional(),
@@ -87,9 +67,6 @@ export const CreatePlanParamsSchema = z.object({
 
 export type CreatePlanParams = z.infer<typeof CreatePlanParamsSchema>;
 
-/**
- * Schema for updating a plan.
- */
 export const UpdatePlanParamsSchema = z.object({
   appId: z.number(),
   id: z.string(),
@@ -100,81 +77,52 @@ export const UpdatePlanParamsSchema = z.object({
 
 export type UpdatePlanParams = z.infer<typeof UpdatePlanParamsSchema>;
 
-// =============================================================================
 // Plan Event Contracts (Main -> Renderer)
-// =============================================================================
 
 export const planEvents = {
-  /**
-   * Emitted when the agent creates or updates a plan.
-   */
   update: defineEvent({
     channel: "plan:update",
     payload: PlanUpdateSchema,
   }),
 
-  /**
-   * Emitted when the agent exits plan mode (user accepted the plan).
-   */
   exit: defineEvent({
     channel: "plan:exit",
     payload: PlanExitSchema,
   }),
 
-  /**
-   * Emitted when the agent presents a questionnaire.
-   */
   questionnaire: defineEvent({
     channel: "plan:questionnaire",
     payload: PlanQuestionnaireSchema,
   }),
 } as const;
 
-// =============================================================================
 // Plan CRUD Contracts (Invoke/Response)
-// =============================================================================
 
 export const planContracts = {
-  /**
-   * Create a new plan.
-   */
   createPlan: defineContract({
     channel: "plan:create",
     input: CreatePlanParamsSchema,
-    output: z.string(), // Returns plan slug
+    output: z.string(),
   }),
 
-  /**
-   * Get a plan by ID.
-   */
   getPlan: defineContract({
     channel: "plan:get",
     input: z.object({ appId: z.number(), planId: z.string() }),
     output: PlanSchema,
   }),
 
-  /**
-   * Get a plan by chat ID.
-   * Returns null if no plan exists for the chat.
-   */
   getPlanForChat: defineContract({
     channel: "plan:get-for-chat",
     input: z.object({ appId: z.number(), chatId: z.number() }),
     output: PlanSchema.nullable(),
   }),
 
-  /**
-   * Update a plan.
-   */
   updatePlan: defineContract({
     channel: "plan:update-plan",
     input: UpdatePlanParamsSchema,
     output: z.void(),
   }),
 
-  /**
-   * Delete a plan.
-   */
   deletePlan: defineContract({
     channel: "plan:delete",
     input: z.object({ appId: z.number(), planId: z.string() }),
@@ -182,26 +130,8 @@ export const planContracts = {
   }),
 } as const;
 
-// =============================================================================
 // Plan Clients
-// =============================================================================
 
-/**
- * Type-safe event client for plan events.
- *
- * @example
- * const unsubscribe = planEventClient.onUpdate((payload) => {
- *   updatePlanContent(payload);
- * });
- * // Later: unsubscribe();
- */
 export const planEventClient = createEventClient(planEvents);
 
-/**
- * Type-safe client for plan CRUD operations.
- *
- * @example
- * const planId = await planClient.createPlan({ appId, title, content });
- * const plan = await planClient.getPlanForChat({ appId, chatId });
- */
 export const planClient = createClient(planContracts);

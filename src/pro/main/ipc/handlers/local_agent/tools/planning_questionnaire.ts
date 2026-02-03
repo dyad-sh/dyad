@@ -99,24 +99,17 @@ export const planningQuestionnaireTool: ToolDefinition<
   getConsentPreview: (args) =>
     `Questionnaire: ${args.title} (${args.questions.length} questions)`,
 
-  // No buildXml - we don't render this in the chat flow anymore.
-  // Instead, we use the execute function to send an IPC event that triggers
-  // the persistent UI above the chat input.
-
   execute: async (args, ctx: AgentContext) => {
-    logger.log(`Presenting questionnaire: ${args.title}`);
+    logger.log(
+      `Presenting questionnaire: ${args.title} (${args.questions.length} questions)`,
+    );
 
-    // Send the questionnaire payload to the frontend via IPC
     safeSend(ctx.event.sender, "plan:questionnaire", {
       chatId: ctx.chatId,
       title: args.title,
       description: args.description,
       questions: args.questions,
     });
-
-    logger.log(
-      `Questionnaire "${args.title}" presented with ${args.questions.length} questions`,
-    );
 
     return `Questionnaire "${args.title}" presented to the user. STOP HERE and wait for the user to respond. Do NOT create a plan or continue until you receive the user's answers in a follow-up message.`;
   },

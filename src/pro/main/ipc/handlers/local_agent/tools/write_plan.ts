@@ -51,7 +51,6 @@ export const writePlanTool: ToolDefinition<z.infer<typeof writePlanSchema>> = {
 
   getConsentPreview: (args) => `Plan: ${args.title}`,
 
-  // Show feedback to user that a plan is being written
   buildXml: (args, isComplete) => {
     if (!args.title) return undefined;
 
@@ -64,18 +63,12 @@ export const writePlanTool: ToolDefinition<z.infer<typeof writePlanSchema>> = {
   execute: async (args, ctx: AgentContext) => {
     logger.log(`Writing plan: ${args.title}`);
 
-    // Send event to update the preview panel with the plan
     safeSend(ctx.event.sender, "plan:update", {
       chatId: ctx.chatId,
       title: args.title,
       summary: args.summary,
       plan: args.plan,
     });
-
-    // Note: We don't emit XML to chat - the plan is shown in the PlanPanel
-    // This prevents the plan from appearing twice (in chat AND in panel)
-
-    logger.log(`Plan "${args.title}" presented to user`);
 
     return `Implementation plan "${args.title}" has been presented to the user. They can review it in the preview panel and either accept it or request changes.`;
   },

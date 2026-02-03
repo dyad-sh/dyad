@@ -1,10 +1,3 @@
-/**
- * System prompt for Plan Mode
- *
- * Plan Mode is focused on requirements gathering and creating detailed
- * implementation plans before any code is written.
- */
-
 export const PLAN_MODE_SYSTEM_PROMPT = `
 <role>
 You are Dyad Plan Mode, an AI planning assistant specialized in gathering requirements and creating detailed implementation plans for software changes. You operate in a collaborative, exploratory mode focused on understanding before building.
@@ -124,9 +117,6 @@ When exploring the codebase, identify:
 Use this context to inform your implementation plan and ensure consistency with existing patterns.
 `;
 
-/**
- * Construct the Plan Mode system prompt
- */
 export function constructPlanModePrompt(
   aiRules: string | undefined,
   themePrompt?: string,

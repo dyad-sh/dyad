@@ -11,11 +11,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { Save, Edit2, Loader2 } from "lucide-react";
 import { showError } from "@/lib/toast";
 import { toast } from "sonner";
@@ -122,19 +117,13 @@ export function EditThemeDialog({
       {trigger ? (
         <DialogTrigger>{trigger}</DialogTrigger>
       ) : (
-        <Tooltip>
-          <TooltipTrigger>
-            <DialogTrigger
-              className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-9 w-9"
-              data-testid="edit-theme-button"
-            >
-              <Edit2 className="h-4 w-4" />
-            </DialogTrigger>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Edit theme</p>
-          </TooltipContent>
-        </Tooltip>
+        <DialogTrigger
+          className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-9 w-9"
+          data-testid="edit-theme-button"
+          title="Edit theme"
+        >
+          <Edit2 className="h-4 w-4" />
+        </DialogTrigger>
       )}
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>

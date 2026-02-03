@@ -431,7 +431,11 @@ export function ToolsMcpSettings() {
             </div>
           )}
           <div className="flex items-center gap-2">
-            <Switch checked={enabled} onCheckedChange={setEnabled} />
+            <Switch
+              aria-label="Enabled"
+              checked={enabled}
+              onCheckedChange={setEnabled}
+            />
             <Label>Enabled</Label>
           </div>
         </div>
@@ -459,6 +463,7 @@ export function ToolsMcpSettings() {
               </div>
               <div className="flex items-center gap-2">
                 <Switch
+                  aria-label={`Toggle ${s.name}`}
                   checked={!!s.enabled}
                   onCheckedChange={() => toggleServerEnabled(s.id, !!s.enabled)}
                 />

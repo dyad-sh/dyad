@@ -14,6 +14,7 @@ export function AutoFixProblemsSwitch({
     <div className="flex items-center space-x-2">
       <Switch
         id="auto-fix-problems"
+        aria-label="Auto-fix problems"
         checked={settings?.enableAutoFixProblems}
         onCheckedChange={() => {
           updateSettings({

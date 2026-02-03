@@ -15,7 +15,7 @@ test("theme selection - dyad-wide default theme is persisted", async ({
     .getHomeChatInputContainer()
     .getByTestId("auxiliary-actions-menu")
     .click();
-  await po.page.getByRole("menuitem", { name: "Themes" }).hover();
+  await po.page.getByRole("menuitem", { name: "Themes" }).click();
   await expect(po.page.getByTestId("theme-option-default")).toBeVisible();
   await po.page.getByTestId("theme-option-none").click();
   await expect(po.page.getByTestId("theme-option-none")).not.toBeVisible();
@@ -28,7 +28,7 @@ test("theme selection - dyad-wide default theme is persisted", async ({
     .getHomeChatInputContainer()
     .getByTestId("auxiliary-actions-menu")
     .click();
-  await po.page.getByRole("menuitem", { name: "Themes" }).hover();
+  await po.page.getByRole("menuitem", { name: "Themes" }).click();
   await expect(po.page.getByTestId("theme-option-none")).toHaveClass(
     /bg-primary/,
   );
@@ -48,7 +48,7 @@ test("theme selection - app-specific theme is persisted", async ({ po }) => {
     .getChatInputContainer()
     .getByTestId("auxiliary-actions-menu")
     .click();
-  await po.page.getByRole("menuitem", { name: "Themes" }).hover();
+  await po.page.getByRole("menuitem", { name: "Themes" }).click();
   await expect(po.page.getByTestId("theme-option-none")).toBeVisible();
   await po.page.getByTestId("theme-option-default").click();
   await expect(po.page.getByTestId("theme-option-default")).not.toBeVisible();
@@ -58,7 +58,7 @@ test("theme selection - app-specific theme is persisted", async ({ po }) => {
     .getChatInputContainer()
     .getByTestId("auxiliary-actions-menu")
     .click();
-  await po.page.getByRole("menuitem", { name: "Themes" }).hover();
+  await po.page.getByRole("menuitem", { name: "Themes" }).click();
   await expect(po.page.getByTestId("theme-option-default")).toHaveClass(
     /bg-primary/,
   );
@@ -70,7 +70,7 @@ test("theme selection - app-specific theme is persisted", async ({ po }) => {
     .getChatInputContainer()
     .getByTestId("auxiliary-actions-menu")
     .click();
-  await po.page.getByRole("menuitem", { name: "Themes" }).hover();
+  await po.page.getByRole("menuitem", { name: "Themes" }).click();
   await expect(po.page.getByTestId("theme-option-none")).toHaveClass(
     /bg-primary/,
   );

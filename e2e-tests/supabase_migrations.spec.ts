@@ -25,7 +25,9 @@ testSkipIfWindows("supabase migrations", async ({ po }) => {
   // --- SCENARIO 2: TOGGLE ON ---
   // Go to settings to find the Supabase integration
   await po.goToSettingsTab();
-  const migrationsSwitch = po.page.locator("#supabase-migrations");
+  const migrationsSwitch = po.page.getByRole("switch", {
+    name: "Write SQL migration files",
+  });
   await migrationsSwitch.click();
   await po.goToChatTab();
 
@@ -86,7 +88,9 @@ testSkipIfWindows("supabase migrations with native git", async ({ po }) => {
   // --- SCENARIO 2: TOGGLE ON ---
   // Go to settings to find the Supabase integration
   await po.goToSettingsTab();
-  const migrationsSwitch = po.page.locator("#supabase-migrations");
+  const migrationsSwitch = po.page.getByRole("switch", {
+    name: "Write SQL migration files",
+  });
   await migrationsSwitch.click();
   await po.goToChatTab();
 

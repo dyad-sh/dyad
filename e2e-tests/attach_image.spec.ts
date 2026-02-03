@@ -21,8 +21,8 @@ test("attach image - home chat", async ({ po }) => {
     .getByTestId("auxiliary-actions-menu")
     .click();
 
-  // Hover over "Attach files" to open submenu
-  await po.page.getByRole("menuitem", { name: "Attach files" }).hover();
+  // Click "Attach files" to open submenu
+  await po.page.getByRole("menuitem", { name: "Attach files" }).click();
 
   // Set up file chooser listener BEFORE clicking the menu item
   const fileChooserPromise = po.page.waitForEvent("filechooser");
@@ -49,8 +49,8 @@ test("attach image - chat", async ({ po }) => {
     .getByTestId("auxiliary-actions-menu")
     .click();
 
-  // Hover over "Attach files" to open submenu
-  await po.page.getByRole("menuitem", { name: "Attach files" }).hover();
+  // Click "Attach files" to open submenu
+  await po.page.getByRole("menuitem", { name: "Attach files" }).click();
 
   // Set up file chooser listener BEFORE clicking the menu item
   const fileChooserPromise = po.page.waitForEvent("filechooser");
@@ -77,8 +77,8 @@ test("attach image - chat - upload to codebase", async ({ po }) => {
     .getByTestId("auxiliary-actions-menu")
     .click();
 
-  // Hover over "Attach files" to open submenu
-  await po.page.getByRole("menuitem", { name: "Attach files" }).hover();
+  // Click "Attach files" to open submenu
+  await po.page.getByRole("menuitem", { name: "Attach files" }).click();
 
   // Set up file chooser listener BEFORE clicking the menu item
   const fileChooserPromise = po.page.waitForEvent("filechooser");

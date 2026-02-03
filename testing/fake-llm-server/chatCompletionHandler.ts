@@ -54,6 +54,11 @@ export const createChatCompletionHandler =
       if (localAgentFixture) {
         return handleLocalAgentFixture(req, res, localAgentFixture);
       }
+
+      // Route plan acceptance message to exit-plan fixture
+      if (textContent.includes("I accept this implementation plan")) {
+        return handleLocalAgentFixture(req, res, "exit-plan");
+      }
     }
 
     let messageContent = CANNED_MESSAGE;

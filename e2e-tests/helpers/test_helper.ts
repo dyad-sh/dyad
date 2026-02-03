@@ -477,7 +477,7 @@ export class PageObject {
   }
 
   async selectChatMode(
-    mode: "build" | "ask" | "agent" | "local-agent" | "basic-agent",
+    mode: "build" | "ask" | "agent" | "local-agent" | "basic-agent" | "plan",
   ) {
     await this.page.getByTestId("chat-mode-selector").click();
     const mapping: Record<string, string> = {
@@ -486,6 +486,7 @@ export class PageObject {
       agent: "Build with MCP",
       "local-agent": "Agent v2",
       "basic-agent": "Basic Agent", // For free users
+      plan: "Plan.*Design before you build",
     };
     const optionName = mapping[mode];
     await this.page

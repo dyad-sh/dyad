@@ -141,7 +141,18 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
       logs.forEach((log) => {
         ipc.misc.addLog(log);
       });
-      setConsoleEntries((prev) => [...prev, ...logs]);
+      setConsoleEntries((prev) => {
+        const existingKeys = new Set(
+          prev.map((e) => `${e.message}|${e.timestamp}|${e.sourceName ?? ""}`),
+        );
+        const newLogs = logs.filter(
+          (log) =>
+            !existingKeys.has(
+              `${log.message}|${log.timestamp}|${log.sourceName ?? ""}`,
+            ),
+        );
+        return newLogs.length > 0 ? [...prev, ...newLogs] : prev;
+      });
 
       // Update the last timestamp for this project
       const latestLog = logs.reduce((latest, log) =>

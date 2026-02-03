@@ -1056,7 +1056,7 @@ This conversation includes one or more image attachments. When the user uploads 
         }
 
         if (settings.selectedChatMode === "agent") {
-          const tools = await getMcpTools(event);
+          const tools = await getMcpTools(event, req.chatId);
 
           const { fullStream } = await simpleStreamText({
             chatMessages: limitedHistoryChatMessages,
@@ -1746,7 +1746,10 @@ ${otherAppsCodebaseInfo}
 `;
 }
 
-async function getMcpTools(event: IpcMainInvokeEvent): Promise<ToolSet> {
+async function getMcpTools(
+  event: IpcMainInvokeEvent,
+  chatId: number,
+): Promise<ToolSet> {
   const mcpToolSet: ToolSet = {};
   try {
     const servers = await db
@@ -1769,6 +1772,7 @@ async function getMcpTools(event: IpcMainInvokeEvent): Promise<ToolSet> {
                   ? args.join(" ")
                   : JSON.stringify(args).slice(0, 500);
             const ok = await requireMcpToolConsent(event, {
+              chatId,
               serverId: s.id,
               serverName: s.name,
               toolName: name,

@@ -29,5 +29,17 @@ export interface PendingAgentConsent {
 
 export const pendingAgentConsentsAtom = atom<PendingAgentConsent[]>([]);
 
+// MCP tool consent request queue
+export interface PendingMcpConsent {
+  requestId: string;
+  chatId: number;
+  serverName: string;
+  toolName: string;
+  toolDescription?: string | null;
+  inputPreview?: string | null;
+}
+
+export const pendingMcpConsentsAtom = atom<PendingMcpConsent[]>([]);
+
 // Agent todos per chat
 export const agentTodosByChatIdAtom = atom<Map<number, AgentTodo[]>>(new Map());

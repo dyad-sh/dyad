@@ -27,6 +27,7 @@ import {
   chatMessagesByIdAtom,
   selectedChatIdAtom,
   pendingAgentConsentsAtom,
+  pendingMcpConsentsAtom,
   agentTodosByChatIdAtom,
 } from "@/atoms/chatAtoms";
 import { atom, useAtom, useSetAtom, useAtomValue } from "jotai";
@@ -64,6 +65,7 @@ import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
 import { ChatInputControls } from "../ChatInputControls";
 import { ChatErrorBox } from "./ChatErrorBox";
 import { AgentConsentBanner } from "./AgentConsentBanner";
+import { McpConsentBanner } from "./McpConsentBanner";
 import { TodoList } from "./TodoList";
 import {
   selectedComponentsPreviewAtom,
@@ -123,6 +125,15 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     (c) => c.chatId === chatId,
   );
   const pendingAgentConsent = consentsForThisChat[0] ?? null;
+
+  const [pendingMcpConsents, setPendingMcpConsents] = useAtom(
+    pendingMcpConsentsAtom,
+  );
+  // Get the first MCP consent in the queue for this chat (if any)
+  const mcpConsentsForThisChat = pendingMcpConsents.filter(
+    (c) => c.chatId === chatId,
+  );
+  const pendingMcpConsent = mcpConsentsForThisChat[0] ?? null;
 
   // Get todos for this chat
   const agentTodosByChatId = useAtomValue(agentTodosByChatIdAtom);
@@ -353,6 +364,37 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                 setPendingAgentConsents((prev) =>
                   prev.filter(
                     (c) => c.requestId !== pendingAgentConsent.requestId,
+                  ),
+                );
+              }}
+            />
+          )}
+          {/* Show MCP consent banner if there's a pending MCP consent request */}
+          {pendingMcpConsent && (
+            <McpConsentBanner
+              consent={pendingMcpConsent}
+              queueTotal={mcpConsentsForThisChat.length}
+              onDecision={(decision) => {
+                ipc.mcp.respondToConsent({
+                  requestId: pendingMcpConsent.requestId,
+                  decision,
+                });
+                // Remove this consent from the queue by requestId
+                setPendingMcpConsents((prev) =>
+                  prev.filter(
+                    (c) => c.requestId !== pendingMcpConsent.requestId,
+                  ),
+                );
+              }}
+              onClose={() => {
+                ipc.mcp.respondToConsent({
+                  requestId: pendingMcpConsent.requestId,
+                  decision: "decline",
+                });
+                // Remove this consent from the queue by requestId
+                setPendingMcpConsents((prev) =>
+                  prev.filter(
+                    (c) => c.requestId !== pendingMcpConsent.requestId,
                   ),
                 );
               }}

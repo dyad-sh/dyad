@@ -93,6 +93,7 @@ export type SetMcpToolConsentParams = z.infer<
 
 export const McpConsentRequestSchema = z.object({
   requestId: z.string(),
+  chatId: z.number(),
   serverId: z.number(),
   serverName: z.string(),
   toolName: z.string(),

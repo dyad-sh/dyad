@@ -543,6 +543,7 @@ async function getMcpTools(
                     : JSON.stringify(args).slice(0, 500);
 
               const ok = await requireMcpToolConsent(event, {
+                chatId: ctx.chatId,
                 serverId: s.id,
                 serverName: s.name,
                 toolName: name,

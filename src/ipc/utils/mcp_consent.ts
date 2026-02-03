@@ -79,6 +79,7 @@ export async function setStoredConsent(
 export async function requireMcpToolConsent(
   event: IpcMainInvokeEvent,
   params: {
+    chatId: number;
     serverId: number;
     serverName: string;
     toolName: string;

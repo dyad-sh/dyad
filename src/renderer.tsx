@@ -11,11 +11,12 @@ import {
   QueryClientProvider,
   MutationCache,
 } from "@tanstack/react-query";
-import { showError, showMcpConsentToast } from "./lib/toast";
+import { showError } from "./lib/toast";
 import { ipc } from "./ipc/types";
 import { useSetAtom } from "jotai";
 import {
   pendingAgentConsentsAtom,
+  pendingMcpConsentsAtom,
   agentTodosByChatIdAtom,
 } from "./atoms/chatAtoms";
 import { queryKeys } from "./lib/queryKeys";
@@ -117,22 +118,25 @@ function App() {
     };
   }, []);
 
+  // MCP tool consent requests - queue consents in atom for chat input banner
+  const setPendingMcpConsents = useSetAtom(pendingMcpConsentsAtom);
+
   useEffect(() => {
     const unsubscribe = ipc.events.mcp.onConsentRequest((payload) => {
-      showMcpConsentToast({
-        serverName: payload.serverName,
-        toolName: payload.toolName,
-        toolDescription: payload.toolDescription,
-        inputPreview: payload.inputPreview,
-        onDecision: (d) =>
-          ipc.mcp.respondToConsent({
-            requestId: payload.requestId,
-            decision: d,
-          }),
-      });
+      setPendingMcpConsents((prev) => [
+        ...prev,
+        {
+          requestId: payload.requestId,
+          chatId: payload.chatId,
+          serverName: payload.serverName,
+          toolName: payload.toolName,
+          toolDescription: payload.toolDescription,
+          inputPreview: payload.inputPreview,
+        },
+      ]);
     });
     return () => unsubscribe();
-  }, []);
+  }, [setPendingMcpConsents]);
 
   // Agent v2 tool consent requests - queue consents instead of overwriting
   const setPendingAgentConsents = useSetAtom(pendingAgentConsentsAtom);
@@ -178,16 +182,19 @@ function App() {
     return () => unsubscribe();
   }, [setPendingAgentConsents]);
 
-  // Clear pending agent consents when a chat stream ends or errors
+  // Clear pending agent and MCP consents when a chat stream ends or errors
   // This prevents stale consent banners from remaining visible after cancellation
   useEffect(() => {
     const unsubscribe = ipc.events.misc.onChatStreamEnd(({ chatId }) => {
       setPendingAgentConsents((prev) =>
         prev.filter((consent) => consent.chatId !== chatId),
       );
+      setPendingMcpConsents((prev) =>
+        prev.filter((consent) => consent.chatId !== chatId),
+      );
     });
     return () => unsubscribe();
-  }, [setPendingAgentConsents]);
+  }, [setPendingAgentConsents, setPendingMcpConsents]);
 
   // Forward telemetry events from main process to PostHog
   useEffect(() => {

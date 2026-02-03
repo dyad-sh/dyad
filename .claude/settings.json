@@ -158,7 +158,7 @@
           {
             "type": "command",
             "command": "npm install",
-            "timeout": 60
+            "timeout": 60000
           }
         ]
       }

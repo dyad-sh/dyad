@@ -81,6 +81,7 @@ import { VisualEditingChangesDialog } from "@/components/preview_panel/VisualEdi
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
+import { PromptSuggestionButtons } from "./PromptSuggestionButtons";
 
 const showTokenBarAtom = atom(false);
 
@@ -150,6 +151,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     refreshProposal,
   } = useProposal(chatId);
   const { proposal, messageId } = proposalResult ?? {};
+  const promptSuggestions = proposalResult?.promptSuggestions ?? [];
   useChatModeToggle();
 
   const lastMessage = (chatId ? (messagesById.get(chatId) ?? []) : []).at(-1);
@@ -443,6 +445,18 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
           {/* Use the DragDropOverlay component */}
           <DragDropOverlay isDraggingOver={isDraggingOver} />
+
+          {chatId &&
+            settings.selectedChatMode !== "ask" &&
+            settings.selectedChatMode !== "local-agent" &&
+            proposalResult?.chatId === chatId &&
+            promptSuggestions.length > 0 && (
+              <PromptSuggestionButtons
+                suggestions={promptSuggestions}
+                onSelect={(prompt) => setInputValue(prompt)}
+                disabled={isStreaming}
+              />
+            )}
 
           <div className="flex items-start space-x-2 ">
             <LexicalChatInput

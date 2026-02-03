@@ -185,6 +185,17 @@ export const agentEvents = {
     channel: "agent-tool:problems-update",
     payload: AgentProblemsUpdateSchema,
   }),
+
+  /**
+   * Emitted when the agent compacts its conversation history.
+   */
+  compactionStatus: defineEvent({
+    channel: "agent-tool:compaction-status",
+    payload: z.object({
+      chatId: z.number(),
+      status: z.enum(["compacting", "compacted"]),
+    }),
+  }),
 } as const;
 
 // =============================================================================

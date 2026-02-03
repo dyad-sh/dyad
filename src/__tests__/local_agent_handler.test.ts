@@ -209,6 +209,7 @@ let mockStreamResult: ReturnType<typeof createFakeStream> | null = null;
 
 vi.mock("ai", () => ({
   streamText: vi.fn(() => mockStreamResult),
+  generateText: vi.fn(async () => ({ text: "Compaction summary" })),
   stepCountIs: vi.fn((n: number) => ({ steps: n })),
   hasToolCall: vi.fn((toolName: string) => ({ toolName })),
 }));
@@ -225,6 +226,7 @@ vi.mock("@/ipc/utils/get_model_client", () => ({
 vi.mock("@/ipc/utils/token_utils", () => ({
   getMaxTokens: vi.fn(async () => 4096),
   getTemperature: vi.fn(async () => 0.7),
+  getContextWindowForModel: vi.fn(async () => 128000),
 }));
 
 vi.mock("@/ipc/utils/provider_options", () => ({

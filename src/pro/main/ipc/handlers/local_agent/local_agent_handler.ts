@@ -6,6 +6,7 @@
 import { IpcMainInvokeEvent } from "electron";
 import {
   streamText,
+  generateText,
   ToolSet,
   stepCountIs,
   hasToolCall,
@@ -23,7 +24,11 @@ import { readSettings } from "@/main/settings";
 import { getDyadAppPath } from "@/paths/paths";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import { safeSend } from "@/ipc/utils/safe_sender";
-import { getMaxTokens, getTemperature } from "@/ipc/utils/token_utils";
+import {
+  getMaxTokens,
+  getTemperature,
+  getContextWindowForModel,
+} from "@/ipc/utils/token_utils";
 import { getProviderOptions, getAiHeaders } from "@/ipc/utils/provider_options";
 
 import {
@@ -55,6 +60,14 @@ import {
   prepareStepMessages,
   type InjectedMessage,
 } from "./prepare_step_utils";
+import {
+  shouldCompact,
+  estimateModelMessagesTokens,
+  partitionMessagesForCompaction,
+  buildCompactionPrompt,
+  buildCompactedMessages,
+} from "./compaction_utils";
+import { COMPACTION_SYSTEM_PROMPT } from "@/prompts/compaction_system_prompt";
 import { TOOL_DEFINITIONS } from "./tool_definitions";
 import { parseAiMessagesJson } from "@/ipc/utils/ai_messages_utils";
 import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
@@ -248,6 +261,13 @@ export async function handleLocalAgentStream(
           .filter((msg) => msg.content || msg.aiMessagesJson)
           .flatMap((msg) => parseAiMessagesJson(msg));
 
+    // Compaction state
+    let hasCompacted = false;
+    let lastCompactionTokenCount = 0;
+    const contextWindow = await getContextWindowForModel(
+      settings.selectedModel,
+    );
+
     // Stream the response
     const streamResult = streamText({
       model: modelClient.model,
@@ -271,12 +291,62 @@ export async function handleLocalAgentStream(
       tools: allTools,
       stopWhen: [stepCountIs(25), hasToolCall(addIntegrationTool.name)], // Allow multiple tool call rounds, stop on add_integration
       abortSignal: abortController.signal,
-      // Inject pending user messages (e.g., images from web_crawl) between steps
-      // We must re-inject all accumulated messages each step because the AI SDK
-      // doesn't persist dynamically injected messages in its internal state.
-      // We track the insertion index so messages appear at the same position each step.
-      prepareStep: (options) =>
-        prepareStepMessages(options, pendingUserMessages, allInjectedMessages),
+      // Inject pending user messages and check for compaction between steps
+      prepareStep: async (options) => {
+        // First, run the existing message injection logic
+        const injectedOptions =
+          prepareStepMessages(
+            options,
+            pendingUserMessages,
+            allInjectedMessages,
+          ) ?? options;
+
+        const currentMessages = injectedOptions.messages;
+
+        // Check if compaction is needed
+        const currentTokens = estimateModelMessagesTokens(currentMessages);
+        const shouldRecompact =
+          !hasCompacted || currentTokens > lastCompactionTokenCount * 1.5;
+
+        if (
+          shouldRecompact &&
+          shouldCompact({
+            messages: currentMessages,
+            contextWindow,
+          })
+        ) {
+          try {
+            const compactedMessages = await performCompaction({
+              messages: currentMessages,
+              model: modelClient.model,
+              abortSignal: abortController.signal,
+              event,
+              chatId: req.chatId,
+            });
+
+            if (compactedMessages) {
+              // Clear injected messages — their content is now in the summary or preserved set
+              allInjectedMessages.length = 0;
+              hasCompacted = true;
+              lastCompactionTokenCount =
+                estimateModelMessagesTokens(compactedMessages);
+
+              return {
+                ...injectedOptions,
+                messages: compactedMessages,
+              };
+            }
+          } catch (err) {
+            logger.warn(
+              "Compaction failed, continuing with full context:",
+              err,
+            );
+          }
+        }
+
+        // Return injected options if we modified messages, otherwise undefined
+        return injectedOptions === options ? undefined : injectedOptions;
+      },
       onFinish: async (response) => {
         const totalTokens = response.usage?.totalTokens;
         const inputTokens = response.usage?.inputTokens;
@@ -526,6 +596,73 @@ function sendResponseChunk(
     chatId,
     messages: currentMessages,
   });
+}
+
+async function performCompaction({
+  messages,
+  model,
+  abortSignal,
+  event,
+  chatId,
+}: {
+  messages: ModelMessage[];
+  model: Parameters<typeof generateText>[0]["model"];
+  abortSignal: AbortSignal;
+  event: IpcMainInvokeEvent;
+  chatId: number;
+}): Promise<ModelMessage[] | null> {
+  const { toCompact, toPreserve } = partitionMessagesForCompaction(
+    messages,
+    10,
+  );
+
+  if (toCompact.length === 0) {
+    return null;
+  }
+
+  logger.log(
+    `Compacting ${toCompact.length} messages (preserving ${toPreserve.length})`,
+  );
+
+  safeSend(event.sender, "agent-tool:compaction-status", {
+    chatId,
+    status: "compacting",
+  });
+
+  try {
+    const promptMessages = buildCompactionPrompt(toCompact);
+
+    const result = await generateText({
+      model,
+      system: COMPACTION_SYSTEM_PROMPT,
+      messages: promptMessages,
+      maxOutputTokens: 4000,
+      abortSignal,
+    });
+
+    const summary = result.text;
+
+    if (!summary) {
+      logger.warn("Compaction returned empty summary");
+      return null;
+    }
+
+    const compacted = buildCompactedMessages(summary, toPreserve);
+
+    safeSend(event.sender, "agent-tool:compaction-status", {
+      chatId,
+      status: "compacted",
+    });
+
+    logger.log(
+      `Compaction complete: ${messages.length} messages -> ${compacted.length} messages`,
+    );
+
+    return compacted;
+  } catch (err) {
+    logger.warn("Compaction summarization failed:", err);
+    return null;
+  }
 }
 
 async function getMcpTools(

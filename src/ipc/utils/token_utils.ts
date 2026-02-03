@@ -24,6 +24,13 @@ export async function getContextWindow() {
   return modelOption?.contextWindow || DEFAULT_CONTEXT_WINDOW;
 }
 
+export async function getContextWindowForModel(
+  model: LargeLanguageModel,
+): Promise<number> {
+  const modelOption = await findLanguageModel(model);
+  return modelOption?.contextWindow || DEFAULT_CONTEXT_WINDOW;
+}
+
 export async function getMaxTokens(
   model: LargeLanguageModel,
 ): Promise<number | undefined> {

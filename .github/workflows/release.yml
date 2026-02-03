@@ -51,35 +51,39 @@ jobs:
         run: |
           winget install -e --id Microsoft.Azure.TrustedSigningClientTools --source winget --accept-source-agreements --accept-package-agreements
 
-          # Search multiple locations where winget might install the tools
-          $searchPaths = @(
-            "C:\Program Files",
-            "$env:LOCALAPPDATA",
-            "$env:LOCALAPPDATA\Microsoft\WinGet\Packages",
-            "C:\Users\runneradmin\AppData\Local\Microsoft\WinGet\Packages"
-          )
-
+          $known = Join-Path $env:LOCALAPPDATA "Microsoft\MicrosoftTrustedSigningClientTools\Azure.CodeSigning.Dlib.dll"
           $dllPath = $null
-          foreach ($searchPath in $searchPaths) {
-            if (Test-Path $searchPath) {
-              Write-Host "Searching in: $searchPath"
-              $found = Get-ChildItem -Path $searchPath -Recurse -Filter "Azure.CodeSigning.Dlib.dll" -ErrorAction SilentlyContinue |
-                      Where-Object { $_.FullName -like "*x64*" } |
-                      Select-Object -First 1 -ExpandProperty FullName
-              if ($found) {
-                $dllPath = $found
-                break
+
+          if (Test-Path $known) {
+            $dllPath = $known
+          } else {
+            $searchPaths = @(
+              (Join-Path $env:LOCALAPPDATA "Microsoft\MicrosoftTrustedSigningClientTools"),
+              "C:\Program Files",
+              "$env:LOCALAPPDATA",
+              "$env:LOCALAPPDATA\Microsoft\WinGet\Packages",
+              "C:\Users\runneradmin\AppData\Local\Microsoft\WinGet\Packages"
+            )
+
+            foreach ($searchPath in $searchPaths) {
+              if (Test-Path $searchPath) {
+                Write-Host "Searching in: $searchPath"
+                $found = Get-ChildItem -Path $searchPath -Recurse -Filter "Azure.CodeSigning.Dlib.dll" -ErrorAction SilentlyContinue |
+                  Sort-Object { $_.FullName -notlike "*x64*" } |
+                  Select-Object -First 1 -ExpandProperty FullName
+                if ($found) { $dllPath = $found; break }
               }
             }
           }
 
           if ($dllPath) {
-            echo "Found DLL at: $dllPath"
-            echo "AZURE_CODE_SIGNING_DLIB=$dllPath" >> $env:GITHUB_ENV
+            Write-Host "Found DLL at: $dllPath"
+            "AZURE_CODE_SIGNING_DLIB=$dllPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           } else {
-            Write-Error "Could not find Azure.CodeSigning.Dlib.dll in any of the search paths"
+            Write-Error "Could not find Azure.CodeSigning.Dlib.dll"
             exit 1
           }
+
       - name: Create Azure signing metadata
         if: contains(matrix.os.name, 'windows')
         shell: powershell

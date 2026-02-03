@@ -148,6 +148,10 @@ export function registerTypedHandlers<
   for (const [key, contract] of Object.entries(contracts)) {
     const handler = handlers[key as keyof typeof handlers];
     if (handler) {
+      // TODO: Remove this cast when Zod v4 type inference improves.
+      // The cast is needed because TypeScript cannot infer that the handler's
+      // input/output types match the contract's inferred types after the Zod v4 upgrade.
+      // Runtime validation ensures handler/contract compatibility.
       createTypedHandler(contract, handler as any);
     }
   }

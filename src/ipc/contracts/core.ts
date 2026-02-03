@@ -268,8 +268,10 @@ export function createStreamClient<
   const getIpcRenderer = () => (window as any).electron?.ipcRenderer;
 
   type Input = z.infer<TInput>;
-  // Use unknown for KeyValue to avoid complex type inference issues
-  type KeyValue = unknown;
+  // Use string | number for KeyValue to support common key types while
+  // maintaining better type safety than unknown. TypeScript cannot infer
+  // the exact key type from TInput[TKey] due to Zod v4 type system limitations.
+  type KeyValue = string | number;
 
   const streams = new Map<
     KeyValue,
@@ -291,7 +293,9 @@ export function createStreamClient<
     ipcRenderer.on(contract.events.chunk.channel, (data: unknown) => {
       const parsed = contract.events.chunk.payload.safeParse(data);
       if (parsed.success) {
-        const key = (parsed.data as any)[contract.keyField];
+        const key = (parsed.data as Record<string, unknown>)[
+          contract.keyField
+        ] as KeyValue;
         streams.get(key)?.onChunk(parsed.data);
       }
     });
@@ -299,7 +303,9 @@ export function createStreamClient<
     ipcRenderer.on(contract.events.end.channel, (data: unknown) => {
       const parsed = contract.events.end.payload.safeParse(data);
       if (parsed.success) {
-        const key = (parsed.data as any)[contract.keyField];
+        const key = (parsed.data as Record<string, unknown>)[
+          contract.keyField
+        ] as KeyValue;
         streams.get(key)?.onEnd(parsed.data);
         streams.delete(key);
       }
@@ -308,7 +314,9 @@ export function createStreamClient<
     ipcRenderer.on(contract.events.error.channel, (data: unknown) => {
       const parsed = contract.events.error.payload.safeParse(data);
       if (parsed.success) {
-        const key = (parsed.data as any)[contract.keyField];
+        const key = (parsed.data as Record<string, unknown>)[
+          contract.keyField
+        ] as KeyValue;
         streams.get(key)?.onError(parsed.data);
         streams.delete(key);
       }

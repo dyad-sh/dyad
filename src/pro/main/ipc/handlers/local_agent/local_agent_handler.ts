@@ -454,8 +454,8 @@ export async function handleLocalAgentStream(
       logger.warn("Failed to save AI messages JSON:", err);
     }
 
-    // In read-only mode, skip deploys and commits
-    if (!readOnly) {
+    // In read-only and plan mode, skip deploys and commits
+    if (!readOnly && !planModeOnly) {
       // Deploy all Supabase functions if shared modules changed
       await deployAllFunctionsIfNeeded(ctx);
 

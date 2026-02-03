@@ -9,13 +9,13 @@ export interface PlanData {
 
 export interface PlanState {
   plansByChatId: Map<number, PlanData>;
-  shouldPersist: boolean;
+  persistChatIds: Set<number>;
   acceptedChatIds: Set<number>;
 }
 
 export const planStateAtom = atom<PlanState>({
   plansByChatId: new Map(),
-  shouldPersist: false,
+  persistChatIds: new Set<number>(),
   acceptedChatIds: new Set<number>(),
 });
 

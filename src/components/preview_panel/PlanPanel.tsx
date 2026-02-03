@@ -10,6 +10,7 @@ import { previewModeAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { usePlan } from "@/hooks/usePlan";
+import { useSettings } from "@/hooks/useSettings";
 
 export const PlanPanel: React.FC = () => {
   const chatId = useAtomValue(selectedChatIdAtom);
@@ -19,12 +20,13 @@ export const PlanPanel: React.FC = () => {
   const setPreviewMode = useSetAtom(previewModeAtom);
   const { streamMessage, isStreaming } = useStreamChat();
   const { savedPlan } = usePlan();
+  const { settings } = useSettings();
 
   const planData = chatId ? planState.plansByChatId.get(chatId) : null;
   const currentPlan = planData?.content ?? null;
   const currentTitle = planData?.title ?? null;
   const currentSummary = planData?.summary ?? null;
-  const shouldPersist = planState.shouldPersist;
+  const shouldPersist = chatId ? planState.persistChatIds.has(chatId) : false;
   const isAccepted = chatId ? planState.acceptedChatIds.has(chatId) : false;
   // Plan was already saved if we found it in the filesystem
   const isSavedPlan = !!savedPlan;
@@ -38,6 +40,7 @@ export const PlanPanel: React.FC = () => {
 
   const handleAccept = () => {
     if (!chatId) return;
+    if (settings?.selectedChatMode !== "plan") return;
 
     streamMessage({
       chatId,
@@ -47,10 +50,16 @@ export const PlanPanel: React.FC = () => {
   };
 
   const handlePersistChange = (checked: boolean) => {
-    setPlanState((prev) => ({
-      ...prev,
-      shouldPersist: checked,
-    }));
+    if (!chatId) return;
+    setPlanState((prev) => {
+      const nextPersistChatIds = new Set(prev.persistChatIds);
+      if (checked) {
+        nextPersistChatIds.add(chatId);
+      } else {
+        nextPersistChatIds.delete(chatId);
+      }
+      return { ...prev, persistChatIds: nextPersistChatIds };
+    });
   };
 
   // Don't render anything if there's no plan - effect will switch to preview mode

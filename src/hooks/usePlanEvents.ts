@@ -92,7 +92,7 @@ export function usePlanEvents() {
         // Read latest values from refs to avoid stale closure
         const currentState = planStateRef.current;
         const planData = currentState.plansByChatId.get(payload.chatId);
-        const shouldPersist = currentState.shouldPersist;
+        const shouldPersist = currentState.persistChatIds.has(payload.chatId);
 
         // Persist the plan to .dyad/plans/ if flag is set
         if (shouldPersist && selectedAppIdRef.current && planData) {
@@ -108,11 +108,12 @@ export function usePlanEvents() {
             console.error("Failed to save plan:", error);
           }
 
-          // Reset persist flag after saving
-          setPlanState((prev) => ({
-            ...prev,
-            shouldPersist: false,
-          }));
+          // Reset persist flag for this chat after saving
+          setPlanState((prev) => {
+            const nextPersistChatIds = new Set(prev.persistChatIds);
+            nextPersistChatIds.delete(payload.chatId);
+            return { ...prev, persistChatIds: nextPersistChatIds };
+          });
         }
 
         // Switch chat mode to local-agent for implementation

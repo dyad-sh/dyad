@@ -1,9 +1,7 @@
 import { test, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
-test("should open history menu when pressing up arrow with empty input", async ({
-  po,
-}) => {
+test("should open, navigate, and select from history menu", async ({ po }) => {
   await po.setUp({ autoApprove: true });
 
   // Send messages to populate history
@@ -18,235 +16,106 @@ test("should open history menu when pressing up arrow with empty input", async (
   await chatInput.click();
   await chatInput.fill("");
 
-  // Press up arrow with empty input
+  // Press up arrow with empty input to open history menu
   await po.page.keyboard.press("ArrowUp");
 
   // Wait for history menu to appear and contain items
   const historyMenu = po.page.locator('[data-mentions-menu="true"]');
   await expect(historyMenu).toBeVisible();
 
-  // Verify menu has items
+  // Verify menu has items (oldest at top, newest at bottom)
   const menuItems = po.page.locator('[data-mentions-menu="true"] li');
   await expect(menuItems).toHaveCount(2);
-
-  // Verify we can see the prompt text in the menu
-  // Most recent should be at the bottom (index 1)
-  await expect(menuItems.nth(1)).toContainText("Second test message");
   await expect(menuItems.nth(0)).toContainText("First test message");
-});
+  await expect(menuItems.nth(1)).toContainText("Second test message");
 
-test("should navigate history with keyboard arrows and show selection", async ({
-  po,
-}) => {
-  await po.setUp({ autoApprove: true });
-
-  await po.sendPrompt("Prompt A");
-  await po.waitForChatCompletion();
-
-  await po.sendPrompt("Prompt B");
-  await po.waitForChatCompletion();
-
-  const chatInput = po.getChatInput();
-  await chatInput.click();
-  await chatInput.fill("");
-
-  // Open history menu (up-arrow). We default-select the last (bottom) item.
-  await po.page.keyboard.press("ArrowUp");
-
-  const menuItems = po.page.locator('[data-mentions-menu="true"] li');
+  // Verify default selection is the last (most recent) item
   const lastItem = menuItems.nth(1);
+  await expect(lastItem).toHaveClass(/bg-accent/, { timeout: 500 });
 
-  // Use a longer timeout because of the 60ms delay in HistoryNavigation.tsx
-  await expect(lastItem).toContainText("Prompt B", { timeout: 500 });
-  await expect(lastItem).toHaveClass(/bg-accent/);
-
-  // Press up arrow → first item (oldest at top)
+  // Navigate up to first item
   await po.page.keyboard.press("ArrowUp");
   const firstItem = menuItems.nth(0);
   await expect(firstItem).toHaveClass(/bg-accent/);
-  await expect(firstItem).toContainText("Prompt A");
+  await expect(firstItem).toContainText("First test message");
 
-  // Press up again → wrap to last item
+  // Navigate up again to wrap to last item
   await po.page.keyboard.press("ArrowUp");
   await expect(lastItem).toHaveClass(/bg-accent/);
-});
-
-test("should select and insert history item with enter key", async ({ po }) => {
-  await po.setUp({ autoApprove: true });
-
-  const historyPrompt = "My history prompt to select";
-
-  await po.sendPrompt(historyPrompt);
-  await po.waitForChatCompletion();
-
-  const chatInput = po.getChatInput();
-  await chatInput.click();
-  await chatInput.fill("");
-
-  // Open history menu
-  await po.page.keyboard.press("ArrowUp");
-
-  // Verify the item is in the menu
-  const menuItems = po.page.locator('[data-mentions-menu="true"] li');
-  await expect(menuItems.nth(0)).toContainText(historyPrompt);
 
   // Select with Enter
   await po.page.keyboard.press("Enter");
 
-  // Wait for the menu to close and text to be inserted
-  const historyMenu = po.page.locator('[data-mentions-menu="true"]');
+  // Menu should close and text should be inserted
   await expect(historyMenu).not.toBeVisible({ timeout: Timeout.MEDIUM });
+  await expect(chatInput).toContainText("Second test message", {
+    timeout: Timeout.MEDIUM,
+  });
 
-  // Verify content was inserted using toContainText
-  await expect(chatInput).toContainText(historyPrompt, {
+  // Clear input for mouse click test
+  await chatInput.fill("");
+  await po.page.keyboard.press("ArrowUp");
+  await expect(historyMenu).toBeVisible();
+
+  // Click the first item (oldest message)
+  await menuItems.nth(0).click();
+
+  // Verify menu closed and first message was inserted
+  await expect(historyMenu).not.toBeVisible({ timeout: Timeout.MEDIUM });
+  await expect(chatInput).toContainText("First test message", {
     timeout: Timeout.MEDIUM,
   });
 });
 
-test("should select and insert history item with mouse click", async ({
+test("should handle edge cases: guards, escape, and sending after cancel", async ({
   po,
 }) => {
   await po.setUp({ autoApprove: true });
 
-  const historyPrompt = "Click me to select";
-
-  await po.sendPrompt(historyPrompt);
-  await po.waitForChatCompletion();
-
   const chatInput = po.getChatInput();
-  await chatInput.click();
-  await chatInput.fill("");
-
-  // Open history menu
-  await po.page.keyboard.press("ArrowUp");
-
-  // Wait for menu items
-  const menuItems = po.page.locator('[data-mentions-menu="true"] li');
-  await expect(menuItems).toHaveCount(1);
-
-  // Click the first item
-  await menuItems.nth(0).click();
-
-  // Wait for the menu to close and text to be inserted
   const historyMenu = po.page.locator('[data-mentions-menu="true"]');
-  await expect(historyMenu).not.toBeVisible({ timeout: Timeout.MEDIUM });
 
-  // Input should contain the selected history item
-  await expect(chatInput).toContainText(historyPrompt, {
-    timeout: Timeout.MEDIUM,
-  });
-});
-
-test("should close history menu and clear with escape key", async ({ po }) => {
-  await po.setUp({ autoApprove: true });
-
-  await po.sendPrompt("Some history");
-  await po.waitForChatCompletion();
-
-  const chatInput = po.getChatInput();
+  // Test 1: Empty history guard - menu should not open with no history
   await chatInput.click();
   await chatInput.fill("");
-
-  // Open history menu
-  await po.page.keyboard.press("ArrowUp");
-
-  // Verify menu is open
-  const historyMenu = po.page.locator('[data-mentions-menu="true"]');
-  await expect(historyMenu).toBeVisible();
-
-  // Press escape to close
-  await po.page.keyboard.press("Escape");
-
-  // Menu should be closed
-  await expect(historyMenu).not.toBeVisible();
-});
-
-test("should not open history menu if input has content", async ({ po }) => {
-  await po.setUp({ autoApprove: true });
-
-  await po.sendPrompt("History entry");
-  await po.waitForChatCompletion();
-
-  const chatInput = po.getChatInput();
-  await chatInput.click();
-  await chatInput.fill("typed content");
-
-  // Press up arrow while input has content
-  await po.page.keyboard.press("ArrowUp");
-
-  // Menu should not open - input should still have content
-  const inputValue = await chatInput.textContent({ timeout: Timeout.MEDIUM });
-  expect(inputValue?.trim()).toBe("typed content");
-
-  // No visible mentions menu
-  const mentionsMenu = po.page.locator('[data-mentions-menu="true"]');
-  await expect(mentionsMenu).not.toBeVisible();
-});
-
-test("should not open history menu if history is empty", async ({ po }) => {
-  await po.setUp({ autoApprove: true });
-
-  const chatInput = po.getChatInput();
-  await chatInput.click();
-  await chatInput.fill("");
-
-  // Press up arrow with no history
   await po.page.keyboard.press("ArrowUp");
 
   const inputValue = await chatInput.textContent({ timeout: Timeout.MEDIUM });
   expect(inputValue?.trim()).toBe("");
-
-  // No visible mentions menu
-  const mentionsMenu = po.page.locator('[data-mentions-menu="true"]');
-  await expect(mentionsMenu).not.toBeVisible();
-});
-
-test("should close history menu and allow sending regular messages", async ({
-  po,
-}) => {
-  await po.setUp({ autoApprove: true });
-
-  const historyPrompt = "Build a button component";
-
-  // Send initial prompt to create history
-  await po.sendPrompt(historyPrompt);
-  await po.waitForChatCompletion();
-
-  // Now retrieve from history
-  const chatInput = po.getChatInput();
-  await chatInput.click();
-  await chatInput.fill("");
-
-  // Open history menu
-  await po.page.keyboard.press("ArrowUp");
-
-  // Wait for history menu to appear
-  const historyMenu = po.page.locator('[data-mentions-menu="true"]');
-  await expect(historyMenu).toBeVisible();
-
-  // Verify the item is in the menu
-  const menuItems = po.page.locator('[data-mentions-menu="true"] li');
-  await expect(menuItems).toHaveCount(1);
-  await expect(menuItems.nth(0)).toContainText(historyPrompt);
-
-  // Press escape to close the menu
-  await po.page.keyboard.press("Escape");
-
-  // Menu should be closed
   await expect(historyMenu).not.toBeVisible();
 
-  // Type a new message directly
-  await chatInput.click();
-  await chatInput.fill("New test message");
-
-  // Send the message
-  await po.page.keyboard.press("Enter");
-
-  // Wait for message to be sent
+  // Create some history
+  await po.sendPrompt("History entry for testing");
   await po.waitForChatCompletion();
 
-  // Verify the message was sent by checking it appears in the chat
+  // Test 2: Non-empty input guard - menu should not open when input has content
+  await chatInput.click();
+  await chatInput.fill("typed content");
+  await po.page.keyboard.press("ArrowUp");
+
+  const inputValueWithContent = await chatInput.textContent({
+    timeout: Timeout.MEDIUM,
+  });
+  expect(inputValueWithContent?.trim()).toBe("typed content");
+  await expect(historyMenu).not.toBeVisible();
+
+  // Test 3: Escape closes menu and clears input
+  await chatInput.fill("");
+  await po.page.keyboard.press("ArrowUp");
+  await expect(historyMenu).toBeVisible();
+
+  await po.page.keyboard.press("Escape");
+  await expect(historyMenu).not.toBeVisible();
+
+  // Test 4: After closing menu, can send regular messages
+  await chatInput.click();
+  await chatInput.fill("New test message after escape");
+  await po.page.keyboard.press("Enter");
+
+  await po.waitForChatCompletion();
+
+  // Verify the message was sent
   await expect(
-    po.page.getByText("New test message", { exact: false }),
+    po.page.getByText("New test message after escape", { exact: false }),
   ).toBeVisible();
 });

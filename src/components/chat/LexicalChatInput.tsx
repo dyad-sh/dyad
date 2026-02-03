@@ -374,7 +374,10 @@ export function LexicalChatInput({
         if (historyTriggerActiveRef.current) {
           const hasTrigger = textContent.includes(HISTORY_TRIGGER);
           const withoutTrigger = textContent.split(HISTORY_TRIGGER).join("");
-          if (!hasTrigger) {
+          // Clear the ref when trigger is gone OR when real content is inserted
+          // (e.g., when a menu item is selected). This ensures consistent state
+          // even if the selected text contains a zero-width space character.
+          if (!hasTrigger || withoutTrigger.trim() !== "") {
             historyTriggerActiveRef.current = false;
           }
           if (withoutTrigger.trim() === "") {

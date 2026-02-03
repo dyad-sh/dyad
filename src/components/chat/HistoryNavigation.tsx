@@ -47,6 +47,8 @@ export function HistoryNavigation({
       }
 
       // Ignore our synthetic KEY_ARROW_UP (we dispatch it to select last item).
+      // This also debounces rapid ArrowUp presses: if a press arrives while a
+      // synthetic dispatch is scheduled, it's ignored to prevent multiple menus.
       if (syntheticUpScheduledRef.current) {
         syntheticUpScheduledRef.current = false;
         return false;
@@ -104,7 +106,7 @@ export function HistoryNavigation({
         editor.getEditorState().read(() => {
           const root = $getRoot();
           const textContent = root.getTextContent();
-          isTriggerOnly = textContent.trim() === HISTORY_TRIGGER;
+          isTriggerOnly = textContent === HISTORY_TRIGGER;
         });
 
         if (!isTriggerOnly) {

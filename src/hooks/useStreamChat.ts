@@ -171,27 +171,33 @@ export function useStreamChat({
                 return next;
               });
             },
-            onEnd: async (response: ChatResponseEnd) => {
+            onEnd: (response: ChatResponseEnd) => {
               // Remove from pending set now that stream is complete
               pendingStreamChatIds.delete(chatId);
 
               // Show native notification if enabled and window is not focused
+              // Fire-and-forget to avoid blocking UI updates
               const notificationsEnabled =
-                settings?.enableChatCompletionNotifications !== false;
-              if (notificationsEnabled) {
-                try {
-                  const isWindowFocused = await ipc.system.isWindowFocused();
-                  if (!isWindowFocused) {
-                    new Notification("Dyad", {
-                      body: "Chat response completed",
-                    });
-                  }
-                } catch (error) {
-                  console.error(
-                    "[CHAT] Failed to show completion notification:",
-                    error,
-                  );
-                }
+                settings?.enableChatCompletionNotifications === true;
+              if (
+                notificationsEnabled &&
+                Notification.permission === "granted"
+              ) {
+                ipc.system
+                  .isWindowFocused()
+                  .then((isWindowFocused) => {
+                    if (!isWindowFocused) {
+                      new Notification("Dyad", {
+                        body: "Chat response completed",
+                      });
+                    }
+                  })
+                  .catch((error) => {
+                    console.error(
+                      "[CHAT] Failed to show completion notification:",
+                      error,
+                    );
+                  });
               }
 
               if (response.updatedFiles) {

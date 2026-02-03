@@ -62,7 +62,6 @@ import {
 } from "./prepare_step_utils";
 import {
   shouldCompact,
-  estimateModelMessagesTokens,
   partitionMessagesForCompaction,
   buildCompactionPrompt,
   buildCompactedMessages,
@@ -262,11 +261,12 @@ export async function handleLocalAgentStream(
           .flatMap((msg) => parseAiMessagesJson(msg));
 
     // Compaction state
-    let hasCompacted = false;
-    let lastCompactionTokenCount = 0;
+    let lastCompactionStepCount = 0;
     const contextWindow = await getContextWindowForModel(
       settings.selectedModel,
     );
+    // Minimum steps between compactions to avoid repeated compaction loops
+    const COMPACTION_COOLDOWN_STEPS = 3;
 
     // Stream the response
     const streamResult = streamText({
@@ -292,24 +292,17 @@ export async function handleLocalAgentStream(
       stopWhen: [stepCountIs(25), hasToolCall(addIntegrationTool.name)], // Allow multiple tool call rounds, stop on add_integration
       abortSignal: abortController.signal,
       // Inject pending user messages and check for compaction between steps
-      prepareStep: async (options) => {
-        // First, run the existing message injection logic
-        const injectedOptions =
-          prepareStepMessages(
-            options,
-            pendingUserMessages,
-            allInjectedMessages,
-          ) ?? options;
+      prepareStep: async (options, stepIndex) => {
+        const currentMessages = options.messages;
 
-        const currentMessages = injectedOptions.messages;
-
-        // Check if compaction is needed
-        const currentTokens = estimateModelMessagesTokens(currentMessages);
-        const shouldRecompact =
-          !hasCompacted || currentTokens > lastCompactionTokenCount * 1.5;
+        // Check if compaction is needed BEFORE processing pending messages
+        // Only check after cooldown period to avoid repeated compaction loops
+        const stepsSinceLastCompaction = stepIndex - lastCompactionStepCount;
+        const canCompact =
+          stepsSinceLastCompaction >= COMPACTION_COOLDOWN_STEPS;
 
         if (
-          shouldRecompact &&
+          canCompact &&
           shouldCompact({
             messages: currentMessages,
             contextWindow,
@@ -325,16 +318,19 @@ export async function handleLocalAgentStream(
             });
 
             if (compactedMessages) {
-              // Clear injected messages — their content is now in the summary or preserved set
+              // After compaction, clear old injected messages that were based on pre-compaction indices
+              // and re-process pending messages with the new compacted message count
               allInjectedMessages.length = 0;
-              hasCompacted = true;
-              lastCompactionTokenCount =
-                estimateModelMessagesTokens(compactedMessages);
+              lastCompactionStepCount = stepIndex;
 
-              return {
-                ...injectedOptions,
-                messages: compactedMessages,
-              };
+              // Now inject pending messages into the compacted result
+              const result = prepareStepMessages(
+                { ...options, messages: compactedMessages },
+                pendingUserMessages,
+                allInjectedMessages,
+              );
+
+              return result ?? { ...options, messages: compactedMessages };
             }
           } catch (err) {
             logger.warn(
@@ -344,7 +340,14 @@ export async function handleLocalAgentStream(
           }
         }
 
-        // Return injected options if we modified messages, otherwise undefined
+        // No compaction needed or compaction failed - run normal message injection
+        const injectedOptions =
+          prepareStepMessages(
+            options,
+            pendingUserMessages,
+            allInjectedMessages,
+          ) ?? options;
+
         return injectedOptions === options ? undefined : injectedOptions;
       },
       onFinish: async (response) => {
@@ -649,11 +652,6 @@ async function performCompaction({
 
     const compacted = buildCompactedMessages(summary, toPreserve);
 
-    safeSend(event.sender, "agent-tool:compaction-status", {
-      chatId,
-      status: "compacted",
-    });
-
     logger.log(
       `Compaction complete: ${messages.length} messages -> ${compacted.length} messages`,
     );
@@ -662,6 +660,11 @@ async function performCompaction({
   } catch (err) {
     logger.warn("Compaction summarization failed:", err);
     return null;
+  } finally {
+    safeSend(event.sender, "agent-tool:compaction-status", {
+      chatId,
+      status: "compacted",
+    });
   }
 }
 

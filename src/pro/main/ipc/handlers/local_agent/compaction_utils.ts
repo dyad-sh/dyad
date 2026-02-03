@@ -6,13 +6,7 @@
  */
 
 import type { ModelMessage } from "ai";
-
-/**
- * Estimate tokens for a string (4 chars per token heuristic).
- */
-function estimateStringTokens(text: string): number {
-  return Math.ceil(text.length / 4);
-}
+import { estimateTokens } from "@/ipc/utils/token_utils";
 
 /**
  * Estimate the total token count for an array of ModelMessages.
@@ -33,7 +27,7 @@ export function estimateModelMessagesTokens(messages: ModelMessage[]): number {
     total += 4;
 
     if (typeof msg.content === "string") {
-      total += estimateStringTokens(msg.content);
+      total += estimateTokens(msg.content);
       continue;
     }
 
@@ -44,7 +38,7 @@ export function estimateModelMessagesTokens(messages: ModelMessage[]): number {
     for (const part of msg.content) {
       switch (part.type) {
         case "text":
-          total += estimateStringTokens(part.text);
+          total += estimateTokens(part.text);
           break;
         case "image":
           total += 1000;
@@ -52,19 +46,19 @@ export function estimateModelMessagesTokens(messages: ModelMessage[]): number {
         case "file":
           // Estimate based on data size if string, otherwise flat cost
           if (typeof part.data === "string") {
-            total += estimateStringTokens(part.data);
+            total += estimateTokens(part.data);
           } else {
             total += 500;
           }
           break;
         case "tool-call":
-          total += estimateStringTokens(JSON.stringify(part.input)) + 20;
+          total += estimateTokens(JSON.stringify(part.input)) + 20;
           break;
         case "tool-result":
-          total += estimateStringTokens(JSON.stringify(part.output)) + 20;
+          total += estimateTokens(JSON.stringify(part.output)) + 20;
           break;
         case "reasoning":
-          total += estimateStringTokens(part.text);
+          total += estimateTokens(part.text);
           break;
         default:
           // Unknown part type, small overhead
@@ -94,7 +88,8 @@ export function shouldCompact(params: {
  * Splits messages into two groups: those to compact (summarize) and those to preserve.
  *
  * Rules:
- * - Always preserves the first user message (original intent)
+ * - Always preserves the first user message (original intent) unless it's a previous summary
+ * - If the first message is a previous compaction summary, it gets included in toCompact
  * - Keeps the last `preserveRecentCount` messages intact
  * - Never splits a tool-call / tool-result pair across the boundary
  * - If fewer messages than preserveRecentCount + 1, nothing to compact
@@ -108,14 +103,35 @@ export function partitionMessagesForCompaction(
     return { toCompact: [], toPreserve: messages };
   }
 
+  // Check if the first message is a previous compaction summary
+  const firstMessage = messages[0];
+  const isFirstMessageSummary =
+    firstMessage.role === "user" &&
+    typeof firstMessage.content === "string" &&
+    firstMessage.content.startsWith("[Conversation Summary");
+
   // Start with a split point that preserves the last N messages
   let splitIndex = messages.length - preserveRecentCount;
 
   // Adjust split point to avoid breaking tool-call / tool-result pairs.
-  // A tool-result message (role: "tool") should stay with the preceding assistant
-  // message that contains the tool-call. Walk the boundary backwards if needed.
-  while (splitIndex > 1 && isToolResultMessage(messages[splitIndex])) {
-    splitIndex--;
+  // Walk backwards if:
+  // 1. messages[splitIndex] is a tool-result (should stay with preceding assistant)
+  // 2. messages[splitIndex - 1] is an assistant with tool-calls (should stay with following tool-result)
+  while (splitIndex > 1) {
+    if (isToolResultMessage(messages[splitIndex])) {
+      splitIndex--;
+      continue;
+    }
+    if (
+      splitIndex > 1 &&
+      hasToolCall(messages[splitIndex - 1]) &&
+      splitIndex < messages.length &&
+      isToolResultMessage(messages[splitIndex])
+    ) {
+      splitIndex--;
+      continue;
+    }
+    break;
   }
 
   // If we pushed splitIndex too far back, there's nothing meaningful to compact
@@ -123,12 +139,18 @@ export function partitionMessagesForCompaction(
     return { toCompact: [], toPreserve: messages };
   }
 
-  // Always preserve the first user message in the toPreserve set
-  const firstUserMessage = messages[0];
-  const toCompact = messages.slice(1, splitIndex);
-  const toPreserve = [firstUserMessage, ...messages.slice(splitIndex)];
-
-  return { toCompact, toPreserve };
+  if (isFirstMessageSummary) {
+    // Include the old summary in toCompact - it will be merged into the new summary
+    const toCompact = messages.slice(0, splitIndex);
+    const toPreserve = messages.slice(splitIndex);
+    return { toCompact, toPreserve };
+  } else {
+    // Preserve the original user message (first real user intent)
+    const firstUserMessage = messages[0];
+    const toCompact = messages.slice(1, splitIndex);
+    const toPreserve = [firstUserMessage, ...messages.slice(splitIndex)];
+    return { toCompact, toPreserve };
+  }
 }
 
 /**
@@ -136,6 +158,19 @@ export function partitionMessagesForCompaction(
  */
 function isToolResultMessage(msg: ModelMessage): boolean {
   return msg.role === "tool";
+}
+
+/**
+ * Checks if a message contains tool-call parts.
+ */
+function hasToolCall(msg: ModelMessage): boolean {
+  if (msg.role !== "assistant") {
+    return false;
+  }
+  if (Array.isArray(msg.content)) {
+    return msg.content.some((part) => part.type === "tool-call");
+  }
+  return false;
 }
 
 /**

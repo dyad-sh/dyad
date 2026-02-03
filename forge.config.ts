@@ -54,10 +54,11 @@ const ignore = (file: string) => {
 };
 
 const isEndToEndTestBuild = process.env.E2E_TEST_BUILD === "true";
+const isGitHubActions = process.env.GITHUB_ACTIONS === "true";
 
 const config: ForgeConfig = {
   packagerConfig: {
-    windowsSign,
+    windowsSign: isGitHubActions ? undefined : windowsSign,
     protocols: [
       {
         name: "Dyad",
@@ -88,10 +89,14 @@ const config: ForgeConfig = {
     force: true,
   },
   makers: [
-    new MakerSquirrel({
-      // @ts-expect-error - incorrect types exported by MakerSquirrel
-      windowsSign,
-    }),
+    new MakerSquirrel(
+      isGitHubActions
+        ? {}
+        : {
+            // @ts-expect-error - incorrect types exported by MakerSquirrel
+            windowsSign,
+          },
+    ),
     new MakerZIP({}, ["darwin"]),
     new MakerRpm({}),
     new MakerDeb({

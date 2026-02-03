@@ -1,7 +1,7 @@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Palette, FileText } from "lucide-react";
+import { LayoutTemplate, Palette, FileText } from "lucide-react";
 
 type LibrarySection = {
   id: string;
@@ -11,6 +11,12 @@ type LibrarySection = {
 };
 
 const LIBRARY_SECTIONS: LibrarySection[] = [
+  {
+    id: "templates",
+    label: "Templates",
+    to: "/library/templates",
+    icon: LayoutTemplate,
+  },
   { id: "themes", label: "Themes", to: "/themes", icon: Palette },
   { id: "prompts", label: "Prompts", to: "/library", icon: FileText },
 ];

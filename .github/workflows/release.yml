@@ -51,22 +51,33 @@ jobs:
         run: |
           winget install -e --id Microsoft.Azure.TrustedSigningClientTools --source winget --accept-source-agreements --accept-package-agreements
 
-          # Find the DLL path
-          $dllPath = Get-ChildItem -Path "C:\Program Files" -Recurse -Filter "Azure.CodeSigning.Dlib.dll" -ErrorAction SilentlyContinue | 
-                    Where-Object { $_.FullName -like "*x64*" } |
-                    Select-Object -First 1 -ExpandProperty FullName
+          # Search multiple locations where winget might install the tools
+          $searchPaths = @(
+            "C:\Program Files",
+            "$env:LOCALAPPDATA",
+            "$env:LOCALAPPDATA\Microsoft\WinGet\Packages",
+            "C:\Users\runneradmin\AppData\Local\Microsoft\WinGet\Packages"
+          )
 
-          if (-not $dllPath) {
-            $dllPath = Get-ChildItem -Path "$env:LOCALAPPDATA" -Recurse -Filter "Azure.CodeSigning.Dlib.dll" -ErrorAction SilentlyContinue | 
+          $dllPath = $null
+          foreach ($searchPath in $searchPaths) {
+            if (Test-Path $searchPath) {
+              Write-Host "Searching in: $searchPath"
+              $found = Get-ChildItem -Path $searchPath -Recurse -Filter "Azure.CodeSigning.Dlib.dll" -ErrorAction SilentlyContinue |
                       Where-Object { $_.FullName -like "*x64*" } |
                       Select-Object -First 1 -ExpandProperty FullName
+              if ($found) {
+                $dllPath = $found
+                break
+              }
+            }
           }
 
           if ($dllPath) {
             echo "Found DLL at: $dllPath"
             echo "AZURE_CODE_SIGNING_DLIB=$dllPath" >> $env:GITHUB_ENV
           } else {
-            Write-Error "Could not find Azure.CodeSigning.Dlib.dll"
+            Write-Error "Could not find Azure.CodeSigning.Dlib.dll in any of the search paths"
             exit 1
           }
       - name: Create Azure signing metadata

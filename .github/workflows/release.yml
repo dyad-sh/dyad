@@ -49,7 +49,7 @@ jobs:
         if: contains(matrix.os.name, 'windows')
         shell: powershell
         run: |
-          winget install Microsoft.AzureTrustedSigning --accept-source-agreements --accept-package-agreements
+          winget install -e --id Microsoft.Azure.TrustedSigningClientTools --source winget --accept-source-agreements --accept-package-agreements
       - name: Create Azure signing metadata
         if: contains(matrix.os.name, 'windows')
         shell: powershell

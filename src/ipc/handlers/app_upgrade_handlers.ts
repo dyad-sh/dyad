@@ -101,11 +101,53 @@ function isCapacitorUpgradeNeeded(appPath: string): boolean {
   return true;
 }
 
+// Cache for NPM React version lookups (TTL: 1 hour)
+let npmVersionCache: {
+  data: Record<string, string[]>;
+  timestamp: number;
+} | null = null;
+const NPM_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+const NPM_FETCH_TIMEOUT_MS = 10_000; // 10 seconds
+
+function compareVersions(a: string, b: string): number {
+  const partsA = a.split(".").map(Number);
+  const partsB = b.split(".").map(Number);
+  for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
+    const numA = partsA[i] || 0;
+    const numB = partsB[i] || 0;
+    if (numA !== numB) {
+      return numA - numB;
+    }
+  }
+  return 0;
+}
+
 async function getLatestReactVersion(
   majorVersion: number,
 ): Promise<string | null> {
   try {
-    const response = await fetch("https://registry.npmjs.org/react");
+    // Check cache first
+    if (
+      npmVersionCache &&
+      Date.now() - npmVersionCache.timestamp < NPM_CACHE_TTL_MS
+    ) {
+      const cached = npmVersionCache.data[String(majorVersion)];
+      if (cached && cached.length > 0) {
+        return cached[cached.length - 1];
+      }
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      NPM_FETCH_TIMEOUT_MS,
+    );
+
+    const response = await fetch("https://registry.npmjs.org/react", {
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
       logger.error(
         `Failed to fetch React versions from NPM: ${response.status}`,
@@ -115,27 +157,30 @@ async function getLatestReactVersion(
     const data = await response.json();
     const versions = Object.keys(data.versions);
 
-    // Find the latest version for the given major version
-    const matchingVersions = versions.filter((v) => {
+    // Group versions by major version for caching
+    const versionsByMajor: Record<string, string[]> = {};
+    for (const v of versions) {
+      if (v.includes("-")) continue; // Exclude pre-release versions
       const major = parseInt(v.split(".")[0], 10);
-      return major === majorVersion && !v.includes("-"); // Exclude pre-release versions
-    });
-
-    if (matchingVersions.length === 0) {
-      return null;
+      if (isNaN(major)) continue;
+      if (!versionsByMajor[String(major)]) {
+        versionsByMajor[String(major)] = [];
+      }
+      versionsByMajor[String(major)].push(v);
     }
 
-    // Sort versions and get the latest
-    matchingVersions.sort((a, b) => {
-      const partsA = a.split(".").map(Number);
-      const partsB = b.split(".").map(Number);
-      for (let i = 0; i < 3; i++) {
-        if (partsA[i] !== partsB[i]) {
-          return partsA[i] - partsB[i];
-        }
-      }
-      return 0;
-    });
+    // Sort each group
+    for (const key of Object.keys(versionsByMajor)) {
+      versionsByMajor[key].sort(compareVersions);
+    }
+
+    // Update cache
+    npmVersionCache = { data: versionsByMajor, timestamp: Date.now() };
+
+    const matchingVersions = versionsByMajor[String(majorVersion)];
+    if (!matchingVersions || matchingVersions.length === 0) {
+      return null;
+    }
 
     return matchingVersions[matchingVersions.length - 1];
   } catch (e) {
@@ -175,8 +220,8 @@ async function isReactUpgradeNeeded(appPath: string): Promise<boolean> {
       return false;
     }
 
-    // Remove any leading ^ or ~ from version string
-    const cleanVersion = reactVersion.replace(/^[\^~]/, "");
+    // Remove any leading semver range specifiers (^, ~, >=, <=, >, <, =)
+    const cleanVersion = reactVersion.replace(/^[^\d]*/, "");
     const versionParts = cleanVersion.split(".");
     const majorVersion = parseInt(versionParts[0], 10);
 
@@ -196,8 +241,8 @@ async function isReactUpgradeNeeded(appPath: string): Promise<boolean> {
       return false;
     }
 
-    // Compare versions - upgrade needed if not on the latest
-    return cleanVersion !== latestVersion;
+    // Compare versions - upgrade needed if current is less than latest
+    return compareVersions(cleanVersion, latestVersion) < 0;
   } catch (e) {
     logger.error("Error checking React version", e);
     return false;
@@ -368,13 +413,6 @@ async function applyReactUpgrade(appPath: string) {
     errorPrefix: "Failed to upgrade React",
   });
 
-  // In test builds, create a marker file to indicate upgrade was applied
-  // This allows the isReactUpgradeNeeded check to return false after upgrade
-  if (IS_TEST_BUILD) {
-    const markerPath = path.join(appPath, REACT_UPGRADE_MARKER);
-    await fs.promises.writeFile(markerPath, "");
-  }
-
   // Commit changes
   try {
     logger.info("Staging and committing React upgrade changes");
@@ -384,6 +422,14 @@ async function applyReactUpgrade(appPath: string) {
       message: "[dyad] upgrade React.js",
     });
     logger.info("Successfully committed React upgrade changes");
+
+    // In test builds, create a marker file to indicate upgrade was applied
+    // This allows the isReactUpgradeNeeded check to return false after upgrade
+    // Placed after commit so the marker only exists if the commit succeeded
+    if (IS_TEST_BUILD) {
+      const markerPath = path.join(appPath, REACT_UPGRADE_MARKER);
+      await fs.promises.writeFile(markerPath, "");
+    }
   } catch (err) {
     logger.warn(
       `Failed to commit changes. This may happen if the project is not in a git repository, or if there are no changes to commit.`,

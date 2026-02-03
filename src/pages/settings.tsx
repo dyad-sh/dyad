@@ -99,7 +99,7 @@ export default function SettingsPage() {
               <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
                 Telemetry
               </h2>
-              <div className="space-y-2">
+              <div id="setting-telemetry" className="space-y-2">
                 <TelemetrySwitch />
                 <div className="text-sm text-gray-500 dark:text-gray-400">
                   This records anonymous usage data to improve the product.
@@ -124,10 +124,18 @@ export default function SettingsPage() {
               Integrations
             </h2>
             <div className="space-y-4">
-              <GitHubIntegration />
-              <VercelIntegration />
-              <SupabaseIntegration />
-              <NeonIntegration />
+              <div id="setting-github">
+                <GitHubIntegration />
+              </div>
+              <div id="setting-vercel">
+                <VercelIntegration />
+              </div>
+              <div id="setting-supabase">
+                <SupabaseIntegration />
+              </div>
+              <div id="setting-neon">
+                <NeonIntegration />
+              </div>
             </div>
           </div>
 
@@ -163,7 +171,7 @@ export default function SettingsPage() {
               Experiments
             </h2>
             <div className="space-y-4">
-              <div className="space-y-1 mt-4">
+              <div id="setting-native-git" className="space-y-1 mt-4">
                 <div className="flex items-center space-x-2">
                   <Switch
                     id="enable-native-git"
@@ -194,7 +202,10 @@ export default function SettingsPage() {
             </h2>
 
             <div className="space-y-4">
-              <div className="flex items-start justify-between flex-col sm:flex-row sm:items-center gap-4">
+              <div
+                id="setting-reset"
+                className="flex items-start justify-between flex-col sm:flex-row sm:items-center gap-4"
+              >
                 <div>
                   <h3 className="text-sm font-medium text-gray-900 dark:text-white">
                     Reset Everything
@@ -243,7 +254,7 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
       </h2>
 
       <div className="space-y-4 mb-4">
-        <div className="flex items-center gap-4">
+        <div id="setting-theme" className="flex items-center gap-4">
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
             Theme
           </label>
@@ -270,11 +281,11 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
         </div>
       </div>
 
-      <div className="mt-4">
+      <div id="setting-zoom" className="mt-4">
         <ZoomSelector />
       </div>
 
-      <div className="space-y-1 mt-4">
+      <div id="setting-auto-update" className="space-y-1 mt-4">
         <AutoUpdateSwitch />
         <div className="text-sm text-gray-500 dark:text-gray-400">
           This will automatically update the app when new versions are
@@ -282,14 +293,14 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
         </div>
       </div>
 
-      <div className="mt-4">
+      <div id="setting-release-channel" className="mt-4">
         <ReleaseChannelSelector />
       </div>
 
-      <div className="mt-4">
+      <div id="setting-runtime-mode" className="mt-4">
         <RuntimeModeSelector />
       </div>
-      <div className="mt-4">
+      <div id="setting-node-path" className="mt-4">
         <NodePathSelector />
       </div>
 
@@ -313,25 +324,25 @@ export function WorkflowSettings() {
         Workflow Settings
       </h2>
 
-      <div className="mt-4">
+      <div id="setting-default-chat-mode" className="mt-4">
         <DefaultChatModeSelector />
       </div>
 
-      <div className="space-y-1 mt-4">
+      <div id="setting-auto-approve" className="space-y-1 mt-4">
         <AutoApproveSwitch showToast={false} />
         <div className="text-sm text-gray-500 dark:text-gray-400">
           This will automatically approve code changes and run them.
         </div>
       </div>
 
-      <div className="space-y-1 mt-4">
+      <div id="setting-auto-fix" className="space-y-1 mt-4">
         <AutoFixProblemsSwitch />
         <div className="text-sm text-gray-500 dark:text-gray-400">
           This will automatically fix TypeScript errors.
         </div>
       </div>
 
-      <div className="space-y-1 mt-4">
+      <div id="setting-auto-expand-preview" className="space-y-1 mt-4">
         <AutoExpandPreviewSwitch />
         <div className="text-sm text-gray-500 dark:text-gray-400">
           Automatically expand the preview panel when code changes are made.
@@ -350,11 +361,11 @@ export function AISettings() {
         AI Settings
       </h2>
 
-      <div className="mt-4">
+      <div id="setting-thinking-budget" className="mt-4">
         <ThinkingBudgetSelector />
       </div>
 
-      <div className="mt-4">
+      <div id="setting-max-chat-turns" className="mt-4">
         <MaxChatTurnsSelector />
       </div>
     </div>

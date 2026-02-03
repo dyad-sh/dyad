@@ -317,6 +317,33 @@ body[data-scroll-locked] .app-region-drag {
   animation: marquee 2s linear infinite;
 }
 
+@keyframes settings-highlight {
+  0% {
+    background-color: oklch(0.85 0.1 290);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.dark .settings-highlight {
+  animation: settings-highlight-dark 1.5s ease-out;
+}
+
+.settings-highlight {
+  animation: settings-highlight 1.5s ease-out;
+  border-radius: 0.5rem;
+}
+
+@keyframes settings-highlight-dark {
+  0% {
+    background-color: oklch(0.35 0.1 290);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
 /* In-between text-xs and text-sm */
 .text-xs-sm {
   font-size: 0.82rem;

@@ -8,6 +8,7 @@ type ScrollOptions = {
   block?: ScrollLogicalPosition;
   inline?: ScrollLogicalPosition;
   onScrolled?: (id: string, element: HTMLElement) => void;
+  highlight?: boolean;
 };
 
 /**
@@ -32,6 +33,16 @@ export function useScrollAndNavigateTo(
         });
         setActiveSection(id);
         options?.onScrolled?.(id, element);
+
+        if (options?.highlight) {
+          element.classList.add("settings-highlight");
+          const onEnd = () => {
+            element.classList.remove("settings-highlight");
+            element.removeEventListener("animationend", onEnd);
+          };
+          element.addEventListener("animationend", onEnd);
+        }
+
         return true;
       }
       return false;
@@ -43,6 +54,7 @@ export function useScrollAndNavigateTo(
       options?.block,
       options?.inline,
       options?.onScrolled,
+      options?.highlight,
       setActiveSection,
     ],
   );

@@ -19,7 +19,6 @@ import { PublishPanel } from "./PublishPanel";
 import { SecurityPanel } from "./SecurityPanel";
 import { useSupabase } from "@/hooks/useSupabase";
 import { useSettings } from "@/hooks/useSettings";
-import { showError } from "@/lib/toast";
 
 interface ConsoleHeaderProps {
   isOpen: boolean;

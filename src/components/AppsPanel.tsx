@@ -1,50 +1,59 @@
 import { useAtom, useSetAtom } from "jotai";
-import { ArrowLeft } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { ChevronLeft } from "lucide-react";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { useLoadApps } from "@/hooks/useLoadApps";
 import { AppList } from "./AppList";
 import { ChatList } from "./ChatList";
-import { Button } from "@/components/ui/button";
-import { SidebarGroupLabel } from "@/components/ui/sidebar";
 
 export function AppsPanel({ show }: { show?: boolean }) {
   const [selectedAppId, setSelectedAppId] = useAtom(selectedAppIdAtom);
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
-  const { apps } = useLoadApps();
+  const navigate = useNavigate();
 
   if (!show) {
     return null;
   }
 
-  if (selectedAppId !== null) {
-    const app = apps.find((a) => a.id === selectedAppId);
+  const handleBack = () => {
+    setSelectedAppId(null);
+    setSelectedChatId(null);
+    navigate({ to: "/" });
+  };
 
-    const handleBack = () => {
-      setSelectedAppId(null);
-      setSelectedChatId(null);
-    };
+  const showingChats = selectedAppId !== null;
 
-    return (
-      <div className="flex flex-col h-full">
-        <div className="flex items-center gap-2 px-2 py-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleBack}
-            className="h-8 w-8"
-            data-testid="apps-panel-back-button"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <SidebarGroupLabel className="truncate flex-1">
-            {app?.name || "App"}
-          </SidebarGroupLabel>
+  return (
+    <div className="relative overflow-hidden h-full">
+      <div
+        className={`flex transition-transform duration-150 ease-out ${
+          showingChats ? "-translate-x-1/2" : "translate-x-0"
+        }`}
+        style={{ width: "200%" }}
+      >
+        {/* Left panel: App List */}
+        <div className="w-1/2">
+          <AppList show={true} />
         </div>
-        <ChatList show={true} />
+        {/* Right panel: Chat List */}
+        <div className="w-1/2">
+          <div className="flex flex-col h-full">
+            <button
+              onClick={handleBack}
+              className="mt-4 flex items-center gap-1 w-full px-3 py-2 text-sm text-muted-foreground hover:bg-sidebar-accent rounded-md cursor-pointer"
+              data-testid="apps-panel-back-button"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              <span>All Apps</span>
+            </button>
+            <span
+              data-floating-app-anchor="sidebar"
+              className="block h-7 mx-2"
+            />
+            <ChatList show={true} />
+          </div>
+        </div>
       </div>
-    );
-  }
-
-  return <AppList show={true} />;
+    </div>
+  );
 }

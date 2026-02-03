@@ -9,8 +9,10 @@ test("context limit banner appears and summarize works", async ({ po }) => {
   // which is below the 40k threshold to show the banner
   await po.sendPrompt("tc=context-limit-response [high-tokens=110000]");
 
-  // Verify the context limit banner appears
-  const contextLimitBanner = po.page.getByTestId("context-limit-banner");
+  // Verify the context limit banner appears inside the chat input container
+  const contextLimitBanner = po
+    .getChatInputContainer()
+    .getByTestId("context-limit-banner");
   await expect(contextLimitBanner).toBeVisible({ timeout: Timeout.MEDIUM });
 
   // Verify banner text
@@ -40,7 +42,9 @@ test("context limit banner does not appear when within limit", async ({
   // which is above the 40k threshold - banner should NOT appear
   await po.sendPrompt("tc=context-limit-response [high-tokens=50000]");
 
-  // Verify the context limit banner does NOT appear
-  const contextLimitBanner = po.page.getByTestId("context-limit-banner");
+  // Verify the context limit banner does NOT appear in the chat input container
+  const contextLimitBanner = po
+    .getChatInputContainer()
+    .getByTestId("context-limit-banner");
   await expect(contextLimitBanner).not.toBeVisible();
 });

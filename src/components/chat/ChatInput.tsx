@@ -75,6 +75,8 @@ import { VisualEditingChangesDialog } from "@/components/preview_panel/VisualEdi
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
+import { ContextLimitBanner } from "./ContextLimitBanner";
+import { useCountTokens } from "@/hooks/useCountTokens";
 
 const showTokenBarAtom = atom(false);
 
@@ -156,6 +158,12 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     messageId === lastMessage.id;
 
   const { userBudget } = useUserBudgetInfo();
+
+  // Token counting for context limit banner
+  const { result: tokenCountResult } = useCountTokens(
+    !isStreaming ? (chatId ?? null) : null,
+    "",
+  );
 
   useEffect(() => {
     if (error) {
@@ -313,6 +321,13 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         </div>
       )}
       <div className="p-4" data-testid="chat-input-container">
+        {/* Show context limit banner above chat input for visibility */}
+        {!isStreaming && tokenCountResult && (
+          <ContextLimitBanner
+            totalTokens={tokenCountResult.actualMaxTokens}
+            contextWindow={tokenCountResult.contextWindow}
+          />
+        )}
         <div
           className={`relative flex flex-col border border-border rounded-lg bg-(--background-lighter) shadow-sm ${
             isDraggingOver ? "ring-2 ring-blue-500 border-blue-500" : ""

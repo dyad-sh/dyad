@@ -19,7 +19,7 @@ import {
   SidebarMenu,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -242,7 +242,11 @@ export function ChatList({ show }: { show?: boolean }) {
                           onOpenChange={(open) => setIsDropdownOpen(open)}
                         >
                           <DropdownMenuTrigger
-                            className="ml-1 w-4 inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-9 w-9"
+                            className={buttonVariants({
+                              variant: "ghost",
+                              size: "icon",
+                              className: "ml-1",
+                            })}
                             onClick={(e) => e.stopPropagation()}
                           >
                             <MoreVertical className="h-4 w-4" />

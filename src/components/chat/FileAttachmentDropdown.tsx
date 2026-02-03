@@ -41,7 +41,7 @@ export function FileAttachmentDropdown({
   const menuItems = (
     <>
       <DropdownMenuItem
-        onSelect={(e: React.SyntheticEvent) => {
+        onClick={(e: React.MouseEvent) => {
           // Prevent default so menu doesn't close in order to keep the hidden inputs in the DOM
           // Manually close menu after file selection
           e.preventDefault();
@@ -55,7 +55,7 @@ export function FileAttachmentDropdown({
       </DropdownMenuItem>
 
       <DropdownMenuItem
-        onSelect={(e: React.SyntheticEvent) => {
+        onClick={(e: React.MouseEvent) => {
           // Prevent default so menu doesn't close in order to keep the hidden inputs in the DOM
           // Manually close menu after file selection
           e.preventDefault();

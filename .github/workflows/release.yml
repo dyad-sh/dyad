@@ -84,6 +84,24 @@ jobs:
             exit 1
           }
 
+      - name: Find Windows 11 SDK SignTool
+        if: contains(matrix.os.name, 'windows')
+        shell: powershell
+        run: |
+          $sdkPath = "C:\Program Files (x86)\Windows Kits\10\bin"
+          $signTool = Get-ChildItem -Path $sdkPath -Recurse -Filter "signtool.exe" |
+            Where-Object { $_.FullName -match "\\x64\\" } |
+            Sort-Object { [version]($_.FullName -replace '.*\\(\d+\.\d+\.\d+\.\d+)\\.*', '$1') } -Descending |
+            Select-Object -First 1
+
+          if ($signTool) {
+            Write-Host "Found SignTool at: $($signTool.FullName)"
+            "SIGNTOOL_PATH=$($signTool.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          } else {
+            Write-Error "Could not find x64 signtool.exe"
+            exit 1
+          }
+
       - name: Create Azure signing metadata
         if: contains(matrix.os.name, 'windows')
         shell: powershell
@@ -138,7 +156,6 @@ jobs:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          SIGNTOOL_PATH: ${{ vars.SIGNTOOL_PATH }}
 
   verify-assets:
     name: Verify Release Assets

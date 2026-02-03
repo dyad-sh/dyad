@@ -10,7 +10,7 @@ test("configure app commands", async ({ po }) => {
 
   // Verify default state - no custom commands
   await expect(
-    po.page.getByText("Using default commands (pnpm install && pnpm dev)"),
+    po.page.getByText("Using default install and start commands"),
   ).toBeVisible();
 
   // Click to configure custom commands
@@ -61,7 +61,7 @@ test("configure app commands", async ({ po }) => {
 
   // Verify commands are cleared and default message is shown again
   await expect(
-    po.page.getByText("Using default commands (pnpm install && pnpm dev)"),
+    po.page.getByText("Using default install and start commands"),
   ).toBeVisible();
 });
 
@@ -118,6 +118,6 @@ test("app commands - cancel editing", async ({ po }) => {
 
   // Verify we're back to default state (commands were not saved)
   await expect(
-    po.page.getByText("Using default commands (pnpm install && pnpm dev)"),
+    po.page.getByText("Using default install and start commands"),
   ).toBeVisible();
 });

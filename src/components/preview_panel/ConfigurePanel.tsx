@@ -32,7 +32,7 @@ const AppCommandsTitle = () => (
     <Terminal size={18} className="text-muted-foreground" />
     <span className="text-lg font-semibold">App Commands</span>
     <Tooltip>
-      <TooltipTrigger asChild>
+      <TooltipTrigger>
         <HelpCircle size={16} className="text-muted-foreground cursor-help" />
       </TooltipTrigger>
       <TooltipContent>
@@ -66,13 +66,13 @@ const AppCommandsSection = ({
     enabled: !!selectedAppId,
   });
 
-  // Sync local state with app data when it changes
+  // Sync local state with app data when it changes (but not during editing)
   useEffect(() => {
-    if (app) {
+    if (app && !isEditing) {
       setInstallCommand(app.installCommand || "");
       setStartCommand(app.startCommand || "");
     }
-  }, [app]);
+  }, [app, isEditing]);
 
   // Mutation to update commands
   const updateCommandsMutation = useMutation({
@@ -103,17 +103,6 @@ const AppCommandsSection = ({
   });
 
   const handleSave = useCallback(() => {
-    const hasInstallCommand = installCommand.trim().length > 0;
-    const hasStartCommand = startCommand.trim().length > 0;
-
-    // Both commands must be provided together, or both must be empty
-    if (hasInstallCommand !== hasStartCommand) {
-      showError(
-        "Both install and start commands are required when customizing",
-      );
-      return;
-    }
-
     updateCommandsMutation.mutate({
       installCmd: installCommand,
       startCmd: startCommand,
@@ -128,8 +117,6 @@ const AppCommandsSection = ({
   }, [app]);
 
   const handleClear = useCallback(() => {
-    setInstallCommand("");
-    setStartCommand("");
     updateCommandsMutation.mutate({
       installCmd: "",
       startCmd: "",
@@ -159,7 +146,7 @@ const AppCommandsSection = ({
     );
   }
 
-  const hasCustomCommands = app?.installCommand || app?.startCommand;
+  const hasCustomCommands = app?.installCommand && app?.startCommand;
   const hasInstallCommand = installCommand.trim().length > 0;
   const hasStartCommand = startCommand.trim().length > 0;
   const commandsValid = hasInstallCommand === hasStartCommand;
@@ -274,7 +261,7 @@ const AppCommandsSection = ({
         ) : (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Using default commands (pnpm install && pnpm dev)
+              Using default install and start commands
             </p>
             <Button
               data-testid="configure-app-commands"

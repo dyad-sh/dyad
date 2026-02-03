@@ -10,22 +10,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import i18n from "@/i18n";
 
 const DEFAULT_LANGUAGE: Language = "en";
 
 /**
  * Language labels shown in their native script so users can always
  * find their language regardless of the current UI language.
+ * Only languages with completed translations are listed here.
  */
 const LANGUAGE_OPTIONS: { value: Language; nativeLabel: string }[] = [
   { value: "en", nativeLabel: "English" },
-  { value: "zh-CN", nativeLabel: "简体中文" },
-  { value: "ja", nativeLabel: "日本語" },
-  { value: "ko", nativeLabel: "한국어" },
-  { value: "es", nativeLabel: "Español" },
-  { value: "fr", nativeLabel: "Français" },
-  { value: "de", nativeLabel: "Deutsch" },
+  // Additional languages will be added as translations are completed:
+  // { value: "zh-CN", nativeLabel: "简体中文" },
+  // { value: "ja", nativeLabel: "日本語" },
+  // { value: "ko", nativeLabel: "한국어" },
+  // { value: "es", nativeLabel: "Español" },
+  // { value: "fr", nativeLabel: "Français" },
+  // { value: "de", nativeLabel: "Deutsch" },
 ];
 
 export function LanguageSelector() {
@@ -33,15 +34,19 @@ export function LanguageSelector() {
   const { settings, updateSettings } = useSettings();
 
   const currentLanguage: Language = useMemo(() => {
-    const value = settings?.language ?? DEFAULT_LANGUAGE;
-    return LanguageSchema.safeParse(value).success
-      ? (value as Language)
-      : DEFAULT_LANGUAGE;
+    const parsed = LanguageSchema.safeParse(settings?.language);
+    return parsed.success ? parsed.data : DEFAULT_LANGUAGE;
   }, [settings?.language]);
 
-  const handleChange = (value: string) => {
-    i18n.changeLanguage(value);
-    updateSettings({ language: value as Language });
+  const handleChange = async (value: string) => {
+    try {
+      await updateSettings({ language: value as Language });
+      // Language change is handled by the useEffect in layout.tsx
+      // after settings are successfully persisted
+    } catch (error) {
+      console.error("Failed to update language setting:", error);
+      // Settings update failed, so no language change will occur
+    }
   };
 
   return (

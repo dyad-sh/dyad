@@ -22,7 +22,7 @@ testSkipIfWindows("local-agent - upload file to codebase", async ({ po }) => {
     .click();
 
   // Hover over "Attach files" to open submenu
-  await po.page.getByRole("menuitem", { name: "Attach files" }).hover();
+  await po.page.getByRole("menuitem", { name: "Attach files" }).click();
 
   // Set up file chooser listener BEFORE clicking the menu item
   const fileChooserPromise = po.page.waitForEvent("filechooser");

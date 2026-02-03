@@ -221,47 +221,42 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
 
                   <div className="flex items-center gap-1">
                     {/* Restore button */}
-                    <Tooltip>
-                      <TooltipTrigger>
-                        <button
-                          onClick={async (e) => {
-                            e.stopPropagation();
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
 
-                            await revertVersion({
-                              versionId: version.oid,
-                            });
-                            setSelectedVersionId(null);
-                            // Close the pane after revert to force a refresh on next open
-                            onClose();
-                            if (version.dbTimestamp) {
-                              await restartApp();
-                            }
-                          }}
-                          disabled={isRevertingVersion}
-                          className={cn(
-                            "invisible mt-1 flex items-center gap-1 px-2 py-0.5 text-sm font-medium bg-(--primary) text-(--primary-foreground) hover:bg-background-lightest rounded-md transition-colors",
-                            selectedVersionId === version.oid && "visible",
-                            isRevertingVersion &&
-                              "opacity-50 cursor-not-allowed",
-                          )}
-                          aria-label="Restore to this version"
-                        >
-                          {isRevertingVersion ? (
-                            <Loader2 size={12} className="animate-spin" />
-                          ) : (
-                            <RotateCcw size={12} />
-                          )}
-                          <span>
-                            {isRevertingVersion ? "Restoring..." : "Restore"}
-                          </span>
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        {isRevertingVersion
+                        await revertVersion({
+                          versionId: version.oid,
+                        });
+                        setSelectedVersionId(null);
+                        // Close the pane after revert to force a refresh on next open
+                        onClose();
+                        if (version.dbTimestamp) {
+                          await restartApp();
+                        }
+                      }}
+                      disabled={isRevertingVersion}
+                      className={cn(
+                        "invisible mt-1 flex items-center gap-1 px-2 py-0.5 text-sm font-medium bg-(--primary) text-(--primary-foreground) hover:bg-background-lightest rounded-md transition-colors",
+                        selectedVersionId === version.oid && "visible",
+                        isRevertingVersion && "opacity-50 cursor-not-allowed",
+                      )}
+                      aria-label="Restore to this version"
+                      title={
+                        isRevertingVersion
                           ? "Restoring to this version..."
-                          : "Restore to this version"}
-                      </TooltipContent>
-                    </Tooltip>
+                          : "Restore to this version"
+                      }
+                    >
+                      {isRevertingVersion ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <RotateCcw size={12} />
+                      )}
+                      <span>
+                        {isRevertingVersion ? "Restoring..." : "Restore"}
+                      </span>
+                    </button>
                   </div>
                 </div>
               </div>

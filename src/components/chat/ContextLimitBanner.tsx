@@ -1,10 +1,5 @@
 import { AlertTriangle, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
 
 const CONTEXT_LIMIT_THRESHOLD = 40_000;
@@ -44,33 +39,14 @@ export function ContextLimitBanner({
       data-testid="context-limit-banner"
     >
       <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-        <Tooltip>
-          <TooltipTrigger>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5 p-0 hover:bg-transparent text-amber-600 dark:text-amber-400 cursor-help"
-            >
-              <AlertTriangle className="h-4 w-4 shrink-0" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent className="w-auto p-2 text-xs" side="top">
-            <div className="grid gap-1">
-              <div className="flex justify-between gap-4">
-                <span>Used:</span>
-                <span className="font-medium">
-                  {formatTokenCount(totalTokens)}
-                </span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span>Limit:</span>
-                <span className="font-medium">
-                  {formatTokenCount(contextWindow)}
-                </span>
-              </div>
-            </div>
-          </TooltipContent>
-        </Tooltip>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-5 w-5 p-0 hover:bg-transparent text-amber-600 dark:text-amber-400 cursor-help"
+          title={`Used: ${formatTokenCount(totalTokens)} / Limit: ${formatTokenCount(contextWindow)}`}
+        >
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+        </Button>
         <p className="text-sm font-medium">
           You're close to the context limit for this chat.
         </p>

@@ -4,12 +4,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 interface StylePopoverProps {
   icon: ReactNode;
@@ -28,20 +22,12 @@ export function StylePopover({
 }: StylePopoverProps) {
   return (
     <Popover>
-      <PopoverTrigger>
-        <button
-          className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-[#7f22fe] dark:text-gray-200"
-          aria-label={tooltip}
-        >
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger>{icon}</TooltipTrigger>
-              <TooltipContent side={side}>
-                <p>{tooltip}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </button>
+      <PopoverTrigger
+        className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-[#7f22fe] dark:text-gray-200"
+        aria-label={tooltip}
+        title={tooltip}
+      >
+        {icon}
       </PopoverTrigger>
       <PopoverContent side={side} className="w-64">
         <div className="space-y-3">

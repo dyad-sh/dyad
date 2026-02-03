@@ -11,11 +11,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 interface DeleteConfirmationDialogProps {
   itemName: string;
@@ -37,20 +32,14 @@ export function DeleteConfirmationDialog({
       {trigger ? (
         <AlertDialogTrigger>{trigger}</AlertDialogTrigger>
       ) : (
-        <Tooltip>
-          <TooltipTrigger render={<span style={{ display: "contents" }} />}>
-            <AlertDialogTrigger
-              className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-9 w-9"
-              data-testid="delete-prompt-button"
-              disabled={isDeleting}
-            >
-              <Trash2 className="h-4 w-4" />
-            </AlertDialogTrigger>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Delete {itemType.toLowerCase()}</p>
-          </TooltipContent>
-        </Tooltip>
+        <AlertDialogTrigger
+          className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-9 w-9"
+          data-testid="delete-prompt-button"
+          disabled={isDeleting}
+          title={`Delete ${itemType.toLowerCase()}`}
+        >
+          <Trash2 className="h-4 w-4" />
+        </AlertDialogTrigger>
       )}
       <AlertDialogContent>
         <AlertDialogHeader>

@@ -1,11 +1,5 @@
 import { MessageSquare, Upload } from "lucide-react";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { useRef } from "react";
 
 interface FileAttachmentDropdownProps {
@@ -46,49 +40,33 @@ export function FileAttachmentDropdown({
 
   const menuItems = (
     <>
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger>
-            <DropdownMenuItem
-              onSelect={(e) => {
-                // Prevent default so menu doesn't close in order to keep the hidden inputs in the DOM
-                // Manually close menu after file selection
-                e.preventDefault();
-                handleChatContextClick();
-              }}
-              className="py-3 px-4"
-            >
-              <MessageSquare size={16} className="mr-2" />
-              Attach file as chat context
-            </DropdownMenuItem>
-          </TooltipTrigger>
-          <TooltipContent side="right">
-            Example use case: screenshot of the app to point out a UI issue
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <DropdownMenuItem
+        onSelect={(e: React.SyntheticEvent) => {
+          // Prevent default so menu doesn't close in order to keep the hidden inputs in the DOM
+          // Manually close menu after file selection
+          e.preventDefault();
+          handleChatContextClick();
+        }}
+        className="py-3 px-4"
+        title="Example use case: screenshot of the app to point out a UI issue"
+      >
+        <MessageSquare size={16} className="mr-2" />
+        Attach file as chat context
+      </DropdownMenuItem>
 
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger>
-            <DropdownMenuItem
-              onSelect={(e) => {
-                // Prevent default so menu doesn't close in order to keep the hidden inputs in the DOM
-                // Manually close menu after file selection
-                e.preventDefault();
-                handleUploadToCodebaseClick();
-              }}
-              className="py-3 px-4"
-            >
-              <Upload size={16} className="mr-2" />
-              Upload file to codebase
-            </DropdownMenuItem>
-          </TooltipTrigger>
-          <TooltipContent side="right">
-            Example use case: add an image to use for your app
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <DropdownMenuItem
+        onSelect={(e: React.SyntheticEvent) => {
+          // Prevent default so menu doesn't close in order to keep the hidden inputs in the DOM
+          // Manually close menu after file selection
+          e.preventDefault();
+          handleUploadToCodebaseClick();
+        }}
+        className="py-3 px-4"
+        title="Example use case: add an image to use for your app"
+      >
+        <Upload size={16} className="mr-2" />
+        Upload file to codebase
+      </DropdownMenuItem>
     </>
   );
 

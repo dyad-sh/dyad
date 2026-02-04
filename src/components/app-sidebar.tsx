@@ -188,7 +188,10 @@ function AppIcons({
         <SidebarMenu>
           {items.map((item) => {
             const isActive =
-              (item.to === "/" && pathname === "/") ||
+              (item.to === "/" &&
+                (pathname === "/" ||
+                  pathname === "/chat" ||
+                  pathname.startsWith("/app-details"))) ||
               (item.to !== "/" && pathname.startsWith(item.to));
 
             return (

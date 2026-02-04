@@ -1,15 +1,17 @@
 import React, { useState } from "react";
-import {
-  ChevronsDownUp,
-  ChevronsUpDown,
-  AlertTriangle,
-  XCircle,
-  Sparkles,
-} from "lucide-react";
+import { AlertTriangle, XCircle, Sparkles } from "lucide-react";
 import { useAtomValue } from "jotai";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { CopyErrorMessage } from "@/components/CopyErrorMessage";
+import {
+  DyadCard,
+  DyadCardHeader,
+  DyadBadge,
+  DyadExpandIcon,
+  DyadCardContent,
+} from "./DyadCardPrimitives";
+
 interface DyadOutputProps {
   type: "error" | "warning";
   message?: string;
@@ -27,13 +29,8 @@ export const DyadOutput: React.FC<DyadOutputProps> = ({
 
   // If the type is not warning, it is an error (in case LLM gives a weird "type")
   const isError = type !== "warning";
-  const borderColor = isError ? "border-red-500" : "border-amber-500";
-  const iconColor = isError ? "text-red-500" : "text-amber-500";
-  const icon = isError ? (
-    <XCircle size={16} className={iconColor} />
-  ) : (
-    <AlertTriangle size={16} className={iconColor} />
-  );
+  const accentColor = isError ? "red" : "amber";
+  const icon = isError ? <XCircle size={15} /> : <AlertTriangle size={15} />;
   const label = isError ? "Error" : "Warning";
 
   const handleAIFix = (e: React.MouseEvent) => {
@@ -47,66 +44,46 @@ export const DyadOutput: React.FC<DyadOutputProps> = ({
   };
 
   return (
-    <div
-      className={`relative bg-(--background-lightest) hover:bg-(--background-lighter) rounded-lg px-4 py-2 border my-2 cursor-pointer min-h-18 ${borderColor}`}
+    <DyadCard
+      state="pending"
+      accentColor={accentColor}
       onClick={() => setIsContentVisible(!isContentVisible)}
     >
-      {/* Top-left label badge */}
-      <div
-        className={`absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold ${iconColor} bg-white dark:bg-gray-900`}
-        style={{ zIndex: 1 }}
-      >
-        {icon}
-        <span>{label}</span>
-      </div>
-
-      {/* Main content, padded to avoid label */}
-      <div className="flex items-center justify-between pl-24 pr-6">
-        <div className="flex items-center gap-2">
-          {message && (
-            <span className="text-gray-700 dark:text-gray-300 font-medium text-sm">
-              {message.slice(0, isContentVisible ? undefined : 100) +
-                (!isContentVisible ? "..." : "")}
-            </span>
-          )}
+      <DyadCardHeader icon={icon} accentColor={accentColor}>
+        <DyadBadge color={accentColor}>{label}</DyadBadge>
+        {message && (
+          <span className="text-sm text-foreground truncate">
+            {message.slice(0, isContentVisible ? undefined : 100) +
+              (!isContentVisible && message.length > 100 ? "..." : "")}
+          </span>
+        )}
+        <div className="ml-auto">
+          <DyadExpandIcon isExpanded={isContentVisible} />
         </div>
-        <div className="flex items-center">
-          {isContentVisible ? (
-            <ChevronsDownUp
-              size={20}
-              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-            />
-          ) : (
-            <ChevronsUpDown
-              size={20}
-              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-            />
-          )}
-        </div>
-      </div>
+      </DyadCardHeader>
 
       {/* Content area */}
-      {isContentVisible && children && (
-        <div className="mt-4 pl-20 text-sm text-gray-800 dark:text-gray-200">
-          {children}
-        </div>
-      )}
+      <DyadCardContent isExpanded={isContentVisible}>
+        {children && (
+          <div className="text-sm text-muted-foreground mb-3">{children}</div>
+        )}
+      </DyadCardContent>
 
       {/* Action buttons at the bottom - always visible for errors */}
       {isError && message && (
-        <div className="mt-3 px-6 flex justify-end gap-2">
+        <div className="px-3 pb-2 flex justify-end gap-2">
           <CopyErrorMessage
             errorMessage={children ? `${message}\n${children}` : message}
           />
           <button
             onClick={handleAIFix}
-            className="cursor-pointer flex items-center justify-center bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-800 text-white rounded text-xs px-2 py-1 h-6"
+            className="cursor-pointer flex items-center justify-center bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-800 text-white rounded-md text-xs px-2.5 py-1 h-6 transition-colors"
           >
-            <Sparkles size={14} className="mr-1" />
+            <Sparkles size={13} className="mr-1" />
             <span>Fix with AI</span>
           </button>
         </div>
       )}
-    </div>
+    </DyadCard>
   );
 };

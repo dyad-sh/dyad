@@ -1,6 +1,7 @@
 import React from "react";
 import { Zap } from "lucide-react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "../ui/tooltip";
+import { DyadCard, DyadCardHeader } from "./DyadCardPrimitives";
 
 interface DyadTokenSavingsProps {
   originalTokens: number;
@@ -17,14 +18,13 @@ export const DyadTokenSavings: React.FC<DyadTokenSavingsProps> = ({
   return (
     <Tooltip>
       <TooltipTrigger>
-        <div className="bg-green-50 dark:bg-green-950 hover:bg-green-100 dark:hover:bg-green-900 rounded-lg px-4 py-2 border border-green-200 dark:border-green-800 my-2 cursor-pointer">
-          <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
-            <Zap size={16} className="text-green-600 dark:text-green-400" />
-            <span className="text-xs font-medium">
+        <DyadCard accentColor="green">
+          <DyadCardHeader icon={<Zap size={15} />} accentColor="green">
+            <span className="text-xs font-medium text-green-700 dark:text-green-300">
               Saved {percentageSaved}% of codebase tokens with Smart Context
             </span>
-          </div>
-        </div>
+          </DyadCardHeader>
+        </DyadCard>
       </TooltipTrigger>
       <TooltipContent side="top" align="center">
         <div className="text-left">

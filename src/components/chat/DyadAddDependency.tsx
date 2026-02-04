@@ -4,8 +4,15 @@ import { useState } from "react";
 
 import { ipc } from "@/ipc/types";
 
-import { Package, ChevronsUpDown, ChevronsDownUp } from "lucide-react";
+import { Package } from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
+import {
+  DyadCard,
+  DyadCardHeader,
+  DyadBadge,
+  DyadExpandIcon,
+  DyadCardContent,
+} from "./DyadCardPrimitives";
 
 interface DyadAddDependencyProps {
   children?: ReactNode;
@@ -17,77 +24,58 @@ export const DyadAddDependency: React.FC<DyadAddDependencyProps> = ({
   children,
   node,
 }) => {
-  // Extract package attribute from the node if available
   const packages = node?.properties?.packages?.split(" ") || "";
   const [isContentVisible, setIsContentVisible] = useState(false);
   const hasChildren = !!children;
 
   return (
-    <div
-      className={`bg-(--background-lightest) dark:bg-gray-900 hover:bg-(--background-lighter) rounded-lg px-4 py-3 border my-2 border-border ${
-        hasChildren ? "cursor-pointer" : ""
-      }`}
+    <DyadCard
+      accentColor="blue"
       onClick={
         hasChildren ? () => setIsContentVisible(!isContentVisible) : undefined
       }
     >
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <Package size={18} className="text-gray-600 dark:text-gray-400" />
-          {packages.length > 0 && (
-            <div className="text-gray-800 dark:text-gray-200 font-semibold text-base">
-              <div className="font-normal">
-                Do you want to install these packages?
-              </div>{" "}
-              <div className="flex flex-wrap gap-2 mt-2">
-                {packages.map((p: string) => (
-                  <span
-                    className="cursor-pointer text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-                    key={p}
-                    onClick={() => {
-                      ipc.system.openExternalUrl(
-                        `https://www.npmjs.com/package/${p}`,
-                      );
-                    }}
-                  >
-                    {p}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+      <DyadCardHeader icon={<Package size={15} />} accentColor="blue">
+        <DyadBadge color="blue">Add Packages</DyadBadge>
         {hasChildren && (
-          <div className="flex items-center">
-            {isContentVisible ? (
-              <ChevronsDownUp
-                size={20}
-                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-              />
-            ) : (
-              <ChevronsUpDown
-                size={20}
-                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-              />
-            )}
+          <div className="ml-auto">
+            <DyadExpandIcon isExpanded={isContentVisible} />
           </div>
         )}
-      </div>
-
+      </DyadCardHeader>
       {packages.length > 0 && (
-        <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-          Make sure these packages are what you want.{" "}
+        <div className="px-3 pb-2">
+          <div className="text-sm text-foreground mb-1">
+            Do you want to install these packages?
+          </div>
+          <div className="flex flex-wrap gap-1.5 mt-1.5">
+            {packages.map((p: string) => (
+              <span
+                className="cursor-pointer text-sm px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 ring-1 ring-inset ring-blue-200 dark:ring-blue-800 transition-colors"
+                key={p}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  ipc.system.openExternalUrl(
+                    `https://www.npmjs.com/package/${p}`,
+                  );
+                }}
+              >
+                {p}
+              </span>
+            ))}
+          </div>
+          <div className="text-xs text-muted-foreground mt-2">
+            Make sure these packages are what you want.
+          </div>
         </div>
       )}
-
-      {/* Show content if it's visible and has children */}
-      {isContentVisible && hasChildren && (
-        <div className="mt-2">
+      <DyadCardContent isExpanded={isContentVisible}>
+        {hasChildren && (
           <div className="text-xs">
             <CodeHighlight className="language-shell">{children}</CodeHighlight>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </DyadCardContent>
+    </DyadCard>
   );
 };

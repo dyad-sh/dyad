@@ -1,12 +1,14 @@
 import React, { useState } from "react";
 import { CustomTagState } from "./stateTypes";
+import { Database } from "lucide-react";
 import {
-  Database,
-  Loader2,
-  CircleX,
-  ChevronsDownUp,
-  ChevronsUpDown,
-} from "lucide-react";
+  DyadCard,
+  DyadCardHeader,
+  DyadBadge,
+  DyadExpandIcon,
+  DyadStateIndicator,
+  DyadCardContent,
+} from "./DyadCardPrimitives";
 
 interface DyadSupabaseProjectInfoProps {
   node: {
@@ -28,54 +30,30 @@ export function DyadSupabaseProjectInfo({
   const content = typeof children === "string" ? children : "";
 
   return (
-    <div
-      className={`bg-(--background-lightest) hover:bg-(--background-lighter) rounded-lg px-4 py-2 border my-2 cursor-pointer ${
-        isLoading
-          ? "border-amber-500"
-          : isAborted
-            ? "border-red-500"
-            : "border-border"
-      }`}
+    <DyadCard
+      state={state}
+      accentColor="teal"
       onClick={() => setIsContentVisible(!isContentVisible)}
     >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {isLoading ? (
-            <Loader2 className="size-4 animate-spin text-amber-600" />
-          ) : isAborted ? (
-            <CircleX className="size-4 text-red-500" />
-          ) : (
-            <Database className="size-4 text-muted-foreground" />
-          )}
-          <span className="text-gray-700 dark:text-gray-300 font-medium text-sm">
-            Supabase Project Info
-          </span>
-          {isLoading && (
-            <span className="text-xs text-amber-600">Fetching...</span>
-          )}
-          {isAborted && (
-            <span className="text-xs text-red-500">Did not finish</span>
-          )}
+      <DyadCardHeader icon={<Database size={15} />} accentColor="teal">
+        <DyadBadge color="teal">Supabase Project Info</DyadBadge>
+        {isLoading && (
+          <DyadStateIndicator state="pending" pendingLabel="Fetching..." />
+        )}
+        {isAborted && (
+          <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
+        )}
+        <div className="ml-auto">
+          <DyadExpandIcon isExpanded={isContentVisible} />
         </div>
-        <div className="flex items-center">
-          {isContentVisible ? (
-            <ChevronsDownUp
-              size={20}
-              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-            />
-          ) : (
-            <ChevronsUpDown
-              size={20}
-              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-            />
-          )}
-        </div>
-      </div>
-      {isContentVisible && content && (
-        <div className="mt-2 p-3 text-xs font-mono whitespace-pre-wrap max-h-80 overflow-y-auto bg-muted/30 rounded-md">
-          {content}
-        </div>
-      )}
-    </div>
+      </DyadCardHeader>
+      <DyadCardContent isExpanded={isContentVisible}>
+        {content && (
+          <div className="p-3 text-xs font-mono whitespace-pre-wrap max-h-80 overflow-y-auto bg-muted/20 rounded-lg">
+            {content}
+          </div>
+        )}
+      </DyadCardContent>
+    </DyadCard>
   );
 }

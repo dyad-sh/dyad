@@ -1,6 +1,7 @@
 import type React from "react";
 import type { ReactNode } from "react";
 import { ScanQrCode } from "lucide-react";
+import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
 
 interface DyadWebCrawlProps {
   children?: ReactNode;
@@ -12,16 +13,15 @@ export const DyadWebCrawl: React.FC<DyadWebCrawlProps> = ({
   node: _node,
 }) => {
   return (
-    <div className="bg-(--background-lightest) rounded-lg px-4 py-2 border my-2">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <ScanQrCode size={16} className="text-blue-600" />
-          <div className="text-xs text-blue-600 font-medium">Web Crawl</div>
+    <DyadCard accentColor="blue">
+      <DyadCardHeader icon={<ScanQrCode size={15} />} accentColor="blue">
+        <DyadBadge color="blue">Web Crawl</DyadBadge>
+      </DyadCardHeader>
+      {children && (
+        <div className="px-3 pb-2 text-sm italic text-muted-foreground">
+          {children}
         </div>
-      </div>
-      <div className="text-sm italic text-gray-600 dark:text-gray-300 mt-2">
-        {children}
-      </div>
-    </div>
+      )}
+    </DyadCard>
   );
 };

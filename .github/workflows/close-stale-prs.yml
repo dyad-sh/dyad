@@ -27,7 +27,10 @@ jobs:
             });
 
             for (const pr of prs) {
-              if (new Date(pr.created_at) < twoMonthsAgo) {
+              if (new Date(pr.created_at) >= twoMonthsAgo) {
+                break;
+              }
+              try {
                 await github.rest.issues.createComment({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
@@ -43,5 +46,7 @@ jobs:
                 });
 
                 console.log(`Closed PR #${pr.number}: ${pr.title}`);
+              } catch (error) {
+                console.log(`Failed to close PR #${pr.number}: ${error.message}`);
               }
             }

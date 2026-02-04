@@ -17,11 +17,8 @@ export default defineConfig({
       fileName: "tsc_worker",
       formats: ["cjs"],
     },
-    rollupOptions: {
+    rolldownOptions: {
       external: ["node:fs", "node:path", "node:worker_threads", "typescript"],
-      //   output: {
-      //     dir: "dist/workers/tsc",
-      //   },
     },
     // outDir: "dist/workers/tsc",
     // emptyOutDir: true,

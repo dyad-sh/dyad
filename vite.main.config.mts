@@ -9,7 +9,7 @@ export default defineConfig({
     },
   },
   build: {
-    rollupOptions: {
+    rolldownOptions: {
       external: ["better-sqlite3"],
     },
   },

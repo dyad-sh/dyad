@@ -73,7 +73,7 @@
     "@tanstack/react-router": "^1.114.34",
     "@types/uuid": "^10.0.0",
     "@vercel/sdk": "^1.18.0",
-    "@vitejs/plugin-react": "^4.3.4",
+    "@vitejs/plugin-react": "^5.1.3",
     "@vscode/ripgrep": "^1.17.0",
     "ai": "^6.0.68",
     "better-sqlite3": "^12.6.2",
@@ -155,7 +155,7 @@
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
     "@typescript/native-preview": "^7.0.0-dev.20260107.1",
-    "@vitest/ui": "^3.1.1",
+    "@vitest/ui": "4.1.0-beta.3",
     "babel-plugin-react-compiler": "^1.0.0",
     "cross-env": "^7.0.3",
     "drizzle-kit": "^0.30.6",
@@ -170,13 +170,14 @@
     "rimraf": "^6.0.1",
     "storybook": "^8.6.15",
     "typescript": "^5.8.3",
-    "vite": "^5.4.17",
-    "vitest": "^3.1.1"
+    "vite": "8.0.0-beta.12",
+    "vitest": "4.1.0-beta.3"
   },
   "overrides": {
     "@vercel/sdk": {
       "@modelcontextprotocol/sdk": "$@modelcontextprotocol/sdk"
-    }
+    },
+    "vite": "8.0.0-beta.12"
   },
   "engines": {
     "node": ">=20"

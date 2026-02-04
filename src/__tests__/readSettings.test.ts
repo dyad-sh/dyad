@@ -7,8 +7,22 @@ import { getUserDataPath } from "@/paths/paths";
 import { UserSettings } from "@/lib/schemas";
 
 // Mock dependencies
-vi.mock("node:fs");
-vi.mock("node:path");
+vi.mock("node:fs", () => ({
+  default: {
+    existsSync: vi.fn(),
+    readFileSync: vi.fn(),
+    writeFileSync: vi.fn(),
+    mkdirSync: vi.fn(),
+  },
+  existsSync: vi.fn(),
+  readFileSync: vi.fn(),
+  writeFileSync: vi.fn(),
+  mkdirSync: vi.fn(),
+}));
+vi.mock("node:path", () => ({
+  default: { join: vi.fn() },
+  join: vi.fn(),
+}));
 vi.mock("electron", () => ({
   safeStorage: {
     isEncryptionAvailable: vi.fn(),

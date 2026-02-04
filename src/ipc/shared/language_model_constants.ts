@@ -225,7 +225,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       description: "Moonshot AI's latest and most capable model",
       maxOutputTokens: 32_000,
       contextWindow: 256_000,
-      temperature: 0,
+      temperature: 1.0,
       dollarSigns: 2,
     },
     {

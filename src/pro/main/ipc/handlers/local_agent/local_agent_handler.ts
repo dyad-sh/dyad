@@ -60,6 +60,8 @@ import { parseAiMessagesJson } from "@/ipc/utils/ai_messages_utils";
 import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
 import { addIntegrationTool } from "./tools/add_integration";
 import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
+import { writePlanTool } from "./tools/write_plan";
+import { exitPlanTool } from "./tools/exit_plan";
 
 const logger = log.scope("local_agent_handler");
 
@@ -282,11 +284,18 @@ export async function handleLocalAgentStream(
       stopWhen: [
         stepCountIs(25),
         hasToolCall(addIntegrationTool.name),
-        // In plan mode, stop immediately after presenting a questionnaire so
-        // the agent yields control back to the user. Without this, some models
-        // (e.g. Gemini Pro 3) ignore the prompt-level "STOP" instruction and
-        // keep calling tools in a loop.
-        ...(planModeOnly ? [hasToolCall(planningQuestionnaireTool.name)] : []),
+        // In plan mode, stop immediately after presenting a questionnaire,
+        // writing a plan, or exiting plan mode so the agent yields control
+        // back to the user. Without this, some models (e.g. Gemini Pro 3)
+        // ignore the prompt-level "STOP" instruction and keep calling tools
+        // in a loop.
+        ...(planModeOnly
+          ? [
+              hasToolCall(planningQuestionnaireTool.name),
+              hasToolCall(writePlanTool.name),
+              hasToolCall(exitPlanTool.name),
+            ]
+          : []),
       ],
       abortSignal: abortController.signal,
       // Inject pending user messages (e.g., images from web_crawl) between steps

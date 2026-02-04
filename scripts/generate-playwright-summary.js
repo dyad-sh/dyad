@@ -83,7 +83,7 @@ function isSnapshotFailure(errorMessage) {
     "screenshots are different",
     "snapshots don't match",
     "snapshot mismatch",
-    "a snapshot",
+    "snapshot",
     "ratio of different pixels",
   ].some((pattern) => lower.includes(pattern));
 }
@@ -94,7 +94,7 @@ function generateTestCommand(fullTitle) {
   // Sanitize specFile to only allow safe path characters
   const safeSpecFile = specFile.replace(/[^a-zA-Z0-9._\-/]/g, "");
   // Escape special characters in testName for the grep pattern
-  const escapedTestName = testName.replace(/[.*+?^${}()|[\]\\`]/g, "\\$&");
+  const escapedTestName = testName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return `npm run e2e e2e-tests/${safeSpecFile} -- -g "${escapedTestName}"`;
 }
 
@@ -403,8 +403,8 @@ async function run({ github, context, core }) {
         const snapshot = isSnapshotFailure(f.error);
         const errorPreview =
           f.error.length > 120 ? f.error.substring(0, 120) + "..." : f.error;
-        comment += `\n# ${f.title.replace(/\n/g, " ")}\n`;
-        comment += `# Expected: ${errorPreview.replace(/\n/g, " ")}\n`;
+        comment += `\n# ${f.title.replace(/\n/g, " ").replace(/`/g, "'")}\n`;
+        comment += `# Expected: ${errorPreview.replace(/\n/g, " ").replace(/`/g, "'")}\n`;
         if (snapshot) {
           comment += `${cmd} --update-snapshots\n`;
         } else {

@@ -3,8 +3,11 @@ import { platform, arch } from "os";
 import { readSettings } from "../../main/settings";
 import { createTypedHandler } from "./base";
 import { systemContracts } from "../types/system";
-import { miscContracts } from "../types/misc";
+import { miscContracts, SESSION_DEBUG_SCHEMA_VERSION } from "../types/misc";
 import type { SystemDebugInfo } from "../types/system";
+import type { SessionDebugBundle } from "../types/misc";
+import type { UserSettings } from "@/lib/schemas";
+import type { AiMessagesJsonV6 } from "../../db/schema";
 
 import log from "electron-log";
 import path from "path";
@@ -12,10 +15,15 @@ import fs from "fs";
 import { runShellCommand } from "../utils/runShellCommand";
 import { extractCodebase } from "../../utils/codebase";
 import { db } from "../../db";
-import { chats, apps } from "../../db/schema";
+import {
+  chats,
+  apps,
+  language_model_providers,
+  language_models,
+  mcpServers,
+} from "../../db/schema";
 import { eq } from "drizzle-orm";
 import { getDyadAppPath } from "../../paths/paths";
-import { LargeLanguageModel } from "@/lib/schemas";
 import { validateChatContext } from "../utils/context_paths_utils";
 
 // Shared function to get system debug info
@@ -117,6 +125,130 @@ async function getSystemDebugInfo({
   };
 }
 
+function serializeModelForDebug(model: {
+  provider: string;
+  name: string;
+  customModelId?: number;
+}): string {
+  return `${model.provider}:${model.name} | customId: ${model.customModelId}`;
+}
+
+/**
+ * Extracts non-sensitive settings for the debug bundle.
+ * All Secret fields (API keys, OAuth tokens) are excluded.
+ * Provider setup status is derived as boolean flags only.
+ */
+function sanitizeSettingsForDebug(settings: UserSettings) {
+  // Build provider setup status: { providerName: hasApiKey }
+  const providerSetupStatus: Record<string, boolean> = {};
+  if (settings.providerSettings) {
+    for (const [provider, providerSetting] of Object.entries(
+      settings.providerSettings,
+    )) {
+      providerSetupStatus[provider] = !!providerSetting?.apiKey?.value;
+    }
+  }
+
+  return {
+    selectedModel: {
+      name: settings.selectedModel.name,
+      provider: settings.selectedModel.provider,
+      customModelId: settings.selectedModel.customModelId,
+    },
+    selectedChatMode: settings.selectedChatMode ?? null,
+    defaultChatMode: settings.defaultChatMode ?? null,
+    autoApproveChanges: settings.autoApproveChanges ?? null,
+    enableDyadPro: settings.enableDyadPro ?? null,
+    thinkingBudget: settings.thinkingBudget ?? null,
+    maxChatTurnsInContext: settings.maxChatTurnsInContext ?? null,
+    enableAutoFixProblems: settings.enableAutoFixProblems ?? null,
+    enableNativeGit: settings.enableNativeGit ?? null,
+    enableAutoUpdate: settings.enableAutoUpdate,
+    releaseChannel: settings.releaseChannel,
+    runtimeMode2: settings.runtimeMode2 ?? null,
+    zoomLevel: settings.zoomLevel ?? null,
+    previewDeviceMode: settings.previewDeviceMode ?? null,
+    enableProLazyEditsMode: settings.enableProLazyEditsMode ?? null,
+    proLazyEditsMode: settings.proLazyEditsMode ?? null,
+    enableProSmartFilesContextMode:
+      settings.enableProSmartFilesContextMode ?? null,
+    enableProWebSearch: settings.enableProWebSearch ?? null,
+    proSmartContextOption: settings.proSmartContextOption ?? null,
+    enableSupabaseWriteSqlMigration:
+      settings.enableSupabaseWriteSqlMigration ?? null,
+    agentToolConsents: settings.agentToolConsents ?? null,
+    experiments: settings.experiments
+      ? Object.fromEntries(
+          Object.entries(settings.experiments).filter(
+            ([, v]) => typeof v === "boolean",
+          ),
+        )
+      : null,
+    customNodePath: settings.customNodePath ?? null,
+    providerSetupStatus,
+  };
+}
+
+/**
+ * Strips base64 image data from AI SDK messages JSON.
+ * Replaces image content with "[stripped]" and adds _strippedByteLength metadata.
+ * This keeps the bundle size manageable while preserving message structure.
+ *
+ * Works on the raw JSON representation to avoid tight coupling with AI SDK types.
+ */
+function stripImagesFromAiMessagesJson(json: AiMessagesJsonV6 | null): unknown {
+  if (!json || !json.messages) return json;
+
+  // Work on raw JSON to avoid AI SDK type constraints when modifying content
+  const raw = JSON.parse(JSON.stringify(json));
+  for (const msg of raw.messages) {
+    if (!Array.isArray(msg.content)) continue;
+    for (let i = 0; i < msg.content.length; i++) {
+      const part = msg.content[i];
+      if (
+        part.type === "image" &&
+        typeof part.image === "string" &&
+        part.image.length > 200
+      ) {
+        msg.content[i] = {
+          ...part,
+          _strippedByteLength: part.image.length,
+          image: "[stripped]",
+        };
+      }
+    }
+  }
+  return raw;
+}
+
+/**
+ * Reads application logs from the electron-log file.
+ */
+function readAppLogs(linesOfLogs: number, level: "warn" | "info"): string {
+  try {
+    const logPath = log.transports.file.getFile().path;
+    if (!fs.existsSync(logPath)) return "";
+
+    const logContent = fs.readFileSync(logPath, "utf8");
+    const logLines = logContent.split("\n").filter((line) => {
+      if (level === "info") return true;
+      const logLevelRegex = /\[.*?\] \[(\w+)\]/;
+      const match = line.match(logLevelRegex);
+      if (!match) return true;
+      const logLevel = match[1];
+      if (level === "warn") {
+        return logLevel === "warn" || logLevel === "error";
+      }
+      return true;
+    });
+
+    return logLines.slice(-linesOfLogs).join("\n");
+  } catch (err) {
+    console.error("Failed to read log file:", err);
+    return `Error reading logs: ${err}`;
+  }
+}
+
 export function registerDebugHandlers() {
   createTypedHandler(systemContracts.getSystemDebugInfo, async () => {
     console.log("IPC: get-system-debug-info called");
@@ -126,18 +258,40 @@ export function registerDebugHandlers() {
     });
   });
 
-  createTypedHandler(miscContracts.getChatLogs, async (_, chatId) => {
-    console.log(`IPC: get-chat-logs called for chat ${chatId}`);
+  createTypedHandler(miscContracts.getSessionDebugBundle, async (_, chatId) => {
+    console.log(`IPC: get-session-debug-bundle called for chat ${chatId}`);
 
     try {
-      // We can retrieve a lot more lines here because we're not limited by the
-      // GitHub issue URL length limit.
-      const debugInfo = await getSystemDebugInfo({
-        linesOfLogs: 1_000,
-        level: "info",
-      });
+      const settings = readSettings();
 
-      // Get chat data from database
+      // Get Dyad version
+      const packageJsonPath = path.resolve(
+        __dirname,
+        "..",
+        "..",
+        "package.json",
+      );
+      let dyadVersion = "unknown";
+      try {
+        const packageJson = JSON.parse(
+          fs.readFileSync(packageJsonPath, "utf8"),
+        );
+        dyadVersion = packageJson.version;
+      } catch (err) {
+        console.error("Failed to read package.json:", err);
+      }
+
+      // Get runtime info in parallel
+      const [nodeVersion, pnpmVersion, nodePathResult] = await Promise.all([
+        runShellCommand("node --version").catch(() => null),
+        runShellCommand("pnpm --version").catch(() => null),
+        (platform() === "win32"
+          ? runShellCommand("where.exe node")
+          : runShellCommand("which node")
+        ).catch(() => null),
+      ]);
+
+      // Get chat with full messages from database
       const chatRecord = await db.query.chats.findFirst({
         where: eq(chats.id, chatId),
         with: {
@@ -151,18 +305,6 @@ export function registerDebugHandlers() {
         throw new Error(`Chat with ID ${chatId} not found`);
       }
 
-      // Format the chat to match the Chat interface
-      const chat = {
-        id: chatRecord.id,
-        title: chatRecord.title || "Untitled Chat",
-        messages: chatRecord.messages.map((msg) => ({
-          id: msg.id,
-          role: msg.role,
-          content: msg.content,
-          approvalState: msg.approvalState,
-        })),
-      };
-
       // Get app data from database
       const app = await db.query.apps.findFirst({
         where: eq(apps.id, chatRecord.appId),
@@ -172,22 +314,121 @@ export function registerDebugHandlers() {
         throw new Error(`App with ID ${chatRecord.appId} not found`);
       }
 
-      // Extract codebase
-      const appPath = getDyadAppPath(app.path);
-      const codebase = (
-        await extractCodebase({
-          appPath,
-          chatContext: validateChatContext(app.chatContext),
-        })
-      ).formattedOutput;
+      // Query custom providers, custom models, and MCP servers in parallel
+      const [customProviders, customModels, mcpServerRecords, codebase] =
+        await Promise.all([
+          db.select().from(language_model_providers),
+          db.select().from(language_models),
+          db.select().from(mcpServers),
+          extractCodebase({
+            appPath: getDyadAppPath(app.path),
+            chatContext: validateChatContext(app.chatContext),
+          }).then((result) => result.formattedOutput),
+        ]);
 
-      return {
-        debugInfo,
-        chat,
+      // Read logs
+      const logs = readAppLogs(1_000, "info");
+
+      // Build the bundle
+      const bundle: SessionDebugBundle = {
+        schemaVersion: SESSION_DEBUG_SCHEMA_VERSION,
+        exportedAt: new Date().toISOString(),
+
+        system: {
+          dyadVersion,
+          platform: process.platform,
+          architecture: arch(),
+          nodeVersion,
+          pnpmVersion,
+          nodePath: nodePathResult,
+          electronVersion: process.versions.electron ?? "unknown",
+          telemetryId: settings.telemetryUserId || "unknown",
+          telemetryUserId: settings.telemetryUserId ?? null,
+        },
+
+        settings: sanitizeSettingsForDebug(settings),
+
+        app: {
+          id: app.id,
+          name: app.name,
+          path: app.path,
+          createdAt: app.createdAt.toISOString(),
+          updatedAt: app.updatedAt.toISOString(),
+          githubOrg: app.githubOrg,
+          githubRepo: app.githubRepo,
+          githubBranch: app.githubBranch,
+          supabaseProjectId: app.supabaseProjectId,
+          supabaseOrganizationSlug: app.supabaseOrganizationSlug,
+          neonProjectId: app.neonProjectId,
+          vercelProjectId: app.vercelProjectId,
+          vercelProjectName: app.vercelProjectName,
+          vercelDeploymentUrl: app.vercelDeploymentUrl,
+          installCommand: app.installCommand,
+          startCommand: app.startCommand,
+          chatContext: app.chatContext ?? null,
+          themeId: app.themeId,
+        },
+
+        chat: {
+          id: chatRecord.id,
+          appId: chatRecord.appId,
+          title: chatRecord.title,
+          initialCommitHash: chatRecord.initialCommitHash,
+          createdAt: chatRecord.createdAt.toISOString(),
+          messages: chatRecord.messages.map((msg) => ({
+            id: msg.id,
+            role: msg.role,
+            content: msg.content,
+            createdAt: msg.createdAt.toISOString(),
+            aiMessagesJson: stripImagesFromAiMessagesJson(
+              msg.aiMessagesJson ?? null,
+            ),
+            model: msg.model ?? null,
+            totalTokens: msg.maxTokensUsed ?? null,
+            approvalState: msg.approvalState ?? null,
+            sourceCommitHash: msg.sourceCommitHash ?? null,
+            commitHash: msg.commitHash ?? null,
+            requestId: msg.requestId ?? null,
+            usingFreeAgentModeQuota: msg.usingFreeAgentModeQuota ?? null,
+          })),
+        },
+
+        providers: {
+          customProviders: customProviders.map((p) => ({
+            id: p.id,
+            name: p.name,
+            apiBaseUrl: p.api_base_url,
+            envVarName: p.env_var_name,
+          })),
+          customModels: customModels.map((m) => ({
+            id: m.id,
+            displayName: m.displayName,
+            apiName: m.apiName,
+            builtinProviderId: m.builtinProviderId,
+            customProviderId: m.customProviderId,
+            maxOutputTokens: m.max_output_tokens,
+            contextWindow: m.context_window,
+          })),
+        },
+
+        mcpServers: mcpServerRecords.map((s) => ({
+          id: s.id,
+          name: s.name,
+          transport: s.transport,
+          command: s.command,
+          args: s.args,
+          url: s.url,
+          enabled: s.enabled,
+          // envJson and headersJson intentionally excluded (may contain secrets)
+        })),
+
         codebase,
+        logs,
       };
+
+      return bundle;
     } catch (error) {
-      console.error(`Error in get-chat-logs:`, error);
+      console.error(`Error in get-session-debug-bundle:`, error);
       throw error;
     }
   });
@@ -207,8 +448,4 @@ export function registerDebugHandlers() {
     // Write the image to the clipboard
     clipboard.writeImage(image);
   });
-}
-
-function serializeModelForDebug(model: LargeLanguageModel): string {
-  return `${model.provider}:${model.name} | customId: ${model.customModelId}`;
 }

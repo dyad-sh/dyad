@@ -80,8 +80,8 @@ export const webCrawlTool: ToolDefinition<z.infer<typeof webCrawlSchema>> = {
   inputSchema: webCrawlSchema,
   defaultConsent: "ask",
 
-  // Disable in Basic Agent mode (free tier) - requires engine
-  isEnabled: (ctx) => !ctx.isBasicAgentMode,
+  // Requires Dyad Pro engine API
+  isEnabled: (ctx) => ctx.isDyadPro,
 
   getConsentPreview: (args) => `Crawl URL: "${args.url}"`,
 

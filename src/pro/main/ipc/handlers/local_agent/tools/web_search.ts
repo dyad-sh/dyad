@@ -161,8 +161,8 @@ export const webSearchTool: ToolDefinition<z.infer<typeof webSearchSchema>> = {
   inputSchema: webSearchSchema,
   defaultConsent: "ask",
 
-  // Disable in Basic Agent mode (free tier) - requires engine
-  isEnabled: (ctx) => !ctx.isBasicAgentMode,
+  // Requires Dyad Pro engine API
+  isEnabled: (ctx) => ctx.isDyadPro,
 
   getConsentPreview: (args) => `Search the web: "${args.query}"`,
 

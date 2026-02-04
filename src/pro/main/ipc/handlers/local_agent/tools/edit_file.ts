@@ -142,8 +142,8 @@ export const editFileTool: ToolDefinition<z.infer<typeof editFileSchema>> = {
   defaultConsent: "always",
   modifiesState: true,
 
-  // Disable in Basic Agent mode (free tier) - requires engine
-  isEnabled: (ctx) => !ctx.isBasicAgentMode,
+  // Requires Dyad Pro engine API
+  isEnabled: (ctx) => ctx.isDyadPro,
 
   getConsentPreview: (args) => `Edit ${args.path}`,
 

@@ -31,6 +31,7 @@ export const DyadCodeSearch: React.FC<DyadCodeSearchProps> = ({
       state={state}
       accentColor="indigo"
       onClick={() => setIsExpanded(!isExpanded)}
+      isExpanded={isExpanded}
     >
       <DyadCardHeader icon={<FileCode size={15} />} accentColor="indigo">
         <DyadBadge color="indigo">Code Search</DyadBadge>

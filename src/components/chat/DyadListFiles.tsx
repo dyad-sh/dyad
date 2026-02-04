@@ -36,6 +36,7 @@ export function DyadListFiles({ node, children }: DyadListFilesProps) {
     <DyadCard
       state={state}
       accentColor="slate"
+      isExpanded={isExpanded}
       onClick={() => setIsExpanded(!isExpanded)}
       data-testid="dyad-list-files"
     >

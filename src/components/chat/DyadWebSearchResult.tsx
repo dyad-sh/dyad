@@ -35,6 +35,7 @@ export const DyadWebSearchResult: React.FC<DyadWebSearchResultProps> = ({
       state={state}
       accentColor="blue"
       onClick={() => setIsExpanded(!isExpanded)}
+      isExpanded={isExpanded}
     >
       <DyadCardHeader icon={<Globe size={15} />} accentColor="blue">
         <DyadBadge color="blue">Web Search Result</DyadBadge>

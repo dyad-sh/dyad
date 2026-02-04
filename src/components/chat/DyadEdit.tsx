@@ -43,6 +43,7 @@ export const DyadEdit: React.FC<DyadEditProps> = ({
       state={state}
       accentColor="sky"
       onClick={() => setIsContentVisible(!isContentVisible)}
+      isExpanded={isContentVisible}
     >
       <DyadCardHeader icon={<Rabbit size={15} />} accentColor="sky">
         <DyadBadge color="sky">Turbo Edit</DyadBadge>

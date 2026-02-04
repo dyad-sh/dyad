@@ -36,7 +36,11 @@ export const DyadMcpToolResult: React.FC<DyadMcpToolResultProps> = ({
   }, [expanded, raw]);
 
   return (
-    <DyadCard accentColor="emerald" onClick={() => setExpanded((v) => !v)}>
+    <DyadCard
+      accentColor="emerald"
+      isExpanded={expanded}
+      onClick={() => setExpanded((v) => !v)}
+    >
       <DyadCardHeader icon={<CheckCircle size={15} />} accentColor="emerald">
         <DyadBadge color="emerald">Tool Result</DyadBadge>
         {serverName && (

@@ -57,6 +57,7 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
       state={state}
       accentColor="blue"
       onClick={() => setIsContentVisible(!isContentVisible)}
+      isExpanded={isContentVisible}
     >
       <DyadCardHeader icon={<Pencil size={15} />} accentColor="blue">
         {fileName && (

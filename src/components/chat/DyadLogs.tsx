@@ -41,6 +41,7 @@ export const DyadLogs: React.FC<DyadLogsProps> = ({ children, node }) => {
     <DyadCard
       state={state}
       accentColor="slate"
+      isExpanded={isContentVisible}
       onClick={() => setIsContentVisible(!isContentVisible)}
     >
       <DyadCardHeader icon={<FileText size={15} />} accentColor="slate">

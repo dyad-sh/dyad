@@ -48,6 +48,7 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
     <DyadCard
       state={state}
       accentColor="violet"
+      isExpanded={isContentVisible}
       onClick={() => setIsContentVisible(!isContentVisible)}
       data-testid="dyad-search-replace"
     >

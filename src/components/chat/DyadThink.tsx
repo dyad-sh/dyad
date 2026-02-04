@@ -53,6 +53,7 @@ export const DyadThink: React.FC<DyadThinkProps> = ({ children, node }) => {
     <DyadCard
       state={state}
       accentColor="purple"
+      isExpanded={isExpanded}
       onClick={() => setIsExpanded(!isExpanded)}
     >
       <DyadCardHeader icon={<Brain size={15} />} accentColor="purple">

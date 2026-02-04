@@ -45,9 +45,10 @@ export const DyadOutput: React.FC<DyadOutputProps> = ({
 
   return (
     <DyadCard
-      state="pending"
+      showAccent
       accentColor={accentColor}
       onClick={() => setIsContentVisible(!isContentVisible)}
+      isExpanded={isContentVisible}
     >
       <DyadCardHeader icon={icon} accentColor={accentColor}>
         <DyadBadge color={accentColor}>{label}</DyadBadge>

@@ -97,6 +97,7 @@ export const DyadProblemSummary: React.FC<DyadProblemSummaryProps> = ({
   return (
     <DyadCard
       accentColor="amber"
+      isExpanded={isContentVisible}
       onClick={() => setIsContentVisible(!isContentVisible)}
       data-testid="problem-summary"
     >

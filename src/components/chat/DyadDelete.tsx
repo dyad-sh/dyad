@@ -6,7 +6,9 @@ import {
   DyadCardHeader,
   DyadBadge,
   DyadFilePath,
+  DyadDescription,
 } from "./DyadCardPrimitives";
+import { CustomTagState } from "./stateTypes";
 
 interface DyadDeleteProps {
   children?: ReactNode;
@@ -15,14 +17,16 @@ interface DyadDeleteProps {
 }
 
 export const DyadDelete: React.FC<DyadDeleteProps> = ({
+  children,
   node,
   path: pathProp,
 }) => {
   const path = pathProp || node?.properties?.path || "";
+  const state = node?.properties?.state as CustomTagState;
   const fileName = path ? path.split("/").pop() : "";
 
   return (
-    <DyadCard accentColor="red" state="pending">
+    <DyadCard accentColor="red" state={state}>
       <DyadCardHeader icon={<Trash2 size={15} />} accentColor="red">
         {fileName && (
           <span className="font-medium text-sm text-foreground truncate">
@@ -32,6 +36,7 @@ export const DyadDelete: React.FC<DyadDeleteProps> = ({
         <DyadBadge color="red">Delete</DyadBadge>
       </DyadCardHeader>
       <DyadFilePath path={path} />
+      {children && <DyadDescription>{children}</DyadDescription>}
     </DyadCard>
   );
 };

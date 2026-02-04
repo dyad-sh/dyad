@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef, useState } from "react";
 import { ChevronRight, Loader2, CircleX, CheckCircle2 } from "lucide-react";
 import { CustomTagState } from "./stateTypes";
 
@@ -78,7 +78,9 @@ interface DyadCardProps {
   children: React.ReactNode;
   state?: CustomTagState;
   accentColor?: DyadAccentColor;
+  showAccent?: boolean;
   onClick?: () => void;
+  isExpanded?: boolean;
   className?: string;
   "data-testid"?: string;
 }
@@ -86,23 +88,29 @@ interface DyadCardProps {
 /**
  * Premium container for all Dyad markdown action cards.
  * Provides consistent borders, backgrounds, hover states, and a colored
- * left-accent border when the action is pending or aborted.
+ * left-accent border when the action is pending or aborted (or when
+ * `showAccent` is explicitly set).
+ *
+ * When `onClick` is provided, the card behaves as an interactive button
+ * with keyboard support (Enter/Space) and appropriate ARIA attributes.
  */
 export function DyadCard({
   children,
   state,
   accentColor = "blue",
+  showAccent,
   onClick,
+  isExpanded,
   className = "",
   ...props
 }: DyadCardProps) {
   const isPending = state === "pending";
   const isAborted = state === "aborted";
 
-  const leftBorder =
-    isPending || isAborted
-      ? `border-l-[3px] ${isAborted ? "border-l-red-500" : ACCENT_BORDER[accentColor]}`
-      : "border-l";
+  const shouldShowAccent = showAccent ?? (isPending || isAborted);
+  const leftBorder = shouldShowAccent
+    ? `border-l-[3px] ${isAborted ? "border-l-red-500" : ACCENT_BORDER[accentColor]}`
+    : "border-l-0";
 
   return (
     <div
@@ -117,6 +125,21 @@ export function DyadCard({
         ${className}
       `}
       onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      aria-expanded={
+        onClick && isExpanded !== undefined ? isExpanded : undefined
+      }
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
       {...props}
     >
       {children}
@@ -198,16 +221,18 @@ interface DyadStateIndicatorProps {
   state: CustomTagState;
   pendingLabel?: string;
   abortedLabel?: string;
+  finishedLabel?: string;
 }
 
 /**
  * Renders a spinner (pending), X icon (aborted), or checkmark (finished).
- * Includes an optional text label for pending/aborted states.
+ * Includes an optional text label for each state.
  */
 export function DyadStateIndicator({
   state,
   pendingLabel,
   abortedLabel,
+  finishedLabel,
 }: DyadStateIndicatorProps) {
   if (state === "pending") {
     return (
@@ -223,6 +248,15 @@ export function DyadStateIndicator({
       <span className="inline-flex items-center gap-1 text-red-500 dark:text-red-400 text-xs shrink-0">
         <CircleX size={14} />
         {abortedLabel && <span>{abortedLabel}</span>}
+      </span>
+    );
+  }
+
+  if (state === "finished") {
+    return (
+      <span className="inline-flex items-center gap-1 text-green-600 dark:text-green-500 text-xs shrink-0">
+        <CheckCircle2 size={14} />
+        {finishedLabel && <span>{finishedLabel}</span>}
       </span>
     );
   }
@@ -250,22 +284,36 @@ interface DyadCardContentProps {
 }
 
 /**
- * Expandable content area with smooth height/opacity animation.
+ * Expandable content area using CSS grid for smooth height animation.
+ * Uses lazy mounting: children are only rendered after the first expansion,
+ * preventing heavy components from initializing when collapsed.
  */
 export function DyadCardContent({
   isExpanded,
   children,
   className = "",
 }: DyadCardContentProps) {
+  const hasExpandedRef = useRef(false);
+  const [hasExpanded, setHasExpanded] = useState(false);
+
+  if (isExpanded && !hasExpandedRef.current) {
+    hasExpandedRef.current = true;
+    if (!hasExpanded) {
+      setHasExpanded(true);
+    }
+  }
+
   return (
     <div
-      className={`overflow-hidden transition-all duration-200 ease-in-out ${
+      className={`grid transition-all duration-200 ease-in-out ${
         isExpanded
-          ? "max-h-[5000px] opacity-100"
-          : "max-h-0 opacity-0 pointer-events-none"
+          ? "grid-rows-[1fr] opacity-100"
+          : "grid-rows-[0fr] opacity-0 pointer-events-none"
       } ${className}`}
     >
-      <div className="px-3 pb-3">{children}</div>
+      <div className="overflow-hidden">
+        <div className="px-3 pb-3">{hasExpanded ? children : null}</div>
+      </div>
     </div>
   );
 }
@@ -304,7 +352,3 @@ export function DyadDescription({ children }: DyadDescriptionProps) {
     <div className="px-3 pb-2 text-xs text-muted-foreground">{children}</div>
   );
 }
-
-// -- Utility exports --
-
-export { ACCENT_ICON_BG, ACCENT_BADGE };

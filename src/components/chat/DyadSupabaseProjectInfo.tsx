@@ -33,6 +33,7 @@ export function DyadSupabaseProjectInfo({
     <DyadCard
       state={state}
       accentColor="teal"
+      isExpanded={isContentVisible}
       onClick={() => setIsContentVisible(!isContentVisible)}
     >
       <DyadCardHeader icon={<Database size={15} />} accentColor="teal">

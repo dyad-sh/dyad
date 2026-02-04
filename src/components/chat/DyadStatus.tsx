@@ -44,6 +44,7 @@ export function DyadStatus({ node, children }: DyadStatusProps) {
     <DyadCard
       state={state}
       accentColor={accentColor}
+      isExpanded={isContentVisible}
       onClick={() => setIsContentVisible(!isContentVisible)}
     >
       <DyadCardHeader icon={icon} accentColor={accentColor}>

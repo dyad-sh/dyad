@@ -4,6 +4,7 @@ import { Table2 } from "lucide-react";
 import {
   DyadCard,
   DyadCardHeader,
+  DyadBadge,
   DyadExpandIcon,
   DyadStateIndicator,
   DyadCardContent,
@@ -34,11 +35,17 @@ export function DyadSupabaseTableSchema({
       state={state}
       accentColor="teal"
       onClick={() => setIsContentVisible(!isContentVisible)}
+      isExpanded={isContentVisible}
     >
       <DyadCardHeader icon={<Table2 size={15} />} accentColor="teal">
-        <span className="font-medium text-sm text-foreground truncate">
-          {table ? `Table Schema: ${table}` : "Supabase Table Schema"}
-        </span>
+        <DyadBadge color="teal">
+          {table ? "Table Schema" : "Supabase Table Schema"}
+        </DyadBadge>
+        {table && (
+          <span className="font-medium text-sm text-foreground truncate">
+            {table}
+          </span>
+        )}
         {isLoading && (
           <DyadStateIndicator state="pending" pendingLabel="Fetching..." />
         )}

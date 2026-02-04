@@ -41,7 +41,11 @@ export const DyadCodeSearchResult: React.FC<DyadCodeSearchResultProps> = ({
   }, [children]);
 
   return (
-    <DyadCard accentColor="indigo" onClick={() => setIsExpanded(!isExpanded)}>
+    <DyadCard
+      accentColor="indigo"
+      isExpanded={isExpanded}
+      onClick={() => setIsExpanded(!isExpanded)}
+    >
       <DyadCardHeader icon={<FileCode size={15} />} accentColor="indigo">
         <DyadBadge color="indigo">Code Search Result</DyadBadge>
         {files.length > 0 && (

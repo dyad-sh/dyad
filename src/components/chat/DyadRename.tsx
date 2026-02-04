@@ -6,7 +6,9 @@ import {
   DyadCardHeader,
   DyadBadge,
   DyadFilePath,
+  DyadDescription,
 } from "./DyadCardPrimitives";
+import { CustomTagState } from "./stateTypes";
 
 interface DyadRenameProps {
   children?: ReactNode;
@@ -16,12 +18,14 @@ interface DyadRenameProps {
 }
 
 export const DyadRename: React.FC<DyadRenameProps> = ({
+  children,
   node,
   from: fromProp,
   to: toProp,
 }) => {
   const from = fromProp || node?.properties?.from || "";
   const to = toProp || node?.properties?.to || "";
+  const state = node?.properties?.state as CustomTagState;
 
   const fromFileName = from ? from.split("/").pop() : "";
   const toFileName = to ? to.split("/").pop() : "";
@@ -32,7 +36,7 @@ export const DyadRename: React.FC<DyadRenameProps> = ({
       : fromFileName || toFileName || "";
 
   return (
-    <DyadCard accentColor="amber" state="pending">
+    <DyadCard accentColor="amber" state={state}>
       <DyadCardHeader icon={<FileEdit size={15} />} accentColor="amber">
         {displayTitle && (
           <span className="font-medium text-sm text-foreground truncate">
@@ -43,6 +47,7 @@ export const DyadRename: React.FC<DyadRenameProps> = ({
       </DyadCardHeader>
       {from && <DyadFilePath path={`From: ${from}`} />}
       {to && <DyadFilePath path={`To: ${to}`} />}
+      {children && <DyadDescription>{children}</DyadDescription>}
     </DyadCard>
   );
 };

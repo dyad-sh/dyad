@@ -6,6 +6,7 @@ import {
   DyadCardHeader,
   DyadBadge,
   DyadFilePath,
+  DyadDescription,
 } from "./DyadCardPrimitives";
 
 interface DyadReadProps {
@@ -14,7 +15,11 @@ interface DyadReadProps {
   path?: string;
 }
 
-export const DyadRead: React.FC<DyadReadProps> = ({ node, path: pathProp }) => {
+export const DyadRead: React.FC<DyadReadProps> = ({
+  children,
+  node,
+  path: pathProp,
+}) => {
   const path = pathProp || node?.properties?.path || "";
   const fileName = path ? path.split("/").pop() : "";
 
@@ -29,6 +34,7 @@ export const DyadRead: React.FC<DyadReadProps> = ({ node, path: pathProp }) => {
         <DyadBadge color="slate">Read</DyadBadge>
       </DyadCardHeader>
       <DyadFilePath path={path} />
+      {children && <DyadDescription>{children}</DyadDescription>}
     </DyadCard>
   );
 };

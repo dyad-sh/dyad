@@ -31,6 +31,7 @@ export const DyadAddDependency: React.FC<DyadAddDependencyProps> = ({
   return (
     <DyadCard
       accentColor="blue"
+      isExpanded={isContentVisible}
       onClick={
         hasChildren ? () => setIsContentVisible(!isContentVisible) : undefined
       }

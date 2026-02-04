@@ -39,6 +39,7 @@ export const DyadCodebaseContext: React.FC<DyadCodebaseContextProps> = ({
       state={state}
       accentColor="blue"
       onClick={() => setIsExpanded(!isExpanded)}
+      isExpanded={isExpanded}
     >
       <DyadCardHeader icon={<Code2 size={15} />} accentColor="blue">
         <DyadBadge color="blue">Codebase Context</DyadBadge>

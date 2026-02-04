@@ -66,6 +66,7 @@ export const DyadGrep: React.FC<DyadGrepProps> = ({ children, node }) => {
       state={state}
       accentColor="violet"
       onClick={() => setIsContentVisible(!isContentVisible)}
+      isExpanded={isContentVisible}
       data-testid="dyad-grep"
     >
       <DyadCardHeader icon={<Search size={15} />} accentColor="violet">
@@ -89,7 +90,7 @@ export const DyadGrep: React.FC<DyadGrepProps> = ({ children, node }) => {
         </div>
       </DyadCardHeader>
       <DyadCardContent isExpanded={isContentVisible}>
-        <div className="text-xs">
+        <div className="text-xs" onClick={(e) => e.stopPropagation()}>
           <CodeHighlight className="language-log">{children}</CodeHighlight>
         </div>
       </DyadCardContent>

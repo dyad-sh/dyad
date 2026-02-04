@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { ipc, DeepLinkData } from "../ipc/types";
 import { useScrollAndNavigateTo } from "@/hooks/useScrollAndNavigateTo";
+import { SECTION_IDS } from "@/lib/settingsSearchIndex";
 
 type DeepLinkContextType = {
   lastDeepLink: (DeepLinkData & { timestamp: number }) | null;
@@ -28,7 +29,7 @@ export function DeepLinkProvider({ children }: { children: React.ReactNode }) {
       setLastDeepLink({ ...data, timestamp: Date.now() });
       if (data.type === "add-mcp-server") {
         // Navigate to tools-mcp section
-        scrollAndNavigateTo("tools-mcp");
+        scrollAndNavigateTo(SECTION_IDS.toolsMcp);
       } else if (data.type === "add-prompt") {
         // Navigate to library page
         navigate({ to: "/library" });

@@ -33,6 +33,7 @@ import { ZoomSelector } from "@/components/ZoomSelector";
 import { DefaultChatModeSelector } from "@/components/DefaultChatModeSelector";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
+import { SECTION_IDS, SETTING_IDS } from "@/lib/settingsSearchIndex";
 
 export default function SettingsPage() {
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
@@ -43,7 +44,7 @@ export default function SettingsPage() {
   const setActiveSettingsSection = useSetAtom(activeSettingsSectionAtom);
 
   useEffect(() => {
-    setActiveSettingsSection("general-settings");
+    setActiveSettingsSection(SECTION_IDS.general);
   }, [setActiveSettingsSection]);
 
   const handleResetEverything = async () => {
@@ -86,7 +87,7 @@ export default function SettingsPage() {
           <AISettings />
 
           <div
-            id="provider-settings"
+            id={SECTION_IDS.providers}
             className="bg-white dark:bg-gray-800 rounded-xl shadow-sm"
           >
             <ProviderSettingsGrid />
@@ -94,13 +95,13 @@ export default function SettingsPage() {
 
           <div className="space-y-6">
             <div
-              id="telemetry"
+              id={SECTION_IDS.telemetry}
               className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
             >
               <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
                 Telemetry
               </h2>
-              <div className="space-y-2">
+              <div id={SETTING_IDS.telemetry} className="space-y-2">
                 <TelemetrySwitch />
                 <div className="text-sm text-gray-500 dark:text-gray-400">
                   This records anonymous usage data to improve the product.
@@ -118,24 +119,32 @@ export default function SettingsPage() {
 
           {/* Integrations Section */}
           <div
-            id="integrations"
+            id={SECTION_IDS.integrations}
             className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
           >
             <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
               Integrations
             </h2>
             <div className="space-y-4">
-              <GitHubIntegration />
-              <VercelIntegration />
-              <SupabaseIntegration />
-              <NeonIntegration />
+              <div id={SETTING_IDS.github}>
+                <GitHubIntegration />
+              </div>
+              <div id={SETTING_IDS.vercel}>
+                <VercelIntegration />
+              </div>
+              <div id={SETTING_IDS.supabase}>
+                <SupabaseIntegration />
+              </div>
+              <div id={SETTING_IDS.neon}>
+                <NeonIntegration />
+              </div>
             </div>
           </div>
 
           {/* Agent v2 Permissions */}
 
           <div
-            id="agent-permissions"
+            id={SECTION_IDS.agentPermissions}
             className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
           >
             <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
@@ -146,7 +155,7 @@ export default function SettingsPage() {
 
           {/* Tools (MCP) */}
           <div
-            id="tools-mcp"
+            id={SECTION_IDS.toolsMcp}
             className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
           >
             <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
@@ -157,14 +166,14 @@ export default function SettingsPage() {
 
           {/* Experiments Section */}
           <div
-            id="experiments"
+            id={SECTION_IDS.experiments}
             className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
           >
             <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
               Experiments
             </h2>
             <div className="space-y-4">
-              <div className="space-y-1 mt-4">
+              <div id={SETTING_IDS.nativeGit} className="space-y-1 mt-4">
                 <div className="flex items-center space-x-2">
                   <Switch
                     id="enable-native-git"
@@ -188,7 +197,7 @@ export default function SettingsPage() {
 
           {/* Danger Zone */}
           <div
-            id="danger-zone"
+            id={SECTION_IDS.dangerZone}
             className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-red-200 dark:border-red-800"
           >
             <h2 className="text-lg font-medium text-red-600 dark:text-red-400 mb-4">
@@ -196,7 +205,10 @@ export default function SettingsPage() {
             </h2>
 
             <div className="space-y-4">
-              <div className="flex items-start justify-between flex-col sm:flex-row sm:items-center gap-4">
+              <div
+                id={SETTING_IDS.reset}
+                className="flex items-start justify-between flex-col sm:flex-row sm:items-center gap-4"
+              >
                 <div>
                   <h3 className="text-sm font-medium text-gray-900 dark:text-white">
                     Reset Everything
@@ -237,7 +249,7 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
 
   return (
     <div
-      id="general-settings"
+      id={SECTION_IDS.general}
       className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
     >
       <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
@@ -245,7 +257,7 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
       </h2>
 
       <div className="space-y-4 mb-4">
-        <div className="flex items-center gap-4">
+        <div id={SETTING_IDS.theme} className="flex items-center gap-4">
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
             Theme
           </label>
@@ -272,11 +284,11 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
         </div>
       </div>
 
-      <div className="mt-4">
+      <div id={SETTING_IDS.zoom} className="mt-4">
         <ZoomSelector />
       </div>
 
-      <div className="space-y-1 mt-4">
+      <div id={SETTING_IDS.autoUpdate} className="space-y-1 mt-4">
         <AutoUpdateSwitch />
         <div className="text-sm text-gray-500 dark:text-gray-400">
           This will automatically update the app when new versions are
@@ -284,14 +296,14 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
         </div>
       </div>
 
-      <div className="mt-4">
+      <div id={SETTING_IDS.releaseChannel} className="mt-4">
         <ReleaseChannelSelector />
       </div>
 
-      <div className="mt-4">
+      <div id={SETTING_IDS.runtimeMode} className="mt-4">
         <RuntimeModeSelector />
       </div>
-      <div className="mt-4">
+      <div id={SETTING_IDS.nodePath} className="mt-4">
         <NodePathSelector />
       </div>
 
@@ -308,39 +320,42 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
 export function WorkflowSettings() {
   return (
     <div
-      id="workflow-settings"
+      id={SECTION_IDS.workflow}
       className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
     >
       <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
         Workflow Settings
       </h2>
 
-      <div className="mt-4">
+      <div id={SETTING_IDS.defaultChatMode} className="mt-4">
         <DefaultChatModeSelector />
       </div>
 
-      <div className="space-y-1 mt-4">
+      <div id={SETTING_IDS.autoApprove} className="space-y-1 mt-4">
         <AutoApproveSwitch showToast={false} />
         <div className="text-sm text-gray-500 dark:text-gray-400">
           This will automatically approve code changes and run them.
         </div>
       </div>
 
-      <div className="space-y-1 mt-4">
+      <div id={SETTING_IDS.autoFix} className="space-y-1 mt-4">
         <AutoFixProblemsSwitch />
         <div className="text-sm text-gray-500 dark:text-gray-400">
           This will automatically fix TypeScript errors.
         </div>
       </div>
 
-      <div className="space-y-1 mt-4">
+      <div id={SETTING_IDS.autoExpandPreview} className="space-y-1 mt-4">
         <AutoExpandPreviewSwitch />
         <div className="text-sm text-gray-500 dark:text-gray-400">
           Automatically expand the preview panel when code changes are made.
         </div>
       </div>
 
-      <div className="space-y-1 mt-4">
+      <div
+        id={SETTING_IDS.chatCompletionNotification}
+        className="space-y-1 mt-4"
+      >
         <ChatCompletionNotificationSwitch />
         <div className="text-sm text-gray-500 dark:text-gray-400">
           Show a native notification when a chat response completes while the
@@ -353,18 +368,18 @@ export function WorkflowSettings() {
 export function AISettings() {
   return (
     <div
-      id="ai-settings"
+      id={SECTION_IDS.ai}
       className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6"
     >
       <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
         AI Settings
       </h2>
 
-      <div className="mt-4">
+      <div id={SETTING_IDS.thinkingBudget} className="mt-4">
         <ThinkingBudgetSelector />
       </div>
 
-      <div className="mt-4">
+      <div id={SETTING_IDS.maxChatTurns} className="mt-4">
         <MaxChatTurnsSelector />
       </div>
     </div>

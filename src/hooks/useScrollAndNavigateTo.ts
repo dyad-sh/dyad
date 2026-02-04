@@ -8,6 +8,7 @@ type ScrollOptions = {
   block?: ScrollLogicalPosition;
   inline?: ScrollLogicalPosition;
   onScrolled?: (id: string, element: HTMLElement) => void;
+  highlight?: boolean;
 };
 
 /**
@@ -21,7 +22,7 @@ export function useScrollAndNavigateTo(
   const setActiveSection = useSetAtom(activeSettingsSectionAtom);
 
   return useCallback(
-    async (id: string) => {
+    async (id: string, sectionId?: string) => {
       await navigate({ to });
       const element = document.getElementById(id);
       if (element) {
@@ -30,8 +31,20 @@ export function useScrollAndNavigateTo(
           block: options?.block ?? "start",
           inline: options?.inline,
         });
-        setActiveSection(id);
+        setActiveSection(sectionId ?? id);
         options?.onScrolled?.(id, element);
+
+        if (options?.highlight) {
+          element.classList.remove("settings-highlight");
+          void element.offsetWidth; // force reflow to restart animation
+          element.classList.add("settings-highlight");
+          const onEnd = () => {
+            element.classList.remove("settings-highlight");
+          };
+          element.addEventListener("animationend", onEnd, { once: true });
+          element.addEventListener("animationcancel", onEnd, { once: true });
+        }
+
         return true;
       }
       return false;
@@ -43,6 +56,7 @@ export function useScrollAndNavigateTo(
       options?.block,
       options?.inline,
       options?.onScrolled,
+      options?.highlight,
       setActiveSection,
     ],
   );

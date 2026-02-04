@@ -241,6 +241,8 @@ jobs:
       - name: Install Chromium browser for Playwright
         run: npx playwright install chromium --with-deps
       - name: E2E tests (Shard ${{ matrix.shard }}/4)
+        env:
+          FLAKINESS_ACCESS_TOKEN: ${{ secrets.FLAKINESS_ACCESS_TOKEN }}
         # You can add debug logging to make it easier to see what's failing
         # by adding "DEBUG=pw:browser" in front.
         # Use blob reporter for sharding and merge capabilities

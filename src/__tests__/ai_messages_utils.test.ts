@@ -204,6 +204,253 @@ describe("parseAiMessagesJson", () => {
     });
   });
 
+  describe("OpenAI itemId stripping", () => {
+    it("should strip itemId from text part providerOptions", () => {
+      const msg: DbMessageForParsing = {
+        id: 20,
+        role: "assistant",
+        content: "fallback",
+        aiMessagesJson: {
+          sdkVersion: AI_MESSAGES_SDK_VERSION,
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "text",
+                  text: "Hello there!",
+                  providerOptions: {
+                    openai: {
+                      itemId: "rs_abc123",
+                      annotations: [],
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      };
+
+      const result = parseAiMessagesJson(msg);
+      expect(result).toHaveLength(1);
+      const content = result[0].content as any[];
+      expect(content[0].text).toBe("Hello there!");
+      // itemId should be stripped
+      expect(content[0].providerOptions?.openai?.itemId).toBeUndefined();
+      // Other fields should be preserved
+      expect(content[0].providerOptions?.openai?.annotations).toEqual([]);
+    });
+
+    it("should strip itemId from tool-call part providerOptions", () => {
+      const msg: DbMessageForParsing = {
+        id: 21,
+        role: "assistant",
+        content: "fallback",
+        aiMessagesJson: {
+          sdkVersion: AI_MESSAGES_SDK_VERSION,
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "tool-call",
+                  toolCallId: "call-123",
+                  toolName: "read_file",
+                  input: { path: "/src/index.ts" },
+                  providerOptions: {
+                    openai: { itemId: "rs_xyz789" },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      };
+
+      const result = parseAiMessagesJson(msg);
+      const content = result[0].content as any[];
+      expect(content[0].toolName).toBe("read_file");
+      // itemId stripped, empty openai object cleaned up
+      expect(content[0].providerOptions).toBeUndefined();
+    });
+
+    it("should strip itemId and reasoningEncryptedContent from reasoning parts", () => {
+      const msg: DbMessageForParsing = {
+        id: 22,
+        role: "assistant",
+        content: "fallback",
+        aiMessagesJson: {
+          sdkVersion: AI_MESSAGES_SDK_VERSION,
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "reasoning",
+                  text: "Let me think about this...",
+                  providerOptions: {
+                    openai: {
+                      itemId: "rs_reasoning_123",
+                      reasoningEncryptedContent: "encrypted_data_here",
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      };
+
+      const result = parseAiMessagesJson(msg);
+      const content = result[0].content as any[];
+      expect(content[0].text).toBe("Let me think about this...");
+      // Both itemId and reasoningEncryptedContent should be stripped
+      expect(content[0].providerOptions).toBeUndefined();
+    });
+
+    it("should strip itemId from legacy providerMetadata field", () => {
+      const msg: DbMessageForParsing = {
+        id: 23,
+        role: "assistant",
+        content: "fallback",
+        aiMessagesJson: {
+          sdkVersion: AI_MESSAGES_SDK_VERSION,
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "text",
+                  text: "Response text",
+                  providerMetadata: {
+                    openai: { itemId: "rs_legacy_456" },
+                  },
+                },
+              ],
+            },
+          ] as any,
+        },
+      };
+
+      const result = parseAiMessagesJson(msg);
+      const content = result[0].content as any[];
+      expect(content[0].text).toBe("Response text");
+      expect(content[0].providerMetadata).toBeUndefined();
+    });
+
+    it("should not modify messages without providerOptions", () => {
+      const msg: DbMessageForParsing = {
+        id: 24,
+        role: "assistant",
+        content: "fallback",
+        aiMessagesJson: {
+          sdkVersion: AI_MESSAGES_SDK_VERSION,
+          messages: [
+            { role: "user", content: "Hello" },
+            { role: "assistant", content: "Hi there!" },
+          ],
+        },
+      };
+
+      const result = parseAiMessagesJson(msg);
+      expect(result).toEqual([
+        { role: "user", content: "Hello" },
+        { role: "assistant", content: "Hi there!" },
+      ]);
+    });
+
+    it("should strip itemIds from legacy array format", () => {
+      const msg: DbMessageForParsing = {
+        id: 25,
+        role: "assistant",
+        content: "fallback",
+        aiMessagesJson: [
+          {
+            role: "assistant",
+            content: [
+              {
+                type: "text",
+                text: "Response",
+                providerOptions: {
+                  openai: { itemId: "rs_legacy_array" },
+                },
+              },
+            ],
+          },
+        ] as ModelMessage[],
+      };
+
+      const result = parseAiMessagesJson(msg);
+      const content = result[0].content as any[];
+      expect(content[0].text).toBe("Response");
+      expect(content[0].providerOptions).toBeUndefined();
+    });
+
+    it("should strip itemId from azure provider key", () => {
+      const msg: DbMessageForParsing = {
+        id: 26,
+        role: "assistant",
+        content: "fallback",
+        aiMessagesJson: {
+          sdkVersion: AI_MESSAGES_SDK_VERSION,
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "text",
+                  text: "Azure response",
+                  providerOptions: {
+                    azure: { itemId: "rs_azure_123" },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      };
+
+      const result = parseAiMessagesJson(msg);
+      const content = result[0].content as any[];
+      expect(content[0].text).toBe("Azure response");
+      expect(content[0].providerOptions).toBeUndefined();
+    });
+
+    it("should preserve non-OpenAI providerOptions", () => {
+      const msg: DbMessageForParsing = {
+        id: 27,
+        role: "assistant",
+        content: "fallback",
+        aiMessagesJson: {
+          sdkVersion: AI_MESSAGES_SDK_VERSION,
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "text",
+                  text: "Response",
+                  providerOptions: {
+                    openai: { itemId: "rs_strip_me" },
+                    "dyad-engine": { sourceCommitHash: "abc123" },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      };
+
+      const result = parseAiMessagesJson(msg);
+      const content = result[0].content as any[];
+      expect(content[0].providerOptions?.openai).toBeUndefined();
+      expect(
+        content[0].providerOptions?.["dyad-engine"]?.sourceCommitHash,
+      ).toBe("abc123");
+    });
+  });
+
   describe("edge cases", () => {
     it("should handle empty content in fallback", () => {
       const msg: DbMessageForParsing = {

@@ -247,6 +247,15 @@ export const queryKeys = {
     byApp: ({ appId }: { appId: number | null }) =>
       ["app-env-vars", appId] as const,
   },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Memories
+  // ─────────────────────────────────────────────────────────────────────────────
+  memories: {
+    all: ["memories"] as const,
+    byApp: ({ appId }: { appId: number | null }) =>
+      ["memories", appId] as const,
+  },
 } as const;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -302,6 +311,5 @@ export type AppQueryKey =
   | QueryKeyOf<(typeof queryKeys.mcp)[keyof typeof queryKeys.mcp]>
   | QueryKeyOf<(typeof queryKeys.supabase)[keyof typeof queryKeys.supabase]>
   | QueryKeyOf<(typeof queryKeys.neon)[keyof typeof queryKeys.neon]>
-  | QueryKeyOf<
-      (typeof queryKeys.appEnvVars)[keyof typeof queryKeys.appEnvVars]
-    >;
+  | QueryKeyOf<(typeof queryKeys.appEnvVars)[keyof typeof queryKeys.appEnvVars]>
+  | QueryKeyOf<(typeof queryKeys.memories)[keyof typeof queryKeys.memories]>;

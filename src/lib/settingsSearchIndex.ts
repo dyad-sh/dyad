@@ -31,6 +31,7 @@ export const SETTING_IDS = {
   supabase: "setting-supabase",
   neon: "setting-neon",
   nativeGit: "setting-native-git",
+  memory: "setting-memory",
   reset: "setting-reset",
 } as const;
 
@@ -284,6 +285,24 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     keywords: ["git", "native", "experiment", "beta", "performance"],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
+  },
+
+  // Memory
+  {
+    id: SETTING_IDS.memory,
+    label: "Memory",
+    description:
+      "Enable persistent memory so the AI remembers preferences and context across chats",
+    keywords: [
+      "memory",
+      "remember",
+      "context",
+      "persistent",
+      "preferences",
+      "history",
+    ],
+    sectionId: SECTION_IDS.ai,
+    sectionLabel: "AI",
   },
 
   // Danger Zone

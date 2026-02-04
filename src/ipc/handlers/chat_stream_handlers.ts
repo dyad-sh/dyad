@@ -80,7 +80,7 @@ import { fileExists } from "../utils/file_utils";
 import { FileUploadsState } from "../utils/file_uploads_state";
 import { extractMentionedAppsCodebases } from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
-import { prompts as promptsTable } from "../../db/schema";
+import { prompts as promptsTable, memories } from "../../db/schema";
 import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
 import { mcpManager } from "../utils/mcp_manager";
@@ -653,6 +653,22 @@ ${componentSnippet}
           systemPrompt += `\n\n# Referenced Apps\nThe user has mentioned the following apps in their prompt: ${mentionedAppsList}. Their codebases have been included in the context for your reference. When referring to these apps, you can understand their structure and code to provide better assistance, however you should NOT edit the files in these referenced apps. The referenced apps are NOT part of the current app and are READ-ONLY.`;
         }
 
+        // Inject memories if enabled
+        if (settings.enableMemory) {
+          const appMemories = db
+            .select()
+            .from(memories)
+            .where(eq(memories.appId, updatedChat.app.id))
+            .all();
+
+          if (appMemories.length > 0) {
+            const memoriesText = appMemories
+              .map((m) => `- ${m.content}`)
+              .join("\n");
+            systemPrompt += `\n\n# Memories\nThe following are things you should remember about this project and the user's preferences:\n${memoriesText}`;
+          }
+        }
+
         const isSecurityReviewIntent =
           req.prompt.startsWith("/security-review");
         if (isSecurityReviewIntent) {
@@ -1045,6 +1061,23 @@ This conversation includes one or more image attachments. When the user uploads 
             readOnly: true,
           });
 
+          // Inject memories into read-only prompt if enabled
+          let readOnlyPromptWithMemories = readOnlySystemPrompt;
+          if (settings.enableMemory) {
+            const appMemories = db
+              .select()
+              .from(memories)
+              .where(eq(memories.appId, updatedChat.app.id))
+              .all();
+
+            if (appMemories.length > 0) {
+              const memoriesText = appMemories
+                .map((m) => `- ${m.content}`)
+                .join("\n");
+              readOnlyPromptWithMemories += `\n\n# Memories\nThe following are things you should remember about this project and the user's preferences:\n${memoriesText}`;
+            }
+          }
+
           await handleLocalAgentStream(event, req, abortController, {
             placeholderMessageId: placeholderAssistantMessage.id,
             // Note: this is using the read-only system prompt rather than the
@@ -1053,7 +1086,7 @@ This conversation includes one or more image attachments. When the user uploads 
             //
             // This is OK because those intents should always happen in a new chat
             // and new chats will default to non-ask modes.
-            systemPrompt: readOnlySystemPrompt,
+            systemPrompt: readOnlyPromptWithMemories,
             dyadRequestId: dyadRequestId ?? "[no-request-id]",
             readOnly: true,
             messageOverride: isSummarizeIntent ? chatMessages : undefined,

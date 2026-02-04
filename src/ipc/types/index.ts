@@ -50,6 +50,7 @@ export { visualEditingContracts } from "./visual-editing";
 export { securityContracts } from "./security";
 export { miscContracts, miscEvents } from "./misc";
 export { freeAgentQuotaContracts } from "./free_agent_quota";
+export { memoryContracts } from "./memory";
 
 // =============================================================================
 // Client Exports
@@ -79,6 +80,7 @@ export { visualEditingClient } from "./visual-editing";
 export { securityClient } from "./security";
 export { miscClient, miscEventClient } from "./misc";
 export { freeAgentQuotaClient } from "./free_agent_quota";
+export { memoryClient } from "./memory";
 
 // =============================================================================
 // Type Exports
@@ -284,6 +286,13 @@ export type { ChatLogsData, DeepLinkData, AppOutput, EnvVar } from "./misc";
 // Free agent quota types
 export type { FreeAgentQuotaStatus } from "./free_agent_quota";
 
+// Memory types
+export type {
+  MemoryDto,
+  CreateMemoryParams,
+  UpdateMemoryParams,
+} from "./memory";
+
 // =============================================================================
 // Schema Exports (for validation in handlers/components)
 // =============================================================================
@@ -340,6 +349,7 @@ import { visualEditingClient } from "./visual-editing";
 import { securityClient } from "./security";
 import { miscClient, miscEventClient } from "./misc";
 import { freeAgentQuotaClient } from "./free_agent_quota";
+import { memoryClient } from "./memory";
 
 /**
  * Unified IPC client with all domains organized by namespace.
@@ -395,6 +405,7 @@ export const ipc = {
   security: securityClient,
   misc: miscClient,
   freeAgentQuota: freeAgentQuotaClient,
+  memory: memoryClient,
 
   // Event clients for main->renderer pub/sub
   events: {

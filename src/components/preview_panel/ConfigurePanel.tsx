@@ -25,6 +25,7 @@ import { ipc } from "@/ipc/types";
 import { useNavigate } from "@tanstack/react-router";
 import { NeonConfigure } from "./NeonConfigure";
 import { queryKeys } from "@/lib/queryKeys";
+import { MemoryPanel } from "@/components/MemoryPanel";
 
 const EnvironmentVariablesTitle = () => (
   <div className="flex items-center gap-2">
@@ -394,6 +395,18 @@ export const ConfigurePanel = () => {
               <ArrowRight size={16} />
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Memory */}
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            <span className="text-lg font-semibold">Memory</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <MemoryPanel />
         </CardContent>
       </Card>
 

@@ -58,7 +58,7 @@ export function DefaultChatModeSelector() {
         </label>
         <Select
           value={effectiveDefault}
-          onValueChange={handleDefaultChatModeChange}
+          onValueChange={(v) => v && handleDefaultChatModeChange(v)}
         >
           <SelectTrigger className="w-40" id="default-chat-mode">
             <SelectValue>{getModeDisplayName(effectiveDefault)}</SelectValue>

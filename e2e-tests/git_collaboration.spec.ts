@@ -56,7 +56,7 @@ test.describe("Git Collaboration", () => {
     // First switch back to main to ensure we are not on feature-1
     await po.page.getByTestId("branch-select-trigger").click();
     await po.page.getByRole("option", { name: "main" }).click();
-    await expect(po.page.getByTestId("current-branch-display")).toHaveText(
+    await expect(po.page.getByTestId("branch-select-trigger")).toContainText(
       "main",
     );
 
@@ -71,7 +71,7 @@ test.describe("Git Collaboration", () => {
     await po.page.getByTestId("create-branch-submit-button").click();
 
     // Verify creation (it auto-switches to the new branch, so we verify we're on it)
-    await expect(po.page.getByTestId("current-branch-display")).toHaveText(
+    await expect(po.page.getByTestId("branch-select-trigger")).toContainText(
       featureBranch2,
     );
 
@@ -89,7 +89,7 @@ test.describe("Git Collaboration", () => {
     // Switch back to main first since we can't rename the branch we're currently on
     await po.page.getByTestId("branch-select-trigger").click();
     await po.page.getByRole("option", { name: "main" }).click();
-    await expect(po.page.getByTestId("current-branch-display")).toHaveText(
+    await expect(po.page.getByTestId("branch-select-trigger")).toContainText(
       "main",
     );
 
@@ -119,7 +119,7 @@ test.describe("Git Collaboration", () => {
     // Switch to feature-1 and create a test file
     await po.page.getByTestId("branch-select-trigger").click();
     await po.page.getByRole("option", { name: featureBranch }).click();
-    await expect(po.page.getByTestId("current-branch-display")).toHaveText(
+    await expect(po.page.getByTestId("branch-select-trigger")).toContainText(
       featureBranch,
     );
 
@@ -139,7 +139,7 @@ test.describe("Git Collaboration", () => {
     // Switch back to main
     await po.page.getByTestId("branch-select-trigger").click();
     await po.page.getByRole("option", { name: "main" }).click();
-    await expect(po.page.getByTestId("current-branch-display")).toHaveText(
+    await expect(po.page.getByTestId("branch-select-trigger")).toContainText(
       "main",
     );
 

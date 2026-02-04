@@ -5,7 +5,8 @@ import { useSecurityReview } from "@/hooks/useSecurityReview";
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -687,8 +688,8 @@ function FindingDetailsDialog({
               <>Fix Issue</>
             )}
           </Button>
-          <DialogClose asChild>
-            <Button variant="outline">Close</Button>
+          <DialogClose className={cn(buttonVariants({ variant: "outline" }))}>
+            Close
           </DialogClose>
         </DialogFooter>
       </DialogContent>
@@ -988,8 +989,10 @@ ${issuesList}`;
               />
             </div>
             <DialogFooter>
-              <DialogClose asChild>
-                <Button variant="outline">Cancel</Button>
+              <DialogClose
+                className={cn(buttonVariants({ variant: "outline" }))}
+              >
+                Cancel
               </DialogClose>
               <Button
                 onClick={handleSaveRules}

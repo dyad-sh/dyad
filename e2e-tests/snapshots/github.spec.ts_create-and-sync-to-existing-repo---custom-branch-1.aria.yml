@@ -1,8 +1,6 @@
 - paragraph: "Connected to GitHub Repo:"
 - text: testuser/existing-app
-- combobox:
-  - img
-  - text: "Branch: new-branch"
+- combobox: new-branch
 - button "Branch actions":
   - img
 - img

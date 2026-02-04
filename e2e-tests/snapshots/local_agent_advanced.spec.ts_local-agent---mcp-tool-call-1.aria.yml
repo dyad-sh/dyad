@@ -6,8 +6,12 @@
 - img
 - text: file1.txt
 - paragraph: More EOM
-- button:
+- button "Copy":
   - img
+- img
+- text: Approved
+- img
+- text: claude-opus-4-5
 - img
 - text: less than a minute ago
 - button "Request ID":
@@ -19,15 +23,22 @@
 - img
 - text: testing-mcp-server calculator_add
 - img
-- text: Tool Result
+- text: "Error MCP tool 'testing-mcp-server__calculator_add' failed: keyValidator._parse is not a function..."
 - img
-- text: testing-mcp-server calculator_add
-- paragraph: The sum of 5 and 3 is 8. The calculation was performed successfully using the MCP calculator tool.
-- button:
+- button "Copy":
   - img
+- button "Fix with AI":
+  - img
+- paragraph: The sum of 5 and 3 is 8. The calculation was performed successfully using the MCP calculator tool.
+- button "Copy":
+  - img
+- img
+- text: claude-opus-4-5
 - img
 - text: less than a minute ago
 - button "Request ID":
+  - img
+- button "Undo":
   - img
 - button "Retry":
   - img

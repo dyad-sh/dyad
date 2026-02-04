@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -54,12 +55,6 @@ import {
 
 import { Label } from "@/components/ui/label";
 import { showSuccess, showError, showInfo } from "@/lib/toast";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 import {
   Card,
@@ -388,7 +383,7 @@ export function GithubBranchManager({
       <div className="flex gap-2">
         <Select
           value={currentBranch || ""}
-          onValueChange={handleSwitchBranch}
+          onValueChange={(v) => v && handleSwitchBranch(v)}
           disabled={
             isSwitching ||
             isDeleting ||
@@ -419,23 +414,14 @@ export function GithubBranchManager({
         </Select>
 
         <DropdownMenu>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    title="Branch actions"
-                    data-testid="branch-actions-menu-trigger"
-                  >
-                    <EllipsisVertical className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent>Branch actions</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <DropdownMenuTrigger
+            className={cn(buttonVariants({ variant: "outline", size: "icon" }))}
+            title="Branch actions"
+            aria-label="Branch actions"
+            data-testid="branch-actions-menu-trigger"
+          >
+            <EllipsisVertical className="h-4 w-4" />
+          </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem
               onClick={() => setShowCreateDialog(true)}
@@ -487,7 +473,10 @@ export function GithubBranchManager({
               </div>
               <div>
                 <Label htmlFor="source-branch">Source Branch</Label>
-                <Select value={sourceBranch} onValueChange={setSourceBranch}>
+                <Select
+                  value={sourceBranch}
+                  onValueChange={(v) => setSourceBranch(v ?? "")}
+                >
                   <SelectTrigger
                     className="mt-2"
                     data-testid="source-branch-select-trigger"
@@ -790,15 +779,11 @@ export function GithubBranchManager({
                             if (open) setIsExpanded(true);
                           }}
                         >
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6"
-                              data-testid={`branch-actions-${branch}`}
-                            >
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
+                          <DropdownMenuTrigger
+                            className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-6 w-6"
+                            data-testid={`branch-actions-${branch}`}
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem

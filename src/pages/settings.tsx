@@ -168,6 +168,7 @@ export default function SettingsPage() {
                 <div className="flex items-center space-x-2">
                   <Switch
                     id="enable-native-git"
+                    aria-label="Enable Native Git"
                     checked={!!settings?.enableNativeGit}
                     onCheckedChange={(checked) => {
                       updateSettings({

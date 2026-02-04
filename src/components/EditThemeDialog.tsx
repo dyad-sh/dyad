@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -11,11 +12,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { Save, Edit2, Loader2 } from "lucide-react";
 import { showError } from "@/lib/toast";
 import { toast } from "sonner";
@@ -120,24 +116,15 @@ export function EditThemeDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       {trigger ? (
-        <DialogTrigger asChild>{trigger}</DialogTrigger>
+        <span onClick={() => setOpen(true)}>{trigger}</span>
       ) : (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DialogTrigger asChild>
-              <Button
-                size="icon"
-                variant="ghost"
-                data-testid="edit-theme-button"
-              >
-                <Edit2 className="h-4 w-4" />
-              </Button>
-            </DialogTrigger>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Edit theme</p>
-          </TooltipContent>
-        </Tooltip>
+        <DialogTrigger
+          className={cn(buttonVariants({ variant: "ghost", size: "icon" }))}
+          data-testid="edit-theme-button"
+          title="Edit theme"
+        >
+          <Edit2 className="h-4 w-4" />
+        </DialogTrigger>
       )}
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>

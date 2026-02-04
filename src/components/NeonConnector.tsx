@@ -36,14 +36,10 @@ export function NeonConnector() {
               onClick={() => {
                 ipc.system.openExternalUrl("https://console.neon.tech/");
               }}
-              className="ml-2 px-2 py-1 h-8 mb-2"
-              style={{ display: "inline-flex", alignItems: "center" }}
-              asChild
+              className="ml-2 px-2 py-1 h-8 mb-2 inline-flex items-center gap-1"
             >
-              <div className="flex items-center gap-1">
-                Neon
-                <ExternalLink className="h-3 w-3" />
-              </div>
+              Neon
+              <ExternalLink className="h-3 w-3" />
             </Button>
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400 pb-3">

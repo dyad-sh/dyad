@@ -6,11 +6,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import type { ChatSummary } from "@/lib/schemas";
 import { useAtomValue } from "jotai";
 import {
@@ -32,24 +27,18 @@ export function ChatActivityButton() {
   }, [isStreamingById]);
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            <button
-              className="no-app-region-drag relative flex items-center justify-center p-1.5 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
-              data-testid="chat-activity-button"
-            >
-              {isAnyStreaming && (
-                <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                  <span className="block size-7 rounded-full border-3 border-blue-500/60 border-t-transparent animate-spin" />
-                </span>
-              )}
-              <Bell size={16} />
-            </button>
-          </PopoverTrigger>
-        </TooltipTrigger>
-        <TooltipContent>Recent chat activity</TooltipContent>
-      </Tooltip>
+      <PopoverTrigger
+        className="no-app-region-drag relative flex items-center justify-center p-1.5 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
+        data-testid="chat-activity-button"
+        title="Recent chat activity"
+      >
+        {isAnyStreaming && (
+          <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <span className="block size-7 rounded-full border-3 border-blue-500/60 border-t-transparent animate-spin" />
+          </span>
+        )}
+        <Bell size={16} />
+      </PopoverTrigger>
       <PopoverContent
         align="end"
         className="w-80 p-0 max-h-[50vh] overflow-y-auto"

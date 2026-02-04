@@ -326,6 +326,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
               </p>
             </div>
             <Switch
+              aria-label="Enable Dyad Pro"
               checked={settings?.enableDyadPro}
               onCheckedChange={handleToggleDyadPro}
               disabled={isSaving}

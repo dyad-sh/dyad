@@ -138,6 +138,7 @@ export function SupabaseIntegration() {
         <div className="flex items-center space-x-3">
           <Switch
             id="supabase-migrations"
+            aria-label="Write SQL migration files"
             checked={!!settings?.enableSupabaseWriteSqlMigration}
             onCheckedChange={handleMigrationSettingChange}
           />
@@ -162,6 +163,7 @@ export function SupabaseIntegration() {
         <div className="flex items-center space-x-3">
           <Switch
             id="skip-prune-edge-functions"
+            aria-label="Keep extra Supabase edge functions"
             checked={!!settings?.skipPruneEdgeFunctions}
             onCheckedChange={handleSkipPruneSettingChange}
           />

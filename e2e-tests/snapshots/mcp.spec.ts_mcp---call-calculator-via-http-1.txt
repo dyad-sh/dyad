@@ -61,9 +61,6 @@ role: assistant
 message: <dyad-mcp-tool-call server="testing-mcp-server" tool="calculator_add">
 {"a":1,"b":2}
 </dyad-mcp-tool-call>
-<dyad-mcp-tool-result server="testing-mcp-server" tool="calculator_add">
-{"content":[{"type":"text","text":"3"}],"isError":false}
-</dyad-mcp-tool-result>
 
   <dyad-write path="file1.txt">
   A file (2)

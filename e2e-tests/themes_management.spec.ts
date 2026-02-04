@@ -108,7 +108,7 @@ test("themes management - create theme from chat input", async ({ po }) => {
     .click();
 
   // Hover over Themes submenu
-  await po.page.getByRole("menuitem", { name: "Themes" }).hover();
+  await po.page.getByRole("menuitem", { name: "Themes" }).click();
 
   // Click "New Theme" option
   await po.page.getByRole("menuitem", { name: "New Theme" }).click();
@@ -142,7 +142,7 @@ test("themes management - create theme from chat input", async ({ po }) => {
     .getHomeChatInputContainer()
     .getByTestId("auxiliary-actions-menu")
     .click();
-  await po.page.getByRole("menuitem", { name: "Themes" }).hover();
+  await po.page.getByRole("menuitem", { name: "Themes" }).click();
 
   // The custom theme should be visible and selected (has bg-primary class)
   await expect(po.page.getByTestId("theme-option-custom:1")).toHaveClass(
@@ -168,7 +168,7 @@ test("themes management - AI generator image upload limit", async ({ po }) => {
 
   // Verify AI-Powered Generator tab is active by default
   const aiTab = po.page.getByRole("tab", { name: "AI-Powered Generator" });
-  await expect(aiTab).toHaveAttribute("data-state", "active");
+  await expect(aiTab).toHaveAttribute("data-active", "");
 
   // Verify upload area is visible
   const uploadArea = po.page.getByText("Click to upload images");
@@ -223,7 +223,7 @@ test("themes management - AI generator flow", async ({ po }) => {
 
   // Verify AI-Powered Generator tab is active by default
   const aiTab = po.page.getByRole("tab", { name: "AI-Powered Generator" });
-  await expect(aiTab).toHaveAttribute("data-state", "active");
+  await expect(aiTab).toHaveAttribute("data-active", "");
 
   // Verify upload area is visible
   const uploadArea = po.page.getByText("Click to upload images");
@@ -290,7 +290,7 @@ test("themes management - AI generator from website URL", async ({ po }) => {
 
   // Verify AI-Powered Generator tab is active by default
   const aiTab = po.page.getByRole("tab", { name: "AI-Powered Generator" });
-  await expect(aiTab).toHaveAttribute("data-state", "active");
+  await expect(aiTab).toHaveAttribute("data-active", "");
 
   // Switch to Website URL input source
   await po.page.getByRole("button", { name: "Website URL" }).click();

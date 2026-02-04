@@ -49,12 +49,6 @@ import {
 } from "@/atoms/previewAtoms";
 import { ComponentSelection } from "@/ipc/types";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -989,66 +983,45 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         <div className="flex items-center p-2 border-b space-x-2">
           {/* Navigation Buttons */}
           <div className="flex space-x-1">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={handleActivateComponentSelector}
-                    className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                      isPicking
-                        ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
-                        : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
-                    }`}
-                    disabled={
-                      loading ||
-                      !selectedAppId ||
-                      !isComponentSelectorInitialized
-                    }
-                    data-testid="preview-pick-element-button"
-                  >
-                    <MousePointerClick size={16} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>
-                    {isPicking
-                      ? "Deactivate component selector"
-                      : "Select component"}
-                  </p>
-                  <p>{isMac ? "⌘ + ⇧ + C" : "Ctrl + ⇧ + C"}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={handleAnnotatorClick}
-                    className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                      annotatorMode
-                        ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
-                        : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
-                    }`}
-                    disabled={
-                      loading ||
-                      !selectedAppId ||
-                      isPicking ||
-                      !isComponentSelectorInitialized
-                    }
-                    data-testid="preview-annotator-button"
-                  >
-                    <Pen size={16} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>
-                    {annotatorMode
-                      ? "Annotator mode active"
-                      : "Activate annotator"}
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <button
+              onClick={handleActivateComponentSelector}
+              className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                isPicking
+                  ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
+                  : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
+              }`}
+              disabled={
+                loading || !selectedAppId || !isComponentSelectorInitialized
+              }
+              data-testid="preview-pick-element-button"
+              title={
+                isPicking
+                  ? "Deactivate component selector"
+                  : `Select component (${isMac ? "⌘ + ⇧ + C" : "Ctrl + ⇧ + C"})`
+              }
+            >
+              <MousePointerClick size={16} />
+            </button>
+            <button
+              onClick={handleAnnotatorClick}
+              className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                annotatorMode
+                  ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
+                  : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
+              }`}
+              disabled={
+                loading ||
+                !selectedAppId ||
+                isPicking ||
+                !isComponentSelectorInitialized
+              }
+              data-testid="preview-annotator-button"
+              title={
+                annotatorMode ? "Annotator mode active" : "Activate annotator"
+              }
+            >
+              <Pen size={16} />
+            </button>
             <button
               className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
               disabled={!canGoBack || loading || !selectedAppId}
@@ -1078,19 +1051,17 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           {/* Address Bar with Routes Dropdown - using shadcn/ui dropdown-menu */}
           <div className="relative flex-grow min-w-20">
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <div className="flex items-center justify-between px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-700 dark:text-gray-200 cursor-pointer w-full min-w-0">
-                  <span
-                    className="truncate flex-1 mr-2 min-w-0"
-                    data-testid="preview-address-bar-path"
-                  >
-                    {navigationHistory[currentHistoryPosition]
-                      ? new URL(navigationHistory[currentHistoryPosition])
-                          .pathname
-                      : "/"}
-                  </span>
-                  <ChevronDown size={14} className="flex-shrink-0" />
-                </div>
+              <DropdownMenuTrigger className="flex items-center justify-between px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-700 dark:text-gray-200 cursor-pointer w-full min-w-0">
+                <span
+                  className="truncate flex-1 mr-2 min-w-0"
+                  data-testid="preview-address-bar-path"
+                >
+                  {navigationHistory[currentHistoryPosition]
+                    ? new URL(navigationHistory[currentHistoryPosition])
+                        .pathname
+                    : "/"}
+                </span>
+                <ChevronDown size={14} className="flex-shrink-0" />
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-full">
                 {availableRoutes.length > 0 ? (
@@ -1139,83 +1110,59 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
             {/* Device Mode Button */}
             <Popover open={isDevicePopoverOpen} modal={false}>
-              <PopoverTrigger asChild>
-                <button
-                  data-testid="device-mode-button"
-                  onClick={() => {
-                    // Toggle popover open/close
-                    if (isDevicePopoverOpen)
-                      updateSettings({ previewDeviceMode: "desktop" });
-                    setIsDevicePopoverOpen(!isDevicePopoverOpen);
-                  }}
-                  className={cn(
-                    "p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-300",
-                    deviceMode !== "desktop" && "bg-gray-200 dark:bg-gray-700",
-                  )}
-                  title="Device Mode"
-                >
-                  <MonitorSmartphone size={16} />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent
-                className="w-auto p-2"
-                onOpenAutoFocus={(e) => e.preventDefault()}
-                onInteractOutside={(e) => e.preventDefault()}
+              <PopoverTrigger
+                data-testid="device-mode-button"
+                onClick={() => {
+                  // Toggle popover open/close
+                  if (isDevicePopoverOpen)
+                    updateSettings({ previewDeviceMode: "desktop" });
+                  setIsDevicePopoverOpen(!isDevicePopoverOpen);
+                }}
+                className={cn(
+                  "p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-300",
+                  deviceMode !== "desktop" && "bg-gray-200 dark:bg-gray-700",
+                )}
+                title="Device Mode"
               >
-                <TooltipProvider>
-                  <ToggleGroup
-                    type="single"
-                    value={deviceMode}
-                    onValueChange={(value) => {
-                      if (value) {
-                        updateSettings({
-                          previewDeviceMode: value as DeviceMode,
-                        });
-                        setIsDevicePopoverOpen(false);
-                      }
-                    }}
-                    variant="outline"
+                <MonitorSmartphone size={16} />
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-2">
+                <ToggleGroup
+                  value={[deviceMode]}
+                  onValueChange={(value) => {
+                    if (value && value.length > 0) {
+                      updateSettings({
+                        previewDeviceMode: value[
+                          value.length - 1
+                        ] as DeviceMode,
+                      });
+                      setIsDevicePopoverOpen(false);
+                    }
+                  }}
+                  variant="outline"
+                >
+                  <ToggleGroupItem
+                    value="desktop"
+                    aria-label="Desktop view"
+                    title="Desktop"
                   >
-                    {/* Tooltips placed inside items instead of wrapping
-                    to avoid asChild prop merging that breaks highlighting */}
-                    <ToggleGroupItem value="desktop" aria-label="Desktop view">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="flex items-center justify-center">
-                            <Monitor size={16} />
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Desktop</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </ToggleGroupItem>
-                    <ToggleGroupItem value="tablet" aria-label="Tablet view">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="flex items-center justify-center">
-                            <Tablet size={16} className="scale-x-130" />
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Tablet</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </ToggleGroupItem>
-                    <ToggleGroupItem value="mobile" aria-label="Mobile view">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="flex items-center justify-center">
-                            <Smartphone size={16} />
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Mobile</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </ToggleGroupItem>
-                  </ToggleGroup>
-                </TooltipProvider>
+                    <Monitor size={16} />
+                  </ToggleGroupItem>
+                  <ToggleGroupItem
+                    value="tablet"
+                    aria-label="Tablet view"
+                    title="Tablet"
+                  >
+                    <Tablet size={16} className="scale-x-130" />
+                  </ToggleGroupItem>
+                  <ToggleGroupItem
+                    value="mobile"
+                    aria-label="Mobile view"
+                    title="Mobile"
+                  >
+                    <Smartphone size={16} />
+                  </ToggleGroupItem>
+                </ToggleGroup>
               </PopoverContent>
             </Popover>
           </div>

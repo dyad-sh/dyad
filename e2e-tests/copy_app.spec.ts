@@ -33,6 +33,11 @@ for (const { testName, newAppName, buttonName, expectedVersion } of tests) {
     // Click the "Copy app" button
     await po.page.getByRole("button", { name: buttonName }).click();
 
+    // Wait for the copy dialog to close
+    await expect(po.page.getByRole("dialog")).not.toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+
     // Expect to be on the new app's detail page
     await expect(
       po.page.getByRole("heading", { name: newAppName }),

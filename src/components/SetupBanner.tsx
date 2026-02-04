@@ -187,11 +187,7 @@ export function SetupBanner() {
         setIsVisible={setIsOnboardingVisible}
       />
       <div className={bannerClasses}>
-        <Accordion
-          type="multiple"
-          className="w-full"
-          defaultValue={itemsNeedAction}
-        >
+        <Accordion multiple className="w-full" defaultValue={itemsNeedAction}>
           <AccordionItem
             value="node-setup"
             className={cn(

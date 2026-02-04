@@ -39,8 +39,8 @@ export function ForceCloseDialog({
             <AlertTriangle className="h-5 w-5 text-yellow-500" />
             <AlertDialogTitle>Force Close Detected</AlertDialogTitle>
           </div>
-          <AlertDialogDescription asChild>
-            <div className="space-y-4 pt-2">
+          <AlertDialogDescription render={<div />}>
+            <div className="space-y-4 pt-2 text-muted-foreground">
               <div className="text-base">
                 The app was not closed properly the last time it was running.
                 This could indicate a crash or unexpected termination.

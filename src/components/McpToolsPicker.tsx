@@ -1,17 +1,10 @@
 import React, { useState } from "react";
-import { Button } from "@/components/ui/button";
 
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { Wrench } from "lucide-react";
 import { useMcp } from "@/hooks/useMcp";
@@ -31,23 +24,13 @@ export function McpToolsPicker() {
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className="has-[>svg]:px-2"
-                size="sm"
-                data-testid="mcp-tools-button"
-              >
-                <Wrench className="size-4" />
-              </Button>
-            </PopoverTrigger>
-          </TooltipTrigger>
-          <TooltipContent>Tools</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <PopoverTrigger
+        className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-8 px-2"
+        data-testid="mcp-tools-button"
+        title="Tools"
+      >
+        <Wrench className="size-4" />
+      </PopoverTrigger>
       <PopoverContent
         className="w-120 max-h-[80vh] overflow-y-auto"
         align="start"

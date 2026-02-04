@@ -7,8 +7,6 @@ import { getUserDataPath } from "@/paths/paths";
 import { UserSettings } from "@/lib/schemas";
 
 // Mock dependencies
-vi.mock("node:fs");
-vi.mock("node:path");
 vi.mock("electron", () => ({
   safeStorage: {
     isEncryptionAvailable: vi.fn(),
@@ -19,8 +17,6 @@ vi.mock("@/paths/paths", () => ({
   getUserDataPath: vi.fn(),
 }));
 
-const mockFs = vi.mocked(fs);
-const mockPath = vi.mocked(path);
 const mockSafeStorage = vi.mocked(safeStorage);
 const mockGetUserDataPath = vi.mocked(getUserDataPath);
 
@@ -28,10 +24,20 @@ describe("readSettings", () => {
   const mockUserDataPath = "/mock/user/data";
   const mockSettingsPath = "/mock/user/data/user-settings.json";
 
+  let existsSyncSpy: ReturnType<typeof vi.spyOn>;
+  let readFileSyncSpy: ReturnType<typeof vi.spyOn>;
+  let writeFileSyncSpy: ReturnType<typeof vi.spyOn>;
+  let pathJoinSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    existsSyncSpy = vi.spyOn(fs, "existsSync");
+    readFileSyncSpy = vi.spyOn(fs, "readFileSync");
+    writeFileSyncSpy = vi.spyOn(fs, "writeFileSync");
+    pathJoinSpy = vi.spyOn(path, "join");
+
     mockGetUserDataPath.mockReturnValue(mockUserDataPath);
-    mockPath.join.mockReturnValue(mockSettingsPath);
+    pathJoinSpy.mockReturnValue(mockSettingsPath);
     mockSafeStorage.isEncryptionAvailable.mockReturnValue(true);
   });
 
@@ -41,13 +47,13 @@ describe("readSettings", () => {
 
   describe("when settings file does not exist", () => {
     it("should create default settings file and return default settings", () => {
-      mockFs.existsSync.mockReturnValue(false);
-      mockFs.writeFileSync.mockImplementation(() => {});
+      existsSyncSpy.mockReturnValue(false);
+      writeFileSyncSpy.mockImplementation(() => {});
 
       const result = readSettings();
 
-      expect(mockFs.existsSync).toHaveBeenCalledWith(mockSettingsPath);
-      expect(mockFs.writeFileSync).toHaveBeenCalledWith(
+      expect(existsSyncSpy).toHaveBeenCalledWith(mockSettingsPath);
+      expect(writeFileSyncSpy).toHaveBeenCalledWith(
         mockSettingsPath,
         expect.stringContaining('"selectedModel"'),
       );
@@ -90,15 +96,12 @@ describe("readSettings", () => {
         hasRunBefore: true,
       };
 
-      mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+      existsSyncSpy.mockReturnValue(true);
+      readFileSyncSpy.mockReturnValue(JSON.stringify(mockFileContent));
 
       const result = readSettings();
 
-      expect(mockFs.readFileSync).toHaveBeenCalledWith(
-        mockSettingsPath,
-        "utf-8",
-      );
+      expect(readFileSyncSpy).toHaveBeenCalledWith(mockSettingsPath, "utf-8");
       expect(result.selectedModel).toEqual({
         name: "gpt-4",
         provider: "openai",
@@ -122,8 +125,8 @@ describe("readSettings", () => {
         },
       };
 
-      mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+      existsSyncSpy.mockReturnValue(true);
+      readFileSyncSpy.mockReturnValue(JSON.stringify(mockFileContent));
       mockSafeStorage.decryptString.mockReturnValue("decrypted-api-key");
 
       const result = readSettings();
@@ -145,8 +148,8 @@ describe("readSettings", () => {
         },
       };
 
-      mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+      existsSyncSpy.mockReturnValue(true);
+      readFileSyncSpy.mockReturnValue(JSON.stringify(mockFileContent));
       mockSafeStorage.decryptString.mockReturnValue("decrypted-github-token");
 
       const result = readSettings();
@@ -174,8 +177,8 @@ describe("readSettings", () => {
         },
       };
 
-      mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+      existsSyncSpy.mockReturnValue(true);
+      readFileSyncSpy.mockReturnValue(JSON.stringify(mockFileContent));
       mockSafeStorage.decryptString
         .mockReturnValueOnce("decrypted-refresh-token")
         .mockReturnValueOnce("decrypted-access-token");
@@ -209,8 +212,8 @@ describe("readSettings", () => {
         },
       };
 
-      mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+      existsSyncSpy.mockReturnValue(true);
+      readFileSyncSpy.mockReturnValue(JSON.stringify(mockFileContent));
 
       const result = readSettings();
 
@@ -235,8 +238,8 @@ describe("readSettings", () => {
         },
       };
 
-      mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+      existsSyncSpy.mockReturnValue(true);
+      readFileSyncSpy.mockReturnValue(JSON.stringify(mockFileContent));
 
       const result = readSettings();
 
@@ -266,15 +269,12 @@ describe("readSettings", () => {
         },
       };
 
-      mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+      existsSyncSpy.mockReturnValue(true);
+      readFileSyncSpy.mockReturnValue(JSON.stringify(mockFileContent));
 
       const result = readSettings();
 
-      expect(mockFs.readFileSync).toHaveBeenCalledWith(
-        mockSettingsPath,
-        "utf-8",
-      );
+      expect(readFileSyncSpy).toHaveBeenCalledWith(mockSettingsPath, "utf-8");
       expect(result.selectedModel).toEqual({
         name: "gpt-4",
         provider: "openai",
@@ -300,8 +300,8 @@ describe("readSettings", () => {
 
   describe("error handling", () => {
     it("should return default settings when file read fails", () => {
-      mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockImplementation(() => {
+      existsSyncSpy.mockReturnValue(true);
+      readFileSyncSpy.mockImplementation(() => {
         throw new Error("File read error");
       });
 
@@ -335,8 +335,8 @@ describe("readSettings", () => {
     });
 
     it("should return default settings when JSON parsing fails", () => {
-      mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue("invalid json");
+      existsSyncSpy.mockReturnValue(true);
+      readFileSyncSpy.mockReturnValue("invalid json");
 
       const result = readSettings();
 
@@ -358,8 +358,8 @@ describe("readSettings", () => {
         releaseChannel: "invalid-channel", // Invalid enum value
       };
 
-      mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+      existsSyncSpy.mockReturnValue(true);
+      readFileSyncSpy.mockReturnValue(JSON.stringify(mockFileContent));
 
       const result = readSettings();
 
@@ -380,8 +380,8 @@ describe("readSettings", () => {
         },
       };
 
-      mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+      existsSyncSpy.mockReturnValue(true);
+      readFileSyncSpy.mockReturnValue(JSON.stringify(mockFileContent));
       mockSafeStorage.decryptString.mockImplementation(() => {
         throw new Error("Decryption failed");
       });
@@ -403,7 +403,7 @@ describe("readSettings", () => {
       const result = getSettingsFilePath();
 
       expect(mockGetUserDataPath).toHaveBeenCalled();
-      expect(mockPath.join).toHaveBeenCalledWith(
+      expect(pathJoinSpy).toHaveBeenCalledWith(
         mockUserDataPath,
         "user-settings.json",
       );

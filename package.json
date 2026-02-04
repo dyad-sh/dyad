@@ -70,7 +70,7 @@
     "@tanstack/react-router": "^1.114.34",
     "@types/uuid": "^10.0.0",
     "@vercel/sdk": "^1.18.0",
-    "@vitejs/plugin-react": "^4.3.4",
+    "@vitejs/plugin-react": "^5.0.0",
     "@vscode/ripgrep": "^1.17.0",
     "ai": "^6.0.68",
     "better-sqlite3": "^12.6.2",
@@ -147,7 +147,7 @@
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
     "@typescript/native-preview": "^7.0.0-dev.20260107.1",
-    "@vitest/ui": "^3.1.1",
+    "@vitest/ui": "^4.0.0",
     "babel-plugin-react-compiler": "^1.0.0",
     "cross-env": "^7.0.3",
     "drizzle-kit": "^0.30.6",
@@ -161,8 +161,8 @@
     "oxlint": "^1.41.0",
     "rimraf": "^6.0.1",
     "typescript": "^5.8.3",
-    "vite": "^5.4.17",
-    "vitest": "^3.1.1"
+    "vite": "^7.0.0",
+    "vitest": "^4.0.0"
   },
   "overrides": {
     "@vercel/sdk": {

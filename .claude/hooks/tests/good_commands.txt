@@ -559,6 +559,13 @@ gh api repos/owner/repo/issues/1/comments -f body='Working on this'
 gh api repos/owner/repo/issues/999/comments --field body='Fixed in latest commit'
 gh api /repos/owner/repo/issues/123/comments -f body='See PR #456'
 
+# Add labels to issues (POST to /issues/{id}/labels)
+gh api repos/owner/repo/issues/123/labels -f "labels[]=bug"
+gh api repos/owner/repo/issues/123/labels --method POST -f "labels[]=cc:request"
+gh api repos/dyad-sh/dyad/issues/2488/labels --method POST -f "labels[]=cc:request" 2>&1
+gh api /repos/owner/repo/issues/456/labels -f "labels[]=enhancement"
+gh api -X POST repos/owner/repo/issues/789/labels -f "labels[]=bug" -f "labels[]=urgent"
+
 # Update issue comments (PATCH to /issues/comments/{id})
 gh api repos/owner/repo/issues/comments/123 --method PATCH -f body='Updated comment'
 gh api repos/owner/repo/issues/comments/456 -X PATCH -f body='Fixed typo'

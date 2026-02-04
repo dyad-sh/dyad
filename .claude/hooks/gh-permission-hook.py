@@ -27,6 +27,7 @@ ALLOWED (auto-approved):
    - PATCH to /pulls/{id} (PR title/body updates)
    - PATCH to /issues/comments/{id} (issue comment updates)
    - PATCH to /pulls/comments/{id} (PR comment updates)
+   - POST to /issues/{id}/labels (add labels to issues)
 
 5. gh api graphql - queries and specific mutations:
    - All GraphQL queries (read-only)
@@ -455,6 +456,11 @@ def check_gh_api_command(cmd: str) -> Optional[dict]:
         if re.search(r'/pulls/\d+$', endpoint):
             if method == "PATCH":
                 return make_allow_decision("PR update auto-approved")
+
+        # Allow adding labels to issues (repos/.../issues/.../labels)
+        if re.search(r'/issues/\d+/labels$', endpoint):
+            if method in [None, "POST"]:
+                return make_allow_decision("Issue label addition auto-approved")
 
     # Now check if method is destructive (after checking allowed endpoints)
     if method:

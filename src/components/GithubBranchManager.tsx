@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -414,7 +415,7 @@ export function GithubBranchManager({
 
         <DropdownMenu>
           <DropdownMenuTrigger
-            className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-9 w-9"
+            className={cn(buttonVariants({ variant: "outline", size: "icon" }))}
             title="Branch actions"
             aria-label="Branch actions"
             data-testid="branch-actions-menu-trigger"

@@ -1,4 +1,3 @@
-import tailwindcss from "@tailwindcss/vite";
 import type { StorybookConfig } from "@storybook/react-vite";
 import path from "path";
 
@@ -13,6 +12,7 @@ const config: StorybookConfig = {
     autodocs: "tag",
   },
   viteFinal: async (config) => {
+    const tailwindcss = (await import("@tailwindcss/vite")).default;
     config.resolve = config.resolve || {};
     config.resolve.alias = {
       ...config.resolve.alias,

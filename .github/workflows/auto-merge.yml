@@ -1,0 +1,232 @@
+name: Auto Merge
+
+on:
+  workflow_run:
+    workflows: ["Playwright Report Comment"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR and decide whether to merge
+        id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const run = context.payload.workflow_run;
+
+            // --- Find the PR associated with this workflow run ---
+            const sha = run.head_sha;
+            const headBranch = run.head_branch;
+            const headRepoOwner = run.head_repository?.owner?.login;
+
+            core.info(`Looking up PR for sha=${sha}, branch=${headBranch}`);
+
+            let pr;
+
+            // Method 1: listPullRequestsAssociatedWithCommit
+            const res = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner, repo, commit_sha: sha,
+            });
+            pr = res.data?.find(p => p.state === 'open');
+
+            // Method 2: Fallback for fork PRs
+            if (!pr && headRepoOwner && headBranch) {
+              core.info(`Fallback: searching for PRs with head=${headRepoOwner}:${headBranch}`);
+              const pullsRes = await github.rest.pulls.list({
+                owner, repo, state: 'open',
+                head: `${headRepoOwner}:${headBranch}`,
+              });
+              pr = pullsRes.data?.[0];
+            }
+
+            if (!pr) {
+              core.info('No open PR found for this workflow run.');
+              core.setOutput('should_merge', 'false');
+              return;
+            }
+
+            const prNumber = pr.number;
+            core.info(`Found PR #${prNumber}`);
+
+            // --- Check for merge-when-ready label ---
+            const hasLabel = pr.labels.some(l => l.name === 'merge-when-ready');
+            if (!hasLabel) {
+              core.info(`PR #${prNumber} does not have the "merge-when-ready" label. Skipping.`);
+              core.setOutput('should_merge', 'false');
+              return;
+            }
+            core.info(`PR #${prNumber} has "merge-when-ready" label.`);
+
+            // --- Check for "changes requested" reviews ---
+            const { data: reviews } = await github.rest.pulls.listReviews({
+              owner, repo, pull_number: prNumber,
+            });
+
+            // Build a map of latest review state per reviewer
+            const latestReviewByUser = new Map();
+            for (const review of reviews) {
+              if (review.state === 'APPROVED' || review.state === 'CHANGES_REQUESTED' || review.state === 'DISMISSED') {
+                latestReviewByUser.set(review.user.login, review.state);
+              }
+            }
+
+            const hasChangesRequested = [...latestReviewByUser.values()].some(
+              state => state === 'CHANGES_REQUESTED'
+            );
+            if (hasChangesRequested) {
+              core.info(`PR #${prNumber} has unresolved "changes requested" reviews. Skipping merge.`);
+              core.setOutput('should_merge', 'false');
+              return;
+            }
+
+            // --- Parse the Playwright comment for test failures ---
+            const { data: comments } = await github.rest.issues.listComments({
+              owner, repo, issue_number: prNumber,
+            });
+
+            const playwrightComment = comments.find(
+              c => c.user?.type === 'Bot' && c.body?.includes('🎭 Playwright Test Results')
+            );
+
+            if (!playwrightComment) {
+              core.info('No Playwright comment found. Skipping merge (tests may not have run).');
+              core.setOutput('should_merge', 'false');
+              return;
+            }
+
+            const body = playwrightComment.body;
+
+            // Check for missing shards warning - this indicates CI infrastructure issues
+            if (body.includes('⚠️ WARNING: Missing Test Shards')) {
+              core.info('Playwright report has missing test shards. Skipping merge.');
+              core.setOutput('should_merge', 'false');
+              return;
+            }
+
+            // If all tests passed, we can merge
+            if (body.includes('✅ All tests passed')) {
+              core.info('All Playwright tests passed!');
+              core.setOutput('should_merge', 'true');
+              core.setOutput('pr_number', String(prNumber));
+              return;
+            }
+
+            // Tests failed - parse failure count and check if related to changes
+            if (!body.includes('❌ Some tests failed')) {
+              core.info('Could not determine Playwright test status. Skipping merge.');
+              core.setOutput('should_merge', 'false');
+              return;
+            }
+
+            // Extract total failed count from summary line: "**Summary: X passed, Y failed**"
+            const summaryMatch = body.match(/\*\*Summary:\s*\d+\s*passed,\s*(\d+)\s*failed\*\*/);
+            const totalFailed = summaryMatch ? parseInt(summaryMatch[1], 10) : 999;
+            core.info(`Total failed tests: ${totalFailed}`);
+
+            if (totalFailed >= 5) {
+              core.info(`Too many failures (${totalFailed} >= 5). Skipping merge.`);
+              core.setOutput('should_merge', 'false');
+              return;
+            }
+
+            // Extract failed test names from the comment
+            // Format: "- `spec_name.spec.ts > Suite > Test Name`"
+            const failedTestNames = [];
+            const testNameRegex = /^- `([^`]+)`$/gm;
+            let match;
+            // Only look at the "Failed Tests" section
+            const failedSection = body.split('### Failed Tests')[1]?.split('### 📋')[0] || '';
+            while ((match = testNameRegex.exec(failedSection)) !== null) {
+              failedTestNames.push(match[1]);
+            }
+            core.info(`Failed test names: ${JSON.stringify(failedTestNames)}`);
+
+            // Get changed files in the PR
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner, repo, pull_number: prNumber, per_page: 300,
+            });
+            const changedFiles = files.map(f => f.filename);
+            core.info(`Changed files (${changedFiles.length}): ${changedFiles.slice(0, 20).join(', ')}${changedFiles.length > 20 ? '...' : ''}`);
+
+            // Extract meaningful identifiers from changed files for matching
+            // e.g., "src/components/ChatView.tsx" -> ["chatview", "chat-view", "chat_view"]
+            function getFileIdentifiers(filepath) {
+              const basename = filepath.split('/').pop().replace(/\.[^.]+$/, '');
+              const identifiers = new Set();
+              // Original name (lowercased)
+              identifiers.add(basename.toLowerCase());
+              // Split camelCase/PascalCase into parts
+              const parts = basename.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().split(/[\s_-]+/);
+              for (const part of parts) {
+                if (part.length > 2) identifiers.add(part);
+              }
+              return identifiers;
+            }
+
+            // Collect identifiers from all changed files (excluding test/config files)
+            const changedIdentifiers = new Set();
+            for (const file of changedFiles) {
+              // Skip test files, config files, and workflow files from matching
+              if (file.includes('.spec.') || file.includes('.test.') ||
+                  file.includes('.github/') || file.includes('.claude/')) {
+                continue;
+              }
+              for (const id of getFileIdentifiers(file)) {
+                changedIdentifiers.add(id);
+              }
+            }
+            core.info(`Changed file identifiers: ${JSON.stringify([...changedIdentifiers])}`);
+
+            // Check if any failed test is related to changed files
+            let hasRelatedFailure = false;
+            for (const testName of failedTestNames) {
+              const testLower = testName.toLowerCase();
+              for (const identifier of changedIdentifiers) {
+                if (testLower.includes(identifier)) {
+                  core.info(`Failed test "${testName}" appears related to changed identifier "${identifier}"`);
+                  hasRelatedFailure = true;
+                  break;
+                }
+              }
+              if (hasRelatedFailure) break;
+            }
+
+            if (hasRelatedFailure) {
+              core.info('Some failing tests appear related to the PR changes. Skipping merge.');
+              core.setOutput('should_merge', 'false');
+              return;
+            }
+
+            core.info(`${totalFailed} unrelated test failure(s) detected. Proceeding with merge.`);
+            core.setOutput('should_merge', 'true');
+            core.setOutput('pr_number', String(prNumber));
+
+      - name: Squash merge the PR
+        if: steps.check.outputs.should_merge == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = parseInt('${{ steps.check.outputs.pr_number }}', 10);
+            const { owner, repo } = context.repo;
+
+            core.info(`Squash merging PR #${prNumber}...`);
+
+            const { data: pr } = await github.rest.pulls.get({
+              owner, repo, pull_number: prNumber,
+            });
+
+            await github.rest.pulls.merge({
+              owner, repo, pull_number: prNumber,
+              merge_method: 'squash',
+              commit_title: `${pr.title} (#${prNumber})`,
+            });
+
+            core.info(`PR #${prNumber} has been squash merged.`);

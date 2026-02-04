@@ -16,6 +16,7 @@ export const setChatSummaryTool: ToolDefinition<
     "Set the title/summary for this chat message. You should always call this message at the end of the turn when you have finished calling all the other tools.",
   inputSchema: setChatSummarySchema,
   defaultConsent: "always",
+  modifiesState: true,
 
   getConsentPreview: (args) => args.summary,
 

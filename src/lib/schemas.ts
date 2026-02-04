@@ -382,6 +382,7 @@ export const UserSettingsSchema = z
     // Use ChatModeSchema which excludes deprecated "agent" value
     selectedChatMode: ChatModeSchema.optional(),
     defaultChatMode: ChatModeSchema.optional(),
+    enableExploreSubAgent: z.boolean().optional(),
   })
   // Allow unknown properties to pass through (e.g. future settings
   // that should be preserved if user downgrades to an older version)

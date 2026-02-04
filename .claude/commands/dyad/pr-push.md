@@ -123,11 +123,24 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
    gh pr edit --add-label "cc:request"
    ```
 
-8. **Summarize the results:**
+8. **Remember learnings:**
+
+   Run the `/remember-learnings` skill to capture any errors, snags, or insights from this session into `AGENTS.md`.
+
+   If `AGENTS.md` was modified by the skill, amend the latest commit to include it and force-push:
+
+   ```
+   git add AGENTS.md
+   git commit --amend --no-edit
+   git push --force-with-lease
+   ```
+
+9. **Summarize the results:**
    - Report if a new feature branch was created (and its name)
    - Report any uncommitted changes that were committed in step 2
    - Report any files that were IGNORED and not committed (if any), explaining why they were skipped
    - Report any lint fixes that were applied
    - Confirm tests passed
    - Confirm the branch has been pushed
+   - Report any learnings added to `AGENTS.md`
    - **Include the PR URL** (either newly created or existing)

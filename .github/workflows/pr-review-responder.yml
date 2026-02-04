@@ -75,20 +75,24 @@ jobs:
             }
 
             // Check for cc:request (initial) or cc:request:N (re-request) labels
+            // If multiple labels exist, use the highest count to avoid resetting the retry counter
             let requestCount = -1;
             let currentLabel = '';
 
             for (const label of pr.labels) {
               if (label.name === 'cc:request') {
-                requestCount = 0;
-                currentLabel = 'cc:request';
-                break;
+                if (requestCount < 0) {
+                  requestCount = 0;
+                  currentLabel = 'cc:request';
+                }
               }
               const match = label.name.match(/^cc:request:(\d+)$/);
               if (match) {
-                requestCount = parseInt(match[1], 10);
-                currentLabel = label.name;
-                break;
+                const count = parseInt(match[1], 10);
+                if (count > requestCount) {
+                  requestCount = count;
+                  currentLabel = label.name;
+                }
               }
             }
 
@@ -98,9 +102,10 @@ jobs:
               return;
             }
 
-            // Guard: do not loop more than 3 times
-            if (requestCount >= 3) {
-              console.log(`PR #${prNumber} has reached max request count (${requestCount}), adding cc:needs-human-review`);
+            // Guard: do not loop more than 3 retries (4 total runs: initial + 3 retries)
+            // cc:request (0) -> cc:request:1 (1) -> cc:request:2 (2) -> cc:request:3 (3) -> blocked
+            if (requestCount >= 4) {
+              console.log(`PR #${prNumber} has reached max retry count (${requestCount}), adding cc:needs-human-review`);
 
               // Ensure the label exists
               try {
@@ -115,12 +120,19 @@ jobs:
                 // Label already exists, ignore
               }
 
-              // Remove current label and add needs-human-review
+              // Remove current label, cc:pending, and add needs-human-review
               await github.rest.issues.removeLabel({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: prNumber,
                 name: currentLabel
+              }).catch(() => {});
+
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                name: 'cc:pending'
               }).catch(() => {});
 
               await github.rest.issues.addLabels({
@@ -223,7 +235,8 @@ jobs:
           fi
 
       - name: Ensure next request label exists
-        if: steps.pr-info.outputs.should_continue == 'true' && success() && steps.retrigger.outputs.commits_pushed == 'true'
+        # Use always() so retry loop continues even if Claude Code fails after pushing commits
+        if: steps.pr-info.outputs.should_continue == 'true' && always() && steps.retrigger.outputs.commits_pushed == 'true'
         uses: actions/github-script@v7
         with:
           script: |
@@ -242,16 +255,18 @@ jobs:
             }
 
       - name: Update labels - re-request review (commits pushed)
-        if: steps.pr-info.outputs.should_continue == 'true' && success() && steps.retrigger.outputs.commits_pushed == 'true'
+        # Use always() so retry loop continues even if Claude Code fails after pushing commits
+        if: steps.pr-info.outputs.should_continue == 'true' && always() && steps.retrigger.outputs.commits_pushed == 'true'
         run: |
-          NEXT_COUNT=$(( ${{ steps.pr-info.outputs.request_count }} + 1 ))
-          echo "Setting cc:request:${NEXT_COUNT} to auto-re-request review (iteration ${NEXT_COUNT} of 3)"
+          REQUEST_COUNT="${{ steps.pr-info.outputs.request_count }}"
+          NEXT_COUNT=$(( ${REQUEST_COUNT:-0} + 1 ))
+          echo "Setting cc:request:${NEXT_COUNT} to auto-re-request review (retry ${NEXT_COUNT} of 3)"
           gh pr edit ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }} --remove-label "cc:pending" --add-label "cc:request:${NEXT_COUNT}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update labels to done (no new commits)
-        if: steps.pr-info.outputs.should_continue == 'true' && success() && steps.retrigger.outputs.commits_pushed != 'true'
+        if: steps.pr-info.outputs.should_continue == 'true' && success() && steps.retrigger.outputs.commits_pushed == 'false'
         run: |
           gh pr edit ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }} --remove-label "cc:pending" --add-label "cc:done"
         env:

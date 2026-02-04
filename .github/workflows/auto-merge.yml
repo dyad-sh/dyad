@@ -13,6 +13,7 @@ permissions:
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
     steps:
       - name: Check PR and decide whether to merge
         id: check
@@ -73,8 +74,11 @@ jobs:
             // Build a map of latest review state per reviewer
             const latestReviewByUser = new Map();
             for (const review of reviews) {
-              if (review.state === 'APPROVED' || review.state === 'CHANGES_REQUESTED' || review.state === 'DISMISSED') {
+              if (!review.user) continue;
+              if (review.state === 'APPROVED' || review.state === 'CHANGES_REQUESTED') {
                 latestReviewByUser.set(review.user.login, review.state);
+              } else if (review.state === 'DISMISSED') {
+                latestReviewByUser.delete(review.user.login);
               }
             }
 
@@ -88,16 +92,26 @@ jobs:
             }
 
             // --- Parse the Playwright comment for test failures ---
-            const { data: comments } = await github.rest.issues.listComments({
-              owner, repo, issue_number: prNumber,
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number: prNumber, per_page: 100,
             });
 
             const playwrightComment = comments.find(
-              c => c.user?.type === 'Bot' && c.body?.includes('🎭 Playwright Test Results')
+              c => c.user?.login === 'github-actions[bot]' && c.body?.includes('🎭 Playwright Test Results')
             );
 
             if (!playwrightComment) {
               core.info('No Playwright comment found. Skipping merge (tests may not have run).');
+              core.setOutput('should_merge', 'false');
+              return;
+            }
+
+            // --- Validate that the Playwright comment is for the current PR head ---
+            const { data: currentPr } = await github.rest.pulls.get({
+              owner, repo, pull_number: prNumber,
+            });
+            if (currentPr.head.sha !== sha) {
+              core.info(`PR head (${currentPr.head.sha}) differs from workflow run SHA (${sha}). Skipping.`);
               core.setOutput('should_merge', 'false');
               return;
             }
@@ -128,7 +142,12 @@ jobs:
 
             // Extract total failed count from summary line: "**Summary: X passed, Y failed**"
             const summaryMatch = body.match(/\*\*Summary:\s*\d+\s*passed,\s*(\d+)\s*failed\*\*/);
-            const totalFailed = summaryMatch ? parseInt(summaryMatch[1], 10) : 999;
+            if (!summaryMatch) {
+              core.info('Could not parse failure count from Playwright comment. Skipping merge.');
+              core.setOutput('should_merge', 'false');
+              return;
+            }
+            const totalFailed = parseInt(summaryMatch[1], 10);
             core.info(`Total failed tests: ${totalFailed}`);
 
             if (totalFailed >= 5) {
@@ -140,10 +159,11 @@ jobs:
             // Extract failed test names from the comment
             // Format: "- `spec_name.spec.ts > Suite > Test Name`"
             const failedTestNames = [];
-            const testNameRegex = /^- `([^`]+)`$/gm;
+            const testNameRegex = /^- `([^`]+)`/gm;
             let match;
-            // Only look at the "Failed Tests" section
-            const failedSection = body.split('### Failed Tests')[1]?.split('### 📋')[0] || '';
+            // Only look at the "Failed Tests" section, stopping at the next ### heading
+            const afterFailedTests = body.split('### Failed Tests')[1] || '';
+            const failedSection = afterFailedTests.split(/\n###\s/)[0] || '';
             while ((match = testNameRegex.exec(failedSection)) !== null) {
               failedTestNames.push(match[1]);
             }
@@ -166,7 +186,7 @@ jobs:
               // Split camelCase/PascalCase into parts
               const parts = basename.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().split(/[\s_-]+/);
               for (const part of parts) {
-                if (part.length > 2) identifiers.add(part);
+                if (part.length >= 5) identifiers.add(part);
               }
               return identifiers;
             }
@@ -212,16 +232,47 @@ jobs:
       - name: Squash merge the PR
         if: steps.check.outputs.should_merge == 'true'
         uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ steps.check.outputs.pr_number }}
         with:
           script: |
-            const prNumber = parseInt('${{ steps.check.outputs.pr_number }}', 10);
+            const prNumber = parseInt(process.env.PR_NUMBER, 10);
             const { owner, repo } = context.repo;
 
             core.info(`Squash merging PR #${prNumber}...`);
 
+            // Re-validate PR state before merging to avoid race conditions
             const { data: pr } = await github.rest.pulls.get({
               owner, repo, pull_number: prNumber,
             });
+
+            if (pr.state !== 'open') {
+              core.info(`PR #${prNumber} is no longer open (state: ${pr.state}). Skipping merge.`);
+              return;
+            }
+
+            if (!pr.labels.some(l => l.name === 'merge-when-ready')) {
+              core.info(`PR #${prNumber} no longer has "merge-when-ready" label. Skipping merge.`);
+              return;
+            }
+
+            // Re-check for changes requested reviews
+            const { data: reviews } = await github.rest.pulls.listReviews({
+              owner, repo, pull_number: prNumber,
+            });
+            const latestReviewByUser = new Map();
+            for (const review of reviews) {
+              if (!review.user) continue;
+              if (review.state === 'APPROVED' || review.state === 'CHANGES_REQUESTED') {
+                latestReviewByUser.set(review.user.login, review.state);
+              } else if (review.state === 'DISMISSED') {
+                latestReviewByUser.delete(review.user.login);
+              }
+            }
+            if ([...latestReviewByUser.values()].some(s => s === 'CHANGES_REQUESTED')) {
+              core.info(`PR #${prNumber} now has "changes requested" reviews. Skipping merge.`);
+              return;
+            }
 
             await github.rest.pulls.merge({
               owner, repo, pull_number: prNumber,

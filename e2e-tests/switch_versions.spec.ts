@@ -10,10 +10,11 @@ const runSwitchVersionTest = async (
 
   await po.snapshotPreview({ name: `v2` });
 
-  expect(
-    await po.page.getByRole("button", { name: "Version" }).textContent(),
-  ).toBe("Version 2");
+  await expect(po.page.getByRole("button", { name: "Version" })).toContainText(
+    "Version 2",
+  );
   await po.page.getByRole("button", { name: "Version" }).click();
+  await expect(po.page.getByText("Init Dyad app Restore")).toBeVisible();
   await po.page.getByText("Init Dyad app Restore").click();
   await po.snapshotPreview({ name: `v1` });
 

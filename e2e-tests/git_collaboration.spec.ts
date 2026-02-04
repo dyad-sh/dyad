@@ -55,6 +55,7 @@ test.describe("Git Collaboration", () => {
     // 2. Create a branch from source (create feature-2 from main)
     // First switch back to main to ensure we are not on feature-1
     await po.page.getByTestId("branch-select-trigger").click();
+    await expect(po.page.getByRole("option", { name: "main" })).toBeVisible();
     await po.page.getByRole("option", { name: "main" }).click();
     await expect(po.page.getByTestId("branch-select-trigger")).toContainText(
       "main",
@@ -88,6 +89,7 @@ test.describe("Git Collaboration", () => {
     // 3. Rename Branch
     // Switch back to main first since we can't rename the branch we're currently on
     await po.page.getByTestId("branch-select-trigger").click();
+    await expect(po.page.getByRole("option", { name: "main" })).toBeVisible();
     await po.page.getByRole("option", { name: "main" }).click();
     await expect(po.page.getByTestId("branch-select-trigger")).toContainText(
       "main",
@@ -96,6 +98,9 @@ test.describe("Git Collaboration", () => {
     // Rename feature-2 to feature-2-renamed
     const renamedBranch = "feature-2-renamed";
     await branchesCard.click();
+    await expect(
+      po.page.getByTestId(`branch-actions-${featureBranch2}`),
+    ).toBeVisible();
     await po.page.getByTestId(`branch-actions-${featureBranch2}`).click();
     await po.page.getByTestId("rename-branch-menu-item").click();
     await po.page.getByTestId("rename-branch-input").fill(renamedBranch);
@@ -118,6 +123,9 @@ test.describe("Git Collaboration", () => {
 
     // Switch to feature-1 and create a test file
     await po.page.getByTestId("branch-select-trigger").click();
+    await expect(
+      po.page.getByRole("option", { name: featureBranch }),
+    ).toBeVisible();
     await po.page.getByRole("option", { name: featureBranch }).click();
     await expect(po.page.getByTestId("branch-select-trigger")).toContainText(
       featureBranch,
@@ -138,6 +146,7 @@ test.describe("Git Collaboration", () => {
 
     // Switch back to main
     await po.page.getByTestId("branch-select-trigger").click();
+    await expect(po.page.getByRole("option", { name: "main" })).toBeVisible();
     await po.page.getByRole("option", { name: "main" }).click();
     await expect(po.page.getByTestId("branch-select-trigger")).toContainText(
       "main",
@@ -148,6 +157,9 @@ test.describe("Git Collaboration", () => {
 
     // Merge feature-1 into main (we are currently on main)
     await branchesCard.click();
+    await expect(
+      po.page.getByTestId(`branch-actions-${featureBranch}`),
+    ).toBeVisible();
     await po.page.getByTestId(`branch-actions-${featureBranch}`).click();
     await po.page.getByTestId("merge-branch-menu-item").click();
     await po.page.getByTestId("merge-branch-submit-button").click();
@@ -178,6 +190,9 @@ test.describe("Git Collaboration", () => {
     // 5. Delete Branch
     // Delete feature-1
     await branchesCard.click();
+    await expect(
+      po.page.getByTestId(`branch-actions-${featureBranch}`),
+    ).toBeVisible();
     await po.page.getByTestId(`branch-actions-${featureBranch}`).click();
     await po.page.getByTestId("delete-branch-menu-item").click();
     await po.page.getByRole("button", { name: "Delete Branch" }).click();

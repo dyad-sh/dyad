@@ -107,8 +107,8 @@ testSkipIfWindows("edit text of the selected component", async ({ po }) => {
   }).toPass({ timeout: Timeout.MEDIUM });
 
   // Clear the existing text and type new text
-  await heading.press("Meta+A");
-  await heading.type("Hello from E2E Test");
+  await heading.press("ControlOrMeta+A");
+  await heading.pressSequentially("Hello from E2E Test");
 
   // Click outside to finish editing
   await frame.locator("body").click({ position: { x: 10, y: 10 } });

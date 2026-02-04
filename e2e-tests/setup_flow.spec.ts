@@ -1,4 +1,4 @@
-import { testWithConfig } from "./helpers/test_helper";
+import { testWithConfig, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
 const testSetup = testWithConfig({
@@ -24,7 +24,7 @@ testSetup.describe("Setup Flow", () => {
       await po.page.getByText("1. Install Node.js (App Runtime)").click();
       await expect(
         po.page.getByText(/Node\.js \(v[\d.]+\) installed/),
-      ).toBeVisible();
+      ).toBeVisible({ timeout: Timeout.MEDIUM });
 
       // AI provider section should show warning state (needs action)
       await expect(

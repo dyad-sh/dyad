@@ -95,6 +95,9 @@ testSkipIfWindows(
       .getByRole("heading", { name: "Welcome to Your Blank App" })
       .click();
 
+    // Wait for the first component selection to register before clicking the second
+    await expect(po.getSelectedComponentsDisplay()).toBeVisible();
+
     await po
       .getPreviewIframeElement()
       .contentFrame()
@@ -103,6 +106,9 @@ testSkipIfWindows(
 
     await po.snapshotSelectedComponentsDisplay();
 
+    await expect(
+      po.page.getByRole("button", { name: "Deselect component" }).first(),
+    ).toBeVisible();
     await po.clickDeselectComponent({ index: 0 });
 
     await po.snapshotPreview();

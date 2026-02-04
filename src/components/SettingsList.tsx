@@ -60,6 +60,8 @@ export function SettingsList({ show }: { show: boolean }) {
   }, [searchQuery]);
 
   useEffect(() => {
+    if (!show) return;
+
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -82,7 +84,7 @@ export function SettingsList({ show }: { show: boolean }) {
     return () => {
       observer.disconnect();
     };
-  }, [SETTINGS_SECTIONS, setActiveSection]);
+  }, [show, setActiveSection]);
 
   if (!show) {
     return null;
@@ -125,7 +127,7 @@ export function SettingsList({ show }: { show: boolean }) {
             searchResults.length > 0 ? (
               searchResults.map((result) => (
                 <button
-                  key={result.item.id}
+                  key={`${result.item.id}-${result.refIndex}`}
                   onClick={() => {
                     scrollAndNavigateToWithHighlight(
                       result.item.id,

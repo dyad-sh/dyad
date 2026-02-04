@@ -83,11 +83,50 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    You MUST push the branch to GitHub. Do NOT skip this step or ask for confirmation.
 
+   First, determine the correct remote to push to:
+
+   a. Check if the branch already tracks a remote:
+
+   ```
+   git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null
+   ```
+
+   If this succeeds (e.g., returns `origin/my-branch` or `someuser/my-branch`), the branch already has an upstream. Just push:
+
    ```
    git push --force-with-lease
    ```
 
-   If the branch has no upstream, set one:
+   b. If there is NO upstream, check if a PR already exists and determine which remote it was opened from:
+
+   First, get the PR's head repository as `owner/repo`:
+
+   ```
+   gh pr view --json headRepository --jq .headRepository.nameWithOwner
+   ```
+
+   **Error handling:** If `gh pr view` exits with a non-zero status, check whether the error indicates "no PR found" (expected — proceed to step c) or another failure (auth, network, ambiguous branch — report the error and stop rather than silently falling back).
+
+   If a PR exists, find which local remote corresponds to that `owner/repo`. List all remotes and extract the `owner/repo` portion from each URL:
+
+   ```
+   git remote -v
+   ```
+
+   For each remote URL, extract the `owner/repo` by stripping the protocol/hostname prefix and `.git` suffix. This handles all URL formats:
+   - SSH: `git@github.com:owner/repo.git` → `owner/repo`
+   - HTTPS: `https://github.com/owner/repo.git` → `owner/repo`
+   - Token-authenticated: `https://x-access-token:...@github.com/owner/repo.git` → `owner/repo`
+
+   Match the PR's `owner/repo` against each remote's extracted `owner/repo`. If multiple remotes match (e.g., both SSH and HTTPS URLs for the same repo), prefer the first match. If no remote matches (e.g., the fork is not configured locally), proceed to step c.
+
+   Push to the matched remote:
+
+   ```
+   git push --force-with-lease -u <matched-remote> HEAD
+   ```
+
+   c. If no PR exists (or no matching remote was found) and there is no upstream, fall back to `origin`. If pushing to `origin` fails due to permission errors, try pushing to `upstream` instead (per the project's git workflow in CLAUDE.md). Report which remote was used.
 
    ```
    git push --force-with-lease -u origin HEAD

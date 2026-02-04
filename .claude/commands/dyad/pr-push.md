@@ -65,9 +65,21 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
    git commit --amend --no-edit
    ```
 
-   **IMPORTANT:** Do NOT stop here. You MUST continue to step 6 to push.
+   **IMPORTANT:** Do NOT stop here. You MUST continue to step 6.
 
-6. **Push the branch (REQUIRED):**
+6. **Remember learnings:**
+
+   Run the `/remember-learnings` skill to capture any errors, snags, or insights from this session into `AGENTS.md`.
+
+   If `AGENTS.md` was modified by the skill, amend the latest commit to include the changes:
+
+   ```
+   git diff --cached --quiet AGENTS.md || git commit --amend --no-edit
+   ```
+
+   This conditional guard ensures the commit is only amended if `AGENTS.md` actually changed, avoiding unnecessary history rewrites.
+
+7. **Push the branch (REQUIRED):**
 
    You MUST push the branch to GitHub. Do NOT skip this step or ask for confirmation.
 
@@ -83,7 +95,7 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    Note: `--force-with-lease` is used because the commit may have been amended. It's safer than `--force` as it will fail if someone else has pushed to the branch.
 
-7. **Create or update the PR (REQUIRED):**
+8. **Create or update the PR (REQUIRED):**
 
    **CRITICAL:** Do NOT tell the user to visit a URL to create a PR. You MUST create it automatically.
 
@@ -121,18 +133,6 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    ```
    gh pr edit --add-label "cc:request"
-   ```
-
-8. **Remember learnings:**
-
-   Run the `/remember-learnings` skill to capture any errors, snags, or insights from this session into `AGENTS.md`.
-
-   If `AGENTS.md` was modified by the skill, amend the latest commit to include it and force-push:
-
-   ```
-   git add AGENTS.md
-   git commit --amend --no-edit
-   git push --force-with-lease
    ```
 
 9. **Summarize the results:**

@@ -24,6 +24,7 @@ export function AutocompletePlugin({ chatId, appId }: AutocompletePluginProps) {
   const requestIdRef = useRef("");
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ghostSpanRef = useRef<HTMLSpanElement | null>(null);
+  const previousTextRef = useRef("");
 
   const clearGhostText = useCallback(() => {
     if (ghostSpanRef.current) {
@@ -46,23 +47,27 @@ export function AutocompletePlugin({ chatId, appId }: AutocompletePluginProps) {
       const range = domSelection.getRangeAt(0);
       if (!rootElement.contains(range.endContainer)) return;
 
+      // Create absolutely-positioned overlay span outside Lexical's managed DOM
       const span = document.createElement("span");
       span.textContent = text;
       span.className = "autocomplete-ghost-text";
       span.style.cssText =
-        "color: var(--muted-foreground); opacity: 0.4; pointer-events: none; user-select: none;";
+        "position: absolute; color: var(--muted-foreground); opacity: 0.4; pointer-events: none; user-select: none; white-space: pre;";
       span.setAttribute("data-autocomplete-ghost", "true");
 
-      // Insert after the current cursor position
-      range.collapse(false);
-      range.insertNode(span);
+      // Get cursor position to position the overlay
+      const rect = range.getBoundingClientRect();
+      const rootRect = rootElement.getBoundingClientRect();
 
-      // Move selection back before the ghost span so typing replaces it naturally
-      const newRange = document.createRange();
-      newRange.setStartBefore(span);
-      newRange.collapse(true);
-      domSelection.removeAllRanges();
-      domSelection.addRange(newRange);
+      span.style.left = `${rect.left - rootRect.left}px`;
+      span.style.top = `${rect.top - rootRect.top}px`;
+
+      // Append to root element's parent to avoid Lexical's DOM reconciliation
+      const container = rootElement.parentElement;
+      if (!container) return;
+
+      container.style.position = "relative";
+      container.appendChild(span);
 
       ghostSpanRef.current = span;
     },
@@ -83,6 +88,10 @@ export function AutocompletePlugin({ chatId, appId }: AutocompletePluginProps) {
         const textToInsert = suggestionRef.current;
         const variant = variantIdRef.current;
 
+        // Clear refs FIRST to prevent the update listener from firing dismissed event
+        suggestionRef.current = "";
+        variantIdRef.current = "";
+
         // Clear ghost text before inserting
         clearGhostText();
 
@@ -98,8 +107,6 @@ export function AutocompletePlugin({ chatId, appId }: AutocompletePluginProps) {
           suggestionLength: textToInsert.length,
         });
 
-        suggestionRef.current = "";
-        variantIdRef.current = "";
         return true;
       },
       COMMAND_PRIORITY_HIGH,
@@ -108,9 +115,17 @@ export function AutocompletePlugin({ chatId, appId }: AutocompletePluginProps) {
 
   // Debounced autocomplete on text changes
   useEffect(() => {
-    return editor.registerUpdateListener(({ tags }) => {
+    const unsubscribe = editor.registerUpdateListener(({ tags }) => {
       // Skip updates triggered by collaboration or history (undo/redo)
       if (tags.has("collaboration") || tags.has("historic")) return;
+
+      const text = editor.getEditorState().read(() => {
+        return $getRoot().getTextContent();
+      });
+
+      // Only trigger on actual text changes, not selection/focus changes
+      if (text === previousTextRef.current) return;
+      previousTextRef.current = text;
 
       // Dismiss existing suggestion
       if (suggestionRef.current) {
@@ -131,11 +146,8 @@ export function AutocompletePlugin({ chatId, appId }: AutocompletePluginProps) {
 
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
       }
-
-      const text = editor.getEditorState().read(() => {
-        return $getRoot().getTextContent();
-      });
 
       // Don't autocomplete for short inputs
       if (text.trim().length < 5) return;
@@ -176,6 +188,19 @@ export function AutocompletePlugin({ chatId, appId }: AutocompletePluginProps) {
         }
       }, 500);
     });
+
+    // Cleanup when dependencies change
+    return () => {
+      unsubscribe();
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      if (requestIdRef.current) {
+        ipc.autocomplete.cancelSuggestion(requestIdRef.current).catch(() => {});
+        requestIdRef.current = "";
+      }
+    };
   }, [editor, chatId, appId, posthog, clearGhostText, showGhostText]);
 
   // Cleanup on unmount

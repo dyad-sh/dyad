@@ -346,7 +346,7 @@ export function WorkflowSettings() {
         </div>
       </div>
 
-      <div className="space-y-1 mt-4">
+      <div id={SETTING_IDS.autocomplete} className="space-y-1 mt-4">
         <AutocompleteSwitch />
         <div className="text-sm text-gray-500 dark:text-gray-400">
           Show AI-powered suggestions as you type in the chat input.

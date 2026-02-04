@@ -75,7 +75,10 @@ import { VisualEditingChangesDialog } from "@/components/preview_panel/VisualEdi
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
-import { ContextLimitBanner } from "./ContextLimitBanner";
+import {
+  ContextLimitBanner,
+  shouldShowContextLimitBanner,
+} from "./ContextLimitBanner";
 import { useCountTokens } from "@/hooks/useCountTokens";
 
 const showTokenBarAtom = atom(false);
@@ -331,7 +334,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         <div
           className={`relative flex flex-col border border-border rounded-lg bg-(--background-lighter) shadow-sm ${
             isDraggingOver ? "ring-2 ring-blue-500 border-blue-500" : ""
-          }`}
+          } ${!isStreaming && tokenCountResult && shouldShowContextLimitBanner({ totalTokens: tokenCountResult.actualMaxTokens, contextWindow: tokenCountResult.contextWindow }) ? "rounded-t-none border-t-0" : ""}`}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}

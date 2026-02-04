@@ -6,9 +6,13 @@
 - img
 - text: file1.txt
 - paragraph: More EOM
-- button:
+- button "Copy":
   - img
 - img
+- text: test-model
+- img
 - text: less than a minute ago
+- button "Undo":
+  - img
 - button "Retry":
   - img

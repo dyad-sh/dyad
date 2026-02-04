@@ -32,7 +32,22 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    If there are no uncommitted changes, proceed to the next step.
 
-3. **Run lint checks:**
+3. **Remember learnings:**
+
+   Run the `/remember-learnings` skill to capture any errors, snags, or insights from this session into `AGENTS.md`.
+
+   If `AGENTS.md` was modified by the skill, stage it and amend the latest commit to include the changes:
+
+   ```
+   git add AGENTS.md
+   git diff --cached --quiet AGENTS.md || git commit --amend --no-edit
+   ```
+
+   This ensures `AGENTS.md` is always included in the committed changes before lint/formatting runs.
+
+   **IMPORTANT:** Do NOT stop here. You MUST continue to step 4.
+
+4. **Run lint checks:**
 
    Run these commands to ensure the code passes all pre-commit checks:
 
@@ -42,9 +57,9 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    If there are errors that could not be auto-fixed, read the affected files and fix them manually, then re-run the checks until they pass.
 
-   **IMPORTANT:** Do NOT stop after lint passes. You MUST continue to step 4.
+   **IMPORTANT:** Do NOT stop after lint passes. You MUST continue to step 5.
 
-4. **Run tests:**
+5. **Run tests:**
 
    Run the test suite to ensure nothing is broken:
 
@@ -54,9 +69,9 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    If any tests fail, fix them before proceeding. Do NOT skip failing tests.
 
-   **IMPORTANT:** Do NOT stop after tests pass. You MUST continue to step 5.
+   **IMPORTANT:** Do NOT stop after tests pass. You MUST continue to step 6.
 
-5. **If lint made changes, amend the last commit:**
+6. **If lint made changes, amend the last commit:**
 
    If the lint checks made any changes, stage and amend them into the last commit:
 
@@ -65,19 +80,7 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
    git commit --amend --no-edit
    ```
 
-   **IMPORTANT:** Do NOT stop here. You MUST continue to step 6.
-
-6. **Remember learnings:**
-
-   Run the `/remember-learnings` skill to capture any errors, snags, or insights from this session into `AGENTS.md`.
-
-   If `AGENTS.md` was modified by the skill, amend the latest commit to include the changes:
-
-   ```
-   git diff --cached --quiet AGENTS.md || git commit --amend --no-edit
-   ```
-
-   This conditional guard ensures the commit is only amended if `AGENTS.md` actually changed, avoiding unnecessary history rewrites.
+   **IMPORTANT:** Do NOT stop here. You MUST continue to step 7.
 
 7. **Push the branch (REQUIRED):**
 

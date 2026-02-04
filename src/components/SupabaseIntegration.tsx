@@ -126,16 +126,20 @@ export function SupabaseIntegration() {
               )}
             </div>
             <Tooltip>
-              <TooltipTrigger>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-muted-foreground hover:text-destructive shrink-0"
-                  onClick={() => handleDeleteOrganization(org.organizationSlug)}
-                >
-                  <Trash2 className="h-3.5 w-3.5 mr-1" />
-                  <span className="text-xs">Disconnect</span>
-                </Button>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-muted-foreground hover:text-destructive shrink-0"
+                    onClick={() =>
+                      handleDeleteOrganization(org.organizationSlug)
+                    }
+                  />
+                }
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1" />
+                <span className="text-xs">Disconnect</span>
               </TooltipTrigger>
               <TooltipContent>Disconnect organization</TooltipContent>
             </Tooltip>

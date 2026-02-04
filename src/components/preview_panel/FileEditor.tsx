@@ -59,17 +59,19 @@ const Breadcrumb: React.FC<BreadcrumbProps> = ({
         </div>
         <div className="flex items-center gap-2 flex-shrink-0 ml-2">
           <Tooltip>
-            <TooltipTrigger>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onSave}
-                disabled={!hasUnsavedChanges || isSaving}
-                className="h-6 w-6 p-0"
-                data-testid="save-file-button"
-              >
-                <Save size={12} />
-              </Button>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onSave}
+                  disabled={!hasUnsavedChanges || isSaving}
+                  className="h-6 w-6 p-0"
+                  data-testid="save-file-button"
+                />
+              }
+            >
+              <Save size={12} />
             </TooltipTrigger>
             <TooltipContent>
               {hasUnsavedChanges ? "Save changes" : "No unsaved changes"}

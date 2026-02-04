@@ -420,16 +420,18 @@ export function GithubBranchManager({
 
         <DropdownMenu>
           <Tooltip>
-            <TooltipTrigger>
-              <DropdownMenuTrigger
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "icon" }),
-                )}
-                aria-label="Branch actions"
-                data-testid="branch-actions-menu-trigger"
-              >
-                <EllipsisVertical className="h-4 w-4" />
-              </DropdownMenuTrigger>
+            <TooltipTrigger
+              render={
+                <DropdownMenuTrigger
+                  className={cn(
+                    buttonVariants({ variant: "outline", size: "icon" }),
+                  )}
+                  aria-label="Branch actions"
+                  data-testid="branch-actions-menu-trigger"
+                />
+              }
+            >
+              <EllipsisVertical className="h-4 w-4" />
             </TooltipTrigger>
             <TooltipContent>Branch actions</TooltipContent>
           </Tooltip>

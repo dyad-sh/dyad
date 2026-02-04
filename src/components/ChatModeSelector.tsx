@@ -97,19 +97,21 @@ export function ChatModeSelector() {
       onValueChange={(v) => v && handleModeChange(v)}
     >
       <Tooltip>
-        <TooltipTrigger>
-          <MiniSelectTrigger
-            data-testid="chat-mode-selector"
-            className={cn(
-              "h-6 w-fit px-1.5 py-0 text-xs-sm font-medium shadow-none gap-0.5",
-              selectedMode === "build" || selectedMode === "local-agent"
-                ? "bg-background hover:bg-muted/50 focus:bg-muted/50"
-                : "bg-primary/10 hover:bg-primary/20 focus:bg-primary/20 text-primary border-primary/20 dark:bg-primary/20 dark:hover:bg-primary/30 dark:focus:bg-primary/30",
-            )}
-            size="sm"
-          >
-            <SelectValue>{getModeDisplayName(selectedMode)}</SelectValue>
-          </MiniSelectTrigger>
+        <TooltipTrigger
+          render={
+            <MiniSelectTrigger
+              data-testid="chat-mode-selector"
+              className={cn(
+                "h-6 w-fit px-1.5 py-0 text-xs-sm font-medium shadow-none gap-0.5",
+                selectedMode === "build" || selectedMode === "local-agent"
+                  ? "bg-background hover:bg-muted/50 focus:bg-muted/50"
+                  : "bg-primary/10 hover:bg-primary/20 focus:bg-primary/20 text-primary border-primary/20 dark:bg-primary/20 dark:hover:bg-primary/30 dark:focus:bg-primary/30",
+              )}
+              size="sm"
+            />
+          }
+        >
+          <SelectValue>{getModeDisplayName(selectedMode)}</SelectValue>
         </TooltipTrigger>
         <TooltipContent>
           {`Open mode menu (${isMac ? "\u2318 + ." : "Ctrl + ."} to toggle)`}

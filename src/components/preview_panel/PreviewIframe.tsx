@@ -995,39 +995,45 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           {/* Navigation Buttons */}
           <div className="flex space-x-1">
             <Tooltip>
-              <TooltipTrigger>
-                <button
-                  onClick={() => setIsChatPanelHidden(!isChatPanelHidden)}
-                  className="p-1 rounded transition-colors duration-200 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
-                  data-testid="preview-toggle-chat-panel-button"
-                >
-                  {isChatPanelHidden ? (
-                    <Maximize2 size={16} />
-                  ) : (
-                    <Minimize2 size={16} />
-                  )}
-                </button>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={() => setIsChatPanelHidden(!isChatPanelHidden)}
+                    className="p-1 rounded transition-colors duration-200 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+                    data-testid="preview-toggle-chat-panel-button"
+                  />
+                }
+              >
+                {isChatPanelHidden ? (
+                  <Maximize2 size={16} />
+                ) : (
+                  <Minimize2 size={16} />
+                )}
               </TooltipTrigger>
               <TooltipContent>
                 {isChatPanelHidden ? "Show chat" : "Hide chat"}
               </TooltipContent>
             </Tooltip>
             <Tooltip>
-              <TooltipTrigger>
-                <button
-                  onClick={handleActivateComponentSelector}
-                  className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                    isPicking
-                      ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
-                      : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
-                  }`}
-                  disabled={
-                    loading || !selectedAppId || !isComponentSelectorInitialized
-                  }
-                  data-testid="preview-pick-element-button"
-                >
-                  <MousePointerClick size={16} />
-                </button>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={handleActivateComponentSelector}
+                    className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                      isPicking
+                        ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
+                        : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
+                    }`}
+                    disabled={
+                      loading ||
+                      !selectedAppId ||
+                      !isComponentSelectorInitialized
+                    }
+                    data-testid="preview-pick-element-button"
+                  />
+                }
+              >
+                <MousePointerClick size={16} />
               </TooltipTrigger>
               <TooltipContent>
                 {isPicking
@@ -1036,24 +1042,26 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               </TooltipContent>
             </Tooltip>
             <Tooltip>
-              <TooltipTrigger>
-                <button
-                  onClick={handleAnnotatorClick}
-                  className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                    annotatorMode
-                      ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
-                      : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
-                  }`}
-                  disabled={
-                    loading ||
-                    !selectedAppId ||
-                    isPicking ||
-                    !isComponentSelectorInitialized
-                  }
-                  data-testid="preview-annotator-button"
-                >
-                  <Pen size={16} />
-                </button>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={handleAnnotatorClick}
+                    className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                      annotatorMode
+                        ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
+                        : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
+                    }`}
+                    disabled={
+                      loading ||
+                      !selectedAppId ||
+                      isPicking ||
+                      !isComponentSelectorInitialized
+                    }
+                    data-testid="preview-annotator-button"
+                  />
+                }
+              >
+                <Pen size={16} />
               </TooltipTrigger>
               <TooltipContent>
                 {annotatorMode ? "Annotator mode active" : "Activate annotator"}
@@ -1126,14 +1134,16 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           {/* Action Buttons */}
           <div className="flex space-x-1">
             <Tooltip>
-              <TooltipTrigger>
-                <button
-                  onClick={onRestart}
-                  className="flex items-center space-x-1 px-3 py-1 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
-                >
-                  <Power size={16} />
-                  <span>Restart</span>
-                </button>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={onRestart}
+                    className="flex items-center space-x-1 px-3 py-1 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
+                  />
+                }
+              >
+                <Power size={16} />
+                <span>Restart</span>
               </TooltipTrigger>
               <TooltipContent>Restart App</TooltipContent>
             </Tooltip>
@@ -1152,23 +1162,25 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             {/* Device Mode Button */}
             <Popover open={isDevicePopoverOpen} modal={false}>
               <Tooltip>
-                <TooltipTrigger>
-                  <PopoverTrigger
-                    data-testid="device-mode-button"
-                    onClick={() => {
-                      // Toggle popover open/close
-                      if (isDevicePopoverOpen)
-                        updateSettings({ previewDeviceMode: "desktop" });
-                      setIsDevicePopoverOpen(!isDevicePopoverOpen);
-                    }}
-                    className={cn(
-                      "p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-300",
-                      deviceMode !== "desktop" &&
-                        "bg-gray-200 dark:bg-gray-700",
-                    )}
-                  >
-                    <MonitorSmartphone size={16} />
-                  </PopoverTrigger>
+                <TooltipTrigger
+                  render={
+                    <PopoverTrigger
+                      data-testid="device-mode-button"
+                      onClick={() => {
+                        // Toggle popover open/close
+                        if (isDevicePopoverOpen)
+                          updateSettings({ previewDeviceMode: "desktop" });
+                        setIsDevicePopoverOpen(!isDevicePopoverOpen);
+                      }}
+                      className={cn(
+                        "p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-300",
+                        deviceMode !== "desktop" &&
+                          "bg-gray-200 dark:bg-gray-700",
+                      )}
+                    />
+                  }
+                >
+                  <MonitorSmartphone size={16} />
                 </TooltipTrigger>
                 <TooltipContent>Device Mode</TooltipContent>
               </Tooltip>
@@ -1188,29 +1200,41 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                   variant="outline"
                 >
                   <Tooltip>
-                    <TooltipTrigger>
-                      <ToggleGroupItem
-                        value="desktop"
-                        aria-label="Desktop view"
-                      >
-                        <Monitor size={16} />
-                      </ToggleGroupItem>
+                    <TooltipTrigger
+                      render={
+                        <ToggleGroupItem
+                          value="desktop"
+                          aria-label="Desktop view"
+                        />
+                      }
+                    >
+                      <Monitor size={16} />
                     </TooltipTrigger>
                     <TooltipContent>Desktop</TooltipContent>
                   </Tooltip>
                   <Tooltip>
-                    <TooltipTrigger>
-                      <ToggleGroupItem value="tablet" aria-label="Tablet view">
-                        <Tablet size={16} className="scale-x-130" />
-                      </ToggleGroupItem>
+                    <TooltipTrigger
+                      render={
+                        <ToggleGroupItem
+                          value="tablet"
+                          aria-label="Tablet view"
+                        />
+                      }
+                    >
+                      <Tablet size={16} className="scale-x-130" />
                     </TooltipTrigger>
                     <TooltipContent>Tablet</TooltipContent>
                   </Tooltip>
                   <Tooltip>
-                    <TooltipTrigger>
-                      <ToggleGroupItem value="mobile" aria-label="Mobile view">
-                        <Smartphone size={16} />
-                      </ToggleGroupItem>
+                    <TooltipTrigger
+                      render={
+                        <ToggleGroupItem
+                          value="mobile"
+                          aria-label="Mobile view"
+                        />
+                      }
+                    >
+                      <Smartphone size={16} />
                     </TooltipTrigger>
                     <TooltipContent>Mobile</TooltipContent>
                   </Tooltip>

@@ -320,14 +320,16 @@ export function VisualEditingToolbar({
       }}
     >
       <Tooltip>
-        <TooltipTrigger>
-          <button
-            onClick={handleDeselectComponent}
-            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-[#7f22fe] dark:text-gray-200"
-            aria-label="Deselect Component"
-          >
-            <X size={16} />
-          </button>
+        <TooltipTrigger
+          render={
+            <button
+              onClick={handleDeselectComponent}
+              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-[#7f22fe] dark:text-gray-200"
+              aria-label="Deselect Component"
+            />
+          }
+        >
+          <X size={16} />
         </TooltipTrigger>
         <TooltipContent>Deselect Component</TooltipContent>
       </Tooltip>

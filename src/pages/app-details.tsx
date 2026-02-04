@@ -363,17 +363,19 @@ export default function AppDetailsPage() {
             </span>
             <div className="flex items-center gap-1">
               <Tooltip>
-                <TooltipTrigger>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="ml-[-8px] p-0.5 h-auto cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                    onClick={() => {
-                      ipc.system.showItemInFolder(currentAppPath);
-                    }}
-                  >
-                    <Folder className="h-3.5 w-3.5" />
-                  </Button>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="ml-[-8px] p-0.5 h-auto cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                      onClick={() => {
+                        ipc.system.showItemInFolder(currentAppPath);
+                      }}
+                    />
+                  }
+                >
+                  <Folder className="h-3.5 w-3.5" />
                 </TooltipTrigger>
                 <TooltipContent>Show in folder</TooltipContent>
               </Tooltip>

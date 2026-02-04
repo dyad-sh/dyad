@@ -107,12 +107,12 @@ export function HomeChatInput({
 
             {isStreaming ? (
               <Tooltip>
-                <TooltipTrigger>
-                  <button
-                    className="px-2 py-2 mt-1 mr-1 text-(--sidebar-accent-fg) rounded-lg opacity-50 cursor-not-allowed" // Indicate disabled state
-                  >
-                    <StopCircleIcon size={20} />
-                  </button>
+                <TooltipTrigger
+                  render={
+                    <button className="px-2 py-2 mt-1 mr-1 text-(--sidebar-accent-fg) rounded-lg opacity-50 cursor-not-allowed" />
+                  }
+                >
+                  <StopCircleIcon size={20} />
                 </TooltipTrigger>
                 <TooltipContent>
                   Cancel generation (unavailable here)
@@ -120,14 +120,16 @@ export function HomeChatInput({
               </Tooltip>
             ) : (
               <Tooltip>
-                <TooltipTrigger>
-                  <button
-                    onClick={handleCustomSubmit}
-                    disabled={!inputValue.trim() && attachments.length === 0}
-                    className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
-                  >
-                    <SendIcon size={20} />
-                  </button>
+                <TooltipTrigger
+                  render={
+                    <button
+                      onClick={handleCustomSubmit}
+                      disabled={!inputValue.trim() && attachments.length === 0}
+                      className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
+                    />
+                  }
+                >
+                  <SendIcon size={20} />
                 </TooltipTrigger>
                 <TooltipContent>Send message</TooltipContent>
               </Tooltip>

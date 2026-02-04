@@ -436,16 +436,18 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             selectedComponents.length > 0 && (
               <div className="border-b border-border p-3 bg-muted/30">
                 <Tooltip>
-                  <TooltipTrigger>
-                    <button
-                      onClick={() => {
-                        ipc.system.openExternalUrl("https://dyad.sh/pro");
-                      }}
-                      className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors cursor-pointer"
-                    >
-                      <Lock size={16} />
-                      <span className="font-medium">Visual editor (Pro)</span>
-                    </button>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        onClick={() => {
+                          ipc.system.openExternalUrl("https://dyad.sh/pro");
+                        }}
+                        className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+                      />
+                    }
+                  >
+                    <Lock size={16} />
+                    <span className="font-medium">Visual editor (Pro)</span>
                   </TooltipTrigger>
                   <TooltipContent>
                     Visual editing lets you make UI changes without AI and is a
@@ -480,29 +482,33 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
             {isStreaming ? (
               <Tooltip>
-                <TooltipTrigger>
-                  <button
-                    onClick={handleCancel}
-                    className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg"
-                  >
-                    <StopCircleIcon size={20} />
-                  </button>
+                <TooltipTrigger
+                  render={
+                    <button
+                      onClick={handleCancel}
+                      className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg"
+                    />
+                  }
+                >
+                  <StopCircleIcon size={20} />
                 </TooltipTrigger>
                 <TooltipContent>Cancel generation</TooltipContent>
               </Tooltip>
             ) : (
               <Tooltip>
-                <TooltipTrigger>
-                  <button
-                    onClick={handleSubmit}
-                    disabled={
-                      (!inputValue.trim() && attachments.length === 0) ||
-                      disableSendButton
-                    }
-                    className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
-                  >
-                    <SendHorizontalIcon size={20} />
-                  </button>
+                <TooltipTrigger
+                  render={
+                    <button
+                      onClick={handleSubmit}
+                      disabled={
+                        (!inputValue.trim() && attachments.length === 0) ||
+                        disableSendButton
+                      }
+                      className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
+                    />
+                  }
+                >
+                  <SendHorizontalIcon size={20} />
                 </TooltipTrigger>
                 <TooltipContent>Send message</TooltipContent>
               </Tooltip>
@@ -540,15 +546,17 @@ function SuggestionButton({
   const { isStreaming } = useStreamChat();
   return (
     <Tooltip>
-      <TooltipTrigger>
-        <Button
-          disabled={isStreaming}
-          variant="outline"
-          size="sm"
-          onClick={onClick}
-        >
-          {children}
-        </Button>
+      <TooltipTrigger
+        render={
+          <Button
+            disabled={isStreaming}
+            variant="outline"
+            size="sm"
+            onClick={onClick}
+          />
+        }
+      >
+        {children}
       </TooltipTrigger>
       <TooltipContent>{tooltipText}</TooltipContent>
     </Tooltip>

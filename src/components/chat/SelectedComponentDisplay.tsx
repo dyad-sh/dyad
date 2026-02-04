@@ -63,13 +63,15 @@ export function SelectedComponentsDisplay() {
           Selected Components ({selectedComponents.length})
         </span>
         <Tooltip>
-          <TooltipTrigger>
-            <button
-              onClick={handleClearAll}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Clear all
-            </button>
+          <TooltipTrigger
+            render={
+              <button
+                onClick={handleClearAll}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              />
+            }
+          >
+            Clear all
           </TooltipTrigger>
           <TooltipContent>Clear all selected components</TooltipContent>
         </Tooltip>
@@ -99,16 +101,15 @@ export function SelectedComponentsDisplay() {
               </div>
             </div>
             <Tooltip>
-              <TooltipTrigger>
-                <button
-                  onClick={() => handleRemoveComponent(index)}
-                  className="ml-2 flex-shrink-0 rounded-full p-0.5 hover:bg-indigo-600/20"
-                >
-                  <X
-                    size={18}
-                    className="text-indigo-600 dark:text-indigo-400"
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={() => handleRemoveComponent(index)}
+                    className="ml-2 flex-shrink-0 rounded-full p-0.5 hover:bg-indigo-600/20"
                   />
-                </button>
+                }
+              >
+                <X size={18} className="text-indigo-600 dark:text-indigo-400" />
               </TooltipTrigger>
               <TooltipContent>Deselect component</TooltipContent>
             </Tooltip>

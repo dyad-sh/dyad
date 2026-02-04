@@ -106,39 +106,35 @@ export const DraggableTextInput = ({
     >
       <div className="relative">
         {/* Drag Handle */}
-        <Tooltip>
-          <TooltipTrigger>
-            <div
-              className="absolute left-2 top-1/2 -translate-y-1/2 cursor-move p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors z-10"
-              onMouseDown={(e) => {
-                setIsDragging(true);
-                dragOffset.current = {
-                  x: e.clientX - input.x,
-                  y: e.clientY - input.y,
-                };
-                e.preventDefault();
-                e.stopPropagation();
-              }}
-            >
-              {/* Grip dots icon - smaller and more subtle */}
-              <svg
-                width="8"
-                height="12"
-                viewBox="0 0 8 12"
-                fill="currentColor"
-                className="text-gray-400 dark:text-gray-500"
-              >
-                <circle cx="2" cy="2" r="1" />
-                <circle cx="6" cy="2" r="1" />
-                <circle cx="2" cy="6" r="1" />
-                <circle cx="6" cy="6" r="1" />
-                <circle cx="2" cy="10" r="1" />
-                <circle cx="6" cy="10" r="1" />
-              </svg>
-            </div>
-          </TooltipTrigger>
-          <TooltipContent>Drag to move</TooltipContent>
-        </Tooltip>
+        <div
+          className="absolute left-2 top-1/2 -translate-y-1/2 cursor-move p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors z-10"
+          onMouseDown={(e) => {
+            setIsDragging(true);
+            dragOffset.current = {
+              x: e.clientX - input.x,
+              y: e.clientY - input.y,
+            };
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          title="Drag to move"
+        >
+          {/* Grip dots icon - smaller and more subtle */}
+          <svg
+            width="8"
+            height="12"
+            viewBox="0 0 8 12"
+            fill="currentColor"
+            className="text-gray-400 dark:text-gray-500"
+          >
+            <circle cx="2" cy="2" r="1" />
+            <circle cx="6" cy="2" r="1" />
+            <circle cx="2" cy="6" r="1" />
+            <circle cx="6" cy="6" r="1" />
+            <circle cx="2" cy="10" r="1" />
+            <circle cx="6" cy="10" r="1" />
+          </svg>
+        </div>
 
         <span
           ref={(e) => {
@@ -168,18 +164,20 @@ export const DraggableTextInput = ({
 
         {/* Close Button - Rightmost */}
         <Tooltip>
-          <TooltipTrigger>
-            <button
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors z-10 group"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onRemove(input.id);
-              }}
-              type="button"
-            >
-              <X className="w-3 h-3 text-gray-400 dark:text-gray-500 group-hover:text-red-600 dark:group-hover:text-red-400" />
-            </button>
+          <TooltipTrigger
+            render={
+              <button
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors z-10 group"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onRemove(input.id);
+                }}
+                type="button"
+              />
+            }
+          >
+            <X className="w-3 h-3 text-gray-400 dark:text-gray-500 group-hover:text-red-600 dark:group-hover:text-red-400" />
           </TooltipTrigger>
           <TooltipContent>Remove text input</TooltipContent>
         </Tooltip>

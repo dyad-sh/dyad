@@ -65,31 +65,31 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
         {/* Toolbar */}
         <div className="flex items-center p-2 border-b space-x-2">
           <Tooltip>
-            <TooltipTrigger>
-              <button
-                onClick={() => refreshApp()}
-                className="p-1 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={loading || !app.id}
-              >
-                <RefreshCw size={16} />
-              </button>
+            <TooltipTrigger
+              render={
+                <button
+                  onClick={() => refreshApp()}
+                  className="p-1 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={loading || !app.id}
+                />
+              }
+            >
+              <RefreshCw size={16} />
             </TooltipTrigger>
             <TooltipContent>Refresh Files</TooltipContent>
           </Tooltip>
           <div className="text-sm text-gray-500">{app.files.length} files</div>
           <div className="flex-1" />
           <Tooltip>
-            <TooltipTrigger>
-              <button
-                onClick={() => setIsFullscreen((value) => !value)}
-                className="p-1 rounded hover:bg-gray-200"
-              >
-                {isFullscreen ? (
-                  <Minimize2 size={16} />
-                ) : (
-                  <Maximize2 size={16} />
-                )}
-              </button>
+            <TooltipTrigger
+              render={
+                <button
+                  onClick={() => setIsFullscreen((value) => !value)}
+                  className="p-1 rounded hover:bg-gray-200"
+                />
+              }
+            >
+              {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
             </TooltipTrigger>
             <TooltipContent>
               {isFullscreen ? "Exit full screen" : "Enter full screen"}

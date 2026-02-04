@@ -274,17 +274,19 @@ export function SupabaseConnector({ appId }: { appId: number }) {
             Supabase Projects
             <div className="flex items-center gap-2">
               <Tooltip>
-                <TooltipTrigger>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => refetchProjects()}
-                    disabled={isFetchingProjects}
-                  >
-                    <RefreshCw
-                      className={`h-4 w-4 ${isFetchingProjects ? "animate-spin" : ""}`}
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => refetchProjects()}
+                      disabled={isFetchingProjects}
                     />
-                  </Button>
+                  }
+                >
+                  <RefreshCw
+                    className={`h-4 w-4 ${isFetchingProjects ? "animate-spin" : ""}`}
+                  />
                 </TooltipTrigger>
                 <TooltipContent>Refresh projects</TooltipContent>
               </Tooltip>
@@ -343,18 +345,20 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                         )}
                       </div>
                       <Tooltip>
-                        <TooltipTrigger>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 px-2 text-muted-foreground hover:text-destructive shrink-0"
-                            onClick={() =>
-                              handleDeleteOrganization(org.organizationSlug)
-                            }
-                          >
-                            <Trash2 className="h-3.5 w-3.5 mr-1" />
-                            <span className="text-xs">Disconnect</span>
-                          </Button>
+                        <TooltipTrigger
+                          render={
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-muted-foreground hover:text-destructive shrink-0"
+                              onClick={() =>
+                                handleDeleteOrganization(org.organizationSlug)
+                              }
+                            />
+                          }
+                        >
+                          <Trash2 className="h-3.5 w-3.5 mr-1" />
+                          <span className="text-xs">Disconnect</span>
                         </TooltipTrigger>
                         <TooltipContent>Disconnect organization</TooltipContent>
                       </Tooltip>

@@ -172,15 +172,17 @@ export function ChatPanel({
               {showScrollButton && (
                 <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10">
                   <Tooltip>
-                    <TooltipTrigger>
-                      <Button
-                        onClick={handleScrollButtonClick}
-                        size="icon"
-                        className="rounded-full shadow-lg hover:shadow-xl transition-all border border-border/50 backdrop-blur-sm bg-background/95 hover:bg-accent"
-                        variant="outline"
-                      >
-                        <ArrowDown className="h-4 w-4" />
-                      </Button>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          onClick={handleScrollButtonClick}
+                          size="icon"
+                          className="rounded-full shadow-lg hover:shadow-xl transition-all border border-border/50 backdrop-blur-sm bg-background/95 hover:bg-accent"
+                          variant="outline"
+                        />
+                      }
+                    >
+                      <ArrowDown className="h-4 w-4" />
                     </TooltipTrigger>
                     <TooltipContent>Scroll to bottom</TooltipContent>
                   </Tooltip>

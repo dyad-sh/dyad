@@ -129,30 +129,34 @@ export function ProviderSettingsGrid() {
                       onClick={(e) => e.stopPropagation()}
                     >
                       <Tooltip>
-                        <TooltipTrigger>
-                          <Button
-                            data-testid="edit-custom-provider"
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0 hover:bg-muted rounded-md"
-                            onClick={() => handleEditProvider(provider)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
+                        <TooltipTrigger
+                          render={
+                            <Button
+                              data-testid="edit-custom-provider"
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0 hover:bg-muted rounded-md"
+                              onClick={() => handleEditProvider(provider)}
+                            />
+                          }
+                        >
+                          <Edit className="h-4 w-4" />
                         </TooltipTrigger>
                         <TooltipContent>Edit Provider</TooltipContent>
                       </Tooltip>
                       <Tooltip>
-                        <TooltipTrigger>
-                          <Button
-                            data-testid="delete-custom-provider"
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-md"
-                            onClick={() => setProviderToDelete(provider.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                        <TooltipTrigger
+                          render={
+                            <Button
+                              data-testid="delete-custom-provider"
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-md"
+                              onClick={() => setProviderToDelete(provider.id)}
+                            />
+                          }
+                        >
+                          <Trash2 className="h-4 w-4" />
                         </TooltipTrigger>
                         <TooltipContent>Delete Provider</TooltipContent>
                       </Tooltip>

@@ -176,19 +176,21 @@ export const ActionHeader = () => {
   ) => {
     return (
       <Tooltip>
-        <TooltipTrigger>
-          <button
-            data-testid={testId}
-            ref={ref}
-            className="no-app-region-drag cursor-pointer relative flex items-center gap-0.5 px-2 py-0.5 rounded-md text-xs font-medium z-10 hover:bg-[var(--background)] flex-col"
-            onClick={() => selectPanel(mode)}
-          >
-            {icon}
-            <span>
-              {!isCompact && <span>{text}</span>}
-              {badge}
-            </span>
-          </button>
+        <TooltipTrigger
+          render={
+            <button
+              data-testid={testId}
+              ref={ref}
+              className="no-app-region-drag cursor-pointer relative flex items-center gap-0.5 px-2 py-0.5 rounded-md text-xs font-medium z-10 hover:bg-[var(--background)] flex-col"
+              onClick={() => selectPanel(mode)}
+            />
+          }
+        >
+          {icon}
+          <span>
+            {!isCompact && <span>{text}</span>}
+            {badge}
+          </span>
         </TooltipTrigger>
         {isCompact && <TooltipContent>{text}</TooltipContent>}
       </Tooltip>
@@ -265,13 +267,15 @@ export const ActionHeader = () => {
         <ChatActivityButton />
         <DropdownMenu>
           <Tooltip>
-            <TooltipTrigger>
-              <DropdownMenuTrigger
-                data-testid="preview-more-options-button"
-                className="no-app-region-drag flex items-center justify-center p-1.5 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
-              >
-                <MoreVertical size={16} />
-              </DropdownMenuTrigger>
+            <TooltipTrigger
+              render={
+                <DropdownMenuTrigger
+                  data-testid="preview-more-options-button"
+                  className="no-app-region-drag flex items-center justify-center p-1.5 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
+                />
+              }
+            >
+              <MoreVertical size={16} />
             </TooltipTrigger>
             <TooltipContent>More options</TooltipContent>
           </Tooltip>

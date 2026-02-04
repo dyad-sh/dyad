@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 
 import { useSettings } from "@/hooks/useSettings";
 import { ipc } from "@/ipc/types";
@@ -94,6 +95,7 @@ import { showError as showErrorToast } from "@/lib/toast";
 const showTokenBarAtom = atom(false);
 
 export function ChatInput({ chatId }: { chatId?: number }) {
+  const { t } = useTranslation("chat");
   const posthog = usePostHog();
   const [inputValue, setInputValue] = useAtom(chatInputValueAtom);
   const { settings } = useSettings();
@@ -409,12 +411,12 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       {/* Display loading or error state for proposal */}
       {isProposalLoading && (
         <div className="p-4 text-sm text-muted-foreground">
-          Loading proposal...
+          {t("loadingProposal")}
         </div>
       )}
       {proposalError && (
         <div className="p-4 text-sm text-red-600">
-          Error loading proposal: {proposalError.message}
+          {t("errorLoadingProposal", { message: proposalError.message })}
         </div>
       )}
       <div className="p-4" data-testid="chat-input-container">
@@ -531,11 +533,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                     }
                   >
                     <Lock size={16} />
-                    <span className="font-medium">Visual editor (Pro)</span>
+                    <span className="font-medium">{t("visualEditor")}</span>
                   </TooltipTrigger>
                   <TooltipContent>
-                    Visual editing lets you make UI changes without AI and is a
-                    Pro-only feature
+                    {t("visualEditorDescription")}
                   </TooltipContent>
                 </Tooltip>
               </div>
@@ -559,7 +560,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               onChange={setInputValue}
               onSubmit={handleSubmit}
               onPaste={handlePaste}
-              placeholder="Ask Dyad to build..."
+              placeholder={t("askDyadToBuild")}
               excludeCurrentApp={true}
               disableSendButton={disableSendButton}
               messageHistory={userMessageHistory}
@@ -571,14 +572,14 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                   render={
                     <button
                       onClick={handleCancel}
-                      aria-label="Cancel generation"
+                      aria-label={t("cancelGeneration")}
                       className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg"
                     />
                   }
                 >
                   <StopCircleIcon size={20} />
                 </TooltipTrigger>
-                <TooltipContent>Cancel generation</TooltipContent>
+                <TooltipContent>{t("cancelGeneration")}</TooltipContent>
               </Tooltip>
             ) : (
               <Tooltip>
@@ -590,14 +591,14 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                         (!inputValue.trim() && attachments.length === 0) ||
                         disableSendButton
                       }
-                      aria-label="Send message"
+                      aria-label={t("sendMessage")}
                       className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
                     />
                   }
                 >
                   <SendHorizontalIcon size={20} />
                 </TooltipTrigger>
-                <TooltipContent>Send message</TooltipContent>
+                <TooltipContent>{t("sendMessage")}</TooltipContent>
               </Tooltip>
             )}
           </div>
@@ -651,18 +652,20 @@ function SuggestionButton({
 }
 
 function SummarizeInNewChatButton() {
+  const { t } = useTranslation("chat");
   const { handleSummarize } = useSummarizeInNewChat();
   return (
     <SuggestionButton
       onClick={handleSummarize}
-      tooltipText="Creating a new chat makes the AI more focused and efficient"
+      tooltipText={t("summarizeNewChatTip")}
     >
-      Summarize to new chat
+      {t("summarizeToNewChat")}
     </SuggestionButton>
   );
 }
 
 function RefactorFileButton({ path }: { path: string }) {
+  const { t } = useTranslation("chat");
   const chatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage } = useStreamChat();
   const onClick = () => {
@@ -671,24 +674,22 @@ function RefactorFileButton({ path }: { path: string }) {
       return;
     }
     streamMessage({
-      prompt: `Refactor ${path} and make it more modular`,
+      prompt: t("refactorFile", { path }),
       chatId,
       redo: false,
     });
   };
   return (
-    <SuggestionButton
-      onClick={onClick}
-      tooltipText={`Refactor the file to improve maintainability: \n${path}`}
-    >
-      <span className="max-w-[200px] overflow-hidden whitespace-nowrap text-ellipsis">
-        Refactor {path.split("/").slice(-2).join("/")}
+    <SuggestionButton onClick={onClick} tooltipText={t("refactorDescription")}>
+      <span className="max-w-[180px] overflow-hidden whitespace-nowrap text-ellipsis">
+        {t("refactorFile", { path: path.split("/").slice(-2).join("/") })}
       </span>
     </SuggestionButton>
   );
 }
 
 function WriteCodeProperlyButton() {
+  const { t } = useTranslation("chat");
   const chatId = useAtomValue(selectedChatIdAtom);
   const { streamMessage } = useStreamChat();
   const onClick = () => {
@@ -705,14 +706,15 @@ function WriteCodeProperlyButton() {
   return (
     <SuggestionButton
       onClick={onClick}
-      tooltipText="Write code properly (useful when AI generates the code in the wrong format)"
+      tooltipText={t("writeCodeProperlyDescription")}
     >
-      Write code properly
+      {t("writeCodeProperly")}
     </SuggestionButton>
   );
 }
 
 function RebuildButton() {
+  const { t } = useTranslation("chat");
   const { restartApp } = useRunApp();
   const posthog = usePostHog();
   const selectedAppId = useAtomValue(selectedAppIdAtom);
@@ -725,13 +727,17 @@ function RebuildButton() {
   }, [selectedAppId, posthog, restartApp]);
 
   return (
-    <SuggestionButton onClick={onClick} tooltipText="Rebuild the application">
-      Rebuild app
+    <SuggestionButton
+      onClick={onClick}
+      tooltipText={t("rebuildAppDescription")}
+    >
+      {t("rebuildApp")}
     </SuggestionButton>
   );
 }
 
 function RestartButton() {
+  const { t } = useTranslation("chat");
   const { restartApp } = useRunApp();
   const posthog = usePostHog();
   const selectedAppId = useAtomValue(selectedAppIdAtom);
@@ -746,14 +752,15 @@ function RestartButton() {
   return (
     <SuggestionButton
       onClick={onClick}
-      tooltipText="Restart the development server"
+      tooltipText={t("restartAppDescription")}
     >
-      Restart app
+      {t("restartApp")}
     </SuggestionButton>
   );
 }
 
 function RefreshButton() {
+  const { t } = useTranslation("chat");
   const { refreshAppIframe } = useRunApp();
   const posthog = usePostHog();
 
@@ -765,14 +772,15 @@ function RefreshButton() {
   return (
     <SuggestionButton
       onClick={onClick}
-      tooltipText="Refresh the application preview"
+      tooltipText={t("refreshAppDescription")}
     >
-      Refresh app
+      {t("refreshApp")}
     </SuggestionButton>
   );
 }
 
 function KeepGoingButton() {
+  const { t } = useTranslation("chat");
   const { streamMessage } = useStreamChat();
   const chatId = useAtomValue(selectedChatIdAtom);
   const onClick = () => {
@@ -786,8 +794,8 @@ function KeepGoingButton() {
     });
   };
   return (
-    <SuggestionButton onClick={onClick} tooltipText="Keep going">
-      Keep going
+    <SuggestionButton onClick={onClick} tooltipText={t("keepGoing")}>
+      {t("keepGoing")}
     </SuggestionButton>
   );
 }
@@ -846,10 +854,11 @@ function ChatInputActions({
   isApproving,
   isRejecting,
 }: ChatInputActionsProps) {
+  const { t } = useTranslation("chat");
   const [isDetailsVisible, setIsDetailsVisible] = useState(false);
 
   if (proposal.type === "tip-proposal") {
-    return <div>Tip proposal</div>;
+    return <div>{t("tipProposal")}</div>;
   }
   if (proposal.type === "action-proposal") {
     return <ActionProposalActions proposal={proposal}></ActionProposalActions>;
@@ -904,7 +913,7 @@ function ChatInputActions({
           </button>
           {proposal.securityRisks.length > 0 && (
             <span className="bg-red-100 text-red-700 text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0">
-              Security risks found
+              {t("securityRisksFound")}
             </span>
           )}
         </div>
@@ -924,7 +933,7 @@ function ChatInputActions({
             ) : (
               <Check size={16} className="mr-1" />
             )}
-            Approve
+            {t("approve")}
           </Button>
           <Button
             className="px-8"
@@ -939,7 +948,7 @@ function ChatInputActions({
             ) : (
               <X size={16} className="mr-1" />
             )}
-            Reject
+            {t("reject")}
           </Button>
           <div className="flex items-center space-x-1 ml-auto">
             <AutoApproveSwitch />
@@ -952,7 +961,7 @@ function ChatInputActions({
           <div className="p-3 border-t border-border bg-muted/50 text-sm">
             {!!proposal.securityRisks.length && (
               <div className="mb-3">
-                <h4 className="font-semibold mb-1">Security Risks</h4>
+                <h4 className="font-semibold mb-1">{t("securityRisks")}</h4>
                 <ul className="space-y-1">
                   {proposal.securityRisks.map((risk, index) => (
                     <li key={index} className="flex items-start space-x-2">
@@ -979,7 +988,7 @@ function ChatInputActions({
 
             {proposal.sqlQueries?.length > 0 && (
               <div className="mb-3">
-                <h4 className="font-semibold mb-1">SQL Queries</h4>
+                <h4 className="font-semibold mb-1">{t("sqlQueries")}</h4>
                 <ul className="space-y-2">
                   {proposal.sqlQueries.map((query, index) => (
                     <SqlQueryItem key={index} query={query} />
@@ -990,7 +999,7 @@ function ChatInputActions({
 
             {proposal.packagesAdded?.length > 0 && (
               <div className="mb-3">
-                <h4 className="font-semibold mb-1">Packages Added</h4>
+                <h4 className="font-semibold mb-1">{t("packagesAdded")}</h4>
                 <ul className="space-y-1">
                   {proposal.packagesAdded.map((pkg, index) => (
                     <li
@@ -1017,7 +1026,9 @@ function ChatInputActions({
 
             {serverFunctions.length > 0 && (
               <div className="mb-3">
-                <h4 className="font-semibold mb-1">Server Functions Changed</h4>
+                <h4 className="font-semibold mb-1">
+                  {t("serverFunctionsChanged")}
+                </h4>
                 <ul className="space-y-1">
                   {serverFunctions.map((file: FileChange, index: number) => (
                     <li key={index} className="flex items-center space-x-2">
@@ -1039,7 +1050,7 @@ function ChatInputActions({
 
             {otherFilesChanged.length > 0 && (
               <div>
-                <h4 className="font-semibold mb-1">Files Changed</h4>
+                <h4 className="font-semibold mb-1">{t("filesChanged")}</h4>
                 <ul className="space-y-1">
                   {otherFilesChanged.map((file: FileChange, index: number) => (
                     <li key={index} className="flex items-center space-x-2">
@@ -1094,6 +1105,8 @@ function ProposalSummary({
   packagesAdded?: string[];
   filesChanged?: FileChange[];
 }) {
+  const { t } = useTranslation("chat");
+
   // If no changes, show a simple message
   if (
     !sqlQueries.length &&
@@ -1101,7 +1114,7 @@ function ProposalSummary({
     !packagesAdded.length &&
     !filesChanged.length
   ) {
-    return <span>No changes</span>;
+    return <span>{t("noChanges")}</span>;
   }
 
   // Build parts array with only the segments that have content
@@ -1137,6 +1150,7 @@ function ProposalSummary({
 
 // SQL Query item with expandable functionality
 function SqlQueryItem({ query }: { query: SqlQuery }) {
+  const { t } = useTranslation("chat");
   const [isExpanded, setIsExpanded] = useState(false);
 
   const queryContent = query.content;
@@ -1151,7 +1165,7 @@ function SqlQueryItem({ query }: { query: SqlQuery }) {
         <div className="flex items-center gap-2">
           <Database size={16} className="text-muted-foreground flex-shrink-0" />
           <span className="text-sm font-medium">
-            {queryDescription || "SQL Query"}
+            {queryDescription || t("sqlQuery")}
           </span>
         </div>
         <div>

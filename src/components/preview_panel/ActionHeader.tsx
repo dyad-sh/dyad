@@ -33,6 +33,7 @@ import { showError, showSuccess } from "@/lib/toast";
 import { useMutation } from "@tanstack/react-query";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
+import { useTranslation } from "react-i18next";
 
 export type PreviewMode =
   | "preview"
@@ -44,6 +45,7 @@ export type PreviewMode =
 
 // Preview Header component with preview mode toggle
 export const ActionHeader = () => {
+  const { t } = useTranslation("home");
   const [previewMode, setPreviewMode] = useAtom(previewModeAtom);
   const [isPreviewOpen, setIsPreviewOpen] = useAtom(isPreviewOpenAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
@@ -218,14 +220,14 @@ export const ActionHeader = () => {
           "preview",
           previewRef,
           <Eye size={iconSize} />,
-          "Preview",
+          t("preview.title"),
           "preview-mode-button",
         )}
         {renderButton(
           "problems",
           problemsRef,
           <AlertTriangle size={iconSize} />,
-          "Problems",
+          t("preview.problems"),
           "problems-mode-button",
           displayCount && (
             <span className="ml-0.5 px-1 py-0.5 text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-full min-w-[16px] text-center">
@@ -237,28 +239,28 @@ export const ActionHeader = () => {
           "code",
           codeRef,
           <Code size={iconSize} />,
-          "Code",
+          t("preview.code"),
           "code-mode-button",
         )}
         {renderButton(
           "configure",
           configureRef,
           <Wrench size={iconSize} />,
-          "Configure",
+          t("preview.configure"),
           "configure-mode-button",
         )}
         {renderButton(
           "security",
           securityRef,
           <Shield size={iconSize} />,
-          "Security",
+          t("preview.security"),
           "security-mode-button",
         )}
         {renderButton(
           "publish",
           publishRef,
           <Globe size={iconSize} />,
-          "Publish",
+          t("preview.publish"),
           "publish-mode-button",
         )}
       </div>
@@ -277,24 +279,24 @@ export const ActionHeader = () => {
             >
               <MoreVertical size={16} />
             </TooltipTrigger>
-            <TooltipContent>More options</TooltipContent>
+            <TooltipContent>{t("preview.moreOptions")}</TooltipContent>
           </Tooltip>
           <DropdownMenuContent align="end" className="w-60">
             <DropdownMenuItem onClick={onCleanRestart}>
               <Cog size={16} />
               <div className="flex flex-col">
-                <span>Rebuild</span>
+                <span>{t("preview.rebuild")}</span>
                 <span className="text-xs text-muted-foreground">
-                  Re-installs node_modules and restarts
+                  {t("preview.rebuildDescription")}
                 </span>
               </div>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onClearSessionData}>
               <Trash2 size={16} />
               <div className="flex flex-col">
-                <span>Clear Cache</span>
+                <span>{t("preview.clearCache")}</span>
                 <span className="text-xs text-muted-foreground">
-                  Clears cookies and local storage and other app cache
+                  {t("preview.clearCacheDescription")}
                 </span>
               </div>
             </DropdownMenuItem>

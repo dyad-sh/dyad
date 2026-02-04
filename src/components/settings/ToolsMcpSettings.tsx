@@ -15,6 +15,7 @@ import { showError, showInfo, showSuccess } from "@/lib/toast";
 import { Edit2, Plus, Save, Trash2, X } from "lucide-react";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
 import { AddMcpServerDeepLinkData } from "@/ipc/deep_link_data";
+import { useTranslation } from "react-i18next";
 
 type KeyValue = { key: string; value: string };
 
@@ -60,6 +61,7 @@ function KeyValueEditor({
   isSaving: boolean;
   itemLabel?: string;
 }) {
+  const { t } = useTranslation(["settings", "common"]);
   const initial = useMemo(() => parseJsonToArray(json), [json]);
   const [envVars, setEnvVars] = useState<KeyValue[]>(initial);
   const [editingKey, setEditingKey] = useState<string | null>(null);
@@ -80,11 +82,11 @@ function KeyValueEditor({
 
   const handleAdd = async () => {
     if (!newKey.trim() || !newValue.trim()) {
-      showError("Both key and value are required");
+      showError(t("toolsMcp.keyValueRequired"));
       return;
     }
     if (envVars.some((e) => e.key === newKey.trim())) {
-      showError(`${itemLabel} with this key already exists`);
+      showError(t("settings:toolsMcp.duplicateKey"));
       return;
     }
     const next = [...envVars, { key: newKey.trim(), value: newValue.trim() }];
@@ -104,7 +106,7 @@ function KeyValueEditor({
   const handleSaveEdit = async () => {
     if (!editingKey) return;
     if (!editingKeyValue.trim() || !editingValue.trim()) {
-      showError("Both key and value are required");
+      showError(t("toolsMcp.keyValueRequired"));
       return;
     }
     if (
@@ -112,7 +114,7 @@ function KeyValueEditor({
         (e) => e.key === editingKeyValue.trim() && e.key !== editingKey,
       )
     ) {
-      showError(`${itemLabel} with this key already exists`);
+      showError(t("settings:toolsMcp.duplicateKey"));
       return;
     }
     const next = envVars.map((e) =>
@@ -144,10 +146,16 @@ function KeyValueEditor({
       {isAddingNew ? (
         <div className="space-y-3 p-3 border rounded-md bg-muted/50">
           <div className="space-y-2">
-            <Label htmlFor={`env-new-key-${id}`}>Key</Label>
+            <Label htmlFor={`env-new-key-${id}`}>
+              {t("settings:toolsMcp.key")}
+            </Label>
             <Input
               id={`env-new-key-${id}`}
-              placeholder={itemLabel === "Header" ? "Key" : "e.g., PATH"}
+              placeholder={
+                itemLabel === "Header"
+                  ? t("settings:toolsMcp.key")
+                  : t("settings:toolsMcp.keyPlaceholder")
+              }
               value={newKey}
               onChange={(e) => setNewKey(e.target.value)}
               autoFocus
@@ -155,11 +163,15 @@ function KeyValueEditor({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`env-new-value-${id}`}>Value</Label>
+            <Label htmlFor={`env-new-value-${id}`}>
+              {t("settings:toolsMcp.value")}
+            </Label>
             <Input
               id={`env-new-value-${id}`}
               placeholder={
-                itemLabel === "Header" ? "Value" : "e.g., /usr/local/bin"
+                itemLabel === "Header"
+                  ? t("settings:toolsMcp.value")
+                  : t("settings:toolsMcp.valuePlaceholder")
               }
               value={newValue}
               onChange={(e) => setNewValue(e.target.value)}
@@ -173,7 +185,7 @@ function KeyValueEditor({
               disabled={disabled || isSaving}
             >
               <Save size={14} />
-              {isSaving ? "Saving..." : "Save"}
+              {isSaving ? t("common:saving") : t("common:save")}
             </Button>
             <Button
               onClick={() => {
@@ -185,7 +197,7 @@ function KeyValueEditor({
               size="sm"
             >
               <X size={14} />
-              Cancel
+              {t("common:cancel")}
             </Button>
           </div>
         </div>
@@ -197,7 +209,7 @@ function KeyValueEditor({
           disabled={disabled}
         >
           <Plus size={14} />
-          Add {itemLabel}
+          {t("settings:toolsMcp.addEnvVar")}
         </Button>
       )}
 

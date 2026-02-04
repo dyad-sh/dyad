@@ -10,9 +10,11 @@ import {
 import { toast } from "sonner";
 import { ipc } from "@/ipc/types";
 import type { ReleaseChannel } from "@/lib/schemas";
+import { useTranslation } from "react-i18next";
 
 export function ReleaseChannelSelector() {
   const { settings, updateSettings } = useSettings();
+  const { t } = useTranslation("settings");
 
   if (!settings) {
     return null;
@@ -52,7 +54,7 @@ export function ReleaseChannelSelector() {
           htmlFor="release-channel"
           className="text-sm font-medium text-gray-700 dark:text-gray-300"
         >
-          Release Channel
+          {t("general.releaseChannel")}
         </label>
         <Select
           value={settings.releaseChannel}
@@ -62,14 +64,13 @@ export function ReleaseChannelSelector() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="stable">Stable</SelectItem>
-            <SelectItem value="beta">Beta</SelectItem>
+            <SelectItem value="stable">{t("general.stable")}</SelectItem>
+            <SelectItem value="beta">{t("general.beta")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
       <div className="text-sm text-gray-500 dark:text-gray-400">
-        <p>Stable is recommended for most users. </p>
-        <p>Beta receives more frequent updates but may have more bugs.</p>
+        <p>{t("general.releaseChannelDescription")}</p>
       </div>
     </div>
   );

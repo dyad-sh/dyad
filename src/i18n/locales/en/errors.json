@@ -1,3 +1,10 @@
 {
-  "unknown": "An unknown error occurred"
+  "unknown": "An unknown error occurred",
+  "failedToCreate": "Failed to create: {{error}}",
+  "failedToUpdate": "Failed to update: {{error}}",
+  "failedToDelete": "Failed to delete: {{error}}",
+  "failedToLoad": "Failed to load: {{error}}",
+  "networkError": "A network error occurred. Please check your connection.",
+  "copyError": "Copy error message",
+  "errorOccurred": "An error occurred"
 }

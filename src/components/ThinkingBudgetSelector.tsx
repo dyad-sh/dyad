@@ -7,6 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useTranslation } from "react-i18next";
 
 interface OptionInfo {
   value: string;
@@ -38,6 +39,7 @@ const options: OptionInfo[] = [
 
 export const ThinkingBudgetSelector: React.FC = () => {
   const { settings, updateSettings } = useSettings();
+  const { t } = useTranslation("settings");
 
   const handleValueChange = (value: string) => {
     updateSettings({ thinkingBudget: value as "low" | "medium" | "high" });
@@ -57,14 +59,14 @@ export const ThinkingBudgetSelector: React.FC = () => {
           htmlFor="thinking-budget"
           className="text-sm font-medium text-gray-700 dark:text-gray-300"
         >
-          Thinking Budget
+          {t("ai.thinkingBudget")}
         </label>
         <Select
           value={currentValue}
           onValueChange={(v) => v && handleValueChange(v)}
         >
           <SelectTrigger className="w-[180px]" id="thinking-budget">
-            <SelectValue placeholder="Select budget" />
+            <SelectValue placeholder={t("ai.selectThinkingBudget")} />
           </SelectTrigger>
           <SelectContent>
             {options.map((option) => (

@@ -15,6 +15,7 @@ import { Skeleton } from "./ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { AlertTriangle } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -37,6 +38,7 @@ import { CreateCustomProviderDialog } from "./CreateCustomProviderDialog";
 
 export function ProviderSettingsGrid() {
   const navigate = useNavigate();
+  const { t } = useTranslation(["settings", "common"]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProvider, setEditingProvider] =
     useState<LanguageModelProvider | null>(null);
@@ -75,7 +77,9 @@ export function ProviderSettingsGrid() {
   if (isLoading) {
     return (
       <div className="p-6">
-        <h2 className="text-lg font-medium mb-6">AI Providers</h2>
+        <h2 className="text-lg font-medium mb-6">
+          {t("settings:ai.providers")}
+        </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3, 4, 5].map((i) => (
             <Card key={i} className="border-border">
@@ -93,12 +97,14 @@ export function ProviderSettingsGrid() {
   if (error) {
     return (
       <div className="p-6">
-        <h2 className="text-lg font-medium mb-6">AI Providers</h2>
+        <h2 className="text-lg font-medium mb-6">
+          {t("settings:ai.providers")}
+        </h2>
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Error</AlertTitle>
+          <AlertTitle>{t("common:error")}</AlertTitle>
           <AlertDescription>
-            Failed to load AI providers: {error.message}
+            {t("settings:ai.failedToLoadProviders", { message: error.message })}
           </AlertDescription>
         </Alert>
       </div>
@@ -107,7 +113,7 @@ export function ProviderSettingsGrid() {
 
   return (
     <div className="p-6">
-      <h2 className="text-lg font-medium mb-6">AI Providers</h2>
+      <h2 className="text-lg font-medium mb-6">{t("settings:ai.providers")}</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {providers
           ?.filter((p) => p.type !== "local")
@@ -142,7 +148,9 @@ export function ProviderSettingsGrid() {
                         >
                           <Edit className="h-4 w-4" />
                         </TooltipTrigger>
-                        <TooltipContent>Edit Provider</TooltipContent>
+                        <TooltipContent>
+                          {t("settings:ai.editProvider")}
+                        </TooltipContent>
                       </Tooltip>
                       <Tooltip>
                         <TooltipTrigger
@@ -158,7 +166,9 @@ export function ProviderSettingsGrid() {
                         >
                           <Trash2 className="h-4 w-4" />
                         </TooltipTrigger>
-                        <TooltipContent>Delete Provider</TooltipContent>
+                        <TooltipContent>
+                          {t("settings:ai.deleteProvider")}
+                        </TooltipContent>
                       </Tooltip>
                     </div>
                   )}
@@ -166,11 +176,11 @@ export function ProviderSettingsGrid() {
                     {provider.name}
                     {isProviderSetup(provider.id) ? (
                       <span className="ml-3 text-sm font-medium text-green-500 bg-green-50 dark:bg-green-900/30 border border-green-500/50 dark:border-green-500/50 px-2 py-1 rounded-full">
-                        Ready
+                        {t("common:ready")}
                       </span>
                     ) : (
                       <span className="text-sm text-gray-500 bg-gray-50 dark:bg-gray-900 dark:text-gray-300 px-2 py-1 rounded-full">
-                        Needs Setup
+                        {t("common:needsSetup")}
                       </span>
                     )}
                   </CardTitle>
@@ -178,7 +188,7 @@ export function ProviderSettingsGrid() {
                     {provider.hasFreeTier && (
                       <span className="text-blue-600 mt-2 dark:text-blue-400 text-sm font-medium bg-blue-100 dark:bg-blue-900/30 px-2 py-1 rounded-full inline-flex items-center">
                         <GiftIcon className="w-4 h-4 mr-1" />
-                        Free tier available
+                        {t("settings:ai.freeTierAvailable")}
                       </span>
                     )}
                   </CardDescription>
@@ -195,10 +205,10 @@ export function ProviderSettingsGrid() {
           <CardHeader className="p-4 flex flex-col items-center justify-center h-full">
             <PlusIcon className="h-8 w-8 text-muted-foreground mb-2" />
             <CardTitle className="text-lg font-medium text-center">
-              Add custom provider
+              {t("settings:ai.addCustomProvider")}
             </CardTitle>
             <CardDescription className="text-center">
-              Connect to a custom LLM API endpoint
+              {t("settings:ai.connectCustomEndpoint")}
             </CardDescription>
           </CardHeader>
         </Card>
@@ -224,19 +234,24 @@ export function ProviderSettingsGrid() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Custom Provider</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("settings:ai.deleteCustomProvider")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete this custom provider and all its
-              associated models. This action cannot be undone.
+              {t("settings:ai.deleteProviderConfirmation")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>
+              {t("common:cancel")}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteProvider}
               disabled={isDeleting}
             >
-              {isDeleting ? "Deleting..." : "Delete Provider"}
+              {isDeleting
+                ? t("common:deleting")
+                : t("settings:ai.deleteProviderAction")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

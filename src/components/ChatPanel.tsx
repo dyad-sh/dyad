@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { useAtomValue, useSetAtom } from "jotai";
 import {
   chatMessagesByIdAtom,
@@ -35,6 +36,7 @@ export function ChatPanel({
   isPreviewOpen,
   onTogglePreview,
 }: ChatPanelProps) {
+  const { t } = useTranslation("chat");
   const messagesById = useAtomValue(chatMessagesByIdAtom);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const [isVersionPaneOpen, setIsVersionPaneOpen] = useState(false);
@@ -184,7 +186,7 @@ export function ChatPanel({
                     >
                       <ArrowDown className="h-4 w-4" />
                     </TooltipTrigger>
-                    <TooltipContent>Scroll to bottom</TooltipContent>
+                    <TooltipContent>{t("scrollToBottom")}</TooltipContent>
                   </Tooltip>
                 </div>
               )}

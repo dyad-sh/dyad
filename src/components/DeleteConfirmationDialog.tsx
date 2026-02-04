@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import React from "react";
 import { Trash2, Loader2 } from "lucide-react";
 import {
@@ -28,6 +29,7 @@ export function DeleteConfirmationDialog({
   trigger,
   isDeleting = false,
 }: DeleteConfirmationDialogProps) {
+  const { t } = useTranslation(["home", "common"]);
   return (
     <AlertDialog>
       {trigger ? (
@@ -37,29 +39,32 @@ export function DeleteConfirmationDialog({
           className={buttonVariants({ variant: "ghost", size: "icon" })}
           data-testid="delete-prompt-button"
           disabled={isDeleting}
-          title={`Delete ${itemType.toLowerCase()}`}
+          title={`${t("common:delete")} ${itemType.toLowerCase()}`}
         >
           <Trash2 className="h-4 w-4" />
         </AlertDialogTrigger>
       )}
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete {itemType}</AlertDialogTitle>
+          <AlertDialogTitle>
+            {t("home:deleteItemTitle", { itemType })}
+          </AlertDialogTitle>
           <AlertDialogDescription>
-            Are you sure you want to delete "{itemName}"? This action cannot be
-            undone.
+            {t("home:deleteItemConfirmation", { itemName })}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={isDeleting}>
+            {t("common:cancel")}
+          </AlertDialogCancel>
           <AlertDialogAction onClick={onDelete} disabled={isDeleting}>
             {isDeleting ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Deleting...
+                {t("common:deleting")}
               </>
             ) : (
-              "Delete"
+              t("common:delete")
             )}
           </AlertDialogAction>
         </AlertDialogFooter>

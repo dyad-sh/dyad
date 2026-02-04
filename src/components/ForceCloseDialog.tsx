@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,6 +28,7 @@ export function ForceCloseDialog({
   onClose,
   performanceData,
 }: ForceCloseDialogProps) {
+  const { t } = useTranslation(["home", "common"]);
   const formatTimestamp = (timestamp: number) => {
     return new Date(timestamp).toLocaleString();
   };
@@ -37,19 +39,16 @@ export function ForceCloseDialog({
         <AlertDialogHeader>
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-yellow-500" />
-            <AlertDialogTitle>Force Close Detected</AlertDialogTitle>
+            <AlertDialogTitle>{t("home:forceCloseDetected")}</AlertDialogTitle>
           </div>
           <AlertDialogDescription render={<div />}>
             <div className="space-y-4 pt-2 text-muted-foreground">
-              <div className="text-base">
-                The app was not closed properly the last time it was running.
-                This could indicate a crash or unexpected termination.
-              </div>
+              <div className="text-base">{t("home:forceCloseDescription")}</div>
 
               {performanceData && (
                 <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
                   <div className="font-semibold text-sm text-foreground">
-                    Last Known State:{" "}
+                    {t("home:lastKnownState")}{" "}
                     <span className="font-normal text-muted-foreground">
                       {formatTimestamp(performanceData.timestamp)}
                     </span>
@@ -59,18 +58,22 @@ export function ForceCloseDialog({
                     {/* Process Metrics */}
                     <div className="space-y-2">
                       <div className="font-medium text-foreground">
-                        Process Metrics
+                        {t("home:processMetrics")}
                       </div>
                       <div className="space-y-1">
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Memory:</span>
+                          <span className="text-muted-foreground">
+                            {t("home:memory")}
+                          </span>
                           <span className="font-mono">
                             {performanceData.memoryUsageMB} MB
                           </span>
                         </div>
                         {performanceData.cpuUsagePercent !== undefined && (
                           <div className="flex justify-between">
-                            <span className="text-muted-foreground">CPU:</span>
+                            <span className="text-muted-foreground">
+                              {t("home:cpu")}
+                            </span>
                             <span className="font-mono">
                               {performanceData.cpuUsagePercent}%
                             </span>
@@ -84,7 +87,7 @@ export function ForceCloseDialog({
                       performanceData.systemCpuPercent !== undefined) && (
                       <div className="space-y-2">
                         <div className="font-medium text-foreground">
-                          System Metrics
+                          {t("home:systemMetrics")}
                         </div>
                         <div className="space-y-1">
                           {performanceData.systemMemoryUsageMB !== undefined &&
@@ -92,7 +95,7 @@ export function ForceCloseDialog({
                               undefined && (
                               <div className="flex justify-between">
                                 <span className="text-muted-foreground">
-                                  Memory:
+                                  {t("home:memory")}
                                 </span>
                                 <span className="font-mono">
                                   {performanceData.systemMemoryUsageMB} /{" "}
@@ -103,7 +106,7 @@ export function ForceCloseDialog({
                           {performanceData.systemCpuPercent !== undefined && (
                             <div className="flex justify-between">
                               <span className="text-muted-foreground">
-                                CPU:
+                                {t("home:cpu")}
                               </span>
                               <span className="font-mono">
                                 {performanceData.systemCpuPercent}%
@@ -120,7 +123,9 @@ export function ForceCloseDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogAction onClick={onClose}>OK</AlertDialogAction>
+          <AlertDialogAction onClick={onClose}>
+            {t("common:ok")}
+          </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

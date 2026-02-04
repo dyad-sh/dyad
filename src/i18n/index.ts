@@ -8,6 +8,20 @@ import enChat from "./locales/en/chat.json";
 import enHome from "./locales/en/home.json";
 import enErrors from "./locales/en/errors.json";
 
+// Chinese Simplified
+import zhCNCommon from "./locales/zh-CN/common.json";
+import zhCNSettings from "./locales/zh-CN/settings.json";
+import zhCNChat from "./locales/zh-CN/chat.json";
+import zhCNHome from "./locales/zh-CN/home.json";
+import zhCNErrors from "./locales/zh-CN/errors.json";
+
+// Brazilian Portuguese
+import ptBRCommon from "./locales/pt-BR/common.json";
+import ptBRSettings from "./locales/pt-BR/settings.json";
+import ptBRChat from "./locales/pt-BR/chat.json";
+import ptBRHome from "./locales/pt-BR/home.json";
+import ptBRErrors from "./locales/pt-BR/errors.json";
+
 const resources = {
   en: {
     common: enCommon,
@@ -16,9 +30,20 @@ const resources = {
     home: enHome,
     errors: enErrors,
   },
-  // Additional languages will be added here as translations are completed
-  // "zh-CN": { ... },
-  // "ja": { ... },
+  "zh-CN": {
+    common: zhCNCommon,
+    settings: zhCNSettings,
+    chat: zhCNChat,
+    home: zhCNHome,
+    errors: zhCNErrors,
+  },
+  "pt-BR": {
+    common: ptBRCommon,
+    settings: ptBRSettings,
+    chat: ptBRChat,
+    home: ptBRHome,
+    errors: ptBRErrors,
+  },
 };
 
 i18n.use(initReactI18next).init({

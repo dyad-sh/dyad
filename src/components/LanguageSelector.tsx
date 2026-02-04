@@ -20,8 +20,9 @@ const DEFAULT_LANGUAGE: Language = "en";
  */
 const LANGUAGE_OPTIONS: { value: Language; nativeLabel: string }[] = [
   { value: "en", nativeLabel: "English" },
+  { value: "zh-CN", nativeLabel: "简体中文" },
+  { value: "pt-BR", nativeLabel: "Português (Brasil)" },
   // Additional languages will be added as translations are completed:
-  // { value: "zh-CN", nativeLabel: "简体中文" },
   // { value: "ja", nativeLabel: "日本語" },
   // { value: "ko", nativeLabel: "한국어" },
   // { value: "es", nativeLabel: "Español" },
@@ -38,9 +39,10 @@ export function LanguageSelector() {
     return parsed.success ? parsed.data : DEFAULT_LANGUAGE;
   }, [settings?.language]);
 
-  const handleChange = async (value: string) => {
+  const handleChange = async (value: Language | null) => {
+    if (!value) return;
     try {
-      await updateSettings({ language: value as Language });
+      await updateSettings({ language: value });
       // Language change is handled by the useEffect in layout.tsx
       // after settings are successfully persisted
     } catch (error) {

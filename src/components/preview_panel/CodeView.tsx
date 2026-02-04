@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useAtomValue } from "jotai";
 import { selectedFileAtom } from "@/atoms/viewAtoms";
+import { useTranslation } from "react-i18next";
 
 interface App {
   id?: number;
@@ -23,6 +24,7 @@ export interface CodeViewProps {
 
 // Code view component that displays app files or status messages
 export const CodeView = ({ loading, app }: CodeViewProps) => {
+  const { t } = useTranslation("home");
   const selectedFile = useAtomValue(selectedFileAtom);
   const { refreshApp } = useLoadApp(app?.id ?? null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -48,12 +50,14 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
   }, [isFullscreen]);
 
   if (loading) {
-    return <div className="text-center py-4">Loading files...</div>;
+    return <div className="text-center py-4">{t("preview.loadingFiles")}</div>;
   }
 
   if (!app) {
     return (
-      <div className="text-center py-4 text-gray-500">No app selected</div>
+      <div className="text-center py-4 text-gray-500">
+        {t("preview.noAppSelected")}
+      </div>
     );
   }
 
@@ -76,9 +80,11 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
             >
               <RefreshCw size={16} />
             </TooltipTrigger>
-            <TooltipContent>Refresh Files</TooltipContent>
+            <TooltipContent>{t("preview.refreshFiles")}</TooltipContent>
           </Tooltip>
-          <div className="text-sm text-gray-500">{app.files.length} files</div>
+          <div className="text-sm text-gray-500">
+            {app.files.length} {t("preview.files")}
+          </div>
           <div className="flex-1" />
           <Tooltip>
             <TooltipTrigger
@@ -92,7 +98,9 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
               {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
             </TooltipTrigger>
             <TooltipContent>
-              {isFullscreen ? "Exit full screen" : "Enter full screen"}
+              {isFullscreen
+                ? t("preview.exitFullScreen")
+                : t("preview.enterFullScreen")}
             </TooltipContent>
           </Tooltip>
         </div>
@@ -111,7 +119,7 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
               />
             ) : (
               <div className="text-center py-4 text-gray-500">
-                Select a file to view
+                {t("preview.selectFileToView")}
               </div>
             )}
           </div>
@@ -120,5 +128,9 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
     );
   }
 
-  return <div className="text-center py-4 text-gray-500">No files found</div>;
+  return (
+    <div className="text-center py-4 text-gray-500">
+      {t("preview.noFilesFound")}
+    </div>
+  );
 };

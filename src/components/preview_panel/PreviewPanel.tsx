@@ -19,6 +19,7 @@ import { PublishPanel } from "./PublishPanel";
 import { SecurityPanel } from "./SecurityPanel";
 import { PlanPanel } from "./PlanPanel";
 import { useSupabase } from "@/hooks/useSupabase";
+import { useTranslation } from "react-i18next";
 
 interface ConsoleHeaderProps {
   isOpen: boolean;
@@ -31,24 +32,29 @@ const ConsoleHeader = ({
   isOpen,
   onToggle,
   latestMessage,
-}: ConsoleHeaderProps) => (
-  <div
-    onClick={onToggle}
-    className="flex items-start gap-2 px-4 py-1.5 border-t border-border cursor-pointer hover:bg-[var(--background-darkest)] transition-colors"
-  >
-    <Logs size={16} className="mt-0.5" />
-    <div className="flex flex-col">
-      <span className="text-sm font-medium">System Messages</span>
-      {!isOpen && latestMessage && (
-        <span className="text-xs text-gray-500 truncate max-w-[200px] md:max-w-[400px]">
-          {latestMessage}
+}: ConsoleHeaderProps) => {
+  const { t } = useTranslation("home");
+  return (
+    <div
+      onClick={onToggle}
+      className="flex items-start gap-2 px-4 py-1.5 border-t border-border cursor-pointer hover:bg-[var(--background-darkest)] transition-colors"
+    >
+      <Logs size={16} className="mt-0.5" />
+      <div className="flex flex-col">
+        <span className="text-sm font-medium">
+          {t("preview.systemMessages")}
         </span>
-      )}
+        {!isOpen && latestMessage && (
+          <span className="text-xs text-gray-500 truncate max-w-[200px] md:max-w-[400px]">
+            {latestMessage}
+          </span>
+        )}
+      </div>
+      <div className="flex-1" />
+      {isOpen ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
     </div>
-    <div className="flex-1" />
-    {isOpen ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
-  </div>
-);
+  );
+};
 
 // Main PreviewPanel component
 export function PreviewPanel() {

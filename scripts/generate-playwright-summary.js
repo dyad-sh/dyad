@@ -70,21 +70,30 @@ function parseTestTitle(fullTitle) {
   return { specFile, testName };
 }
 
+// Detect if a test failure is due to a snapshot mismatch
+function isSnapshotFailure(errorMessage) {
+  if (!errorMessage) return false;
+  const lower = errorMessage.toLowerCase();
+  return (
+    lower.includes("screenshot comparison failed") ||
+    lower.includes("snapshot comparison failed") ||
+    lower.includes("expected to match snapshot") ||
+    lower.includes("tomatchsnapshot") ||
+    lower.includes("tohavescreenshot") ||
+    lower.includes("screenshots are different") ||
+    lower.includes("snapshots don't match") ||
+    lower.includes("snapshot mismatch") ||
+    lower.includes("a]snapshot") ||
+    lower.includes("ratio of different pixels")
+  );
+}
+
 // Generate copy-paste command for running a specific test
 function generateTestCommand(fullTitle) {
   const { specFile, testName } = parseTestTitle(fullTitle);
   // Escape special characters in testName for the grep pattern
   const escapedTestName = testName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return `npm run e2e e2e-tests/${specFile} -- -g "${escapedTestName}"`;
-}
-
-// Generate both run and update commands for a test
-function generateCommands(fullTitle) {
-  const testCmd = generateTestCommand(fullTitle);
-  return {
-    run: testCmd,
-    update: `${testCmd} --update-snapshots`,
-  };
 }
 
 function detectOperatingSystemsFromReport(report) {
@@ -379,21 +388,28 @@ async function run({ github, context, core }) {
     const macOsFailures = resultsByOs["macOS"]?.failures || [];
     if (macOsFailures.length > 0) {
       comment += "### 📋 Test Commands (macOS)\n\n";
-      comment +=
-        "Copy and paste these commands to run or update snapshots for failed tests:\n\n";
+      comment += "Copy and paste to re-run failing tests locally:\n\n";
 
       if (macOsFailures.length > 5) {
         comment += `<details>\n<summary>Show all ${macOsFailures.length} test commands</summary>\n\n`;
       }
 
+      comment += "```bash\n";
+      comment += "export PLAYWRIGHT_HTML_OPEN=never\n";
       for (const f of macOsFailures) {
-        const cmds = generateCommands(f.title);
-        comment += `**\`${f.title}\`**\n`;
-        comment += "```bash\n";
-        comment += `# Run test\n${cmds.run}\n\n`;
-        comment += `# Update snapshots\n${cmds.update}\n`;
-        comment += "```\n\n";
+        const cmd = generateTestCommand(f.title);
+        const snapshot = isSnapshotFailure(f.error);
+        const errorPreview =
+          f.error.length > 120 ? f.error.substring(0, 120) + "..." : f.error;
+        comment += `\n# ${f.title}\n`;
+        comment += `# Expected: ${errorPreview}\n`;
+        if (snapshot) {
+          comment += `${cmd} --update-snapshots\n`;
+        } else {
+          comment += `${cmd}\n`;
+        }
       }
+      comment += "```\n\n";
 
       if (macOsFailures.length > 5) {
         comment += "</details>\n";

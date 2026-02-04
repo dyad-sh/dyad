@@ -4,6 +4,66 @@ import log from "electron-log";
 
 const logger = log.scope("ai_messages_utils");
 
+/**
+ * Provider option keys that may contain itemId references to OpenAI's
+ * server-side storage. These references become stale when items expire.
+ */
+const PROVIDER_KEYS_WITH_ITEM_ID = ["openai", "azure"] as const;
+
+/**
+ * Strip OpenAI item IDs from provider options/metadata on all message content parts.
+ *
+ * When messages are persisted to DB with aiMessagesJson, they may contain
+ * `providerOptions.openai.itemId` values that reference items stored on OpenAI's
+ * servers. On subsequent turns, the AI SDK converts these to `item_reference`
+ * payloads instead of sending full content. If OpenAI has expired those items,
+ * this causes "Item with id 'rs_...' not found" errors.
+ *
+ * Stripping itemId forces the SDK to always send full message content, which is
+ * already stored in the message parts alongside the itemId, so no data is lost.
+ */
+function stripItemIds(messages: ModelMessage[]): ModelMessage[] {
+  for (const message of messages) {
+    if (typeof message.content === "string") continue;
+    if (!Array.isArray(message.content)) continue;
+
+    for (const part of message.content) {
+      stripItemIdFromObject(part as Record<string, unknown>);
+    }
+  }
+  return messages;
+}
+
+function stripItemIdFromObject(obj: Record<string, unknown>): void {
+  for (const field of ["providerOptions", "providerMetadata"] as const) {
+    const container = obj[field];
+    if (!container || typeof container !== "object") continue;
+
+    const containerRecord = container as Record<
+      string,
+      Record<string, unknown>
+    >;
+    for (const key of PROVIDER_KEYS_WITH_ITEM_ID) {
+      const providerData = containerRecord[key];
+      if (
+        providerData &&
+        typeof providerData === "object" &&
+        "itemId" in providerData
+      ) {
+        delete providerData.itemId;
+        // Clean up empty provider data
+        if (Object.keys(providerData).length === 0) {
+          delete containerRecord[key];
+        }
+      }
+    }
+    // Clean up empty container
+    if (Object.keys(containerRecord).length === 0) {
+      delete obj[field];
+    }
+  }
+}
+
 /** Maximum size in bytes for ai_messages_json (10MB) */
 export const MAX_AI_MESSAGES_SIZE = 10_000_000;
 
@@ -58,7 +118,7 @@ export function parseAiMessagesJson(msg: DbMessageForParsing): ModelMessage[] {
       Array.isArray(parsed) &&
       parsed.every((m) => m && typeof m.role === "string")
     ) {
-      return parsed;
+      return stripItemIds(parsed);
     }
 
     if (
@@ -72,7 +132,7 @@ export function parseAiMessagesJson(msg: DbMessageForParsing): ModelMessage[] {
         (m: ModelMessage) => m && typeof m.role === "string",
       )
     ) {
-      return (parsed as AiMessagesJsonV6).messages;
+      return stripItemIds((parsed as AiMessagesJsonV6).messages);
     }
   }
 

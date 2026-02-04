@@ -28,7 +28,10 @@ testSkipIfWindows("supabase migrations", async ({ po }) => {
   const migrationsSwitch = po.page.getByRole("switch", {
     name: "Write SQL migration files",
   });
+  await expect(migrationsSwitch).toBeVisible({ timeout: 10000 });
   await migrationsSwitch.click();
+  // Wait for the setting to be persisted
+  await po.waitForToast("success");
   await po.goToChatTab();
 
   // Send a prompt that triggers a migration
@@ -91,7 +94,10 @@ testSkipIfWindows("supabase migrations with native git", async ({ po }) => {
   const migrationsSwitch = po.page.getByRole("switch", {
     name: "Write SQL migration files",
   });
+  await expect(migrationsSwitch).toBeVisible({ timeout: 10000 });
   await migrationsSwitch.click();
+  // Wait for the setting to be persisted
+  await po.waitForToast("success");
   await po.goToChatTab();
 
   // Send a prompt that triggers a migration

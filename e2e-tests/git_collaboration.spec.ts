@@ -37,7 +37,7 @@ test.describe("Git Collaboration", () => {
     await expect(
       po.page.getByTestId("branch-actions-menu-trigger"),
     ).toBeVisible({
-      timeout: 10000,
+      timeout: Timeout.MEDIUM,
     });
     await po.page.getByTestId("branch-actions-menu-trigger").click();
     await po.page.getByTestId("create-branch-trigger").click();
@@ -95,7 +95,18 @@ test.describe("Git Collaboration", () => {
 
     // Rename feature-2 to feature-2-renamed
     const renamedBranch = "feature-2-renamed";
-    await branchesCard.click();
+    // Ensure the branches accordion is expanded (it may already be expanded, so check first)
+    if (
+      !(await po.page
+        .getByTestId(`branch-item-${featureBranch2}`)
+        .isVisible()
+        .catch(() => false))
+    ) {
+      await branchesCard.click();
+    }
+    await expect(
+      po.page.getByTestId(`branch-item-${featureBranch2}`),
+    ).toBeVisible({ timeout: 5000 });
     await po.page.getByTestId(`branch-actions-${featureBranch2}`).click();
     await po.page.getByTestId("rename-branch-menu-item").click();
     await po.page.getByTestId("rename-branch-input").fill(renamedBranch);
@@ -147,7 +158,18 @@ test.describe("Git Collaboration", () => {
     expect(fs.existsSync(mergeTestFilePath)).toBe(false);
 
     // Merge feature-1 into main (we are currently on main)
-    await branchesCard.click();
+    // Ensure the branches accordion is expanded
+    if (
+      !(await po.page
+        .getByTestId(`branch-item-${featureBranch}`)
+        .isVisible()
+        .catch(() => false))
+    ) {
+      await branchesCard.click();
+    }
+    await expect(
+      po.page.getByTestId(`branch-item-${featureBranch}`),
+    ).toBeVisible({ timeout: 5000 });
     await po.page.getByTestId(`branch-actions-${featureBranch}`).click();
     await po.page.getByTestId("merge-branch-menu-item").click();
     await po.page.getByTestId("merge-branch-submit-button").click();
@@ -177,7 +199,18 @@ test.describe("Git Collaboration", () => {
 
     // 5. Delete Branch
     // Delete feature-1
-    await branchesCard.click();
+    // Ensure the branches accordion is expanded
+    if (
+      !(await po.page
+        .getByTestId(`branch-item-${featureBranch}`)
+        .isVisible()
+        .catch(() => false))
+    ) {
+      await branchesCard.click();
+    }
+    await expect(
+      po.page.getByTestId(`branch-item-${featureBranch}`),
+    ).toBeVisible({ timeout: 5000 });
     await po.page.getByTestId(`branch-actions-${featureBranch}`).click();
     await po.page.getByTestId("delete-branch-menu-item").click();
     await po.page.getByRole("button", { name: "Delete Branch" }).click();

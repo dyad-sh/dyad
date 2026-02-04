@@ -25,6 +25,8 @@ import {
   Tablet,
   Smartphone,
   Pen,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { CopyErrorMessage } from "@/components/CopyErrorMessage";
@@ -47,6 +49,7 @@ import {
   screenshotDataUrlAtom,
   pendingVisualChangesAtom,
 } from "@/atoms/previewAtoms";
+import { isChatPanelHiddenAtom } from "@/atoms/viewAtoms";
 import { ComponentSelection } from "@/ipc/types";
 import {
   Popover,
@@ -219,6 +222,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [annotatorMode, setAnnotatorMode] = useAtom(annotatorModeAtom);
   const [screenshotDataUrl, setScreenshotDataUrl] = useAtom(
     screenshotDataUrlAtom,
+  );
+  const [isChatPanelHidden, setIsChatPanelHidden] = useAtom(
+    isChatPanelHiddenAtom,
   );
 
   const { addAttachments } = useAttachments();
@@ -983,6 +989,18 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         <div className="flex items-center p-2 border-b space-x-2">
           {/* Navigation Buttons */}
           <div className="flex space-x-1">
+            <button
+              onClick={() => setIsChatPanelHidden(!isChatPanelHidden)}
+              className="p-1 rounded transition-colors duration-200 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+              data-testid="preview-toggle-chat-panel-button"
+              title={isChatPanelHidden ? "Show chat" : "Hide chat"}
+            >
+              {isChatPanelHidden ? (
+                <Maximize2 size={16} />
+              ) : (
+                <Minimize2 size={16} />
+              )}
+            </button>
             <button
               onClick={handleActivateComponentSelector}
               className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${

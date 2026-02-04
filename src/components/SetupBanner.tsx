@@ -10,6 +10,7 @@ import {
   Folder,
 } from "lucide-react";
 import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
+import { SECTION_IDS } from "@/lib/settingsSearchIndex";
 
 import SetupProviderCard from "@/components/SetupProviderCard";
 
@@ -125,7 +126,7 @@ export function SetupBanner() {
 
   const handleOtherProvidersClick = () => {
     posthog.capture("setup-flow:ai-provider-setup:other:click");
-    settingsScrollAndNavigateTo("provider-settings");
+    settingsScrollAndNavigateTo(SECTION_IDS.providers);
   };
 
   const handleNodeInstallClick = useCallback(async () => {

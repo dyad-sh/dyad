@@ -1,4 +1,5 @@
 import { atom } from "jotai";
+import { SECTION_IDS } from "@/lib/settingsSearchIndex";
 
 export const isPreviewOpenAtom = atom(true);
 export const selectedFileAtom = atom<{
@@ -6,5 +7,5 @@ export const selectedFileAtom = atom<{
   line?: number | null;
 } | null>(null);
 export const activeSettingsSectionAtom = atom<string | null>(
-  "general-settings",
+  SECTION_IDS.general,
 );

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useScrollAndNavigateTo } from "@/hooks/useScrollAndNavigateTo";
 import { useAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
-import { SETTINGS_SEARCH_INDEX } from "@/lib/settingsSearchIndex";
+import { SECTION_IDS, SETTINGS_SEARCH_INDEX } from "@/lib/settingsSearchIndex";
 import Fuse from "fuse.js";
 import { SearchIcon, XIcon } from "lucide-react";
 
@@ -14,19 +14,16 @@ type SettingsSection = {
 };
 
 const SETTINGS_SECTIONS: SettingsSection[] = [
-  { id: "general-settings", label: "General" },
-  { id: "workflow-settings", label: "Workflow" },
-  { id: "ai-settings", label: "AI" },
-  { id: "provider-settings", label: "Model Providers" },
-  { id: "telemetry", label: "Telemetry" },
-  { id: "integrations", label: "Integrations" },
-  {
-    id: "agent-permissions",
-    label: "Agent Permissions",
-  },
-  { id: "tools-mcp", label: "Tools (MCP)" },
-  { id: "experiments", label: "Experiments" },
-  { id: "danger-zone", label: "Danger Zone" },
+  { id: SECTION_IDS.general, label: "General" },
+  { id: SECTION_IDS.workflow, label: "Workflow" },
+  { id: SECTION_IDS.ai, label: "AI" },
+  { id: SECTION_IDS.providers, label: "Model Providers" },
+  { id: SECTION_IDS.telemetry, label: "Telemetry" },
+  { id: SECTION_IDS.integrations, label: "Integrations" },
+  { id: SECTION_IDS.agentPermissions, label: "Agent Permissions" },
+  { id: SECTION_IDS.toolsMcp, label: "Tools (MCP)" },
+  { id: SECTION_IDS.experiments, label: "Experiments" },
+  { id: SECTION_IDS.dangerZone, label: "Danger Zone" },
 ];
 
 const fuse = new Fuse(SETTINGS_SEARCH_INDEX, {

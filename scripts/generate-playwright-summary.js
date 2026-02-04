@@ -74,26 +74,28 @@ function parseTestTitle(fullTitle) {
 function isSnapshotFailure(errorMessage) {
   if (!errorMessage) return false;
   const lower = errorMessage.toLowerCase();
-  return (
-    lower.includes("screenshot comparison failed") ||
-    lower.includes("snapshot comparison failed") ||
-    lower.includes("expected to match snapshot") ||
-    lower.includes("tomatchsnapshot") ||
-    lower.includes("tohavescreenshot") ||
-    lower.includes("screenshots are different") ||
-    lower.includes("snapshots don't match") ||
-    lower.includes("snapshot mismatch") ||
-    lower.includes("a]snapshot") ||
-    lower.includes("ratio of different pixels")
-  );
+  return [
+    "screenshot comparison failed",
+    "snapshot comparison failed",
+    "expected to match snapshot",
+    "tomatchsnapshot",
+    "tohavescreenshot",
+    "screenshots are different",
+    "snapshots don't match",
+    "snapshot mismatch",
+    "a snapshot",
+    "ratio of different pixels",
+  ].some((pattern) => lower.includes(pattern));
 }
 
 // Generate copy-paste command for running a specific test
 function generateTestCommand(fullTitle) {
   const { specFile, testName } = parseTestTitle(fullTitle);
+  // Sanitize specFile to only allow safe path characters
+  const safeSpecFile = specFile.replace(/[^a-zA-Z0-9._\-/]/g, "");
   // Escape special characters in testName for the grep pattern
-  const escapedTestName = testName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return `npm run e2e e2e-tests/${specFile} -- -g "${escapedTestName}"`;
+  const escapedTestName = testName.replace(/[.*+?^${}()|[\]\\`]/g, "\\$&");
+  return `npm run e2e e2e-tests/${safeSpecFile} -- -g "${escapedTestName}"`;
 }
 
 function detectOperatingSystemsFromReport(report) {
@@ -401,8 +403,8 @@ async function run({ github, context, core }) {
         const snapshot = isSnapshotFailure(f.error);
         const errorPreview =
           f.error.length > 120 ? f.error.substring(0, 120) + "..." : f.error;
-        comment += `\n# ${f.title}\n`;
-        comment += `# Expected: ${errorPreview}\n`;
+        comment += `\n# ${f.title.replace(/\n/g, " ")}\n`;
+        comment += `# Expected: ${errorPreview.replace(/\n/g, " ")}\n`;
         if (snapshot) {
           comment += `${cmd} --update-snapshots\n`;
         } else {

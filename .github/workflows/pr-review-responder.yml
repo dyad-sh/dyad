@@ -66,8 +66,8 @@ jobs:
               pull_number: prNumber
             });
 
-            // Only allow wwwillchen to use this workflow
-            if (pr.user.login !== 'wwwillchen') {
+            // Only allow wwwillchen and wwwillchen-bot to use this workflow
+            if (pr.user.login !== 'wwwillchen' && pr.user.login !== 'wwwillchen-bot') {
               console.log(`PR #${prNumber} author ${pr.user.login} is not allowed to use this workflow`);
               core.setOutput('should_continue', 'false');
               return;

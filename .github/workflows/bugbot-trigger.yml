@@ -18,6 +18,7 @@ jobs:
     if: |
       github.event_name == 'workflow_dispatch' ||
       ((github.event.pull_request.user.login == 'wwwillchen' ||
+      github.event.pull_request.user.login == 'wwwillchen-bot' ||
       github.event.pull_request.user.login == 'azizmejri1' ||
       github.event.pull_request.user.login == 'princeaden1') &&
       !contains(github.event.pull_request.body, '#skip-bugbot') &&

@@ -6,20 +6,23 @@ testSkipIfWindows("toggle chat panel visibility", async ({ po }) => {
   // We are in the chat view after setUp
   await po.sendPrompt("basic");
 
-  // Chat panel should be visible initially.
-  const chatPanel = po.page.locator("#chat-panel");
-  await expect(chatPanel).toBeVisible();
+  // Chat panel content should be visible initially.
+  // We check the ChatPanel content rather than the panel container itself,
+  // since the container is always present but resized to 1% when collapsed.
+  const chatPanelContent = po.page.getByTestId("messages-list");
+  await expect(chatPanelContent).toBeVisible();
 
   // Toggle button
   const toggleButton = po.page.getByTestId("preview-toggle-chat-panel-button");
   // Collapse
   await toggleButton.click();
 
-  await expect(chatPanel).toBeHidden();
+  // When collapsed, the ChatPanel component is not rendered (isChatPanelHidden = true)
+  await expect(chatPanelContent).toBeHidden();
 
   // Expand
   await toggleButton.click();
 
-  // Expect chat panel to be visible
-  await expect(chatPanel).toBeVisible();
+  // Expect chat panel content to be visible again
+  await expect(chatPanelContent).toBeVisible();
 });

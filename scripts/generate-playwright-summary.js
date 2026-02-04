@@ -459,20 +459,19 @@ async function run({ github, context, core }) {
       );
 
       if (botComment) {
-        await github.rest.issues.updateComment({
+        await github.rest.issues.deleteComment({
           owner: context.repo.owner,
           repo: context.repo.repo,
           comment_id: botComment.id,
-          body: comment,
-        });
-      } else {
-        await github.rest.issues.createComment({
-          owner: context.repo.owner,
-          repo: context.repo.repo,
-          issue_number: prNumber,
-          body: comment,
         });
       }
+
+      await github.rest.issues.createComment({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        issue_number: prNumber,
+        body: comment,
+      });
     } catch (error) {
       // Handle permission errors gracefully (common for fork PRs)
       if (error.status === 403) {

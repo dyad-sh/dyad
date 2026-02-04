@@ -3,17 +3,28 @@ import { Button } from "@/components/ui/button";
 import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
 
 const CONTEXT_LIMIT_THRESHOLD = 40_000;
+const LONG_CONTEXT_THRESHOLD = 200_000;
 
 interface ContextLimitBannerProps {
   totalTokens?: number | null;
   contextWindow?: number;
 }
 
-function formatTokenCount(count: number): string {
-  if (count >= 1000) {
-    return `${(count / 1000).toFixed(1)}k`.replace(".0k", "k");
+/** Check if the context limit banner should be shown */
+export function shouldShowContextLimitBanner({
+  totalTokens,
+  contextWindow,
+}: ContextLimitBannerProps): boolean {
+  if (!totalTokens || !contextWindow) {
+    return false;
   }
-  return count.toString();
+  // Show if long context (costs extra)
+  if (totalTokens > LONG_CONTEXT_THRESHOLD) {
+    return true;
+  }
+  // Show if close to context limit
+  const tokensRemaining = contextWindow - totalTokens;
+  return tokensRemaining <= CONTEXT_LIMIT_THRESHOLD;
 }
 
 export function ContextLimitBanner({
@@ -22,43 +33,34 @@ export function ContextLimitBanner({
 }: ContextLimitBannerProps) {
   const { handleSummarize } = useSummarizeInNewChat();
 
-  // Don't show banner if we don't have the necessary data
-  if (!totalTokens || !contextWindow) {
+  if (!shouldShowContextLimitBanner({ totalTokens, contextWindow })) {
     return null;
   }
 
-  // Check if we're within 40k tokens of the context limit
-  const tokensRemaining = contextWindow - totalTokens;
-  if (tokensRemaining > CONTEXT_LIMIT_THRESHOLD) {
-    return null;
-  }
+  const tokensRemaining = contextWindow! - totalTokens!;
+  const isNearLimit = tokensRemaining <= CONTEXT_LIMIT_THRESHOLD;
+  const message = isNearLimit
+    ? "This chat context is running out"
+    : "Long chat context costs extra";
 
   return (
     <div
-      className="mx-auto max-w-3xl my-3 p-2 rounded-lg border border-amber-500/30 bg-amber-500/10 flex flex-col gap-2"
+      className="mx-auto max-w-3xl px-3 py-1.5 rounded-t-md border-t border-l border-r border-amber-500/30 bg-amber-500/10 flex items-center justify-between gap-3 text-xs text-amber-600 dark:text-amber-500"
       data-testid="context-limit-banner"
     >
-      <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-5 w-5 p-0 hover:bg-transparent text-amber-600 dark:text-amber-400 cursor-help"
-          title={`Used: ${formatTokenCount(totalTokens)} / Limit: ${formatTokenCount(contextWindow)}`}
-        >
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-        </Button>
-        <p className="text-sm font-medium">
-          You're close to the context limit for this chat.
-        </p>
-      </div>
+      <span className="flex items-center gap-1.5">
+        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+        <span>{message}</span>
+      </span>
       <Button
         onClick={handleSummarize}
         variant="outline"
         size="sm"
-        className="h-8 border-amber-500/50 hover:bg-amber-500/20 hover:border-amber-500 text-amber-600 dark:text-amber-400"
+        className="h-6 px-2 text-xs border-amber-500/40 bg-amber-500/5 text-amber-600 dark:text-amber-500 hover:bg-amber-500/20 hover:border-amber-500/60"
+        title="Summarize to new chat"
       >
-        Summarize into new chat
-        <ArrowRight className="h-3 w-3 ml-2" />
+        Summarize
+        <ArrowRight className="h-3 w-3 ml-1" />
       </Button>
     </div>
   );

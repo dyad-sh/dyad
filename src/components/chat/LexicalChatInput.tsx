@@ -27,6 +27,7 @@ import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { MENTION_REGEX, parseAppMentions } from "@/shared/parse_mention_apps";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import { AutocompletePlugin } from "./plugins/AutocompletePlugin";
 
 // Define the theme for mentions
 const beautifulMentionsTheme: BeautifulMentionsTheme = {
@@ -238,6 +239,10 @@ interface LexicalChatInputProps {
   disabled?: boolean;
   excludeCurrentApp: boolean;
   disableSendButton: boolean;
+  chatId?: number;
+  appId?: number | null;
+  isStreaming?: boolean;
+  autocompleteEnabled?: boolean;
 }
 
 function onError(error: Error) {
@@ -253,6 +258,10 @@ export function LexicalChatInput({
   placeholder = "Ask Dyad to build...",
   disabled = false,
   disableSendButton,
+  chatId,
+  appId,
+  isStreaming = false,
+  autocompleteEnabled = false,
 }: LexicalChatInputProps) {
   const { apps } = useLoadApps();
   const { prompts } = usePrompts();
@@ -424,6 +433,9 @@ export function LexicalChatInput({
           shouldClear={shouldClear}
           onCleared={handleCleared}
         />
+        {autocompleteEnabled && !isStreaming && (
+          <AutocompletePlugin chatId={chatId} appId={appId} />
+        )}
       </div>
     </LexicalComposer>
   );

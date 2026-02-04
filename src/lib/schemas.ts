@@ -302,6 +302,7 @@ export const UserSettingsSchema = z
     previewDeviceMode: DeviceModeSchema.optional(),
 
     enableAutoFixProblems: z.boolean().optional(),
+    enableAutocomplete: z.boolean().optional(),
     autoExpandPreviewPanel: z.boolean().optional(),
     enableChatCompletionNotifications: z.boolean().optional(),
     enableNativeGit: z.boolean().optional(),

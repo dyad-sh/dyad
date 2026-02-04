@@ -167,3 +167,9 @@ Add `#skip-bugbot` to the PR description for trivial PRs that won't affect end-u
 - Linting or test setup changes
 - Documentation-only changes
 - CI/build configuration updates
+
+## Learnings
+
+- **AI SDK `generateText()` uses `maxOutputTokens`, not `maxTokens`**: The `ai` package's `generateText()` and `streamText()` functions use `maxOutputTokens` for limiting output length. Using `maxTokens` will cause a TypeScript error: `'maxTokens' does not exist in type 'CallSettings & ...'`. Reference: `src/ipc/handlers/chat_stream_handlers.ts` uses `maxOutputTokens`.
+- **Snapshot tests for `readSettings` must be updated when adding new settings**: Adding a new field to the UserSettings schema (e.g., in `src/lib/schemas.ts`) with a default value will break inline snapshots in `src/__tests__/readSettings.test.ts`. Use `npx vitest run src/__tests__/readSettings.test.ts --update` to auto-update them rather than manually editing snapshot positions.
+- **IPC contract pattern**: New IPC endpoints follow the contract pattern in `src/ipc/types/`. Create a contract file, export from `src/ipc/types/index.ts` (add to `ipc` object), register channels in `src/ipc/preload/channels.ts`, and register handlers in `src/ipc/ipc_host.ts`. See `src/ipc/types/help.ts` as a minimal reference.

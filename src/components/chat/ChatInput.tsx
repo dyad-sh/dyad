@@ -464,6 +464,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               placeholder="Ask Dyad to build..."
               excludeCurrentApp={true}
               disableSendButton={disableSendButton}
+              chatId={chatId}
+              appId={appId}
+              isStreaming={isStreaming}
+              autocompleteEnabled={settings.enableAutocomplete ?? false}
             />
 
             {isStreaming ? (

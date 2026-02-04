@@ -20,6 +20,7 @@ import { SupabaseIntegration } from "@/components/SupabaseIntegration";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { AutoFixProblemsSwitch } from "@/components/AutoFixProblemsSwitch";
+import { AutocompleteSwitch } from "@/components/AutocompleteSwitch";
 import { AutoExpandPreviewSwitch } from "@/components/AutoExpandPreviewSwitch";
 import { ChatCompletionNotificationSwitch } from "@/components/ChatCompletionNotificationSwitch";
 import { AutoUpdateSwitch } from "@/components/AutoUpdateSwitch";
@@ -342,6 +343,13 @@ export function WorkflowSettings() {
         <AutoFixProblemsSwitch />
         <div className="text-sm text-gray-500 dark:text-gray-400">
           This will automatically fix TypeScript errors.
+        </div>
+      </div>
+
+      <div className="space-y-1 mt-4">
+        <AutocompleteSwitch />
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          Show AI-powered suggestions as you type in the chat input.
         </div>
       </div>
 

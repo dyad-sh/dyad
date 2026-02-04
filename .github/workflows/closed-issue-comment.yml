@@ -14,7 +14,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - uses: anthropics/claude-code-base-action@v1
+      - uses: anthropics/claude-code-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
@@ -23,8 +23,8 @@ jobs:
           COMMENT_BODY: ${{ github.event.comment.body }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          model: claude-sonnet-4-20250514
-          allowed_tools: "Bash(gh issue reopen:*), Bash(gh issue comment:*)"
+          claude_args: |
+            --model sonnet --allowedTools "Bash(gh issue reopen:*), Bash(gh issue comment:*)"
           prompt: |
             # Closed Issue Comment Handler
 

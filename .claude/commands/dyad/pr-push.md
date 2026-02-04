@@ -87,23 +87,34 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    b. If there is NO upstream, check if a PR already exists and determine which remote it was opened from:
 
+   First, get the PR's head repository as `owner/repo`:
+
    ```
-   gh pr view --json headRepositoryOwner,headRepository --jq '"git@github.com:" + .headRepositoryOwner.login + "/" + .headRepository.name + ".git"'
+   gh pr view --json headRepository --jq .headRepository.nameWithOwner
    ```
 
-   Then find which local remote matches that URL:
+   **Error handling:** If `gh pr view` exits with a non-zero status, check whether the error indicates "no PR found" (expected — proceed to step c) or another failure (auth, network, ambiguous branch — report the error and stop rather than silently falling back).
+
+   If a PR exists, find which local remote corresponds to that `owner/repo`. List all remotes and extract the `owner/repo` portion from each URL:
 
    ```
    git remote -v
    ```
 
-   Match the PR's repository URL to a local remote name. Push to that remote:
+   For each remote URL, extract the `owner/repo` by stripping the protocol/hostname prefix and `.git` suffix. This handles all URL formats:
+   - SSH: `git@github.com:owner/repo.git` → `owner/repo`
+   - HTTPS: `https://github.com/owner/repo.git` → `owner/repo`
+   - Token-authenticated: `https://x-access-token:...@github.com/owner/repo.git` → `owner/repo`
+
+   Match the PR's `owner/repo` against each remote's extracted `owner/repo`. If multiple remotes match (e.g., both SSH and HTTPS URLs for the same repo), prefer the first match. If no remote matches (e.g., the fork is not configured locally), proceed to step c.
+
+   Push to the matched remote:
 
    ```
    git push --force-with-lease -u <matched-remote> HEAD
    ```
 
-   c. If no PR exists and there is no upstream, fall back to `origin`:
+   c. If no PR exists (or no matching remote was found) and there is no upstream, fall back to `origin`. If pushing to `origin` fails due to permission errors, try pushing to `upstream` instead (per the project's git workflow in CLAUDE.md). Report which remote was used.
 
    ```
    git push --force-with-lease -u origin HEAD

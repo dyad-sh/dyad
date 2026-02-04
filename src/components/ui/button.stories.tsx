@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { Mail } from "lucide-react";
 import { Button } from "./button";
 
 const meta: Meta<typeof Button> = {
@@ -18,7 +19,7 @@ const meta: Meta<typeof Button> = {
     },
     size: {
       control: "select",
-      options: ["default", "sm", "lg", "icon"],
+      options: ["default", "sm", "lg", "icon", "sidebar"],
     },
   },
 };
@@ -78,5 +79,19 @@ export const Large: Story = {
   args: {
     size: "lg",
     children: "Large",
+  },
+};
+
+export const Icon: Story = {
+  args: {
+    size: "icon",
+    children: <Mail className="size-4" />,
+  },
+};
+
+export const Sidebar: Story = {
+  args: {
+    size: "sidebar",
+    children: <Mail className="size-8" />,
   },
 };

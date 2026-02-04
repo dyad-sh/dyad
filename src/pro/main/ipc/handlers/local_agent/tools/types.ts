@@ -63,6 +63,11 @@ export interface AgentContext {
    */
   isBasicAgentMode: boolean;
   /**
+   * If true, the user has Dyad Pro enabled.
+   * Engine-dependent tools require this to access the Dyad Pro API.
+   */
+  isDyadPro: boolean;
+  /**
    * Streams accumulated XML to UI without persisting to DB (for live preview).
    * Call this repeatedly with the full accumulated XML so far.
    */

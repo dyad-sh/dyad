@@ -31,7 +31,7 @@ testSkipIfWindows("supabase migrations", async ({ po }) => {
   await expect(migrationsSwitch).toBeVisible({ timeout: Timeout.MEDIUM });
   await migrationsSwitch.click();
   // Wait for the setting to be persisted
-  await po.waitForToast("success");
+  await expect(migrationsSwitch).toBeChecked();
   await po.goToChatTab();
 
   // Send a prompt that triggers a migration
@@ -97,7 +97,7 @@ testSkipIfWindows("supabase migrations with native git", async ({ po }) => {
   await expect(migrationsSwitch).toBeVisible({ timeout: Timeout.MEDIUM });
   await migrationsSwitch.click();
   // Wait for the setting to be persisted
-  await po.waitForToast("success");
+  await expect(migrationsSwitch).toBeChecked();
   await po.goToChatTab();
 
   // Send a prompt that triggers a migration

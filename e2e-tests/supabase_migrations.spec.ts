@@ -26,6 +26,7 @@ testSkipIfWindows("supabase migrations", async ({ po }) => {
   // Go to settings to find the Supabase integration
   await po.goToSettingsTab();
   const migrationsSwitch = po.page.locator("#supabase-migrations");
+  await migrationsSwitch.scrollIntoViewIfNeeded();
   await migrationsSwitch.click();
   await po.goToChatTab();
 
@@ -87,6 +88,7 @@ testSkipIfWindows("supabase migrations with native git", async ({ po }) => {
   // Go to settings to find the Supabase integration
   await po.goToSettingsTab();
   const migrationsSwitch = po.page.locator("#supabase-migrations");
+  await migrationsSwitch.scrollIntoViewIfNeeded();
   await migrationsSwitch.click();
   await po.goToChatTab();
 

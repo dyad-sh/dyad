@@ -326,13 +326,13 @@ body[data-scroll-locked] .app-region-drag {
   }
 }
 
-.dark .settings-highlight {
-  animation: settings-highlight-dark 1.5s ease-out;
-}
-
 .settings-highlight {
   animation: settings-highlight 1.5s ease-out;
   border-radius: 0.5rem;
+}
+
+.dark .settings-highlight {
+  animation: settings-highlight-dark 1.5s ease-out;
 }
 
 @keyframes settings-highlight-dark {

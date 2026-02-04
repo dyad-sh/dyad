@@ -351,7 +351,7 @@ export function WorkflowSettings() {
         </div>
       </div>
 
-      <div className="space-y-1 mt-4">
+      <div id="setting-chat-completion-notification" className="space-y-1 mt-4">
         <ChatCompletionNotificationSwitch />
         <div className="text-sm text-gray-500 dark:text-gray-400">
           Show a native notification when a chat response completes while the

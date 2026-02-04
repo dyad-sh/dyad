@@ -92,6 +92,15 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     sectionId: "workflow-settings",
     sectionLabel: "Workflow",
   },
+  {
+    id: "setting-chat-completion-notification",
+    label: "Chat Completion Notification",
+    description:
+      "Show a native notification when a chat response completes while the app is not focused",
+    keywords: ["notification", "chat", "complete", "alert", "background"],
+    sectionId: "workflow-settings",
+    sectionLabel: "Workflow",
+  },
 
   // AI Settings
   {

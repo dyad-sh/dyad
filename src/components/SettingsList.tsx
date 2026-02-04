@@ -57,8 +57,6 @@ export function SettingsList({ show }: { show: boolean }) {
     highlight: true,
   });
 
-  const settingsSections = SETTINGS_SECTIONS;
-
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return null;
     return fuse.search(searchQuery.trim());
@@ -77,7 +75,7 @@ export function SettingsList({ show }: { show: boolean }) {
       { rootMargin: "-20% 0px -80% 0px", threshold: 0 },
     );
 
-    for (const section of settingsSections) {
+    for (const section of SETTINGS_SECTIONS) {
       const el = document.getElementById(section.id);
       if (el) {
         observer.observe(el);
@@ -87,13 +85,11 @@ export function SettingsList({ show }: { show: boolean }) {
     return () => {
       observer.disconnect();
     };
-  }, [settingsSections, setActiveSection]);
+  }, [SETTINGS_SECTIONS, setActiveSection]);
 
   if (!show) {
     return null;
   }
-
-  const handleScrollAndNavigateTo = scrollAndNavigateTo;
 
   return (
     <div className="flex flex-col h-full">
@@ -107,6 +103,7 @@ export function SettingsList({ show }: { show: boolean }) {
             ref={inputRef}
             type="text"
             placeholder="Search settings..."
+            aria-label="Search settings"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full rounded-md border border-input bg-transparent pl-8 pr-8 py-1.5 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -118,6 +115,7 @@ export function SettingsList({ show }: { show: boolean }) {
                 inputRef.current?.focus();
               }}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              aria-label="Clear search"
             >
               <XIcon className="h-3.5 w-3.5" />
             </button>
@@ -132,7 +130,10 @@ export function SettingsList({ show }: { show: boolean }) {
                 <button
                   key={result.item.id}
                   onClick={() => {
-                    scrollAndNavigateToWithHighlight(result.item.id);
+                    scrollAndNavigateToWithHighlight(
+                      result.item.id,
+                      result.item.sectionId,
+                    );
                     setSearchQuery("");
                   }}
                   className="w-full text-left px-3 py-2 rounded-md text-sm transition-colors hover:bg-sidebar-accent"
@@ -149,10 +150,10 @@ export function SettingsList({ show }: { show: boolean }) {
               </div>
             )
           ) : (
-            settingsSections.map((section) => (
+            SETTINGS_SECTIONS.map((section) => (
               <button
                 key={section.id}
-                onClick={() => handleScrollAndNavigateTo(section.id)}
+                onClick={() => scrollAndNavigateTo(section.id)}
                 className={cn(
                   "w-full text-left px-3 py-2 rounded-md text-sm transition-colors",
                   activeSection === section.id

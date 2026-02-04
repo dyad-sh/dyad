@@ -76,6 +76,11 @@ import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   ContextLimitBanner,
   shouldShowContextLimitBanner,
 } from "./ContextLimitBanner";
@@ -430,16 +435,23 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           ) : (
             selectedComponents.length > 0 && (
               <div className="border-b border-border p-3 bg-muted/30">
-                <button
-                  onClick={() => {
-                    ipc.system.openExternalUrl("https://dyad.sh/pro");
-                  }}
-                  className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors cursor-pointer"
-                  title="Visual editing lets you make UI changes without AI and is a Pro-only feature"
-                >
-                  <Lock size={16} />
-                  <span className="font-medium">Visual editor (Pro)</span>
-                </button>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <button
+                      onClick={() => {
+                        ipc.system.openExternalUrl("https://dyad.sh/pro");
+                      }}
+                      className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+                    >
+                      <Lock size={16} />
+                      <span className="font-medium">Visual editor (Pro)</span>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Visual editing lets you make UI changes without AI and is a
+                    Pro-only feature
+                  </TooltipContent>
+                </Tooltip>
               </div>
             )
           )}
@@ -467,25 +479,33 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             />
 
             {isStreaming ? (
-              <button
-                onClick={handleCancel}
-                className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg"
-                title="Cancel generation"
-              >
-                <StopCircleIcon size={20} />
-              </button>
+              <Tooltip>
+                <TooltipTrigger>
+                  <button
+                    onClick={handleCancel}
+                    className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg"
+                  >
+                    <StopCircleIcon size={20} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Cancel generation</TooltipContent>
+              </Tooltip>
             ) : (
-              <button
-                onClick={handleSubmit}
-                disabled={
-                  (!inputValue.trim() && attachments.length === 0) ||
-                  disableSendButton
-                }
-                className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
-                title="Send message"
-              >
-                <SendHorizontalIcon size={20} />
-              </button>
+              <Tooltip>
+                <TooltipTrigger>
+                  <button
+                    onClick={handleSubmit}
+                    disabled={
+                      (!inputValue.trim() && attachments.length === 0) ||
+                      disableSendButton
+                    }
+                    className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
+                  >
+                    <SendHorizontalIcon size={20} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Send message</TooltipContent>
+              </Tooltip>
             )}
           </div>
           <div className="pl-2 pr-1 flex items-center justify-between pb-2">
@@ -519,15 +539,19 @@ function SuggestionButton({
 }) {
   const { isStreaming } = useStreamChat();
   return (
-    <Button
-      disabled={isStreaming}
-      variant="outline"
-      size="sm"
-      onClick={onClick}
-      title={tooltipText}
-    >
-      {children}
-    </Button>
+    <Tooltip>
+      <TooltipTrigger>
+        <Button
+          disabled={isStreaming}
+          variant="outline"
+          size="sm"
+          onClick={onClick}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{tooltipText}</TooltipContent>
+    </Tooltip>
   );
 }
 

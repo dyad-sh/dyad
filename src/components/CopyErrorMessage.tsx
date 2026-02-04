@@ -1,5 +1,10 @@
 import { Copy, Check } from "lucide-react";
 import { useState } from "react";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 
 interface CopyErrorMessageProps {
   errorMessage: string;
@@ -24,26 +29,32 @@ export const CopyErrorMessage = ({
   };
 
   return (
-    <button
-      onClick={handleCopy}
-      className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
-        isCopied
-          ? "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300"
-          : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
-      } ${className}`}
-      title={isCopied ? "Copied!" : "Copy error message"}
-    >
-      {isCopied ? (
-        <>
-          <Check size={14} />
-          <span>Copied</span>
-        </>
-      ) : (
-        <>
-          <Copy size={14} />
-          <span>Copy</span>
-        </>
-      )}
-    </button>
+    <Tooltip>
+      <TooltipTrigger>
+        <button
+          onClick={handleCopy}
+          className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
+            isCopied
+              ? "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300"
+              : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+          } ${className}`}
+        >
+          {isCopied ? (
+            <>
+              <Check size={14} />
+              <span>Copied</span>
+            </>
+          ) : (
+            <>
+              <Copy size={14} />
+              <span>Copy</span>
+            </>
+          )}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>
+        {isCopied ? "Copied!" : "Copy error message"}
+      </TooltipContent>
+    </Tooltip>
   );
 };

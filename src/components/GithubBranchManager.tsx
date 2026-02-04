@@ -35,6 +35,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -414,14 +419,20 @@ export function GithubBranchManager({
         </Select>
 
         <DropdownMenu>
-          <DropdownMenuTrigger
-            className={cn(buttonVariants({ variant: "outline", size: "icon" }))}
-            title="Branch actions"
-            aria-label="Branch actions"
-            data-testid="branch-actions-menu-trigger"
-          >
-            <EllipsisVertical className="h-4 w-4" />
-          </DropdownMenuTrigger>
+          <Tooltip>
+            <TooltipTrigger>
+              <DropdownMenuTrigger
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "icon" }),
+                )}
+                aria-label="Branch actions"
+                data-testid="branch-actions-menu-trigger"
+              >
+                <EllipsisVertical className="h-4 w-4" />
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>Branch actions</TooltipContent>
+          </Tooltip>
           <DropdownMenuContent align="end">
             <DropdownMenuItem
               onClick={() => setShowCreateDialog(true)}

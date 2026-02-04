@@ -5,6 +5,11 @@ import {
   SelectItem,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import { useSettings } from "@/hooks/useSettings";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import type { ChatMode } from "@/lib/schemas";
@@ -91,19 +96,25 @@ export function ChatModeSelector() {
       value={selectedMode}
       onValueChange={(v) => v && handleModeChange(v)}
     >
-      <MiniSelectTrigger
-        data-testid="chat-mode-selector"
-        title={`Open mode menu (${isMac ? "⌘ + ." : "Ctrl + ."} to toggle)`}
-        className={cn(
-          "h-6 w-fit px-1.5 py-0 text-xs-sm font-medium shadow-none gap-0.5",
-          selectedMode === "build" || selectedMode === "local-agent"
-            ? "bg-background hover:bg-muted/50 focus:bg-muted/50"
-            : "bg-primary/10 hover:bg-primary/20 focus:bg-primary/20 text-primary border-primary/20 dark:bg-primary/20 dark:hover:bg-primary/30 dark:focus:bg-primary/30",
-        )}
-        size="sm"
-      >
-        <SelectValue>{getModeDisplayName(selectedMode)}</SelectValue>
-      </MiniSelectTrigger>
+      <Tooltip>
+        <TooltipTrigger>
+          <MiniSelectTrigger
+            data-testid="chat-mode-selector"
+            className={cn(
+              "h-6 w-fit px-1.5 py-0 text-xs-sm font-medium shadow-none gap-0.5",
+              selectedMode === "build" || selectedMode === "local-agent"
+                ? "bg-background hover:bg-muted/50 focus:bg-muted/50"
+                : "bg-primary/10 hover:bg-primary/20 focus:bg-primary/20 text-primary border-primary/20 dark:bg-primary/20 dark:hover:bg-primary/30 dark:focus:bg-primary/30",
+            )}
+            size="sm"
+          >
+            <SelectValue>{getModeDisplayName(selectedMode)}</SelectValue>
+          </MiniSelectTrigger>
+        </TooltipTrigger>
+        <TooltipContent>
+          {`Open mode menu (${isMac ? "\u2318 + ." : "Ctrl + ."} to toggle)`}
+        </TooltipContent>
+      </Tooltip>
       <SelectContent align="start">
         {isProEnabled && (
           <SelectItem value="local-agent">

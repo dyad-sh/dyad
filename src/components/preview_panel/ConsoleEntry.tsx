@@ -7,6 +7,11 @@ import {
 } from "lucide-react";
 import { useSetAtom } from "jotai";
 import { chatInputValueAtom } from "@/atoms/chatAtoms";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 
 interface ConsoleEntryProps {
   type: "server" | "client" | "edge-function" | "network-requests";
@@ -120,14 +125,18 @@ export const ConsoleEntryComponent = (props: ConsoleEntryProps) => {
           )}
         </span>
       </div>
-      <button
-        onClick={handleSendToChat}
-        title="Send to chat"
-        className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
-        data-testid="send-to-chat"
-      >
-        <MessageSquare size={12} className="text-gray-500" />
-      </button>
+      <Tooltip>
+        <TooltipTrigger>
+          <button
+            onClick={handleSendToChat}
+            className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
+            data-testid="send-to-chat"
+          >
+            <MessageSquare size={12} className="text-gray-500" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>Send to chat</TooltipContent>
+      </Tooltip>
     </div>
   );
 };

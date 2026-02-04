@@ -24,6 +24,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import { showError, showSuccess } from "@/lib/toast";
 import { useMutation } from "@tanstack/react-query";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
@@ -170,19 +175,23 @@ export const ActionHeader = () => {
     badge?: React.ReactNode,
   ) => {
     return (
-      <button
-        data-testid={testId}
-        ref={ref}
-        className="no-app-region-drag cursor-pointer relative flex items-center gap-0.5 px-2 py-0.5 rounded-md text-xs font-medium z-10 hover:bg-[var(--background)] flex-col"
-        onClick={() => selectPanel(mode)}
-        title={isCompact ? text : undefined}
-      >
-        {icon}
-        <span>
-          {!isCompact && <span>{text}</span>}
-          {badge}
-        </span>
-      </button>
+      <Tooltip>
+        <TooltipTrigger>
+          <button
+            data-testid={testId}
+            ref={ref}
+            className="no-app-region-drag cursor-pointer relative flex items-center gap-0.5 px-2 py-0.5 rounded-md text-xs font-medium z-10 hover:bg-[var(--background)] flex-col"
+            onClick={() => selectPanel(mode)}
+          >
+            {icon}
+            <span>
+              {!isCompact && <span>{text}</span>}
+              {badge}
+            </span>
+          </button>
+        </TooltipTrigger>
+        {isCompact && <TooltipContent>{text}</TooltipContent>}
+      </Tooltip>
     );
   };
   const iconSize = 15;
@@ -255,13 +264,17 @@ export const ActionHeader = () => {
       <div className="flex items-center gap-1">
         <ChatActivityButton />
         <DropdownMenu>
-          <DropdownMenuTrigger
-            data-testid="preview-more-options-button"
-            className="no-app-region-drag flex items-center justify-center p-1.5 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
-            title="More options"
-          >
-            <MoreVertical size={16} />
-          </DropdownMenuTrigger>
+          <Tooltip>
+            <TooltipTrigger>
+              <DropdownMenuTrigger
+                data-testid="preview-more-options-button"
+                className="no-app-region-drag flex items-center justify-center p-1.5 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
+              >
+                <MoreVertical size={16} />
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>More options</TooltipContent>
+          </Tooltip>
           <DropdownMenuContent align="end" className="w-60">
             <DropdownMenuItem onClick={onCleanRestart}>
               <Cog size={16} />

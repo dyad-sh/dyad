@@ -21,6 +21,11 @@ import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 
 interface ChatMessageProps {
   message: Message;
@@ -122,19 +127,25 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
               {message.role === "assistant" &&
                 message.content &&
                 !isStreaming && (
-                  <button
-                    data-testid="copy-message-button"
-                    onClick={handleCopyFormatted}
-                    title={copied ? "Copied!" : "Copy"}
-                    className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
-                  >
-                    {copied ? (
-                      <Check className="h-4 w-4 text-green-500" />
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
-                    <span className="hidden sm:inline"></span>
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <button
+                        data-testid="copy-message-button"
+                        onClick={handleCopyFormatted}
+                        className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
+                      >
+                        {copied ? (
+                          <Check className="h-4 w-4 text-green-500" />
+                        ) : (
+                          <Copy className="h-4 w-4" />
+                        )}
+                        <span className="hidden sm:inline"></span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {copied ? "Copied!" : "Copy"}
+                    </TooltipContent>
+                  </Tooltip>
                 )}
               <div className="flex flex-wrap gap-2">
                 {message.approvalState && (
@@ -187,41 +198,45 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
               </div>
             )}
             {message.requestId && (
-              <button
-                onClick={() => {
-                  if (!message.requestId) return;
-                  navigator.clipboard
-                    .writeText(message.requestId)
-                    .then(() => {
-                      setCopiedRequestId(true);
-                      if (copiedRequestIdTimeoutRef.current) {
-                        clearTimeout(copiedRequestIdTimeoutRef.current);
-                      }
-                      copiedRequestIdTimeoutRef.current = setTimeout(
-                        () => setCopiedRequestId(false),
-                        2000,
-                      );
-                    })
-                    .catch(() => {
-                      // noop
-                    });
-                }}
-                title={
-                  copiedRequestId
+              <Tooltip>
+                <TooltipTrigger>
+                  <button
+                    onClick={() => {
+                      if (!message.requestId) return;
+                      navigator.clipboard
+                        .writeText(message.requestId)
+                        .then(() => {
+                          setCopiedRequestId(true);
+                          if (copiedRequestIdTimeoutRef.current) {
+                            clearTimeout(copiedRequestIdTimeoutRef.current);
+                          }
+                          copiedRequestIdTimeoutRef.current = setTimeout(
+                            () => setCopiedRequestId(false),
+                            2000,
+                          );
+                        })
+                        .catch(() => {
+                          // noop
+                        });
+                    }}
+                    className="flex items-center space-x-1 px-1 py-0.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
+                  >
+                    {copiedRequestId ? (
+                      <Check className="h-3 w-3 text-green-500" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
+                    <span className="text-xs">
+                      {copiedRequestId ? "Copied" : "Request ID"}
+                    </span>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {copiedRequestId
                     ? "Copied!"
-                    : `Copy Request ID: ${message.requestId.slice(0, 8)}...`
-                }
-                className="flex items-center space-x-1 px-1 py-0.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
-              >
-                {copiedRequestId ? (
-                  <Check className="h-3 w-3 text-green-500" />
-                ) : (
-                  <Copy className="h-3 w-3" />
-                )}
-                <span className="text-xs">
-                  {copiedRequestId ? "Copied" : "Request ID"}
-                </span>
-              </button>
+                    : `Copy Request ID: ${message.requestId.slice(0, 8)}...`}
+                </TooltipContent>
+              </Tooltip>
             )}
             {isLastMessage && message.totalTokens && (
               <div

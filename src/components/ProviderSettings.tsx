@@ -18,6 +18,11 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -123,26 +128,34 @@ export function ProviderSettingsGrid() {
                       className="flex items-center justify-end"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <Button
-                        data-testid="edit-custom-provider"
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 w-8 p-0 hover:bg-muted rounded-md"
-                        title="Edit Provider"
-                        onClick={() => handleEditProvider(provider)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        data-testid="delete-custom-provider"
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-md"
-                        title="Delete Provider"
-                        onClick={() => setProviderToDelete(provider.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <Button
+                            data-testid="edit-custom-provider"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 hover:bg-muted rounded-md"
+                            onClick={() => handleEditProvider(provider)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Edit Provider</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <Button
+                            data-testid="delete-custom-provider"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-md"
+                            onClick={() => setProviderToDelete(provider.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Delete Provider</TooltipContent>
+                      </Tooltip>
                     </div>
                   )}
                   <CardTitle className="text-lg font-medium mb-2">

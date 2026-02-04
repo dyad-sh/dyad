@@ -14,6 +14,11 @@ import { VersionPane } from "./chat/VersionPane";
 import { ChatError } from "./chat/ChatError";
 import { FreeAgentQuotaBanner } from "./chat/FreeAgentQuotaBanner";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import { ArrowDown } from "lucide-react";
 import { useSettings } from "@/hooks/useSettings";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
@@ -166,15 +171,19 @@ export function ChatPanel({
               {/* Scroll to bottom button */}
               {showScrollButton && (
                 <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10">
-                  <Button
-                    onClick={handleScrollButtonClick}
-                    size="icon"
-                    className="rounded-full shadow-lg hover:shadow-xl transition-all border border-border/50 backdrop-blur-sm bg-background/95 hover:bg-accent"
-                    variant="outline"
-                    title={"Scroll to bottom"}
-                  >
-                    <ArrowDown className="h-4 w-4" />
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <Button
+                        onClick={handleScrollButtonClick}
+                        size="icon"
+                        className="rounded-full shadow-lg hover:shadow-xl transition-all border border-border/50 backdrop-blur-sm bg-background/95 hover:bg-accent"
+                        variant="outline"
+                      >
+                        <ArrowDown className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Scroll to bottom</TooltipContent>
+                  </Tooltip>
                 </div>
               )}
             </div>

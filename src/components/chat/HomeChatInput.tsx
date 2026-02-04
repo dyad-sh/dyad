@@ -1,4 +1,9 @@
 import { SendIcon, StopCircleIcon } from "lucide-react";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 
 import { useSettings } from "@/hooks/useSettings";
 import { homeChatInputValueAtom } from "@/atoms/chatAtoms"; // Use a different atom for home input
@@ -101,21 +106,31 @@ export function HomeChatInput({
             />
 
             {isStreaming ? (
-              <button
-                className="px-2 py-2 mt-1 mr-1 text-(--sidebar-accent-fg) rounded-lg opacity-50 cursor-not-allowed" // Indicate disabled state
-                title="Cancel generation (unavailable here)"
-              >
-                <StopCircleIcon size={20} />
-              </button>
+              <Tooltip>
+                <TooltipTrigger>
+                  <button
+                    className="px-2 py-2 mt-1 mr-1 text-(--sidebar-accent-fg) rounded-lg opacity-50 cursor-not-allowed" // Indicate disabled state
+                  >
+                    <StopCircleIcon size={20} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Cancel generation (unavailable here)
+                </TooltipContent>
+              </Tooltip>
             ) : (
-              <button
-                onClick={handleCustomSubmit}
-                disabled={!inputValue.trim() && attachments.length === 0}
-                className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
-                title="Send message"
-              >
-                <SendIcon size={20} />
-              </button>
+              <Tooltip>
+                <TooltipTrigger>
+                  <button
+                    onClick={handleCustomSubmit}
+                    disabled={!inputValue.trim() && attachments.length === 0}
+                    className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
+                  >
+                    <SendIcon size={20} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Send message</TooltipContent>
+              </Tooltip>
             )}
           </div>
           <div className="pl-2 pr-1 flex items-center justify-between pb-2">

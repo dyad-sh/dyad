@@ -71,11 +71,39 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    You MUST push the branch to GitHub. Do NOT skip this step or ask for confirmation.
 
+   First, determine the correct remote to push to:
+
+   a. Check if the branch already tracks a remote:
+
+   ```
+   git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null
+   ```
+
+   If this succeeds (e.g., returns `origin/my-branch` or `someuser/my-branch`), the branch already has an upstream. Just push:
+
    ```
    git push --force-with-lease
    ```
 
-   If the branch has no upstream, set one:
+   b. If there is NO upstream, check if a PR already exists and determine which remote it was opened from:
+
+   ```
+   gh pr view --json headRepositoryOwner,headRepository --jq '"git@github.com:" + .headRepositoryOwner.login + "/" + .headRepository.name + ".git"'
+   ```
+
+   Then find which local remote matches that URL:
+
+   ```
+   git remote -v
+   ```
+
+   Match the PR's repository URL to a local remote name. Push to that remote:
+
+   ```
+   git push --force-with-lease -u <matched-remote> HEAD
+   ```
+
+   c. If no PR exists and there is no upstream, fall back to `origin`:
 
    ```
    git push --force-with-lease -u origin HEAD

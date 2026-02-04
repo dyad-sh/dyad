@@ -48,6 +48,16 @@ Similarly for GraphQL mutations, write the full query + variables as JSON and us
 gh api graphql --input .claude/tmp/resolve_thread.json
 ```
 
+## Resolving rebase conflicts when merging settings features
+
+When rebasing branches that both add new settings (e.g., context compaction + explore sub-agent), conflicts typically occur in:
+
+- `src/lib/schemas.ts` — both features add fields to `UserSettingsSchema`
+- `src/lib/settingsSearchIndex.ts` — both features add search index entries
+- `src/pages/settings.tsx` — both features add imports and UI components
+
+Resolution strategy: Keep both features' changes by combining all additions (don't pick one side). Settings additions are non-conflicting by design — each feature owns its own field/component.
+
 ## Adding labels to PRs
 
 `gh pr edit --add-label` fails with a GraphQL "Projects (classic)" deprecation error on repos that had classic projects. Use the REST API instead:

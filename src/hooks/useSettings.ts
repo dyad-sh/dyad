@@ -45,7 +45,7 @@ export function useSettings() {
         isInitialLoad = true;
       }
       setSettingsAtom(userSettings);
-      setEnvVarsAtom(fetchedEnvVars);
+      setEnvVarsAtom(fetchedEnvVars as Record<string, string | undefined>);
       setError(null);
     } catch (error) {
       console.error("Error loading initial data:", error);

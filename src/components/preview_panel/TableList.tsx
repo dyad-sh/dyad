@@ -1,5 +1,7 @@
-import { Table2, Loader2 } from "lucide-react";
+import { Table2 } from "lucide-react";
 import { useSupabaseTables } from "@/hooks/useSupabaseTables";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface TableListProps {
   projectId: string | null;
@@ -25,8 +27,18 @@ export function TableList({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+      <div className="flex flex-col h-full">
+        <div className="px-3 py-2 border-b border-border">
+          <Skeleton className="h-4 w-20" />
+        </div>
+        <div className="flex-1 p-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <Skeleton className="h-9 w-full" />
+            <Skeleton className="h-9 w-full" />
+            <Skeleton className="h-9 w-full" />
+            <Skeleton className="h-9 w-full" />
+          </div>
+        </div>
       </div>
     );
   }
@@ -54,19 +66,20 @@ export function TableList({
           Tables ({tables.length})
         </h3>
       </div>
-      <div className="flex-1 overflow-y-auto">
-        {tables.map((table) => (
-          <button
-            key={table}
-            onClick={() => onSelectTable(table)}
-            className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-muted transition-colors ${
-              selectedTable === table ? "bg-muted font-medium" : ""
-            }`}
-          >
-            <Table2 size={14} className="text-muted-foreground flex-shrink-0" />
-            <span className="truncate">{table}</span>
-          </button>
-        ))}
+      <div className="flex-1 overflow-y-auto p-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          {tables.map((table) => (
+            <Button
+              key={table}
+              variant={selectedTable === table ? "secondary" : "outline"}
+              onClick={() => onSelectTable(table)}
+              className="justify-start font-mono text-xs h-9"
+            >
+              <Table2 className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+              <span className="truncate">{table}</span>
+            </Button>
+          ))}
+        </div>
       </div>
     </div>
   );

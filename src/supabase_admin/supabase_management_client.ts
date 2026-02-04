@@ -907,6 +907,14 @@ export async function listSupabaseBranches({
     `List Supabase branches for ${supabaseProjectId}`,
   );
 
+  // 403 means the user's plan doesn't support branching - return empty array
+  if (response.status === 403) {
+    logger.info(
+      `Branching not available for project ${supabaseProjectId} (requires Pro plan)`,
+    );
+    return [];
+  }
+
   if (response.status !== 200) {
     throw await createResponseError(response, "list branches");
   }
@@ -914,6 +922,325 @@ export async function listSupabaseBranches({
   logger.info(`Listed Supabase branches for project: ${supabaseProjectId}`);
   const jsonResponse: SupabaseProjectBranch[] = await response.json();
   return jsonResponse;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Auth Users Management
+// ─────────────────────────────────────────────────────────────────────
+
+export interface AuthUser {
+  id: string;
+  email: string | null;
+  phone: string | null;
+  created_at: string;
+  last_sign_in_at: string | null;
+  app_metadata?: Record<string, unknown>;
+  user_metadata?: Record<string, unknown>;
+}
+
+export interface ListAuthUsersResponse {
+  users: AuthUser[];
+  total: number;
+}
+
+export async function listAuthUsers({
+  supabaseProjectId,
+  organizationSlug,
+  page = 1,
+  perPage = 25,
+}: {
+  supabaseProjectId: string;
+  organizationSlug: string | null;
+  page?: number;
+  perPage?: number;
+}): Promise<ListAuthUsersResponse> {
+  if (IS_TEST_BUILD) {
+    // Return fake test users
+    return {
+      users: [
+        {
+          id: "550e8400-e29b-41d4-a716-446655440001",
+          email: "alice@example.com",
+          phone: null,
+          created_at: "2024-01-15T10:30:00Z",
+          last_sign_in_at: "2024-01-20T08:00:00Z",
+          app_metadata: { provider: "email" },
+        },
+        {
+          id: "550e8400-e29b-41d4-a716-446655440002",
+          email: "bob@example.com",
+          phone: null,
+          created_at: "2024-01-16T14:20:00Z",
+          last_sign_in_at: null,
+          app_metadata: { provider: "google" },
+        },
+      ],
+      total: 2,
+    };
+  }
+
+  logger.info(`Listing auth users for project: ${supabaseProjectId}`);
+
+  // Query auth.users table directly via SQL
+  const offset = (page - 1) * perPage;
+
+  // Get total count
+  const countQuery = `SELECT COUNT(*) as count FROM auth.users;`;
+  const countResult = await executeSupabaseSql({
+    supabaseProjectId,
+    query: countQuery,
+    organizationSlug,
+  });
+
+  let total = 0;
+  try {
+    const countParsed = JSON.parse(countResult);
+    total = Number(countParsed?.[0]?.count ?? 0);
+  } catch {
+    logger.warn("Failed to parse auth users count");
+  }
+
+  // Get users with pagination
+  const usersQuery = `
+    SELECT
+      id,
+      email,
+      phone,
+      created_at,
+      last_sign_in_at,
+      raw_app_meta_data as app_metadata,
+      raw_user_meta_data as user_metadata
+    FROM auth.users
+    ORDER BY created_at DESC
+    LIMIT ${perPage} OFFSET ${offset};
+  `;
+
+  const usersResult = await executeSupabaseSql({
+    supabaseProjectId,
+    query: usersQuery,
+    organizationSlug,
+  });
+
+  let users: AuthUser[] = [];
+  try {
+    const usersParsed = JSON.parse(usersResult);
+    users = (usersParsed ?? []).map((u: Record<string, unknown>) => ({
+      id: String(u.id ?? ""),
+      email: u.email ? String(u.email) : null,
+      phone: u.phone ? String(u.phone) : null,
+      created_at: String(u.created_at ?? ""),
+      last_sign_in_at: u.last_sign_in_at ? String(u.last_sign_in_at) : null,
+      app_metadata: u.app_metadata as Record<string, unknown> | undefined,
+      user_metadata: u.user_metadata as Record<string, unknown> | undefined,
+    }));
+  } catch {
+    logger.warn("Failed to parse auth users");
+  }
+
+  return { users, total };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Secrets Management
+// ─────────────────────────────────────────────────────────────────────
+
+export interface Secret {
+  name: string;
+}
+
+export async function listSecrets({
+  supabaseProjectId,
+  organizationSlug,
+}: {
+  supabaseProjectId: string;
+  organizationSlug: string | null;
+}): Promise<Secret[]> {
+  if (IS_TEST_BUILD) {
+    return [
+      { name: "DATABASE_URL" },
+      { name: "API_KEY" },
+      { name: "JWT_SECRET" },
+    ];
+  }
+
+  logger.info(`Listing secrets for project: ${supabaseProjectId}`);
+  const supabase = await getSupabaseClient({ organizationSlug });
+
+  const response = await fetchWithRetry(
+    `https://api.supabase.com/v1/projects/${supabaseProjectId}/secrets`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${(supabase as any).options.accessToken}`,
+      },
+    },
+    `List secrets for ${supabaseProjectId}`,
+  );
+
+  if (response.status !== 200) {
+    throw await createResponseError(response, "list secrets");
+  }
+
+  const data = await response.json();
+  // The API returns an array of objects with name property
+  return data.map((s: { name: string }) => ({ name: s.name }));
+}
+
+export async function createSecret({
+  supabaseProjectId,
+  organizationSlug,
+  name,
+  value,
+}: {
+  supabaseProjectId: string;
+  organizationSlug: string | null;
+  name: string;
+  value: string;
+}): Promise<void> {
+  if (IS_TEST_BUILD) {
+    logger.info(
+      `[TEST] Created secret ${name} for project ${supabaseProjectId}`,
+    );
+    return;
+  }
+
+  logger.info(`Creating secret ${name} for project: ${supabaseProjectId}`);
+  const supabase = await getSupabaseClient({ organizationSlug });
+
+  const response = await fetchWithRetry(
+    `https://api.supabase.com/v1/projects/${supabaseProjectId}/secrets`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${(supabase as any).options.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify([{ name, value }]),
+    },
+    `Create secret ${name} for ${supabaseProjectId}`,
+  );
+
+  if (response.status !== 201 && response.status !== 200) {
+    throw await createResponseError(response, "create secret");
+  }
+
+  logger.info(`Created secret ${name} for project: ${supabaseProjectId}`);
+}
+
+export async function deleteSecrets({
+  supabaseProjectId,
+  organizationSlug,
+  names,
+}: {
+  supabaseProjectId: string;
+  organizationSlug: string | null;
+  names: string[];
+}): Promise<void> {
+  if (IS_TEST_BUILD) {
+    logger.info(
+      `[TEST] Deleted secrets ${names.join(", ")} from project ${supabaseProjectId}`,
+    );
+    return;
+  }
+
+  logger.info(
+    `Deleting secrets ${names.join(", ")} from project: ${supabaseProjectId}`,
+  );
+  const supabase = await getSupabaseClient({ organizationSlug });
+
+  const response = await fetchWithRetry(
+    `https://api.supabase.com/v1/projects/${supabaseProjectId}/secrets`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${(supabase as any).options.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(names),
+    },
+    `Delete secrets from ${supabaseProjectId}`,
+  );
+
+  if (response.status !== 200 && response.status !== 204) {
+    throw await createResponseError(response, "delete secrets");
+  }
+
+  logger.info(
+    `Deleted secrets ${names.join(", ")} from project: ${supabaseProjectId}`,
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Edge Logs (simplified for LogsSection)
+// ─────────────────────────────────────────────────────────────────────
+
+export interface EdgeLogEntry {
+  timestamp: string;
+  level: "info" | "warn" | "error" | "debug";
+  message: string;
+  functionName?: string;
+}
+
+export async function listEdgeLogs({
+  supabaseProjectId,
+  organizationSlug,
+  timestampStart,
+}: {
+  supabaseProjectId: string;
+  organizationSlug: string | null;
+  timestampStart?: number;
+}): Promise<EdgeLogEntry[]> {
+  if (IS_TEST_BUILD) {
+    // Return fake test logs
+    return [
+      {
+        timestamp: new Date().toISOString(),
+        level: "info",
+        message: "Function invoked successfully",
+        functionName: "hello-world",
+      },
+      {
+        timestamp: new Date(Date.now() - 60000).toISOString(),
+        level: "warn",
+        message: "Slow response time detected",
+        functionName: "api-handler",
+      },
+      {
+        timestamp: new Date(Date.now() - 120000).toISOString(),
+        level: "error",
+        message: "Failed to connect to external API",
+        functionName: "data-sync",
+      },
+    ];
+  }
+
+  // Use the existing getSupabaseProjectLogs function and transform the result
+  const logsResponse = await getSupabaseProjectLogs(
+    supabaseProjectId,
+    timestampStart,
+    organizationSlug ?? undefined,
+  );
+
+  // Transform the logs into EdgeLogEntry format
+  const entries: EdgeLogEntry[] = [];
+  for (const log of logsResponse.result ?? []) {
+    const metadata = log.metadata?.[0];
+    const message =
+      (metadata?.request?.url ?? metadata?.response?.status_code)
+        ? `${metadata?.request?.method ?? "GET"} ${metadata?.request?.url ?? ""} - ${metadata?.response?.status_code ?? ""}`
+        : (log.event_message ?? "");
+
+    entries.push({
+      timestamp: log.timestamp
+        ? String(log.timestamp)
+        : new Date().toISOString(),
+      level: "info",
+      message,
+      functionName: metadata?.function_id,
+    });
+  }
+
+  return entries;
 }
 
 // ─────────────────────────────────────────────────────────────────────

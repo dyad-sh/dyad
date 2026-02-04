@@ -1,4 +1,12 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface PaginationControlsProps {
   total: number | null;
@@ -43,23 +51,27 @@ export function PaginationControls({
   return (
     <div className="flex items-center justify-between px-4 py-2 border-t border-border text-sm">
       <div className="flex items-center gap-2">
-        <span className="text-muted-foreground">Rows per page:</span>
-        <select
-          value={limit}
-          onChange={(e) => handleLimitChange(Number(e.target.value))}
+        <span className="text-muted-foreground text-xs">Rows per page:</span>
+        <Select
+          value={String(limit)}
+          onValueChange={(value) => handleLimitChange(Number(value))}
           disabled={isLoading}
-          className="bg-background border border-border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
         >
-          {PAGE_SIZE_OPTIONS.map((size) => (
-            <option key={size} value={size}>
-              {size}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger size="sm" className="w-[70px] h-7 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {PAGE_SIZE_OPTIONS.map((size) => (
+              <SelectItem key={size} value={String(size)}>
+                {size}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="flex items-center gap-4">
-        <span className="text-muted-foreground">
+        <span className="text-muted-foreground text-xs">
           {total !== null ? (
             <>
               Showing {start}-{end} of {total} rows
@@ -72,22 +84,26 @@ export function PaginationControls({
         </span>
 
         <div className="flex items-center gap-1">
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={handlePrev}
             disabled={!hasPrev || isLoading}
-            className="p-1 rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="h-7 w-7"
             title="Previous page"
           >
-            <ChevronLeft size={18} />
-          </button>
-          <button
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={handleNext}
             disabled={!hasNext || isLoading}
-            className="p-1 rounded hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="h-7 w-7"
             title="Next page"
           >
-            <ChevronRight size={18} />
-          </button>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
         </div>
       </div>
     </div>

@@ -17,7 +17,7 @@ import { Console } from "./Console";
 import { useRunApp } from "@/hooks/useRunApp";
 import { PublishPanel } from "./PublishPanel";
 import { SecurityPanel } from "./SecurityPanel";
-import { DatabasePanel } from "./DatabasePanel";
+import { SupabaseManagerPanel } from "./SupabaseManagerPanel";
 import { useSupabase } from "@/hooks/useSupabase";
 
 interface ConsoleHeaderProps {
@@ -149,7 +149,7 @@ export function PreviewPanel() {
               ) : previewMode === "security" ? (
                 <SecurityPanel />
               ) : previewMode === "database" ? (
-                <DatabasePanel />
+                <SupabaseManagerPanel />
               ) : (
                 <Problems />
               )}

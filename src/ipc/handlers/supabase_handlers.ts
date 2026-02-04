@@ -9,6 +9,11 @@ import {
   getOrganizationDetails,
   getOrganizationMembers,
   executeSupabaseSql,
+  listAuthUsers,
+  listSecrets,
+  createSecret,
+  deleteSecrets,
+  listEdgeLogs,
   type SupabaseProjectLog,
 } from "../../supabase_admin/supabase_management_client";
 import { extractFunctionName } from "../../supabase_admin/supabase_utils";
@@ -255,15 +260,27 @@ export function registerSupabaseHandlers() {
     }
     // Use parameterized-style escaping: escape single quotes in table name
     const escapedTable = table.replace(/'/g, "''");
+    // Query includes primary key detection via pg_constraint
     const query = `
       SELECT
-        column_name as name,
-        data_type as type,
-        is_nullable = 'YES' as nullable,
-        column_default as "defaultValue"
-      FROM information_schema.columns
-      WHERE table_schema = 'public' AND table_name = '${escapedTable}'
-      ORDER BY ordinal_position;
+        c.column_name as name,
+        c.data_type as type,
+        c.is_nullable = 'YES' as nullable,
+        c.column_default as "defaultValue",
+        COALESCE(pk.is_primary_key, false) as "isPrimaryKey"
+      FROM information_schema.columns c
+      LEFT JOIN (
+        SELECT kcu.column_name, true as is_primary_key
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+          ON tc.constraint_name = kcu.constraint_name
+          AND tc.table_schema = kcu.table_schema
+        WHERE tc.constraint_type = 'PRIMARY KEY'
+          AND tc.table_schema = 'public'
+          AND tc.table_name = '${escapedTable}'
+      ) pk ON c.column_name = pk.column_name
+      WHERE c.table_schema = 'public' AND c.table_name = '${escapedTable}'
+      ORDER BY c.ordinal_position;
     `;
     const result = await executeSupabaseSql({
       supabaseProjectId: projectId,
@@ -316,6 +333,253 @@ export function registerSupabaseHandlers() {
         "Supabase rows query response",
       ) ?? [];
     return { rows, total };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // SQL Editor Handlers
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  // Execute arbitrary SQL query
+  createTypedHandler(supabaseContracts.executeSql, async (_, params) => {
+    const { projectId, organizationSlug, query } = params;
+
+    try {
+      const result = await executeSupabaseSql({
+        supabaseProjectId: projectId,
+        query,
+        organizationSlug,
+      });
+
+      const parsed = safeJsonParse<Record<string, unknown>[] | null>(
+        result,
+        "Supabase SQL execution response",
+      );
+
+      // Handle empty or null results
+      if (!parsed || !Array.isArray(parsed)) {
+        return {
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          error: null,
+        };
+      }
+
+      // Extract column names from first row
+      const columns = parsed.length > 0 ? Object.keys(parsed[0] as object) : [];
+
+      return {
+        columns,
+        rows: parsed,
+        rowCount: parsed.length,
+        error: null,
+      };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      logger.error("SQL execution error:", errorMessage);
+      return {
+        columns: [],
+        rows: [],
+        rowCount: 0,
+        error: errorMessage,
+      };
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Row Mutation Handlers
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  // Helper to escape SQL values
+  const escapeValue = (value: unknown): string => {
+    if (value === null || value === undefined) {
+      return "NULL";
+    }
+    if (typeof value === "number") {
+      return String(value);
+    }
+    if (typeof value === "boolean") {
+      return value ? "TRUE" : "FALSE";
+    }
+    if (typeof value === "object") {
+      // JSON objects/arrays
+      return `'${JSON.stringify(value).replace(/'/g, "''")}'::jsonb`;
+    }
+    // String - escape single quotes
+    return `'${String(value).replace(/'/g, "''")}'`;
+  };
+
+  // Insert a new row
+  createTypedHandler(supabaseContracts.insertRow, async (_, params) => {
+    const { projectId, organizationSlug, table, data } = params;
+
+    if (!isValidTableName(table)) {
+      throw new Error("supabase:insert-row: Invalid table name");
+    }
+
+    const columns = Object.keys(data);
+    if (columns.length === 0) {
+      throw new Error("supabase:insert-row: No data provided");
+    }
+
+    const columnNames = columns.map((c) => `"${c}"`).join(", ");
+    const values = columns.map((c) => escapeValue(data[c])).join(", ");
+
+    const query = `INSERT INTO "${table}" (${columnNames}) VALUES (${values});`;
+
+    await executeSupabaseSql({
+      supabaseProjectId: projectId,
+      query,
+      organizationSlug,
+    });
+
+    logger.info(`Inserted row into ${table}`);
+  });
+
+  // Update an existing row
+  createTypedHandler(supabaseContracts.updateRow, async (_, params) => {
+    const { projectId, organizationSlug, table, primaryKey, data } = params;
+
+    if (!isValidTableName(table)) {
+      throw new Error("supabase:update-row: Invalid table name");
+    }
+
+    const pkColumns = Object.keys(primaryKey);
+    if (pkColumns.length === 0) {
+      throw new Error("supabase:update-row: No primary key provided");
+    }
+
+    const dataColumns = Object.keys(data);
+    if (dataColumns.length === 0) {
+      throw new Error("supabase:update-row: No data provided");
+    }
+
+    const setClause = dataColumns
+      .map((c) => `"${c}" = ${escapeValue(data[c])}`)
+      .join(", ");
+
+    const whereClause = pkColumns
+      .map((c) => `"${c}" = ${escapeValue(primaryKey[c])}`)
+      .join(" AND ");
+
+    const query = `UPDATE "${table}" SET ${setClause} WHERE ${whereClause};`;
+
+    await executeSupabaseSql({
+      supabaseProjectId: projectId,
+      query,
+      organizationSlug,
+    });
+
+    logger.info(`Updated row in ${table}`);
+  });
+
+  // Delete a row
+  createTypedHandler(supabaseContracts.deleteRow, async (_, params) => {
+    const { projectId, organizationSlug, table, primaryKey } = params;
+
+    if (!isValidTableName(table)) {
+      throw new Error("supabase:delete-row: Invalid table name");
+    }
+
+    const pkColumns = Object.keys(primaryKey);
+    if (pkColumns.length === 0) {
+      throw new Error("supabase:delete-row: No primary key provided");
+    }
+
+    const whereClause = pkColumns
+      .map((c) => `"${c}" = ${escapeValue(primaryKey[c])}`)
+      .join(" AND ");
+
+    const query = `DELETE FROM "${table}" WHERE ${whereClause};`;
+
+    await executeSupabaseSql({
+      supabaseProjectId: projectId,
+      query,
+      organizationSlug,
+    });
+
+    logger.info(`Deleted row from ${table}`);
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Auth Users Handlers
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  createTypedHandler(supabaseContracts.listAuthUsers, async (_, params) => {
+    const { projectId, organizationSlug, page, perPage } = params;
+
+    const result = await listAuthUsers({
+      supabaseProjectId: projectId,
+      organizationSlug,
+      page,
+      perPage,
+    });
+
+    return {
+      users: result.users.map((u) => ({
+        id: u.id,
+        email: u.email,
+        phone: u.phone,
+        created_at: u.created_at,
+        last_sign_in_at: u.last_sign_in_at,
+        app_metadata: u.app_metadata,
+        user_metadata: u.user_metadata,
+      })),
+      total: result.total,
+    };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Secrets Handlers
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  createTypedHandler(supabaseContracts.listSecrets, async (_, params) => {
+    const { projectId, organizationSlug } = params;
+
+    const secrets = await listSecrets({
+      supabaseProjectId: projectId,
+      organizationSlug,
+    });
+
+    return secrets;
+  });
+
+  createTypedHandler(supabaseContracts.createSecret, async (_, params) => {
+    const { projectId, organizationSlug, name, value } = params;
+
+    await createSecret({
+      supabaseProjectId: projectId,
+      organizationSlug,
+      name,
+      value,
+    });
+  });
+
+  createTypedHandler(supabaseContracts.deleteSecrets, async (_, params) => {
+    const { projectId, organizationSlug, names } = params;
+
+    await deleteSecrets({
+      supabaseProjectId: projectId,
+      organizationSlug,
+      names,
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Edge Logs Handler
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  createTypedHandler(supabaseContracts.listEdgeLogs, async (_, params) => {
+    const { projectId, organizationSlug, timestampStart } = params;
+
+    const logs = await listEdgeLogs({
+      supabaseProjectId: projectId,
+      organizationSlug,
+      timestampStart,
+    });
+
+    return { logs };
   });
 
   testOnlyHandle(

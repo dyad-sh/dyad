@@ -269,6 +269,42 @@ export const queryKeys = {
         limit,
         offset,
       ] as const,
+    // Auth Users query key
+    authUsers: ({
+      projectId,
+      organizationSlug,
+      page,
+      perPage,
+    }: {
+      projectId: string;
+      organizationSlug: string | null;
+      page: number;
+      perPage: number;
+    }) =>
+      [
+        "supabase",
+        "auth-users",
+        projectId,
+        organizationSlug,
+        page,
+        perPage,
+      ] as const,
+    // Secrets query key
+    secrets: ({
+      projectId,
+      organizationSlug,
+    }: {
+      projectId: string;
+      organizationSlug: string | null;
+    }) => ["supabase", "secrets", projectId, organizationSlug] as const,
+    // Edge Logs query key
+    edgeLogs: ({
+      projectId,
+      organizationSlug,
+    }: {
+      projectId: string;
+      organizationSlug: string | null;
+    }) => ["supabase", "edge-logs", projectId, organizationSlug] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

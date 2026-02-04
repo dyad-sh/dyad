@@ -19,6 +19,9 @@ test("file tree search finds content matches and surfaces line numbers", async (
   await expect(searchInput).toBeVisible({ timeout: Timeout.MEDIUM });
 
   // Content search should find files whose contents match the query and show line info
+  // We search for "import" which should match main.tsx (contains import statements)
+  // main.tsx is expected to appear in results because it has actual import statements,
+  // while App.tsx does not contain "import" in its content
   await searchInput.fill("import");
   const resultItem = po.page.getByText("main.tsx").first();
   await expect(resultItem).toBeVisible({ timeout: Timeout.MEDIUM });

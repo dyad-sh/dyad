@@ -214,3 +214,14 @@ Add `#skip-bugbot` to the PR description for trivial PRs that won't affect end-u
 - Linting or test setup changes
 - Documentation-only changes
 - CI/build configuration updates
+
+## Learnings
+
+### GitHub API interactions
+
+- When posting PR comment replies with code snippets or special characters, use temp files (Write tool) and `gh api --field body=@/tmp/file.txt` to avoid shell injection errors from the permission hook. Inline strings with backticks or quotes will be blocked.
+- After addressing PR review comments with code changes, explicitly resolve threads using GraphQL: `gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "THREAD_ID"}) { thread { isResolved } } }'`
+
+### Type errors during PR work
+
+- If `npm run ts` fails with pre-existing errors unrelated to your changes, verify the error exists on the base commit with `git stash && npm run ts && git stash pop`. Don't fix unrelated errors during PR review fixes - stay focused on the review comments.

@@ -32,6 +32,8 @@ testSkipIfWindows("supabase migrations", async ({ po }) => {
   await migrationsSwitch.click();
   // Wait for the setting to be persisted
   await po.waitForToast("success");
+  // Verify the switch is now checked
+  await expect(migrationsSwitch).toBeChecked();
   await po.goToChatTab();
 
   // Send a prompt that triggers a migration
@@ -98,6 +100,8 @@ testSkipIfWindows("supabase migrations with native git", async ({ po }) => {
   await migrationsSwitch.click();
   // Wait for the setting to be persisted
   await po.waitForToast("success");
+  // Verify the switch is now checked
+  await expect(migrationsSwitch).toBeChecked();
   await po.goToChatTab();
 
   // Send a prompt that triggers a migration

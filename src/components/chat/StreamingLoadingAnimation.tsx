@@ -133,7 +133,10 @@ function useScrambleText(text: string) {
 function ScrambleVerb({ verb }: { verb: string }) {
   const display = useScrambleText(verb);
   return (
-    <span className="inline-block text-sm text-muted-foreground">
+    <span
+      className="inline-block text-sm text-muted-foreground"
+      aria-hidden="true"
+    >
       {display}
     </span>
   );

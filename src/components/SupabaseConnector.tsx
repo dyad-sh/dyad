@@ -176,18 +176,14 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                   `https://supabase.com/dashboard/project/${app.supabaseProjectId}`,
                 );
               }}
-              className="ml-2 px-2 py-1"
-              style={{ display: "inline-flex", alignItems: "center" }}
-              asChild
+              className="ml-2 px-2 py-1 inline-flex items-center gap-2"
             >
-              <div className="flex items-center gap-2">
-                <img
-                  src={isDarkMode ? supabaseLogoDark : supabaseLogoLight}
-                  alt="Supabase Logo"
-                  style={{ height: 20, width: "auto", marginRight: 4 }}
-                />
-                <ExternalLink className="h-4 w-4" />
-              </div>
+              <img
+                src={isDarkMode ? supabaseLogoDark : supabaseLogoLight}
+                alt="Supabase Logo"
+                style={{ height: 20, width: "auto", marginRight: 4 }}
+              />
+              <ExternalLink className="h-4 w-4" />
             </Button>
           </CardTitle>
           <CardDescription className="flex flex-col gap-1.5 text-sm">
@@ -363,7 +359,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                   <Label htmlFor="project-select">Project</Label>
                   <Select
                     value={currentProjectValue}
-                    onValueChange={handleProjectSelect}
+                    onValueChange={(v) => v && handleProjectSelect(v)}
                   >
                     <SelectTrigger id="project-select">
                       <SelectValue placeholder="Select a project" />

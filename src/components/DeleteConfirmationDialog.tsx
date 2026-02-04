@@ -1,5 +1,4 @@
 import React from "react";
-import { Button } from "@/components/ui/button";
 import { Trash2, Loader2 } from "lucide-react";
 import {
   AlertDialog,
@@ -12,11 +11,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { buttonVariants } from "@/components/ui/button";
 
 interface DeleteConfirmationDialogProps {
   itemName: string;
@@ -36,25 +31,16 @@ export function DeleteConfirmationDialog({
   return (
     <AlertDialog>
       {trigger ? (
-        <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>
+        <AlertDialogTrigger>{trigger}</AlertDialogTrigger>
       ) : (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <AlertDialogTrigger asChild>
-              <Button
-                size="icon"
-                variant="ghost"
-                data-testid="delete-prompt-button"
-                disabled={isDeleting}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </AlertDialogTrigger>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Delete {itemType.toLowerCase()}</p>
-          </TooltipContent>
-        </Tooltip>
+        <AlertDialogTrigger
+          className={buttonVariants({ variant: "ghost", size: "icon" })}
+          data-testid="delete-prompt-button"
+          disabled={isDeleting}
+          title={`Delete ${itemType.toLowerCase()}`}
+        >
+          <Trash2 className="h-4 w-4" />
+        </AlertDialogTrigger>
       )}
       <AlertDialogContent>
         <AlertDialogHeader>

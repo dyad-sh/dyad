@@ -772,7 +772,10 @@ export class PageObject {
   }
 
   async clickCopyErrorMessage() {
-    await this.page.getByRole("button", { name: /Copy/ }).click();
+    await this.page
+      .getByTestId("preview-error-banner")
+      .getByRole("button", { name: /Copy/ })
+      .click();
   }
 
   async getClipboardText(): Promise<string> {

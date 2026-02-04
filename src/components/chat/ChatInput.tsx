@@ -48,12 +48,6 @@ import { AutoApproveSwitch } from "../AutoApproveSwitch";
 import { usePostHog } from "posthog-js/react";
 import { CodeHighlight } from "./CodeHighlight";
 import { TokenBar } from "./TokenBar";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "../ui/tooltip";
 
 import { useVersions } from "@/hooks/useVersions";
 import { useAttachments } from "@/hooks/useAttachments";
@@ -410,25 +404,16 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           ) : (
             selectedComponents.length > 0 && (
               <div className="border-b border-border p-3 bg-muted/30">
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={() => {
-                          ipc.system.openExternalUrl("https://dyad.sh/pro");
-                        }}
-                        className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors cursor-pointer"
-                      >
-                        <Lock size={16} />
-                        <span className="font-medium">Visual editor (Pro)</span>
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      Visual editing lets you make UI changes without AI and is
-                      a Pro-only feature
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                <button
+                  onClick={() => {
+                    ipc.system.openExternalUrl("https://dyad.sh/pro");
+                  }}
+                  className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+                  title="Visual editing lets you make UI changes without AI and is a Pro-only feature"
+                >
+                  <Lock size={16} />
+                  <span className="font-medium">Visual editor (Pro)</span>
+                </button>
               </div>
             )
           )}
@@ -508,21 +493,15 @@ function SuggestionButton({
 }) {
   const { isStreaming } = useStreamChat();
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            disabled={isStreaming}
-            variant="outline"
-            size="sm"
-            onClick={onClick}
-          >
-            {children}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{tooltipText}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <Button
+      disabled={isStreaming}
+      variant="outline"
+      size="sm"
+      onClick={onClick}
+      title={tooltipText}
+    >
+      {children}
+    </Button>
   );
 }
 

@@ -56,11 +56,18 @@ const ignore = (file: string) => {
 };
 
 const isEndToEndTestBuild = process.env.E2E_TEST_BUILD === "true";
-const isGitHubActions = process.env.GITHUB_ACTIONS === "true";
+const isWindowsSigningEnabled = process.env.WINDOWS_SIGN === "true";
+
+if (isWindowsSigningEnabled && !process.env.AZURE_CODE_SIGNING_DLIB) {
+  throw new Error(
+    "WINDOWS_SIGN is enabled but AZURE_CODE_SIGNING_DLIB is not set. " +
+      "Ensure Azure Trusted Signing tools are installed.",
+  );
+}
 
 const config: ForgeConfig = {
   packagerConfig: {
-    windowsSign: isGitHubActions ? windowsSign : undefined,
+    windowsSign: isWindowsSigningEnabled ? windowsSign : undefined,
     protocols: [
       {
         name: "Dyad",
@@ -93,7 +100,7 @@ const config: ForgeConfig = {
   makers: [
     new MakerSquirrel(
       // @ts-expect-error - incorrect types exported by MakerSquirrel
-      isGitHubActions
+      isWindowsSigningEnabled
         ? {
             windowsSign,
             iconUrl:

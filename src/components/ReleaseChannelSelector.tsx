@@ -56,7 +56,7 @@ export function ReleaseChannelSelector() {
         </label>
         <Select
           value={settings.releaseChannel}
-          onValueChange={handleReleaseChannelChange}
+          onValueChange={(v) => v && handleReleaseChannelChange(v)}
         >
           <SelectTrigger className="w-32" id="release-channel">
             <SelectValue />

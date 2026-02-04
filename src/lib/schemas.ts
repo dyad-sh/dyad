@@ -303,6 +303,7 @@ export const UserSettingsSchema = z
 
     enableAutoFixProblems: z.boolean().optional(),
     autoExpandPreviewPanel: z.boolean().optional(),
+    enableChatCompletionNotifications: z.boolean().optional(),
     enableNativeGit: z.boolean().optional(),
     enableAutoUpdate: z.boolean(),
     releaseChannel: ReleaseChannelSchema,

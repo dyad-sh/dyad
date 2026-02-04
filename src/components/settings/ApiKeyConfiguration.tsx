@@ -11,7 +11,6 @@ import { VertexConfiguration } from "./VertexConfiguration";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { UserSettings } from "@/lib/schemas";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { showError } from "@/lib/toast";
 
 // Helper function to mask ENV API keys (move or duplicate if needed elsewhere)
@@ -92,7 +91,7 @@ export function ApiKeyConfiguration({
 
   return (
     <Accordion
-      type="multiple"
+      multiple
       className="w-full space-y-4"
       defaultValue={defaultAccordionValue}
     >
@@ -146,31 +145,26 @@ export function ApiKeyConfiguration({
                 placeholder={`Enter new ${providerDisplayName} API Key here`}
                 className={`flex-grow ${saveError ? "border-red-500" : ""}`}
               />
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    onClick={async () => {
-                      try {
-                        const text = await navigator.clipboard.readText();
-                        if (text) {
-                          onSaveKey(text);
-                        }
-                      } catch (error) {
-                        showError("Failed to paste from clipboard");
-                        console.error("Failed to paste from clipboard", error);
-                      }
-                    }}
-                    disabled={isSaving}
-                    variant="outline"
-                    size="icon"
-                    title="Paste from clipboard and save"
-                    aria-label="Paste from clipboard and save"
-                  >
-                    <Clipboard className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Paste from clipboard and save</TooltipContent>
-              </Tooltip>
+              <Button
+                onClick={async () => {
+                  try {
+                    const text = await navigator.clipboard.readText();
+                    if (text) {
+                      onSaveKey(text);
+                    }
+                  } catch (error) {
+                    showError("Failed to paste from clipboard");
+                    console.error("Failed to paste from clipboard", error);
+                  }
+                }}
+                disabled={isSaving}
+                variant="outline"
+                size="icon"
+                title="Paste from clipboard and save"
+                aria-label="Paste from clipboard and save"
+              >
+                <Clipboard className="h-4 w-4" />
+              </Button>
 
               <Button
                 onClick={() => onSaveKey(apiKeyInput)}

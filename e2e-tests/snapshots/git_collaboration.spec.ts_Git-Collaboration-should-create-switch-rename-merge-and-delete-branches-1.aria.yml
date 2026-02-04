@@ -1,8 +1,6 @@
 - paragraph: "Connected to GitHub Repo:"
 - text: /testuser\/test-git-collab-\d+/
-- combobox:
-  - img
-  - text: "Branch: main"
+- combobox: main
 - button "Branch actions":
   - img
 - img

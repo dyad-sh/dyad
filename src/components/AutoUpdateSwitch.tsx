@@ -15,6 +15,7 @@ export function AutoUpdateSwitch() {
     <div className="flex items-center space-x-2">
       <Switch
         id="enable-auto-update"
+        aria-label="Auto-update"
         checked={settings.enableAutoUpdate}
         onCheckedChange={(checked) => {
           updateSettings({ enableAutoUpdate: checked });

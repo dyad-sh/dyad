@@ -78,6 +78,20 @@ export function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
       const debugInfo = await ipc.system.getSystemDebugInfo();
 
       // Create a formatted issue body with the debug info
+      const settingsLines = settings
+        ? [
+            `- Selected Model: ${settings.selectedModel?.provider}:${settings.selectedModel?.name}`,
+            `- Chat Mode: ${settings.selectedChatMode ?? "default"}`,
+            `- Auto Approve Changes: ${settings.autoApproveChanges ?? "n/a"}`,
+            `- Dyad Pro Enabled: ${settings.enableDyadPro ?? "n/a"}`,
+            `- Thinking Budget: ${settings.thinkingBudget ?? "n/a"}`,
+            `- Runtime Mode: ${settings.runtimeMode2 ?? "n/a"}`,
+            `- Release Channel: ${settings.releaseChannel ?? "n/a"}`,
+            `- Auto Fix Problems: ${settings.enableAutoFixProblems ?? "n/a"}`,
+            `- Native Git: ${settings.enableNativeGit ?? "n/a"}`,
+          ].join("\n")
+        : "Settings not available";
+
       const issueBody = `
 <!-- Please fill in all fields in English -->
 
@@ -97,6 +111,9 @@ export function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
 - Pro User ID: ${userBudget?.redactedUserId || "n/a"}
 - Telemetry ID: ${debugInfo.telemetryId || "n/a"}
 - Model: ${debugInfo.selectedLanguageModel || "n/a"}
+
+## Settings
+${settingsLines}
 
 ## Logs
 \`\`\`
@@ -336,6 +353,40 @@ Pro User ID: ${userBudget?.redactedUserId || "n/a"}
                 </p>
               </div>
             </div>
+
+            <details className="border rounded-md p-3">
+              <summary className="font-medium cursor-pointer">Settings</summary>
+              <div className="text-sm bg-slate-50 dark:bg-slate-900 rounded p-2 max-h-40 overflow-y-auto mt-2 font-mono whitespace-pre-wrap">
+                {JSON.stringify(debugBundle.settings, null, 2)}
+              </div>
+            </details>
+
+            <details className="border rounded-md p-3">
+              <summary className="font-medium cursor-pointer">
+                App Metadata
+              </summary>
+              <div className="text-sm bg-slate-50 dark:bg-slate-900 rounded p-2 max-h-40 overflow-y-auto mt-2 font-mono whitespace-pre-wrap">
+                {JSON.stringify(debugBundle.app, null, 2)}
+              </div>
+            </details>
+
+            <details className="border rounded-md p-3">
+              <summary className="font-medium cursor-pointer">
+                Custom Providers & Models
+              </summary>
+              <div className="text-sm bg-slate-50 dark:bg-slate-900 rounded p-2 max-h-40 overflow-y-auto mt-2 font-mono whitespace-pre-wrap">
+                {JSON.stringify(debugBundle.providers, null, 2)}
+              </div>
+            </details>
+
+            <details className="border rounded-md p-3">
+              <summary className="font-medium cursor-pointer">
+                MCP Servers
+              </summary>
+              <div className="text-sm bg-slate-50 dark:bg-slate-900 rounded p-2 max-h-40 overflow-y-auto mt-2 font-mono whitespace-pre-wrap">
+                {JSON.stringify(debugBundle.mcpServers, null, 2)}
+              </div>
+            </details>
           </div>
 
           <div className="flex justify-between mt-4 pt-2 sticky bottom-0 bg-background">

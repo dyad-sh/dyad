@@ -215,6 +215,16 @@ function stripImagesFromAiMessagesJson(json: AiMessagesJsonV6 | null): unknown {
           _strippedByteLength: part.image.length,
           image: "[stripped]",
         };
+      } else if (
+        part.type === "file" &&
+        typeof part.data === "string" &&
+        part.data.length > 200
+      ) {
+        msg.content[i] = {
+          ...part,
+          _strippedByteLength: part.data.length,
+          data: "[stripped]",
+        };
       }
     }
   }
@@ -342,8 +352,10 @@ export function registerDebugHandlers() {
           pnpmVersion,
           nodePath: nodePathResult,
           electronVersion: process.versions.electron ?? "unknown",
-          telemetryId: settings.telemetryUserId || "unknown",
-          telemetryUserId: settings.telemetryUserId ?? null,
+          telemetryId:
+            settings.telemetryConsent === "opted_out"
+              ? null
+              : settings.telemetryUserId || "unknown",
         },
 
         settings: sanitizeSettingsForDebug(settings),
@@ -397,7 +409,7 @@ export function registerDebugHandlers() {
           customProviders: customProviders.map((p) => ({
             id: p.id,
             name: p.name,
-            apiBaseUrl: p.api_base_url,
+            hasApiBaseUrl: !!p.api_base_url,
             envVarName: p.env_var_name,
           })),
           customModels: customModels.map((m) => ({

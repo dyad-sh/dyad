@@ -48,7 +48,7 @@ export const SetAppEnvVarsParamsSchema = z.object({
  * Schema version for the session debug bundle format.
  * Bump this when making breaking changes to the schema.
  */
-export const SESSION_DEBUG_SCHEMA_VERSION = 1;
+export const SESSION_DEBUG_SCHEMA_VERSION = 2;
 
 // -- System info --
 
@@ -67,10 +67,8 @@ const DebugSystemInfoSchema = z.object({
   nodePath: z.string().nullable(),
   /** Electron version */
   electronVersion: z.string(),
-  /** Telemetry ID for cross-referencing server-side logs */
-  telemetryId: z.string(),
-  /** User ID for log correlation */
-  telemetryUserId: z.string().nullable(),
+  /** Telemetry ID for cross-referencing server-side logs. Null if user opted out. */
+  telemetryId: z.string().nullable(),
 });
 
 // -- Non-sensitive settings snapshot --
@@ -210,7 +208,7 @@ const DebugProvidersSchema = z.object({
     z.object({
       id: z.string(),
       name: z.string(),
-      apiBaseUrl: z.string(),
+      hasApiBaseUrl: z.boolean(),
       envVarName: z.string().nullable(),
     }),
   ),

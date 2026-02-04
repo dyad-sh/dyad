@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import path from "path";
+import { builtinModules } from "node:module";
 
 // https://vitejs.dev/config
 export default defineConfig({
@@ -9,8 +10,9 @@ export default defineConfig({
     },
   },
   build: {
+    outDir: ".vite/build",
+    emptyOutDir: false,
     sourcemap: true,
-    // target: "node16",
     lib: {
       entry: path.resolve(__dirname, "workers/tsc/tsc_worker.ts"),
       name: "tsc_worker",
@@ -18,9 +20,12 @@ export default defineConfig({
       formats: ["cjs"],
     },
     rolldownOptions: {
-      external: ["node:fs", "node:path", "node:worker_threads", "typescript"],
+      external: [
+        "electron",
+        "typescript",
+        ...builtinModules,
+        ...builtinModules.map((m) => `node:${m}`),
+      ],
     },
-    // outDir: "dist/workers/tsc",
-    // emptyOutDir: true,
   },
 });

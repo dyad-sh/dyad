@@ -7,6 +7,7 @@ const ReactCompilerConfig = {};
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: "./",
   plugins: [
     react({
       babel: {
@@ -19,5 +20,9 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+  },
+  build: {
+    outDir: ".vite/renderer/main_window",
+    emptyOutDir: false,
   },
 });

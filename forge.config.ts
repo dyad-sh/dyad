@@ -5,10 +5,10 @@ import { MakerZIP } from "@electron-forge/maker-zip";
 import { MakerDeb } from "@electron-forge/maker-deb";
 import { MakerRpm } from "@electron-forge/maker-rpm";
 import { MakerAppImage } from "./makers/MakerAppImage";
-import { VitePlugin } from "@electron-forge/plugin-vite";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { AutoUnpackNativesPlugin } from "@electron-forge/plugin-auto-unpack-natives";
+import { execSync } from "child_process";
 
 console.log("AZURE_CODE_SIGNING_DLIB", process.env.AZURE_CODE_SIGNING_DLIB);
 
@@ -49,6 +49,9 @@ const ignore = (file: string) => {
     return false;
   }
   if (file.startsWith("/.vite")) {
+    return false;
+  }
+  if (file === "/package.json") {
     return false;
   }
 
@@ -143,36 +146,13 @@ const config: ForgeConfig = {
       },
     },
   ],
+  hooks: {
+    prePackage: async () => {
+      execSync("node scripts/build.mjs", { stdio: "inherit" });
+    },
+  },
   plugins: [
     new AutoUnpackNativesPlugin({}),
-    new VitePlugin({
-      // `build` can specify multiple entry builds, which can be Main process, Preload scripts, Worker process, etc.
-      // If you are familiar with Vite configuration, it will look really familiar.
-      build: [
-        {
-          // `entry` is just an alias for `build.lib.entry` in the corresponding file of `config`.
-          entry: "src/main.ts",
-          config: "vite.main.config.mts",
-          target: "main",
-        },
-        {
-          entry: "src/preload.ts",
-          config: "vite.preload.config.mts",
-          target: "preload",
-        },
-        {
-          entry: "workers/tsc/tsc_worker.ts",
-          config: "vite.worker.config.mts",
-          target: "main",
-        },
-      ],
-      renderer: [
-        {
-          name: "main_window",
-          config: "vite.renderer.config.mts",
-        },
-      ],
-    }),
     // Fuses are used to enable/disable various Electron functionality
     // at package time, before code signing the application
     new FusesPlugin({

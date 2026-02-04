@@ -262,3 +262,11 @@ When rebasing a branch that has drizzle migrations conflicting with upstream (e.
 3. Update `drizzle/meta/_journal.json` to include all migrations with correct indices
 4. Create/update the snapshot file (`drizzle/meta/00XX_snapshot.json`) with the new index, updating `prevId` to reference the previous snapshot's `id`
 5. If the PR had subsequent commits that deleted/modified its migration files, those changes become no-ops after renaming — just accept the deletion conflicts by staging the renamed files
+
+### Pre-commit hook may fail due to pre-existing TypeScript errors
+
+The pre-commit hook runs `npm run ts` which checks the entire codebase. If there are pre-existing TypeScript errors on main (e.g., `Parameter 'x' implicitly has an 'any' type`), your commit will be blocked even if your changes are valid.
+
+**To diagnose:** Run `git stash && git checkout main && npm run ts` to verify errors exist on main, then return with `git checkout - && git stash pop`.
+
+**To resolve:** If the errors are pre-existing and not introduced by your branch, use `--no-verify` to bypass the hook: `git commit --no-verify -m "message"`. Document why in your PR.

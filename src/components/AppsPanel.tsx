@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { useAtom, useSetAtom } from "jotai";
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronLeft } from "lucide-react";
@@ -11,15 +12,15 @@ export function AppsPanel({ show }: { show?: boolean }) {
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const navigate = useNavigate();
 
-  if (!show) {
-    return null;
-  }
-
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     setSelectedAppId(null);
     setSelectedChatId(null);
     navigate({ to: "/" });
-  };
+  }, [setSelectedAppId, setSelectedChatId, navigate]);
+
+  if (!show) {
+    return null;
+  }
 
   const showingChats = selectedAppId !== null;
 
@@ -32,11 +33,11 @@ export function AppsPanel({ show }: { show?: boolean }) {
         style={{ width: "200%" }}
       >
         {/* Left panel: App List */}
-        <div className="w-1/2">
-          <AppList show={true} />
+        <div className="w-1/2" {...(showingChats ? { inert: true } : {})}>
+          <AppList show={!showingChats} />
         </div>
         {/* Right panel: Chat List */}
-        <div className="w-1/2">
+        <div className="w-1/2" {...(!showingChats ? { inert: true } : {})}>
           <div className="flex flex-col h-full">
             <button
               onClick={handleBack}
@@ -50,7 +51,7 @@ export function AppsPanel({ show }: { show?: boolean }) {
               data-floating-app-anchor="sidebar"
               className="block h-7 mx-2"
             />
-            <ChatList show={true} />
+            <ChatList show={showingChats} />
           </div>
         </div>
       </div>

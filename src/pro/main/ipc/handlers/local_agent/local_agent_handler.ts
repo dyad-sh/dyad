@@ -193,7 +193,6 @@ export async function handleLocalAgentStream(
       todos: [],
       dyadRequestId,
       fileEditTracker,
-      isBasicAgentMode: isBasicAgentMode(settings),
       isDyadPro: isDyadProEnabled(settings),
       onXmlStream: (accumulatedXml: string) => {
         // Stream accumulated XML to UI without persisting

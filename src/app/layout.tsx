@@ -4,7 +4,13 @@ import { ThemeProvider } from "../contexts/ThemeContext";
 import { DeepLinkProvider } from "../contexts/DeepLinkContext";
 import { Toaster } from "sonner";
 import { TitleBar } from "./TitleBar";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useRunApp, useAppOutputSubscription } from "@/hooks/useRunApp";
 import { useAtomValue, useSetAtom } from "jotai";
 import {
@@ -138,13 +144,16 @@ function FloatingAppButton() {
 
   const routerState = useRouterState();
   const pathname = routerState.location.pathname;
-  const isAppRoute = pathname === "/" || pathname === "/chat";
+  const isAppRoute =
+    pathname === "/" ||
+    pathname === "/chat" ||
+    pathname.startsWith("/app-details");
 
   const selectedApp = apps.find((app) => app.id === selectedAppId);
   const displayText = selectedApp
     ? `App: ${selectedApp.name}`
     : "(no app selected)";
-  const inSidebar = sidebarState === "expanded" && selectedAppId !== null;
+  const inSidebar = sidebarState === "expanded" && selectedApp != null;
 
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const prevInSidebar = useRef(inSidebar);
@@ -163,30 +172,33 @@ function FloatingAppButton() {
     prevInSidebar.current = inSidebar;
   }, [inSidebar]);
 
-  useEffect(() => {
-    const measure = () => {
-      const anchorKey = inSidebar ? "sidebar" : "titlebar";
-      const anchor = document.querySelector(
-        `[data-floating-app-anchor="${anchorKey}"]`,
-      );
-      if (anchor) {
-        const rect = anchor.getBoundingClientRect();
-        setPos({ top: rect.top, left: rect.left });
-      }
-    };
+  const measure = useCallback(() => {
+    const anchorKey = inSidebar ? "sidebar" : "titlebar";
+    const anchor = document.querySelector(
+      `[data-floating-app-anchor="${anchorKey}"]`,
+    );
+    if (anchor) {
+      const rect = anchor.getBoundingClientRect();
+      setPos({ top: rect.top, left: rect.left });
+    }
+  }, [inSidebar]);
 
+  useEffect(() => {
     const raf = requestAnimationFrame(measure);
 
     // Re-measure after sidebar transition settles
     const timeout = setTimeout(measure, 220);
 
+    window.addEventListener("resize", measure);
+
     return () => {
       cancelAnimationFrame(raf);
       clearTimeout(timeout);
+      window.removeEventListener("resize", measure);
     };
-  }, [inSidebar, sidebarState]);
+  }, [inSidebar, sidebarState, measure]);
 
-  if (!pos || !isAppRoute || !selectedApp) return null;
+  if (!pos || !isAppRoute) return null;
 
   return (
     <Button

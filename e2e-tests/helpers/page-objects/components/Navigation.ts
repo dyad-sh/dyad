@@ -24,7 +24,9 @@ export class Navigation {
   }
 
   async goToChatTab() {
-    await this.page.getByRole("link", { name: "Chat" }).click();
+    // Chat is now nested under Apps - clicking Apps navigates to "/"
+    // and shows the chat list if an app is already selected
+    await this.page.getByRole("link", { name: "Apps" }).click();
   }
 
   async goToHubTab() {

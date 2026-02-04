@@ -58,11 +58,6 @@ export interface AgentContext {
   /** Tracks file edit tool usage per file for telemetry */
   fileEditTracker: FileEditTracker;
   /**
-   * If true, this is Basic Agent mode (free tier with quota).
-   * Engine-dependent tools are disabled in this mode.
-   */
-  isBasicAgentMode: boolean;
-  /**
    * If true, the user has Dyad Pro enabled.
    * Engine-dependent tools require this to access the Dyad Pro API.
    */

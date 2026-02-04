@@ -171,10 +171,12 @@ Add `#skip-bugbot` to the PR description for trivial PRs that won't affect end-u
 ## Learnings
 
 ### E2E test deflaking patterns
+
 - Always add `await expect(element).toBeVisible()` before clicking dropdown options or action menu buttons — these elements may not be immediately available after opening a dropdown/popover.
 - Use `toContainText()` (async auto-retrying) instead of `textContent()` (sync, no retry) for assertions on text that may update asynchronously.
 - Use `ControlOrMeta+A` instead of `Meta+A` for keyboard shortcuts in E2E tests to ensure cross-platform compatibility.
 - Use `pressSequentially()` instead of `type()` for typing text — `type()` is deprecated in Playwright.
 
 ### Pre-commit formatting
-- `npm run fmt` (oxfmt) may reformat files even when `npm run lint` reports no errors. Always run `npm run fmt` *before* committing, or be prepared to amend the commit afterward.
+
+- `npm run fmt` (oxfmt) may reformat files even when `npm run lint` reports no errors. Always run `npm run fmt` _before_ committing, or be prepared to amend the commit afterward.

@@ -36,6 +36,20 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
+      - name: Configure git remotes for cross-repo PR
+        if: steps.check-author.outputs.should_continue == 'true'
+        run: |
+          # Add upstream remote pointing to the base repo for rebasing
+          git remote add upstream https://github.com/${{ github.repository }}.git
+          git fetch upstream main
+
+          echo "Git remotes configured:"
+          echo "  origin -> ${{ github.event.pull_request.head.repo.full_name }} (head repo / fork)"
+          echo "  upstream -> ${{ github.repository }} (base repo)"
+          git remote -v
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Remove cc:rebase label and add cc:rebasing
         if: steps.check-author.outputs.should_continue == 'true'
         run: |

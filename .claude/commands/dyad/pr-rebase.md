@@ -4,14 +4,18 @@ Rebase the current branch on the latest upstream changes, resolve conflicts, and
 
 ## Instructions
 
-1. **Determine the base branch:**
+1. **Determine the git remote setup:**
 
    ```
    git remote -v
    git branch -vv
    ```
 
-   Identify which remote and branch the current branch is tracking or should rebase onto (typically `main` or `master` from `upstream` or `origin`).
+   In GitHub Actions for cross-repo PRs:
+   - `origin` points to the **head repo** (fork) - this is where you push
+   - `upstream` points to the **base repo** - this is what you rebase onto
+
+   For same-repo PRs, `origin` points to the main repo and there may be no `upstream`.
 
 2. **Fetch the latest changes:**
 
@@ -21,11 +25,12 @@ Rebase the current branch on the latest upstream changes, resolve conflicts, and
 
 3. **Rebase onto the base branch:**
 
-   ```
-   git rebase <remote>/<base-branch>
-   ```
+   Use `upstream/main` if the `upstream` remote exists (cross-repo PR), otherwise use `origin/main`:
 
-   For example: `git rebase upstream/main`
+   ```
+   # Check if upstream remote exists
+   git remote get-url upstream 2>/dev/null && git rebase upstream/main || git rebase origin/main
+   ```
 
 4. **If there are merge conflicts:**
    - Identify the conflicting files from the rebase output

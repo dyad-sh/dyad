@@ -183,6 +183,13 @@
       "when": 1769600000000,
       "tag": "0025_romantic_mantis",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1770315577149,
+      "tag": "0026_loving_lenny_balinger",
+      "breakpoints": true
     }
   ]
 }

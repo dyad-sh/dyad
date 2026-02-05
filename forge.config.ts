@@ -78,9 +78,12 @@ const config: ForgeConfig = {
 
     osxSign: isEndToEndTestBuild
       ? undefined
-      : {
+      : ({
           identity: process.env.APPLE_TEAM_ID,
-        },
+          // Surface the actual signing error instead of silently continuing
+          // (@electron/packager defaults continueOnError to true, which masks failures)
+          continueOnError: false,
+        } as Record<string, unknown>),
     osxNotarize: isEndToEndTestBuild
       ? undefined
       : {

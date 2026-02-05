@@ -15,6 +15,10 @@ import log from "electron-log";
 
 const logger = log.scope("grep");
 
+const DEFAULT_LIMIT = 100;
+const MAX_LIMIT = 500;
+const MAX_LINE_LENGTH = 500;
+
 const grepSchema = z.object({
   query: z.string().describe("The regex pattern to search for"),
   include_pattern: z
@@ -31,6 +35,14 @@ const grepSchema = z.object({
     .boolean()
     .optional()
     .describe("Whether the search should be case sensitive (default: false)"),
+  limit: z
+    .number()
+    .min(1)
+    .max(MAX_LIMIT)
+    .optional()
+    .describe(
+      `Maximum number of matches to return (default: ${DEFAULT_LIMIT}, max: ${MAX_LIMIT}). Use include_pattern to narrow results if limit is reached.`,
+    ),
 });
 
 interface RipgrepMatch {
@@ -42,6 +54,7 @@ interface RipgrepMatch {
 function buildGrepAttributes(
   args: Partial<z.infer<typeof grepSchema>>,
   count?: number,
+  totalCount?: number,
 ): string {
   const attrs: string[] = [];
   if (args.query) {
@@ -59,7 +72,18 @@ function buildGrepAttributes(
   if (count !== undefined) {
     attrs.push(`count="${count}"`);
   }
+  if (totalCount !== undefined && totalCount > (count ?? 0)) {
+    attrs.push(`total="${totalCount}"`);
+    attrs.push(`truncated="true"`);
+  }
   return attrs.join(" ");
+}
+
+function truncateLineText(text: string): string {
+  if (text.length <= MAX_LINE_LENGTH) {
+    return text;
+  }
+  return text.slice(0, MAX_LINE_LENGTH) + "...";
 }
 
 async function runRipgrep({
@@ -168,7 +192,8 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
 - Returns matching lines with file paths and line numbers
 - By default, the search is case-insensitive
 - Use include_pattern to filter by file type (e.g. '*.tsx')
-- Use exclude_pattern to skip certain files (e.g. '*.test.ts')`,
+- Use exclude_pattern to skip certain files (e.g. '*.test.ts')
+- Results are limited to ${DEFAULT_LIMIT} matches by default (max ${MAX_LIMIT}). If results are truncated, narrow your search with include_pattern or a more specific query.`,
   inputSchema: grepSchema,
   defaultConsent: "always",
 
@@ -192,7 +217,7 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
   },
 
   execute: async (args, ctx: AgentContext) => {
-    const matches = await runRipgrep({
+    const allMatches = await runRipgrep({
       appPath: ctx.appPath,
       query: args.query,
       includePat: args.include_pattern,
@@ -200,18 +225,28 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
       caseSensitive: args.case_sensitive,
     });
 
-    const attrs = buildGrepAttributes(args, matches.length);
+    const totalCount = allMatches.length;
+    const limit = Math.min(args.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
+    const matches = allMatches.slice(0, limit);
+    const wasTruncated = totalCount > limit;
+
+    const attrs = buildGrepAttributes(args, matches.length, totalCount);
 
     if (matches.length === 0) {
       ctx.onXmlComplete(`<dyad-grep ${attrs}>No matches found.</dyad-grep>`);
       return "No matches found.";
     }
 
-    // Format output: path:line: content
+    // Format output: path:line: content (with truncated line text)
     const lines = matches.map(
-      (m) => `${m.path}:${m.lineNumber}: ${m.lineText}`,
+      (m) => `${m.path}:${m.lineNumber}: ${truncateLineText(m.lineText)}`,
     );
-    const resultText = lines.join("\n");
+    let resultText = lines.join("\n");
+
+    // Add truncation notice for the AI
+    if (wasTruncated) {
+      resultText += `\n\n[TRUNCATED: Showing ${matches.length} of ${totalCount} matches. Use include_pattern to narrow your search (e.g., include_pattern="*.tsx") or use a more specific query.]`;
+    }
 
     ctx.onXmlComplete(
       `<dyad-grep ${attrs}>\n${escapeXmlContent(resultText)}\n</dyad-grep>`,

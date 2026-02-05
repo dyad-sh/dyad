@@ -352,12 +352,20 @@ export function registerCelestiaBlobHandlers(): void {
       height?: number;
       syncing?: boolean;
       balance?: { amount: string; denom: string };
+      walletAddress?: string;
+      network?: string;
       error?: string;
     }> => {
       try {
+        const config = celestiaBlobService.getConfig();
         const available = await celestiaBlobService.isAvailable();
         if (!available) {
-          return { available: false, error: "Celestia node not reachable" };
+          return {
+            available: false,
+            walletAddress: config.walletAddress,
+            network: config.network,
+            error: "Celestia node not reachable",
+          };
         }
 
         const [syncState, balance] = await Promise.all([
@@ -370,6 +378,8 @@ export function registerCelestiaBlobHandlers(): void {
           height: syncState?.height,
           syncing: syncState?.syncing,
           balance: balance ?? undefined,
+          walletAddress: config.walletAddress,
+          network: config.network,
         };
       } catch (error) {
         return {

@@ -1,3 +1,8 @@
+# Celestia Light Node — Mainnet
+# Wallet: celestia1vxssxrs2t27wtgur7lmqcep5zntz3nhjp48z7k
+# Namespace: joy80mvp12 (AAAAAAAAAAAAAAAAAAAAAAAAAGpveTgwbXZwMTI=)
+# Reference block height at deploy: 9698698
+
 services:
   celestia-light-node:
     container_name: celestia-mainnet-node
@@ -14,6 +19,7 @@ services:
     environment:
       - NODE_TYPE=light
       - P2P_NETWORK=celestia
+      - CELESTIA_NAMESPACE=AAAAAAAAAAAAAAAAAAAAAAAAAGpveTgwbXZwMTI=
     command: >
       celestia light start
       --core.ip consensus.lunaroasis.net

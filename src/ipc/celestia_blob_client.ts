@@ -38,6 +38,8 @@ export interface CelestiaStatus {
   height?: number;
   syncing?: boolean;
   balance?: { amount: string; denom: string };
+  walletAddress?: string;
+  network?: string;
   error?: string;
 }
 
@@ -46,6 +48,8 @@ export interface CelestiaConfig {
   namespace: string;
   gasPrice: number;
   authToken?: string;
+  walletAddress: string;
+  network: string;
 }
 
 export interface BlobStats {

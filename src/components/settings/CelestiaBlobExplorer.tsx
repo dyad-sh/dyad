@@ -254,6 +254,8 @@ export function CelestiaBlobExplorer() {
     nodeHeight,
     isSyncing,
     balance,
+    walletAddress,
+    network,
     status,
     statusLoading,
     blobs,
@@ -267,6 +269,13 @@ export function CelestiaBlobExplorer() {
     refresh,
   } = useCelestiaBlobs();
 
+  const copyWallet = () => {
+    if (walletAddress) {
+      navigator.clipboard.writeText(walletAddress);
+      toast.success("Wallet address copied");
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -277,7 +286,12 @@ export function CelestiaBlobExplorer() {
               Celestia Data Availability
             </CardTitle>
             <CardDescription className="mt-1">
-              Large data is exposed as hashed blobs — never as raw data
+              {network ? (
+                <span className="capitalize">{network} Mainnet</span>
+              ) : (
+                "Celestia"
+              )}{" "}
+              — large data is exposed as hashed blobs, never as raw data
             </CardDescription>
           </div>
 
@@ -410,8 +424,30 @@ export function CelestiaBlobExplorer() {
           </p>
           <p className="flex items-center gap-1">
             <Globe className="h-3 w-3" />
-            Namespace:{" "}
-            <span className="font-mono">joy80mvp12</span> — RPC:{" "}
+            Network:{" "}
+            <span className="font-mono capitalize">
+              {network ?? "celestia"} mainnet
+            </span>
+            {" "}— Namespace:{" "}
+            <span className="font-mono">joy80mvp12</span>
+          </p>
+          {walletAddress && (
+            <p className="flex items-center gap-1">
+              <Hash className="h-3 w-3" />
+              Wallet:{" "}
+              <button
+                onClick={copyWallet}
+                className="font-mono hover:text-primary cursor-pointer"
+                title={walletAddress}
+              >
+                {walletAddress.slice(0, 16)}...{walletAddress.slice(-8)}
+              </button>
+              <Copy className="h-3 w-3 ml-0.5" />
+            </p>
+          )}
+          <p className="flex items-center gap-1">
+            <Layers className="h-3 w-3" />
+            RPC:{" "}
             <span className="font-mono">localhost:26658</span>
           </p>
         </div>

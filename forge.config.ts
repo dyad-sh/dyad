@@ -148,7 +148,13 @@ const config: ForgeConfig = {
   ],
   hooks: {
     prePackage: async () => {
-      execSync("node scripts/build.mjs", { stdio: "inherit" });
+      try {
+        execSync("node scripts/build.mjs", { stdio: "inherit" });
+      } catch (error) {
+        throw new Error(
+          `Pre-package build failed. Run 'npm run build' to debug: ${error instanceof Error ? error.message : error}`,
+        );
+      }
     },
   },
   plugins: [

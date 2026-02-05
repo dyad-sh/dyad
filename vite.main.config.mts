@@ -4,22 +4,24 @@ import { builtinModules } from "node:module";
 
 // Plugin to fix tslib CJS interop issue in Rolldown
 // The __toESM helper incorrectly adds .default for tslib
+//
+// Problem: Rolldown's __toESM helper wraps tslib (which uses module.exports)
+// with .default access, causing runtime errors like "Cannot read property
+// '__extends' of undefined".
+//
+// Fix: Post-process generated bundles to remove incorrect .default access.
+// This is applied in generateBundle because transform() cannot modify the
+// bundler's interop behavior.
+//
+// TODO: Remove when Rolldown fixes CJS interop
+// Track: https://github.com/rolldown/rolldown/issues (search for tslib interop)
 function tslibInteropFix() {
   return {
     name: "tslib-interop-fix",
-    transform(code: string, id: string) {
-      if (id.includes("tslib")) {
-        // tslib uses module.exports = { __extends, ... }
-        // We need to ensure it's treated as CJS without .default wrapping
-        return null; // Let Rolldown handle it normally
-      }
-      return null;
-    },
     generateBundle(
       _options: unknown,
       bundle: Record<string, { type: string; code?: string }>,
     ) {
-      // Fix the incorrect .default access for tslib in all chunks
       for (const fileName of Object.keys(bundle)) {
         const chunk = bundle[fileName];
         if (chunk.type === "chunk" && chunk.code) {
@@ -52,7 +54,7 @@ export default defineConfig({
     lib: {
       entry: "src/main.ts",
       formats: ["cjs"],
-      fileName: () => "[name].js",
+      fileName: (_format, entryName) => `${entryName}.js`,
     },
     rolldownOptions: {
       external: [

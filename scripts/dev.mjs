@@ -18,6 +18,9 @@ await rendererServer.listen();
 rendererServer.printUrls();
 
 const addressInfo = rendererServer.httpServer.address();
+if (!addressInfo) {
+  throw new Error("Failed to start renderer server - no address info");
+}
 const rendererUrl =
   typeof addressInfo === "string"
     ? addressInfo
@@ -120,7 +123,7 @@ const mainWatcher = await build({
 });
 
 // 6. Shutdown handling
-function shutdown() {
+async function shutdown() {
   if (isShuttingDown) return;
   isShuttingDown = true;
 
@@ -131,14 +134,14 @@ function shutdown() {
     electronProcess.kill();
   }
 
-  // Close watchers — handle both RollupWatcher and BuildWatcher APIs
-  for (const watcher of [mainWatcher, preloadWatcher, workerWatcher]) {
-    if (watcher && typeof watcher.close === "function") {
-      watcher.close();
-    }
-  }
+  // Close watchers — await all closures
+  await Promise.all(
+    [mainWatcher, preloadWatcher, workerWatcher]
+      .filter((w) => w && typeof w.close === "function")
+      .map((w) => w.close()),
+  );
 
-  rendererServer.close();
+  await rendererServer.close();
   process.exit(0);
 }
 

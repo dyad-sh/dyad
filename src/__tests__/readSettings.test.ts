@@ -6,23 +6,21 @@ import { readSettings, getSettingsFilePath } from "@/main/settings";
 import { getUserDataPath } from "@/paths/paths";
 import { UserSettings } from "@/lib/schemas";
 
-// Mock dependencies
-vi.mock("node:fs", () => ({
-  default: {
+// Mock dependencies - use shared instances for default and named exports
+// This ensures the same mock is used regardless of import style
+vi.mock("node:fs", () => {
+  const mod = {
     existsSync: vi.fn(),
     readFileSync: vi.fn(),
     writeFileSync: vi.fn(),
     mkdirSync: vi.fn(),
-  },
-  existsSync: vi.fn(),
-  readFileSync: vi.fn(),
-  writeFileSync: vi.fn(),
-  mkdirSync: vi.fn(),
-}));
-vi.mock("node:path", () => ({
-  default: { join: vi.fn() },
-  join: vi.fn(),
-}));
+  };
+  return { default: mod, ...mod };
+});
+vi.mock("node:path", () => {
+  const mod = { join: vi.fn() };
+  return { default: mod, ...mod };
+});
 vi.mock("electron", () => ({
   safeStorage: {
     isEncryptionAvailable: vi.fn(),

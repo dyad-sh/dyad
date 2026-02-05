@@ -190,6 +190,13 @@
       "when": 1769386366484,
       "tag": "0026_yummy_old_lace",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1770328335705,
+      "tag": "0027_curved_preak",
+      "breakpoints": true
     }
   ]
 }

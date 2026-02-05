@@ -241,6 +241,18 @@ When running GitHub Actions with `pull_request_target` on cross-repo PRs (from f
 - Wrapping `ToggleGroupItem` in `TooltipTrigger` without `render` also breaks `:first-child`/`:last-child` CSS selectors for rounded corners on the group.
 - For drag handles and resize rails, prefer the native `title` attribute over `Tooltip` — tooltips appear immediately on hover and interfere with drag interactions, while `title` has a built-in delay.
 
+### Base UI Radio component selection in Playwright
+
+When testing Base UI Radio components in Playwright E2E tests, use `getByRole('radio', { name: 'Label' })` instead of `getByLabel('Label')`. The `getByLabel` selector may not work correctly with Base UI's Radio component structure.
+
+```ts
+// Correct: use role selector
+await page.getByRole("radio", { name: "React" }).click();
+
+// May not work with Base UI Radio
+await page.getByLabel("React").click();
+```
+
 ### Drizzle migration conflicts during rebase
 
 When rebasing a branch that has drizzle migrations conflicting with upstream (e.g., both have `0023_*.sql`):

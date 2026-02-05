@@ -338,6 +338,11 @@ export function buildAgentToolSet(
       continue;
     }
 
+    // Skip planning-specific tools when NOT in plan mode
+    if (!options.planModeOnly && PLANNING_SPECIFIC_TOOLS.has(tool.name)) {
+      continue;
+    }
+
     // In read-only mode, skip tools that modify state
     if (options.readOnly && tool.modifiesState) {
       continue;

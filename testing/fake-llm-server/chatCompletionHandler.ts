@@ -33,45 +33,39 @@ export const createChatCompletionHandler =
       .slice()
       .reverse()
       .find((m: any) => m.role === "user");
+
+    // Extract text content from last user message (handles both string and array content)
+    let userTextContent = "";
     if (lastUserMessage) {
-      // Handle both string content and array content (AI SDK format)
-      let textContent = "";
       if (typeof lastUserMessage.content === "string") {
-        textContent = lastUserMessage.content;
+        userTextContent = lastUserMessage.content;
       } else if (Array.isArray(lastUserMessage.content)) {
         const textPart = lastUserMessage.content.find(
           (p: any) => p.type === "text",
         );
         if (textPart) {
-          textContent = textPart.text;
+          userTextContent = textPart.text;
         }
       }
 
-      const localAgentFixture = extractLocalAgentFixture(textContent);
+      const localAgentFixture = extractLocalAgentFixture(userTextContent);
       console.error(
-        `[local-agent] Checking message: "${textContent.slice(0, 50)}", fixture: ${localAgentFixture}`,
+        `[local-agent] Checking message: "${userTextContent.slice(0, 50)}", fixture: ${localAgentFixture}`,
       );
       if (localAgentFixture) {
         return handleLocalAgentFixture(req, res, localAgentFixture);
       }
 
       // Route plan acceptance message to exit-plan fixture
-      if (textContent.includes("I accept this plan")) {
+      if (userTextContent.includes("I accept this plan")) {
         return handleLocalAgentFixture(req, res, "exit-plan");
       }
     }
 
     let messageContent = CANNED_MESSAGE;
 
-    if (
-      lastMessage &&
-      Array.isArray(lastMessage.content) &&
-      lastMessage.content.some(
-        (part: { type: string; text: string }) =>
-          part.type === "text" &&
-          part.text.includes("[[UPLOAD_IMAGE_TO_CODEBASE]]"),
-      )
-    ) {
+    // Check for upload image to codebase using lastUserMessage (which already handles both string and array content)
+    if (userTextContent.includes("[[UPLOAD_IMAGE_TO_CODEBASE]]")) {
       messageContent = `Uploading image to codebase
 <dyad-write path="new/image/file.png" description="Uploaded image to codebase">
 DYAD_ATTACHMENT_0

@@ -102,3 +102,7 @@ sqlite.db
 userData/
 .env.local
 .idea/
+
+# n8n config folders (including ones with trailing spaces)
+n8n-config*/
+"n8n-config "*

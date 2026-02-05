@@ -196,6 +196,18 @@
               "path": {
                 "type": "string",
                 "description": "The file path to read"
+              },
+              "start_line_one_indexed": {
+                "description": "The one-indexed line number to start reading from (inclusive).",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "end_line_one_indexed_inclusive": {
+                "description": "The one-indexed line number to end reading at (inclusive).",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
               }
             },
             "required": [

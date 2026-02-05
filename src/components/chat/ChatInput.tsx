@@ -598,9 +598,9 @@ function RefactorFileButton({ path }: { path: string }) {
   return (
     <SuggestionButton
       onClick={onClick}
-      tooltipText="Refactor the file to improve maintainability"
+      tooltipText={`Refactor the file to improve maintainability: \n${path}`}
     >
-      <span className="max-w-[180px] overflow-hidden whitespace-nowrap text-ellipsis">
+      <span className="max-w-[200px] overflow-hidden whitespace-nowrap text-ellipsis">
         Refactor {path.split("/").slice(-2).join("/")}
       </span>
     </SuggestionButton>

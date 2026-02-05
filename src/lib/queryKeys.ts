@@ -305,6 +305,64 @@ export const queryKeys = {
       projectId: string;
       organizationSlug: string | null;
     }) => ["supabase", "edge-logs", projectId, organizationSlug] as const,
+    // Storage query keys
+    storageBuckets: ({
+      projectId,
+      organizationSlug,
+    }: {
+      projectId: string;
+      organizationSlug: string | null;
+    }) => ["supabase", "storage-buckets", projectId, organizationSlug] as const,
+    storageObjects: ({
+      projectId,
+      organizationSlug,
+      bucketId,
+      prefix,
+      limit,
+      offset,
+    }: {
+      projectId: string;
+      organizationSlug: string | null;
+      bucketId: string;
+      prefix?: string;
+      limit: number;
+      offset: number;
+    }) =>
+      [
+        "supabase",
+        "storage-objects",
+        projectId,
+        organizationSlug,
+        bucketId,
+        prefix,
+        limit,
+        offset,
+      ] as const,
+    // Auth Config query key
+    authConfig: ({
+      projectId,
+      organizationSlug,
+    }: {
+      projectId: string;
+      organizationSlug: string | null;
+    }) => ["supabase", "auth-config", projectId, organizationSlug] as const,
+    // Project Logs query key (multi-source)
+    projectLogs: ({
+      projectId,
+      organizationSlug,
+      source,
+    }: {
+      projectId: string;
+      organizationSlug: string | null;
+      source: string;
+    }) =>
+      [
+        "supabase",
+        "project-logs",
+        projectId,
+        organizationSlug,
+        source,
+      ] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

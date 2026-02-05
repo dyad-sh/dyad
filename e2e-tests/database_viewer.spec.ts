@@ -105,3 +105,79 @@ test("database panel - shows tables and data, supports SQL editor", async ({
     timeout: Timeout.MEDIUM,
   });
 });
+
+test("supabase panel - storage, auth, and logs sections", async ({ po }) => {
+  await po.setUp({ autoApprove: true });
+  await po.importApp("minimal");
+  await po.sendPrompt("tc=add-supabase");
+
+  // Connect to Supabase (uses fake connection in test mode)
+  await po.page.getByText("Set up supabase").click();
+  await po.clickConnectSupabaseButton();
+  await po.clickBackButton();
+
+  // Navigate to the database panel
+  await po.selectPreviewMode("database");
+  await expect(po.page.getByText("Manage your back-end")).toBeVisible({
+    timeout: Timeout.LONG,
+  });
+
+  // --- Storage Section ---
+  await po.page.getByRole("button", { name: "Storage" }).click();
+
+  // Verify storage buckets are listed
+  await expect(po.page.getByText("Storage Buckets (2)")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
+  await expect(po.page.getByText("avatars")).toBeVisible();
+  await expect(po.page.getByText("documents")).toBeVisible();
+
+  // Click on avatars bucket to view files
+  await po.page.getByText("avatars").first().click();
+  await expect(po.page.getByText("profile.png")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
+  await expect(po.page.getByText("avatar.jpg")).toBeVisible();
+
+  // --- Authentication Section ---
+  await po.page.getByRole("button", { name: "Authentication" }).click();
+
+  // Verify auth settings are displayed
+  await expect(po.page.getByText("Authentication Settings")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
+  // Verify providers table is shown (use getByRole to target table cells specifically)
+  await expect(po.page.getByRole("cell", { name: "email" })).toBeVisible();
+  await expect(po.page.getByRole("cell", { name: "google" })).toBeVisible();
+
+  // --- Logs Section ---
+  await po.page.getByRole("button", { name: "Logs" }).click();
+
+  // Verify logs section with Edge Functions tab (default)
+  await expect(
+    po.page.getByRole("tab", { name: "Edge Functions" }),
+  ).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
+  await expect(
+    po.page.getByText("Function invoked successfully"),
+  ).toBeVisible();
+
+  // Switch to PostgreSQL tab
+  await po.page.getByRole("tab", { name: "PostgreSQL" }).click();
+  await expect(
+    po.page.getByText("[postgres] Operation completed successfully"),
+  ).toBeVisible({ timeout: Timeout.MEDIUM });
+
+  // Switch to Auth tab
+  await po.page.getByRole("tab", { name: "Auth" }).click();
+  await expect(
+    po.page.getByText("[auth] Operation completed successfully"),
+  ).toBeVisible({ timeout: Timeout.MEDIUM });
+
+  // Switch to API tab
+  await po.page.getByRole("tab", { name: "API" }).click();
+  await expect(
+    po.page.getByText("[postgrest] Operation completed successfully"),
+  ).toBeVisible({ timeout: Timeout.MEDIUM });
+});

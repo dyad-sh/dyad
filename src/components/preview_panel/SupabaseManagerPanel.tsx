@@ -146,8 +146,18 @@ export function SupabaseManagerPanel() {
             organizationSlug={organizationSlug}
           />
         )}
-        {activeSection === "storage" && <StorageSection />}
-        {activeSection === "auth" && <AuthSection />}
+        {activeSection === "storage" && (
+          <StorageSection
+            projectId={projectId}
+            organizationSlug={organizationSlug}
+          />
+        )}
+        {activeSection === "auth" && (
+          <AuthSection
+            projectId={projectId}
+            organizationSlug={organizationSlug}
+          />
+        )}
         {activeSection === "users" && (
           <UsersSection
             projectId={projectId}

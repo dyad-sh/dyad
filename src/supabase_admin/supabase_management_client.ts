@@ -591,6 +591,61 @@ LIMIT 1000`;
 function getFakeTestSqlResult(query: string): string {
   const normalizedQuery = query.toLowerCase().trim();
 
+  // Storage buckets query (must be checked before generic patterns)
+  if (normalizedQuery.includes("storage.buckets")) {
+    return JSON.stringify([
+      {
+        id: "avatars",
+        name: "avatars",
+        public: true,
+        created_at: "2024-01-15T10:00:00Z",
+        file_size_limit: 5242880,
+        allowed_mime_types: ["image/png", "image/jpeg"],
+      },
+      {
+        id: "documents",
+        name: "documents",
+        public: false,
+        created_at: "2024-01-16T10:00:00Z",
+        file_size_limit: null,
+        allowed_mime_types: null,
+      },
+    ]);
+  }
+
+  // Storage objects query (must be checked before generic patterns)
+  if (normalizedQuery.includes("storage.objects")) {
+    if (normalizedQuery.includes("count(*)")) {
+      return JSON.stringify([{ count: 3 }]);
+    }
+    return JSON.stringify([
+      {
+        id: "obj-1",
+        name: "profile.png",
+        bucket_id: "avatars",
+        created_at: "2024-01-15T11:00:00Z",
+        updated_at: "2024-01-15T11:00:00Z",
+        metadata: { mimetype: "image/png", size: 12345 },
+      },
+      {
+        id: "obj-2",
+        name: "avatar.jpg",
+        bucket_id: "avatars",
+        created_at: "2024-01-16T11:00:00Z",
+        updated_at: "2024-01-16T11:00:00Z",
+        metadata: { mimetype: "image/jpeg", size: 23456 },
+      },
+      {
+        id: "obj-3",
+        name: "report.pdf",
+        bucket_id: "documents",
+        created_at: "2024-01-17T11:00:00Z",
+        updated_at: "2024-01-17T11:00:00Z",
+        metadata: { mimetype: "application/pdf", size: 102400 },
+      },
+    ]);
+  }
+
   // List tables query
   if (
     normalizedQuery.includes("information_schema.tables") &&
@@ -1241,6 +1296,194 @@ export async function listEdgeLogs({
   }
 
   return entries;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Auth Config
+// ─────────────────────────────────────────────────────────────────────
+
+export interface AuthConfigResponse {
+  site_url?: string;
+  uri_allow_list?: string;
+  jwt_exp?: number;
+  disable_signup?: boolean;
+  mailer_autoconfirm?: boolean;
+  phone_autoconfirm?: boolean;
+  sms_provider?: string;
+  [key: string]: unknown;
+}
+
+export async function getAuthConfig({
+  supabaseProjectId,
+  organizationSlug,
+}: {
+  supabaseProjectId: string;
+  organizationSlug: string | null;
+}): Promise<AuthConfigResponse> {
+  if (IS_TEST_BUILD) {
+    return {
+      site_url: "http://localhost:3000",
+      uri_allow_list: "",
+      jwt_exp: 3600,
+      disable_signup: false,
+      mailer_autoconfirm: false,
+      external_email_enabled: true,
+      external_google_enabled: true,
+      external_github_enabled: false,
+      external_apple_enabled: false,
+      external_azure_enabled: false,
+      external_discord_enabled: false,
+      external_facebook_enabled: false,
+      external_twitter_enabled: false,
+    };
+  }
+
+  const supabase = await getSupabaseClient({ organizationSlug });
+  const response = await fetchWithRetry(
+    `https://api.supabase.com/v1/projects/${supabaseProjectId}/config/auth`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${(supabase as any).options.accessToken}`,
+      },
+    },
+    `Get auth config for ${supabaseProjectId}`,
+  );
+
+  if (response.status !== 200) {
+    throw await createResponseError(response, "get auth config");
+  }
+
+  return await response.json();
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Project Logs (multi-source)
+// ─────────────────────────────────────────────────────────────────────
+
+export interface GenericLogEntry {
+  timestamp: string;
+  level: "info" | "warn" | "error" | "debug";
+  message: string;
+  source: "edge" | "postgres" | "auth" | "postgrest";
+}
+
+function getFakeLogsForSource(
+  source: "edge" | "postgres" | "auth" | "postgrest",
+): GenericLogEntry[] {
+  const now = Date.now();
+  return [
+    {
+      timestamp: new Date(now).toISOString(),
+      level: "info",
+      message: `[${source}] Operation completed successfully`,
+      source,
+    },
+    {
+      timestamp: new Date(now - 30000).toISOString(),
+      level: "warn",
+      message: `[${source}] Slow query detected`,
+      source,
+    },
+    {
+      timestamp: new Date(now - 60000).toISOString(),
+      level: "error",
+      message: `[${source}] Connection timeout`,
+      source,
+    },
+  ];
+}
+
+function extractLogLevel(
+  log: { event_message?: string; metadata?: Array<{ level?: string }> },
+  source: string,
+): "info" | "warn" | "error" | "debug" {
+  if (source === "postgres") {
+    const msg = log.event_message ?? "";
+    if (msg.includes("ERROR")) return "error";
+    if (msg.includes("WARNING")) return "warn";
+    return "info";
+  }
+  const metadata = log.metadata?.[0];
+  const level = metadata?.level ?? "info";
+  if (level === "error") return "error";
+  if (level === "warn" || level === "warning") return "warn";
+  return "info";
+}
+
+export async function getProjectLogs({
+  supabaseProjectId,
+  organizationSlug,
+  source,
+  timestampStart,
+}: {
+  supabaseProjectId: string;
+  organizationSlug: string | null;
+  source: "edge" | "postgres" | "auth" | "postgrest";
+  timestampStart?: number;
+}): Promise<GenericLogEntry[]> {
+  if (IS_TEST_BUILD) {
+    return getFakeLogsForSource(source);
+  }
+
+  const tableMap: Record<string, string> = {
+    edge: "function_logs",
+    postgres: "postgres_logs",
+    auth: "auth_logs",
+    postgrest: "postgrest_logs",
+  };
+  const tableName = tableMap[source] || "function_logs";
+
+  const supabase = await getSupabaseClient({ organizationSlug });
+
+  let sqlQuery = `SELECT timestamp, event_message, metadata FROM ${tableName}`;
+  if (timestampStart) {
+    sqlQuery += `\nWHERE timestamp > TIMESTAMP_MICROS(${timestampStart * 1000})`;
+  }
+  sqlQuery += `\nORDER BY timestamp DESC\nLIMIT 200`;
+
+  const now = new Date();
+  const isoTimestampEnd = now.toISOString();
+  const isoTimestampStart = timestampStart
+    ? new Date(timestampStart).toISOString()
+    : new Date(now.getTime() - 10 * 60 * 1000).toISOString();
+
+  const url = `https://api.supabase.com/v1/projects/${supabaseProjectId}/analytics/endpoints/logs.all?sql=${encodeURIComponent(sqlQuery)}&iso_timestamp_start=${isoTimestampStart}&iso_timestamp_end=${isoTimestampEnd}`;
+
+  const response = await fetchWithRetry(
+    url,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${(supabase as any).options.accessToken}`,
+      },
+    },
+    `Get ${source} logs for ${supabaseProjectId}`,
+  );
+
+  if (response.status !== 200) {
+    throw await createResponseError(response, `get ${source} logs`);
+  }
+
+  const jsonResponse = await response.json();
+  return (
+    (jsonResponse as { result?: Array<Record<string, unknown>> }).result ?? []
+  ).map(
+    (
+      log: Record<string, unknown> & {
+        timestamp?: number;
+        event_message?: string;
+        metadata?: Array<{ level?: string }>;
+      },
+    ) => ({
+      timestamp: log.timestamp
+        ? new Date(Number(log.timestamp) / 1000).toISOString()
+        : new Date().toISOString(),
+      level: extractLogLevel(log, source),
+      message: (log.event_message ?? "") as string,
+      source,
+    }),
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────

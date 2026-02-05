@@ -32,7 +32,7 @@ export function TableList({
           <Skeleton className="h-4 w-20" />
         </div>
         <div className="flex-1 p-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <div className="flex flex-col gap-1">
             <Skeleton className="h-9 w-full" />
             <Skeleton className="h-9 w-full" />
             <Skeleton className="h-9 w-full" />
@@ -67,11 +67,11 @@ export function TableList({
         </h3>
       </div>
       <div className="flex-1 overflow-y-auto p-3">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <div className="flex flex-col gap-1">
           {tables.map((table) => (
             <Button
               key={table}
-              variant={selectedTable === table ? "secondary" : "outline"}
+              variant={selectedTable === table ? "secondary" : "ghost"}
               onClick={() => onSelectTable(table)}
               className="justify-start font-mono text-xs h-9"
             >

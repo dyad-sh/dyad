@@ -14,6 +14,8 @@ import {
   createSecret,
   deleteSecrets,
   listEdgeLogs,
+  getAuthConfig,
+  getProjectLogs,
   type SupabaseProjectLog,
 } from "../../supabase_admin/supabase_management_client";
 import { extractFunctionName } from "../../supabase_admin/supabase_utils";
@@ -579,6 +581,140 @@ export function registerSupabaseHandlers() {
       timestampStart,
     });
 
+    return { logs };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Storage Handlers
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  createTypedHandler(
+    supabaseContracts.listStorageBuckets,
+    async (_, params) => {
+      const { projectId, organizationSlug } = params;
+      const query = `
+      SELECT id, name, public, created_at, file_size_limit, allowed_mime_types
+      FROM storage.buckets
+      ORDER BY name;
+    `;
+      const result = await executeSupabaseSql({
+        supabaseProjectId: projectId,
+        query,
+        organizationSlug,
+      });
+      return (
+        safeJsonParse(result, "Supabase listStorageBuckets response") ?? []
+      );
+    },
+  );
+
+  createTypedHandler(
+    supabaseContracts.listStorageObjects,
+    async (_, params) => {
+      const { projectId, organizationSlug, bucketId, prefix, limit, offset } =
+        params;
+      const escapedBucketId = bucketId.replace(/'/g, "''");
+
+      let whereClause = `WHERE bucket_id = '${escapedBucketId}'`;
+      if (prefix) {
+        const escapedPrefix = prefix.replace(/'/g, "''");
+        whereClause += ` AND name LIKE '${escapedPrefix}%'`;
+      }
+
+      const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit))));
+      const safeOffset = Math.max(0, Math.floor(Number(offset)));
+
+      // Get total count
+      const countQuery = `SELECT COUNT(*) as count FROM storage.objects ${whereClause};`;
+      const countResult = await executeSupabaseSql({
+        supabaseProjectId: projectId,
+        query: countQuery,
+        organizationSlug,
+      });
+      const countParsed = safeJsonParse<Array<{ count: unknown }> | null>(
+        countResult,
+        "storage objects count",
+      );
+      const rawTotal = countParsed?.[0]?.count;
+      const total =
+        rawTotal === null || rawTotal === undefined ? null : Number(rawTotal);
+
+      // Get objects
+      const objectsQuery = `
+      SELECT id, name, bucket_id, created_at, updated_at, metadata
+      FROM storage.objects
+      ${whereClause}
+      ORDER BY name
+      LIMIT ${safeLimit} OFFSET ${safeOffset};
+    `;
+      const objectsResult = await executeSupabaseSql({
+        supabaseProjectId: projectId,
+        query: objectsQuery,
+        organizationSlug,
+      });
+      const objects =
+        safeJsonParse<
+          Array<{
+            id: string;
+            name: string;
+            bucket_id: string;
+            created_at: string;
+            updated_at: string;
+            metadata: Record<string, unknown> | null;
+          }>
+        >(objectsResult, "storage objects") ?? [];
+
+      return { objects, total };
+    },
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Auth Config Handler
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  createTypedHandler(supabaseContracts.getAuthConfig, async (_, params) => {
+    const { projectId, organizationSlug } = params;
+    const config = await getAuthConfig({
+      supabaseProjectId: projectId,
+      organizationSlug,
+    });
+
+    // Transform flat external_*_enabled fields into structured providers array
+    const providerKeys = Object.keys(config).filter(
+      (k) => k.startsWith("external_") && k.endsWith("_enabled"),
+    );
+    const external_providers = providerKeys.map((k) => {
+      const name = k.replace("external_", "").replace("_enabled", "");
+      return {
+        name,
+        enabled: !!(config as Record<string, unknown>)[k],
+      };
+    });
+
+    return {
+      site_url: config.site_url,
+      uri_allow_list: config.uri_allow_list,
+      jwt_expiry: config.jwt_exp,
+      disable_signup: config.disable_signup,
+      mailer_autoconfirm: config.mailer_autoconfirm,
+      phone_autoconfirm: config.phone_autoconfirm,
+      sms_provider: config.sms_provider,
+      external_providers,
+    };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Project Logs Handler (multi-source)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  createTypedHandler(supabaseContracts.listProjectLogs, async (_, params) => {
+    const { projectId, organizationSlug, source, timestampStart } = params;
+    const logs = await getProjectLogs({
+      supabaseProjectId: projectId,
+      organizationSlug,
+      source,
+      timestampStart,
+    });
     return { logs };
   });
 

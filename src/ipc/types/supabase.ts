@@ -225,6 +225,119 @@ export const DeleteSecretParamsSchema = z.object({
 export type DeleteSecretParams = z.infer<typeof DeleteSecretParamsSchema>;
 
 // =============================================================================
+// Storage Schemas
+// =============================================================================
+
+export const StorageBucketSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  public: z.boolean(),
+  created_at: z.string(),
+  file_size_limit: z.number().nullable(),
+  allowed_mime_types: z.array(z.string()).nullable(),
+});
+export type StorageBucket = z.infer<typeof StorageBucketSchema>;
+
+export const StorageObjectSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  bucket_id: z.string(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  metadata: z.record(z.unknown()).nullable(),
+});
+export type StorageObject = z.infer<typeof StorageObjectSchema>;
+
+export const ListStorageBucketsParamsSchema = z.object({
+  projectId: z.string(),
+  organizationSlug: z.string().nullable(),
+});
+export type ListStorageBucketsParams = z.infer<
+  typeof ListStorageBucketsParamsSchema
+>;
+
+export const ListStorageObjectsParamsSchema = z.object({
+  projectId: z.string(),
+  organizationSlug: z.string().nullable(),
+  bucketId: z.string(),
+  prefix: z.string().optional(),
+  limit: z.number().min(1).max(100).default(50),
+  offset: z.number().min(0).default(0),
+});
+export type ListStorageObjectsParams = z.infer<
+  typeof ListStorageObjectsParamsSchema
+>;
+
+export const ListStorageObjectsResultSchema = z.object({
+  objects: z.array(StorageObjectSchema),
+  total: z.number().nullable(),
+});
+export type ListStorageObjectsResult = z.infer<
+  typeof ListStorageObjectsResultSchema
+>;
+
+// =============================================================================
+// Auth Config Schemas
+// =============================================================================
+
+export const AuthProviderSchema = z.object({
+  name: z.string(),
+  enabled: z.boolean(),
+});
+export type AuthProvider = z.infer<typeof AuthProviderSchema>;
+
+export const AuthConfigSchema = z.object({
+  site_url: z.string().optional(),
+  uri_allow_list: z.string().optional(),
+  jwt_expiry: z.number().optional(),
+  disable_signup: z.boolean().optional(),
+  mailer_autoconfirm: z.boolean().optional(),
+  phone_autoconfirm: z.boolean().optional(),
+  sms_provider: z.string().optional(),
+  external_providers: z.array(AuthProviderSchema),
+});
+export type AuthConfig = z.infer<typeof AuthConfigSchema>;
+
+export const GetAuthConfigParamsSchema = z.object({
+  projectId: z.string(),
+  organizationSlug: z.string().nullable(),
+});
+export type GetAuthConfigParams = z.infer<typeof GetAuthConfigParamsSchema>;
+
+// =============================================================================
+// Project Logs Schemas (multi-source)
+// =============================================================================
+
+export const LogSourceSchema = z.enum([
+  "edge",
+  "postgres",
+  "auth",
+  "postgrest",
+]);
+export type LogSource = z.infer<typeof LogSourceSchema>;
+
+export const GenericLogEntrySchema = z.object({
+  timestamp: z.string(),
+  level: z.enum(["info", "warn", "error", "debug"]),
+  message: z.string(),
+  source: LogSourceSchema,
+});
+export type GenericLogEntry = z.infer<typeof GenericLogEntrySchema>;
+
+export const ListProjectLogsParamsSchema = z.object({
+  projectId: z.string(),
+  organizationSlug: z.string().nullable(),
+  source: LogSourceSchema,
+  timestampStart: z.number().optional(),
+});
+export type ListProjectLogsParams = z.infer<typeof ListProjectLogsParamsSchema>;
+
+export const ListProjectLogsResultSchema = z.object({
+  logs: z.array(GenericLogEntrySchema),
+});
+export type ListProjectLogsResult = z.infer<typeof ListProjectLogsResultSchema>;
+
+// =============================================================================
 // Edge Logs Schemas (for LogsSection)
 // =============================================================================
 
@@ -371,6 +484,33 @@ export const supabaseContracts = {
     channel: "supabase:list-edge-logs",
     input: ListEdgeLogsParamsSchema,
     output: ListEdgeLogsResultSchema,
+  }),
+
+  // Storage contracts
+  listStorageBuckets: defineContract({
+    channel: "supabase:list-storage-buckets",
+    input: ListStorageBucketsParamsSchema,
+    output: z.array(StorageBucketSchema),
+  }),
+
+  listStorageObjects: defineContract({
+    channel: "supabase:list-storage-objects",
+    input: ListStorageObjectsParamsSchema,
+    output: ListStorageObjectsResultSchema,
+  }),
+
+  // Auth Config contract
+  getAuthConfig: defineContract({
+    channel: "supabase:get-auth-config",
+    input: GetAuthConfigParamsSchema,
+    output: AuthConfigSchema,
+  }),
+
+  // Project Logs contract (multi-source)
+  listProjectLogs: defineContract({
+    channel: "supabase:list-project-logs",
+    input: ListProjectLogsParamsSchema,
+    output: ListProjectLogsResultSchema,
   }),
 
   // Test-only channel

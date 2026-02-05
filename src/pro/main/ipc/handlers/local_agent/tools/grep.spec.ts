@@ -247,6 +247,45 @@ function deepHello() {
       expect(result).toContain("nested/deep.ts");
       expect(result).not.toContain("test1.ts");
     });
+
+    it("does not search node_modules even with include_pattern '*'", async () => {
+      // Create a node_modules directory with a matching file
+      const nodeModulesDir = path.join(testDir, "node_modules", "some-pkg");
+      await fs.promises.mkdir(nodeModulesDir, { recursive: true });
+      await fs.promises.writeFile(
+        path.join(nodeModulesDir, "index.js"),
+        `function hello() { return "hello from node_modules"; }`,
+      );
+
+      const result = await grepTool.execute(
+        { query: "hello", include_pattern: "*" },
+        mockContext,
+      );
+
+      // Should find matches in project files but NOT in node_modules
+      expect(result).toContain("test1.ts");
+      expect(result).not.toContain("node_modules");
+      // Should warn the LLM that "*" was ignored
+      expect(result).toContain(
+        'include_pattern="*" was ignored because it matches all files',
+      );
+    });
+
+    it("does not search node_modules without include_pattern", async () => {
+      // Create a node_modules directory with a matching file
+      const nodeModulesDir = path.join(testDir, "node_modules", "some-pkg");
+      await fs.promises.mkdir(nodeModulesDir, { recursive: true });
+      await fs.promises.writeFile(
+        path.join(nodeModulesDir, "index.js"),
+        `function hello() { return "hello from node_modules"; }`,
+      );
+
+      const result = await grepTool.execute({ query: "hello" }, mockContext);
+
+      // Should find matches in project files but NOT in node_modules
+      expect(result).toContain("test1.ts");
+      expect(result).not.toContain("node_modules");
+    });
   });
 
   describe("execute - regex patterns", () => {

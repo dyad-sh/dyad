@@ -106,7 +106,6 @@ async function runRipgrep({
       "--no-config",
       "--max-filesize",
       `${MAX_FILE_SEARCH_SIZE}`,
-      ...RIPGREP_EXCLUDED_GLOBS.flatMap((glob) => ["--glob", glob]),
     ];
 
     // Case sensitivity: default is case-insensitive
@@ -114,8 +113,9 @@ async function runRipgrep({
       args.push("--ignore-case");
     }
 
-    // Include pattern
-    if (includePat) {
+    // Include pattern (skip no-op "*" which would override exclusion globs
+    // and .gitignore rules since --glob always takes precedence over ignore logic)
+    if (includePat && includePat !== "*") {
       args.push("--glob", includePat);
     }
 
@@ -123,6 +123,10 @@ async function runRipgrep({
     if (excludePat) {
       args.push("--glob", `!${excludePat}`);
     }
+
+    // Exclusion globs come LAST so they always take precedence over any
+    // include pattern (later --glob flags override earlier ones in ripgrep)
+    args.push(...RIPGREP_EXCLUDED_GLOBS.flatMap((glob) => ["--glob", glob]));
 
     args.push("--", query, ".");
 
@@ -217,6 +221,8 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
   },
 
   execute: async (args, ctx: AgentContext) => {
+    const includePatWasWildcard = args.include_pattern === "*";
+
     const allMatches = await runRipgrep({
       appPath: ctx.appPath,
       query: args.query,
@@ -250,6 +256,11 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
     // Add truncation notice for the AI
     if (wasTruncated) {
       resultText += `\n\n[TRUNCATED: Showing ${matches.length} of ${totalCount} matches. Use include_pattern to narrow your search (e.g., include_pattern="*.tsx") or use a more specific query.]`;
+    }
+
+    // Warn the LLM that "*" was ignored so it doesn't retry with the same pattern
+    if (includePatWasWildcard) {
+      resultText += `\n\n[NOTE: include_pattern="*" was ignored because it matches all files. Omit include_pattern to search all files, or use a specific glob like "*.ts".]`;
     }
 
     ctx.onXmlComplete(

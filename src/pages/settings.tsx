@@ -31,6 +31,7 @@ import { ToolsMcpSettings } from "@/components/settings/ToolsMcpSettings";
 import { AgentToolsSettings } from "@/components/settings/AgentToolsSettings";
 import { ZoomSelector } from "@/components/ZoomSelector";
 import { DefaultChatModeSelector } from "@/components/DefaultChatModeSelector";
+import { ExploreSubAgentSwitch } from "@/components/ExploreSubAgentSwitch";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
 import { SECTION_IDS, SETTING_IDS } from "@/lib/settingsSearchIndex";
@@ -381,6 +382,10 @@ export function AISettings() {
 
       <div id={SETTING_IDS.maxChatTurns} className="mt-4">
         <MaxChatTurnsSelector />
+      </div>
+
+      <div id={SETTING_IDS.exploreSubAgent} className="mt-4">
+        <ExploreSubAgentSwitch />
       </div>
     </div>
   );

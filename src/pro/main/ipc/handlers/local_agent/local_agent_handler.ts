@@ -59,6 +59,7 @@ import { TOOL_DEFINITIONS } from "./tool_definitions";
 import { parseAiMessagesJson } from "@/ipc/utils/ai_messages_utils";
 import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
 import { addIntegrationTool } from "./tools/add_integration";
+import { shouldRunExploreAgent, runExploreSubAgent } from "./explore_sub_agent";
 
 const logger = log.scope("local_agent_handler");
 
@@ -249,6 +250,55 @@ export async function handleLocalAgentStream(
           .filter((msg) => msg.content || msg.aiMessagesJson)
           .flatMap((msg) => parseAiMessagesJson(msg));
 
+    // Run explore sub-agent if conditions are met
+    let exploreContext = "";
+    if (
+      !messageOverride &&
+      shouldRunExploreAgent({
+        settings,
+        messageCount: chat.messages.length,
+      })
+    ) {
+      // Get the user's prompt from the last user message
+      const lastUserMessage = [...chat.messages]
+        .reverse()
+        .find((msg) => msg.role === "user");
+      const userPrompt = lastUserMessage?.content || req.prompt;
+
+      const exploreResult = await runExploreSubAgent({
+        appPath,
+        chatId: chat.id,
+        appId: chat.app.id,
+        userPrompt,
+        event,
+        abortController,
+        placeholderMessageId,
+        settings,
+        dyadRequestId,
+        onProgress: async (exploreResponse: string) => {
+          // Stream the explore output to UI within the same message
+          sendResponseChunk(event, req.chatId, chat, exploreResponse);
+          await updateResponseInDb(placeholderMessageId, exploreResponse);
+        },
+      });
+
+      if (exploreResult.xmlOutput) {
+        fullResponse += exploreResult.xmlOutput;
+        await updateResponseInDb(placeholderMessageId, fullResponse);
+        sendResponseChunk(event, req.chatId, chat, fullResponse);
+      }
+      exploreContext = exploreResult.contextSummary;
+
+      logger.log(
+        `Explore sub-agent completed. Context: ${exploreContext.length} chars`,
+      );
+    }
+
+    // Build the final system prompt, injecting explore context if available
+    const finalSystemPrompt = exploreContext
+      ? `${systemPrompt}\n\n${exploreContext}`
+      : systemPrompt;
+
     // Stream the response
     const streamResult = streamText({
       model: modelClient.model,
@@ -267,7 +317,7 @@ export async function handleLocalAgentStream(
       maxOutputTokens: await getMaxTokens(settings.selectedModel),
       temperature: await getTemperature(settings.selectedModel),
       maxRetries: 2,
-      system: systemPrompt,
+      system: finalSystemPrompt,
       messages: messageHistory,
       tools: allTools,
       stopWhen: [stepCountIs(25), hasToolCall(addIntegrationTool.name)], // Allow multiple tool call rounds, stop on add_integration

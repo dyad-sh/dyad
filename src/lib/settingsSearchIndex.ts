@@ -30,6 +30,7 @@ export const SETTING_IDS = {
   vercel: "setting-vercel",
   supabase: "setting-supabase",
   neon: "setting-neon",
+  exploreSubAgent: "setting-explore-sub-agent",
   nativeGit: "setting-native-git",
   reset: "setting-reset",
 } as const;
@@ -152,6 +153,23 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     label: "Max Chat Turns",
     description: "Set the maximum number of conversation turns",
     keywords: ["turns", "max", "conversation", "limit", "chat"],
+    sectionId: SECTION_IDS.ai,
+    sectionLabel: "AI",
+  },
+  {
+    id: SETTING_IDS.exploreSubAgent,
+    label: "Explore Sub-Agent",
+    description:
+      "Use a faster model to gather codebase context at the start of new chats",
+    keywords: [
+      "explore",
+      "sub-agent",
+      "context",
+      "codebase",
+      "search",
+      "fast",
+      "cheap",
+    ],
     sectionId: SECTION_IDS.ai,
     sectionLabel: "AI",
   },

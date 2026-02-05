@@ -1,7 +1,5 @@
-import { useAtom } from "jotai";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { useLoadApps } from "@/hooks/useLoadApps";
-import { useRouter, useLocation } from "@tanstack/react-router";
+import { useLocation } from "@tanstack/react-router";
+import { useRouter } from "@tanstack/react-router";
 import { useSettings } from "@/hooks/useSettings";
 import { Button } from "@/components/ui/button";
 // @ts-ignore
@@ -23,9 +21,6 @@ import {
 import { ActionHeader } from "@/components/preview_panel/ActionHeader";
 
 export const TitleBar = () => {
-  const [selectedAppId] = useAtom(selectedAppIdAtom);
-  const { apps } = useLoadApps();
-  const { navigate } = useRouter();
   const location = useLocation();
   const { settings, refreshSettings } = useSettings();
   const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false);
@@ -61,18 +56,6 @@ export const TitleBar = () => {
     handleDeepLink();
   }, [lastDeepLink?.timestamp]);
 
-  // Get selected app name
-  const selectedApp = apps.find((app) => app.id === selectedAppId);
-  const displayText = selectedApp
-    ? `App: ${selectedApp.name}`
-    : "(no app selected)";
-
-  const handleAppClick = () => {
-    if (selectedApp) {
-      navigate({ to: "/app-details", search: { appId: selectedApp.id } });
-    }
-  };
-
   const isDyadPro = !!settings?.providerSettings?.auto?.apiKey?.value;
   const isDyadProEnabled = Boolean(settings?.enableDyadPro);
 
@@ -82,18 +65,11 @@ export const TitleBar = () => {
         <div className={`${showWindowControls ? "pl-2" : "pl-18"}`}></div>
 
         <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-0.5" />
-        <Button
-          data-testid="title-bar-app-name-button"
-          variant="outline"
-          size="sm"
-          className={`hidden @2xl:block no-app-region-drag text-xs max-w-38 truncate font-medium ${
-            selectedApp ? "cursor-pointer" : ""
-          }`}
-          onClick={handleAppClick}
-        >
-          {displayText}
-        </Button>
         {isDyadPro && <DyadProButton isDyadProEnabled={isDyadProEnabled} />}
+        <span
+          data-floating-app-anchor="titlebar"
+          className="inline-flex items-center h-7 ml-1"
+        />
 
         {/* Preview Header */}
         {location.pathname === "/chat" && (

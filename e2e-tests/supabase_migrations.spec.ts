@@ -40,10 +40,11 @@ testSkipIfWindows("supabase migrations", async ({ po }) => {
 
   let files: string[] = [];
   await expect(async () => {
-    // Check that one migration file was created
+    // Check that the migrations directory exists and has one migration file
+    expect(fs.existsSync(migrationsDir)).toBe(true);
     files = await fs.readdir(migrationsDir);
     expect(files).toHaveLength(1);
-  }).toPass();
+  }).toPass({ timeout: 10000 });
 
   expect(files[0]).toMatch(/0000_create_users_table\.sql/);
   expect(await fs.readFile(path.join(migrationsDir, files[0]), "utf8")).toEqual(
@@ -55,10 +56,11 @@ testSkipIfWindows("supabase migrations", async ({ po }) => {
   await po.waitForChatCompletion();
 
   await expect(async () => {
-    // Check that one migration file was created
+    // Check that the migrations directory exists and has two migration files
+    expect(fs.existsSync(migrationsDir)).toBe(true);
     files = await fs.readdir(migrationsDir);
     expect(files).toHaveLength(2);
-  }).toPass();
+  }).toPass({ timeout: 10000 });
 
   expect(files[1]).toMatch(/0001_\w+_\w+_\w+\.sql/);
   expect(await fs.readFile(path.join(migrationsDir, files[1]), "utf8")).toEqual(
@@ -106,10 +108,11 @@ testSkipIfWindows("supabase migrations with native git", async ({ po }) => {
 
   let files: string[] = [];
   await expect(async () => {
-    // Check that one migration file was created
+    // Check that the migrations directory exists and has one migration file
+    expect(fs.existsSync(migrationsDir)).toBe(true);
     files = await fs.readdir(migrationsDir);
     expect(files).toHaveLength(1);
-  }).toPass();
+  }).toPass({ timeout: 10000 });
 
   expect(files[0]).toMatch(/0000_create_users_table\.sql/);
   expect(await fs.readFile(path.join(migrationsDir, files[0]), "utf8")).toEqual(
@@ -128,10 +131,11 @@ testSkipIfWindows("supabase migrations with native git", async ({ po }) => {
   await po.waitForChatCompletion();
 
   await expect(async () => {
-    // Check that one migration file was created
+    // Check that the migrations directory exists and has two migration files
+    expect(fs.existsSync(migrationsDir)).toBe(true);
     files = await fs.readdir(migrationsDir);
     expect(files).toHaveLength(2);
-  }).toPass();
+  }).toPass({ timeout: 10000 });
 
   expect(files[1]).toMatch(/0001_\w+_\w+_\w+\.sql/);
   expect(await fs.readFile(path.join(migrationsDir, files[1]), "utf8")).toEqual(

@@ -592,11 +592,9 @@ export class PageObject {
     replaceDumpPath = false,
     timeout,
   }: { replaceDumpPath?: boolean; timeout?: number } = {}) {
-    // Always scrub compaction backup paths — they contain system-specific
-    // temp directories and timestamps that change between runs.
-    // Also conditionally scrub dyad-dump-path placeholders.
-    await this.page.evaluate(
-      ({ replaceDumpPath }) => {
+    // NOTE: once you have called this, you can NOT manipulate the UI anymore or React will break.
+    if (replaceDumpPath) {
+      await this.page.evaluate(() => {
         const messagesList = document.querySelector(
           "[data-testid=messages-list]",
         );
@@ -609,15 +607,13 @@ export class PageObject {
           /\.dyad\/chats\/\d+\/compaction-[^\s<"]+\.md/g,
           "[[compaction-backup-path]]",
         );
-        if (replaceDumpPath) {
-          messagesList.innerHTML = messagesList.innerHTML.replace(
-            /\[\[dyad-dump-path=([^\]]+)\]\]/g,
-            "[[dyad-dump-path=*]]",
-          );
-        }
-      },
-      { replaceDumpPath },
-    );
+
+        messagesList.innerHTML = messagesList.innerHTML.replace(
+          /\[\[dyad-dump-path=([^\]]+)\]\]/g,
+          "[[dyad-dump-path=*]]",
+        );
+      });
+    }
     await expect(this.page.getByTestId("messages-list")).toMatchAriaSnapshot({
       timeout,
     });

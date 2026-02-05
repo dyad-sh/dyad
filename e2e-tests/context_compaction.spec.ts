@@ -32,6 +32,6 @@ testSkipIfWindows(
     await po.sendPrompt("[dump] hi");
     await po.snapshotServerDump("all-messages");
     // Snapshot the messages to capture the compaction summary + second response
-    await po.snapshotMessages();
+    await po.snapshotMessages({ replaceDumpPath: true });
   },
 );

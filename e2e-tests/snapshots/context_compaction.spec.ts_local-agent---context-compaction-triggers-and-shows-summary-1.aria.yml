@@ -56,7 +56,7 @@
 - button "Copy Request ID":
   - img
 - paragraph: "[dump] hi"
-- paragraph: /\[\[dyad-dump-path=\/Users\/will\/Documents\/GitHub\/dyad-zero\/testing\/fake-llm-server\/dist\/generated\/\d+\.json\]\]/
+- paragraph: "[[dyad-dump-path=*]]"
 - button "Copy":
   - img
 - img

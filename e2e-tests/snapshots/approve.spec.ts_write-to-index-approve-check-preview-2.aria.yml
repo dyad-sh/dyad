@@ -2,11 +2,17 @@
 - paragraph: OK, I'm going to do some writing now...
 - img
 - text: Index.tsx
+- button "Edit":
+  - img
 - img
 - text: "src/pages/Index.tsx Summary: write-description"
 - paragraph: And it's done!
+- button "Copy":
+  - img
 - img
-- text: Approved
+- text: test-model
+- img
+- text: less than a minute ago
 - button "Undo":
   - img
 - button "Retry":

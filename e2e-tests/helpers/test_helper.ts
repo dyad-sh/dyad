@@ -973,7 +973,7 @@ export class PageObject {
   async clearChatInput() {
     const chatInput = this.getChatInput();
     await chatInput.click();
-    await this.page.keyboard.press("Meta+a");
+    await this.page.keyboard.press("ControlOrMeta+a");
     await this.page.keyboard.press("Backspace");
     await expect(async () => {
       const text = await chatInput.textContent();

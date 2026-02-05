@@ -6,22 +6,30 @@
 - img
 - text: file1.txt
 - paragraph: More EOM
-- button:
+- button "Copy":
   - img
 - img
+- text: Approved
+- img
+- text: claude-opus-4-5
+- img
 - text: less than a minute ago
-- button "Request ID":
+- button "Copy Request ID":
   - img
 - paragraph: tc=local-agent/add-dependency
 - paragraph: I'll add a dependency to your project.
 - img
 - text: Do you want to install these packages? @dyad-sh/supabase-management-js Make sure these packages are what you want.
 - paragraph: Dependency added done.
-- button:
+- button "Copy":
   - img
 - img
+- text: claude-opus-4-5
+- img
 - text: less than a minute ago
-- button "Request ID":
+- button "Copy Request ID":
+  - img
+- button "Undo":
   - img
 - button "Retry":
   - img

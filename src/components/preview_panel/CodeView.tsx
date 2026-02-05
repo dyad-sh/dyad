@@ -3,6 +3,11 @@ import { FileTree } from "./FileTree";
 import { useEffect, useState } from "react";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { RefreshCw, Maximize2, Minimize2 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import { useAtomValue } from "jotai";
 import { selectedFileAtom } from "@/atoms/viewAtoms";
 
@@ -59,23 +64,37 @@ export const CodeView = ({ loading, app }: CodeViewProps) => {
       >
         {/* Toolbar */}
         <div className="flex items-center p-2 border-b space-x-2">
-          <button
-            onClick={() => refreshApp()}
-            className="p-1 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={loading || !app.id}
-            title="Refresh Files"
-          >
-            <RefreshCw size={16} />
-          </button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  onClick={() => refreshApp()}
+                  className="p-1 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={loading || !app.id}
+                />
+              }
+            >
+              <RefreshCw size={16} />
+            </TooltipTrigger>
+            <TooltipContent>Refresh Files</TooltipContent>
+          </Tooltip>
           <div className="text-sm text-gray-500">{app.files.length} files</div>
           <div className="flex-1" />
-          <button
-            onClick={() => setIsFullscreen((value) => !value)}
-            className="p-1 rounded hover:bg-gray-200"
-            title={isFullscreen ? "Exit full screen" : "Enter full screen"}
-          >
-            {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-          </button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  onClick={() => setIsFullscreen((value) => !value)}
+                  className="p-1 rounded hover:bg-gray-200"
+                />
+              }
+            >
+              {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            </TooltipTrigger>
+            <TooltipContent>
+              {isFullscreen ? "Exit full screen" : "Enter full screen"}
+            </TooltipContent>
+          </Tooltip>
         </div>
 
         {/* Content */}

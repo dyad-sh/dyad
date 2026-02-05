@@ -57,6 +57,11 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import { useRunApp } from "@/hooks/useRunApp";
 import { useSettings } from "@/hooks/useSettings";
 import { useShortcut } from "@/hooks/useShortcut";
@@ -989,57 +994,79 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         <div className="flex items-center p-2 border-b space-x-2">
           {/* Navigation Buttons */}
           <div className="flex space-x-1">
-            <button
-              onClick={() => setIsChatPanelHidden(!isChatPanelHidden)}
-              className="p-1 rounded transition-colors duration-200 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
-              data-testid="preview-toggle-chat-panel-button"
-              title={isChatPanelHidden ? "Show chat" : "Hide chat"}
-            >
-              {isChatPanelHidden ? (
-                <Maximize2 size={16} />
-              ) : (
-                <Minimize2 size={16} />
-              )}
-            </button>
-            <button
-              onClick={handleActivateComponentSelector}
-              className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                isPicking
-                  ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
-                  : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
-              }`}
-              disabled={
-                loading || !selectedAppId || !isComponentSelectorInitialized
-              }
-              data-testid="preview-pick-element-button"
-              title={
-                isPicking
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={() => setIsChatPanelHidden(!isChatPanelHidden)}
+                    className="p-1 rounded transition-colors duration-200 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+                    data-testid="preview-toggle-chat-panel-button"
+                  />
+                }
+              >
+                {isChatPanelHidden ? (
+                  <Maximize2 size={16} />
+                ) : (
+                  <Minimize2 size={16} />
+                )}
+              </TooltipTrigger>
+              <TooltipContent>
+                {isChatPanelHidden ? "Show chat" : "Hide chat"}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={handleActivateComponentSelector}
+                    className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                      isPicking
+                        ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
+                        : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
+                    }`}
+                    disabled={
+                      loading ||
+                      !selectedAppId ||
+                      !isComponentSelectorInitialized
+                    }
+                    data-testid="preview-pick-element-button"
+                  />
+                }
+              >
+                <MousePointerClick size={16} />
+              </TooltipTrigger>
+              <TooltipContent>
+                {isPicking
                   ? "Deactivate component selector"
-                  : `Select component (${isMac ? "⌘ + ⇧ + C" : "Ctrl + ⇧ + C"})`
-              }
-            >
-              <MousePointerClick size={16} />
-            </button>
-            <button
-              onClick={handleAnnotatorClick}
-              className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                annotatorMode
-                  ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
-                  : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
-              }`}
-              disabled={
-                loading ||
-                !selectedAppId ||
-                isPicking ||
-                !isComponentSelectorInitialized
-              }
-              data-testid="preview-annotator-button"
-              title={
-                annotatorMode ? "Annotator mode active" : "Activate annotator"
-              }
-            >
-              <Pen size={16} />
-            </button>
+                  : `Select component (${isMac ? "⌘ + ⇧ + C" : "Ctrl + ⇧ + C"})`}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={handleAnnotatorClick}
+                    className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                      annotatorMode
+                        ? "bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-700"
+                        : " text-purple-700 hover:bg-purple-200  dark:text-purple-300 dark:hover:bg-purple-900"
+                    }`}
+                    disabled={
+                      loading ||
+                      !selectedAppId ||
+                      isPicking ||
+                      !isComponentSelectorInitialized
+                    }
+                    data-testid="preview-annotator-button"
+                  />
+                }
+              >
+                <Pen size={16} />
+              </TooltipTrigger>
+              <TooltipContent>
+                {annotatorMode ? "Annotator mode active" : "Activate annotator"}
+              </TooltipContent>
+            </Tooltip>
             <button
               className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
               disabled={!canGoBack || loading || !selectedAppId}
@@ -1106,14 +1133,20 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
           {/* Action Buttons */}
           <div className="flex space-x-1">
-            <button
-              onClick={onRestart}
-              className="flex items-center space-x-1 px-3 py-1 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
-              title="Restart App"
-            >
-              <Power size={16} />
-              <span>Restart</span>
-            </button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={onRestart}
+                    className="flex items-center space-x-1 px-3 py-1 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
+                  />
+                }
+              >
+                <Power size={16} />
+                <span>Restart</span>
+              </TooltipTrigger>
+              <TooltipContent>Restart App</TooltipContent>
+            </Tooltip>
             <button
               data-testid="preview-open-browser-button"
               onClick={() => {
@@ -1128,22 +1161,29 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
             {/* Device Mode Button */}
             <Popover open={isDevicePopoverOpen} modal={false}>
-              <PopoverTrigger
-                data-testid="device-mode-button"
-                onClick={() => {
-                  // Toggle popover open/close
-                  if (isDevicePopoverOpen)
-                    updateSettings({ previewDeviceMode: "desktop" });
-                  setIsDevicePopoverOpen(!isDevicePopoverOpen);
-                }}
-                className={cn(
-                  "p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-300",
-                  deviceMode !== "desktop" && "bg-gray-200 dark:bg-gray-700",
-                )}
-                title="Device Mode"
-              >
-                <MonitorSmartphone size={16} />
-              </PopoverTrigger>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <PopoverTrigger
+                      data-testid="device-mode-button"
+                      onClick={() => {
+                        // Toggle popover open/close
+                        if (isDevicePopoverOpen)
+                          updateSettings({ previewDeviceMode: "desktop" });
+                        setIsDevicePopoverOpen(!isDevicePopoverOpen);
+                      }}
+                      className={cn(
+                        "p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-300",
+                        deviceMode !== "desktop" &&
+                          "bg-gray-200 dark:bg-gray-700",
+                      )}
+                    />
+                  }
+                >
+                  <MonitorSmartphone size={16} />
+                </TooltipTrigger>
+                <TooltipContent>Device Mode</TooltipContent>
+              </Tooltip>
               <PopoverContent className="w-auto p-2">
                 <ToggleGroup
                   value={[deviceMode]}
@@ -1159,27 +1199,45 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                   }}
                   variant="outline"
                 >
-                  <ToggleGroupItem
-                    value="desktop"
-                    aria-label="Desktop view"
-                    title="Desktop"
-                  >
-                    <Monitor size={16} />
-                  </ToggleGroupItem>
-                  <ToggleGroupItem
-                    value="tablet"
-                    aria-label="Tablet view"
-                    title="Tablet"
-                  >
-                    <Tablet size={16} className="scale-x-130" />
-                  </ToggleGroupItem>
-                  <ToggleGroupItem
-                    value="mobile"
-                    aria-label="Mobile view"
-                    title="Mobile"
-                  >
-                    <Smartphone size={16} />
-                  </ToggleGroupItem>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <ToggleGroupItem
+                          value="desktop"
+                          aria-label="Desktop view"
+                        />
+                      }
+                    >
+                      <Monitor size={16} />
+                    </TooltipTrigger>
+                    <TooltipContent>Desktop</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <ToggleGroupItem
+                          value="tablet"
+                          aria-label="Tablet view"
+                        />
+                      }
+                    >
+                      <Tablet size={16} className="scale-x-130" />
+                    </TooltipTrigger>
+                    <TooltipContent>Tablet</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <ToggleGroupItem
+                          value="mobile"
+                          aria-label="Mobile view"
+                        />
+                      }
+                    >
+                      <Smartphone size={16} />
+                    </TooltipTrigger>
+                    <TooltipContent>Mobile</TooltipContent>
+                  </Tooltip>
                 </ToggleGroup>
               </PopoverContent>
             </Popover>

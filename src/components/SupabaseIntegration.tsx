@@ -5,6 +5,11 @@ import { Label } from "@/components/ui/label";
 // We might need a Supabase icon here, but for now, let's use a generic one or text.
 // import { Supabase } from "lucide-react"; // Placeholder
 import { DatabaseZap, Trash2 } from "lucide-react"; // Using DatabaseZap as a placeholder
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import { useSettings } from "@/hooks/useSettings";
 import { useSupabase } from "@/hooks/useSupabase";
 import { showSuccess, showError } from "@/lib/toast";
@@ -120,16 +125,24 @@ export function SupabaseIntegration() {
                 </span>
               )}
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-muted-foreground hover:text-destructive shrink-0"
-              onClick={() => handleDeleteOrganization(org.organizationSlug)}
-              title="Disconnect organization"
-            >
-              <Trash2 className="h-3.5 w-3.5 mr-1" />
-              <span className="text-xs">Disconnect</span>
-            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-muted-foreground hover:text-destructive shrink-0"
+                    onClick={() =>
+                      handleDeleteOrganization(org.organizationSlug)
+                    }
+                  />
+                }
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1" />
+                <span className="text-xs">Disconnect</span>
+              </TooltipTrigger>
+              <TooltipContent>Disconnect organization</TooltipContent>
+            </Tooltip>
           </div>
         ))}
       </div>

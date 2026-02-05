@@ -513,7 +513,7 @@ function SidebarMenuButton<T extends React.ElementType = "button">({
 
   return (
     <Tooltip>
-      <TooltipTrigger>{button}</TooltipTrigger>
+      <TooltipTrigger render={button} />
       <TooltipContent
         side="right"
         align="center"

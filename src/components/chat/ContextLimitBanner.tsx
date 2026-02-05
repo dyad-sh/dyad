@@ -1,5 +1,10 @@
 import { AlertTriangle, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
 
 const CONTEXT_LIMIT_THRESHOLD = 40_000;
@@ -52,16 +57,22 @@ export function ContextLimitBanner({
         <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
         <span>{message}</span>
       </span>
-      <Button
-        onClick={handleSummarize}
-        variant="outline"
-        size="sm"
-        className="h-6 px-2 text-xs border-amber-500/40 bg-amber-500/5 text-amber-600 dark:text-amber-500 hover:bg-amber-500/20 hover:border-amber-500/60"
-        title="Summarize to new chat"
-      >
-        Summarize
-        <ArrowRight className="h-3 w-3 ml-1" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              onClick={handleSummarize}
+              variant="outline"
+              size="sm"
+              className="h-6 px-2 text-xs border-amber-500/40 bg-amber-500/5 text-amber-600 dark:text-amber-500 hover:bg-amber-500/20 hover:border-amber-500/60"
+            />
+          }
+        >
+          Summarize
+          <ArrowRight className="h-3 w-3 ml-1" />
+        </TooltipTrigger>
+        <TooltipContent>Summarize to new chat</TooltipContent>
+      </Tooltip>
     </div>
   );
 }

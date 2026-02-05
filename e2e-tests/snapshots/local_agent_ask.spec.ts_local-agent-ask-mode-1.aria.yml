@@ -6,7 +6,7 @@
 - img
 - text: file1.txt
 - paragraph: More EOM
-- button:
+- button "Copy":
   - img
 - img
 - text: Approved
@@ -14,20 +14,20 @@
 - text: claude-opus-4-5
 - img
 - text: less than a minute ago
-- button "Request ID":
+- button "Copy Request ID":
   - img
 - paragraph: tc=local-agent/ask-read-file
 - paragraph: Let me read the file to explain its contents.
 - img
 - text: App.tsx Read src/App.tsx
 - paragraph: This is a simple React component that renders a div with the text 'Minimal imported app'. The component is exported as the default export.
-- button:
+- button "Copy":
   - img
 - img
 - text: claude-opus-4-5
 - img
 - text: less than a minute ago
-- button "Request ID":
+- button "Copy Request ID":
   - img
 - button "Undo":
   - img

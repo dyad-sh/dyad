@@ -30,6 +30,7 @@ export function getExtraProviderOptions(
           summary: "detailed",
           effort: "medium",
         },
+        include: ["reasoning.encrypted_content"],
       };
     }
     return { reasoning_effort: "medium" };

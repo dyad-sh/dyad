@@ -6,7 +6,7 @@
 - img
 - text: file1.txt
 - paragraph: More EOM
-- button:
+- button "Copy":
   - img
 - img
 - text: Approved
@@ -14,7 +14,7 @@
 - text: claude-opus-4-5
 - img
 - text: less than a minute ago
-- button "Request ID":
+- button "Copy Request ID":
   - img
 - paragraph: tc=local-agent/search-replace
 - paragraph: Let me first read the file to see its contents.
@@ -26,13 +26,13 @@
 - img
 - text: src/App.tsx
 - paragraph: Done! I've updated the message using search_replace. The edit was applied successfully.
-- button:
+- button "Copy":
   - img
 - img
 - text: claude-opus-4-5
 - img
 - text: less than a minute ago
-- button "Request ID":
+- button "Copy Request ID":
   - img
 - button "Undo":
   - img

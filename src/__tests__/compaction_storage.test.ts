@@ -41,7 +41,7 @@ short result
   });
 
   it("truncates large tool results", () => {
-    const longContent = "x".repeat(500);
+    const longContent = "x".repeat(TOOL_RESULT_TRUNCATION_LIMIT + 100);
     const content = `<dyad-mcp-tool-result server="filesystem" tool="read_file">
 ${longContent}
 </dyad-mcp-tool-result>`;
@@ -169,7 +169,7 @@ describe("formatAsTranscript", () => {
   });
 
   it("truncates large tool results inside transcript messages", () => {
-    const largeResult = "A".repeat(500);
+    const largeResult = "A".repeat(TOOL_RESULT_TRUNCATION_LIMIT + 100);
     const messages: CompactionMessage[] = [
       { role: "user", content: "Read the big file" },
       {

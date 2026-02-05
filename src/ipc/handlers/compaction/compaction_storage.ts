@@ -5,8 +5,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { getUserDataPath } from "@/paths/paths";
 import log from "electron-log";
+import { ensureDyadGitignored } from "@/ipc/handlers/planUtils";
 
 const logger = log.scope("compaction_storage");
 
@@ -19,17 +19,10 @@ export interface CompactionMessage {
 }
 
 /**
- * Get the base directory for compaction backups.
+ * Get the backup directory for a specific chat within the app's .dyad/chats/ directory.
  */
-export function getCompactionBackupDir(): string {
-  return path.join(getUserDataPath(), "compaction-backups");
-}
-
-/**
- * Get the backup directory for a specific chat.
- */
-export function getChatBackupDir(chatId: number): string {
-  return path.join(getCompactionBackupDir(), String(chatId));
+function getChatBackupDir(appPath: string, chatId: number): string {
+  return path.join(appPath, ".dyad", "chats", String(chatId));
 }
 
 /**
@@ -45,20 +38,23 @@ function formatAsTranscript(messages: CompactionMessage[]): string {
 /**
  * Store pre-compaction messages as a readable transcript.
  *
+ * @param appPath - The absolute app directory path
  * @param chatId - The chat ID
  * @param messages - The messages to backup
- * @returns The path to the backup file
+ * @returns The relative path to the backup file (relative to appPath)
  */
 export async function storePreCompactionMessages(
+  appPath: string,
   chatId: number,
   messages: CompactionMessage[],
 ): Promise<string> {
-  const chatBackupDir = getChatBackupDir(chatId);
+  const chatBackupDir = getChatBackupDir(appPath, chatId);
 
-  // Ensure directory exists
+  // Ensure directory exists and .dyad is gitignored
   if (!fs.existsSync(chatBackupDir)) {
     fs.mkdirSync(chatBackupDir, { recursive: true });
   }
+  await ensureDyadGitignored(appPath);
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const backupFileName = `compaction-${timestamp}.md`;
@@ -71,38 +67,13 @@ export async function storePreCompactionMessages(
     logger.info(
       `Stored compaction backup for chat ${chatId}: ${messages.length} messages`,
     );
-    return backupPath;
+    // Return the relative path from the app directory
+    return path.relative(appPath, backupPath);
   } catch (error) {
     logger.error(
       `Failed to store compaction backup for chat ${chatId}:`,
       error,
     );
     throw error;
-  }
-}
-
-/**
- * List all backup files for a chat.
- *
- * @param chatId - The chat ID
- * @returns Array of backup file paths, sorted by date (newest first)
- */
-export function listChatBackups(chatId: number): string[] {
-  const chatBackupDir = getChatBackupDir(chatId);
-
-  if (!fs.existsSync(chatBackupDir)) {
-    return [];
-  }
-
-  try {
-    const files = fs.readdirSync(chatBackupDir);
-    return files
-      .filter((f) => f.startsWith("compaction-") && f.endsWith(".md"))
-      .map((f) => path.join(chatBackupDir, f))
-      .sort()
-      .reverse(); // Newest first
-  } catch (error) {
-    logger.error(`Failed to list backups for chat ${chatId}:`, error);
-    return [];
   }
 }

@@ -30,7 +30,6 @@ testSkipIfWindows(
     });
 
     await po.sendPrompt("[dump] hi");
-    // await po.sleep(5000);
     await po.snapshotServerDump("all-messages");
     // Snapshot the messages to capture the compaction summary + second response
     await po.snapshotMessages();

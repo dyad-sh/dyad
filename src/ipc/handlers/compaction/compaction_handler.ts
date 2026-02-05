@@ -22,6 +22,7 @@ import {
   storePreCompactionMessages,
   type CompactionMessage,
 } from "./compaction_storage";
+import { getPostCompactionMessages } from "./compaction_utils";
 import { getProviderOptions, getAiHeaders } from "@/ipc/utils/provider_options";
 
 const logger = log.scope("compaction_handler");
@@ -110,6 +111,7 @@ export async function checkAndMarkForCompaction(
 export async function performCompaction(
   event: IpcMainInvokeEvent,
   chatId: number,
+  appPath: string,
   dyadRequestId: string,
 ): Promise<CompactionResult> {
   const settings = readSettings();
@@ -130,32 +132,7 @@ export async function performCompaction(
     }
 
     // Only operate on messages the LLM can currently see.
-    // Use the same ID-based filtering as local_agent_handler to handle
-    // second-precision timestamp ordering issues during re-compaction.
-    const latestSummary = chatMessages
-      .filter((m) => m.isCompactionSummary)
-      .sort((a, b) => b.id - a.id)[0];
-
-    let llmVisibleMessages: typeof chatMessages;
-    if (latestSummary) {
-      const triggeringUserMsg = chatMessages
-        .filter((m) => m.role === "user" && m.id < latestSummary.id)
-        .sort((a, b) => b.id - a.id)[0];
-
-      if (triggeringUserMsg) {
-        llmVisibleMessages = chatMessages.filter(
-          (m) =>
-            m.id === latestSummary.id ||
-            (m.id >= triggeringUserMsg.id && !m.isCompactionSummary),
-        );
-      } else {
-        llmVisibleMessages = chatMessages.filter(
-          (m) => m.id >= latestSummary.id,
-        );
-      }
-    } else {
-      llmVisibleMessages = chatMessages;
-    }
+    const llmVisibleMessages = getPostCompactionMessages(chatMessages);
 
     // Prepare messages for backup
     const messagesToBackup: CompactionMessage[] = llmVisibleMessages.map(
@@ -165,8 +142,9 @@ export async function performCompaction(
       }),
     );
 
-    // Store readable transcript backup
+    // Store readable transcript backup in the app's .dyad/chats/ directory
     const backupPath = await storePreCompactionMessages(
+      appPath,
       chatId,
       messagesToBackup,
     );
@@ -212,7 +190,7 @@ export async function performCompaction(
     const summary = summaryResult.text;
 
     // Create the compaction indicator message
-    // Include backup path so the AI can read the full original conversation later
+    // Include relative backup path so the AI can read the full original conversation later
     const compactionMessageContent = `<dyad-status title="Conversation compacted" state="finished">
 Previous conversation was compacted to save context space. Original messages have been preserved.
 </dyad-status>
@@ -222,30 +200,14 @@ Compaction backup: ${backupPath}
 ${summary}`;
 
     // Insert summary message as a new assistant message
-    // Original messages are preserved in the DB for the user to see
-    //
-    // The createdAt timestamp must be set BEFORE the latest user message
-    // (the one that triggered compaction). This is critical because:
-    // 1. Messages are ordered by createdAt, and the compaction summary must
-    //    appear before the new user message in the message array.
-    // 2. The local_agent_handler slices from the last compaction summary onward
-    //    to build the LLM's message history — if the summary comes after the
-    //    user message, the user's prompt is excluded from the LLM context.
-    // 3. sendResponseChunk updates the last assistant message, so the summary
-    //    must not be the last assistant message (the placeholder should be).
-    const latestUserMessage = [...chatMessages]
-      .reverse()
-      .find((m) => m.role === "user");
-    const compactionCreatedAt = latestUserMessage
-      ? new Date(latestUserMessage.createdAt.getTime() - 1)
-      : new Date();
-
+    // Original messages are preserved in the DB for the user to see.
+    // The message ordering for LLM context is handled by ID-based filtering
+    // in getPostCompactionMessages, not by createdAt timestamps.
     await db.insert(messages).values({
       chatId,
       role: "assistant",
       content: compactionMessageContent,
       isCompactionSummary: true,
-      createdAt: compactionCreatedAt,
     });
 
     // Update chat record

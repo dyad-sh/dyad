@@ -47,7 +47,7 @@ export function registerHelpBotHandlers() {
         const settings = await readSettings();
         const apiKey = settings.providerSettings?.["auto"]?.apiKey?.value;
         const provider = createOpenAI({
-          baseURL: "https://helpchat.dyad.sh/v1",
+          baseURL: "https://help.joycreate.app/v1",
           apiKey,
         });
 

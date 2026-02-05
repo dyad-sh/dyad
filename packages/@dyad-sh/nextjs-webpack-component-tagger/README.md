@@ -1,6 +1,6 @@
 # @dyad-sh/nextjs-webpack-component-tagger
 
-A webpack loader for Next.js that automatically adds `data-dyad-id` and `data-dyad-name` attributes to your React components. This is useful for identifying components in the DOM, for example for testing or analytics.
+A webpack loader for Next.js that automatically adds `data-joy-id` and `data-joy-name` attributes to your React components. This is useful for identifying components in the DOM, for example for testing or analytics.
 
 ## Installation
 
@@ -36,15 +36,15 @@ const nextConfig: NextConfig = {
 export default nextConfig;
 ```
 
-The loader will automatically add `data-dyad-id` and `data-dyad-name` to all your React components.
+The loader will automatically add `data-joy-id` and `data-joy-name` to all your React components.
 
-The `data-dyad-id` will be a unique identifier for each component instance, in the format `path/to/file.tsx:line:column`.
+The `data-joy-id` will be a unique identifier for each component instance, in the format `path/to/file.tsx:line:column`.
 
-The `data-dyad-name` will be the name of the component.
+The `data-joy-name` will be the name of the component.
 
 ## Testing & Publishing
 
-Bump it to an alpha version and test in Dyad app, eg. `"version": "0.0.1-alpha.0",`
+Bump it to an alpha version and test in JoyCreate app, eg. `"version": "0.0.1-alpha.0",`
 
 Then publish it:
 
@@ -62,4 +62,4 @@ githubUrl: "https://github.com/wwwillchen/nextjs-template",
 
 Run the E2E tests and make sure it passes.
 
-Then, bump to a normal version, e.g. "0.1.0" and then re-publish. We'll try to match the main Dyad app version where possible.
+Then, bump to a normal version, e.g. "0.1.0" and then re-publish. We'll try to match the main JoyCreate app version where possible.

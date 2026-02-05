@@ -59,7 +59,7 @@ export abstract class BaseVirtualFileSystem {
   }
 
   /**
-   * Apply changes from a response containing dyad tags
+   * Apply changes from a response containing joy tags
    */
   public applyResponseChanges({
     deletePaths,

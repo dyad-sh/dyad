@@ -11,7 +11,7 @@ const runSwitchVersionTest = async (po: PageObject, nativeGit: boolean) => {
     await po.page.getByRole("button", { name: "Version" }).textContent(),
   ).toBe("Version 2");
   await po.page.getByRole("button", { name: "Version" }).click();
-  await po.page.getByText("Init Dyad app Restore").click();
+  await po.page.getByText("Init Joy app Restore").click();
   await po.snapshotPreview({ name: `v1` });
 
   await po.page

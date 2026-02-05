@@ -11,8 +11,7 @@ import { execSync } from "child_process";
 import path from "path";
 
 // Path to signtool.exe bundled with electron-winstaller
-// On GitHub Actions, this is the full path:
-// D:\a\dyad\dyad\node_modules\electron-winstaller\vendor\signtool.exe
+// On GitHub Actions, this is the full path to the signtool binary.
 const SIGNTOOL_PATH = path.join(
   __dirname,
   "node_modules",
@@ -161,8 +160,8 @@ const config: ForgeConfig = {
       name: "@electron-forge/publisher-github",
       config: {
         repository: {
-          owner: "dyad-sh",
-          name: "dyad",
+          owner: "DisciplesofLove",
+          name: "JoyCreate",
         },
         draft: true,
         force: true,

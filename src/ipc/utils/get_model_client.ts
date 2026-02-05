@@ -83,7 +83,7 @@ export async function getModelClient(
       const enableSmartFilesContext = settings.enableProSmartFilesContextMode;
       const provider = createJoyEngine({
         apiKey: joyApiKey,
-        baseURL: joyEngineUrl ?? "https://engine.dyad.sh/v1",
+        baseURL: joyEngineUrl ?? "https://engine.joycreate.app/v1",
         originalProviderId: model.provider,
         joyOptions: {
           enableLazyEdits:

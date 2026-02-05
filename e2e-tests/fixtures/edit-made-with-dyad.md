@@ -1,4 +1,4 @@
-<dyad-write path="src/components/made-with-joy.tsx" description="write-description">
+<joy-write path="src/components/made-with-joy.tsx" description="write-description">
 export const MadeWithJoy = () => {
   return (
     <div className="p-4 text-center">
@@ -13,4 +13,4 @@ export const MadeWithJoy = () => {
     </div>
   );
 };
-</dyad-write>
+</joy-write>

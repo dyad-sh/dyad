@@ -46,6 +46,7 @@ import {
   Users,
   XCircle,
   Zap,
+  Loader2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -108,6 +109,7 @@ import {
   useMetrics,
   useAuditLog,
   useProductionEvents,
+  useInitializeProductionSystem,
 } from "@/hooks/useAutonomousAgentProduction";
 import type {
   ResourceThrottle,
@@ -1143,6 +1145,31 @@ function MetricsPanel() {
 
 export function AutonomousAgentProductionDashboard() {
   const [activeTab, setActiveTab] = useState("overview");
+  const [isReady, setIsReady] = useState(false);
+  const [initError, setInitError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+
+  const initSystem = useInitializeProductionSystem();
+
+  // Initialize production system on mount (with retry)
+  useEffect(() => {
+    let cancelled = false;
+    const init = async () => {
+      setInitError(null);
+      try {
+        await initSystem.mutateAsync();
+        if (!cancelled) setIsReady(true);
+      } catch (error) {
+        if (!cancelled) {
+          const msg = error instanceof Error ? error.message : "Unknown error";
+          setInitError(msg);
+          toast.error(`Production system init failed: ${msg}`);
+        }
+      }
+    };
+    init();
+    return () => { cancelled = true; };
+  }, [retryCount]);
 
   // Subscribe to production events
   const { events } = useProductionEvents();
@@ -1153,6 +1180,41 @@ export function AutonomousAgentProductionDashboard() {
       console.log("Production events:", events[0]);
     }
   }, [events]);
+
+  if (!isReady) {
+    return (
+      <div className="container mx-auto py-6">
+        <div className="flex h-[60vh] items-center justify-center">
+          <div className="flex flex-col items-center gap-4">
+            {initError ? (
+              <>
+                <AlertTriangle className="h-8 w-8 text-destructive" />
+                <p className="text-destructive font-medium">Production system failed to initialize</p>
+                <p className="max-w-md text-center text-sm text-muted-foreground">{initError}</p>
+                <Button
+                  variant="outline"
+                  onClick={() => setRetryCount((c) => c + 1)}
+                  disabled={initSystem.isPending}
+                >
+                  {initSystem.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  Retry
+                </Button>
+              </>
+            ) : (
+              <>
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-muted-foreground">Initializing Production System...</p>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto py-6">

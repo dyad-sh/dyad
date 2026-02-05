@@ -1,6 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createRoute } from "@tanstack/react-router";
+import { rootRoute } from "./root";
 import AutonomousAgentPage from "@/pages/AutonomousAgentPage";
 
-export const Route = createFileRoute("/autonomous-agent")({
+export const autonomousAgentRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/autonomous-agent",
   component: AutonomousAgentPage,
 });

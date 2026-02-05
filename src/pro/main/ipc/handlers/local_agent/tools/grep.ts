@@ -16,7 +16,7 @@ import log from "electron-log";
 const logger = log.scope("grep");
 
 const DEFAULT_LIMIT = 100;
-const MAX_LIMIT = 500;
+const MAX_LIMIT = 250;
 const MAX_LINE_LENGTH = 500;
 
 const grepSchema = z.object({

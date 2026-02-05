@@ -20,6 +20,7 @@ import { safeSend } from "@/ipc/utils/safe_sender";
 import { COMPACTION_SYSTEM_PROMPT } from "@/prompts/compaction_system_prompt";
 import {
   storePreCompactionMessages,
+  formatAsTranscript,
   type CompactionMessage,
 } from "./compaction_storage";
 import { getPostCompactionMessages } from "./compaction_utils";
@@ -149,10 +150,8 @@ export async function performCompaction(
       messagesToBackup,
     );
 
-    // Prepare conversation for summarization
-    const conversationText = messagesToBackup
-      .map((m) => `[${m.role.toUpperCase()}]: ${m.content}`)
-      .join("\n\n---\n\n");
+    // Prepare conversation for summarization using the same XML format as the backup
+    const conversationText = formatAsTranscript(messagesToBackup, chatId);
 
     // Get model client
     const { modelClient } = await getModelClient(

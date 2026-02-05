@@ -1,6 +1,7 @@
 /**
  * Compaction Storage Module
  * Stores human/LLM-readable conversation transcripts before compaction.
+ * Uses XML-structured format with truncated tool results for token efficiency.
  */
 
 import fs from "node:fs";
@@ -9,6 +10,11 @@ import log from "electron-log";
 import { ensureDyadGitignored } from "@/ipc/handlers/planUtils";
 
 const logger = log.scope("compaction_storage");
+
+/**
+ * Maximum characters to keep from tool results before truncating.
+ */
+export const TOOL_RESULT_TRUNCATION_LIMIT = 300;
 
 /**
  * Message structure passed to the storage module.
@@ -26,13 +32,50 @@ function getChatBackupDir(appPath: string, chatId: number): string {
 }
 
 /**
- * Format messages as a plain-text conversation transcript
+ * Transform dyad-specific tool XML tags to shorter, LLM-friendly equivalents
+ * and truncate large tool results for token efficiency.
+ */
+export function transformToolTags(content: string): string {
+  // Transform <dyad-mcp-tool-call> to <tool-use>
+  let result = content.replace(
+    /<dyad-mcp-tool-call server="([^"]*)" tool="([^"]*)">\n([\s\S]*?)\n<\/dyad-mcp-tool-call>/g,
+    '<tool-use name="$2" server="$1">\n$3\n</tool-use>',
+  );
+
+  // Transform <dyad-mcp-tool-result> to <tool-result> with truncation
+  result = result.replace(
+    /<dyad-mcp-tool-result server="([^"]*)" tool="([^"]*)">\n([\s\S]*?)\n<\/dyad-mcp-tool-result>/g,
+    (_match, server, tool, resultContent) => {
+      const charCount = resultContent.length;
+      if (charCount > TOOL_RESULT_TRUNCATION_LIMIT) {
+        const truncated = resultContent.slice(0, TOOL_RESULT_TRUNCATION_LIMIT);
+        return `<tool-result name="${tool}" server="${server}" chars="${charCount}" truncated="true">\n${truncated}\n...</tool-result>`;
+      }
+      return `<tool-result name="${tool}" server="${server}" chars="${charCount}">\n${resultContent}\n</tool-result>`;
+    },
+  );
+
+  return result;
+}
+
+/**
+ * Format messages as an XML-structured conversation transcript
  * that is easy for a future LLM to read.
  */
-function formatAsTranscript(messages: CompactionMessage[]): string {
-  return messages
-    .map((m) => `[${m.role.toUpperCase()}]:\n${m.content}`)
-    .join("\n\n---\n\n");
+export function formatAsTranscript(
+  messages: CompactionMessage[],
+  chatId: number,
+): string {
+  const timestamp = new Date().toISOString();
+  const header = `<transcript chatId="${chatId}" messageCount="${messages.length}" compactedAt="${timestamp}">`;
+
+  const body = messages
+    .map(
+      (m) => `<msg role="${m.role}">\n${transformToolTags(m.content)}\n</msg>`,
+    )
+    .join("\n\n");
+
+  return `${header}\n\n${body}\n\n</transcript>`;
 }
 
 /**
@@ -60,7 +103,7 @@ export async function storePreCompactionMessages(
   const backupFileName = `compaction-${timestamp}.md`;
   const backupPath = path.join(chatBackupDir, backupFileName);
 
-  const transcript = formatAsTranscript(messages);
+  const transcript = formatAsTranscript(messages, chatId);
 
   try {
     fs.writeFileSync(backupPath, transcript);

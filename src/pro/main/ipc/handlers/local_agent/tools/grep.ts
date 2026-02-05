@@ -260,7 +260,7 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
 
     // Warn the LLM that "*" was ignored so it doesn't retry with the same pattern
     if (includePatWasWildcard) {
-      resultText += `\n\n[NOTE: include_pattern="*" was ignored because it matches all files. Omit include_pattern to search all files, or use a specific glob like "*.ts".]`;
+      resultText += `\n\n[NOTE: include_pattern="*" was ignored because it matches all files including git-ignored files! Omit include_pattern to search all files, or use a specific glob like "*.ts".]`;
     }
 
     ctx.onXmlComplete(

@@ -31,6 +31,7 @@ import { ToolsMcpSettings } from "@/components/settings/ToolsMcpSettings";
 import { AgentToolsSettings } from "@/components/settings/AgentToolsSettings";
 import { ZoomSelector } from "@/components/ZoomSelector";
 import { DefaultChatModeSelector } from "@/components/DefaultChatModeSelector";
+import { ContextCompactionSwitch } from "@/components/ContextCompactionSwitch";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
 import { SECTION_IDS, SETTING_IDS } from "@/lib/settingsSearchIndex";
@@ -381,6 +382,14 @@ export function AISettings() {
 
       <div id={SETTING_IDS.maxChatTurns} className="mt-4">
         <MaxChatTurnsSelector />
+      </div>
+
+      <div id={SETTING_IDS.contextCompaction} className="space-y-1 mt-4">
+        <ContextCompactionSwitch />
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          Automatically compact long conversations to stay within context
+          limits. Original messages are preserved in the app data directory.
+        </div>
       </div>
     </div>
   );

@@ -72,6 +72,10 @@ export const chats = sqliteTable("chats", {
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),
+  // Context compaction fields
+  compactedAt: integer("compacted_at", { mode: "timestamp" }),
+  compactionBackupPath: text("compaction_backup_path"),
+  pendingCompaction: integer("pending_compaction", { mode: "boolean" }),
 });
 
 export const messages = sqliteTable("messages", {
@@ -101,6 +105,8 @@ export const messages = sqliteTable("messages", {
   usingFreeAgentModeQuota: integer("using_free_agent_mode_quota", {
     mode: "boolean",
   }),
+  // Indicates this message is a compaction summary
+  isCompactionSummary: integer("is_compaction_summary", { mode: "boolean" }),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),

@@ -62,6 +62,11 @@ import { addIntegrationTool } from "./tools/add_integration";
 import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
+import {
+  isChatPendingCompaction,
+  performCompaction,
+  checkAndMarkForCompaction,
+} from "@/ipc/handlers/compaction/compaction_handler";
 
 const logger = log.scope("local_agent_handler");
 
@@ -148,6 +153,22 @@ export async function handleLocalAgentStream(
         "Agent v2 requires Dyad Pro. Please enable Dyad Pro in Settings → Pro.",
     });
     return false;
+  }
+
+  // Check if compaction is pending and perform it before processing the message
+  if (await isChatPendingCompaction(req.chatId)) {
+    logger.info(`Performing pending compaction for chat ${req.chatId}`);
+    const compactionResult = await performCompaction(
+      event,
+      req.chatId,
+      dyadRequestId,
+    );
+    if (!compactionResult.success) {
+      logger.warn(
+        `Compaction failed for chat ${req.chatId}: ${compactionResult.error}`,
+      );
+      // Continue anyway - compaction failure shouldn't block the conversation
+    }
   }
 
   // Get the chat and app
@@ -324,6 +345,9 @@ export async function handleLocalAgentStream(
             .set({ maxTokensUsed: totalTokens })
             .where(eq(messages.id, placeholderMessageId))
             .catch((err) => logger.error("Failed to save token count", err));
+
+          // Check if compaction should be triggered for the next message
+          await checkAndMarkForCompaction(req.chatId, totalTokens);
         }
       },
       onError: (error: any) => {

@@ -302,3 +302,25 @@ OpenAI's Responses API requires reasoning items to always be followed by an outp
 - Only reasoning was generated in a turn
 
 The fix in `src/ipc/utils/ai_messages_utils.ts` filters orphaned reasoning parts via `filterOrphanedReasoningParts()` before sending conversation history back to OpenAI.
+
+### Adding a new user setting
+
+When adding a new toggle/setting to the Settings page:
+
+1. Add the field to `UserSettingsSchema` in `src/lib/schemas.ts`
+2. Add the default value in `DEFAULT_SETTINGS` in `src/main/settings.ts`
+3. Add a `SETTING_IDS` entry and search index entry in `src/lib/settingsSearchIndex.ts`
+4. Create a switch component (e.g., `src/components/MySwitch.tsx`) - follow `AutoApproveSwitch.tsx` as a template
+5. Import and add the switch to the relevant section in `src/pages/settings.tsx`
+
+### Custom chat message indicators
+
+The `<dyad-status>` tag in chat messages renders as a collapsible status indicator box. Use it for system messages like compaction notifications:
+
+```
+<dyad-status title="My Title" state="finished">
+Content here
+</dyad-status>
+```
+
+Valid states: `"finished"`, `"in-progress"`, `"aborted"`

@@ -9,21 +9,20 @@ export interface PlanData {
 
 export interface PlanState {
   plansByChatId: Map<number, PlanData>;
-  persistChatIds: Set<number>;
   acceptedChatIds: Set<number>;
+  transitioningChatIds: Set<number>;
 }
 
 export const planStateAtom = atom<PlanState>({
   plansByChatId: new Map(),
-  persistChatIds: new Set<number>(),
   acceptedChatIds: new Set<number>(),
+  transitioningChatIds: new Set<number>(),
 });
 
 export interface PendingPlanImplementation {
   chatId: number;
   title: string;
-  plan: string;
-  implementationNotes?: string;
+  planSlug: string;
 }
 
 export const pendingPlanImplementationAtom =

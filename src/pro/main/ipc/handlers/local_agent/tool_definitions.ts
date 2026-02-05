@@ -305,19 +305,14 @@ function trackFileEditTool(
 }
 
 /**
- * Tools allowed in plan mode.
- * Includes read-only exploration tools and planning-specific tools.
+ * Planning-specific tools that are only available in plan mode.
+ * In plan mode, all non-state-modifying tools are also included automatically.
  */
-const PLAN_MODE_TOOLS = [
+const PLANNING_SPECIFIC_TOOLS = new Set([
   "planning_questionnaire",
   "write_plan",
   "exit_plan",
-  "read_file",
-  "list_files",
-  "grep",
-  "code_search",
-  "set_chat_summary",
-];
+]);
 
 /**
  * Build ToolSet for AI SDK from tool definitions
@@ -334,8 +329,12 @@ export function buildAgentToolSet(
       continue;
     }
 
-    // In plan mode, only include allowed tools
-    if (options.planModeOnly && !PLAN_MODE_TOOLS.includes(tool.name)) {
+    // In plan mode, skip state-modifying tools unless they're planning-specific
+    if (
+      options.planModeOnly &&
+      tool.modifiesState &&
+      !PLANNING_SPECIFIC_TOOLS.has(tool.name)
+    ) {
       continue;
     }
 

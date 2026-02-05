@@ -83,6 +83,7 @@ import { parseAppMentions } from "@/shared/parse_mention_apps";
 import { prompts as promptsTable } from "../../db/schema";
 import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
+import { parsePlanFile } from "./planUtils";
 import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
 import {
@@ -367,6 +368,41 @@ export function registerChatStreamHandlers() {
         logger.error("Failed to inline referenced prompts:", e);
       }
 
+      // Expand /implement-plan= into full implementation prompt
+      // Keep the original short form for display in the UI; the expanded
+      // content is only injected into the AI message history.
+      let implementPlanDisplayPrompt: string | undefined;
+      const implementPlanMatch = userPrompt.match(/^\/implement-plan=(.+)$/);
+      if (implementPlanMatch) {
+        try {
+          implementPlanDisplayPrompt = userPrompt;
+          const planSlug = implementPlanMatch[1];
+          const appPath = getDyadAppPath(chat.app.path);
+          const planFilePath = path.join(
+            appPath,
+            ".dyad",
+            "plans",
+            `${planSlug}.md`,
+          );
+          const raw = await fs.promises.readFile(planFilePath, "utf-8");
+          const { meta, content } = parsePlanFile(raw);
+
+          const planPath = `.dyad/plans/${planSlug}.md`;
+
+          userPrompt = `Please implement the following plan:
+
+## ${meta.title || "Implementation Plan"}
+
+${content}
+
+Start implementing this plan now. Follow the steps outlined and create/modify the necessary files.
+You may update the plan at \`${planPath}\` to mark your progress.`;
+        } catch (e) {
+          implementPlanDisplayPrompt = undefined;
+          logger.error("Failed to expand /implement-plan= prompt:", e);
+        }
+      }
+
       const componentsToProcess = req.selectedComponents || [];
 
       if (componentsToProcess.length > 0) {
@@ -416,7 +452,7 @@ ${componentSnippet}
         .values({
           chatId: req.chatId,
           role: "user",
-          content: userPrompt,
+          content: implementPlanDisplayPrompt ?? userPrompt,
         })
         .returning({ id: messages.id });
       const userMessageId = insertedUserMessage.id;
@@ -578,6 +614,21 @@ ${componentSnippet}
           sourceCommitHash: message.sourceCommitHash,
           commitHash: message.commitHash,
         }));
+
+        // The DB stores the short /implement-plan= display form; inject the
+        // expanded plan content into the AI message history so the model
+        // receives the full plan.
+        if (implementPlanDisplayPrompt) {
+          for (let i = messageHistory.length - 1; i >= 0; i--) {
+            if (messageHistory[i].role === "user") {
+              messageHistory[i] = {
+                ...messageHistory[i],
+                content: userPrompt,
+              };
+              break;
+            }
+          }
+        }
 
         // For Dyad Pro + Deep Context, we set to 200 chat turns (+1)
         // this is to enable more cache hits. Practically, users should

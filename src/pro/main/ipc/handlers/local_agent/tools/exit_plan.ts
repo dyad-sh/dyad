@@ -1,6 +1,6 @@
 import { z } from "zod";
 import log from "electron-log";
-import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
+import { ToolDefinition, AgentContext } from "./types";
 import { safeSend } from "@/ipc/utils/safe_sender";
 
 const logger = log.scope("exit_plan");
@@ -9,10 +9,6 @@ const exitPlanSchema = z.object({
   confirmation: z
     .literal(true)
     .describe("Must be true to confirm the user has accepted the plan"),
-  implementationNotes: z
-    .string()
-    .optional()
-    .describe("Any final notes or context for the implementation phase"),
 });
 
 const DESCRIPTION = `
@@ -24,7 +20,7 @@ IMPORTANT: Only use this tool when:
 3. You are ready to begin implementation
 
 This will:
-- Switch to Agent v2 mode for implementation
+- Switch to Agent mode for implementation
 - Change the preview panel back to app preview
 - Begin the implementation phase
 
@@ -35,8 +31,7 @@ Do NOT use this tool if:
 
 Example usage after user says "Looks good, let's build it!":
 {
-  "confirmation": true,
-  "implementationNotes": "Starting with the auth context and login form components"
+  "confirmation": true
 }
 `;
 
@@ -51,21 +46,16 @@ export const exitPlanTool: ToolDefinition<z.infer<typeof exitPlanSchema>> = {
   buildXml: (args) => {
     if (!args.confirmation) return undefined;
 
-    const notesAttr = args.implementationNotes
-      ? ` notes="${escapeXmlAttr(args.implementationNotes)}"`
-      : "";
-
-    return `<dyad-exit-plan${notesAttr}></dyad-exit-plan>`;
+    return `<dyad-exit-plan></dyad-exit-plan>`;
   },
 
-  execute: async (args, ctx: AgentContext) => {
+  execute: async (_args, ctx: AgentContext) => {
     logger.log("Exiting plan mode, transitioning to implementation");
 
     safeSend(ctx.event.sender, "plan:exit", {
       chatId: ctx.chatId,
-      implementationNotes: args.implementationNotes,
     });
 
-    return "Plan accepted. Switching to Agent v2 mode to begin implementation. The agreed plan will guide the implementation process.";
+    return "Plan accepted. Switching to Agent mode to begin implementation. The agreed plan will guide the implementation process.";
   },
 };

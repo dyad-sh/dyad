@@ -5,43 +5,42 @@ import { safeSend } from "@/ipc/utils/safe_sender";
 
 const logger = log.scope("planning_questionnaire");
 
-const QuestionSchema = z
-  .object({
-    id: z.string().describe("Unique identifier for this question"),
-    type: z
-      .enum(["text", "radio", "checkbox"])
-      .describe(
-        "Type of input: text for free-form, radio for single choice, checkbox for multiple choice",
-      ),
-    question: z.string().describe("The question text to display to the user"),
-    options: z
-      .array(z.string())
-      .max(3)
-      .optional()
-      .describe(
-        "Options for radio or checkbox question types. Keep to max 3 options — users can always provide a custom answer via the free-form text input.",
-      ),
-    required: z
-      .boolean()
-      .optional()
-      .describe("Whether this question requires an answer (defaults to true)"),
-    placeholder: z
-      .string()
-      .optional()
-      .describe("Placeholder text for text inputs"),
-  })
-  .superRefine((data, ctx) => {
-    if (
-      (data.type === "radio" || data.type === "checkbox") &&
-      (!data.options || data.options.length === 0)
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `Questions of type "${data.type}" must have at least one option`,
-        path: ["options"],
-      });
-    }
-  });
+const BaseQuestionFields = {
+  id: z.string().describe("Unique identifier for this question"),
+  question: z.string().describe("The question text to display to the user"),
+  required: z
+    .boolean()
+    .optional()
+    .describe("Whether this question requires an answer (defaults to true)"),
+  placeholder: z
+    .string()
+    .optional()
+    .describe("Placeholder text for text inputs"),
+};
+
+const TextQuestionSchema = z.object({
+  ...BaseQuestionFields,
+  type: z.literal("text"),
+});
+
+const MultipleChoiceQuestionSchema = z.object({
+  ...BaseQuestionFields,
+  type: z
+    .enum(["radio", "checkbox"])
+    .describe("radio for single choice, checkbox for multiple choice"),
+  options: z
+    .array(z.string())
+    .min(1)
+    .max(3)
+    .describe(
+      "Options for the question. Keep to max 3 — users can always provide a custom answer via the free-form text input.",
+    ),
+});
+
+const QuestionSchema = z.union([
+  TextQuestionSchema,
+  MultipleChoiceQuestionSchema,
+]);
 
 const planningQuestionnaireSchema = z.object({
   title: z.string().describe("Title of this questionnaire section"),

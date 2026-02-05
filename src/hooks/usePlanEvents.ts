@@ -19,6 +19,7 @@ import {
   type PlanQuestionnairePayload,
 } from "@/ipc/types/plan";
 import { ipc } from "@/ipc/types";
+import { showError } from "@/lib/toast";
 
 /**
  * Hook to handle plan mode IPC events.
@@ -89,32 +90,26 @@ export function usePlanEvents() {
           console.error("Failed to cancel stream:", error);
         }
 
+        // Show transitioning state while we prepare the implementation
+        setPlanState((prev) => {
+          const nextTransitioning = new Set(prev.transitioningChatIds);
+          nextTransitioning.add(payload.chatId);
+          return { ...prev, transitioningChatIds: nextTransitioning };
+        });
+
+        // Pause so the user can see the "Plan accepted" confirmation
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+
+        // Clear transitioning state
+        setPlanState((prev) => {
+          const nextTransitioning = new Set(prev.transitioningChatIds);
+          nextTransitioning.delete(payload.chatId);
+          return { ...prev, transitioningChatIds: nextTransitioning };
+        });
+
         // Read latest values from refs to avoid stale closure
         const currentState = planStateRef.current;
         const planData = currentState.plansByChatId.get(payload.chatId);
-        const shouldPersist = currentState.persistChatIds.has(payload.chatId);
-
-        // Persist the plan to .dyad/plans/ if flag is set
-        if (shouldPersist && selectedAppIdRef.current && planData) {
-          try {
-            await planClient.createPlan({
-              appId: selectedAppIdRef.current,
-              chatId: payload.chatId,
-              title: planData.title,
-              summary: planData.summary,
-              content: planData.content,
-            });
-          } catch (error) {
-            console.error("Failed to save plan:", error);
-          }
-
-          // Reset persist flag for this chat after saving
-          setPlanState((prev) => {
-            const nextPersistChatIds = new Set(prev.persistChatIds);
-            nextPersistChatIds.delete(payload.chatId);
-            return { ...prev, persistChatIds: nextPersistChatIds };
-          });
-        }
 
         // Switch chat mode to local-agent for implementation
         updateSettings({ selectedChatMode: "local-agent" });
@@ -128,6 +123,21 @@ export function usePlanEvents() {
             hasContent: !!planData,
             hasAppId: !!selectedAppIdRef.current,
           });
+          return;
+        }
+
+        // Always persist the plan to .dyad/plans/
+        let planSlug: string;
+        try {
+          planSlug = await planClient.createPlan({
+            appId: selectedAppIdRef.current,
+            chatId: payload.chatId,
+            title: planData.title,
+            summary: planData.summary,
+            content: planData.content,
+          });
+        } catch {
+          showError("Failed to save plan. Please try again.");
           return;
         }
 
@@ -147,8 +157,7 @@ export function usePlanEvents() {
           setPendingPlanImplementation({
             chatId: newChatId,
             title: planData.title,
-            plan: planData.content,
-            implementationNotes: payload.implementationNotes,
+            planSlug,
           });
         } catch (error) {
           console.error("Failed to create new chat for implementation:", error);

@@ -72,18 +72,8 @@ export function usePlanImplementation() {
       timeoutId = setTimeout(() => {
         const chatId = planToImplement.chatId;
 
-        // Build the implementation prompt with the plan content
-        const notesSection = planToImplement.implementationNotes
-          ? `\n\n**Implementation notes from planning phase:**\n${planToImplement.implementationNotes}`
-          : "";
-
-        const prompt = `Please implement the following plan:
-
-## ${planToImplement.title}
-
-${planToImplement.plan}${notesSection}
-
-Start implementing this plan now. Follow the steps outlined and create/modify the necessary files.`;
+        // Send /implement-plan= command — expanded server-side in chat_stream_handlers
+        const prompt = `/implement-plan=${planToImplement.planSlug}`;
 
         // Set streaming state to true
         setIsStreamingById((prev) => {

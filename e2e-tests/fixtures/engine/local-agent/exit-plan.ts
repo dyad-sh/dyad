@@ -10,8 +10,6 @@ export const fixture: LocalAgentFixture = {
           name: "exit_plan",
           args: {
             confirmation: true,
-            implementationNotes:
-              "Starting implementation based on the accepted plan.",
           },
         },
       ],

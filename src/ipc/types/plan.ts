@@ -19,19 +19,31 @@ export type PlanUpdatePayload = z.infer<typeof PlanUpdateSchema>;
 
 export const PlanExitSchema = z.object({
   chatId: z.number(),
-  implementationNotes: z.string().optional(),
 });
 
 export type PlanExitPayload = z.infer<typeof PlanExitSchema>;
 
-export const QuestionSchema = z.object({
+const TextQuestionSchema = z.object({
   id: z.string(),
-  type: z.enum(["text", "radio", "checkbox"]),
+  type: z.literal("text"),
   question: z.string(),
-  options: z.array(z.string()).optional(),
   required: z.boolean().optional(),
   placeholder: z.string().optional(),
 });
+
+const MultipleChoiceQuestionSchema = z.object({
+  id: z.string(),
+  type: z.enum(["radio", "checkbox"]),
+  question: z.string(),
+  options: z.array(z.string()).min(1),
+  required: z.boolean().optional(),
+  placeholder: z.string().optional(),
+});
+
+export const QuestionSchema = z.union([
+  TextQuestionSchema,
+  MultipleChoiceQuestionSchema,
+]);
 
 export type Question = z.infer<typeof QuestionSchema>;
 
@@ -59,7 +71,7 @@ export type Plan = z.infer<typeof PlanSchema>;
 
 export const CreatePlanParamsSchema = z.object({
   appId: z.number(),
-  chatId: z.number().optional(),
+  chatId: z.number(),
   title: z.string(),
   summary: z.string().optional(),
   content: z.string(),

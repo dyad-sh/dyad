@@ -1,9 +1,7 @@
 import React, { useEffect } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
-import { Check, FileText, Save } from "lucide-react";
+import { Check, FileText } from "lucide-react";
 import { VanillaMarkdownParser } from "@/components/chat/DyadMarkdownParser";
 import { planStateAtom } from "@/atoms/planAtoms";
 import { previewModeAtom } from "@/atoms/appAtoms";
@@ -15,7 +13,6 @@ import { useSettings } from "@/hooks/useSettings";
 export const PlanPanel: React.FC = () => {
   const chatId = useAtomValue(selectedChatIdAtom);
   const planState = useAtomValue(planStateAtom);
-  const setPlanState = useSetAtom(planStateAtom);
   const previewMode = useAtomValue(previewModeAtom);
   const setPreviewMode = useSetAtom(previewModeAtom);
   const { streamMessage, isStreaming } = useStreamChat();
@@ -26,7 +23,6 @@ export const PlanPanel: React.FC = () => {
   const currentPlan = planData?.content ?? null;
   const currentTitle = planData?.title ?? null;
   const currentSummary = planData?.summary ?? null;
-  const shouldPersist = chatId ? planState.persistChatIds.has(chatId) : false;
   const isAccepted = chatId ? planState.acceptedChatIds.has(chatId) : false;
   // Plan was already saved if we found it in the filesystem
   const isSavedPlan = !!savedPlan;
@@ -45,20 +41,7 @@ export const PlanPanel: React.FC = () => {
     streamMessage({
       chatId,
       prompt:
-        "I accept this implementation plan. Please proceed with the implementation.",
-    });
-  };
-
-  const handlePersistChange = (checked: boolean) => {
-    if (!chatId) return;
-    setPlanState((prev) => {
-      const nextPersistChatIds = new Set(prev.persistChatIds);
-      if (checked) {
-        nextPersistChatIds.add(chatId);
-      } else {
-        nextPersistChatIds.delete(chatId);
-      }
-      return { ...prev, persistChatIds: nextPersistChatIds };
+        "I accept this plan. Call the exit_plan tool now with confirmation: true to begin implementation.",
     });
   };
 
@@ -93,52 +76,24 @@ export const PlanPanel: React.FC = () => {
       </div>
 
       <div className="border-t p-4 space-y-4 bg-background">
-        {isAccepted ? (
+        {isAccepted || isSavedPlan ? (
           <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
             <Check size={16} />
             <span className="text-sm font-medium">
               Plan accepted — implementation started in a new chat
             </span>
           </div>
-        ) : isSavedPlan ? (
-          <div className="flex items-center gap-2 text-primary">
-            <Save size={16} />
-            <span className="text-sm font-medium">
-              Plan already accepted and saved
-            </span>
-          </div>
         ) : (
-          <>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="persist-plan"
-                checked={shouldPersist}
-                onCheckedChange={(checked) =>
-                  handlePersistChange(checked === true)
-                }
-              />
-              <Label
-                htmlFor="persist-plan"
-                className="text-sm font-normal cursor-pointer"
-              >
-                <div className="flex items-center gap-1">
-                  <Save size={14} />
-                  Save plan for later reference
-                </div>
-              </Label>
-            </div>
-
-            <div className="flex gap-2">
-              <Button
-                onClick={handleAccept}
-                disabled={isStreaming}
-                className="flex-1"
-              >
-                <Check size={16} className="mr-2" />
-                Accept Plan
-              </Button>
-            </div>
-          </>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleAccept}
+              disabled={isStreaming}
+              className="flex-1"
+            >
+              <Check size={16} className="mr-2" />
+              Accept Plan
+            </Button>
+          </div>
         )}
       </div>
     </div>

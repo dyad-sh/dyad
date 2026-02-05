@@ -41,7 +41,18 @@ export function QuestionnaireInput() {
   // Reset state when questionnaire changes
   useEffect(() => {
     setCurrentIndex(0);
-    setResponses({});
+    setResponses(() => {
+      // Auto-select the first option for radio questions
+      const initial: Record<string, string | string[]> = {};
+      if (questionnaire) {
+        for (const q of questionnaire.questions) {
+          if (q.type === "radio" && q.options && q.options.length > 0) {
+            initial[q.id] = q.options[0];
+          }
+        }
+      }
+      return initial;
+    });
     setAdditionalTexts({});
     setIsExpanded(true);
   }, [questionnaire?.chatId, questionnaire?.title]);
@@ -241,14 +252,14 @@ export function QuestionnaireInput() {
                           }));
                         }
                       }}
-                      className="space-y-1.5"
+                      className="space-y-0.5"
                     >
                       {currentQuestion.options
                         .slice(0, MAX_DISPLAYED_OPTIONS)
                         .map((option) => (
                           <div
                             key={option}
-                            className="flex items-center space-x-2 p-2 rounded hover:bg-muted/50 transition-colors"
+                            className="flex items-center space-x-2 py-1 px-2 rounded hover:bg-muted/50 transition-colors"
                           >
                             <RadioGroupItem
                               value={option}
@@ -263,7 +274,7 @@ export function QuestionnaireInput() {
                           </div>
                         ))}
                       {/* Custom free-form option integrated as a radio item */}
-                      <div className="flex items-center space-x-2 p-2 rounded hover:bg-muted/50 transition-colors">
+                      <div className="flex items-center space-x-2 py-1 px-2 rounded hover:bg-muted/50 transition-colors">
                         <RadioGroupItem
                           value={CUSTOM_OPTION}
                           id={`${currentQuestion.id}-custom`}
@@ -298,13 +309,13 @@ export function QuestionnaireInput() {
 
                 {currentQuestion.type === "checkbox" &&
                   currentQuestion.options && (
-                    <div className="space-y-1.5">
+                    <div className="space-y-0.5">
                       {currentQuestion.options
                         .slice(0, MAX_DISPLAYED_OPTIONS)
                         .map((option) => (
                           <div
                             key={option}
-                            className="flex items-center space-x-2 p-2 rounded hover:bg-muted/50 transition-colors"
+                            className="flex items-center space-x-2 py-1 px-2 rounded hover:bg-muted/50 transition-colors"
                           >
                             <Checkbox
                               id={`${currentQuestion.id}-${option}`}
@@ -346,7 +357,7 @@ export function QuestionnaireInput() {
                           </div>
                         ))}
                       {/* Free-form text input as an inline row (no checkbox) */}
-                      <div className="flex items-center p-2 rounded hover:bg-muted/50 transition-colors">
+                      <div className="flex items-center py-1 px-2 rounded hover:bg-muted/50 transition-colors">
                         <Input
                           placeholder="Other..."
                           className="flex-1 h-7 text-sm"

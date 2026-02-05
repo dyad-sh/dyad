@@ -64,6 +64,14 @@ export const createChatCompletionHandler =
 
     let messageContent = CANNED_MESSAGE;
 
+    // Handle compaction summary requests (from generateText() in compaction_handler)
+    if (
+      userTextContent.startsWith("Please summarize the following conversation:")
+    ) {
+      messageContent =
+        "## Key Decisions Made\n- Completed initial task as requested\n\n## Current Task State\nConversation was compacted to save context space.";
+    }
+
     // Check for upload image to codebase using lastUserMessage (which already handles both string and array content)
     if (userTextContent.includes("[[UPLOAD_IMAGE_TO_CODEBASE]]")) {
       messageContent = `Uploading image to codebase

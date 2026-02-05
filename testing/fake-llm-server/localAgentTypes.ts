@@ -16,6 +16,12 @@ export type Turn = {
   toolCalls?: ToolCall[];
   /** Text to output after tool results are received (final turn only) */
   textAfterTools?: string;
+  /** Optional usage data to include in the final streaming chunk (for testing token-based features like compaction) */
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
 };
 
 export type LocalAgentFixture = {

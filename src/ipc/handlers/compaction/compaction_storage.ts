@@ -1,6 +1,6 @@
 /**
  * Compaction Storage Module
- * Handles storing and retrieving original (pre-compaction) messages.
+ * Stores human/LLM-readable conversation transcripts before compaction.
  */
 
 import fs from "node:fs";
@@ -11,25 +11,11 @@ import log from "electron-log";
 const logger = log.scope("compaction_storage");
 
 /**
- * Structure of a compaction backup file.
- */
-export interface CompactionBackup {
-  chatId: number;
-  compactedAt: string;
-  totalTokensAtCompaction: number;
-  messageCount: number;
-  messages: CompactionMessage[];
-}
-
-/**
- * Message structure stored in backup files.
+ * Message structure passed to the storage module.
  */
 export interface CompactionMessage {
-  id: number;
   role: "user" | "assistant";
   content: string;
-  createdAt: string | null;
-  aiMessagesJson: unknown | null;
 }
 
 /**
@@ -47,17 +33,25 @@ export function getChatBackupDir(chatId: number): string {
 }
 
 /**
- * Store pre-compaction messages to a backup file.
+ * Format messages as a plain-text conversation transcript
+ * that is easy for a future LLM to read.
+ */
+function formatAsTranscript(messages: CompactionMessage[]): string {
+  return messages
+    .map((m) => `[${m.role.toUpperCase()}]:\n${m.content}`)
+    .join("\n\n---\n\n");
+}
+
+/**
+ * Store pre-compaction messages as a readable transcript.
  *
  * @param chatId - The chat ID
  * @param messages - The messages to backup
- * @param totalTokens - Total tokens at time of compaction
  * @returns The path to the backup file
  */
 export async function storePreCompactionMessages(
   chatId: number,
   messages: CompactionMessage[],
-  totalTokens: number,
 ): Promise<string> {
   const chatBackupDir = getChatBackupDir(chatId);
 
@@ -67,19 +61,13 @@ export async function storePreCompactionMessages(
   }
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const backupFileName = `compaction-${timestamp}.json`;
+  const backupFileName = `compaction-${timestamp}.md`;
   const backupPath = path.join(chatBackupDir, backupFileName);
 
-  const backup: CompactionBackup = {
-    chatId,
-    compactedAt: new Date().toISOString(),
-    totalTokensAtCompaction: totalTokens,
-    messageCount: messages.length,
-    messages,
-  };
+  const transcript = formatAsTranscript(messages);
 
   try {
-    fs.writeFileSync(backupPath, JSON.stringify(backup, null, 2));
+    fs.writeFileSync(backupPath, transcript);
     logger.info(
       `Stored compaction backup for chat ${chatId}: ${messages.length} messages`,
     );
@@ -90,29 +78,6 @@ export async function storePreCompactionMessages(
       error,
     );
     throw error;
-  }
-}
-
-/**
- * Load pre-compaction messages from a backup file.
- *
- * @param backupPath - Path to the backup file
- * @returns The backup data or null if not found
- */
-export async function loadPreCompactionMessages(
-  backupPath: string,
-): Promise<CompactionBackup | null> {
-  try {
-    if (!fs.existsSync(backupPath)) {
-      logger.warn(`Compaction backup not found: ${backupPath}`);
-      return null;
-    }
-
-    const content = fs.readFileSync(backupPath, "utf-8");
-    return JSON.parse(content) as CompactionBackup;
-  } catch (error) {
-    logger.error(`Failed to load compaction backup: ${backupPath}`, error);
-    return null;
   }
 }
 
@@ -132,7 +97,7 @@ export function listChatBackups(chatId: number): string[] {
   try {
     const files = fs.readdirSync(chatBackupDir);
     return files
-      .filter((f) => f.startsWith("compaction-") && f.endsWith(".json"))
+      .filter((f) => f.startsWith("compaction-") && f.endsWith(".md"))
       .map((f) => path.join(chatBackupDir, f))
       .sort()
       .reverse(); // Newest first

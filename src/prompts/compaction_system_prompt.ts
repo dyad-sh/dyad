@@ -21,6 +21,13 @@ Generate your summary in this EXACT format:
 ## Current Task State
 [1-2 sentences describing what the user is currently working on or asking about]
 
+## Active Plan
+[If an implementation plan was created or discussed (via write_plan / <dyad-write-plan>), include:
+- The plan title and a brief summary of what it covers
+- Current status: was it accepted, still being refined, or partially implemented?
+- Key implementation steps remaining
+If no plan was discussed, omit this section entirely.]
+
 ## Important Context
 [Any critical context needed to continue, such as:
 - Error messages being debugged
@@ -35,4 +42,5 @@ Generate your summary in this EXACT format:
 3. **Include file paths**: Always use exact file paths when referencing code
 4. **Capture intent**: Include the "why" behind decisions, not just the "what"
 5. **Preserve errors**: If debugging, include the exact error message being addressed
-6. **Skip empty sections**: If there are no code changes, omit that section entirely`;
+6. **Preserve plan references**: If an implementation plan was created or updated, always include the plan title, status, and remaining steps so work can continue seamlessly
+7. **Skip empty sections**: If there are no code changes or no active plan, omit those sections entirely`;

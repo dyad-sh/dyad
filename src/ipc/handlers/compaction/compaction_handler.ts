@@ -101,10 +101,10 @@ export async function checkAndMarkForCompaction(
  * Perform compaction on a chat.
  * This will:
  * 1. Load all messages from the chat
- * 2. Store original messages to backup file
- * 3. Generate a summary using the LLM
- * 4. Delete old messages from DB
- * 5. Insert summary message
+ * 2. Find the latest compaction boundary (if re-compacting)
+ * 3. Store LLM-visible messages to a readable backup file
+ * 4. Generate a summary using the LLM
+ * 5. Insert summary message (original messages are preserved in DB)
  * 6. Update chat record
  */
 export async function performCompaction(
@@ -129,28 +129,46 @@ export async function performCompaction(
       return { success: true };
     }
 
-    // Get the last message's token count
-    const lastAssistantMessage = [...chatMessages]
-      .reverse()
-      .find((m) => m.role === "assistant" && m.maxTokensUsed);
-    const totalTokens = lastAssistantMessage?.maxTokensUsed ?? 0;
+    // Only operate on messages the LLM can currently see.
+    // Use the same ID-based filtering as local_agent_handler to handle
+    // second-precision timestamp ordering issues during re-compaction.
+    const latestSummary = chatMessages
+      .filter((m) => m.isCompactionSummary)
+      .sort((a, b) => b.id - a.id)[0];
 
-    // Prepare messages for backup (exclude any previous compaction summaries)
-    const messagesToBackup: CompactionMessage[] = chatMessages
-      .filter((m) => !m.isCompactionSummary)
-      .map((m) => ({
-        id: m.id,
+    let llmVisibleMessages: typeof chatMessages;
+    if (latestSummary) {
+      const triggeringUserMsg = chatMessages
+        .filter((m) => m.role === "user" && m.id < latestSummary.id)
+        .sort((a, b) => b.id - a.id)[0];
+
+      if (triggeringUserMsg) {
+        llmVisibleMessages = chatMessages.filter(
+          (m) =>
+            m.id === latestSummary.id ||
+            (m.id >= triggeringUserMsg.id && !m.isCompactionSummary),
+        );
+      } else {
+        llmVisibleMessages = chatMessages.filter(
+          (m) => m.id >= latestSummary.id,
+        );
+      }
+    } else {
+      llmVisibleMessages = chatMessages;
+    }
+
+    // Prepare messages for backup
+    const messagesToBackup: CompactionMessage[] = llmVisibleMessages.map(
+      (m) => ({
         role: m.role as "user" | "assistant",
         content: m.content,
-        createdAt: m.createdAt?.toISOString() ?? null,
-        aiMessagesJson: m.aiMessagesJson,
-      }));
+      }),
+    );
 
-    // Store backup first (fail-safe: don't delete without backup)
+    // Store readable transcript backup
     const backupPath = await storePreCompactionMessages(
       chatId,
       messagesToBackup,
-      totalTokens,
     );
 
     // Prepare conversation for summarization
@@ -194,23 +212,40 @@ export async function performCompaction(
     const summary = summaryResult.text;
 
     // Create the compaction indicator message
+    // Include backup path so the AI can read the full original conversation later
     const compactionMessageContent = `<dyad-status title="Conversation compacted" state="finished">
 Previous conversation was compacted to save context space. Original messages have been preserved.
 </dyad-status>
 
+Compaction backup: ${backupPath}
+
 ${summary}`;
 
-    // Delete all non-summary messages for this chat
-    // Since we're compacting the entire conversation, we delete all messages at once
-    await db.delete(messages).where(eq(messages.chatId, chatId));
-
     // Insert summary message as a new assistant message
+    // Original messages are preserved in the DB for the user to see
+    //
+    // The createdAt timestamp must be set BEFORE the latest user message
+    // (the one that triggered compaction). This is critical because:
+    // 1. Messages are ordered by createdAt, and the compaction summary must
+    //    appear before the new user message in the message array.
+    // 2. The local_agent_handler slices from the last compaction summary onward
+    //    to build the LLM's message history — if the summary comes after the
+    //    user message, the user's prompt is excluded from the LLM context.
+    // 3. sendResponseChunk updates the last assistant message, so the summary
+    //    must not be the last assistant message (the placeholder should be).
+    const latestUserMessage = [...chatMessages]
+      .reverse()
+      .find((m) => m.role === "user");
+    const compactionCreatedAt = latestUserMessage
+      ? new Date(latestUserMessage.createdAt.getTime() - 1)
+      : new Date();
+
     await db.insert(messages).values({
       chatId,
       role: "assistant",
       content: compactionMessageContent,
       isCompactionSummary: true,
-      createdAt: new Date(),
+      createdAt: compactionCreatedAt,
     });
 
     // Update chat record
@@ -230,7 +265,7 @@ ${summary}`;
     });
 
     logger.info(
-      `Compaction completed for chat ${chatId}: ${messagesToBackup.length} messages -> 1 summary`,
+      `Compaction completed for chat ${chatId}: ${messagesToBackup.length} messages -> 1 summary (originals preserved)`,
     );
 
     return {

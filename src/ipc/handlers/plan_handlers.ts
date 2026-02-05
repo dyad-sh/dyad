@@ -33,6 +33,7 @@ export function registerPlanHandlers() {
     const planDir = await getPlanDir(appId);
     const now = new Date().toISOString();
     const slug = `chat-${chatId}-${slugify(title)}-${Date.now()}`;
+    validatePlanId(slug);
 
     const meta: Record<string, string> = {
       title,
@@ -92,8 +93,11 @@ export function registerPlanHandlers() {
       const mdFiles = files.filter((f) => f.endsWith(".md"));
 
       const prefix = `chat-${chatId}-`;
-      const match = mdFiles.find((f) => f.startsWith(prefix));
-      if (!match) return null;
+      const matches = mdFiles.filter((f) => f.startsWith(prefix));
+      if (matches.length === 0) return null;
+      // Sort to get the latest plan (filenames contain timestamps)
+      matches.sort();
+      const match = matches[matches.length - 1];
 
       const filePath = path.join(planDir, match);
       const raw = await fs.promises.readFile(filePath, "utf-8");

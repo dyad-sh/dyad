@@ -37,15 +37,17 @@ export function usePlanEvents() {
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { updateSettings } = useSettings();
+  const { settings, updateSettings } = useSettings();
 
   // Use refs for values accessed in event handlers to avoid stale closures
   const planStateRef = useRef(planState);
   const selectedAppIdRef = useRef(selectedAppId);
+  const settingsRef = useRef(settings);
 
   // Keep refs up to date
   planStateRef.current = planState;
   selectedAppIdRef.current = selectedAppId;
+  settingsRef.current = settings;
 
   useEffect(() => {
     // Handle plan updates
@@ -111,8 +113,10 @@ export function usePlanEvents() {
         const currentState = planStateRef.current;
         const planData = currentState.plansByChatId.get(payload.chatId);
 
-        // Switch chat mode to local-agent for implementation
-        updateSettings({ selectedChatMode: "local-agent" });
+        // Switch chat mode to local-agent for implementation (only if currently in plan mode)
+        if (settingsRef.current?.selectedChatMode === "plan") {
+          updateSettings({ selectedChatMode: "local-agent" });
+        }
 
         // Switch preview back to preview mode
         setPreviewMode("preview");
@@ -186,5 +190,6 @@ export function usePlanEvents() {
     setPendingQuestionnaire,
     setSelectedChatId,
     navigate,
+    queryClient,
   ]);
 }

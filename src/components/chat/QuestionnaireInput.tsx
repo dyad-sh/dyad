@@ -55,7 +55,11 @@ export function QuestionnaireInput() {
     });
     setAdditionalTexts({});
     setIsExpanded(true);
-  }, [questionnaire?.chatId, questionnaire?.title]);
+  }, [
+    questionnaire?.chatId,
+    questionnaire?.title,
+    questionnaire?.questions?.length,
+  ]);
 
   if (!questionnaire || questionnaire.chatId !== chatId) return null;
 
@@ -239,7 +243,7 @@ export function QuestionnaireInput() {
                   currentQuestion.options && (
                     <RadioGroup
                       value={(responses[currentQuestion.id] as string) || ""}
-                      onValueChange={(value) => {
+                      onValueChange={(value: string) => {
                         setResponses((prev) => ({
                           ...prev,
                           [currentQuestion.id]: value,

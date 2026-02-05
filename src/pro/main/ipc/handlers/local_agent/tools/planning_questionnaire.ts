@@ -107,6 +107,7 @@ export const planningQuestionnaireTool: ToolDefinition<
   description: DESCRIPTION,
   inputSchema: planningQuestionnaireSchema,
   defaultConsent: "always",
+  modifiesState: true,
 
   getConsentPreview: (args) =>
     `Questionnaire: ${args.title} (${args.questions.length} questions)`,

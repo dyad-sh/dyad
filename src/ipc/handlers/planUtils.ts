@@ -42,7 +42,8 @@ export function slugify(text: string): string {
 
 export function buildFrontmatter(meta: Record<string, string>): string {
   const lines = Object.entries(meta).map(
-    ([k, v]) => `${k}: "${v.replace(/\n/g, " ").replace(/"/g, '\\"')}"`,
+    ([k, v]) =>
+      `${k}: "${v.replace(/\\/g, "\\\\").replace(/\n/g, " ").replace(/"/g, '\\"')}"`,
   );
   return `---\n${lines.join("\n")}\n---\n\n`;
 }
@@ -57,7 +58,7 @@ export function parsePlanFile(raw: string): {
   meta: Record<string, string>;
   content: string;
 } {
-  const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n+([\s\S]*)$/);
+  const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n*([\s\S]*)$/);
   if (!match) return { meta: {}, content: raw };
   const meta: Record<string, string> = {};
   for (const line of match[1].split(/\r?\n/)) {
@@ -66,7 +67,7 @@ export function parsePlanFile(raw: string): {
       const key = line.slice(0, idx).trim();
       let val = line.slice(idx + 1).trim();
       if (val.startsWith('"') && val.endsWith('"')) {
-        val = val.slice(1, -1).replace(/\\"/g, '"');
+        val = val.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, "\\");
       }
       meta[key] = val;
     }

@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { Button } from "@/components/ui/button";
 import { Check, FileText } from "lucide-react";
@@ -34,9 +34,13 @@ export const PlanPanel: React.FC = () => {
     }
   }, [currentPlan, previewMode, setPreviewMode]);
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const handleAccept = () => {
     if (!chatId) return;
     if (settings?.selectedChatMode !== "plan") return;
+    if (isSubmitting) return;
+    setIsSubmitting(true);
 
     streamMessage({
       chatId,
@@ -87,7 +91,7 @@ export const PlanPanel: React.FC = () => {
           <div className="flex gap-2">
             <Button
               onClick={handleAccept}
-              disabled={isStreaming}
+              disabled={isStreaming || isSubmitting}
               className="flex-1"
             >
               <Check size={16} className="mr-2" />

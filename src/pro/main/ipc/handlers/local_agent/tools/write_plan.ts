@@ -48,6 +48,7 @@ export const writePlanTool: ToolDefinition<z.infer<typeof writePlanSchema>> = {
   description: DESCRIPTION,
   inputSchema: writePlanSchema,
   defaultConsent: "always",
+  modifiesState: true,
 
   getConsentPreview: (args) => `Plan: ${args.title}`,
 

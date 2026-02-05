@@ -83,7 +83,7 @@ import { parseAppMentions } from "@/shared/parse_mention_apps";
 import { prompts as promptsTable } from "../../db/schema";
 import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
-import { parsePlanFile } from "./planUtils";
+import { parsePlanFile, validatePlanId } from "./planUtils";
 import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
 import {
@@ -377,6 +377,7 @@ export function registerChatStreamHandlers() {
         try {
           implementPlanDisplayPrompt = userPrompt;
           const planSlug = implementPlanMatch[1];
+          validatePlanId(planSlug);
           const appPath = getDyadAppPath(chat.app.path);
           const planFilePath = path.join(
             appPath,

@@ -40,6 +40,7 @@ export const exitPlanTool: ToolDefinition<z.infer<typeof exitPlanSchema>> = {
   description: DESCRIPTION,
   inputSchema: exitPlanSchema,
   defaultConsent: "always",
+  modifiesState: true,
 
   getConsentPreview: () => "Exit plan mode and start implementation",
 

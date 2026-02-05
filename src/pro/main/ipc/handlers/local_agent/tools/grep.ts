@@ -227,6 +227,10 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
 
     const totalCount = allMatches.length;
     const limit = Math.min(args.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
+    // Sort for deterministic output (ripgrep's parallel execution can produce varying order)
+    allMatches.sort(
+      (a, b) => a.path.localeCompare(b.path) || a.lineNumber - b.lineNumber,
+    );
     const matches = allMatches.slice(0, limit);
     const wasTruncated = totalCount > limit;
 

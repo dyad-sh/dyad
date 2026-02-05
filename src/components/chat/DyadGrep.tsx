@@ -21,6 +21,8 @@ interface DyadGrepProps {
       exclude?: string;
       "case-sensitive"?: string;
       count?: string;
+      total?: string;
+      truncated?: string;
     };
   };
 }
@@ -39,6 +41,8 @@ export const DyadGrep: React.FC<DyadGrepProps> = ({ children, node }) => {
   const excludePattern = node?.properties?.exclude || "";
   const caseSensitive = node?.properties?.["case-sensitive"] === "true";
   const count = node?.properties?.count || "";
+  const total = node?.properties?.total || "";
+  const truncated = node?.properties?.truncated === "true";
   const hasResults = count !== "" && count !== "0";
 
   // Build description
@@ -55,7 +59,9 @@ export const DyadGrep: React.FC<DyadGrepProps> = ({ children, node }) => {
 
   // Build result summary
   const resultSummary = count
-    ? `${count} match${count === "1" ? "" : "es"}`
+    ? truncated && total
+      ? `${count} of ${total} matches`
+      : `${count} match${count === "1" ? "" : "es"}`
     : "";
 
   // Dynamic border styling

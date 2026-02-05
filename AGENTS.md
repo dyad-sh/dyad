@@ -283,6 +283,10 @@ When rebasing a branch that has drizzle migrations conflicting with upstream (e.
 4. Create/update the snapshot file (`drizzle/meta/00XX_snapshot.json`) with the new index, updating `prevId` to reference the previous snapshot's `id`
 5. If the PR had subsequent commits that deleted/modified its migration files, those changes become no-ops after renaming — just accept the deletion conflicts by staging the renamed files
 
+### tsgo is stricter than tsc for type checking
+
+The pre-commit hook runs `tsgo` (via `npm run ts`), which is stricter than `tsc --noEmit`. For example, passing a `number` to a function typed `(str: string | null | undefined)` may pass `tsc` but fail `tsgo` with `TS2345: Argument of type 'number' is not assignable to parameter of type 'string'`. Always wrap with `String()` when converting numbers to string parameters.
+
 ### OpenAI reasoning model errors with conversation history
 
 When using OpenAI reasoning models (o1, o3, o4-mini) via LiteLLM/Azure, you may see:

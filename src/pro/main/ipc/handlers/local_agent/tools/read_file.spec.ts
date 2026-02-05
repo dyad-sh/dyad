@@ -44,6 +44,11 @@ line 5`;
       "only one line",
     );
 
+    await fs.promises.writeFile(
+      path.join(testDir, "trailing-newline.txt"),
+      "line 1\nline 2\nline 3\n",
+    );
+
     mockContext = {
       event: {} as any,
       appId: 1,
@@ -129,6 +134,19 @@ line 5`;
       expect(() =>
         schema.parse({ path: "foo.txt", start_line_one_indexed: 1.5 }),
       ).toThrow();
+    });
+
+    it("rejects start_line > end_line", () => {
+      const schema = readFileTool.inputSchema;
+      expect(() =>
+        schema.parse({
+          path: "foo.txt",
+          start_line_one_indexed: 4,
+          end_line_one_indexed_inclusive: 2,
+        }),
+      ).toThrow(
+        "start_line_one_indexed must be <= end_line_one_indexed_inclusive",
+      );
     });
   });
 
@@ -249,18 +267,6 @@ line 5`;
       expect(result).toBe("line 3");
     });
 
-    it("returns empty when start exceeds end", async () => {
-      const result = await readFileTool.execute(
-        {
-          path: "test.txt",
-          start_line_one_indexed: 4,
-          end_line_one_indexed_inclusive: 2,
-        },
-        mockContext,
-      );
-      expect(result).toBe("");
-    });
-
     it("clamps both to valid range", async () => {
       const result = await readFileTool.execute(
         {
@@ -293,6 +299,48 @@ line 5`;
         mockContext,
       );
       expect(result).toBe("only one line");
+    });
+  });
+
+  describe("execute - trailing newline file", () => {
+    it("preserves trailing newline on full read via line range", async () => {
+      const result = await readFileTool.execute(
+        {
+          path: "trailing-newline.txt",
+          start_line_one_indexed: 1,
+          end_line_one_indexed_inclusive: 3,
+        },
+        mockContext,
+      );
+      expect(result).toBe("line 1\nline 2\nline 3\n");
+    });
+
+    it("does not add trailing newline for partial range", async () => {
+      const result = await readFileTool.execute(
+        {
+          path: "trailing-newline.txt",
+          start_line_one_indexed: 1,
+          end_line_one_indexed_inclusive: 2,
+        },
+        mockContext,
+      );
+      expect(result).toBe("line 1\nline 2");
+    });
+
+    it("full file read matches line-range full read", async () => {
+      const fullRead = await readFileTool.execute(
+        { path: "trailing-newline.txt" },
+        mockContext,
+      );
+      const rangeRead = await readFileTool.execute(
+        {
+          path: "trailing-newline.txt",
+          start_line_one_indexed: 1,
+          end_line_one_indexed_inclusive: 3,
+        },
+        mockContext,
+      );
+      expect(rangeRead).toBe(fullRead);
     });
   });
 

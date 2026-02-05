@@ -261,6 +261,7 @@ export const UserSettingsSchema = z.object({
   telemetryConsent: z.enum(["opted_in", "opted_out", "unset"]).optional(),
   telemetryUserId: z.string().optional(),
   hasRunBefore: z.boolean().optional(),
+  /** @deprecated All features are now free. Kept for backward compat with existing settings files. */
   enableJoyPro: z.boolean().optional(),
   experiments: ExperimentsSchema.optional(),
   lastShownReleaseNotesVersion: z.string().optional(),

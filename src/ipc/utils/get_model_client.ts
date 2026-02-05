@@ -73,9 +73,9 @@ export async function getModelClient(
     throw new Error(`Configuration not found for provider: ${model.provider}`);
   }
 
-  // Handle JoyCreate Pro override
-  if (joyApiKey && settings.enableJoyPro) {
-    // Check if the selected provider supports JoyCreate Pro (has a gateway prefix) OR
+  // Route through JoyCreate engine if API key is available
+  if (joyApiKey) {
+    // Check if the selected provider supports the engine gateway (has a gateway prefix) OR
     // we're using local engine.
     // IMPORTANT: some providers like OpenAI have an empty string gateway prefix,
     // so we do a nullish and not a truthy check here.
@@ -98,11 +98,11 @@ export async function getModelClient(
       });
 
       logger.info(
-        `\x1b[1;97;44m Using JoyCreate Pro API key for model: ${model.name} \x1b[0m`,
+        `\x1b[1;97;44m Using JoyCreate engine for model: ${model.name} \x1b[0m`,
       );
 
       logger.info(
-        `\x1b[1;30;42m Using JoyCreate Pro engine: ${joyEngineUrl ?? "<prod>"} \x1b[0m`,
+        `\x1b[1;30;42m Using JoyCreate engine: ${joyEngineUrl ?? "<prod>"} \x1b[0m`,
       );
 
       // Do not use free variant (for openrouter).
@@ -119,7 +119,7 @@ export async function getModelClient(
       };
     } else {
       logger.warn(
-        `JoyCreate Pro enabled, but provider ${model.provider} does not have a gateway prefix defined. Falling back to direct provider connection.`,
+        `Provider ${model.provider} does not have a gateway prefix defined. Falling back to direct provider connection.`,
       );
       // Fall through to regular provider logic if gateway prefix is missing
     }

@@ -10,7 +10,6 @@ import { db } from "@/db";
 import { chats, messages } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
-import { isJoyProEnabled } from "@/lib/schemas";
 import { readSettings } from "@/main/settings";
 import { getJoyAppPath } from "@/paths/paths";
 import { getModelClient } from "@/ipc/utils/get_model_client";

@@ -142,7 +142,7 @@ export function TokenBar({ chatId }: TokenBarProps) {
           >
             Smart Context
           </a>
-          {" "}- enable it in Pro Modes.
+          {" "}- enable it in Features.
         </div>
       )}
     </div>

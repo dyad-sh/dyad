@@ -297,7 +297,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         <ChatErrorBox
           onDismiss={dismissError}
           error={error}
-          isJoyProEnabled={settings.enableJoyPro ?? false}
         />
       )}
       {/* Display loading or error state for proposal */}

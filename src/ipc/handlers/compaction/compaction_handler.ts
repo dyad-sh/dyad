@@ -199,14 +199,29 @@ Compaction backup: ${backupPath}
 ${summary}`;
 
     // Insert summary message as a new assistant message
-    // Original messages are preserved in the DB for the user to see.
-    // The message ordering for LLM context is handled by ID-based filtering
-    // in getPostCompactionMessages, not by createdAt timestamps.
+    // Original messages are preserved in the DB for the user to see
+    //
+    // The createdAt timestamp must be set BEFORE the latest user message
+    // (the one that triggered compaction). This is critical because:
+    // 1. Messages are ordered by createdAt, and the compaction summary must
+    //    appear before the new user message in the message array.
+    // 2. The local_agent_handler slices from the last compaction summary onward
+    //    to build the LLM's message history — if the summary comes after the
+    //    user message, the user's prompt is excluded from the LLM context.
+    // 3. sendResponseChunk updates the last assistant message, so the summary
+    //    must not be the last assistant message (the placeholder should be).
+    const latestUserMessage = [...chatMessages]
+      .reverse()
+      .find((m) => m.role === "user");
+    const compactionCreatedAt = latestUserMessage
+      ? new Date(latestUserMessage.createdAt.getTime() - 1)
+      : new Date();
     await db.insert(messages).values({
       chatId,
       role: "assistant",
       content: compactionMessageContent,
       isCompactionSummary: true,
+      createdAt: compactionCreatedAt,
     });
 
     // Update chat record

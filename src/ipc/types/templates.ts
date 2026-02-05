@@ -174,6 +174,53 @@ export type CleanupThemeImagesParams = z.infer<
 >;
 
 // =============================================================================
+// Custom Template Schemas
+// =============================================================================
+
+export const CustomTemplateSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  description: z.string().nullable(),
+  githubUrl: z.string(),
+  imageUrl: z.string().nullable(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+});
+
+export type CustomTemplate = z.infer<typeof CustomTemplateSchema>;
+
+export const CreateCustomTemplateParamsSchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  githubUrl: z.string(),
+  imageUrl: z.string().optional(),
+});
+
+export type CreateCustomTemplateParams = z.infer<
+  typeof CreateCustomTemplateParamsSchema
+>;
+
+export const UpdateCustomTemplateParamsSchema = z.object({
+  id: z.number(),
+  name: z.string().optional(),
+  description: z.string().optional(),
+  githubUrl: z.string().optional(),
+  imageUrl: z.string().optional(),
+});
+
+export type UpdateCustomTemplateParams = z.infer<
+  typeof UpdateCustomTemplateParamsSchema
+>;
+
+export const DeleteCustomTemplateParamsSchema = z.object({
+  id: z.number(),
+});
+
+export type DeleteCustomTemplateParams = z.infer<
+  typeof DeleteCustomTemplateParamsSchema
+>;
+
+// =============================================================================
 // Template/Theme Contracts
 // =============================================================================
 
@@ -249,6 +296,31 @@ export const templateContracts = {
   cleanupThemeImages: defineContract({
     channel: "cleanup-theme-images",
     input: CleanupThemeImagesParamsSchema,
+    output: z.void(),
+  }),
+
+  // Custom template operations
+  getCustomTemplates: defineContract({
+    channel: "get-custom-templates",
+    input: z.void(),
+    output: z.array(CustomTemplateSchema),
+  }),
+
+  createCustomTemplate: defineContract({
+    channel: "create-custom-template",
+    input: CreateCustomTemplateParamsSchema,
+    output: CustomTemplateSchema,
+  }),
+
+  updateCustomTemplate: defineContract({
+    channel: "update-custom-template",
+    input: UpdateCustomTemplateParamsSchema,
+    output: CustomTemplateSchema,
+  }),
+
+  deleteCustomTemplate: defineContract({
+    channel: "delete-custom-template",
+    input: DeleteCustomTemplateParamsSchema,
     output: z.void(),
   }),
 } as const;

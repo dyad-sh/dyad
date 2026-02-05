@@ -251,6 +251,10 @@ export type {
   SaveThemeImageParams,
   SaveThemeImageResult,
   CleanupThemeImagesParams,
+  CustomTemplate,
+  CreateCustomTemplateParams,
+  UpdateCustomTemplateParams,
+  DeleteCustomTemplateParams,
 } from "./templates";
 
 // Proposal types

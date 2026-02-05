@@ -34,6 +34,7 @@ import { DefaultChatModeSelector } from "@/components/DefaultChatModeSelector";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
 import { SECTION_IDS, SETTING_IDS } from "@/lib/settingsSearchIndex";
+import { MemorySwitch } from "@/components/MemorySwitch";
 
 export default function SettingsPage() {
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
@@ -381,6 +382,14 @@ export function AISettings() {
 
       <div id={SETTING_IDS.maxChatTurns} className="mt-4">
         <MaxChatTurnsSelector />
+      </div>
+
+      <div id={SETTING_IDS.memory} className="space-y-1 mt-4">
+        <MemorySwitch />
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          When enabled, the AI will remember your preferences and project
+          context across chat sessions. Memories are stored per app.
+        </div>
       </div>
     </div>
   );

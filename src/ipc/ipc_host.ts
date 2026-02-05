@@ -37,6 +37,7 @@ import { registerSecurityHandlers } from "./handlers/security_handlers";
 import { registerVisualEditingHandlers } from "../pro/main/ipc/handlers/visual_editing_handlers";
 import { registerAgentToolHandlers } from "../pro/main/ipc/handlers/local_agent/agent_tool_handlers";
 import { registerFreeAgentQuotaHandlers } from "./handlers/free_agent_quota_handlers";
+import { registerMemoryHandlers } from "./handlers/memory_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -79,4 +80,5 @@ export function registerIpcHandlers() {
   registerVisualEditingHandlers();
   registerAgentToolHandlers();
   registerFreeAgentQuotaHandlers();
+  registerMemoryHandlers();
 }

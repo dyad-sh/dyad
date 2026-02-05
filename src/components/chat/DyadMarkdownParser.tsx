@@ -523,6 +523,8 @@ function renderCustomTag(
               exclude: attributes.exclude || "",
               "case-sensitive": attributes["case-sensitive"] || "",
               count: attributes.count || "",
+              total: attributes.total || "",
+              truncated: attributes.truncated || "",
             },
           }}
         >

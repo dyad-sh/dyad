@@ -90,8 +90,6 @@ export const TitleBar = () => {
           </TooltipContent>
         </Tooltip>
 
-        {isJoyPro && <JoyProButton isJoyProEnabled={isJoyProEnabled} />}
-
         {/* Preview Header */}
         {location.pathname === "/chat" && (
           <div className="flex-1 flex justify-end">

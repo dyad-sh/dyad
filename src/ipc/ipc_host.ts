@@ -98,6 +98,7 @@ import { registerOpenClawIPCHandlers } from "./handlers/openclaw_ipc_handlers";
 import { registerOpenClawCNSHandlers } from "./handlers/openclaw_cns_handlers";
 import { registerStudioAIHandlers } from "./handlers/studio_ai_handlers";
 import { registerServicesHandlers } from "./handlers/services_handlers";
+import { registerCelestiaBlobHandlers } from "./handlers/celestia_blob_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -264,4 +265,8 @@ export function registerIpcHandlers() {
   // External Services Manager - n8n, Celestia, Ollama
   // Start/stop background services from the UI
   registerServicesHandlers();
+
+  // Celestia Blob DA Layer - Hash-first data availability
+  // Large data → SHA-256 hash → encrypted blob → Celestia namespace
+  registerCelestiaBlobHandlers();
 }

@@ -10,6 +10,7 @@
 
 export type StorageNetwork = 
   | "local"        // Local encrypted storage
+  | "celestia"     // Celestia DA layer - hashed blob submissions
   | "ipfs"         // IPFS/Helia - Content-addressed, distributed
   | "arweave"      // Permanent storage, pay once
   | "filecoin"     // Incentivized storage network

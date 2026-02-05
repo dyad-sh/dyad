@@ -30,6 +30,7 @@ import { AgentToolsSettings } from "@/components/settings/AgentToolsSettings";
 import { JoyIdentitySettings } from "@/components/settings/JoyIdentitySettings";
 import { CNSSettings } from "@/components/settings/CNSSettings";
 import { ExternalServicesSettings } from "@/components/settings/ExternalServicesSettings";
+import { CelestiaBlobExplorer } from "@/components/settings/CelestiaBlobExplorer";
 import { ZoomSelector } from "@/components/ZoomSelector";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
@@ -148,6 +149,11 @@ export default function SettingsPage() {
           {/* External Services */}
           <div id="external-services">
             <ExternalServicesSettings />
+          </div>
+
+          {/* Celestia Data Availability */}
+          <div id="celestia-blobs">
+            <CelestiaBlobExplorer />
           </div>
 
           {/* OpenClaw CNS Settings */}

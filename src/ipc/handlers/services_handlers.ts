@@ -141,6 +141,18 @@ async function checkWSLCelestiaRunning(): Promise<{ running: boolean; pid?: numb
   });
 }
 
+async function checkDockerCelestiaRunning(): Promise<{ running: boolean; containerId?: string }> {
+  return new Promise((resolve) => {
+    exec('docker ps --filter "name=celestia-mainnet-node" --format "{{.ID}}"', (error, stdout) => {
+      if (stdout && stdout.trim()) {
+        resolve({ running: true, containerId: stdout.trim() });
+      } else {
+        resolve({ running: false });
+      }
+    });
+  });
+}
+
 // =============================================================================
 // HELPER: Launch in External Terminal
 // =============================================================================
@@ -339,7 +351,19 @@ async function stopN8nService(): Promise<ServiceStatus> {
 async function startCelestiaService(): Promise<ServiceStatus> {
   const config = SERVICE_CONFIGS.celestia;
   
-  // Check if already running in WSL
+  // 1. Check if already running via Docker
+  const dockerStatus = await checkDockerCelestiaRunning();
+  if (dockerStatus.running) {
+    logger.info("Celestia already running in Docker");
+    return {
+      id: "celestia",
+      name: config.name,
+      running: true,
+      port: config.port,
+    };
+  }
+  
+  // 2. Check if already running in WSL
   const wslStatus = await checkWSLCelestiaRunning();
   if (wslStatus.running) {
     logger.info("Celestia already running in WSL");
@@ -352,23 +376,73 @@ async function startCelestiaService(): Promise<ServiceStatus> {
     };
   }
   
-  logger.info("Starting Celestia light node in external terminal...");
+  // 3. Try Docker first (preferred — no WSL dependency)
+  const composePath = path.join(getAppBasePath(), "docker-compose.celestia.yml");
+  if (await fs.pathExists(composePath)) {
+    logger.info("Starting Celestia light node via Docker Compose...");
+    try {
+      execSync(
+        `docker compose -f "${composePath}" up -d`,
+        { cwd: getAppBasePath(), stdio: "pipe", timeout: 60_000 },
+      );
+      serviceStartTimes.set("celestia", Date.now());
+      
+      // Wait for the container to become healthy
+      logger.info("Waiting for Celestia Docker container to start...");
+      let attempts = 0;
+      while (attempts < 30) {
+        await new Promise((r) => setTimeout(r, 3000));
+        const isHealthy = await checkServiceHealth(config.healthCheckUrl!);
+        if (isHealthy) {
+          logger.info("Celestia Docker container started and healthy");
+          return {
+            id: "celestia",
+            name: config.name,
+            running: true,
+            startedAt: serviceStartTimes.get("celestia"),
+            port: config.port,
+          };
+        }
+        // Also check if container is at least running
+        const dStatus = await checkDockerCelestiaRunning();
+        if (!dStatus.running && attempts > 5) {
+          logger.warn("Docker container stopped unexpectedly, falling back to WSL");
+          break;
+        }
+        attempts++;
+      }
+      
+      // Container is running but health check hasn't passed yet
+      const dStatus = await checkDockerCelestiaRunning();
+      if (dStatus.running) {
+        return {
+          id: "celestia",
+          name: config.name,
+          running: true,
+          startedAt: serviceStartTimes.get("celestia"),
+          port: config.port,
+        };
+      }
+    } catch (error) {
+      logger.warn("Docker Compose start failed, falling back to WSL:", error);
+    }
+  }
+  
+  // 4. Fallback: WSL / PowerShell script
+  logger.info("Starting Celestia light node via WSL/PowerShell fallback...");
   
   try {
-    // Check if PowerShell script exists
     const scriptPath = path.join(getAppBasePath(), "start-celestia-node.ps1");
     
     if (await fs.pathExists(scriptPath)) {
       launchPowerShellScript("Celestia Light Node", scriptPath);
     } else {
-      // Fallback: open WSL terminal with celestia command
       const celestiaCommand = `wsl bash -c "celestia light start --core.ip consensus.lunaroasis.net --p2p.network celestia --rpc.addr 0.0.0.0 --rpc.port 26658"`;
       launchInExternalTerminal("Celestia Light Node", celestiaCommand);
     }
     
     serviceStartTimes.set("celestia", Date.now());
     
-    // Wait for WSL node to start
     logger.info("Waiting for Celestia to start...");
     await new Promise((r) => setTimeout(r, 8000));
     
@@ -397,17 +471,41 @@ async function stopCelestiaService(): Promise<ServiceStatus> {
   
   logger.info("Stopping Celestia light node...");
   
+  // Stop Docker container if running
+  try {
+    const composePath = path.join(getAppBasePath(), "docker-compose.celestia.yml");
+    if (await fs.pathExists(composePath)) {
+      execSync(
+        `docker compose -f "${composePath}" down`,
+        { cwd: getAppBasePath(), stdio: "pipe", timeout: 30_000 },
+      );
+      logger.info("Stopped Celestia Docker container");
+    }
+  } catch {
+    // Try direct container stop
+    try {
+      execSync('docker stop celestia-mainnet-node', { stdio: "ignore" });
+    } catch {
+      // Container might not exist
+    }
+  }
+  
+  // Also stop WSL process if running
   return new Promise((resolve) => {
-    exec('wsl pkill -f "celestia light"', async (error) => {
-      serviceStartTimes.delete("celestia");
-      
-      await new Promise((r) => setTimeout(r, 1000));
-      const status = await checkWSLCelestiaRunning();
-      
-      resolve({
-        id: "celestia",
-        name: config.name,
-        running: status.running,
+    exec('wsl pkill -f "celestia light"', async () => {
+      // Also kill tmux session
+      exec('wsl bash -c "tmux kill-session -t celestia 2>/dev/null"', async () => {
+        serviceStartTimes.delete("celestia");
+        
+        await new Promise((r) => setTimeout(r, 1000));
+        const wslStatus = await checkWSLCelestiaRunning();
+        const dockerStatus = await checkDockerCelestiaRunning();
+        
+        resolve({
+          id: "celestia",
+          name: config.name,
+          running: wslStatus.running || dockerStatus.running,
+        });
       });
     });
   });
@@ -518,11 +616,17 @@ async function getServiceStatus(serviceId: ServiceId): Promise<ServiceStatus> {
     }
     
     case "celestia": {
+      // Check Docker first, then WSL, then health endpoint
+      const dockerStatus = await checkDockerCelestiaRunning();
       const wslStatus = await checkWSLCelestiaRunning();
+      const isHealthy = config.healthCheckUrl
+        ? await checkServiceHealth(config.healthCheckUrl)
+        : false;
+      const running = dockerStatus.running || wslStatus.running || isHealthy;
       return {
         id: "celestia",
         name: config.name,
-        running: wslStatus.running,
+        running,
         pid: wslStatus.pid,
         startedAt: serviceStartTimes.get("celestia"),
         port: config.port,

@@ -83,6 +83,9 @@ const config: ForgeConfig = {
           // Surface the actual signing error instead of silently continuing
           // (@electron/packager defaults continueOnError to true, which masks failures)
           continueOnError: false,
+          // Skip provisioning profile search (not needed for Developer ID distribution,
+          // and the cwd scan crashes on broken symlinks like CLAUDE.md)
+          preEmbedProvisioningProfile: false,
         } as Record<string, unknown>),
     osxNotarize: isEndToEndTestBuild
       ? undefined

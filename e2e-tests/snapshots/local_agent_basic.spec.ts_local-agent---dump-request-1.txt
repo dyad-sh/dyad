@@ -231,7 +231,7 @@
         "type": "function",
         "function": {
           "name": "grep",
-          "description": "Search for a regex pattern in the codebase using ripgrep.\n\n- Returns matching lines with file paths and line numbers\n- By default, the search is case-insensitive\n- Use include_pattern to filter by file type (e.g. '*.tsx')\n- Use exclude_pattern to skip certain files (e.g. '*.test.ts')",
+          "description": "Search for a regex pattern in the codebase using ripgrep.\n\n- Returns matching lines with file paths and line numbers\n- By default, the search is case-insensitive\n- Use include_pattern to filter by file type (e.g. '*.tsx')\n- Use exclude_pattern to skip certain files (e.g. '*.test.ts')\n- Results are limited to 100 matches by default (max 250). If results are truncated, narrow your search with include_pattern or a more specific query.",
           "parameters": {
             "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
@@ -251,6 +251,12 @@
               "case_sensitive": {
                 "description": "Whether the search should be case sensitive (default: false)",
                 "type": "boolean"
+              },
+              "limit": {
+                "description": "Maximum number of matches to return (default: 100, max: 250). Use include_pattern to narrow results if limit is reached.",
+                "type": "number",
+                "minimum": 1,
+                "maximum": 250
               }
             },
             "required": [

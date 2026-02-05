@@ -327,6 +327,50 @@ function deepHello() {
       // Verify paths are sorted
       const sortedPaths = [...paths].sort();
       expect(paths).toEqual(sortedPaths);
+
+      // Verify line numbers within same file are sorted
+      const pathToLines = new Map<string, number[]>();
+      for (const line of lines) {
+        const [path, lineNum] = line.split(":");
+        if (!pathToLines.has(path)) {
+          pathToLines.set(path, []);
+        }
+        pathToLines.get(path)!.push(Number.parseInt(lineNum, 10));
+      }
+
+      // Check each file's line numbers are sorted
+      for (const [_path, lineNums] of pathToLines.entries()) {
+        const sortedLineNums = [...lineNums].sort((a, b) => a - b);
+        expect(lineNums).toEqual(sortedLineNums);
+      }
+    });
+  });
+
+  describe("execute - line truncation", () => {
+    it("truncates lines longer than 500 characters", async () => {
+      // Create a file with a very long line
+      const longLine = "x".repeat(600);
+      await fs.promises.writeFile(
+        path.join(testDir, "long.ts"),
+        `const short = "hello";\nconst veryLongVariable = "${longLine}";\n`,
+      );
+
+      const result = await grepTool.execute(
+        { query: "veryLongVariable" },
+        mockContext,
+      );
+
+      const lines = result.split("\n").filter((line) => line.match(/:\d+:/));
+      expect(lines.length).toBe(1);
+
+      // Extract the content after "path:lineNum: "
+      const match = lines[0].match(/^[^:]+:\d+:\s+(.*)$/);
+      expect(match).toBeTruthy();
+      const content = match![1];
+
+      // Should be truncated to 500 chars + "..." suffix (503 total)
+      expect(content.length).toBe(503);
+      expect(content.endsWith("...")).toBe(true);
     });
   });
 

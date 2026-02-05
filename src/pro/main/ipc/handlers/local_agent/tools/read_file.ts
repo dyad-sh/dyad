@@ -7,6 +7,18 @@ const readFile = fs.promises.readFile;
 
 const readFileSchema = z.object({
   path: z.string().describe("The file path to read"),
+  start_line_one_indexed: z
+    .number()
+    .int()
+    .min(1)
+    .optional()
+    .describe("The one-indexed line number to start reading from (inclusive)."),
+  end_line_one_indexed_inclusive: z
+    .number()
+    .int()
+    .min(1)
+    .optional()
+    .describe("The one-indexed line number to end reading at (inclusive)."),
 });
 
 export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
@@ -17,11 +29,29 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
   inputSchema: readFileSchema,
   defaultConsent: "always",
 
-  getConsentPreview: (args) => `Read ${args.path}`,
+  getConsentPreview: (args) => {
+    const start = args.start_line_one_indexed;
+    const end = args.end_line_one_indexed_inclusive;
+    if (start != null && end != null) {
+      return `Read ${args.path} (lines ${start}-${end})`;
+    } else if (start != null) {
+      return `Read ${args.path} (from line ${start})`;
+    } else if (end != null) {
+      return `Read ${args.path} (to line ${end})`;
+    }
+    return `Read ${args.path}`;
+  },
 
   buildXml: (args, _isComplete) => {
     if (!args.path) return undefined;
-    return `<dyad-read path="${escapeXmlAttr(args.path)}"></dyad-read>`;
+    const attrs = [`path="${escapeXmlAttr(args.path)}"`];
+    if (args.start_line_one_indexed != null) {
+      attrs.push(`start_line="${args.start_line_one_indexed}"`);
+    }
+    if (args.end_line_one_indexed_inclusive != null) {
+      attrs.push(`end_line="${args.end_line_one_indexed_inclusive}"`);
+    }
+    return `<dyad-read ${attrs.join(" ")}></dyad-read>`;
   },
 
   execute: async (args, ctx: AgentContext) => {
@@ -32,6 +62,18 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
     }
 
     const content = await readFile(fullFilePath, "utf8");
-    return content || "";
+    if (!content) return "";
+
+    const start = args.start_line_one_indexed;
+    const end = args.end_line_one_indexed_inclusive;
+
+    if (start == null && end == null) {
+      return content;
+    }
+
+    const lines = content.split("\n");
+    const startIdx = Math.max(0, (start ?? 1) - 1);
+    const endIdx = Math.min(lines.length, end ?? lines.length);
+    return lines.slice(startIdx, endIdx).join("\n");
   },
 };

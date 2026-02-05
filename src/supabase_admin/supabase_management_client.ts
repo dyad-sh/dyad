@@ -117,7 +117,7 @@ export async function refreshSupabaseToken(): Promise<void> {
   try {
     // Make request to Supabase refresh endpoint
     const response = await fetch(
-      "https://supabase-oauth.dyad.sh/api/connect-supabase/refresh",
+      "https://oauth.joycreate.app/api/supabase/refresh",
       {
         method: "POST",
         headers: {
@@ -246,7 +246,7 @@ async function refreshSupabaseTokenForOrganization(
 
   try {
     const response = await fetch(
-      "https://supabase-oauth.dyad.sh/api/connect-supabase/refresh",
+      "https://oauth.joycreate.app/api/supabase/refresh",
       {
         method: "POST",
         headers: {

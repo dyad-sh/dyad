@@ -114,7 +114,7 @@ testWithConfig({})(
     });
 
     // Get the user data directory
-    const userDataDir = (electronApp as any).$dyadUserDataDir;
+    const userDataDir = (electronApp as any).$joyUserDataDir;
     const settingsPath = path.join(userDataDir, "user-settings.json");
 
     // Wait a bit to allow performance monitoring to capture at least one data point

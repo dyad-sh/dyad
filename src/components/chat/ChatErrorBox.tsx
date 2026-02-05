@@ -80,7 +80,6 @@ export function ChatErrorBox({
   //
   // We are matching "Fallbacks=[{" and not just "Fallbacks=" because the fallback
   // model itself can error and we want to include the fallback model error in the error message.
-  // Example: https://github.com/dyad-sh/dyad/issues/1849#issuecomment-3590685911
   const fallbackPrefix = "Fallbacks=[{";
   if (error.includes(fallbackPrefix)) {
     error = error.split(fallbackPrefix)[0];

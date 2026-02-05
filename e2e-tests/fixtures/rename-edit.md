@@ -1,6 +1,6 @@
-<dyad-rename from="src/App.tsx" to="src/Renamed.tsx">
-</dyad-rename>
+<joy-rename from="src/App.tsx" to="src/Renamed.tsx">
+</joy-rename>
 
-<dyad-write path="src/Renamed.tsx">
+<joy-write path="src/Renamed.tsx">
 // newly added content to renamed file should exist
-</dyad-write>
+</joy-write>

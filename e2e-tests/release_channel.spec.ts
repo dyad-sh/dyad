@@ -9,7 +9,7 @@ test("release channel - change from stable to beta and back", async ({
   // Change to beta channel
   await po.changeReleaseChannel("beta");
   await expect(
-    po.page.getByRole("button", { name: "Restart Dyad" }),
+    po.page.getByRole("button", { name: "restart JoyCreate" }),
   ).toBeVisible();
   await po.snapshotSettings();
 

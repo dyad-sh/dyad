@@ -1,7 +1,7 @@
 No description!
 
-<dyad-execute-sql>
+<joy-execute-sql>
 DROP TABLE users;
-</dyad-execute-sql>
+</joy-execute-sql>
 
 Done.

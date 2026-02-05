@@ -1,6 +1,6 @@
 ---
-name: Dyad Hub Issue
-about: Found an issue with dyad.sh/hub?
+name: JoyCreate Hub Issue
+about: Found an issue with joycreate.app/hub?
 title: "[hub]"
 labels: "hub"
 assignees: ""

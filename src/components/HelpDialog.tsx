@@ -121,7 +121,7 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
       if (isJoyProUser) {
         labels.push("pro");
       }
-      const githubIssueUrl = `https://github.com/dyad-sh/dyad/issues/new?title=${encodedTitle}&labels=${labels}&body=${encodedBody}`;
+      const githubIssueUrl = `https://github.com/DisciplesofLove/JoyCreate/issues/new?title=${encodedTitle}&labels=${labels}&body=${encodedBody}`;
 
       // Open the pre-filled GitHub issue page
       IpcClient.getInstance().openExternalUrl(githubIssueUrl);
@@ -129,7 +129,7 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
       console.error("Failed to prepare bug report:", error);
       // Fallback to opening the regular GitHub issue page
       IpcClient.getInstance().openExternalUrl(
-        "https://github.com/dyad-sh/dyad/issues/new",
+        "https://github.com/DisciplesofLove/JoyCreate/issues/new",
       );
     } finally {
       setIsLoading(false);
@@ -175,7 +175,7 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
 
       // Get signed URL
       const response = await fetch(
-        "https://upload-logs.dyad.sh/generate-upload-url",
+        "https://upload-logs.joycreate.app/generate-upload-url",
         {
           method: "POST",
           headers: {
@@ -246,7 +246,7 @@ Pro User ID: ${userBudget?.redactedUserId || "n/a"}
     if (isJoyProUser) {
       labels.push("pro");
     }
-    const githubIssueUrl = `https://github.com/dyad-sh/dyad/issues/new?title=${encodedTitle}&labels=${labels}&body=${encodedBody}`;
+    const githubIssueUrl = `https://github.com/DisciplesofLove/JoyCreate/issues/new?title=${encodedTitle}&labels=${labels}&body=${encodedBody}`;
 
     IpcClient.getInstance().openExternalUrl(githubIssueUrl);
     handleClose();

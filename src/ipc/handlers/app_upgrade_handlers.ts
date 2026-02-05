@@ -63,7 +63,8 @@ function isComponentTaggerUpgradeNeeded(appPath: string): boolean {
 
   try {
     const viteConfigContent = fs.readFileSync(viteConfigPath, "utf-8");
-    return !viteConfigContent.includes("@dyad-sh/react-vite-component-tagger");
+    // Check for both old (@dyad-sh) and new (@joycreate) tagger package names
+    return !viteConfigContent.includes("react-vite-component-tagger");
   } catch (e) {
     logger.error("Error reading vite config", e);
     return false;
@@ -108,11 +109,9 @@ async function applyComponentTagger(appPath: string) {
 
   let content = await fs.promises.readFile(viteConfigPath, "utf-8");
 
-  // Add import statement if not present
+  // Add import statement if not present (check for both old and new names)
   if (
-    !content.includes(
-      "import dyadComponentTagger from '@dyad-sh/react-vite-component-tagger';",
-    )
+    !content.includes("react-vite-component-tagger")
   ) {
     // Add it after the last import statement
     const lines = content.split("\n");
@@ -126,17 +125,17 @@ async function applyComponentTagger(appPath: string) {
     lines.splice(
       lastImportIndex + 1,
       0,
-      "import dyadComponentTagger from '@dyad-sh/react-vite-component-tagger';",
+      "import joyComponentTagger from '@dyad-sh/react-vite-component-tagger';",
     );
     content = lines.join("\n");
   }
 
   // Add plugin to plugins array
   if (content.includes("plugins: [")) {
-    if (!content.includes("dyadComponentTagger()")) {
+    if (!content.includes("ComponentTagger()")) {
       content = content.replace(
         "plugins: [",
-        "plugins: [dyadComponentTagger(), ",
+        "plugins: [joyComponentTagger(), ",
       );
     }
   } else {

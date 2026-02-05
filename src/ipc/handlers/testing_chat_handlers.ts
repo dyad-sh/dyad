@@ -1,43 +1,43 @@
 import { safeSend } from "../utils/safe_sender";
 import { cleanFullResponse } from "../utils/cleanFullResponse";
 
-// e.g. [dyad-qa=add-dep]
+// e.g. [joy-qa=add-dep]
 // Canned responses for test prompts
 const TEST_RESPONSES: Record<string, string> = {
   "ts-error": `This will get a TypeScript error.
   
-  <dyad-write path="src/bad-file.ts" description="This will get a TypeScript error.">
+  <joy-write path="src/bad-file.ts" description="This will get a TypeScript error.">
   import NonExistentClass from 'non-existent-class';
 
   const x = new Object();
   x.nonExistentMethod();
-  </dyad-write>
+  </joy-write>
   
   EOM`,
   "add-dep": `I'll add that dependency for you.
   
-  <dyad-add-dependency packages="deno"></dyad-add-dependency>
+  <joy-add-dependency packages="deno"></joy-add-dependency>
   
   EOM`,
   "add-non-existing-dep": `I'll add that dependency for you.
   
-  <dyad-add-dependency packages="@angular/does-not-exist"></dyad-add-dependency>
+  <joy-add-dependency packages="@angular/does-not-exist"></joy-add-dependency>
   
   EOM`,
   "add-multiple-deps": `I'll add that dependency for you.
   
-  <dyad-add-dependency packages="react-router-dom react-query"></dyad-add-dependency>
+  <joy-add-dependency packages="react-router-dom react-query"></joy-add-dependency>
   
   EOM`,
   write: `Hello world
-  <dyad-write path="src/hello.ts" content="Hello world">
+  <joy-write path="src/hello.ts" content="Hello world">
   console.log("Hello world");
-  </dyad-write>
+  </joy-write>
   EOM`,
   "string-literal-leak": `BEFORE TAG
-  <dyad-write path="src/pages/locations/neighborhoods/louisville/Highlands.tsx" description="Updating Highlands neighborhood page to use <a> tags.">
+  <joy-write path="src/pages/locations/neighborhoods/louisville/Highlands.tsx" description="Updating Highlands neighborhood page to use <a> tags.">
 import React from 'react';
-</dyad-write>
+</joy-write>
 AFTER TAG
 `,
 };
@@ -48,7 +48,7 @@ AFTER TAG
  * @returns The canned response if it's a test prompt, null otherwise
  */
 export function getTestResponse(prompt: string): string | null {
-  const match = prompt.match(/\[dyad-qa=([^\]]+)\]/);
+  const match = prompt.match(/\[joy-qa=([^\]]+)\]/);
   if (match) {
     const testKey = match[1];
     return TEST_RESPONSES[testKey] || null;

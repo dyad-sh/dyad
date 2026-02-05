@@ -43,7 +43,7 @@ export function registerProHandlers() {
       return null;
     }
 
-    const url = "https://api.dyad.sh/v1/user/info";
+    const url = "https://api.joycreate.app/v1/user/info";
     const headers = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,

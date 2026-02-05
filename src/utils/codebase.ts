@@ -43,9 +43,7 @@ const ALLOWED_EXTENSIONS = [
   ".gradle",
   ".swift",
   // Edge cases
-  // https://github.com/dyad-sh/dyad/issues/880
   ".py",
-  // https://github.com/dyad-sh/dyad/issues/1221
   ".php",
 ];
 
@@ -53,8 +51,6 @@ const ALLOWED_EXTENSIONS = [
 // Normally these files are excluded by the gitignore, but sometimes
 // people don't have their gitignore setup correctly so we want to
 // be conservative and never include these directories.
-//
-// ex: https://github.com/dyad-sh/dyad/issues/727
 const EXCLUDED_DIRS = [
   "node_modules",
   ".git",
@@ -442,7 +438,7 @@ export async function extractCodebase({
   files: CodebaseFile[];
 }> {
   const settings = readSettings();
-  // Smart context is now always enabled in JoyCreate (was Pro-only in Dyad)
+  // Smart context is now always enabled in JoyCreate
   const isSmartContextEnabled = settings?.enableProSmartFilesContextMode ?? true;
 
   try {

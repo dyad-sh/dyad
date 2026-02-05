@@ -19,7 +19,7 @@ test("manage context - default", async ({ po }) => {
 });
 
 test("manage context - smart context", async ({ po }) => {
-  await po.setUpDyadPro();
+  await po.setUpJoyPro();
   await po.selectModel({ provider: "Google", model: "Gemini 2.5 Pro" });
   await po.importApp("context-manage");
 
@@ -58,7 +58,7 @@ test("manage context - smart context", async ({ po }) => {
 });
 
 test("manage context - smart context - auto-includes only", async ({ po }) => {
-  await po.setUpDyadPro();
+  await po.setUpJoyPro();
   await po.selectModel({ provider: "Google", model: "Gemini 2.5 Pro" });
   await po.importApp("context-manage");
 
@@ -109,7 +109,7 @@ test("manage context - exclude paths", async ({ po }) => {
 });
 
 test("manage context - exclude paths with smart context", async ({ po }) => {
-  await po.setUpDyadPro();
+  await po.setUpJoyPro();
   await po.selectModel({ provider: "Google", model: "Gemini 2.5 Pro" });
   await po.importApp("context-manage");
 

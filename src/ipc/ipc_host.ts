@@ -99,6 +99,7 @@ import { registerOpenClawCNSHandlers } from "./handlers/openclaw_cns_handlers";
 import { registerStudioAIHandlers } from "./handlers/studio_ai_handlers";
 import { registerServicesHandlers } from "./handlers/services_handlers";
 import { registerCelestiaBlobHandlers } from "./handlers/celestia_blob_handlers";
+import { registerLifecycleHandlers } from "./handlers/lifecycle_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -269,4 +270,7 @@ export function registerIpcHandlers() {
   // Celestia Blob DA Layer - Hash-first data availability
   // Large data → SHA-256 hash → encrypted blob → Celestia namespace
   registerCelestiaBlobHandlers();
+
+  // Creator Lifecycle Engine — Create → Verify → Use → Receipts → Rewards → Reputation → Better Create
+  registerLifecycleHandlers();
 }

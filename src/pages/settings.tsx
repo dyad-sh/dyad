@@ -31,6 +31,7 @@ import { JoyIdentitySettings } from "@/components/settings/JoyIdentitySettings";
 import { CNSSettings } from "@/components/settings/CNSSettings";
 import { ExternalServicesSettings } from "@/components/settings/ExternalServicesSettings";
 import { CelestiaBlobExplorer } from "@/components/settings/CelestiaBlobExplorer";
+import { CreatorLifecycleDashboard } from "@/components/settings/CreatorLifecycleDashboard";
 import { ZoomSelector } from "@/components/ZoomSelector";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
@@ -154,6 +155,11 @@ export default function SettingsPage() {
           {/* Celestia Data Availability */}
           <div id="celestia-blobs">
             <CelestiaBlobExplorer />
+          </div>
+
+          {/* Creator Lifecycle Dashboard */}
+          <div id="creator-lifecycle">
+            <CreatorLifecycleDashboard />
           </div>
 
           {/* OpenClaw CNS Settings */}

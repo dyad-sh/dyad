@@ -1493,3 +1493,308 @@ export const jcnRateLimits = sqliteTable("jcn_rate_limits", {
   maxRequests: integer("max_requests").notNull(),
   windowSec: integer("window_sec").notNull(),
 });
+
+// =============================================================================
+// CREATOR LIFECYCLE
+// Create → Verify → Use → Receipts → Rewards → Reputation → Better Create
+// =============================================================================
+
+/**
+ * Lifecycle stage enum for asset progression
+ */
+export type LifecycleStage =
+  | "created"
+  | "verified"
+  | "published"
+  | "in_use"
+  | "receipted"
+  | "rewarded";
+
+/**
+ * Usage Events
+ * Tracks every use of an asset (inference, download, fork, reference).
+ */
+export const usageEvents = sqliteTable("usage_events", {
+  id: text("id").primaryKey(), // UUID v4
+
+  // What was used
+  assetId: text("asset_id").notNull(),
+  assetType: text("asset_type", {
+    enum: ["model", "dataset", "agent", "workflow", "prompt", "template", "plugin", "api"],
+  }).notNull(),
+
+  // How it was used
+  eventType: text("event_type", {
+    enum: ["inference", "download", "fork", "reference", "api_call", "embed", "fine_tune"],
+  }).notNull(),
+
+  // Who used it
+  consumerId: text("consumer_id"), // wallet or local user ID
+  consumerType: text("consumer_type", { enum: ["local", "network", "marketplace"] }),
+
+  // Metering
+  units: integer("units").notNull().default(1), // tokens, items, calls
+  computeMs: integer("compute_ms"), // execution time
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
+  dataBytesProcessed: integer("data_bytes_processed"),
+
+  // Context
+  sessionId: text("session_id"),
+  requestId: text("request_id"),
+  modelId: text("model_id"),
+
+  // Receipt link (filled after receipt creation)
+  receiptId: text("receipt_id"),
+  receiptCid: text("receipt_cid"),
+
+  // Metadata
+  metadataJson: text("metadata_json", { mode: "json" }).$type<Record<string, unknown> | null>(),
+
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+/**
+ * Verification Records
+ * Tracks every verification action on an asset — quality gates, peer reviews, automated checks.
+ */
+export const verificationRecords = sqliteTable("verification_records", {
+  id: text("id").primaryKey(), // UUID v4
+
+  // What was verified
+  assetId: text("asset_id").notNull(),
+  assetType: text("asset_type", {
+    enum: ["model", "dataset", "agent", "workflow", "prompt", "template", "plugin", "api"],
+  }).notNull(),
+
+  // Who verified
+  verifierId: text("verifier_id").notNull(), // wallet, nodeId, or "system"
+  verifierType: text("verifier_type", {
+    enum: ["automated", "peer", "self", "system"],
+  }).notNull(),
+
+  // Verification type
+  verificationType: text("verification_type", {
+    enum: [
+      "quality_check",
+      "integrity_hash",
+      "celestia_anchor",
+      "peer_review",
+      "license_compliance",
+      "safety_scan",
+      "benchmark",
+      "format_validation",
+    ],
+  }).notNull(),
+
+  // Outcome
+  passed: integer("passed", { mode: "boolean" }).notNull(),
+  score: integer("score"), // 0-100
+  details: text("details"),
+  errorMessage: text("error_message"),
+
+  // Evidence
+  evidenceJson: text("evidence_json", { mode: "json" }).$type<Record<string, unknown> | null>(),
+  evidenceCid: text("evidence_cid"), // IPLD CID of proof
+
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+/**
+ * Rewards Ledger
+ * Double-entry-style ledger tracking every reward earned or paid out.
+ */
+export const rewardsLedger = sqliteTable("rewards_ledger", {
+  id: text("id").primaryKey(), // UUID v4
+
+  // Who gets rewarded
+  recipientId: text("recipient_id").notNull(), // wallet address or local user id
+  recipientType: text("recipient_type", {
+    enum: ["creator", "validator", "curator", "compute_provider"],
+  }).notNull(),
+
+  // What triggered the reward
+  triggerType: text("trigger_type", {
+    enum: [
+      "usage_fee",
+      "verification_reward",
+      "curation_reward",
+      "compute_reward",
+      "quality_bonus",
+      "streak_bonus",
+      "referral",
+    ],
+  }).notNull(),
+  triggerEventId: text("trigger_event_id"), // usageEvents.id, verificationRecords.id, etc.
+
+  // Amount
+  amount: text("amount").notNull(), // string for precision (could be wei)
+  currency: text("currency", {
+    enum: ["JOY", "TIA", "USDC", "MATIC", "points"],
+  }).notNull(),
+
+  // Status
+  status: text("status", {
+    enum: ["pending", "confirmed", "paid_out", "failed", "expired"],
+  }).notNull().default("pending"),
+
+  // On-chain reference
+  txHash: text("tx_hash"),
+  network: text("network"),
+
+  // Related asset
+  assetId: text("asset_id"),
+  assetType: text("asset_type"),
+
+  // Metadata
+  metadataJson: text("metadata_json", { mode: "json" }).$type<Record<string, unknown> | null>(),
+
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  paidOutAt: integer("paid_out_at", { mode: "timestamp" }),
+});
+
+/**
+ * Reputation Scores
+ * Aggregated reputation for each identity, computed from the lifecycle signals.
+ */
+export const reputationScores = sqliteTable("reputation_scores", {
+  id: text("id").primaryKey(), // recipientId (wallet or local user)
+
+  // Overall score
+  overallScore: integer("overall_score").notNull().default(0), // 0-1000
+
+  // Component scores (0-1000 each)
+  creationScore: integer("creation_score").notNull().default(0),
+  verificationScore: integer("verification_score").notNull().default(0),
+  usageScore: integer("usage_score").notNull().default(0),
+  rewardScore: integer("reward_score").notNull().default(0),
+  consistencyScore: integer("consistency_score").notNull().default(0),
+
+  // Trust tier
+  tier: text("tier", {
+    enum: ["newcomer", "contributor", "trusted", "verified", "elite"],
+  }).notNull().default("newcomer"),
+
+  // Stats
+  totalAssetsCreated: integer("total_assets_created").notNull().default(0),
+  totalVerificationsPassed: integer("total_verifications_passed").notNull().default(0),
+  totalVerificationsFailed: integer("total_verifications_failed").notNull().default(0),
+  totalUsageEvents: integer("total_usage_events").notNull().default(0),
+  totalRewardsEarned: text("total_rewards_earned").notNull().default("0"),
+  totalReceiptsGenerated: integer("total_receipts_generated").notNull().default(0),
+
+  // Streak tracking
+  currentStreak: integer("current_streak").notNull().default(0), // consecutive days active
+  longestStreak: integer("longest_streak").notNull().default(0),
+  lastActiveAt: integer("last_active_at", { mode: "timestamp" }),
+
+  // Quality
+  averageQualityScore: integer("average_quality_score"), // 0-100
+
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+/**
+ * Lifecycle Events
+ * Audit log of every stage transition in the Create→...→Better Create loop.
+ */
+export const lifecycleEvents = sqliteTable("lifecycle_events", {
+  id: text("id").primaryKey(), // UUID v4
+
+  // Asset
+  assetId: text("asset_id").notNull(),
+  assetType: text("asset_type", {
+    enum: ["model", "dataset", "agent", "workflow", "prompt", "template", "plugin", "api"],
+  }).notNull(),
+
+  // Stage transition
+  stage: text("stage", {
+    enum: ["created", "verified", "published", "in_use", "receipted", "rewarded"],
+  }).notNull(),
+  previousStage: text("previous_stage"),
+
+  // Actor
+  actorId: text("actor_id").notNull(),
+
+  // Evidence / links
+  relatedEventId: text("related_event_id"), // points to usage_events, verification_records, etc.
+  relatedEventType: text("related_event_type"),
+  receiptCid: text("receipt_cid"),
+  celestiaBlobHash: text("celestia_blob_hash"),
+
+  // Metadata
+  metadataJson: text("metadata_json", { mode: "json" }).$type<Record<string, unknown> | null>(),
+
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+/**
+ * Creator Feedback
+ * Feedback entries that close the loop — "Better Create" stage.
+ */
+export const creatorFeedback = sqliteTable("creator_feedback", {
+  id: text("id").primaryKey(), // UUID v4
+
+  // Asset
+  assetId: text("asset_id").notNull(),
+  assetType: text("asset_type", {
+    enum: ["model", "dataset", "agent", "workflow", "prompt", "template", "plugin", "api"],
+  }).notNull(),
+
+  // Feedback type
+  feedbackType: text("feedback_type", {
+    enum: [
+      "quality_suggestion",
+      "usage_insight",
+      "improvement_tip",
+      "peer_review_note",
+      "auto_recommendation",
+      "benchmark_result",
+    ],
+  }).notNull(),
+
+  // Content
+  title: text("title").notNull(),
+  description: text("description"),
+  priority: text("priority", { enum: ["low", "medium", "high", "critical"] })
+    .notNull()
+    .default("medium"),
+
+  // Status
+  status: text("status", {
+    enum: ["new", "acknowledged", "in_progress", "resolved", "dismissed"],
+  }).notNull().default("new"),
+
+  // Source
+  sourceType: text("source_type", {
+    enum: ["system", "peer", "analytics", "quality_engine", "user"],
+  }).notNull(),
+  sourceId: text("source_id"),
+
+  // Data
+  dataJson: text("data_json", { mode: "json" }).$type<Record<string, unknown> | null>(),
+
+  // Resolution
+  resolvedAt: integer("resolved_at", { mode: "timestamp" }),
+  resolutionNote: text("resolution_note"),
+
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});

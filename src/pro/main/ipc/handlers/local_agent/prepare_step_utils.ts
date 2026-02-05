@@ -7,6 +7,7 @@
 
 import { ImagePart, ModelMessage, TextPart, UserModelMessage } from "ai";
 import type { UserMessageContentPart } from "./tools/types";
+import { cleanMessageForOpenAI } from "@/ipc/utils/ai_messages_utils";
 
 /**
  * A message that has been processed and is ready to inject.
@@ -120,17 +121,29 @@ export function prepareStepMessages<
     messages.length,
   );
 
-  // If no messages to inject, don't modify
-  if (allInjectedMessages.length === 0) {
+  // Clean messages for OpenAI compatibility during multi-step agent flows:
+  // 1. Strip itemId to prevent "Item with id not found" errors
+  // 2. Filter orphaned reasoning to prevent "reasoning without following item" errors
+  const filteredMessages = messages.map(cleanMessageForOpenAI);
+
+  // Check if we need to return modified options
+  const hasInjections = allInjectedMessages.length > 0;
+  const hasFilteredContent = filteredMessages.some(
+    (msg, i) => msg !== messages[i],
+  );
+
+  if (!hasInjections && !hasFilteredContent) {
     return undefined;
   }
 
   // Build the new messages array with injections
   // Cast is safe because InjectedMessage["message"] is a valid ModelMessage
-  const newMessages = injectMessagesAtPositions(
-    messages,
-    allInjectedMessages,
-  ) as TMessage[];
+  const newMessages = hasInjections
+    ? (injectMessagesAtPositions(
+        filteredMessages,
+        allInjectedMessages,
+      ) as TMessage[])
+    : filteredMessages;
 
   return { messages: newMessages, ...rest };
 }

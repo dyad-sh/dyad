@@ -267,7 +267,7 @@ describe("parseAiMessagesJson", () => {
       expect(part.providerOptions).toBeUndefined();
     });
 
-    it("should strip itemId from reasoning parts but preserve reasoningEncryptedContent", () => {
+    it("should strip itemId from reasoning parts but preserve reasoningEncryptedContent when followed by output", () => {
       const msg: DbMessageForParsing = {
         id: 22,
         role: "assistant",
@@ -288,6 +288,10 @@ describe("parseAiMessagesJson", () => {
                     },
                   },
                 },
+                {
+                  type: "text",
+                  text: "Here is my response",
+                },
               ],
             },
           ] as ModelMessage[],
@@ -295,12 +299,109 @@ describe("parseAiMessagesJson", () => {
       };
 
       const result = parseAiMessagesJson(msg);
-      const part = (result[0].content as any[])[0];
-      expect(part.text).toBe("thinking...");
-      expect(part.providerOptions.openai.itemId).toBeUndefined();
-      expect(part.providerOptions.openai.reasoningEncryptedContent).toBe(
-        "encrypted-data",
-      );
+      expect((result[0].content as any[]).length).toBe(2);
+      const reasoningPart = (result[0].content as any[])[0];
+      expect(reasoningPart.text).toBe("thinking...");
+      expect(reasoningPart.providerOptions.openai.itemId).toBeUndefined();
+      expect(
+        reasoningPart.providerOptions.openai.reasoningEncryptedContent,
+      ).toBe("encrypted-data");
+    });
+
+    it("should filter out orphaned reasoning parts without following output", () => {
+      const msg: DbMessageForParsing = {
+        id: 22,
+        role: "assistant",
+        content: "fallback",
+        aiMessagesJson: {
+          sdkVersion: AI_MESSAGES_SDK_VERSION,
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "reasoning",
+                  text: "thinking without output...",
+                  providerOptions: {
+                    openai: {
+                      itemId: "rs_orphan",
+                      reasoningEncryptedContent: "encrypted-data",
+                    },
+                  },
+                },
+              ],
+            },
+          ] as ModelMessage[],
+        },
+      };
+
+      const result = parseAiMessagesJson(msg);
+      // Orphaned reasoning should be filtered out
+      expect((result[0].content as any[]).length).toBe(0);
+    });
+
+    it("should keep reasoning followed by tool-call", () => {
+      const msg: DbMessageForParsing = {
+        id: 22,
+        role: "assistant",
+        content: "fallback",
+        aiMessagesJson: {
+          sdkVersion: AI_MESSAGES_SDK_VERSION,
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "reasoning",
+                  text: "thinking before tool call...",
+                },
+                {
+                  type: "tool-call",
+                  toolCallId: "call-123",
+                  toolName: "read_file",
+                  input: { path: "/test" },
+                },
+              ],
+            },
+          ] as ModelMessage[],
+        },
+      };
+
+      const result = parseAiMessagesJson(msg);
+      expect((result[0].content as any[]).length).toBe(2);
+      expect((result[0].content as any[])[0].type).toBe("reasoning");
+      expect((result[0].content as any[])[1].type).toBe("tool-call");
+    });
+
+    it("should filter trailing reasoning after text output", () => {
+      const msg: DbMessageForParsing = {
+        id: 22,
+        role: "assistant",
+        content: "fallback",
+        aiMessagesJson: {
+          sdkVersion: AI_MESSAGES_SDK_VERSION,
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "text",
+                  text: "output first",
+                },
+                {
+                  type: "reasoning",
+                  text: "orphaned reasoning at end",
+                },
+              ],
+            },
+          ] as ModelMessage[],
+        },
+      };
+
+      const result = parseAiMessagesJson(msg);
+      // Trailing reasoning without following output should be filtered
+      expect((result[0].content as any[]).length).toBe(1);
+      expect((result[0].content as any[])[0].type).toBe("text");
     });
 
     it("should strip itemId from legacy providerMetadata", () => {

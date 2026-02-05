@@ -11,32 +11,13 @@ const logger = log.scope("ai_messages_utils");
 const PROVIDER_KEYS_WITH_ITEM_ID = ["openai", "azure"] as const;
 
 /**
- * Strip OpenAI item IDs from provider metadata on all message content parts.
- *
- * When messages are persisted to DB with aiMessagesJson, they may contain
- * `providerMetadata.openai.itemId` values that reference items stored on OpenAI's
- * servers. On subsequent turns, the AI SDK converts these to `item_reference`
- * payloads instead of sending full content. If OpenAI has expired those items,
- * this causes "Item with id 'rs_...' not found" errors.
- *
- * Stripping itemId forces the SDK to always send full message content, which is
- * already stored in the message parts alongside the itemId, so no data is lost.
+ * Strip itemId from a content part's provider metadata.
+ * Returns true if any itemId was stripped (mutates the part in place).
  */
-function stripItemIds(messages: ModelMessage[]): ModelMessage[] {
-  for (const message of messages) {
-    if (typeof message.content === "string") continue;
-    if (!Array.isArray(message.content)) continue;
-
-    for (const part of message.content) {
-      stripItemIdFromObject(part as Record<string, unknown>);
-    }
-  }
-  return messages;
-}
-
-function stripItemIdFromObject(obj: Record<string, unknown>): void {
+function stripItemIdFromPart(part: Record<string, unknown>): boolean {
+  let didStrip = false;
   for (const field of ["providerOptions", "providerMetadata"] as const) {
-    const container = obj[field];
+    const container = part[field];
     if (!container || typeof container !== "object") continue;
 
     const containerRecord = container as Record<
@@ -51,6 +32,7 @@ function stripItemIdFromObject(obj: Record<string, unknown>): void {
         "itemId" in providerData
       ) {
         delete providerData.itemId;
+        didStrip = true;
         // Clean up empty provider data
         if (Object.keys(providerData).length === 0) {
           delete containerRecord[key];
@@ -59,9 +41,74 @@ function stripItemIdFromObject(obj: Record<string, unknown>): void {
     }
     // Clean up empty container
     if (Object.keys(containerRecord).length === 0) {
-      delete obj[field];
+      delete part[field];
     }
   }
+  return didStrip;
+}
+
+/**
+ * Clean up a message's content parts for OpenAI compatibility:
+ * 1. Strip itemId from provider metadata (prevents "Item with id not found" errors)
+ * 2. Filter orphaned reasoning parts (prevents "reasoning without following item" errors)
+ *
+ * When messages contain `providerMetadata.openai.itemId` values, the AI SDK converts
+ * these to `item_reference` payloads. If OpenAI has expired those items, this causes
+ * "Item with id 'rs_...' not found" errors.
+ *
+ * Additionally, OpenAI's Responses API requires that reasoning items are always
+ * followed by an output item (text, tool-call, etc.). If a reasoning item appears
+ * at the end of a message without a following output, OpenAI returns:
+ * "Item of type 'reasoning' was provided without its required following item."
+ *
+ * Returns the original message if no changes were needed, or a new message with cleaned content.
+ */
+export function cleanMessageForOpenAI<T extends ModelMessage>(message: T): T {
+  if (typeof message.content === "string" || !Array.isArray(message.content)) {
+    return message;
+  }
+
+  const cleanedContent = [];
+  let didModify = false;
+
+  for (let i = 0; i < message.content.length; i++) {
+    const part = message.content[i] as { type?: string } & Record<
+      string,
+      unknown
+    >;
+
+    // Check if this is orphaned reasoning (no following output)
+    if (part.type === "reasoning") {
+      const hasFollowingOutput = message.content
+        .slice(i + 1)
+        .some((p) => (p as { type?: string }).type !== "reasoning");
+      if (!hasFollowingOutput) {
+        // Skip orphaned reasoning
+        didModify = true;
+        continue;
+      }
+    }
+
+    // Strip itemId from provider metadata
+    if (stripItemIdFromPart(part)) {
+      didModify = true;
+    }
+
+    cleanedContent.push(part);
+  }
+
+  if (!didModify) {
+    return message;
+  }
+
+  return { ...message, content: cleanedContent } as T;
+}
+
+/**
+ * Clean all messages in an array for OpenAI compatibility.
+ */
+function cleanMessagesForOpenAI(messages: ModelMessage[]): ModelMessage[] {
+  return messages.map(cleanMessageForOpenAI);
 }
 
 /** Maximum size in bytes for ai_messages_json (10MB) */
@@ -116,7 +163,7 @@ export function parseAiMessagesJson(msg: DbMessageForParsing): ModelMessage[] {
       Array.isArray(parsed) &&
       parsed.every((m) => m && typeof m.role === "string")
     ) {
-      return stripItemIds(parsed);
+      return cleanMessagesForOpenAI(parsed);
     }
 
     if (
@@ -130,7 +177,7 @@ export function parseAiMessagesJson(msg: DbMessageForParsing): ModelMessage[] {
         (m: ModelMessage) => m && typeof m.role === "string",
       )
     ) {
-      return stripItemIds((parsed as AiMessagesJsonV6).messages);
+      return cleanMessagesForOpenAI((parsed as AiMessagesJsonV6).messages);
     }
   }
 

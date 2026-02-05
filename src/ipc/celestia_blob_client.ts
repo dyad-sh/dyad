@@ -40,12 +40,15 @@ export interface CelestiaStatus {
   balance?: { amount: string; denom: string };
   walletAddress?: string;
   network?: string;
+  namespace?: string;
+  namespaceId?: string;
   error?: string;
 }
 
 export interface CelestiaConfig {
   rpcUrl: string;
   namespace: string;
+  namespaceId?: string;
   gasPrice: number;
   authToken?: string;
   walletAddress: string;
@@ -189,6 +192,21 @@ class CelestiaBlobClient {
   /** Update config */
   async updateConfig(updates: Partial<CelestiaConfig>): Promise<CelestiaConfig> {
     return this.ipc.invoke("celestia:config:update", updates);
+  }
+
+  /** Generate a namespace from a human-readable ID */
+  async generateNamespace(namespaceId: string): Promise<{ namespace: string; namespaceId: string }> {
+    return this.ipc.invoke("celestia:namespace:generate", { namespaceId });
+  }
+
+  /** Validate a Celestia wallet address */
+  async validateWallet(address: string): Promise<{ valid: boolean }> {
+    return this.ipc.invoke("celestia:wallet:validate", { address });
+  }
+
+  /** Reset config to defaults */
+  async resetConfig(): Promise<CelestiaConfig> {
+    return this.ipc.invoke("celestia:config:reset");
   }
 }
 

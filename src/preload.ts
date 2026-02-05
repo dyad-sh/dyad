@@ -322,6 +322,9 @@ const validInvokeChannels = [
   "celestia:status",
   "celestia:config:get",
   "celestia:config:update",
+  "celestia:config:reset",
+  "celestia:namespace:generate",
+  "celestia:wallet:validate",
   // n8n Integration
   "n8n:start",
   "n8n:stop",

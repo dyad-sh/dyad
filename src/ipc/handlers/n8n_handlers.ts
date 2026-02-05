@@ -298,20 +298,177 @@ export async function executeWorkflow(id: string, data?: Record<string, unknown>
 }
 
 // ============================================================================
-// Workflow Builder - AI-Powered Workflow Generation
+// AI-Powered Workflow Generation with NLP
 // ============================================================================
+
+/**
+ * Call Ollama to generate workflow JSON from natural language
+ */
+async function callOllamaForWorkflow(prompt: string): Promise<{ workflow: N8nWorkflow; explanation: string } | null> {
+  const systemPrompt = `You are an expert n8n workflow designer. Given a natural language description, generate a valid n8n workflow JSON.
+
+Available n8n node types:
+TRIGGERS:
+- n8n-nodes-base.manualTrigger - Manual execution
+- n8n-nodes-base.webhook - HTTP webhook trigger
+- n8n-nodes-base.scheduleTrigger - Cron/schedule trigger
+- n8n-nodes-base.emailReadImap - Email trigger
+
+ACTIONS:
+- n8n-nodes-base.httpRequest - Make HTTP requests
+- n8n-nodes-base.code - Custom JavaScript/Python code
+- n8n-nodes-base.set - Set/transform data
+- n8n-nodes-base.if - Conditional logic
+- n8n-nodes-base.switch - Multi-way branching
+- n8n-nodes-base.merge - Merge data streams
+- n8n-nodes-base.splitInBatches - Process items in batches
+- n8n-nodes-base.wait - Add delay
+- n8n-nodes-base.noOp - No operation (placeholder)
+
+INTEGRATIONS:
+- n8n-nodes-base.openAi - OpenAI API (GPT, embeddings)
+- @n8n/n8n-nodes-langchain.chainLlm - LangChain LLM
+- @n8n/n8n-nodes-langchain.agent - AI Agent
+- n8n-nodes-base.slack - Slack messaging
+- n8n-nodes-base.discord - Discord messaging
+- n8n-nodes-base.telegram - Telegram messaging
+- n8n-nodes-base.emailSend - Send emails
+- n8n-nodes-base.postgres - PostgreSQL database
+- n8n-nodes-base.mysql - MySQL database
+- n8n-nodes-base.mongodb - MongoDB
+- n8n-nodes-base.googleSheets - Google Sheets
+- n8n-nodes-base.airtable - Airtable
+- n8n-nodes-base.notion - Notion
+- n8n-nodes-base.github - GitHub API
+- n8n-nodes-base.jira - Jira
+- n8n-nodes-base.aws - AWS services
+
+META WORKFLOWS (workflows that create/manage other workflows):
+- n8n-nodes-base.executeWorkflow - Run another workflow
+- n8n-nodes-base.n8n - Access n8n API to create/modify workflows
+
+OUTPUT FORMAT:
+Respond with valid JSON only, no markdown code blocks:
+{
+  "workflow": {
+    "name": "Workflow Name",
+    "active": false,
+    "nodes": [
+      {
+        "id": "unique_id",
+        "name": "Node Name",
+        "type": "node-type",
+        "typeVersion": 1,
+        "position": [x, y],
+        "parameters": {}
+      }
+    ],
+    "connections": {
+      "Node Name": {
+        "main": [[{ "node": "Next Node Name", "type": "main", "index": 0 }]]
+      }
+    },
+    "settings": { "executionOrder": "v1" }
+  },
+  "explanation": "Brief explanation of what the workflow does"
+}
+
+Position nodes at x=250 starting, y=300, with 200px spacing between nodes.
+Always include a trigger node as the first node.
+Generate unique IDs for each node.`;
+
+  try {
+    const response = await fetch("http://localhost:11434/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "llama3.2",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Create an n8n workflow for: ${prompt}` }
+        ],
+        stream: false,
+        options: {
+          temperature: 0.3,
+          num_predict: 4096,
+        },
+        format: "json",
+      }),
+      signal: AbortSignal.timeout(60000),
+    });
+
+    if (!response.ok) {
+      logger.warn("Ollama request failed, falling back to basic generation");
+      return null;
+    }
+
+    const data = await response.json();
+    const content = data.message?.content || "";
+    
+    try {
+      const parsed = JSON.parse(content);
+      if (parsed.workflow && parsed.workflow.nodes) {
+        return {
+          workflow: parsed.workflow,
+          explanation: parsed.explanation || "AI-generated workflow",
+        };
+      }
+    } catch (parseError) {
+      logger.warn("Failed to parse AI response:", parseError);
+    }
+    
+    return null;
+  } catch (error) {
+    logger.warn("Ollama not available:", error);
+    return null;
+  }
+}
+
+/**
+ * Check if Ollama is available
+ */
+async function isOllamaAvailable(): Promise<boolean> {
+  try {
+    const response = await fetch("http://localhost:11434/api/tags", {
+      method: "GET",
+      signal: AbortSignal.timeout(2000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
 
 export async function generateWorkflow(
   request: WorkflowGenerationRequest
 ): Promise<WorkflowGenerationResult> {
   try {
-    // Parse the prompt to understand what workflow to build
+    // Try AI-powered generation first if Ollama is available
+    if (await isOllamaAvailable()) {
+      logger.info("Using AI-powered workflow generation");
+      const aiResult = await callOllamaForWorkflow(request.prompt);
+      
+      if (aiResult) {
+        // Validate the AI-generated workflow
+        const validation = validateWorkflow(aiResult.workflow);
+        
+        if (validation.valid) {
+          return {
+            success: true,
+            workflow: aiResult.workflow,
+            explanation: aiResult.explanation,
+            warnings: validation.warnings,
+          };
+        } else {
+          logger.warn("AI-generated workflow failed validation, falling back to basic generation");
+        }
+      }
+    }
+    
+    // Fallback to basic keyword-based generation
+    logger.info("Using basic keyword-based workflow generation");
     const workflowSpec = parseWorkflowPrompt(request.prompt);
-    
-    // Build the workflow structure
     const workflow = buildWorkflowFromSpec(workflowSpec, request.constraints);
-    
-    // Validate the workflow
     const validation = validateWorkflow(workflow);
     
     if (!validation.valid) {

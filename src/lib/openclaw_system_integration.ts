@@ -691,7 +691,8 @@ export class OpenClawSystemIntegration extends EventEmitter {
 // EXPORTS
 // =============================================================================
 
-export const OpenClawSystemIntegration = OpenClawSystemIntegration.getInstance();
+/** Singleton instance of the OpenClaw system integration */
+export const openClawIntegration = OpenClawSystemIntegration.getInstance();
 
 /**
  * Get the OpenClaw system integration singleton
@@ -707,7 +708,7 @@ export async function OpenClawChat(
   message: string,
   options?: { systemPrompt?: string; preferLocal?: boolean }
 ): Promise<string> {
-  return OpenClawSystemIntegration.chat(message, options);
+  return openClawIntegration.chat(message, options);
 }
 
 /**
@@ -718,5 +719,5 @@ export async function OpenClawAgentInference(
   prompt: string,
   options?: { systemPrompt?: string; model?: string }
 ): Promise<string> {
-  return OpenClawSystemIntegration.agentInference(agentId, prompt, options);
+  return openClawIntegration.agentInference(agentId, prompt, options);
 }

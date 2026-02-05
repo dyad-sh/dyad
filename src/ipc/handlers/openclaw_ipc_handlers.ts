@@ -28,88 +28,11 @@ const logger = log.scope("openclaw_ipc");
 // =============================================================================
 
 export function registerOpenClawIPCHandlers(): void {
-  logger.info("🦞 Registering OpenClaw IPC handlers...");
+  logger.info("🦞 Registering OpenClaw IPC handlers (extended)...");
 
-  // ---------------------------------------------------------------------------
-  // INITIALIZATION
-  // ---------------------------------------------------------------------------
-
-  ipcMain.handle(
-    "openclaw:initialize",
-    async (_event: IpcMainInvokeEvent, config?: Partial<OpenClawIntegrationConfig>) => {
-      logger.info("Initializing OpenClaw...");
-      const integration = await initializeOpenClaw(config);
-      return { success: true, connected: integration.isGatewayConnected() };
-    }
-  );
-
-  ipcMain.handle("openclaw:shutdown", async () => {
-    logger.info("Shutting down OpenClaw...");
-    const integration = getOpenClawIntegration();
-    await integration.shutdown();
-    return { success: true };
-  });
-
-  // ---------------------------------------------------------------------------
-  // CONFIGURATION
-  // ---------------------------------------------------------------------------
-
-  ipcMain.handle("openclaw:config:get", async () => {
-    const integration = getOpenClawIntegration();
-    return integration.getConfig();
-  });
-
-  ipcMain.handle(
-    "openclaw:config:update",
-    async (_event: IpcMainInvokeEvent, updates: Partial<OpenClawIntegrationConfig>) => {
-      const integration = getOpenClawIntegration();
-      await integration.updateConfig(updates);
-      return { success: true };
-    }
-  );
-
-  // ---------------------------------------------------------------------------
-  // GATEWAY MANAGEMENT
-  // ---------------------------------------------------------------------------
-
-  ipcMain.handle("openclaw:gateway:status", async () => {
-    const integration = getOpenClawIntegration();
-    return integration.getGatewayStatus();
-  });
-
-  ipcMain.handle("openclaw:gateway:health", async () => {
-    const integration = getOpenClawIntegration();
-    return integration.getGatewayHealth();
-  });
-
-  ipcMain.handle("openclaw:gateway:start", async () => {
-    logger.info("Starting OpenClaw Gateway...");
-    const integration = getOpenClawIntegration();
-    await integration.startGateway();
-    return { success: true };
-  });
-
-  ipcMain.handle("openclaw:gateway:stop", async () => {
-    logger.info("Stopping OpenClaw Gateway...");
-    const integration = getOpenClawIntegration();
-    await integration.stopGateway();
-    return { success: true };
-  });
-
-  ipcMain.handle("openclaw:gateway:restart", async () => {
-    logger.info("Restarting OpenClaw Gateway...");
-    const integration = getOpenClawIntegration();
-    await integration.restartGateway();
-    return { success: true };
-  });
-
-  ipcMain.handle("openclaw:connection:status", async () => {
-    const integration = getOpenClawIntegration();
-    return {
-      connected: integration.isGatewayConnected(),
-      status: integration.getConnectionStatus(),
-    };
-  });
+  // NOTE: Core handlers (initialize, shutdown, config, gateway management)
+  // are registered in openclaw_handlers.ts - this file only adds
+  // additional handlers for agent, messaging, memory, and plugin functionality.
 
   // ---------------------------------------------------------------------------
   // AGENT INTERFACE

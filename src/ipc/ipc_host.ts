@@ -97,6 +97,7 @@ import { registerOpenClawHandlers } from "./handlers/openclaw_handlers";
 import { registerOpenClawIPCHandlers } from "./handlers/openclaw_ipc_handlers";
 import { registerOpenClawCNSHandlers } from "./handlers/openclaw_cns_handlers";
 import { registerStudioAIHandlers } from "./handlers/studio_ai_handlers";
+import { registerServicesHandlers } from "./handlers/services_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -259,4 +260,8 @@ export function registerIpcHandlers() {
   // Studio AI Service - Claude Code + Ollama integration across all studios
   // Data Studio, Document Studio, Asset Studio, Agent Swarms, Dataset Studio
   registerStudioAIHandlers();
+
+  // External Services Manager - n8n, Celestia, Ollama
+  // Start/stop background services from the UI
+  registerServicesHandlers();
 }

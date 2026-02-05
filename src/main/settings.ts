@@ -250,21 +250,22 @@ export function writeSettings(settings: Partial<UserSettings>): void {
 }
 
 export function encrypt(data: string): Secret {
+  const trimmed = data.trim();
   if (safeStorage.isEncryptionAvailable() && !IS_TEST_BUILD) {
     return {
-      value: safeStorage.encryptString(data).toString("base64"),
+      value: safeStorage.encryptString(trimmed).toString("base64"),
       encryptionType: "electron-safe-storage",
     };
   }
   return {
-    value: data,
+    value: trimmed,
     encryptionType: "plaintext",
   };
 }
 
 export function decrypt(data: Secret): string {
   if (data.encryptionType === "electron-safe-storage") {
-    return safeStorage.decryptString(Buffer.from(data.value, "base64"));
+    return safeStorage.decryptString(Buffer.from(data.value, "base64")).trim();
   }
-  return data.value;
+  return data.value.trim();
 }

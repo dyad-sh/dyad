@@ -29,6 +29,7 @@ import { ToolsMcpSettings } from "@/components/settings/ToolsMcpSettings";
 import { AgentToolsSettings } from "@/components/settings/AgentToolsSettings";
 import { JoyIdentitySettings } from "@/components/settings/JoyIdentitySettings";
 import { CNSSettings } from "@/components/settings/CNSSettings";
+import { ExternalServicesSettings } from "@/components/settings/ExternalServicesSettings";
 import { ZoomSelector } from "@/components/ZoomSelector";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
@@ -142,6 +143,11 @@ export default function SettingsPage() {
               <SupabaseIntegration />
               <NeonIntegration />
             </div>
+          </div>
+
+          {/* External Services */}
+          <div id="external-services">
+            <ExternalServicesSettings />
           </div>
 
           {/* OpenClaw CNS Settings */}

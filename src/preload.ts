@@ -300,6 +300,15 @@ const validInvokeChannels = [
   "agent:export:json",
   "agent:export:standalone",
   "agent:export:docker",
+  // External Services Management
+  "services:list",
+  "services:status:all",
+  "services:status",
+  "services:start",
+  "services:stop",
+  "services:restart",
+  "services:start:all",
+  "services:stop:all",
   // n8n Integration
   "n8n:start",
   "n8n:stop",

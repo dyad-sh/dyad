@@ -101,17 +101,16 @@ Available packages and libraries:
 
 ===
 role: assistant
-message: <dyad-status title="Conversation compacted" state="finished">
-Previous conversation was compacted to save context space. Original messages have been preserved.
-</dyad-status>
-
-Compaction backup: [[compaction-backup-path]]
-
+message: <dyad-compaction title="Conversation compacted" state="finished">
 ## Key Decisions Made
 - Completed initial task as requested
 
 ## Current Task State
 Conversation was compacted to save context space.
+</dyad-compaction>
+
+If you need to retrieve earlier parts of the conversation history, you can read the backup file at: [[compaction-backup-path]]
+Note: This file may be large. Read only the sections you need or use grep to search for specific content rather than reading the entire file.
 
 ===
 role: user

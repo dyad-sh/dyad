@@ -603,10 +603,11 @@ export class PageObject {
         if (!messagesList) {
           throw new Error("Messages list not found");
         }
-        // Scrub compaction backup paths (e.g. /tmp/.../compaction-backups/1/compaction-2026-02-05T19-13-38-247Z.md)
+        // Scrub compaction backup paths embedded in message text
+        // e.g. .dyad/chats/1/compaction-2026-02-05T21-25-24-285Z.md
         messagesList.innerHTML = messagesList.innerHTML.replace(
-          /Compaction backup: [^\s<]+/g,
-          "Compaction backup: [[compaction-backup-path]]",
+          /\.dyad\/chats\/\d+\/compaction-[^\s<"]+\.md/g,
+          "[[compaction-backup-path]]",
         );
         if (replaceDumpPath) {
           messagesList.innerHTML = messagesList.innerHTML.replace(
@@ -891,9 +892,11 @@ export class PageObject {
     // Read the JSON file
     const dumpContent: string = (fs.readFileSync(dumpFilePath, "utf-8") as any)
       .replaceAll(/\[\[dyad-dump-path=([^\]]+)\]\]/g, "[[dyad-dump-path=*]]")
+      // Stabilize compaction backup file paths embedded in message text
+      // e.g. .dyad/chats/1/compaction-2026-02-05T21-25-24-285Z.md
       .replaceAll(
-        /Compaction backup: [^\s"\\]+/g,
-        "Compaction backup: [[compaction-backup-path]]",
+        /\.dyad\/chats\/\d+\/compaction-[^\s"\\]+\.md/g,
+        "[[compaction-backup-path]]",
       );
     // Perform snapshot comparison
     const parsedDump = JSON.parse(dumpContent);

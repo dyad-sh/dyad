@@ -184,6 +184,18 @@ export async function handleLocalAgentStream(
       req.chatId,
       appPath,
       dyadRequestId,
+      (accumulatedSummary: string) => {
+        // Stream compaction summary to the frontend in real-time
+        // We temporarily set the placeholder content to show compaction progress;
+        // after compaction, the chat is re-queried and the placeholder is reset.
+        sendResponseChunk(
+          event,
+          req.chatId,
+          chat,
+          `<dyad-compaction title="Compacting conversation">\n${accumulatedSummary}\n</dyad-compaction>`,
+          placeholderMessageId,
+        );
+      },
     );
     if (!compactionResult.success) {
       logger.warn(

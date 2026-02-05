@@ -28,15 +28,15 @@
 - text: less than a minute ago
 - button "Copy Request ID":
   - img
-- img
-- text: Conversation compacted
-- img
-- paragraph: "Compaction backup: [[compaction-backup-path]]"
+- button "Conversation compacted" [expanded]:
+  - img
+  - img
 - heading "Key Decisions Made" [level=2]
 - list:
   - listitem: Completed initial task as requested
 - heading "Current Task State" [level=2]
 - paragraph: Conversation was compacted to save context space.
+- paragraph: "If you need to retrieve earlier parts of the conversation history, you can read the backup file at: [[compaction-backup-path]] Note: This file may be large. Read only the sections you need or use grep to search for specific content rather than reading the entire file."
 - button "Copy":
   - img
 - img
@@ -51,6 +51,8 @@
 - text: claude-opus-4-5
 - img
 - text: less than a minute ago
+- img
+- text: (1 files changed)
 - button "Copy Request ID":
   - img
 - paragraph: "[dump] hi"

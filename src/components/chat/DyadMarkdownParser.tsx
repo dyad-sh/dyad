@@ -34,6 +34,7 @@ import { DyadDatabaseSchema } from "./DyadDatabaseSchema";
 import { DyadSupabaseTableSchema } from "./DyadSupabaseTableSchema";
 import { DyadSupabaseProjectInfo } from "./DyadSupabaseProjectInfo";
 import { DyadStatus } from "./DyadStatus";
+import { DyadCompaction } from "./DyadCompaction";
 import { DyadWritePlan } from "./DyadWritePlan";
 import { DyadExitPlan } from "./DyadExitPlan";
 import { mapActionToButton } from "./ChatInput";
@@ -71,6 +72,7 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-supabase-table-schema",
   "dyad-supabase-project-info",
   "dyad-status",
+  "dyad-compaction",
   // Plan mode tags
   "dyad-write-plan",
   "dyad-exit-plan",
@@ -714,6 +716,20 @@ function renderCustomTag(
         >
           {content}
         </DyadStatus>
+      );
+
+    case "dyad-compaction":
+      return (
+        <DyadCompaction
+          node={{
+            properties: {
+              title: attributes.title || "Compacting conversation",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadCompaction>
       );
 
     case "dyad-write-plan":

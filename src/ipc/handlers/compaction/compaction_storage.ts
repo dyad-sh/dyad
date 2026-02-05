@@ -14,7 +14,7 @@ const logger = log.scope("compaction_storage");
 /**
  * Maximum characters to keep from tool results before truncating.
  */
-export const TOOL_RESULT_TRUNCATION_LIMIT = 300;
+export const TOOL_RESULT_TRUNCATION_LIMIT = 1000;
 
 /**
  * Message structure passed to the storage module.
@@ -45,13 +45,19 @@ export function transformToolTags(content: string): string {
   // Transform <dyad-mcp-tool-result> to <tool-result> with truncation
   result = result.replace(
     /<dyad-mcp-tool-result server="([^"]*)" tool="([^"]*)">\n([\s\S]*?)\n<\/dyad-mcp-tool-result>/g,
-    (_match, server, tool, resultContent) => {
-      const charCount = resultContent.length;
-      if (charCount > TOOL_RESULT_TRUNCATION_LIMIT) {
-        const truncated = resultContent.slice(0, TOOL_RESULT_TRUNCATION_LIMIT);
-        return `<tool-result name="${tool}" server="${server}" chars="${charCount}" truncated="true">\n${truncated}\n...</tool-result>`;
-      }
-      return `<tool-result name="${tool}" server="${server}" chars="${charCount}">\n${resultContent}\n</tool-result>`;
+    (_match, server, tool, resultContent: string) => {
+      const chars = resultContent.length;
+      const truncated = chars > TOOL_RESULT_TRUNCATION_LIMIT;
+      const attrs = [
+        `name="${tool}"`,
+        `server="${server}"`,
+        `chars="${chars}"`,
+        ...(truncated ? ['truncated="true"'] : []),
+      ].join(" ");
+      const body = truncated
+        ? resultContent.slice(0, TOOL_RESULT_TRUNCATION_LIMIT) + "\n..."
+        : resultContent;
+      return `<tool-result ${attrs}>\n${body}\n</tool-result>`;
     },
   );
 

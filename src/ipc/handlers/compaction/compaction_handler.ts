@@ -4,7 +4,7 @@
  */
 
 import { IpcMainInvokeEvent } from "electron";
-import { generateText, ModelMessage } from "ai";
+import { streamText, ModelMessage } from "ai";
 import log from "electron-log";
 import { eq } from "drizzle-orm";
 
@@ -114,6 +114,7 @@ export async function performCompaction(
   chatId: number,
   appPath: string,
   dyadRequestId: string,
+  onSummaryChunk?: (accumulatedText: string) => void,
 ): Promise<CompactionResult> {
   const settings = readSettings();
 
@@ -167,7 +168,7 @@ export async function performCompaction(
       },
     ];
 
-    const summaryResult = await generateText({
+    const summaryResult = streamText({
       model: modelClient.model,
       headers: getAiHeaders({
         builtinProviderId: modelClient.builtinProviderId,
@@ -186,17 +187,21 @@ export async function performCompaction(
       maxRetries: 2,
     });
 
-    const summary = summaryResult.text;
+    // Stream summary text to the frontend as it generates
+    let summary = "";
+    for await (const chunk of summaryResult.textStream) {
+      summary += chunk;
+      onSummaryChunk?.(summary);
+    }
 
     // Create the compaction indicator message
     // Include relative backup path so the AI can read the full original conversation later
-    const compactionMessageContent = `<dyad-status title="Conversation compacted" state="finished">
-Previous conversation was compacted to save context space. Original messages have been preserved.
-</dyad-status>
+    const compactionMessageContent = `<dyad-compaction title="Conversation compacted" state="finished">
+${summary}
+</dyad-compaction>
 
-Compaction backup: ${backupPath}
-
-${summary}`;
+If you need to retrieve earlier parts of the conversation history, you can read the backup file at: ${backupPath}
+Note: This file may be large. Read only the sections you need or use grep to search for specific content rather than reading the entire file.`;
 
     // Insert summary message as a new assistant message
     // Original messages are preserved in the DB for the user to see

@@ -419,11 +419,8 @@ ${componentSnippet}
         .returning({ id: messages.id });
       const userMessageId = insertedUserMessage.id;
       const settings = readSettings();
-      // Only JoyCreate Pro requests have request ids.
-      if (settings.enableJoyPro) {
-        // Generate requestId early so it can be saved with the message
-        joyRequestId = uuidv4();
-      }
+      // Generate requestId for tracking all requests
+      joyRequestId = uuidv4();
 
       // Add a placeholder assistant message immediately
       const [placeholderAssistantMessage] = await db

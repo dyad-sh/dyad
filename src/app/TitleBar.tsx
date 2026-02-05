@@ -1,16 +1,11 @@
 import { useAtom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { useRouter, useLocation } from "@tanstack/react-router";
+import { useLocation } from "@tanstack/react-router";
 import { useSettings } from "@/hooks/useSettings";
-import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
-import type { UserBudgetInfo } from "@/ipc/ipc_types";
-import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
 // @ts-ignore
 import customLogo from "../../assets/smileyone.png";
-import { cn } from "@/lib/utils";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
 import { useEffect, useState } from "react";
-import { JoyProSuccessDialog } from "@/components/JoyProSuccessDialog";
 import { useTheme } from "@/contexts/ThemeContext";
 import { IpcClient } from "@/ipc/ipc_client";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -27,7 +22,6 @@ export const TitleBar = () => {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
   const location = useLocation();
   const { settings, refreshSettings } = useSettings();
-  const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false);
   const [showWindowControls, setShowWindowControls] = useState(false);
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
@@ -46,24 +40,16 @@ export const TitleBar = () => {
     checkPlatform();
   }, []);
 
-  const showJoyProSuccessDialog = () => {
-    setIsSuccessDialogOpen(true);
-  };
-
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
   useEffect(() => {
     const handleDeepLink = async () => {
       if (lastDeepLink?.type === "joy-pro-return") {
         await refreshSettings();
-        showJoyProSuccessDialog();
         clearLastDeepLink();
       }
     };
     handleDeepLink();
   }, [lastDeepLink?.timestamp]);
-
-  const isJoyPro = !!settings?.providerSettings?.auto?.apiKey?.value;
-  const isJoyProEnabled = Boolean(settings?.enableJoyPro);
 
   return (
     <>
@@ -115,11 +101,6 @@ export const TitleBar = () => {
 
         {showWindowControls && <WindowsControls />}
       </div>
-
-      <JoyProSuccessDialog
-        isOpen={isSuccessDialogOpen}
-        onClose={() => setIsSuccessDialogOpen(false)}
-      />
     </>
   );
 };
@@ -205,51 +186,3 @@ function WindowsControls() {
   );
 }
 
-export function JoyProButton({
-  isJoyProEnabled,
-}: {
-  isJoyProEnabled: boolean;
-}) {
-  const { navigate } = useRouter();
-  const { userBudget } = useUserBudgetInfo();
-  return (
-    <Button
-      data-testid="title-bar-joy-pro-button"
-      onClick={() => {
-        navigate({
-          to: providerSettingsRoute.id,
-          params: { provider: "auto" },
-        });
-      }}
-      variant="outline"
-      className={cn(
-        "hidden @2xl:block ml-1 no-app-region-drag h-7 bg-indigo-600 text-white dark:bg-indigo-600 dark:text-white text-xs px-2 pt-1 pb-1",
-        !isJoyProEnabled && "bg-zinc-600 dark:bg-zinc-600",
-      )}
-      size="sm"
-    >
-      {isJoyProEnabled ? "Pro" : "Pro (off)"}
-      {userBudget && isJoyProEnabled && (
-        <AICreditStatus userBudget={userBudget} />
-      )}
-    </Button>
-  );
-}
-
-export function AICreditStatus({ userBudget }: { userBudget: UserBudgetInfo }) {
-  const remaining = Math.round(
-    userBudget.totalCredits - userBudget.usedCredits,
-  );
-  return (
-    <Tooltip>
-      <TooltipTrigger>
-        <div className="text-xs pl-1 mt-0.5">{remaining} credits</div>
-      </TooltipTrigger>
-      <TooltipContent>
-        <div>
-          <p>Note: there is a slight delay in updating the credit status.</p>
-        </div>
-      </TooltipContent>
-    </Tooltip>
-  );
-}

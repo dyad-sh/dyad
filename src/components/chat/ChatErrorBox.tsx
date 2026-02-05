@@ -11,11 +11,9 @@ import remarkGfm from "remark-gfm";
 export function ChatErrorBox({
   onDismiss,
   error,
-  isJoyProEnabled,
 }: {
   onDismiss: () => void;
   error: string;
-  isJoyProEnabled: boolean;
 }) {
   if (error.includes("doesn't have a free quota tier")) {
     return (

@@ -9,8 +9,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {} from "@/components/ui/accordion";
 
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { showError } from "@/lib/toast";
 import {
   UserSettings,
   AzureProviderSetting,
@@ -137,9 +135,6 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
           },
         },
       };
-      if (isJoy) {
-        settingsUpdate.enableJoyPro = true;
-      }
       await updateSettings(settingsUpdate);
       setApiKeyInput(""); // Clear input on success
       // Optionally show a success message
@@ -169,20 +164,6 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
     } catch (error: any) {
       console.error("Error deleting API key:", error);
       setSaveError(error.message || "Failed to delete API key.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  // --- Toggle JoyCreate Pro Handler ---
-  const handleToggleJoyPro = async (enabled: boolean) => {
-    setIsSaving(true);
-    try {
-      await updateSettings({
-        enableJoyPro: enabled,
-      });
-    } catch (error: any) {
-      showError(`Error toggling JoyCreate Pro: ${error}`);
     } finally {
       setIsSaving(false);
     }
@@ -309,22 +290,6 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
             isJoy={isJoy}
             updateSettings={updateSettings}
           />
-        )}
-
-        {isJoy && !settingsLoading && (
-          <div className="mt-6 flex items-center justify-between p-4 bg-(--background-lightest) rounded-lg border">
-            <div>
-              <h3 className="font-medium">Enable JoyCreate Pro</h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Toggle to enable JoyCreate Pro
-              </p>
-            </div>
-            <Switch
-              checked={settings?.enableJoyPro}
-              onCheckedChange={handleToggleJoyPro}
-              disabled={isSaving}
-            />
-          </div>
         )}
 
         {/* Conditionally render CustomModelsSection */}

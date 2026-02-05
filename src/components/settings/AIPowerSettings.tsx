@@ -416,7 +416,7 @@ export function AIPowerSettings() {
                 Intelligent Request Routing
               </CardTitle>
               <CardDescription>
-                JoyCreate automatically routes requests to the best model - a Pro feature elsewhere!
+                JoyCreate automatically routes requests to the best available model.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -684,7 +684,7 @@ export function AIPowerSettings() {
         </TabsContent>
       </Tabs>
 
-      {/* Pro Feature Notice */}
+      {/* All Features Included Notice */}
       <Card className="bg-gradient-to-r from-green-500/10 to-emerald-500/10 border-green-500/20">
         <CardContent className="p-4">
           <div className="flex items-center gap-3">

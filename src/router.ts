@@ -22,6 +22,8 @@ import { decentralizedDeployRoute } from "./routes/decentralized-deploy";
 import { decentralizedChatRoute } from "./routes/decentralized-chat";
 import { computeNetworkRoute } from "./routes/compute-network";
 import { agentSwarmRoute } from "./routes/agent-swarm";
+import { autonomousAgentRoute } from "./routes/autonomous-agent";
+import { autonomousAgentProductionRoute } from "./routes/autonomous-agent-production";
 import { cnsRoute } from "./routes/cns";
 
 const routeTree = rootRoute.addChildren([
@@ -48,6 +50,8 @@ const routeTree = rootRoute.addChildren([
   decentralizedChatRoute,
   computeNetworkRoute,
   agentSwarmRoute,
+  autonomousAgentRoute,
+  autonomousAgentProductionRoute,
   cnsRoute,
 ]);
 

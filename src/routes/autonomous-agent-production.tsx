@@ -1,6 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createRoute } from "@tanstack/react-router";
+import { rootRoute } from "./root";
 import AutonomousAgentProductionDashboard from "@/components/AutonomousAgentProductionDashboard";
 
-export const Route = createFileRoute("/autonomous-agent-production")({
+export const autonomousAgentProductionRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/autonomous-agent-production",
   component: AutonomousAgentProductionDashboard,
 });

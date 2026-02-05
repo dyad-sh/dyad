@@ -107,6 +107,15 @@ const menuCategories = [
         activeText: "text-rose-600 dark:text-rose-400",
       },
       {
+        title: "AI Production",
+        to: "/autonomous-agent-production",
+        icon: Shield,
+        gradient: "from-emerald-500 to-teal-500",
+        hoverBg: "hover:bg-emerald-500/10",
+        activeBg: "bg-emerald-500/15",
+        activeText: "text-emerald-600 dark:text-emerald-400",
+      },
+      {
         title: "Workflows",
         to: "/workflows",
         icon: Workflow,

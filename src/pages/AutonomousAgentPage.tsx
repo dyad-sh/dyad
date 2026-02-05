@@ -129,6 +129,8 @@ export default function AutonomousAgentPage() {
   const [isCreateAgentOpen, setIsCreateAgentOpen] = useState(false);
   const [isCreateMissionOpen, setIsCreateMissionOpen] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [initError, setInitError] = useState<string | null>(null);
+  const [initRetryCount, setInitRetryCount] = useState(0);
 
   const { data: agents = [], isLoading: isLoadingAgents, refetch: refetchAgents } = useAutonomousAgents();
   const { data: selectedAgent } = useAutonomousAgent(selectedAgentId || undefined);
@@ -146,18 +148,25 @@ export default function AutonomousAgentPage() {
   const replicateAgent = useReplicateAgent();
   const createMission = useCreateMission();
 
-  // Initialize system on mount
+  // Initialize system on mount (with retry support)
   useEffect(() => {
+    let cancelled = false;
     const init = async () => {
+      setInitError(null);
       try {
         await initializeSystem.mutateAsync();
-        setIsInitialized(true);
+        if (!cancelled) setIsInitialized(true);
       } catch (error) {
-        toast.error("Failed to initialize autonomous system");
+        if (!cancelled) {
+          const msg = error instanceof Error ? error.message : "Unknown error";
+          setInitError(msg);
+          toast.error(`Failed to initialize autonomous system: ${msg}`);
+        }
       }
     };
     init();
-  }, []);
+    return () => { cancelled = true; };
+  }, [initRetryCount]);
 
   // Show toast on new events
   useEffect(() => {
@@ -269,8 +278,30 @@ export default function AutonomousAgentPage() {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-muted-foreground">Initializing Autonomous Agent System...</p>
+          {initError ? (
+            <>
+              <XCircle className="h-8 w-8 text-destructive" />
+              <p className="text-destructive font-medium">Failed to initialize</p>
+              <p className="max-w-md text-center text-sm text-muted-foreground">{initError}</p>
+              <Button
+                variant="outline"
+                onClick={() => setInitRetryCount((c) => c + 1)}
+                disabled={initializeSystem.isPending}
+              >
+                {initializeSystem.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                Retry Initialization
+              </Button>
+            </>
+          ) : (
+            <>
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-muted-foreground">Initializing Autonomous Agent System...</p>
+            </>
+          )}
         </div>
       </div>
     );

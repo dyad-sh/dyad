@@ -11,10 +11,10 @@ const logger = log.scope("ai_messages_utils");
 const PROVIDER_KEYS_WITH_ITEM_ID = ["openai", "azure"] as const;
 
 /**
- * Strip OpenAI item IDs from provider options/metadata on all message content parts.
+ * Strip OpenAI item IDs from provider metadata on all message content parts.
  *
  * When messages are persisted to DB with aiMessagesJson, they may contain
- * `providerOptions.openai.itemId` values that reference items stored on OpenAI's
+ * `providerMetadata.openai.itemId` values that reference items stored on OpenAI's
  * servers. On subsequent turns, the AI SDK converts these to `item_reference`
  * payloads instead of sending full content. If OpenAI has expired those items,
  * this causes "Item with id 'rs_...' not found" errors.
@@ -106,8 +106,6 @@ export type DbMessageForParsing = {
  * Parse ai_messages_json with graceful fallback to simple content reconstruction.
  * If aiMessagesJson is missing, malformed, or incompatible with the current AI SDK,
  * falls back to constructing a basic message from role and content.
- *
- * This is a pure function - it doesn't log or have side effects.
  */
 export function parseAiMessagesJson(msg: DbMessageForParsing): ModelMessage[] {
   if (msg.aiMessagesJson) {

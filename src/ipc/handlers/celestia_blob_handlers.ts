@@ -410,8 +410,43 @@ export function registerCelestiaBlobHandlers(): void {
       _event: IpcMainInvokeEvent,
       updates: Partial<CelestiaConfig>,
     ): Promise<CelestiaConfig> => {
-      celestiaBlobService.updateConfig(updates);
-      return celestiaBlobService.getConfig();
+      return celestiaBlobService.updateConfig(updates);
+    },
+  );
+
+  /**
+   * Generate a new namespace from a human-readable ID.
+   */
+  ipcMain.handle(
+    "celestia:namespace:generate",
+    async (
+      _event: IpcMainInvokeEvent,
+      params: { namespaceId: string },
+    ): Promise<{ namespace: string; namespaceId: string }> => {
+      return celestiaBlobService.generateNamespace(params.namespaceId);
+    },
+  );
+
+  /**
+   * Validate a Celestia wallet address.
+   */
+  ipcMain.handle(
+    "celestia:wallet:validate",
+    async (
+      _event: IpcMainInvokeEvent,
+      params: { address: string },
+    ): Promise<{ valid: boolean }> => {
+      return { valid: celestiaBlobService.validateWalletAddress(params.address) };
+    },
+  );
+
+  /**
+   * Reset Celestia config to defaults.
+   */
+  ipcMain.handle(
+    "celestia:config:reset",
+    async (): Promise<CelestiaConfig> => {
+      return celestiaBlobService.resetConfig();
     },
   );
 

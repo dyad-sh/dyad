@@ -49,6 +49,9 @@ const BLOB_INDEX_DIR = path.join(
   "celestia-blobs",
 );
 
+/** Persisted config file */
+const CONFIG_FILE_PATH = path.join(BLOB_INDEX_DIR, "config.json");
+
 // =============================================================================
 // TYPES
 // =============================================================================
@@ -56,6 +59,8 @@ const BLOB_INDEX_DIR = path.join(
 export interface CelestiaConfig {
   rpcUrl: string;
   namespace: string;
+  /** Human-readable namespace ID (decoded from base64) */
+  namespaceId?: string;
   gasPrice: number;
   authToken?: string;
   /** Celestia wallet address (bech32) */
@@ -710,13 +715,137 @@ class CelestiaBlobService {
   // CONFIGURATION
   // ---------------------------------------------------------------------------
 
-  updateConfig(updates: Partial<CelestiaConfig>): void {
+  /**
+   * Load config from disk on startup. If no config file exists, use defaults.
+   */
+  async loadPersistedConfig(): Promise<CelestiaConfig> {
+    await this.ensureStorage();
+    try {
+      if (await fs.pathExists(CONFIG_FILE_PATH)) {
+        const saved = await fs.readJson(CONFIG_FILE_PATH) as Partial<CelestiaConfig>;
+        // Merge with defaults
+        this.config = {
+          rpcUrl: saved.rpcUrl ?? CELESTIA_RPC_URL,
+          namespace: saved.namespace ?? JOYCREATE_NAMESPACE,
+          namespaceId: saved.namespaceId ?? this.decodeNamespace(saved.namespace ?? JOYCREATE_NAMESPACE),
+          gasPrice: saved.gasPrice ?? DEFAULT_GAS_PRICE,
+          authToken: saved.authToken,
+          walletAddress: saved.walletAddress ?? CELESTIA_WALLET_ADDRESS,
+          network: saved.network ?? CELESTIA_NETWORK,
+        };
+        logger.info("Loaded Celestia config from disk");
+      }
+    } catch (err) {
+      logger.warn("Failed to load Celestia config, using defaults", err);
+    }
+    return this.getConfig();
+  }
+
+  /**
+   * Save current config to disk for persistence across restarts.
+   */
+  async saveConfig(): Promise<void> {
+    await this.ensureStorage();
+    await fs.writeJson(CONFIG_FILE_PATH, this.config, { spaces: 2 });
+    logger.info("Celestia config saved to disk");
+  }
+
+  /**
+   * Update config and persist to disk.
+   */
+  async updateConfig(updates: Partial<CelestiaConfig>): Promise<CelestiaConfig> {
+    // If namespace is being updated, also update namespaceId
+    if (updates.namespace && !updates.namespaceId) {
+      updates.namespaceId = this.decodeNamespace(updates.namespace);
+    }
     Object.assign(this.config, updates);
-    logger.info("Celestia config updated");
+    await this.saveConfig();
+    logger.info("Celestia config updated", updates);
+    return this.getConfig();
   }
 
   getConfig(): CelestiaConfig {
     return { ...this.config };
+  }
+
+  // ---------------------------------------------------------------------------
+  // NAMESPACE UTILITIES
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Generate a Celestia namespace from a human-readable ID.
+   * Celestia namespaces are 29 bytes (version byte + 28 byte ID).
+   * Version 0 namespaces have the first 18 bytes as 0, followed by 10 byte ID.
+   */
+  generateNamespace(namespaceId: string): { namespace: string; namespaceId: string } {
+    // Sanitize: lowercase, alphanumeric only, max 10 chars for v0 namespace
+    const sanitized = namespaceId
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "")
+      .slice(0, 10);
+
+    if (sanitized.length === 0) {
+      throw new Error("Namespace ID must contain at least one alphanumeric character");
+    }
+
+    // Build v0 namespace: 18 zero bytes + up to 10 byte ID (right-padded or truncated)
+    const namespaceBytes = Buffer.alloc(29, 0);
+    // Version byte is already 0
+    // Write the ID starting at byte 19 (after 18 zero bytes + 1 version byte = 19)
+    const idBytes = Buffer.from(sanitized, "utf-8");
+    idBytes.copy(namespaceBytes, 19);
+
+    const namespace = namespaceBytes.toString("base64");
+    logger.info(`Generated namespace for "${sanitized}": ${namespace}`);
+
+    return {
+      namespace,
+      namespaceId: sanitized,
+    };
+  }
+
+  /**
+   * Decode a base64 namespace back to human-readable ID.
+   */
+  decodeNamespace(namespace: string): string {
+    try {
+      const bytes = Buffer.from(namespace, "base64");
+      // Skip version byte (0) and leading zeros, read the ID portion
+      // For v0 namespaces, ID starts at byte 19
+      const idBytes = bytes.subarray(19);
+      // Trim trailing null bytes
+      let end = idBytes.length;
+      while (end > 0 && idBytes[end - 1] === 0) end--;
+      return idBytes.subarray(0, end).toString("utf-8");
+    } catch {
+      return namespace.slice(0, 12) + "...";
+    }
+  }
+
+  /**
+   * Validate a Celestia wallet address (bech32 format).
+   */
+  validateWalletAddress(address: string): boolean {
+    // Basic validation: starts with "celestia1" and is ~47 chars
+    return /^celestia1[a-z0-9]{38,}$/.test(address);
+  }
+
+  /**
+   * Reset config to defaults.
+   */
+  async resetConfig(): Promise<CelestiaConfig> {
+    this.config = {
+      rpcUrl: CELESTIA_RPC_URL,
+      namespace: JOYCREATE_NAMESPACE,
+      namespaceId: this.decodeNamespace(JOYCREATE_NAMESPACE),
+      gasPrice: DEFAULT_GAS_PRICE,
+      authToken: undefined,
+      walletAddress: CELESTIA_WALLET_ADDRESS,
+      network: CELESTIA_NETWORK,
+    };
+    await this.saveConfig();
+    logger.info("Celestia config reset to defaults");
+    return this.getConfig();
   }
 }
 
@@ -725,5 +854,10 @@ class CelestiaBlobService {
 // =============================================================================
 
 export const celestiaBlobService = new CelestiaBlobService();
+
+// Load persisted config on module load (async, but won't block)
+celestiaBlobService.loadPersistedConfig().catch((err) => {
+  logger.error("Failed to load persisted Celestia config", err);
+});
 
 export default CelestiaBlobService;

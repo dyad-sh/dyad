@@ -11,6 +11,7 @@ import {
   type BlobSubmission,
   type CelestiaStatus,
   type BlobStats,
+  type CelestiaConfig,
 } from "@/ipc/celestia_blob_client";
 import { toast } from "sonner";
 
@@ -57,6 +58,13 @@ export function useCelestiaBlobs() {
     queryKey: CELESTIA_KEYS.stats,
     queryFn: () => celestiaBlobClient.getStats(),
     staleTime: 10_000,
+  });
+
+  /** Current configuration */
+  const configQuery = useQuery<CelestiaConfig>({
+    queryKey: CELESTIA_KEYS.config,
+    queryFn: () => celestiaBlobClient.getConfig(),
+    staleTime: 30_000,
   });
 
   // ---------------------------------------------------------------------------
@@ -152,6 +160,55 @@ export function useCelestiaBlobs() {
     },
   });
 
+  /** Update Celestia configuration */
+  const updateConfigMutation = useMutation({
+    mutationFn: (updates: Partial<CelestiaConfig>) =>
+      celestiaBlobClient.updateConfig(updates),
+    onMutate: () => {
+      toast.loading("Saving configuration...", { id: "celestia-config" });
+    },
+    onSuccess: () => {
+      toast.success("Celestia configuration saved", { id: "celestia-config" });
+      queryClient.invalidateQueries({ queryKey: CELESTIA_KEYS.config });
+      queryClient.invalidateQueries({ queryKey: CELESTIA_KEYS.status });
+    },
+    onError: (error) => {
+      toast.error(
+        `Config save failed: ${error instanceof Error ? error.message : "Unknown"}`,
+        { id: "celestia-config" },
+      );
+    },
+  });
+
+  /** Generate a namespace from ID */
+  const generateNamespaceMutation = useMutation({
+    mutationFn: (namespaceId: string) =>
+      celestiaBlobClient.generateNamespace(namespaceId),
+    onSuccess: (result) => {
+      toast.success(`Namespace generated: ${result.namespaceId}`);
+    },
+    onError: (error) => {
+      toast.error(
+        `Namespace generation failed: ${error instanceof Error ? error.message : "Unknown"}`,
+      );
+    },
+  });
+
+  /** Reset config to defaults */
+  const resetConfigMutation = useMutation({
+    mutationFn: () => celestiaBlobClient.resetConfig(),
+    onSuccess: () => {
+      toast.success("Configuration reset to defaults");
+      queryClient.invalidateQueries({ queryKey: CELESTIA_KEYS.config });
+      queryClient.invalidateQueries({ queryKey: CELESTIA_KEYS.status });
+    },
+    onError: (error) => {
+      toast.error(
+        `Reset failed: ${error instanceof Error ? error.message : "Unknown"}`,
+      );
+    },
+  });
+
   // ---------------------------------------------------------------------------
   // HELPERS
   // ---------------------------------------------------------------------------
@@ -174,6 +231,10 @@ export function useCelestiaBlobs() {
     status: statusQuery.data,
     statusLoading: statusQuery.isLoading,
 
+    // Config
+    config: configQuery.data,
+    configLoading: configQuery.isLoading,
+
     // Blob list
     blobs: blobsQuery.data ?? [],
     blobsLoading: blobsQuery.isLoading,
@@ -187,6 +248,9 @@ export function useCelestiaBlobs() {
     submitJSON: submitJSONMutation.mutate,
     submitFile: submitFileMutation.mutate,
     verifyBlob: verifyMutation.mutate,
+    updateConfig: updateConfigMutation.mutateAsync,
+    generateNamespace: generateNamespaceMutation.mutateAsync,
+    resetConfig: resetConfigMutation.mutate,
 
     // Mutation states
     isSubmitting:
@@ -194,12 +258,15 @@ export function useCelestiaBlobs() {
       submitJSONMutation.isPending ||
       submitFileMutation.isPending,
     isVerifying: verifyMutation.isPending,
+    isSavingConfig: updateConfigMutation.isPending,
+    isGeneratingNamespace: generateNamespaceMutation.isPending,
 
     // Refresh
     refresh: () => {
       queryClient.invalidateQueries({ queryKey: CELESTIA_KEYS.blobs });
       queryClient.invalidateQueries({ queryKey: CELESTIA_KEYS.stats });
       queryClient.invalidateQueries({ queryKey: CELESTIA_KEYS.status });
+      queryClient.invalidateQueries({ queryKey: CELESTIA_KEYS.config });
     },
   };
 }

@@ -5,7 +5,7 @@
  * Data is always displayed as hashes — never raw content.
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -21,6 +21,11 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   CheckCircle2,
   XCircle,
   Loader2,
@@ -35,10 +40,17 @@ import {
   Layers,
   ArrowUpRight,
   Copy,
+  Settings,
+  ChevronDown,
+  Wallet,
+  Server,
+  Sparkles,
+  RotateCcw,
+  Save,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCelestiaBlobs } from "@/hooks/useCelestiaBlobs";
-import type { BlobSubmission } from "@/ipc/celestia_blob_client";
+import type { BlobSubmission, CelestiaConfig } from "@/ipc/celestia_blob_client";
 import { toast } from "sonner";
 
 // =============================================================================
@@ -154,6 +166,248 @@ function BlobRow({
 }
 
 // =============================================================================
+// NODE SETUP FORM
+// =============================================================================
+
+function NodeSetupForm({
+  config,
+  onSave,
+  onGenerateNamespace,
+  onReset,
+  isSaving,
+  isGenerating,
+}: {
+  config?: CelestiaConfig;
+  onSave: (updates: Partial<CelestiaConfig>) => Promise<CelestiaConfig>;
+  onGenerateNamespace: (id: string) => Promise<{ namespace: string; namespaceId: string }>;
+  onReset: () => void;
+  isSaving: boolean;
+  isGenerating: boolean;
+}) {
+  const [rpcUrl, setRpcUrl] = useState(config?.rpcUrl ?? "http://localhost:26658");
+  const [walletAddress, setWalletAddress] = useState(config?.walletAddress ?? "");
+  const [namespaceId, setNamespaceId] = useState(config?.namespaceId ?? "");
+  const [namespace, setNamespace] = useState(config?.namespace ?? "");
+  const [network, setNetwork] = useState(config?.network ?? "celestia");
+  const [gasPrice, setGasPrice] = useState(String(config?.gasPrice ?? 0.002));
+  const [authToken, setAuthToken] = useState(config?.authToken ?? "");
+  const [newNamespaceId, setNewNamespaceId] = useState("");
+
+  // Sync form when config loads
+  useEffect(() => {
+    if (config) {
+      setRpcUrl(config.rpcUrl);
+      setWalletAddress(config.walletAddress);
+      setNamespaceId(config.namespaceId ?? "");
+      setNamespace(config.namespace);
+      setNetwork(config.network);
+      setGasPrice(String(config.gasPrice));
+      setAuthToken(config.authToken ?? "");
+    }
+  }, [config]);
+
+  const handleGenerateNamespace = async () => {
+    if (!newNamespaceId.trim()) {
+      toast.error("Enter a namespace ID (e.g. myproject123)");
+      return;
+    }
+    try {
+      const result = await onGenerateNamespace(newNamespaceId.trim());
+      setNamespace(result.namespace);
+      setNamespaceId(result.namespaceId);
+      setNewNamespaceId("");
+    } catch (err) {
+      // Error handled by mutation
+    }
+  };
+
+  const handleSave = async () => {
+    // Basic validation
+    if (!walletAddress.startsWith("celestia1")) {
+      toast.error("Wallet address must start with 'celestia1'");
+      return;
+    }
+    if (!namespace) {
+      toast.error("Namespace is required — generate one or use the default");
+      return;
+    }
+
+    try {
+      await onSave({
+        rpcUrl,
+        walletAddress,
+        namespace,
+        namespaceId,
+        network,
+        gasPrice: parseFloat(gasPrice) || 0.002,
+        authToken: authToken || undefined,
+      });
+    } catch (err) {
+      // Error handled by mutation
+    }
+  };
+
+  const copyNamespace = () => {
+    navigator.clipboard.writeText(namespace);
+    toast.success("Namespace copied (base64)");
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* RPC Endpoint */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="rpc-url" className="flex items-center gap-1">
+            <Server className="h-3 w-3" />
+            RPC Endpoint
+          </Label>
+          <Input
+            id="rpc-url"
+            placeholder="http://localhost:26658"
+            value={rpcUrl}
+            onChange={(e) => setRpcUrl(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Your Celestia light node RPC URL
+          </p>
+        </div>
+
+        <div>
+          <Label htmlFor="network">Network</Label>
+          <Input
+            id="network"
+            placeholder="celestia (mainnet) or mocha (testnet)"
+            value={network}
+            onChange={(e) => setNetwork(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            celestia = mainnet, mocha = testnet
+          </p>
+        </div>
+      </div>
+
+      {/* Wallet Address */}
+      <div>
+        <Label htmlFor="wallet" className="flex items-center gap-1">
+          <Wallet className="h-3 w-3" />
+          Wallet Address
+        </Label>
+        <Input
+          id="wallet"
+          placeholder="celestia1..."
+          value={walletAddress}
+          onChange={(e) => setWalletAddress(e.target.value)}
+          className="font-mono text-sm"
+        />
+        <p className="text-xs text-muted-foreground mt-1">
+          Your Celestia wallet address (bech32 format)
+        </p>
+      </div>
+
+      {/* Namespace Section */}
+      <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
+        <div className="flex items-center justify-between">
+          <Label className="flex items-center gap-1">
+            <Layers className="h-3 w-3" />
+            Namespace
+          </Label>
+          {namespaceId && (
+            <Badge variant="secondary" className="text-xs font-mono">
+              {namespaceId}
+            </Badge>
+          )}
+        </div>
+
+        {/* Current namespace */}
+        {namespace && (
+          <div className="flex items-center gap-2">
+            <Input
+              value={namespace}
+              readOnly
+              className="font-mono text-xs bg-background"
+            />
+            <Button variant="outline" size="sm" onClick={copyNamespace}>
+              <Copy className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
+
+        {/* Generate new namespace */}
+        <div className="flex items-center gap-2">
+          <Input
+            placeholder="Enter namespace ID (e.g. myproject)"
+            value={newNamespaceId}
+            onChange={(e) => setNewNamespaceId(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ""))}
+            maxLength={10}
+            className="flex-1"
+          />
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleGenerateNamespace}
+            disabled={isGenerating || !newNamespaceId.trim()}
+          >
+            {isGenerating ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4 mr-1" />
+            )}
+            Generate
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Create a unique namespace for your blobs. Max 10 alphanumeric characters.
+        </p>
+      </div>
+
+      {/* Advanced Settings */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="gas-price">Gas Price (TIA)</Label>
+          <Input
+            id="gas-price"
+            type="number"
+            step="0.001"
+            min="0.001"
+            placeholder="0.002"
+            value={gasPrice}
+            onChange={(e) => setGasPrice(e.target.value)}
+          />
+        </div>
+
+        <div>
+          <Label htmlFor="auth-token">Auth Token (optional)</Label>
+          <Input
+            id="auth-token"
+            type="password"
+            placeholder="Node auth token if required"
+            value={authToken}
+            onChange={(e) => setAuthToken(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center justify-between pt-2">
+        <Button variant="outline" size="sm" onClick={onReset}>
+          <RotateCcw className="h-4 w-4 mr-1" />
+          Reset to Defaults
+        </Button>
+
+        <Button onClick={handleSave} disabled={isSaving}>
+          {isSaving ? (
+            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+          ) : (
+            <Save className="h-4 w-4 mr-2" />
+          )}
+          Save Configuration
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
 // SUBMIT FORM
 // =============================================================================
 
@@ -249,6 +503,8 @@ function SubmitBlobForm({
 // =============================================================================
 
 export function CelestiaBlobExplorer() {
+  const [setupOpen, setSetupOpen] = useState(false);
+
   const {
     isAvailable,
     nodeHeight,
@@ -258,14 +514,21 @@ export function CelestiaBlobExplorer() {
     network,
     status,
     statusLoading,
+    config,
+    configLoading,
     blobs,
     blobsLoading,
     stats,
     statsLoading,
     submitBlob,
     verifyBlob,
+    updateConfig,
+    generateNamespace,
+    resetConfig,
     isSubmitting,
     isVerifying,
+    isSavingConfig,
+    isGeneratingNamespace,
     refresh,
   } = useCelestiaBlobs();
 
@@ -275,6 +538,8 @@ export function CelestiaBlobExplorer() {
       toast.success("Wallet address copied");
     }
   };
+
+  const namespaceId = config?.namespaceId ?? "joy80mvp12";
 
   return (
     <Card>
@@ -287,7 +552,7 @@ export function CelestiaBlobExplorer() {
             </CardTitle>
             <CardDescription className="mt-1">
               {network ? (
-                <span className="capitalize">{network} Mainnet</span>
+                <span className="capitalize">{network}</span>
               ) : (
                 "Celestia"
               )}{" "}
@@ -322,6 +587,40 @@ export function CelestiaBlobExplorer() {
       </CardHeader>
 
       <CardContent className="space-y-5">
+        {/* Node Setup (Collapsible) */}
+        <Collapsible open={setupOpen} onOpenChange={setSetupOpen}>
+          <CollapsibleTrigger asChild>
+            <Button
+              variant="outline"
+              className="w-full justify-between"
+              size="sm"
+            >
+              <span className="flex items-center gap-2">
+                <Settings className="h-4 w-4" />
+                Node Setup & Configuration
+              </span>
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 transition-transform",
+                  setupOpen && "rotate-180",
+                )}
+              />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pt-4">
+            <NodeSetupForm
+              config={config}
+              onSave={updateConfig}
+              onGenerateNamespace={generateNamespace}
+              onReset={resetConfig}
+              isSaving={isSavingConfig}
+              isGenerating={isGeneratingNamespace}
+            />
+          </CollapsibleContent>
+        </Collapsible>
+
+        <Separator />
+
         {/* Node Status Bar */}
         <div className="grid grid-cols-4 gap-3">
           <div className="rounded-lg border p-3 text-center">
@@ -426,10 +725,10 @@ export function CelestiaBlobExplorer() {
             <Globe className="h-3 w-3" />
             Network:{" "}
             <span className="font-mono capitalize">
-              {network ?? "celestia"} mainnet
+              {network ?? "celestia"}
             </span>
             {" "}— Namespace:{" "}
-            <span className="font-mono">joy80mvp12</span>
+            <span className="font-mono">{namespaceId}</span>
           </p>
           {walletAddress && (
             <p className="flex items-center gap-1">
@@ -446,9 +745,9 @@ export function CelestiaBlobExplorer() {
             </p>
           )}
           <p className="flex items-center gap-1">
-            <Layers className="h-3 w-3" />
+            <Server className="h-3 w-3" />
             RPC:{" "}
-            <span className="font-mono">localhost:26658</span>
+            <span className="font-mono">{config?.rpcUrl ?? "localhost:26658"}</span>
           </p>
         </div>
       </CardContent>

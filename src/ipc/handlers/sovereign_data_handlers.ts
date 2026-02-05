@@ -76,6 +76,7 @@ async function initializeVault(): Promise<DataVault> {
       indexHash: "",
       storageConfig: [
         { network: "local", enabled: true, autoSync: true, encryptionRequired: true },
+        { network: "celestia", enabled: true, autoSync: false, encryptionRequired: true },
         { network: "ipfs", enabled: false, autoSync: false, encryptionRequired: true },
         { network: "arweave", enabled: false, autoSync: false, encryptionRequired: true },
         { network: "filecoin", enabled: false, autoSync: false, encryptionRequired: true },
@@ -504,13 +505,33 @@ async function syncToNetwork(dataId: string, network: StorageNetwork): Promise<S
   }
   
   // Sync to the specified network
-  // This would integrate with actual IPFS/Arweave/Filecoin clients
   let networkHash: ContentHash;
   
   switch (network) {
+    case "celestia": {
+      // ✅ REAL Celestia integration — submit encrypted data as a hashed blob
+      const { celestiaBlobService } = await import("../../lib/celestia_blob_service");
+      const available = await celestiaBlobService.isAvailable();
+      if (!available) {
+        throw new Error("Celestia node not available. Start the Celestia service first.");
+      }
+      const encryptedBuf = Buffer.from(JSON.stringify(encrypted), "utf-8");
+      const submission = await celestiaBlobService.submitBlob(encryptedBuf, {
+        label: data.metadata?.name ?? dataId,
+        dataType: data.dataType ?? "sovereign-data",
+      });
+      networkHash = {
+        hash: submission.contentHash,
+        algorithm: "sha256",
+        network: "celestia" as StorageNetwork,
+        size: localHash.size,
+        timestamp: submission.submittedAt,
+      };
+      break;
+    }
+
     case "ipfs": {
       // TODO: Integrate with Helia/IPFS
-      // const cid = await ipfs.add(JSON.stringify(encrypted));
       const mockCid = `Qm${crypto.randomBytes(22).toString("base64").replace(/[+/=]/g, "")}`;
       networkHash = {
         hash: mockCid,

@@ -243,14 +243,34 @@ When running GitHub Actions with `pull_request_target` on cross-repo PRs (from f
 
 ### Base UI Radio component selection in Playwright
 
-When testing Base UI Radio components in Playwright E2E tests, use `getByRole('radio', { name: 'Label' })` instead of `getByLabel('Label')`. The `getByLabel` selector may not work correctly with Base UI's Radio component structure.
+Base UI Radio components render a hidden native `<input type="radio">` with `aria-hidden="true"`. Both `getByRole('radio', { name: '...' })` and `getByLabel('...')` find this hidden input but can't click it (element is outside viewport). Use `getByText` to click the visible label text instead.
 
 ```ts
-// Correct: use role selector
-await page.getByRole("radio", { name: "React" }).click();
+// Correct: click the visible label text
+await page.getByText("Vue", { exact: true }).click();
 
-// May not work with Base UI Radio
-await page.getByLabel("React").click();
+// Won't work: finds hidden input, can't click
+await page.getByRole("radio", { name: "Vue" }).click();
+await page.getByLabel("Vue").click();
+```
+
+### Lexical editor in Playwright E2E tests
+
+The chat input uses a Lexical editor (contenteditable). Standard Playwright methods don't always work:
+
+- **Clearing input**: `fill("")` doesn't reliably clear Lexical. Use keyboard shortcuts instead: `Meta+a` then `Backspace`.
+- **Timing issues**: Lexical may need time to update its internal state. Use `toPass()` with retries for resilient tests.
+- **Helper methods**: Use `po.clearChatInput()` and `po.openChatHistoryMenu()` from test_helper.ts for reliable Lexical interactions.
+
+```ts
+// Wrong: may not clear Lexical editor
+await chatInput.fill("");
+
+// Correct: use helper with retry logic
+await po.clearChatInput();
+
+// For history menu (needs clear + ArrowUp with retries)
+await po.openChatHistoryMenu();
 ```
 
 ### Drizzle migration conflicts during rebase

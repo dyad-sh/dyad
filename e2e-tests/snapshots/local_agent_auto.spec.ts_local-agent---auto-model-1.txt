@@ -16,8 +16,13 @@
         ]
       },
       {
-        "type": "item_reference",
-        "id": "[[ITEM_REF_0]]"
+        "role": "assistant",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "\n  <dyad-write path=\"file1.txt\">\n  A file (2)\n  </dyad-write>\n  More\n  EOM"
+          }
+        ]
       },
       {
         "role": "user",
@@ -468,6 +473,9 @@
     ],
     "tool_choice": "auto",
     "stream": true,
+    "include": [
+      "reasoning.encrypted_content"
+    ],
     "dyad_options": {
       "enable_lazy_edits": true,
       "enable_smart_files_context": true

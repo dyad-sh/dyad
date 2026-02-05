@@ -66,8 +66,8 @@ test("plan mode - questionnaire flow", async ({ po }) => {
     timeout: Timeout.MEDIUM,
   });
 
-  // Select "React" radio option (using role selector for base-ui Radio component)
-  await po.page.getByRole("radio", { name: "React" }).click();
+  // Select "Vue" radio option by clicking the label text (Base UI Radio components)
+  await po.page.getByText("Vue", { exact: true }).click();
 
   // Click Submit (single question → Submit button shown)
   await po.page.getByRole("button", { name: /Submit/ }).click();

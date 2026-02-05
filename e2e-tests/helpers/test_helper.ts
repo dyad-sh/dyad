@@ -18,6 +18,7 @@ export const Timeout = {
   EXTRA_LONG: process.env.CI ? 120_000 : 60_000,
   LONG: process.env.CI ? 60_000 : 30_000,
   MEDIUM: process.env.CI ? 30_000 : 15_000,
+  SHORT: process.env.CI ? 5_000 : 2_000,
 };
 
 /**
@@ -963,6 +964,35 @@ export class PageObject {
     return this.page.locator(
       '[data-lexical-editor="true"][aria-placeholder^="Ask Dyad to build"]',
     );
+  }
+
+  /**
+   * Clears the Lexical chat input using keyboard shortcuts (Meta+A, Backspace).
+   * Uses toPass() for resilience since Lexical may need time to update its state.
+   */
+  async clearChatInput() {
+    const chatInput = this.getChatInput();
+    await chatInput.click();
+    await this.page.keyboard.press("Meta+a");
+    await this.page.keyboard.press("Backspace");
+    await expect(async () => {
+      const text = await chatInput.textContent();
+      expect(text?.trim()).toBe("");
+    }).toPass({ timeout: Timeout.SHORT });
+  }
+
+  /**
+   * Opens the chat history menu by clearing the input and pressing ArrowUp.
+   * Uses toPass() for resilience since the Lexical editor may need time to
+   * update its state before the history menu can be triggered.
+   */
+  async openChatHistoryMenu() {
+    const historyMenu = this.page.locator('[data-mentions-menu="true"]');
+    await expect(async () => {
+      await this.clearChatInput();
+      await this.page.keyboard.press("ArrowUp");
+      await expect(historyMenu).toBeVisible({ timeout: 500 });
+    }).toPass({ timeout: Timeout.SHORT });
   }
 
   clickNewChat({ index = 0 }: { index?: number } = {}) {

@@ -23,47 +23,45 @@ test("should open, navigate, and select from history menu", async ({ po }) => {
   const historyMenu = po.page.locator('[data-mentions-menu="true"]');
   await expect(historyMenu).toBeVisible();
 
-  // Verify menu has items (newest at top, oldest at bottom - array is reversed)
+  // Verify menu has items (oldest at top, newest at bottom - chronological order)
   const menuItems = po.page.locator('[data-mentions-menu="true"] li');
   await expect(menuItems).toHaveCount(2);
-  await expect(menuItems.nth(0)).toContainText("Second test message");
-  await expect(menuItems.nth(1)).toContainText("First test message");
+  await expect(menuItems.nth(0)).toContainText("First test message");
+  await expect(menuItems.nth(1)).toContainText("Second test message");
 
-  // Verify default selection is the last visible item (oldest message, at bottom)
+  // Verify default selection is the last visible item (newest message, at bottom)
   // After opening, a synthetic ArrowUp is dispatched which wraps to the bottom item
   const lastItem = menuItems.nth(1);
   await expect(lastItem).toHaveClass(/bg-accent/, { timeout: 500 });
 
-  // Navigate up to first item (newest message)
+  // Navigate up to first item (oldest message)
   await po.page.keyboard.press("ArrowUp");
   const firstItem = menuItems.nth(0);
   await expect(firstItem).toHaveClass(/bg-accent/);
-  await expect(firstItem).toContainText("Second test message");
+  await expect(firstItem).toContainText("First test message");
 
-  // Navigate up again to wrap to last item (oldest message)
+  // Navigate up again to wrap to last item (newest message)
   await po.page.keyboard.press("ArrowUp");
   await expect(lastItem).toHaveClass(/bg-accent/);
 
-  // Select with Enter (selects oldest message)
+  // Select with Enter (selects newest message)
   await po.page.keyboard.press("Enter");
 
   // Menu should close and text should be inserted
   await expect(historyMenu).not.toBeVisible({ timeout: Timeout.MEDIUM });
-  await expect(chatInput).toContainText("First test message", {
+  await expect(chatInput).toContainText("Second test message", {
     timeout: Timeout.MEDIUM,
   });
 
   // Clear input for mouse click test
-  await chatInput.fill("");
-  await po.page.keyboard.press("ArrowUp");
-  await expect(historyMenu).toBeVisible();
+  await po.openChatHistoryMenu();
 
-  // Click the first item (newest message, at top)
+  // Click the first item (oldest message, at top)
   await menuItems.nth(0).click();
 
-  // Verify menu closed and newest message was inserted
+  // Verify menu closed and oldest message was inserted
   await expect(historyMenu).not.toBeVisible({ timeout: Timeout.MEDIUM });
-  await expect(chatInput).toContainText("Second test message", {
+  await expect(chatInput).toContainText("First test message", {
     timeout: Timeout.MEDIUM,
   });
 });
@@ -101,9 +99,7 @@ test("should handle edge cases: guards, escape, and sending after cancel", async
   await expect(historyMenu).not.toBeVisible();
 
   // Test 3: Escape closes menu and clears input
-  await chatInput.fill("");
-  await po.page.keyboard.press("ArrowUp");
-  await expect(historyMenu).toBeVisible();
+  await po.openChatHistoryMenu();
 
   await po.page.keyboard.press("Escape");
   await expect(historyMenu).not.toBeVisible();

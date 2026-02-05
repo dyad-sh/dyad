@@ -160,6 +160,8 @@ export function useCelestiaBlobs() {
   const nodeHeight = statusQuery.data?.height;
   const isSyncing = statusQuery.data?.syncing ?? false;
   const balance = statusQuery.data?.balance;
+  const walletAddress = statusQuery.data?.walletAddress;
+  const network = statusQuery.data?.network;
 
   return {
     // Status
@@ -167,6 +169,8 @@ export function useCelestiaBlobs() {
     nodeHeight,
     isSyncing,
     balance,
+    walletAddress,
+    network,
     status: statusQuery.data,
     statusLoading: statusQuery.isLoading,
 

@@ -31,6 +31,12 @@ const CELESTIA_RPC_URL = "http://localhost:26658";
 /** JoyCreate's Celestia namespace (base64-encoded, decoded = "joy80mvp12") */
 const JOYCREATE_NAMESPACE = "AAAAAAAAAAAAAAAAAAAAAAAAAGpveTgwbXZwMTI=";
 
+/** Celestia mainnet wallet address */
+const CELESTIA_WALLET_ADDRESS = "celestia1vxssxrs2t27wtgur7lmqcep5zntz3nhjp48z7k";
+
+/** Network identifier */
+const CELESTIA_NETWORK = "celestia" as const; // mainnet
+
 /** Max blob size Celestia accepts per submission (≈ 2 MB after encoding) */
 const MAX_BLOB_SIZE = 1_500_000; // 1.5 MB raw → ~2 MB base64
 
@@ -52,6 +58,10 @@ export interface CelestiaConfig {
   namespace: string;
   gasPrice: number;
   authToken?: string;
+  /** Celestia wallet address (bech32) */
+  walletAddress: string;
+  /** Network name — "celestia" for mainnet, "mocha" for testnet */
+  network: string;
 }
 
 export interface BlobSubmission {
@@ -115,6 +125,8 @@ class CelestiaBlobService {
       namespace: config?.namespace ?? JOYCREATE_NAMESPACE,
       gasPrice: config?.gasPrice ?? DEFAULT_GAS_PRICE,
       authToken: config?.authToken,
+      walletAddress: config?.walletAddress ?? CELESTIA_WALLET_ADDRESS,
+      network: config?.network ?? CELESTIA_NETWORK,
     };
     this.indexPath = path.join(BLOB_INDEX_DIR, "index.json");
   }

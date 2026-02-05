@@ -27,7 +27,7 @@ except ImportError:
 NUM_AGENTS = 3
 CONSENSUS_THRESHOLD = 2
 MIN_SEVERITY = "MEDIUM"
-REVIEW_MODEL = "claude-opus-4-5"
+REVIEW_MODEL = "claude-opus-4-6"
 DEDUP_MODEL = "claude-sonnet-4-5"
 
 # Extended thinking configuration (interleaved thinking with max effort)

@@ -78,4 +78,4 @@ jobs:
 
           # Uses .claude/settings.json for permissions; only add MCP tool not in settings
           claude_args: |
-            --model claude-opus-4-5-20251101 --allowedTools "mcp__github_inline_comment__create_inline_comment"
+            --model claude-opus-4-6 --allowedTools "mcp__github_inline_comment__create_inline_comment"

@@ -6,11 +6,15 @@
 - img
 - text: file1.txt
 - paragraph: More EOM
-- button:
+- button "Copy":
   - img
 - img
+- text: Approved
+- img
+- text: claude-opus-4-5
+- img
 - text: less than a minute ago
-- button "Request ID":
+- button "Copy Request ID":
   - img
 - paragraph: tc=local-agent/add-dependency
 - paragraph: I'll add a dependency to your project.
@@ -24,11 +28,15 @@
 - button "Fix with AI":
   - img
 - paragraph: Dependency added done.
-- button:
+- button "Copy":
   - img
 - img
+- text: claude-opus-4-5
+- img
 - text: less than a minute ago
-- button "Request ID":
+- button "Copy Request ID":
+  - img
+- button "Undo":
   - img
 - button "Retry":
   - img

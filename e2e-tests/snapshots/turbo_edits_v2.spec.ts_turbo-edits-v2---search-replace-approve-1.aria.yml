@@ -5,11 +5,15 @@
 - img
 - text: src/pages/Index.tsx
 - paragraph: End of turbo edit
-- button:
+- button "Copy":
   - img
 - img
+- text: auto
+- img
 - text: less than a minute ago
-- button "Request ID":
+- button "Copy Request ID":
+  - img
+- button "Undo":
   - img
 - button "Retry":
   - img

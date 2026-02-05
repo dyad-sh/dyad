@@ -6,13 +6,15 @@
 - img
 - text: file1.txt
 - paragraph: More EOM
-- button:
+- button "Copy":
   - img
+- img
+- text: Approved
 - img
 - text: claude-opus-4-5
 - img
 - text: less than a minute ago
-- button "Request ID":
+- button "Copy Request ID":
   - img
 - paragraph: tc=local-agent/code-search
 - paragraph: I'll search for files related to React components in the codebase.
@@ -20,13 +22,13 @@
   - img
   - img
 - paragraph: I found the relevant files! The main React component is in src/App.tsx which handles the app rendering.
-- button:
+- button "Copy":
   - img
 - img
 - text: claude-opus-4-5
 - img
 - text: less than a minute ago
-- button "Request ID":
+- button "Copy Request ID":
   - img
 - button "Undo":
   - img

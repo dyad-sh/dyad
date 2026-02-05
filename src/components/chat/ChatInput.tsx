@@ -486,6 +486,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                   render={
                     <button
                       onClick={handleCancel}
+                      aria-label="Cancel generation"
                       className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg"
                     />
                   }
@@ -504,6 +505,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                         (!inputValue.trim() && attachments.length === 0) ||
                         disableSendButton
                       }
+                      aria-label="Send message"
                       className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
                     />
                   }

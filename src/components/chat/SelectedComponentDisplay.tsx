@@ -105,6 +105,7 @@ export function SelectedComponentsDisplay() {
                 render={
                   <button
                     onClick={() => handleRemoveComponent(index)}
+                    aria-label="Deselect component"
                     className="ml-2 flex-shrink-0 rounded-full p-0.5 hover:bg-indigo-600/20"
                   />
                 }

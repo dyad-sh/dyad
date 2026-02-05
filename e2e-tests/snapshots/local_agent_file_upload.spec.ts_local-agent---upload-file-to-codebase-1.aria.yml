@@ -6,13 +6,15 @@
 - img
 - text: file1.txt
 - paragraph: More EOM
-- button:
+- button "Copy":
   - img
+- img
+- text: Approved
 - img
 - text: claude-opus-4-5
 - img
 - text: less than a minute ago
-- button "Request ID":
+- button "Copy Request ID":
   - img
 - paragraph: tc=local-agent/upload-to-codebase
 - paragraph: "Attachments:"
@@ -25,13 +27,13 @@
 - img
 - text: "assets/uploaded-file.png Summary: Upload file to codebase"
 - paragraph: I've successfully uploaded your file to assets/uploaded-file.png in the codebase.
-- button:
+- button "Copy":
   - img
 - img
 - text: claude-opus-4-5
 - img
 - text: less than a minute ago
-- button "Request ID":
+- button "Copy Request ID":
   - img
 - button "Undo":
   - img

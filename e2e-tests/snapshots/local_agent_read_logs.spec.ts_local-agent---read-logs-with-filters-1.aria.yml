@@ -6,18 +6,20 @@
 - img
 - text: file1.txt
 - paragraph: More EOM
-- button:
+- button "Copy":
   - img
+- img
+- text: Approved
 - img
 - text: claude-opus-4-5
 - img
 - text: less than a minute ago
-- button "Request ID":
+- button "Copy Request ID":
   - img
 - paragraph: tc=local-agent/read-logs
 - paragraph: Let me check the recent console logs to see what's happening in the application.
 - img
-- text: /LOGSReading \d+ logs/
+- text: LOGSReading 8 logs
 - img
 - paragraph: Now let me filter for only error logs to identify any issues.
 - img
@@ -28,13 +30,13 @@
 - text: "LOGSReading 0 logs (type: client)"
 - img
 - paragraph: I've reviewed the console logs. The application appears to be running normally with no critical errors detected.
-- button:
+- button "Copy":
   - img
 - img
 - text: claude-opus-4-5
 - img
 - text: less than a minute ago
-- button "Request ID":
+- button "Copy Request ID":
   - img
 - button "Undo":
   - img

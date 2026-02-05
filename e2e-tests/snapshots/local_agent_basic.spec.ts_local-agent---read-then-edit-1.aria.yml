@@ -6,7 +6,7 @@
 - img
 - text: file1.txt
 - paragraph: More EOM
-- button:
+- button "Copy":
   - img
 - img
 - text: Approved
@@ -14,7 +14,7 @@
 - text: claude-opus-4-5
 - img
 - text: less than a minute ago
-- button "Request ID":
+- button "Copy Request ID":
   - img
 - paragraph: tc=local-agent/read-then-edit
 - paragraph: Let me first read the current file contents to understand what we're working with.
@@ -26,13 +26,13 @@
 - img
 - text: src/App.tsx
 - paragraph: Done! I've updated the title from 'Minimal imported app' to 'UPDATED imported app'. The change has been applied successfully.
-- button:
+- button "Copy":
   - img
 - img
 - text: claude-opus-4-5
 - img
 - text: less than a minute ago
-- button "Request ID":
+- button "Copy Request ID":
   - img
 - button "Undo":
   - img

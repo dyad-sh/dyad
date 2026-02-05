@@ -169,6 +169,16 @@ export const miscContracts = {
     }),
     output: z.void(),
   }),
+
+  // Audio transcription
+  transcribeAudio: defineContract({
+    channel: "chat:transcribe",
+    input: z.object({
+      audioData: z.string(), // Base64 encoded audio data
+      format: z.string(), // Audio format (e.g., "webm", "mp3")
+    }),
+    output: z.string(), // Transcribed text
+  }),
 } as const;
 
 // =============================================================================

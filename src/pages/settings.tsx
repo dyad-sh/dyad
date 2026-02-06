@@ -52,6 +52,7 @@ export default function SettingsPage() {
     setIsResetting(true);
     try {
       await ipc.system.resetAll();
+      setIsResetDialogOpen(false);
       showSuccess("Successfully reset everything. Restart the application.");
     } catch (error) {
       console.error("Error resetting:", error);
@@ -60,7 +61,6 @@ export default function SettingsPage() {
       );
     } finally {
       setIsResetting(false);
-      setIsResetDialogOpen(false);
     }
   };
 
@@ -236,8 +236,9 @@ export default function SettingsPage() {
         isOpen={isResetDialogOpen}
         title="Reset Everything"
         message="Are you sure you want to reset everything? This will delete all your apps, chats, and settings. This action cannot be undone."
-        confirmText="Reset Everything"
+        confirmText={isResetting ? "Resetting..." : "Reset Everything"}
         cancelText="Cancel"
+        confirmDisabled={isResetting}
         onConfirm={handleResetEverything}
         onCancel={() => setIsResetDialogOpen(false)}
       />

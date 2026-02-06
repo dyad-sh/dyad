@@ -7,6 +7,7 @@ interface ConfirmationDialogProps {
   confirmText?: string;
   cancelText?: string;
   confirmButtonClass?: string;
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -18,6 +19,7 @@ export default function ConfirmationDialog({
   confirmText = "Confirm",
   cancelText = "Cancel",
   confirmButtonClass = "bg-red-600 hover:bg-red-700 focus:ring-red-500",
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }: ConfirmationDialogProps) {
@@ -64,8 +66,9 @@ export default function ConfirmationDialog({
           <div className="bg-gray-50 dark:bg-gray-700 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
             <button
               type="button"
-              className={`inline-flex w-full justify-center rounded-md border border-transparent px-4 py-2 text-base font-medium text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 sm:ml-3 sm:w-auto sm:text-sm ${confirmButtonClass}`}
+              className={`inline-flex w-full justify-center rounded-md border border-transparent px-4 py-2 text-base font-medium text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 sm:ml-3 sm:w-auto sm:text-sm ${confirmButtonClass} ${confirmDisabled ? "opacity-50 cursor-not-allowed" : ""}`}
               onClick={onConfirm}
+              disabled={confirmDisabled}
             >
               {confirmText}
             </button>

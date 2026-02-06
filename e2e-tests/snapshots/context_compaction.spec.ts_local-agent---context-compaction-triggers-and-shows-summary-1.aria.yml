@@ -28,7 +28,7 @@
 - text: less than a minute ago
 - button "Copy Request ID":
   - img
-- button "Conversation compacted" [expanded]:
+- button "Conversation compacted":
   - img
   - img
 - heading "Key Decisions Made" [level=2]

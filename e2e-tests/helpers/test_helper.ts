@@ -502,6 +502,25 @@ export class PageObject {
   }
 
   async openContextFilesPicker() {
+    // Programmatically dismiss toasts using the sonner API by clicking any visible close buttons
+    const toastCloseButtons = this.page.locator(
+      "[data-sonner-toast] button[data-close-button]",
+    );
+    const closeCount = await toastCloseButtons.count();
+    for (let i = 0; i < closeCount; i++) {
+      await toastCloseButtons
+        .nth(i)
+        .click()
+        .catch(() => {});
+    }
+
+    // If close buttons don't work, click outside to dismiss
+    if ((await this.page.locator("[data-sonner-toast]").count()) > 0) {
+      // Click somewhere safe to dismiss toasts
+      await this.page.mouse.click(10, 10);
+      await this.page.waitForTimeout(300);
+    }
+
     // Open the auxiliary actions menu
     await this.getChatInputContainer()
       .getByTestId("auxiliary-actions-menu")

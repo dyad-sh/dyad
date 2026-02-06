@@ -233,6 +233,10 @@
               "recursive": {
                 "description": "Whether to list files recursively (default: false)",
                 "type": "boolean"
+              },
+              "include_hidden": {
+                "description": "Whether to include .dyad files which are git-ignored (default: false)",
+                "type": "boolean"
               }
             },
             "additionalProperties": false

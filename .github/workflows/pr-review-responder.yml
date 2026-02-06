@@ -151,6 +151,7 @@ jobs:
             core.setOutput('should_continue', 'true');
             core.setOutput('request_count', requestCount);
             core.setOutput('current_label', currentLabel);
+            core.setOutput('head_repo', run.head_repository.full_name);
 
       - name: Checkout repository
         if: steps.pr-info.outputs.should_continue == 'true'
@@ -168,6 +169,18 @@ jobs:
         if: steps.pr-info.outputs.should_continue == 'true'
         id: before-claude
         run: echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Configure push remote for fork PRs
+        if: steps.pr-info.outputs.should_continue == 'true'
+        run: |
+          # claude-code-action overwrites origin's fetch URL to point to dyad-sh/dyad
+          # (using GITHUB_REPOSITORY which is always the base repo in workflow_run events).
+          # Setting pushurl separately ensures git push still targets the fork,
+          # because git uses pushurl over url when both are configured.
+          git remote set-url --push origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ steps.pr-info.outputs.head_repo }}.git"
+          echo "Configured pushurl to ${{ steps.pr-info.outputs.head_repo }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update labels to pending
         if: steps.pr-info.outputs.should_continue == 'true'

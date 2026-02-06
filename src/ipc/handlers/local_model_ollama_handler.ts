@@ -1,5 +1,8 @@
 import { ipcMain } from "electron";
 import log from "electron-log";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import { LocalModelListResponse, LocalModel } from "../ipc_types";
 
 const logger = log.scope("ollama_handler");
@@ -55,49 +58,140 @@ interface OllamaModel {
   };
 }
 
-export async function fetchOllamaModels(): Promise<LocalModelListResponse> {
+/**
+ * Get the Ollama models directory. Respects OLLAMA_MODELS env var,
+ * otherwise defaults to ~/.ollama/models.
+ */
+function getOllamaModelsDir(): string {
+  return (
+    process.env.OLLAMA_MODELS || path.join(os.homedir(), ".ollama", "models")
+  );
+}
+
+/**
+ * Format a model name into a human-readable display name.
+ */
+function formatDisplayName(modelName: string): string {
+  return modelName
+    .split(":")[0]
+    .replace(/-/g, " ")
+    .replace(/(\d+)/, " $1 ")
+    .split(" ")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ")
+    .trim();
+}
+
+/**
+ * Scan the Ollama manifest directory on disk to discover installed models.
+ * This is more reliable than the /api/tags endpoint which can get out of sync.
+ * Structure: {modelsDir}/manifests/registry.ollama.ai/library/{model}/{tag}
+ */
+async function scanOllamaManifests(): Promise<string[]> {
+  const modelsDir = getOllamaModelsDir();
+  const manifestsDir = path.join(
+    modelsDir,
+    "manifests",
+    "registry.ollama.ai",
+    "library",
+  );
+
+  try {
+    const entries = await fs.promises.readdir(manifestsDir, {
+      withFileTypes: true,
+    });
+    const modelNames: string[] = [];
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+
+      const modelDir = path.join(manifestsDir, entry.name);
+      const tags = await fs.promises.readdir(modelDir, {
+        withFileTypes: true,
+      });
+
+      for (const tag of tags) {
+        if (tag.isFile()) {
+          modelNames.push(`${entry.name}:${tag.name}`);
+        }
+      }
+    }
+
+    logger.info(
+      `Disk scan found ${modelNames.length} Ollama models in ${manifestsDir}`,
+    );
+    return modelNames;
+  } catch (error) {
+    logger.debug(
+      "Could not scan Ollama manifests directory (Ollama may not be installed):",
+      error,
+    );
+    return [];
+  }
+}
+
+/**
+ * Fetch models from the Ollama HTTP API (/api/tags).
+ */
+async function fetchOllamaModelsFromApi(): Promise<LocalModel[]> {
   const apiUrl = `${getOllamaApiUrl()}/api/tags`;
-  logger.info(`Fetching Ollama models from: ${apiUrl}`);
   try {
     const response = await fetch(apiUrl);
     if (!response.ok) {
-      logger.warn("Ollama not available or returned error status");
-      return { models: [] };
+      logger.warn("Ollama API returned error status");
+      return [];
     }
 
     const data = await response.json();
     const ollamaModels: OllamaModel[] = data.models || [];
 
-    const models: LocalModel[] = ollamaModels.map((model: OllamaModel) => {
-      const displayName = model.name
-        .split(":")[0]
-        .replace(/-/g, " ")
-        .replace(/(\d+)/, " $1 ")
-        .split(" ")
-        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(" ")
-        .trim();
-
-      return {
-        modelName: model.name,
-        displayName,
-        provider: "ollama",
-      };
-    });
-    logger.info(`Successfully fetched ${models.length} models from Ollama`);
-    return { models };
-  } catch (error) {
-    // Ollama is not running or not available - this is expected
-    if (
-      error instanceof TypeError &&
-      (error as Error).message.includes("fetch failed")
-    ) {
-      logger.debug("Ollama not available (this is normal if not running)");
-    } else {
-      logger.warn("Failed to fetch models from Ollama:", error);
-    }
-    return { models: [] };
+    return ollamaModels.map((model: OllamaModel) => ({
+      modelName: model.name,
+      displayName: formatDisplayName(model.name),
+      provider: "ollama" as const,
+    }));
+  } catch {
+    return [];
   }
+}
+
+/**
+ * Fetch Ollama models by merging results from both the HTTP API and
+ * a direct disk scan of the manifests directory. The disk scan catches
+ * models that the API may fail to report (a known Ollama bug where
+ * /api/tags gets out of sync with the actual installed models).
+ */
+export async function fetchOllamaModels(): Promise<LocalModelListResponse> {
+  logger.info("Fetching Ollama models (API + disk scan)...");
+
+  const [apiModels, diskModelNames] = await Promise.all([
+    fetchOllamaModelsFromApi(),
+    scanOllamaManifests(),
+  ]);
+
+  // Merge: start with API results, then add any disk-only models
+  const seen = new Set<string>();
+  const models: LocalModel[] = [];
+
+  for (const model of apiModels) {
+    seen.add(model.modelName);
+    models.push(model);
+  }
+
+  for (const name of diskModelNames) {
+    if (!seen.has(name)) {
+      models.push({
+        modelName: name,
+        displayName: formatDisplayName(name),
+        provider: "ollama",
+      });
+    }
+  }
+
+  logger.info(
+    `Ollama models: ${apiModels.length} from API, ${diskModelNames.length} from disk, ${models.length} total (merged)`,
+  );
+  return { models };
 }
 
 export function registerOllamaHandlers() {

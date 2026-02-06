@@ -62,6 +62,7 @@ import { handleLocalAgentStream } from "../../pro/main/ipc/handlers/local_agent/
 
 import { safeSend } from "../utils/safe_sender";
 import { cleanFullResponse } from "../utils/cleanFullResponse";
+import { convertMarkdownCodeBlocksToJoyWrite } from "../utils/markdown_to_joy_write";
 import { generateProblemReport } from "../processors/tsc";
 import { createProblemFixPrompt } from "@/shared/problem_prompt";
 import { AsyncVirtualFileSystem } from "../../../shared/VirtualFilesystem";
@@ -624,6 +625,28 @@ ${componentSnippet}
               : settings.selectedChatMode,
           enableTurboEditsV2: isTurboEditsV2Enabled(settings),
         });
+
+        // For local models (Ollama, LM Studio), add an extra reinforcement
+        // because smaller models sometimes ignore <joy-write> instructions.
+        if (
+          isLocalModel(settings.selectedModel.provider) &&
+          settings.selectedChatMode !== "ask"
+        ) {
+          systemPrompt += `
+
+# CRITICAL: Output Format Reminder
+You MUST wrap ALL code in <joy-write> tags. Example:
+
+<joy-write path="src/pages/Index.tsx" description="Update main page">
+import React from 'react';
+// ... full file content here ...
+export default MyComponent;
+</joy-write>
+
+Do NOT use markdown code blocks (\`\`\`). ONLY use <joy-write path="..."> tags.
+Every file you create or change MUST use a separate <joy-write> tag with the full file path.
+`;
+        }
 
         // Add information about mentioned apps if any
         if (otherAppsCodebaseInfo) {
@@ -1402,6 +1425,10 @@ ${problemReport.problems
             .where(and(eq(chats.id, req.chatId), isNull(chats.title)));
         }
         const chatSummary = chatTitle?.[1];
+
+        // Convert markdown code blocks to <joy-write> tags for local models
+        // that output code in fences instead of joy-write tags.
+        fullResponse = convertMarkdownCodeBlocksToJoyWrite(fullResponse);
 
         // Update the placeholder assistant message with the full response
         await db

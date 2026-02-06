@@ -39,6 +39,7 @@ import {
 } from "../utils/joy_tag_parser";
 import { applySearchReplace } from "../../pro/main/ipc/processors/search_replace_processor";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
+import { convertMarkdownCodeBlocksToJoyWrite } from "../utils/markdown_to_joy_write";
 
 import { FileUploadsState } from "../utils/file_uploads_state";
 
@@ -110,6 +111,10 @@ export async function processFullResponseActions(
   extraFiles?: string[];
   extraFilesError?: string;
 }> {
+  // Convert markdown code blocks to <joy-write> tags for local models that
+  // ignore the system prompt instruction to use joy-write tags.
+  fullResponse = convertMarkdownCodeBlocksToJoyWrite(fullResponse);
+
   const fileUploadsState = FileUploadsState.getInstance();
   const fileUploadsMap = fileUploadsState.getFileUploadsForChat(chatId);
   fileUploadsState.clear(chatId);

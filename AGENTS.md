@@ -313,6 +313,29 @@ When adding a new toggle/setting to the Settings page:
 4. Create a switch component (e.g., `src/components/MySwitch.tsx`) - follow `AutoApproveSwitch.tsx` as a template
 5. Import and add the switch to the relevant section in `src/pages/settings.tsx`
 
+### GitHub API calls with multi-line or special content
+
+The `gh-permission-hook.py` pre-tool hook blocks shell metacharacters (`$()`, backticks, shell variables) in `gh api` commands. To pass multi-line or complex content:
+
+1. Write the content to a file (e.g., in the scratchpad directory)
+2. Use `-F field=@/absolute/path/to/file` (literal path, no variables) to pass it
+
+```sh
+# Wrong: blocked by hook
+gh api repos/{owner}/{repo}/pulls/123/comments/456/replies -f body="$(cat file.md)"
+
+# Wrong: variable expansion blocked
+gh api graphql -F query=@"$QUERY_FILE" -f threadId=abc
+
+# Correct: literal file path with -F
+gh api repos/{owner}/{repo}/pulls/123/comments/456/replies -F body=@/tmp/reply.md
+gh api graphql -F query=@/tmp/query.graphql -f threadId=abc
+```
+
+### AI SDK step.usage in onStepFinish vs onFinish
+
+In the AI SDK's `streamText`, `step.usage.totalTokens` in `onStepFinish` is **per-step** (single LLM call), not cumulative. The cumulative usage across all steps is only available in `onFinish` via `response.usage.totalTokens`. For context window comparisons (e.g., compaction thresholds), per-step usage is actually more accurate since each step's input tokens already include the full conversation context.
+
 ### Custom chat message indicators
 
 The `<dyad-status>` tag in chat messages renders as a collapsible status indicator box. Use it for system messages like compaction notifications:

@@ -193,7 +193,6 @@ tool requests and determine their safety level. Be conservative - when in doubt,
 
 1. **Repository operations**:
    - gh repo fork (forking repositories)
-   - gh repo clone (cloning - generally safe but uses network)
 
 ### RED (Dangerous - Block)
 

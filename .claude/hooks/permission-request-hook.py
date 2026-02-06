@@ -87,7 +87,7 @@ Analyze this request and provide your safety assessment. Respond with ONLY a JSO
                 claude_path,
                 "--print",
                 "--output-format", "text",
-                "--model", "sonnet",
+                "--model", "haiku",
                 "--no-session-persistence",
                 prompt
             ],

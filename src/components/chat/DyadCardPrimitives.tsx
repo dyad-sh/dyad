@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ChevronRight, Loader2, CircleX, CheckCircle2 } from "lucide-react";
 import { CustomTagState } from "./stateTypes";
 
@@ -112,7 +112,7 @@ export function DyadCard({
   const shouldShowAccent = showAccent ?? (isPending || isAborted);
   const leftBorder = shouldShowAccent
     ? `border-l-[3px] ${isAborted ? "border-l-red-500" : ACCENT_BORDER[accentColor]}`
-    : "border-l-0";
+    : "";
 
   const variantClasses =
     variant === "ghost"
@@ -137,7 +137,10 @@ export function DyadCard({
       onKeyDown={
         onClick
           ? (e) => {
-              if (e.key === "Enter" || e.key === " ") {
+              if (
+                (e.key === "Enter" || e.key === " ") &&
+                e.target === e.currentTarget
+              ) {
                 e.preventDefault();
                 onClick();
               }
@@ -297,15 +300,13 @@ export function DyadCardContent({
   children,
   className = "",
 }: DyadCardContentProps) {
-  const hasExpandedRef = useRef(false);
   const [hasExpanded, setHasExpanded] = useState(false);
 
-  if (isExpanded && !hasExpandedRef.current) {
-    hasExpandedRef.current = true;
-    if (!hasExpanded) {
+  useEffect(() => {
+    if (isExpanded && !hasExpanded) {
       setHasExpanded(true);
     }
-  }
+  }, [isExpanded]);
 
   return (
     <div

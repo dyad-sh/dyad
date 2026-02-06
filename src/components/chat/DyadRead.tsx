@@ -9,7 +9,7 @@ interface DyadReadProps {
 }
 
 export const DyadRead: React.FC<DyadReadProps> = ({
-  children: _children,
+  children,
   node,
   path: pathProp,
 }) => {
@@ -33,6 +33,9 @@ export const DyadRead: React.FC<DyadReadProps> = ({
           </span>
         )}
       </div>
+      {children && (
+        <div className="text-xs text-muted-foreground ml-5">{children}</div>
+      )}
     </div>
   );
 };

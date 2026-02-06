@@ -13,7 +13,8 @@ export const DyadTokenSavings: React.FC<DyadTokenSavingsProps> = ({
   smartContextTokens,
 }) => {
   const tokensSaved = originalTokens - smartContextTokens;
-  const percentageSaved = Math.round((tokensSaved / originalTokens) * 100);
+  const percentageSaved =
+    originalTokens > 0 ? Math.round((tokensSaved / originalTokens) * 100) : 0;
 
   return (
     <Tooltip>

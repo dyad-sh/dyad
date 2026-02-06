@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { ChevronRight } from "lucide-react";
 import { VanillaMarkdownParser } from "./DyadMarkdownParser";
 import { CustomTagState } from "./stateTypes";
@@ -13,15 +13,13 @@ export const DyadThink: React.FC<DyadThinkProps> = ({ children, node }) => {
   const state = node?.properties?.state as CustomTagState;
   const inProgress = state === "pending";
   const [isExpanded, setIsExpanded] = useState(inProgress);
-  const hasExpandedRef = useRef(false);
   const [hasExpanded, setHasExpanded] = useState(false);
 
-  if (isExpanded && !hasExpandedRef.current) {
-    hasExpandedRef.current = true;
-    if (!hasExpanded) {
+  useEffect(() => {
+    if (isExpanded && !hasExpanded) {
       setHasExpanded(true);
     }
-  }
+  }, [isExpanded]);
 
   // Check if content matches token savings format
   const tokenSavingsMatch =

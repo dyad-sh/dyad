@@ -24,7 +24,9 @@ export const DyadAddDependency: React.FC<DyadAddDependencyProps> = ({
   children,
   node,
 }) => {
-  const packages = node?.properties?.packages?.split(" ") || "";
+  const packages = node?.properties?.packages
+    ? node.properties.packages.split(" ").filter(Boolean)
+    : [];
   const [isContentVisible, setIsContentVisible] = useState(false);
   const hasChildren = !!children;
 

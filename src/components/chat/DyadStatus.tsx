@@ -4,11 +4,10 @@ import {
   DyadCard,
   DyadCardHeader,
   DyadExpandIcon,
-  DyadStateIndicator,
   DyadFinishedIcon,
   DyadCardContent,
 } from "./DyadCardPrimitives";
-import { CircleX } from "lucide-react";
+import { CircleX, Loader2 } from "lucide-react";
 
 interface DyadStatusProps {
   node: {
@@ -33,7 +32,7 @@ export function DyadStatus({ node, children }: DyadStatusProps) {
 
   // Pick the left icon based on state
   const icon = isInProgress ? (
-    <DyadStateIndicator state="pending" />
+    <Loader2 size={15} className="animate-spin" />
   ) : isAborted ? (
     <CircleX size={15} />
   ) : (

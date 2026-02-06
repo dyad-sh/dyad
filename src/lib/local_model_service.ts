@@ -8,6 +8,8 @@ import crypto from "crypto";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import type {
   LocalModelProvider,
   LocalModelInfo,
@@ -78,7 +80,54 @@ export class OllamaProvider {
     logger.info(
       `Ollama: ${apiModels.length} from API, ${diskNames.length} from disk, ${apiModels.length + diskOnly.length} merged`,
     );
+
+    // Auto-register disk-only models with the Ollama server so they
+    // become usable for inference (fire-and-forget)
+    if (diskOnly.length > 0) {
+      for (const model of diskOnly) {
+        this.registerModelWithServer(model.id).catch(() => {});
+      }
+    }
+
     return [...apiModels, ...diskOnly];
+  }
+
+  /**
+   * Register a model with the Ollama server using the CLI.
+   * Ollama ≥0.15 can have models on disk that aren't in its internal DB.
+   */
+  private async registerModelWithServer(modelName: string): Promise<void> {
+    const execFileAsync = promisify(execFile);
+    const ollamaCli = this.findOllamaCli();
+    try {
+      const { stdout: modelfile } = await execFileAsync(ollamaCli, [
+        "show", modelName, "--modelfile",
+      ], { timeout: 30_000 });
+
+      if (!modelfile || !modelfile.includes("FROM")) return;
+
+      const tmpFile = path.join(os.tmpdir(), `ollama-reg-${modelName.replace(/[:/]/g, "_")}.modelfile`);
+      await fs.promises.writeFile(tmpFile, modelfile, "utf-8");
+
+      await execFileAsync(ollamaCli, [
+        "create", modelName, "-f", tmpFile,
+      ], { timeout: 300_000 });
+
+      fs.promises.unlink(tmpFile).catch(() => {});
+      logger.info(`Registered disk-only model via CLI: ${modelName}`);
+    } catch (error) {
+      logger.warn(`Failed to register model ${modelName} via CLI:`, error);
+    }
+  }
+
+  private findOllamaCli(): string {
+    if (process.platform === "win32") {
+      const candidate = path.join(
+        process.env.LOCALAPPDATA || "", "Programs", "Ollama", "ollama.exe",
+      );
+      if (fs.existsSync(candidate)) return candidate;
+    }
+    return "ollama";
   }
 
   private async listModelsFromApi(): Promise<LocalModelInfo[]> {

@@ -1,23 +1,18 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
 import { showError, showSuccess } from "@/lib/toast";
-import { useAtom } from "jotai";
-import { appsListAtom } from "@/atoms/appAtoms";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function useAddAppToFavorite() {
-  const [_, setApps] = useAtom(appsListAtom);
+  const queryClient = useQueryClient();
 
   const mutation = useMutation<boolean, Error, number>({
     mutationFn: async (appId: number): Promise<boolean> => {
       const result = await ipc.app.addToFavorite({ appId });
       return result.isFavorite;
     },
-    onSuccess: (newIsFavorite, appId) => {
-      setApps((currentApps) =>
-        currentApps.map((app) =>
-          app.id === appId ? { ...app, isFavorite: newIsFavorite } : app,
-        ),
-      );
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
       showSuccess("App favorite status updated");
     },
     onError: (error) => {

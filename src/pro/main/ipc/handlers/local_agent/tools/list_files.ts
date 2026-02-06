@@ -101,14 +101,13 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
     // If include_hidden is true, also include .dyad files
     if (args.include_hidden) {
       const normalizedAppPath = ctx.appPath.replace(/\\/g, "/");
-      const dyadGlobPattern = sanitizedDirectory
-        ? `${normalizedAppPath}/${sanitizedDirectory}/.dyad${globSuffix}`
-        : `${normalizedAppPath}/.dyad${globSuffix}`;
+      // Always search .dyad at the app root, regardless of directory filter
+      const dyadGlobPattern = `${normalizedAppPath}/.dyad${globSuffix}`;
 
       const dyadFiles = await glob(dyadGlobPattern, {
         nodir: true,
         absolute: true,
-        ignore: "**/node_modules/**",
+        ignore: ["**/node_modules/**", "**/.git/**", "**/dist/**", "**/build/**", "**/.next/**", "**/.venv/**", "**/venv/**"],
       });
 
       // Convert to relative paths and add to the list
@@ -116,7 +115,8 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
         path.relative(ctx.appPath, file).split(path.sep).join("/"),
       );
 
-      allFilePaths = [...allFilePaths, ...dyadRelativePaths].sort();
+      // Deduplicate and sort
+      allFilePaths = [...new Set([...allFilePaths, ...dyadRelativePaths])].sort();
     }
 
     // Build full file list for LLM

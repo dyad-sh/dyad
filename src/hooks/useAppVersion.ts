@@ -1,20 +1,16 @@
-import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function useAppVersion() {
-  const [appVersion, setAppVersion] = useState<string | null>(null);
+  const { data } = useQuery({
+    queryKey: queryKeys.system.appVersion,
+    queryFn: async () => {
+      const result = await ipc.system.getAppVersion();
+      return result.version;
+    },
+    staleTime: Infinity, // App version never changes during a session
+  });
 
-  useEffect(() => {
-    const fetchVersion = async () => {
-      try {
-        const result = await ipc.system.getAppVersion();
-        setAppVersion(result.version);
-      } catch {
-        setAppVersion(null);
-      }
-    };
-    fetchVersion();
-  }, []);
-
-  return appVersion;
+  return data ?? null;
 }

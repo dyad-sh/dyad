@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 import { DyadProSuccessDialog } from "@/components/DyadProSuccessDialog";
 import { useTheme } from "@/contexts/ThemeContext";
 import { ipc } from "@/ipc/types";
+import { useSystemPlatform } from "@/hooks/useSystemPlatform";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import type { UserBudgetInfo } from "@/ipc/types";
 import {
@@ -29,21 +30,8 @@ export const TitleBar = () => {
   const location = useLocation();
   const { settings, refreshSettings } = useSettings();
   const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false);
-  const [showWindowControls, setShowWindowControls] = useState(false);
-
-  useEffect(() => {
-    // Check if we're running on Windows
-    const checkPlatform = async () => {
-      try {
-        const platform = await ipc.system.getSystemPlatform();
-        setShowWindowControls(platform !== "darwin");
-      } catch (error) {
-        console.error("Failed to get platform info:", error);
-      }
-    };
-
-    checkPlatform();
-  }, []);
+  const platform = useSystemPlatform();
+  const showWindowControls = platform !== null && platform !== "darwin";
 
   const showDyadProSuccessDialog = () => {
     setIsSuccessDialogOpen(true);

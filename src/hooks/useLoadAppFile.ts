@@ -1,60 +1,29 @@
-import { useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function useLoadAppFile(appId: number | null, filePath: string | null) {
-  const [content, setContent] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    const loadFile = async () => {
-      if (appId === null || filePath === null) {
-        setContent(null);
-        setError(null);
-        return;
-      }
+  const { data, isLoading, error } = useQuery({
+    queryKey: queryKeys.appFiles.content({ appId, filePath }),
+    queryFn: async () => {
+      return ipc.app.readAppFile({ appId: appId!, filePath: filePath! });
+    },
+    enabled: appId !== null && filePath !== null,
+  });
 
-      setLoading(true);
-      try {
-        const fileContent = await ipc.app.readAppFile({ appId, filePath });
-
-        setContent(fileContent);
-        setError(null);
-      } catch (error) {
-        console.error(
-          `Error loading file ${filePath} for app ${appId}:`,
-          error,
-        );
-        setError(error instanceof Error ? error : new Error(String(error)));
-        setContent(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadFile();
-  }, [appId, filePath]);
-
-  const refreshFile = async () => {
-    if (appId === null || filePath === null) {
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const fileContent = await ipc.app.readAppFile({ appId, filePath });
-      setContent(fileContent);
-      setError(null);
-    } catch (error) {
-      console.error(
-        `Error refreshing file ${filePath} for app ${appId}:`,
-        error,
-      );
-      setError(error instanceof Error ? error : new Error(String(error)));
-    } finally {
-      setLoading(false);
-    }
+  const refreshFile = () => {
+    if (appId === null || filePath === null) return Promise.resolve();
+    return queryClient.invalidateQueries({
+      queryKey: queryKeys.appFiles.content({ appId, filePath }),
+    });
   };
 
-  return { content, loading, error, refreshFile };
+  return {
+    content: data ?? null,
+    loading: isLoading,
+    error: error ?? null,
+    refreshFile,
+  };
 }

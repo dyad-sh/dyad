@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { useNavigate } from "@tanstack/react-router";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import type { GithubRepository } from "@/ipc/types";
+import { useGithubRepos } from "@/hooks/useGithubRepos";
 
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useSetAtom } from "jotai";
@@ -54,12 +55,13 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
   const { refreshApps } = useLoadApps();
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   // GitHub import state
-  const [repos, setRepos] = useState<GithubRepository[]>([]);
-  const [loading, setLoading] = useState(false);
   const [url, setUrl] = useState("");
   const [importing, setImporting] = useState(false);
   const { settings, refreshSettings } = useSettings();
   const isAuthenticated = !!settings?.githubAccessToken;
+  const { repos, loading } = useGithubRepos({
+    enabled: isOpen && isAuthenticated,
+  });
 
   const [githubAppName, setGithubAppName] = useState("");
   const [githubNameExists, setGithubNameExists] = useState(false);
@@ -68,12 +70,8 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     if (isOpen) {
       setGithubAppName("");
       setGithubNameExists(false);
-      // Fetch GitHub repos if authenticated
-      if (isAuthenticated) {
-        fetchRepos();
-      }
     }
-  }, [isOpen, isAuthenticated]);
+  }, [isOpen]);
 
   // Re-check app name when copyToDyadApps changes
   useEffect(() => {
@@ -82,17 +80,6 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     }
   }, [copyToDyadApps]);
 
-  const fetchRepos = async () => {
-    setLoading(true);
-    try {
-      const fetchedRepos = await ipc.github.listRepos();
-      setRepos(fetchedRepos);
-    } catch (err: unknown) {
-      showError("Failed to fetch repositories.: " + (err as any).toString());
-    } finally {
-      setLoading(false);
-    }
-  };
   const handleUrlBlur = async () => {
     if (!url.trim()) return;
     const repoName = extractRepoNameFromUrl(url);

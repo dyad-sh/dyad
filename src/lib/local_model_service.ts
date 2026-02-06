@@ -5,6 +5,9 @@
 
 import log from "electron-log";
 import crypto from "crypto";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import type {
   LocalModelProvider,
   LocalModelInfo,
@@ -48,23 +51,97 @@ export class OllamaProvider {
   }
 
   async listModels(): Promise<LocalModelInfo[]> {
-    const response = await fetch(`${this.baseUrl}/api/tags`);
-    if (!response.ok) throw new Error("Failed to list Ollama models");
+    // Fetch from both API and disk, merge results to work around
+    // Ollama bug where /api/tags can get out of sync with installed models
+    const [apiModels, diskNames] = await Promise.all([
+      this.listModelsFromApi(),
+      this.scanManifestDir(),
+    ]);
 
-    const data = await response.json();
-    return (data.models || []).map((model: any) => ({
-      id: model.name,
-      name: model.name.split(":")[0],
-      provider: "ollama" as LocalModelProvider,
-      modelHash: model.digest,
-      size: model.size,
-      quantization: this.extractQuantization(model.name),
-      family: model.details?.family,
-      parameters: model.details?.parameter_size,
-      contextLength: model.details?.context_length,
-      modifiedAt: model.modified_at,
-      digest: model.digest,
-    }));
+    const seen = new Set(apiModels.map((m) => m.id));
+    const diskOnly: LocalModelInfo[] = diskNames
+      .filter((name) => !seen.has(name))
+      .map((name) => ({
+        id: name,
+        name: name.split(":")[0],
+        provider: "ollama" as LocalModelProvider,
+        modelHash: undefined,
+        size: undefined,
+        quantization: this.extractQuantization(name),
+        family: undefined,
+        parameters: undefined,
+        contextLength: undefined,
+        modifiedAt: undefined,
+        digest: undefined,
+      }));
+
+    logger.info(
+      `Ollama: ${apiModels.length} from API, ${diskNames.length} from disk, ${apiModels.length + diskOnly.length} merged`,
+    );
+    return [...apiModels, ...diskOnly];
+  }
+
+  private async listModelsFromApi(): Promise<LocalModelInfo[]> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/tags`);
+      if (!response.ok) return [];
+
+      const data = await response.json();
+      return (data.models || []).map((model: any) => ({
+        id: model.name,
+        name: model.name.split(":")[0],
+        provider: "ollama" as LocalModelProvider,
+        modelHash: model.digest,
+        size: model.size,
+        quantization: this.extractQuantization(model.name),
+        family: model.details?.family,
+        parameters: model.details?.parameter_size,
+        contextLength: model.details?.context_length,
+        modifiedAt: model.modified_at,
+        digest: model.digest,
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Scan Ollama manifest directory on disk for installed models.
+   * Structure: ~/.ollama/models/manifests/registry.ollama.ai/library/{model}/{tag}
+   */
+  private async scanManifestDir(): Promise<string[]> {
+    const modelsDir =
+      process.env.OLLAMA_MODELS ||
+      path.join(os.homedir(), ".ollama", "models");
+    const manifestsDir = path.join(
+      modelsDir,
+      "manifests",
+      "registry.ollama.ai",
+      "library",
+    );
+
+    try {
+      const entries = await fs.promises.readdir(manifestsDir, {
+        withFileTypes: true,
+      });
+      const names: string[] = [];
+
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const tags = await fs.promises.readdir(
+          path.join(manifestsDir, entry.name),
+          { withFileTypes: true },
+        );
+        for (const tag of tags) {
+          if (tag.isFile()) {
+            names.push(`${entry.name}:${tag.name}`);
+          }
+        }
+      }
+      return names;
+    } catch {
+      return [];
+    }
   }
 
   async getModelInfo(modelId: string): Promise<LocalModelInfo | null> {

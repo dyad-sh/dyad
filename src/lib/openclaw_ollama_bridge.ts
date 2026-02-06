@@ -10,6 +10,9 @@
 
 import { EventEmitter } from "events";
 import log from "electron-log";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import { v4 as uuidv4 } from "uuid";
 
 const logger = log.scope("openclaw_ollama");
@@ -260,26 +263,34 @@ export class OpenClawOllamaBridge extends EventEmitter {
   
   async refreshModels(): Promise<OllamaModel[]> {
     try {
-      const response = await fetch(`${this.config.ollamaBaseUrl}/api/tags`);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch models: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      
-      this.availableModels = (data.models || []).map((m: any) => ({
-        name: m.name,
-        modifiedAt: m.modified_at,
-        size: m.size,
-        digest: m.digest,
-        details: {
-          format: m.details?.format || "gguf",
-          family: m.details?.family || "unknown",
-          parameterSize: m.details?.parameter_size || "unknown",
-          quantizationLevel: m.details?.quantization_level || "unknown",
-        },
-      }));
+      // Fetch from both API and disk, merge results to work around
+      // Ollama bug where /api/tags can get out of sync with installed models
+      const [apiModels, diskNames] = await Promise.all([
+        this.fetchModelsFromApi(),
+        this.scanOllamaManifests(),
+      ]);
+
+      const seen = new Set(apiModels.map((m) => m.name));
+      const diskOnly: OllamaModel[] = diskNames
+        .filter((name) => !seen.has(name))
+        .map((name) => ({
+          name,
+          modifiedAt: new Date().toISOString(),
+          size: 0,
+          digest: "",
+          details: {
+            format: "gguf",
+            family: "unknown",
+            parameterSize: "unknown",
+            quantizationLevel: "unknown",
+          },
+        }));
+
+      this.availableModels = [...apiModels, ...diskOnly];
+
+      logger.info(
+        `Ollama: ${apiModels.length} from API, ${diskNames.length} from disk, ${this.availableModels.length} merged`,
+      );
       
       // Update capabilities for each model
       for (const model of this.availableModels) {
@@ -291,6 +302,64 @@ export class OpenClawOllamaBridge extends EventEmitter {
       return this.availableModels;
     } catch (error) {
       logger.error("Failed to refresh Ollama models:", error);
+      return [];
+    }
+  }
+
+  private async fetchModelsFromApi(): Promise<OllamaModel[]> {
+    try {
+      const response = await fetch(`${this.config.ollamaBaseUrl}/api/tags`);
+      if (!response.ok) return [];
+
+      const data = await response.json();
+      return (data.models || []).map((m: any) => ({
+        name: m.name,
+        modifiedAt: m.modified_at,
+        size: m.size,
+        digest: m.digest,
+        details: {
+          format: m.details?.format || "gguf",
+          family: m.details?.family || "unknown",
+          parameterSize: m.details?.parameter_size || "unknown",
+          quantizationLevel: m.details?.quantization_level || "unknown",
+        },
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  private async scanOllamaManifests(): Promise<string[]> {
+    const modelsDir =
+      process.env.OLLAMA_MODELS ||
+      path.join(os.homedir(), ".ollama", "models");
+    const manifestsDir = path.join(
+      modelsDir,
+      "manifests",
+      "registry.ollama.ai",
+      "library",
+    );
+
+    try {
+      const entries = await fs.promises.readdir(manifestsDir, {
+        withFileTypes: true,
+      });
+      const names: string[] = [];
+
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const tags = await fs.promises.readdir(
+          path.join(manifestsDir, entry.name),
+          { withFileTypes: true },
+        );
+        for (const tag of tags) {
+          if (tag.isFile()) {
+            names.push(`${entry.name}:${tag.name}`);
+          }
+        }
+      }
+      return names;
+    } catch {
       return [];
     }
   }

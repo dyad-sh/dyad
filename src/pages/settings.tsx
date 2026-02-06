@@ -52,7 +52,6 @@ export default function SettingsPage() {
     setIsResetting(true);
     try {
       await ipc.system.resetAll();
-      setIsResetDialogOpen(false);
       showSuccess("Successfully reset everything. Restart the application.");
     } catch (error) {
       console.error("Error resetting:", error);
@@ -61,6 +60,7 @@ export default function SettingsPage() {
       );
     } finally {
       setIsResetting(false);
+      setIsResetDialogOpen(false);
     }
   };
 

@@ -13,7 +13,47 @@ test("configure app commands", async ({ po }) => {
     po.page.getByText("Using default install and start commands"),
   ).toBeVisible();
 
+  // --- Validation: both commands are required ---
+
   // Click to configure custom commands
+  await po.page.getByTestId("configure-app-commands").click();
+
+  // Fill in only install command (leaving start command empty)
+  await po.page.getByTestId("install-command-input").fill("npm install");
+
+  // Verify validation message appears
+  await expect(
+    po.page.getByText("Both commands are required when customizing."),
+  ).toBeVisible();
+
+  // Verify save button is disabled
+  const saveButton = po.page.getByTestId("save-app-commands");
+  await expect(saveButton).toBeDisabled();
+
+  // Now fill in both commands
+  await po.page.getByTestId("start-command-input").fill("npm run dev");
+
+  // Validation message should disappear
+  await expect(
+    po.page.getByText("Both commands are required when customizing."),
+  ).not.toBeVisible();
+
+  // Save button should be enabled
+  await expect(saveButton).toBeEnabled();
+
+  // --- Cancel editing ---
+
+  // Cancel instead of saving
+  await po.page.getByTestId("cancel-edit-app-commands").click();
+
+  // Verify we're back to default state (commands were not saved)
+  await expect(
+    po.page.getByText("Using default install and start commands"),
+  ).toBeVisible();
+
+  // --- Configure, edit, and clear commands ---
+
+  // Click to configure custom commands again
   await po.page.getByTestId("configure-app-commands").click();
 
   // Fill in custom install command
@@ -60,63 +100,6 @@ test("configure app commands", async ({ po }) => {
   await po.page.getByTestId("clear-app-commands").click();
 
   // Verify commands are cleared and default message is shown again
-  await expect(
-    po.page.getByText("Using default install and start commands"),
-  ).toBeVisible();
-});
-
-test("app commands validation - both required", async ({ po }) => {
-  // Create an app first
-  await po.sendPrompt("tc=1");
-
-  // Navigate to configure panel
-  await po.selectPreviewMode("configure");
-
-  // Click to configure custom commands
-  await po.page.getByTestId("configure-app-commands").click();
-
-  // Fill in only install command (leaving start command empty)
-  await po.page.getByTestId("install-command-input").fill("npm install");
-
-  // Verify validation message appears
-  await expect(
-    po.page.getByText("Both commands are required when customizing."),
-  ).toBeVisible();
-
-  // Verify save button is disabled (via the validation state)
-  const saveButton = po.page.getByTestId("save-app-commands");
-  await expect(saveButton).toBeDisabled();
-
-  // Now fill in both commands
-  await po.page.getByTestId("start-command-input").fill("npm run dev");
-
-  // Validation message should disappear
-  await expect(
-    po.page.getByText("Both commands are required when customizing."),
-  ).not.toBeVisible();
-
-  // Save button should be enabled
-  await expect(saveButton).toBeEnabled();
-});
-
-test("app commands - cancel editing", async ({ po }) => {
-  // Create an app first
-  await po.sendPrompt("tc=1");
-
-  // Navigate to configure panel
-  await po.selectPreviewMode("configure");
-
-  // Click to configure custom commands
-  await po.page.getByTestId("configure-app-commands").click();
-
-  // Fill in commands
-  await po.page.getByTestId("install-command-input").fill("npm install");
-  await po.page.getByTestId("start-command-input").fill("npm run dev");
-
-  // Cancel instead of saving
-  await po.page.getByTestId("cancel-edit-app-commands").click();
-
-  // Verify we're back to default state (commands were not saved)
   await expect(
     po.page.getByText("Using default install and start commands"),
   ).toBeVisible();

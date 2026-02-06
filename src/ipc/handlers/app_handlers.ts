@@ -1837,35 +1837,33 @@ export function registerAppHandlers() {
   createTypedHandler(appContracts.updateAppCommands, async (_, params) => {
     const { appId, installCommand, startCommand } = params;
 
-    return withLock(appId, async () => {
-      const app = await db.query.apps.findFirst({
-        where: eq(apps.id, appId),
-      });
-
-      if (!app) {
-        throw new Error("App not found");
-      }
-
-      const trimmedInstall = installCommand?.trim() || null;
-      const trimmedStart = startCommand?.trim() || null;
-
-      // Both commands must be provided together, or both must be null
-      if ((trimmedInstall === null) !== (trimmedStart === null)) {
-        throw new Error(
-          "Both install and start commands are required when customizing",
-        );
-      }
-
-      await db
-        .update(apps)
-        .set({
-          installCommand: trimmedInstall,
-          startCommand: trimmedStart,
-        })
-        .where(eq(apps.id, appId));
-
-      logger.info(`Updated commands for app ${appId}`);
+    const app = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
     });
+
+    if (!app) {
+      throw new Error("App not found");
+    }
+
+    const trimmedInstall = installCommand?.trim() || null;
+    const trimmedStart = startCommand?.trim() || null;
+
+    // Both commands must be provided together, or both must be null
+    if ((trimmedInstall === null) !== (trimmedStart === null)) {
+      throw new Error(
+        "Both install and start commands are required when customizing",
+      );
+    }
+
+    await db
+      .update(apps)
+      .set({
+        installCommand: trimmedInstall,
+        startCommand: trimmedStart,
+      })
+      .where(eq(apps.id, appId));
+
+    logger.info(`Updated commands for app ${appId}`);
   });
 
   createTypedHandler(appContracts.changeAppLocation, async (_, params) => {

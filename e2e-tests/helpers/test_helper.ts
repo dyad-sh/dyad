@@ -1453,7 +1453,7 @@ export class PageObject {
     await this.page.waitForSelector(selector, { timeout });
   }
 
-  async waitForToastWithText(text: string, timeout = 5000) {
+  async waitForToastWithText(text: string, timeout = Timeout.MEDIUM) {
     await this.page.waitForSelector(`[data-sonner-toast]:has-text("${text}")`, {
       timeout,
     });

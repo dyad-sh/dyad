@@ -7,6 +7,7 @@ interface DyadListFilesProps {
     properties: {
       directory?: string;
       recursive?: string;
+      include_hidden?: string;
       state?: CustomTagState;
     };
   };
@@ -14,9 +15,10 @@ interface DyadListFilesProps {
 }
 
 export function DyadListFiles({ node, children }: DyadListFilesProps) {
-  const { directory, recursive, state } = node.properties;
+  const { directory, recursive, include_hidden, state } = node.properties;
   const isLoading = state === "pending";
   const isRecursive = recursive === "true";
+  const isIncludeHidden = include_hidden === "true";
   const content = typeof children === "string" ? children : "";
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -27,6 +29,9 @@ export function DyadListFiles({ node, children }: DyadListFilesProps) {
     }
     if (isRecursive) {
       parts.push("(recursive)");
+    }
+    if (isIncludeHidden) {
+      parts.push("(include hidden)");
     }
     return parts.join(" ");
   };

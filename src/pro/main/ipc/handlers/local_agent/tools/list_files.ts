@@ -1,5 +1,6 @@
 import path from "node:path";
 import { z } from "zod";
+import { glob } from "glob";
 import {
   ToolDefinition,
   AgentContext,
@@ -15,6 +16,12 @@ const listFilesSchema = z.object({
     .boolean()
     .optional()
     .describe("Whether to list files recursively (default: false)"),
+  include_hidden: z
+    .boolean()
+    .optional()
+    .describe(
+      "Whether to include .dyad files which are git-ignored (default: false)",
+    ),
 });
 
 type ListFilesArgs = z.infer<typeof listFilesSchema>;
@@ -25,7 +32,11 @@ function getXmlAttributes(args: ListFilesArgs) {
     : "";
   const recursiveAttr =
     args.recursive !== undefined ? ` recursive="${args.recursive}"` : "";
-  return `${dirAttr}${recursiveAttr}`;
+  const includeHiddenAttr =
+    args.include_hidden !== undefined
+      ? ` include_hidden="${args.include_hidden}"`
+      : "";
+  return `${dirAttr}${recursiveAttr}${includeHiddenAttr}`;
 }
 
 export const listFilesTool: ToolDefinition<ListFilesArgs> = {
@@ -37,9 +48,10 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
 
   getConsentPreview: (args) => {
     const recursiveText = args.recursive ? " (recursive)" : "";
+    const hiddenText = args.include_hidden ? " (include hidden)" : "";
     return args.directory
-      ? `List ${args.directory}${recursiveText}`
-      : `List all files${recursiveText}`;
+      ? `List ${args.directory}${recursiveText}${hiddenText}`
+      : `List all files${recursiveText}${hiddenText}`;
   },
 
   buildXml: (args, isComplete) => {
@@ -83,16 +95,40 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
       },
     });
 
+    // Build the list of file paths
+    let allFilePaths = files.map((file) => file.path);
+
+    // If include_hidden is true, also include .dyad files
+    if (args.include_hidden) {
+      const normalizedAppPath = ctx.appPath.replace(/\\/g, "/");
+      const dyadGlobPattern = sanitizedDirectory
+        ? `${normalizedAppPath}/${sanitizedDirectory}/.dyad${globSuffix}`
+        : `${normalizedAppPath}/.dyad${globSuffix}`;
+
+      const dyadFiles = await glob(dyadGlobPattern, {
+        nodir: true,
+        absolute: true,
+        ignore: "**/node_modules/**",
+      });
+
+      // Convert to relative paths and add to the list
+      const dyadRelativePaths = dyadFiles.map((file) =>
+        path.relative(ctx.appPath, file).split(path.sep).join("/"),
+      );
+
+      allFilePaths = [...allFilePaths, ...dyadRelativePaths].sort();
+    }
+
     // Build full file list for LLM
     const allFilesList =
-      files.map((file) => " - " + file.path).join("\n") || "";
+      allFilePaths.map((filePath) => " - " + filePath).join("\n") || "";
 
     // Build abbreviated list for UI display
     const MAX_FILES_TO_SHOW = 20;
-    const totalCount = files.length;
-    const displayedFiles = files.slice(0, MAX_FILES_TO_SHOW);
+    const totalCount = allFilePaths.length;
+    const displayedFiles = allFilePaths.slice(0, MAX_FILES_TO_SHOW);
     const abbreviatedList =
-      displayedFiles.map((file) => " - " + file.path).join("\n") || "";
+      displayedFiles.map((filePath) => " - " + filePath).join("\n") || "";
     const countInfo =
       totalCount > MAX_FILES_TO_SHOW
         ? `\n... and ${totalCount - MAX_FILES_TO_SHOW} more files (${totalCount} total)`

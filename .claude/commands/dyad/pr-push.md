@@ -87,6 +87,8 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    You MUST push the branch to GitHub. Do NOT skip this step or ask for confirmation.
 
+   **CRITICAL:** You MUST NEVER run `git pull --rebase` (or any `git pull`) from the fork repo. If you need to pull/rebase, ONLY pull from the upstream repo (`dyad-sh/dyad`). Pulling from a fork can overwrite local changes or introduce unexpected commits from the fork's history.
+
    First, determine the correct remote to push to:
 
    a. Check if the branch already tracks a remote:

@@ -1,15 +1,27 @@
 - paragraph: tc=write-index
 - paragraph: OK, I'm going to do some writing now...
-- button "Index.tsx src/pages/Index.tsx Edit" [aria-expanded="false"]
-- text: "Summary: write-description"
+- 'button "Index.tsx src/pages/Index.tsx Edit Summary: write-description"':
+  - img
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
+  - img
+  - text: ""
 - paragraph: And it's done!
 - button "Copy":
   - img
 - img
+- text: Approved
+- img
 - text: test-model
 - img
 - text: less than a minute ago
+- img
+- text: wrote 1 file(s)
 - button "Undo":
   - img
+  - text: ""
 - button "Retry":
   - img
+  - text: ""

@@ -1,21 +1,53 @@
 - paragraph: tc=create-ts-errors-complex
 - paragraph: Tests delete-rename-write order
-- button "main.tsx Delete src/main.tsx" [aria-expanded="false"]
-- button "App.tsx main.tsx Rename From: src/App.tsx To: src/main.tsx" [aria-expanded="false"]
-- button "main.tsx src/main.tsx Edit" [aria-expanded="false"]
-- text: "Summary: final main.tsx file."
+- img
+- text: main.tsx Delete src/main.tsx
+- img
+- text: "App.tsx → main.tsx Rename From: src/App.tsx To: src/main.tsx"
+- 'button "main.tsx src/main.tsx Edit Summary: final main.tsx file."':
+  - img
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
+  - img
+  - text: ""
 - paragraph: EOM
-- img
-- text: Auto-fix1 problems
-- img
-- button "bad-file.ts src/bad-file.ts Edit" [aria-expanded="false"]
-- text: "Summary: Fix remaining error."
+- button "Auto-fix 1 problems":
+  - img
+  - text: ""
+  - img
+- 'button "bad-file.ts src/bad-file.ts Edit Summary: Fix remaining error."':
+  - img
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
+  - img
+  - text: ""
 - paragraph: "[[dyad-dump-path=*]]"
-- img
-- text: Auto-fix1 problems
-- img
-- button "bad-file.ts src/bad-file.ts Edit" [aria-expanded="false"]
-- text: "Summary: Fix remaining error."
+- button "Auto-fix 1 problems":
+  - img
+  - text: ""
+  - img
+- 'button "bad-file.ts src/bad-file.ts Edit Summary: Fix remaining error."':
+  - img
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
+  - img
+  - text: ""
 - paragraph: "[[dyad-dump-path=*]]"
+- button "Copy":
+  - img
+- img
+- text: test-model
+- img
+- text: less than a minute ago
+- button "Undo":
+  - img
+  - text: ""
 - button "Retry":
   - img
+  - text: ""

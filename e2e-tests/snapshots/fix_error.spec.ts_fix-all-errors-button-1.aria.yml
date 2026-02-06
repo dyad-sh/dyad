@@ -1,38 +1,68 @@
 - paragraph: tc=create-multiple-errors
 - paragraph: I will intentionally add multiple errors to test the Fix All Errors button
-- button "Index.tsx src/pages/Index.tsx Edit" [aria-expanded="false"]
-- text: "Summary: intentionally add first error"
-- img
-- text: Error First error in Index...
-- img
-- button "Copy":
+- 'button "Index.tsx src/pages/Index.tsx Edit Summary: intentionally add first error"':
   - img
-- button "Fix with AI":
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
   - img
-- button "ErrorComponent.tsx src/components/ErrorComponent.tsx Edit" [aria-expanded="false"]
-- text: "Summary: intentionally add second error"
-- img
-- text: Error Second error in ErrorComponent...
-- img
-- button "Copy":
+  - text: ""
+- button "Error First error in Index Copy Fix with AI":
   - img
-- button "Fix with AI":
+  - text: ""
   - img
-- button "helper.ts src/utils/helper.ts Edit" [aria-expanded="false"]
-- text: "Summary: intentionally add third error"
-- img
-- text: Error Third error in helper...
-- img
-- button "Copy":
+  - button "Copy":
+    - img
+    - text: ""
+  - button "Fix with AI":
+    - img
+    - text: ""
+- 'button "ErrorComponent.tsx src/components/ErrorComponent.tsx Edit Summary: intentionally add second error"':
   - img
-- button "Fix with AI":
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
   - img
+  - text: ""
+- button "Error Second error in ErrorComponent Copy Fix with AI":
+  - img
+  - text: ""
+  - img
+  - button "Copy":
+    - img
+    - text: ""
+  - button "Fix with AI":
+    - img
+    - text: ""
+- 'button "helper.ts src/utils/helper.ts Edit Summary: intentionally add third error"':
+  - img
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
+  - img
+  - text: ""
+- button "Error Third error in helper Copy Fix with AI":
+  - img
+  - text: ""
+  - img
+  - button "Copy":
+    - img
+    - text: ""
+  - button "Fix with AI":
+    - img
+    - text: ""
 - button "Fix All Errors (3)":
   - img
-- button:
+  - text: ""
+- button "Copy":
   - img
 - img
 - text: Approved
+- img
+- text: test-model
 - img
 - text: less than a minute ago
 - img
@@ -42,17 +72,27 @@
   - listitem: First error in Index
   - listitem: Second error in ErrorComponent
   - listitem: Third error in helper
-- button "file1.txt file1.txt Edit" [aria-expanded="false"]
+- button "file1.txt file1.txt Edit":
+  - img
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
+  - img
 - paragraph: More EOM
-- button:
+- button "Copy":
   - img
 - img
 - text: Approved
+- img
+- text: test-model
 - img
 - text: less than a minute ago
 - img
 - text: wrote 1 file(s)
 - button "Undo":
   - img
+  - text: ""
 - button "Retry":
   - img
+  - text: ""

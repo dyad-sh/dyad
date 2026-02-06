@@ -1,6 +1,6 @@
 - paragraph: tc=turbo-edits-v2
 - paragraph: Example with turbo edit v2
-- button "Search & Replace Index.tsx src/pages/Index.tsx" [aria-expanded="false"]
+- button "Search & Replace Index.tsx src/pages/Index.tsx"
 - paragraph: End of turbo edit
 - button "Copy":
   - img

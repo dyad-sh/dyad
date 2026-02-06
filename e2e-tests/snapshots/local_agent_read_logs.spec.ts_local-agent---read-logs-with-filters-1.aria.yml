@@ -1,5 +1,11 @@
 - paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
-- button "file1.txt file1.txt Edit" [aria-expanded="false"]
+- button "file1.txt file1.txt Edit":
+  - img
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
+  - img
 - paragraph: More EOM
 - button "Copy":
   - img
@@ -11,13 +17,23 @@
 - text: less than a minute ago
 - button "Copy Request ID":
   - img
+  - text: ""
 - paragraph: tc=local-agent/read-logs
 - paragraph: Let me check the recent console logs to see what's happening in the application.
-- button /LOGS Reading \d+ logs/ [aria-expanded="false"]
+- button "LOGS Reading 1 logs":
+  - img
+  - text: ""
+  - img
 - paragraph: Now let me filter for only error logs to identify any issues.
-- button "LOGS Reading 0 logs (level: error)" [aria-expanded="false"]
+- 'button "LOGS Reading 0 logs (level: error)"':
+  - img
+  - text: ""
+  - img
 - paragraph: Let me also check client-side logs specifically.
-- button "LOGS Reading 0 logs (type: client)" [aria-expanded="false"]
+- 'button "LOGS Reading 0 logs (type: client)"':
+  - img
+  - text: ""
+  - img
 - paragraph: I've reviewed the console logs. The application appears to be running normally with no critical errors detected.
 - button "Copy":
   - img
@@ -27,7 +43,10 @@
 - text: less than a minute ago
 - button "Copy Request ID":
   - img
+  - text: ""
 - button "Undo":
   - img
+  - text: ""
 - button "Retry":
   - img
+  - text: ""

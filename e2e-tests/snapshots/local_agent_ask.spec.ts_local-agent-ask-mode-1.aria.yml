@@ -1,5 +1,11 @@
 - paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
-- button "file1.txt file1.txt Edit" [aria-expanded="false"]
+- button "file1.txt file1.txt Edit":
+  - img
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
+  - img
 - paragraph: More EOM
 - button "Copy":
   - img
@@ -11,9 +17,11 @@
 - text: less than a minute ago
 - button "Copy Request ID":
   - img
+  - text: ""
 - paragraph: tc=local-agent/ask-read-file
 - paragraph: Let me read the file to explain its contents.
-- button "App.tsx Read src/App.tsx" [aria-expanded="false"]
+- img
+- text: Read src/App.tsx
 - paragraph: This is a simple React component that renders a div with the text 'Minimal imported app'. The component is exported as the default export.
 - button "Copy":
   - img
@@ -23,7 +31,10 @@
 - text: less than a minute ago
 - button "Copy Request ID":
   - img
+  - text: ""
 - button "Undo":
   - img
+  - text: ""
 - button "Retry":
   - img
+  - text: ""

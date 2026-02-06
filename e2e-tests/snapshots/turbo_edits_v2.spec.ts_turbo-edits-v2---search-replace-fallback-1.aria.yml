@@ -1,14 +1,35 @@
 - paragraph: tc=turbo-edits-v2-trigger-fallback
 - paragraph: Example with turbo edit v2
-- button "Search & Replace Index.tsx src/pages/Index.tsx" [aria-expanded="false"]
+- button "Search & Replace Index.tsx src/pages/Index.tsx":
+  - img
+  - text: ""
+  - img
+  - text: ""
 - paragraph: End of turbo edit
-- text: Warning Could not apply Turbo Edits properly for some of the files; re-generating code......
-- button "Index.tsx Read src/pages/Index.tsx" [aria-expanded="false"]
-- button "Search & Replace Index.tsx src/pages/Index.tsx" [aria-expanded="false"]
+- button "Warning Could not apply Turbo Edits properly for some of the files; re-generating code...":
+  - img
+  - text: ""
+  - img
+- img
+- text: Read src/pages/Index.tsx
+- button "Search & Replace Index.tsx src/pages/Index.tsx":
+  - img
+  - text: ""
+  - img
+  - text: ""
 - paragraph: "[[dyad-dump-path=*]]"
-- text: Warning Could not apply Turbo Edits properly for some of the files; re-generating code......
-- button "Index.tsx src/pages/Index.tsx Edit" [aria-expanded="false"]
-- text: "Summary: Rewrite file."
+- button "Warning Could not apply Turbo Edits properly for some of the files; re-generating code...":
+  - img
+  - text: ""
+  - img
+- 'button "Index.tsx src/pages/Index.tsx Edit Summary: Rewrite file."':
+  - img
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
+  - img
+  - text: ""
 - paragraph: "[[dyad-dump-path=*]]"
 - button "Copy":
   - img
@@ -18,7 +39,10 @@
 - text: less than a minute ago
 - button "Copy Request ID":
   - img
+  - text: ""
 - button "Undo":
   - img
+  - text: ""
 - button "Retry":
   - img
+  - text: ""

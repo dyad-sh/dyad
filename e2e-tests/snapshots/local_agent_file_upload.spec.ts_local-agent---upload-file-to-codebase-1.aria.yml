@@ -1,5 +1,11 @@
 - paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
-- button "file1.txt file1.txt Edit" [aria-expanded="false"]
+- button "file1.txt file1.txt Edit":
+  - img
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
+  - img
 - paragraph: More EOM
 - button "Copy":
   - img
@@ -11,12 +17,19 @@
 - text: less than a minute ago
 - button "Copy Request ID":
   - img
+  - text: ""
 - paragraph: tc=local-agent/upload-to-codebase
 - paragraph: "Attachments:"
 - paragraph: "File to upload to codebase: logo.png (file id: DYAD_ATTACHMENT_0)"
 - paragraph: I'll upload your file to the codebase.
-- button "uploaded-file.png assets/uploaded-file.png Edit" [aria-expanded="false"]
-- text: "Summary: Upload file to codebase"
+- 'button "uploaded-file.png assets/uploaded-file.png Edit Summary: Upload file to codebase"':
+  - img
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
+  - img
+  - text: ""
 - paragraph: I've successfully uploaded your file to assets/uploaded-file.png in the codebase.
 - button "Copy":
   - img
@@ -26,7 +39,10 @@
 - text: less than a minute ago
 - button "Copy Request ID":
   - img
+  - text: ""
 - button "Undo":
   - img
+  - text: ""
 - button "Retry":
   - img
+  - text: ""

@@ -1,5 +1,5 @@
 - paragraph: Create a utility function in src/utils/helper.ts
-- button "file1.txt file1.txt Cancel" [aria-expanded="false"]
+- button "file1.txt file1.txt Cancel"
 - text: typescript
 - button "Copy":
   - img

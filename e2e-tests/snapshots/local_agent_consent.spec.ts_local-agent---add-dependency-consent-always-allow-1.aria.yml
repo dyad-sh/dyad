@@ -1,5 +1,11 @@
 - paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
-- button "file1.txt file1.txt Edit" [aria-expanded="false"]
+- button "file1.txt file1.txt Edit":
+  - img
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
+  - img
 - paragraph: More EOM
 - button "Copy":
   - img
@@ -11,9 +17,11 @@
 - text: less than a minute ago
 - button "Copy Request ID":
   - img
+  - text: ""
 - paragraph: tc=local-agent/add-dependency
 - paragraph: I'll add a dependency to your project.
-- button "Add Packages @dyad-sh/supabase-management-js" [aria-expanded="false"]
+- img
+- text: Add Packages Do you want to install these packages? @dyad-sh/supabase-management-js Make sure these packages are what you want.
 - paragraph: Dependency added done.
 - button "Copy":
   - img
@@ -23,7 +31,10 @@
 - text: less than a minute ago
 - button "Copy Request ID":
   - img
+  - text: ""
 - button "Undo":
   - img
+  - text: ""
 - button "Retry":
   - img
+  - text: ""

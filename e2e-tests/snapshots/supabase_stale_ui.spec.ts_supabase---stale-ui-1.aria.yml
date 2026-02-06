@@ -1,6 +1,17 @@
 - paragraph: tc=add-supabase
 - paragraph: Adding supabase...
-- text: Integrate with supabase?
+- img
+- text: Integration Integrate with supabase?
 - button "Set up supabase"
+- button "Copy":
+  - img
+- img
+- text: test-model
+- img
+- text: less than a minute ago
+- button "Undo":
+  - img
+  - text: ""
 - button "Retry":
   - img
+  - text: ""

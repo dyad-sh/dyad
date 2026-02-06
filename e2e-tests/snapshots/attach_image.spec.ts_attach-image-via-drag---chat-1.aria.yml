@@ -1,5 +1,5 @@
 - paragraph: basic
-- button "file1.txt file1.txt Edit" [aria-expanded="false"]
+- button "file1.txt file1.txt Edit"
 - paragraph: More EOM
 - img
 - text: Approved

@@ -1,12 +1,8 @@
-import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useAtom } from "jotai";
-import { appsListAtom } from "@/atoms/appAtoms";
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 
 export function useLoadApps() {
-  const [, setApps] = useAtom(appsListAtom);
   const queryClient = useQueryClient();
 
   const { data, isLoading, error } = useQuery({
@@ -16,13 +12,6 @@ export function useLoadApps() {
       return appListResponse.apps;
     },
   });
-
-  // Sync to Jotai atom for backward compatibility
-  useEffect(() => {
-    if (data !== undefined) {
-      setApps(data);
-    }
-  }, [data, setApps]);
 
   const refreshApps = () => {
     return queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });

@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
+import type { ListedApp } from "@/ipc/types/app";
 import { showError, showSuccess } from "@/lib/toast";
 import { queryKeys } from "@/lib/queryKeys";
 
@@ -11,8 +12,12 @@ export function useAddAppToFavorite() {
       const result = await ipc.app.addToFavorite({ appId });
       return result.isFavorite;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
+    onSuccess: (newIsFavorite, appId) => {
+      queryClient.setQueryData<ListedApp[]>(queryKeys.apps.all, (oldApps) =>
+        oldApps?.map((app) =>
+          app.id === appId ? { ...app, isFavorite: newIsFavorite } : app,
+        ),
+      );
       showSuccess("App favorite status updated");
     },
     onError: (error) => {

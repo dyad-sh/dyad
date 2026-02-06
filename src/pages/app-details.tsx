@@ -1,7 +1,7 @@
 import { useNavigate, useRouter, useSearch } from "@tanstack/react-router";
 import { normalizePath } from "../../shared/normalizePath";
-import { useAtom, useSetAtom } from "jotai";
-import { appsListAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
+import { useSetAtom } from "jotai";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { ipc } from "@/ipc/types";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useState } from "react";
@@ -49,8 +49,7 @@ export default function AppDetailsPage() {
   const navigate = useNavigate();
   const router = useRouter();
   const search = useSearch({ from: "/app-details" as const });
-  const [appsList] = useAtom(appsListAtom);
-  const { refreshApps } = useLoadApps();
+  const { apps: appsList, refreshApps } = useLoadApps();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);

@@ -102,13 +102,13 @@ export const CodeHighlight = memo(
       [&_pre]:rounded-lg [&_pre]:px-6 [&_pre]:py-7"
       >
         {language ? (
-          <div className="absolute top-2 left-2 right-2 text-xs flex justify-between items-center gap-2">
+          <div className="absolute top-2 left-0 right-0 px-6 text-xs flex justify-between items-center gap-2">
             <span className="tracking-tighter text-muted-foreground/85 truncate min-w-0">
               {language}
             </span>
             {code && (
               <button
-                className="mr-2 flex items-center text-xs cursor-pointer flex-shrink-0"
+                className="flex items-center text-xs cursor-pointer flex-shrink-0"
                 onClick={handleCopy}
                 type="button"
               >

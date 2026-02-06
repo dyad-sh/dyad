@@ -3,8 +3,11 @@ import log from "electron-log";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { LocalModelListResponse, LocalModel } from "../ipc_types";
 
+const execFileAsync = promisify(execFile);
 const logger = log.scope("ollama_handler");
 
 export function parseOllamaHost(host?: string): string {
@@ -156,10 +159,105 @@ async function fetchOllamaModelsFromApi(): Promise<LocalModel[]> {
 }
 
 /**
+ * Find the `ollama` CLI binary path.
+ */
+function findOllamaCli(): string {
+  if (process.platform === "win32") {
+    const localAppData = process.env.LOCALAPPDATA || "";
+    const candidate = path.join(localAppData, "Programs", "Ollama", "ollama.exe");
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  // Fallback: assume `ollama` is in PATH
+  return "ollama";
+}
+
+/**
+ * Register a model with the Ollama server using the CLI.
+ *
+ * Ollama ≥0.15 uses an internal SQLite DB that can get out of sync
+ * with manifest files on disk. We use `ollama show --modelfile` to
+ * extract the model definition, write it to a temp file, then
+ * `ollama create <name> -f <tempfile>` to re-register it.
+ */
+async function ensureModelRegistered(modelName: string): Promise<boolean> {
+  const ollamaCli = findOllamaCli();
+  try {
+    // Step 1: Get the model's Modelfile via CLI
+    const { stdout: modelfile } = await execFileAsync(ollamaCli, [
+      "show",
+      modelName,
+      "--modelfile",
+    ], { timeout: 30_000 });
+
+    if (!modelfile || !modelfile.includes("FROM")) {
+      logger.warn(`Could not extract modelfile for ${modelName}`);
+      return false;
+    }
+
+    // Step 2: Write modelfile to a temp file
+    const tmpDir = os.tmpdir();
+    const tmpFile = path.join(tmpDir, `ollama-register-${modelName.replace(/[:/]/g, "_")}.modelfile`);
+    await fs.promises.writeFile(tmpFile, modelfile, "utf-8");
+
+    // Step 3: Re-create the model via CLI (registers it in the DB)
+    await execFileAsync(ollamaCli, [
+      "create",
+      modelName,
+      "-f",
+      tmpFile,
+    ], { timeout: 300_000 }); // 5min timeout for large models
+
+    // Step 4: Clean up temp file
+    fs.promises.unlink(tmpFile).catch(() => {});
+
+    logger.info(`Registered disk-only model with Ollama server via CLI: ${modelName}`);
+    return true;
+  } catch (error) {
+    logger.warn(`Failed to register model ${modelName} via CLI:`, error);
+    return false;
+  }
+}
+
+/**
+ * Ensure a model is available in the Ollama server for inference.
+ * Checks the API first; if the model is not found, registers it
+ * using the Ollama CLI (which is more reliable than the API for this).
+ *
+ * Called from get_model_client.ts before creating the AI SDK provider,
+ * so that "model not found" errors from Ollama are avoided.
+ */
+export async function ensureOllamaModelReady(modelName: string): Promise<void> {
+  const apiUrl = getOllamaApiUrl();
+  try {
+    // Quick check: is the model already known to the server?
+    const showRes = await fetch(`${apiUrl}/api/show`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: modelName }),
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (showRes.ok) {
+      return; // Model is known to the server, nothing to do
+    }
+  } catch {
+    // Server might not be running; we'll still try to register
+  }
+
+  // Model not in the server — try to register it from disk via CLI
+  logger.info(
+    `Model "${modelName}" not found in Ollama server, registering from disk...`,
+  );
+  await ensureModelRegistered(modelName);
+}
+
+/**
  * Fetch Ollama models by merging results from both the HTTP API and
  * a direct disk scan of the manifests directory. The disk scan catches
- * models that the API may fail to report (a known Ollama bug where
- * /api/tags gets out of sync with the actual installed models).
+ * models that the API may fail to report (a known Ollama ≥0.15 bug
+ * where /api/tags gets out of sync with the actual installed models).
+ *
+ * Any disk-only models are automatically registered with the Ollama
+ * server via /api/create so they become usable for inference.
  */
 export async function fetchOllamaModels(): Promise<LocalModelListResponse> {
   logger.info("Fetching Ollama models (API + disk scan)...");
@@ -170,21 +268,28 @@ export async function fetchOllamaModels(): Promise<LocalModelListResponse> {
   ]);
 
   // Merge: start with API results, then add any disk-only models
-  const seen = new Set<string>();
-  const models: LocalModel[] = [];
+  const apiModelNames = new Set(apiModels.map((m) => m.modelName));
+  const models: LocalModel[] = [...apiModels];
+  const diskOnlyNames = diskModelNames.filter((n) => !apiModelNames.has(n));
 
-  for (const model of apiModels) {
-    seen.add(model.modelName);
-    models.push(model);
-  }
+  if (diskOnlyNames.length > 0) {
+    logger.info(
+      `Found ${diskOnlyNames.length} disk-only models not in API, registering with server...`,
+    );
 
-  for (const name of diskModelNames) {
-    if (!seen.has(name)) {
+    // Register disk-only models in the background so they become usable
+    // for inference. We don't await all of them to avoid blocking the
+    // model list from returning, but we do add them to the returned list
+    // immediately so the UI shows them.
+    for (const name of diskOnlyNames) {
       models.push({
         modelName: name,
         displayName: formatDisplayName(name),
         provider: "ollama",
       });
+      // Fire-and-forget registration — next time the list is fetched
+      // they'll be in the API directly
+      ensureModelRegistered(name).catch(() => {});
     }
   }
 

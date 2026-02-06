@@ -23,7 +23,10 @@ import { createJoyEngine } from "./llm_engine_provider";
 
 import { LM_STUDIO_BASE_URL } from "./lm_studio_utils";
 import { createOllamaProvider } from "./ollama_provider";
-import { getOllamaApiUrl } from "../handlers/local_model_ollama_handler";
+import {
+  getOllamaApiUrl,
+  ensureOllamaModelReady,
+} from "../handlers/local_model_ollama_handler";
 import { createFallback } from "./fallback_ai_model";
 
 const joyEngineUrl = process.env.JOY_ENGINE_URL;
@@ -136,14 +139,14 @@ export async function getModelClient(
       return {
         modelClient: {
           model: createFallback({
-            models: FREE_OPENROUTER_MODEL_NAMES.map(
-              (name: string) =>
-                getRegularModelClient(
+            models: await Promise.all(FREE_OPENROUTER_MODEL_NAMES.map(
+              async (name: string) =>
+                (await getRegularModelClient(
                   { provider: "openrouter", name },
                   settings,
                   openRouterProvider,
-                ).modelClient.model,
-            ),
+                )).modelClient.model,
+            )),
           }),
           builtinProviderId: "openrouter",
         },
@@ -179,17 +182,17 @@ export async function getModelClient(
       "No API keys available for any model supported by the 'auto' provider.",
     );
   }
-  return getRegularModelClient(model, settings, providerConfig);
+  return await getRegularModelClient(model, settings, providerConfig);
 }
 
-function getRegularModelClient(
+async function getRegularModelClient(
   model: LargeLanguageModel,
   settings: UserSettings,
   providerConfig: LanguageModelProvider,
-): {
+): Promise<{
   modelClient: ModelClient;
   backupModelClients: ModelClient[];
-} {
+}> {
   // Get API key for the specific provider
   const apiKey =
     settings.providerSettings?.[model.provider]?.apiKey?.value ||
@@ -351,6 +354,10 @@ function getRegularModelClient(
       };
     }
     case "ollama": {
+      // Ensure the model is registered with the Ollama server before
+      // creating the provider. Ollama ≥0.15 can have models on disk
+      // that aren't in its internal DB, causing "model not found" errors.
+      await ensureOllamaModelReady(model.name);
       const provider = createOllamaProvider({ baseURL: getOllamaApiUrl() });
       return {
         modelClient: {

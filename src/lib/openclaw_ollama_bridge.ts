@@ -13,6 +13,8 @@ import log from "electron-log";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { v4 as uuidv4 } from "uuid";
 
 const logger = log.scope("openclaw_ollama");
@@ -291,6 +293,11 @@ export class OpenClawOllamaBridge extends EventEmitter {
       logger.info(
         `Ollama: ${apiModels.length} from API, ${diskNames.length} from disk, ${this.availableModels.length} merged`,
       );
+
+      // Auto-register disk-only models with the Ollama server (fire-and-forget)
+      for (const model of diskOnly) {
+        this.registerModelWithServer(model.name).catch(() => {});
+      }
       
       // Update capabilities for each model
       for (const model of this.availableModels) {
@@ -362,6 +369,44 @@ export class OpenClawOllamaBridge extends EventEmitter {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Register a model with the Ollama server using the CLI.
+   * Ollama ≥0.15 can have models on disk that aren't in its internal DB.
+   */
+  private async registerModelWithServer(modelName: string): Promise<void> {
+    const execFileAsync = promisify(execFile);
+    const ollamaCli = this.findOllamaCli();
+    try {
+      const { stdout: modelfile } = await execFileAsync(ollamaCli, [
+        "show", modelName, "--modelfile",
+      ], { timeout: 30_000 });
+
+      if (!modelfile || !modelfile.includes("FROM")) return;
+
+      const tmpFile = path.join(os.tmpdir(), `ollama-reg-${modelName.replace(/[:/]/g, "_")}.modelfile`);
+      await fs.promises.writeFile(tmpFile, modelfile, "utf-8");
+
+      await execFileAsync(ollamaCli, [
+        "create", modelName, "-f", tmpFile,
+      ], { timeout: 300_000 });
+
+      fs.promises.unlink(tmpFile).catch(() => {});
+      logger.info(`Registered disk-only model via CLI: ${modelName}`);
+    } catch (error) {
+      logger.warn(`Failed to register model ${modelName} via CLI:`, error);
+    }
+  }
+
+  private findOllamaCli(): string {
+    if (process.platform === "win32") {
+      const candidate = path.join(
+        process.env.LOCALAPPDATA || "", "Programs", "Ollama", "ollama.exe",
+      );
+      if (fs.existsSync(candidate)) return candidate;
+    }
+    return "ollama";
   }
   
   private async detectModelCapabilities(modelName: string): Promise<OllamaCapabilities> {

@@ -41,12 +41,8 @@ export function FileAttachmentDropdown({
   const menuItems = (
     <>
       <DropdownMenuItem
-        onClick={(e: React.MouseEvent) => {
-          // Prevent default so menu doesn't close in order to keep the hidden inputs in the DOM
-          // Manually close menu after file selection
-          e.preventDefault();
-          handleChatContextClick();
-        }}
+        closeOnClick={false}
+        onClick={handleChatContextClick}
         className="py-3 px-4"
         title="Example use case: screenshot of the app to point out a UI issue"
       >
@@ -55,12 +51,8 @@ export function FileAttachmentDropdown({
       </DropdownMenuItem>
 
       <DropdownMenuItem
-        onClick={(e: React.MouseEvent) => {
-          // Prevent default so menu doesn't close in order to keep the hidden inputs in the DOM
-          // Manually close menu after file selection
-          e.preventDefault();
-          handleUploadToCodebaseClick();
-        }}
+        closeOnClick={false}
+        onClick={handleUploadToCodebaseClick}
         className="py-3 px-4"
         title="Example use case: add an image to use for your app"
       >

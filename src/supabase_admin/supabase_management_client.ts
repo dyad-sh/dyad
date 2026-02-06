@@ -706,11 +706,10 @@ export async function listSupabaseBranches({
 
   if (response.status === 403) {
     // 403 Forbidden means the user doesn't have access to branches (e.g., free tier)
-    // Return empty array instead of throwing to allow graceful degradation
     logger.info(
       `Branches not available for project ${supabaseProjectId} (403 Forbidden - likely free tier)`,
     );
-    return [];
+    throw new Error("Branches are only supported for Supabase paid customers");
   }
 
   if (response.status !== 200) {

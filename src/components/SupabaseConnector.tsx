@@ -37,7 +37,9 @@ import connectSupabaseDark from "../../assets/supabase/connect-supabase-dark.svg
 // @ts-ignore
 import connectSupabaseLight from "../../assets/supabase/connect-supabase-light.svg";
 
-import { ExternalLink, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { ExternalLink, Info, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { getErrorMessage } from "@/lib/errors";
 import {
   Tooltip,
   TooltipTrigger,
@@ -66,6 +68,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     isFetchingProjects,
     projectsError,
     isLoadingBranches,
+    branchesError,
     isSettingAppProject,
     refetchOrganizations,
     refetchProjects,
@@ -205,49 +208,58 @@ export function SupabaseConnector({ appId }: { appId: number }) {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="supabase-branch-select">Database Branch</Label>
-              <Select
-                value={app.supabaseProjectId || ""}
-                onValueChange={async (supabaseBranchProjectId) => {
-                  try {
-                    const branch = branches.find(
-                      (b) => b.projectRef === supabaseBranchProjectId,
-                    );
-                    if (!branch) {
-                      throw new Error("Branch not found");
+              {branchesError ? (
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertDescription>
+                    {getErrorMessage(branchesError)}
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <Select
+                  value={app.supabaseProjectId || ""}
+                  onValueChange={async (supabaseBranchProjectId) => {
+                    try {
+                      const branch = branches.find(
+                        (b) => b.projectRef === supabaseBranchProjectId,
+                      );
+                      if (!branch) {
+                        throw new Error("Branch not found");
+                      }
+                      // Keep the same organizationSlug from the app
+                      await setAppProject({
+                        projectId: branch.projectRef,
+                        parentProjectId: branch.parentProjectRef,
+                        appId,
+                        organizationSlug: app.supabaseOrganizationSlug,
+                      });
+                      toast.success("Branch selected");
+                      await refreshApp();
+                    } catch (error) {
+                      toast.error("Failed to set branch: " + error);
                     }
-                    // Keep the same organizationSlug from the app
-                    await setAppProject({
-                      projectId: branch.projectRef,
-                      parentProjectId: branch.parentProjectRef,
-                      appId,
-                      organizationSlug: app.supabaseOrganizationSlug,
-                    });
-                    toast.success("Branch selected");
-                    await refreshApp();
-                  } catch (error) {
-                    toast.error("Failed to set branch: " + error);
-                  }
-                }}
-                disabled={isLoadingBranches || isSettingAppProject}
-              >
-                <SelectTrigger
-                  id="supabase-branch-select"
-                  data-testid="supabase-branch-select"
+                  }}
+                  disabled={isLoadingBranches || isSettingAppProject}
                 >
-                  <SelectValue placeholder="Select a branch" />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches.map((branch) => (
-                    <SelectItem
-                      key={branch.projectRef}
-                      value={branch.projectRef}
-                    >
-                      {branch.name}
-                      {branch.isDefault && " (Default)"}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                  <SelectTrigger
+                    id="supabase-branch-select"
+                    data-testid="supabase-branch-select"
+                  >
+                    <SelectValue placeholder="Select a branch" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.map((branch) => (
+                      <SelectItem
+                        key={branch.projectRef}
+                        value={branch.projectRef}
+                      >
+                        {branch.name}
+                        {branch.isDefault && " (Default)"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             <Button variant="destructive" onClick={handleUnsetProject}>

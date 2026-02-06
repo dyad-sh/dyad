@@ -182,6 +182,7 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          claude_args: --model claude-opus-4-6
           prompt: |
             /dyad:pr-fix ${{ steps.pr-info.outputs.pr_number }}
 

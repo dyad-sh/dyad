@@ -100,7 +100,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
             <StreamingLoadingAnimation variant="initial" />
           ) : (
             <div
-              className="prose dark:prose-invert prose-headings:mb-2 prose-p:my-1 prose-pre:my-0 max-w-none break-words"
+              className="prose dark:prose-invert prose-headings:mb-2 prose-p:my-1 prose-pre:my-0 max-w-none break-words text-[15px]"
               suppressHydrationWarning
             >
               {message.role === "assistant" ? (

@@ -12,7 +12,6 @@ import {
   DyadCardHeader,
   DyadExpandIcon,
   DyadStateIndicator,
-  DyadFilePath,
   DyadDescription,
   DyadCardContent,
 } from "./DyadCardPrimitives";
@@ -60,11 +59,18 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
       isExpanded={isContentVisible}
     >
       <DyadCardHeader icon={<Pencil size={15} />} accentColor="blue">
-        {fileName && (
-          <span className="font-medium text-sm text-foreground truncate">
-            {fileName}
-          </span>
-        )}
+        <div className="min-w-0 truncate">
+          {fileName && (
+            <span className="font-medium text-sm text-foreground truncate block">
+              {fileName}
+            </span>
+          )}
+          {path && (
+            <span className="text-[11px] text-muted-foreground truncate block">
+              {path}
+            </span>
+          )}
+        </div>
         {inProgress && (
           <DyadStateIndicator state="pending" pendingLabel="Writing..." />
         )}
@@ -102,11 +108,12 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
           <DyadExpandIcon isExpanded={isContentVisible} />
         </div>
       </DyadCardHeader>
-      <DyadFilePath path={path} />
       {description && (
         <DyadDescription>
-          <span className="font-medium">Summary: </span>
-          {description}
+          <span className={!isContentVisible ? "line-clamp-2" : undefined}>
+            <span className="font-medium">Summary: </span>
+            {description}
+          </span>
         </DyadDescription>
       )}
       <DyadCardContent isExpanded={isContentVisible}>

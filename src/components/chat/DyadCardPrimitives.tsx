@@ -79,6 +79,7 @@ interface DyadCardProps {
   state?: CustomTagState;
   accentColor?: DyadAccentColor;
   showAccent?: boolean;
+  variant?: "default" | "ghost";
   onClick?: () => void;
   isExpanded?: boolean;
   className?: string;
@@ -99,6 +100,7 @@ export function DyadCard({
   state,
   accentColor = "blue",
   showAccent,
+  variant = "default",
   onClick,
   isExpanded,
   className = "",
@@ -112,14 +114,16 @@ export function DyadCard({
     ? `border-l-[3px] ${isAborted ? "border-l-red-500" : ACCENT_BORDER[accentColor]}`
     : "border-l-0";
 
+  const variantClasses =
+    variant === "ghost"
+      ? "hover:bg-(--background-lightest) rounded-lg"
+      : `bg-(--background-lightest) hover:bg-(--background-lighter) rounded-xl border border-border/60 ${leftBorder}`;
+
   return (
     <div
       className={`
         group/card
-        bg-(--background-lightest)
-        hover:bg-(--background-lighter)
-        rounded-xl border border-border/60
-        ${leftBorder}
+        ${variantClasses}
         my-1.5 transition-colors duration-150
         ${onClick ? "cursor-pointer" : ""}
         ${className}

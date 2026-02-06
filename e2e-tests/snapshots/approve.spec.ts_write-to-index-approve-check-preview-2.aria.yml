@@ -1,11 +1,7 @@
 - paragraph: tc=write-index
 - paragraph: OK, I'm going to do some writing now...
-- img
-- text: Index.tsx
-- button "Edit":
-  - img
-- img
-- text: "src/pages/Index.tsx Summary: write-description"
+- button "Index.tsx src/pages/Index.tsx Edit" [aria-expanded="false"]
+- text: "Summary: write-description"
 - paragraph: And it's done!
 - button "Copy":
   - img

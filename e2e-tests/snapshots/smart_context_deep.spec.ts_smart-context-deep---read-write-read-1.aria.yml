@@ -1,7 +1,6 @@
 - paragraph: tc=read-index
 - paragraph: "Read the index page:"
-- img
-- text: Index.tsx Read src/pages/Index.tsx
+- button "Index.tsx Read src/pages/Index.tsx" [aria-expanded="false"]
 - paragraph: Done.
 - button "Copy":
   - img
@@ -15,12 +14,8 @@
   - img
 - paragraph: tc=update-index-1
 - paragraph: First read
-- img
-- text: Index.tsx
-- button "Edit":
-  - img
-- img
-- text: "src/pages/Index.tsx Summary: replace file"
+- button "Index.tsx src/pages/Index.tsx Edit" [aria-expanded="false"]
+- text: "Summary: replace file"
 - button "Copy":
   - img
 - img
@@ -35,8 +30,7 @@
   - img
 - paragraph: tc=read-index
 - paragraph: "Read the index page:"
-- img
-- text: Index.tsx Read src/pages/Index.tsx
+- button "Index.tsx Read src/pages/Index.tsx" [aria-expanded="false"]
 - paragraph: Done.
 - button "Copy":
   - img

@@ -1,4 +1,4 @@
-- 'button "List Files: src (recursive)"':
+- 'button "List Files: src recursive" [aria-expanded="true"]':
   - img
   - img
 - text: "- src/App.tsx - src/main.tsx - src/vite-env.d.ts (3 files total)"

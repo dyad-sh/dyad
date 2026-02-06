@@ -1,10 +1,5 @@
 - paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
-- img
-- text: file1.txt
-- button "Edit":
-  - img
-- img
-- text: file1.txt
+- button "file1.txt file1.txt Edit" [aria-expanded="false"]
 - paragraph: More EOM
 - button "Copy":
   - img
@@ -18,7 +13,7 @@
   - img
 - paragraph: tc=local-agent/code-search
 - paragraph: I'll search for files related to React components in the codebase.
-- 'button "Code Search React component rendering Query: React component rendering Results: - .gitignore - index.html - package.json"':
+- 'button "Code Search React component rendering Query: React component rendering Results: - .gitignore - index.html - package.json" [aria-expanded="false"]':
   - img
   - img
 - paragraph: I found the relevant files! The main React component is in src/App.tsx which handles the app rendering.

@@ -1,11 +1,7 @@
 - paragraph: tc=create-error
 - paragraph: I will intentionally add an error
-- img
-- text: Index.tsx
-- button "Edit":
-  - img
-- img
-- text: "src/pages/Index.tsx Summary: intentionally add an error"
+- button "Index.tsx src/pages/Index.tsx Edit" [aria-expanded="false"]
+- text: "Summary: intentionally add an error"
 - button:
   - img
 - img
@@ -23,12 +19,7 @@
   - text: )
 - text: plaintext
 - code: Fixing the error...
-- img
-- text: Index.tsx
-- button "Edit":
-  - img
-- img
-- text: src/pages/Index.tsx
+- button "Index.tsx src/pages/Index.tsx Edit" [aria-expanded="false"]
 - button:
   - img
 - img

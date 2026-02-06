@@ -1,10 +1,5 @@
 - paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
-- img
-- text: file1.txt
-- button "Edit":
-  - img
-- img
-- text: file1.txt
+- button "file1.txt file1.txt Edit" [aria-expanded="false"]
 - paragraph: More EOM
 - button "Copy":
   - img
@@ -18,17 +13,11 @@
   - img
 - paragraph: tc=local-agent/read-logs
 - paragraph: Let me check the recent console logs to see what's happening in the application.
-- img
-- text: /LOGSReading \d+ logs/    
-- img
+- button /LOGS Reading \d+ logs/ [aria-expanded="false"]
 - paragraph: Now let me filter for only error logs to identify any issues.
-- img
-- text: "LOGSReading 0 logs (level: error)"
-- img
+- button "LOGS Reading 0 logs (level: error)" [aria-expanded="false"]
 - paragraph: Let me also check client-side logs specifically.
-- img
-- text: "LOGSReading 0 logs (type: client)"
-- img
+- button "LOGS Reading 0 logs (type: client)" [aria-expanded="false"]
 - paragraph: I've reviewed the console logs. The application appears to be running normally with no critical errors detected.
 - button "Copy":
   - img

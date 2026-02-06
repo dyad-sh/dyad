@@ -15,13 +15,7 @@
 - paragraph:
   - strong: Which framework do you prefer?
   - text: Vue
-- img
-- text: file1.txt
-- button "Edit":
-  - img
-  - text: Edit
-- img
-- text: file1.txt
+- button "file1.txt file1.txt Edit" [aria-expanded="false"]
 - paragraph: More EOM
 - button "Copy":
   - img

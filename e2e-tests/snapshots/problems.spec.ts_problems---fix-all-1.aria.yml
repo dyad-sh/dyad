@@ -1,26 +1,18 @@
 - paragraph: tc=create-ts-errors
 - paragraph: This will get a TypeScript error.
-- img
-- text: bad-file.ts
-- img
-- text: "src/bad-file.ts Summary: This will get a TypeScript error."
+- button "bad-file.ts src/bad-file.ts Edit" [aria-expanded="false"]
+- text: "Summary: This will get a TypeScript error."
 - paragraph: EOM
 - img
 - text: Auto-fix5 problems
 - img
-- img
-- text: file1.txt
-- img
-- text: file1.txt
+- button "file1.txt file1.txt Edit" [aria-expanded="false"]
 - paragraph: More EOM
 - paragraph: "[[dyad-dump-path=*]]"
 - img
 - text: Auto-fix5 problems
 - img
-- img
-- text: file1.txt
-- img
-- text: file1.txt
+- button "file1.txt file1.txt Edit" [aria-expanded="false"]
 - paragraph: More EOM
 - paragraph: "[[dyad-dump-path=*]]"
 - paragraph: "Fix these 3 TypeScript compile-time errors:"
@@ -34,28 +26,19 @@
   - listitem: src/bad-file.tsx:4:1 - Cannot find name 'nonExistentFunction3'. (TS2304)
 - code: nonExistentFunction2(); nonExistentFunction3(); // <-- TypeScript compiler error here
 - paragraph: Please fix all errors in a concise way.
-- img
-- text: file1.txt
-- img
-- text: file1.txt
+- button "file1.txt file1.txt Edit" [aria-expanded="false"]
 - paragraph: More EOM
 - paragraph: "[[dyad-dump-path=*]]"
 - img
 - text: Auto-fix3 problems
 - img
-- img
-- text: file1.txt
-- img
-- text: file1.txt
+- button "file1.txt file1.txt Edit" [aria-expanded="false"]
 - paragraph: More EOM
 - paragraph: "[[dyad-dump-path=*]]"
 - img
 - text: Auto-fix3 problems
 - img
-- img
-- text: file1.txt
-- img
-- text: file1.txt
+- button "file1.txt file1.txt Edit" [aria-expanded="false"]
 - paragraph: More EOM
 - paragraph: "[[dyad-dump-path=*]]"
 - button "Retry":

@@ -1,5 +1,4 @@
-- img
-- text: GREP"createRoot"(2 matches)
+- button "GREP \"createRoot\" (2 matches)" [aria-expanded="true"]
 - img
 - text: log
 - button "Copy":

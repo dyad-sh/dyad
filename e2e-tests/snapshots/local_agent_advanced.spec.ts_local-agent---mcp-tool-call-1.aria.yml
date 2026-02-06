@@ -1,10 +1,5 @@
 - paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
-- img
-- text: file1.txt
-- button "Edit":
-  - img
-- img
-- text: file1.txt
+- button "file1.txt file1.txt Edit" [aria-expanded="false"]
 - paragraph: More EOM
 - button "Copy":
   - img
@@ -18,10 +13,7 @@
   - img
 - paragraph: tc=local-agent/mcp-calculator
 - paragraph: I'll calculate the sum of 5 and 3 using the calculator.
-- img
-- text: Tool Call
-- img
-- text: testing-mcp-server calculator_add
+- button "Tool Call testing-mcp-server calculator_add" [aria-expanded="false"]
 - img
 - text: "Error MCP tool 'testing-mcp-server__calculator_add' failed: keyValidator._parse is not a function..."
 - img

@@ -1,5 +1,4 @@
-- img
-- text: GREP"App" in *.tsx(4 matches)
+- button "GREP \"App\" in *.tsx (4 matches)" [aria-expanded="true"]
 - img
 - text: log
 - button "Copy":

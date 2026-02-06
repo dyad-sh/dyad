@@ -1,11 +1,7 @@
 - paragraph: tc=create-multiple-errors
 - paragraph: I will intentionally add multiple errors to test the Fix All Errors button
-- img
-- text: Index.tsx
-- button "Edit":
-  - img
-- img
-- text: "src/pages/Index.tsx Summary: intentionally add first error"
+- button "Index.tsx src/pages/Index.tsx Edit" [aria-expanded="false"]
+- text: "Summary: intentionally add first error"
 - img
 - text: Error First error in Index...
 - img
@@ -13,12 +9,8 @@
   - img
 - button "Fix with AI":
   - img
-- img
-- text: ErrorComponent.tsx
-- button "Edit":
-  - img
-- img
-- text: "src/components/ErrorComponent.tsx Summary: intentionally add second error"
+- button "ErrorComponent.tsx src/components/ErrorComponent.tsx Edit" [aria-expanded="false"]
+- text: "Summary: intentionally add second error"
 - img
 - text: Error Second error in ErrorComponent...
 - img
@@ -26,12 +18,8 @@
   - img
 - button "Fix with AI":
   - img
-- img
-- text: helper.ts
-- button "Edit":
-  - img
-- img
-- text: "src/utils/helper.ts Summary: intentionally add third error"
+- button "helper.ts src/utils/helper.ts Edit" [aria-expanded="false"]
+- text: "Summary: intentionally add third error"
 - img
 - text: Error Third error in helper...
 - img
@@ -54,12 +42,7 @@
   - listitem: First error in Index
   - listitem: Second error in ErrorComponent
   - listitem: Third error in helper
-- img
-- text: file1.txt
-- button "Edit":
-  - img
-- img
-- text: file1.txt
+- button "file1.txt file1.txt Edit" [aria-expanded="false"]
 - paragraph: More EOM
 - button:
   - img

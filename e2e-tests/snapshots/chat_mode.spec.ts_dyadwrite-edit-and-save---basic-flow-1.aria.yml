@@ -1,10 +1,5 @@
 - paragraph: Create a simple React component in src/components/Hello.tsx
-- img
-- text: file1.txt
-- button "Cancel":
-  - img
-- img
-- text: file1.txt file1.txt
+- button "file1.txt file1.txt Cancel" [aria-expanded="true"]
 - button [disabled]:
   - img
 - img

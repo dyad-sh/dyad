@@ -1,8 +1,5 @@
 - paragraph: basic
-- img
-- text: file1.txt
-- img
-- text: file1.txt
+- button "file1.txt file1.txt Edit" [aria-expanded="false"]
 - paragraph: More EOM
 - img
 - text: Approved
@@ -10,10 +7,8 @@
 - paragraph: "Attachments:"
 - paragraph: "File to upload to codebase: logo.png (file id: DYAD_ATTACHMENT_0)"
 - paragraph: Uploading image to codebase
-- img
-- text: file.png
-- img
-- text: "new/image/file.png Summary: Uploaded image to codebase"
+- button "file.png new/image/file.png Edit" [aria-expanded="false"]
+- text: "Summary: Uploaded image to codebase"
 - paragraph: "[[dyad-dump-path=*]]"
 - img
 - text: Approved

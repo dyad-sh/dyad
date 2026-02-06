@@ -24,12 +24,7 @@
   - strong: Relevant Files
   - text: ":"
   - code: "`src/api/users.ts`"
-- img
-- text: file1.txt
-- button "Edit":
-  - img
-- img
-- text: file1.txt
+- button "file1.txt file1.txt Edit" [aria-expanded="false"]
 - paragraph: More EOM
 - button:
   - img

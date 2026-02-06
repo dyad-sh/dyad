@@ -1,10 +1,5 @@
 - paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
-- img
-- text: file1.txt
-- button "Edit":
-  - img
-- img
-- text: file1.txt
+- button "file1.txt file1.txt Edit" [aria-expanded="false"]
 - paragraph: More EOM
 - button "Copy":
   - img
@@ -18,18 +13,10 @@
   - img
 - paragraph: tc=local-agent/parallel-tools
 - paragraph: I'll create two files for you in parallel.
-- img
-- text: math.ts
-- button "Edit":
-  - img
-- img
-- text: "src/utils/math.ts Summary: Create math utilities"
-- img
-- text: string.ts
-- button "Edit":
-  - img
-- img
-- text: "src/utils/string.ts Summary: Create string utilities"
+- button "math.ts src/utils/math.ts Edit" [aria-expanded="false"]
+- text: "Summary: Create math utilities"
+- button "string.ts src/utils/string.ts Edit" [aria-expanded="false"]
+- text: "Summary: Create string utilities"
 - paragraph: Task completed.
 - button "Copy":
   - img

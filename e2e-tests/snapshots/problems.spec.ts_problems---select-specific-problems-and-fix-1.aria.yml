@@ -6,12 +6,8 @@
   - listitem: src/bad-file.tsx:4:1 - Cannot find name 'nonExistentFunction3'. (TS2304)
 - code: nonExistentFunction2(); nonExistentFunction3(); // <-- TypeScript compiler error here
 - paragraph: Please fix all errors in a concise way.
-- img
-- text: bad-file.ts
-- button "Edit":
-  - img
-- img
-- text: "src/bad-file.ts Summary: Fix 2 errors and introduce a new error."
+- button "bad-file.ts src/bad-file.ts Edit" [aria-expanded="false"]
+- text: "Summary: Fix 2 errors and introduce a new error."
 - paragraph: "[[dyad-dump-path=*]]"
 - button:
   - img

@@ -56,6 +56,19 @@ await po.clearChatInput();
 await po.openChatHistoryMenu();
 ```
 
+## Snapshot testing
+
+**NEVER update snapshot files (e.g. `.txt`, `.yml`) by hand.** Always use `--update-snapshots` to regenerate them.
+
+Snapshots must be **deterministic** and **platform-agnostic**. They must not contain:
+
+- Timestamps
+- Temporary folder paths (e.g. `/tmp/...`, `/var/folders/...`)
+- Randomly generated values (UUIDs, nonces, etc.)
+- OS-specific paths or line endings
+
+If the output under test contains non-deterministic or platform-specific content, add sanitization logic in the test helper (e.g. in `test_helper.ts`) to normalize it before snapshotting.
+
 ## E2E test fixtures with .dyad directories
 
 When adding E2E test fixtures that need a `.dyad` directory for testing:

@@ -44,15 +44,21 @@
 - paragraph: "Fix these 3 TypeScript compile-time errors:"
 - list:
   - listitem: src/bad-file.tsx:2:1 - Cannot find name 'nonExistentFunction1'. (TS2304)
-- text: plaintext
+- button "Copy":
+  - img
+  - text: ""
 - code: const App = () => <div>Minimal imported app</div>; nonExistentFunction1(); // <-- TypeScript compiler error here nonExistentFunction2();
 - list:
   - listitem: src/bad-file.tsx:3:1 - Cannot find name 'nonExistentFunction2'. (TS2304)
-- text: plaintext
+- button "Copy":
+  - img
+  - text: ""
 - code: nonExistentFunction1(); nonExistentFunction2(); // <-- TypeScript compiler error here nonExistentFunction3();
 - list:
   - listitem: src/bad-file.tsx:4:1 - Cannot find name 'nonExistentFunction3'. (TS2304)
-- text: plaintext
+- button "Copy":
+  - img
+  - text: ""
 - code: nonExistentFunction2(); nonExistentFunction3(); // <-- TypeScript compiler error here
 - paragraph: Please fix all errors in a concise way.
 - button "file1.txt file1.txt Edit":

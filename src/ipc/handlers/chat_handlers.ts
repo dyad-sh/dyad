@@ -172,5 +172,40 @@ export function registerChatHandlers() {
     return uniqueChats;
   });
 
+  createTypedHandler(chatContracts.getChatSettings, async (_, chatId) => {
+    const chat = await db.query.chats.findFirst({
+      where: eq(chats.id, chatId),
+      columns: {
+        chatMode: true,
+        selectedModel: true,
+      },
+    });
+
+    if (!chat) {
+      throw new Error("Chat not found");
+    }
+
+    return {
+      chatMode: chat.chatMode ?? null,
+      selectedModel: chat.selectedModel ?? null,
+    };
+  });
+
+  createTypedHandler(chatContracts.updateChatSettings, async (_, params) => {
+    const { chatId, chatMode, selectedModel } = params;
+
+    // Build the update object dynamically
+    const updates: Record<string, unknown> = {};
+
+    if (chatMode !== undefined) {
+      updates.chatMode = chatMode;
+    }
+    if (selectedModel !== undefined) {
+      updates.selectedModel = selectedModel;
+    }
+
+    await db.update(chats).set(updates).where(eq(chats.id, chatId));
+  });
+
   logger.debug("Registered chat IPC handlers");
 }

@@ -243,7 +243,7 @@ export function registerChatStreamHandlers() {
       // Notify renderer that stream is starting
       safeSend(event.sender, "chat:stream:start", { chatId: req.chatId });
 
-      // Get the chat to check for existing messages
+      // Get the chat to check for existing messages and per-chat settings
       const chat = await db.query.chats.findFirst({
         where: eq(chats.id, req.chatId),
         with: {
@@ -257,6 +257,16 @@ export function registerChatStreamHandlers() {
       if (!chat) {
         throw new Error(`Chat not found: ${req.chatId}`);
       }
+
+      // Read global settings and merge with per-chat settings
+      const globalSettings = readSettings();
+      const settings = {
+        ...globalSettings,
+        // Per-chat mode overrides global if set
+        selectedChatMode: chat.chatMode ?? globalSettings.selectedChatMode,
+        // Per-chat model overrides global if set
+        selectedModel: chat.selectedModel ?? globalSettings.selectedModel,
+      };
 
       // Handle redo option: remove the most recent messages if needed
       if (req.redo) {
@@ -457,7 +467,6 @@ ${componentSnippet}
         })
         .returning({ id: messages.id });
       const userMessageId = insertedUserMessage.id;
-      const settings = readSettings();
       // Only Dyad Pro requests have request ids.
       if (settings.enableDyadPro) {
         // Generate requestId early so it can be saved with the message
@@ -1589,7 +1598,7 @@ ${problemReport.problems
           .update(messages)
           .set({ content: fullResponse })
           .where(eq(messages.id, placeholderAssistantMessage.id));
-        const settings = readSettings();
+        // Use per-chat aware settings (already defined earlier in this function)
         if (
           settings.autoApproveChanges &&
           settings.selectedChatMode !== "ask"

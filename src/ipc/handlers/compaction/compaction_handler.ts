@@ -21,10 +21,12 @@ import { COMPACTION_SYSTEM_PROMPT } from "@/prompts/compaction_system_prompt";
 import {
   storePreCompactionMessages,
   formatAsTranscript,
+  TOOL_RESULT_TRUNCATION_LIMIT,
   type CompactionMessage,
 } from "./compaction_storage";
 import { getPostCompactionMessages } from "./compaction_utils";
 import { getProviderOptions, getAiHeaders } from "@/ipc/utils/provider_options";
+import type { ModelClient } from "@/ipc/utils/get_model_client";
 
 const logger = log.scope("compaction_handler");
 
@@ -265,6 +267,154 @@ Note: This file may be large. Read only the sections you need or use grep to sea
       error: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+// ============================================================================
+// Mid-Turn Compaction
+// ============================================================================
+
+/**
+ * Convert a ModelMessage content to a plain text representation for summarization.
+ * Handles the various content types (text, tool calls, tool results, images, etc.)
+ */
+function extractTextContent(msg: ModelMessage): string {
+  if (typeof msg.content === "string") return msg.content;
+  if (!Array.isArray(msg.content)) return String(msg.content);
+
+  return msg.content
+    .map((part) => {
+      if ("type" in part) {
+        switch (part.type) {
+          case "text":
+            return (part as { type: "text"; text: string }).text;
+          case "tool-call": {
+            const tc = part as {
+              type: "tool-call";
+              toolName: string;
+              input: unknown;
+            };
+            const inputStr = JSON.stringify(tc.input);
+            return `[Tool call: ${tc.toolName}(${inputStr.length > 500 ? inputStr.slice(0, 500) + "..." : inputStr})]`;
+          }
+          case "tool-result": {
+            const tr = part as {
+              type: "tool-result";
+              toolName: string;
+              output: unknown;
+            };
+            const resultStr =
+              typeof tr.output === "string"
+                ? tr.output
+                : JSON.stringify(tr.output);
+            return `[Tool result (${tr.toolName}): ${resultStr.length > TOOL_RESULT_TRUNCATION_LIMIT ? resultStr.slice(0, TOOL_RESULT_TRUNCATION_LIMIT) + "..." : resultStr}]`;
+          }
+          case "image":
+            return "[Image]";
+          case "file":
+            return "[File]";
+          case "reasoning":
+            return ""; // Skip reasoning blocks
+          default:
+            return "";
+        }
+      }
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+/**
+ * Convert an array of AI SDK ModelMessages into a text transcript suitable
+ * for summarization by the compaction LLM.
+ */
+export function modelMessagesToTranscript(
+  modelMessages: ModelMessage[],
+): string {
+  const parts = modelMessages.map((msg) => {
+    const contentText = extractTextContent(msg);
+    return `<msg role="${msg.role}">\n${contentText}\n</msg>`;
+  });
+
+  return `<transcript messageCount="${modelMessages.length}">\n\n${parts.join("\n\n")}\n\n</transcript>`;
+}
+
+export interface MidTurnCompactionResult {
+  messages: ModelMessage[];
+  summary: string;
+}
+
+/**
+ * Perform compaction on in-flight agent messages (mid-turn).
+ *
+ * Unlike `performCompaction` which operates on DB-persisted messages between
+ * user turns, this function compacts the AI SDK's in-memory message array
+ * during a multi-step agent turn. It summarizes the conversation so far and
+ * returns a fresh message array that the agent can continue from.
+ */
+export async function performMidTurnCompaction(
+  currentMessages: ModelMessage[],
+  modelClient: ModelClient,
+  dyadRequestId: string,
+  onSummaryChunk?: (accumulatedText: string) => void,
+): Promise<MidTurnCompactionResult> {
+  const settings = readSettings();
+
+  logger.info(
+    `Starting mid-turn compaction (${currentMessages.length} messages)`,
+  );
+
+  // Convert messages to a text transcript for summarization
+  const transcript = modelMessagesToTranscript(currentMessages);
+
+  // Generate summary using the compaction LLM
+  const summaryMessages: ModelMessage[] = [
+    {
+      role: "user",
+      content: `Please summarize the following conversation:\n\n${transcript}`,
+    },
+  ];
+
+  const summaryResult = streamText({
+    model: modelClient.model,
+    headers: getAiHeaders({
+      builtinProviderId: modelClient.builtinProviderId,
+    }),
+    providerOptions: getProviderOptions({
+      dyadAppId: 0,
+      dyadRequestId,
+      dyadDisableFiles: true,
+      files: [],
+      mentionedAppsCodebases: [],
+      builtinProviderId: modelClient.builtinProviderId,
+      settings,
+    }),
+    system: COMPACTION_SYSTEM_PROMPT,
+    messages: summaryMessages,
+    maxRetries: 2,
+  });
+
+  let summary = "";
+  for await (const chunk of summaryResult.textStream) {
+    summary += chunk;
+    onSummaryChunk?.(summary);
+  }
+
+  // Build the compacted message array.
+  // We produce a single user message containing the summary so the agent
+  // can continue working with a dramatically reduced context.
+  const compactedMessages: ModelMessage[] = [
+    {
+      role: "user",
+      content: `The conversation history has been compacted. Here is a summary of everything that has happened so far:\n\n${summary}\n\nPlease continue working on the task. Do not repeat work that has already been completed.`,
+    },
+  ];
+
+  logger.info(
+    `Mid-turn compaction complete: ${currentMessages.length} messages → ${compactedMessages.length} message`,
+  );
+
+  return { messages: compactedMessages, summary };
 }
 
 /**

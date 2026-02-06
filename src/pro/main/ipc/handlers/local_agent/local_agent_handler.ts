@@ -66,8 +66,13 @@ import {
   isChatPendingCompaction,
   performCompaction,
   checkAndMarkForCompaction,
+  performMidTurnCompaction,
 } from "@/ipc/handlers/compaction/compaction_handler";
 import { getPostCompactionMessages } from "@/ipc/handlers/compaction/compaction_utils";
+import {
+  getContextWindow,
+  getCompactionThreshold,
+} from "@/ipc/utils/token_utils";
 
 const logger = log.scope("local_agent_handler");
 
@@ -307,6 +312,10 @@ export async function handleLocalAgentStream(
       readOnly || planModeOnly ? {} : await getMcpTools(event, ctx);
     const allTools: ToolSet = { ...agentTools, ...mcpTools };
 
+    // Compute compaction threshold for mid-turn compaction checks
+    const contextWindow = await getContextWindow();
+    const compactionThreshold = getCompactionThreshold(contextWindow);
+
     // Prepare message history with graceful fallback
     // Use messageOverride if provided (e.g., for summarization)
     // If a compaction summary exists, only include messages from that point onward
@@ -357,12 +366,90 @@ export async function handleLocalAgentStream(
           : []),
       ],
       abortSignal: abortController.signal,
-      // Inject pending user messages (e.g., images from web_crawl) between steps
+      // Inject pending user messages (e.g., images from web_crawl) between steps.
       // We must re-inject all accumulated messages each step because the AI SDK
       // doesn't persist dynamically injected messages in its internal state.
       // We track the insertion index so messages appear at the same position each step.
-      prepareStep: (options) =>
-        prepareStepMessages(options, pendingUserMessages, allInjectedMessages),
+      //
+      // Additionally, perform mid-turn compaction when the context grows too large
+      // during a multi-step agent turn. This prevents context window exhaustion
+      // errors that would otherwise abort the entire turn.
+      prepareStep: async (options) => {
+        const { steps, messages: stepMessages } = options;
+        let currentMessages = stepMessages;
+        let didCompact = false;
+
+        // Check if mid-turn compaction is needed based on the last step's input tokens
+        if (
+          settings.enableContextCompaction !== false &&
+          steps.length > 0
+        ) {
+          const lastStep = steps[steps.length - 1];
+          const inputTokens = lastStep.usage.inputTokens;
+
+          if (
+            inputTokens != null &&
+            inputTokens >= compactionThreshold
+          ) {
+            logger.info(
+              `Mid-turn compaction triggered at step ${steps.length}: ${inputTokens} input tokens >= ${compactionThreshold} threshold`,
+            );
+            try {
+              const compactionResult = await performMidTurnCompaction(
+                currentMessages,
+                modelClient,
+                dyadRequestId,
+                (accumulatedSummary: string) => {
+                  // Stream compaction progress to the UI
+                  sendResponseChunk(
+                    event,
+                    req.chatId,
+                    chat,
+                    fullResponse +
+                      `<dyad-compaction title="Compacting conversation">\n${accumulatedSummary}\n</dyad-compaction>`,
+                    placeholderMessageId,
+                  );
+                },
+              );
+
+              currentMessages = compactionResult.messages;
+
+              // Add the compaction indicator to the persisted response
+              fullResponse += `<dyad-compaction title="Conversation compacted (mid-turn)" state="finished">\n${compactionResult.summary}\n</dyad-compaction>\n`;
+              await updateResponseInDb(placeholderMessageId, fullResponse);
+              sendResponseChunk(
+                event,
+                req.chatId,
+                chat,
+                fullResponse,
+                placeholderMessageId,
+              );
+
+              // Clear accumulated injected messages — their content is now
+              // captured in the compaction summary
+              allInjectedMessages.length = 0;
+              didCompact = true;
+            } catch (err) {
+              logger.warn("Mid-turn compaction failed, continuing without:", err);
+              // Continue without compaction — better than aborting the turn
+            }
+          }
+        }
+
+        // Apply normal prepareStep logic (message injection + OpenAI cleanup)
+        const modifiedOptions = didCompact
+          ? { ...options, messages: currentMessages }
+          : options;
+        const result = prepareStepMessages(
+          modifiedOptions,
+          pendingUserMessages,
+          allInjectedMessages,
+        );
+
+        if (result) return result;
+        if (didCompact) return { messages: currentMessages };
+        return undefined;
+      },
       onFinish: async (response) => {
         const totalTokens = response.usage?.totalTokens;
         const inputTokens = response.usage?.inputTokens;

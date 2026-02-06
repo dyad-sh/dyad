@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { IpcMainInvokeEvent, WebContents } from "electron";
+import { streamText } from "ai";
 
 // ============================================================================
 // Test Fakes & Builders
@@ -49,6 +50,7 @@ function buildTestChat(
       role: "user" | "assistant";
       content: string;
       aiMessagesJson?: unknown;
+      isCompactionSummary?: boolean | null;
       createdAt?: Date;
     }>;
     supabaseProjectId?: string | null;
@@ -145,6 +147,7 @@ vi.mock("electron-log", () => ({
   default: {
     scope: () => ({
       log: vi.fn(),
+      info: vi.fn(),
       error: vi.fn(),
       warn: vi.fn(),
       debug: vi.fn(),
@@ -208,9 +211,14 @@ vi.mock("@/ipc/utils/safe_sender", () => ({
 }));
 
 let mockStreamResult: ReturnType<typeof createFakeStream> | null = null;
+let mockStreamTextImpl:
+  | ((options: Record<string, any>) => ReturnType<typeof createFakeStream>)
+  | null = null;
 
 vi.mock("ai", () => ({
-  streamText: vi.fn(() => mockStreamResult),
+  streamText: vi.fn((options: Record<string, any>) =>
+    mockStreamTextImpl ? mockStreamTextImpl(options) : mockStreamResult,
+  ),
   stepCountIs: vi.fn((n: number) => ({ steps: n })),
   hasToolCall: vi.fn((toolName: string) => ({ toolName })),
 }));
@@ -292,9 +300,11 @@ describe("handleLocalAgentStream", () => {
     mockChatData = null;
     mockSettings = buildTestSettings();
     mockStreamResult = null;
+    mockStreamTextImpl = null;
     mockIsChatPendingCompaction.mockResolvedValue(false);
     mockPerformCompaction.mockResolvedValue({ success: true });
     mockCheckAndMarkForCompaction.mockResolvedValue(false);
+    vi.mocked(streamText).mockClear();
   });
 
   describe("Pro status validation", () => {
@@ -420,6 +430,124 @@ describe("handleLocalAgentStream", () => {
 
       // Assert
       expect(mockPerformCompaction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Mid-turn compaction", () => {
+    it("should compact between steps when token usage crosses threshold", async () => {
+      // Arrange
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat({
+        messages: [
+          { id: 1, role: "user", content: "old context user" },
+          { id: 2, role: "assistant", content: "old context assistant" },
+          { id: 3, role: "user", content: "current task" },
+          { id: 10, role: "assistant", content: "" }, // placeholder
+        ],
+      });
+
+      mockIsChatPendingCompaction
+        .mockResolvedValueOnce(false) // pre-turn check
+        .mockResolvedValueOnce(true) // mid-turn check
+        .mockResolvedValue(false);
+      mockCheckAndMarkForCompaction.mockResolvedValue(true);
+      mockPerformCompaction.mockImplementation(async () => {
+        if (!mockChatData) {
+          return { success: false, error: "missing chat" };
+        }
+        mockChatData = {
+          ...mockChatData,
+          messages: [
+            ...mockChatData.messages,
+            {
+              id: 20,
+              role: "assistant",
+              content:
+                '<dyad-compaction title="Conversation compacted" state="finished">mid-turn summary</dyad-compaction>',
+              isCompactionSummary: true,
+            },
+          ],
+        } as any;
+        return { success: true };
+      });
+
+      let secondStepPreparedMessages: any[] | undefined;
+      mockStreamTextImpl = (options) => {
+        const firstStepMessages = [
+          { role: "user", content: "old context user" },
+          { role: "assistant", content: "old context assistant" },
+          { role: "user", content: "current task" },
+        ];
+
+        return {
+          fullStream: (async function* () {
+            await options.prepareStep?.({
+              messages: firstStepMessages,
+              stepNumber: 1,
+              steps: [],
+              model: {},
+              experimental_context: undefined,
+            });
+
+            await options.onStepFinish?.({
+              usage: { totalTokens: 200_000 },
+              toolCalls: [{}],
+            });
+
+            const secondStepMessages = [
+              ...firstStepMessages,
+              { role: "assistant", content: "tool state assistant" },
+              { role: "assistant", content: "tool state result" },
+            ];
+            const preparedSecondStep = (await options.prepareStep?.({
+              messages: secondStepMessages,
+              stepNumber: 2,
+              steps: [],
+              model: {},
+              experimental_context: undefined,
+            })) ?? { messages: secondStepMessages };
+
+            secondStepPreparedMessages = preparedSecondStep.messages;
+            yield { type: "text-delta", text: "done" };
+          })(),
+          response: Promise.resolve({ messages: [] }),
+        };
+      };
+
+      // Act
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      // Assert
+      expect(mockCheckAndMarkForCompaction).toHaveBeenCalledWith(1, 200_000);
+      expect(mockPerformCompaction).toHaveBeenCalledTimes(1);
+      expect(secondStepPreparedMessages).toBeDefined();
+
+      const secondStepContents = (secondStepPreparedMessages ?? []).map(
+        (msg: any) =>
+          typeof msg.content === "string"
+            ? msg.content
+            : JSON.stringify(msg.content),
+      );
+
+      expect(
+        secondStepContents.some((content: string) =>
+          content.includes("Conversation compacted"),
+        ),
+      ).toBe(true);
+      expect(secondStepContents).not.toContain("old context user");
+      expect(secondStepContents).not.toContain("old context assistant");
+      expect(secondStepContents).toContain("tool state assistant");
+      expect(secondStepContents).toContain("tool state result");
     });
   });
 

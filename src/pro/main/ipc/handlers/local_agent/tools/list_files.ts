@@ -107,7 +107,15 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
       const dyadFiles = await glob(dyadGlobPattern, {
         nodir: true,
         absolute: true,
-        ignore: ["**/node_modules/**", "**/.git/**", "**/dist/**", "**/build/**", "**/.next/**", "**/.venv/**", "**/venv/**"],
+        ignore: [
+          "**/node_modules/**",
+          "**/.git/**",
+          "**/dist/**",
+          "**/build/**",
+          "**/.next/**",
+          "**/.venv/**",
+          "**/venv/**",
+        ],
       });
 
       // Convert to relative paths and add to the list
@@ -116,7 +124,9 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
       );
 
       // Deduplicate and sort
-      allFilePaths = [...new Set([...allFilePaths, ...dyadRelativePaths])].sort();
+      allFilePaths = [
+        ...new Set([...allFilePaths, ...dyadRelativePaths]),
+      ].sort();
     }
 
     // Build full file list for LLM

@@ -41,7 +41,7 @@ testSkipIfWindows(
   async ({ po }) => {
     await po.setUpDyadPro({ localAgent: true });
     await po.importApp("minimal");
-    await po.selectLocalAgentMode();
+    await po.chatActions.selectLocalAgentMode();
 
     // This fixture emits a tool call with high token usage in step 1, then
     // returns a final text response in step 2 of the same user turn.

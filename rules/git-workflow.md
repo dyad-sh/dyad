@@ -59,3 +59,11 @@ If you need to rebase but have uncommitted changes (e.g., package-lock.json from
 4. Discard spurious changes like package-lock.json (if package.json unchanged): `git restore package-lock.json`
 
 This prevents rebase conflicts from uncommitted changes while preserving any work in progress.
+
+## Resolving documentation rebase conflicts
+
+When rebasing a PR branch that conflicts with upstream documentation changes (e.g., AGENTS.md):
+
+- If upstream has reorganized content (e.g., moved sections to separate `rules/*.md` files), keep upstream's version
+- Discard the PR's inline content that conflicts with the new organization
+- The PR's documentation changes may need to be re-applied to the new file locations after the rebase

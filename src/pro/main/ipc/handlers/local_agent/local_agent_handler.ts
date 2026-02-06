@@ -220,7 +220,7 @@ export async function handleLocalAgentStream(
       (accumulatedSummary: string) => {
         // Stream compaction summary to the frontend in real-time.
         // During mid-turn compaction, keep already streamed content visible.
-        const compactionPreview = `<dyad-compaction title="Compacting conversation">\n${accumulatedSummary}\n</dyad-compaction>`;
+        const compactionPreview = `<dyad-compaction title="Compacting conversation">\n${escapeXmlContent(accumulatedSummary)}\n</dyad-compaction>`;
         const previewContent = options?.showOnTopOfCurrentResponse
           ? `${fullResponse}${streamingPreview ? streamingPreview : ""}\n${compactionPreview}`
           : compactionPreview;
@@ -241,9 +241,13 @@ export async function handleLocalAgentStream(
     }
 
     // Re-query to pick up the newly inserted compaction summary message.
-    const refreshedChat = await loadChat();
-    if (refreshedChat?.app) {
-      chat = refreshedChat;
+    // Only update if compaction succeeded — a failed compaction may have left
+    // partial state that would corrupt subsequent message history.
+    if (compactionResult.success) {
+      const refreshedChat = await loadChat();
+      if (refreshedChat?.app) {
+        chat = refreshedChat;
+      }
     }
 
     if (options?.showOnTopOfCurrentResponse) {
@@ -363,6 +367,7 @@ export async function handleLocalAgentStream(
     let baseMessageHistoryCount = messageHistory.length;
     let compactBeforeNextStep = false;
     let compactedMidTurn = false;
+    let compactionFailedMidTurn = false;
 
     // Stream the response
     const streamResult = streamText({
@@ -439,6 +444,9 @@ export async function handleLocalAgentStream(
               ...options,
               messages: [...compactedMessageHistory, ...inFlightTailMessages],
             };
+          } else {
+            // Prevent repeated compaction attempts if the first one fails.
+            compactionFailedMidTurn = true;
           }
         }
 
@@ -462,6 +470,7 @@ export async function handleLocalAgentStream(
         if (
           settings.enableContextCompaction === false ||
           compactedMidTurn ||
+          compactionFailedMidTurn ||
           typeof step.usage.totalTokens !== "number"
         ) {
           return;

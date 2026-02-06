@@ -9,9 +9,11 @@ import {
 import { useSettings } from "@/hooks/useSettings";
 import { showError } from "@/lib/toast";
 import { ipc } from "@/ipc/types";
+import { useTranslation } from "react-i18next";
 
 export function RuntimeModeSelector() {
   const { settings, updateSettings } = useSettings();
+  const { t } = useTranslation("settings");
 
   if (!settings) {
     return null;
@@ -32,7 +34,7 @@ export function RuntimeModeSelector() {
       <div className="space-y-1">
         <div className="flex items-center space-x-2">
           <Label className="text-sm font-medium" htmlFor="runtime-mode">
-            Runtime Mode
+            {t("general.runtimeMode")}
           </Label>
           <Select
             value={settings.runtimeMode2 ?? "host"}
@@ -48,8 +50,7 @@ export function RuntimeModeSelector() {
           </Select>
         </div>
         <div className="text-sm text-gray-500 dark:text-gray-400">
-          Choose whether to run apps directly on the local machine or in Docker
-          containers
+          {t("general.runtimeModeDescription")}
         </div>
       </div>
       {isDockerMode && (

@@ -4,6 +4,7 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
+import { useTranslation } from "react-i18next";
 
 interface ConsoleFiltersProps {
   levelFilter: "all" | "info" | "warn" | "error";
@@ -39,6 +40,7 @@ export const ConsoleFilters = ({
   totalLogs,
   showFilters,
 }: ConsoleFiltersProps) => {
+  const { t } = useTranslation("home");
   const hasActiveFilters =
     levelFilter !== "all" || typeFilter !== "all" || sourceFilter !== "";
 
@@ -58,10 +60,10 @@ export const ConsoleFilters = ({
         }
         className="text-xs px-2 py-1 border border-border rounded bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
       >
-        <option value="all">All Levels</option>
-        <option value="info">Info</option>
-        <option value="warn">Warn</option>
-        <option value="error">Error</option>
+        <option value="all">{t("preview.consoleFilters.allLevels")}</option>
+        <option value="info">{t("preview.consoleFilters.info")}</option>
+        <option value="warn">{t("preview.consoleFilters.warn")}</option>
+        <option value="error">{t("preview.consoleFilters.error")}</option>
       </select>
 
       {/* Type filter */}
@@ -79,11 +81,15 @@ export const ConsoleFilters = ({
         }
         className="text-xs px-2 py-1 border border-border rounded bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
       >
-        <option value="all">All Types</option>
-        <option value="server">Server</option>
-        <option value="client">Client</option>
-        <option value="edge-function">Edge Function</option>
-        <option value="network-requests">Network Requests</option>
+        <option value="all">{t("preview.consoleFilters.allTypes")}</option>
+        <option value="server">{t("preview.consoleFilters.server")}</option>
+        <option value="client">{t("preview.consoleFilters.client")}</option>
+        <option value="edge-function">
+          {t("preview.consoleFilters.edgeFunction")}
+        </option>
+        <option value="network-requests">
+          {t("preview.consoleFilters.networkRequests")}
+        </option>
       </select>
 
       {/* Source filter */}
@@ -93,7 +99,7 @@ export const ConsoleFilters = ({
           onChange={(e) => onSourceFilterChange(e.target.value)}
           className="text-xs px-2 py-1 border border-border rounded bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
         >
-          <option value="">All Sources</option>
+          <option value="">{t("preview.consoleFilters.allSources")}</option>
           {uniqueSources.map((source) => (
             <option key={source} value={source}>
               {source}
@@ -109,7 +115,7 @@ export const ConsoleFilters = ({
           className="text-xs px-2 py-1 flex items-center gap-1 border border-border rounded bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
         >
           <X size={12} />
-          Clear Filters
+          {t("preview.consoleFilters.clearFilters")}
         </button>
       )}
 
@@ -126,10 +132,12 @@ export const ConsoleFilters = ({
         >
           <Trash2 size={14} />
         </TooltipTrigger>
-        <TooltipContent>Clear logs</TooltipContent>
+        <TooltipContent>{t("preview.consoleFilters.clearLogs")}</TooltipContent>
       </Tooltip>
 
-      <div className="ml-auto text-xs text-gray-500">{totalLogs} logs</div>
+      <div className="ml-auto text-xs text-gray-500">
+        {totalLogs} {t("preview.consoleFilters.logs")}
+      </div>
     </div>
   );
 };

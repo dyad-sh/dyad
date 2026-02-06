@@ -14,9 +14,11 @@ import {
 } from "@/hooks/useAgentTools";
 import { Loader2, ChevronRight } from "lucide-react";
 import { AgentToolConsent } from "@/lib/schemas";
+import { useTranslation } from "react-i18next";
 
 export function AgentToolsSettings() {
   const { tools, isLoading, setConsent } = useAgentTools();
+  const { t } = useTranslation("settings");
   const [showAutoApproved, setShowAutoApproved] = useState(false);
 
   const handleConsentChange = (
@@ -42,7 +44,7 @@ export function AgentToolsSettings() {
   return (
     <div className="space-y-6">
       <p className="text-sm text-muted-foreground">
-        Configure permissions for Agent built-in tools.
+        {t("agentPermissions.description")}
       </p>
 
       {/* Requires approval tools */}
@@ -70,7 +72,11 @@ export function AgentToolsSettings() {
           <ChevronRight
             className={`size-4 transition-transform ${showAutoApproved ? "rotate-90" : ""}`}
           />
-          <span>Default allowed tools ({autoApprovedTools.length})</span>
+          <span>
+            {t("agentPermissions.defaultAllowedTools", {
+              count: autoApprovedTools.length,
+            })}
+          </span>
         </button>
         {showAutoApproved && (
           <div className="space-y-2 pl-6">
@@ -103,6 +109,7 @@ function ToolConsentRow({
   consent: AgentToolConsent;
   onConsentChange: (consent: AgentToolConsent) => void;
 }) {
+  const { t } = useTranslation("settings");
   return (
     <div className="border rounded p-3">
       <div className="flex items-center justify-between gap-4">
@@ -120,9 +127,13 @@ function ToolConsentRow({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="ask">Ask</SelectItem>
-            <SelectItem value="always">Always allow</SelectItem>
-            <SelectItem value="never">Never allow</SelectItem>
+            <SelectItem value="ask">{t("agentPermissions.ask")}</SelectItem>
+            <SelectItem value="always">
+              {t("agentPermissions.alwaysAllow")}
+            </SelectItem>
+            <SelectItem value="never">
+              {t("agentPermissions.neverAllow")}
+            </SelectItem>
           </SelectContent>
         </Select>
       </div>

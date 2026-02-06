@@ -8,6 +8,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useTranslation } from "react-i18next";
 
 interface DeleteChatDialogProps {
   isOpen: boolean;
@@ -22,28 +23,28 @@ export function DeleteChatDialog({
   onConfirmDelete,
   chatTitle,
 }: DeleteChatDialogProps) {
+  const { t } = useTranslation("chat");
+  const { t: tc } = useTranslation("common");
+
   return (
     <AlertDialog open={isOpen} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete Chat</AlertDialogTitle>
+          <AlertDialogTitle>{t("deleteChat")}</AlertDialogTitle>
           <AlertDialogDescription>
-            Are you sure you want to delete "{chatTitle || "this chat"}"? This
-            action cannot be undone and all messages in this chat will be
-            permanently lost.
+            {t("deleteChatConfirmation", { title: chatTitle || "this chat" })}
             <br />
             <br />
-            <strong>Note:</strong> Any code changes that have already been
-            accepted will be kept.
+            <strong>{t("deleteChatNote")}</strong>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{tc("cancel")}</AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirmDelete}
             className="bg-red-600 text-white hover:bg-red-700 dark:bg-red-600 dark:text-white dark:hover:bg-red-700"
           >
-            Delete Chat
+            {t("deleteChat")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

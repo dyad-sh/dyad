@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import React from "react";
 import {
   AlertDialog,
@@ -19,31 +20,25 @@ interface CommunityCodeConsentDialogProps {
 export const CommunityCodeConsentDialog: React.FC<
   CommunityCodeConsentDialogProps
 > = ({ isOpen, onAccept, onCancel }) => {
+  const { t } = useTranslation(["home", "common"]);
   return (
     <AlertDialog open={isOpen} onOpenChange={(open) => !open && onCancel()}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Community Code Notice</AlertDialogTitle>
+          <AlertDialogTitle>{t("home:communityCodeNotice")}</AlertDialogTitle>
           <AlertDialogDescription className="space-y-3">
-            <p>
-              This code was created by a Dyad community member, not our core
-              team.
-            </p>
-            <p>
-              Community code can be very helpful, but since it's built
-              independently, it may have bugs, security risks, or could cause
-              issues with your system. We can't provide official support if
-              problems occur.
-            </p>
-            <p>
-              We recommend reviewing the code on GitHub first. Only proceed if
-              you're comfortable with these risks.
-            </p>
+            <p>{t("home:communityCodeWarning")}</p>
+            <p>{t("home:communityCodeRisk")}</p>
+            <p>{t("home:communityCodeReview")}</p>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={onCancel}>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={onAccept}>Accept</AlertDialogAction>
+          <AlertDialogCancel onClick={onCancel}>
+            {t("common:cancel")}
+          </AlertDialogCancel>
+          <AlertDialogAction onClick={onAccept}>
+            {t("common:accept")}
+          </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

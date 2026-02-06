@@ -8,6 +8,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
+import { useTranslation } from "react-i18next";
 
 interface OptionInfo {
   value: string;
@@ -49,6 +50,7 @@ const options: OptionInfo[] = [
 
 export const MaxChatTurnsSelector: React.FC = () => {
   const { settings, updateSettings } = useSettings();
+  const { t } = useTranslation("settings");
 
   const handleValueChange = (value: string) => {
     if (value === "default") {
@@ -74,14 +76,14 @@ export const MaxChatTurnsSelector: React.FC = () => {
           htmlFor="max-chat-turns"
           className="text-sm font-medium text-gray-700 dark:text-gray-300"
         >
-          Maximum number of chat turns used in context
+          {t("ai.maxChatTurns")}
         </label>
         <Select
           value={currentValue}
           onValueChange={(v) => v && handleValueChange(v)}
         >
           <SelectTrigger className="w-[180px]" id="max-chat-turns">
-            <SelectValue placeholder="Select turns" />
+            <SelectValue placeholder={t("ai.selectMaxChatTurns")} />
           </SelectTrigger>
           <SelectContent>
             {options.map((option) => (

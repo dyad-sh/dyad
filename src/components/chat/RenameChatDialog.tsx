@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ipc } from "@/ipc/types";
 import { showError, showSuccess } from "@/lib/toast";
 import {
@@ -28,6 +29,8 @@ export function RenameChatDialog({
   onOpenChange,
   onRename,
 }: RenameChatDialogProps) {
+  const { t } = useTranslation("chat");
+  const { t: tc } = useTranslation("common");
   const [newTitle, setNewTitle] = useState("");
 
   // Reset title when dialog opens
@@ -50,7 +53,7 @@ export function RenameChatDialog({
         chatId,
         title: newTitle.trim(),
       });
-      showSuccess("Chat renamed successfully");
+      showSuccess(t("chatRenamed"));
 
       // Call the parent's onRename callback to refresh the chat list
       onRename();
@@ -58,7 +61,7 @@ export function RenameChatDialog({
       // Close the dialog
       handleOpenChange(false);
     } catch (error) {
-      showError(`Failed to rename chat: ${(error as any).toString()}`);
+      showError(t("failedRenameChat", { error: (error as any).toString() }));
     }
   };
 
@@ -70,20 +73,20 @@ export function RenameChatDialog({
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Rename Chat</DialogTitle>
-          <DialogDescription>Enter a new name for this chat.</DialogDescription>
+          <DialogTitle>{t("renameChat")}</DialogTitle>
+          <DialogDescription>{t("renameChatDescription")}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="chat-title" className="text-right">
-              Title
+              {t("chatTitle")}
             </Label>
             <Input
               id="chat-title"
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
               className="col-span-3"
-              placeholder="Enter chat title..."
+              placeholder={t("enterChatTitle")}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   handleSave();
@@ -94,10 +97,10 @@ export function RenameChatDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleClose}>
-            Cancel
+            {tc("cancel")}
           </Button>
           <Button onClick={handleSave} disabled={!newTitle.trim()}>
-            Save
+            {tc("save")}
           </Button>
         </DialogFooter>
       </DialogContent>

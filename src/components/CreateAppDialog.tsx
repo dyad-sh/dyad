@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +34,7 @@ export function CreateAppDialog({
   onOpenChange,
   template,
 }: CreateAppDialogProps) {
+  const { t } = useTranslation(["home", "common"]);
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const [appName, setAppName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -84,27 +86,27 @@ export function CreateAppDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Create New App</DialogTitle>
+          <DialogTitle>{t("home:createNewApp")}</DialogTitle>
           <DialogDescription>
-            {`Create a new app using the ${template?.title} template.`}
+            {t("home:createAppUsingTemplate", { template: template?.title })}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="appName">App Name</Label>
+              <Label htmlFor="appName">{t("home:appName")}</Label>
               <Input
                 id="appName"
                 value={appName}
                 onChange={(e) => setAppName(e.target.value)}
-                placeholder="Enter app name..."
+                placeholder={t("home:enterAppName")}
                 className={nameExists ? "border-red-500" : ""}
                 disabled={isSubmitting}
               />
               {nameExists && (
                 <p className="text-sm text-red-500">
-                  An app with this name already exists
+                  {t("home:appNameAlreadyExists")}
                 </p>
               )}
             </div>
@@ -117,7 +119,7 @@ export function CreateAppDialog({
               onClick={() => onOpenChange(false)}
               disabled={isSubmitting}
             >
-              Cancel
+              {t("common:cancel")}
             </Button>
             <Button
               type="submit"
@@ -127,7 +129,7 @@ export function CreateAppDialog({
               {isSubmitting && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
-              {isSubmitting ? "Creating..." : "Create App"}
+              {isSubmitting ? t("common:creating") : t("home:createApp")}
             </Button>
           </DialogFooter>
         </form>

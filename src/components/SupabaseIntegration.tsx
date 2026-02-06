@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -16,6 +17,7 @@ import { showSuccess, showError } from "@/lib/toast";
 import { isSupabaseConnected } from "@/lib/schemas";
 
 export function SupabaseIntegration() {
+  const { t } = useTranslation(["home", "common"]);
   const { settings, updateSettings } = useSettings();
   const [isDisconnecting, setIsDisconnecting] = useState(false);
 
@@ -35,10 +37,10 @@ export function SupabaseIntegration() {
         enableSupabaseWriteSqlMigration: false,
       });
       if (result) {
-        showSuccess("Successfully disconnected all Supabase organizations");
+        showSuccess(t("integrations.supabase.disconnectedAll"));
         await refetchOrganizations();
       } else {
-        showError("Failed to disconnect from Supabase");
+        showError(t("integrations.supabase.failedDisconnect"));
       }
     } catch (err: any) {
       showError(
@@ -52,9 +54,9 @@ export function SupabaseIntegration() {
   const handleDeleteOrganization = async (organizationSlug: string) => {
     try {
       await deleteOrganization({ organizationSlug });
-      showSuccess("Organization disconnected successfully");
+      showSuccess(t("integrations.supabase.orgDisconnected"));
     } catch (err: any) {
-      showError(err.message || "Failed to disconnect organization");
+      showError(err.message || t("integrations.supabase.failedDisconnect"));
     }
   };
 
@@ -63,7 +65,7 @@ export function SupabaseIntegration() {
       await updateSettings({
         enableSupabaseWriteSqlMigration: enabled,
       });
-      showSuccess("Setting updated");
+      showSuccess(t("integrations.supabase.settingUpdated"));
     } catch (err: any) {
       showError(err.message || "Failed to update setting");
     }
@@ -89,11 +91,12 @@ export function SupabaseIntegration() {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            Supabase Integration
+            {t("integrations.supabase.title")}
           </h3>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            {organizations.length} organization
-            {organizations.length !== 1 ? "s" : ""} connected to Supabase.
+            {t("integrations.supabase.organizationsConnected", {
+              count: organizations.length,
+            })}
           </p>
         </div>
         <Button
@@ -103,7 +106,9 @@ export function SupabaseIntegration() {
           disabled={isDisconnecting}
           className="flex items-center gap-2"
         >
-          {isDisconnecting ? "Disconnecting..." : "Disconnect All"}
+          {isDisconnecting
+            ? t("common:disconnecting")
+            : t("integrations.supabase.disconnectAll")}
           <DatabaseZap className="h-4 w-4" />
         </Button>
       </div>
@@ -141,7 +146,9 @@ export function SupabaseIntegration() {
                 <Trash2 className="h-3.5 w-3.5 mr-1" />
                 <span className="text-xs">Disconnect</span>
               </TooltipTrigger>
-              <TooltipContent>Disconnect organization</TooltipContent>
+              <TooltipContent>
+                {t("integrations.supabase.disconnectOrganization")}
+              </TooltipContent>
             </Tooltip>
           </div>
         ))}
@@ -160,13 +167,10 @@ export function SupabaseIntegration() {
               htmlFor="supabase-migrations"
               className="text-sm font-medium"
             >
-              Write SQL migration files
+              {t("integrations.supabase.writeSqlMigrations")}
             </Label>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Generate SQL migration files when modifying your Supabase schema.
-              This helps you track database changes in version control, though
-              these files aren't used for chat context, which uses the live
-              schema.
+              {t("integrations.supabase.writeSqlDescription")}
             </p>
           </div>
         </div>

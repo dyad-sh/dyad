@@ -12,6 +12,7 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
+import { useTranslation } from "react-i18next";
 
 interface ConsoleEntryProps {
   type: "server" | "client" | "edge-function" | "network-requests";
@@ -42,6 +43,7 @@ export const ConsoleEntryComponent = (props: ConsoleEntryProps) => {
     isExpanded = false,
     onToggleExpand,
   } = props;
+  const { t } = useTranslation(["home", "common"]);
   const setChatInput = useSetAtom(chatInputValueAtom);
 
   const isTruncated = message.length > MAX_MESSAGE_LENGTH;
@@ -114,11 +116,11 @@ export const ConsoleEntryComponent = (props: ConsoleEntryProps) => {
             >
               {isExpanded ? (
                 <>
-                  Show less <ChevronUp size={12} />
+                  {t("common:showLess")} <ChevronUp size={12} />
                 </>
               ) : (
                 <>
-                  Show more <ChevronDown size={12} />
+                  {t("common:showMore")} <ChevronDown size={12} />
                 </>
               )}
             </button>
@@ -137,7 +139,7 @@ export const ConsoleEntryComponent = (props: ConsoleEntryProps) => {
         >
           <MessageSquare size={12} className="text-gray-500" />
         </TooltipTrigger>
-        <TooltipContent>Send to chat</TooltipContent>
+        <TooltipContent>{t("home:preview.sendToChat")}</TooltipContent>
       </Tooltip>
     </div>
   );

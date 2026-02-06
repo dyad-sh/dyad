@@ -5,6 +5,9 @@ import { RouterProvider } from "@tanstack/react-router";
 import { PostHogProvider } from "posthog-js/react";
 import posthog from "posthog-js";
 import { getTelemetryUserId, isTelemetryOptedIn } from "./hooks/useSettings";
+
+// Initialize i18next before any rendering
+import "./i18n";
 import {
   QueryCache,
   QueryClient,

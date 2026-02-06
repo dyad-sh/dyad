@@ -6,6 +6,7 @@ import {
   Info,
 } from "lucide-react";
 import { PanelRightClose } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useAtom, useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "@/hooks/useVersions";
@@ -43,6 +44,7 @@ export function ChatHeader({
   onTogglePreview,
   onVersionClick,
 }: ChatHeaderProps) {
+  const { t } = useTranslation("chat");
   const appId = useAtomValue(selectedAppIdAtom);
   const { versions, loading: versionsLoading } = useVersions(appId);
   const { navigate } = useRouter();
@@ -78,7 +80,7 @@ export function ChatHeader({
     // If this throws, it will automatically show an error toast
     await renameBranch({ oldBranchName: "master", newBranchName: "main" });
 
-    showSuccess("Master branch renamed to main");
+    showSuccess(t("header.masterRenamed"));
   };
 
   const handleNewChat = async () => {
@@ -92,7 +94,7 @@ export function ChatHeader({
         });
         await invalidateChats();
       } catch (error) {
-        showError(`Failed to create new chat: ${(error as any).toString()}`);
+        showError(t("failedCreateChat", { error: (error as any).toString() }));
       }
     } else {
       navigate({ to: "/" });
@@ -123,14 +125,14 @@ export function ChatHeader({
                         <span className="flex items-center  gap-1">
                           {isAnyCheckoutVersionInProgress ? (
                             <>
-                              <span>
-                                Please wait, switching back to latest version...
-                              </span>
+                              <span>{t("header.switchingToLatest")}</span>
                             </>
                           ) : (
                             <>
-                              <strong>Warning:</strong>
-                              <span>You are not on a branch</span>
+                              <strong>
+                                {t("header.warningNotOnBranch").split(":")[0]}:
+                              </strong>
+                              <span>{t("header.notOnBranch")}</span>
                               <Info size={14} />
                             </>
                           )}
@@ -139,8 +141,8 @@ export function ChatHeader({
                       <TooltipContent>
                         <p>
                           {isAnyCheckoutVersionInProgress
-                            ? "Version checkout is currently in progress"
-                            : "Checkout main branch, otherwise changes will not be saved properly"}
+                            ? t("header.checkoutInProgress")
+                            : t("header.checkoutMainBranch")}
                         </p>
                       </TooltipContent>
                     </Tooltip>
@@ -148,11 +150,9 @@ export function ChatHeader({
                 </>
               )}
               {currentBranchName && currentBranchName !== "<no-branch>" && (
-                <span>
-                  You are on branch: <strong>{currentBranchName}</strong>.
-                </span>
+                <span>{t("header.onBranch", { name: currentBranchName })}</span>
               )}
-              {branchInfoLoading && <span>Checking branch...</span>}
+              {branchInfoLoading && <span>{t("header.checkingBranch")}</span>}
             </span>
           </div>
           {currentBranchName === "master" ? (
@@ -162,7 +162,9 @@ export function ChatHeader({
               onClick={handleRenameMasterToMain}
               disabled={isRenamingBranch || branchInfoLoading}
             >
-              {isRenamingBranch ? "Renaming..." : "Rename master to main"}
+              {isRenamingBranch
+                ? t("header.renaming")
+                : t("header.renameMasterToMain")}
             </Button>
           ) : isAnyCheckoutVersionInProgress && !isCheckingOutVersion ? null : (
             <Button
@@ -172,8 +174,8 @@ export function ChatHeader({
               disabled={isCheckingOutVersion || branchInfoLoading}
             >
               {isCheckingOutVersion
-                ? "Checking out..."
-                : "Switch to main branch"}
+                ? t("header.checkingOut")
+                : t("header.switchToMainBranch")}
             </Button>
           )}
         </div>
@@ -194,7 +196,7 @@ export function ChatHeader({
             className="hidden @2xs:flex items-center justify-start gap-2 mx-2 py-3"
           >
             <PlusCircle size={16} />
-            <span>New Chat</span>
+            <span>{t("newChat")}</span>
           </Button>
           <Button
             onClick={onVersionClick}
@@ -204,7 +206,7 @@ export function ChatHeader({
             <History size={16} />
             {versionsLoading
               ? "..."
-              : `Version ${versions.length}${versionPostfix}`}
+              : `${t("header.versionCount", { count: versions.length })}${versionPostfix}`}
           </Button>
         </div>
 

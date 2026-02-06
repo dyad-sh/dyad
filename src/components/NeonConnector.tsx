@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { ipc } from "@/ipc/types";
 import { toast } from "sonner";
@@ -10,6 +11,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { NeonDisconnectButton } from "@/components/NeonDisconnectButton";
 
 export function NeonConnector() {
+  const { t } = useTranslation("home");
   const { settings, refreshSettings } = useSettings();
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
   const { isDarkMode } = useTheme();
@@ -18,7 +20,7 @@ export function NeonConnector() {
     const handleDeepLink = async () => {
       if (lastDeepLink?.type === "neon-oauth-return") {
         await refreshSettings();
-        toast.success("Successfully connected to Neon!");
+        toast.success(t("integrations.neon.connectedSuccess"));
         clearLastDeepLink();
       }
     };
@@ -30,7 +32,9 @@ export function NeonConnector() {
       <div className="flex flex-col space-y-4 p-4 border bg-white dark:bg-gray-800 max-w-100 rounded-md">
         <div className="flex flex-col items-start justify-between">
           <div className="flex items-center justify-between w-full">
-            <h2 className="text-lg font-medium pb-1">Neon Database</h2>
+            <h2 className="text-lg font-medium pb-1">
+              {t("integrations.neon.database")}
+            </h2>
             <Button
               variant="outline"
               onClick={() => {
@@ -43,7 +47,7 @@ export function NeonConnector() {
             </Button>
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400 pb-3">
-            You are connected to Neon Database
+            {t("integrations.neon.connectedToNeon")}
           </p>
           <NeonDisconnectButton />
         </div>
@@ -54,9 +58,11 @@ export function NeonConnector() {
   return (
     <div className="flex flex-col space-y-4 p-4 border bg-white dark:bg-gray-800 max-w-100 rounded-md">
       <div className="flex flex-col items-start justify-between">
-        <h2 className="text-lg font-medium pb-1">Neon Database</h2>
+        <h2 className="text-lg font-medium pb-1">
+          {t("integrations.neon.database")}
+        </h2>
         <p className="text-sm text-gray-500 dark:text-gray-400 pb-3">
-          Neon Database has a good free tier with backups and up to 10 projects.
+          {t("integrations.neon.freeTier")}
         </p>
         <div
           onClick={async () => {
@@ -71,7 +77,7 @@ export function NeonConnector() {
           className="w-auto h-10 cursor-pointer flex items-center justify-center px-4 py-2 rounded-md border-2 transition-colors font-medium text-sm dark:bg-gray-900 dark:border-gray-700"
           data-testid="connect-neon-button"
         >
-          <span className="mr-2">Connect to</span>
+          <span className="mr-2">{t("integrations.neon.connectTo")}</span>
           <NeonSvg isDarkMode={isDarkMode} />
         </div>
       </div>

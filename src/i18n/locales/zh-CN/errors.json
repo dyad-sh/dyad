@@ -1,0 +1,10 @@
+{
+  "unknown": "发生了未知错误",
+  "failedToCreate": "创建失败：{{error}}",
+  "failedToUpdate": "更新失败：{{error}}",
+  "failedToDelete": "删除失败：{{error}}",
+  "failedToLoad": "加载失败：{{error}}",
+  "networkError": "发生网络错误，请检查您的网络连接。",
+  "copyError": "复制错误信息",
+  "errorOccurred": "发生了一个错误"
+}

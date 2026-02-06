@@ -13,6 +13,7 @@ import { useSetAtom } from "jotai";
 import { Input } from "@/components/ui/input";
 import type { AppFileSearchResult } from "@/ipc/types";
 import { useSearchAppFiles } from "@/hooks/useSearchAppFiles";
+import { useTranslation } from "react-i18next";
 
 interface FileTreeProps {
   appId: number | null;
@@ -100,6 +101,7 @@ const buildFileTree = (files: string[]): TreeNode[] => {
 
 // File tree component
 export const FileTree = ({ appId, files }: FileTreeProps) => {
+  const { t } = useTranslation("home");
   const [searchValue, setSearchValue] = useState("");
   const prevAppIdRef = useRef<number | null>(appId);
 
@@ -168,7 +170,7 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
           <Input
             value={searchValue}
             onChange={(event) => setSearchValue(event.target.value)}
-            placeholder="Search file contents"
+            placeholder={t("preview.searchFileContents")}
             className="h-8 pl-7 pr-16 text-sm"
             data-testid="file-tree-search"
             disabled={!appId}
@@ -177,7 +179,7 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
             <button
               className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               onClick={() => setSearchValue("")}
-              aria-label="Clear search"
+              aria-label={t("preview.clearSearch")}
             >
               <X size={14} />
             </button>
@@ -193,8 +195,8 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
           <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
             <span>
               {searchLoading
-                ? "Searching files..."
-                : `${matchesByPath.size} match${matchesByPath.size === 1 ? "" : "es"}`}
+                ? t("preview.searchingFiles")
+                : t("preview.match", { count: matchesByPath.size })}
             </span>
           </div>
         )}
@@ -211,7 +213,7 @@ export const FileTree = ({ appId, files }: FileTreeProps) => {
         !searchError &&
         matchesByPath.size === 0 ? (
           <div className="px-3 py-2 text-xs text-muted-foreground">
-            No files matched your search.
+            {t("preview.noFilesMatchedSearch")}
           </div>
         ) : isSearchMode ? (
           <div className="px-2 py-1">

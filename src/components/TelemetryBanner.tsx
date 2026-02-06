@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { ipc } from "@/ipc/types";
 import React from "react";
 import { Button } from "./ui/button";
@@ -9,6 +10,7 @@ const hideBannerAtom = atom(false);
 export function PrivacyBanner() {
   const [hideBanner, setHideBanner] = useAtom(hideBannerAtom);
   const { settings, updateSettings } = useSettings();
+  const { t } = useTranslation("settings");
   // TODO: Implement state management for banner visibility and user choice
   // TODO: Implement functionality for Accept, Reject, Ask me later buttons
   // TODO: Add state to hide/show banner based on user choice
@@ -26,10 +28,8 @@ export function PrivacyBanner() {
             Share anonymous data?
           </h4>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-            Help improve Dyad with anonymous usage data.
-            <em className="block italic mt-0.5">
-              Note: this does not log your code or messages.
-            </em>
+            {t("telemetry.privacyNotice")}
+            <br />
             <a
               onClick={() => {
                 ipc.system.openExternalUrl(
@@ -50,7 +50,7 @@ export function PrivacyBanner() {
             }}
             data-testid="telemetry-accept-button"
           >
-            Accept
+            {t("telemetry.acceptAndContinue")}
           </Button>
           <Button
             variant="secondary"

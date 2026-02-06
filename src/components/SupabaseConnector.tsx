@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 
 import { Label } from "@/components/ui/label";
@@ -49,6 +50,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { isSupabaseConnected } from "@/lib/schemas";
 
 export function SupabaseConnector({ appId }: { appId: number }) {
+  const { t } = useTranslation(["home", "common"]);
   const { settings, refreshSettings } = useSettings();
   const { app, refreshApp } = useLoadApp(appId);
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
@@ -101,17 +103,21 @@ export function SupabaseConnector({ appId }: { appId: number }) {
         (p) => p.id === projectId && p.organizationSlug === organizationSlug,
       );
       if (!project) {
-        throw new Error("Project not found");
+        throw new Error(t("integrations.supabase.projectNotFound"));
       }
       await setAppProject({
         projectId,
         appId,
         organizationSlug,
       });
-      toast.success("Project connected to app successfully");
+      toast.success(t("integrations.supabase.projectConnected"));
       await refreshApp();
     } catch (error) {
-      toast.error("Failed to connect project to app: " + error);
+      toast.error(
+        t("integrations.supabase.failedConnectProject", {
+          error: String(error),
+        }),
+      );
     }
   };
 
@@ -153,20 +159,20 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   const handleUnsetProject = async () => {
     try {
       await unsetAppProject(appId);
-      toast.success("Project disconnected from app successfully");
+      toast.success(t("integrations.supabase.disconnectProject"));
       await refreshApp();
     } catch (error) {
       console.error("Failed to disconnect project:", error);
-      toast.error("Failed to disconnect project from app");
+      toast.error(t("integrations.supabase.failedDisconnectProject"));
     }
   };
 
   const handleDeleteOrganization = async (organizationSlug: string) => {
     try {
       await deleteOrganization({ organizationSlug });
-      toast.success("Organization disconnected successfully");
-    } catch (error) {
-      toast.error("Failed to disconnect organization: " + error);
+      toast.success(t("integrations.supabase.orgDisconnected"));
+    } catch {
+      toast.error(t("integrations.supabase.failedDisconnect"));
     }
   };
 
@@ -176,7 +182,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
       <Card className="mt-1">
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            Supabase Project{" "}
+            {t("integrations.supabase.project")}{" "}
             <Button
               variant="outline"
               onClick={() => {
@@ -195,7 +201,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
             </Button>
           </CardTitle>
           <CardDescription className="flex flex-col gap-1.5 text-sm">
-            This app is connected to project:{" "}
+            {t("integrations.supabase.connectedToProject")}{" "}
             <Badge
               variant="secondary"
               className="ml-2 text-base font-bold px-3 py-1"
@@ -207,7 +213,9 @@ export function SupabaseConnector({ appId }: { appId: number }) {
         <CardContent>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="supabase-branch-select">Database Branch</Label>
+              <Label htmlFor="supabase-branch-select">
+                {t("integrations.supabase.databaseBranch")}
+              </Label>
               {branchesError ? (
                 <Alert>
                   <Info className="h-4 w-4" />
@@ -224,7 +232,9 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                         (b) => b.projectRef === supabaseBranchProjectId,
                       );
                       if (!branch) {
-                        throw new Error("Branch not found");
+                        throw new Error(
+                          t("integrations.supabase.branchNotFound"),
+                        );
                       }
                       // Keep the same organizationSlug from the app
                       await setAppProject({
@@ -233,10 +243,14 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                         appId,
                         organizationSlug: app.supabaseOrganizationSlug,
                       });
-                      toast.success("Branch selected");
+                      toast.success(t("integrations.supabase.branchSelected"));
                       await refreshApp();
                     } catch (error) {
-                      toast.error("Failed to set branch: " + error);
+                      toast.error(
+                        t("integrations.supabase.failedSetBranch", {
+                          error: String(error),
+                        }),
+                      );
                     }
                   }}
                   disabled={isLoadingBranches || isSettingAppProject}
@@ -245,7 +259,9 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                     id="supabase-branch-select"
                     data-testid="supabase-branch-select"
                   >
-                    <SelectValue placeholder="Select a branch" />
+                    <SelectValue
+                      placeholder={t("integrations.supabase.selectBranch")}
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {branches.map((branch) => (
@@ -263,7 +279,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
             </div>
 
             <Button variant="destructive" onClick={handleUnsetProject}>
-              Disconnect Project
+              {t("integrations.supabase.disconnectProject")}
             </Button>
           </div>
         </CardContent>
@@ -283,7 +299,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
       <Card className="mt-1">
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            Supabase Projects
+            {t("integrations.supabase.projects")}
             <div className="flex items-center gap-2">
               <Tooltip>
                 <TooltipTrigger
@@ -300,7 +316,9 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                     className={`h-4 w-4 ${isFetchingProjects ? "animate-spin" : ""}`}
                   />
                 </TooltipTrigger>
-                <TooltipContent>Refresh projects</TooltipContent>
+                <TooltipContent>
+                  {t("integrations.supabase.refreshProjects")}
+                </TooltipContent>
               </Tooltip>
               <Button
                 variant="outline"
@@ -309,12 +327,12 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                 className="gap-1"
               >
                 <Plus className="h-4 w-4" />
-                Add Organization
+                {t("integrations.supabase.addOrganization")}
               </Button>
             </div>
           </CardTitle>
           <CardDescription>
-            Select a Supabase project to connect to this app
+            {t("integrations.supabase.selectProjectDescription")}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -325,20 +343,24 @@ export function SupabaseConnector({ appId }: { appId: number }) {
             </div>
           ) : projectsError ? (
             <div className="text-red-500">
-              Error loading projects: {projectsError.message}
+              {t("integrations.supabase.errorLoadingProjects", {
+                message: projectsError.message,
+              })}
               <Button
                 variant="outline"
                 className="mt-2"
                 onClick={() => refetchProjects()}
               >
-                Retry
+                {t("common:retry")}
               </Button>
             </div>
           ) : (
             <div className="space-y-4">
               {/* Connected organizations list */}
               <div className="space-y-2">
-                <Label>Connected Organizations</Label>
+                <Label>
+                  {t("integrations.supabase.connectedOrganizations")}
+                </Label>
                 <div className="space-y-1">
                   {organizations.map((org) => (
                     <div
@@ -372,7 +394,9 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                           <Trash2 className="h-3.5 w-3.5 mr-1" />
                           <span className="text-xs">Disconnect</span>
                         </TooltipTrigger>
-                        <TooltipContent>Disconnect organization</TooltipContent>
+                        <TooltipContent>
+                          {t("integrations.supabase.disconnectOrganization")}
+                        </TooltipContent>
                       </Tooltip>
                     </div>
                   ))}
@@ -381,7 +405,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
 
               {projects.length === 0 ? (
                 <p className="text-sm text-gray-500">
-                  No projects found in your connected Supabase organizations.
+                  {t("integrations.supabase.noProjectsFound")}
                 </p>
               ) : (
                 <div className="space-y-2">
@@ -391,7 +415,9 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                     onValueChange={(v) => v && handleProjectSelect(v)}
                   >
                     <SelectTrigger id="project-select">
-                      <SelectValue placeholder="Select a project" />
+                      <SelectValue
+                        placeholder={t("integrations.supabase.selectAProject")}
+                      />
                     </SelectTrigger>
                     <SelectContent>
                       {Object.entries(groupedProjects).map(

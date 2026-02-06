@@ -9,10 +9,12 @@ import {
 } from "@/components/ui/select";
 import type { ChatMode } from "@/lib/schemas";
 import { isDyadProEnabled, getEffectiveDefaultChatMode } from "@/lib/schemas";
+import { useTranslation } from "react-i18next";
 
 export function DefaultChatModeSelector() {
   const { settings, updateSettings, envVars } = useSettings();
   const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
+  const { t } = useTranslation("settings");
 
   if (!settings) {
     return null;
@@ -54,7 +56,7 @@ export function DefaultChatModeSelector() {
           htmlFor="default-chat-mode"
           className="text-sm font-medium text-gray-700 dark:text-gray-300"
         >
-          Default Chat Mode
+          {t("workflow.defaultChatMode")}
         </label>
         <Select
           value={effectiveDefault}
@@ -98,7 +100,7 @@ export function DefaultChatModeSelector() {
         </Select>
       </div>
       <div className="text-sm text-gray-500 dark:text-gray-400">
-        The chat mode used when creating new chats.
+        {t("workflow.defaultChatModeDescription")}
       </div>
     </div>
   );

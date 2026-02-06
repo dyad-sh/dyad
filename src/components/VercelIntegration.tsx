@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { useSettings } from "@/hooks/useSettings";
 import { showSuccess, showError } from "@/lib/toast";
 
 export function VercelIntegration() {
+  const { t } = useTranslation(["home", "common"]);
   const { settings, updateSettings } = useSettings();
   const [isDisconnecting, setIsDisconnecting] = useState(false);
 
@@ -14,14 +16,12 @@ export function VercelIntegration() {
         vercelAccessToken: undefined,
       });
       if (result) {
-        showSuccess("Successfully disconnected from Vercel");
+        showSuccess(t("integrations.vercel.disconnected"));
       } else {
-        showError("Failed to disconnect from Vercel");
+        showError(t("integrations.vercel.failedDisconnect"));
       }
     } catch (err: any) {
-      showError(
-        err.message || "An error occurred while disconnecting from Vercel",
-      );
+      showError(err.message || t("integrations.vercel.errorDisconnect"));
     } finally {
       setIsDisconnecting(false);
     }
@@ -37,10 +37,10 @@ export function VercelIntegration() {
     <div className="flex items-center justify-between">
       <div>
         <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          Vercel Integration
+          {t("integrations.vercel.title")}
         </h3>
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-          Your account is connected to Vercel.
+          {t("integrations.vercel.connected")}
         </p>
       </div>
 
@@ -51,7 +51,9 @@ export function VercelIntegration() {
         disabled={isDisconnecting}
         className="flex items-center gap-2"
       >
-        {isDisconnecting ? "Disconnecting..." : "Disconnect from Vercel"}
+        {isDisconnecting
+          ? t("common:disconnecting")
+          : t("integrations.vercel.disconnect")}
         <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
           <path d="M24 22.525H0l12-21.05 12 21.05z" />
         </svg>

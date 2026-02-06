@@ -17,6 +17,7 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
+import { useTranslation } from "react-i18next";
 
 interface FileEditorProps {
   appId: number | null;
@@ -37,6 +38,7 @@ const Breadcrumb: React.FC<BreadcrumbProps> = ({
   onSave,
   isSaving,
 }) => {
+  const { t } = useTranslation("home");
   const segments = path.split("/").filter(Boolean);
 
   return (
@@ -74,7 +76,9 @@ const Breadcrumb: React.FC<BreadcrumbProps> = ({
               <Save size={12} />
             </TooltipTrigger>
             <TooltipContent>
-              {hasUnsavedChanges ? "Save changes" : "No unsaved changes"}
+              {hasUnsavedChanges
+                ? t("preview.saveChanges")
+                : t("preview.noUnsavedChanges")}
             </TooltipContent>
           </Tooltip>
           {hasUnsavedChanges && (
@@ -95,6 +99,7 @@ export const FileEditor = ({
   filePath,
   initialLine = null,
 }: FileEditorProps) => {
+  const { t } = useTranslation("home");
   const { content, loading, error } = useLoadAppFile(appId, filePath);
   const { theme } = useTheme();
   const [value, setValue] = useState<string | undefined>(undefined);
@@ -206,7 +211,7 @@ export const FileEditor = ({
       if (warning) {
         showWarning(warning);
       } else {
-        showSuccess("File saved");
+        showSuccess(t("preview.fileSaved"));
       }
 
       originalValueRef.current = currentValueRef.current;
@@ -231,7 +236,7 @@ export const FileEditor = ({
   }, [initialLine, filePath, content, navigateToLine]);
 
   if (loading) {
-    return <div className="p-4">Loading file content...</div>;
+    return <div className="p-4">{t("preview.loadingFileContent")}</div>;
   }
 
   if (error) {
@@ -239,7 +244,9 @@ export const FileEditor = ({
   }
 
   if (!content) {
-    return <div className="p-4 text-gray-500">No content available</div>;
+    return (
+      <div className="p-4 text-gray-500">{t("preview.noContentAvailable")}</div>
+    );
   }
 
   return (

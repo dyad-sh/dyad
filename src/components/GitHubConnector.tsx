@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
   Github,
@@ -75,6 +76,7 @@ function ConnectedGitHubConnector({
   triggerAutoSync,
   onAutoSyncComplete,
 }: ConnectedGitHubConnectorProps) {
+  const { t } = useTranslation(["home", "common"]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncSuccess, setSyncSuccess] = useState<boolean>(false);
@@ -98,7 +100,9 @@ function ConnectedGitHubConnector({
       await ipc.github.disconnect({ appId });
       refreshApp();
     } catch (err: any) {
-      setDisconnectError(err.message || "Failed to disconnect repository.");
+      setDisconnectError(
+        err.message || t("integrations.github.failedDisconnectRepo"),
+      );
     } finally {
       setIsDisconnecting(false);
     }

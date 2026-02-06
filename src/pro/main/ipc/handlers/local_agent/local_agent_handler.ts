@@ -56,7 +56,10 @@ import {
   type InjectedMessage,
 } from "./prepare_step_utils";
 import { TOOL_DEFINITIONS } from "./tool_definitions";
-import { parseAiMessagesJson } from "@/ipc/utils/ai_messages_utils";
+import {
+  parseAiMessagesJson,
+  type DbMessageForParsing,
+} from "@/ipc/utils/ai_messages_utils";
 import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
 import { addIntegrationTool } from "./tools/add_integration";
 import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
@@ -107,6 +110,23 @@ function findToolDefinition(toolName: string) {
   return TOOL_DEFINITIONS.find((t) => t.name === toolName);
 }
 
+function buildChatMessageHistory(
+  chatMessages: Array<
+    DbMessageForParsing & {
+      isCompactionSummary: boolean | null;
+    }
+  >,
+  options?: { excludeMessageIds?: Set<number> },
+): ModelMessage[] {
+  const excludedIds = options?.excludeMessageIds;
+  const relevantMessages = getPostCompactionMessages(chatMessages);
+
+  return relevantMessages
+    .filter((msg) => !excludedIds?.has(msg.id))
+    .filter((msg) => msg.content || msg.aiMessagesJson)
+    .flatMap((msg) => parseAiMessagesJson(msg));
+}
+
 /**
  * Handle a chat stream in local-agent mode
  */
@@ -143,6 +163,8 @@ export async function handleLocalAgentStream(
   },
 ): Promise<boolean> {
   const settings = readSettings();
+  let fullResponse = "";
+  let streamingPreview = ""; // Temporary preview for current tool, not persisted
 
   // Check Pro status or Basic Agent mode
   // Basic Agent mode allows non-Pro users with quota (quota check is done in chat_stream_handlers)
@@ -156,28 +178,39 @@ export async function handleLocalAgentStream(
     return false;
   }
 
-  // Get the chat and app — may be re-queried after compaction
-  let chat = await db.query.chats.findFirst({
-    where: eq(chats.id, req.chatId),
-    with: {
-      messages: {
-        orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+  const loadChat = async () =>
+    db.query.chats.findFirst({
+      where: eq(chats.id, req.chatId),
+      with: {
+        messages: {
+          orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+        },
+        app: true,
       },
-      app: true,
-    },
-  });
+    });
 
-  if (!chat || !chat.app) {
+  // Get the chat and app — may be re-queried after compaction
+  const initialChat = await loadChat();
+
+  if (!initialChat || !initialChat.app) {
     throw new Error(`Chat not found: ${req.chatId}`);
   }
 
+  let chat = initialChat;
+
   const appPath = getDyadAppPath(chat.app.path);
 
-  // Check if compaction is pending and enabled before processing the message
-  if (
-    settings.enableContextCompaction !== false &&
-    (await isChatPendingCompaction(req.chatId))
-  ) {
+  const maybePerformPendingCompaction = async (options?: {
+    showOnTopOfCurrentResponse?: boolean;
+    force?: boolean;
+  }) => {
+    if (
+      settings.enableContextCompaction === false ||
+      (!options?.force && !(await isChatPendingCompaction(req.chatId)))
+    ) {
+      return false;
+    }
+
     logger.info(`Performing pending compaction for chat ${req.chatId}`);
     const compactionResult = await performCompaction(
       event,
@@ -185,14 +218,17 @@ export async function handleLocalAgentStream(
       appPath,
       dyadRequestId,
       (accumulatedSummary: string) => {
-        // Stream compaction summary to the frontend in real-time
-        // We temporarily set the placeholder content to show compaction progress;
-        // after compaction, the chat is re-queried and the placeholder is reset.
+        // Stream compaction summary to the frontend in real-time.
+        // During mid-turn compaction, keep already streamed content visible.
+        const compactionPreview = `<dyad-compaction title="Compacting conversation">\n${accumulatedSummary}\n</dyad-compaction>`;
+        const previewContent = options?.showOnTopOfCurrentResponse
+          ? `${fullResponse}${streamingPreview ? streamingPreview : ""}\n${compactionPreview}`
+          : compactionPreview;
         sendResponseChunk(
           event,
           req.chatId,
           chat,
-          `<dyad-compaction title="Compacting conversation">\n${accumulatedSummary}\n</dyad-compaction>`,
+          previewContent,
           placeholderMessageId,
         );
       },
@@ -203,26 +239,34 @@ export async function handleLocalAgentStream(
       );
       // Continue anyway - compaction failure shouldn't block the conversation
     }
-    // Re-query to pick up the newly inserted compaction summary message
-    chat = (await db.query.chats.findFirst({
-      where: eq(chats.id, req.chatId),
-      with: {
-        messages: {
-          orderBy: (messages, { asc }) => [asc(messages.createdAt)],
-        },
-        app: true,
-      },
-    }))!;
-  }
+
+    // Re-query to pick up the newly inserted compaction summary message.
+    const refreshedChat = await loadChat();
+    if (refreshedChat?.app) {
+      chat = refreshedChat;
+    }
+
+    if (options?.showOnTopOfCurrentResponse) {
+      sendResponseChunk(
+        event,
+        req.chatId,
+        chat,
+        fullResponse + streamingPreview,
+        placeholderMessageId,
+      );
+    }
+
+    return compactionResult.success;
+  };
+
+  // Check if compaction is pending and enabled before processing the message
+  await maybePerformPendingCompaction();
 
   // Send initial message update
   safeSend(event.sender, "chat:response:chunk", {
     chatId: req.chatId,
     messages: chat.messages,
   });
-
-  let fullResponse = "";
-  let streamingPreview = ""; // Temporary preview for current tool, not persisted
 
   // Track pending user messages to inject after tool results
   const pendingUserMessages: UserMessageContentPart[][] = [];
@@ -311,13 +355,14 @@ export async function handleLocalAgentStream(
     // Use messageOverride if provided (e.g., for summarization)
     // If a compaction summary exists, only include messages from that point onward
     // (pre-compaction messages are preserved in DB for the user but not sent to LLM)
-    const relevantMessages = getPostCompactionMessages(chat.messages);
-
     const messageHistory: ModelMessage[] = messageOverride
       ? messageOverride
-      : relevantMessages
-          .filter((msg) => msg.content || msg.aiMessagesJson)
-          .flatMap((msg) => parseAiMessagesJson(msg));
+      : buildChatMessageHistory(chat.messages);
+
+    // Used to swap out pre-compaction history while preserving in-flight turn steps.
+    let baseMessageHistoryCount = messageHistory.length;
+    let compactBeforeNextStep = false;
+    let compactedMidTurn = false;
 
     // Stream the response
     const streamResult = streamText({
@@ -361,8 +406,78 @@ export async function handleLocalAgentStream(
       // We must re-inject all accumulated messages each step because the AI SDK
       // doesn't persist dynamically injected messages in its internal state.
       // We track the insertion index so messages appear at the same position each step.
-      prepareStep: (options) =>
-        prepareStepMessages(options, pendingUserMessages, allInjectedMessages),
+      prepareStep: async (options) => {
+        let stepOptions = options;
+
+        if (
+          !messageOverride &&
+          compactBeforeNextStep &&
+          !compactedMidTurn &&
+          settings.enableContextCompaction !== false
+        ) {
+          compactBeforeNextStep = false;
+          const inFlightTailMessages = options.messages.slice(
+            baseMessageHistoryCount,
+          );
+          const compacted = await maybePerformPendingCompaction({
+            showOnTopOfCurrentResponse: true,
+            force: true,
+          });
+
+          if (compacted) {
+            compactedMidTurn = true;
+            const compactedMessageHistory = buildChatMessageHistory(
+              chat.messages,
+              {
+                // Keep the structured in-flight assistant/tool messages from
+                // the current stream instead of the placeholder DB content.
+                excludeMessageIds: new Set([placeholderMessageId]),
+              },
+            );
+            baseMessageHistoryCount = compactedMessageHistory.length;
+            stepOptions = {
+              ...options,
+              messages: [...compactedMessageHistory, ...inFlightTailMessages],
+            };
+          }
+        }
+
+        const preparedStep = prepareStepMessages(
+          stepOptions,
+          pendingUserMessages,
+          allInjectedMessages,
+        );
+
+        // prepareStepMessages returns undefined when it has no additional
+        // injections/cleanups to apply. If we already replaced the base
+        // message history (e.g., after mid-turn compaction), we still need
+        // to return the updated options.
+        if (preparedStep) {
+          return preparedStep;
+        }
+
+        return stepOptions === options ? undefined : stepOptions;
+      },
+      onStepFinish: async (step) => {
+        if (
+          settings.enableContextCompaction === false ||
+          compactedMidTurn ||
+          typeof step.usage.totalTokens !== "number"
+        ) {
+          return;
+        }
+
+        const shouldCompact = await checkAndMarkForCompaction(
+          req.chatId,
+          step.usage.totalTokens,
+        );
+
+        // If this step triggered tool calls, compact before the next step
+        // in this same user turn instead of waiting for the next message.
+        if (shouldCompact && step.toolCalls.length > 0) {
+          compactBeforeNextStep = true;
+        }
+      },
       onFinish: async (response) => {
         const totalTokens = response.usage?.totalTokens;
         const inputTokens = response.usage?.inputTokens;
@@ -383,9 +498,6 @@ export async function handleLocalAgentStream(
             .set({ maxTokensUsed: totalTokens })
             .where(eq(messages.id, placeholderMessageId))
             .catch((err) => logger.error("Failed to save token count", err));
-
-          // Check if compaction should be triggered for the next message
-          await checkAndMarkForCompaction(req.chatId, totalTokens);
         }
       },
       onError: (error: any) => {

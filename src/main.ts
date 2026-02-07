@@ -380,21 +380,26 @@ const createApplicationMenu = () => {
   Menu.setApplicationMenu(appMenu);
 };
 
-const gotTheLock = app.requestSingleInstanceLock();
-
-if (!gotTheLock) {
-  app.quit();
-} else {
-  app.on("second-instance", (_event, commandLine, _workingDirectory) => {
-    // Someone tried to run a second instance, we should focus our window.
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
-    // the commandLine is array of strings in which last element is deep link url
-    handleDeepLinkReturn(commandLine.pop()!);
-  });
+// Skip singleton lock for E2E test builds to allow parallel test execution
+if (IS_TEST_BUILD) {
   app.whenReady().then(onReady);
+} else {
+  const gotTheLock = app.requestSingleInstanceLock();
+
+  if (!gotTheLock) {
+    app.quit();
+  } else {
+    app.on("second-instance", (_event, commandLine, _workingDirectory) => {
+      // Someone tried to run a second instance, we should focus our window.
+      if (mainWindow) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus();
+      }
+      // the commandLine is array of strings in which last element is deep link url
+      handleDeepLinkReturn(commandLine.pop()!);
+    });
+    app.whenReady().then(onReady);
+  }
 }
 
 // Handle the protocol. In this case, we choose to show an Error Box.

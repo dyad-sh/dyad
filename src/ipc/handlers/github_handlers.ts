@@ -21,8 +21,6 @@ import {
   isGitMergeInProgress,
   isGitRebaseInProgress,
   GitConflictError,
-  gitCommit,
-  gitAdd,
 } from "../utils/git_utils";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
@@ -1122,99 +1120,6 @@ async function handleGetMergeConflicts(
   return conflicts;
 }
 
-async function handleResolveConflict(
-  event: IpcMainInvokeEvent,
-  { appId, file }: { appId: number; file: string },
-): Promise<string> {
-  return withLock(appId, async () => {
-    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-    if (!app) {
-      throw new Error("App not found");
-    }
-
-    const appPath = getDyadAppPath(app.path);
-    const filePath = path.join(appPath, file);
-    const resolvedPath = path.resolve(filePath);
-    const resolvedAppPath = path.resolve(appPath);
-    if (!resolvedPath.startsWith(resolvedAppPath + path.sep)) {
-      throw new Error("Invalid file path");
-    }
-
-    if (!fs.existsSync(filePath)) {
-      throw new Error("File not found");
-    }
-
-    const content = fs.readFileSync(filePath, "utf-8");
-    const normalized = content.replace(/\r\n/g, "\n");
-
-    const resolution = normalized.replace(
-      /^<<<<<<< .*\r?\n([\s\S]*?)^=======\r?\n([\s\S]*?)^>>>>>>> .*(\r?\n|$)/gm,
-      (_match, headContent) => headContent,
-    );
-
-    // Write the resolved content back to the file
-    fs.writeFileSync(filePath, resolution, "utf-8");
-
-    // Stage the resolved file to mark it as resolved in Git
-    await gitAdd({ path: appPath, filepath: file });
-
-    return resolution;
-  });
-}
-
-async function handleCompleteMerge(
-  event: IpcMainInvokeEvent,
-  { appId }: { appId: number },
-): Promise<string | undefined> {
-  return withLock(appId, async () => {
-    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-    if (!app) {
-      throw new Error("App not found");
-    }
-
-    const appPath = getDyadAppPath(app.path);
-
-    const rebaseInProgress = isGitRebaseInProgress({ path: appPath });
-    const mergeHeadPath = path.join(appPath, ".git", "MERGE_HEAD");
-    const mergeInProgress = fs.existsSync(mergeHeadPath);
-
-    if (!rebaseInProgress && !mergeInProgress) {
-      logger.warn(
-        "[GitHub Handler] Complete merge called but no merge or rebase in progress",
-      );
-      throw new Error("No merge or rebase in progress.");
-    }
-
-    if (rebaseInProgress) {
-      const settings = readSettings();
-      if (!settings.enableNativeGit) {
-        throw new Error(
-          "Cannot complete rebase because native Git is disabled. Enable native Git in settings to continue.",
-        );
-      }
-    }
-
-    const conflicts = await gitGetMergeConflicts({ path: appPath });
-    if (conflicts.length > 0) {
-      const operation = rebaseInProgress ? "rebase" : "merge";
-      throw new Error(
-        `Cannot complete ${operation}: ${conflicts.length} file(s) still have conflicts.`,
-      );
-    }
-
-    if (rebaseInProgress) {
-      await gitRebaseContinue({ path: appPath });
-      return undefined;
-    } else {
-      const commitHash = await gitCommit({
-        path: appPath,
-        message: "Merge: resolve conflicts",
-      });
-      return commitHash;
-    }
-  });
-}
-
 async function handleDisconnectGithubRepo(
   event: IpcMainInvokeEvent,
   { appId }: { appId: number },
@@ -1415,14 +1320,6 @@ export function registerGithubHandlers() {
 
   createTypedHandler(githubContracts.getConflicts, async (event, params) => {
     return handleGetMergeConflicts(event, params);
-  });
-
-  createTypedHandler(githubContracts.resolveConflict, async (event, params) => {
-    return handleResolveConflict(event, params);
-  });
-
-  createTypedHandler(githubContracts.completeMerge, async (event, params) => {
-    return handleCompleteMerge(event, params);
   });
 
   createTypedHandler(githubContracts.getGitState, async (event, params) => {

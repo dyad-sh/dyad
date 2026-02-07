@@ -29,8 +29,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GithubBranchManager } from "@/components/GithubBranchManager";
-import { GithubConflictResolver } from "@/components/GithubConflictResolver";
-import { showSuccess } from "@/lib/toast";
+import { useResolveMergeConflictsWithAI } from "@/hooks/useResolveMergeConflictsWithAI";
+import { showSuccess, showError } from "@/lib/toast";
 
 type SyncResult =
   | { error: Error; handled?: boolean }
@@ -91,7 +91,39 @@ function ConnectedGitHubConnector({
     "abort" | "continue" | "safe-push" | null
   >(null);
   const [rebaseInProgress, setRebaseInProgress] = useState(false);
+  const [isCancellingSync, setIsCancellingSync] = useState(false);
   const lastAutoSyncedAppIdRef = useRef<number | null>(null);
+
+  const { resolveWithAI } = useResolveMergeConflictsWithAI({
+    appId,
+    conflicts,
+    onStartResolving: () => {
+      // Clear conflicts state when starting AI resolution since user will be navigated to chat
+      setConflicts([]);
+      setSyncError(null);
+    },
+  });
+
+  const handleCancelSync = async () => {
+    setIsCancellingSync(true);
+    try {
+      const state = await ipc.github.getGitState({ appId });
+      if (state.rebaseInProgress) {
+        await ipc.github.rebaseAbort({ appId });
+        setRebaseInProgress(false);
+        setRebaseStatusMessage("Rebase aborted.");
+      } else if (state.mergeInProgress) {
+        await ipc.github.mergeAbort({ appId });
+      }
+      setConflicts([]);
+      setSyncError(null);
+      showSuccess("Sync cancelled");
+    } catch (error: any) {
+      showError(error?.message || "Failed to cancel sync");
+    } finally {
+      setIsCancellingSync(false);
+    }
+  };
 
   const handleDisconnectRepo = async () => {
     setIsDisconnecting(true);
@@ -144,10 +176,10 @@ function ConnectedGitHubConnector({
         }
 
         if (conflictsDetected.length > 0) {
-          // Conflicts were detected - show the resolver
+          // Conflicts were detected - show resolution buttons below
           setConflicts(conflictsDetected);
           setSyncError(
-            "Merge conflicts detected. Please resolve them in the dialog.",
+            "Merge conflicts detected. Use the buttons below to resolve them.",
           );
           (err as Error & { handled?: boolean }).handled = true;
           return { error: err, handled: true };
@@ -484,87 +516,26 @@ function ConnectedGitHubConnector({
           )}
         </div>
       )}
-      {/* Conflict Resolver */}
+      {/* Conflict Resolution Buttons */}
       {conflicts.length > 0 && (
-        <GithubConflictResolver
-          appId={appId}
-          conflicts={conflicts}
-          onResolve={async () => {
-            setConflicts([]);
-            setSyncError(null);
-            try {
-              // Check if merge/rebase is still in progress before completing
-              const gitState = await ipc.github.getGitState({ appId });
-              if (!gitState.mergeInProgress && !gitState.rebaseInProgress) {
-                // Merge/rebase already completed (possibly auto-completed)
-                // Check if there are any remaining conflicts
-                const remainingConflicts = await ipc.github.getConflicts({
-                  appId,
-                });
-                if (remainingConflicts.length === 0) {
-                  showSuccess("All conflicts resolved");
-                  setRebaseInProgress(false);
-                  setRebaseStatusMessage(null);
-                  refreshApp();
-                  if (onAutoSyncComplete) {
-                    onAutoSyncComplete();
-                  }
-                  return;
-                } else {
-                  // Still have conflicts but merge state is gone - this is an error state
-                  throw new Error(
-                    "Merge state lost but conflicts remain. Please check git status.",
-                  );
-                }
-              }
-
-              // Merge/rebase is still in progress, complete it
-              await ipc.github.completeMerge({ appId });
-              showSuccess("Conflicts resolved and merge completed");
-              setRebaseInProgress(false);
-              setRebaseStatusMessage(null);
-              refreshApp();
-              if (onAutoSyncComplete) {
-                onAutoSyncComplete();
-              }
-            } catch (error: any) {
-              setSyncError(error.message || "Failed to complete merge");
-              let remainingConflicts: string[] = [];
-              try {
-                remainingConflicts = await ipc.github.getConflicts({
-                  appId,
-                });
-              } catch (conflictError: any) {
-                setSyncError(
-                  conflictError?.message || "Failed to refresh conflict status",
-                );
-              }
-              if (remainingConflicts.length > 0) {
-                setConflicts(remainingConflicts);
-              } else {
-                setConflicts([]);
-              }
-            }
-          }}
-          onCancel={async () => {
-            setConflicts([]);
-            setSyncError(null);
-            try {
-              const state = await ipc.github.getGitState({ appId });
-              if (state.rebaseInProgress) {
-                await ipc.github.rebaseAbort({ appId });
-                setRebaseInProgress(false);
-                setRebaseStatusMessage("Rebase aborted.");
-              } else if (state.mergeInProgress) {
-                await ipc.github.mergeAbort({ appId });
-              }
-            } catch (error: any) {
-              setSyncError(
-                error?.message || "Failed to abort merge/rebase operation",
-              );
-            }
-          }}
-        />
+        <div className="mt-3 p-3 rounded-md border border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/20">
+          <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-3">
+            {conflicts.length} file{conflicts.length > 1 ? "s" : ""} with merge
+            conflicts: {conflicts.join(", ")}
+          </p>
+          <div className="flex gap-2">
+            <Button onClick={resolveWithAI} disabled={isCancellingSync}>
+              Resolve merge conflicts with AI
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleCancelSync}
+              disabled={isCancellingSync}
+            >
+              {isCancellingSync ? "Cancelling..." : "Cancel sync"}
+            </Button>
+          </div>
+        </div>
       )}
       {rebaseStatusMessage && (
         <p className="text-sm text-gray-700 dark:text-gray-300 mt-2">

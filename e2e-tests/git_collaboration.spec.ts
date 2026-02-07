@@ -6,7 +6,7 @@ import path from "path";
 import { execSync } from "child_process";
 
 async function createGitConflict(po: PageObject) {
-  await po.setUp({ disableNativeGit: false });
+  await po.setUp({ disableNativeGit: false, autoApprove: true });
   await po.sendPrompt("tc=basic");
 
   await po.getTitleBarAppNameButton().click();
@@ -296,25 +296,20 @@ test.describe("Git Collaboration", () => {
 
   test("should resolve merge conflicts with AI", async ({ po }) => {
     const { conflictFile, appPath } = await createGitConflict(po);
-    // Verify Conflict Dialog appears
-    await expect(po.page.getByText("Resolve Conflicts")).toBeVisible({
-      timeout: Timeout.MEDIUM,
+    // Verify inline resolve buttons appear (no modal)
+    const resolveButton = po.page.getByRole("button", {
+      name: "Resolve merge conflicts with AI",
     });
-    // Use AI to resolve conflicts
-    await po.page.getByRole("button", { name: "Auto-Resolve with AI" }).click();
-    await po.waitForToastWithText("AI suggested a resolution");
-    await expect(po.page.getByText("AI Suggested Resolution")).toBeVisible({
-      timeout: Timeout.MEDIUM,
-    });
-    await po.page.getByRole("button", { name: "Approve" }).click();
-    await po.waitForToastWithText("Applied AI suggestion via approval.");
-    await expect(po.page.getByText("Resolve Conflicts")).not.toBeVisible({
-      timeout: Timeout.MEDIUM,
-    });
+    await expect(resolveButton).toBeVisible({ timeout: Timeout.MEDIUM });
+
+    // Click the button to start AI resolution - this navigates to a new chat
+    await resolveButton.click();
+
+    // Wait for the chat to load and AI to respond (auto-approve is enabled)
     const conflictFilePath = path.join(appPath, conflictFile);
     await expect
       .poll(() => fs.readFileSync(conflictFilePath, "utf-8"), {
-        timeout: Timeout.MEDIUM,
+        timeout: Timeout.LONG,
       })
       .not.toMatch(/<<<<<<<|=======|>>>>>>>/);
     await expect
@@ -324,16 +319,17 @@ test.describe("Git Collaboration", () => {
       .toBe(false);
   });
 
-  test("should resolve merge conflicts manually", async ({ po }) => {
+  test("should cancel sync when merge conflicts occur", async ({ po }) => {
     await createGitConflict(po);
-    // Verify Conflict Dialog appears
-    await expect(po.page.getByText("Resolve Conflicts")).toBeVisible({
-      timeout: Timeout.MEDIUM,
-    });
-    // Use Manual resolution
-    await po.page
-      .getByRole("button", { name: "Accept Current Changes" })
-      .click();
-    await po.waitForToastWithText("Applied manual conflict resolution");
+    // Verify inline resolve buttons appear
+    await expect(
+      po.page.getByRole("button", { name: "Resolve merge conflicts with AI" }),
+    ).toBeVisible({ timeout: Timeout.MEDIUM });
+    // Click Cancel sync to abort the merge
+    await po.page.getByRole("button", { name: "Cancel sync" }).click();
+    // Conflict buttons should be gone (merge/rebase aborted, no toast shown)
+    await expect(
+      po.page.getByRole("button", { name: "Resolve merge conflicts with AI" }),
+    ).not.toBeVisible({ timeout: Timeout.MEDIUM });
   });
 });

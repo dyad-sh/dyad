@@ -172,6 +172,9 @@ const config: ForgeConfig = {
   plugins: [
     new AutoUnpackNativesPlugin({}),
     new VitePlugin({
+      // Disable concurrent builds to prevent resource contention on Windows
+      // when building the large main process bundle (3800+ modules)
+      concurrent: false,
       // `build` can specify multiple entry builds, which can be Main process, Preload scripts, Worker process, etc.
       // If you are familiar with Vite configuration, it will look really familiar.
       build: [

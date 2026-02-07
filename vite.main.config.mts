@@ -26,12 +26,5 @@ export default defineConfig({
       ],
     },
   },
-  plugins: [
-    {
-      name: "restart",
-      closeBundle() {
-        process.stdin.emit("data", "rs");
-      },
-    },
-  ],
+  plugins: [],
 });

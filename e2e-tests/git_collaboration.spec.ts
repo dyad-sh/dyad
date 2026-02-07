@@ -33,7 +33,7 @@ async function createGitConflict(po: PageObject) {
 
   // 1. Create file on main
   fs.writeFileSync(conflictFilePath, "Line 1\nLine 2\nLine 3");
-  execSync(`git add ${conflictFile} && git commit -m "Add conflict file"`, {
+  execSync(`git add "${conflictFile}" && git commit -m "Add conflict file"`, {
     cwd: appPath,
   });
 
@@ -41,14 +41,14 @@ async function createGitConflict(po: PageObject) {
   const featureBranch = "feature-conflict";
   execSync(`git checkout -b ${featureBranch}`, { cwd: appPath });
   fs.writeFileSync(conflictFilePath, "Line 1\nLine 2 Modified Feature\nLine 3");
-  execSync(`git add ${conflictFile} && git commit -m "Modify on feature"`, {
+  execSync(`git add "${conflictFile}" && git commit -m "Modify on feature"`, {
     cwd: appPath,
   });
 
   // 3. Switch back to main and modify
   execSync(`git checkout main`, { cwd: appPath });
   fs.writeFileSync(conflictFilePath, "Line 1\nLine 2 Modified Main\nLine 3");
-  execSync(`git add ${conflictFile} && git commit -m "Modify on main"`, {
+  execSync(`git add "${conflictFile}" && git commit -m "Modify on main"`, {
     cwd: appPath,
   });
 

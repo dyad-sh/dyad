@@ -94,7 +94,7 @@ function ConnectedGitHubConnector({
   const [isCancellingSync, setIsCancellingSync] = useState(false);
   const lastAutoSyncedAppIdRef = useRef<number | null>(null);
 
-  const { resolveWithAI } = useResolveMergeConflictsWithAI({
+  const { resolveWithAI, isResolving } = useResolveMergeConflictsWithAI({
     appId,
     conflicts,
     onStartResolving: () => {
@@ -108,16 +108,21 @@ function ConnectedGitHubConnector({
     setIsCancellingSync(true);
     try {
       const state = await ipc.github.getGitState({ appId });
+      let aborted = false;
       if (state.rebaseInProgress) {
         await ipc.github.rebaseAbort({ appId });
         setRebaseInProgress(false);
         setRebaseStatusMessage("Rebase aborted.");
+        aborted = true;
       } else if (state.mergeInProgress) {
         await ipc.github.mergeAbort({ appId });
+        aborted = true;
       }
       setConflicts([]);
       setSyncError(null);
-      showSuccess("Sync cancelled");
+      if (aborted) {
+        showSuccess("Sync cancelled");
+      }
     } catch (error: any) {
       showError(error?.message || "Failed to cancel sync");
     } finally {
@@ -524,13 +529,16 @@ function ConnectedGitHubConnector({
             conflicts: {conflicts.join(", ")}
           </p>
           <div className="flex gap-2">
-            <Button onClick={resolveWithAI} disabled={isCancellingSync}>
-              Resolve merge conflicts with AI
+            <Button
+              onClick={resolveWithAI}
+              disabled={isCancellingSync || isResolving}
+            >
+              {isResolving ? "Resolving..." : "Resolve merge conflicts with AI"}
             </Button>
             <Button
               variant="outline"
               onClick={handleCancelSync}
-              disabled={isCancellingSync}
+              disabled={isCancellingSync || isResolving}
             >
               {isCancellingSync ? "Cancelling..." : "Cancel sync"}
             </Button>

@@ -110,7 +110,7 @@ export function GithubBranchManager({
   } | null>(null);
   const [isCancellingSync, setIsCancellingSync] = useState(false);
 
-  const { resolveWithAI } = useResolveMergeConflictsWithAI({
+  const { resolveWithAI, isResolving } = useResolveMergeConflictsWithAI({
     appId,
     conflicts,
     onStartResolving: () => {
@@ -123,13 +123,18 @@ export function GithubBranchManager({
     setIsCancellingSync(true);
     try {
       const state = await ipc.github.getGitState({ appId });
+      let aborted = false;
       if (state.rebaseInProgress) {
         await ipc.github.rebaseAbort({ appId });
+        aborted = true;
       } else if (state.mergeInProgress) {
         await ipc.github.mergeAbort({ appId });
+        aborted = true;
       }
       setConflicts([]);
-      showSuccess("Sync cancelled");
+      if (aborted) {
+        showSuccess("Sync cancelled");
+      }
     } catch (error: any) {
       showError(error?.message || "Failed to cancel sync");
     } finally {
@@ -739,13 +744,16 @@ export function GithubBranchManager({
             conflicts: {conflicts.join(", ")}
           </p>
           <div className="flex gap-2">
-            <Button onClick={resolveWithAI} disabled={isCancellingSync}>
-              Resolve merge conflicts with AI
+            <Button
+              onClick={resolveWithAI}
+              disabled={isCancellingSync || isResolving}
+            >
+              {isResolving ? "Resolving..." : "Resolve merge conflicts with AI"}
             </Button>
             <Button
               variant="outline"
               onClick={handleCancelSync}
-              disabled={isCancellingSync}
+              disabled={isCancellingSync || isResolving}
             >
               {isCancellingSync ? "Cancelling..." : "Cancel sync"}
             </Button>

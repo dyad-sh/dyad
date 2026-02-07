@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useSetAtom } from "jotai";
 import { useNavigate } from "@tanstack/react-router";
 import { ipc } from "@/ipc/types";
@@ -32,13 +32,22 @@ export function useResolveMergeConflictsWithAI({
   const setIsStreamingById = useSetAtom(isStreamingByIdAtom);
   const setStreamCountById = useSetAtom(chatStreamCountByIdAtom);
   const navigate = useNavigate();
+  const [isResolving, setIsResolving] = useState(false);
 
   const resolveWithAI = useCallback(async () => {
+    if (!appId) {
+      showError("App ID is required");
+      return;
+    }
     if (conflicts.length === 0) {
       showError("No conflicts to resolve");
       return;
     }
+    if (isResolving) {
+      return;
+    }
 
+    setIsResolving(true);
     onStartResolving?.();
 
     try {
@@ -99,6 +108,7 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
               next.set(newChatId, false);
               return next;
             });
+            setIsResolving(false);
           },
           onError: ({ error }) => {
             showError(error || "Failed to resolve conflicts");
@@ -107,15 +117,18 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
               next.set(newChatId, false);
               return next;
             });
+            setIsResolving(false);
           },
         },
       );
     } catch (error: any) {
-      showError(error.message || "Failed to start conflict resolution");
+      showError(error?.message || "Failed to start conflict resolution");
+      setIsResolving(false);
     }
   }, [
     appId,
     conflicts,
+    isResolving,
     onStartResolving,
     setSelectedChatId,
     setSelectedAppId,
@@ -125,5 +138,5 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
     navigate,
   ]);
 
-  return { resolveWithAI };
+  return { resolveWithAI, isResolving };
 }

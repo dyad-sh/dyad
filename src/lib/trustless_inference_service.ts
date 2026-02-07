@@ -141,18 +141,21 @@ class TrustlessInferenceService {
     const timestamp = Date.now();
 
     // Build model config
+    // The handler sends { options: { temperature, maxTokens, ... } }
+    // but Ollama uses numPredict, so map maxTokens → numPredict
+    const opts = options?.config?.options as Record<string, unknown> | undefined;
     const modelConfig: LocalModelConfig = {
       modelId,
       provider,
       baseUrl: provider === "ollama" ? "http://127.0.0.1:11434" : "http://127.0.0.1:1234",
       options: {
-        temperature: options?.config?.options?.temperature ?? 0.7,
-        numPredict: options?.config?.options?.numPredict ?? 2048,
-        topP: options?.config?.options?.topP,
-        topK: options?.config?.options?.topK,
-        seed: options?.config?.options?.seed,
-        repeatPenalty: options?.config?.options?.repeatPenalty,
-        stop: options?.config?.options?.stop,
+        temperature: (opts?.temperature as number) ?? 0.7,
+        numPredict: (opts?.numPredict as number) ?? (opts?.maxTokens as number) ?? 2048,
+        topP: opts?.topP as number | undefined,
+        topK: opts?.topK as number | undefined,
+        seed: opts?.seed as number | undefined,
+        repeatPenalty: opts?.repeatPenalty as number | undefined,
+        stop: opts?.stop as string[] | undefined,
       },
     };
 
@@ -260,13 +263,14 @@ class TrustlessInferenceService {
     const timestamp = Date.now();
     const collectedChunks: string[] = [];
 
+    const streamOpts = options?.config?.options as Record<string, unknown> | undefined;
     const modelConfig: LocalModelConfig = {
       modelId,
       provider,
       baseUrl: provider === "ollama" ? "http://127.0.0.1:11434" : "http://127.0.0.1:1234",
       options: {
-        temperature: options?.config?.options?.temperature ?? 0.7,
-        numPredict: options?.config?.options?.numPredict ?? 2048,
+        temperature: (streamOpts?.temperature as number) ?? 0.7,
+        numPredict: (streamOpts?.numPredict as number) ?? (streamOpts?.maxTokens as number) ?? 2048,
       },
     };
 

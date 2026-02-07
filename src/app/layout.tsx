@@ -100,7 +100,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             >
               {children}
             </div>
-            <Toaster richColors />
+            <Toaster
+              richColors
+              duration={settings?.isTestMode ? 500 : undefined}
+            />
           </SidebarProvider>
         </DeepLinkProvider>
       </ThemeProvider>

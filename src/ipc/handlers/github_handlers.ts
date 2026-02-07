@@ -18,7 +18,7 @@ const logger = log.scope("github_handlers");
 
 // --- GitHub Device Flow Constants ---
 // TODO: Fetch this securely, e.g., from environment variables or a config file
-const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || "Ov23liWV2HdC0RBLecWx";
+const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || "Ov23likR31wIwYJUzHE3";
 
 // Use test server URLs when in test mode
 

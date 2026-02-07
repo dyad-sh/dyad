@@ -228,7 +228,7 @@ export function registerNeonHandlers() {
     // Simulate the deep link event
     event.sender.send("deep-link-received", {
       type: "neon-oauth-return",
-      url: "https://oauth.joycreate.app/api/integrations/neon/login",
+      url: "https://oauth.joymarketplace.io/api/integrations/neon/login",
     });
     logger.info("Sent fake neon deep-link-received event during testing.");
   });

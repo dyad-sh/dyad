@@ -301,7 +301,7 @@ export function registerSupabaseHandlers() {
       // Simulate the deep link event
       safeSend(event.sender, "deep-link-received", {
         type: "supabase-oauth-return",
-        url: "https://oauth.joycreate.app/api/supabase/login",
+        url: "https://oauth.joymarketplace.io/api/supabase/login",
       });
       logger.info(
         `Sent fake deep-link-received event for app ${appId} during testing.`,

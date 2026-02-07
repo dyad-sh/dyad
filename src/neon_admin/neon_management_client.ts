@@ -41,7 +41,7 @@ export async function refreshNeonToken(): Promise<void> {
   try {
     // Make request to Neon refresh endpoint
     const response = await fetch(
-      "https://oauth.joycreate.app/api/integrations/neon/refresh",
+      "https://oauth.joymarketplace.io/api/integrations/neon/refresh",
 
       {
         method: "POST",

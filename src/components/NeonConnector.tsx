@@ -70,7 +70,7 @@ export function NeonConnector() {
               await IpcClient.getInstance().fakeHandleNeonConnect();
             } else {
               await IpcClient.getInstance().openExternalUrl(
-                "https://oauth.joycreate.app/api/integrations/neon/login",
+                "https://oauth.joymarketplace.io/api/integrations/neon/login",
               );
             }
           }}

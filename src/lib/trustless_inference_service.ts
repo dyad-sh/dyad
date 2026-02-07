@@ -58,11 +58,21 @@ class TrustlessInferenceService {
     logger.info("Initializing trustless inference service");
 
     if (this.config.enableVerification) {
-      await heliaVerificationService.start();
+      try {
+        await heliaVerificationService.start();
+      } catch (error) {
+        logger.warn("Helia failed to start — verification features disabled", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
-    // Load existing records
-    this.inferenceHistory = await heliaVerificationService.listInferenceRecords();
+    // Load existing records (best-effort)
+    try {
+      this.inferenceHistory = await heliaVerificationService.listInferenceRecords();
+    } catch {
+      this.inferenceHistory = [];
+    }
     
     logger.info("Trustless inference service initialized", {
       verification: this.config.enableVerification,
@@ -181,40 +191,50 @@ class TrustlessInferenceService {
       return { response };
     }
 
-    // Create and store verification proof
-    const proof = await heliaVerificationService.createInferenceProof(
-      request,
-      response,
-      modelInfo
-    );
+    // Attempt Helia verification — best-effort, never blocks inference result
+    let record: InferenceRecord | undefined;
+    let verification: VerificationResult | undefined;
 
-    const record = await heliaVerificationService.storeInferenceRecord(
-      request,
-      response,
-      proof
-    );
+    try {
+      const proof = await heliaVerificationService.createInferenceProof(
+        request,
+        response,
+        modelInfo
+      );
 
-    // Auto-pin if configured
-    if (this.config.autoPin) {
-      await heliaVerificationService.pinRecord(record.id);
+      record = await heliaVerificationService.storeInferenceRecord(
+        request,
+        response,
+        proof
+      );
+
+      // Auto-pin if configured
+      if (this.config.autoPin) {
+        await heliaVerificationService.pinRecord(record.id);
+      }
+
+      // Verify the record
+      verification = await heliaVerificationService.verifyInferenceRecord(record.id);
+
+      // Update local history
+      this.inferenceHistory.unshift(record);
+      if (this.inferenceHistory.length > this.config.maxRecordsInMemory) {
+        this.inferenceHistory = this.inferenceHistory.slice(0, this.config.maxRecordsInMemory);
+      }
+
+      logger.info("Verified inference complete", {
+        id: requestId,
+        cid: record.cid,
+        valid: verification.valid,
+        tokens: response.totalTokens,
+        timeMs: response.generationTimeMs,
+      });
+    } catch (verificationError) {
+      logger.warn("Helia verification unavailable — returning inference result without proof", {
+        id: requestId,
+        error: verificationError instanceof Error ? verificationError.message : String(verificationError),
+      });
     }
-
-    // Verify the record
-    const verification = await heliaVerificationService.verifyInferenceRecord(record.id);
-
-    // Update local history
-    this.inferenceHistory.unshift(record);
-    if (this.inferenceHistory.length > this.config.maxRecordsInMemory) {
-      this.inferenceHistory = this.inferenceHistory.slice(0, this.config.maxRecordsInMemory);
-    }
-
-    logger.info("Verified inference complete", {
-      id: requestId,
-      cid: record.cid,
-      valid: verification.valid,
-      tokens: response.totalTokens,
-      timeMs: response.generationTimeMs,
-    });
 
     return { response, record, verification };
   }
@@ -301,20 +321,27 @@ class TrustlessInferenceService {
       return;
     }
 
-    // Create verification record after streaming completes
-    const proof = await heliaVerificationService.createInferenceProof(
-      request,
-      response,
-      modelInfo
-    );
+    // Attempt Helia verification — best-effort, never blocks stream result
+    let record: InferenceRecord | undefined;
+    try {
+      const proof = await heliaVerificationService.createInferenceProof(
+        request,
+        response,
+        modelInfo
+      );
 
-    const record = await heliaVerificationService.storeInferenceRecord(
-      request,
-      response,
-      proof
-    );
+      record = await heliaVerificationService.storeInferenceRecord(
+        request,
+        response,
+        proof
+      );
 
-    this.inferenceHistory.unshift(record);
+      this.inferenceHistory.unshift(record);
+    } catch (verificationError) {
+      logger.warn("Helia verification unavailable after stream — returning result without proof", {
+        error: verificationError instanceof Error ? verificationError.message : String(verificationError),
+      });
+    }
 
     yield { type: "done", record };
   }

@@ -87,11 +87,18 @@ class HeliaVerificationService {
       return;
     }
 
+    // Always ensure storage directory and load previous records,
+    // even if Helia itself fails to start
+    try {
+      await fs.ensureDir(this.storagePath);
+      await this.loadRecords();
+    } catch (loadError) {
+      logger.warn("Failed to load previous inference records:", loadError);
+    }
+
     try {
       // Load ESM modules dynamically
       await loadEsmModules();
-      
-      await fs.ensureDir(this.storagePath);
       
       const blockstorePath = path.join(this.storagePath, "blocks");
       const datastorePath = path.join(this.storagePath, "data");
@@ -113,14 +120,12 @@ class HeliaVerificationService {
       this.jsonCodec = json(this.helia);
       this.fsCodec = unixfs(this.helia);
 
-      // Load existing records
-      await this.loadRecords();
-
       logger.info("Helia verification service started (offline mode)", {
         storagePath: this.storagePath,
+        records: this.records.size,
       });
     } catch (error) {
-      logger.warn("Failed to start Helia (decentralized features unavailable):", error);
+      logger.warn("Failed to start Helia IPFS node (inference will still work, verification unavailable):", error);
       // Don't throw - allow app to continue without decentralized features
       // The service will operate in degraded mode
     }
@@ -272,36 +277,41 @@ class HeliaVerificationService {
     response: InferenceResponse,
     proof: InferenceProof
   ): Promise<InferenceRecord> {
-    if (!this.helia || !this.jsonCodec) {
-      throw new Error("Helia node not running");
+    // If Helia is available, store on IPFS for content-addressed verification
+    if (this.helia && this.jsonCodec) {
+      // Store request
+      const requestCid = await this.jsonCodec.add({
+        type: "inference-request",
+        ...request,
+      });
+      proof.requestCid = requestCid.toString();
+
+      // Store response
+      const responseCid = await this.jsonCodec.add({
+        type: "inference-response",
+        ...response,
+      });
+      proof.responseCid = responseCid.toString();
+
+      // Store proof
+      const proofCid = await this.jsonCodec.add(proof);
+      proof.proofCid = proofCid.toString();
+    } else {
+      // Helia unavailable — generate local CIDs from hashes instead
+      logger.info("Helia unavailable, storing inference record locally only");
+      proof.requestCid = `local-${this.hashString(JSON.stringify(request))}`;
+      proof.responseCid = `local-${this.hashString(JSON.stringify(response))}`;
+      proof.proofCid = `local-${this.hashString(JSON.stringify(proof))}`;
     }
-
-    // Store request
-    const requestCid = await this.jsonCodec.add({
-      type: "inference-request",
-      ...request,
-    });
-    proof.requestCid = requestCid.toString();
-
-    // Store response
-    const responseCid = await this.jsonCodec.add({
-      type: "inference-response",
-      ...response,
-    });
-    proof.responseCid = responseCid.toString();
-
-    // Store proof
-    const proofCid = await this.jsonCodec.add(proof);
-    proof.proofCid = proofCid.toString();
 
     const record: InferenceRecord = {
       id: response.id,
       proof,
       request,
       response,
-      cid: proofCid.toString(),
+      cid: proof.proofCid || `local-${response.id}`,
       pinned: false,
-      verified: true,
+      verified: !!this.helia, // Only truly verified if stored on IPFS
       createdAt: Date.now(),
     };
 

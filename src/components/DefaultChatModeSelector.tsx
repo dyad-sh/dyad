@@ -36,9 +36,8 @@ export function DefaultChatModeSelector() {
   const getModeDisplayName = (mode: ChatMode) => {
     switch (mode) {
       case "build":
+      case "agent": // backwards compatibility - treat as build
         return "Build";
-      case "agent":
-        return "Build (MCP)";
       case "local-agent":
         return isProEnabled ? "Agent" : "Basic Agent";
       case "ask":
@@ -83,14 +82,6 @@ export function DefaultChatModeSelector() {
                 <span className="font-medium">Build</span>
                 <span className="text-xs text-muted-foreground">
                   Generate and edit code
-                </span>
-              </div>
-            </SelectItem>
-            <SelectItem value="agent">
-              <div className="flex flex-col items-start">
-                <span className="font-medium">Build with MCP</span>
-                <span className="text-xs text-muted-foreground">
-                  Build with tools (MCP)
                 </span>
               </div>
             </SelectItem>

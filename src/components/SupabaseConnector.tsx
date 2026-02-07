@@ -138,7 +138,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
       });
     } else {
       await IpcClient.getInstance().openExternalUrl(
-        "https://oauth.joycreate.app/api/supabase/login",
+        "https://oauth.joymarketplace.io/api/supabase/login",
       );
     }
   };

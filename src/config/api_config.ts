@@ -27,13 +27,23 @@ export const API_BASE_URL = "https://api.joycreate.app/v1";
 /**
  * OAuth base URL for third-party integrations
  */
-export const OAUTH_BASE_URL = "https://oauth.joycreate.app/api";
+export const OAUTH_BASE_URL = "https://oauth.joymarketplace.io/api";
+
+/**
+ * Supabase OAuth client ID (registered under JoyCreate/JoyMarketplace)
+ */
+export const SUPABASE_CLIENT_ID = "5818fdf4-f621-4e93-bb49-d34cf4934dfe";
+
+/**
+ * GitHub OAuth client ID (registered under JoyCreate/JoyMarketplace)
+ */
+export const GITHUB_CLIENT_ID = "Ov23likR31wIwYJUzHE3";
 
 /**
  * Supabase OAuth URLs
  */
 export const SUPABASE_OAUTH_BASE_URL =
-  "https://oauth.joycreate.app/api/supabase";
+  "https://oauth.joymarketplace.io/api/supabase";
 
 /**
  * AI Engine base URL
@@ -207,6 +217,8 @@ export async function getApiEndpoint(
 export default {
   API_BASE_URL,
   OAUTH_BASE_URL,
+  SUPABASE_CLIENT_ID,
+  GITHUB_CLIENT_ID,
   SUPABASE_OAUTH_BASE_URL,
   ENGINE_BASE_URL,
   HELP_CHAT_BASE_URL,

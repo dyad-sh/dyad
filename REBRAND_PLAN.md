@@ -5,10 +5,10 @@ This document tracked the rebranding from Dyad to JoyCreate. **All phases are no
 ## Summary of Changes
 
 ### API & OAuth Endpoints (✅ Done)
-All endpoints now point to `joycreate.app` infrastructure:
+All endpoints now point to `joycreate.app` / `joymarketplace.io` infrastructure:
 - Update Service: `https://api.joycreate.app/v1/update/`
-- Supabase OAuth: `https://oauth.joycreate.app/api/supabase/`
-- Neon OAuth: `https://oauth.joycreate.app/api/integrations/neon/`
+- Supabase OAuth: `https://oauth.joymarketplace.io/api/supabase/`
+- Neon OAuth: `https://oauth.joymarketplace.io/api/integrations/neon/`
 - Engine: `https://engine.joycreate.app/v1`
 - Templates: `https://api.joycreate.app/v1/templates`
 - Help Chat: `https://help.joycreate.app/v1`
@@ -16,6 +16,11 @@ All endpoints now point to `joycreate.app` infrastructure:
 - Documentation: `https://docs.joycreate.app/`
 
 Central config: `src/config/api_config.ts`
+
+### OAuth Client IDs (✅ Done)
+- Supabase Client ID: `5818fdf4-f621-4e93-bb49-d34cf4934dfe` (registered under JoyCreate/JoyMarketplace)
+- GitHub Client ID: `Ov23likR31wIwYJUzHE3` (registered under JoyCreate/JoyMarketplace)
+- All OAuth flows now go through `oauth.joymarketplace.io` (no longer using Dyad OAuth)
 
 ### Code Tags (✅ Done)
 New output uses `joy-` prefix (`<joy-write>`, `<joy-read>`, etc.).

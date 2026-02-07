@@ -6,7 +6,7 @@ const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 const config: PlaywrightTestConfig = {
   testDir: "./e2e-tests",
   // Enable parallel test execution - E2E test builds skip the singleton lock
-  workers: 2,
+  workers: 3,
   retries: process.env.CI ? 2 : 0,
   timeout: process.env.CI ? 180_000 : 75_000,
   // Use a custom snapshot path template because Playwright's default

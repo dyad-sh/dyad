@@ -32,6 +32,10 @@ jobs:
       should_run_tests: ${{ steps.check.outputs.should_run_tests }}
       pr_head_ref: ${{ steps.pr-info.outputs.head_ref }}
       pr_head_repo: ${{ steps.pr-info.outputs.head_repo }}
+      build_os: ${{ steps.matrix.outputs.build_os }}
+      e2e_os: ${{ steps.matrix.outputs.e2e_os }}
+      e2e_shard: ${{ steps.matrix.outputs.e2e_shard }}
+      e2e_shard_total: ${{ steps.matrix.outputs.e2e_shard_total }}
     steps:
       - name: Get PR info for workflow_dispatch
         if: github.event_name == 'workflow_dispatch' && inputs.pr_number != ''
@@ -102,6 +106,58 @@ jobs:
             echo "$NON_CLAUDE_FILES"
           fi
 
+      - name: Detect privileged author
+        id: author-check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          AUTHOR=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            AUTHOR="${{ github.event.pull_request.user.login }}"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.pr_number }}" ]; then
+            AUTHOR=$(gh pr view "${{ inputs.pr_number }}" --repo "${{ github.repository }}" --json author --jq '.author.login') || true
+          fi
+          echo "Author: $AUTHOR"
+          if [ "$AUTHOR" = "wwwillchen" ] || [ "$AUTHOR" = "wwwillchen-bot" ]; then
+            echo "is_privileged=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_privileged=false" >> $GITHUB_OUTPUT
+          fi
+
+      # Sets the dynamic matrix for the build and e2e-tests jobs based on the PR author.
+      # The "image" field is a JSON-encoded array string so that fromJSON() in runs-on
+      # can produce the correct label(s) for both GitHub-hosted and self-hosted runners.
+      #
+      # Privileged authors (wwwillchen, wwwillchen-bot):
+      #   - Self-hosted macOS ARM64 runners, no Windows, no sharding.
+      #
+      #   build (macOS self-hosted) ──> e2e-tests (macOS self-hosted, shard 1/1)
+      #                                          │
+      #                                          v
+      #                                    merge-reports
+      #
+      # All other authors:
+      #   - GitHub-hosted runners for macOS + Windows, 4 shards each.
+      #
+      #   build (macOS) ──┐
+      #   build (Windows) ┼──> e2e-tests (macOS shards 1-4)    ──┐
+      #                   │    e2e-tests (Windows shards 1-4)  ──┼──> merge-reports
+      #                   └──────────────────────────────────────┘
+      - name: Set CI matrix
+        id: matrix
+        run: |
+          if [ "${{ steps.author-check.outputs.is_privileged }}" = "true" ]; then
+            echo 'build_os=[{"name":"macos","image":"[\"self-hosted\",\"macOS\",\"ARM64\"]"}]' >> $GITHUB_OUTPUT
+            echo 'e2e_os=[{"name":"macos","image":"[\"self-hosted\",\"macOS\",\"ARM64\"]"}]' >> $GITHUB_OUTPUT
+            echo 'e2e_shard=[1]' >> $GITHUB_OUTPUT
+            echo 'e2e_shard_total=[1]' >> $GITHUB_OUTPUT
+          else
+            echo 'build_os=[{"name":"windows","image":"[\"windows-latest\"]"},{"name":"macos","image":"[\"macos-latest\"]"}]' >> $GITHUB_OUTPUT
+            echo 'e2e_os=[{"name":"windows","image":"[\"windows-latest\"]"},{"name":"macos","image":"[\"macos-latest\"]"}]' >> $GITHUB_OUTPUT
+            echo 'e2e_shard=[1,2,3,4]' >> $GITHUB_OUTPUT
+            echo 'e2e_shard_total=[4]' >> $GITHUB_OUTPUT
+          fi
+
   build:
     needs: [check-changes]
     if: needs.check-changes.outputs.should_run_tests == 'true'
@@ -112,13 +168,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [
-            # npm install is very slow
-            # { name: "windows-arm", image: "windows-11-arm" },
-            { name: "windows", image: "windows-latest" },
-            { name: "macos", image: "macos-latest" },
-          ]
-    runs-on: ${{ matrix.os.image }}
+        os: ${{ fromJSON(needs.check-changes.outputs.build_os) }}
+    runs-on: ${{ fromJSON(matrix.os.image) }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -181,18 +232,14 @@ jobs:
           retention-days: 1
 
   e2e-tests:
-    needs: [build]
+    needs: [check-changes, build]
     strategy:
       fail-fast: false
       matrix:
-        os:
-          [
-            { name: "windows", image: "windows-latest" },
-            { name: "macos", image: "macos-latest" },
-          ]
-        shard: [1, 2, 3, 4]
-        shardTotal: [4]
-    runs-on: ${{ matrix.os.image }}
+        os: ${{ fromJSON(needs.check-changes.outputs.e2e_os) }}
+        shard: ${{ fromJSON(needs.check-changes.outputs.e2e_shard) }}
+        shardTotal: ${{ fromJSON(needs.check-changes.outputs.e2e_shard_total) }}
+    runs-on: ${{ fromJSON(matrix.os.image) }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -240,7 +287,7 @@ jobs:
         run: tar -xvf out-macos.tar
       - name: Install Chromium browser for Playwright
         run: npx playwright install chromium --with-deps
-      - name: E2E tests (Shard ${{ matrix.shard }}/4)
+      - name: E2E tests (Shard ${{ matrix.shard }}/${{ matrix.shardTotal }})
         env:
           FLAKINESS_ACCESS_TOKEN: ${{ secrets.FLAKINESS_ACCESS_TOKEN }}
         # You can add debug logging to make it easier to see what's failing

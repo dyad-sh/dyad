@@ -53,12 +53,7 @@
   - code: "`src/config/aws.ts`"
   - text: ","
   - code: "`src/services/s3-uploader.ts`"
-- img
-- text: file1.txt
-- button "Edit":
-  - img
-- img
-- text: file1.txt
+- button "file1.txt file1.txt Edit"
 - paragraph: More EOM
 - button:
   - img

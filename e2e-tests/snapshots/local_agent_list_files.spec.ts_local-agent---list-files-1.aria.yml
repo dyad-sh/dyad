@@ -1,4 +1,5 @@
-- 'button "List Files: src"':
+- button "src - src/App.tsx - src/main.tsx - src/vite-env.d.ts (3 files total)" [expanded]:
   - img
+  - text: ""
   - img
-- text: "- src/App.tsx - src/main.tsx - src/vite-env.d.ts (3 files total)"
+  - text: ""

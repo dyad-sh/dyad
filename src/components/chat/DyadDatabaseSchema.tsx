@@ -1,6 +1,12 @@
 import React from "react";
 import { CustomTagState } from "./stateTypes";
-import { Database, Loader2 } from "lucide-react";
+import { Database } from "lucide-react";
+import {
+  DyadCard,
+  DyadCardHeader,
+  DyadBadge,
+  DyadStateIndicator,
+} from "./DyadCardPrimitives";
 
 interface DyadDatabaseSchemaProps {
   node: {
@@ -20,20 +26,18 @@ export function DyadDatabaseSchema({
   const content = typeof children === "string" ? children : "";
 
   return (
-    <div className="my-2 border rounded-md overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 border-b">
-        {isLoading ? (
-          <Loader2 className="size-4 animate-spin text-muted-foreground" />
-        ) : (
-          <Database className="size-4 text-muted-foreground" />
-        )}
-        <span className="font-medium text-sm">Database Schema</span>
-      </div>
+    <DyadCard state={state} accentColor="teal">
+      <DyadCardHeader icon={<Database size={15} />} accentColor="teal">
+        <DyadBadge color="teal">Database Schema</DyadBadge>
+        {isLoading && <DyadStateIndicator state="pending" />}
+      </DyadCardHeader>
       {content && (
-        <div className="p-3 text-xs font-mono whitespace-pre-wrap max-h-60 overflow-y-auto bg-muted/20">
-          {content}
+        <div className="px-3 pb-3">
+          <div className="p-3 text-xs font-mono whitespace-pre-wrap max-h-60 overflow-y-auto bg-muted/20 rounded-lg">
+            {content}
+          </div>
         </div>
       )}
-    </div>
+    </DyadCard>
   );
 }

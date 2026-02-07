@@ -1,4 +1,4 @@
-import { test } from "./helpers/test_helper";
+import { test, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
 test.describe("Favorite App Tests", () => {
@@ -20,16 +20,22 @@ test.describe("Favorite App Tests", () => {
     const appItem = po.page.locator(`[data-testid="app-list-item-${appName}"]`);
     await expect(appItem).toBeVisible();
 
-    // Click the favorite button
+    // Click the favorite button — hover first like a real user would,
+    // then wait for the app to finish starting before the click resolves.
     const favoriteButton = appItem
       .locator("xpath=..")
       .locator('[data-testid="favorite-button"]');
     await expect(favoriteButton).toBeVisible();
+    await appItem.hover();
     await favoriteButton.click();
 
-    // Check that the star is filled (favorited)
+    // Check that the star is filled (favorited).
+    // Use a longer timeout because the addToFavorite IPC call may be waiting
+    // for the app startup lock to release.
     const star = favoriteButton.locator("svg");
-    await expect(star).toHaveClass(/fill-\[#6c55dc\]/);
+    await expect(star).toHaveClass(/(?:^|\s)fill-\[#6c55dc\]/, {
+      timeout: Timeout.MEDIUM,
+    });
   });
 
   test("Remove app from favorite", async ({ po }) => {
@@ -53,20 +59,27 @@ test.describe("Favorite App Tests", () => {
     const favoriteButton = appItem
       .locator("xpath=..")
       .locator('[data-testid="favorite-button"]');
+    await appItem.hover();
     await favoriteButton.click();
 
     // Check that the star is filled (favorited)
     const star = favoriteButton.locator("svg");
-    await expect(star).toHaveClass(/fill-\[#6c55dc\]/);
+    await expect(star).toHaveClass(/(?:^|\s)fill-\[#6c55dc\]/, {
+      timeout: Timeout.MEDIUM,
+    });
 
     // Now, remove from favorite
     const unfavoriteButton = appItem
       .locator("xpath=..")
       .locator('[data-testid="favorite-button"]');
     await expect(unfavoriteButton).toBeVisible();
+    await appItem.hover();
     await unfavoriteButton.click();
 
     // Check that the star is not filled (unfavorited)
-    await expect(star).not.toHaveClass(/fill-\[#6c55dc\]/);
+    // Match fill-[#6c55dc] only at start or after whitespace (not as part of hover:fill-...)
+    await expect(star).not.toHaveClass(/(?:^|\s)fill-\[#6c55dc\]/, {
+      timeout: Timeout.MEDIUM,
+    });
   });
 });

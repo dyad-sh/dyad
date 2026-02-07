@@ -1,5 +1,10 @@
 import React, { useState, useRef, useEffect } from "react";
 import { X } from "lucide-react";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 
 interface DraggableTextInputProps {
   input: {
@@ -158,18 +163,24 @@ export const DraggableTextInput = ({
         />
 
         {/* Close Button - Rightmost */}
-        <button
-          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors z-10 group"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onRemove(input.id);
-          }}
-          title="Remove text input"
-          type="button"
-        >
-          <X className="w-3 h-3 text-gray-400 dark:text-gray-500 group-hover:text-red-600 dark:group-hover:text-red-400" />
-        </button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors z-10 group"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onRemove(input.id);
+                }}
+                type="button"
+              />
+            }
+          >
+            <X className="w-3 h-3 text-gray-400 dark:text-gray-500 group-hover:text-red-600 dark:group-hover:text-red-400" />
+          </TooltipTrigger>
+          <TooltipContent>Remove text input</TooltipContent>
+        </Tooltip>
       </div>
     </div>
   );

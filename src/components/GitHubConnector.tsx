@@ -1070,7 +1070,7 @@ export function UnconnectedGitHubConnector({
                   </Label>
                   <Select
                     value={selectedRepo}
-                    onValueChange={setSelectedRepo}
+                    onValueChange={(v) => setSelectedRepo(v ?? "")}
                     disabled={isLoadingRepos}
                   >
                     <SelectTrigger
@@ -1110,7 +1110,7 @@ export function UnconnectedGitHubConnector({
                       if (value === "custom") {
                         setBranchInputMode("custom");
                         setCustomBranchName("");
-                      } else {
+                      } else if (value) {
                         setBranchInputMode("select");
                         setSelectedBranch(value);
                       }

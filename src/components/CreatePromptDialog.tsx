@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -11,11 +11,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { Plus, Save, Edit2 } from "lucide-react";
 
 interface CreateOrEditPromptDialogProps {
@@ -166,30 +161,19 @@ export function CreateOrEditPromptDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       {trigger ? (
-        <DialogTrigger asChild>{trigger}</DialogTrigger>
+        <DialogTrigger>{trigger}</DialogTrigger>
       ) : mode === "create" ? (
-        <DialogTrigger asChild>
-          <Button>
-            <Plus className="mr-2 h-4 w-4" /> New Prompt
-          </Button>
+        <DialogTrigger className={buttonVariants()}>
+          <Plus className="mr-2 h-4 w-4" /> New Prompt
         </DialogTrigger>
       ) : (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DialogTrigger asChild>
-              <Button
-                size="icon"
-                variant="ghost"
-                data-testid="edit-prompt-button"
-              >
-                <Edit2 className="h-4 w-4" />
-              </Button>
-            </DialogTrigger>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Edit prompt</p>
-          </TooltipContent>
-        </Tooltip>
+        <DialogTrigger
+          className={buttonVariants({ variant: "ghost", size: "icon" })}
+          data-testid="edit-prompt-button"
+          title="Edit prompt"
+        >
+          <Edit2 className="h-4 w-4" />
+        </DialogTrigger>
       )}
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>

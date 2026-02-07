@@ -37,3 +37,21 @@ export async function getTemperature(
   const modelOption = await findLanguageModel(model);
   return modelOption?.temperature ?? 0;
 }
+
+/**
+ * Calculate the token threshold for triggering context compaction.
+ * Returns the minimum of 80% of context window or 180k tokens.
+ */
+export function getCompactionThreshold(contextWindow: number): number {
+  return Math.min(Math.floor(contextWindow * 0.8), 180_000);
+}
+
+/**
+ * Check if compaction should be triggered based on total tokens used.
+ */
+export function shouldTriggerCompaction(
+  totalTokens: number,
+  contextWindow: number,
+): boolean {
+  return totalTokens >= getCompactionThreshold(contextWindow);
+}

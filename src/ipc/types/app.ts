@@ -223,6 +223,15 @@ export const AddToFavoriteResultSchema = z.object({
 });
 
 /**
+ * Schema for update app commands params.
+ */
+export const UpdateAppCommandsParamsSchema = z.object({
+  appId: z.number(),
+  installCommand: z.string().nullable(),
+  startCommand: z.string().nullable(),
+});
+
+/**
  * Schema for select app location params.
  */
 export const SelectAppLocationParamsSchema = z.object({
@@ -366,6 +375,12 @@ export const appContracts = {
     input: z.string(),
     output: z.array(AppSearchResultSchema),
   }),
+
+  updateAppCommands: defineContract({
+    channel: "update-app-commands",
+    input: UpdateAppCommandsParamsSchema,
+    output: z.void(),
+  }),
 } as const;
 
 // =============================================================================
@@ -403,3 +418,6 @@ export type ChangeAppLocationResult = z.infer<
 export type ListAppsResponse = z.infer<typeof ListAppsResponseSchema>;
 export type RenameBranchParams = z.infer<typeof RenameBranchParamsSchema>;
 export type AppSearchResult = z.infer<typeof AppSearchResultSchema>;
+export type UpdateAppCommandsParams = z.infer<
+  typeof UpdateAppCommandsParamsSchema
+>;

@@ -5,6 +5,11 @@ import { Label } from "@/components/ui/label";
 // We might need a Supabase icon here, but for now, let's use a generic one or text.
 // import { Supabase } from "lucide-react"; // Placeholder
 import { DatabaseZap, Trash2 } from "lucide-react"; // Using DatabaseZap as a placeholder
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import { useSettings } from "@/hooks/useSettings";
 import { useSupabase } from "@/hooks/useSupabase";
 import { showSuccess, showError } from "@/lib/toast";
@@ -64,6 +69,17 @@ export function SupabaseIntegration() {
     }
   };
 
+  const handleSkipPruneSettingChange = async (enabled: boolean) => {
+    try {
+      await updateSettings({
+        skipPruneEdgeFunctions: enabled,
+      });
+      showSuccess("Setting updated");
+    } catch (err: any) {
+      showError(err.message || "Failed to update setting");
+    }
+  };
+
   if (!isConnected) {
     return null;
   }
@@ -109,16 +125,24 @@ export function SupabaseIntegration() {
                 </span>
               )}
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-muted-foreground hover:text-destructive shrink-0"
-              onClick={() => handleDeleteOrganization(org.organizationSlug)}
-              title="Disconnect organization"
-            >
-              <Trash2 className="h-3.5 w-3.5 mr-1" />
-              <span className="text-xs">Disconnect</span>
-            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-muted-foreground hover:text-destructive shrink-0"
+                    onClick={() =>
+                      handleDeleteOrganization(org.organizationSlug)
+                    }
+                  />
+                }
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1" />
+                <span className="text-xs">Disconnect</span>
+              </TooltipTrigger>
+              <TooltipContent>Disconnect organization</TooltipContent>
+            </Tooltip>
           </div>
         ))}
       </div>
@@ -127,6 +151,7 @@ export function SupabaseIntegration() {
         <div className="flex items-center space-x-3">
           <Switch
             id="supabase-migrations"
+            aria-label="Write SQL migration files"
             checked={!!settings?.enableSupabaseWriteSqlMigration}
             onCheckedChange={handleMigrationSettingChange}
           />
@@ -142,6 +167,30 @@ export function SupabaseIntegration() {
               This helps you track database changes in version control, though
               these files aren't used for chat context, which uses the live
               schema.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <div className="flex items-center space-x-3">
+          <Switch
+            id="skip-prune-edge-functions"
+            aria-label="Keep extra Supabase edge functions"
+            checked={!!settings?.skipPruneEdgeFunctions}
+            onCheckedChange={handleSkipPruneSettingChange}
+          />
+          <div className="space-y-1">
+            <Label
+              htmlFor="skip-prune-edge-functions"
+              className="text-sm font-medium"
+            >
+              Keep extra Supabase edge functions
+            </Label>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              When disabled, edge functions deployed to Supabase but not present
+              in your codebase will be automatically deleted during sync
+              operations (e.g., after reverting or modifying shared modules).
             </p>
           </div>
         </div>

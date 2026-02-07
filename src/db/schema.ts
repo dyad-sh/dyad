@@ -72,6 +72,10 @@ export const chats = sqliteTable("chats", {
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),
+  // Context compaction fields
+  compactedAt: integer("compacted_at", { mode: "timestamp" }),
+  compactionBackupPath: text("compaction_backup_path"),
+  pendingCompaction: integer("pending_compaction", { mode: "boolean" }),
 });
 
 export const messages = sqliteTable("messages", {
@@ -97,6 +101,12 @@ export const messages = sqliteTable("messages", {
   aiMessagesJson: text("ai_messages_json", {
     mode: "json",
   }).$type<AiMessagesJsonV6 | null>(),
+  // Track if this message used the free agent quota (for non-Pro users)
+  usingFreeAgentModeQuota: integer("using_free_agent_mode_quota", {
+    mode: "boolean",
+  }),
+  // Indicates this message is a compaction summary
+  isCompactionSummary: integer("is_compaction_summary", { mode: "boolean" }),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),
@@ -217,6 +227,10 @@ export const mcpServers = sqliteTable("mcp_servers", {
   // Store typed JSON for args and environment variables
   args: text("args", { mode: "json" }).$type<string[] | null>(),
   envJson: text("env_json", { mode: "json" }).$type<Record<
+    string,
+    string
+  > | null>(),
+  headersJson: text("headers_json", { mode: "json" }).$type<Record<
     string,
     string
   > | null>(),

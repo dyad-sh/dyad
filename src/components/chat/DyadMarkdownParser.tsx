@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { DyadWrite } from "./DyadWrite";
 import { DyadRename } from "./DyadRename";
@@ -33,6 +34,9 @@ import { DyadDatabaseSchema } from "./DyadDatabaseSchema";
 import { DyadSupabaseTableSchema } from "./DyadSupabaseTableSchema";
 import { DyadSupabaseProjectInfo } from "./DyadSupabaseProjectInfo";
 import { DyadStatus } from "./DyadStatus";
+import { DyadCompaction } from "./DyadCompaction";
+import { DyadWritePlan } from "./DyadWritePlan";
+import { DyadExitPlan } from "./DyadExitPlan";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
@@ -68,6 +72,10 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-supabase-table-schema",
   "dyad-supabase-project-info",
   "dyad-status",
+  "dyad-compaction",
+  // Plan mode tags
+  "dyad-write-plan",
+  "dyad-exit-plan",
 ];
 
 interface DyadMarkdownParserProps {
@@ -108,6 +116,7 @@ const customLink = ({
 export const VanillaMarkdownParser = ({ content }: { content: string }) => {
   return (
     <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
       components={{
         code: CodeHighlight,
         a: customLink,
@@ -166,6 +175,7 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
           {piece.type === "markdown"
             ? piece.content && (
                 <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
                   components={{
                     code: CodeHighlight,
                     a: customLink,
@@ -515,6 +525,8 @@ function renderCustomTag(
               exclude: attributes.exclude || "",
               "case-sensitive": attributes["case-sensitive"] || "",
               count: attributes.count || "",
+              total: attributes.total || "",
+              truncated: attributes.truncated || "",
             },
           }}
         >
@@ -644,6 +656,7 @@ function renderCustomTag(
             properties: {
               directory: attributes.directory || "",
               recursive: attributes.recursive || "",
+              include_hidden: attributes.include_hidden || "",
               state: getState({ isStreaming, inProgress }),
             },
           }}
@@ -704,6 +717,47 @@ function renderCustomTag(
         >
           {content}
         </DyadStatus>
+      );
+
+    case "dyad-compaction":
+      return (
+        <DyadCompaction
+          node={{
+            properties: {
+              title: attributes.title || "Compacting conversation",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadCompaction>
+      );
+
+    case "dyad-write-plan":
+      return (
+        <DyadWritePlan
+          node={{
+            properties: {
+              title: attributes.title || "Implementation Plan",
+              summary: attributes.summary,
+              complete: attributes.complete,
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadWritePlan>
+      );
+
+    case "dyad-exit-plan":
+      return (
+        <DyadExitPlan
+          node={{
+            properties: {
+              notes: attributes.notes,
+            },
+          }}
+        />
       );
 
     default:

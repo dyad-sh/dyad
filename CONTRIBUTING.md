@@ -74,7 +74,7 @@ npm test
 Build the app for E2E testing:
 
 ```sh
-npm run pre:e2e
+npm run build
 ```
 
 > Note: you only need to re-build the app when changing the app code. You don't need to re-build the app if you're just updating the tests.

@@ -16,16 +16,12 @@ import { Input } from "@/components/ui/input";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@radix-ui/react-label";
+import { Label } from "@/components/ui/label";
 import { useNavigate } from "@tanstack/react-router";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import type { GithubRepository } from "@/ipc/types";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { useGithubRepos } from "@/hooks/useGithubRepos";
+
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useSetAtom } from "jotai";
 import { useLoadApps } from "@/hooks/useLoadApps";
@@ -59,12 +55,13 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
   const { refreshApps } = useLoadApps();
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   // GitHub import state
-  const [repos, setRepos] = useState<GithubRepository[]>([]);
-  const [loading, setLoading] = useState(false);
   const [url, setUrl] = useState("");
   const [importing, setImporting] = useState(false);
   const { settings, refreshSettings } = useSettings();
   const isAuthenticated = !!settings?.githubAccessToken;
+  const { repos, loading } = useGithubRepos({
+    enabled: isOpen && isAuthenticated,
+  });
 
   const [githubAppName, setGithubAppName] = useState("");
   const [githubNameExists, setGithubNameExists] = useState(false);
@@ -73,12 +70,8 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     if (isOpen) {
       setGithubAppName("");
       setGithubNameExists(false);
-      // Fetch GitHub repos if authenticated
-      if (isAuthenticated) {
-        fetchRepos();
-      }
     }
-  }, [isOpen, isAuthenticated]);
+  }, [isOpen]);
 
   // Re-check app name when copyToDyadApps changes
   useEffect(() => {
@@ -87,17 +80,6 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     }
   }, [copyToDyadApps]);
 
-  const fetchRepos = async () => {
-    setLoading(true);
-    try {
-      const fetchedRepos = await ipc.github.listRepos();
-      setRepos(fetchedRepos);
-    } catch (err: unknown) {
-      showError("Failed to fetch repositories.: " + (err as any).toString());
-    } finally {
-      setLoading(false);
-    }
-  };
   const handleUrlBlur = async () => {
     if (!url.trim()) return;
     const repoName = extractRepoNameFromUrl(url);
@@ -402,6 +384,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                     <div className="flex items-center space-x-2">
                       <Checkbox
                         id="copy-to-dyad-apps"
+                        aria-label="Copy to the dyad-apps folder"
                         checked={copyToDyadApps}
                         onCheckedChange={(checked) =>
                           setCopyToDyadApps(checked === true)
@@ -446,7 +429,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                       </div>
                     </div>
 
-                    <Accordion type="single" collapsible>
+                    <Accordion>
                       <AccordionItem value="advanced-options">
                         <AccordionTrigger className="text-xs sm:text-sm hover:no-underline">
                           Advanced options
@@ -489,19 +472,12 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
 
                     {hasAiRules === false && (
                       <Alert className="border-yellow-500/20 text-yellow-500 flex items-start gap-2">
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Info className="h-4 w-4 flex-shrink-0 mt-1" />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p className="text-xs">
-                                AI_RULES.md lets Dyad know which tech stack to
-                                use for editing the app
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
+                        <span
+                          title="AI_RULES.md lets Dyad know which tech stack to use for editing the app"
+                          className="flex-shrink-0 mt-1"
+                        >
+                          <Info className="h-4 w-4" />
+                        </span>
                         <AlertDescription className="text-xs sm:text-sm">
                           No AI_RULES.md found. Dyad will automatically generate
                           one after importing.
@@ -622,7 +598,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
 
                   {repos.length > 0 && (
                     <>
-                      <Accordion type="single" collapsible>
+                      <Accordion>
                         <AccordionItem value="advanced-options">
                           <AccordionTrigger className="text-xs sm:text-sm hover:no-underline">
                             Advanced options
@@ -705,7 +681,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                 )}
               </div>
 
-              <Accordion type="single" collapsible>
+              <Accordion>
                 <AccordionItem value="advanced-options">
                   <AccordionTrigger className="text-xs sm:text-sm hover:no-underline">
                     Advanced options

@@ -108,3 +108,6 @@ userData/
 
 # Python
 __pycache__/
+
+# Storybook
+storybook-static/

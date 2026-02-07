@@ -19,15 +19,11 @@ import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useSettings } from "@/hooks/useSettings";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { PromoMessage } from "./PromoMessage";
-import { ContextLimitBanner } from "./ContextLimitBanner";
-import { useCountTokens } from "@/hooks/useCountTokens";
 
 interface MessagesListProps {
   messages: Message[];
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
-  onScrollerRef?: (ref: HTMLElement | Window | null) => void | (() => void);
-  distanceFromBottomRef?: React.MutableRefObject<number>;
-  isUserScrolling?: boolean;
+  onAtBottomChange?: (atBottom: boolean) => void;
 }
 
 // Memoize ChatMessage at module level to prevent recreation on every render
@@ -38,7 +34,6 @@ interface FooterContext {
   messages: Message[];
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
   isStreaming: boolean;
-  tokenCountResult: ReturnType<typeof useCountTokens>["result"];
   isUndoLoading: boolean;
   isRetryLoading: boolean;
   setIsUndoLoading: (loading: boolean) => void;
@@ -62,7 +57,6 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     messages,
     messagesEndRef,
     isStreaming,
-    tokenCountResult,
     isUndoLoading,
     isRetryLoading,
     setIsUndoLoading,
@@ -80,14 +74,6 @@ function FooterComponent({ context }: { context?: FooterContext }) {
 
   return (
     <>
-      {/* Show context limit banner when close to token limit */}
-      {!isStreaming && tokenCountResult && (
-        <ContextLimitBanner
-          totalTokens={tokenCountResult.actualMaxTokens}
-          contextWindow={tokenCountResult.contextWindow}
-        />
-      )}
-
       {!isStreaming && (
         <div className="flex max-w-3xl mx-auto gap-2">
           {!!messages.length &&
@@ -249,16 +235,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
 }
 
 export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
-  function MessagesList(
-    {
-      messages,
-      messagesEndRef,
-      onScrollerRef,
-      distanceFromBottomRef,
-      isUserScrolling,
-    },
-    ref,
-  ) {
+  function MessagesList({ messages, messagesEndRef, onAtBottomChange }, ref) {
     const appId = useAtomValue(selectedAppIdAtom);
     const { versions, revertVersion } = useVersions(appId);
     const { streamMessage, isStreaming } = useStreamChat();
@@ -275,11 +252,6 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     // 2. Tests would need complex scrolling logic to bring elements into view before interaction
     // 3. Race conditions and timing issues occur when waiting for virtualized elements to render after scrolling
     const isTestMode = settings?.isTestMode;
-    // Only fetch token count when not streaming
-    const { result: tokenCountResult } = useCountTokens(
-      !isStreaming ? selectedChatId : null,
-      "",
-    );
 
     // Wrap state setters in useCallback to stabilize references
     const handleSetIsUndoLoading = useCallback((loading: boolean) => {
@@ -335,7 +307,6 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         messages,
         messagesEndRef,
         isStreaming,
-        tokenCountResult,
         isUndoLoading,
         isRetryLoading,
         setIsUndoLoading: handleSetIsUndoLoading,
@@ -354,7 +325,6 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         messages,
         messagesEndRef,
         isStreaming,
-        tokenCountResult,
         isUndoLoading,
         isRetryLoading,
         handleSetIsUndoLoading,
@@ -435,15 +405,9 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
           itemContent={itemContent}
           components={{ Footer: FooterComponent }}
           context={footerContext}
-          scrollerRef={onScrollerRef}
-          followOutput={() => {
-            const shouldAutoScroll =
-              !isUserScrolling &&
-              isStreaming &&
-              distanceFromBottomRef &&
-              distanceFromBottomRef.current <= 280;
-            return shouldAutoScroll ? "auto" : false;
-          }}
+          atBottomThreshold={80}
+          atBottomStateChange={onAtBottomChange}
+          followOutput={(isAtBottom) => (isAtBottom ? "auto" : false)}
         />
       </div>
     );

@@ -174,6 +174,9 @@ tool requests and determine their safety level. Be conservative - when in doubt,
    - gh pr review (adding reviews)
    - gh pr ready, gh pr mark-draft (changing draft state)
    - gh pr checkout (checking out PR locally)
+   - Replying to PR review comments (gh api repos/.../comments/.../replies)
+   - Resolving PR review threads (resolveReviewThread GraphQL mutation)
+   - Any comment/reply/resolve operations on issues or PRs - these are NOT destructive
 
 5. **Repository sync**:
    - gh repo sync (syncing fork with upstream)
@@ -182,13 +185,14 @@ tool requests and determine their safety level. Be conservative - when in doubt,
    - Adding/removing labels
    - Adding/removing assignees
    - Marking as resolved
+   - Resolving review threads
    - Linking issues to PRs
+   - Posting comments, replies, and reviews (NOT destructive - these are collaborative actions)
 
 ### YELLOW (Uncertain - User decides)
 
 1. **Repository operations**:
    - gh repo fork (forking repositories)
-   - gh repo clone (cloning - generally safe but uses network)
 
 ### RED (Dangerous - Block)
 

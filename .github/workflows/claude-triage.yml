@@ -17,7 +17,7 @@ jobs:
         with:
           #   anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          model: claude-opus-4-5-20251101
+          model: claude-opus-4-6
           allowed_tools: "Bash(gh issue:*),Bash(gh search:*)"
           prompt: |
             # GitHub Issue Triage Agent
@@ -108,14 +108,14 @@ jobs:
 
             ### Surfacing Helpful Comments
 
-            If a **high-confidence** duplicate is found and there is a helpful comment from **wwwillchen@** on the original issue, include a recommendation in your comment:
+            If a **high-confidence** duplicate is found and there is a helpful comment from **wwwillchen@** or **wwwillchen-bot@** on the original issue, include a recommendation in your comment:
 
             > You might want to try [summary of the suggestion] based on this earlier [comment]([direct link to the comment]).
 
             **Notes:**
 
             - Only do this for high-confidence duplicates where you're very confident the issues are the same.
-            - Only surface comments from wwwillchen@ — do not surface comments from other users.
+            - Only surface comments from wwwillchen@ or wwwillchen-bot@ — do not surface comments from other users.
             - Link directly to the specific comment, not just the issue.
 
             ### If No Duplicates Found

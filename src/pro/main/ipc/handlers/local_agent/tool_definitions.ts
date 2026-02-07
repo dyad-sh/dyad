@@ -20,12 +20,16 @@ import { setChatSummaryTool } from "./tools/set_chat_summary";
 import { addIntegrationTool } from "./tools/add_integration";
 import { readLogsTool } from "./tools/read_logs";
 import { editFileTool } from "./tools/edit_file";
+import { searchReplaceTool } from "./tools/search_replace";
 import { webSearchTool } from "./tools/web_search";
 import { webCrawlTool } from "./tools/web_crawl";
 import { updateTodosTool } from "./tools/update_todos";
 import { runTypeChecksTool } from "./tools/run_type_checks";
 import { grepTool } from "./tools/grep";
 import { codeSearchTool } from "./tools/code_search";
+import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
+import { writePlanTool } from "./tools/write_plan";
+import { exitPlanTool } from "./tools/exit_plan";
 import type { LanguageModelV3ToolResultOutput } from "@ai-sdk/provider";
 import {
   escapeXmlAttr,
@@ -33,6 +37,8 @@ import {
   type ToolDefinition,
   type AgentContext,
   type ToolResult,
+  type FileEditToolName,
+  FILE_EDIT_TOOL_NAMES,
 } from "./tools/types";
 import { AgentToolConsent } from "@/lib/schemas";
 import { getSupabaseClientCode } from "@/supabase_admin/supabase_context";
@@ -40,12 +46,11 @@ import { getSupabaseClientCode } from "@/supabase_admin/supabase_context";
 export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   writeFileTool,
   editFileTool,
+  searchReplaceTool,
   deleteFileTool,
   renameFileTool,
   addDependencyTool,
   executeSqlTool,
-  // Do not enable search-replace tool for now due to concerns around reliability
-  // searchReplaceTool,
   readFileTool,
   listFilesTool,
   grepTool,
@@ -59,6 +64,10 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   webCrawlTool,
   updateTodosTool,
   runTypeChecksTool,
+  // Plan mode tools
+  planningQuestionnaireTool,
+  writePlanTool,
+  exitPlanTool,
 ];
 // ============================================================================
 // Agent Tool Name Type (derived from TOOL_DEFINITIONS)
@@ -261,7 +270,49 @@ export interface BuildAgentToolSetOptions {
    * Used for read-only modes like "ask" mode.
    */
   readOnly?: boolean;
+  /**
+   * If true, only include tools that are allowed in plan mode.
+   * Plan mode has access to read-only tools plus planning-specific tools.
+   */
+  planModeOnly?: boolean;
 }
+
+const FILE_EDIT_TOOLS: Set<FileEditToolName> = new Set(FILE_EDIT_TOOL_NAMES);
+
+/**
+ * Track file edit tool usage for telemetry
+ */
+function trackFileEditTool(
+  ctx: AgentContext,
+  toolName: string,
+  args: { file_path?: string; path?: string },
+): void {
+  if (!FILE_EDIT_TOOLS.has(toolName as FileEditToolName)) {
+    return;
+  }
+  const filePath = args.file_path ?? args.path;
+  if (!filePath) {
+    return;
+  }
+  if (!ctx.fileEditTracker[filePath]) {
+    ctx.fileEditTracker[filePath] = {
+      write_file: 0,
+      edit_file: 0,
+      search_replace: 0,
+    };
+  }
+  ctx.fileEditTracker[filePath][toolName as FileEditToolName]++;
+}
+
+/**
+ * Planning-specific tools that are only available in plan mode.
+ * In plan mode, all non-state-modifying tools are also included automatically.
+ */
+const PLANNING_SPECIFIC_TOOLS = new Set([
+  "planning_questionnaire",
+  "write_plan",
+  "exit_plan",
+]);
 
 /**
  * Build ToolSet for AI SDK from tool definitions
@@ -275,6 +326,20 @@ export function buildAgentToolSet(
   for (const tool of TOOL_DEFINITIONS) {
     const consent = getAgentToolConsent(tool.name);
     if (consent === "never") {
+      continue;
+    }
+
+    // In plan mode, skip state-modifying tools unless they're planning-specific
+    if (
+      options.planModeOnly &&
+      tool.modifiesState &&
+      !PLANNING_SPECIFIC_TOOLS.has(tool.name)
+    ) {
+      continue;
+    }
+
+    // Skip planning-specific tools when NOT in plan mode
+    if (!options.planModeOnly && PLANNING_SPECIFIC_TOOLS.has(tool.name)) {
       continue;
     }
 
@@ -304,7 +369,12 @@ export function buildAgentToolSet(
             throw new Error(`User denied permission for ${tool.name}`);
           }
 
+          // Track file edit tool usage before execution to capture all attempts
+          // (including failures) for retry/fallback telemetry
+          trackFileEditTool(ctx, tool.name, processedArgs);
+
           const result = await tool.execute(processedArgs, ctx);
+
           return convertToolResultForAiSdk(result);
         } catch (error) {
           const errorMessage =

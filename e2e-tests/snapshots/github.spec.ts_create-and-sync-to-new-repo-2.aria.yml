@@ -1,11 +1,7 @@
 - paragraph: "Connected to GitHub Repo:"
 - text: testuser/test-new-repo
-- combobox:
-  - img
-  - text: "Branch: main"
-- button "Refresh branches":
-  - img
-- button "Create new branch":
+- combobox: main
+- button "Branch actions":
   - img
 - img
 - heading "Branches" [level=3]

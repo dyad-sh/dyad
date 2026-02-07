@@ -93,7 +93,7 @@ export const languageModelContracts = {
   getModelsByProviders: defineContract({
     channel: "get-language-models-by-providers",
     input: z.void(),
-    output: z.record(z.array(LanguageModelSchema)),
+    output: z.record(z.string(), z.array(LanguageModelSchema)),
   }),
 
   createCustomProvider: defineContract({

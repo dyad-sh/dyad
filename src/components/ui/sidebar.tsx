@@ -1,9 +1,8 @@
 import * as React from "react";
-import { Slot } from "@radix-ui/react-slot";
 import { type VariantProps, cva } from "class-variance-authority";
 import { Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,8 +15,8 @@ import {
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
-const SIDEBAR_WIDTH = "18rem";
-const SIDEBAR_WIDTH_ICON = "5rem";
+const SIDEBAR_WIDTH = "19rem";
+const SIDEBAR_WIDTH_ICON = "4.5rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
 type SidebarContextProps = {
@@ -122,7 +121,7 @@ function SidebarProvider({
 
   return (
     <SidebarContext.Provider value={contextValue}>
-      <TooltipProvider delayDuration={0}>
+      <TooltipProvider delay={0}>
         <div
           data-slot="sidebar-wrapper"
           style={
@@ -225,29 +224,29 @@ function Sidebar({
 
 function SidebarTrigger({
   onClick,
+  className,
   ...props
-}: React.ComponentProps<typeof Button>) {
+}: React.ComponentProps<"button">) {
   const { toggleSidebar } = useSidebar();
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          data-sidebar="trigger"
-          data-slot="sidebar-trigger"
-          variant="ghost"
-          size="sidebar"
-          className="cursor-pointer ml-1 hover:bg-sidebar"
-          // className={cn("hidden", className)}
-          onClick={(event) => {
-            onClick?.(event);
-            toggleSidebar();
-          }}
-          {...props}
-        >
-          <Menu className="size-5" />
-          <span className="sr-only">Toggle Menu</span>
-        </Button>
+      <TooltipTrigger
+        data-sidebar="trigger"
+        data-slot="sidebar-trigger"
+        className={cn(
+          buttonVariants({ variant: "ghost", size: "sidebar" }),
+          "cursor-pointer ml-1 hover:bg-sidebar",
+          className,
+        )}
+        onClick={(event) => {
+          onClick?.(event as React.MouseEvent<HTMLButtonElement>);
+          toggleSidebar();
+        }}
+        {...props}
+      >
+        <Menu className="size-5" />
+        <span className="sr-only">Toggle Menu</span>
       </TooltipTrigger>
       <TooltipContent side="right" align="center">
         Toggle Menu
@@ -369,12 +368,12 @@ function SidebarGroup({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-function SidebarGroupLabel({
+function SidebarGroupLabel<T extends React.ElementType = "div">({
   className,
-  asChild = false,
+  as,
   ...props
-}: React.ComponentProps<"div"> & { asChild?: boolean }) {
-  const Comp = asChild ? Slot : "div";
+}: { as?: T } & Omit<React.ComponentPropsWithoutRef<T>, "as">) {
+  const Comp = as || "div";
 
   return (
     <Comp
@@ -390,12 +389,12 @@ function SidebarGroupLabel({
   );
 }
 
-function SidebarGroupAction({
+function SidebarGroupAction<T extends React.ElementType = "button">({
   className,
-  asChild = false,
+  as,
   ...props
-}: React.ComponentProps<"button"> & { asChild?: boolean }) {
-  const Comp = asChild ? Slot : "button";
+}: { as?: T } & Omit<React.ComponentPropsWithoutRef<T>, "as">) {
+  const Comp = as || "button";
 
   return (
     <Comp
@@ -476,20 +475,19 @@ const sidebarMenuButtonVariants = cva(
   },
 );
 
-function SidebarMenuButton({
-  asChild = false,
+function SidebarMenuButton<T extends React.ElementType = "button">({
+  as,
   isActive = false,
   variant = "default",
   size = "default",
   tooltip,
   className,
   ...props
-}: React.ComponentProps<"button"> & {
-  asChild?: boolean;
-  isActive?: boolean;
-  tooltip?: string | React.ComponentProps<typeof TooltipContent>;
-} & VariantProps<typeof sidebarMenuButtonVariants>) {
-  const Comp = asChild ? Slot : "button";
+}: { as?: T } & Omit<React.ComponentPropsWithoutRef<T>, "as"> & {
+    isActive?: boolean;
+    tooltip?: string | React.ComponentProps<typeof TooltipContent>;
+  } & VariantProps<typeof sidebarMenuButtonVariants>) {
+  const Comp = as || "button";
   const { state } = useSidebar();
 
   const button = (
@@ -515,7 +513,7 @@ function SidebarMenuButton({
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipTrigger render={button} />
       <TooltipContent
         side="right"
         align="center"
@@ -526,16 +524,15 @@ function SidebarMenuButton({
   );
 }
 
-function SidebarMenuAction({
+function SidebarMenuAction<T extends React.ElementType = "button">({
   className,
-  asChild = false,
+  as,
   showOnHover = false,
   ...props
-}: React.ComponentProps<"button"> & {
-  asChild?: boolean;
-  showOnHover?: boolean;
-}) {
-  const Comp = asChild ? Slot : "button";
+}: { as?: T } & Omit<React.ComponentPropsWithoutRef<T>, "as"> & {
+    showOnHover?: boolean;
+  }) {
+  const Comp = as || "button";
 
   return (
     <Comp
@@ -647,18 +644,17 @@ function SidebarMenuSubItem({
   );
 }
 
-function SidebarMenuSubButton({
-  asChild = false,
+function SidebarMenuSubButton<T extends React.ElementType = "a">({
+  as,
   size = "md",
   isActive = false,
   className,
   ...props
-}: React.ComponentProps<"a"> & {
-  asChild?: boolean;
-  size?: "sm" | "md";
-  isActive?: boolean;
-}) {
-  const Comp = asChild ? Slot : "a";
+}: { as?: T } & Omit<React.ComponentPropsWithoutRef<T>, "as"> & {
+    size?: "sm" | "md";
+    isActive?: boolean;
+  }) {
+  const Comp = as || "a";
 
   return (
     <Comp

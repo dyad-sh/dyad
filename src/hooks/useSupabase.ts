@@ -103,7 +103,6 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
       return Array.isArray(list) ? list : [];
     },
     enabled: !!branchesProjectId,
-    meta: { showErrorToast: true },
   });
 
   // Mutation: Load edge function logs for a Supabase project

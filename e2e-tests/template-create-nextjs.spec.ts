@@ -5,6 +5,7 @@ test("create next.js app", async ({ po }) => {
   await po.setUp();
   const beforeSettings = po.recordSettings();
   await po.goToHubAndSelectTemplate("Next.js Template");
+  await po.selectChatMode("build");
   po.snapshotSettingsDelta(beforeSettings);
 
   // Create an app

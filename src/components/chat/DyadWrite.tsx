@@ -1,20 +1,20 @@
 import type React from "react";
 import type { ReactNode } from "react";
 import { useState } from "react";
-import {
-  ChevronsDownUp,
-  ChevronsUpDown,
-  Pencil,
-  Loader,
-  CircleX,
-  Edit,
-  X,
-} from "lucide-react";
+import { Pencil, Edit, X } from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
 import { CustomTagState } from "./stateTypes";
 import { FileEditor } from "../preview_panel/FileEditor";
 import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import {
+  DyadCard,
+  DyadCardHeader,
+  DyadExpandIcon,
+  DyadStateIndicator,
+  DyadDescription,
+  DyadCardContent,
+} from "./DyadCardPrimitives";
 
 interface DyadWriteProps {
   children?: ReactNode;
@@ -31,7 +31,6 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
 }) => {
   const [isContentVisible, setIsContentVisible] = useState(false);
 
-  // Use props directly if provided, otherwise extract from node
   const path = pathProp || node?.properties?.path || "";
   const description = descriptionProp || node?.properties?.description || "";
   const state = node?.properties?.state as CustomTagState;
@@ -49,64 +48,56 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
     setIsEditing(true);
     setIsContentVisible(true);
   };
-  // Extract filename from path
+
   const fileName = path ? path.split("/").pop() : "";
 
   return (
-    <div
-      className={`bg-(--background-lightest) hover:bg-(--background-lighter) rounded-lg px-4 py-2 border my-2 cursor-pointer ${
-        inProgress
-          ? "border-amber-500"
-          : aborted
-            ? "border-red-500"
-            : "border-border"
-      }`}
+    <DyadCard
+      state={state}
+      accentColor="blue"
       onClick={() => setIsContentVisible(!isContentVisible)}
+      isExpanded={isContentVisible}
     >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Pencil size={16} />
+      <DyadCardHeader icon={<Pencil size={15} />} accentColor="blue">
+        <div className="min-w-0 truncate">
           {fileName && (
-            <span className="text-gray-700 dark:text-gray-300 font-medium text-sm">
+            <span className="font-medium text-sm text-foreground truncate block">
               {fileName}
             </span>
           )}
-          {inProgress && (
-            <div className="flex items-center text-amber-600 text-xs">
-              <Loader size={14} className="mr-1 animate-spin" />
-              <span>Writing...</span>
-            </div>
-          )}
-          {aborted && (
-            <div className="flex items-center text-red-600 text-xs">
-              <CircleX size={14} className="mr-1" />
-              <span>Did not finish</span>
-            </div>
+          {path && (
+            <span className="text-[11px] text-muted-foreground truncate block">
+              {path}
+            </span>
           )}
         </div>
-        <div className="flex items-center">
+        {inProgress && (
+          <DyadStateIndicator state="pending" pendingLabel="Writing..." />
+        )}
+        {aborted && (
+          <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
+        )}
+        <div className="ml-auto flex items-center gap-1">
           {!inProgress && (
             <>
               {isEditing ? (
-                <>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleCancel();
-                    }}
-                    className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 px-2 py-1 rounded cursor-pointer"
-                  >
-                    <X size={14} />
-                    Cancel
-                  </button>
-                </>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCancel();
+                  }}
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded transition-colors cursor-pointer"
+                >
+                  <X size={14} />
+                  Cancel
+                </button>
               ) : (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     handleEdit();
                   }}
-                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 px-2 py-1 rounded cursor-pointer"
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded transition-colors cursor-pointer"
                 >
                   <Edit size={14} />
                   Edit
@@ -114,37 +105,24 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
               )}
             </>
           )}
-          {isContentVisible ? (
-            <ChevronsDownUp
-              size={20}
-              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-            />
-          ) : (
-            <ChevronsUpDown
-              size={20}
-              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-            />
-          )}
+          <DyadExpandIcon isExpanded={isContentVisible} />
         </div>
-      </div>
-      {path && (
-        <div className="text-xs text-gray-500 dark:text-gray-400 font-medium mb-1">
-          {path}
-        </div>
-      )}
+      </DyadCardHeader>
       {description && (
-        <div className="text-sm text-gray-600 dark:text-gray-300">
-          <span className="font-medium">Summary: </span>
-          {description}
-        </div>
+        <DyadDescription>
+          <span className={!isContentVisible ? "line-clamp-2" : undefined}>
+            <span className="font-medium">Summary: </span>
+            {description}
+          </span>
+        </DyadDescription>
       )}
-      {isContentVisible && (
+      <DyadCardContent isExpanded={isContentVisible}>
         <div
           className="text-xs cursor-text"
           onClick={(e) => e.stopPropagation()}
         >
           {isEditing ? (
-            <div className="h-96 min-h-96 border border-gray-200 dark:border-gray-700 rounded overflow-hidden">
+            <div className="h-96 min-h-96 border border-border rounded-lg overflow-hidden">
               <FileEditor appId={appId ?? null} filePath={path} />
             </div>
           ) : (
@@ -153,7 +131,7 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
             </CodeHighlight>
           )}
         </div>
-      )}
-    </div>
+      </DyadCardContent>
+    </DyadCard>
   );
 };

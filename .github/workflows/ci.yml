@@ -5,10 +5,18 @@ on:
     branches:
       - main
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, closed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number for CI re-run (used by pr-review-responder)"
+        required: true
+        type: string
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Use PR number for pull_request/workflow_dispatch events to enable proper per-PR cancellation
+  # For workflow_dispatch, inputs.pr_number ensures different PRs don't cancel each other
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || inputs.pr_number || github.ref }}
   cancel-in-progress: true
 
 defaults:
@@ -16,7 +24,87 @@ defaults:
     shell: bash
 
 jobs:
-  test:
+  check-changes:
+    # Skip closed PR events (we only listen to 'closed' to trigger cancellation of in-progress runs)
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    outputs:
+      should_run_tests: ${{ steps.check.outputs.should_run_tests }}
+      pr_head_ref: ${{ steps.pr-info.outputs.head_ref }}
+      pr_head_repo: ${{ steps.pr-info.outputs.head_repo }}
+    steps:
+      - name: Get PR info for workflow_dispatch
+        if: github.event_name == 'workflow_dispatch' && inputs.pr_number != ''
+        id: pr-info
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_DATA=$(gh pr view "${{ inputs.pr_number }}" --repo "${{ github.repository }}" --json headRefName,headRepository,headRepositoryOwner) || {
+            echo "::error::Failed to fetch PR info for PR #${{ inputs.pr_number }}"
+            exit 1
+          }
+          echo "head_ref=$(echo "$PR_DATA" | jq -r '.headRefName')" >> $GITHUB_OUTPUT
+          echo "head_repo=$(echo "$PR_DATA" | jq -r '.headRepositoryOwner.login + "/" + .headRepository.name')" >> $GITHUB_OUTPUT
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.pr-info.outputs.head_repo || github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ steps.pr-info.outputs.head_ref || github.event.pull_request.head.ref || '' }}
+          fetch-depth: 0
+      - name: Check if only .claude files changed
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Always run tests for manual workflow dispatch (e.g., from pr-review-responder)
+            echo "should_run_tests=true" >> $GITHUB_OUTPUT
+            echo "Running tests: manual workflow dispatch"
+            exit 0
+          fi
+
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            # Always run tests on pushes to main
+            echo "should_run_tests=true" >> $GITHUB_OUTPUT
+            echo "Running tests: push to main branch"
+            exit 0
+          fi
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            # For push events, compare with parent commit
+            BASE_SHA="${{ github.event.before }}"
+            HEAD_SHA="${{ github.sha }}"
+          fi
+
+          # Get list of changed files
+          CHANGED_FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" 2>/dev/null || echo "")
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "should_run_tests=true" >> $GITHUB_OUTPUT
+            echo "Running tests: could not determine changed files"
+            exit 0
+          fi
+
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+
+          # Check if all changed files are in .claude directory
+          NON_CLAUDE_FILES=$(echo "$CHANGED_FILES" | grep -v "^\.claude/" || true)
+
+          if [ -z "$NON_CLAUDE_FILES" ]; then
+            echo "should_run_tests=false" >> $GITHUB_OUTPUT
+            echo "Skipping tests: all changed files are in .claude/"
+          else
+            echo "should_run_tests=true" >> $GITHUB_OUTPUT
+            echo "Running tests: found non-.claude files:"
+            echo "$NON_CLAUDE_FILES"
+          fi
+
+  build:
+    needs: [check-changes]
+    if: needs.check-changes.outputs.should_run_tests == 'true'
     # Why Mac and Windows?
     # I can't run electron playwright on ubuntu-latest and
     # Linux support for Dyad is experimental so not as important
@@ -30,8 +118,78 @@ jobs:
             { name: "windows", image: "windows-latest" },
             { name: "macos", image: "macos-latest" },
           ]
-        # If you update this, you need to update
-        # scripts/generate-playwright-summary.js
+    runs-on: ${{ matrix.os.image }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.check-changes.outputs.pr_head_repo || github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ needs.check-changes.outputs.pr_head_ref || github.event.pull_request.head.ref || '' }}
+      - name: Initialize environment
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install node modules
+        run: npm ci --no-audit --no-fund --progress=false
+        env:
+          # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Presubmit check (e.g. lint, format)
+        # do not run this on Windows (it fails and not necessary)
+        if: contains(matrix.os.name, 'macos')
+        run: npm run presubmit
+      - name: Type-checking
+        # do not run this on windows (it's redundant)
+        if: contains(matrix.os.name, 'macos')
+        run: npm run ts
+      - name: Unit tests
+        # do not run this on windows (it's redundant)
+        if: contains(matrix.os.name, 'macos')
+        run: npm run test
+      - name: Build
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: npm run pre:e2e
+      - name: Prep test server
+        run: cd testing/fake-llm-server && npm install && npm run build && cd -
+      # macOS: Archive app bundle with tar to preserve metadata (code signatures, extended attributes)
+      # This is necessary because GitHub artifact upload/download loses these attributes
+      - name: Archive macOS app bundle
+        if: contains(matrix.os.name, 'macos')
+        run: tar -cvf out-macos.tar out/
+      - name: Upload build artifacts (macOS)
+        if: contains(matrix.os.name, 'macos')
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: build-${{ matrix.os.name }}
+          path: |
+            out-macos.tar
+            scaffold/
+            testing/fake-llm-server/
+          retention-days: 1
+      - name: Upload build artifacts (Windows)
+        if: contains(matrix.os.name, 'windows')
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: build-${{ matrix.os.name }}
+          path: |
+            out/
+            scaffold/
+            testing/fake-llm-server/
+          retention-days: 1
+
+  e2e-tests:
+    needs: [build]
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          [
+            { name: "windows", image: "windows-latest" },
+            { name: "macos", image: "macos-latest" },
+          ]
         shard: [1, 2, 3, 4]
         shardTotal: [4]
     runs-on: ${{ matrix.os.image }}
@@ -49,21 +207,6 @@ jobs:
         env:
           # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Presubmit check (e.g. lint, format)
-        # do not run this on Windows (it fails and not necessary)
-        # Only run on shard 1 to avoid redundant execution
-        if: contains(matrix.os.name, 'macos') && matrix.shard == 1
-        run: npm run presubmit
-      - name: Type-checking
-        # do not run this on windows (it's redunant)
-        # Only run on shard 1 to avoid redundant execution
-        if: contains(matrix.os.name, 'macos') && matrix.shard == 1
-        run: npm run ts
-      - name: Unit tests
-        # do not run this on windows (it's redunant)
-        # Only run on shard 1 to avoid redundant execution
-        if: contains(matrix.os.name, 'macos') && matrix.shard == 1
-        run: npm run test
       - name: Setup pnpm
         uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
         with:
@@ -87,15 +230,19 @@ jobs:
         run: cd scaffold && pnpm install
       - name: Install nextjs-template dependencies
         run: cd nextjs-template && pnpm install
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-${{ matrix.os.name }}
+      # macOS: Extract tar archive to restore app bundle with preserved metadata
+      - name: Extract macOS app bundle
+        if: contains(matrix.os.name, 'macos')
+        run: tar -xvf out-macos.tar
       - name: Install Chromium browser for Playwright
         run: npx playwright install chromium --with-deps
-      - name: Build
-        env:
-          NODE_OPTIONS: "--max-old-space-size=4096"
-        run: npm run pre:e2e
-      - name: Prep test server
-        run: cd testing/fake-llm-server && npm install && npm run build && cd -
       - name: E2E tests (Shard ${{ matrix.shard }}/4)
+        env:
+          FLAKINESS_ACCESS_TOKEN: ${{ secrets.FLAKINESS_ACCESS_TOKEN }}
         # You can add debug logging to make it easier to see what's failing
         # by adding "DEBUG=pw:browser" in front.
         # Use blob reporter for sharding and merge capabilities
@@ -110,8 +257,9 @@ jobs:
 
   merge-reports:
     # Merge reports after playwright-tests, even if some shards have failed
-    if: ${{ !cancelled() }}
-    needs: [test]
+    # Skip if tests were skipped (only .claude files changed)
+    if: ${{ !cancelled() && needs.check-changes.outputs.should_run_tests == 'true' }}
+    needs: [check-changes, e2e-tests]
     permissions:
       contents: read
       pull-requests: write
@@ -120,6 +268,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.check-changes.outputs.pr_head_repo || github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ needs.check-changes.outputs.pr_head_ref || github.event.pull_request.head.ref || '' }}
       - uses: actions/setup-node@v4
         with:
           node-version: lts/*
@@ -164,6 +315,8 @@ jobs:
         uses: actions/github-script@v7
         env:
           PLAYWRIGHT_RUN_ID: ${{ github.run_id }}
+          # Pass PR number for workflow_dispatch triggers (from pr-review-responder)
+          PR_NUMBER: ${{ inputs.pr_number }}
         with:
           script: |
             const { run } = require('./scripts/generate-playwright-summary.js');

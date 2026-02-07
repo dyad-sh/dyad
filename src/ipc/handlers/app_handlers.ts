@@ -1248,10 +1248,12 @@ export function registerAppHandlers() {
           logger.info(
             `Shared module ${filePath} modified, redeploying all Supabase functions`,
           );
+          const settings = readSettings();
           const deployErrors = await deployAllSupabaseFunctions({
             appPath,
             supabaseProjectId: app.supabaseProjectId,
             supabaseOrganizationSlug: app.supabaseOrganizationSlug ?? null,
+            skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
           });
           if (deployErrors.length > 0) {
             return {
@@ -1831,6 +1833,38 @@ export function registerAppHandlers() {
       return { path: result.filePaths[0], canceled: false };
     },
   );
+
+  createTypedHandler(appContracts.updateAppCommands, async (_, params) => {
+    const { appId, installCommand, startCommand } = params;
+
+    const app = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
+
+    if (!app) {
+      throw new Error("App not found");
+    }
+
+    const trimmedInstall = installCommand?.trim() || null;
+    const trimmedStart = startCommand?.trim() || null;
+
+    // Both commands must be provided together, or both must be null
+    if ((trimmedInstall === null) !== (trimmedStart === null)) {
+      throw new Error(
+        "Both install and start commands are required when customizing",
+      );
+    }
+
+    await db
+      .update(apps)
+      .set({
+        installCommand: trimmedInstall,
+        startCommand: trimmedStart,
+      })
+      .where(eq(apps.id, appId));
+
+    logger.info(`Updated commands for app ${appId}`);
+  });
 
   createTypedHandler(appContracts.changeAppLocation, async (_, params) => {
     const { appId, parentDirectory } = params;

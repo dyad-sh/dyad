@@ -10,8 +10,9 @@
  * Escapes special characters in XML attribute values.
  * Handles: & " < >
  */
-export function escapeXmlAttr(str: string): string {
-  return str
+export function escapeXmlAttr(str: string | null | undefined): string {
+  if (str == null) return "";
+  return String(str)
     .replace(/&/g, "&amp;")
     .replace(/"/g, "&quot;")
     .replace(/</g, "&lt;")
@@ -34,8 +35,12 @@ export function unescapeXmlAttr(str: string): string {
  * Escapes special characters in XML content (text between tags).
  * Handles: & < >
  */
-export function escapeXmlContent(str: string): string {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+export function escapeXmlContent(str: string | null | undefined): string {
+  if (str == null) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 /**

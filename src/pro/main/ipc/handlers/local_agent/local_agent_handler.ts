@@ -18,7 +18,7 @@ import { db } from "@/db";
 import { chats, messages } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
-import { isDyadProEnabled } from "@/lib/schemas";
+import { isDyadProEnabled, isBasicAgentMode } from "@/lib/schemas";
 import { readSettings } from "@/main/settings";
 import { getDyadAppPath } from "@/paths/paths";
 import { getModelClient } from "@/ipc/utils/get_model_client";
@@ -48,7 +48,9 @@ import {
   escapeXmlAttr,
   escapeXmlContent,
   UserMessageContentPart,
+  FileEditTracker,
 } from "./tools/types";
+import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import {
   prepareStepMessages,
   type InjectedMessage,
@@ -57,6 +59,15 @@ import { TOOL_DEFINITIONS } from "./tool_definitions";
 import { parseAiMessagesJson } from "@/ipc/utils/ai_messages_utils";
 import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
 import { addIntegrationTool } from "./tools/add_integration";
+import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
+import { writePlanTool } from "./tools/write_plan";
+import { exitPlanTool } from "./tools/exit_plan";
+import {
+  isChatPendingCompaction,
+  performCompaction,
+  checkAndMarkForCompaction,
+} from "@/ipc/handlers/compaction/compaction_handler";
+import { getPostCompactionMessages } from "@/ipc/handlers/compaction/compaction_utils";
 
 const logger = log.scope("local_agent_handler");
 
@@ -108,6 +119,7 @@ export async function handleLocalAgentStream(
     systemPrompt,
     dyadRequestId,
     readOnly = false,
+    planModeOnly = false,
     messageOverride,
   }: {
     placeholderMessageId: number;
@@ -119,26 +131,33 @@ export async function handleLocalAgentStream(
      */
     readOnly?: boolean;
     /**
+     * If true, only include tools allowed in plan mode.
+     * This includes read-only exploration tools and planning-specific tools.
+     */
+    planModeOnly?: boolean;
+    /**
      * If provided, use these messages instead of fetching from the database.
      * Used for summarization where messages need to be transformed.
      */
     messageOverride?: ModelMessage[];
   },
-): Promise<void> {
+): Promise<boolean> {
   const settings = readSettings();
 
-  // Check Pro status
-  if (!isDyadProEnabled(settings)) {
+  // Check Pro status or Basic Agent mode
+  // Basic Agent mode allows non-Pro users with quota (quota check is done in chat_stream_handlers)
+  // Read-only mode (ask mode) is allowed for all users without Pro
+  if (!readOnly && !isDyadProEnabled(settings) && !isBasicAgentMode(settings)) {
     safeSend(event.sender, "chat:response:error", {
       chatId: req.chatId,
       error:
         "Agent v2 requires Dyad Pro. Please enable Dyad Pro in Settings → Pro.",
     });
-    return;
+    return false;
   }
 
-  // Get the chat and app
-  const chat = await db.query.chats.findFirst({
+  // Get the chat and app — may be re-queried after compaction
+  let chat = await db.query.chats.findFirst({
     where: eq(chats.id, req.chatId),
     with: {
       messages: {
@@ -153,6 +172,48 @@ export async function handleLocalAgentStream(
   }
 
   const appPath = getDyadAppPath(chat.app.path);
+
+  // Check if compaction is pending and enabled before processing the message
+  if (
+    settings.enableContextCompaction !== false &&
+    (await isChatPendingCompaction(req.chatId))
+  ) {
+    logger.info(`Performing pending compaction for chat ${req.chatId}`);
+    const compactionResult = await performCompaction(
+      event,
+      req.chatId,
+      appPath,
+      dyadRequestId,
+      (accumulatedSummary: string) => {
+        // Stream compaction summary to the frontend in real-time
+        // We temporarily set the placeholder content to show compaction progress;
+        // after compaction, the chat is re-queried and the placeholder is reset.
+        sendResponseChunk(
+          event,
+          req.chatId,
+          chat,
+          `<dyad-compaction title="Compacting conversation">\n${accumulatedSummary}\n</dyad-compaction>`,
+          placeholderMessageId,
+        );
+      },
+    );
+    if (!compactionResult.success) {
+      logger.warn(
+        `Compaction failed for chat ${req.chatId}: ${compactionResult.error}`,
+      );
+      // Continue anyway - compaction failure shouldn't block the conversation
+    }
+    // Re-query to pick up the newly inserted compaction summary message
+    chat = (await db.query.chats.findFirst({
+      where: eq(chats.id, req.chatId),
+      with: {
+        messages: {
+          orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+        },
+        app: true,
+      },
+    }))!;
+  }
 
   // Send initial message update
   safeSend(event.sender, "chat:response:chunk", {
@@ -176,6 +237,7 @@ export async function handleLocalAgentStream(
     );
 
     // Build tool execute context
+    const fileEditTracker: FileEditTracker = Object.create(null);
     const ctx: AgentContext = {
       event,
       appId: chat.app.id,
@@ -187,6 +249,8 @@ export async function handleLocalAgentStream(
       isSharedModulesChanged: false,
       todos: [],
       dyadRequestId,
+      fileEditTracker,
+      isDyadPro: isDyadProEnabled(settings),
       onXmlStream: (accumulatedXml: string) => {
         // Stream accumulated XML to UI without persisting
         streamingPreview = accumulatedXml;
@@ -195,6 +259,7 @@ export async function handleLocalAgentStream(
           req.chatId,
           chat,
           fullResponse + streamingPreview,
+          placeholderMessageId,
         );
       },
       onXmlComplete: (finalXml: string) => {
@@ -202,7 +267,13 @@ export async function handleLocalAgentStream(
         fullResponse += finalXml + "\n";
         streamingPreview = ""; // Clear preview
         updateResponseInDb(placeholderMessageId, fullResponse);
-        sendResponseChunk(event, req.chatId, chat, fullResponse);
+        sendResponseChunk(
+          event,
+          req.chatId,
+          chat,
+          fullResponse,
+          placeholderMessageId,
+        );
       },
       requireConsent: async (params: {
         toolName: string;
@@ -230,15 +301,21 @@ export async function handleLocalAgentStream(
     // Build tool set (agent tools + MCP tools)
     // In read-only mode, only include read-only tools and skip MCP tools
     // (since we can't determine if MCP tools modify state)
-    const agentTools = buildAgentToolSet(ctx, { readOnly });
-    const mcpTools = readOnly ? {} : await getMcpTools(event, ctx);
+    // In plan mode, only include planning tools (read + questionnaire/plan tools)
+    const agentTools = buildAgentToolSet(ctx, { readOnly, planModeOnly });
+    const mcpTools =
+      readOnly || planModeOnly ? {} : await getMcpTools(event, ctx);
     const allTools: ToolSet = { ...agentTools, ...mcpTools };
 
     // Prepare message history with graceful fallback
     // Use messageOverride if provided (e.g., for summarization)
+    // If a compaction summary exists, only include messages from that point onward
+    // (pre-compaction messages are preserved in DB for the user but not sent to LLM)
+    const relevantMessages = getPostCompactionMessages(chat.messages);
+
     const messageHistory: ModelMessage[] = messageOverride
       ? messageOverride
-      : chat.messages
+      : relevantMessages
           .filter((msg) => msg.content || msg.aiMessagesJson)
           .flatMap((msg) => parseAiMessagesJson(msg));
 
@@ -263,7 +340,22 @@ export async function handleLocalAgentStream(
       system: systemPrompt,
       messages: messageHistory,
       tools: allTools,
-      stopWhen: [stepCountIs(25), hasToolCall(addIntegrationTool.name)], // Allow multiple tool call rounds, stop on add_integration
+      stopWhen: [
+        stepCountIs(25),
+        hasToolCall(addIntegrationTool.name),
+        // In plan mode, stop immediately after presenting a questionnaire,
+        // writing a plan, or exiting plan mode so the agent yields control
+        // back to the user. Without this, some models (e.g. Gemini Pro 3)
+        // ignore the prompt-level "STOP" instruction and keep calling tools
+        // in a loop.
+        ...(planModeOnly
+          ? [
+              hasToolCall(planningQuestionnaireTool.name),
+              hasToolCall(writePlanTool.name),
+              hasToolCall(exitPlanTool.name),
+            ]
+          : []),
+      ],
       abortSignal: abortController.signal,
       // Inject pending user messages (e.g., images from web_crawl) between steps
       // We must re-inject all accumulated messages each step because the AI SDK
@@ -291,6 +383,9 @@ export async function handleLocalAgentStream(
             .set({ maxTokensUsed: totalTokens })
             .where(eq(messages.id, placeholderMessageId))
             .catch((err) => logger.error("Failed to save token count", err));
+
+          // Check if compaction should be triggered for the next message
+          await checkAndMarkForCompaction(req.chatId, totalTokens);
         }
       },
       onError: (error: any) => {
@@ -406,7 +501,13 @@ export async function handleLocalAgentStream(
       if (chunk) {
         fullResponse += chunk;
         await updateResponseInDb(placeholderMessageId, fullResponse);
-        sendResponseChunk(event, req.chatId, chat, fullResponse);
+        sendResponseChunk(
+          event,
+          req.chatId,
+          chat,
+          fullResponse,
+          placeholderMessageId,
+        );
       }
     }
 
@@ -430,8 +531,8 @@ export async function handleLocalAgentStream(
       logger.warn("Failed to save AI messages JSON:", err);
     }
 
-    // In read-only mode, skip deploys and commits
-    if (!readOnly) {
+    // In read-only and plan mode, skip deploys and commits
+    if (!readOnly && !planModeOnly) {
       // Deploy all Supabase functions if shared modules changed
       await deployAllFunctionsIfNeeded(ctx);
 
@@ -452,13 +553,25 @@ export async function handleLocalAgentStream(
       .set({ approvalState: "approved" })
       .where(eq(messages.id, placeholderMessageId));
 
+    // Send telemetry for files with multiple edit tool types
+    for (const [filePath, counts] of Object.entries(fileEditTracker)) {
+      const toolsUsed = Object.entries(counts).filter(([, count]) => count > 0);
+      if (toolsUsed.length >= 2) {
+        sendTelemetryEvent("local_agent:file_edit_retry", {
+          filePath,
+          ...counts,
+        });
+      }
+    }
+
     // Send completion
     safeSend(event.sender, "chat:response:end", {
       chatId: req.chatId,
       updatedFiles: !readOnly,
+      chatSummary: ctx.chatSummary,
     } satisfies ChatResponseEnd);
 
-    return;
+    return true; // Success
   } catch (error) {
     // Clean up any pending consent requests for this chat to prevent
     // stale UI banners and orphaned promises
@@ -472,7 +585,7 @@ export async function handleLocalAgentStream(
           .set({ content: `${fullResponse}\n\n[Response cancelled by user]` })
           .where(eq(messages.id, placeholderMessageId));
       }
-      return;
+      return false; // Cancelled - don't consume quota
     }
 
     logger.error("Local agent error:", error);
@@ -480,7 +593,7 @@ export async function handleLocalAgentStream(
       chatId: req.chatId,
       error: `Error: ${error}`,
     });
-    return;
+    return false; // Error - don't consume quota
   }
 }
 
@@ -497,13 +610,17 @@ function sendResponseChunk(
   chatId: number,
   chat: any,
   fullResponse: string,
+  placeholderMessageId: number,
 ) {
   const currentMessages = [...chat.messages];
-  if (currentMessages.length > 0) {
-    const lastMsg = currentMessages[currentMessages.length - 1];
-    if (lastMsg.role === "assistant") {
-      lastMsg.content = fullResponse;
-    }
+  // Find the placeholder message by ID rather than assuming it's the last
+  // assistant message. After compaction, a compaction summary message may
+  // exist after the placeholder and we must not overwrite it.
+  const placeholderMsg = currentMessages.find(
+    (m) => m.id === placeholderMessageId,
+  );
+  if (placeholderMsg) {
+    placeholderMsg.content = fullResponse;
   }
   safeSend(event.sender, "chat:response:chunk", {
     chatId,

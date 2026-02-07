@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -21,6 +22,8 @@ import {
   Edit2,
   MoreHorizontal,
   AlertCircle,
+  GitPullRequestArrow,
+  EllipsisVertical,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useSettings } from "@/hooks/useSettings";
@@ -32,13 +35,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -53,12 +60,6 @@ import {
 
 import { Label } from "@/components/ui/label";
 import { showSuccess, showError, showInfo } from "@/lib/toast";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 import {
   Card,
@@ -99,6 +100,7 @@ export function GithubBranchManager({
   const [branchToMerge, setBranchToMerge] = useState<string | null>(null);
   const [isMerging, setIsMerging] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isPulling, setIsPulling] = useState(false);
   // State for abort confirmation dialog
   const [abortConfirmation, setAbortConfirmation] = useState<{
     show: boolean;
@@ -396,19 +398,33 @@ export function GithubBranchManager({
     }
   };
 
+  const handleGitPull = async () => {
+    setIsPulling(true);
+    try {
+      await ipc.github.pull({ appId });
+      showSuccess("Pulled latest changes from remote");
+      await loadBranches();
+    } catch (error: any) {
+      showError(error.message || "Failed to pull changes");
+    } finally {
+      setIsPulling(false);
+    }
+  };
+
   return (
     <div className="space-y-2">
       <div className="flex gap-2">
         <Select
           value={currentBranch || ""}
-          onValueChange={handleSwitchBranch}
+          onValueChange={(v) => v && handleSwitchBranch(v)}
           disabled={
             isSwitching ||
             isDeleting ||
             isRenaming ||
             isMerging ||
             isCreating ||
-            isLoading
+            isLoading ||
+            isPulling
           }
         >
           <SelectTrigger className="w-full" data-testid="branch-select-trigger">
@@ -430,45 +446,55 @@ export function GithubBranchManager({
           </SelectContent>
         </Select>
 
-        <TooltipProvider>
+        <DropdownMenu>
           <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={loadBranches}
-                disabled={isLoading}
-                title="Refresh branches"
-                data-testid="refresh-branches-button"
-              >
-                <RefreshCw
-                  className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
+            <TooltipTrigger
+              render={
+                <DropdownMenuTrigger
+                  className={cn(
+                    buttonVariants({ variant: "outline", size: "icon" }),
+                  )}
+                  aria-label="Branch actions"
+                  data-testid="branch-actions-menu-trigger"
                 />
-              </Button>
+              }
+            >
+              <EllipsisVertical className="h-4 w-4" />
             </TooltipTrigger>
-            <TooltipContent>Refresh branches</TooltipContent>
+            <TooltipContent>Branch actions</TooltipContent>
           </Tooltip>
-        </TooltipProvider>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={() => setShowCreateDialog(true)}
+              data-testid="create-branch-trigger"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Create new branch
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={loadBranches}
+              disabled={isLoading}
+              data-testid="refresh-branches-button"
+            >
+              <RefreshCw
+                className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
+              />
+              Refresh branches
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={handleGitPull}
+              disabled={isPulling}
+              data-testid="git-pull-button"
+            >
+              <GitPullRequestArrow
+                className={`mr-2 h-4 w-4 ${isPulling ? "animate-spin" : ""}`}
+              />
+              Git pull
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DialogTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    title="Create new branch"
-                    data-testid="create-branch-trigger"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </DialogTrigger>
-              </TooltipTrigger>
-              <TooltipContent>Create new branch</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Create New Branch</DialogTitle>
@@ -488,7 +514,10 @@ export function GithubBranchManager({
               </div>
               <div>
                 <Label htmlFor="source-branch">Source Branch</Label>
-                <Select value={sourceBranch} onValueChange={setSourceBranch}>
+                <Select
+                  value={sourceBranch}
+                  onValueChange={(v) => setSourceBranch(v ?? "")}
+                >
                   <SelectTrigger
                     className="mt-2"
                     data-testid="source-branch-select-trigger"
@@ -805,15 +834,11 @@ export function GithubBranchManager({
                             if (open) setIsExpanded(true);
                           }}
                         >
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6"
-                              data-testid={`branch-actions-${branch}`}
-                            >
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
+                          <DropdownMenuTrigger
+                            className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-6 w-6"
+                            data-testid={`branch-actions-${branch}`}
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem

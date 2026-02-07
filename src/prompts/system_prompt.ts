@@ -3,6 +3,7 @@ import fs from "node:fs";
 import log from "electron-log";
 import { TURBO_EDITS_V2_SYSTEM_PROMPT } from "../pro/main/prompts/turbo_edits_v2_prompt";
 import { constructLocalAgentPrompt } from "./local_agent_prompt";
+import { constructPlanModePrompt } from "./plan_mode_prompt";
 
 const logger = log.scope("system_prompt");
 
@@ -510,16 +511,26 @@ export const constructSystemPrompt = ({
   enableTurboEditsV2,
   themePrompt,
   readOnly,
+  basicAgentMode,
 }: {
   aiRules: string | undefined;
-  chatMode?: "build" | "ask" | "agent" | "local-agent";
+  chatMode?: "build" | "ask" | "agent" | "local-agent" | "plan";
   enableTurboEditsV2: boolean;
   themePrompt?: string;
   /** If true, use read-only mode for local-agent (ask mode with tools) */
   readOnly?: boolean;
+  /** If true, use basic agent mode (free tier with limited tools) */
+  basicAgentMode?: boolean;
 }) => {
+  if (chatMode === "plan") {
+    return constructPlanModePrompt(aiRules, themePrompt);
+  }
+
   if (chatMode === "local-agent") {
-    return constructLocalAgentPrompt(aiRules, themePrompt, { readOnly });
+    return constructLocalAgentPrompt(aiRules, themePrompt, {
+      readOnly,
+      basicAgentMode,
+    });
   }
 
   let systemPrompt = getSystemPromptForChatMode({

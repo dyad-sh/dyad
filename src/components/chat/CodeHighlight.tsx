@@ -101,29 +101,30 @@ export const CodeHighlight = memo(
         className="shiki not-prose relative [&_pre]:overflow-auto 
       [&_pre]:rounded-lg [&_pre]:px-6 [&_pre]:py-7"
       >
-        {language ? (
-          <div className="absolute top-2 left-2 right-2 text-xs flex justify-between">
-            <span className="tracking-tighter text-muted-foreground/85">
-              {language}
-            </span>
-            {code && (
-              <button
-                className="mr-2 flex items-center text-xs cursor-pointer"
-                onClick={handleCopy}
-                type="button"
-              >
-                {copied ? <Check size={14} /> : <Copy size={14} />}
-                <span className="ml-1">{copied ? "Copied" : "Copy"}</span>
-              </button>
+        {code && (
+          <div className="absolute top-2 left-0 right-0 px-6 text-xs z-10 flex items-center justify-between">
+            {language && (
+              <span className="tracking-tighter text-muted-foreground/85 truncate min-w-0">
+                {language}
+              </span>
             )}
+            <button
+              className="flex items-center text-xs cursor-pointer ml-auto flex-shrink-0"
+              onClick={handleCopy}
+              type="button"
+            >
+              {copied ? <Check size={14} /> : <Copy size={14} />}
+              <span className="ml-1">{copied ? "Copied" : "Copy"}</span>
+            </button>
           </div>
-        ) : null}
+        )}
         {highlighter ? (
           <ShikiHighlighter
             highlighter={highlighter}
             language={language}
             theme={isDarkMode ? "github-dark-default" : "github-light-default"}
             delay={150}
+            showLanguage={false}
           >
             {code}
           </ShikiHighlighter>

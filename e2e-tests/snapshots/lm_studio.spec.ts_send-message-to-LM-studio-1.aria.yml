@@ -1,8 +1,21 @@
 - paragraph: hi
-- img
-- text: file1.txt
-- img
-- text: file1.txt
+- button "file1.txt file1.txt Edit":
+  - img
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
+  - img
 - paragraph: More EOM
+- button "Copy":
+  - img
+- img
+- text: lmstudio-model-1
+- img
+- text: less than a minute ago
+- button "Undo":
+  - img
+  - text: ""
 - button "Retry":
   - img
+  - text: ""

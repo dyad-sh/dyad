@@ -90,10 +90,12 @@ function buildTestSettings(
     enableDyadPro?: boolean;
     hasApiKey?: boolean;
     selectedModel?: string;
+    enableContextCompaction?: boolean;
   } = {},
 ) {
   const baseSettings = {
     selectedModel: overrides.selectedModel ?? "gpt-4",
+    enableContextCompaction: overrides.enableContextCompaction ?? true,
   };
 
   if (overrides.enableDyadPro && overrides.hasApiKey !== false) {
@@ -255,6 +257,22 @@ vi.mock(
   }),
 );
 
+const {
+  mockIsChatPendingCompaction,
+  mockPerformCompaction,
+  mockCheckAndMarkForCompaction,
+} = vi.hoisted(() => ({
+  mockIsChatPendingCompaction: vi.fn(async () => false),
+  mockPerformCompaction: vi.fn(async () => ({ success: true })),
+  mockCheckAndMarkForCompaction: vi.fn(async () => false),
+}));
+
+vi.mock("@/ipc/handlers/compaction/compaction_handler", () => ({
+  isChatPendingCompaction: mockIsChatPendingCompaction,
+  performCompaction: mockPerformCompaction,
+  checkAndMarkForCompaction: mockCheckAndMarkForCompaction,
+}));
+
 // ============================================================================
 // Import the function under test AFTER mocks are set up
 // ============================================================================
@@ -274,6 +292,9 @@ describe("handleLocalAgentStream", () => {
     mockChatData = null;
     mockSettings = buildTestSettings();
     mockStreamResult = null;
+    mockIsChatPendingCompaction.mockResolvedValue(false);
+    mockPerformCompaction.mockResolvedValue({ success: true });
+    mockCheckAndMarkForCompaction.mockResolvedValue(false);
   });
 
   describe("Pro status validation", () => {
@@ -370,6 +391,35 @@ describe("handleLocalAgentStream", () => {
           },
         ),
       ).rejects.toThrow("Chat not found: 1");
+    });
+  });
+
+  describe("Context compaction setting", () => {
+    it("should not run pending compaction when context compaction is disabled", async () => {
+      // Arrange
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({
+        enableDyadPro: true,
+        enableContextCompaction: false,
+      });
+      mockChatData = buildTestChat();
+      mockStreamResult = createFakeStream([{ type: "text-delta", text: "ok" }]);
+      mockIsChatPendingCompaction.mockResolvedValue(true);
+
+      // Act
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      // Assert
+      expect(mockPerformCompaction).not.toHaveBeenCalled();
     });
   });
 

@@ -26,12 +26,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { Button } from "@/components/ui/button";
 import { ContextFilesPicker } from "@/components/ContextFilesPicker";
 import { FileAttachmentDropdown } from "./FileAttachmentDropdown";
 import { CustomThemeDialog } from "@/components/CustomThemeDialog";
@@ -137,18 +131,14 @@ export function AuxiliaryActionsMenu({
   return (
     <>
       <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="has-[>svg]:px-2 hover:bg-muted bg-primary/10 text-primary cursor-pointer rounded-xl"
-            data-testid="auxiliary-actions-menu"
-          >
-            <Plus
-              size={20}
-              className={`transition-transform duration-200 ${isOpen ? "rotate-45" : "rotate-0"}`}
-            />
-          </Button>
+        <DropdownMenuTrigger
+          className="inline-flex items-center justify-center whitespace-nowrap rounded-xl text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-muted bg-primary/10 text-primary cursor-pointer h-8 px-2"
+          data-testid="auxiliary-actions-menu"
+        >
+          <Plus
+            size={20}
+            className={`transition-transform duration-200 ${isOpen ? "rotate-45" : "rotate-0"}`}
+          />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {/* Codebase Context */}
@@ -193,31 +183,26 @@ export function AuxiliaryActionsMenu({
               {themes?.map((theme) => {
                 const isSelected = currentThemeId === theme.id;
                 return (
-                  <Tooltip key={theme.id}>
-                    <TooltipTrigger asChild>
-                      <DropdownMenuItem
-                        onClick={() => handleThemeSelect(theme.id)}
-                        className={`py-2 px-3 ${isSelected ? "bg-primary/10" : ""}`}
-                        data-testid={`theme-option-${theme.id}`}
-                      >
-                        <div className="flex items-center w-full">
-                          {theme.icon === "palette" && (
-                            <Palette
-                              size={16}
-                              className="mr-2 text-muted-foreground"
-                            />
-                          )}
-                          <span className="flex-1">{theme.name}</span>
-                          {isSelected && (
-                            <Check size={16} className="text-primary ml-2" />
-                          )}
-                        </div>
-                      </DropdownMenuItem>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">
-                      {theme.description}
-                    </TooltipContent>
-                  </Tooltip>
+                  <DropdownMenuItem
+                    key={theme.id}
+                    onClick={() => handleThemeSelect(theme.id)}
+                    className={`py-2 px-3 ${isSelected ? "bg-primary/10" : ""}`}
+                    data-testid={`theme-option-${theme.id}`}
+                    title={theme.description}
+                  >
+                    <div className="flex items-center w-full">
+                      {theme.icon === "palette" && (
+                        <Palette
+                          size={16}
+                          className="mr-2 text-muted-foreground"
+                        />
+                      )}
+                      <span className="flex-1">{theme.name}</span>
+                      {isSelected && (
+                        <Check size={16} className="text-primary ml-2" />
+                      )}
+                    </div>
+                  </DropdownMenuItem>
                 );
               })}
 
@@ -229,32 +214,24 @@ export function AuxiliaryActionsMenu({
                     const themeId = `custom:${theme.id}`;
                     const isSelected = currentThemeId === themeId;
                     return (
-                      <Tooltip key={themeId}>
-                        <TooltipTrigger asChild>
-                          <DropdownMenuItem
-                            onClick={() => handleThemeSelect(themeId)}
-                            className={`py-2 px-3 ${isSelected ? "bg-primary/10" : ""}`}
-                            data-testid={`theme-option-${themeId}`}
-                          >
-                            <div className="flex items-center w-full">
-                              <Brush
-                                size={16}
-                                className="mr-2 text-muted-foreground"
-                              />
-                              <span className="flex-1">{theme.name}</span>
-                              {isSelected && (
-                                <Check
-                                  size={16}
-                                  className="text-primary ml-2"
-                                />
-                              )}
-                            </div>
-                          </DropdownMenuItem>
-                        </TooltipTrigger>
-                        <TooltipContent side="right">
-                          {theme.description || "Custom theme"}
-                        </TooltipContent>
-                      </Tooltip>
+                      <DropdownMenuItem
+                        key={themeId}
+                        onClick={() => handleThemeSelect(themeId)}
+                        className={`py-2 px-3 ${isSelected ? "bg-primary/10" : ""}`}
+                        data-testid={`theme-option-${themeId}`}
+                        title={theme.description || "Custom theme"}
+                      >
+                        <div className="flex items-center w-full">
+                          <Brush
+                            size={16}
+                            className="mr-2 text-muted-foreground"
+                          />
+                          <span className="flex-1">{theme.name}</span>
+                          {isSelected && (
+                            <Check size={16} className="text-primary ml-2" />
+                          )}
+                        </div>
+                      </DropdownMenuItem>
                     );
                   })}
                 </>

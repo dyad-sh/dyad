@@ -1,0 +1,34 @@
+- paragraph: tc=local-agent/questionnaire
+- paragraph: Let me ask you a few questions to understand your requirements.
+- button "Copy":
+  - img
+- img
+- text: Approved
+- img
+- text: claude-opus-4-5
+- img
+- text: less than a minute ago
+- button "Copy Request ID":
+  - img
+  - text: Request ID
+- paragraph: "Here are my responses to the questionnaire:"
+- paragraph:
+  - strong: Which framework do you prefer?
+  - text: Vue
+- button "file1.txt file1.txt Edit"
+- paragraph: More EOM
+- button "Copy":
+  - img
+- img
+- text: claude-opus-4-5
+- img
+- text: less than a minute ago
+- button "Copy Request ID":
+  - img
+  - text: Request ID
+- button "Undo":
+  - img
+  - text: Undo
+- button "Retry":
+  - img
+  - text: Retry

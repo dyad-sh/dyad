@@ -218,12 +218,7 @@ export function AzureConfiguration({
         </Alert>
       )}
 
-      <Accordion
-        type="single"
-        collapsible
-        defaultValue="azure-env"
-        className="w-full space-y-4"
-      >
+      <Accordion defaultValue={["azure-env"]} className="w-full space-y-4">
         <AccordionItem
           value="azure-env"
           className="border rounded-lg px-4 bg-background"

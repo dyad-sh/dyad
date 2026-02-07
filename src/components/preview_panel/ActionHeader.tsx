@@ -26,9 +26,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Tooltip,
-  TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
+  TooltipContent,
 } from "@/components/ui/tooltip";
 import { showError, showSuccess } from "@/lib/toast";
 import { useMutation } from "@tanstack/react-query";
@@ -175,137 +174,133 @@ export const ActionHeader = () => {
     testId: string,
     badge?: React.ReactNode,
   ) => {
-    const buttonContent = (
-      <button
-        data-testid={testId}
-        ref={ref}
-        className="no-app-region-drag cursor-pointer relative flex items-center gap-0.5 px-2 py-0.5 rounded-md text-xs font-medium z-10 hover:bg-[var(--background)] flex-col"
-        onClick={() => selectPanel(mode)}
-      >
-        {icon}
-        <span>
-          {!isCompact && <span>{text}</span>}
-          {badge}
-        </span>
-      </button>
+    return (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              data-testid={testId}
+              ref={ref}
+              className="no-app-region-drag cursor-pointer relative flex items-center gap-0.5 px-2 py-0.5 rounded-md text-xs font-medium z-10 hover:bg-[var(--background)] flex-col"
+              onClick={() => selectPanel(mode)}
+            />
+          }
+        >
+          {icon}
+          <span>
+            {!isCompact && <span>{text}</span>}
+            {badge}
+          </span>
+        </TooltipTrigger>
+        {isCompact && <TooltipContent>{text}</TooltipContent>}
+      </Tooltip>
     );
-
-    if (isCompact) {
-      return (
-        <Tooltip>
-          <TooltipTrigger asChild>{buttonContent}</TooltipTrigger>
-          <TooltipContent>
-            <p>{text}</p>
-          </TooltipContent>
-        </Tooltip>
-      );
-    }
-
-    return buttonContent;
   };
   const iconSize = 15;
 
   return (
-    <TooltipProvider>
-      <div className="flex items-center justify-between px-1 py-2 mt-1 border-b border-border">
-        <div className="relative flex rounded-md p-0.5 gap-0.5">
-          <motion.div
-            className="absolute top-0.5 bottom-0.5 bg-[var(--background-lightest)] shadow rounded-md"
-            animate={{
-              left: indicatorStyle.left,
-              width: indicatorStyle.width,
-            }}
-            transition={{
-              type: "spring",
-              stiffness: 600,
-              damping: 35,
-              mass: 0.6,
-            }}
-          />
-          {renderButton(
-            "preview",
-            previewRef,
-            <Eye size={iconSize} />,
-            "Preview",
-            "preview-mode-button",
-          )}
-          {renderButton(
-            "problems",
-            problemsRef,
-            <AlertTriangle size={iconSize} />,
-            "Problems",
-            "problems-mode-button",
-            displayCount && (
-              <span className="ml-0.5 px-1 py-0.5 text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-full min-w-[16px] text-center">
-                {displayCount}
-              </span>
-            ),
-          )}
-          {renderButton(
-            "code",
-            codeRef,
-            <Code size={iconSize} />,
-            "Code",
-            "code-mode-button",
-          )}
-          {renderButton(
-            "configure",
-            configureRef,
-            <Wrench size={iconSize} />,
-            "Configure",
-            "configure-mode-button",
-          )}
-          {renderButton(
-            "security",
-            securityRef,
-            <Shield size={iconSize} />,
-            "Security",
-            "security-mode-button",
-          )}
-          {renderButton(
-            "publish",
-            publishRef,
-            <Globe size={iconSize} />,
-            "Publish",
-            "publish-mode-button",
-          )}
-        </div>
-        {/* Chat activity bell */}
-        <div className="flex items-center gap-1">
-          <ChatActivityButton />
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                data-testid="preview-more-options-button"
-                className="no-app-region-drag flex items-center justify-center p-1.5 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
-                title="More options"
-              >
-                <MoreVertical size={16} />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-60">
-              <DropdownMenuItem onClick={onCleanRestart}>
-                <Cog size={16} />
-                <div className="flex flex-col">
-                  <span>Rebuild</span>
-                  <span className="text-xs text-muted-foreground">
-                    Re-installs node_modules and restarts
-                  </span>
-                </div>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={onClearSessionData}>
-                <Trash2 size={16} />
-                <div className="flex flex-col">
-                  <span>Clear Cache</span>
-                  <span className="text-xs text-muted-foreground">
-                    Clears cookies and local storage and other app cache
-                  </span>
-                </div>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+    <div className="flex items-center justify-between px-1 py-2 mt-1 border-b border-border">
+      <div className="relative flex rounded-md p-0.5 gap-0.5">
+        <motion.div
+          className="absolute top-0.5 bottom-0.5 bg-[var(--background-lightest)] shadow rounded-md"
+          animate={{
+            left: indicatorStyle.left,
+            width: indicatorStyle.width,
+          }}
+          transition={{
+            type: "spring",
+            stiffness: 600,
+            damping: 35,
+            mass: 0.6,
+          }}
+        />
+        {renderButton(
+          "preview",
+          previewRef,
+          <Eye size={iconSize} />,
+          "Preview",
+          "preview-mode-button",
+        )}
+        {renderButton(
+          "problems",
+          problemsRef,
+          <AlertTriangle size={iconSize} />,
+          "Problems",
+          "problems-mode-button",
+          displayCount && (
+            <span className="ml-0.5 px-1 py-0.5 text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-full min-w-[16px] text-center">
+              {displayCount}
+            </span>
+          ),
+        )}
+        {renderButton(
+          "code",
+          codeRef,
+          <Code size={iconSize} />,
+          "Code",
+          "code-mode-button",
+        )}
+        {renderButton(
+          "configure",
+          configureRef,
+          <Wrench size={iconSize} />,
+          "Configure",
+          "configure-mode-button",
+        )}
+        {renderButton(
+          "security",
+          securityRef,
+          <Shield size={iconSize} />,
+          "Security",
+          "security-mode-button",
+        )}
+        {renderButton(
+          "publish",
+          publishRef,
+          <Globe size={iconSize} />,
+          "Publish",
+          "publish-mode-button",
+        )}
       </div>
-    </TooltipProvider>
+      {/* Chat activity bell */}
+      <div className="flex items-center gap-1">
+        <ChatActivityButton />
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <DropdownMenuTrigger
+                  data-testid="preview-more-options-button"
+                  className="no-app-region-drag flex items-center justify-center p-1.5 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
+                />
+              }
+            >
+              <MoreVertical size={16} />
+            </TooltipTrigger>
+            <TooltipContent>More options</TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="end" className="w-60">
+            <DropdownMenuItem onClick={onCleanRestart}>
+              <Cog size={16} />
+              <div className="flex flex-col">
+                <span>Rebuild</span>
+                <span className="text-xs text-muted-foreground">
+                  Re-installs node_modules and restarts
+                </span>
+              </div>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onClearSessionData}>
+              <Trash2 size={16} />
+              <div className="flex flex-col">
+                <span>Clear Cache</span>
+                <span className="text-xs text-muted-foreground">
+                  Clears cookies and local storage and other app cache
+                </span>
+              </div>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
   );
 };

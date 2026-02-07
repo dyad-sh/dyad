@@ -3,6 +3,7 @@ import {
   appUrlAtom,
   appConsoleEntriesAtom,
   previewErrorMessageAtom,
+  previewCurrentUrlAtom,
 } from "@/atoms/appAtoms";
 import { useAtomValue, useSetAtom, useAtom } from "jotai";
 import { useEffect, useRef, useState } from "react";
@@ -24,6 +25,8 @@ import {
   Tablet,
   Smartphone,
   Pen,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { CopyErrorMessage } from "@/components/CopyErrorMessage";
@@ -46,19 +49,19 @@ import {
   screenshotDataUrlAtom,
   pendingVisualChangesAtom,
 } from "@/atoms/previewAtoms";
+import { isChatPanelHiddenAtom } from "@/atoms/viewAtoms";
 import { ComponentSelection } from "@/ipc/types";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import { useRunApp } from "@/hooks/useRunApp";
 import { useSettings } from "@/hooks/useSettings";
 import { useShortcut } from "@/hooks/useShortcut";
@@ -184,13 +187,29 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const { userBudget } = useUserBudgetInfo();
   const isProMode = !!userBudget;
 
-  // Navigation state
+  // Preserved URL state (persists across HMR-induced remounts)
+  const [preservedUrls, setPreservedUrls] = useAtom(previewCurrentUrlAtom);
+
+  // Get the initial URL to use - check if we have a preserved URL from before HMR remount
+  const initialUrl = selectedAppId ? preservedUrls[selectedAppId] : null;
+
+  // Navigation state - initialize with preserved URL if available
   const [isComponentSelectorInitialized, setIsComponentSelectorInitialized] =
     useState(false);
-  const [canGoBack, setCanGoBack] = useState(false);
+  const [canGoBack, setCanGoBack] = useState(!!initialUrl);
   const [canGoForward, setCanGoForward] = useState(false);
-  const [navigationHistory, setNavigationHistory] = useState<string[]>([]);
-  const [currentHistoryPosition, setCurrentHistoryPosition] = useState(0);
+  const [navigationHistory, setNavigationHistory] = useState<string[]>(() => {
+    if (appUrl && initialUrl && initialUrl !== appUrl) {
+      return [appUrl, initialUrl];
+    }
+    return appUrl ? [appUrl] : [];
+  });
+  const [currentHistoryPosition, setCurrentHistoryPosition] = useState(() => {
+    if (appUrl && initialUrl && initialUrl !== appUrl) {
+      return 1;
+    }
+    return 0;
+  });
   const setSelectedComponentsPreview = useSetAtom(
     selectedComponentsPreviewAtom,
   );
@@ -201,10 +220,16 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   );
   const setPreviewIframeRef = useSetAtom(previewIframeRefAtom);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  // Ref to store the URL that the iframe should be showing - initialize with preserved URL if available
+  // This is different from appUrl - it tracks the CURRENT route, not just the base URL
+  const currentIframeUrlRef = useRef<string | null>(initialUrl || appUrl);
   const [isPicking, setIsPicking] = useState(false);
   const [annotatorMode, setAnnotatorMode] = useAtom(annotatorModeAtom);
   const [screenshotDataUrl, setScreenshotDataUrl] = useAtom(
     screenshotDataUrlAtom,
+  );
+  const [isChatPanelHidden, setIsChatPanelHidden] = useAtom(
+    isChatPanelHiddenAtom,
   );
 
   const { addAttachments } = useAttachments();
@@ -595,8 +620,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         // Also update UI state
         setConsoleEntries((prev) => [...prev, logEntry]);
       } else if (type === "pushState" || type === "replaceState") {
-        console.debug(`Navigation event: ${type}`, payload);
-
         // Update navigation history based on the type of state change
         if (type === "pushState" && payload?.newUrl) {
           // For pushState, we trim any forward history and add the new URL
@@ -606,11 +629,72 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           ];
           setNavigationHistory(newHistory);
           setCurrentHistoryPosition(newHistory.length - 1);
+          // Update the current iframe URL ref to match the navigation
+          currentIframeUrlRef.current = payload.newUrl;
+          // Preserve URL for HMR remounts - only if it's a different route from root
+          // Compare origins and check if there's a meaningful path
+          if (selectedAppId && appUrl) {
+            try {
+              const newUrlObj = new URL(payload.newUrl);
+              const appUrlObj = new URL(appUrl);
+              // Only preserve if there's a non-root path
+              if (
+                newUrlObj.origin === appUrlObj.origin &&
+                newUrlObj.pathname !== "/" &&
+                newUrlObj.pathname !== ""
+              ) {
+                const urlToPreserve = payload.newUrl;
+                setPreservedUrls((prev) => ({
+                  ...prev,
+                  [selectedAppId]: urlToPreserve,
+                }));
+              } else if (newUrlObj.origin === appUrlObj.origin) {
+                // Clear preserved URL when navigating back to root
+                setPreservedUrls((prev) => {
+                  const next = { ...prev };
+                  delete next[selectedAppId];
+                  return next;
+                });
+              }
+            } catch {
+              // Invalid URL, don't preserve
+            }
+          }
         } else if (type === "replaceState" && payload?.newUrl) {
           // For replaceState, we replace the current URL
           const newHistory = [...navigationHistory];
           newHistory[currentHistoryPosition] = payload.newUrl;
           setNavigationHistory(newHistory);
+          // Update the current iframe URL ref to match the navigation
+          currentIframeUrlRef.current = payload.newUrl;
+          // Preserve URL for HMR remounts - only if it's a different route from root
+          if (selectedAppId && appUrl) {
+            try {
+              const newUrlObj = new URL(payload.newUrl);
+              const appUrlObj = new URL(appUrl);
+              // Only preserve if there's a non-root path
+              if (
+                newUrlObj.origin === appUrlObj.origin &&
+                newUrlObj.pathname !== "/" &&
+                newUrlObj.pathname !== ""
+              ) {
+                const urlToPreserve = payload.newUrl;
+                setPreservedUrls((prev) => ({
+                  ...prev,
+                  [selectedAppId]: urlToPreserve,
+                }));
+              } else if (newUrlObj.origin === appUrlObj.origin) {
+                // Clear preserved URL when navigating back to root
+                setPreservedUrls((prev) => {
+                  const next = { ...prev };
+                  delete next[selectedAppId];
+                  return next;
+                });
+              }
+            } catch {
+              // Invalid URL, don't preserve
+            }
+          }
         }
       }
     };
@@ -621,11 +705,13 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     navigationHistory,
     currentHistoryPosition,
     selectedAppId,
+    appUrl,
     errorMessage,
     setErrorMessage,
     setIsComponentSelectorInitialized,
     setSelectedComponentsPreview,
     setVisualEditingSelectedComponent,
+    setPreservedUrls,
   ]);
 
   useEffect(() => {
@@ -634,13 +720,17 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     setCanGoForward(currentHistoryPosition < navigationHistory.length - 1);
   }, [navigationHistory, currentHistoryPosition]);
 
-  // Initialize navigation history when iframe loads
+  // Reset navigation when appUrl changes (different app selected)
+  const prevAppUrlRef = useRef(appUrl);
   useEffect(() => {
-    if (appUrl) {
+    if (appUrl && appUrl !== prevAppUrlRef.current) {
+      prevAppUrlRef.current = appUrl;
       setNavigationHistory([appUrl]);
       setCurrentHistoryPosition(0);
       setCanGoBack(false);
       setCanGoForward(false);
+      // Reset iframe URL to the new app's base URL
+      currentIframeUrlRef.current = appUrl;
     }
   }, [appUrl]);
 
@@ -703,51 +793,139 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // Function to navigate back
   const handleNavigateBack = () => {
     if (canGoBack && iframeRef.current?.contentWindow) {
+      const newPosition = currentHistoryPosition - 1;
+      if (newPosition < 0 || newPosition >= navigationHistory.length) return;
+      const targetUrl = navigationHistory[newPosition];
+      if (!targetUrl) return;
+
+      // Send the target URL to navigate to (browser history.back() doesn't work in Electron iframes)
       iframeRef.current.contentWindow.postMessage(
         {
           type: "navigate",
-          payload: { direction: "backward" },
+          payload: { direction: "backward", url: targetUrl },
         },
         "*",
       );
 
       // Update our local state
-      setCurrentHistoryPosition((prev) => prev - 1);
-      setCanGoBack(currentHistoryPosition - 1 > 0);
+      setCurrentHistoryPosition(newPosition);
+      setCanGoBack(newPosition > 0);
       setCanGoForward(true);
+      // Update iframe URL ref to match
+      currentIframeUrlRef.current = targetUrl;
+
+      // Update preservedUrls to match navigation (for HMR remounts)
+      if (selectedAppId && appUrl) {
+        try {
+          const targetUrlObj = new URL(targetUrl);
+          const appUrlObj = new URL(appUrl);
+          if (targetUrlObj.origin === appUrlObj.origin) {
+            // Clear preserved URL if navigating back to root, otherwise update it
+            if (targetUrlObj.pathname === "/" || targetUrlObj.pathname === "") {
+              setPreservedUrls((prev) => {
+                const newUrls = { ...prev };
+                delete newUrls[selectedAppId];
+                return newUrls;
+              });
+            } else {
+              setPreservedUrls((prev) => ({
+                ...prev,
+                [selectedAppId]: targetUrl,
+              }));
+            }
+          }
+        } catch {
+          // Invalid URL, don't update preservedUrls
+        }
+      }
     }
   };
 
   // Function to navigate forward
   const handleNavigateForward = () => {
     if (canGoForward && iframeRef.current?.contentWindow) {
+      const newPosition = currentHistoryPosition + 1;
+      if (newPosition < 0 || newPosition >= navigationHistory.length) return;
+      const targetUrl = navigationHistory[newPosition];
+      if (!targetUrl) return;
+
+      // Send the target URL to navigate to (browser history.forward() doesn't work in Electron iframes)
       iframeRef.current.contentWindow.postMessage(
         {
           type: "navigate",
-          payload: { direction: "forward" },
+          payload: { direction: "forward", url: targetUrl },
         },
         "*",
       );
 
       // Update our local state
-      setCurrentHistoryPosition((prev) => prev + 1);
+      setCurrentHistoryPosition(newPosition);
       setCanGoBack(true);
-      setCanGoForward(
-        currentHistoryPosition + 1 < navigationHistory.length - 1,
-      );
+      setCanGoForward(newPosition < navigationHistory.length - 1);
+      // Update iframe URL ref to match
+      currentIframeUrlRef.current = targetUrl;
+
+      // Update preservedUrls to match navigation (for HMR remounts)
+      if (selectedAppId && appUrl) {
+        try {
+          const targetUrlObj = new URL(targetUrl);
+          const appUrlObj = new URL(appUrl);
+          if (targetUrlObj.origin === appUrlObj.origin) {
+            // Clear preserved URL if navigating forward to root, otherwise update it
+            if (targetUrlObj.pathname === "/" || targetUrlObj.pathname === "") {
+              setPreservedUrls((prev) => {
+                const newUrls = { ...prev };
+                delete newUrls[selectedAppId];
+                return newUrls;
+              });
+            } else {
+              setPreservedUrls((prev) => ({
+                ...prev,
+                [selectedAppId]: targetUrl,
+              }));
+            }
+          }
+        } catch {
+          // Invalid URL, don't update preservedUrls
+        }
+      }
     }
   };
 
   // Function to handle reload
   const handleReload = () => {
+    // Store the current URL to preserve the route during reload
+    const currentUrl = navigationHistory[currentHistoryPosition] || appUrl;
+
+    // Validate that the URL is same-origin as appUrl to prevent XSS/URL injection
+    if (currentUrl && appUrl) {
+      try {
+        const currentOrigin = new URL(currentUrl).origin;
+        const appOrigin = new URL(appUrl).origin;
+
+        // Only use the current URL if it has the same origin as the app URL
+        if (currentOrigin === appOrigin) {
+          currentIframeUrlRef.current = currentUrl;
+        } else {
+          console.warn(
+            `Rejecting reload URL ${currentUrl} - origin mismatch with app URL ${appUrl}`,
+          );
+          currentIframeUrlRef.current = appUrl;
+        }
+      } catch (e) {
+        console.error("Invalid URL during reload validation", e);
+        currentIframeUrlRef.current = appUrl;
+      }
+    } else {
+      currentIframeUrlRef.current = currentUrl || null;
+    }
+
     setReloadKey((prevKey) => prevKey + 1);
     setErrorMessage(undefined);
     // Reset visual editing state
     setVisualEditingSelectedComponent(null);
     setPendingChanges(new Map());
     setCurrentComponentCoordinates(null);
-    // Optionally, add logic here if you need to explicitly stop/start the app again
-    // For now, just changing the key should remount the iframe
     console.debug("Reloading iframe preview for app", selectedAppId);
   };
 
@@ -806,6 +984,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     restartApp();
   };
 
+  // Convert null to undefined for iframe src prop compatibility
+  const iframeSrc = currentIframeUrlRef.current ?? appUrl ?? undefined;
+
   return (
     <div className="flex flex-col h-full">
       {/* Browser-style header - hide when annotator is active */}
@@ -813,9 +994,29 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         <div className="flex items-center p-2 border-b space-x-2">
           {/* Navigation Buttons */}
           <div className="flex space-x-1">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={() => setIsChatPanelHidden(!isChatPanelHidden)}
+                    className="p-1 rounded transition-colors duration-200 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+                    data-testid="preview-toggle-chat-panel-button"
+                  />
+                }
+              >
+                {isChatPanelHidden ? (
+                  <Maximize2 size={16} />
+                ) : (
+                  <Minimize2 size={16} />
+                )}
+              </TooltipTrigger>
+              <TooltipContent>
+                {isChatPanelHidden ? "Show chat" : "Hide chat"}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
                   <button
                     onClick={handleActivateComponentSelector}
                     className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
@@ -829,23 +1030,20 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                       !isComponentSelectorInitialized
                     }
                     data-testid="preview-pick-element-button"
-                  >
-                    <MousePointerClick size={16} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>
-                    {isPicking
-                      ? "Deactivate component selector"
-                      : "Select component"}
-                  </p>
-                  <p>{isMac ? "⌘ + ⇧ + C" : "Ctrl + ⇧ + C"}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
+                  />
+                }
+              >
+                <MousePointerClick size={16} />
+              </TooltipTrigger>
+              <TooltipContent>
+                {isPicking
+                  ? "Deactivate component selector"
+                  : `Select component (${isMac ? "⌘ + ⇧ + C" : "Ctrl + ⇧ + C"})`}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
                   <button
                     onClick={handleAnnotatorClick}
                     className={`p-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
@@ -860,19 +1058,15 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                       !isComponentSelectorInitialized
                     }
                     data-testid="preview-annotator-button"
-                  >
-                    <Pen size={16} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>
-                    {annotatorMode
-                      ? "Annotator mode active"
-                      : "Activate annotator"}
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+                  />
+                }
+              >
+                <Pen size={16} />
+              </TooltipTrigger>
+              <TooltipContent>
+                {annotatorMode ? "Annotator mode active" : "Activate annotator"}
+              </TooltipContent>
+            </Tooltip>
             <button
               className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
               disabled={!canGoBack || loading || !selectedAppId}
@@ -902,16 +1096,17 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           {/* Address Bar with Routes Dropdown - using shadcn/ui dropdown-menu */}
           <div className="relative flex-grow min-w-20">
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <div className="flex items-center justify-between px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-700 dark:text-gray-200 cursor-pointer w-full min-w-0">
-                  <span className="truncate flex-1 mr-2 min-w-0">
-                    {navigationHistory[currentHistoryPosition]
-                      ? new URL(navigationHistory[currentHistoryPosition])
-                          .pathname
-                      : "/"}
-                  </span>
-                  <ChevronDown size={14} className="flex-shrink-0" />
-                </div>
+              <DropdownMenuTrigger className="flex items-center justify-between px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded text-sm text-gray-700 dark:text-gray-200 cursor-pointer w-full min-w-0">
+                <span
+                  className="truncate flex-1 mr-2 min-w-0"
+                  data-testid="preview-address-bar-path"
+                >
+                  {navigationHistory[currentHistoryPosition]
+                    ? new URL(navigationHistory[currentHistoryPosition])
+                        .pathname
+                    : "/"}
+                </span>
+                <ChevronDown size={14} className="flex-shrink-0" />
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-full">
                 {availableRoutes.length > 0 ? (
@@ -938,14 +1133,20 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
           {/* Action Buttons */}
           <div className="flex space-x-1">
-            <button
-              onClick={onRestart}
-              className="flex items-center space-x-1 px-3 py-1 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
-              title="Restart App"
-            >
-              <Power size={16} />
-              <span>Restart</span>
-            </button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={onRestart}
+                    className="flex items-center space-x-1 px-3 py-1 rounded-md text-sm hover:bg-[var(--background-darkest)] transition-colors"
+                  />
+                }
+              >
+                <Power size={16} />
+                <span>Restart</span>
+              </TooltipTrigger>
+              <TooltipContent>Restart App</TooltipContent>
+            </Tooltip>
             <button
               data-testid="preview-open-browser-button"
               onClick={() => {
@@ -960,83 +1161,84 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
             {/* Device Mode Button */}
             <Popover open={isDevicePopoverOpen} modal={false}>
-              <PopoverTrigger asChild>
-                <button
-                  data-testid="device-mode-button"
-                  onClick={() => {
-                    // Toggle popover open/close
-                    if (isDevicePopoverOpen)
-                      updateSettings({ previewDeviceMode: "desktop" });
-                    setIsDevicePopoverOpen(!isDevicePopoverOpen);
-                  }}
-                  className={cn(
-                    "p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-300",
-                    deviceMode !== "desktop" && "bg-gray-200 dark:bg-gray-700",
-                  )}
-                  title="Device Mode"
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <PopoverTrigger
+                      data-testid="device-mode-button"
+                      onClick={() => {
+                        // Toggle popover open/close
+                        if (isDevicePopoverOpen)
+                          updateSettings({ previewDeviceMode: "desktop" });
+                        setIsDevicePopoverOpen(!isDevicePopoverOpen);
+                      }}
+                      className={cn(
+                        "p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 dark:text-gray-300",
+                        deviceMode !== "desktop" &&
+                          "bg-gray-200 dark:bg-gray-700",
+                      )}
+                    />
+                  }
                 >
                   <MonitorSmartphone size={16} />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent
-                className="w-auto p-2"
-                onOpenAutoFocus={(e) => e.preventDefault()}
-                onInteractOutside={(e) => e.preventDefault()}
-              >
-                <TooltipProvider>
-                  <ToggleGroup
-                    type="single"
-                    value={deviceMode}
-                    onValueChange={(value) => {
-                      if (value) {
-                        updateSettings({
-                          previewDeviceMode: value as DeviceMode,
-                        });
-                        setIsDevicePopoverOpen(false);
+                </TooltipTrigger>
+                <TooltipContent>Device Mode</TooltipContent>
+              </Tooltip>
+              <PopoverContent className="w-auto p-2">
+                <ToggleGroup
+                  value={[deviceMode]}
+                  onValueChange={(value) => {
+                    if (value && value.length > 0) {
+                      updateSettings({
+                        previewDeviceMode: value[
+                          value.length - 1
+                        ] as DeviceMode,
+                      });
+                      setIsDevicePopoverOpen(false);
+                    }
+                  }}
+                  variant="outline"
+                >
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <ToggleGroupItem
+                          value="desktop"
+                          aria-label="Desktop view"
+                        />
                       }
-                    }}
-                    variant="outline"
-                  >
-                    {/* Tooltips placed inside items instead of wrapping
-                    to avoid asChild prop merging that breaks highlighting */}
-                    <ToggleGroupItem value="desktop" aria-label="Desktop view">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="flex items-center justify-center">
-                            <Monitor size={16} />
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Desktop</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </ToggleGroupItem>
-                    <ToggleGroupItem value="tablet" aria-label="Tablet view">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="flex items-center justify-center">
-                            <Tablet size={16} className="scale-x-130" />
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Tablet</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </ToggleGroupItem>
-                    <ToggleGroupItem value="mobile" aria-label="Mobile view">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="flex items-center justify-center">
-                            <Smartphone size={16} />
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Mobile</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </ToggleGroupItem>
-                  </ToggleGroup>
-                </TooltipProvider>
+                    >
+                      <Monitor size={16} />
+                    </TooltipTrigger>
+                    <TooltipContent>Desktop</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <ToggleGroupItem
+                          value="tablet"
+                          aria-label="Tablet view"
+                        />
+                      }
+                    >
+                      <Tablet size={16} className="scale-x-130" />
+                    </TooltipTrigger>
+                    <TooltipContent>Tablet</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <ToggleGroupItem
+                          value="mobile"
+                          aria-label="Mobile view"
+                        />
+                      }
+                    >
+                      <Smartphone size={16} />
+                    </TooltipTrigger>
+                    <TooltipContent>Mobile</TooltipContent>
+                  </Tooltip>
+                </ToggleGroup>
               </PopoverContent>
             </Popover>
           </div>
@@ -1099,6 +1301,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                   data-testid="preview-iframe-element"
                   onLoad={() => {
                     setErrorMessage(undefined);
+                    // Note: We don't clear currentIframeUrlRef - it tracks the URL the iframe is showing
+                    // This prevents re-renders from accidentally changing the iframe src
                   }}
                   ref={iframeRef}
                   key={reloadKey}
@@ -1109,7 +1313,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                       ? {}
                       : { width: `${deviceWidthConfig[deviceMode]}px` }
                   }
-                  src={appUrl}
+                  src={iframeSrc}
                   allow="clipboard-read; clipboard-write; fullscreen; microphone; camera; display-capture; geolocation; autoplay; picture-in-picture"
                 />
                 {/* Visual Editing Toolbar */}

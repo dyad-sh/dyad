@@ -1,38 +1,45 @@
 - paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
-- img
-- text: file1.txt
-- button "Edit":
+- button "file1.txt file1.txt Edit":
   - img
-- img
-- text: file1.txt
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
+  - img
 - paragraph: More EOM
-- button:
+- button "Copy":
   - img
+- img
+- text: Approved
 - img
 - text: claude-opus-4-5
 - img
 - text: less than a minute ago
-- button "Request ID":
+- button "Copy Request ID":
   - img
+  - text: ""
 - paragraph: tc=local-agent/read-then-edit
 - paragraph: Let me first read the current file contents to understand what we're working with.
 - img
-- text: App.tsx Read src/App.tsx
+- text: Read src/App.tsx
 - paragraph: Now I'll update the welcome message to say Hello World instead.
-- img
-- text: Turbo Edit App.tsx
-- img
-- text: "src/App.tsx Summary: Update welcome message"
+- button "App.tsx src/App.tsx Turbo Edit":
+  - img
+  - text: ""
+  - img
 - paragraph: Done! I've updated the title from 'Minimal imported app' to 'UPDATED imported app'. The change has been applied successfully.
-- button:
+- button "Copy":
   - img
 - img
 - text: claude-opus-4-5
 - img
 - text: less than a minute ago
-- button "Request ID":
+- button "Copy Request ID":
   - img
+  - text: ""
 - button "Undo":
   - img
+  - text: ""
 - button "Retry":
   - img
+  - text: ""

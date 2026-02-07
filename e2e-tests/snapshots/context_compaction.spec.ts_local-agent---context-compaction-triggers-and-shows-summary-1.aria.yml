@@ -1,0 +1,66 @@
+- paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
+- button "file1.txt file1.txt Edit"
+- paragraph: More EOM
+- button "Copy":
+  - img
+- img
+- text: Approved
+- img
+- text: claude-opus-4-5
+- img
+- text: less than a minute ago
+- button "Copy Request ID":
+  - img
+- paragraph: tc=local-agent/compaction-trigger
+- paragraph: I've completed the initial analysis of the codebase. Here are the findings.
+- button "Copy":
+  - img
+- img
+- text: Approved
+- img
+- text: claude-opus-4-5
+- img
+- text: less than a minute ago
+- button "Copy Request ID":
+  - img
+- button "Conversation compacted":
+  - img
+  - img
+- heading "Key Decisions Made" [level=2]
+- list:
+  - listitem: Completed initial task as requested
+- heading "Current Task State" [level=2]
+- paragraph: Conversation was compacted to save context space.
+- paragraph: "If you need to retrieve earlier parts of the conversation history, you can read the backup file at: [[compaction-backup-path]] Note: This file may be large. Read only the sections you need or use grep to search for specific content rather than reading the entire file."
+- button "Copy":
+  - img
+- img
+- text: less than a minute ago
+- paragraph: tc=local-agent/simple-response
+- paragraph: Hello! I understand your request. This is a simple response from the Basic Agent mode.
+- button "Copy":
+  - img
+- img
+- text: Approved
+- img
+- text: claude-opus-4-5
+- img
+- text: less than a minute ago
+- img
+- text: (1 files changed)
+- button "Copy Request ID":
+  - img
+- paragraph: "[dump] hi"
+- paragraph: "[[dyad-dump-path=*]]"
+- button "Copy":
+  - img
+- img
+- text: claude-opus-4-5
+- img
+- text: less than a minute ago
+- button "Copy Request ID":
+  - img
+- button "Undo":
+  - img
+- button "Retry":
+  - img

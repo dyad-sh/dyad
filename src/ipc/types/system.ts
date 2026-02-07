@@ -73,6 +73,7 @@ export const UserBudgetInfoSchema = z
     totalCredits: z.number(),
     budgetResetDate: z.date(),
     redactedUserId: z.string(),
+    isTrial: z.boolean(),
   })
   .nullable();
 
@@ -80,7 +81,7 @@ export type UserBudgetInfo = z.infer<typeof UserBudgetInfoSchema>;
 
 export const TelemetryEventPayloadSchema = z.object({
   eventName: z.string(),
-  properties: z.record(z.any()).optional(),
+  properties: z.record(z.string(), z.any()).optional(),
 });
 
 export type TelemetryEventPayload = z.infer<typeof TelemetryEventPayloadSchema>;

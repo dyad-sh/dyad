@@ -18,7 +18,7 @@ import {
   Lock,
 } from "lucide-react";
 import type React from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 
 import { useSettings } from "@/hooks/useSettings";
 import { ipc } from "@/ipc/types";
@@ -28,6 +28,7 @@ import {
   selectedChatIdAtom,
   pendingAgentConsentsAtom,
   agentTodosByChatIdAtom,
+  needsFreshPlanChatAtom,
 } from "@/atoms/chatAtoms";
 import { atom, useAtom, useSetAtom, useAtomValue } from "jotai";
 import { useStreamChat } from "@/hooks/useStreamChat";
@@ -48,23 +49,18 @@ import { AutoApproveSwitch } from "../AutoApproveSwitch";
 import { usePostHog } from "posthog-js/react";
 import { CodeHighlight } from "./CodeHighlight";
 import { TokenBar } from "./TokenBar";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "../ui/tooltip";
 
 import { useVersions } from "@/hooks/useVersions";
 import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
-import { showExtraFilesToast } from "@/lib/toast";
+import { showExtraFilesToast, showInfo } from "@/lib/toast";
 import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
 import { ChatInputControls } from "../ChatInputControls";
 import { ChatErrorBox } from "./ChatErrorBox";
 import { AgentConsentBanner } from "./AgentConsentBanner";
 import { TodoList } from "./TodoList";
+import { QuestionnaireInput } from "./QuestionnaireInput";
 import {
   selectedComponentsPreviewAtom,
   previewIframeRefAtom,
@@ -81,6 +77,19 @@ import { VisualEditingChangesDialog } from "@/components/preview_panel/VisualEdi
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  ContextLimitBanner,
+  shouldShowContextLimitBanner,
+} from "./ContextLimitBanner";
+import { useCountTokens } from "@/hooks/useCountTokens";
+import { useChats } from "@/hooks/useChats";
+import { useRouter } from "@tanstack/react-router";
+import { showError as showErrorToast } from "@/lib/toast";
 
 const showTokenBarAtom = atom(false);
 
@@ -129,6 +138,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const chatTodos = chatId ? (agentTodosByChatId.get(chatId) ?? []) : [];
   const { checkProblems } = useCheckProblems(appId);
   const { refreshAppIframe } = useRunApp();
+  const { navigate } = useRouter();
+  const setSelectedChatId = useSetAtom(selectedChatIdAtom);
+  const { invalidateChats } = useChats(appId);
   // Use the attachments hook
   const {
     attachments,
@@ -161,7 +173,49 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     proposal.type === "code-proposal" &&
     messageId === lastMessage.id;
 
+  // Extract user message history for terminal-style navigation
+  const userMessageHistory = useMemo(() => {
+    if (!chatId) return [];
+    const messages = messagesById.get(chatId) ?? [];
+    return messages
+      .filter((msg) => msg.role === "user")
+      .map((msg) => msg.content)
+      .reverse(); // Most recent first
+  }, [chatId, messagesById]);
+
   const { userBudget } = useUserBudgetInfo();
+  const [needsFreshPlanChat, setNeedsFreshPlanChat] = useAtom(
+    needsFreshPlanChatAtom,
+  );
+
+  // Detect transition to plan mode from another mode in a chat with messages
+  const prevModeRef = useRef(settings?.selectedChatMode);
+  useEffect(() => {
+    const prevMode = prevModeRef.current;
+    const currentMode = settings?.selectedChatMode;
+    prevModeRef.current = currentMode;
+
+    if (prevMode && prevMode !== "plan" && currentMode === "plan") {
+      const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
+      if (messages.length > 0) {
+        setNeedsFreshPlanChat(true);
+      }
+    }
+  }, [settings?.selectedChatMode, chatId, messagesById, setNeedsFreshPlanChat]);
+
+  // Token counting for context limit banner
+  const { result: tokenCountResult } = useCountTokens(
+    !isStreaming ? (chatId ?? null) : null,
+    "",
+  );
+
+  const showBanner =
+    !isStreaming &&
+    tokenCountResult &&
+    shouldShowContextLimitBanner({
+      totalTokens: tokenCountResult.actualMaxTokens,
+      contextWindow: tokenCountResult.contextWindow,
+    });
 
   useEffect(() => {
     if (error) {
@@ -187,6 +241,30 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       isStreaming ||
       !chatId
     ) {
+      return;
+    }
+
+    // If switching to plan mode from another mode in a chat with messages,
+    // create a new chat for a clean context.
+    if (needsFreshPlanChat && settings?.selectedChatMode === "plan" && appId) {
+      const currentInput = inputValue;
+      setInputValue("");
+      setNeedsFreshPlanChat(false);
+
+      const newChatId = await ipc.chat.createChat(appId);
+      setSelectedChatId(newChatId);
+      navigate({ to: "/chat", search: { id: newChatId } });
+      queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
+      showInfo("We've switched you to a new chat for a clean context");
+
+      await streamMessage({
+        prompt: currentInput,
+        chatId: newChatId,
+        attachments,
+        redo: false,
+      });
+      clearAttachments();
+      posthog.capture("chat:submit", { chatMode: settings?.selectedChatMode });
       return;
     }
 
@@ -231,6 +309,26 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     setShowError(false);
   };
 
+  const handleNewChat = async () => {
+    if (appId) {
+      try {
+        const newChatId = await ipc.chat.createChat(appId);
+        setSelectedChatId(newChatId);
+        navigate({
+          to: "/chat",
+          search: { id: newChatId },
+        });
+        await invalidateChats();
+      } catch (err) {
+        showErrorToast(
+          `Failed to create new chat: ${(err as Error).toString()}`,
+        );
+      }
+    } else {
+      navigate({ to: "/" });
+    }
+  };
+
   const handleApprove = async () => {
     if (!chatId || !messageId || isApproving || isRejecting || isStreaming)
       return;
@@ -256,7 +354,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       setError((err as Error)?.message || "An error occurred while approving");
     } finally {
       setIsApproving(false);
-      setIsPreviewOpen(true);
+      if (settings?.autoExpandPreviewPanel) {
+        setIsPreviewOpen(true);
+      }
       refreshVersions();
       if (settings?.enableAutoFixProblems) {
         checkProblems();
@@ -303,6 +403,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           onDismiss={dismissError}
           error={error}
           isDyadProEnabled={settings.enableDyadPro ?? false}
+          onStartNewChat={handleNewChat}
         />
       )}
       {/* Display loading or error state for proposal */}
@@ -317,14 +418,24 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         </div>
       )}
       <div className="p-4" data-testid="chat-input-container">
+        {/* Show context limit banner above chat input for visibility */}
+        {showBanner && tokenCountResult && (
+          <ContextLimitBanner
+            totalTokens={tokenCountResult.actualMaxTokens}
+            contextWindow={tokenCountResult.contextWindow}
+          />
+        )}
         <div
           className={`relative flex flex-col border border-border rounded-lg bg-(--background-lighter) shadow-sm ${
             isDraggingOver ? "ring-2 ring-blue-500 border-blue-500" : ""
-          }`}
+          } ${showBanner ? "rounded-t-none border-t-0" : ""}`}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
+          {/* Show active questionnaire if exists */}
+          <QuestionnaireInput />
+
           {/* Show todo list if there are todos for this chat */}
           {chatTodos.length > 0 && <TodoList todos={chatTodos} />}
           {/* Show agent consent banner if there's a pending consent request */}
@@ -408,25 +519,25 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           ) : (
             selectedComponents.length > 0 && (
               <div className="border-b border-border p-3 bg-muted/30">
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
                       <button
                         onClick={() => {
                           ipc.system.openExternalUrl("https://dyad.sh/pro");
                         }}
                         className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors cursor-pointer"
-                      >
-                        <Lock size={16} />
-                        <span className="font-medium">Visual editor (Pro)</span>
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      Visual editing lets you make UI changes without AI and is
-                      a Pro-only feature
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                      />
+                    }
+                  >
+                    <Lock size={16} />
+                    <span className="font-medium">Visual editor (Pro)</span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Visual editing lets you make UI changes without AI and is a
+                    Pro-only feature
+                  </TooltipContent>
+                </Tooltip>
               </div>
             )
           )}
@@ -451,28 +562,43 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               placeholder="Ask Dyad to build..."
               excludeCurrentApp={true}
               disableSendButton={disableSendButton}
+              messageHistory={userMessageHistory}
             />
 
             {isStreaming ? (
-              <button
-                onClick={handleCancel}
-                className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg"
-                title="Cancel generation"
-              >
-                <StopCircleIcon size={20} />
-              </button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      onClick={handleCancel}
+                      aria-label="Cancel generation"
+                      className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg"
+                    />
+                  }
+                >
+                  <StopCircleIcon size={20} />
+                </TooltipTrigger>
+                <TooltipContent>Cancel generation</TooltipContent>
+              </Tooltip>
             ) : (
-              <button
-                onClick={handleSubmit}
-                disabled={
-                  (!inputValue.trim() && attachments.length === 0) ||
-                  disableSendButton
-                }
-                className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
-                title="Send message"
-              >
-                <SendHorizontalIcon size={20} />
-              </button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      onClick={handleSubmit}
+                      disabled={
+                        (!inputValue.trim() && attachments.length === 0) ||
+                        disableSendButton
+                      }
+                      aria-label="Send message"
+                      className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
+                    />
+                  }
+                >
+                  <SendHorizontalIcon size={20} />
+                </TooltipTrigger>
+                <TooltipContent>Send message</TooltipContent>
+              </Tooltip>
             )}
           </div>
           <div className="pl-2 pr-1 flex items-center justify-between pb-2">
@@ -506,21 +632,21 @@ function SuggestionButton({
 }) {
   const { isStreaming } = useStreamChat();
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
+    <Tooltip>
+      <TooltipTrigger
+        render={
           <Button
             disabled={isStreaming}
             variant="outline"
             size="sm"
             onClick={onClick}
-          >
-            {children}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{tooltipText}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+          />
+        }
+      >
+        {children}
+      </TooltipTrigger>
+      <TooltipContent>{tooltipText}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -553,9 +679,9 @@ function RefactorFileButton({ path }: { path: string }) {
   return (
     <SuggestionButton
       onClick={onClick}
-      tooltipText="Refactor the file to improve maintainability"
+      tooltipText={`Refactor the file to improve maintainability: \n${path}`}
     >
-      <span className="max-w-[180px] overflow-hidden whitespace-nowrap text-ellipsis">
+      <span className="max-w-[200px] overflow-hidden whitespace-nowrap text-ellipsis">
         Refactor {path.split("/").slice(-2).join("/")}
       </span>
     </SuggestionButton>

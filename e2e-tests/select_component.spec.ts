@@ -124,6 +124,7 @@ testSkipIfWindows("upgrade app to select component", async ({ po }) => {
   await po.clickOpenInChatButton();
   // There should be another version from the upgrade being committed.
   await expect(po.page.getByText("Version 2")).toBeVisible();
+  await po.clickRestart();
 
   await po.clickPreviewPickElement();
 
@@ -141,7 +142,7 @@ testSkipIfWindows("select component next.js", async ({ po }) => {
   await po.setUp();
 
   await po.goToHubAndSelectTemplate("Next.js Template");
-
+  await po.selectChatMode("build");
   await po.sendPrompt("tc=basic");
   await po.clickTogglePreviewPanel();
   await po.clickPreviewPickElement();

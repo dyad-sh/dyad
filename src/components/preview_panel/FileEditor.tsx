@@ -7,16 +7,16 @@ import "@/components/chat/monaco";
 import { ipc } from "@/ipc/types";
 import { showError, showSuccess, showWarning } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSettings } from "@/hooks/useSettings";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { getLanguage } from "@/utils/get_language";
 import { queryKeys } from "@/lib/queryKeys";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 
 interface FileEditorProps {
   appId: number | null;
@@ -59,17 +59,19 @@ const Breadcrumb: React.FC<BreadcrumbProps> = ({
         </div>
         <div className="flex items-center gap-2 flex-shrink-0 ml-2">
           <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onSave}
-                disabled={!hasUnsavedChanges || isSaving}
-                className="h-6 w-6 p-0"
-                data-testid="save-file-button"
-              >
-                <Save size={12} />
-              </Button>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onSave}
+                  disabled={!hasUnsavedChanges || isSaving}
+                  className="h-6 w-6 p-0"
+                  data-testid="save-file-button"
+                />
+              }
+            >
+              <Save size={12} />
             </TooltipTrigger>
             <TooltipContent>
               {hasUnsavedChanges ? "Save changes" : "No unsaved changes"}

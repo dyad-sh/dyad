@@ -1,1 +1,3 @@
 + "lastShownReleaseNotesVersion": "[scrubbed]"
+- "selectedChatMode": "build"
++ "selectedChatMode": "local-agent"

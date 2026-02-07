@@ -1,25 +1,49 @@
 - paragraph: tc=create-ts-errors
 - paragraph: This will get a TypeScript error.
-- img
-- text: bad-file.ts
-- img
-- text: "src/bad-file.ts Summary: This will get a TypeScript error."
+- 'button "bad-file.ts src/bad-file.ts Edit Summary: This will get a TypeScript error."':
+  - img
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
+  - img
+  - text: ""
 - paragraph: EOM
-- img
-- text: Auto-fix2 problems
-- img
-- img
-- text: bad-file.ts
-- img
-- text: "src/bad-file.ts Summary: Fix 2 errors and introduce a new error."
+- button "Auto-fix 2 problems":
+  - img
+  - text: ""
+  - img
+- 'button "bad-file.ts src/bad-file.ts Edit Summary: Fix 2 errors and introduce a new error."':
+  - img
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
+  - img
+  - text: ""
 - paragraph: "[[dyad-dump-path=*]]"
-- img
-- text: Auto-fix1 problems
-- img
-- img
-- text: bad-file.ts
-- img
-- text: "src/bad-file.ts Summary: Fix remaining error."
+- button "Auto-fix 1 problems":
+  - img
+  - text: ""
+  - img
+- 'button "bad-file.ts src/bad-file.ts Edit Summary: Fix remaining error."':
+  - img
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
+  - img
+  - text: ""
 - paragraph: "[[dyad-dump-path=*]]"
+- button "Copy":
+  - img
+- img
+- text: test-model
+- img
+- text: less than a minute ago
+- button "Undo":
+  - img
+  - text: ""
 - button "Retry":
   - img
+  - text: ""

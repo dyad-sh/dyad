@@ -612,4 +612,190 @@ describe("prepare_step_utils", () => {
       `);
     });
   });
+
+  describe("orphaned reasoning filtering", () => {
+    it("filters orphaned reasoning parts during multi-step flow", () => {
+      const pendingUserMessages: UserMessageContentPart[][] = [];
+      const allInjectedMessages: InjectedMessage[] = [];
+
+      // Simulate AI SDK accumulating messages with orphaned reasoning
+      const messages: ModelMessage[] = [
+        { role: "user", content: "Help me with this task" },
+        {
+          role: "assistant",
+          content: [
+            { type: "reasoning", text: "Let me think about this..." },
+            // No following output - this is orphaned reasoning
+          ],
+        },
+      ];
+
+      const result = prepareStepMessages(
+        { messages },
+        pendingUserMessages,
+        allInjectedMessages,
+      );
+
+      // Should return modified options with orphaned reasoning filtered
+      expect(result).toBeDefined();
+      expect(result!.messages).toHaveLength(2);
+      // The assistant message should have empty content after filtering
+      expect((result!.messages[1].content as any[]).length).toBe(0);
+    });
+
+    it("preserves reasoning when followed by text output", () => {
+      const pendingUserMessages: UserMessageContentPart[][] = [];
+      const allInjectedMessages: InjectedMessage[] = [];
+
+      const messages: ModelMessage[] = [
+        { role: "user", content: "Help me" },
+        {
+          role: "assistant",
+          content: [
+            { type: "reasoning", text: "Thinking..." },
+            { type: "text", text: "Here is my response" },
+          ],
+        },
+      ];
+
+      const result = prepareStepMessages(
+        { messages },
+        pendingUserMessages,
+        allInjectedMessages,
+      );
+
+      // No filtering needed, so should return undefined (no modifications)
+      expect(result).toBeUndefined();
+    });
+
+    it("preserves reasoning when followed by tool-call", () => {
+      const pendingUserMessages: UserMessageContentPart[][] = [];
+      const allInjectedMessages: InjectedMessage[] = [];
+
+      const messages: ModelMessage[] = [
+        { role: "user", content: "Read the file" },
+        {
+          role: "assistant",
+          content: [
+            { type: "reasoning", text: "I should read this file..." },
+            {
+              type: "tool-call",
+              toolCallId: "call-123",
+              toolName: "read_file",
+              input: { path: "/test.ts" },
+            },
+          ],
+        },
+      ];
+
+      const result = prepareStepMessages(
+        { messages },
+        pendingUserMessages,
+        allInjectedMessages,
+      );
+
+      // No filtering needed
+      expect(result).toBeUndefined();
+    });
+
+    it("filters trailing reasoning after output", () => {
+      const pendingUserMessages: UserMessageContentPart[][] = [];
+      const allInjectedMessages: InjectedMessage[] = [];
+
+      const messages: ModelMessage[] = [
+        { role: "user", content: "Help me" },
+        {
+          role: "assistant",
+          content: [
+            { type: "text", text: "Here is my response" },
+            { type: "reasoning", text: "Orphaned trailing reasoning" },
+          ],
+        },
+      ];
+
+      const result = prepareStepMessages(
+        { messages },
+        pendingUserMessages,
+        allInjectedMessages,
+      );
+
+      // Should filter the trailing reasoning
+      expect(result).toBeDefined();
+      expect((result!.messages[1].content as any[]).length).toBe(1);
+      expect((result!.messages[1].content as any[])[0].type).toBe("text");
+    });
+
+    it("strips itemId from provider metadata during multi-step flow", () => {
+      const pendingUserMessages: UserMessageContentPart[][] = [];
+      const allInjectedMessages: InjectedMessage[] = [];
+
+      const messages: ModelMessage[] = [
+        { role: "user", content: "Help me" },
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: "Here is my response",
+              providerOptions: {
+                openai: { itemId: "msg_abc123" },
+              },
+            },
+          ],
+        },
+      ];
+
+      const result = prepareStepMessages(
+        { messages },
+        pendingUserMessages,
+        allInjectedMessages,
+      );
+
+      // Should strip itemId
+      expect(result).toBeDefined();
+      const textPart = (result!.messages[1].content as any[])[0];
+      expect(textPart.text).toBe("Here is my response");
+      expect(textPart.providerOptions).toBeUndefined();
+    });
+
+    it("strips itemId from reasoning parts while preserving reasoningEncryptedContent", () => {
+      const pendingUserMessages: UserMessageContentPart[][] = [];
+      const allInjectedMessages: InjectedMessage[] = [];
+
+      const messages: ModelMessage[] = [
+        { role: "user", content: "Help me" },
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "reasoning",
+              text: "Thinking...",
+              providerOptions: {
+                openai: {
+                  itemId: "rs_abc123",
+                  reasoningEncryptedContent: "encrypted-data",
+                },
+              },
+            },
+            { type: "text", text: "Here is my response" },
+          ],
+        },
+      ];
+
+      const result = prepareStepMessages(
+        { messages },
+        pendingUserMessages,
+        allInjectedMessages,
+      );
+
+      // Should strip itemId but preserve reasoningEncryptedContent
+      expect(result).toBeDefined();
+      const reasoningPart = (result!.messages[1].content as any[])[0];
+      expect(reasoningPart.text).toBe("Thinking...");
+      expect(reasoningPart.providerOptions.openai.itemId).toBeUndefined();
+      expect(
+        reasoningPart.providerOptions.openai.reasoningEncryptedContent,
+      ).toBe("encrypted-data");
+    });
+  });
 });

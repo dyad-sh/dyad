@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isOpenAIOrAnthropicSetup } from "./providerUtils";
 
 export const SecretSchema = z.object({
   value: z.string(),
@@ -142,7 +143,13 @@ export type RuntimeMode = z.infer<typeof RuntimeModeSchema>;
 export const RuntimeMode2Schema = z.enum(["host", "docker"]);
 export type RuntimeMode2 = z.infer<typeof RuntimeMode2Schema>;
 
-export const ChatModeSchema = z.enum(["build", "ask", "agent", "local-agent"]);
+export const ChatModeSchema = z.enum([
+  "build",
+  "ask",
+  "agent",
+  "local-agent",
+  "plan",
+]);
 export type ChatMode = z.infer<typeof ChatModeSchema>;
 
 export const GitHubSecretsSchema = z.object({
@@ -293,6 +300,7 @@ export const UserSettingsSchema = z
     selectedTemplateId: z.string(),
     selectedThemeId: z.string().optional(),
     enableSupabaseWriteSqlMigration: z.boolean().optional(),
+    skipPruneEdgeFunctions: z.boolean().optional(),
     selectedChatMode: ChatModeSchema.optional(),
     defaultChatMode: ChatModeSchema.optional(),
     acceptedCommunityCode: z.boolean().optional(),
@@ -300,6 +308,8 @@ export const UserSettingsSchema = z
     previewDeviceMode: DeviceModeSchema.optional(),
 
     enableAutoFixProblems: z.boolean().optional(),
+    autoExpandPreviewPanel: z.boolean().optional(),
+    enableChatCompletionNotifications: z.boolean().optional(),
     enableNativeGit: z.boolean().optional(),
     enableAutoUpdate: z.boolean(),
     releaseChannel: ReleaseChannelSchema,
@@ -317,6 +327,7 @@ export const UserSettingsSchema = z
       })
       .optional(),
     hideLocalAgentNewChatToast: z.boolean().optional(),
+    enableContextCompaction: z.boolean().optional(),
   })
   // Allow unknown properties to pass through (e.g. future settings
   // that should be preserved if user downgrades to an older version)
@@ -336,24 +347,56 @@ export function hasDyadProKey(settings: UserSettings): boolean {
 }
 
 /**
- * Gets the effective default chat mode based on settings and pro status.
+ * Gets the effective default chat mode based on settings, pro status, and free quota availability.
  * - If defaultChatMode is set and valid for the user's Pro status, use it
- * - If defaultChatMode is "local-agent" but user doesn't have Pro, fall back to "build"
- * - If defaultChatMode is NOT set but user has Dyad Pro enabled, treat as "local-agent"
- * - If not pro, treat as "build"
+ * - If defaultChatMode is "local-agent" but user doesn't have Pro:
+ *   - If free agent quota available AND OpenAI/Anthropic is set up, use "local-agent" (basic agent mode)
+ *   - Otherwise, fall back to "build"
+ * - If defaultChatMode is NOT set:
+ *   - Pro users: use "local-agent"
+ *   - Non-Pro users with quota AND OpenAI/Anthropic set up: use "local-agent" (basic agent mode)
+ *   - Non-Pro users without quota or provider: use "build"
  */
-export function getEffectiveDefaultChatMode(settings: UserSettings): ChatMode {
+export function getEffectiveDefaultChatMode(
+  settings: UserSettings,
+  envVars: Record<string, string | undefined>,
+  freeAgentQuotaAvailable?: boolean,
+): ChatMode {
+  const isPro = isDyadProEnabled(settings);
+  // We are checking that OpenAI or Anthropic is setup, which are the first two
+  // choices for the Auto model selection.
+  //
+  // If user only has Gemini API key, we don't default to local-agent because
+  // most likely it's a free API key with stringent limits and they'll get
+  // a bad experience with local-agent.
+  const hasPaidProviderSetup = isOpenAIOrAnthropicSetup(settings, envVars);
+
   if (settings.defaultChatMode) {
-    // "local-agent" requires Pro - fall back to "build" if user lost Pro access
-    if (
-      settings.defaultChatMode === "local-agent" &&
-      !isDyadProEnabled(settings)
-    ) {
+    // "local-agent" requires either Pro OR (available free quota AND provider setup)
+    if (settings.defaultChatMode === "local-agent") {
+      if (isPro) return "local-agent";
+      if (freeAgentQuotaAvailable && hasPaidProviderSetup) return "local-agent";
       return "build";
     }
     return settings.defaultChatMode;
   }
-  return isDyadProEnabled(settings) ? "local-agent" : "build";
+
+  // No explicit default set
+  if (isPro) return "local-agent";
+  if (freeAgentQuotaAvailable && hasPaidProviderSetup) return "local-agent";
+  return "build";
+}
+
+/**
+ * Determines if the current session is using Basic Agent mode (free tier with quota).
+ * Basic Agent mode is when:
+ * - User is NOT a Pro subscriber
+ * - User is using local-agent chat mode
+ */
+export function isBasicAgentMode(settings: UserSettings): boolean {
+  return (
+    !isDyadProEnabled(settings) && settings.selectedChatMode === "local-agent"
+  );
 }
 
 export function isSupabaseConnected(settings: UserSettings | null): boolean {

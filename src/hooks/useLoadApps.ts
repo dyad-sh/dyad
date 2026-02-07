@@ -1,30 +1,26 @@
-import { useState, useEffect, useCallback } from "react";
-import { useAtom } from "jotai";
-import { appsListAtom } from "@/atoms/appAtoms";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function useLoadApps() {
-  const [apps, setApps] = useAtom(appsListAtom);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+  const queryClient = useQueryClient();
 
-  const refreshApps = useCallback(async () => {
-    setLoading(true);
-    try {
+  const { data, isLoading, error } = useQuery({
+    queryKey: queryKeys.apps.all,
+    queryFn: async () => {
       const appListResponse = await ipc.app.listApps();
-      setApps(appListResponse.apps);
-      setError(null);
-    } catch (error) {
-      console.error("Error refreshing apps:", error);
-      setError(error instanceof Error ? error : new Error(String(error)));
-    } finally {
-      setLoading(false);
-    }
-  }, [setApps, setError, setLoading]);
+      return appListResponse.apps;
+    },
+  });
 
-  useEffect(() => {
-    refreshApps();
-  }, [refreshApps]);
+  const refreshApps = () => {
+    return queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
+  };
 
-  return { apps, loading, error, refreshApps };
+  return {
+    apps: data ?? [],
+    loading: isLoading,
+    error: error ?? null,
+    refreshApps,
+  };
 }

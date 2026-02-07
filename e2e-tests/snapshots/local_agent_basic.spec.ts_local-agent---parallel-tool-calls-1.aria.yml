@@ -1,37 +1,54 @@
 - paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
-- img
-- text: file1.txt
-- button "Edit":
+- button "file1.txt file1.txt Edit":
   - img
-- img
-- text: file1.txt
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
+  - img
 - paragraph: More EOM
-- button:
+- button "Copy":
   - img
+- img
+- text: Approved
+- img
+- text: claude-opus-4-5
 - img
 - text: less than a minute ago
-- button "Request ID":
+- button "Copy Request ID":
   - img
+  - text: ""
 - paragraph: tc=local-agent/parallel-tools
 - paragraph: I'll create two files for you in parallel.
-- img
-- text: math.ts
-- button "Edit":
+- 'button "math.ts src/utils/math.ts Edit Summary: Create math utilities"':
   - img
-- img
-- text: "src/utils/math.ts Summary: Create math utilities"
-- img
-- text: string.ts
-- button "Edit":
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
   - img
-- img
-- text: "src/utils/string.ts Summary: Create string utilities"
+  - text: ""
+- 'button "string.ts src/utils/string.ts Edit Summary: Create string utilities"':
+  - img
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
+  - img
+  - text: ""
 - paragraph: Task completed.
-- button:
+- button "Copy":
   - img
+- img
+- text: claude-opus-4-5
 - img
 - text: less than a minute ago
-- button "Request ID":
+- button "Copy Request ID":
   - img
+  - text: ""
+- button "Undo":
+  - img
+  - text: ""
 - button "Retry":
   - img
+  - text: ""

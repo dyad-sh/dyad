@@ -20,7 +20,7 @@ test("file tree search finds content matches and surfaces line numbers", async (
 
   // Content search should find files whose contents match the query and show line info
   await searchInput.fill("import");
-  const resultItem = po.page.getByText("App.tsx").first();
+  const resultItem = po.page.getByText("main.tsx").first();
   await expect(resultItem).toBeVisible({ timeout: Timeout.MEDIUM });
 
   // Files are collapsed by default in the new accordion UI, so we need to click to expand

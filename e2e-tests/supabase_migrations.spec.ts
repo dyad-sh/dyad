@@ -1,5 +1,5 @@
 import { expect } from "@playwright/test";
-import { testSkipIfWindows } from "./helpers/test_helper";
+import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 import fs from "fs-extra";
 import path from "path";
 import { execSync } from "child_process";
@@ -25,8 +25,13 @@ testSkipIfWindows("supabase migrations", async ({ po }) => {
   // --- SCENARIO 2: TOGGLE ON ---
   // Go to settings to find the Supabase integration
   await po.goToSettingsTab();
-  const migrationsSwitch = po.page.locator("#supabase-migrations");
+  const migrationsSwitch = po.page.getByRole("switch", {
+    name: "Write SQL migration files",
+  });
+  await expect(migrationsSwitch).toBeVisible({ timeout: Timeout.MEDIUM });
   await migrationsSwitch.click();
+  // Wait for the setting to be persisted
+  await expect(migrationsSwitch).toBeChecked();
   await po.goToChatTab();
 
   // Send a prompt that triggers a migration
@@ -86,8 +91,13 @@ testSkipIfWindows("supabase migrations with native git", async ({ po }) => {
   // --- SCENARIO 2: TOGGLE ON ---
   // Go to settings to find the Supabase integration
   await po.goToSettingsTab();
-  const migrationsSwitch = po.page.locator("#supabase-migrations");
+  const migrationsSwitch = po.page.getByRole("switch", {
+    name: "Write SQL migration files",
+  });
+  await expect(migrationsSwitch).toBeVisible({ timeout: Timeout.MEDIUM });
   await migrationsSwitch.click();
+  // Wait for the setting to be persisted
+  await expect(migrationsSwitch).toBeChecked();
   await po.goToChatTab();
 
   // Send a prompt that triggers a migration

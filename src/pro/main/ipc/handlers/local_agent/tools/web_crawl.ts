@@ -9,7 +9,7 @@ const webCrawlSchema = z.object({
   url: z.string().describe("URL to crawl"),
 });
 
-const webCrawlResponseSchema = z.object({
+export const webCrawlResponseSchema = z.object({
   rootUrl: z.string(),
   html: z.string().optional(),
   markdown: z.string().optional(),
@@ -79,6 +79,9 @@ export const webCrawlTool: ToolDefinition<z.infer<typeof webCrawlSchema>> = {
   description: DESCRIPTION,
   inputSchema: webCrawlSchema,
   defaultConsent: "ask",
+
+  // Requires Dyad Pro engine API
+  isEnabled: (ctx) => ctx.isDyadPro,
 
   getConsentPreview: (args) => `Crawl URL: "${args.url}"`,
 

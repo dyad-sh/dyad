@@ -144,7 +144,7 @@ export function AppSidebar() {
             <AppIcons onHoverChange={setHoverState} />
           </div>
           {/* Right Column: Chat List Section */}
-          <div className="w-[240px]">
+          <div className="w-[272px]">
             <AppList show={selectedItem === "Apps"} />
             <ChatList show={selectedItem === "Chat"} />
             <SettingsList show={selectedItem === "Settings"} />
@@ -201,32 +201,28 @@ function AppIcons({
             return (
               <SidebarMenuItem key={item.title}>
                 <SidebarMenuButton
-                  asChild
+                  as={Link}
+                  to={item.to}
                   size="sm"
-                  className="font-medium w-14"
+                  className={`font-medium w-14 flex flex-col items-center gap-1 h-14 mb-2 rounded-2xl ${
+                    isActive ? "bg-sidebar-accent" : ""
+                  }`}
+                  onMouseEnter={() => {
+                    if (item.title === "Apps") {
+                      onHoverChange("start-hover:app");
+                    } else if (item.title === "Chat") {
+                      onHoverChange("start-hover:chat");
+                    } else if (item.title === "Settings") {
+                      onHoverChange("start-hover:settings");
+                    } else if (item.title === "Library") {
+                      onHoverChange("start-hover:library");
+                    }
+                  }}
                 >
-                  <Link
-                    to={item.to}
-                    className={`flex flex-col items-center gap-1 h-14 mb-2 rounded-2xl ${
-                      isActive ? "bg-sidebar-accent" : ""
-                    }`}
-                    onMouseEnter={() => {
-                      if (item.title === "Apps") {
-                        onHoverChange("start-hover:app");
-                      } else if (item.title === "Chat") {
-                        onHoverChange("start-hover:chat");
-                      } else if (item.title === "Settings") {
-                        onHoverChange("start-hover:settings");
-                      } else if (item.title === "Library") {
-                        onHoverChange("start-hover:library");
-                      }
-                    }}
-                  >
-                    <div className="flex flex-col items-center gap-1">
-                      <item.icon className="h-5 w-5" />
-                      <span className={"text-xs"}>{item.title}</span>
-                    </div>
-                  </Link>
+                  <div className="flex flex-col items-center gap-1">
+                    <item.icon className="h-5 w-5" />
+                    <span className={"text-xs"}>{item.title}</span>
+                  </div>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             );

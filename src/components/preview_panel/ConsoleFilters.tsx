@@ -1,9 +1,8 @@
 import { Filter, X, Trash2 } from "lucide-react";
 import {
   Tooltip,
-  TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
+  TooltipContent,
 } from "@/components/ui/tooltip";
 
 interface ConsoleFiltersProps {
@@ -115,20 +114,20 @@ export const ConsoleFilters = ({
       )}
 
       {/* Clear logs button */}
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
+      <Tooltip>
+        <TooltipTrigger
+          render={
             <button
               onClick={onClearLogs}
               className="p-1 border border-border rounded bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
               data-testid="clear-logs-button"
-            >
-              <Trash2 size={14} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Clear logs</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+            />
+          }
+        >
+          <Trash2 size={14} />
+        </TooltipTrigger>
+        <TooltipContent>Clear logs</TooltipContent>
+      </Tooltip>
 
       <div className="ml-auto text-xs text-gray-500">{totalLogs} logs</div>
     </div>

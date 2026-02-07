@@ -1,12 +1,13 @@
 import React, { useState } from "react";
 import { CustomTagState } from "./stateTypes";
 import {
-  Loader2,
-  CheckCircle2,
-  XCircle,
-  ChevronsDownUp,
-  ChevronsUpDown,
-} from "lucide-react";
+  DyadCard,
+  DyadCardHeader,
+  DyadExpandIcon,
+  DyadFinishedIcon,
+  DyadCardContent,
+} from "./DyadCardPrimitives";
+import { CircleX, Loader2 } from "lucide-react";
 
 interface DyadStatusProps {
   node: {
@@ -22,61 +23,55 @@ export function DyadStatus({ node, children }: DyadStatusProps) {
   const { title = "Processing...", state } = node.properties;
   const isInProgress = state === "pending";
   const isAborted = state === "aborted";
+  const isFinished = state === "finished";
   const content = typeof children === "string" ? children : "";
   const [isContentVisible, setIsContentVisible] = useState(false);
 
+  // Pick accent color based on state
+  const accentColor = isAborted ? "red" : isInProgress ? "amber" : "green";
+
+  // Pick the left icon based on state
+  const icon = isInProgress ? (
+    <Loader2 size={15} className="animate-spin" />
+  ) : isAborted ? (
+    <CircleX size={15} />
+  ) : (
+    <DyadFinishedIcon />
+  );
+
   return (
-    <div
-      className={`bg-(--background-lightest) hover:bg-(--background-lighter) rounded-lg px-4 py-2 border my-2 cursor-pointer ${
-        isInProgress
-          ? "border-amber-500"
-          : isAborted
-            ? "border-red-500"
-            : "border-border"
-      }`}
+    <DyadCard
+      state={state}
+      accentColor={accentColor}
+      isExpanded={isContentVisible}
       onClick={() => setIsContentVisible(!isContentVisible)}
     >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {isInProgress ? (
-            <Loader2 className="size-4 animate-spin text-amber-600" />
-          ) : isAborted ? (
-            <XCircle className="size-4 text-red-600" />
-          ) : (
-            <CheckCircle2 className="size-4 text-green-600 dark:text-green-500" />
-          )}
-          <span
-            className={`font-medium text-sm ${
-              isInProgress
-                ? "bg-gradient-to-r from-foreground via-muted-foreground to-foreground bg-[length:200%_100%] animate-[shimmer_2s_ease-in-out_infinite] bg-clip-text text-transparent"
-                : "text-gray-700 dark:text-gray-300"
-            }`}
-          >
-            {title}
-          </span>
-        </div>
-        <div className="flex items-center">
-          {isContentVisible ? (
-            <ChevronsDownUp
-              size={20}
-              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-            />
-          ) : (
-            <ChevronsUpDown
-              size={20}
-              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-            />
-          )}
-        </div>
-      </div>
-      {isContentVisible && content && (
-        <div
-          className="mt-2 p-3 text-xs font-mono whitespace-pre-wrap max-h-60 overflow-y-auto bg-muted/20 rounded cursor-text"
-          onClick={(e) => e.stopPropagation()}
+      <DyadCardHeader icon={icon} accentColor={accentColor}>
+        <span
+          className={`font-medium text-sm ${
+            isInProgress
+              ? "bg-gradient-to-r from-foreground via-muted-foreground to-foreground bg-[length:200%_100%] animate-[shimmer_2s_ease-in-out_infinite] bg-clip-text text-transparent"
+              : isFinished
+                ? "text-foreground"
+                : "text-muted-foreground"
+          }`}
         >
-          {content}
+          {title}
+        </span>
+        <div className="ml-auto">
+          <DyadExpandIcon isExpanded={isContentVisible} />
         </div>
-      )}
-    </div>
+      </DyadCardHeader>
+      <DyadCardContent isExpanded={isContentVisible}>
+        {content && (
+          <div
+            className="p-3 text-xs font-mono whitespace-pre-wrap max-h-60 overflow-y-auto bg-muted/20 rounded-lg cursor-text"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {content}
+          </div>
+        )}
+      </DyadCardContent>
+    </DyadCard>
   );
 }

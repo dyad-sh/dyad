@@ -1,4 +1,9 @@
 import { useState, useEffect } from "react";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import { X, Move, Square, Palette, Type } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { ComponentSelection } from "@/ipc/types";
@@ -12,12 +17,6 @@ import {
 import { StylePopover } from "./StylePopover";
 import { ColorPicker } from "@/components/ui/ColorPicker";
 import { NumberInput } from "@/components/ui/NumberInput";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { rgbToHex, processNumericValue } from "@/utils/style-utils";
 
 const FONT_WEIGHT_OPTIONS = [
@@ -320,22 +319,20 @@ export function VisualEditingToolbar({
         left: `${toolbarLeft}px`,
       }}
     >
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
+      <Tooltip>
+        <TooltipTrigger
+          render={
             <button
               onClick={handleDeselectComponent}
               className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-[#7f22fe] dark:text-gray-200"
               aria-label="Deselect Component"
-            >
-              <X size={16} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            <p>Deselect Component</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+            />
+          }
+        >
+          <X size={16} />
+        </TooltipTrigger>
+        <TooltipContent>Deselect Component</TooltipContent>
+      </Tooltip>
 
       {isDynamic ? (
         <div className="flex items-center px-2 py-1 text-yellow-800 dark:text-yellow-200 rounded text-xs font-medium">

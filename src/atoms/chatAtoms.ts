@@ -31,3 +31,6 @@ export const pendingAgentConsentsAtom = atom<PendingAgentConsent[]>([]);
 
 // Agent todos per chat
 export const agentTodosByChatIdAtom = atom<Map<number, AgentTodo[]>>(new Map());
+
+// Flag: set when user switches to plan mode from another mode in a chat with messages
+export const needsFreshPlanChatAtom = atom<boolean>(false);

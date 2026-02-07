@@ -121,6 +121,11 @@ function createStreamChunk(
   role: string = "assistant",
   isLast: boolean = false,
   finishReason: string | null = null,
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  },
 ) {
   const chunk: any = {
     id: `chatcmpl-${Date.now()}`,
@@ -135,13 +140,20 @@ function createStreamChunk(
       },
     ],
   };
+  if (isLast && usage) {
+    chunk.usage = usage;
+  }
   return `data: ${JSON.stringify(chunk)}\n\n${isLast ? "data: [DONE]\n\n" : ""}`;
 }
 
 /**
  * Stream a text-only turn response
  */
-async function streamTextResponse(res: Response, text: string) {
+async function streamTextResponse(
+  res: Response,
+  text: string,
+  usage?: Turn["usage"],
+) {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -158,7 +170,7 @@ async function streamTextResponse(res: Response, text: string) {
   }
 
   // Send final chunk
-  res.write(createStreamChunk("", "assistant", true, "stop"));
+  res.write(createStreamChunk("", "assistant", true, "stop", usage));
   res.end();
 }
 
@@ -239,10 +251,26 @@ async function streamToolCallResponse(res: Response, turn: Turn) {
     }
   }
 
-  // 4) Send finish
+  // 4) Send finish (with optional usage data)
   const finishReason =
     turn.toolCalls && turn.toolCalls.length > 0 ? "tool_calls" : "stop";
-  res.write(mkChunk({}, finishReason));
+  const finishChunk: any = {
+    id: `chatcmpl-${now}`,
+    object: "chat.completion.chunk",
+    created: Math.floor(now / 1000),
+    model: "fake-local-agent-model",
+    choices: [
+      {
+        index: 0,
+        delta: {},
+        finish_reason: finishReason,
+      },
+    ],
+  };
+  if (turn.usage) {
+    finishChunk.usage = turn.usage;
+  }
+  res.write(`data: ${JSON.stringify(finishChunk)}\n\n`);
   res.write("data: [DONE]\n\n");
   res.end();
 }
@@ -290,7 +318,7 @@ export async function handleLocalAgentFixture(
       await streamToolCallResponse(res, turn);
     } else {
       // Text-only turn
-      await streamTextResponse(res, turn.text || "Done.");
+      await streamTextResponse(res, turn.text || "Done.", turn.usage);
     }
   } catch (error) {
     console.error(`[local-agent] Error handling fixture:`, error);

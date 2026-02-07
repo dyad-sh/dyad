@@ -1,0 +1,5 @@
+- button /List Files recursive include hidden - \.dyad\/plans\/test-plan\.md - index\.html - package\.json - src\/App\.tsx - src\/main\.tsx - src\/vite-env\.d\.ts - tsconfig\.app\.json - tsconfig\.json - tsconfig\.node\.json - vite\.config\.ts \(\d+ files total\)/ [expanded]:
+  - img
+  - text: ""
+  - img
+  - text: ""

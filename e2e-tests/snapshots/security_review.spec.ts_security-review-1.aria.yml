@@ -1,19 +1,21 @@
 - table:
   - rowgroup:
     - row "Select all issues Level Issue Action":
-      - cell "Select all issues":
+      - columnheader "Select all issues":
         - checkbox "Select all issues"
-      - cell "Level"
-      - cell "Issue"
-      - cell "Action"
+      - columnheader "Level"
+      - columnheader "Issue"
+      - columnheader "Action"
   - rowgroup:
     - 'row "Select SQL Injection in User Lookup critical SQL Injection in User Lookup What: User input flows directly into database queries without validation, allowing attackers to execute arbitrary SQL commands Risk: An attac... Show more Fix Issue"':
       - cell "Select SQL Injection in User Lookup":
         - checkbox "Select SQL Injection in User Lookup"
       - cell "critical":
         - img
+        - text: ""
       - 'cell "SQL Injection in User Lookup What: User input flows directly into database queries without validation, allowing attackers to execute arbitrary SQL commands Risk: An attac... Show more"':
         - 'button "SQL Injection in User Lookup What: User input flows directly into database queries without validation, allowing attackers to execute arbitrary SQL commands Risk: An attac... Show more"':
+          - text: ""
           - paragraph:
             - strong: What
             - text: ": User input flows directly into database queries without validation, allowing attackers to execute arbitrary SQL commands"
@@ -22,6 +24,7 @@
             - text: ": An attac..."
           - button "Show more":
             - img
+            - text: ""
       - cell "Fix Issue":
         - button "Fix Issue"
     - 'row "Select Hardcoded AWS Credentials in Source Code critical Hardcoded AWS Credentials in Source Code What: AWS access keys are stored directly in the codebase and committed to version control, exposing full cloud infrastructure access Risk: A... Show more Fix Issue"':
@@ -29,8 +32,10 @@
         - checkbox "Select Hardcoded AWS Credentials in Source Code"
       - cell "critical":
         - img
+        - text: ""
       - 'cell "Hardcoded AWS Credentials in Source Code What: AWS access keys are stored directly in the codebase and committed to version control, exposing full cloud infrastructure access Risk: A... Show more"':
         - 'button "Hardcoded AWS Credentials in Source Code What: AWS access keys are stored directly in the codebase and committed to version control, exposing full cloud infrastructure access Risk: A... Show more"':
+          - text: ""
           - paragraph:
             - strong: What
             - text: ": AWS access keys are stored directly in the codebase and committed to version control, exposing full cloud infrastructure access"
@@ -39,6 +44,7 @@
             - text: ": A..."
           - button "Show more":
             - img
+            - text: ""
       - cell "Fix Issue":
         - button "Fix Issue"
     - 'row "Select Missing Authentication on Admin Endpoints high Missing Authentication on Admin Endpoints What: Administrative API endpoints can be accessed without authentication, relying only on URL obscurity Risk: An attacker who discovers thes... Show more Fix Issue"':
@@ -46,8 +52,10 @@
         - checkbox "Select Missing Authentication on Admin Endpoints"
       - cell "high":
         - img
+        - text: ""
       - 'cell "Missing Authentication on Admin Endpoints What: Administrative API endpoints can be accessed without authentication, relying only on URL obscurity Risk: An attacker who discovers thes... Show more"':
         - 'button "Missing Authentication on Admin Endpoints What: Administrative API endpoints can be accessed without authentication, relying only on URL obscurity Risk: An attacker who discovers thes... Show more"':
+          - text: ""
           - paragraph:
             - strong: What
             - text: ": Administrative API endpoints can be accessed without authentication, relying only on URL obscurity"
@@ -56,6 +64,7 @@
             - text: ": An attacker who discovers thes..."
           - button "Show more":
             - img
+            - text: ""
       - cell "Fix Issue":
         - button "Fix Issue"
     - 'row "Select JWT Secret Using Default Value high JWT Secret Using Default Value What: The application uses a hardcoded default JWT secret (\"your-secret-key\") for signing authentication tokens Risk: Attackers can forge val... Show more Fix Issue"':
@@ -63,8 +72,10 @@
         - checkbox "Select JWT Secret Using Default Value"
       - cell "high":
         - img
+        - text: ""
       - 'cell "JWT Secret Using Default Value What: The application uses a hardcoded default JWT secret (\"your-secret-key\") for signing authentication tokens Risk: Attackers can forge val... Show more"':
         - 'button "JWT Secret Using Default Value What: The application uses a hardcoded default JWT secret (\"your-secret-key\") for signing authentication tokens Risk: Attackers can forge val... Show more"':
+          - text: ""
           - paragraph:
             - strong: What
             - text: ": The application uses a hardcoded default JWT secret (\"your-secret-key\") for signing authentication tokens"
@@ -73,6 +84,7 @@
             - text: ": Attackers can forge val..."
           - button "Show more":
             - img
+            - text: ""
       - cell "Fix Issue":
         - button "Fix Issue"
     - 'row "Select Unvalidated File Upload Extensions medium Unvalidated File Upload Extensions What: The file upload endpoint accepts any file type without validating extensions or content, only checking file size Risk: An attacker coul... Show more Fix Issue"':
@@ -80,8 +92,10 @@
         - checkbox "Select Unvalidated File Upload Extensions"
       - cell "medium":
         - img
+        - text: ""
       - 'cell "Unvalidated File Upload Extensions What: The file upload endpoint accepts any file type without validating extensions or content, only checking file size Risk: An attacker coul... Show more"':
         - 'button "Unvalidated File Upload Extensions What: The file upload endpoint accepts any file type without validating extensions or content, only checking file size Risk: An attacker coul... Show more"':
+          - text: ""
           - paragraph:
             - strong: What
             - text: ": The file upload endpoint accepts any file type without validating extensions or content, only checking file size"
@@ -90,6 +104,7 @@
             - text: ": An attacker coul..."
           - button "Show more":
             - img
+            - text: ""
       - cell "Fix Issue":
         - button "Fix Issue"
     - 'row "Select Missing CSRF Protection on State-Changing Operations medium Missing CSRF Protection on State-Changing Operations What: POST, PUT, and DELETE endpoints don''t implement CSRF tokens, making them vulnerable to cross-site request forgery attacks Risk: An atta... Show more Fix Issue"':
@@ -97,8 +112,10 @@
         - checkbox "Select Missing CSRF Protection on State-Changing Operations"
       - cell "medium":
         - img
+        - text: ""
       - 'cell "Missing CSRF Protection on State-Changing Operations What: POST, PUT, and DELETE endpoints don''t implement CSRF tokens, making them vulnerable to cross-site request forgery attacks Risk: An atta... Show more"':
         - 'button "Missing CSRF Protection on State-Changing Operations What: POST, PUT, and DELETE endpoints don''t implement CSRF tokens, making them vulnerable to cross-site request forgery attacks Risk: An atta... Show more"':
+          - text: ""
           - paragraph:
             - strong: What
             - text: ": POST, PUT, and DELETE endpoints don't implement CSRF tokens, making them vulnerable to cross-site request forgery attacks"
@@ -107,6 +124,7 @@
             - text: ": An atta..."
           - button "Show more":
             - img
+            - text: ""
       - cell "Fix Issue":
         - button "Fix Issue"
     - 'row "Select Verbose Error Messages Expose Stack Traces low Verbose Error Messages Expose Stack Traces What: Production error responses include full stack traces and internal file paths that are sent to end users Risk: Attackers can use this in... Show more Fix Issue"':
@@ -114,8 +132,10 @@
         - checkbox "Select Verbose Error Messages Expose Stack Traces"
       - cell "low":
         - img
+        - text: ""
       - 'cell "Verbose Error Messages Expose Stack Traces What: Production error responses include full stack traces and internal file paths that are sent to end users Risk: Attackers can use this in... Show more"':
         - 'button "Verbose Error Messages Expose Stack Traces What: Production error responses include full stack traces and internal file paths that are sent to end users Risk: Attackers can use this in... Show more"':
+          - text: ""
           - paragraph:
             - strong: What
             - text: ": Production error responses include full stack traces and internal file paths that are sent to end users"
@@ -124,6 +144,7 @@
             - text: ": Attackers can use this in..."
           - button "Show more":
             - img
+            - text: ""
       - cell "Fix Issue":
         - button "Fix Issue"
     - 'row "Select Missing Security Headers low Missing Security Headers What: The application doesn''t set recommended security headers like `X-Frame-Options`, `X-Content-Type-Options`, and `Strict-Transport-Security` ... Show more Fix Issue"':
@@ -131,8 +152,10 @@
         - checkbox "Select Missing Security Headers"
       - cell "low":
         - img
+        - text: ""
       - 'cell "Missing Security Headers What: The application doesn''t set recommended security headers like `X-Frame-Options`, `X-Content-Type-Options`, and `Strict-Transport-Security` ... Show more"':
         - 'button "Missing Security Headers What: The application doesn''t set recommended security headers like `X-Frame-Options`, `X-Content-Type-Options`, and `Strict-Transport-Security` ... Show more"':
+          - text: ""
           - paragraph:
             - strong: What
             - text: ": The application doesn't set recommended security headers like"
@@ -144,5 +167,6 @@
           - paragraph: ...
           - button "Show more":
             - img
+            - text: ""
       - cell "Fix Issue":
         - button "Fix Issue"

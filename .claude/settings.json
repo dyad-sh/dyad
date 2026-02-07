@@ -7,6 +7,8 @@
       "Read(/tmp/**)",
       "Write(/tmp/)",
       "Write(/tmp/**)",
+      "Bash(mkdir)",
+
       "Bash(cat /tmp/*)",
       "Bash(head /tmp/*)",
       "Bash(tail /tmp/*)",
@@ -49,7 +51,10 @@
       "Bash(npm install:*)",
       "Bash(npm update:*)",
       "Bash(npm ls:*)",
+      "Bash(npm view:*)",
       "Bash(DEBUG=pw:browser npm run e2e:*)",
+      "Bash(PLAYWRIGHT_HTML_OPEN=never npm run e2e:*)",
+      "Bash(DEBUG=pw:browser PLAYWRIGHT_HTML_OPEN=never npm run e2e:*)",
       "Bash(npx playwright show-trace:*)",
 
       "Bash(git:*)",
@@ -115,7 +120,6 @@
 
       "Bash(chmod:*)",
 
-      "Bash(python3:*)",
       "Bash(pytest:*)",
       "Bash(python -m pytest:*)"
     ]
@@ -150,6 +154,17 @@
         ]
       }
     ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npm install",
+            "timeout": 60000
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
@@ -161,5 +176,8 @@
         ]
       }
     ]
+  },
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   }
 }

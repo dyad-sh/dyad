@@ -1,7 +1,7 @@
 import { useNavigate, useRouter, useSearch } from "@tanstack/react-router";
 import { normalizePath } from "../../shared/normalizePath";
-import { useAtom, useSetAtom } from "jotai";
-import { appsListAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
+import { useSetAtom } from "jotai";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { ipc } from "@/ipc/types";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useState } from "react";
@@ -18,6 +18,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -44,8 +49,7 @@ export default function AppDetailsPage() {
   const navigate = useNavigate();
   const router = useRouter();
   const search = useSearch({ from: "/app-details" as const });
-  const [appsList] = useAtom(appsListAtom);
-  const { refreshApps } = useLoadApps();
+  const { apps: appsList, refreshApps } = useLoadApps();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
@@ -294,15 +298,11 @@ export default function AppDetailsPage() {
         {/* Overflow Menu in top right */}
         <div className="absolute top-2 right-2">
           <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 w-7 p-0"
-                data-testid="app-details-more-options-button"
-              >
-                <MoreVertical className="h-4 w-4" />
-              </Button>
+            <PopoverTrigger
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-7 w-7 p-0"
+              data-testid="app-details-more-options-button"
+            >
+              <MoreVertical className="h-4 w-4" />
             </PopoverTrigger>
             <PopoverContent className="w-40 p-2" align="end">
               <div className="flex flex-col space-y-0.5">
@@ -361,17 +361,23 @@ export default function AppDetailsPage() {
               Path
             </span>
             <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="ml-[-8px] p-0.5 h-auto cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                onClick={() => {
-                  ipc.system.showItemInFolder(currentAppPath);
-                }}
-                title="Show in folder"
-              >
-                <Folder className="h-3.5 w-3.5" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="ml-[-8px] p-0.5 h-auto cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                      onClick={() => {
+                        ipc.system.showItemInFolder(currentAppPath);
+                      }}
+                    />
+                  }
+                >
+                  <Folder className="h-3.5 w-3.5" />
+                </TooltipTrigger>
+                <TooltipContent>Show in folder</TooltipContent>
+              </Tooltip>
               <span className="text-sm break-all">{currentAppPath}</span>
             </div>
           </div>

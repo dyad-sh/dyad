@@ -37,7 +37,14 @@ import connectSupabaseDark from "../../assets/supabase/connect-supabase-dark.svg
 // @ts-ignore
 import connectSupabaseLight from "../../assets/supabase/connect-supabase-light.svg";
 
-import { ExternalLink, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { ExternalLink, Info, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { getErrorMessage } from "@/lib/errors";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import { useTheme } from "@/contexts/ThemeContext";
 import { isSupabaseConnected } from "@/lib/schemas";
 
@@ -61,6 +68,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     isFetchingProjects,
     projectsError,
     isLoadingBranches,
+    branchesError,
     isSettingAppProject,
     refetchOrganizations,
     refetchProjects,
@@ -176,18 +184,14 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                   `https://supabase.com/dashboard/project/${app.supabaseProjectId}`,
                 );
               }}
-              className="ml-2 px-2 py-1"
-              style={{ display: "inline-flex", alignItems: "center" }}
-              asChild
+              className="ml-2 px-2 py-1 inline-flex items-center gap-2"
             >
-              <div className="flex items-center gap-2">
-                <img
-                  src={isDarkMode ? supabaseLogoDark : supabaseLogoLight}
-                  alt="Supabase Logo"
-                  style={{ height: 20, width: "auto", marginRight: 4 }}
-                />
-                <ExternalLink className="h-4 w-4" />
-              </div>
+              <img
+                src={isDarkMode ? supabaseLogoDark : supabaseLogoLight}
+                alt="Supabase Logo"
+                style={{ height: 20, width: "auto", marginRight: 4 }}
+              />
+              <ExternalLink className="h-4 w-4" />
             </Button>
           </CardTitle>
           <CardDescription className="flex flex-col gap-1.5 text-sm">
@@ -204,49 +208,58 @@ export function SupabaseConnector({ appId }: { appId: number }) {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="supabase-branch-select">Database Branch</Label>
-              <Select
-                value={app.supabaseProjectId || ""}
-                onValueChange={async (supabaseBranchProjectId) => {
-                  try {
-                    const branch = branches.find(
-                      (b) => b.projectRef === supabaseBranchProjectId,
-                    );
-                    if (!branch) {
-                      throw new Error("Branch not found");
+              {branchesError ? (
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertDescription>
+                    {getErrorMessage(branchesError)}
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <Select
+                  value={app.supabaseProjectId || ""}
+                  onValueChange={async (supabaseBranchProjectId) => {
+                    try {
+                      const branch = branches.find(
+                        (b) => b.projectRef === supabaseBranchProjectId,
+                      );
+                      if (!branch) {
+                        throw new Error("Branch not found");
+                      }
+                      // Keep the same organizationSlug from the app
+                      await setAppProject({
+                        projectId: branch.projectRef,
+                        parentProjectId: branch.parentProjectRef,
+                        appId,
+                        organizationSlug: app.supabaseOrganizationSlug,
+                      });
+                      toast.success("Branch selected");
+                      await refreshApp();
+                    } catch (error) {
+                      toast.error("Failed to set branch: " + error);
                     }
-                    // Keep the same organizationSlug from the app
-                    await setAppProject({
-                      projectId: branch.projectRef,
-                      parentProjectId: branch.parentProjectRef,
-                      appId,
-                      organizationSlug: app.supabaseOrganizationSlug,
-                    });
-                    toast.success("Branch selected");
-                    await refreshApp();
-                  } catch (error) {
-                    toast.error("Failed to set branch: " + error);
-                  }
-                }}
-                disabled={isLoadingBranches || isSettingAppProject}
-              >
-                <SelectTrigger
-                  id="supabase-branch-select"
-                  data-testid="supabase-branch-select"
+                  }}
+                  disabled={isLoadingBranches || isSettingAppProject}
                 >
-                  <SelectValue placeholder="Select a branch" />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches.map((branch) => (
-                    <SelectItem
-                      key={branch.projectRef}
-                      value={branch.projectRef}
-                    >
-                      {branch.name}
-                      {branch.isDefault && " (Default)"}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                  <SelectTrigger
+                    id="supabase-branch-select"
+                    data-testid="supabase-branch-select"
+                  >
+                    <SelectValue placeholder="Select a branch" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.map((branch) => (
+                      <SelectItem
+                        key={branch.projectRef}
+                        value={branch.projectRef}
+                      >
+                        {branch.name}
+                        {branch.isDefault && " (Default)"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             <Button variant="destructive" onClick={handleUnsetProject}>
@@ -272,17 +285,23 @@ export function SupabaseConnector({ appId }: { appId: number }) {
           <CardTitle className="flex items-center justify-between">
             Supabase Projects
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => refetchProjects()}
-                disabled={isFetchingProjects}
-                title="Refresh projects"
-              >
-                <RefreshCw
-                  className={`h-4 w-4 ${isFetchingProjects ? "animate-spin" : ""}`}
-                />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => refetchProjects()}
+                      disabled={isFetchingProjects}
+                    />
+                  }
+                >
+                  <RefreshCw
+                    className={`h-4 w-4 ${isFetchingProjects ? "animate-spin" : ""}`}
+                  />
+                </TooltipTrigger>
+                <TooltipContent>Refresh projects</TooltipContent>
+              </Tooltip>
               <Button
                 variant="outline"
                 size="sm"
@@ -337,18 +356,24 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                           </span>
                         )}
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2 text-muted-foreground hover:text-destructive shrink-0"
-                        onClick={() =>
-                          handleDeleteOrganization(org.organizationSlug)
-                        }
-                        title="Disconnect organization"
-                      >
-                        <Trash2 className="h-3.5 w-3.5 mr-1" />
-                        <span className="text-xs">Disconnect</span>
-                      </Button>
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-muted-foreground hover:text-destructive shrink-0"
+                              onClick={() =>
+                                handleDeleteOrganization(org.organizationSlug)
+                              }
+                            />
+                          }
+                        >
+                          <Trash2 className="h-3.5 w-3.5 mr-1" />
+                          <span className="text-xs">Disconnect</span>
+                        </TooltipTrigger>
+                        <TooltipContent>Disconnect organization</TooltipContent>
+                      </Tooltip>
                     </div>
                   ))}
                 </div>
@@ -363,7 +388,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                   <Label htmlFor="project-select">Project</Label>
                   <Select
                     value={currentProjectValue}
-                    onValueChange={handleProjectSelect}
+                    onValueChange={(v) => v && handleProjectSelect(v)}
                   >
                     <SelectTrigger id="project-select">
                       <SelectValue placeholder="Select a project" />

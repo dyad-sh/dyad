@@ -83,13 +83,19 @@ import { parseAppMentions } from "@/shared/parse_mention_apps";
 import { prompts as promptsTable } from "../../db/schema";
 import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
+import { parsePlanFile, validatePlanId } from "./planUtils";
 import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
 import {
-  isDyadProEnabled,
+  isBasicAgentMode,
   isSupabaseConnected,
   isTurboEditsV2Enabled,
 } from "@/lib/schemas";
+import {
+  getFreeAgentQuotaStatus,
+  markMessageAsUsingFreeAgentQuota,
+  unmarkMessageAsUsingFreeAgentQuota,
+} from "./free_agent_quota_handlers";
 import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
 import { getCurrentCommitHash } from "../utils/git_utils";
 import {
@@ -362,6 +368,42 @@ export function registerChatStreamHandlers() {
         logger.error("Failed to inline referenced prompts:", e);
       }
 
+      // Expand /implement-plan= into full implementation prompt
+      // Keep the original short form for display in the UI; the expanded
+      // content is only injected into the AI message history.
+      let implementPlanDisplayPrompt: string | undefined;
+      const implementPlanMatch = userPrompt.match(/^\/implement-plan=(.+)$/);
+      if (implementPlanMatch) {
+        try {
+          implementPlanDisplayPrompt = userPrompt;
+          const planSlug = implementPlanMatch[1];
+          validatePlanId(planSlug);
+          const appPath = getDyadAppPath(chat.app.path);
+          const planFilePath = path.join(
+            appPath,
+            ".dyad",
+            "plans",
+            `${planSlug}.md`,
+          );
+          const raw = await fs.promises.readFile(planFilePath, "utf-8");
+          const { meta, content } = parsePlanFile(raw);
+
+          const planPath = `.dyad/plans/${planSlug}.md`;
+
+          userPrompt = `Please implement the following plan:
+
+## ${meta.title || "Implementation Plan"}
+
+${content}
+
+Start implementing this plan now. Follow the steps outlined and create/modify the necessary files.
+You may update the plan at \`${planPath}\` to mark your progress.`;
+        } catch (e) {
+          implementPlanDisplayPrompt = undefined;
+          logger.error("Failed to expand /implement-plan= prompt:", e);
+        }
+      }
+
       const componentsToProcess = req.selectedComponents || [];
 
       if (componentsToProcess.length > 0) {
@@ -411,7 +453,7 @@ ${componentSnippet}
         .values({
           chatId: req.chatId,
           role: "user",
-          content: userPrompt,
+          content: implementPlanDisplayPrompt ?? userPrompt,
         })
         .returning({ id: messages.id });
       const userMessageId = insertedUserMessage.id;
@@ -528,6 +570,10 @@ ${componentSnippet}
           mentionedAppNames,
           updatedChat.app.id, // Exclude current app
         );
+        const willUseLocalAgentStream =
+          (settings.selectedChatMode === "local-agent" ||
+            settings.selectedChatMode === "ask") &&
+          !mentionedAppsCodebases.length;
 
         const isDeepContextEnabled =
           isEngineEnabled &&
@@ -569,6 +615,21 @@ ${componentSnippet}
           sourceCommitHash: message.sourceCommitHash,
           commitHash: message.commitHash,
         }));
+
+        // The DB stores the short /implement-plan= display form; inject the
+        // expanded plan content into the AI message history so the model
+        // receives the full plan.
+        if (implementPlanDisplayPrompt) {
+          for (let i = messageHistory.length - 1; i >= 0; i--) {
+            if (messageHistory[i].role === "user") {
+              messageHistory[i] = {
+                ...messageHistory[i],
+                content: userPrompt,
+              };
+              break;
+            }
+          }
+        }
 
         // For Dyad Pro + Deep Context, we set to 200 chat turns (+1)
         // this is to enable more cache hits. Practically, users should
@@ -630,6 +691,7 @@ ${componentSnippet}
               : settings.selectedChatMode,
           enableTurboEditsV2: isTurboEditsV2Enabled(settings),
           themePrompt,
+          basicAgentMode: isBasicAgentMode(settings),
         });
 
         // Add information about mentioned apps if any
@@ -717,8 +779,22 @@ ${componentSnippet}
         // print out the dyad-write tags.
         // Usually, AI models will want to use the image as reference to generate code (e.g. UI mockups) anyways, so
         // it's not that critical to include the image analysis instructions.
+        const isAskMode = settings.selectedChatMode === "ask";
         if (hasUploadedAttachments) {
-          systemPrompt += `
+          if (willUseLocalAgentStream && !isAskMode) {
+            systemPrompt += `
+
+When files are attached to this conversation, upload them to the codebase using the \`write_file\` tool.
+Use the attachment ID (e.g., DYAD_ATTACHMENT_0) as the content, and it will be automatically resolved to the actual file content.
+
+Example for file with id of DYAD_ATTACHMENT_0:
+\`\`\`
+write_file(path="src/components/Button.jsx", content="DYAD_ATTACHMENT_0", description="Upload file to codebase")
+\`\`\`
+
+`;
+          } else if (!isAskMode) {
+            systemPrompt += `
   
 When files are attached to this conversation, upload them to the codebase using this exact format:
 
@@ -732,6 +808,7 @@ DYAD_ATTACHMENT_0
 </dyad-write>
 
   `;
+          }
         } else if (hasImageAttachments) {
           systemPrompt += `
 
@@ -812,11 +889,7 @@ This conversation includes one or more image attachments. When the user uploads 
             }
             // Save aiMessagesJson for modes that use handleLocalAgentStream
             // (which reads from DB and needs structured image content)
-            const willUseLocalAgentStream =
-              settings.selectedChatMode === "local-agent" ||
-              (settings.selectedChatMode === "ask" &&
-                isDyadProEnabled(settings) &&
-                !mentionedAppsCodebases.length);
+
             if (willUseLocalAgentStream) {
               // Insert into DB (with size guard)
               const userAiMessagesJson = getAiMessagesJsonIfWithinLimit([
@@ -1007,11 +1080,11 @@ This conversation includes one or more image attachments. When the user uploads 
           return fullResponse;
         };
 
-        // Handle pro ask mode: use local-agent in read-only mode
-        // This gives pro users access to code reading tools while in ask mode
+        // Handle ask mode: use local-agent in read-only mode
+        // This gives users access to code reading tools while in ask mode
+        // Ask mode does not consume free agent quota
         if (
           settings.selectedChatMode === "ask" &&
-          isDyadProEnabled(settings) &&
           !mentionedAppsCodebases.length
         ) {
           // Reconstruct system prompt for local-agent read-only mode
@@ -1023,17 +1096,54 @@ This conversation includes one or more image attachments. When the user uploads 
             readOnly: true,
           });
 
+          // Return value indicates success/failure for quota tracking.
+          // Ask mode doesn't consume quota, but we still capture it for
+          // consistent error handling.
+          const streamSuccess = await handleLocalAgentStream(
+            event,
+            req,
+            abortController,
+            {
+              placeholderMessageId: placeholderAssistantMessage.id,
+              // Note: this is using the read-only system prompt rather than the
+              // regular system prompt which gets overrides for special intents
+              // like summarize chat, security review, etc.
+              //
+              // This is OK because those intents should always happen in a new chat
+              // and new chats will default to non-ask modes.
+              systemPrompt: readOnlySystemPrompt,
+              dyadRequestId: dyadRequestId ?? "[no-request-id]",
+              readOnly: true,
+              messageOverride: isSummarizeIntent ? chatMessages : undefined,
+            },
+          );
+          if (!streamSuccess) {
+            logger.warn(
+              "Ask mode local agent stream did not complete successfully",
+            );
+          }
+          return;
+        }
+
+        // Handle plan mode: use local-agent with plan tools only
+        // Plan mode is for requirements gathering and creating implementation plans
+        if (
+          settings.selectedChatMode === "plan" &&
+          !mentionedAppsCodebases.length
+        ) {
+          // Reconstruct system prompt for plan mode
+          const planModeSystemPrompt = constructSystemPrompt({
+            aiRules,
+            chatMode: "plan",
+            enableTurboEditsV2: false,
+            themePrompt,
+          });
+
           await handleLocalAgentStream(event, req, abortController, {
             placeholderMessageId: placeholderAssistantMessage.id,
-            // Note: this is using the read-only system prompt rather than the
-            // regular system prompt which gets overrides for special intents
-            // like summarize chat, security review, etc.
-            //
-            // This is OK because those intents should always happen in a new chat
-            // and new chats will default to non-ask modes.
-            systemPrompt: readOnlySystemPrompt,
+            systemPrompt: planModeSystemPrompt,
             dyadRequestId: dyadRequestId ?? "[no-request-id]",
-            readOnly: true,
+            planModeOnly: true,
             messageOverride: isSummarizeIntent ? chatMessages : undefined,
           });
           return;
@@ -1046,12 +1156,49 @@ This conversation includes one or more image attachments. When the user uploads 
           settings.selectedChatMode === "local-agent" &&
           !mentionedAppsCodebases.length
         ) {
-          await handleLocalAgentStream(event, req, abortController, {
-            placeholderMessageId: placeholderAssistantMessage.id,
-            systemPrompt,
-            dyadRequestId: dyadRequestId ?? "[no-request-id]",
-            messageOverride: isSummarizeIntent ? chatMessages : undefined,
-          });
+          // Check quota for Basic Agent mode (non-Pro users)
+          const isBasicAgentModeRequest = isBasicAgentMode(settings);
+          if (isBasicAgentModeRequest) {
+            const quotaStatus = await getFreeAgentQuotaStatus();
+            if (quotaStatus.isQuotaExceeded) {
+              safeSend(event.sender, "chat:response:error", {
+                chatId: req.chatId,
+                error: JSON.stringify({
+                  type: "FREE_AGENT_QUOTA_EXCEEDED",
+                  hoursUntilReset: quotaStatus.hoursUntilReset,
+                  resetTime: quotaStatus.resetTime,
+                }),
+              });
+              return;
+            }
+          }
+
+          // Mark the user message as using quota BEFORE starting the stream
+          // to prevent race conditions with parallel requests
+          if (isBasicAgentModeRequest && userMessageId) {
+            await markMessageAsUsingFreeAgentQuota(userMessageId);
+          }
+
+          let streamSuccess = false;
+          try {
+            streamSuccess = await handleLocalAgentStream(
+              event,
+              req,
+              abortController,
+              {
+                placeholderMessageId: placeholderAssistantMessage.id,
+                systemPrompt,
+                dyadRequestId: dyadRequestId ?? "[no-request-id]",
+                messageOverride: isSummarizeIntent ? chatMessages : undefined,
+              },
+            );
+          } finally {
+            // If the stream failed, was aborted, or threw, refund the quota
+            if (isBasicAgentModeRequest && userMessageId && !streamSuccess) {
+              await unmarkMessageAsUsingFreeAgentQuota(userMessageId);
+            }
+          }
+
           return;
         }
 
@@ -1473,11 +1620,13 @@ ${problemReport.problems
             updatedFiles: status.updatedFiles ?? false,
             extraFiles: status.extraFiles,
             extraFilesError: status.extraFilesError,
+            chatSummary,
           } satisfies ChatResponseEnd);
         } else {
           safeSend(event.sender, "chat:response:end", {
             chatId: req.chatId,
             updatedFiles: false,
+            chatSummary,
           } satisfies ChatResponseEnd);
         }
       }

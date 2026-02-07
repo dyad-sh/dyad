@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Brain, ChevronDown, ChevronUp, Loader } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { VanillaMarkdownParser } from "./DyadMarkdownParser";
 import { CustomTagState } from "./stateTypes";
 import { DyadTokenSavings } from "./DyadTokenSavings";
@@ -13,6 +13,13 @@ export const DyadThink: React.FC<DyadThinkProps> = ({ children, node }) => {
   const state = node?.properties?.state as CustomTagState;
   const inProgress = state === "pending";
   const [isExpanded, setIsExpanded] = useState(inProgress);
+  const [hasExpanded, setHasExpanded] = useState(false);
+
+  useEffect(() => {
+    if (isExpanded && !hasExpanded) {
+      setHasExpanded(true);
+    }
+  }, [isExpanded]);
 
   // Check if content matches token savings format
   const tokenSavingsMatch =
@@ -41,54 +48,69 @@ export const DyadThink: React.FC<DyadThinkProps> = ({ children, node }) => {
     );
   }
 
+  // Extract the first line for preview when collapsed
+  const firstLine =
+    typeof children === "string"
+      ? (children
+          .split("\n")
+          .find((line) => line.trim() !== "")
+          ?.trim()
+          .replace(/^\*{1,2}/, "")
+          .replace(/\*{1,2}$/, "") ?? "")
+      : "";
+
   return (
-    <div
-      className={`relative bg-(--background-lightest) dark:bg-zinc-900 hover:bg-(--background-lighter) rounded-lg px-4 py-2 border my-2 cursor-pointer ${
-        inProgress ? "border-purple-500" : "border-border"
-      }`}
-      onClick={() => setIsExpanded(!isExpanded)}
-      role="button"
-      aria-expanded={isExpanded}
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          setIsExpanded(!isExpanded);
-        }
-      }}
-    >
-      {/* Top-left label badge */}
-      <div
-        className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold text-purple-500 bg-white dark:bg-zinc-900"
-        style={{ zIndex: 1 }}
+    <div className="my-1">
+      {/* Toggle header */}
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="flex items-center gap-1 py-1 group cursor-pointer"
       >
-        <Brain size={16} className="text-purple-500" />
-        <span>Thinking</span>
-        {inProgress && (
-          <Loader size={14} className="ml-1 text-purple-500 animate-spin" />
+        <ChevronRight
+          size={14}
+          className={`shrink-0 text-muted-foreground/50 transition-transform duration-200 ${
+            isExpanded ? "rotate-90" : ""
+          }`}
+        />
+        <span className="text-[13px] font-medium text-foreground/70 group-hover:text-foreground transition-colors">
+          {inProgress ? "Thinking…" : "Thought"}
+        </span>
+        {!isExpanded && firstLine && (
+          <span className="ml-0.5 truncate text-[13px] text-muted-foreground/85 max-w-md">
+            {firstLine}
+          </span>
         )}
-      </div>
+      </button>
 
-      {/* Indicator icon */}
-      <div className="absolute top-2 right-2 p-1 text-gray-500">
-        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-      </div>
-
-      {/* Main content with smooth transition */}
+      {/* Expandable content */}
       <div
-        className="pt-6 overflow-hidden transition-all duration-300 ease-in-out"
-        style={{
-          maxHeight: isExpanded ? "none" : "0px",
-          opacity: isExpanded ? 1 : 0,
-          marginBottom: isExpanded ? "0" : "-6px", // Compensate for padding
-        }}
+        className={`grid transition-all duration-200 ease-in-out ${
+          isExpanded
+            ? "grid-rows-[1fr] opacity-100"
+            : "grid-rows-[0fr] opacity-0"
+        }`}
       >
-        <div className="px-0 text-sm text-gray-600 dark:text-gray-300">
-          {typeof children === "string" ? (
-            <VanillaMarkdownParser content={children} />
-          ) : (
-            children
-          )}
+        <div className="overflow-hidden">
+          <div className="flex ml-[7px]">
+            <button
+              type="button"
+              onClick={() => setIsExpanded(false)}
+              className="relative shrink-0 w-6 cursor-pointer group/border"
+              aria-label="Collapse thinking"
+            >
+              <span className="absolute left-0 top-0 bottom-0 w-px bg-border/60 group-hover/border:w-[2px] group-hover/border:bg-foreground/40 transition-all" />
+            </button>
+            <div className="text-sm text-muted-foreground pb-2 pt-1">
+              {hasExpanded ? (
+                typeof children === "string" ? (
+                  <VanillaMarkdownParser content={children} />
+                ) : (
+                  children
+                )
+              ) : null}
+            </div>
+          </div>
         </div>
       </div>
     </div>

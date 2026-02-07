@@ -70,12 +70,32 @@ function parseTestTitle(fullTitle) {
   return { specFile, testName };
 }
 
-// Generate copy-paste command for updating snapshots
-function generateUpdateCommand(fullTitle) {
+// Detect if a test failure is due to a snapshot mismatch
+function isSnapshotFailure(errorMessage) {
+  if (!errorMessage) return false;
+  const lower = errorMessage.toLowerCase();
+  return [
+    "screenshot comparison failed",
+    "snapshot comparison failed",
+    "expected to match snapshot",
+    "tomatchsnapshot",
+    "tohavescreenshot",
+    "screenshots are different",
+    "snapshots don't match",
+    "snapshot mismatch",
+    "snapshot",
+    "ratio of different pixels",
+  ].some((pattern) => lower.includes(pattern));
+}
+
+// Generate copy-paste command for running a specific test
+function generateTestCommand(fullTitle) {
   const { specFile, testName } = parseTestTitle(fullTitle);
+  // Sanitize specFile to only allow safe path characters
+  const safeSpecFile = specFile.replace(/[^a-zA-Z0-9._\-/]/g, "");
   // Escape special characters in testName for the grep pattern
   const escapedTestName = testName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return `npm run e2e e2e-tests/${specFile} -- --g="${escapedTestName}" --update-snapshots`;
+  return `npm run e2e e2e-tests/${safeSpecFile} -- -g "${escapedTestName}"`;
 }
 
 function detectOperatingSystemsFromReport(report) {
@@ -369,22 +389,32 @@ async function run({ github, context, core }) {
     // Add macOS copy-paste commands section
     const macOsFailures = resultsByOs["macOS"]?.failures || [];
     if (macOsFailures.length > 0) {
-      comment += "### 📋 Update Snapshot Commands (macOS)\n\n";
-      comment +=
-        "Copy and paste these commands to update snapshots for failed tests:\n\n";
+      comment += "### 📋 Test Commands (macOS)\n\n";
+      comment += "Copy and paste to re-run failing tests locally:\n\n";
 
       if (macOsFailures.length > 5) {
-        comment += `<details>\n<summary>Show all ${macOsFailures.length} commands</summary>\n\n`;
+        comment += `<details>\n<summary>Show all ${macOsFailures.length} test commands</summary>\n\n`;
       }
 
       comment += "```bash\n";
+      comment += "export PLAYWRIGHT_HTML_OPEN=never\n";
       for (const f of macOsFailures) {
-        comment += generateUpdateCommand(f.title) + "\n";
+        const cmd = generateTestCommand(f.title);
+        const snapshot = isSnapshotFailure(f.error);
+        const errorPreview =
+          f.error.length > 120 ? f.error.substring(0, 120) + "..." : f.error;
+        comment += `\n# ${f.title.replace(/\n/g, " ").replace(/`/g, "'")}\n`;
+        comment += `# Expected: ${errorPreview.replace(/\n/g, " ").replace(/`/g, "'")}\n`;
+        if (snapshot) {
+          comment += `${cmd} --update-snapshots\n`;
+        } else {
+          comment += `${cmd}\n`;
+        }
       }
-      comment += "```\n";
+      comment += "```\n\n";
 
       if (macOsFailures.length > 5) {
-        comment += "\n</details>\n";
+        comment += "</details>\n";
       }
       comment += "\n";
     }
@@ -429,20 +459,19 @@ async function run({ github, context, core }) {
       );
 
       if (botComment) {
-        await github.rest.issues.updateComment({
+        await github.rest.issues.deleteComment({
           owner: context.repo.owner,
           repo: context.repo.repo,
           comment_id: botComment.id,
-          body: comment,
-        });
-      } else {
-        await github.rest.issues.createComment({
-          owner: context.repo.owner,
-          repo: context.repo.repo,
-          issue_number: prNumber,
-          body: comment,
         });
       }
+
+      await github.rest.issues.createComment({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        issue_number: prNumber,
+        body: comment,
+      });
     } catch (error) {
       // Handle permission errors gracefully (common for fork PRs)
       if (error.status === 403) {

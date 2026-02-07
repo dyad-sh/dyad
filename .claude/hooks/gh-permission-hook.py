@@ -27,6 +27,7 @@ ALLOWED (auto-approved):
    - PATCH to /pulls/{id} (PR title/body updates)
    - PATCH to /issues/comments/{id} (issue comment updates)
    - PATCH to /pulls/comments/{id} (PR comment updates)
+   - POST to /issues/{id}/labels (add labels to issues)
 
 5. gh api graphql - queries and specific mutations:
    - All GraphQL queries (read-only)
@@ -143,7 +144,13 @@ SAFE_PIPE_PATTERN = re.compile(r'\|\s*(jq|head|tail|grep|wc|sort|uniq|cut|tr)\b'
 # 2>&1: redirect stderr to stdout (very common for capturing all output)
 # >&2 or 1>&2: redirect stdout to stderr
 # N>&M: redirect file descriptor N to M
-SAFE_REDIRECT_PATTERN = re.compile(r'\d*>&\d+')
+# N>/dev/null: redirect to /dev/null (suppress output)
+SAFE_REDIRECT_PATTERN = re.compile(r'\d*>&\d+|\d*>/dev/null')
+
+# Safe fallback pattern - || echo "..." is commonly used for error handling
+# This pattern matches: || echo "string" or || echo 'string' or || echo WORD
+# The echo command only outputs text, making this safe for fallback values
+SAFE_FALLBACK_PATTERN = re.compile(r'\|\|\s*echo\s+(?:"[^"]*"|\'[^\']*\'|\S+)\s*$')
 
 
 def extract_gh_command(command: str) -> Optional[str]:
@@ -259,9 +266,13 @@ def contains_shell_injection(cmd: str) -> bool:
     # This allows patterns like: gh api graphql ... | jq '...'
     cmd_to_check = SAFE_PIPE_PATTERN.sub(' SAFE_PIPE ', cmd_without_safe_doubles)
 
-    # Replace safe redirect patterns (like 2>&1) before checking
+    # Replace safe redirect patterns (like 2>&1, 2>/dev/null) before checking
     # These are standard shell redirects, not command execution
     cmd_to_check = SAFE_REDIRECT_PATTERN.sub(' ', cmd_to_check)
+
+    # Replace safe fallback patterns (|| echo "...") before checking
+    # This is a common idiom for providing default output on failure
+    cmd_to_check = SAFE_FALLBACK_PATTERN.sub(' ', cmd_to_check)
 
     return bool(SHELL_INJECTION_PATTERNS.search(cmd_to_check))
 
@@ -445,6 +456,11 @@ def check_gh_api_command(cmd: str) -> Optional[dict]:
         if re.search(r'/pulls/\d+$', endpoint):
             if method == "PATCH":
                 return make_allow_decision("PR update auto-approved")
+
+        # Allow adding labels to issues (repos/.../issues/.../labels)
+        if re.search(r'/issues/\d+/labels$', endpoint):
+            if method in [None, "POST"]:
+                return make_allow_decision("Issue label addition auto-approved")
 
     # Now check if method is destructive (after checking allowed endpoints)
     if method:

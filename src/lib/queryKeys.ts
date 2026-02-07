@@ -16,6 +16,24 @@
 
 export const queryKeys = {
   // ─────────────────────────────────────────────────────────────────────────────
+  // System
+  // ─────────────────────────────────────────────────────────────────────────────
+  system: {
+    all: ["system"] as const,
+    appVersion: ["system", "appVersion"] as const,
+    platform: ["system", "platform"] as const,
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Settings
+  // ─────────────────────────────────────────────────────────────────────────────
+  settings: {
+    all: ["settings"] as const,
+    user: ["settings", "user"] as const,
+    envVars: ["settings", "envVars"] as const,
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // Apps
   // ─────────────────────────────────────────────────────────────────────────────
   apps: {
@@ -34,6 +52,20 @@ export const queryKeys = {
     list: ({ appId }: { appId: number | null }) => ["chats", appId] as const,
     search: ({ appId, query }: { appId: number | null; query: string }) =>
       ["chats", "search", appId, query] as const,
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Plans
+  // ─────────────────────────────────────────────────────────────────────────────
+  plans: {
+    all: ["plans"] as const,
+    forChat: ({
+      appId,
+      chatId,
+    }: {
+      appId: number | null;
+      chatId: number | null;
+    }) => ["plans", "forChat", appId, chatId] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -98,6 +130,20 @@ export const queryKeys = {
   files: {
     search: ({ appId, query }: { appId: number | null; query: string }) =>
       ["search-app-files", appId, query] as const,
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // App Files
+  // ─────────────────────────────────────────────────────────────────────────────
+  appFiles: {
+    all: ["app-files"] as const,
+    content: ({
+      appId,
+      filePath,
+    }: {
+      appId: number | null;
+      filePath: string | null;
+    }) => ["app-files", "content", appId, filePath] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -177,6 +223,13 @@ export const queryKeys = {
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Free Agent Quota
+  // ─────────────────────────────────────────────────────────────────────────────
+  freeAgentQuota: {
+    status: ["freeAgentQuotaStatus"] as const,
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // Vercel Deployments
   // ─────────────────────────────────────────────────────────────────────────────
   vercel: {
@@ -226,6 +279,14 @@ export const queryKeys = {
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // GitHub
+  // ─────────────────────────────────────────────────────────────────────────────
+  github: {
+    all: ["github"] as const,
+    repos: ["github", "repos"] as const,
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // Neon
   // ─────────────────────────────────────────────────────────────────────────────
   neon: {
@@ -255,8 +316,11 @@ export type QueryKeyOf<T> = T extends readonly unknown[]
 
 /** All possible query keys (useful for typing queryClient operations) */
 export type AppQueryKey =
+  | QueryKeyOf<(typeof queryKeys.system)[keyof typeof queryKeys.system]>
+  | QueryKeyOf<(typeof queryKeys.settings)[keyof typeof queryKeys.settings]>
   | QueryKeyOf<(typeof queryKeys.apps)[keyof typeof queryKeys.apps]>
   | QueryKeyOf<(typeof queryKeys.chats)[keyof typeof queryKeys.chats]>
+  | QueryKeyOf<(typeof queryKeys.plans)[keyof typeof queryKeys.plans]>
   | QueryKeyOf<(typeof queryKeys.proposals)[keyof typeof queryKeys.proposals]>
   | QueryKeyOf<(typeof queryKeys.versions)[keyof typeof queryKeys.versions]>
   | QueryKeyOf<(typeof queryKeys.branches)[keyof typeof queryKeys.branches]>
@@ -268,6 +332,7 @@ export type AppQueryKey =
       (typeof queryKeys.contextPaths)[keyof typeof queryKeys.contextPaths]
     >
   | QueryKeyOf<(typeof queryKeys.tokenCount)[keyof typeof queryKeys.tokenCount]>
+  | QueryKeyOf<(typeof queryKeys.appFiles)[keyof typeof queryKeys.appFiles]>
   | QueryKeyOf<(typeof queryKeys.files)[keyof typeof queryKeys.files]>
   | QueryKeyOf<(typeof queryKeys.appName)[keyof typeof queryKeys.appName]>
   | QueryKeyOf<
@@ -285,12 +350,16 @@ export type AppQueryKey =
       (typeof queryKeys.languageModels)[keyof typeof queryKeys.languageModels]
     >
   | QueryKeyOf<(typeof queryKeys.userBudget)[keyof typeof queryKeys.userBudget]>
+  | QueryKeyOf<
+      (typeof queryKeys.freeAgentQuota)[keyof typeof queryKeys.freeAgentQuota]
+    >
   | QueryKeyOf<(typeof queryKeys.vercel)[keyof typeof queryKeys.vercel]>
   | QueryKeyOf<
       (typeof queryKeys.appUpgrades)[keyof typeof queryKeys.appUpgrades]
     >
   | QueryKeyOf<(typeof queryKeys.mcp)[keyof typeof queryKeys.mcp]>
   | QueryKeyOf<(typeof queryKeys.supabase)[keyof typeof queryKeys.supabase]>
+  | QueryKeyOf<(typeof queryKeys.github)[keyof typeof queryKeys.github]>
   | QueryKeyOf<(typeof queryKeys.neon)[keyof typeof queryKeys.neon]>
   | QueryKeyOf<
       (typeof queryKeys.appEnvVars)[keyof typeof queryKeys.appEnvVars]

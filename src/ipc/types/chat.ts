@@ -108,6 +108,7 @@ export const ChatResponseEndSchema = z.object({
   extraFilesError: z.string().optional(),
   totalTokens: z.number().optional(),
   contextWindow: z.number().optional(),
+  chatSummary: z.string().optional(),
 });
 
 export type ChatResponseEnd = z.infer<typeof ChatResponseEndSchema>;

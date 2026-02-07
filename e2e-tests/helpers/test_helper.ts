@@ -18,6 +18,7 @@ export const Timeout = {
   EXTRA_LONG: process.env.CI ? 120_000 : 60_000,
   LONG: process.env.CI ? 60_000 : 30_000,
   MEDIUM: process.env.CI ? 30_000 : 15_000,
+  SHORT: process.env.CI ? 5_000 : 2_000,
 };
 
 /**
@@ -349,10 +350,12 @@ export class PageObject {
     autoApprove = false,
     disableNativeGit = false,
     enableAutoFixProblems = false,
+    enableBasicAgent = false,
   }: {
     autoApprove?: boolean;
     disableNativeGit?: boolean;
     enableAutoFixProblems?: boolean;
+    enableBasicAgent?: boolean;
   } = {}) {
     await this.baseSetup();
     await this.goToSettingsTab();
@@ -367,8 +370,10 @@ export class PageObject {
     }
     await this.setUpTestProvider();
     await this.setUpTestModel();
-
     await this.goToAppsTab();
+    if (!enableBasicAgent) {
+      await this.selectChatMode("build");
+    }
     await this.selectTestModel();
   }
 
@@ -472,18 +477,22 @@ export class PageObject {
     await this.page.getByRole("button", { name: "Import" }).click();
   }
 
-  async selectChatMode(mode: "build" | "ask" | "agent" | "local-agent") {
+  async selectChatMode(
+    mode: "build" | "ask" | "agent" | "local-agent" | "basic-agent" | "plan",
+  ) {
     await this.page.getByTestId("chat-mode-selector").click();
-    const mapping = {
+    const mapping: Record<string, string> = {
       build: "Build Generate and edit code",
       ask: "Ask Ask",
       agent: "Build with MCP",
       "local-agent": "Agent v2",
+      "basic-agent": "Basic Agent", // For free users
+      plan: "Plan.*Design before you build",
     };
     const optionName = mapping[mode];
     await this.page
       .getByRole("option", {
-        name: optionName,
+        name: new RegExp(optionName),
       })
       .click();
   }
@@ -493,6 +502,25 @@ export class PageObject {
   }
 
   async openContextFilesPicker() {
+    // Programmatically dismiss toasts using the sonner API by clicking any visible close buttons
+    const toastCloseButtons = this.page.locator(
+      "[data-sonner-toast] button[data-close-button]",
+    );
+    const closeCount = await toastCloseButtons.count();
+    for (let i = 0; i < closeCount; i++) {
+      await toastCloseButtons
+        .nth(i)
+        .click()
+        .catch(() => {});
+    }
+
+    // If close buttons don't work, click outside to dismiss
+    if ((await this.page.locator("[data-sonner-toast]").count()) > 0) {
+      // Click somewhere safe to dismiss toasts
+      await this.page.mouse.click(10, 10);
+      await this.page.waitForTimeout(300);
+    }
+
     // Open the auxiliary actions menu
     await this.getChatInputContainer()
       .getByTestId("auxiliary-actions-menu")
@@ -583,9 +611,8 @@ export class PageObject {
     replaceDumpPath = false,
     timeout,
   }: { replaceDumpPath?: boolean; timeout?: number } = {}) {
+    // NOTE: once you have called this, you can NOT manipulate the UI anymore or React will break.
     if (replaceDumpPath) {
-      // Update page so that "[[dyad-dump-path=*]]" is replaced with a placeholder path
-      // which is stable across runs.
       await this.page.evaluate(() => {
         const messagesList = document.querySelector(
           "[data-testid=messages-list]",
@@ -593,6 +620,13 @@ export class PageObject {
         if (!messagesList) {
           throw new Error("Messages list not found");
         }
+        // Scrub compaction backup paths embedded in message text
+        // e.g. .dyad/chats/1/compaction-2026-02-05T21-25-24-285Z.md
+        messagesList.innerHTML = messagesList.innerHTML.replace(
+          /\.dyad\/chats\/\d+\/compaction-[^\s<"]+\.md/g,
+          "[[compaction-backup-path]]",
+        );
+
         messagesList.innerHTML = messagesList.innerHTML.replace(
           /\[\[dyad-dump-path=([^\]]+)\]\]/g,
           "[[dyad-dump-path=*]]",
@@ -765,7 +799,10 @@ export class PageObject {
   }
 
   async clickCopyErrorMessage() {
-    await this.page.getByRole("button", { name: /Copy/ }).click();
+    await this.page
+      .getByTestId("preview-error-banner")
+      .getByRole("button", { name: /Copy/ })
+      .click();
   }
 
   async getClipboardText(): Promise<string> {
@@ -868,9 +905,14 @@ export class PageObject {
     }
 
     // Read the JSON file
-    const dumpContent: string = (
-      fs.readFileSync(dumpFilePath, "utf-8") as any
-    ).replaceAll(/\[\[dyad-dump-path=([^\]]+)\]\]/g, "[[dyad-dump-path=*]]");
+    const dumpContent: string = (fs.readFileSync(dumpFilePath, "utf-8") as any)
+      .replaceAll(/\[\[dyad-dump-path=([^\]]+)\]\]/g, "[[dyad-dump-path=*]]")
+      // Stabilize compaction backup file paths embedded in message text
+      // e.g. .dyad/chats/1/compaction-2026-02-05T21-25-24-285Z.md
+      .replaceAll(
+        /\.dyad\/chats\/\d+\/compaction-[^\s"\\]+\.md/g,
+        "[[compaction-backup-path]]",
+      );
     // Perform snapshot comparison
     const parsedDump = JSON.parse(dumpContent);
     if (type === "request") {
@@ -954,6 +996,35 @@ export class PageObject {
     );
   }
 
+  /**
+   * Clears the Lexical chat input using keyboard shortcuts (Meta+A, Backspace).
+   * Uses toPass() for resilience since Lexical may need time to update its state.
+   */
+  async clearChatInput() {
+    const chatInput = this.getChatInput();
+    await chatInput.click();
+    await this.page.keyboard.press("ControlOrMeta+a");
+    await this.page.keyboard.press("Backspace");
+    await expect(async () => {
+      const text = await chatInput.textContent();
+      expect(text?.trim()).toBe("");
+    }).toPass({ timeout: Timeout.SHORT });
+  }
+
+  /**
+   * Opens the chat history menu by clearing the input and pressing ArrowUp.
+   * Uses toPass() for resilience since the Lexical editor may need time to
+   * update its state before the history menu can be triggered.
+   */
+  async openChatHistoryMenu() {
+    const historyMenu = this.page.locator('[data-mentions-menu="true"]');
+    await expect(async () => {
+      await this.clearChatInput();
+      await this.page.keyboard.press("ArrowUp");
+      await expect(historyMenu).toBeVisible({ timeout: 500 });
+    }).toPass({ timeout: Timeout.SHORT });
+  }
+
   clickNewChat({ index = 0 }: { index?: number } = {}) {
     // There is two new chat buttons...
     return this.page
@@ -989,26 +1060,26 @@ export class PageObject {
   }
 
   async selectModel({ provider, model }: { provider: string; model: string }) {
-    await this.page.getByRole("button", { name: "Model: Auto" }).click();
+    await this.page.getByTestId("model-picker").click();
     await this.page.getByText(provider, { exact: true }).click();
     await this.page.getByText(model, { exact: true }).click();
   }
 
   async selectTestModel() {
-    await this.page.getByRole("button", { name: "Model: Auto" }).click();
+    await this.page.getByTestId("model-picker").click();
     await this.page.getByText("test-provider").click();
     await this.page.getByText("test-model").click();
   }
 
   async selectTestOllamaModel() {
-    await this.page.getByRole("button", { name: "Model: Auto" }).click();
+    await this.page.getByTestId("model-picker").click();
     await this.page.getByText("Local models").click();
     await this.page.getByText("Ollama", { exact: true }).click();
     await this.page.getByText("Testollama", { exact: true }).click();
   }
 
   async selectTestLMStudioModel() {
-    await this.page.getByRole("button", { name: "Model: Auto" }).click();
+    await this.page.getByTestId("model-picker").click();
     await this.page.getByText("Local models").click();
     await this.page.getByText("LM Studio", { exact: true }).click();
     // Both of the elements that match "lmstudio-model-1" are the same button, so we just pick the first.
@@ -1019,7 +1090,7 @@ export class PageObject {
   }
 
   async selectTestAzureModel() {
-    await this.page.getByRole("button", { name: "Model: Auto" }).click();
+    await this.page.getByTestId("model-picker").click();
     await this.page.getByText("Other AI providers").click();
     await this.page.getByText("Azure OpenAI", { exact: true }).click();
     await this.page.getByText("GPT-5", { exact: true }).click();
@@ -1062,6 +1133,34 @@ export class PageObject {
     await this.page.getByRole("textbox", { name: "Model ID*" }).press("Tab");
     await this.page.getByRole("textbox", { name: "Name*" }).fill("test-model");
     await this.page.getByRole("button", { name: "Add Model" }).click();
+  }
+
+  async addCustomTestModel({
+    name,
+    contextWindow,
+  }: {
+    name: string;
+    contextWindow?: number;
+  }) {
+    await this.page.getByRole("heading", { name: "test-provider" }).click();
+    await this.page.getByRole("button", { name: "Add Custom Model" }).click();
+    await this.page.getByRole("textbox", { name: "Model ID*" }).fill(name);
+    await this.page.getByRole("textbox", { name: "Model ID*" }).press("Tab");
+    await this.page.getByRole("textbox", { name: "Name*" }).fill(name);
+    if (contextWindow) {
+      await this.page.locator("#context-window").fill(String(contextWindow));
+    }
+    await this.page.getByRole("button", { name: "Add Model" }).click();
+  }
+
+  async setUpTestProviderApiKey() {
+    // Fill in a test API key for the custom provider
+    await this.page
+      .getByPlaceholder(/Enter new.*API Key here/)
+      .fill("test-api-key-12345");
+    await this.page.getByRole("button", { name: "Save Key" }).click();
+    // Wait for the key to be saved
+    await expect(this.page.getByText("test-api-key-12345")).toBeVisible();
   }
 
   async goToSettingsTab() {
@@ -1127,6 +1226,27 @@ export class PageObject {
       throw new Error("No current app name found");
     }
     return this.getAppPath({ appName: currentAppName });
+  }
+
+  async configureGitUser({
+    email = "test@example.com",
+    name = "Test User",
+    disableGpgSign = true,
+  }: {
+    email?: string;
+    name?: string;
+    disableGpgSign?: boolean;
+  } = {}) {
+    const appPath = await this.getCurrentAppPath();
+    if (!appPath) {
+      throw new Error("App path not found");
+    }
+
+    execSync(`git config user.email '${email}'`, { cwd: appPath });
+    execSync(`git config user.name '${name}'`, { cwd: appPath });
+    if (disableGpgSign) {
+      execSync("git config commit.gpgsign false", { cwd: appPath });
+    }
   }
 
   getAppPath({ appName }: { appName: string }) {
@@ -1333,7 +1453,7 @@ export class PageObject {
     await this.page.waitForSelector(selector, { timeout });
   }
 
-  async waitForToastWithText(text: string, timeout = 5000) {
+  async waitForToastWithText(text: string, timeout = Timeout.MEDIUM) {
     await this.page.waitForSelector(`[data-sonner-toast]:has-text("${text}")`, {
       timeout,
     });
@@ -1394,6 +1514,22 @@ export class PageObject {
 
   async clickAgentConsentDecline() {
     await this.page.getByRole("button", { name: "Decline" }).click();
+  }
+
+  ////////////////////////////////
+  // Test-only: Node.js Mock Control
+  ////////////////////////////////
+
+  /**
+   * Set the mock state for Node.js installation status.
+   * @param installed - true = mock as installed, false = mock as not installed, null = use real check
+   */
+  async setNodeMock(installed: boolean | null) {
+    await this.page.evaluate(async (installed) => {
+      await (window as any).electron.ipcRenderer.invoke("test:set-node-mock", {
+        installed,
+      });
+    }, installed);
   }
 }
 

@@ -2,7 +2,6 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   ChevronRight,
   GiftIcon,
-  Sparkles,
   CheckCircle,
   AlertCircle,
   XCircle,
@@ -11,6 +10,7 @@ import {
   Folder,
 } from "lucide-react";
 import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
+import { SECTION_IDS } from "@/lib/settingsSearchIndex";
 
 import SetupProviderCard from "@/components/SetupProviderCard";
 
@@ -29,9 +29,14 @@ import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useScrollAndNavigateTo } from "@/hooks/useScrollAndNavigateTo";
 // @ts-ignore
 import logo from "../../assets/logo.svg";
+// @ts-ignore
+import googleIcon from "../../assets/ai-logos/google-g-icon.svg";
+// @ts-ignore
+import openrouterLogo from "../../assets/ai-logos/openrouter-logo.png";
 import { OnboardingBanner } from "./home/OnboardingBanner";
 import { showError } from "@/lib/toast";
 import { useSettings } from "@/hooks/useSettings";
+import { DyadProTrialDialog } from "./DyadProTrialDialog";
 
 type NodeInstallStep =
   | "install"
@@ -64,6 +69,7 @@ export function SetupBanner() {
   }, [setNodeSystemInfo, setNodeCheckError]);
   const [showManualConfig, setShowManualConfig] = useState(false);
   const [isSelectingPath, setIsSelectingPath] = useState(false);
+  const [showDyadProTrialDialog, setShowDyadProTrialDialog] = useState(false);
   const { updateSettings } = useSettings();
 
   // Add handler for manual path selection
@@ -115,14 +121,12 @@ export function SetupBanner() {
   };
   const handleDyadProSetupClick = () => {
     posthog.capture("setup-flow:ai-provider-setup:dyad:click");
-    ipc.system.openExternalUrl(
-      "https://www.dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=setup-banner",
-    );
+    setShowDyadProTrialDialog(true);
   };
 
   const handleOtherProvidersClick = () => {
     posthog.capture("setup-flow:ai-provider-setup:other:click");
-    settingsScrollAndNavigateTo("provider-settings");
+    settingsScrollAndNavigateTo(SECTION_IDS.providers);
   };
 
   const handleNodeInstallClick = useCallback(async () => {
@@ -176,7 +180,7 @@ export function SetupBanner() {
 
   return (
     <>
-      <p className="text-xl font-medium text-zinc-700 dark:text-zinc-300 p-4">
+      <p className="text-xl font-medium text-zinc-700 dark:text-zinc-300 p-4 pt-6">
         Setup Dyad
       </p>
       <OnboardingBanner
@@ -184,11 +188,7 @@ export function SetupBanner() {
         setIsVisible={setIsOnboardingVisible}
       />
       <div className={bannerClasses}>
-        <Accordion
-          type="multiple"
-          className="w-full"
-          defaultValue={itemsNeedAction}
-        >
+        <Accordion multiple className="w-full" defaultValue={itemsNeedAction}>
           <AccordionItem
             value="node-setup"
             className={cn(
@@ -314,14 +314,26 @@ export function SetupBanner() {
               <p className="text-[15px] mb-3">
                 Not sure what to do? Watch the Get Started video above ☝️
               </p>
-              <div className="flex gap-2">
+
+              <SetupProviderCard
+                variant="dyad"
+                onClick={handleDyadProSetupClick}
+                tabIndex={isNodeSetupComplete ? 0 : -1}
+                leadingIcon={
+                  <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-0.5" />
+                }
+                title="Start with Dyad Pro free trial"
+                subtitle="Unlock the full power of Dyad"
+                chip={<>Recommended</>}
+              />
+              <div className="mt-2 flex gap-2">
                 <SetupProviderCard
                   className="flex-1"
                   variant="google"
                   onClick={handleGoogleSetupClick}
                   tabIndex={isNodeSetupComplete ? 0 : -1}
                   leadingIcon={
-                    <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    <img src={googleIcon} alt="Google" className="w-4 h-4" />
                   }
                   title="Setup Google Gemini API Key"
                   chip={<>Free</>}
@@ -333,25 +345,16 @@ export function SetupBanner() {
                   onClick={handleOpenRouterSetupClick}
                   tabIndex={isNodeSetupComplete ? 0 : -1}
                   leadingIcon={
-                    <Sparkles className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                    <img
+                      src={openrouterLogo}
+                      alt="OpenRouter"
+                      className="w-4 h-4"
+                    />
                   }
                   title="Setup OpenRouter API Key"
                   chip={<>Free</>}
                 />
               </div>
-
-              <SetupProviderCard
-                className="mt-2"
-                variant="dyad"
-                onClick={handleDyadProSetupClick}
-                tabIndex={isNodeSetupComplete ? 0 : -1}
-                leadingIcon={
-                  <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-0.5" />
-                }
-                title="Setup Dyad Pro"
-                subtitle="Access all AI models with one plan"
-                chip={<>Recommended</>}
-              />
 
               <div
                 className="mt-2 p-3 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors"
@@ -380,6 +383,11 @@ export function SetupBanner() {
           </AccordionItem>
         </Accordion>
       </div>
+
+      <DyadProTrialDialog
+        isOpen={showDyadProTrialDialog}
+        onClose={() => setShowDyadProTrialDialog(false)}
+      />
     </>
   );
 }
@@ -471,7 +479,7 @@ export const OpenRouterSetupBanner = ({
       }}
       tabIndex={0}
       leadingIcon={
-        <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+        <img src={openrouterLogo} alt="OpenRouter" className="w-4 h-4" />
       }
       title="Setup OpenRouter API Key"
       chip={

@@ -96,9 +96,12 @@ test.describe("Git Collaboration", () => {
     await po.getTitleBarAppNameButton().click(); // Open Publish Panel
 
     // Wait for BranchManager to appear
-    await expect(po.page.getByTestId("create-branch-trigger")).toBeVisible({
-      timeout: 10000,
+    await expect(
+      po.page.getByTestId("branch-actions-menu-trigger"),
+    ).toBeVisible({
+      timeout: Timeout.MEDIUM,
     });
+    await po.page.getByTestId("branch-actions-menu-trigger").click();
     await po.page.getByTestId("create-branch-trigger").click();
     await po.page.getByTestId("new-branch-name-input").fill(featureBranch);
     await po.page.getByTestId("create-branch-submit-button").click();
@@ -115,11 +118,12 @@ test.describe("Git Collaboration", () => {
     // First switch back to main to ensure we are not on feature-1
     await po.page.getByTestId("branch-select-trigger").click();
     await po.page.getByRole("option", { name: "main" }).click();
-    await expect(po.page.getByTestId("current-branch-display")).toHaveText(
+    await expect(po.page.getByTestId("branch-select-trigger")).toContainText(
       "main",
     );
 
     const featureBranch2 = "feature-2";
+    await po.page.getByTestId("branch-actions-menu-trigger").click();
     await po.page.getByTestId("create-branch-trigger").click();
     await po.page.getByTestId("new-branch-name-input").fill(featureBranch2);
     // Select source branch 'main' explicitly (though it defaults to HEAD which is main)
@@ -129,7 +133,7 @@ test.describe("Git Collaboration", () => {
     await po.page.getByTestId("create-branch-submit-button").click();
 
     // Verify creation (it auto-switches to the new branch, so we verify we're on it)
-    await expect(po.page.getByTestId("current-branch-display")).toHaveText(
+    await expect(po.page.getByTestId("branch-select-trigger")).toContainText(
       featureBranch2,
     );
 
@@ -147,13 +151,23 @@ test.describe("Git Collaboration", () => {
     // Switch back to main first since we can't rename the branch we're currently on
     await po.page.getByTestId("branch-select-trigger").click();
     await po.page.getByRole("option", { name: "main" }).click();
-    await expect(po.page.getByTestId("current-branch-display")).toHaveText(
+    await expect(po.page.getByTestId("branch-select-trigger")).toContainText(
       "main",
     );
 
+    // Helper to ensure branch item is visible (expands accordion if needed)
+    async function ensureBranchItemVisible(branchName: string) {
+      const branchItem = po.page.getByTestId(`branch-item-${branchName}`);
+      if (!(await branchItem.isVisible().catch(() => false))) {
+        await branchesCard.click();
+      }
+      await expect(branchItem).toBeVisible({ timeout: Timeout.MEDIUM });
+    }
+
     // Rename feature-2 to feature-2-renamed
     const renamedBranch = "feature-2-renamed";
-    await branchesCard.click();
+    // Ensure the branches accordion is expanded (it may already be expanded, so check first)
+    await ensureBranchItemVisible(featureBranch2);
     await po.page.getByTestId(`branch-actions-${featureBranch2}`).click();
     await po.page.getByTestId("rename-branch-menu-item").click();
     await po.page.getByTestId("rename-branch-input").fill(renamedBranch);
@@ -177,7 +191,7 @@ test.describe("Git Collaboration", () => {
     // Switch to feature-1 and create a test file
     await po.page.getByTestId("branch-select-trigger").click();
     await po.page.getByRole("option", { name: featureBranch }).click();
-    await expect(po.page.getByTestId("current-branch-display")).toHaveText(
+    await expect(po.page.getByTestId("branch-select-trigger")).toContainText(
       featureBranch,
     );
 
@@ -186,9 +200,7 @@ test.describe("Git Collaboration", () => {
     const featureContent = "Content from feature-1 branch";
     fs.writeFileSync(mergeTestFilePath, featureContent);
     // Configure git user for commit
-    execSync("git config user.email 'test@example.com'", { cwd: appPath });
-    execSync("git config user.name 'Test User'", { cwd: appPath });
-    execSync("git config commit.gpgsign false", { cwd: appPath });
+    await po.configureGitUser();
     execSync(
       `git add ${mergeTestFile} && git commit -m "Add merge test file"`,
       {
@@ -199,7 +211,7 @@ test.describe("Git Collaboration", () => {
     // Switch back to main
     await po.page.getByTestId("branch-select-trigger").click();
     await po.page.getByRole("option", { name: "main" }).click();
-    await expect(po.page.getByTestId("current-branch-display")).toHaveText(
+    await expect(po.page.getByTestId("branch-select-trigger")).toContainText(
       "main",
     );
 
@@ -207,7 +219,8 @@ test.describe("Git Collaboration", () => {
     expect(fs.existsSync(mergeTestFilePath)).toBe(false);
 
     // Merge feature-1 into main (we are currently on main)
-    await branchesCard.click();
+    // Ensure the branches accordion is expanded
+    await ensureBranchItemVisible(featureBranch);
     await po.page.getByTestId(`branch-actions-${featureBranch}`).click();
     await po.page.getByTestId("merge-branch-menu-item").click();
     await po.page.getByTestId("merge-branch-submit-button").click();
@@ -237,7 +250,8 @@ test.describe("Git Collaboration", () => {
 
     // 5. Delete Branch
     // Delete feature-1
-    await branchesCard.click();
+    // Ensure the branches accordion is expanded
+    await ensureBranchItemVisible(featureBranch);
     await po.page.getByTestId(`branch-actions-${featureBranch}`).click();
     await po.page.getByTestId("delete-branch-menu-item").click();
     await po.page.getByRole("button", { name: "Delete Branch" }).click();
@@ -248,6 +262,68 @@ test.describe("Git Collaboration", () => {
       po.page.getByTestId(`branch-item-${featureBranch}`),
     ).not.toBeVisible();
     await po.page.keyboard.press("Escape");
+  });
+
+  test("should pull changes from remote", async ({ po }) => {
+    await po.setUp({ disableNativeGit: false });
+    await po.sendPrompt("tc=basic");
+
+    await po.getTitleBarAppNameButton().click();
+    await po.githubConnector.connect();
+
+    // Create a new repo to start fresh
+    const repoName = "test-git-pull-" + Date.now();
+    await po.githubConnector.fillCreateRepoName(repoName);
+    await po.githubConnector.clickCreateRepoButton();
+
+    // Wait for repo to be connected
+    await expect(po.page.getByTestId("github-connected-repo")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+
+    const appPath = await po.getCurrentAppPath();
+    if (!appPath) throw new Error("App path not found");
+
+    // Configure git user
+    await po.configureGitUser();
+
+    // Create a file locally
+    const testFile = "pull-test.txt";
+    const testFilePath = path.join(appPath, testFile);
+    const fileContent = "Initial content";
+    fs.writeFileSync(testFilePath, fileContent);
+    execSync(`git add ${testFile} && git commit -m "Add pull test file"`, {
+      cwd: appPath,
+    });
+
+    // Go to publish panel
+    await po.goToChatTab();
+    await po.getTitleBarAppNameButton().click();
+
+    // Open the branch actions dropdown
+    await expect(
+      po.page.getByTestId("branch-actions-menu-trigger"),
+    ).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+
+    // Test git pull - should succeed with no remote changes
+    await po.page.getByTestId("branch-actions-menu-trigger").click();
+    await po.page.getByTestId("git-pull-button").click();
+
+    // Wait for success toast
+    await po.waitForToast("success", 10000);
+
+    // Verify the file still exists (pull succeeded)
+    expect(fs.existsSync(testFilePath)).toBe(true);
+    expect(fs.readFileSync(testFilePath, "utf-8")).toBe(fileContent);
+
+    // Verify git status is clean
+    const gitStatus = execSync("git status --porcelain", {
+      cwd: appPath,
+      encoding: "utf8",
+    }).trim();
+    expect(gitStatus).toBe("");
   });
 
   test("should invite and remove collaborators", async ({ po }) => {

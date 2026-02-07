@@ -25,6 +25,10 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+# Allow disabling this hook via environment variable
+if os.environ.get("DYAD_DISABLE_CLAUDE_CODE_HOOKS", "").lower() in ("true", "1", "yes"):
+    sys.exit(0)
+
 
 def load_policy_guidelines() -> str:
     """Load policy guidelines from the markdown file."""
@@ -83,7 +87,7 @@ Analyze this request and provide your safety assessment. Respond with ONLY a JSO
                 claude_path,
                 "--print",
                 "--output-format", "text",
-                "--model", "sonnet",
+                "--model", "haiku",
                 "--no-session-persistence",
                 prompt
             ],

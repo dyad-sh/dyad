@@ -575,8 +575,28 @@
       );
       return;
     }
-    setTimeout(() => {
+
+    // Usually the tagged elements are added right away, but in some cases (e.g.
+    // supabase auth loading), it can take a while and thus we use a timeout/observer
+    // to wait for tagged elements to appear.
+    //
+    // see: https://github.com/dyad-sh/dyad/issues/2231
+    const INIT_TIMEOUT_MS = 60_000; // Wait up to 60 seconds for tagged elements
+    let observer = null;
+    let timeoutId = null;
+
+    function checkForTaggedElements() {
       if (document.body.querySelector("[data-dyad-id]")) {
+        // Clean up observer and timeout
+        if (observer) {
+          observer.disconnect();
+          observer = null;
+        }
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+
         window.parent.postMessage(
           {
             type: "dyad-component-selector-initialized",
@@ -584,11 +604,70 @@
           "*",
         );
         console.debug("Dyad component selector initialized");
-      } else {
-        console.warn(
-          "Dyad component selector not initialized because no DOM elements were tagged",
-        );
+        return true;
       }
+      return false;
+    }
+
+    // First, try immediately
+    setTimeout(() => {
+      if (checkForTaggedElements()) {
+        return;
+      }
+
+      // If not found, set up MutationObserver to watch for tagged elements
+      console.debug(
+        "Dyad component selector waiting for tagged elements to appear...",
+      );
+
+      observer = new MutationObserver((mutations) => {
+        // Filter mutations to only process relevant changes
+        const hasRelevantMutation = mutations.some((mutation) => {
+          // Attribute mutation on data-dyad-id (already filtered by attributeFilter)
+          if (mutation.type === "attributes") {
+            return true;
+          }
+          // Check if any added nodes have data-dyad-id
+          if (mutation.type === "childList") {
+            for (const node of mutation.addedNodes) {
+              if (node.nodeType === Node.ELEMENT_NODE) {
+                if (
+                  node.hasAttribute("data-dyad-id") ||
+                  node.querySelector("[data-dyad-id]")
+                ) {
+                  return true;
+                }
+              }
+            }
+          }
+          return false;
+        });
+
+        if (hasRelevantMutation) {
+          checkForTaggedElements();
+        }
+      });
+
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["data-dyad-id"],
+      });
+
+      // Set a timeout to give up after INIT_TIMEOUT_MS
+      timeoutId = setTimeout(() => {
+        if (observer) {
+          observer.disconnect();
+          observer = null;
+        }
+        // Only warn if we never found tagged elements
+        if (!document.body.querySelector("[data-dyad-id]")) {
+          console.warn(
+            "Dyad component selector not initialized because no DOM elements were tagged",
+          );
+        }
+      }, INIT_TIMEOUT_MS);
     }, 0);
   }
 

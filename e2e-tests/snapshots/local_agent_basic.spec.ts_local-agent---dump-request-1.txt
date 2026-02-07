@@ -28,6 +28,7 @@
           "name": "write_file",
           "description": "Create or completely overwrite a file in the codebase",
           "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
               "path": {
@@ -39,16 +40,15 @@
                 "description": "The content to write to the file"
               },
               "description": {
-                "type": "string",
-                "description": "Brief description of the change"
+                "description": "Brief description of the change",
+                "type": "string"
               }
             },
             "required": [
               "path",
               "content"
             ],
-            "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "additionalProperties": false
           }
         }
       },
@@ -56,8 +56,9 @@
         "type": "function",
         "function": {
           "name": "edit_file",
-          "description": "\n## When to Use edit_file\n\nUse the `edit_file` tool ONLY when you are editing an existing file. The edit output will be read by a less intelligent model, which will quickly apply the edit. You should make it clear what the edit is, while also minimizing the unchanged code you write.\n\n**Use only ONE edit_file call per file.** If you need to make multiple changes to the same file, include all edits in sequence within a single call using `// ... existing code ...` comments between them.\n\n## When NOT to Use edit_file\n\nDo NOT use this tool when:\n- You are creating a brand-new file (use file creation tools instead).\n- You are rewriting most of an existing file (in those cases, output the complete file instead).\n\n## Basic Format\n\nWhen writing the edit, you should specify each edit in sequence, with the special comment // ... existing code ... to represent unchanged code in between edited lines.\n\nBasic example:\n```\nedit_file(path=\"file.js\", description=\"change code\", content=\"\"\"\n// ... existing code ...\nFIRST_EDIT\n// ... existing code ...\nSECOND_EDIT\n// ... existing code ...\nTHIRD_EDIT\n// ... existing code ...\n\"\"\")\n```\n\n## General Principles\n\nYou should bias towards repeating as few lines of the original file as possible to convey the change.\n\nNEVER show unmodified code in the edit, unless sufficient context of unchanged lines around the code you're editing is needed to resolve ambiguity.\n\nDO NOT omit spans of pre-existing code without using the // ... existing code ... comment to indicate its absence.\n\n## Example: Basic Edit\n```\nedit_file(path=\"LandingPage.tsx\", description=\"Update title.\", content=\"\"\"\n// ... existing code ...\n\nconst LandingPage = () => {\n  // ... existing code ...\n  return (\n    <div>hello</div>\n  );\n};\n\n// ... existing code ...\n\"\"\")\n```\n\n## Example: Deleting Code\n\n**When deleting code, you must provide surrounding context and leave an explicit comment indicating what was removed.**\n```\nedit_file(path=\"utils.ts\", description=\"Remove deprecated helper function\", content=\"\"\"\n// ... existing code ...\n\nexport function currentHelper() {\n  return \"active\";\n}\n\n// REMOVED: deprecatedHelper() function\n\nexport function anotherHelper() {\n  return \"working\";\n}\n\n// ... existing code ...\n\"\"\")\n```\n",
+          "description": "\n## When to Use edit_file\n\nUse the `edit_file` tool when you need to modify **a section or function** within an existing file. The edit output will be read by a less intelligent model, which will quickly apply the edit. You should make it clear what the edit is, while also minimizing the unchanged code you write.\n\n**Use only ONE edit_file call per file.** If you need to make multiple changes to the same file, include all edits in sequence within a single call using `// ... existing code ...` comments between them.\n\n## When NOT to Use edit_file\n\nDo NOT use this tool when:\n- You are making a **small, surgical edit** (1-3 lines) like fixing a typo, renaming a variable, updating a single value, or changing an import. Use `search_replace` instead for these precise changes.\n- You are creating a brand-new file (use `write_file` instead).\n- You are rewriting most of an existing file (in those cases, use `write_file` to output the complete file instead).\n\n## Basic Format\n\nWhen writing the edit, you should specify each edit in sequence, with the special comment // ... existing code ... to represent unchanged code in between edited lines.\n\nBasic example:\n```\nedit_file(path=\"file.js\", instructions=\"I am adding error handling to the fetchData function and updating the return type.\", content=\"\"\"\n// ... existing code ...\nFIRST_EDIT\n// ... existing code ...\nSECOND_EDIT\n// ... existing code ...\nTHIRD_EDIT\n// ... existing code ...\n\"\"\")\n```\n\n## General Principles\n\nYou should bias towards repeating as few lines of the original file as possible to convey the change.\n\nNEVER show unmodified code in the edit, unless sufficient context of unchanged lines around the code you're editing is needed to resolve ambiguity.\n\nDO NOT omit spans of pre-existing code without using the // ... existing code ... comment to indicate its absence.\n\n## Example: Basic Edit\n```\nedit_file(path=\"LandingPage.tsx\", instructions=\"I am changing the return statement in LandingPage to render a div with 'hello' instead of the previous content.\", content=\"\"\"\n// ... existing code ...\n\nconst LandingPage = () => {\n  // ... existing code ...\n  return (\n    <div>hello</div>\n  );\n};\n\n// ... existing code ...\n\"\"\")\n```\n\n## Example: Deleting Code\n\n**When deleting code, you must provide surrounding context and leave an explicit comment indicating what was removed.**\n```\nedit_file(path=\"utils.ts\", instructions=\"I am removing the deprecatedHelper function located between currentHelper and anotherHelper.\", content=\"\"\"\n// ... existing code ...\n\nexport function currentHelper() {\n  return \"active\";\n}\n\n// REMOVED: deprecatedHelper() function\n\nexport function anotherHelper() {\n  return \"working\";\n}\n\n// ... existing code ...\n\"\"\")\n```\n",
           "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
               "path": {
@@ -68,17 +69,47 @@
                 "type": "string",
                 "description": "The updated code snippet to apply"
               },
-              "description": {
-                "type": "string",
-                "description": "Brief description of the edit"
+              "instructions": {
+                "description": "Instructions for the edit. A single sentence describing what you are going to do for the sketched edit. This helps the less intelligent model apply the edit correctly. Use first person to describe what you are doing. Don't repeat what you've said in previous messages. Use it to disambiguate any uncertainty in the edit.",
+                "type": "string"
               }
             },
             "required": [
               "path",
               "content"
             ],
-            "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "search_replace",
+          "description": "Use this tool to propose a search and replace operation on an existing file.\n\nThe tool will replace ONE occurrence of old_string with new_string in the specified file.\n\nCRITICAL REQUIREMENTS FOR USING THIS TOOL:\n\n1. UNIQUENESS: The old_string MUST uniquely identify the specific instance you want to change. This means:\n   - Include AT LEAST 3-5 lines of context BEFORE the change point\n   - Include AT LEAST 3-5 lines of context AFTER the change point\n   - Include all whitespace, indentation, and surrounding code exactly as it appears in the file\n\n2. SINGLE INSTANCE: This tool can only change ONE instance at a time. If you need to change multiple instances:\n   - Make separate calls to this tool for each instance\n   - Each call must uniquely identify its specific instance using extensive context\n\n3. VERIFICATION: Before using this tool:\n   - If multiple instances exist, gather enough context to uniquely identify each one\n   - Plan separate tool calls for each instance\n",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "properties": {
+              "file_path": {
+                "type": "string",
+                "description": "The path to the file you want to search and replace in."
+              },
+              "old_string": {
+                "type": "string",
+                "description": "The text to replace (must be unique within the file, and must match the file contents exactly, including all whitespace and indentation)"
+              },
+              "new_string": {
+                "type": "string",
+                "description": "The edited text to replace the old_string (must be different from the old_string)"
+              }
+            },
+            "required": [
+              "file_path",
+              "old_string",
+              "new_string"
+            ],
+            "additionalProperties": false
           }
         }
       },
@@ -88,6 +119,7 @@
           "name": "delete_file",
           "description": "Delete a file from the codebase",
           "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
               "path": {
@@ -98,8 +130,7 @@
             "required": [
               "path"
             ],
-            "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "additionalProperties": false
           }
         }
       },
@@ -109,6 +140,7 @@
           "name": "rename_file",
           "description": "Rename or move a file in the codebase",
           "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
               "from": {
@@ -124,8 +156,7 @@
               "from",
               "to"
             ],
-            "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "additionalProperties": false
           }
         }
       },
@@ -135,6 +166,7 @@
           "name": "add_dependency",
           "description": "Install npm packages",
           "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
               "packages": {
@@ -148,8 +180,7 @@
             "required": [
               "packages"
             ],
-            "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "additionalProperties": false
           }
         }
       },
@@ -159,18 +190,30 @@
           "name": "read_file",
           "description": "Read the content of a file from the codebase.\n  \n- You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.",
           "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
               "path": {
                 "type": "string",
                 "description": "The file path to read"
+              },
+              "start_line_one_indexed": {
+                "description": "The one-indexed line number to start reading from (inclusive).",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "end_line_one_indexed_inclusive": {
+                "description": "The one-indexed line number to end reading at (inclusive).",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
               }
             },
             "required": [
               "path"
             ],
-            "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "additionalProperties": false
           }
         }
       },
@@ -180,19 +223,23 @@
           "name": "list_files",
           "description": "List files in the application directory. By default, lists only the immediate directory contents. Use recursive=true to list all files recursively. If you are not sure, list all files by omitting the directory parameter.",
           "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
               "directory": {
-                "type": "string",
-                "description": "Optional subdirectory to list"
+                "description": "Optional subdirectory to list",
+                "type": "string"
               },
               "recursive": {
-                "type": "boolean",
-                "description": "Whether to list files recursively (default: false)"
+                "description": "Whether to list files recursively (default: false)",
+                "type": "boolean"
+              },
+              "include_hidden": {
+                "description": "Whether to include .dyad files which are git-ignored (default: false)",
+                "type": "boolean"
               }
             },
-            "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "additionalProperties": false
           }
         }
       },
@@ -200,8 +247,9 @@
         "type": "function",
         "function": {
           "name": "grep",
-          "description": "Search for a regex pattern in the codebase using ripgrep.\n\n- Returns matching lines with file paths and line numbers\n- By default, the search is case-insensitive\n- Use include_pattern to filter by file type (e.g. '*.tsx')\n- Use exclude_pattern to skip certain files (e.g. '*.test.ts')",
+          "description": "Search for a regex pattern in the codebase using ripgrep.\n\n- Returns matching lines with file paths and line numbers\n- By default, the search is case-insensitive\n- Use include_pattern to filter by file type (e.g. '*.tsx')\n- Use exclude_pattern to skip certain files (e.g. '*.test.ts')\n- Results are limited to 100 matches by default (max 250). If results are truncated, narrow your search with include_pattern or a more specific query.",
           "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
               "query": {
@@ -209,23 +257,28 @@
                 "description": "The regex pattern to search for"
               },
               "include_pattern": {
-                "type": "string",
-                "description": "Glob pattern for files to include (e.g. '*.ts' for TypeScript files)"
+                "description": "Glob pattern for files to include (e.g. '*.ts' for TypeScript files)",
+                "type": "string"
               },
               "exclude_pattern": {
-                "type": "string",
-                "description": "Glob pattern for files to exclude"
+                "description": "Glob pattern for files to exclude",
+                "type": "string"
               },
               "case_sensitive": {
-                "type": "boolean",
-                "description": "Whether the search should be case sensitive (default: false)"
+                "description": "Whether the search should be case sensitive (default: false)",
+                "type": "boolean"
+              },
+              "limit": {
+                "description": "Maximum number of matches to return (default: 100, max: 250). Use include_pattern to narrow results if limit is reached.",
+                "type": "number",
+                "minimum": 1,
+                "maximum": 250
               }
             },
             "required": [
               "query"
             ],
-            "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "additionalProperties": false
           }
         }
       },
@@ -235,6 +288,7 @@
           "name": "code_search",
           "description": "Search the codebase semantically to find files relevant to a query. Use this tool when you need to discover which files contain code related to a specific concept, feature, or functionality. Returns a list of file paths that are most relevant to the search query.\n\n### When to Use This Tool\n\n- Explore unfamiliar codebases\n- Ask \"how / where / what\" questions to understand behavior\n- Find code by meaning rather than exact text\n\n### When NOT to Use\n\nSkip this tool for:\n1. Exact text matches (use `grep`)\n2. Reading known files (use `read_file`)\n3. Simple symbol lookups (use `grep`)\n",
           "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
               "query": {
@@ -245,8 +299,7 @@
             "required": [
               "query"
             ],
-            "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "additionalProperties": false
           }
         }
       },
@@ -256,6 +309,7 @@
           "name": "set_chat_summary",
           "description": "Set the title/summary for this chat message. You should always call this message at the end of the turn when you have finished calling all the other tools.",
           "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
               "summary": {
@@ -266,8 +320,7 @@
             "required": [
               "summary"
             ],
-            "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "additionalProperties": false
           }
         }
       },
@@ -277,6 +330,7 @@
           "name": "add_integration",
           "description": "Add an integration provider to the app (e.g., Supabase for auth, database, or server-side functions). Once you have called this tool, stop and do not call any more tools because you need to wait for the user to set up the integration.",
           "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
               "provider": {
@@ -290,8 +344,7 @@
             "required": [
               "provider"
             ],
-            "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "additionalProperties": false
           }
         }
       },
@@ -301,9 +354,11 @@
           "name": "read_logs",
           "description": "Read logs at the moment this tool is called. Includes client logs, server logs, edge function logs, and network requests. Use this to debug errors, investigate issues, or understand app behavior. IMPORTANT: Logs are a snapshot from when you call this tool - they will NOT update while you are writing code or making changes. Use filters (searchTerm, type, level) to narrow down relevant logs on the first call.",
           "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
               "type": {
+                "description": "Filter by log source type (default: all). Types: 'client' = browser console logs; 'server' = backend (including development server) logs and build output; 'edge-function' = edge function logs; 'network-requests' = HTTP requests and responses (outgoing calls and their responses).",
                 "type": "string",
                 "enum": [
                   "all",
@@ -311,32 +366,30 @@
                   "server",
                   "edge-function",
                   "network-requests"
-                ],
-                "description": "Filter by log source type (default: all). Types: 'client' = browser console logs; 'server' = backend (including development server) logs and build output; 'edge-function' = edge function logs; 'network-requests' = HTTP requests and responses (outgoing calls and their responses)."
+                ]
               },
               "level": {
+                "description": "Filter by log level (default: all)",
                 "type": "string",
                 "enum": [
                   "all",
                   "info",
                   "warn",
                   "error"
-                ],
-                "description": "Filter by log level (default: all)"
+                ]
               },
               "searchTerm": {
-                "type": "string",
-                "description": "Search for logs containing this text (case-insensitive)"
+                "description": "Search for logs containing this text (case-insensitive)",
+                "type": "string"
               },
               "limit": {
+                "description": "Maximum number of logs to return (default: 50, max: 200)",
                 "type": "number",
                 "minimum": 1,
-                "maximum": 200,
-                "description": "Maximum number of logs to return (default: 50, max: 200)"
+                "maximum": 200
               }
             },
-            "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "additionalProperties": false
           }
         }
       },
@@ -346,6 +399,7 @@
           "name": "web_search",
           "description": "\nUse this tool to access real-time information beyond your training data cutoff.\n\nWhen to Search:\n- Current API documentation, library versions, or breaking changes\n- Latest best practices, security advisories, or bug fixes\n- Specific error messages or troubleshooting solutions\n- Recent framework updates or deprecation notices\n\nQuery Tips:\n- Be specific: Include version numbers, exact error messages, or technical terms\n- Add context: \"React 19 useEffect cleanup\" not just \"React hooks\"\n\nExamples:\n\n<example>\nOpenAI GPT-5 API model names\n</example>\n\n<example>\nNextJS 14 app router middleware auth\n</example>\n",
           "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
               "query": {
@@ -356,8 +410,7 @@
             "required": [
               "query"
             ],
-            "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "additionalProperties": false
           }
         }
       },
@@ -367,6 +420,7 @@
           "name": "web_crawl",
           "description": "\nYou can crawl a website so you can clone it.\n\n### When You MUST Trigger a Crawl\nTrigger a crawl ONLY if BOTH conditions are true:\n\n1. The user's message shows intent to CLONE / COPY / REPLICATE / RECREATE / DUPLICATE / MIMIC a website.\n   - Keywords include: clone, copy, replicate, recreate, duplicate, mimic, build the same, make the same.\n\n2. The user's message contains a URL or something that appears to be a domain name.\n   - e.g. \"example.com\", \"https://example.com\"\n   - Do not require 'http://' or 'https://'.\n",
           "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
               "url": {
@@ -377,8 +431,7 @@
             "required": [
               "url"
             ],
-            "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "additionalProperties": false
           }
         }
       },
@@ -388,6 +441,7 @@
           "name": "update_todos",
           "description": "\n### When to Use This Tool\n\nUse proactively for:\n1. Complex multi-step tasks (3+ distinct steps)\n2. Non-trivial tasks requiring careful planning\n3. User explicitly requests todo list\n4. User provides multiple tasks (numbered/comma-separated)\n5. After completing tasks - mark complete with merge=true and add follow-ups\n6. When starting new tasks - mark as in_progress (ideally only one at a time)\n\n### When NOT to Use\n\nSkip for:\n1. Single, straightforward tasks\n2. Trivial tasks with no organizational benefit\n3. Tasks completable in < 3 trivial steps\n4. Purely conversational/informational requests\n5. Todo items should NOT include operational actions done in service of higher-level tasks.\n\nNEVER INCLUDE THESE IN TODOS: linting; testing; searching or examining the codebase.\n\n### Examples\n\n<example>\nUser: Add dark mode toggle to settings\nAssistant:\n- *Creates todo list:*\n1. Add state management [in_progress]\n2. Implement styles\n3. Create toggle component\n4. Update components\n- [Immediately begins working on todo 1 in the same tool call batch]\n<reasoning>\nMulti-step feature with dependencies.\n</reasoning>\n</example>\n\n<example>\n// User: Implement user registration, product catalog, shopping cart, checkout flow.\nAssistant: *Creates todo list breaking down each feature into specific tasks*\n<reasoning>\nMultiple complex features provided as list requiring organized task management.\n</reasoning>\n</example>\n\n### Task States and Management\n\n1. **Task States:**\n- pending: Not yet started\n- in_progress: Currently working on\n- completed: Finished successfully\n\n2. **Task Management:**\n- Update status in real-time\n- Mark complete IMMEDIATELY after finishing\n- Only ONE task in_progress at a time\n- Complete current tasks before starting new ones\n\n3. **Task Breakdown:**\n- Create specific, actionable items\n- Break complex tasks into manageable steps\n- Use clear, descriptive names\n\n4. **Parallel Todo Writes:**\n- Prefer creating the first todo as in_progress\n- Start working on todos by using tool calls in the same tool call batch as the todo write\n- Batch todo updates with other tool calls for better latency and lower costs for the user\n",
           "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
               "merge": {
@@ -404,17 +458,17 @@
                       "description": "Unique identifier for the todo item"
                     },
                     "content": {
-                      "type": "string",
-                      "description": "The description/content of the todo item"
+                      "description": "The description/content of the todo item",
+                      "type": "string"
                     },
                     "status": {
+                      "description": "The current status of the todo item",
                       "type": "string",
                       "enum": [
                         "pending",
                         "in_progress",
                         "completed"
-                      ],
-                      "description": "The current status of the todo item"
+                      ]
                     }
                   },
                   "required": [
@@ -429,8 +483,7 @@
               "merge",
               "todos"
             ],
-            "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "additionalProperties": false
           }
         }
       },
@@ -440,18 +493,18 @@
           "name": "run_type_checks",
           "description": "Run TypeScript type checks on the current workspace. You can provide paths to specific files or directories, or omit the argument to get diagnostics for all files.\n\n- If a file path is provided, returns diagnostics for that file only\n- If a directory path is provided, returns diagnostics for all files within that directory\n- If no path is provided, returns diagnostics for all files in the workspace\n- This tool can return type errors that were already present before your edits, so avoid calling it with a very wide scope of files\n- NEVER call this tool on a file unless you've edited it or are about to edit it",
           "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
             "type": "object",
             "properties": {
               "paths": {
+                "description": "Optional. An array of paths to files or directories to read type errors for. If provided, returns diagnostics for the specified files/directories only. If not provided, returns diagnostics for all files in the workspace.",
                 "type": "array",
                 "items": {
                   "type": "string"
-                },
-                "description": "Optional. An array of paths to files or directories to read type errors for. If provided, returns diagnostics for the specified files/directories only. If not provided, returns diagnostics for all files in the workspace."
+                }
               }
             },
-            "additionalProperties": false,
-            "$schema": "http://json-schema.org/draft-07/schema#"
+            "additionalProperties": false
           }
         }
       }

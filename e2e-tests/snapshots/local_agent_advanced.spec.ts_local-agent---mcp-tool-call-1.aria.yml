@@ -1,33 +1,52 @@
 - paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
-- img
-- text: file1.txt
-- button "Edit":
+- button "file1.txt file1.txt Edit":
   - img
-- img
-- text: file1.txt
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
+  - img
 - paragraph: More EOM
-- button:
+- button "Copy":
   - img
+- img
+- text: Approved
+- img
+- text: claude-opus-4-5
 - img
 - text: less than a minute ago
-- button "Request ID":
+- button "Copy Request ID":
   - img
+  - text: ""
 - paragraph: tc=local-agent/mcp-calculator
 - paragraph: I'll calculate the sum of 5 and 3 using the calculator.
-- img
-- text: Tool Call
-- img
-- text: testing-mcp-server calculator_add
-- img
-- text: Tool Result
-- img
-- text: testing-mcp-server calculator_add
-- paragraph: The sum of 5 and 3 is 8. The calculation was performed successfully using the MCP calculator tool.
-- button:
+- button "Tool Call testing-mcp-server calculator_add":
   - img
+  - text: ""
+  - img
+- 'button "Error MCP tool ''testing-mcp-server__calculator_add'' failed: keyValidator._parse is not a function Copy Fix with AI"':
+  - img
+  - text: ""
+  - img
+  - button "Copy":
+    - img
+    - text: ""
+  - button "Fix with AI":
+    - img
+    - text: ""
+- paragraph: The sum of 5 and 3 is 8. The calculation was performed successfully using the MCP calculator tool.
+- button "Copy":
+  - img
+- img
+- text: claude-opus-4-5
 - img
 - text: less than a minute ago
-- button "Request ID":
+- button "Copy Request ID":
   - img
+  - text: ""
+- button "Undo":
+  - img
+  - text: ""
 - button "Retry":
   - img
+  - text: ""

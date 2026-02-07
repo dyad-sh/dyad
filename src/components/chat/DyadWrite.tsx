@@ -1,6 +1,6 @@
 import type React from "react";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Pencil, Edit, X } from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
 import { CustomTagState } from "./stateTypes";
@@ -14,6 +14,7 @@ import {
   DyadStateIndicator,
   DyadDescription,
   DyadCardContent,
+  DyadDiffStats,
 } from "./DyadCardPrimitives";
 
 interface DyadWriteProps {
@@ -49,6 +50,12 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
     setIsContentVisible(true);
   };
 
+  const lineCount = useMemo(() => {
+    const content = String(children ?? "");
+    if (!content.trim()) return 0;
+    return content.split("\n").length;
+  }, [children]);
+
   const fileName = path ? path.split("/").pop() : "";
 
   return (
@@ -78,6 +85,9 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
           <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
         )}
         <div className="ml-auto flex items-center gap-1">
+          {!inProgress && lineCount > 0 && (
+            <DyadDiffStats totalLines={lineCount} />
+          )}
           {!inProgress && (
             <>
               {isEditing ? (

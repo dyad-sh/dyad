@@ -14,6 +14,7 @@ import {
   DyadFilePath,
   DyadDescription,
   DyadCardContent,
+  DyadDiffStats,
 } from "./DyadCardPrimitives";
 
 interface DyadSearchReplaceProps {
@@ -42,6 +43,16 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
     [children],
   );
 
+  const { addedLines, removedLines } = useMemo(() => {
+    let added = 0;
+    let removed = 0;
+    for (const b of blocks) {
+      removed += b.searchContent.split("\n").length;
+      added += b.replaceContent.split("\n").length;
+    }
+    return { addedLines: added, removedLines: removed };
+  }, [blocks]);
+
   const fileName = path ? path.split("/").pop() : "";
 
   return (
@@ -68,7 +79,13 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
         {aborted && (
           <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
         )}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1.5">
+          {blocks.length > 0 && (
+            <DyadDiffStats
+              addedLines={addedLines}
+              removedLines={removedLines}
+            />
+          )}
           <DyadExpandIcon isExpanded={isContentVisible} />
         </div>
       </DyadCardHeader>

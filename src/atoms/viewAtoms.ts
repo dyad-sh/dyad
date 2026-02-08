@@ -10,3 +10,7 @@ export const selectedFileAtom = atom<{
 export const activeSettingsSectionAtom = atom<string | null>(
   SECTION_IDS.general,
 );
+
+// Terminal drawer state
+export const isTerminalOpenAtom = atom(false);
+export const terminalHeightAtom = atom(300); // Height in pixels

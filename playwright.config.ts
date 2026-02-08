@@ -8,7 +8,10 @@ const config: PlaywrightTestConfig = {
   // Enable parallel test execution - E2E test builds skip the singleton lock
   // Read parallelism from env var, default to 1 if not set
   workers: parseInt(process.env.PLAYWRIGHT_PARALLELISM || "1", 10),
-  retries: process.env.CI ? 2 : 0,
+  retries: parseInt(
+    process.env.PLAYWRIGHT_RETRIES ?? (process.env.CI ? "2" : "0"),
+    10,
+  ),
   timeout: process.env.CI ? 180_000 : 75_000,
   // Use a custom snapshot path template because Playwright's default
   // is platform-specific which isn't necessary for Dyad e2e tests

@@ -243,6 +243,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          repository: ${{ needs.check-changes.outputs.pr_head_repo || github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ needs.check-changes.outputs.pr_head_ref || github.event.pull_request.head.ref || '' }}
       - name: Initialize environment
         uses: actions/setup-node@v4
         with:

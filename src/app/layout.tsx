@@ -17,6 +17,8 @@ import type { ZoomLevel } from "@/lib/schemas";
 import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
 import { chatInputValueAtom } from "@/atoms/chatAtoms";
 import { usePlanEvents } from "@/hooks/usePlanEvents";
+import { TerminalDrawer } from "@/components/terminal/TerminalDrawer";
+import { isTerminalOpenAtom, terminalHeightAtom } from "@/atoms/viewAtoms";
 
 const DEFAULT_ZOOM_LEVEL: ZoomLevel = "100";
 
@@ -35,6 +37,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
   // Initialize plan events listener
   usePlanEvents();
+
+  // Terminal drawer state
+  const isTerminalOpen = useAtomValue(isTerminalOpenAtom);
+  const terminalHeight = useAtomValue(terminalHeightAtom);
 
   useEffect(() => {
     const zoomLevel = settings?.zoomLevel ?? DEFAULT_ZOOM_LEVEL;
@@ -96,10 +102,19 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <AppSidebar />
             <div
               id="layout-main-content-container"
-              className="flex h-screenish w-full overflow-x-hidden mt-12 mb-4 mr-4 border-t border-l border-border rounded-lg bg-background"
+              className="flex w-full overflow-x-hidden mt-12 mr-4 border-t border-l border-border rounded-lg bg-background"
+              style={{
+                height: isTerminalOpen
+                  ? `calc(100vh - 3rem - 1rem - ${terminalHeight}px)`
+                  : "calc(100vh - 3rem - 1rem)",
+                marginBottom: isTerminalOpen ? 0 : "1rem",
+                transition:
+                  "height 150ms ease-out, margin-bottom 150ms ease-out",
+              }}
             >
               {children}
             </div>
+            <TerminalDrawer />
             <Toaster richColors />
           </SidebarProvider>
         </DeepLinkProvider>

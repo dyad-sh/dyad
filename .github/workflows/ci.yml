@@ -292,6 +292,8 @@ jobs:
           FLAKINESS_ACCESS_TOKEN: ${{ secrets.FLAKINESS_ACCESS_TOKEN }}
           # Self-hosted macOS runners can handle more parallelism
           PLAYWRIGHT_PARALLELISM: ${{ contains(matrix.os.image, 'self-hosted') && '3' || '1' }}
+          # Self-hosted macOS runners use fewer retries (1) vs GitHub-hosted CI (2)
+          PLAYWRIGHT_RETRIES: ${{ contains(matrix.os.image, 'self-hosted') && '1' || '2' }}
         # You can add debug logging to make it easier to see what's failing
         # by adding "DEBUG=pw:browser" in front.
         # Use blob reporter for sharding and merge capabilities

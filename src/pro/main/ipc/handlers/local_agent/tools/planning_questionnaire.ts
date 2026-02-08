@@ -58,7 +58,7 @@ const planningQuestionnaireSchema = z.object({
 });
 
 const DESCRIPTION = `
-Present a structured questionnaire to gather requirements from the user during the planning phase.
+Present a structured questionnaire to gather requirements from the user .
 
 **CRITICAL**: After calling this tool, you MUST STOP and wait for the user's responses before proceeding. Do NOT create a plan or take further action until the user has answered all questions. The user's responses will be sent as a follow-up message.
 

@@ -551,17 +551,15 @@ export async function handleLocalAgentStream(
         stopWhen: [
           stepCountIs(25),
           hasToolCall(addIntegrationTool.name),
-          // In plan mode, stop immediately after presenting a questionnaire,
-          // writing a plan, or exiting plan mode so the agent yields control
-          // back to the user. Without this, some models (e.g. Gemini Pro 3)
+          // Always stop after presenting a questionnaire so the agent yields
+          // control back to the user. This applies in both plan mode and
+          // normal agent mode. Without this, some models (e.g. Gemini Pro 3)
           // ignore the prompt-level "STOP" instruction and keep calling tools
           // in a loop.
+          hasToolCall(planningQuestionnaireTool.name),
+          // In plan mode, also stop after writing a plan or exiting plan mode.
           ...(planModeOnly
-            ? [
-                hasToolCall(planningQuestionnaireTool.name),
-                hasToolCall(writePlanTool.name),
-                hasToolCall(exitPlanTool.name),
-              ]
+            ? [hasToolCall(writePlanTool.name), hasToolCall(exitPlanTool.name)]
             : []),
         ],
         abortSignal: abortController.signal,

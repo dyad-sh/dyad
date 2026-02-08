@@ -380,7 +380,9 @@ const createApplicationMenu = () => {
   Menu.setApplicationMenu(appMenu);
 };
 
-// Skip singleton lock for E2E test builds to allow parallel test execution
+// Skip singleton lock for E2E test builds to allow parallel test execution.
+// Deep link handling still works via the 'open-url' event registered below.
+// The 'second-instance' handler is intentionally omitted since it requires the singleton lock.
 if (IS_TEST_BUILD) {
   app.whenReady().then(onReady);
 } else {
@@ -396,7 +398,10 @@ if (IS_TEST_BUILD) {
         mainWindow.focus();
       }
       // the commandLine is array of strings in which last element is deep link url
-      handleDeepLinkReturn(commandLine.pop()!);
+      const url = commandLine.at(-1);
+      if (url) {
+        handleDeepLinkReturn(url);
+      }
     });
     app.whenReady().then(onReady);
   }

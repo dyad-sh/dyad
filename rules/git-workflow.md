@@ -29,6 +29,16 @@ When running GitHub Actions with `pull_request_target` on cross-repo PRs (from f
 
 Actions performed using the default `GITHUB_TOKEN` (including labels added by `github-actions[bot]` via `actions/github-script`) do **not** trigger `pull_request_target` or other workflow events. This is a GitHub limitation to prevent infinite loops. If one workflow adds a label that should trigger another workflow (e.g., `label-rebase-prs.yml` adds `cc:rebase` to trigger `claude-rebase.yml`), the label-adding step must use a **PAT** or **GitHub App token** (e.g., `PR_RW_GITHUB_TOKEN`) instead of `GITHUB_TOKEN`.
 
+## Rebasing workflow
+
+When rebasing a branch onto upstream/main:
+
+1. Stash any uncommitted changes first: `git stash`
+2. Run the rebase: `git rebase upstream/main`
+3. Resolve any conflicts, stage resolved files with `git add`, then `git rebase --continue`
+4. After rebase completes, pop the stash: `git stash pop`
+5. If `package-lock.json` has changes but `package.json` doesn't, discard the lock file changes: `git checkout -- package-lock.json` (these are spurious diffs from npm operations)
+
 ## Adding labels to PRs
 
 `gh pr edit --add-label` fails with a GraphQL "Projects (classic)" deprecation error on repos that had classic projects. Use the REST API instead:
@@ -41,3 +51,4 @@ gh api repos/dyad-sh/dyad/issues/{PR_NUMBER}/labels -f "labels[]=label-name"
 
 - When resolving conflicts in i18n-related commits, watch for duplicate constant definitions that conflict with imports from `@/lib/schemas` (e.g., `DEFAULT_ZOOM_LEVEL`)
 - If both sides of a conflict have valid imports/hooks, keep both and remove any duplicate constant redefinitions
+- **Import merge conflicts**: When both HEAD and incoming commit add different imports to the same file (e.g., HEAD adds i18n imports, incoming adds terminal imports), combine both sets of imports instead of choosing one side. This commonly happens with feature branches that touch the same files.

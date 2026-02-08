@@ -50,6 +50,7 @@ export { visualEditingContracts } from "./visual-editing";
 export { securityContracts } from "./security";
 export { miscContracts, miscEvents } from "./misc";
 export { freeAgentQuotaContracts } from "./free_agent_quota";
+export { terminalContracts, terminalEvents } from "./terminal";
 
 // =============================================================================
 // Client Exports
@@ -79,6 +80,7 @@ export { visualEditingClient } from "./visual-editing";
 export { securityClient } from "./security";
 export { miscClient, miscEventClient } from "./misc";
 export { freeAgentQuotaClient } from "./free_agent_quota";
+export { terminalClient, terminalEventClient } from "./terminal";
 
 // =============================================================================
 // Type Exports
@@ -285,6 +287,9 @@ export type { ChatLogsData, DeepLinkData, AppOutput, EnvVar } from "./misc";
 // Free agent quota types
 export type { FreeAgentQuotaStatus } from "./free_agent_quota";
 
+// Terminal types
+export type { TerminalSession, TerminalOutput } from "./terminal";
+
 // =============================================================================
 // Schema Exports (for validation in handlers/components)
 // =============================================================================
@@ -341,6 +346,7 @@ import { visualEditingClient } from "./visual-editing";
 import { securityClient } from "./security";
 import { miscClient, miscEventClient } from "./misc";
 import { freeAgentQuotaClient } from "./free_agent_quota";
+import { terminalClient, terminalEventClient } from "./terminal";
 
 /**
  * Unified IPC client with all domains organized by namespace.
@@ -397,6 +403,9 @@ export const ipc = {
   misc: miscClient,
   freeAgentQuota: freeAgentQuotaClient,
 
+  // Terminal
+  terminal: terminalClient,
+
   // Event clients for main->renderer pub/sub
   events: {
     agent: agentEventClient,
@@ -404,5 +413,6 @@ export const ipc = {
     mcp: mcpEventClient,
     system: systemEventClient,
     misc: miscEventClient,
+    terminal: terminalEventClient,
   },
 } as const;

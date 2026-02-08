@@ -12,6 +12,7 @@ import {
   Wrench,
   Globe,
   Shield,
+  Terminal,
 } from "lucide-react";
 import { ChatActivityButton } from "@/components/chat/ChatActivity";
 import { motion } from "framer-motion";
@@ -32,7 +33,7 @@ import {
 import { showError, showSuccess } from "@/lib/toast";
 import { useMutation } from "@tanstack/react-query";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
-import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
+import { isPreviewOpenAtom, isTerminalOpenAtom } from "@/atoms/viewAtoms";
 import { useTranslation } from "react-i18next";
 
 export type PreviewMode =
@@ -59,6 +60,7 @@ export const ActionHeader = () => {
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const { problemReport } = useCheckProblems(selectedAppId);
   const { restartApp, refreshAppIframe } = useRunApp();
+  const [isTerminalOpen, setIsTerminalOpen] = useAtom(isTerminalOpenAtom);
 
   const isCompact = windowWidth < 888;
 
@@ -264,8 +266,28 @@ export const ActionHeader = () => {
           "publish-mode-button",
         )}
       </div>
-      {/* Chat activity bell */}
+      {/* Chat activity bell and terminal toggle */}
       <div className="flex items-center gap-1">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                data-testid="terminal-toggle-button"
+                className={`no-app-region-drag flex items-center justify-center p-1.5 rounded-md text-sm transition-colors ${
+                  isTerminalOpen
+                    ? "bg-[var(--background-lightest)] text-foreground"
+                    : "hover:bg-[var(--background-darkest)]"
+                }`}
+                onClick={() => setIsTerminalOpen(!isTerminalOpen)}
+              />
+            }
+          >
+            <Terminal size={16} />
+          </TooltipTrigger>
+          <TooltipContent>
+            {isTerminalOpen ? "Close terminal" : "Open terminal"}
+          </TooltipContent>
+        </Tooltip>
         <ChatActivityButton />
         <DropdownMenu>
           <Tooltip>

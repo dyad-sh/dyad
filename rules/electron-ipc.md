@@ -46,6 +46,11 @@ const unsub = ipc.events.agent.onTodosUpdate((payload) => { ... });
 ipc.chatStream.start(params, { onChunk, onEnd, onError });
 ```
 
+## Stream client notes
+
+- `createStreamClient(...).start()` returns `void`, not a cleanup/unsubscribe function. You cannot capture a handle to abort or clean up an active stream from the caller side.
+- To guard against duplicate streams, use a module-level `Set` (like `pendingStreamChatIds` in `useStreamChat.ts`) or a React state/ref-based lock, not the return value.
+
 ## Handler expectations
 
 - Handlers should `throw new Error("...")` on failure instead of returning `{ success: false }` style payloads.

@@ -1,4 +1,4 @@
-import { SendIcon, StopCircleIcon } from "lucide-react";
+import { SendHorizontalIcon, StopCircleIcon } from "lucide-react";
 import {
   Tooltip,
   TooltipTrigger,
@@ -20,6 +20,7 @@ import { LexicalChatInput } from "./LexicalChatInput";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
 import { useTypingPlaceholder } from "@/hooks/useTypingPlaceholder";
 import { AuxiliaryActionsMenu } from "./AuxiliaryActionsMenu";
+import { cn } from "@/lib/utils";
 
 export function HomeChatInput({
   onSubmit,
@@ -85,9 +86,12 @@ export function HomeChatInput({
     <>
       <div className="p-4" data-testid="home-chat-input-container">
         <div
-          className={`relative flex flex-col space-y-2 border border-border rounded-lg bg-(--background-lighter) shadow-sm ${
-            isDraggingOver ? "ring-2 ring-blue-500 border-blue-500" : ""
-          }`}
+          className={cn(
+            "relative flex flex-col border border-border rounded-2xl bg-(--background-lighter) transition-colors duration-200",
+            "hover:border-primary/30",
+            "focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/20",
+            isDraggingOver && "ring-2 ring-blue-500 border-blue-500",
+          )}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
@@ -108,7 +112,7 @@ export function HomeChatInput({
             onCancel={cancelPendingFiles}
           />
 
-          <div className="flex items-start space-x-2 ">
+          <div className="flex items-end gap-1">
             <LexicalChatInput
               value={inputValue}
               onChange={setInputValue}
@@ -127,7 +131,7 @@ export function HomeChatInput({
                   render={
                     <button
                       aria-label="Cancel generation (unavailable here)"
-                      className="px-2 py-2 mt-1 mr-1 text-(--sidebar-accent-fg) rounded-lg opacity-50 cursor-not-allowed"
+                      className="px-2 py-2 mb-0.5 mr-1 text-muted-foreground rounded-lg opacity-50 cursor-not-allowed transition-colors duration-150"
                     />
                   }
                 >
@@ -145,17 +149,17 @@ export function HomeChatInput({
                       onClick={handleCustomSubmit}
                       disabled={!inputValue.trim() && attachments.length === 0}
                       aria-label="Send message"
-                      className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
+                      className="px-2 py-2 mb-0.5 mr-1 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 disabled:opacity-30 disabled:hover:text-muted-foreground cursor-pointer disabled:cursor-default"
                     />
                   }
                 >
-                  <SendIcon size={20} />
+                  <SendHorizontalIcon size={20} />
                 </TooltipTrigger>
                 <TooltipContent>Send message</TooltipContent>
               </Tooltip>
             )}
           </div>
-          <div className="pl-2 pr-1 flex items-center justify-between pb-2">
+          <div className="pl-3 pr-2 flex items-center justify-between pb-2.5 pt-0.5">
             <div className="flex items-center">
               <ChatInputControls showContextFilesPicker={false} />
             </div>

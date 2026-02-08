@@ -23,7 +23,7 @@ export function ChatInputControls({
     (settings?.selectedChatMode === "build" && enabledMcpServersCount > 0);
 
   return (
-    <div className="flex">
+    <div className="flex items-center gap-0.5">
       <ChatModeSelector />
       {showMcpToolsPicker && (
         <>
@@ -33,15 +33,8 @@ export function ChatInputControls({
       )}
       <div className="w-1.5"></div>
       <ModelPicker />
-      <div className="w-1.5"></div>
       <ProModeSelector />
-      <div className="w-1"></div>
-      {showContextFilesPicker && (
-        <>
-          <ContextFilesPicker />
-          <div className="w-0.5"></div>
-        </>
-      )}
+      {showContextFilesPicker && <ContextFilesPicker />}
     </div>
   );
 }

@@ -109,12 +109,12 @@ export function ChatModeSelector() {
               <MiniSelectTrigger
                 data-testid="chat-mode-selector"
                 className={cn(
-                  "h-6 w-fit px-1.5 py-0 text-xs-sm font-medium shadow-none gap-0.5",
+                  "h-7 w-fit px-2 py-0 text-xs font-medium border-none shadow-none gap-1 rounded-lg transition-colors",
                   selectedMode === "build" ||
                     selectedMode === "local-agent" ||
                     selectedMode === "plan"
-                    ? "bg-background hover:bg-muted/50 focus:bg-muted/50"
-                    : "bg-primary/10 hover:bg-primary/20 focus:bg-primary/20 text-primary border-primary/20 dark:bg-primary/20 dark:hover:bg-primary/30 dark:focus:bg-primary/30",
+                    ? "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                    : "bg-primary/10 text-primary hover:bg-primary/15 dark:bg-primary/15 dark:hover:bg-primary/20",
                 )}
                 size="sm"
               />

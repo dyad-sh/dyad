@@ -10,6 +10,7 @@ import {
   BUILD_SYSTEM_POSTFIX,
   BUILD_SYSTEM_PREFIX,
 } from "@/prompts/system_prompt";
+import { FAKE_LLM_BASE_PORT } from "../../playwright.config";
 
 const showDebugLogs = process.env.DEBUG_LOGS === "true";
 
@@ -209,7 +210,10 @@ class ProModesDialog {
 }
 
 class GitHubConnector {
-  constructor(public page: Page) {}
+  constructor(
+    public page: Page,
+    public fakeLlmPort: number,
+  ) {}
 
   async connect() {
     await this.page.getByRole("button", { name: "Connect to GitHub" }).click();
@@ -292,15 +296,15 @@ class GitHubConnector {
 
   async clearPushEvents() {
     const response = await this.page.request.post(
-      "http://localhost:3500/github/api/test/clear-push-events",
+      `http://localhost:${this.fakeLlmPort}/github/api/test/clear-push-events`,
     );
     return await response.json();
   }
 
   async getPushEvents(repo?: string) {
     const url = repo
-      ? `http://localhost:3500/github/api/test/push-events?repo=${repo}`
-      : "http://localhost:3500/github/api/test/push-events";
+      ? `http://localhost:${this.fakeLlmPort}/github/api/test/push-events?repo=${repo}`
+      : `http://localhost:${this.fakeLlmPort}/github/api/test/push-events`;
     const response = await this.page.request.get(url);
     return await response.json();
   }
@@ -333,13 +337,15 @@ class GitHubConnector {
 export class PageObject {
   public userDataDir: string;
   public githubConnector: GitHubConnector;
+  public fakeLlmPort: number;
   constructor(
     public electronApp: ElectronApplication,
     public page: Page,
-    { userDataDir }: { userDataDir: string },
+    { userDataDir, fakeLlmPort }: { userDataDir: string; fakeLlmPort: number },
   ) {
     this.userDataDir = userDataDir;
-    this.githubConnector = new GitHubConnector(this.page);
+    this.fakeLlmPort = fakeLlmPort;
+    this.githubConnector = new GitHubConnector(this.page, fakeLlmPort);
   }
 
   private async baseSetup() {
@@ -1120,7 +1126,7 @@ export class PageObject {
     await this.page.getByText("API Base URLThe base URL for").click();
     await this.page
       .getByRole("textbox", { name: "API Base URL" })
-      .fill("http://localhost:3500/v1");
+      .fill(`http://localhost:${this.fakeLlmPort}/v1`);
     await this.page.getByRole("button", { name: "Add Provider" }).click();
   }
 
@@ -1534,7 +1540,13 @@ export class PageObject {
 }
 
 interface ElectronConfig {
-  preLaunchHook?: ({ userDataDir }: { userDataDir: string }) => Promise<void>;
+  preLaunchHook?: ({
+    userDataDir,
+    fakeLlmPort,
+  }: {
+    userDataDir: string;
+    fakeLlmPort: number;
+  }) => Promise<void>;
   showSetupScreen?: boolean;
 }
 
@@ -1561,6 +1573,7 @@ export const test = base.extend<{
 
       const po = new PageObject(electronApp, page, {
         userDataDir: (electronApp as any).$dyadUserDataDir,
+        fakeLlmPort: (electronApp as any).$fakeLlmPort,
       });
       await use(po);
     },
@@ -1587,16 +1600,20 @@ export const test = base.extend<{
     { auto: true },
   ],
   electronApp: [
-    async ({ electronConfig }, use) => {
+    async ({ electronConfig }, use, testInfo) => {
       // find the latest build in the out directory
       const latestBuild = eph.findLatestBuild();
       // parse the directory and find paths and other info
       const appInfo = eph.parseElectronApp(latestBuild);
-      process.env.OLLAMA_HOST = "http://localhost:3500/ollama";
-      process.env.LM_STUDIO_BASE_URL_FOR_TESTING =
-        "http://localhost:3500/lmstudio";
-      process.env.DYAD_ENGINE_URL = "http://localhost:3500/engine/v1";
-      process.env.DYAD_GATEWAY_URL = "http://localhost:3500/gateway/v1";
+
+      // Calculate worker-specific port for fake LLM server
+      // Each parallel worker gets its own server to avoid test interference
+      const fakeLlmPort = FAKE_LLM_BASE_PORT + testInfo.parallelIndex;
+
+      process.env.OLLAMA_HOST = `http://localhost:${fakeLlmPort}/ollama`;
+      process.env.LM_STUDIO_BASE_URL_FOR_TESTING = `http://localhost:${fakeLlmPort}/lmstudio`;
+      process.env.DYAD_ENGINE_URL = `http://localhost:${fakeLlmPort}/engine/v1`;
+      process.env.DYAD_GATEWAY_URL = `http://localhost:${fakeLlmPort}/gateway/v1`;
       process.env.E2E_TEST_BUILD = "true";
       if (!electronConfig.showSetupScreen) {
         // This is just a hack to avoid the AI setup screen.
@@ -1605,7 +1622,7 @@ export const test = base.extend<{
       const baseTmpDir = os.tmpdir();
       const userDataDir = path.join(baseTmpDir, `dyad-e2e-tests-${Date.now()}`);
       if (electronConfig.preLaunchHook) {
-        await electronConfig.preLaunchHook({ userDataDir });
+        await electronConfig.preLaunchHook({ userDataDir, fakeLlmPort });
       }
       const electronApp = await electron.launch({
         args: [
@@ -1621,6 +1638,7 @@ export const test = base.extend<{
         // },
       });
       (electronApp as any).$dyadUserDataDir = userDataDir;
+      (electronApp as any).$fakeLlmPort = fakeLlmPort;
 
       console.log("electronApp launched!");
       if (showDebugLogs) {

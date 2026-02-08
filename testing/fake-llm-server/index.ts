@@ -24,7 +24,12 @@ app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-const PORT = 3500;
+// Allow port to be specified via command line argument or environment variable
+// Usage: node dist/index.js --port=3501 OR PORT=3501 node dist/index.js
+const portArg = process.argv.find((arg) => arg.startsWith("--port="));
+const PORT = portArg
+  ? parseInt(portArg.split("=")[1], 10)
+  : parseInt(process.env.PORT || "3500", 10);
 
 // Helper function to create OpenAI-like streaming response chunks
 export function createStreamChunk(

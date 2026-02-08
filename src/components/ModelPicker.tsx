@@ -166,14 +166,16 @@ export function ModelPicker() {
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger
-        className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-8 max-w-[130px] px-1.5 text-xs-sm gap-2"
+        className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border-none bg-transparent shadow-none text-muted-foreground hover:text-foreground hover:bg-muted/60 h-7 max-w-[130px] px-2 gap-1.5 cursor-pointer"
         data-testid="model-picker"
         title={modelDisplayName}
       >
         <span className="truncate">
           {modelDisplayName === "Auto" && (
             <>
-              <span className="text-xs text-muted-foreground">Model:</span>{" "}
+              <span className="text-xs text-muted-foreground/70">
+                Model:
+              </span>{" "}
             </>
           )}
           {modelDisplayName}

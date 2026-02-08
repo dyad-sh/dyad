@@ -50,7 +50,7 @@ export function ContextLimitBanner({
 
   return (
     <div
-      className="mx-auto max-w-3xl px-3 py-1.5 rounded-t-md border-t border-l border-r border-amber-500/30 bg-amber-500/10 flex items-center justify-between gap-3 text-xs text-amber-600 dark:text-amber-500"
+      className="mx-auto max-w-3xl px-3 py-1.5 rounded-t-2xl border-t border-l border-r border-amber-500/30 bg-amber-500/10 flex items-center justify-between gap-3 text-xs text-amber-600 dark:text-amber-500"
       data-testid="context-limit-banner"
     >
       <span className="flex items-center gap-1.5">

@@ -52,6 +52,8 @@ export const queryKeys = {
     list: ({ appId }: { appId: number | null }) => ["chats", appId] as const,
     search: ({ appId, query }: { appId: number | null; query: string }) =>
       ["chats", "search", appId, query] as const,
+    settings: ({ chatId }: { chatId: number | null }) =>
+      ["chats", "settings", chatId] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

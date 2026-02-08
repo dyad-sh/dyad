@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import type { FileAttachment } from "@/ipc/types";
 import { useAtom } from "jotai";
 import { attachmentsAtom } from "@/atoms/chatAtoms";
@@ -7,6 +7,9 @@ export function useAttachments() {
   const [attachments, setAttachments] = useAtom(attachmentsAtom);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [pendingDroppedFiles, setPendingDroppedFiles] = useState<File[] | null>(
+    null,
+  );
 
   const handleAttachmentClick = () => {
     fileInputRef.current?.click();
@@ -59,13 +62,29 @@ export function useAttachments() {
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const files = Array.from(e.dataTransfer.files);
-      const fileAttachments: FileAttachment[] = files.map((file) => ({
-        file,
-        type: "chat-context" as const,
-      }));
-      setAttachments((attachments) => [...attachments, ...fileAttachments]);
+      setPendingDroppedFiles(files);
     }
   };
+
+  const confirmDroppedFiles = useCallback(
+    (type: "chat-context" | "upload-to-codebase") => {
+      if (pendingDroppedFiles) {
+        const fileAttachments: FileAttachment[] = pendingDroppedFiles.map(
+          (file) => ({
+            file,
+            type,
+          }),
+        );
+        setAttachments((prev) => [...prev, ...fileAttachments]);
+        setPendingDroppedFiles(null);
+      }
+    },
+    [pendingDroppedFiles, setAttachments],
+  );
+
+  const cancelDroppedFiles = useCallback(() => {
+    setPendingDroppedFiles(null);
+  }, []);
 
   const clearAttachments = () => {
     setAttachments([]);
@@ -126,6 +145,7 @@ export function useAttachments() {
     attachments,
     fileInputRef,
     isDraggingOver,
+    pendingDroppedFiles,
     handleAttachmentClick,
     handleFileChange,
     handleFileSelect,
@@ -136,5 +156,7 @@ export function useAttachments() {
     clearAttachments,
     handlePaste,
     addAttachments,
+    confirmDroppedFiles,
+    cancelDroppedFiles,
   };
 }

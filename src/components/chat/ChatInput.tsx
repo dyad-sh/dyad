@@ -55,6 +55,7 @@ import { useVersions } from "@/hooks/useVersions";
 import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
+import { FileAttachmentTypeDialog } from "./FileAttachmentTypeDialog";
 import { showExtraFilesToast, showInfo } from "@/lib/toast";
 import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
 import { ChatInputControls } from "../ChatInputControls";
@@ -147,6 +148,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const {
     attachments,
     isDraggingOver,
+    pendingDroppedFiles,
     handleFileSelect,
     removeAttachment,
     handleDragOver,
@@ -154,6 +156,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     handleDrop,
     clearAttachments,
     handlePaste,
+    confirmDroppedFiles,
+    cancelDroppedFiles,
   } = useAttachments();
 
   // Use the hook to fetch the proposal
@@ -553,6 +557,13 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
           {/* Use the DragDropOverlay component */}
           <DragDropOverlay isDraggingOver={isDraggingOver} />
+
+          {/* Dialog for choosing attachment type on drag & drop */}
+          <FileAttachmentTypeDialog
+            pendingFiles={pendingDroppedFiles}
+            onConfirm={confirmDroppedFiles}
+            onCancel={cancelDroppedFiles}
+          />
 
           <div className="flex items-start space-x-2 ">
             <LexicalChatInput

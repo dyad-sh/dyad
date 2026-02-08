@@ -667,11 +667,14 @@ export class PageObject {
     const toastCloseButtons = this.page.locator(
       "[data-sonner-toast] button[data-close-button]",
     );
-    while ((await toastCloseButtons.count()) > 0) {
+    const maxAttempts = 20;
+    let attempts = 0;
+    while ((await toastCloseButtons.count()) > 0 && attempts < maxAttempts) {
       await toastCloseButtons
         .first()
         .click()
         .catch(() => {});
+      attempts++;
     }
 
     // If close buttons don't work, click outside to dismiss

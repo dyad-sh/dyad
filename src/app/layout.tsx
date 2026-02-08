@@ -17,6 +17,7 @@ import type { ZoomLevel } from "@/lib/schemas";
 import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
 import { chatInputValueAtom } from "@/atoms/chatAtoms";
 import { usePlanEvents } from "@/hooks/usePlanEvents";
+import { useZoomShortcuts } from "@/hooks/useZoomShortcuts";
 
 const DEFAULT_ZOOM_LEVEL: ZoomLevel = "100";
 
@@ -35,6 +36,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
   // Initialize plan events listener
   usePlanEvents();
+
+  // Zoom keyboard shortcuts (Ctrl/Cmd + =/- /0)
+  useZoomShortcuts();
 
   useEffect(() => {
     const zoomLevel = settings?.zoomLevel ?? DEFAULT_ZOOM_LEVEL;

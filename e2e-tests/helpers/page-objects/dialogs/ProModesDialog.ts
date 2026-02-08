@@ -11,7 +11,17 @@ export class ProModesDialog {
     public close: () => Promise<void>,
   ) {}
 
+  async expandBuildModeSettings() {
+    const trigger = this.page.getByRole("button", {
+      name: "Build mode settings",
+    });
+    if ((await trigger.getAttribute("aria-expanded")) !== "true") {
+      await trigger.click();
+    }
+  }
+
   async setSmartContextMode(mode: "balanced" | "off" | "deep") {
+    await this.expandBuildModeSettings();
     await this.page
       .getByTestId("smart-context-selector")
       .getByRole("button", {
@@ -21,6 +31,7 @@ export class ProModesDialog {
   }
 
   async setTurboEditsMode(mode: "off" | "classic" | "search-replace") {
+    await this.expandBuildModeSettings();
     await this.page
       .getByTestId("turbo-edits-selector")
       .getByRole("button", {

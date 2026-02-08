@@ -13,25 +13,12 @@ export function ChatInputControls({
   const { settings } = useSettings();
 
   return (
-    <div className="flex">
+    <div className="flex items-center gap-0.5">
       <ChatModeSelector />
-      {settings?.selectedChatMode === "agent" && (
-        <>
-          <div className="w-1.5"></div>
-          <McpToolsPicker />
-        </>
-      )}
-      <div className="w-1.5"></div>
+      {settings?.selectedChatMode === "agent" && <McpToolsPicker />}
       <ModelPicker />
-      <div className="w-1.5"></div>
       <ProModeSelector />
-      <div className="w-1"></div>
-      {showContextFilesPicker && (
-        <>
-          <ContextFilesPicker />
-          <div className="w-0.5"></div>
-        </>
-      )}
+      {showContextFilesPicker && <ContextFilesPicker />}
     </div>
   );
 }

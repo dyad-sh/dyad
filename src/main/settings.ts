@@ -41,6 +41,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   // Enabled by default in 0.33.0-beta.1
   enableNativeGit: true,
   autoExpandPreviewPanel: true,
+  promptForTemplate: true,
   enableContextCompaction: true,
 };
 

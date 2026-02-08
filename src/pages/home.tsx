@@ -41,6 +41,7 @@ import {
 } from "@/components/ProBanner";
 import { hasDyadProKey, getEffectiveDefaultChatMode } from "@/lib/schemas";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
+import { SelectTemplateDialog } from "@/components/SelectTemplateDialog";
 
 // Adding an export for attachments
 export interface HomeSubmitOptions {
@@ -64,6 +65,10 @@ export default function HomePage() {
   const posthog = usePostHog();
   const appVersion = useAppVersion();
   const [releaseNotesOpen, setReleaseNotesOpen] = useState(false);
+  const [showTemplateDialog, setShowTemplateDialog] = useState(false);
+  const [pendingSubmitOptions, setPendingSubmitOptions] = useState<
+    HomeSubmitOptions | undefined
+  >(undefined);
   const [releaseUrl, setReleaseUrl] = useState("");
   const { theme } = useTheme();
   const queryClient = useQueryClient();
@@ -163,6 +168,25 @@ export default function HomePage() {
 
     if (!inputValue.trim() && attachments.length === 0) return;
 
+    // Check if we should prompt for template selection
+    if (settings?.promptForTemplate !== false) {
+      setPendingSubmitOptions(options);
+      setShowTemplateDialog(true);
+      return;
+    }
+
+    await proceedWithSubmit(options);
+  };
+
+  const handleTemplateConfirm = async () => {
+    setShowTemplateDialog(false);
+    await proceedWithSubmit(pendingSubmitOptions);
+    setPendingSubmitOptions(undefined);
+  };
+
+  const proceedWithSubmit = async (options?: HomeSubmitOptions) => {
+    const attachments = options?.attachments || [];
+
     try {
       setIsLoading(true);
       // Create the chat and navigate
@@ -248,6 +272,16 @@ export default function HomePage() {
         isOpen={forceCloseDialogOpen}
         onClose={() => setForceCloseDialogOpen(false)}
         performanceData={performanceData}
+      />
+      <SelectTemplateDialog
+        open={showTemplateDialog}
+        onOpenChange={(open) => {
+          setShowTemplateDialog(open);
+          if (!open) {
+            setPendingSubmitOptions(undefined);
+          }
+        }}
+        onConfirm={handleTemplateConfirm}
       />
       <SetupBanner />
 

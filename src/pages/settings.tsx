@@ -32,6 +32,7 @@ import { AgentToolsSettings } from "@/components/settings/AgentToolsSettings";
 import { ZoomSelector } from "@/components/ZoomSelector";
 import { DefaultChatModeSelector } from "@/components/DefaultChatModeSelector";
 import { ContextCompactionSwitch } from "@/components/ContextCompactionSwitch";
+import { PromptForTemplateSwitch } from "@/components/PromptForTemplateSwitch";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
 import { SECTION_IDS, SETTING_IDS } from "@/lib/settingsSearchIndex";
@@ -331,6 +332,14 @@ export function WorkflowSettings() {
 
       <div id={SETTING_IDS.defaultChatMode} className="mt-4">
         <DefaultChatModeSelector />
+      </div>
+
+      <div id={SETTING_IDS.promptForTemplate} className="space-y-1 mt-4">
+        <PromptForTemplateSwitch />
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          Show a template selection dialog when creating a new app from the home
+          page.
+        </div>
       </div>
 
       <div id={SETTING_IDS.autoApprove} className="space-y-1 mt-4">

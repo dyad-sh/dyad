@@ -32,6 +32,7 @@ export const SETTING_IDS = {
   supabase: "setting-supabase",
   neon: "setting-neon",
   nativeGit: "setting-native-git",
+  promptForTemplate: "setting-prompt-for-template",
   reset: "setting-reset",
 } as const;
 
@@ -135,6 +136,14 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     description:
       "Show a native notification when a chat response completes while the app is not focused",
     keywords: ["notification", "chat", "complete", "alert", "background"],
+    sectionId: SECTION_IDS.workflow,
+    sectionLabel: "Workflow",
+  },
+  {
+    id: SETTING_IDS.promptForTemplate,
+    label: "Prompt for Template",
+    description: "Show a template selection dialog when creating a new app",
+    keywords: ["template", "prompt", "dialog", "select", "new app", "create"],
     sectionId: SECTION_IDS.workflow,
     sectionLabel: "Workflow",
   },

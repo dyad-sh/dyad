@@ -304,6 +304,7 @@ export const UserSettingsSchema = z
     selectedChatMode: ChatModeSchema.optional(),
     defaultChatMode: ChatModeSchema.optional(),
     acceptedCommunityCode: z.boolean().optional(),
+    promptForTemplate: z.boolean().optional(),
     zoomLevel: ZoomLevelSchema.optional(),
     previewDeviceMode: DeviceModeSchema.optional(),
 

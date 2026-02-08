@@ -13,6 +13,7 @@ interface TemplateCardProps {
   isSelected: boolean;
   onSelect: (templateId: string) => void;
   onCreateApp: () => void;
+  compact?: boolean;
 }
 
 export const TemplateCard: React.FC<TemplateCardProps> = ({
@@ -20,6 +21,7 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
   isSelected,
   onSelect,
   onCreateApp,
+  compact,
 }) => {
   const { settings, updateSettings } = useSettings();
   const [showConsentDialog, setShowConsentDialog] = useState(false);
@@ -82,7 +84,7 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
           <img
             src={template.imageUrl}
             alt={template.title}
-            className={`w-full h-52 object-cover transition-opacity duration-300 group-hover:opacity-80 ${
+            className={`w-full ${compact ? "h-24" : "h-52"} object-cover transition-opacity duration-300 group-hover:opacity-80 ${
               isSelected ? "opacity-75" : ""
             }`}
           />
@@ -95,7 +97,7 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
         <div className="p-4">
           <div className="flex justify-between items-center mb-1.5">
             <h2
-              className={`text-lg font-semibold ${
+              className={`${compact ? "text-base" : "text-lg"} font-semibold ${
                 isSelected
                   ? "text-blue-600 dark:text-blue-400"
                   : "text-gray-900 dark:text-white"
@@ -120,10 +122,12 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
               </span>
             )}
           </div>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-3 h-10 overflow-y-auto">
+          <p
+            className={`text-sm text-gray-500 dark:text-gray-400 mb-3 ${compact ? "line-clamp-2" : "h-10 overflow-y-auto"}`}
+          >
             {template.description}
           </p>
-          {template.githubUrl && (
+          {template.githubUrl && !compact && (
             <a
               className={`inline-flex items-center text-sm font-medium transition-colors duration-200 ${
                 isSelected
@@ -137,19 +141,21 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
             </a>
           )}
 
-          <Button
-            onClick={(e) => {
-              e.stopPropagation();
-              onCreateApp();
-            }}
-            size="sm"
-            className={cn(
-              "w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold mt-2",
-              settings?.selectedTemplateId !== template.id && "invisible",
-            )}
-          >
-            Create App
-          </Button>
+          {!compact && (
+            <Button
+              onClick={(e) => {
+                e.stopPropagation();
+                onCreateApp();
+              }}
+              size="sm"
+              className={cn(
+                "w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold mt-2",
+                settings?.selectedTemplateId !== template.id && "invisible",
+              )}
+            >
+              Create App
+            </Button>
+          )}
         </div>
       </div>
 

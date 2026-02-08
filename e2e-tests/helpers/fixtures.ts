@@ -138,11 +138,12 @@ export const test = base.extend<{
       // Windows' strict resource locking (e.g. file locking).
       if (os.platform() === "win32") {
         try {
-          console.log("[cleanup:start] Killing dyad.exe");
+          const executableName = path.basename(appInfo.executable);
+          console.log(`[cleanup:start] Killing ${executableName}`);
           console.time("taskkill");
-          execSync("taskkill /f /t /im dyad.exe");
+          execSync(`taskkill /f /t /im ${executableName}`);
           console.timeEnd("taskkill");
-          console.log("[cleanup:end] Killed dyad.exe");
+          console.log(`[cleanup:end] Killed ${executableName}`);
         } catch (error) {
           console.warn(
             "Failed to kill dyad.exe: (continuing with test cleanup)",

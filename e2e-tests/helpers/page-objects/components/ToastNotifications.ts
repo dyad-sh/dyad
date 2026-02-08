@@ -49,9 +49,11 @@ export class ToastNotifications {
     const closeButtons = this.page.locator(
       "[data-sonner-toast] button[data-close-button]",
     );
-    const count = await closeButtons.count();
-    for (let i = 0; i < count; i++) {
-      await closeButtons.nth(i).click();
+    while ((await closeButtons.count()) > 0) {
+      await closeButtons
+        .first()
+        .click()
+        .catch(() => {});
     }
   }
 }

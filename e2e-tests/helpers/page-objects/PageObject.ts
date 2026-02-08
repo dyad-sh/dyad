@@ -667,10 +667,9 @@ export class PageObject {
     const toastCloseButtons = this.page.locator(
       "[data-sonner-toast] button[data-close-button]",
     );
-    const closeCount = await toastCloseButtons.count();
-    for (let i = 0; i < closeCount; i++) {
+    while ((await toastCloseButtons.count()) > 0) {
       await toastCloseButtons
-        .nth(i)
+        .first()
         .click()
         .catch(() => {});
     }

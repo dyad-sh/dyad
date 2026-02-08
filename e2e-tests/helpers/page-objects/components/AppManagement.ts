@@ -7,7 +7,7 @@ import { Page, expect } from "@playwright/test";
 import * as eph from "electron-playwright-helpers";
 import { ElectronApplication } from "playwright";
 import path from "path";
-import { execSync } from "child_process";
+import { execSync, execFileSync } from "child_process";
 import { Timeout } from "../../constants";
 
 export class AppManagement {
@@ -110,7 +110,15 @@ export class AppManagement {
     await this.page.getByRole("button", { name: "Import App" }).click();
     await eph.stubDialog(this.electronApp, "showOpenDialog", {
       filePaths: [
-        path.join(__dirname, "..", "..", "fixtures", "import-app", appDir),
+        path.join(
+          __dirname,
+          "..",
+          "..",
+          "..",
+          "fixtures",
+          "import-app",
+          appDir,
+        ),
       ],
     });
     await this.page.getByRole("button", { name: "Select Folder" }).click();
@@ -131,8 +139,8 @@ export class AppManagement {
       throw new Error("App path not found");
     }
 
-    execSync(`git config user.email '${email}'`, { cwd: appPath });
-    execSync(`git config user.name '${name}'`, { cwd: appPath });
+    execFileSync("git", ["config", "user.email", email], { cwd: appPath });
+    execFileSync("git", ["config", "user.name", name], { cwd: appPath });
     if (disableGpgSign) {
       execSync("git config commit.gpgsign false", { cwd: appPath });
     }

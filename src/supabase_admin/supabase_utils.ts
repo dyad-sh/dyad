@@ -178,9 +178,15 @@ export async function deployAllSupabaseFunctions({
         `Activating ${successfulDeploys.length} functions via bulk update...`,
       );
       try {
+        // Explicitly set verify_jwt: false for all functions to ensure
+        // JWT verification with legacy secret is disabled (see issue #1010)
+        const functionsWithVerifyJwtDisabled = successfulDeploys.map((fn) => ({
+          ...fn,
+          verify_jwt: false,
+        }));
         await bulkUpdateFunctions({
           supabaseProjectId,
-          functions: successfulDeploys,
+          functions: functionsWithVerifyJwtDisabled,
           organizationSlug: supabaseOrganizationSlug,
         });
         logger.info(

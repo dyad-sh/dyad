@@ -41,3 +41,14 @@ gh api repos/dyad-sh/dyad/issues/{PR_NUMBER}/labels -f "labels[]=label-name"
 
 - When resolving conflicts in i18n-related commits, watch for duplicate constant definitions that conflict with imports from `@/lib/schemas` (e.g., `DEFAULT_ZOOM_LEVEL`)
 - If both sides of a conflict have valid imports/hooks, keep both and remove any duplicate constant redefinitions
+
+## Rebasing with uncommitted changes
+
+If you need to rebase but have uncommitted changes (e.g., package-lock.json from startup npm install):
+
+1. Stash changes: `git stash push -m "Stash changes before rebase"`
+2. Rebase: `git rebase upstream/main` (resolve conflicts if needed)
+3. Pop stash: `git stash pop`
+4. Discard spurious changes like package-lock.json (if package.json unchanged): `git restore package-lock.json`
+
+This prevents rebase conflicts from uncommitted changes while preserving any work in progress.

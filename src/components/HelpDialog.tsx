@@ -21,7 +21,7 @@ import { ipc } from "@/ipc/types";
 import { useState, useEffect } from "react";
 import { useAtomValue } from "jotai";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { ChatLogsData } from "@/ipc/types";
+import { SessionDebugBundle } from "@/ipc/types";
 import { showError } from "@/lib/toast";
 import { HelpBotDialog } from "./HelpBotDialog";
 import { useSettings } from "@/hooks/useSettings";
@@ -37,7 +37,9 @@ export function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [reviewMode, setReviewMode] = useState(false);
-  const [chatLogsData, setChatLogsData] = useState<ChatLogsData | null>(null);
+  const [debugBundle, setDebugBundle] = useState<SessionDebugBundle | null>(
+    null,
+  );
   const [uploadComplete, setUploadComplete] = useState(false);
   const [sessionId, setSessionId] = useState("");
   const [isHelpBotOpen, setIsHelpBotOpen] = useState(false);
@@ -52,7 +54,7 @@ export function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
     setIsLoading(false);
     setIsUploading(false);
     setReviewMode(false);
-    setChatLogsData(null);
+    setDebugBundle(null);
     setUploadComplete(false);
     setSessionId("");
   };
@@ -76,6 +78,20 @@ export function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
       const debugInfo = await ipc.system.getSystemDebugInfo();
 
       // Create a formatted issue body with the debug info
+      const settingsLines = settings
+        ? [
+            `- Selected Model: ${settings.selectedModel?.provider}:${settings.selectedModel?.name}`,
+            `- Chat Mode: ${settings.selectedChatMode ?? "default"}`,
+            `- Auto Approve Changes: ${settings.autoApproveChanges ?? "n/a"}`,
+            `- Dyad Pro Enabled: ${settings.enableDyadPro ?? "n/a"}`,
+            `- Thinking Budget: ${settings.thinkingBudget ?? "n/a"}`,
+            `- Runtime Mode: ${settings.runtimeMode2 ?? "n/a"}`,
+            `- Release Channel: ${settings.releaseChannel ?? "n/a"}`,
+            `- Auto Fix Problems: ${settings.enableAutoFixProblems ?? "n/a"}`,
+            `- Native Git: ${settings.enableNativeGit ?? "n/a"}`,
+          ].join("\n")
+        : "Settings not available";
+
       const issueBody = `
 <!-- Please fill in all fields in English -->
 
@@ -95,6 +111,9 @@ export function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
 - Pro User ID: ${userBudget?.redactedUserId || "n/a"}
 - Telemetry ID: ${debugInfo.telemetryId || "n/a"}
 - Model: ${debugInfo.selectedLanguageModel || "n/a"}
+
+## Settings
+${settingsLines}
 
 ## Logs
 \`\`\`
@@ -131,10 +150,10 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
     setIsUploading(true);
     try {
       // Get chat logs (includes debug info, chat data, and codebase)
-      const chatLogs = await ipc.misc.getChatLogs(selectedChatId);
+      const debugBundle = await ipc.misc.getSessionDebugBundle(selectedChatId);
 
       // Store data for review and switch to review mode
-      setChatLogsData(chatLogs);
+      setDebugBundle(debugBundle);
       setReviewMode(true);
     } catch (error) {
       console.error("Failed to upload chat session:", error);
@@ -147,17 +166,10 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
   };
 
   const handleSubmitChatLogs = async () => {
-    if (!chatLogsData) return;
+    if (!debugBundle) return;
 
     setIsUploading(true);
     try {
-      // Prepare data for upload
-      const chatLogsJson = {
-        systemInfo: chatLogsData.debugInfo,
-        chat: chatLogsData.chat,
-        codebaseSnippet: chatLogsData.codebase,
-      };
-
       // Get signed URL
       const response = await fetch(
         "https://upload-logs.dyad.sh/generate-upload-url",
@@ -180,10 +192,11 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
 
       const { uploadUrl, filename } = await response.json();
 
+      // Upload the full debug bundle directly
       await ipc.system.uploadToSignedUrl({
         url: uploadUrl,
         contentType: "application/json",
-        data: chatLogsJson,
+        data: debugBundle,
       });
 
       // Extract session ID (filename without extension)
@@ -201,7 +214,7 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
 
   const handleCancelReview = () => {
     setReviewMode(false);
-    setChatLogsData(null);
+    setDebugBundle(null);
   };
 
   const handleOpenGitHubIssue = () => {
@@ -210,6 +223,7 @@ ${debugInfo.logs.slice(-3_500) || "No logs available"}
 <!-- Please fill in all fields in English -->
 
 Session ID: ${sessionId}
+Session Schema: v2.0
 Pro User ID: ${userBudget?.redactedUserId || "n/a"}
 
 ## Issue Description (required)
@@ -276,7 +290,7 @@ Pro User ID: ${userBudget?.redactedUserId || "n/a"}
     );
   }
 
-  if (reviewMode && chatLogsData) {
+  if (reviewMode && debugBundle) {
     return (
       <Dialog open={isOpen} onOpenChange={handleClose}>
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
@@ -302,7 +316,7 @@ Pro User ID: ${userBudget?.redactedUserId || "n/a"}
             <div className="border rounded-md p-3">
               <h3 className="font-medium mb-2">Chat Messages</h3>
               <div className="text-sm bg-slate-50 dark:bg-slate-900 rounded p-2 max-h-40 overflow-y-auto">
-                {chatLogsData.chat.messages.map((msg) => (
+                {debugBundle.chat.messages.map((msg) => (
                   <div key={msg.id} className="mb-2">
                     <span className="font-semibold">
                       {msg.role === "user" ? "You" : "Assistant"}:{" "}
@@ -316,29 +330,63 @@ Pro User ID: ${userBudget?.redactedUserId || "n/a"}
             <div className="border rounded-md p-3">
               <h3 className="font-medium mb-2">Codebase Snapshot</h3>
               <div className="text-sm bg-slate-50 dark:bg-slate-900 rounded p-2 max-h-40 overflow-y-auto font-mono">
-                {chatLogsData.codebase}
+                {debugBundle.codebase}
               </div>
             </div>
 
             <div className="border rounded-md p-3">
               <h3 className="font-medium mb-2">Logs</h3>
               <div className="text-sm bg-slate-50 dark:bg-slate-900 rounded p-2 max-h-40 overflow-y-auto font-mono">
-                {chatLogsData.debugInfo.logs}
+                {debugBundle.logs}
               </div>
             </div>
 
             <div className="border rounded-md p-3">
               <h3 className="font-medium mb-2">System Information</h3>
               <div className="text-sm bg-slate-50 dark:bg-slate-900 rounded p-2 max-h-32 overflow-y-auto">
-                <p>Dyad Version: {chatLogsData.debugInfo.dyadVersion}</p>
-                <p>Platform: {chatLogsData.debugInfo.platform}</p>
-                <p>Architecture: {chatLogsData.debugInfo.architecture}</p>
+                <p>Dyad Version: {debugBundle.system.dyadVersion}</p>
+                <p>Platform: {debugBundle.system.platform}</p>
+                <p>Architecture: {debugBundle.system.architecture}</p>
                 <p>
                   Node Version:{" "}
-                  {chatLogsData.debugInfo.nodeVersion || "Not available"}
+                  {debugBundle.system.nodeVersion || "Not available"}
                 </p>
               </div>
             </div>
+
+            <details className="border rounded-md p-3">
+              <summary className="font-medium cursor-pointer">Settings</summary>
+              <div className="text-sm bg-slate-50 dark:bg-slate-900 rounded p-2 max-h-40 overflow-y-auto mt-2 font-mono whitespace-pre-wrap">
+                {JSON.stringify(debugBundle.settings, null, 2)}
+              </div>
+            </details>
+
+            <details className="border rounded-md p-3">
+              <summary className="font-medium cursor-pointer">
+                App Metadata
+              </summary>
+              <div className="text-sm bg-slate-50 dark:bg-slate-900 rounded p-2 max-h-40 overflow-y-auto mt-2 font-mono whitespace-pre-wrap">
+                {JSON.stringify(debugBundle.app, null, 2)}
+              </div>
+            </details>
+
+            <details className="border rounded-md p-3">
+              <summary className="font-medium cursor-pointer">
+                Custom Providers & Models
+              </summary>
+              <div className="text-sm bg-slate-50 dark:bg-slate-900 rounded p-2 max-h-40 overflow-y-auto mt-2 font-mono whitespace-pre-wrap">
+                {JSON.stringify(debugBundle.providers, null, 2)}
+              </div>
+            </details>
+
+            <details className="border rounded-md p-3">
+              <summary className="font-medium cursor-pointer">
+                MCP Servers
+              </summary>
+              <div className="text-sm bg-slate-50 dark:bg-slate-900 rounded p-2 max-h-40 overflow-y-auto mt-2 font-mono whitespace-pre-wrap">
+                {JSON.stringify(debugBundle.mcpServers, null, 2)}
+              </div>
+            </details>
           </div>
 
           <div className="flex justify-between mt-4 pt-2 sticky bottom-0 bg-background">

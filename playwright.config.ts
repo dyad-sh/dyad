@@ -2,12 +2,39 @@ import { PlaywrightTestConfig } from "@playwright/test";
 import os from "os";
 
 const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+const parallelism = parseInt(process.env.PLAYWRIGHT_PARALLELISM || "1", 10);
+
+// Base port for fake LLM servers - each worker gets its own port
+// Worker 0 -> 3500, Worker 1 -> 3501, etc.
+export const FAKE_LLM_BASE_PORT = 3500;
+
+// Generate webServer configurations for each parallel worker
+// Each worker needs its own fake LLM server to avoid test interference
+function generateWebServerConfigs(): PlaywrightTestConfig["webServer"] {
+  const configs: NonNullable<PlaywrightTestConfig["webServer"]> = [];
+
+  for (let i = 0; i < parallelism; i++) {
+    const port = FAKE_LLM_BASE_PORT + i;
+    configs.push({
+      // Only build once (on first server), then just start for subsequent servers
+      command:
+        i === 0
+          ? `cd testing/fake-llm-server && npm run build && npm start -- --port=${port}`
+          : `cd testing/fake-llm-server && npm start -- --port=${port}`,
+      url: `http://localhost:${port}/health`,
+      // Ensure servers start in order so build completes before other servers try to start
+      reuseExistingServer: !process.env.CI,
+    });
+  }
+
+  return configs;
+}
 
 const config: PlaywrightTestConfig = {
   testDir: "./e2e-tests",
   // Enable parallel test execution - E2E test builds skip the singleton lock
   // Read parallelism from env var, default to 1 if not set
-  workers: parseInt(process.env.PLAYWRIGHT_PARALLELISM || "1", 10),
+  workers: parallelism,
   retries: parseInt(
     process.env.PLAYWRIGHT_RETRIES ?? (process.env.CI ? "2" : "0"),
     10,
@@ -48,12 +75,7 @@ const config: PlaywrightTestConfig = {
     // video: "retain-on-failure",
   },
 
-  webServer: [
-    {
-      command: `cd testing/fake-llm-server && npm run build && npm start`,
-      url: "http://localhost:3500/health",
-    },
-  ],
+  webServer: generateWebServerConfigs(),
 };
 
 export default config;

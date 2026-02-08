@@ -3,8 +3,8 @@ import { testWithConfigSkipIfWindows } from "./helpers/test_helper";
 // Set environment variables before the test runs to enable Azure testing
 
 const testAzure = testWithConfigSkipIfWindows({
-  preLaunchHook: async () => {
-    process.env.TEST_AZURE_BASE_URL = "http://localhost:3500/azure";
+  preLaunchHook: async ({ fakeLlmPort }) => {
+    process.env.TEST_AZURE_BASE_URL = `http://localhost:${fakeLlmPort}/azure`;
     process.env.AZURE_API_KEY = "fake-azure-key-for-testing";
     process.env.AZURE_RESOURCE_NAME = "fake-resource-for-testing";
   },

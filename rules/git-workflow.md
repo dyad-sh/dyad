@@ -6,6 +6,14 @@ When pushing changes and creating PRs:
 2. If the branch hasn't been pushed before, default to pushing to `origin` (the fork `wwwillchen/dyad`), then create a PR from the fork to the upstream repo (`dyad-sh/dyad`).
 3. If you cannot push to the fork due to permissions, push directly to `upstream` (`dyad-sh/dyad`) as a last resort.
 
+## Rebase conflict resolution
+
+When rebasing and a file was refactored between branches:
+
+- If HEAD has a refactored file structure (e.g., code moved to separate modules with re-exports) and the incoming commit has the old monolithic structure, **keep the refactored structure from HEAD**.
+- Only integrate the functional changes from the incoming commit (e.g., new imports, configuration changes) into the appropriate refactored modules.
+- Example: `e2e-tests/helpers/test_helper.ts` was refactored to use re-exports; rebase conflicts should preserve the re-export structure and discard the duplicate inline code from the incoming commit.
+
 ## Skipping automated review
 
 Add `#skip-bugbot` to the PR description for trivial PRs that won't affect end-users, such as:

@@ -37,6 +37,7 @@ import { ProModesDialog } from "./dialogs/ProModesDialog";
 
 export class PageObject {
   public userDataDir: string;
+  public fakeLlmPort: number;
 
   // Component page objects (exposed for direct access)
   public githubConnector: GitHubConnector;
@@ -55,9 +56,10 @@ export class PageObject {
   constructor(
     public electronApp: ElectronApplication,
     public page: Page,
-    { userDataDir }: { userDataDir: string },
+    { userDataDir, fakeLlmPort }: { userDataDir: string; fakeLlmPort: number },
   ) {
     this.userDataDir = userDataDir;
+    this.fakeLlmPort = fakeLlmPort;
 
     // Initialize component page objects
     this.githubConnector = new GitHubConnector(this.page);
@@ -69,7 +71,7 @@ export class PageObject {
     this.agentConsent = new AgentConsent(this.page);
     this.navigation = new Navigation(this.page);
     this.modelPicker = new ModelPicker(this.page);
-    this.settings = new Settings(this.page, userDataDir);
+    this.settings = new Settings(this.page, userDataDir, fakeLlmPort);
     this.appManagement = new AppManagement(this.page, electronApp, userDataDir);
     this.promptLibrary = new PromptLibrary(this.page);
   }

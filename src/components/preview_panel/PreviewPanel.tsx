@@ -20,6 +20,7 @@ import { SecurityPanel } from "./SecurityPanel";
 import { PlanPanel } from "./PlanPanel";
 import { useSupabase } from "@/hooks/useSupabase";
 import { useTranslation } from "react-i18next";
+import { ActionHeader } from "./ActionHeader";
 
 interface ConsoleHeaderProps {
   isOpen: boolean;
@@ -140,6 +141,7 @@ export function PreviewPanel() {
 
   return (
     <div className="flex flex-col h-full">
+      <ActionHeader />
       <div className="flex-1 overflow-hidden">
         <PanelGroup direction="vertical">
           <Panel id="content" minSize={30}>

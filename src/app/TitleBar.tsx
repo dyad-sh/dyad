@@ -1,7 +1,7 @@
 import { useAtom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useLoadApps } from "@/hooks/useLoadApps";
-import { useRouter, useLocation } from "@tanstack/react-router";
+import { useRouter } from "@tanstack/react-router";
 import { useSettings } from "@/hooks/useSettings";
 import { Button } from "@/components/ui/button";
 // @ts-ignore
@@ -21,13 +21,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ActionHeader } from "@/components/preview_panel/ActionHeader";
 
 export const TitleBar = () => {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
   const { apps } = useLoadApps();
   const { navigate } = useRouter();
-  const location = useLocation();
   const { settings, refreshSettings } = useSettings();
   const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false);
   const platform = useSystemPlatform();
@@ -83,12 +81,8 @@ export const TitleBar = () => {
         </Button>
         {isDyadPro && <DyadProButton isDyadProEnabled={isDyadProEnabled} />}
 
-        {/* Preview Header */}
-        {location.pathname === "/chat" && (
-          <div className="flex-1 flex justify-end">
-            <ActionHeader />
-          </div>
-        )}
+        {/* Spacer to push window controls to the right */}
+        <div className="flex-1" />
 
         {showWindowControls && <WindowsControls />}
       </div>

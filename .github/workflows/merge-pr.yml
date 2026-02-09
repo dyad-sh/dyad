@@ -1,0 +1,107 @@
+name: Merge PR when ready
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+
+jobs:
+  merge:
+    # Only run if:
+    # 1. The CI workflow succeeded
+    # 2. The trigger was a pull request (not a push to main)
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+    steps:
+      - name: Check PR and merge if ready
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const headSha = context.payload.workflow_run.head_sha;
+
+            console.log(`Checking PR for head SHA: ${headSha}`);
+
+            // Find the PR associated with this workflow run
+            const { data: prs } = await github.rest.pulls.list({
+              owner,
+              repo,
+              state: 'open',
+              sort: 'updated',
+              direction: 'desc',
+              per_page: 100,
+            });
+
+            const pr = prs.find(p => p.head.sha === headSha);
+
+            if (!pr) {
+              console.log('No open PR found for this SHA');
+              return;
+            }
+
+            console.log(`Found PR #${pr.number}: ${pr.title}`);
+            console.log(`Author: ${pr.user.login}`);
+
+            // Check if author is allowed
+            const allowedAuthors = ['wwwillchen', 'wwwillchen-bot'];
+            if (!allowedAuthors.includes(pr.user.login)) {
+              console.log(`Author ${pr.user.login} is not in allowed list: ${allowedAuthors.join(', ')}`);
+              return;
+            }
+
+            // Check if PR has the "merge-when-ready" label
+            const labels = pr.labels.map(l => l.name);
+            console.log(`PR labels: ${labels.join(', ') || '(none)'}`);
+
+            if (!labels.includes('merge-when-ready')) {
+              console.log('PR does not have "merge-when-ready" label');
+              return;
+            }
+
+            // Verify all check suites have passed
+            const { data: checkSuites } = await github.rest.checks.listSuitesForRef({
+              owner,
+              repo,
+              ref: headSha,
+            });
+
+            const pendingOrFailed = checkSuites.check_suites.filter(suite => {
+              // Skip neutral conclusions (e.g., skipped workflows)
+              if (suite.conclusion === 'neutral' || suite.conclusion === 'skipped') {
+                return false;
+              }
+              // Check if still in progress or failed
+              return suite.status !== 'completed' || suite.conclusion !== 'success';
+            });
+
+            if (pendingOrFailed.length > 0) {
+              console.log('Some check suites are still pending or have failed:');
+              pendingOrFailed.forEach(suite => {
+                console.log(`  - ${suite.app?.name || 'Unknown'}: status=${suite.status}, conclusion=${suite.conclusion}`);
+              });
+              return;
+            }
+
+            console.log('All checks passed! Merging PR...');
+
+            // Merge the PR via squash
+            try {
+              await github.rest.pulls.merge({
+                owner,
+                repo,
+                pull_number: pr.number,
+                merge_method: 'squash',
+              });
+              console.log(`Successfully merged PR #${pr.number}`);
+            } catch (error) {
+              console.log(`Failed to merge PR: ${error.message}`);
+              throw error;
+            }

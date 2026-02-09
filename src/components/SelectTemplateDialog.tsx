@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { TemplateCard } from "./TemplateCard";
 import { useTemplates } from "@/hooks/useTemplates";
 import { useSettings } from "@/hooks/useSettings";
+import { DEFAULT_TEMPLATE_ID } from "@/shared/templates";
 
 interface SelectTemplateDialogProps {
   open: boolean;
@@ -28,9 +29,17 @@ export function SelectTemplateDialog({
   const { templates } = useTemplates();
   const { settings, updateSettings } = useSettings();
   const [selectedId, setSelectedId] = useState<string>(
-    settings?.selectedTemplateId ?? "react",
+    settings?.selectedTemplateId ?? DEFAULT_TEMPLATE_ID,
   );
   const [dontShowAgain, setDontShowAgain] = useState(false);
+
+  // Reset state when dialog opens
+  useEffect(() => {
+    if (open) {
+      setSelectedId(settings?.selectedTemplateId ?? DEFAULT_TEMPLATE_ID);
+      setDontShowAgain(false);
+    }
+  }, [open, settings?.selectedTemplateId]);
 
   // Build list: official templates + currently selected template if non-official
   const officialTemplates = (templates ?? []).filter((t) => t.isOfficial);
@@ -48,10 +57,12 @@ export function SelectTemplateDialog({
     : officialTemplates;
 
   const handleConfirm = async () => {
+    const updates: { selectedTemplateId: string; promptForTemplate?: boolean } =
+      { selectedTemplateId: selectedId };
     if (dontShowAgain) {
-      await updateSettings({ promptForTemplate: false });
+      updates.promptForTemplate = false;
     }
-    await updateSettings({ selectedTemplateId: selectedId });
+    await updateSettings(updates);
     onConfirm(selectedId);
   };
 
@@ -73,7 +84,6 @@ export function SelectTemplateDialog({
               template={template}
               isSelected={selectedId === template.id}
               onSelect={setSelectedId}
-              onCreateApp={() => {}}
               compact
             />
           ))}

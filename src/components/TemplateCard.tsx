@@ -12,7 +12,7 @@ interface TemplateCardProps {
   template: Template;
   isSelected: boolean;
   onSelect: (templateId: string) => void;
-  onCreateApp: () => void;
+  onCreateApp?: () => void;
   compact?: boolean;
 }
 
@@ -141,7 +141,7 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
             </a>
           )}
 
-          {!compact && (
+          {!compact && onCreateApp && (
             <Button
               onClick={(e) => {
                 e.stopPropagation();

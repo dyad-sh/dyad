@@ -178,14 +178,18 @@ export default function HomePage() {
     await proceedWithSubmit(options);
   };
 
-  const handleTemplateConfirm = async () => {
+  const handleTemplateConfirm = async (templateId: string) => {
     setShowTemplateDialog(false);
-    await proceedWithSubmit(pendingSubmitOptions);
+    await proceedWithSubmit(pendingSubmitOptions, templateId);
     setPendingSubmitOptions(undefined);
   };
 
-  const proceedWithSubmit = async (options?: HomeSubmitOptions) => {
+  const proceedWithSubmit = async (
+    options?: HomeSubmitOptions,
+    templateId?: string,
+  ) => {
     const attachments = options?.attachments || [];
+    const effectiveTemplateId = templateId ?? settings?.selectedTemplateId;
 
     try {
       setIsLoading(true);
@@ -193,10 +197,7 @@ export default function HomePage() {
       const result = await ipc.app.createApp({
         name: generateCuteAppName(),
       });
-      if (
-        settings?.selectedTemplateId &&
-        NEON_TEMPLATE_IDS.has(settings.selectedTemplateId)
-      ) {
+      if (effectiveTemplateId && NEON_TEMPLATE_IDS.has(effectiveTemplateId)) {
         await neonTemplateHook({
           appId: result.app.id,
           appName: result.app.name,

@@ -19,6 +19,7 @@ import { PublishPanel } from "./PublishPanel";
 import { SecurityPanel } from "./SecurityPanel";
 import { PlanPanel } from "./PlanPanel";
 import { useSupabase } from "@/hooks/useSupabase";
+import { useSettings } from "@/hooks/useSettings";
 
 interface ConsoleHeaderProps {
   isOpen: boolean;
@@ -57,6 +58,7 @@ export function PreviewPanel() {
   const [isConsoleOpen, setIsConsoleOpen] = useState(false);
   const { runApp, stopApp, loading, app } = useRunApp();
   const { loadEdgeLogs } = useSupabase();
+  const { settings } = useSettings();
   const runningAppIdRef = useRef<number | null>(null);
   const key = useAtomValue(previewPanelKeyAtom);
   const consoleEntries = useAtomValue(appConsoleEntriesAtom);
@@ -111,26 +113,36 @@ export function PreviewPanel() {
     // runApp/stopApp are stable due to useCallback.
   }, [selectedAppId, runApp, stopApp]);
 
-  // Load edge logs if app has Supabase project configured
+  // Poll for edge logs every 5 seconds when a Supabase project is connected
+  const isPollingRef = useRef(false);
   useEffect(() => {
+    if (settings?.isTestMode) return; // Skip in test mode
     const projectId = app?.supabaseProjectId;
     const organizationSlug = app?.supabaseOrganizationSlug ?? undefined;
     if (!projectId) return;
 
-    // Load logs immediately
-    loadEdgeLogs({ projectId, organizationSlug }).catch((error) => {
-      console.error("Failed to load edge logs:", error);
-    });
+    const poll = async () => {
+      if (isPollingRef.current) return;
+      isPollingRef.current = true;
+      try {
+        await loadEdgeLogs({ projectId, organizationSlug });
+      } catch {
+        // Silently ignore errors during polling to avoid spamming toasts
+      } finally {
+        isPollingRef.current = false;
+      }
+    };
 
-    // Poll for new logs every 5 seconds
-    const intervalId = setInterval(() => {
-      loadEdgeLogs({ projectId, organizationSlug }).catch((error) => {
-        console.error("Failed to load edge logs:", error);
-      });
-    }, 5000);
-
+    // Fetch immediately, then poll every 5 seconds
+    poll();
+    const intervalId = setInterval(poll, 5000);
     return () => clearInterval(intervalId);
-  }, [app?.supabaseProjectId, app?.supabaseOrganizationSlug, loadEdgeLogs]);
+  }, [
+    app?.supabaseProjectId,
+    app?.supabaseOrganizationSlug,
+    loadEdgeLogs,
+    settings?.isTestMode,
+  ]);
 
   return (
     <div className="flex flex-col h-full">

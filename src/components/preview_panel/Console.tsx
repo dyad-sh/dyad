@@ -8,6 +8,8 @@ import { ConsoleEntryComponent } from "./ConsoleEntry";
 import { ConsoleFilters } from "./ConsoleFilters";
 import { useSettings } from "@/hooks/useSettings";
 import { showError } from "@/lib/toast";
+import { useSupabase } from "@/hooks/useSupabase";
+import { useRunApp } from "@/hooks/useRunApp";
 
 // Placeholder component shown during fast scrolling
 const ScrollSeekPlaceholder = () => {
@@ -69,6 +71,8 @@ export const Console = () => {
   const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { settings } = useSettings();
+  const { app } = useRunApp();
+  const { loadEdgeLogs, isLoadingEdgeLogs } = useSupabase();
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const hasScrolledToBottom = useRef(false);
@@ -117,6 +121,20 @@ export const Console = () => {
       }
     }
   }, [selectedAppId, setConsoleEntries]);
+
+  const handleFetchEdgeLogs = useCallback(async () => {
+    const projectId = app?.supabaseProjectId;
+    const organizationSlug = app?.supabaseOrganizationSlug ?? undefined;
+    if (!projectId) return;
+
+    try {
+      await loadEdgeLogs({ projectId, organizationSlug });
+    } catch (error) {
+      showError(
+        error instanceof Error ? error.message : "Failed to fetch edge logs",
+      );
+    }
+  }, [app?.supabaseProjectId, app?.supabaseOrganizationSlug, loadEdgeLogs]);
 
   useEffect(() => {
     const container = containerRef.current?.parentElement;
@@ -237,6 +255,9 @@ export const Console = () => {
         uniqueSources={uniqueSources}
         totalLogs={filteredEntries.length}
         showFilters={showFilters}
+        onFetchEdgeLogs={handleFetchEdgeLogs}
+        isFetchingEdgeLogs={isLoadingEdgeLogs}
+        hasSupabaseProject={!!app?.supabaseProjectId}
       />
 
       {/* Virtualized log area */}

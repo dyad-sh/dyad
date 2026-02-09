@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { useSettings } from "@/hooks/useSettings";
-import { type ZoomLevel, ZoomLevelSchema } from "@/lib/schemas";
+import {
+  type ZoomLevel,
+  ZoomLevelSchema,
+  ZOOM_LEVELS,
+  DEFAULT_ZOOM_LEVEL,
+} from "@/lib/schemas";
 import { useIsMac } from "@/hooks/useChatModeToggle";
-
-const ZOOM_LEVELS: ZoomLevel[] = ["90", "100", "110", "125", "150"];
-const DEFAULT_ZOOM_LEVEL: ZoomLevel = "100";
 
 export function useZoomShortcuts() {
   const { settings, updateSettings } = useSettings();
@@ -37,6 +39,15 @@ export function useZoomShortcuts() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+
       const modifier = isMac ? event.metaKey : event.ctrlKey;
       if (!modifier) return;
 

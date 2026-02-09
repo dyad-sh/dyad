@@ -13,13 +13,11 @@ import {
   selectedAppIdAtom,
 } from "@/atoms/appAtoms";
 import { useSettings } from "@/hooks/useSettings";
-import type { ZoomLevel } from "@/lib/schemas";
+import { DEFAULT_ZOOM_LEVEL } from "@/lib/schemas";
 import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
 import { chatInputValueAtom } from "@/atoms/chatAtoms";
 import { usePlanEvents } from "@/hooks/usePlanEvents";
 import { useZoomShortcuts } from "@/hooks/useZoomShortcuts";
-
-const DEFAULT_ZOOM_LEVEL: ZoomLevel = "100";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const { refreshAppIframe } = useRunApp();

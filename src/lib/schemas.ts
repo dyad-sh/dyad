@@ -241,6 +241,8 @@ export type ReleaseChannel = z.infer<typeof ReleaseChannelSchema>;
 
 export const ZoomLevelSchema = z.enum(["90", "100", "110", "125", "150"]);
 export type ZoomLevel = z.infer<typeof ZoomLevelSchema>;
+export const ZOOM_LEVELS: readonly ZoomLevel[] = ZoomLevelSchema.options;
+export const DEFAULT_ZOOM_LEVEL: ZoomLevel = "100";
 
 export const DeviceModeSchema = z.enum(["desktop", "tablet", "mobile"]);
 export type DeviceMode = z.infer<typeof DeviceModeSchema>;

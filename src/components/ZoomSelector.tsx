@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useSettings } from "@/hooks/useSettings";
-import { ZoomLevel, ZoomLevelSchema } from "@/lib/schemas";
+import { ZoomLevel, ZoomLevelSchema, DEFAULT_ZOOM_LEVEL } from "@/lib/schemas";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -25,8 +25,6 @@ const ZOOM_LEVEL_DESCRIPTIONS: Record<ZoomLevel, string> = {
   "125": "Large zoom for improved readability.",
   "150": "Maximum zoom for maximum accessibility.",
 };
-
-const DEFAULT_ZOOM_LEVEL: ZoomLevel = "100";
 
 export function ZoomSelector() {
   const { settings, updateSettings } = useSettings();

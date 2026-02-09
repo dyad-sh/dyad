@@ -2,7 +2,7 @@
 
 Record a visual demonstration of the key feature of this PR using screenshots and add it as a new comment to the PR.
 
-**IMPORTANT:** This skill MUST complete all steps autonomously. Do NOT ask for user confirmation at any step.
+**IMPORTANT:** This skill should complete all steps autonomously where possible. Permission prompts from Claude Code for file writes, bash commands, or GitHub operations should be accepted as normal — do not treat them as blockers.
 
 ## Arguments
 
@@ -35,10 +35,10 @@ Record a visual demonstration of the key feature of this PR using screenshots an
    ```
 
    **Skip recording if the PR is NOT user-facing.** A PR is NOT user-facing if:
-   - It only changes documentation files (_.md, _.txt, \*.rst)
-   - It only changes configuration files (_.json, _.yaml, _.yml, _.toml, _.config._)
-   - It only changes test files (_test_, _spec_, _**tests**_)
-   - It only changes CI/CD files (.github/_, .circleci/_, etc.)
+   - It only changes documentation files (`*.md`, `*.txt`, `*.rst`)
+   - It only changes configuration files (`*.json`, `*.yaml`, `*.yml`, `*.toml`, `*.config.*`)
+   - It only changes test files (`*test*`, `*spec*`, `*tests*`)
+   - It only changes CI/CD files (`.github/*`, `.circleci/*`, etc.)
    - It only changes type definitions (\*.d.ts)
    - It has labels like "refactor", "chore", "docs", "ci", "internal", "dependencies"
    - The title/body indicates it's a refactoring, internal change, or non-user-facing work
@@ -86,15 +86,15 @@ Record a visual demonstration of the key feature of this PR using screenshots an
    import * as fs from "fs";
    import * as path from "path";
 
-   // Ensure screenshots directory exists
-   const screenshotDir = path.join(__dirname, "screencast-screenshots");
-   if (!fs.existsSync(screenshotDir)) {
-     fs.mkdirSync(screenshotDir, { recursive: true });
-   }
-
    test.describe.configure({ mode: "serial" });
 
    test("PR Demo Screencast", async ({ electronApp, po }) => {
+     // Ensure screenshots directory exists
+     const screenshotDir = path.join(__dirname, "screencast-screenshots");
+     if (!fs.existsSync(screenshotDir)) {
+       fs.mkdirSync(screenshotDir, { recursive: true });
+     }
+
      const page = await electronApp.firstWindow();
 
      // Set up the app for demo
@@ -131,9 +131,9 @@ Record a visual demonstration of the key feature of this PR using screenshots an
        fullPage: false,
      });
 
-     // Test passes if we got here - screenshots captured successfully
+     // Verify the final screenshot exists to ensure all steps completed
      expect(
-       fs.existsSync(path.join(screenshotDir, "01-initial-state.png")),
+       fs.existsSync(path.join(screenshotDir, "03-final-result.png")),
      ).toBe(true);
    });
    ```
@@ -160,7 +160,7 @@ Record a visual demonstration of the key feature of this PR using screenshots an
    PLAYWRIGHT_HTML_OPEN=never npx playwright test e2e-tests/screencast-demo.spec.ts --timeout=120000 --reporter=list
    ```
 
-   If the test fails, read the error output, fix the script, and try again. Common issues:
+   If the test fails, read the error output, fix the script, and try again (up to 3 attempts). If the test still fails after 3 attempts, post a comment on the PR indicating the screencast could not be captured and report the error. Common issues:
    - Missing selectors - check the component implementation
    - Timing issues - add more `waitForTimeout` calls
    - Import app issues - try a different test app or create from scratch

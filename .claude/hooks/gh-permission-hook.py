@@ -34,8 +34,7 @@ ALLOWED (auto-approved):
    - Mutations: resolveReviewThread, unresolveReviewThread
    - Mutations: addPullRequestReview, addPullRequestReviewComment
 
-6. Piping gh output to common text-processing commands:
-   - Broad whitelist including jq, head, tail, grep, base64, sed, awk, python, etc.
+6. Piping gh output to safe text-processing commands.
 
 BLOCKED (denied):
 -----------------

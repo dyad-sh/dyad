@@ -134,6 +134,7 @@ export function GithubBranchManager({
       setConflicts([]);
       if (aborted) {
         showSuccess("Sync cancelled");
+        await loadBranches();
       }
     } catch (error: any) {
       showError(error?.message || "Failed to cancel sync");

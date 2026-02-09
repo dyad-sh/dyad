@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useSetAtom } from "jotai";
 import { useNavigate } from "@tanstack/react-router";
 import { ipc } from "@/ipc/types";
@@ -10,6 +10,8 @@ import {
 } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { showError } from "@/lib/toast";
+import { useChats } from "@/hooks/useChats";
+import { useLoadApp } from "@/hooks/useLoadApp";
 
 interface UseResolveMergeConflictsWithAIProps {
   appId: number;
@@ -33,6 +35,9 @@ export function useResolveMergeConflictsWithAI({
   const setStreamCountById = useSetAtom(chatStreamCountByIdAtom);
   const navigate = useNavigate();
   const [isResolving, setIsResolving] = useState(false);
+  const isResolvingRef = useRef(false);
+  const { invalidateChats } = useChats(appId);
+  const { refreshApp } = useLoadApp(appId);
 
   const resolveWithAI = useCallback(async () => {
     if (!appId) {
@@ -43,16 +48,19 @@ export function useResolveMergeConflictsWithAI({
       showError("No conflicts to resolve");
       return;
     }
-    if (isResolving) {
+    if (isResolvingRef.current) {
       return;
     }
 
+    isResolvingRef.current = true;
     setIsResolving(true);
-    onStartResolving?.();
 
     try {
       // Create a new chat for conflict resolution
       const newChatId = await ipc.chat.createChat(appId);
+
+      // Clear conflicts state after successful chat creation
+      onStartResolving?.();
 
       // Build the prompt for resolving all conflicts
       const fileList = conflicts.map((f) => `- ${f}`).join("\n");
@@ -108,7 +116,10 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
               next.set(newChatId, false);
               return next;
             });
+            isResolvingRef.current = false;
             setIsResolving(false);
+            invalidateChats();
+            refreshApp();
           },
           onError: ({ error }) => {
             showError(error || "Failed to resolve conflicts");
@@ -117,18 +128,19 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
               next.set(newChatId, false);
               return next;
             });
+            isResolvingRef.current = false;
             setIsResolving(false);
           },
         },
       );
     } catch (error: any) {
       showError(error?.message || "Failed to start conflict resolution");
+      isResolvingRef.current = false;
       setIsResolving(false);
     }
   }, [
     appId,
     conflicts,
-    isResolving,
     onStartResolving,
     setSelectedChatId,
     setSelectedAppId,
@@ -136,6 +148,8 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
     setIsStreamingById,
     setStreamCountById,
     navigate,
+    invalidateChats,
+    refreshApp,
   ]);
 
   return { resolveWithAI, isResolving };

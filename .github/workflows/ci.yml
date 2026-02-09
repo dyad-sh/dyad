@@ -94,16 +94,16 @@ jobs:
           echo "Changed files:"
           echo "$CHANGED_FILES"
 
-          # Check if all changed files are in .claude directory
-          NON_CLAUDE_FILES=$(echo "$CHANGED_FILES" | grep -v "^\.claude/" || true)
+          # Check if all changed files are in config-only directories (.claude, rules)
+          NON_CONFIG_FILES=$(echo "$CHANGED_FILES" | grep -v "^\.claude/" | grep -v "^rules/" || true)
 
-          if [ -z "$NON_CLAUDE_FILES" ]; then
+          if [ -z "$NON_CONFIG_FILES" ]; then
             echo "should_run_tests=false" >> $GITHUB_OUTPUT
-            echo "Skipping tests: all changed files are in .claude/"
+            echo "Skipping tests: all changed files are in .claude/ or rules/"
           else
             echo "should_run_tests=true" >> $GITHUB_OUTPUT
-            echo "Running tests: found non-.claude files:"
-            echo "$NON_CLAUDE_FILES"
+            echo "Running tests: found files outside .claude/ and rules/:"
+            echo "$NON_CONFIG_FILES"
           fi
 
       - name: Detect privileged author
@@ -295,6 +295,8 @@ jobs:
           FLAKINESS_ACCESS_TOKEN: ${{ secrets.FLAKINESS_ACCESS_TOKEN }}
           # Self-hosted macOS runners can handle more parallelism
           PLAYWRIGHT_PARALLELISM: ${{ contains(matrix.os.image, 'self-hosted') && '3' || '1' }}
+          # Self-hosted macOS runners use fewer retries (1) vs GitHub-hosted CI (2)
+          PLAYWRIGHT_RETRIES: ${{ contains(matrix.os.image, 'self-hosted') && '1' || '2' }}
         # You can add debug logging to make it easier to see what's failing
         # by adding "DEBUG=pw:browser" in front.
         # Use blob reporter for sharding and merge capabilities

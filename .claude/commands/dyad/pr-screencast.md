@@ -177,27 +177,43 @@ Record a visual demonstration of the key feature of this PR using screenshots an
 
 8. **Upload screenshots to GitHub:**
 
-   Unfortunately, `gh` CLI doesn't support direct image uploads. However, you can:
-
-   **Option A: If the repo has a wiki or uses GitHub Pages:**
-   Upload to an assets branch or wiki, then reference the URL.
-
-   **Option B: Create a draft release to host assets (recommended):**
+   Upload screenshots to an `assets` branch so they can be referenced in PR comments.
 
    ```bash
-   # Create a draft release to upload assets
-   RELEASE_TAG="screencast-$(date +%Y%m%d-%H%M%S)"
-   gh release create "$RELEASE_TAG" \
-     --title "PR Screencast Assets" \
-     --notes "Automated screencast assets - can be deleted after PR merge" \
-     --draft \
-     e2e-tests/screencast-screenshots/*.png
+   # Get repo info
+   REPO=$(gh repo view --json nameWithOwner -q '.nameWithOwner')
+   TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+   ASSET_DIR="pr-screencasts/pr-<PR_NUMBER>-$TIMESTAMP"
 
-   # Get the asset URLs
-   gh release view "$RELEASE_TAG" --json assets -q '.assets[].url'
+   # Create or update the assets branch
+   git fetch origin assets:assets 2>/dev/null || git checkout --orphan assets
+
+   # Switch to assets branch, preserving working directory
+   git stash --include-untracked
+   git checkout assets 2>/dev/null || (git checkout --orphan assets && git rm -rf . 2>/dev/null || true)
+
+   # Create directory and copy screenshots
+   mkdir -p "$ASSET_DIR"
+   git stash pop 2>/dev/null || true
+   cp e2e-tests/screencast-screenshots/*.png "$ASSET_DIR/"
+
+   # Commit and push
+   git add "$ASSET_DIR"
+   git commit -m "Add screencast assets for PR #<PR_NUMBER>"
+   git push origin assets
+
+   # Switch back to original branch
+   git checkout -
+   git stash pop 2>/dev/null || true
    ```
 
-   **Option C: Use text description if upload fails:**
+   The screenshots will be accessible at:
+
+   ```
+   https://raw.githubusercontent.com/<REPO>/assets/<ASSET_DIR>/<filename>.png
+   ```
+
+   **Fallback: Use text description if upload fails:**
    If uploads don't work, describe the screenshots in text format.
 
 9. **Post the comment to the PR:**
@@ -242,8 +258,6 @@ Record a visual demonstration of the key feature of this PR using screenshots an
     rm -f e2e-tests/screencast-demo.spec.ts
     rm -rf e2e-tests/screencast-screenshots/
     ```
-
-    If you created a draft release for assets, note that it can be deleted after the PR is merged.
 
     Also clean up any test results:
 

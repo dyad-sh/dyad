@@ -132,6 +132,8 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
             });
             isResolvingRef.current = false;
             setIsResolving(false);
+            invalidateChats();
+            refreshApp();
           },
         },
       );

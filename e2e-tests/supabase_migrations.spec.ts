@@ -6,25 +6,25 @@ import { execSync } from "child_process";
 
 testSkipIfWindows("supabase migrations", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.sendPrompt("tc=add-supabase");
+  await po.chatActions.sendPrompt("tc=add-supabase");
 
   // Connect to Supabase
   await po.page.getByText("Set up supabase").click();
-  await po.clickConnectSupabaseButton();
-  await po.clickBackButton();
+  await po.appManagement.clickConnectSupabaseButton();
+  await po.navigation.clickBackButton();
 
-  const appPath = await po.getCurrentAppPath();
+  const appPath = await po.appManagement.getCurrentAppPath();
   const migrationsDir = path.join(appPath, "supabase", "migrations");
 
   // --- SCENARIO 1: OFF BY DEFAULT ---
-  await po.sendPrompt("tc=execute-sql-1");
-  await po.waitForChatCompletion();
+  await po.chatActions.sendPrompt("tc=execute-sql-1");
+  await po.chatActions.waitForChatCompletion();
 
   expect(fs.existsSync(migrationsDir)).toBe(false);
 
   // --- SCENARIO 2: TOGGLE ON ---
   // Go to settings to find the Supabase integration
-  await po.goToSettingsTab();
+  await po.navigation.goToSettingsTab();
   const migrationsSwitch = po.page.getByRole("switch", {
     name: "Write SQL migration files",
   });
@@ -32,11 +32,11 @@ testSkipIfWindows("supabase migrations", async ({ po }) => {
   await migrationsSwitch.click();
   // Wait for the setting to be persisted
   await expect(migrationsSwitch).toBeChecked();
-  await po.goToChatTab();
+  await po.navigation.goToChatTab();
 
   // Send a prompt that triggers a migration
-  await po.sendPrompt("tc=execute-sql-1");
-  await po.waitForChatCompletion();
+  await po.chatActions.sendPrompt("tc=execute-sql-1");
+  await po.chatActions.waitForChatCompletion();
 
   let files: string[] = [];
   await expect(async () => {
@@ -51,8 +51,8 @@ testSkipIfWindows("supabase migrations", async ({ po }) => {
   );
 
   // Send a prompt that triggers a migration
-  await po.sendPrompt("tc=execute-sql-no-description");
-  await po.waitForChatCompletion();
+  await po.chatActions.sendPrompt("tc=execute-sql-no-description");
+  await po.chatActions.waitForChatCompletion();
 
   await expect(async () => {
     // Check that one migration file was created
@@ -72,25 +72,25 @@ testSkipIfWindows("supabase migrations with native git", async ({ po }) => {
   // Keep native Git on to catch this edge case:
   // https://github.com/dyad-sh/dyad/issues/608
   await po.setUp({ autoApprove: true, disableNativeGit: false });
-  await po.sendPrompt("tc=add-supabase");
+  await po.chatActions.sendPrompt("tc=add-supabase");
 
   // Connect to Supabase
   await po.page.getByText("Set up supabase").click();
-  await po.clickConnectSupabaseButton();
-  await po.clickBackButton();
+  await po.appManagement.clickConnectSupabaseButton();
+  await po.navigation.clickBackButton();
 
-  const appPath = await po.getCurrentAppPath();
+  const appPath = await po.appManagement.getCurrentAppPath();
   const migrationsDir = path.join(appPath, "supabase", "migrations");
 
   // --- SCENARIO 1: OFF BY DEFAULT ---
-  await po.sendPrompt("tc=execute-sql-1");
-  await po.waitForChatCompletion();
+  await po.chatActions.sendPrompt("tc=execute-sql-1");
+  await po.chatActions.waitForChatCompletion();
 
   expect(fs.existsSync(migrationsDir)).toBe(false);
 
   // --- SCENARIO 2: TOGGLE ON ---
   // Go to settings to find the Supabase integration
-  await po.goToSettingsTab();
+  await po.navigation.goToSettingsTab();
   const migrationsSwitch = po.page.getByRole("switch", {
     name: "Write SQL migration files",
   });
@@ -98,11 +98,11 @@ testSkipIfWindows("supabase migrations with native git", async ({ po }) => {
   await migrationsSwitch.click();
   // Wait for the setting to be persisted
   await expect(migrationsSwitch).toBeChecked();
-  await po.goToChatTab();
+  await po.navigation.goToChatTab();
 
   // Send a prompt that triggers a migration
-  await po.sendPrompt("tc=execute-sql-1");
-  await po.waitForChatCompletion();
+  await po.chatActions.sendPrompt("tc=execute-sql-1");
+  await po.chatActions.waitForChatCompletion();
 
   let files: string[] = [];
   await expect(async () => {
@@ -124,8 +124,8 @@ testSkipIfWindows("supabase migrations with native git", async ({ po }) => {
   expect(gitStatus).toBe("");
 
   // Send a prompt that triggers a migration
-  await po.sendPrompt("tc=execute-sql-no-description");
-  await po.waitForChatCompletion();
+  await po.chatActions.sendPrompt("tc=execute-sql-no-description");
+  await po.chatActions.waitForChatCompletion();
 
   await expect(async () => {
     // Check that one migration file was created

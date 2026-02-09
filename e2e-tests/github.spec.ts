@@ -3,9 +3,9 @@ import { test } from "./helpers/test_helper";
 
 test("should connect to GitHub using device flow", async ({ po }) => {
   await po.setUp();
-  await po.sendPrompt("tc=basic");
+  await po.chatActions.sendPrompt("tc=basic");
 
-  await po.getTitleBarAppNameButton().click();
+  await po.appManagement.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
 
   // Wait for device flow to start and show the code
@@ -22,9 +22,9 @@ test("should connect to GitHub using device flow", async ({ po }) => {
 
 test("create and sync to new repo", async ({ po }) => {
   await po.setUp();
-  await po.sendPrompt("tc=basic");
+  await po.chatActions.sendPrompt("tc=basic");
 
-  await po.getTitleBarAppNameButton().click();
+  await po.appManagement.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
 
   // Verify "Create new repo" is selected by default
@@ -59,9 +59,9 @@ test("create and sync to new repo", async ({ po }) => {
 
 test("create and sync to new repo - custom branch", async ({ po }) => {
   await po.setUp();
-  await po.sendPrompt("tc=basic");
+  await po.chatActions.sendPrompt("tc=basic");
 
-  await po.getTitleBarAppNameButton().click();
+  await po.appManagement.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
 
   await po.githubConnector.fillCreateRepoName("test-new-repo-custom");
@@ -88,9 +88,9 @@ test("create repo with spaces in name - should normalize to hyphens", async ({
   po,
 }) => {
   await po.setUp();
-  await po.sendPrompt("tc=basic");
+  await po.chatActions.sendPrompt("tc=basic");
 
-  await po.getTitleBarAppNameButton().click();
+  await po.appManagement.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
 
   // Enter a repo name with spaces - GitHub normalizes these to hyphens
@@ -120,9 +120,9 @@ test("create repo with spaces in name - should normalize to hyphens", async ({
 
 test("disconnect from repo", async ({ po }) => {
   await po.setUp();
-  await po.sendPrompt("tc=basic");
+  await po.chatActions.sendPrompt("tc=basic");
 
-  await po.getTitleBarAppNameButton().click();
+  await po.appManagement.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
 
   await po.githubConnector.fillCreateRepoName("test-new-repo-disconnect");
@@ -137,9 +137,9 @@ test("disconnect from repo", async ({ po }) => {
 
 test("create and sync to existing repo", async ({ po }) => {
   await po.setUp();
-  await po.sendPrompt("tc=basic");
+  await po.chatActions.sendPrompt("tc=basic");
 
-  await po.getTitleBarAppNameButton().click();
+  await po.appManagement.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
 
   await po.githubConnector.getConnectToExistingRepoModeButton().click();
@@ -156,9 +156,9 @@ test("create and sync to existing repo - custom branch", async ({ po }) => {
   await po.githubConnector.clearPushEvents();
 
   await po.setUp();
-  await po.sendPrompt("tc=basic");
+  await po.chatActions.sendPrompt("tc=basic");
 
-  await po.getTitleBarAppNameButton().click();
+  await po.appManagement.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
 
   await po.githubConnector.getConnectToExistingRepoModeButton().click();
@@ -180,21 +180,21 @@ test("create and sync to existing repo - custom branch", async ({ po }) => {
 
 test("github clear integration settings", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.sendPrompt("tc=basic");
+  await po.chatActions.sendPrompt("tc=basic");
 
-  await po.getTitleBarAppNameButton().click();
+  await po.appManagement.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
   await expect(po.githubConnector.getCreateNewRepoModeButton()).toBeVisible();
 
   // Capture settings before disconnecting
 
-  await po.clickOpenInChatButton();
+  await po.appManagement.clickOpenInChatButton();
   // Make sure we are committing so that githubUser.email is getting set.
-  await po.sendPrompt("tc=write-index");
-  const beforeSettings = po.recordSettings();
+  await po.chatActions.sendPrompt("tc=write-index");
+  const beforeSettings = po.settings.recordSettings();
 
   // Navigate to settings
-  await po.goToSettingsTab();
+  await po.navigation.goToSettingsTab();
 
   // Verify the "Disconnect from GitHub" button is visible (meaning we're connected)
   const disconnectButton = po.page.getByRole("button", {
@@ -208,5 +208,5 @@ test("github clear integration settings", async ({ po }) => {
   await expect(disconnectButton).not.toBeVisible();
 
   // Snapshot only the settings that changed (GitHub token/user removed)
-  po.snapshotSettingsDelta(beforeSettings);
+  po.settings.snapshotSettingsDelta(beforeSettings);
 });

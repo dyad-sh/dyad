@@ -6,12 +6,12 @@ import * as eph from "electron-playwright-helpers";
 
 test("move app to a custom storage location", async ({ po }) => {
   await po.setUp();
-  await po.sendPrompt("hello");
+  await po.chatActions.sendPrompt("hello");
 
-  const appName = await po.getCurrentAppName();
-  const originalPath = await po.getCurrentAppPath();
+  const appName = await po.appManagement.getCurrentAppName();
+  const originalPath = await po.appManagement.getCurrentAppPath();
 
-  await po.getTitleBarAppNameButton().click();
+  await po.appManagement.getTitleBarAppNameButton().click();
 
   const newBasePath = path.join(po.userDataDir, "alt-app-storage");
   if (!fs.existsSync(newBasePath)) {

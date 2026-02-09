@@ -4,9 +4,9 @@ import { expect } from "@playwright/test";
 test.describe("Toggle Screen Size Tests", () => {
   async function setupApp(po: any) {
     await po.setUp({ autoApprove: true });
-    await po.sendPrompt("tc=write-index");
+    await po.chatActions.sendPrompt("tc=write-index");
 
-    const iframe = po.getPreviewIframeElement();
+    const iframe = po.previewPanel.getPreviewIframeElement();
     const frame = await iframe.contentFrame();
 
     await expect(frame.getByText("Testing:write-index!")).toBeVisible({
@@ -96,9 +96,9 @@ test.describe("Toggle Screen Size Tests", () => {
       await expect(previewIframe).toHaveAttribute("style", /width:\s*375px/);
 
       // Trigger rebuild
-      await po.clickRebuild();
-      await expect(po.locateLoadingAppPreview()).toBeVisible();
-      await expect(po.locateLoadingAppPreview()).not.toBeVisible({
+      await po.previewPanel.clickRebuild();
+      await expect(po.previewPanel.locateLoadingAppPreview()).toBeVisible();
+      await expect(po.previewPanel.locateLoadingAppPreview()).not.toBeVisible({
         timeout: Timeout.EXTRA_LONG,
       });
 

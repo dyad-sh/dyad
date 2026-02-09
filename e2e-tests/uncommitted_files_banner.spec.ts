@@ -14,9 +14,9 @@ const runUncommittedFilesBannerTest = async (
   nativeGit: boolean,
 ) => {
   await po.setUp({ disableNativeGit: !nativeGit });
-  await po.sendPrompt("tc=basic");
+  await po.chatActions.sendPrompt("tc=basic");
 
-  const appPath = await po.getCurrentAppPath();
+  const appPath = await po.appManagement.getCurrentAppPath();
   if (!appPath) {
     throw new Error("No app path found");
   }
@@ -76,7 +76,7 @@ const runUncommittedFilesBannerTest = async (
   await po.page.getByTestId("commit-button").click();
 
   // Wait for success toast
-  await po.waitForToast("success");
+  await po.toastNotifications.waitForToast("success");
 
   // The dialog should close
   await expect(po.page.getByTestId("commit-dialog")).not.toBeVisible();

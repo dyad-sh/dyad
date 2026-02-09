@@ -36,5 +36,5 @@ testSkipIfWindows("import app without copying to dyad-apps", async ({ po }) => {
   await po.page.getByRole("button", { name: "Import" }).click();
 
   // Verify import succeeded
-  await po.snapshotPreview();
+  await po.previewPanel.snapshotPreview();
 });

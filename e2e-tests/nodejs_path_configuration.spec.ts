@@ -4,7 +4,7 @@ import { expect } from "@playwright/test";
 test.describe("Node.js Path Configuration", () => {
   test("should browse and set custom Node.js path", async ({ po }) => {
     await po.setUp();
-    await po.goToSettingsTab();
+    await po.navigation.goToSettingsTab();
 
     const browseButton = po.page.getByRole("button", {
       name: /Browse for Node\.js/i,
@@ -19,7 +19,7 @@ test.describe("Node.js Path Configuration", () => {
 
   test("should reset custom path to system default", async ({ po }) => {
     await po.setUp();
-    await po.goToSettingsTab();
+    await po.navigation.goToSettingsTab();
 
     const resetButton = po.page.getByRole("button", {
       name: /Reset to Default/i,
@@ -35,7 +35,7 @@ test.describe("Node.js Path Configuration", () => {
 
   test("should show CheckCircle when Node.js is valid", async ({ po }) => {
     await po.setUp();
-    await po.goToSettingsTab();
+    await po.navigation.goToSettingsTab();
 
     // Wait for status check
     await po.page.waitForTimeout(2000);

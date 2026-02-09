@@ -4,12 +4,12 @@ import { expect } from "@playwright/test";
 
 test("rename app (including folder)", async ({ po }) => {
   await po.setUp();
-  await po.sendPrompt("hi");
+  await po.chatActions.sendPrompt("hi");
 
-  const appPath = await po.getCurrentAppPath();
-  await po.getTitleBarAppNameButton().click();
+  const appPath = await po.appManagement.getCurrentAppPath();
+  await po.appManagement.getTitleBarAppNameButton().click();
 
-  await po.clickAppDetailsRenameAppButton();
+  await po.appManagement.clickAppDetailsRenameAppButton();
   await po.page
     .getByRole("textbox", { name: "Enter new app name" })
     .fill("new-app-name");
@@ -19,11 +19,11 @@ test("rename app (including folder)", async ({ po }) => {
     .click();
 
   await expect(async () => {
-    expect(await po.getCurrentAppName()).toBe("new-app-name");
+    expect(await po.appManagement.getCurrentAppName()).toBe("new-app-name");
   }).toPass();
 
   expect(fs.existsSync(appPath)).toBe(false);
-  const newAppPath = po.getAppPath({ appName: "new-app-name" });
+  const newAppPath = po.appManagement.getAppPath({ appName: "new-app-name" });
   expect(fs.existsSync(newAppPath)).toBe(true);
 
   await expect(po.page.getByText(newAppPath)).toBeVisible();
@@ -31,12 +31,12 @@ test("rename app (including folder)", async ({ po }) => {
 
 test("rename app (without folder)", async ({ po }) => {
   await po.setUp();
-  await po.sendPrompt("hi");
+  await po.chatActions.sendPrompt("hi");
 
-  const appPath = await po.getCurrentAppPath();
-  await po.getTitleBarAppNameButton().click();
+  const appPath = await po.appManagement.getCurrentAppPath();
+  await po.appManagement.getTitleBarAppNameButton().click();
 
-  await po.clickAppDetailsRenameAppButton();
+  await po.appManagement.clickAppDetailsRenameAppButton();
   await po.page
     .getByRole("textbox", { name: "Enter new app name" })
     .fill("new-app-name");
@@ -46,7 +46,7 @@ test("rename app (without folder)", async ({ po }) => {
     .click();
 
   await expect(async () => {
-    expect(await po.getCurrentAppName()).toBe("new-app-name");
+    expect(await po.appManagement.getCurrentAppName()).toBe("new-app-name");
   }).toPass();
 
   expect(fs.existsSync(appPath)).toBe(true);

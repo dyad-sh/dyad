@@ -3,18 +3,20 @@ import { expect } from "@playwright/test";
 
 test("create next.js app", async ({ po }) => {
   await po.setUp();
-  const beforeSettings = po.recordSettings();
-  await po.goToHubAndSelectTemplate("Next.js Template");
-  await po.selectChatMode("build");
-  po.snapshotSettingsDelta(beforeSettings);
+  const beforeSettings = po.settings.recordSettings();
+  await po.navigation.goToHubAndSelectTemplate("Next.js Template");
+  await po.chatActions.selectChatMode("build");
+  po.settings.snapshotSettingsDelta(beforeSettings);
 
   // Create an app
-  await po.sendPrompt("tc=edit-made-with-dyad");
+  await po.chatActions.sendPrompt("tc=edit-made-with-dyad");
   await po.approveProposal();
 
   await po.clickRestart();
 
   // This can be pretty slow because it's waiting for the app to build.
-  await expect(po.getPreviewIframeElement()).toBeVisible({ timeout: 100_000 });
-  await po.snapshotPreview();
+  await expect(po.previewPanel.getPreviewIframeElement()).toBeVisible({
+    timeout: 100_000,
+  });
+  await po.previewPanel.snapshotPreview();
 });

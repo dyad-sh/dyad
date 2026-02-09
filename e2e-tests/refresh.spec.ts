@@ -3,11 +3,11 @@ import { expect } from "@playwright/test";
 
 testSkipIfWindows("refresh app", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.sendPrompt("hi");
+  await po.chatActions.sendPrompt("hi");
 
   // Drop the document.body inside the contentFrame to make
   // sure refresh works.
-  await po
+  await po.previewPanel
     .getPreviewIframeElement()
     .contentFrame()
     .locator("body")
@@ -15,26 +15,29 @@ testSkipIfWindows("refresh app", async ({ po }) => {
       body.remove();
     });
 
-  await po.clickPreviewRefresh();
-  await po.snapshotPreview();
+  await po.previewPanel.clickPreviewRefresh();
+  await po.previewPanel.snapshotPreview();
 });
 
 testSkipIfWindows("refresh preserves current route", async ({ po }) => {
   await po.setUp({ autoApprove: true });
 
   // Create a multi-page app with react-router navigation
-  await po.sendPrompt("tc=multi-page");
+  await po.chatActions.sendPrompt("tc=multi-page");
 
   // Wait for the preview iframe to be visible and loaded
-  await po.expectPreviewIframeIsVisible();
+  await po.previewPanel.expectPreviewIframeIsVisible();
 
   // Wait for the Home Page content to be visible in the iframe
   await expect(
-    po.getPreviewIframeElement().contentFrame().getByText("Home Page"),
+    po.previewPanel
+      .getPreviewIframeElement()
+      .contentFrame()
+      .getByText("Home Page"),
   ).toBeVisible({ timeout: Timeout.LONG });
 
   // Click on the navigation link to go to /about (realistic user behavior)
-  await po
+  await po.previewPanel
     .getPreviewIframeElement()
     .contentFrame()
     .getByText("Go to About Page")
@@ -42,15 +45,21 @@ testSkipIfWindows("refresh preserves current route", async ({ po }) => {
 
   // Wait for the About Page content to be visible
   await expect(
-    po.getPreviewIframeElement().contentFrame().getByText("About Page"),
+    po.previewPanel
+      .getPreviewIframeElement()
+      .contentFrame()
+      .getByText("About Page"),
   ).toBeVisible({ timeout: Timeout.MEDIUM });
 
   // Click refresh
-  await po.clickPreviewRefresh();
+  await po.previewPanel.clickPreviewRefresh();
 
   // Verify the route is preserved after refresh - About Page should still be visible
   await expect(
-    po.getPreviewIframeElement().contentFrame().getByText("About Page"),
+    po.previewPanel
+      .getPreviewIframeElement()
+      .contentFrame()
+      .getByText("About Page"),
   ).toBeVisible({ timeout: Timeout.MEDIUM });
 
   // Wait to see if the page stays on About Page (reproducing local issue with HMR)
@@ -59,13 +68,13 @@ testSkipIfWindows("refresh preserves current route", async ({ po }) => {
   // Verify it's STILL on About Page after waiting - check that About Page heading is visible
   // and the Home Page heading is not (use getByRole to match the heading, not the link text)
   await expect(
-    po
+    po.previewPanel
       .getPreviewIframeElement()
       .contentFrame()
       .getByRole("heading", { name: "About Page" }),
   ).toBeVisible({ timeout: Timeout.MEDIUM });
   await expect(
-    po
+    po.previewPanel
       .getPreviewIframeElement()
       .contentFrame()
       .getByRole("heading", { name: "Home Page" }),
@@ -78,14 +87,17 @@ testSkipIfWindows(
     await po.setUp({ autoApprove: true });
 
     // Create a multi-page app with react-router navigation
-    await po.sendPrompt("tc=multi-page");
+    await po.chatActions.sendPrompt("tc=multi-page");
 
     // Wait for the preview iframe to be visible and loaded
-    await po.expectPreviewIframeIsVisible();
+    await po.previewPanel.expectPreviewIframeIsVisible();
 
     // Wait for the Home Page content to be visible in the iframe
     await expect(
-      po.getPreviewIframeElement().contentFrame().getByText("Home Page"),
+      po.previewPanel
+        .getPreviewIframeElement()
+        .contentFrame()
+        .getByText("Home Page"),
     ).toBeVisible({ timeout: Timeout.LONG });
 
     // Verify back button is disabled initially (no history)
@@ -94,7 +106,7 @@ testSkipIfWindows(
     ).toBeDisabled();
 
     // Click on the navigation link to go to /about
-    await po
+    await po.previewPanel
       .getPreviewIframeElement()
       .contentFrame()
       .getByText("Go to About Page")
@@ -102,7 +114,7 @@ testSkipIfWindows(
 
     // Wait for the About Page content to be visible
     await expect(
-      po
+      po.previewPanel
         .getPreviewIframeElement()
         .contentFrame()
         .getByRole("heading", { name: "About Page" }),
@@ -114,11 +126,11 @@ testSkipIfWindows(
     ).toBeEnabled();
 
     // Click back button to go back to Home Page
-    await po.clickPreviewNavigateBack();
+    await po.previewPanel.clickPreviewNavigateBack();
 
     // Verify we're back on Home Page
     await expect(
-      po
+      po.previewPanel
         .getPreviewIframeElement()
         .contentFrame()
         .getByRole("heading", { name: "Home Page" }),
@@ -130,11 +142,11 @@ testSkipIfWindows(
     ).toBeEnabled();
 
     // Click forward button to go back to About Page
-    await po.clickPreviewNavigateForward();
+    await po.previewPanel.clickPreviewNavigateForward();
 
     // Verify we're on About Page again
     await expect(
-      po
+      po.previewPanel
         .getPreviewIframeElement()
         .contentFrame()
         .getByRole("heading", { name: "About Page" }),

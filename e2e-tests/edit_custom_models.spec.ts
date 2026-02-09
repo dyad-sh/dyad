@@ -3,7 +3,7 @@ import { expect } from "@playwright/test";
 
 test("edit custom model", async ({ po }) => {
   await po.setUp();
-  await po.goToSettingsTab();
+  await po.navigation.goToSettingsTab();
   await po.page.getByText("test-provider").click();
 
   // test edit model by double clicking the model panel
@@ -51,5 +51,5 @@ test("edit custom model", async ({ po }) => {
   await po.page.getByRole("button", { name: "Cancel" }).click();
 
   // Make sure UI hasn't freezed
-  await po.goToAppsTab();
+  await po.navigation.goToAppsTab();
 });

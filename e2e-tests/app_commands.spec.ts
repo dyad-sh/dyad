@@ -3,10 +3,10 @@ import { test } from "./helpers/test_helper";
 
 test("configure app commands", async ({ po }) => {
   // Create an app first
-  await po.sendPrompt("tc=1");
+  await po.chatActions.sendPrompt("tc=1");
 
   // Navigate to configure panel
-  await po.selectPreviewMode("configure");
+  await po.previewPanel.selectPreviewMode("configure");
 
   // Verify default state - no custom commands
   await expect(
@@ -68,7 +68,7 @@ test("configure app commands", async ({ po }) => {
   await po.page.getByTestId("save-app-commands").click();
 
   // Verify success toast
-  await po.waitForToastWithText("App commands saved");
+  await po.toastNotifications.waitForToastWithText("App commands saved");
 
   // Verify the commands are displayed
   await expect(po.page.getByTestId("current-install-command")).toHaveText(

@@ -4,24 +4,24 @@ import { expect } from "@playwright/test";
 
 testSkipIfWindows("delete app", async ({ po }) => {
   await po.setUp();
-  await po.sendPrompt("hi");
-  const appName = await po.getCurrentAppName();
+  await po.chatActions.sendPrompt("hi");
+  const appName = await po.appManagement.getCurrentAppName();
   if (!appName) {
     throw new Error("App name not found");
   }
-  const appPath = await po.getCurrentAppPath();
-  await po.getTitleBarAppNameButton().click();
-  await expect(po.getAppListItem({ appName })).toBeVisible();
+  const appPath = await po.appManagement.getCurrentAppPath();
+  await po.appManagement.getTitleBarAppNameButton().click();
+  await expect(po.appManagement.getAppListItem({ appName })).toBeVisible();
 
   // Delete app
-  await po.clickAppDetailsMoreOptions();
+  await po.appManagement.clickAppDetailsMoreOptions();
   // Open delete dialog
   await po.page.getByRole("button", { name: "Delete" }).click();
   // Confirm delete
   await po.page.getByRole("button", { name: "Delete App" }).click();
 
   // Make sure the app is deleted
-  await po.isCurrentAppNameNone();
+  await po.appManagement.isCurrentAppNameNone();
   expect(fs.existsSync(appPath)).toBe(false);
-  await expect(po.getAppListItem({ appName })).not.toBeVisible();
+  await expect(po.appManagement.getAppListItem({ appName })).not.toBeVisible();
 });

@@ -3,7 +3,7 @@ import { test as testWithPo } from "./helpers/test_helper";
 
 testWithPo("Azure provider settings UI", async ({ po }) => {
   await po.setUp();
-  await po.goToSettingsTab();
+  await po.navigation.goToSettingsTab();
 
   // Look for Azure OpenAI in the provider list
   await expect(po.page.getByText("Azure OpenAI")).toBeVisible();

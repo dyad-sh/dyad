@@ -31,7 +31,7 @@ testWithConfig({
   "force-close detection shows dialog with performance data",
   async ({ po }) => {
     // Wait for the home page to be visible first
-    await expect(po.getHomeChatInputContainer()).toBeVisible({
+    await expect(po.chatActions.getHomeChatInputContainer()).toBeVisible({
       timeout: Timeout.LONG,
     });
 
@@ -97,7 +97,7 @@ testWithConfig({
   },
 })("no force-close dialog when app was properly shut down", async ({ po }) => {
   // Verify the home page loaded normally
-  await expect(po.getHomeChatInputContainer()).toBeVisible({
+  await expect(po.chatActions.getHomeChatInputContainer()).toBeVisible({
     timeout: Timeout.LONG,
   });
 
@@ -111,7 +111,7 @@ testWithConfig({})(
   "performance information is being captured during normal operation",
   async ({ po, electronApp }) => {
     // Wait for the app to load
-    await expect(po.getHomeChatInputContainer()).toBeVisible({
+    await expect(po.chatActions.getHomeChatInputContainer()).toBeVisible({
       timeout: Timeout.LONG,
     });
 

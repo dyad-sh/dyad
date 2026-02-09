@@ -5,12 +5,12 @@ const path = require("path");
 
 testSkipIfWindows("edit style of one selected component", async ({ po }) => {
   await po.setUpDyadPro();
-  await po.sendPrompt("tc=basic");
-  await po.clickTogglePreviewPanel();
-  await po.clickPreviewPickElement();
+  await po.chatActions.sendPrompt("tc=basic");
+  await po.previewPanel.clickTogglePreviewPanel();
+  await po.previewPanel.clickPreviewPickElement();
 
   // Select a component
-  await po
+  await po.previewPanel
     .getPreviewIframeElement()
     .contentFrame()
     .getByRole("heading", { name: "Welcome to Your Blank App" })
@@ -60,7 +60,9 @@ testSkipIfWindows("edit style of one selected component", async ({ po }) => {
   await po.page.getByRole("button", { name: "Save Changes" }).click();
 
   // Wait for the success toast
-  await po.waitForToastWithText("Visual changes saved to source files");
+  await po.toastNotifications.waitForToastWithText(
+    "Visual changes saved to source files",
+  );
 
   // Verify that the changes are applied to codebase
   await po.snapshotAppFiles({
@@ -71,12 +73,12 @@ testSkipIfWindows("edit style of one selected component", async ({ po }) => {
 
 testSkipIfWindows("edit text of the selected component", async ({ po }) => {
   await po.setUpDyadPro();
-  await po.sendPrompt("tc=basic");
-  await po.clickTogglePreviewPanel();
-  await po.clickPreviewPickElement();
+  await po.chatActions.sendPrompt("tc=basic");
+  await po.previewPanel.clickTogglePreviewPanel();
+  await po.previewPanel.clickPreviewPickElement();
 
   // Click on component that contains static text
-  await po
+  await po.previewPanel
     .getPreviewIframeElement()
     .contentFrame()
     .getByRole("heading", { name: "Welcome to Your Blank App" })
@@ -88,7 +90,7 @@ testSkipIfWindows("edit text of the selected component", async ({ po }) => {
   });
 
   // Get the iframe and access the content
-  const iframe = po.getPreviewIframeElement();
+  const iframe = po.previewPanel.getPreviewIframeElement();
   const frame = iframe.contentFrame();
 
   // Find the heading element in the iframe
@@ -127,7 +129,9 @@ testSkipIfWindows("edit text of the selected component", async ({ po }) => {
   await po.page.getByRole("button", { name: "Save Changes" }).click();
 
   // Wait for the success toast
-  await po.waitForToastWithText("Visual changes saved to source files");
+  await po.toastNotifications.waitForToastWithText(
+    "Visual changes saved to source files",
+  );
 
   // Verify that the changes are applied to the codebase
   await po.snapshotAppFiles({
@@ -138,12 +142,12 @@ testSkipIfWindows("edit text of the selected component", async ({ po }) => {
 
 testSkipIfWindows("discard changes", async ({ po }) => {
   await po.setUpDyadPro();
-  await po.sendPrompt("tc=basic");
-  await po.clickTogglePreviewPanel();
-  await po.clickPreviewPickElement();
+  await po.chatActions.sendPrompt("tc=basic");
+  await po.previewPanel.clickTogglePreviewPanel();
+  await po.previewPanel.clickPreviewPickElement();
 
   // Select a component
-  await po
+  await po.previewPanel
     .getPreviewIframeElement()
     .contentFrame()
     .getByRole("heading", { name: "Welcome to Your Blank App" })
@@ -194,7 +198,7 @@ testSkipIfWindows("discard changes", async ({ po }) => {
   });
 
   // Take a snapshot of the app files before discarding
-  const appPathBefore = await po.getCurrentAppPath();
+  const appPathBefore = await po.appManagement.getCurrentAppPath();
   const appFileBefore = fs.readFileSync(
     path.join(appPathBefore, "src", "pages", "Index.tsx"),
     "utf-8",

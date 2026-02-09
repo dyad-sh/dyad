@@ -3,9 +3,11 @@ import { expect } from "@playwright/test";
 
 test("copy message content - basic functionality", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.importApp("minimal");
+  await po.appManagement.importApp("minimal");
 
-  await po.sendPrompt("[dump] Just say hello without creating any files");
+  await po.chatActions.sendPrompt(
+    "[dump] Just say hello without creating any files",
+  );
 
   await po.page
     .context()
@@ -25,9 +27,9 @@ test("copy message content - basic functionality", async ({ po }) => {
 
 test("copy message content - dyad-write conversion", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.importApp("minimal");
+  await po.appManagement.importApp("minimal");
 
-  await po.sendPrompt(
+  await po.chatActions.sendPrompt(
     "Create a simple React component in src/components/Button.tsx",
   );
 
@@ -51,9 +53,9 @@ test("copy message content - dyad-write conversion", async ({ po }) => {
 // This test is flaky.
 test.skip("copy button tooltip states", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.importApp("minimal");
+  await po.appManagement.importApp("minimal");
 
-  await po.sendPrompt("Say hello");
+  await po.chatActions.sendPrompt("Say hello");
 
   const copyButton = po.page.getByTestId("copy-message-button").first();
 

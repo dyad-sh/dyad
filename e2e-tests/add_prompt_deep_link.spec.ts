@@ -6,7 +6,7 @@ test("add prompt via deep link with base64-encoded data", async ({
   electronApp,
 }) => {
   await po.setUp();
-  await po.goToLibraryTab();
+  await po.navigation.goToLibraryTab();
 
   // Verify library is empty initially
   await expect(po.page.getByTestId("prompt-card")).not.toBeVisible();

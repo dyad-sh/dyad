@@ -5,12 +5,12 @@ import path from "path";
 
 test("edit code", async ({ po }) => {
   const editedFilePath = path.join("src", "components", "made-with-dyad.tsx");
-  await po.sendPrompt("foo");
-  const appPath = await po.getCurrentAppPath();
+  await po.chatActions.sendPrompt("foo");
+  const appPath = await po.appManagement.getCurrentAppPath();
 
-  await po.clickTogglePreviewPanel();
+  await po.previewPanel.clickTogglePreviewPanel();
 
-  await po.selectPreviewMode("code");
+  await po.previewPanel.selectPreviewMode("code");
   await po.page.getByText("made-with-dyad.tsx").click();
   await po.page
     .getByRole("code")
@@ -40,16 +40,16 @@ test("edit code", async ({ po }) => {
 test("edit code edits the right file", async ({ po }) => {
   const editedFilePath = path.join("src", "components", "made-with-dyad.tsx");
   const robotsFilePath = path.join("public", "robots.txt");
-  await po.sendPrompt("foo");
-  const appPath = await po.getCurrentAppPath();
+  await po.chatActions.sendPrompt("foo");
+  const appPath = await po.appManagement.getCurrentAppPath();
   const originalRobotsFile = fs.readFileSync(
     path.join(appPath, robotsFilePath),
     "utf8",
   );
 
-  await po.clickTogglePreviewPanel();
+  await po.previewPanel.clickTogglePreviewPanel();
 
-  await po.selectPreviewMode("code");
+  await po.previewPanel.selectPreviewMode("code");
   await po.page.getByText("made-with-dyad.tsx").click();
   await po.page
     .getByRole("code")

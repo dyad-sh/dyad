@@ -17,7 +17,7 @@ testSkipIfWindows("import app", async ({ po }) => {
     .fill("minimal-imported-app");
   await po.page.getByRole("button", { name: "Import" }).click();
 
-  await po.snapshotPreview();
+  await po.previewPanel.snapshotPreview();
   await po.snapshotMessages();
 });
 
@@ -37,9 +37,9 @@ testSkipIfWindows("import app with AI rules", async ({ po }) => {
     .fill("minimal-imported-app");
   await po.page.getByRole("button", { name: "Import" }).click();
 
-  await po.snapshotPreview();
+  await po.previewPanel.snapshotPreview();
 
-  await po.sendPrompt("[dump]");
+  await po.chatActions.sendPrompt("[dump]");
 
   await po.snapshotServerDump();
   await po.snapshotMessages({ replaceDumpPath: true });
@@ -96,6 +96,6 @@ testSkipIfWindows(
 
     await po.page.getByRole("button", { name: "Import" }).click();
 
-    await po.snapshotPreview();
+    await po.previewPanel.snapshotPreview();
   },
 );

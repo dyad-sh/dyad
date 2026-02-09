@@ -2,7 +2,7 @@ import { test } from "./helpers/test_helper";
 
 test("manage context - default", async ({ po }) => {
   await po.setUp();
-  await po.importApp("context-manage");
+  await po.appManagement.importApp("context-manage");
 
   const dialog = await po.openContextFilesPicker();
   await po.snapshotDialog();
@@ -13,15 +13,18 @@ test("manage context - default", async ({ po }) => {
   await po.snapshotDialog();
   await dialog.close();
 
-  await po.sendPrompt("[dump]");
+  await po.chatActions.sendPrompt("[dump]");
 
   await po.snapshotServerDump("all-messages");
 });
 
 test("manage context - smart context", async ({ po }) => {
   await po.setUpDyadPro();
-  await po.selectModel({ provider: "Google", model: "Gemini 2.5 Pro" });
-  await po.importApp("context-manage");
+  await po.modelPicker.selectModel({
+    provider: "Google",
+    model: "Gemini 2.5 Pro",
+  });
+  await po.appManagement.importApp("context-manage");
 
   let dialog = await po.openContextFilesPicker();
   await po.snapshotDialog();
@@ -33,7 +36,7 @@ test("manage context - smart context", async ({ po }) => {
   await po.snapshotDialog();
   await dialog.close();
 
-  await po.sendPrompt("[dump]");
+  await po.chatActions.sendPrompt("[dump]");
 
   await po.snapshotServerDump("request");
   await po.snapshotServerDump("all-messages");
@@ -44,7 +47,7 @@ test("manage context - smart context", async ({ po }) => {
   await proModesDialog.setSmartContextMode("off");
   await proModesDialog.close();
 
-  await po.sendPrompt("[dump]");
+  await po.chatActions.sendPrompt("[dump]");
   await po.snapshotServerDump("request");
 
   // Removing manual context files will result in all files being included.
@@ -53,14 +56,17 @@ test("manage context - smart context", async ({ po }) => {
   await dialog.removeManualContextFile();
   await dialog.close();
 
-  await po.sendPrompt("[dump]");
+  await po.chatActions.sendPrompt("[dump]");
   await po.snapshotServerDump("request");
 });
 
 test("manage context - smart context - auto-includes only", async ({ po }) => {
   await po.setUpDyadPro();
-  await po.selectModel({ provider: "Google", model: "Gemini 2.5 Pro" });
-  await po.importApp("context-manage");
+  await po.modelPicker.selectModel({
+    provider: "Google",
+    model: "Gemini 2.5 Pro",
+  });
+  await po.appManagement.importApp("context-manage");
 
   const dialog = await po.openContextFilesPicker();
   await po.snapshotDialog();
@@ -70,14 +76,14 @@ test("manage context - smart context - auto-includes only", async ({ po }) => {
   await po.snapshotDialog();
   await dialog.close();
 
-  await po.sendPrompt("[dump]");
+  await po.chatActions.sendPrompt("[dump]");
 
   await po.snapshotServerDump("request");
 });
 
 test("manage context - exclude paths", async ({ po }) => {
   await po.setUp();
-  await po.importApp("context-manage");
+  await po.appManagement.importApp("context-manage");
 
   const dialog = await po.openContextFilesPicker();
   await po.snapshotDialog();
@@ -92,7 +98,7 @@ test("manage context - exclude paths", async ({ po }) => {
   await po.snapshotDialog();
   await dialog.close();
 
-  await po.sendPrompt("[dump]");
+  await po.chatActions.sendPrompt("[dump]");
   await po.snapshotServerDump("all-messages", { name: "exclude-paths-basic" });
 
   // Test that exclude paths take precedence over include paths
@@ -102,7 +108,7 @@ test("manage context - exclude paths", async ({ po }) => {
   await po.snapshotDialog();
   await dialog2.close();
 
-  await po.sendPrompt("[dump]");
+  await po.chatActions.sendPrompt("[dump]");
   await po.snapshotServerDump("all-messages", {
     name: "exclude-paths-precedence",
   });
@@ -110,8 +116,11 @@ test("manage context - exclude paths", async ({ po }) => {
 
 test("manage context - exclude paths with smart context", async ({ po }) => {
   await po.setUpDyadPro();
-  await po.selectModel({ provider: "Google", model: "Gemini 2.5 Pro" });
-  await po.importApp("context-manage");
+  await po.modelPicker.selectModel({
+    provider: "Google",
+    model: "Gemini 2.5 Pro",
+  });
+  await po.appManagement.importApp("context-manage");
 
   const dialog = await po.openContextFilesPicker();
   await po.snapshotDialog();
@@ -130,7 +139,7 @@ test("manage context - exclude paths with smart context", async ({ po }) => {
   await po.snapshotDialog();
   await dialog.close();
 
-  await po.sendPrompt("[dump]");
+  await po.chatActions.sendPrompt("[dump]");
   await po.snapshotServerDump("all-messages", {
     name: "exclude-paths-with-smart-context",
   });

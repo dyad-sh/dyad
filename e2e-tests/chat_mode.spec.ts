@@ -2,10 +2,10 @@ import { test } from "./helpers/test_helper";
 
 test("chat mode selector - default build mode", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.importApp("minimal");
+  await po.appManagement.importApp("minimal");
 
-  await po.sendPrompt("[dump] hi");
-  await po.waitForChatCompletion();
+  await po.chatActions.sendPrompt("[dump] hi");
+  await po.chatActions.waitForChatCompletion();
 
   await po.snapshotServerDump("all-messages");
   await po.snapshotMessages({ replaceDumpPath: true });
@@ -13,11 +13,11 @@ test("chat mode selector - default build mode", async ({ po }) => {
 
 test("chat mode selector - ask mode", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.importApp("minimal");
+  await po.appManagement.importApp("minimal");
 
-  await po.selectChatMode("ask");
-  await po.sendPrompt("[dump] hi");
-  await po.waitForChatCompletion();
+  await po.chatActions.selectChatMode("ask");
+  await po.chatActions.sendPrompt("[dump] hi");
+  await po.chatActions.waitForChatCompletion();
 
   await po.snapshotServerDump("all-messages");
   await po.snapshotMessages({ replaceDumpPath: true });
@@ -25,18 +25,18 @@ test("chat mode selector - ask mode", async ({ po }) => {
 
 test.skip("dyadwrite edit and save - basic flow", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.importApp("minimal");
-  await po.clickNewChat();
+  await po.appManagement.importApp("minimal");
+  await po.chatActions.clickNewChat();
 
-  await po.sendPrompt(
+  await po.chatActions.sendPrompt(
     "Create a simple React component in src/components/Hello.tsx",
   );
-  await po.waitForChatCompletion();
+  await po.chatActions.waitForChatCompletion();
 
-  await po.clickEditButton();
-  await po.editFileContent("// Test modification\n");
+  await po.codeEditor.clickEditButton();
+  await po.codeEditor.editFileContent("// Test modification\n");
 
-  await po.saveFile();
+  await po.codeEditor.saveFile();
 
   await po.snapshotMessages({ replaceDumpPath: true });
 });

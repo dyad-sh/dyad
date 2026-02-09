@@ -5,13 +5,13 @@ test("send button disabled during pending proposal", async ({ po }) => {
   await po.setUp();
 
   // Send a prompt that generates a proposal
-  await po.sendPrompt("Create a simple React component");
+  await po.chatActions.sendPrompt("Create a simple React component");
 
   // Wait for proposal buttons to appear (ensuring proposal is rendered)
   await expect(po.page.getByTestId("approve-proposal-button")).toBeVisible();
 
   // Type something in the input to ensure it's not disabled due to empty input
-  await po.getChatInput().fill("test message");
+  await po.chatActions.getChatInput().fill("test message");
 
   // Check send button is disabled due to pending changes
   const sendButton = po.page.getByRole("button", { name: "Send message" });
@@ -30,13 +30,13 @@ test("send button disabled during pending proposal - reject", async ({
   await po.setUp();
 
   // Send a prompt that generates a proposal
-  await po.sendPrompt("Create a simple React component");
+  await po.chatActions.sendPrompt("Create a simple React component");
 
   // Wait for proposal buttons to appear (ensuring proposal is rendered)
   await expect(po.page.getByTestId("reject-proposal-button")).toBeVisible();
 
   // Type something in the input to ensure it's not disabled due to empty input
-  await po.getChatInput().fill("test message");
+  await po.chatActions.getChatInput().fill("test message");
 
   // Check send button is disabled due to pending changes
   const sendButton = po.page.getByRole("button", { name: "Send message" });

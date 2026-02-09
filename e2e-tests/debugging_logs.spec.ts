@@ -6,7 +6,7 @@ testSkipIfWindows(
   async ({ po }) => {
     await po.setUp();
 
-    await po.sendPrompt("tc=console-logs");
+    await po.chatActions.sendPrompt("tc=console-logs");
     await po.approveProposal();
 
     // Wait for app to run
@@ -14,7 +14,7 @@ testSkipIfWindows(
     await expect(picker).toBeEnabled({ timeout: Timeout.EXTRA_LONG });
 
     // Wait for iframe to load and app to render
-    const iframe = po.getPreviewIframeElement();
+    const iframe = po.previewPanel.getPreviewIframeElement();
     await expect(
       iframe.contentFrame().getByText("Console Logs Test App"),
     ).toBeVisible({
@@ -89,7 +89,7 @@ testSkipIfWindows(
   async ({ po }) => {
     await po.setUp();
 
-    await po.sendPrompt("tc=network-requests");
+    await po.chatActions.sendPrompt("tc=network-requests");
     await po.approveProposal();
 
     // Wait for app to run
@@ -97,7 +97,7 @@ testSkipIfWindows(
     await expect(picker).toBeEnabled({ timeout: Timeout.EXTRA_LONG });
 
     // Wait for iframe to load - wait for content to appear
-    const iframe = po.getPreviewIframeElement();
+    const iframe = po.previewPanel.getPreviewIframeElement();
     const iframeFrame = iframe.contentFrame();
     await expect(
       iframeFrame.getByText("Network Requests Test App"),
@@ -185,7 +185,7 @@ testSkipIfWindows(
     await po.setUp();
 
     // Create an app with console output using fixture
-    await po.sendPrompt("tc=write-index");
+    await po.chatActions.sendPrompt("tc=write-index");
     await po.approveProposal();
 
     // Wait for app to run
@@ -208,7 +208,7 @@ testSkipIfWindows(
     await sendToChatButton.click({ timeout: Timeout.EXTRA_LONG });
 
     // Check that the chat input now contains the log information
-    const chatInput = po.getChatInput();
+    const chatInput = po.chatActions.getChatInput();
     const inputValue = await chatInput.textContent();
 
     // Verify the log was added to chat input
@@ -220,7 +220,7 @@ testSkipIfWindows("clear filters button works", async ({ po }) => {
   await po.setUp();
 
   // Create a basic app using fixture
-  await po.sendPrompt("tc=write-index");
+  await po.chatActions.sendPrompt("tc=write-index");
   await po.approveProposal();
 
   // Wait for app to run
@@ -254,7 +254,7 @@ testSkipIfWindows("clear logs button clears all logs", async ({ po }) => {
   await po.setUp();
 
   // Create an app with console logs
-  await po.sendPrompt("tc=console-logs");
+  await po.chatActions.sendPrompt("tc=console-logs");
   await po.approveProposal();
 
   // Wait for app to run
@@ -262,7 +262,7 @@ testSkipIfWindows("clear logs button clears all logs", async ({ po }) => {
   await expect(picker).toBeEnabled({ timeout: Timeout.EXTRA_LONG });
 
   // Wait for iframe to load
-  const iframe = po.getPreviewIframeElement();
+  const iframe = po.previewPanel.getPreviewIframeElement();
   await expect(
     iframe.contentFrame().getByText("Console Logs Test App"),
   ).toBeVisible({

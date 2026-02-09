@@ -3,13 +3,13 @@ import { expect } from "@playwright/test";
 
 testSkipIfWindows("restart app", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.sendPrompt("hi");
+  await po.chatActions.sendPrompt("hi");
 
   await po.clickRestart();
-  await expect(po.locateLoadingAppPreview()).toBeVisible();
-  await expect(po.locateLoadingAppPreview()).not.toBeVisible({
+  await expect(po.previewPanel.locateLoadingAppPreview()).toBeVisible();
+  await expect(po.previewPanel.locateLoadingAppPreview()).not.toBeVisible({
     timeout: Timeout.LONG,
   });
 
-  await po.snapshotPreview();
+  await po.previewPanel.snapshotPreview();
 });

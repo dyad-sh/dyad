@@ -8,7 +8,7 @@ testSkipIfWindows("smart context balanced - simple", async ({ po }) => {
   await proModesDialog.setSmartContextMode("balanced");
   await proModesDialog.close();
 
-  await po.sendPrompt("[dump]");
+  await po.chatActions.sendPrompt("[dump]");
 
   await po.snapshotServerDump("request");
   await po.snapshotMessages({ replaceDumpPath: true });

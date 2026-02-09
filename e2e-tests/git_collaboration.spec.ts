@@ -10,9 +10,9 @@ test.describe("Git Collaboration", () => {
     po,
   }) => {
     await po.setUp({ disableNativeGit: false });
-    await po.sendPrompt("tc=basic");
+    await po.chatActions.sendPrompt("tc=basic");
 
-    await po.getTitleBarAppNameButton().click();
+    await po.appManagement.getTitleBarAppNameButton().click();
     await po.githubConnector.connect();
 
     // Create a new repo to start fresh
@@ -30,8 +30,8 @@ test.describe("Git Collaboration", () => {
     const featureBranch = "feature-1";
 
     // User instruction: Open chat and go to publish tab
-    await po.goToChatTab();
-    await po.getTitleBarAppNameButton().click(); // Open Publish Panel
+    await po.navigation.goToChatTab();
+    await po.appManagement.getTitleBarAppNameButton().click(); // Open Publish Panel
 
     // Wait for BranchManager to appear
     await expect(
@@ -76,7 +76,7 @@ test.describe("Git Collaboration", () => {
     );
 
     {
-      const appPath = await po.getCurrentAppPath();
+      const appPath = await po.appManagement.getCurrentAppPath();
       if (!appPath) throw new Error("App path not found");
       const gitStatus = execSync("git status --porcelain", {
         cwd: appPath,
@@ -123,7 +123,7 @@ test.describe("Git Collaboration", () => {
 
     // 4. Merge Branch
     // First, create a file on feature-1 to verify merge actually works
-    const appPath = await po.getCurrentAppPath();
+    const appPath = await po.appManagement.getCurrentAppPath();
     if (!appPath) throw new Error("App path not found");
 
     // Switch to feature-1 and create a test file
@@ -138,7 +138,7 @@ test.describe("Git Collaboration", () => {
     const featureContent = "Content from feature-1 branch";
     fs.writeFileSync(mergeTestFilePath, featureContent);
     // Configure git user for commit
-    await po.configureGitUser();
+    await po.appManagement.configureGitUser();
     execSync(
       `git add ${mergeTestFile} && git commit -m "Add merge test file"`,
       {
@@ -164,7 +164,7 @@ test.describe("Git Collaboration", () => {
     await po.page.getByTestId("merge-branch-submit-button").click();
 
     // Wait for merge to complete
-    await po.waitForToast("success", 10000);
+    await po.toastNotifications.waitForToast("success", 10000);
 
     // Verify merge success: file should now exist on main
     await expect(async () => {
@@ -204,9 +204,9 @@ test.describe("Git Collaboration", () => {
 
   test("should pull changes from remote", async ({ po }) => {
     await po.setUp({ disableNativeGit: false });
-    await po.sendPrompt("tc=basic");
+    await po.chatActions.sendPrompt("tc=basic");
 
-    await po.getTitleBarAppNameButton().click();
+    await po.appManagement.getTitleBarAppNameButton().click();
     await po.githubConnector.connect();
 
     // Create a new repo to start fresh
@@ -219,11 +219,11 @@ test.describe("Git Collaboration", () => {
       timeout: Timeout.MEDIUM,
     });
 
-    const appPath = await po.getCurrentAppPath();
+    const appPath = await po.appManagement.getCurrentAppPath();
     if (!appPath) throw new Error("App path not found");
 
     // Configure git user
-    await po.configureGitUser();
+    await po.appManagement.configureGitUser();
 
     // Create a file locally
     const testFile = "pull-test.txt";
@@ -235,8 +235,8 @@ test.describe("Git Collaboration", () => {
     });
 
     // Go to publish panel
-    await po.goToChatTab();
-    await po.getTitleBarAppNameButton().click();
+    await po.navigation.goToChatTab();
+    await po.appManagement.getTitleBarAppNameButton().click();
 
     // Open the branch actions dropdown
     await expect(
@@ -250,7 +250,7 @@ test.describe("Git Collaboration", () => {
     await po.page.getByTestId("git-pull-button").click();
 
     // Wait for success toast
-    await po.waitForToast("success", 10000);
+    await po.toastNotifications.waitForToast("success", 10000);
 
     // Verify the file still exists (pull succeeded)
     expect(fs.existsSync(testFilePath)).toBe(true);
@@ -266,8 +266,8 @@ test.describe("Git Collaboration", () => {
 
   test("should invite and remove collaborators", async ({ po }) => {
     await po.setUp();
-    await po.sendPrompt("tc=basic");
-    await po.selectPreviewMode("publish");
+    await po.chatActions.sendPrompt("tc=basic");
+    await po.previewPanel.selectPreviewMode("publish");
     await po.githubConnector.connect();
 
     const repoName = "test-git-collab-invite-" + Date.now();
@@ -290,7 +290,7 @@ test.describe("Git Collaboration", () => {
     await po.page.getByTestId("collaborator-invite-input").fill(fakeUser);
     await po.page.getByTestId("collaborator-invite-button").click();
     // Let's check for a toast.
-    await po.waitForToast("success");
+    await po.toastNotifications.waitForToast("success");
 
     // verify collaborator appears in the list
     await expect(
@@ -300,7 +300,7 @@ test.describe("Git Collaboration", () => {
     // Delete collaborator
     await po.page.getByTestId(`collaborator-remove-button-${fakeUser}`).click();
     await po.page.getByTestId("confirm-remove-collaborator").click();
-    await po.waitForToast("success");
+    await po.toastNotifications.waitForToast("success");
     await expect(
       po.page.getByTestId(`collaborator-item-${fakeUser}`),
     ).not.toBeVisible({

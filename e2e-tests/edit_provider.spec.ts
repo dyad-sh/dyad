@@ -2,7 +2,7 @@ import { test } from "./helpers/test_helper";
 
 test("can edit custom provider", async ({ po }) => {
   await po.setUp();
-  await po.goToSettingsTab();
+  await po.navigation.goToSettingsTab();
 
   // Create a provider first
 

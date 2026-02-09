@@ -7,10 +7,10 @@ const MINIMAL_APP = "minimal-with-ai-rules";
 
 test("problems auto-fix - enabled", async ({ po }) => {
   await po.setUp({ enableAutoFixProblems: true });
-  await po.importApp(MINIMAL_APP);
-  await po.expectPreviewIframeIsVisible();
+  await po.appManagement.importApp(MINIMAL_APP);
+  await po.previewPanel.expectPreviewIframeIsVisible();
 
-  await po.sendPrompt("tc=create-ts-errors");
+  await po.chatActions.sendPrompt("tc=create-ts-errors");
 
   await po.snapshotServerDump("all-messages", { dumpIndex: -2 });
   await po.snapshotServerDump("all-messages", { dumpIndex: -1 });
@@ -20,10 +20,10 @@ test("problems auto-fix - enabled", async ({ po }) => {
 
 test("problems auto-fix - gives up after 2 attempts", async ({ po }) => {
   await po.setUp({ enableAutoFixProblems: true });
-  await po.importApp(MINIMAL_APP);
-  await po.expectPreviewIframeIsVisible();
+  await po.appManagement.importApp(MINIMAL_APP);
+  await po.previewPanel.expectPreviewIframeIsVisible();
 
-  await po.sendPrompt("tc=create-unfixable-ts-errors");
+  await po.chatActions.sendPrompt("tc=create-unfixable-ts-errors");
 
   await po.snapshotServerDump("all-messages", { dumpIndex: -2 });
   await po.snapshotServerDump("all-messages", { dumpIndex: -1 });
@@ -37,10 +37,10 @@ test("problems auto-fix - gives up after 2 attempts", async ({ po }) => {
 
 test("problems auto-fix - complex delete-rename-write", async ({ po }) => {
   await po.setUp({ enableAutoFixProblems: true });
-  await po.importApp(MINIMAL_APP);
-  await po.expectPreviewIframeIsVisible();
+  await po.appManagement.importApp(MINIMAL_APP);
+  await po.previewPanel.expectPreviewIframeIsVisible();
 
-  await po.sendPrompt("tc=create-ts-errors-complex");
+  await po.chatActions.sendPrompt("tc=create-ts-errors-complex");
 
   await po.snapshotServerDump("all-messages", { dumpIndex: -2 });
   await po.snapshotServerDump("all-messages", { dumpIndex: -1 });
@@ -50,18 +50,18 @@ test("problems auto-fix - complex delete-rename-write", async ({ po }) => {
 
 test("problems auto-fix - disabled", async ({ po }) => {
   await po.setUp({ enableAutoFixProblems: false });
-  await po.importApp(MINIMAL_APP);
-  await po.expectPreviewIframeIsVisible();
+  await po.appManagement.importApp(MINIMAL_APP);
+  await po.previewPanel.expectPreviewIframeIsVisible();
 
-  await po.sendPrompt("tc=create-ts-errors");
+  await po.chatActions.sendPrompt("tc=create-ts-errors");
 
   await po.snapshotMessages();
 });
 
 testSkipIfWindows("problems - fix all", async ({ po }) => {
   await po.setUp({ enableAutoFixProblems: true });
-  await po.importApp(MINIMAL_APP);
-  const appPath = await po.getCurrentAppPath();
+  await po.appManagement.importApp(MINIMAL_APP);
+  const appPath = await po.appManagement.getCurrentAppPath();
   const badFilePath = path.join(appPath, "src", "bad-file.tsx");
   fs.writeFileSync(
     badFilePath,
@@ -73,11 +73,12 @@ nonExistentFunction3();
 export default App;
 `,
   );
-  await po.ensurePnpmInstall();
+  await po.appManagement.ensurePnpmInstall();
 
-  await po.sendPrompt("tc=create-ts-errors");
-  await po.selectPreviewMode("problems");
-  await po.clickFixAllProblems();
+  await po.chatActions.sendPrompt("tc=create-ts-errors");
+  await po.previewPanel.selectPreviewMode("problems");
+  await po.previewPanel.clickFixAllProblems();
+  await po.chatActions.waitForChatCompletion();
 
   await po.snapshotServerDump("last-message");
   await po.snapshotMessages({ replaceDumpPath: true });
@@ -87,10 +88,10 @@ testSkipIfWindows(
   "problems - select specific problems and fix",
   async ({ po }) => {
     await po.setUp();
-    await po.importApp(MINIMAL_APP);
+    await po.appManagement.importApp(MINIMAL_APP);
 
     // Create multiple TS errors in one file
-    const appPath = await po.getCurrentAppPath();
+    const appPath = await po.appManagement.getCurrentAppPath();
     const badFilePath = path.join(appPath, "src", "bad-file.tsx");
     fs.writeFileSync(
       badFilePath,
@@ -103,12 +104,12 @@ export default App;
 `,
     );
 
-    await po.ensurePnpmInstall();
+    await po.appManagement.ensurePnpmInstall();
 
     // Trigger creation of problems and open problems panel
-    // await po.sendPrompt("tc=create-ts-errors");
-    await po.selectPreviewMode("problems");
-    await po.clickRecheckProblems();
+    // await po.chatActions.sendPrompt("tc=create-ts-errors");
+    await po.previewPanel.selectPreviewMode("problems");
+    await po.previewPanel.clickRecheckProblems();
 
     // Initially, all selected: button shows Fix X problems and Clear all is visible
     const fixButton = po.page.getByTestId("fix-all-button");
@@ -143,7 +144,7 @@ export default App;
     await expect(fixButton).toContainText(/Fix 2 problems/);
 
     await fixButton.click();
-    await po.waitForChatCompletion();
+    await po.chatActions.waitForChatCompletion();
     await po.snapshotServerDump("last-message");
     await po.snapshotMessages({ replaceDumpPath: true });
   },
@@ -151,9 +152,9 @@ export default App;
 
 testSkipIfWindows("problems - manual edit (react/vite)", async ({ po }) => {
   await po.setUp({ enableAutoFixProblems: true });
-  await po.sendPrompt("tc=1");
+  await po.chatActions.sendPrompt("tc=1");
 
-  const appPath = await po.getCurrentAppPath();
+  const appPath = await po.appManagement.getCurrentAppPath();
   const badFilePath = path.join(appPath, "src", "bad-file.tsx");
   fs.writeFileSync(
     badFilePath,
@@ -163,27 +164,27 @@ nonExistentFunction();
 export default App;
 `,
   );
-  await po.ensurePnpmInstall();
-  await po.clickTogglePreviewPanel();
+  await po.appManagement.ensurePnpmInstall();
+  await po.previewPanel.clickTogglePreviewPanel();
 
-  await po.selectPreviewMode("problems");
+  await po.previewPanel.selectPreviewMode("problems");
   const fixButton = po.page.getByTestId("fix-all-button");
   await expect(fixButton).toBeEnabled({ timeout: Timeout.LONG });
   await expect(fixButton).toContainText(/Fix 1 problem/);
 
   fs.unlinkSync(badFilePath);
 
-  await po.clickRecheckProblems();
+  await po.previewPanel.clickRecheckProblems();
   await expect(fixButton).toBeDisabled({ timeout: Timeout.LONG });
   await expect(fixButton).toContainText(/Fix 0 problems/);
 });
 
 testSkipIfWindows("problems - manual edit (next.js)", async ({ po }) => {
   await po.setUp({ enableAutoFixProblems: true });
-  await po.goToHubAndSelectTemplate("Next.js Template");
-  await po.sendPrompt("tc=1");
+  await po.navigation.goToHubAndSelectTemplate("Next.js Template");
+  await po.chatActions.sendPrompt("tc=1");
 
-  const appPath = await po.getCurrentAppPath();
+  const appPath = await po.appManagement.getCurrentAppPath();
   const badFilePath = path.join(appPath, "src", "bad-file.tsx");
   fs.writeFileSync(
     badFilePath,
@@ -193,17 +194,17 @@ testSkipIfWindows("problems - manual edit (next.js)", async ({ po }) => {
   export default App;
   `,
   );
-  await po.ensurePnpmInstall();
-  await po.clickTogglePreviewPanel();
+  await po.appManagement.ensurePnpmInstall();
+  await po.previewPanel.clickTogglePreviewPanel();
 
-  await po.selectPreviewMode("problems");
+  await po.previewPanel.selectPreviewMode("problems");
   const fixButton = po.page.getByTestId("fix-all-button");
   await expect(fixButton).toBeEnabled({ timeout: Timeout.LONG });
   await expect(fixButton).toContainText(/Fix 1 problem/);
 
   fs.unlinkSync(badFilePath);
 
-  await po.clickRecheckProblems();
+  await po.previewPanel.clickRecheckProblems();
   await expect(fixButton).toBeDisabled({ timeout: Timeout.LONG });
   await expect(fixButton).toContainText(/Fix 0 problems/);
 });

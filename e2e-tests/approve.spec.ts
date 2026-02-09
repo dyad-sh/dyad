@@ -3,7 +3,7 @@ import { expect } from "@playwright/test";
 
 testSkipIfWindows("write to index, approve, check preview", async ({ po }) => {
   await po.setUp();
-  await po.sendPrompt("tc=write-index");
+  await po.chatActions.sendPrompt("tc=write-index");
   await po.snapshotMessages();
   await po.approveProposal();
 
@@ -11,8 +11,8 @@ testSkipIfWindows("write to index, approve, check preview", async ({ po }) => {
   await po.snapshotMessages();
 
   // This can be pretty slow because it's waiting for the app to build.
-  await expect(po.getPreviewIframeElement()).toBeVisible({
+  await expect(po.previewPanel.getPreviewIframeElement()).toBeVisible({
     timeout: Timeout.LONG,
   });
-  await po.snapshotPreview();
+  await po.previewPanel.snapshotPreview();
 });

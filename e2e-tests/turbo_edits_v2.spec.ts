@@ -7,7 +7,7 @@ testSkipIfWindows("turbo edits v2 - search-replace dump", async ({ po }) => {
   });
   await proModesDialog.setTurboEditsMode("search-replace");
   await proModesDialog.close();
-  await po.sendPrompt("[dump]");
+  await po.chatActions.sendPrompt("[dump]");
   await po.snapshotServerDump("request");
   await po.snapshotServerDump("all-messages");
 });
@@ -19,7 +19,7 @@ testSkipIfWindows("turbo edits v2 - search-replace approve", async ({ po }) => {
   });
   await proModesDialog.setTurboEditsMode("search-replace");
   await proModesDialog.close();
-  await po.sendPrompt("tc=turbo-edits-v2");
+  await po.chatActions.sendPrompt("tc=turbo-edits-v2");
   await po.snapshotMessages();
   await po.approveProposal();
   await po.snapshotAppFiles({
@@ -37,7 +37,7 @@ testSkipIfWindows(
     });
     await proModesDialog.setTurboEditsMode("search-replace");
     await proModesDialog.close();
-    await po.sendPrompt("tc=turbo-edits-v2-trigger-fallback");
+    await po.chatActions.sendPrompt("tc=turbo-edits-v2-trigger-fallback");
     await po.snapshotServerDump("request");
     await po.snapshotMessages({ replaceDumpPath: true });
     await po.approveProposal();

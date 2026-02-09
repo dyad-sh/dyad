@@ -7,11 +7,11 @@ test("theme selection - dyad-wide default theme is persisted", async ({
   await po.setUp();
 
   // Verify initial settings state
-  const initialSettings = po.recordSettings();
+  const initialSettings = po.settings.recordSettings();
   expect(initialSettings.selectedThemeId).toBe("default");
 
   // Open menu and select "No Theme"
-  await po
+  await po.chatActions
     .getHomeChatInputContainer()
     .getByTestId("auxiliary-actions-menu")
     .click();
@@ -21,10 +21,10 @@ test("theme selection - dyad-wide default theme is persisted", async ({
   await expect(po.page.getByTestId("theme-option-none")).not.toBeVisible();
 
   // Verify settings file was updated
-  expect(po.recordSettings().selectedThemeId).toBe("");
+  expect(po.settings.recordSettings().selectedThemeId).toBe("");
 
   // Re-open and verify UI shows "No Theme" selected, then select "Default Theme" back
-  await po
+  await po.chatActions
     .getHomeChatInputContainer()
     .getByTestId("auxiliary-actions-menu")
     .click();
@@ -36,15 +36,15 @@ test("theme selection - dyad-wide default theme is persisted", async ({
   await expect(po.page.getByTestId("theme-option-default")).not.toBeVisible();
 
   // Verify settings file was updated back to default
-  expect(po.recordSettings().selectedThemeId).toBe("default");
+  expect(po.settings.recordSettings().selectedThemeId).toBe("default");
 });
 
 test("theme selection - app-specific theme is persisted", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.importApp("minimal");
+  await po.appManagement.importApp("minimal");
 
   // Open menu and select "Default Theme" for this app
-  await po
+  await po.chatActions
     .getChatInputContainer()
     .getByTestId("auxiliary-actions-menu")
     .click();
@@ -54,7 +54,7 @@ test("theme selection - app-specific theme is persisted", async ({ po }) => {
   await expect(po.page.getByTestId("theme-option-default")).not.toBeVisible();
 
   // Re-open, verify selection, then switch to "No Theme"
-  await po
+  await po.chatActions
     .getChatInputContainer()
     .getByTestId("auxiliary-actions-menu")
     .click();
@@ -66,7 +66,7 @@ test("theme selection - app-specific theme is persisted", async ({ po }) => {
   await expect(po.page.getByTestId("theme-option-none")).not.toBeVisible();
 
   // Re-open and verify "No Theme" is selected
-  await po
+  await po.chatActions
     .getChatInputContainer()
     .getByTestId("auxiliary-actions-menu")
     .click();

@@ -5,16 +5,16 @@ import { test, testSkipIfWindows } from "./helpers/test_helper";
 // get ellipsis'd out.
 testSkipIfWindows("security review", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.sendPrompt("tc=1");
+  await po.chatActions.sendPrompt("tc=1");
 
-  await po.selectPreviewMode("security");
+  await po.previewPanel.selectPreviewMode("security");
 
-  await po.clickRunSecurityReview();
+  await po.securityReview.clickRunSecurityReview();
   await po.snapshotServerDump("all-messages");
-  await po.snapshotSecurityFindingsTable();
+  await po.securityReview.snapshotSecurityFindingsTable();
 
   await po.page.getByRole("button", { name: "Fix Issue" }).first().click();
-  await po.waitForChatCompletion();
+  await po.chatActions.waitForChatCompletion();
   await po.snapshotMessages();
 });
 
@@ -22,9 +22,9 @@ testSkipIfWindows(
   "security review - edit and use knowledge",
   async ({ po }) => {
     await po.setUp({ autoApprove: true });
-    await po.sendPrompt("tc=1");
+    await po.chatActions.sendPrompt("tc=1");
 
-    await po.selectPreviewMode("security");
+    await po.previewPanel.selectPreviewMode("security");
     await po.page.getByRole("button", { name: "Edit Security Rules" }).click();
     await po.page
       .getByRole("textbox", { name: "# SECURITY_RULES.md\\n\\" })
@@ -34,22 +34,22 @@ testSkipIfWindows(
       .fill("testing\nrules123");
     await po.page.getByRole("button", { name: "Save" }).click();
 
-    await po.clickRunSecurityReview();
+    await po.securityReview.clickRunSecurityReview();
     await po.snapshotServerDump("all-messages");
   },
 );
 
 test("security review - multi-select and fix issues", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.sendPrompt("tc=1");
+  await po.chatActions.sendPrompt("tc=1");
 
-  await po.selectPreviewMode("security");
+  await po.previewPanel.selectPreviewMode("security");
 
   await po.page
     .getByRole("button", { name: "Run Security Review" })
     .first()
     .click();
-  await po.waitForChatCompletion();
+  await po.chatActions.waitForChatCompletion();
 
   // Select the first two issues using individual checkboxes
   const checkboxes = po.page.getByRole("checkbox");
@@ -65,6 +65,6 @@ test("security review - multi-select and fix issues", async ({ po }) => {
 
   // Click the fix selected button
   await fixSelectedButton.click();
-  await po.waitForChatCompletion();
+  await po.chatActions.waitForChatCompletion();
   await po.snapshotMessages();
 });

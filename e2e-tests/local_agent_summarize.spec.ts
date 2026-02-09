@@ -13,12 +13,12 @@ testSkipIfWindows(
   "local-agent - summarize to new chat works",
   async ({ po }) => {
     await po.setUpDyadPro({ localAgent: true });
-    await po.importApp("minimal");
-    await po.selectLocalAgentMode();
+    await po.appManagement.importApp("minimal");
+    await po.chatActions.selectLocalAgentMode();
 
     // First, send a message to create a chat with some content
     // This simulates a chat with technical discussion
-    await po.sendPrompt("tc=local-agent/read-then-edit");
+    await po.chatActions.sendPrompt("tc=local-agent/read-then-edit");
 
     // Get the current chat URL to extract the chat ID
     const url = po.page.url();
@@ -27,11 +27,11 @@ testSkipIfWindows(
     const originalChatId = chatIdMatch![1];
 
     // Create a new chat by clicking the "New Chat" button
-    await po.clickNewChat();
+    await po.chatActions.clickNewChat();
 
     // Now trigger summarization by sending the summarize prompt
     // This is the same mechanism used by the "Summarize into new chat" button
-    await po.sendPrompt(`Summarize from chat-id=${originalChatId}`);
+    await po.chatActions.sendPrompt(`Summarize from chat-id=${originalChatId}`);
 
     // Snapshot the messages in the new chat
     // This verifies that the summarization actually ran and produced content

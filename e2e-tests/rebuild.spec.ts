@@ -5,20 +5,20 @@ import path from "path";
 
 testSkipIfWindows("rebuild app", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.sendPrompt("hi");
-  await po.snapshotPreview();
+  await po.chatActions.sendPrompt("hi");
+  await po.previewPanel.snapshotPreview();
 
-  const currentAppPath = await po.getCurrentAppPath();
+  const currentAppPath = await po.appManagement.getCurrentAppPath();
   const testPath = path.join(currentAppPath, "node_modules", "test.txt");
   fs.writeFileSync(testPath, "test");
 
-  await po.clickRebuild();
-  await expect(po.locateLoadingAppPreview()).toBeVisible();
-  await expect(po.locateLoadingAppPreview()).not.toBeVisible({
+  await po.previewPanel.clickRebuild();
+  await expect(po.previewPanel.locateLoadingAppPreview()).toBeVisible();
+  await expect(po.previewPanel.locateLoadingAppPreview()).not.toBeVisible({
     timeout: Timeout.LONG,
   });
 
   // Check that the file is removed with the rebuild
   expect(fs.existsSync(testPath)).toBe(false);
-  await po.snapshotPreview();
+  await po.previewPanel.snapshotPreview();
 });

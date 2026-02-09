@@ -6,15 +6,15 @@ test("switching turbo edits saves the right setting", async ({ po }) => {
     location: "home-chat-input-container",
   });
 
-  const beforeSettings1 = po.recordSettings();
+  const beforeSettings1 = po.settings.recordSettings();
   await proModesDialog.setTurboEditsMode("classic");
-  po.snapshotSettingsDelta(beforeSettings1);
+  po.settings.snapshotSettingsDelta(beforeSettings1);
 
-  const beforeSettings2 = po.recordSettings();
+  const beforeSettings2 = po.settings.recordSettings();
   await proModesDialog.setTurboEditsMode("search-replace");
-  po.snapshotSettingsDelta(beforeSettings2);
+  po.settings.snapshotSettingsDelta(beforeSettings2);
 
-  const beforeSettings3 = po.recordSettings();
+  const beforeSettings3 = po.settings.recordSettings();
   await proModesDialog.setTurboEditsMode("off");
-  po.snapshotSettingsDelta(beforeSettings3);
+  po.settings.snapshotSettingsDelta(beforeSettings3);
 });

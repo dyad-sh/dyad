@@ -1,7 +1,7 @@
 /**
  * Main PageObject class that composes all component page objects.
- * This provides a single entry point for tests while maintaining
- * backward compatibility with the existing API.
+ * This provides a single entry point for tests with direct access
+ * to component page objects (e.g., po.chatActions.sendPrompt()).
  */
 
 import { Page, expect } from "@playwright/test";
@@ -38,19 +38,19 @@ import { ProModesDialog } from "./dialogs/ProModesDialog";
 export class PageObject {
   public userDataDir: string;
 
-  // Component page objects (exposed for direct access if needed)
+  // Component page objects (exposed for direct access)
   public githubConnector: GitHubConnector;
-  private chatActions: ChatActions;
-  private previewPanel: PreviewPanel;
-  private codeEditor: CodeEditor;
-  private securityReview: SecurityReview;
-  private toastNotifications: ToastNotifications;
-  private agentConsent: AgentConsent;
-  private navigation: Navigation;
-  private modelPicker: ModelPicker;
-  private settings: Settings;
-  private appManagement: AppManagement;
-  private promptLibrary: PromptLibrary;
+  public chatActions: ChatActions;
+  public previewPanel: PreviewPanel;
+  public codeEditor: CodeEditor;
+  public securityReview: SecurityReview;
+  public toastNotifications: ToastNotifications;
+  public agentConsent: AgentConsent;
+  public navigation: Navigation;
+  public modelPicker: ModelPicker;
+  public settings: Settings;
+  public appManagement: AppManagement;
+  public promptLibrary: PromptLibrary;
 
   constructor(
     public electronApp: ElectronApplication,
@@ -94,23 +94,23 @@ export class PageObject {
     enableBasicAgent?: boolean;
   } = {}) {
     await this.baseSetup();
-    await this.goToSettingsTab();
+    await this.navigation.goToSettingsTab();
     if (autoApprove) {
-      await this.toggleAutoApprove();
+      await this.settings.toggleAutoApprove();
     }
     if (disableNativeGit) {
-      await this.toggleNativeGit();
+      await this.settings.toggleNativeGit();
     }
     if (enableAutoFixProblems) {
-      await this.toggleAutoFixProblems();
+      await this.settings.toggleAutoFixProblems();
     }
-    await this.setUpTestProvider();
-    await this.setUpTestModel();
-    await this.goToAppsTab();
+    await this.settings.setUpTestProvider();
+    await this.settings.setUpTestModel();
+    await this.navigation.goToAppsTab();
     if (!enableBasicAgent) {
-      await this.selectChatMode("build");
+      await this.chatActions.selectChatMode("build");
     }
-    await this.selectTestModel();
+    await this.modelPicker.selectTestModel();
   }
 
   async setUpDyadPro({
@@ -123,19 +123,19 @@ export class PageObject {
     localAgentUseAutoModel?: boolean;
   } = {}) {
     await this.baseSetup();
-    await this.goToSettingsTab();
+    await this.navigation.goToSettingsTab();
     if (autoApprove) {
-      await this.toggleAutoApprove();
+      await this.settings.toggleAutoApprove();
     }
-    await this.setUpDyadProvider();
-    await this.goToAppsTab();
+    await this.settings.setUpDyadProvider();
+    await this.navigation.goToAppsTab();
     if (!localAgent) {
-      await this.selectChatMode("build");
+      await this.chatActions.selectChatMode("build");
     }
     // Select a non-openAI model for local agent mode,
     // since openAI models go to the responses API.
     if (localAgent && !localAgentUseAutoModel) {
-      await this.selectModel({
+      await this.modelPicker.selectModel({
         provider: "Anthropic",
         model: "Claude Opus 4.5",
       });
@@ -144,518 +144,13 @@ export class PageObject {
 
   async setUpAzure({ autoApprove = false }: { autoApprove?: boolean } = {}) {
     await this.githubConnector.clearPushEvents();
-    await this.goToSettingsTab();
+    await this.navigation.goToSettingsTab();
     if (autoApprove) {
-      await this.toggleAutoApprove();
+      await this.settings.toggleAutoApprove();
     }
     // Azure should already be configured via environment variables
     // so we don't need additional setup steps like setUpDyadProvider
-    await this.goToAppsTab();
-  }
-
-  // ================================
-  // Chat Actions (delegated)
-  // ================================
-
-  getHomeChatInputContainer() {
-    return this.chatActions.getHomeChatInputContainer();
-  }
-
-  getChatInputContainer() {
-    return this.chatActions.getChatInputContainer();
-  }
-
-  getChatInput() {
-    return this.chatActions.getChatInput();
-  }
-
-  async clearChatInput() {
-    return this.chatActions.clearChatInput();
-  }
-
-  async openChatHistoryMenu() {
-    return this.chatActions.openChatHistoryMenu();
-  }
-
-  clickNewChat(options?: { index?: number }) {
-    return this.chatActions.clickNewChat(options);
-  }
-
-  async waitForChatCompletion() {
-    return this.chatActions.waitForChatCompletion();
-  }
-
-  async clickRetry() {
-    return this.chatActions.clickRetry();
-  }
-
-  async clickUndo() {
-    return this.chatActions.clickUndo();
-  }
-
-  async sendPrompt(
-    prompt: string,
-    options?: { skipWaitForCompletion?: boolean },
-  ) {
-    return this.chatActions.sendPrompt(prompt, options);
-  }
-
-  async selectChatMode(
-    mode: "build" | "ask" | "agent" | "local-agent" | "basic-agent" | "plan",
-  ) {
-    return this.chatActions.selectChatMode(mode);
-  }
-
-  async selectLocalAgentMode() {
-    return this.chatActions.selectLocalAgentMode();
-  }
-
-  async clickChatActivityButton() {
-    return this.chatActions.clickChatActivityButton();
-  }
-
-  async snapshotChatActivityList() {
-    return this.chatActions.snapshotChatActivityList();
-  }
-
-  async snapshotChatInputContainer() {
-    return this.chatActions.snapshotChatInputContainer();
-  }
-
-  // ================================
-  // Preview Panel (delegated)
-  // ================================
-
-  async selectPreviewMode(
-    mode:
-      | "code"
-      | "problems"
-      | "preview"
-      | "configure"
-      | "security"
-      | "publish",
-  ) {
-    return this.previewPanel.selectPreviewMode(mode);
-  }
-
-  async clickRecheckProblems() {
-    return this.previewPanel.clickRecheckProblems();
-  }
-
-  async clickFixAllProblems() {
-    await this.previewPanel.clickFixAllProblems();
-    await this.waitForChatCompletion();
-  }
-
-  async snapshotProblemsPane() {
-    return this.previewPanel.snapshotProblemsPane();
-  }
-
-  async clickRebuild() {
-    return this.previewPanel.clickRebuild();
-  }
-
-  async clickTogglePreviewPanel() {
-    return this.previewPanel.clickTogglePreviewPanel();
-  }
-
-  async clickPreviewPickElement() {
-    return this.previewPanel.clickPreviewPickElement();
-  }
-
-  async clickDeselectComponent(options?: { index?: number }) {
-    return this.previewPanel.clickDeselectComponent(options);
-  }
-
-  async clickPreviewMoreOptions() {
-    return this.previewPanel.clickPreviewMoreOptions();
-  }
-
-  async clickPreviewRefresh() {
-    return this.previewPanel.clickPreviewRefresh();
-  }
-
-  async clickPreviewNavigateBack() {
-    return this.previewPanel.clickPreviewNavigateBack();
-  }
-
-  async clickPreviewNavigateForward() {
-    return this.previewPanel.clickPreviewNavigateForward();
-  }
-
-  async clickPreviewOpenBrowser() {
-    return this.previewPanel.clickPreviewOpenBrowser();
-  }
-
-  async clickPreviewAnnotatorButton() {
-    return this.previewPanel.clickPreviewAnnotatorButton();
-  }
-
-  async waitForAnnotatorMode() {
-    return this.previewPanel.waitForAnnotatorMode();
-  }
-
-  async clickAnnotatorSubmit() {
-    return this.previewPanel.clickAnnotatorSubmit();
-  }
-
-  locateLoadingAppPreview() {
-    return this.previewPanel.locateLoadingAppPreview();
-  }
-
-  locateStartingAppPreview() {
-    return this.previewPanel.locateStartingAppPreview();
-  }
-
-  getPreviewIframeElement() {
-    return this.previewPanel.getPreviewIframeElement();
-  }
-
-  expectPreviewIframeIsVisible() {
-    return this.previewPanel.expectPreviewIframeIsVisible();
-  }
-
-  async clickFixErrorWithAI() {
-    return this.previewPanel.clickFixErrorWithAI();
-  }
-
-  async clickCopyErrorMessage() {
-    return this.previewPanel.clickCopyErrorMessage();
-  }
-
-  async clickFixAllErrors() {
-    return this.previewPanel.clickFixAllErrors();
-  }
-
-  async snapshotPreviewErrorBanner() {
-    return this.previewPanel.snapshotPreviewErrorBanner();
-  }
-
-  locatePreviewErrorBanner() {
-    return this.previewPanel.locatePreviewErrorBanner();
-  }
-
-  getSelectedComponentsDisplay() {
-    return this.previewPanel.getSelectedComponentsDisplay();
-  }
-
-  async snapshotSelectedComponentsDisplay() {
-    return this.previewPanel.snapshotSelectedComponentsDisplay();
-  }
-
-  async snapshotPreview(options?: { name?: string }) {
-    return this.previewPanel.snapshotPreview(options);
-  }
-
-  // ================================
-  // Code Editor (delegated)
-  // ================================
-
-  async clickEditButton() {
-    return this.codeEditor.clickEditButton();
-  }
-
-  async editFileContent(content: string) {
-    return this.codeEditor.editFileContent(content);
-  }
-
-  async saveFile() {
-    return this.codeEditor.saveFile();
-  }
-
-  async cancelEdit() {
-    return this.codeEditor.cancelEdit();
-  }
-
-  // ================================
-  // Security Review (delegated)
-  // ================================
-
-  async clickRunSecurityReview() {
-    return this.securityReview.clickRunSecurityReview();
-  }
-
-  async snapshotSecurityFindingsTable() {
-    return this.securityReview.snapshotSecurityFindingsTable();
-  }
-
-  // ================================
-  // Toast Notifications (delegated)
-  // ================================
-
-  async expectNoToast() {
-    return this.toastNotifications.expectNoToast();
-  }
-
-  async waitForToast(
-    type?: "success" | "error" | "warning" | "info",
-    timeout?: number,
-  ) {
-    return this.toastNotifications.waitForToast(type, timeout);
-  }
-
-  async waitForToastWithText(text: string, timeout?: number) {
-    return this.toastNotifications.waitForToastWithText(text, timeout);
-  }
-
-  async assertToastVisible(type?: "success" | "error" | "warning" | "info") {
-    return this.toastNotifications.assertToastVisible(type);
-  }
-
-  async assertToastWithText(text: string) {
-    return this.toastNotifications.assertToastWithText(text);
-  }
-
-  async dismissAllToasts() {
-    return this.toastNotifications.dismissAllToasts();
-  }
-
-  // ================================
-  // Agent Consent (delegated)
-  // ================================
-
-  getAgentConsentBanner() {
-    return this.agentConsent.getAgentConsentBanner();
-  }
-
-  async waitForAgentConsentBanner(timeout?: number) {
-    return this.agentConsent.waitForAgentConsentBanner(timeout);
-  }
-
-  async clickAgentConsentAlwaysAllow() {
-    return this.agentConsent.clickAgentConsentAlwaysAllow();
-  }
-
-  async clickAgentConsentAllowOnce() {
-    return this.agentConsent.clickAgentConsentAllowOnce();
-  }
-
-  async clickAgentConsentDecline() {
-    return this.agentConsent.clickAgentConsentDecline();
-  }
-
-  // ================================
-  // Navigation (delegated)
-  // ================================
-
-  async goToSettingsTab() {
-    return this.navigation.goToSettingsTab();
-  }
-
-  async goToLibraryTab() {
-    return this.navigation.goToLibraryTab();
-  }
-
-  async goToAppsTab() {
-    return this.navigation.goToAppsTab();
-  }
-
-  async goToChatTab() {
-    return this.navigation.goToChatTab();
-  }
-
-  async goToHubTab() {
-    return this.navigation.goToHubTab();
-  }
-
-  async clickBackButton() {
-    return this.navigation.clickBackButton();
-  }
-
-  async selectTemplate(templateName: string) {
-    return this.navigation.selectTemplate(templateName);
-  }
-
-  async goToHubAndSelectTemplate(templateName: "Next.js Template") {
-    return this.navigation.goToHubAndSelectTemplate(templateName);
-  }
-
-  // ================================
-  // Model Picker (delegated)
-  // ================================
-
-  async selectModel(options: { provider: string; model: string }) {
-    return this.modelPicker.selectModel(options);
-  }
-
-  async selectTestModel() {
-    return this.modelPicker.selectTestModel();
-  }
-
-  async selectTestOllamaModel() {
-    return this.modelPicker.selectTestOllamaModel();
-  }
-
-  async selectTestLMStudioModel() {
-    return this.modelPicker.selectTestLMStudioModel();
-  }
-
-  async selectTestAzureModel() {
-    return this.modelPicker.selectTestAzureModel();
-  }
-
-  // ================================
-  // Settings (delegated)
-  // ================================
-
-  async toggleAutoApprove() {
-    return this.settings.toggleAutoApprove();
-  }
-
-  async toggleLocalAgentMode() {
-    return this.settings.toggleLocalAgentMode();
-  }
-
-  async toggleNativeGit() {
-    return this.settings.toggleNativeGit();
-  }
-
-  async toggleAutoFixProblems() {
-    return this.settings.toggleAutoFixProblems();
-  }
-
-  async toggleAutoUpdate() {
-    return this.settings.toggleAutoUpdate();
-  }
-
-  async changeReleaseChannel(channel: "stable" | "beta") {
-    return this.settings.changeReleaseChannel(channel);
-  }
-
-  async clickTelemetryAccept() {
-    return this.settings.clickTelemetryAccept();
-  }
-
-  async clickTelemetryReject() {
-    return this.settings.clickTelemetryReject();
-  }
-
-  async clickTelemetryLater() {
-    return this.settings.clickTelemetryLater();
-  }
-
-  recordSettings() {
-    return this.settings.recordSettings();
-  }
-
-  snapshotSettingsDelta(beforeSettings: Record<string, unknown>) {
-    return this.settings.snapshotSettingsDelta(beforeSettings);
-  }
-
-  async setUpTestProvider() {
-    return this.settings.setUpTestProvider();
-  }
-
-  async setUpTestModel() {
-    return this.settings.setUpTestModel();
-  }
-
-  async addCustomTestModel(options: { name: string; contextWindow?: number }) {
-    return this.settings.addCustomTestModel(options);
-  }
-
-  async setUpTestProviderApiKey() {
-    return this.settings.setUpTestProviderApiKey();
-  }
-
-  async setUpDyadProvider() {
-    return this.settings.setUpDyadProvider();
-  }
-
-  // ================================
-  // App Management (delegated)
-  // ================================
-
-  getTitleBarAppNameButton() {
-    return this.appManagement.getTitleBarAppNameButton();
-  }
-
-  getAppListItem(options: { appName: string }) {
-    return this.appManagement.getAppListItem(options);
-  }
-
-  async isCurrentAppNameNone() {
-    return this.appManagement.isCurrentAppNameNone();
-  }
-
-  async getCurrentAppName() {
-    return this.appManagement.getCurrentAppName();
-  }
-
-  async getCurrentAppPath() {
-    return this.appManagement.getCurrentAppPath();
-  }
-
-  getAppPath(options: { appName: string }) {
-    return this.appManagement.getAppPath(options);
-  }
-
-  async clickAppListItem(options: { appName: string }) {
-    return this.appManagement.clickAppListItem(options);
-  }
-
-  async clickOpenInChatButton() {
-    return this.appManagement.clickOpenInChatButton();
-  }
-
-  locateAppUpgradeButton(options: { upgradeId: string }) {
-    return this.appManagement.locateAppUpgradeButton(options);
-  }
-
-  async clickAppUpgradeButton(options: { upgradeId: string }) {
-    return this.appManagement.clickAppUpgradeButton(options);
-  }
-
-  async expectAppUpgradeButtonIsNotVisible(options: { upgradeId: string }) {
-    return this.appManagement.expectAppUpgradeButtonIsNotVisible(options);
-  }
-
-  async expectNoAppUpgrades() {
-    return this.appManagement.expectNoAppUpgrades();
-  }
-
-  async clickAppDetailsRenameAppButton() {
-    return this.appManagement.clickAppDetailsRenameAppButton();
-  }
-
-  async clickAppDetailsMoreOptions() {
-    return this.appManagement.clickAppDetailsMoreOptions();
-  }
-
-  async clickAppDetailsCopyAppButton() {
-    return this.appManagement.clickAppDetailsCopyAppButton();
-  }
-
-  async clickConnectSupabaseButton() {
-    return this.appManagement.clickConnectSupabaseButton();
-  }
-
-  async importApp(appDir: string) {
-    return this.appManagement.importApp(appDir);
-  }
-
-  async configureGitUser(options?: {
-    email?: string;
-    name?: string;
-    disableGpgSign?: boolean;
-  }) {
-    return this.appManagement.configureGitUser(options);
-  }
-
-  async ensurePnpmInstall() {
-    return this.appManagement.ensurePnpmInstall();
-  }
-
-  // ================================
-  // Prompt Library (delegated)
-  // ================================
-
-  async createPrompt(options: {
-    title: string;
-    description?: string;
-    content: string;
-  }) {
-    return this.promptLibrary.createPrompt(options);
+    await this.navigation.goToAppsTab();
   }
 
   // ================================
@@ -685,7 +180,8 @@ export class PageObject {
     }
 
     // Open the auxiliary actions menu
-    await this.getChatInputContainer()
+    await this.chatActions
+      .getChatInputContainer()
       .getByTestId("auxiliary-actions-menu")
       .click();
 
@@ -747,7 +243,8 @@ export class PageObject {
     // Need to make sure it's NOT visible yet to avoid a race when we opened
     // the auxiliary actions menu earlier.
     await expect(this.page.getByTestId("token-bar-toggle")).not.toBeVisible();
-    await this.getChatInputContainer()
+    await this.chatActions
+      .getChatInputContainer()
       .getByTestId("auxiliary-actions-menu")
       .click();
     await this.page.getByTestId("token-bar-toggle").click();
@@ -778,12 +275,12 @@ export class PageObject {
   }
 
   async snapshotAppFiles({ name, files }: { name: string; files?: string[] }) {
-    const currentAppName = await this.getCurrentAppName();
+    const currentAppName = await this.appManagement.getCurrentAppName();
     if (!currentAppName) {
       throw new Error("No app selected");
     }
     const normalizedAppName = currentAppName.toLowerCase().replace(/-/g, "");
-    const appPath = await this.getCurrentAppPath();
+    const appPath = await this.appManagement.getCurrentAppPath();
     if (!appPath || !fs.existsSync(appPath)) {
       throw new Error(`App path does not exist: ${appPath}`);
     }
@@ -855,7 +352,7 @@ export class PageObject {
     type: "all-messages" | "last-message" | "request" = "all-messages",
     { name = "", dumpIndex = -1 }: { name?: string; dumpIndex?: number } = {},
   ) {
-    await this.waitForChatCompletion();
+    await this.chatActions.waitForChatCompletion();
     // Get the text content of the messages list
     const messagesListText = await this.page
       .getByTestId("messages-list")

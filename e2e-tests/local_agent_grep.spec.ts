@@ -8,10 +8,10 @@ import { testSkipIfWindows } from "./helpers/test_helper";
 
 testSkipIfWindows("local-agent - grep search", async ({ po }) => {
   await po.setUpDyadPro({ localAgent: true });
-  await po.importApp("minimal");
-  await po.selectLocalAgentMode();
+  await po.appManagement.importApp("minimal");
+  await po.chatActions.selectLocalAgentMode();
 
-  await po.sendPrompt("tc=local-agent/grep-search");
+  await po.chatActions.sendPrompt("tc=local-agent/grep-search");
 
   await po.page.getByTestId("dyad-grep").first().click();
   await po.page.getByTestId("dyad-grep").nth(1).click();

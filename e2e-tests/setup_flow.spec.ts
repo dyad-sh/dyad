@@ -118,14 +118,14 @@ testSetup.describe("Setup Flow", () => {
     await expect(po.page.getByRole("link", { name: "Settings" })).toBeVisible();
 
     // Now configure the test provider
-    await po.setUpTestProvider();
+    await po.settings.setUpTestProvider();
     // Set up API key so provider is considered configured
     await po.page.getByRole("heading", { name: "test-provider" }).click();
-    await po.setUpTestProviderApiKey();
-    await po.setUpTestModel();
+    await po.settings.setUpTestProviderApiKey();
+    await po.settings.setUpTestModel();
 
     // Go back to apps tab
-    await po.goToAppsTab();
+    await po.navigation.goToAppsTab();
 
     // After configuring a provider, the setup banner should be gone
     await expect(

@@ -13,7 +13,7 @@ testSkipIfWindows(
   async ({ po }) => {
     // Set up WITHOUT Dyad Pro - use test provider instead
     await po.setUp({ autoApprove: true });
-    await po.importApp("minimal");
+    await po.appManagement.importApp("minimal");
 
     // 1. Verify Basic Agent mode is available (not Agent v2 which is Pro-only)
     await po.page.getByTestId("chat-mode-selector").click();
@@ -31,15 +31,17 @@ testSkipIfWindows(
     await po.page.keyboard.press("Escape");
 
     // 3. Select Basic Agent mode and verify it's selected
-    await po.selectChatMode("basic-agent");
+    await po.chatActions.selectChatMode("basic-agent");
     await expect(po.page.getByTestId("chat-mode-selector")).toContainText(
       "Basic Agent",
     );
 
     // 4. Send 5 messages to exhaust quota (this will exhaust quota even if some was already used)
     for (let i = 0; i < 5; i++) {
-      await po.sendPrompt(`tc=local-agent/simple-response message ${i + 1}`);
-      await po.waitForChatCompletion();
+      await po.chatActions.sendPrompt(
+        `tc=local-agent/simple-response message ${i + 1}`,
+      );
+      await po.chatActions.waitForChatCompletion();
     }
 
     // 5. Verify quota exceeded banner appears with correct content
@@ -57,7 +59,7 @@ testSkipIfWindows(
     ).toBeVisible();
 
     // 6. Try to send a 6th message - should be blocked with error
-    await po.sendPrompt("tc=local-agent/simple-response message 6");
+    await po.chatActions.sendPrompt("tc=local-agent/simple-response message 6");
     // Verify error message appears indicating quota exceeded
     await expect(po.page.getByTestId("chat-error-box")).toBeVisible({
       timeout: Timeout.MEDIUM,
@@ -78,8 +80,8 @@ testSkipIfWindows(
     ).not.toBeVisible();
 
     // 9. Verify user can still send messages in Build mode
-    await po.sendPrompt("[dyad-qa=write] create a simple file");
-    await po.waitForChatCompletion();
+    await po.chatActions.sendPrompt("[dyad-qa=write] create a simple file");
+    await po.chatActions.waitForChatCompletion();
   },
 );
 
@@ -88,18 +90,20 @@ testSkipIfWindows(
   async ({ po }) => {
     // Set up WITHOUT Dyad Pro - use test provider instead
     await po.setUp({ autoApprove: true });
-    await po.importApp("minimal");
+    await po.appManagement.importApp("minimal");
 
     // 1. Select Basic Agent mode and send messages to use some quota
-    await po.selectChatMode("basic-agent");
+    await po.chatActions.selectChatMode("basic-agent");
     await expect(po.page.getByTestId("chat-mode-selector")).toContainText(
       "Basic Agent",
     );
 
     // Send 3 messages to use some quota
     for (let i = 0; i < 3; i++) {
-      await po.sendPrompt(`tc=local-agent/simple-response message ${i + 1}`);
-      await po.waitForChatCompletion();
+      await po.chatActions.sendPrompt(
+        `tc=local-agent/simple-response message ${i + 1}`,
+      );
+      await po.chatActions.waitForChatCompletion();
     }
 
     // 2. Verify quota decreased (exact count may vary due to setup messages)
@@ -122,9 +126,9 @@ testSkipIfWindows(
     // 4. Wait for React Query cache to become stale (staleTime is 500ms in test mode)
     // then navigate to force a refetch with the updated timestamps
     await po.page.waitForTimeout(1000);
-    await po.goToSettingsTab();
+    await po.navigation.goToSettingsTab();
     await po.page.waitForTimeout(500);
-    await po.goToChatTab();
+    await po.navigation.goToChatTab();
     // Wait for the chat mode selector to be visible
     await expect(po.page.getByTestId("chat-mode-selector")).toBeVisible({
       timeout: Timeout.MEDIUM,
@@ -138,9 +142,11 @@ testSkipIfWindows(
     await po.page.keyboard.press("Escape");
 
     // 6. Verify we can send messages again in Basic Agent mode (proves reset worked)
-    await po.selectChatMode("basic-agent");
-    await po.sendPrompt("tc=local-agent/simple-response post-reset message");
-    await po.waitForChatCompletion();
+    await po.chatActions.selectChatMode("basic-agent");
+    await po.chatActions.sendPrompt(
+      "tc=local-agent/simple-response post-reset message",
+    );
+    await po.chatActions.waitForChatCompletion();
     // Successfully sending a message in Basic Agent mode after reset proves the quota was reset
     // and is usable again. No need to verify the exact quota count as that would require
     // waiting for React Query cache to become stale again.

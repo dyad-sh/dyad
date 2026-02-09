@@ -3,9 +3,9 @@ import { test } from "./helpers/test_helper";
 test("mention app (without pro)", async ({ po }) => {
   await po.setUp({ autoApprove: true });
 
-  await po.importApp("minimal-with-ai-rules");
-  await po.goToAppsTab();
-  await po.sendPrompt("[dump] @app:minimal-with-ai-rules hi");
+  await po.appManagement.importApp("minimal-with-ai-rules");
+  await po.navigation.goToAppsTab();
+  await po.chatActions.sendPrompt("[dump] @app:minimal-with-ai-rules hi");
 
   await po.snapshotServerDump("all-messages");
 });
@@ -13,10 +13,10 @@ test("mention app (without pro)", async ({ po }) => {
 test("mention app (with pro)", async ({ po }) => {
   await po.setUpDyadPro();
 
-  await po.importApp("minimal-with-ai-rules");
-  await po.goToAppsTab();
-  await po.selectChatMode("build");
-  await po.sendPrompt("[dump] @app:minimal-with-ai-rules hi");
+  await po.appManagement.importApp("minimal-with-ai-rules");
+  await po.navigation.goToAppsTab();
+  await po.chatActions.selectChatMode("build");
+  await po.chatActions.sendPrompt("[dump] @app:minimal-with-ai-rules hi");
 
   await po.snapshotServerDump("request");
 });

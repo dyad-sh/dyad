@@ -8,14 +8,14 @@ const newChatTestCases = [
 newChatTestCases.forEach(({ name, clickOptions }) => {
   test(`new chat (${name})`, async ({ po }) => {
     await po.setUp();
-    await po.sendPrompt("tc=chat1");
+    await po.chatActions.sendPrompt("tc=chat1");
     await po.snapshotMessages();
-    await po.clickNewChat(clickOptions);
+    await po.chatActions.clickNewChat(clickOptions);
 
     // Make sure it's empty
     await po.snapshotMessages();
 
-    await po.sendPrompt("tc=chat2");
+    await po.chatActions.sendPrompt("tc=chat2");
     await po.snapshotMessages();
   });
 });

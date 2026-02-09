@@ -3,9 +3,9 @@ import { expect } from "@playwright/test";
 
 test("create and edit prompt", async ({ po }) => {
   await po.setUp();
-  await po.goToLibraryTab();
+  await po.navigation.goToLibraryTab();
   await po.page.getByRole("link", { name: "Prompts" }).click();
-  await po.createPrompt({
+  await po.promptLibrary.createPrompt({
     title: "title1",
     description: "desc",
     content: "prompt1content",
@@ -24,9 +24,9 @@ test("create and edit prompt", async ({ po }) => {
 
 test("delete prompt", async ({ po }) => {
   await po.setUp();
-  await po.goToLibraryTab();
+  await po.navigation.goToLibraryTab();
   await po.page.getByRole("link", { name: "Prompts" }).click();
-  await po.createPrompt({
+  await po.promptLibrary.createPrompt({
     title: "title1",
     description: "desc",
     content: "prompt1content",
@@ -40,20 +40,20 @@ test("delete prompt", async ({ po }) => {
 
 test("use prompt", async ({ po }) => {
   await po.setUp();
-  await po.goToLibraryTab();
+  await po.navigation.goToLibraryTab();
   await po.page.getByRole("link", { name: "Prompts" }).click();
-  await po.createPrompt({
+  await po.promptLibrary.createPrompt({
     title: "title1",
     description: "desc",
     content: "prompt1content",
   });
 
-  await po.goToAppsTab();
-  await po.getChatInput().click();
-  await po.getChatInput().fill("[dump] @");
+  await po.navigation.goToAppsTab();
+  await po.chatActions.getChatInput().click();
+  await po.chatActions.getChatInput().fill("[dump] @");
   await po.page.getByRole("menuitem", { name: "Choose title1" }).click();
   await po.page.getByRole("button", { name: "Send message" }).click();
-  await po.waitForChatCompletion();
+  await po.chatActions.waitForChatCompletion();
 
   await po.snapshotServerDump("last-message");
 });

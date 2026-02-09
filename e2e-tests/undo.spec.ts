@@ -3,10 +3,10 @@ import { expect } from "@playwright/test";
 
 const runUndoTest = async (po: PageObject, nativeGit: boolean) => {
   await po.setUp({ autoApprove: true, disableNativeGit: !nativeGit });
-  await po.sendPrompt("tc=write-index");
-  await po.sendPrompt("tc=write-index-2");
+  await po.chatActions.sendPrompt("tc=write-index");
+  await po.chatActions.sendPrompt("tc=write-index-2");
 
-  const iframe = po.getPreviewIframeElement();
+  const iframe = po.previewPanel.getPreviewIframeElement();
   await expect(
     iframe.contentFrame().getByText("Testing:write-index(2)!"),
   ).toBeVisible({
@@ -14,7 +14,7 @@ const runUndoTest = async (po: PageObject, nativeGit: boolean) => {
     timeout: Timeout.LONG,
   });
 
-  await po.clickUndo();
+  await po.chatActions.clickUndo();
 
   await expect(
     iframe.contentFrame().getByText("Testing:write-index!"),
@@ -23,7 +23,7 @@ const runUndoTest = async (po: PageObject, nativeGit: boolean) => {
     timeout: Timeout.LONG,
   });
 
-  await po.clickUndo();
+  await po.chatActions.clickUndo();
 
   await expect(
     iframe.contentFrame().getByText("Welcome to Your Blank App"),
@@ -45,12 +45,12 @@ testSkipIfWindows("undo after assistant with no code", async ({ po }) => {
   await po.setUp({ autoApprove: true });
 
   // First prompt - no code generated
-  await po.sendPrompt("tc=no-code-response");
+  await po.chatActions.sendPrompt("tc=no-code-response");
 
   // Second prompt - generates code
-  await po.sendPrompt("tc=write-index");
+  await po.chatActions.sendPrompt("tc=write-index");
 
-  const iframe = po.getPreviewIframeElement();
+  const iframe = po.previewPanel.getPreviewIframeElement();
   await expect(
     iframe.contentFrame().getByText("Testing:write-index!"),
   ).toBeVisible({
@@ -58,7 +58,7 @@ testSkipIfWindows("undo after assistant with no code", async ({ po }) => {
   });
 
   // Undo should work even though first assistant had no commit
-  await po.clickUndo();
+  await po.chatActions.clickUndo();
 
   await expect(
     iframe.contentFrame().getByText("Welcome to Your Blank App"),

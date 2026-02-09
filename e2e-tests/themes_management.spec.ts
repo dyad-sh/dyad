@@ -5,7 +5,7 @@ test("themes management - CRUD operations", async ({ po }) => {
   await po.setUp();
 
   // Navigate to Themes page via Library sidebar
-  await po.goToLibraryTab();
+  await po.navigation.goToLibraryTab();
   await po.page.getByRole("link", { name: "Themes" }).click();
   await expect(po.page.getByRole("heading", { name: "Themes" })).toBeVisible();
 
@@ -102,7 +102,7 @@ test("themes management - create theme from chat input", async ({ po }) => {
   await po.setUp();
 
   // Open the auxiliary actions menu
-  await po
+  await po.chatActions
     .getHomeChatInputContainer()
     .getByTestId("auxiliary-actions-menu")
     .click();
@@ -138,7 +138,7 @@ test("themes management - create theme from chat input", async ({ po }) => {
 
   // Verify the newly created theme is auto-selected
   // Re-open the menu to verify
-  await po
+  await po.chatActions
     .getHomeChatInputContainer()
     .getByTestId("auxiliary-actions-menu")
     .click();
@@ -154,7 +154,7 @@ test("themes management - AI generator image upload limit", async ({ po }) => {
   await po.setUpDyadPro();
 
   // Navigate to Themes page via Library sidebar
-  await po.goToLibraryTab();
+  await po.navigation.goToLibraryTab();
   await po.page.getByRole("link", { name: "Themes" }).click();
   await expect(po.page.getByRole("heading", { name: "Themes" })).toBeVisible();
 
@@ -204,7 +204,7 @@ test("themes management - AI generator flow", async ({ po }) => {
   await po.setUp();
 
   // Navigate to Themes page via Library sidebar
-  await po.goToLibraryTab();
+  await po.navigation.goToLibraryTab();
   await po.page.getByRole("link", { name: "Themes" }).click();
   await expect(po.page.getByRole("heading", { name: "Themes" })).toBeVisible();
 
@@ -276,7 +276,7 @@ test("themes management - AI generator from website URL", async ({ po }) => {
   await po.setUpDyadPro();
 
   // Navigate to Themes page via Library sidebar
-  await po.goToLibraryTab();
+  await po.navigation.goToLibraryTab();
   await po.page.getByRole("link", { name: "Themes" }).click();
   await expect(po.page.getByRole("heading", { name: "Themes" })).toBeVisible();
 

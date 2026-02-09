@@ -23,6 +23,7 @@ When running GitHub Actions with `pull_request_target` on cross-repo PRs (from f
 - To rebase onto the base repo's main, you must add an `upstream` remote: `git remote add upstream https://github.com/<base-repo>.git`
 - Remote setup for cross-repo PRs: `origin` → fork (push here), `upstream` → base repo (rebase from here)
 - The `GITHUB_TOKEN` can push to the fork if the PR author enabled "Allow edits from maintainers"
+- **`claude-code-action` overwrites origin's fetch URL** to point to the base repo (using `GITHUB_REPOSITORY`). Any workflow that needs to push to the fork must set `pushurl` separately via `git remote set-url --push origin <fork-url>`, because git uses `pushurl` over `url` when both are configured. See `pr-review-responder.yml` and `claude-rebase.yml` for examples.
 
 ## Adding labels to PRs
 

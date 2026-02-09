@@ -26,7 +26,7 @@ describe("buildOpenRouterFreeModels", () => {
 
     expect(result).toHaveLength(2);
     const awesome = result.find((model) => model.apiName === "free/model");
-    expect(awesome?.displayName).toBe("Awesome Model (free)");
+    expect(awesome?.displayName).toBe("Awesome Model");
     expect(awesome?.contextWindow).toBe(128_000);
     expect(awesome?.tag).toBe("Free");
 

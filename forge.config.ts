@@ -42,6 +42,21 @@ const ignore = (file: string) => {
   if (file.startsWith("/node_modules/better-sqlite3")) {
     return false;
   }
+  if (file.startsWith("/node_modules/recast")) {
+    return false;
+  }
+  if (file.startsWith("/node_modules/ast-types")) {
+    return false;
+  }
+  if (file.startsWith("/node_modules/esprima")) {
+    return false;
+  }
+  if (file.startsWith("/node_modules/source-map")) {
+    return false;
+  }
+  if (file.startsWith("/node_modules/tslib")) {
+    return false;
+  }
   if (file.startsWith("/node_modules/bindings")) {
     return false;
   }

@@ -93,7 +93,7 @@ export async function onReady() {
   // Cleanup old ai_messages_json entries to prevent database bloat
   cleanupOldAiMessagesJson();
 
-  await hydrateOpenRouterFreeModels();
+  hydrateOpenRouterFreeModels();
 
   const settings = readSettings();
 

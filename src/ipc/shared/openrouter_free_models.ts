@@ -56,7 +56,8 @@ function isFreePricing(pricing?: OpenRouterModel["pricing"]) {
 }
 
 function formatFreeDisplayName(name: string) {
-  return name.toLowerCase().includes("free") ? name : `${name} (free)`;
+  // Remove "(free)" if present (case-insensitive)
+  return name.replace(/\s*\(free\)\s*/gi, "").trim();
 }
 
 export function buildOpenRouterFreeModels(

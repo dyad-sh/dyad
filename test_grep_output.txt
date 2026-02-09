@@ -1,0 +1,49 @@
+﻿
+> dyad@0.36.0-beta.2 test
+> vitest run src/pro/main/ipc/handlers/local_agent/tools/grep.spec.ts
+
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mC:/Users/sonya/Documents/WebStuff/DyadContrib/dyad-contribution-fork[39m
+
+ [31mÔØ»[39m src/pro/main/ipc/handlers/local_agent/tools/grep.spec.ts [2m([22m[2m33 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 805[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mschema validation[2m > [22mhas the correct name[32m 12[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mschema validation[2m > [22mhas defaultConsent set to always[32m 6[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mschema validation[2m > [22mvalidates required query field[32m 10[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mschema validation[2m > [22mvalidates limit bounds[32m 6[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - basic search[2m > [22mfinds matches across multiple files[32m 53[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - basic search[2m > [22mreturns line numbers[32m 33[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - basic search[2m > [22mreturns no matches found when nothing matches[32m 31[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - basic search[2m > [22mcalls onXmlComplete with proper XML for no matches[32m 31[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - basic search[2m > [22mcalls onXmlComplete with proper XML for matches[32m 30[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - case sensitivity[2m > [22mis case-insensitive by default[32m 32[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - case sensitivity[2m > [22mrespects case_sensitive option[32m 31[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - file filtering[2m > [22mfilters by include_pattern[32m 30[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - file filtering[2m > [22mfilters by exclude_pattern[32m 32[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - file filtering[2m > [22msupports glob patterns for nested files[32m 28[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - file filtering[2m > [22mdoes not search node_modules even with include_pattern '*'[32m 34[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - file filtering[2m > [22mdoes not search node_modules without include_pattern[32m 35[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - regex patterns[2m > [22msupports basic regex[32m 34[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - regex patterns[2m > [22msupports character classes[32m 32[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - regex patterns[2m > [22msupports alternation[32m 33[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - result limiting[2m > [22mrespects limit parameter[32m 29[2mms[22m[39m
+[31m   [31m├ù[31m grepTool[2m > [22mexecute - result limiting[2m > [22mincludes truncation notice when results are limited[39m[32m 49[2mms[22m[39m
+[31m     ÔåÆ Snapshot `grepTool > execute - result limiting > includes truncation notice when results are limited 1` mismatched[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - result limiting[2m > [22mincludes truncation info in XML attributes[32m 30[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - result sorting[2m > [22mreturns results sorted by path then line number[32m 29[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - line truncation[2m > [22mtruncates lines longer than 500 characters[32m 37[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mbuildXml[2m > [22mreturns undefined when query is missing[32m 9[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mbuildXml[2m > [22mreturns undefined when complete (execute handles final XML)[32m 29[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mbuildXml[2m > [22mbuilds partial XML during streaming[32m 8[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mbuildXml[2m > [22mescapes special XML characters in query[32m 8[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mbuildXml[2m > [22mincludes include_pattern in attributes[32m 11[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mbuildXml[2m > [22mincludes exclude_pattern in attributes[32m 11[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mbuildXml[2m > [22mincludes case-sensitive in attributes when true[32m 8[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mgetConsentPreview[2m > [22mreturns preview with query[32m 6[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mgetConsentPreview[2m > [22mincludes include_pattern in preview[32m 5[2mms[22m[39m
+
+[2m  Snapshots [22m [1m[31m1 failed[39m[22m
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m32 passed[39m[22m[90m (33)[39m
+[2m   Start at [22m 19:31:14
+[2m   Duration [22m 2.87s[2m (transform 175ms, setup 0ms, collect 308ms, tests 805ms, environment 785ms, prepare 303ms)[22m
+

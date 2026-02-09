@@ -230,7 +230,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
     {
       name: "qwen/qwen3-coder:free",
-      displayName: "Qwen3 Coder (free)",
+      displayName: "Qwen3 Coder",
       description: "Use for free (data may be used for training)",
       maxOutputTokens: 32_000,
       contextWindow: 262_000,
@@ -239,7 +239,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
     {
       name: "mistralai/devstral-2512:free",
-      displayName: "Devstral 2 (free)",
+      displayName: "Devstral 2",
       description: "Use for free (data may be used for training)",
       maxOutputTokens: 32_000,
       contextWindow: 200_000,
@@ -297,7 +297,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
     {
       name: "free",
-      displayName: "Free (OpenRouter)",
+      displayName: "Free",
       description: "Selects from one of the free OpenRouter models",
       tag: "Free",
       // These are below Gemini 2.5 Pro & Flash limits

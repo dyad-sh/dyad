@@ -476,10 +476,6 @@ export const TURBO_MODELS: LanguageModel[] = [
   },
 ];
 
-export const FREE_OPENROUTER_MODEL_NAMES = MODEL_OPTIONS.openrouter
-  .filter((model) => model.name.endsWith(":free"))
-  .map((model) => model.name);
-
 export const PROVIDER_TO_ENV_VAR: Record<string, string> = {
   openai: "OPENAI_API_KEY",
   anthropic: "ANTHROPIC_API_KEY",

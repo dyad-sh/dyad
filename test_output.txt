@@ -1,0 +1,472 @@
+﻿
+> dyad@0.36.0-beta.2 test
+> vitest run
+
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mC:/Users/sonya/Documents/WebStuff/DyadContrib/dyad-contribution-fork[39m
+
+ [31mÔØ»[39m src/__tests__/path_utils.test.ts [2m([22m[2m33 tests[22m[2m | [22m[31m6 failed[39m[2m)[22m[32m 57[2mms[22m[39m
+   [32mÔ£ô[39m safeJoin[2m > [22msafe paths[2m > [22mshould join simple relative paths[32m 4[2mms[22m[39m
+   [32mÔ£ô[39m safeJoin[2m > [22msafe paths[2m > [22mshould handle single file names[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m safeJoin[2m > [22msafe paths[2m > [22mshould handle nested directories[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m safeJoin[2m > [22msafe paths[2m > [22mshould handle paths with dots in filename[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m safeJoin[2m > [22msafe paths[2m > [22mshould handle empty path segments[32m 2[2mms[22m[39m
+   [32mÔ£ô[39m safeJoin[2m > [22msafe paths[2m > [22mshould handle multiple path segments[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m safeJoin[2m > [22msafe paths[2m > [22mshould work with actual temp directory[32m 0[2mms[22m[39m
+[31m   [31m├ù[31m safeJoin[2m > [22msafe paths[2m > [22mshould handle Windows-style relative paths with backslashes[39m[32m 15[2mms[22m[39m
+[31m     ÔåÆ expected '\app\workspace\src\components\Button.ÔÇª' to be '/app/workspace/src/components/Button.ÔÇª' // Object.is equality[39m
+[31m   [31m├ù[31m safeJoin[2m > [22msafe paths[2m > [22mshould handle mixed forward/backslashes in relative paths[39m[32m 11[2mms[22m[39m
+[31m     ÔåÆ expected '\app\workspace\src\components\ui\buttÔÇª' to be '/app/workspace/src/components/ui/buttÔÇª' // Object.is equality[39m
+[31m   [31m├ù[31m safeJoin[2m > [22msafe paths[2m > [22mshould handle Windows-style nested directories[39m[32m 2[2mms[22m[39m
+[31m     ÔåÆ expected '\app\workspace\pages\home\components\ÔÇª' to be '/app/workspace/pages/home/components/ÔÇª' // Object.is equality[39m
+[31m   [31m├ù[31m safeJoin[2m > [22msafe paths[2m > [22mshould handle relative paths starting with dot and backslash[39m[32m 2[2mms[22m[39m
+[31m     ÔåÆ expected '\app\workspace\src\file.txt' to be '/app/workspace/src/file.txt' // Object.is equality[39m
+   [32mÔ£ô[39m safeJoin[2m > [22munsafe paths - directory traversal[2m > [22mshould throw on simple parent directory traversal[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m safeJoin[2m > [22munsafe paths - directory traversal[2m > [22mshould throw on multiple parent directory traversals[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m safeJoin[2m > [22munsafe paths - directory traversal[2m > [22mshould throw on complex traversal paths[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m safeJoin[2m > [22munsafe paths - directory traversal[2m > [22mshould throw on mixed traversal with valid components[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m safeJoin[2m > [22munsafe paths - directory traversal[2m > [22mshould throw on absolute Unix paths[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m safeJoin[2m > [22munsafe paths - directory traversal[2m > [22mshould throw on absolute Windows paths[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m safeJoin[2m > [22munsafe paths - directory traversal[2m > [22mshould throw on Windows UNC paths[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m safeJoin[2m > [22munsafe paths - directory traversal[2m > [22mshould throw on home directory shortcuts[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m safeJoin[2m > [22medge cases[2m > [22mshould handle Windows-style base paths[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m safeJoin[2m > [22medge cases[2m > [22mshould throw on Windows traversal from Unix base[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m safeJoin[2m > [22medge cases[2m > [22mshould handle current directory references safely[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m safeJoin[2m > [22medge cases[2m > [22mshould handle nested current directory references[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m safeJoin[2m > [22medge cases[2m > [22mshould throw when current dir plus traversal escapes[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m safeJoin[2m > [22medge cases[2m > [22mshould handle very long paths safely[32m 0[2mms[22m[39m
+[31m   [31m├ù[31m safeJoin[2m > [22medge cases[2m > [22mshould allow Windows-style paths that look like drive letters but aren't[39m[32m 2[2mms[22m[39m
+[31m     ÔåÆ expected '\app\workspace\C_drive\file.txt' to be '/app/workspace/C_drive/file.txt' // Object.is equality[39m
+[31m   [31m├ù[31m safeJoin[2m > [22medge cases[2m > [22mshould handle Windows paths with multiple backslashes (not UNC)[39m[32m 2[2mms[22m[39m
+[31m     ÔåÆ expected '\app\workspace\src\components\Button.ÔÇª' to be '/app/workspace/src/components/Button.ÔÇª' // Object.is equality[39m
+   [32mÔ£ô[39m safeJoin[2m > [22medge cases[2m > [22mshould provide descriptive error messages[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m safeJoin[2m > [22medge cases[2m > [22mshould provide descriptive error for multiple segments[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m safeJoin[2m > [22mboundary conditions[2m > [22mshould allow paths at the exact boundary[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m safeJoin[2m > [22mboundary conditions[2m > [22mshould handle paths that approach but don't cross boundary[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m safeJoin[2m > [22mboundary conditions[2m > [22mshould handle root directory as base[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m safeJoin[2m > [22mboundary conditions[2m > [22mshould throw when trying to escape root[32m 0[2mms[22m[39m
+ [31mÔØ»[39m src/pro/main/ipc/processors/search_replace_dsl.spec.ts [2m([22m[2m69 tests[22m[2m | [22m[31m6 failed[39m[2m)[22m[33m 301[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22msimple single line replacement[32m 4[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mmulti-line search and replace[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mdelete lines (empty replace)[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mpreserve indentation[32m 0[2mms[22m[39m
+[31m   [31m├ù[31m search_replace_processor - DSL passing tests[2m > [22mmultiple blocks applied in sequence[39m[32m 23[2mms[22m[39m
+[31m     ÔåÆ expected 'ONE\r\n>>>>>>> REPLACE\r\n\r\n<<<<<<<ÔÇª' to be 'ONE\r\n2\r\n3\r\nFOUR\r\n5\r\n' // Object.is equality[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mtrailing whitespace ignored[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mleading and trailing whitespace ignored[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22municode smart quotes normalized[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mpreserves CRLF line endings[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mescaped markers in search content[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22msearch and replace identical is no-op[32m 14[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mtabs vs spaces whitespace normalization[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mextra leading newline in search trimmed[32m 0[2mms[22m[39m
+[31m   [31m├ù[31m search_replace_processor - DSL passing tests[2m > [22mextra trailing newline in search trimmed[39m[32m 21[2mms[22m[39m
+[31m     ÔåÆ expected false to be true // Object.is equality[39m
+[31m   [31m├ù[31m search_replace_processor - DSL passing tests[2m > [22mboth leading and trailing empty lines in search trimmed[39m[32m 14[2mms[22m[39m
+[31m     ÔåÆ expected false to be true // Object.is equality[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mreplace at beginning of file[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mreplace at end of file[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mreplace entire file content[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mmulti-line to single-line replacement[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22msingle-line to multi-line replacement[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mdeeply nested code indentation[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22msearch without indentation matches deeply indented code[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22msearch with extra indentation normalized to original[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mregex special characters treated as literal[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mcode with brackets parentheses braces[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mstring literals with various quotes[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mem-dash to regular dash normalization[32m 2[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mellipsis character normalization[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mnon-breaking space normalization[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mvery long line replacement[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mfile with single line no trailing newline[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mreplacement adds content to empty lines area[32m 0[2mms[22m[39m
+[31m   [31m├ù[31m search_replace_processor - DSL passing tests[2m > [22mmultiple sequential blocks non-overlapping[39m[32m 4[2mms[22m[39m
+[31m     ÔåÆ expected 'AAA\r\n>>>>>>> REPLACE\r\n\r\n<<<<<<<ÔÇª' to be 'AAA\r\nbbb\r\nCCC\r\nddd\r\nEEE\r\n' // Object.is equality[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mpreserve blank lines in replacement[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mmatch with mixed indent styles in file[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mpython style indentation[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mjsx component replacement[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22msql query replacement[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mjson structure replacement[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22myaml indentation preservation[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mmarkdown code block replacement[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22msingle character search[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22memoji unicode characters[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mCJK unicode characters[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mURL strings in code[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mbackslash escape sequences[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mwindows paths with backslashes[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mHTML angle brackets[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mXML content[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mC style block comments[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mshell style comments[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL passing tests[2m > [22mconsecutive blank lines in middle of search[32m 1[2mms[22m[39m
+[31m   [31m├ù[31m search_replace_processor - DSL passing tests[2m > [22mcascading edits second block targets first output[39m[32m 3[2mms[22m[39m
+[31m     ÔåÆ expected 'intermediate\r\n>>>>>>> REPLACE\r\n\rÔÇª' to be 'final\r\n' // Object.is equality[39m
+[31m   [31m├ù[31m search_replace_processor - DSL passing tests[2m > [22mcascading edits three blocks[39m[32m 3[2mms[22m[39m
+[31m     ÔåÆ expected 'step2\r\n>>>>>>> REPLACE\r\n\r\n<<<<<ÔÇª' to be 'step4\r\n' // Object.is equality[39m
+   [32mÔ£ô[39m search_replace_processor - DSL failing tests[2m > [22mempty search block not allowed[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL failing tests[2m > [22msearch block does not match any content[32m 12[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL failing tests[2m > [22mambiguous match multiple locations[32m 20[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL failing tests[2m > [22mambiguous match with whitespace normalization[32m 30[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL failing tests[2m > [22minvalid diff format missing markers[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL failing tests[2m > [22mcase mismatch is case sensitive[32m 28[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL failing tests[2m > [22mpartial line does not match[32m 15[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL failing tests[2m > [22msearch with extra context that does not exist[32m 12[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL failing tests[2m > [22mthree or more identical matches[32m 22[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL failing tests[2m > [22monly search marker no replace[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL failing tests[2m > [22monly separator no markers[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL failing tests[2m > [22msearch content is just empty lines[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL failing tests[2m > [22mmultiline search partial match fails[32m 15[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL failing tests[2m > [22msearch matches but wrong line count[32m 13[2mms[22m[39m
+   [32mÔ£ô[39m search_replace_processor - DSL failing tests[2m > [22mempty original file cannot match search[32m 18[2mms[22m[39m
+ [32mÔ£ô[39m src/pro/main/utils/visual_editing_utils.test.ts [2m([22m[2m39 tests[22m[2m)[22m[32m 167[2mms[22m[39m
+ [32mÔ£ô[39m src/pro/main/ipc/handlers/local_agent/tools/read_file.spec.ts [2m([22m[2m39 tests[22m[2m)[22m[33m 1546[2mms[22m[39m
+ [32mÔ£ô[39m src/__tests__/ai_messages_utils.test.ts [2m([22m[2m31 tests[22m[2m)[22m[32m 157[2mms[22m[39m
+ [31mÔØ»[39m src/pro/main/ipc/handlers/local_agent/tools/grep.spec.ts [2m([22m[2m33 tests[22m[2m | [22m[31m3 failed[39m[2m)[22m[33m 3052[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mschema validation[2m > [22mhas the correct name[32m 26[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mschema validation[2m > [22mhas defaultConsent set to always[32m 21[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mschema validation[2m > [22mvalidates required query field[32m 40[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mschema validation[2m > [22mvalidates limit bounds[32m 22[2mms[22m[39m
+[31m   [31m├ù[31m grepTool[2m > [22mexecute - basic search[2m > [22mfinds matches across multiple files[39m[32m 198[2mms[22m[39m
+[31m     ÔåÆ expected '.\nested\deep.ts:2: function deepHellÔÇª' to contain 'nested/deep.ts'[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - basic search[2m > [22mreturns line numbers[32m 123[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - basic search[2m > [22mreturns no matches found when nothing matches[32m 150[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - basic search[2m > [22mcalls onXmlComplete with proper XML for no matches[32m 92[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - basic search[2m > [22mcalls onXmlComplete with proper XML for matches[32m 114[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - case sensitivity[2m > [22mis case-insensitive by default[32m 167[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - case sensitivity[2m > [22mrespects case_sensitive option[32m 179[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - file filtering[2m > [22mfilters by include_pattern[32m 99[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - file filtering[2m > [22mfilters by exclude_pattern[32m 82[2mms[22m[39m
+[31m   [31m├ù[31m grepTool[2m > [22mexecute - file filtering[2m > [22msupports glob patterns for nested files[39m[32m 123[2mms[22m[39m
+[31m     ÔåÆ expected '.\nested\deep.ts:2: function deepHellÔÇª' to contain 'nested/deep.ts'[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - file filtering[2m > [22mdoes not search node_modules even with include_pattern '*'[32m 139[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - file filtering[2m > [22mdoes not search node_modules without include_pattern[32m 138[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - regex patterns[2m > [22msupports basic regex[32m 166[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - regex patterns[2m > [22msupports character classes[32m 209[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - regex patterns[2m > [22msupports alternation[32m 170[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - result limiting[2m > [22mrespects limit parameter[32m 159[2mms[22m[39m
+[31m   [31m├ù[31m grepTool[2m > [22mexecute - result limiting[2m > [22mincludes truncation notice when results are limited[39m[32m 216[2mms[22m[39m
+[31m     ÔåÆ Snapshot `grepTool > execute - result limiting > includes truncation notice when results are limited 1` mismatched[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - result limiting[2m > [22mincludes truncation info in XML attributes[32m 127[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - result sorting[2m > [22mreturns results sorted by path then line number[32m 96[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mexecute - line truncation[2m > [22mtruncates lines longer than 500 characters[32m 110[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mbuildXml[2m > [22mreturns undefined when query is missing[32m 11[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mbuildXml[2m > [22mreturns undefined when complete (execute handles final XML)[32m 9[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mbuildXml[2m > [22mbuilds partial XML during streaming[32m 8[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mbuildXml[2m > [22mescapes special XML characters in query[32m 9[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mbuildXml[2m > [22mincludes include_pattern in attributes[32m 10[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mbuildXml[2m > [22mincludes exclude_pattern in attributes[32m 9[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mbuildXml[2m > [22mincludes case-sensitive in attributes when true[32m 8[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mgetConsentPreview[2m > [22mreturns preview with query[32m 11[2mms[22m[39m
+   [32mÔ£ô[39m grepTool[2m > [22mgetConsentPreview[2m > [22mincludes include_pattern in preview[32m 10[2mms[22m[39m
+ [32mÔ£ô[39m src/__tests__/readSettings.test.ts [2m([22m[2m21 tests[22m[2m)[22m[32m 142[2mms[22m[39m
+ [32mÔ£ô[39m src/pro/main/ipc/processors/search_replace_processor.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 96[2mms[22m[39m
+[90mstdout[2m | src/__tests__/retryWithRateLimit.test.ts[2m > [22m[2mretryWithRateLimit[2m > [22m[2msuccessful operations[2m > [22m[2mshould return result after retry on rate limit then success
+[22m[39m19:22:21.572 (retryWithRateLimit) > test-operation: Success after 2 attempts
+
+[90mstdout[2m | src/__tests__/retryWithRateLimit.test.ts[2m > [22m[2mretryWithRateLimit[2m > [22m[2msuccessful operations[2m > [22m[2mshould succeed after multiple rate limit errors
+[22m[39m19:22:33.735 (retryWithRateLimit) > test-operation: Success after 4 attempts
+
+[90mstdout[2m | src/__tests__/retryWithRateLimit.test.ts[2m > [22m[2mretryWithRateLimit[2m > [22m[2mcustom options[2m > [22m[2mshould respect custom baseDelay
+[22m[39m19:22:25.032 (retryWithRateLimit) > test-operation: Success after 2 attempts
+
+[90mstdout[2m | src/__tests__/retryWithRateLimit.test.ts[2m > [22m[2mretryWithRateLimit[2m > [22m[2mcustom options[2m > [22m[2mshould cap delay at maxDelay
+[22m[39m19:22:32.023 (retryWithRateLimit) > test-operation: Success after 5 attempts
+
+[90mstdout[2m | src/__tests__/retryWithRateLimit.test.ts[2m > [22m[2mretryWithRateLimit[2m > [22m[2mcustom options[2m > [22m[2mshould use defaults for unspecified options
+[22m[39m19:22:21.764 (retryWithRateLimit) > test-operation: Success after 2 attempts
+
+[90mstdout[2m | src/__tests__/retryWithRateLimit.test.ts[2m > [22m[2mfetchWithRetry[2m > [22m[2mshould retry on 429 response and succeed
+[22m[39m19:22:19.700 (retryWithRateLimit) > test-fetch: Success after 2 attempts
+
+ [32mÔ£ô[39m src/__tests__/retryWithRateLimit.test.ts [2m([22m[2m48 tests[22m[2m)[22m[32m 137[2mms[22m[39m
+ [32mÔ£ô[39m src/__tests__/prepare_step_utils.test.ts [2m([22m[2m29 tests[22m[2m)[22m[32m 82[2mms[22m[39m
+ [32mÔ£ô[39m src/__tests__/compaction_storage.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 51[2mms[22m[39m
+ [32mÔ£ô[39m src/pro/main/ipc/processors/search_replace_processor.spec.ts [2m([22m[2m31 tests[22m[2m)[22m[32m 47[2mms[22m[39m
+ [32mÔ£ô[39m src/__tests__/versioned_codebase_context.test.ts [2m([22m[2m41 tests[22m[2m)[22m[32m 59[2mms[22m[39m
+ [32mÔ£ô[39m src/pro/main/ipc/handlers/local_agent/tools/search_replace.spec.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 34[2mms[22m[39m
+ [32mÔ£ô[39m src/__tests__/app_env_vars_utils.test.ts [2m([22m[2m38 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+ [32mÔ£ô[39m src/__tests__/local_agent_handler.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 45[2mms[22m[39m
+ [32mÔ£ô[39m src/__tests__/supabase_utils.test.ts [2m([22m[2m41 tests[22m[2m)[22m[32m 27[2mms[22m[39m
+ [32mÔ£ô[39m src/__tests__/mention_apps.test.ts [2m([22m[2m33 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould return empty object when no dyad-write tags are found
+[22m[39m19:22:25.268 (file_uploads_state)         > Cleared file uploads state for chat 1
+19:22:25.278 (response_processor)         > processFullResponseActions for chatId [33m1[39m
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould return empty object when no dyad-write tags are found
+[22m[39m19:22:25.313 (response_processor)         > mark as approved: hasChanges [33mfalse[39m
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould process dyad-write tags and create files
+[22m[39m19:22:25.321 (file_uploads_state)         > Cleared file uploads state for chat 1
+19:22:25.338 (response_processor)         > processFullResponseActions for chatId [33m1[39m
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould process dyad-write tags and create files
+[22m[39m19:22:25.343 (response_processor)         > Successfully wrote file: \mock\user\data\path\mock-app-path\src\file1.js
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould process dyad-write tags and create files
+[22m[39m19:22:25.345 (response_processor)         > Successfully committed changes: wrote 1 file(s)
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould process dyad-write tags and create files
+[22m[39m19:22:25.347 (response_processor)         > mark as approved: hasChanges [33mtrue[39m
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould handle file system errors gracefully
+[22m[39m19:22:25.375 (file_uploads_state)         > Cleared file uploads state for chat 1
+19:22:25.377 (response_processor)         > processFullResponseActions for chatId [33m1[39m
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould process multiple dyad-write tags and commit all files
+[22m[39m19:22:25.394 (file_uploads_state)         > Cleared file uploads state for chat 1
+19:22:25.395 (response_processor)         > processFullResponseActions for chatId [33m1[39m
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould process multiple dyad-write tags and commit all files
+[22m[39m19:22:25.399 (response_processor)         > Successfully wrote file: \mock\user\data\path\mock-app-path\src\file1.js
+19:22:25.400 (response_processor)         > Successfully wrote file: \mock\user\data\path\mock-app-path\src\utils\file2.js
+19:22:25.401 (response_processor)         > Successfully wrote file: \mock\user\data\path\mock-app-path\src\components\Button.tsx
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould process multiple dyad-write tags and commit all files
+[22m[39m19:22:25.404 (response_processor)         > Successfully committed changes: wrote 3 file(s)
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould process multiple dyad-write tags and commit all files
+[22m[39m19:22:25.407 (response_processor)         > mark as approved: hasChanges [33mtrue[39m
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould process dyad-rename tags and rename files
+[22m[39m19:22:25.419 (file_uploads_state)         > Cleared file uploads state for chat 1
+19:22:25.420 (response_processor)         > processFullResponseActions for chatId [33m1[39m
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould process dyad-rename tags and rename files
+[22m[39m19:22:25.424 (response_processor)         > Successfully renamed file: \mock\user\data\path\mock-app-path\src\components\OldComponent.jsx -> \mock\user\data\path\mock-app-path\src\components\NewComponent.jsx
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould process dyad-rename tags and rename files
+[22m[39m19:22:25.426 (response_processor)         > Successfully committed changes: renamed 1 file(s)
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould process dyad-rename tags and rename files
+[22m[39m19:22:25.428 (response_processor)         > mark as approved: hasChanges [33mtrue[39m
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould handle non-existent files during rename gracefully
+[22m[39m19:22:25.434 (file_uploads_state)         > Cleared file uploads state for chat 1
+19:22:25.435 (response_processor)         > processFullResponseActions for chatId [33m1[39m
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould handle non-existent files during rename gracefully
+[22m[39m19:22:25.438 (response_processor)         > mark as approved: hasChanges [33mfalse[39m
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould process dyad-delete tags and delete files
+[22m[39m19:22:25.440 (file_uploads_state)         > Cleared file uploads state for chat 1
+19:22:25.440 (response_processor)         > processFullResponseActions for chatId [33m1[39m
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould process dyad-delete tags and delete files
+[22m[39m19:22:25.445 (response_processor)         > Successfully deleted file: \mock\user\data\path\mock-app-path\src\components\Unused.jsx
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould process dyad-delete tags and delete files
+[22m[39m19:22:25.447 (response_processor)         > Successfully committed changes: deleted 1 file(s)
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould process dyad-delete tags and delete files
+[22m[39m19:22:25.449 (response_processor)         > mark as approved: hasChanges [33mtrue[39m
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould handle non-existent files during delete gracefully
+[22m[39m19:22:25.454 (file_uploads_state)         > Cleared file uploads state for chat 1
+19:22:25.456 (response_processor)         > processFullResponseActions for chatId [33m1[39m
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould handle non-existent files during delete gracefully
+[22m[39m19:22:25.458 (response_processor)         > mark as approved: hasChanges [33mfalse[39m
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould process mixed operations (write, rename, delete) in one response
+[22m[39m19:22:25.461 (file_uploads_state)         > Cleared file uploads state for chat 1
+19:22:25.463 (response_processor)         > processFullResponseActions for chatId [33m1[39m
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould process mixed operations (write, rename, delete) in one response
+[22m[39m19:22:25.466 (response_processor)         > Successfully deleted file: \mock\user\data\path\mock-app-path\src\components\Unused.jsx
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould process mixed operations (write, rename, delete) in one response
+[22m[39m19:22:25.467 (response_processor)         > Successfully renamed file: \mock\user\data\path\mock-app-path\src\components\OldComponent.jsx -> \mock\user\data\path\mock-app-path\src\components\RenamedComponent.jsx
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould process mixed operations (write, rename, delete) in one response
+[22m[39m19:22:25.468 (response_processor)         > Successfully wrote file: \mock\user\data\path\mock-app-path\src\components\NewComponent.jsx
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould process mixed operations (write, rename, delete) in one response
+[22m[39m19:22:25.469 (response_processor)         > Successfully committed changes: wrote 1 file(s), renamed 1 file(s), deleted 1 file(s)
+
+[90mstdout[2m | src/__tests__/chat_stream_handlers.test.ts[2m > [22m[2mprocessFullResponse[2m > [22m[2mshould process mixed operations (write, rename, delete) in one response
+[22m[39m19:22:25.470 (response_processor)         > mark as approved: hasChanges [33mtrue[39m
+
+ [31mÔØ»[39m src/__tests__/chat_stream_handlers.test.ts [2m([22m[2m60 tests[22m[2m | [22m[31m5 failed[39m[2m)[22m[32m 238[2mms[22m[39m
+   [32mÔ£ô[39m getDyadAddDependencyTags[2m > [22mshould return an empty array when no dyad-add-dependency tags are found[32m 4[2mms[22m[39m
+   [32mÔ£ô[39m getDyadAddDependencyTags[2m > [22mshould return an array of dyad-add-dependency tags[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m getDyadAddDependencyTags[2m > [22mshould return all the packages in the dyad-add-dependency tags[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m getDyadAddDependencyTags[2m > [22mshould return all the packages in the dyad-add-dependency tags[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m getDyadAddDependencyTags[2m > [22mshould return all the packages in multiple dyad-add-dependency tags[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m getDyadWriteTags[2m > [22mshould return an empty array when no dyad-write tags are found[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m getDyadWriteTags[2m > [22mshould return a dyad-write tag[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m getDyadWriteTags[2m > [22mshould strip out code fence (if needed) from a dyad-write tag[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m getDyadWriteTags[2m > [22mshould handle missing description[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m getDyadWriteTags[2m > [22mshould handle extra space[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m getDyadWriteTags[2m > [22mshould handle nested tags[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m getDyadWriteTags[2m > [22mshould handle nested tags after preprocessing[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m getDyadWriteTags[2m > [22mshould handle multiple nested tags after preprocessing[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m getDyadWriteTags[2m > [22mshould handle nested tags in multiple attributes[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m getDyadWriteTags[2m > [22mshould return an array of dyad-write tags[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m getDyadRenameTags[2m > [22mshould return an empty array when no dyad-rename tags are found[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m getDyadRenameTags[2m > [22mshould return an array of dyad-rename tags[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m getDyadDeleteTags[2m > [22mshould return an empty array when no dyad-delete tags are found[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m getDyadDeleteTags[2m > [22mshould return an array of dyad-delete paths[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m processFullResponse[2m > [22mshould return empty object when no dyad-write tags are found[32m 55[2mms[22m[39m
+[31m   [31m├ù[31m processFullResponse[2m > [22mshould process dyad-write tags and create files[39m[32m 54[2mms[22m[39m
+[31m     ÔåÆ expected "spy" to be called with arguments: [ ÔÇª(2) ][90m
+
+Received: 
+
+[1m  1st spy call:
+
+[22m[2m  [[22m
+[32m-   "/mock/user/data/path/mock-app-path/src",[90m
+[31m+   "\\mock\\user\\data\\path\\mock-app-path\\src",[90m
+[2m    {[22m
+[2m      "recursive": true,[22m
+[2m    },[22m
+[2m  ][22m
+[31m[90m
+
+Number of calls: [1m1[22m
+[31m[39m
+   [32mÔ£ô[39m processFullResponse[2m > [22mshould handle file system errors gracefully[32m 17[2mms[22m[39m
+[31m   [31m├ù[31m processFullResponse[2m > [22mshould process multiple dyad-write tags and commit all files[39m[32m 27[2mms[22m[39m
+[31m     ÔåÆ expected "spy" to be called with arguments: [ ÔÇª(2) ][90m
+
+Received: 
+
+[1m  1st spy call:
+
+[22m[2m  [[22m
+[32m-   "/mock/user/data/path/mock-app-path/src",[90m
+[31m+   "\\mock\\user\\data\\path\\mock-app-path\\src",[90m
+[2m    {[22m
+[2m      "recursive": true,[22m
+[2m    },[22m
+[2m  ][22m
+
+[1m  2nd spy call:
+
+[22m[2m  [[22m
+[32m-   "/mock/user/data/path/mock-app-path/src",[90m
+[31m+   "\\mock\\user\\data\\path\\mock-app-path\\src\\utils",[90m
+[2m    {[22m
+[2m      "recursive": true,[22m
+[2m    },[22m
+[2m  ][22m
+
+[1m  3rd spy call:
+
+[22m[2m  [[22m
+[32m-   "/mock/user/data/path/mock-app-path/src",[90m
+[31m+   "\\mock\\user\\data\\path\\mock-app-path\\src\\components",[90m
+[2m    {[22m
+[2m      "recursive": true,[22m
+[2m    },[22m
+[2m  ][22m
+[31m[90m
+
+Number of calls: [1m3[22m
+[31m[39m
+[31m   [31m├ù[31m processFullResponse[2m > [22mshould process dyad-rename tags and rename files[39m[32m 14[2mms[22m[39m
+[31m     ÔåÆ expected "spy" to be called with arguments: [ ÔÇª(2) ][90m
+
+Received: 
+
+[1m  1st spy call:
+
+[22m[2m  [[22m
+[32m-   "/mock/user/data/path/mock-app-path/src/components",[90m
+[31m+   "\\mock\\user\\data\\path\\mock-app-path\\src\\components",[90m
+[2m    {[22m
+[2m      "recursive": true,[22m
+[2m    },[22m
+[2m  ][22m
+[31m[90m
+
+Number of calls: [1m1[22m
+[31m[39m
+   [32mÔ£ô[39m processFullResponse[2m > [22mshould handle non-existent files during rename gracefully[32m 6[2mms[22m[39m
+[31m   [31m├ù[31m processFullResponse[2m > [22mshould process dyad-delete tags and delete files[39m[32m 14[2mms[22m[39m
+[31m     ÔåÆ expected "spy" to be called with arguments: [ Array(1) ][90m
+
+Received: 
+
+[1m  1st spy call:
+
+[22m[2m  [[22m
+[32m-   "/mock/user/data/path/mock-app-path/src/components/Unused.jsx",[90m
+[31m+   "\\mock\\user\\data\\path\\mock-app-path\\src\\components\\Unused.jsx",[90m
+[2m  ][22m
+[31m[90m
+
+Number of calls: [1m1[22m
+[31m[39m
+   [32mÔ£ô[39m processFullResponse[2m > [22mshould handle non-existent files during delete gracefully[32m 6[2mms[22m[39m
+[31m   [31m├ù[31m processFullResponse[2m > [22mshould process mixed operations (write, rename, delete) in one response[39m[32m 12[2mms[22m[39m
+[31m     ÔåÆ expected "spy" to be called with arguments: [ ÔÇª(2) ][90m
+
+Received: 
+
+[1m  1st spy call:
+
+[22m[2m  [[22m
+[32m-   "/mock/user/data/path/mock-app-path/src/components/NewComponent.jsx",[90m
+[31m+   "\\mock\\user\\data\\path\\mock-app-path\\src\\components\\NewComponent.jsx",[90m
+[2m    "import React from 'react'; export default () => <div>New</div>;",[22m
+[2m  ][22m
+[31m[90m
+
+Number of calls: [1m1[22m
+[31m[39m
+   [32mÔ£ô[39m removeDyadTags[2m > [22mshould return empty string when input is empty[32m 1[2mms[22m[39m
+   [32mÔ£ô[39m removeDyadTags[2m > [22mshould return the same text when no dyad tags are present[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m removeDyadTags[2m > [22mshould remove a single dyad-write tag[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m removeDyadTags[2m > [22mshould remove a single dyad-delete tag[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m removeDyadTags[2m > [22mshould remove a single dyad-rename tag[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m removeDyadTags[2m > [22mshould remove multiple different dyad tags[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m removeDyadTags[2m > [22mshould remove dyad tags with multiline content[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m removeDyadTags[2m > [22mshould handle dyad tags with complex attributes[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m removeDyadTags[2m > [22mshould remove dyad tags and trim whitespace[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m removeDyadTags[2m > [22mshould handle nested content that looks like tags[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m removeDyadTags[2m > [22mshould handle self-closing dyad tags[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m removeDyadTags[2m > [22mshould handle malformed dyad tags gracefully[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m removeDyadTags[2m > [22mshould handle dyad tags with special characters in content[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m removeDyadTags[2m > [22mshould handle multiple dyad tags of the same type[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m removeDyadTags[2m > [22mshould handle dyad tags with custom tag names[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m hasUnclosedDyadWrite[2m > [22mshould return false when there are no dyad-write tags[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m hasUnclosedDyadWrite[2m > [22mshould return false when dyad-write tag is properly closed[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m hasUnclosedDyadWrite[2m > [22mshould return true when dyad-write tag is not closed[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m hasUnclosedDyadWrite[2m > [22mshould return false when dyad-write tag with attributes is properly closed[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m hasUnclosedDyadWrite[2m > [22mshould return true when dyad-write tag with attributes is not closed[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m hasUnclosedDyadWrite[2m > [22mshould return false when there are multiple closed dyad-write tags[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m hasUnclosedDyadWrite[2m > [22mshould return true when the last dyad-write tag is unclosed[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m hasUnclosedDyadWrite[2m > [22mshould return false when first tag is unclosed but last tag is closed[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m hasUnclosedDyadWrite[2m > [22mshould handle multiline content correctly[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m hasUnclosedDyadWrite[2m > [22mshould handle multiline unclosed content correctly[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m hasUnclosedDyadWrite[2m > [22mshould handle complex attributes correctly[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m hasUnclosedDyadWrite[2m > [22mshould handle text before and after dyad-write tags[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m hasUnclosedDyadWrite[2m > [22mshould handle unclosed tag with text after[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m hasUnclosedDyadWrite[2m > [22mshould handle empty dyad-write tags[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m hasUnclosedDyadWrite[2m > [22mshould handle unclosed empty dyad-write tags[32m 2[2mms[22m[39m
+   [32mÔ£ô[39m hasUnclosedDyadWrite[2m > [22mshould focus on the last opening tag when there are mixed states[32m 0[2mms[22m[39m
+   [32mÔ£ô[39m hasUnclosedDyadWrite[2m > [22mshould handle tags with special characters in attributes[32m 0[2mms[22m[39m
+ [32mÔ£ô[39m src/__tests__/style-utils.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+ [32mÔ£ô[39m src/__tests__/parseOllamaHost.test.ts [2m([22m[2m23 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32mÔ£ô[39m src/__tests__/mcp_tool_utils.test.ts [2m([22m[2m31 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32mÔ£ô[39m src/__tests__/ai_messages_cleanup.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32mÔ£ô[39m src/__tests__/problem_prompt.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32mÔ£ô[39m src/__tests__/compaction_utils.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32mÔ£ô[39m src/__tests__/xmlEscape.test.ts [2m([22m[2m22 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32mÔ£ô[39m src/__tests__/local_agent_list_files_path_safety.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32mÔ£ô[39m src/__tests__/openrouter_free_models.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32mÔ£ô[39m src/__tests__/cleanFullResponse.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 102[2mms[22m[39m
+ [32mÔ£ô[39m src/__tests__/replacePromptReference.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 26[2mms[22m[39m
+ [32mÔ£ô[39m src/__tests__/github_utils.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32mÔ£ô[39m src/__tests__/formatMessagesForSummary.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+
+[2m  Snapshots [22m [1m[31m1 failed[39m[22m
+[2m Test Files [22m [1m[31m4 failed[39m[22m[2m | [22m[1m[32m28 passed[39m[22m[90m (32)[39m
+[2m      Tests [22m [1m[31m20 failed[39m[22m[2m | [22m[1m[32m765 passed[39m[22m[90m (785)[39m
+[2m   Start at [22m 19:22:09
+[2m   Duration [22m 25.48s[2m (transform 12.70s, setup 0ms, collect 33.00s, tests 6.57s, environment 68.33s, prepare 19.61s)[22m
+

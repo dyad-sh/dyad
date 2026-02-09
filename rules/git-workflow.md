@@ -23,3 +23,11 @@ When running GitHub Actions with `pull_request_target` on cross-repo PRs (from f
 - To rebase onto the base repo's main, you must add an `upstream` remote: `git remote add upstream https://github.com/<base-repo>.git`
 - Remote setup for cross-repo PRs: `origin` → fork (push here), `upstream` → base repo (rebase from here)
 - The `GITHUB_TOKEN` can push to the fork if the PR author enabled "Allow edits from maintainers"
+
+## Adding labels to PRs
+
+`gh pr edit --add-label` fails with a GraphQL "Projects (classic)" deprecation error on repos that had classic projects. Use the REST API instead:
+
+```bash
+gh api repos/dyad-sh/dyad/issues/{PR_NUMBER}/labels -f "labels[]=label-name"
+```

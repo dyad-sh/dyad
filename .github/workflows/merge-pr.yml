@@ -6,6 +6,10 @@ on:
     types:
       - completed
 
+env:
+  # Allowed authors for auto-merge (update in one place)
+  ALLOWED_MERGE_AUTHORS: wwwillchen,wwwillchen-bot
+
 jobs:
   merge:
     # Only run if:
@@ -22,25 +26,40 @@ jobs:
     steps:
       - name: Check PR and merge if ready
         uses: actions/github-script@v7
+        env:
+          ALLOWED_AUTHORS: ${{ env.ALLOWED_MERGE_AUTHORS }}
         with:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const headSha = context.payload.workflow_run.head_sha;
+            const currentCheckSuiteId = context.payload.workflow_run.check_suite_id;
 
             console.log(`Checking PR for head SHA: ${headSha}`);
 
-            // Find the PR associated with this workflow run
-            const { data: prs } = await github.rest.pulls.list({
-              owner,
-              repo,
-              state: 'open',
-              sort: 'updated',
-              direction: 'desc',
-              per_page: 100,
-            });
+            // Use pull_requests from workflow_run event payload directly
+            // This avoids the 100 PR limit issue when listing all open PRs
+            const workflowRunPRs = context.payload.workflow_run.pull_requests;
 
-            const pr = prs.find(p => p.head.sha === headSha);
+            let pr;
+            if (workflowRunPRs && workflowRunPRs.length > 0) {
+              // Use the PR from the workflow run event
+              const prNumber = workflowRunPRs[0].number;
+              const { data: prData } = await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: prNumber,
+              });
+              pr = prData;
+            } else {
+              // Fallback: use listPullRequestsAssociatedWithCommit for targeted lookup
+              const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                owner,
+                repo,
+                commit_sha: headSha,
+              });
+              pr = prs.find(p => p.state === 'open');
+            }
 
             if (!pr) {
               console.log('No open PR found for this SHA');
@@ -50,8 +69,8 @@ jobs:
             console.log(`Found PR #${pr.number}: ${pr.title}`);
             console.log(`Author: ${pr.user.login}`);
 
-            // Check if author is allowed
-            const allowedAuthors = ['wwwillchen', 'wwwillchen-bot'];
+            // Check if author is allowed (read from environment variable)
+            const allowedAuthors = process.env.ALLOWED_AUTHORS.split(',');
             if (!allowedAuthors.includes(pr.user.login)) {
               console.log(`Author ${pr.user.login} is not in allowed list: ${allowedAuthors.join(', ')}`);
               return;
@@ -78,6 +97,23 @@ jobs:
               if (suite.conclusion === 'neutral' || suite.conclusion === 'skipped') {
                 return false;
               }
+              // Exclude this workflow's own check suite (it's still in-progress)
+              // This prevents the workflow from blocking itself
+              if (suite.id === currentCheckSuiteId) {
+                console.log(`Skipping own check suite (id=${suite.id})`);
+                return false;
+              }
+              // Skip check suites that are in-progress (conclusion is null)
+              // These are likely workflow_run-triggered workflows that started after CI
+              if (suite.status === 'in_progress' || suite.status === 'queued') {
+                // Check if this is a workflow_run triggered suite by comparing timestamps
+                const ciCompletedAt = new Date(context.payload.workflow_run.updated_at);
+                const suiteCreatedAt = new Date(suite.created_at);
+                if (suiteCreatedAt >= ciCompletedAt) {
+                  console.log(`Skipping workflow_run-triggered suite: ${suite.app?.name || 'Unknown'} (created after CI completed)`);
+                  return false;
+                }
+              }
               // Check if still in progress or failed
               return suite.status !== 'completed' || suite.conclusion !== 'success';
             });
@@ -92,13 +128,14 @@ jobs:
 
             console.log('All checks passed! Merging PR...');
 
-            // Merge the PR via squash
+            // Merge the PR via squash, using sha parameter to prevent TOCTOU race condition
             try {
               await github.rest.pulls.merge({
                 owner,
                 repo,
                 pull_number: pr.number,
                 merge_method: 'squash',
+                sha: headSha,
               });
               console.log(`Successfully merged PR #${pr.number}`);
             } catch (error) {

@@ -388,12 +388,16 @@ export function ModelPicker() {
                                 >
                                   <div className="flex justify-between items-start w-full">
                                     <span>{model.displayName}</span>
-                                    <PriceBadge dollarSigns={model.dollarSigns} />
-                                    {model.tag && (
-                                      <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
-                                        {model.tag}
-                                      </span>
-                                    )}
+                                    <PriceBadge
+                                      dollarSigns={model.dollarSigns}
+                                    />
+                                    {model.tag &&
+                                      (model.tag !== "Free" ||
+                                        model.dollarSigns !== 0) && (
+                                        <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
+                                          {model.tag}
+                                        </span>
+                                      )}
                                   </div>
                                 </DropdownMenuItem>
                               ))}
@@ -428,11 +432,13 @@ export function ModelPicker() {
                           <div className="flex justify-between items-start w-full">
                             <span>{model.displayName}</span>
                             <PriceBadge dollarSigns={model.dollarSigns} />
-                            {model.tag && (
-                              <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
-                                {model.tag}
-                              </span>
-                            )}
+                            {model.tag &&
+                              (model.tag !== "Free" ||
+                                model.dollarSigns !== 0) && (
+                                <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
+                                  {model.tag}
+                                </span>
+                              )}
                           </div>
                         </DropdownMenuItem>
                       ))}

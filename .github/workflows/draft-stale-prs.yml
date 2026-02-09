@@ -1,0 +1,118 @@
+name: Draft stale PRs
+
+on:
+  schedule:
+    - cron: "0 0 * * *" # daily at midnight UTC
+  workflow_dispatch:
+
+permissions:
+  pull-requests: write
+
+jobs:
+  draft-stale-prs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+            const prs = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              sort: 'updated',
+              direction: 'asc',
+            });
+
+            for (const pr of prs) {
+              if (pr.draft) {
+                continue;
+              }
+
+              // Skip PRs updated recently (quick filter before detailed check)
+              if (new Date(pr.updated_at) >= sevenDaysAgo) {
+                continue;
+              }
+
+              try {
+                // Check the latest commit date on the PR branch
+                const commits = await github.rest.pulls.listCommits({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: pr.number,
+                  per_page: 1,
+                });
+                const lastCommitDate = commits.data.length > 0
+                  ? new Date(commits.data[commits.data.length - 1].commit.committer.date)
+                  : new Date(0);
+
+                // Check comments (issue comments + review comments)
+                const comments = await github.rest.issues.listComments({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                  per_page: 1,
+                  sort: 'created',
+                  direction: 'desc',
+                });
+                const lastCommentDate = comments.data.length > 0
+                  ? new Date(comments.data[0].created_at)
+                  : new Date(0);
+
+                const reviewComments = await github.rest.pulls.listReviewComments({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: pr.number,
+                  per_page: 1,
+                  sort: 'created',
+                  direction: 'desc',
+                });
+                const lastReviewCommentDate = reviewComments.data.length > 0
+                  ? new Date(reviewComments.data[0].created_at)
+                  : new Date(0);
+
+                // Check timeline events for re-opens
+                const events = await github.paginate(github.rest.issues.listEvents, {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                });
+                const lastReopenDate = events
+                  .filter(e => e.event === 'reopened')
+                  .reduce((latest, e) => {
+                    const d = new Date(e.created_at);
+                    return d > latest ? d : latest;
+                  }, new Date(0));
+
+                const lastActivity = new Date(Math.max(
+                  lastCommitDate.getTime(),
+                  lastCommentDate.getTime(),
+                  lastReviewCommentDate.getTime(),
+                  lastReopenDate.getTime(),
+                ));
+
+                if (lastActivity < sevenDaysAgo) {
+                  // Convert to draft using GraphQL (REST API doesn't support this)
+                  await github.graphql(`
+                    mutation($pullRequestId: ID!) {
+                      convertPullRequestToDraft(input: { pullRequestId: $pullRequestId }) {
+                        pullRequest { id }
+                      }
+                    }
+                  `, { pullRequestId: pr.node_id });
+
+                  await github.rest.issues.createComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: pr.number,
+                    body: "We flipped this PR to draft since there hasn't been any work in the last 7 days. Please mark it as ready for review when ready!",
+                  });
+
+                  console.log(`Converted PR #${pr.number} to draft: ${pr.title} (last activity: ${lastActivity.toISOString()})`);
+                }
+              } catch (error) {
+                console.log(`Failed to process PR #${pr.number}: ${error.message}`);
+              }
+            }

@@ -34,8 +34,7 @@ ALLOWED (auto-approved):
    - Mutations: resolveReviewThread, unresolveReviewThread
    - Mutations: addPullRequestReview, addPullRequestReviewComment
 
-6. Piping to safe text-processing commands:
-   - jq, head, tail, grep, wc, sort, uniq, cut, tr
+6. Piping gh output to safe text-processing commands.
 
 BLOCKED (denied):
 -----------------
@@ -128,17 +127,16 @@ MARKDOWN_CODE_SPAN_PATTERN = re.compile(r'`[\w.-]*[._-][\w.-]*`')
 # Pattern to match double-quoted strings (for processing)
 DOUBLE_QUOTED_STRING_PATTERN = re.compile(r'"[^"]*"')
 
-# Safe pipe destinations - commands that only process text output
-# These are safe because they can't execute arbitrary code from piped input
-# jq: JSON processor, commonly used with gh api output
-# head/tail: display first/last N lines
-# grep: pattern search (cannot execute code from input)
-# wc: word/line/character count
-# sort/uniq: sort and deduplicate lines
-# cut: extract fields from lines
-# tr: character translation
-# Note: less/more are NOT included because they support shell escapes (e.g., !cmd)
-SAFE_PIPE_PATTERN = re.compile(r'\|\s*(jq|head|tail|grep|wc|sort|uniq|cut|tr)\b')
+# Safe pipe destinations - broad whitelist of common text-processing commands
+# Claude Code's own permission system provides the primary security layer
+SAFE_PIPE_PATTERN = re.compile(
+    r'\|\s*('
+    r'jq|head|tail|grep|egrep|fgrep|wc|sort|uniq|cut|tr'
+    r'|base64|cat|column|fmt|fold|paste'
+    r'|expand|unexpand|rev|tac|nl|od|xxd|hexdump|strings'
+    r'|md5sum|sha256sum|sha1sum|shasum|cksum'
+    r')\b'
+)
 
 # Safe redirect patterns - common shell redirects that don't execute commands
 # 2>&1: redirect stderr to stdout (very common for capturing all output)

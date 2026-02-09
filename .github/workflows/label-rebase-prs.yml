@@ -1,0 +1,79 @@
+name: Label PRs needing rebase
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: label-rebase-prs
+  cancel-in-progress: true
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  label-conflicting-prs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const allowedAuthors = ['wwwillchen', 'wwwillchen-bot'];
+
+            const prs = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+            });
+
+            for (const pr of prs) {
+              try {
+                if (!allowedAuthors.includes(pr.user.login)) continue;
+                if (pr.draft) continue;
+
+                // mergeable status requires an individual GET call
+                let latest = (await github.rest.pulls.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: pr.number,
+                })).data;
+
+                // GitHub may not have computed mergeability yet (null).
+                // Retry with exponential backoff.
+                if (latest.mergeable === null) {
+                  for (let attempt = 0; attempt < 3 && latest.mergeable === null; attempt++) {
+                    await new Promise(r => setTimeout(r, 3000 * (attempt + 1)));
+                    latest = (await github.rest.pulls.get({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      pull_number: pr.number,
+                    })).data;
+                  }
+                  if (latest.mergeable === null) {
+                    console.log(`PR #${pr.number}: mergeability still unknown after retries, skipping`);
+                    continue;
+                  }
+                }
+
+                if (latest.mergeable_state === 'dirty') {
+                  const labels = latest.labels.map(l => l.name);
+                  // Don't add if already labeled, actively rebasing, or previously failed
+                  if (labels.includes('cc:rebase') || labels.includes('cc:rebasing') || labels.includes('cc:rebase-failed')) {
+                    console.log(`PR #${pr.number} already has rebase label, skipping`);
+                    continue;
+                  }
+                  console.log(`Adding cc:rebase to PR #${pr.number}: ${pr.title}`);
+                  await github.rest.issues.addLabels({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: pr.number,
+                    labels: ['cc:rebase'],
+                  });
+                } else {
+                  console.log(`PR #${pr.number} is mergeable (state: ${latest.mergeable_state}), skipping`);
+                }
+              } catch (err) {
+                console.log(`Error processing PR #${pr.number}: ${err.message}`);
+              }
+            }

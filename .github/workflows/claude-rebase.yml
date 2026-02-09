@@ -50,6 +50,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Configure push remote for fork PRs
+        if: steps.check-author.outputs.should_continue == 'true'
+        run: |
+          # claude-code-action overwrites origin's fetch URL to point to dyad-sh/dyad
+          # (using GITHUB_REPOSITORY which is always the base repo in pull_request_target events).
+          # Setting pushurl separately ensures git push still targets the fork,
+          # because git uses pushurl over url when both are configured.
+          git remote set-url --push origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.event.pull_request.head.repo.full_name }}.git"
+          echo "Configured pushurl to ${{ github.event.pull_request.head.repo.full_name }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Remove cc:rebase label and add cc:rebasing
         if: steps.check-author.outputs.should_continue == 'true'
         run: |

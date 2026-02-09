@@ -7,6 +7,7 @@ on:
 
 permissions:
   pull-requests: write
+  issues: write
 
 jobs:
   draft-stale-prs:
@@ -37,28 +38,27 @@ jobs:
               }
 
               try {
-                // Check the latest commit date on the PR branch
-                const commits = await github.rest.pulls.listCommits({
+                // Check the latest commit date using the PR head SHA
+                const headCommit = await github.rest.git.getCommit({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
-                  pull_number: pr.number,
-                  per_page: 1,
+                  commit_sha: pr.head.sha,
                 });
-                const lastCommitDate = commits.data.length > 0
-                  ? new Date(commits.data[commits.data.length - 1].commit.committer.date)
-                  : new Date(0);
+                const lastCommitDate = new Date(headCommit.data.committer.date);
 
                 // Check comments (issue comments + review comments)
-                const comments = await github.rest.issues.listComments({
+                // Note: issues.listComments doesn't support sort/direction params,
+                // returns in ascending order. Fetch all and filter out bot comments.
+                const allComments = await github.paginate(github.rest.issues.listComments, {
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: pr.number,
-                  per_page: 1,
-                  sort: 'created',
-                  direction: 'desc',
                 });
-                const lastCommentDate = comments.data.length > 0
-                  ? new Date(comments.data[0].created_at)
+                const humanComments = allComments.filter(
+                  c => !c.user?.login?.endsWith('[bot]')
+                );
+                const lastCommentDate = humanComments.length > 0
+                  ? new Date(humanComments[humanComments.length - 1].created_at)
                   : new Date(0);
 
                 const reviewComments = await github.rest.pulls.listReviewComments({
@@ -73,24 +73,37 @@ jobs:
                   ? new Date(reviewComments.data[0].created_at)
                   : new Date(0);
 
-                // Check timeline events for re-opens
-                const events = await github.paginate(github.rest.issues.listEvents, {
+                // Check timeline events for re-opens and ready_for_review
+                // Use non-paginated call to avoid excessive API usage
+                const events = await github.rest.issues.listEvents({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: pr.number,
+                  per_page: 100,
                 });
-                const lastReopenDate = events
-                  .filter(e => e.event === 'reopened')
+                const lastReopenOrReadyDate = events.data
+                  .filter(e => e.event === 'reopened' || e.event === 'ready_for_review')
                   .reduce((latest, e) => {
                     const d = new Date(e.created_at);
                     return d > latest ? d : latest;
                   }, new Date(0));
 
+                // Check review submissions (approvals, request-changes, dismissals)
+                const reviews = await github.paginate(github.rest.pulls.listReviews, {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: pr.number,
+                });
+                const lastReviewDate = reviews.length > 0
+                  ? new Date(reviews[reviews.length - 1].submitted_at)
+                  : new Date(0);
+
                 const lastActivity = new Date(Math.max(
                   lastCommitDate.getTime(),
                   lastCommentDate.getTime(),
                   lastReviewCommentDate.getTime(),
-                  lastReopenDate.getTime(),
+                  lastReopenOrReadyDate.getTime(),
+                  lastReviewDate.getTime(),
                 ));
 
                 if (lastActivity < sevenDaysAgo) {

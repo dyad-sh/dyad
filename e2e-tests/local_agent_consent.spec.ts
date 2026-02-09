@@ -9,11 +9,11 @@ testSkipIfWindows(
   "local-agent - add_dependency consent: always allow",
   async ({ po }) => {
     await po.setUpDyadPro({ localAgent: true });
-    await po.appManagement.importApp("minimal");
+    await po.importApp("minimal");
     await po.chatActions.selectLocalAgentMode();
 
     // Send prompt that triggers add_dependency (requires consent)
-    await po.chatActions.sendPrompt("tc=local-agent/add-dependency", {
+    await po.sendPrompt("tc=local-agent/add-dependency", {
       skipWaitForCompletion: true,
     });
 
@@ -29,7 +29,7 @@ testSkipIfWindows(
     await po.snapshotMessages();
 
     // Send prompt that triggers add_dependency (should not require consent this time)
-    await po.chatActions.sendPrompt("tc=local-agent/add-dependency");
+    await po.sendPrompt("tc=local-agent/add-dependency");
     await expect(po.agentConsent.getAgentConsentBanner()).not.toBeVisible();
   },
 );
@@ -38,11 +38,11 @@ testSkipIfWindows(
   "local-agent - add_dependency consent: allow once",
   async ({ po }) => {
     await po.setUpDyadPro({ localAgent: true });
-    await po.appManagement.importApp("minimal");
+    await po.importApp("minimal");
     await po.chatActions.selectLocalAgentMode();
 
     // Send prompt that triggers add_dependency (requires consent)
-    await po.chatActions.sendPrompt("tc=local-agent/add-dependency", {
+    await po.sendPrompt("tc=local-agent/add-dependency", {
       skipWaitForCompletion: true,
     });
 
@@ -63,11 +63,11 @@ testSkipIfWindows(
   "local-agent - add_dependency consent: decline",
   async ({ po }) => {
     await po.setUpDyadPro({ localAgent: true });
-    await po.appManagement.importApp("minimal");
+    await po.importApp("minimal");
     await po.chatActions.selectLocalAgentMode();
 
     // Send prompt that triggers add_dependency (requires consent)
-    await po.chatActions.sendPrompt("tc=local-agent/add-dependency", {
+    await po.sendPrompt("tc=local-agent/add-dependency", {
       skipWaitForCompletion: true,
     });
 

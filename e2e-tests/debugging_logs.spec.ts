@@ -6,7 +6,7 @@ testSkipIfWindows(
   async ({ po }) => {
     await po.setUp();
 
-    await po.chatActions.sendPrompt("tc=console-logs");
+    await po.sendPrompt("tc=console-logs");
     await po.approveProposal();
 
     // Wait for app to run
@@ -89,7 +89,7 @@ testSkipIfWindows(
   async ({ po }) => {
     await po.setUp();
 
-    await po.chatActions.sendPrompt("tc=network-requests");
+    await po.sendPrompt("tc=network-requests");
     await po.approveProposal();
 
     // Wait for app to run
@@ -185,7 +185,7 @@ testSkipIfWindows(
     await po.setUp();
 
     // Create an app with console output using fixture
-    await po.chatActions.sendPrompt("tc=write-index");
+    await po.sendPrompt("tc=write-index");
     await po.approveProposal();
 
     // Wait for app to run
@@ -220,7 +220,7 @@ testSkipIfWindows("clear filters button works", async ({ po }) => {
   await po.setUp();
 
   // Create a basic app using fixture
-  await po.chatActions.sendPrompt("tc=write-index");
+  await po.sendPrompt("tc=write-index");
   await po.approveProposal();
 
   // Wait for app to run
@@ -254,7 +254,7 @@ testSkipIfWindows("clear logs button clears all logs", async ({ po }) => {
   await po.setUp();
 
   // Create an app with console logs
-  await po.chatActions.sendPrompt("tc=console-logs");
+  await po.sendPrompt("tc=console-logs");
   await po.approveProposal();
 
   // Wait for app to run

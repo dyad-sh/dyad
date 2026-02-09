@@ -38,14 +38,14 @@ test("attach image - home chat", async ({ po }) => {
   const fileChooser = await fileChooserPromise;
   await fileChooser.setFiles("e2e-tests/fixtures/images/logo.png");
 
-  await po.chatActions.sendPrompt("[dump]");
+  await po.sendPrompt("[dump]");
   await po.snapshotServerDump("last-message", { name: SNAPSHOT_NAME });
   await po.snapshotMessages({ replaceDumpPath: true });
 });
 
 test("attach image - chat", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.chatActions.sendPrompt("basic");
+  await po.sendPrompt("basic");
 
   // Open auxiliary actions menu
   await po.chatActions
@@ -70,14 +70,14 @@ test("attach image - chat", async ({ po }) => {
   const fileChooser = await fileChooserPromise;
   await fileChooser.setFiles("e2e-tests/fixtures/images/logo.png");
 
-  await po.chatActions.sendPrompt("[dump]");
+  await po.sendPrompt("[dump]");
   await po.snapshotServerDump("last-message", { name: SNAPSHOT_NAME });
   await po.snapshotMessages({ replaceDumpPath: true });
 });
 
 test("attach image - chat - upload to codebase", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.chatActions.sendPrompt("basic");
+  await po.sendPrompt("basic");
 
   // Open auxiliary actions menu
   await po.chatActions
@@ -102,7 +102,7 @@ test("attach image - chat - upload to codebase", async ({ po }) => {
   const fileChooser = await fileChooserPromise;
   await fileChooser.setFiles("e2e-tests/fixtures/images/logo.png");
 
-  await po.chatActions.sendPrompt("[[UPLOAD_IMAGE_TO_CODEBASE]]");
+  await po.sendPrompt("[[UPLOAD_IMAGE_TO_CODEBASE]]");
 
   await po.snapshotServerDump("last-message", { name: "upload-to-codebase" });
   await po.snapshotMessages({ replaceDumpPath: true });
@@ -123,7 +123,7 @@ test("attach image - chat - upload to codebase", async ({ po }) => {
 // attach image via drag-and-drop to chat input container
 test("attach image via drag - chat", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.chatActions.sendPrompt("basic");
+  await po.sendPrompt("basic");
   // read fixture and convert to base64 for browser context
   const fileBase64 = fs.readFileSync(
     "e2e-tests/fixtures/images/logo.png",
@@ -155,7 +155,7 @@ test("attach image via drag - chat", async ({ po }) => {
   }, fileBase64);
 
   // submit and verify
-  await po.chatActions.sendPrompt("[dump]");
+  await po.sendPrompt("[dump]");
   // Note: this should match EXACTLY the server dump from the previous test.
   await po.snapshotServerDump("last-message", { name: SNAPSHOT_NAME });
   await po.snapshotMessages({ replaceDumpPath: true });

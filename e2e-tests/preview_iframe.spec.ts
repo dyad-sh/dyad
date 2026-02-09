@@ -3,7 +3,7 @@ import { expect } from "@playwright/test";
 
 testSkipIfWindows("preview iframe has sandbox attributes", async ({ po }) => {
   await po.setUp();
-  await po.chatActions.sendPrompt("hi");
+  await po.sendPrompt("hi");
   expect(
     await po.previewPanel.getPreviewIframeElement().getAttribute("sandbox"),
   ).toMatchSnapshot();

@@ -3,8 +3,8 @@ import { expect } from "@playwright/test";
 
 const runUndoTest = async (po: PageObject, nativeGit: boolean) => {
   await po.setUp({ autoApprove: true, disableNativeGit: !nativeGit });
-  await po.chatActions.sendPrompt("tc=write-index");
-  await po.chatActions.sendPrompt("tc=write-index-2");
+  await po.sendPrompt("tc=write-index");
+  await po.sendPrompt("tc=write-index-2");
 
   const iframe = po.previewPanel.getPreviewIframeElement();
   await expect(
@@ -45,10 +45,10 @@ testSkipIfWindows("undo after assistant with no code", async ({ po }) => {
   await po.setUp({ autoApprove: true });
 
   // First prompt - no code generated
-  await po.chatActions.sendPrompt("tc=no-code-response");
+  await po.sendPrompt("tc=no-code-response");
 
   // Second prompt - generates code
-  await po.chatActions.sendPrompt("tc=write-index");
+  await po.sendPrompt("tc=write-index");
 
   const iframe = po.previewPanel.getPreviewIframeElement();
   await expect(

@@ -8,7 +8,7 @@ import { testSkipIfWindows } from "./helpers/test_helper";
 
 testSkipIfWindows("local-agent - read logs with filters", async ({ po }) => {
   await po.setUpDyadPro({ localAgent: true });
-  await po.appManagement.importApp("minimal");
+  await po.importApp("minimal");
   await po.chatActions.selectLocalAgentMode();
 
   // Send prompt that triggers read_logs with various filters
@@ -16,7 +16,7 @@ testSkipIfWindows("local-agent - read logs with filters", async ({ po }) => {
   // - All logs from last 5 minutes
   // - Error logs from last hour
   // - Client logs from last minute
-  await po.chatActions.sendPrompt("tc=local-agent/read-logs");
+  await po.sendPrompt("tc=local-agent/read-logs");
 
   await po.snapshotMessages();
 });

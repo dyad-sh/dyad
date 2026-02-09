@@ -11,25 +11,25 @@ testSkipIfWindows(
   "local-agent - context compaction triggers and shows summary",
   async ({ po }) => {
     await po.setUpDyadPro({ localAgent: true });
-    await po.appManagement.importApp("minimal");
+    await po.importApp("minimal");
     await po.chatActions.selectLocalAgentMode();
 
     // Send first message with a fixture that returns 200k token usage.
     // This exceeds the compaction threshold (min(80% of context window, 180k))
     // and marks the chat for compaction on the next message.
-    await po.chatActions.sendPrompt("tc=local-agent/compaction-trigger");
+    await po.sendPrompt("tc=local-agent/compaction-trigger");
 
     // Send a second message. The local agent handler detects pending compaction,
     // performs it (generates a summary, replaces old messages), then processes
     // the second message normally.
-    await po.chatActions.sendPrompt("tc=local-agent/simple-response");
+    await po.sendPrompt("tc=local-agent/simple-response");
 
     // Verify the compaction status indicator is visible
     await expect(po.page.getByText("Conversation compacted")).toBeVisible({
       timeout: Timeout.MEDIUM,
     });
 
-    await po.chatActions.sendPrompt("[dump] hi");
+    await po.sendPrompt("[dump] hi");
     await po.snapshotServerDump("all-messages");
     // Snapshot the messages to capture the compaction summary + second response
     await po.snapshotMessages({ replaceDumpPath: true });

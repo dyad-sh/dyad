@@ -4,7 +4,7 @@ import { expect } from "@playwright/test";
 test.describe("Toggle Screen Size Tests", () => {
   async function setupApp(po: any) {
     await po.setUp({ autoApprove: true });
-    await po.chatActions.sendPrompt("tc=write-index");
+    await po.sendPrompt("tc=write-index");
 
     const iframe = po.previewPanel.getPreviewIframeElement();
     const frame = await iframe.contentFrame();

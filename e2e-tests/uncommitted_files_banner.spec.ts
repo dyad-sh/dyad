@@ -14,7 +14,7 @@ const runUncommittedFilesBannerTest = async (
   nativeGit: boolean,
 ) => {
   await po.setUp({ disableNativeGit: !nativeGit });
-  await po.chatActions.sendPrompt("tc=basic");
+  await po.sendPrompt("tc=basic");
 
   const appPath = await po.appManagement.getCurrentAppPath();
   if (!appPath) {

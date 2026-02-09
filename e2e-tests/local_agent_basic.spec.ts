@@ -7,10 +7,10 @@ import { testSkipIfWindows } from "./helpers/test_helper";
 
 testSkipIfWindows("local-agent - dump request", async ({ po }) => {
   await po.setUpDyadPro({ localAgent: true });
-  await po.appManagement.importApp("minimal");
+  await po.importApp("minimal");
   await po.chatActions.selectLocalAgentMode();
 
-  await po.chatActions.sendPrompt("[dump]");
+  await po.sendPrompt("[dump]");
 
   await po.snapshotServerDump("request");
   await po.snapshotServerDump("all-messages");
@@ -18,10 +18,10 @@ testSkipIfWindows("local-agent - dump request", async ({ po }) => {
 
 testSkipIfWindows("local-agent - read then edit", async ({ po }) => {
   await po.setUpDyadPro({ localAgent: true });
-  await po.appManagement.importApp("minimal");
+  await po.importApp("minimal");
   await po.chatActions.selectLocalAgentMode();
 
-  await po.chatActions.sendPrompt("tc=local-agent/read-then-edit");
+  await po.sendPrompt("tc=local-agent/read-then-edit");
   await po.snapshotMessages();
   await po.snapshotAppFiles({
     name: "after-edit",
@@ -31,10 +31,10 @@ testSkipIfWindows("local-agent - read then edit", async ({ po }) => {
 
 testSkipIfWindows("local-agent - parallel tool calls", async ({ po }) => {
   await po.setUpDyadPro({ localAgent: true });
-  await po.appManagement.importApp("minimal");
+  await po.importApp("minimal");
   await po.chatActions.selectLocalAgentMode();
 
-  await po.chatActions.sendPrompt("tc=local-agent/parallel-tools");
+  await po.sendPrompt("tc=local-agent/parallel-tools");
 
   await po.snapshotMessages();
   await po.snapshotAppFiles({

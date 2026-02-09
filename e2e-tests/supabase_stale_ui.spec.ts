@@ -3,7 +3,7 @@ import { testSkipIfWindows } from "./helpers/test_helper";
 // https://github.com/dyad-sh/dyad/issues/269
 testSkipIfWindows("supabase - stale ui", async ({ po }) => {
   await po.setUp();
-  await po.chatActions.sendPrompt("tc=add-supabase");
+  await po.sendPrompt("tc=add-supabase");
   await po.snapshotMessages();
 
   await po.page.getByText("Set up supabase").click();
@@ -20,6 +20,6 @@ testSkipIfWindows("supabase - stale ui", async ({ po }) => {
 
   // Create a second app; do NOT integrate it with Supabase, and make sure UI is correct.
   await po.navigation.goToAppsTab();
-  await po.chatActions.sendPrompt("tc=add-supabase");
+  await po.sendPrompt("tc=add-supabase");
   await po.snapshotMessages();
 });

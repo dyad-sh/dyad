@@ -31,7 +31,7 @@ testSkipIfWindows("mcp - call calculator", async ({ po }) => {
   await po.page.getByRole("button", { name: "Save" }).click();
   await po.navigation.goToAppsTab();
   await po.chatActions.selectChatMode("agent");
-  await po.chatActions.sendPrompt("[call_tool=calculator_add]", {
+  await po.sendPrompt("[call_tool=calculator_add]", {
     skipWaitForCompletion: true,
   });
   // Wait for consent dialog to appear
@@ -45,7 +45,7 @@ testSkipIfWindows("mcp - call calculator", async ({ po }) => {
   await alwaysAllowButton.click();
   await po.page.getByRole("button", { name: "Approve" }).click();
 
-  await po.chatActions.sendPrompt("[dump]");
+  await po.sendPrompt("[dump]");
   await po.snapshotServerDump("all-messages");
 });
 
@@ -116,7 +116,7 @@ testSkipIfWindows("mcp - call calculator via http", async ({ po }) => {
     await po.page.getByRole("button", { name: "Tools (MCP)" }).click();
     await po.navigation.goToAppsTab();
     await po.chatActions.selectChatMode("agent");
-    await po.chatActions.sendPrompt("[call_tool=calculator_add]", {
+    await po.sendPrompt("[call_tool=calculator_add]", {
       skipWaitForCompletion: true,
     });
     const alwaysAllowButton = po.page.getByRole("button", {
@@ -127,7 +127,7 @@ testSkipIfWindows("mcp - call calculator via http", async ({ po }) => {
     await alwaysAllowButton.click();
     await po.page.getByRole("button", { name: "Approve" }).click();
 
-    await po.chatActions.sendPrompt("[dump]");
+    await po.sendPrompt("[dump]");
     await po.snapshotServerDump("all-messages");
   } finally {
     // Clean up: kill the HTTP server process

@@ -12,7 +12,7 @@ import { testSkipIfWindows } from "./helpers/test_helper";
  */
 testSkipIfWindows("local-agent - upload file to codebase", async ({ po }) => {
   await po.setUpDyadPro({ localAgent: true });
-  await po.appManagement.importApp("minimal");
+  await po.importApp("minimal");
   await po.chatActions.selectLocalAgentMode();
 
   // Open auxiliary actions menu
@@ -39,7 +39,7 @@ testSkipIfWindows("local-agent - upload file to codebase", async ({ po }) => {
   await fileChooser.setFiles("e2e-tests/fixtures/images/logo.png");
 
   // Send prompt that triggers the upload-to-codebase fixture
-  await po.chatActions.sendPrompt("tc=local-agent/upload-to-codebase");
+  await po.sendPrompt("tc=local-agent/upload-to-codebase");
 
   // Verify the file was written to the codebase
   const appPath = await po.appManagement.getCurrentAppPath();

@@ -4,7 +4,7 @@ import { expect } from "@playwright/test";
 
 test("rename app (including folder)", async ({ po }) => {
   await po.setUp();
-  await po.chatActions.sendPrompt("hi");
+  await po.sendPrompt("hi");
 
   const appPath = await po.appManagement.getCurrentAppPath();
   await po.appManagement.getTitleBarAppNameButton().click();
@@ -31,7 +31,7 @@ test("rename app (including folder)", async ({ po }) => {
 
 test("rename app (without folder)", async ({ po }) => {
   await po.setUp();
-  await po.chatActions.sendPrompt("hi");
+  await po.sendPrompt("hi");
 
   const appPath = await po.appManagement.getCurrentAppPath();
   await po.appManagement.getTitleBarAppNameButton().click();

@@ -4,7 +4,7 @@ import { expect } from "@playwright/test";
 
 testSkipIfWindows("delete app", async ({ po }) => {
   await po.setUp();
-  await po.chatActions.sendPrompt("hi");
+  await po.sendPrompt("hi");
   const appName = await po.appManagement.getCurrentAppName();
   if (!appName) {
     throw new Error("App name not found");

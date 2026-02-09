@@ -4,7 +4,7 @@ import { expect } from "@playwright/test";
 testSkipIfWindows("toggle chat panel visibility", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   // We are in the chat view after setUp
-  await po.chatActions.sendPrompt("basic");
+  await po.sendPrompt("basic");
 
   // Chat panel content should be visible initially.
   // We check the ChatPanel content rather than the panel container itself,

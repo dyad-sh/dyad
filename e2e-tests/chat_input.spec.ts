@@ -5,7 +5,7 @@ test("send button disabled during pending proposal", async ({ po }) => {
   await po.setUp();
 
   // Send a prompt that generates a proposal
-  await po.chatActions.sendPrompt("Create a simple React component");
+  await po.sendPrompt("Create a simple React component");
 
   // Wait for proposal buttons to appear (ensuring proposal is rendered)
   await expect(po.page.getByTestId("approve-proposal-button")).toBeVisible();
@@ -30,7 +30,7 @@ test("send button disabled during pending proposal - reject", async ({
   await po.setUp();
 
   // Send a prompt that generates a proposal
-  await po.chatActions.sendPrompt("Create a simple React component");
+  await po.sendPrompt("Create a simple React component");
 
   // Wait for proposal buttons to appear (ensuring proposal is rendered)
   await expect(po.page.getByTestId("reject-proposal-button")).toBeVisible();

@@ -22,7 +22,7 @@ test("default chat mode - pro user defaults and setting change applies to new ch
 
   // Import an app and create a new chat to verify the default is applied
   await po.navigation.goToAppsTab();
-  await po.appManagement.importApp("minimal");
+  await po.importApp("minimal");
   await po.chatActions.clickNewChat();
 
   // Verify the chat mode selector shows the new default mode

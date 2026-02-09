@@ -3,8 +3,8 @@ import { expect } from "@playwright/test";
 
 testSkipIfWindows("supabase branch selection works", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.appManagement.importApp("minimal");
-  await po.chatActions.sendPrompt("tc=add-supabase");
+  await po.importApp("minimal");
+  await po.sendPrompt("tc=add-supabase");
 
   // Connect to Supabase
   await po.page.getByText("Set up supabase").click();

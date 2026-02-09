@@ -39,7 +39,7 @@ testSkipIfWindows("import app with AI rules", async ({ po }) => {
 
   await po.previewPanel.snapshotPreview();
 
-  await po.chatActions.sendPrompt("[dump]");
+  await po.sendPrompt("[dump]");
 
   await po.snapshotServerDump();
   await po.snapshotMessages({ replaceDumpPath: true });

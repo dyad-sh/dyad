@@ -3,7 +3,7 @@ import { expect } from "@playwright/test";
 
 testSkipIfWindows("write to index, approve, check preview", async ({ po }) => {
   await po.setUp();
-  await po.chatActions.sendPrompt("tc=write-index");
+  await po.sendPrompt("tc=write-index");
   await po.snapshotMessages();
   await po.approveProposal();
 

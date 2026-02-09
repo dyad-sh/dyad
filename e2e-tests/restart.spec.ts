@@ -3,7 +3,7 @@ import { expect } from "@playwright/test";
 
 testSkipIfWindows("restart app", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.chatActions.sendPrompt("hi");
+  await po.sendPrompt("hi");
 
   await po.clickRestart();
   await expect(po.previewPanel.locateLoadingAppPreview()).toBeVisible();

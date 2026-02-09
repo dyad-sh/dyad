@@ -6,7 +6,7 @@ import * as eph from "electron-playwright-helpers";
 
 test("move app to a custom storage location", async ({ po }) => {
   await po.setUp();
-  await po.chatActions.sendPrompt("hello");
+  await po.sendPrompt("hello");
 
   const appName = await po.appManagement.getCurrentAppName();
   const originalPath = await po.appManagement.getCurrentAppPath();

@@ -2,18 +2,18 @@ import { test } from "./helpers/test_helper";
 
 test.skip("chat search - basic search dialog functionality", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.appManagement.importApp("minimal");
+  await po.importApp("minimal");
 
   // Create some chats with specific names for testing
-  await po.chatActions.sendPrompt("[dump] create a todo application");
+  await po.sendPrompt("[dump] create a todo application");
   await po.chatActions.waitForChatCompletion();
 
   await po.chatActions.clickNewChat();
-  await po.chatActions.sendPrompt("[dump] build a weather dashboard");
+  await po.sendPrompt("[dump] build a weather dashboard");
   await po.chatActions.waitForChatCompletion();
 
   await po.chatActions.clickNewChat();
-  await po.chatActions.sendPrompt("[dump] create a blog system");
+  await po.sendPrompt("[dump] create a blog system");
   await po.chatActions.waitForChatCompletion();
 
   // Test 1: Open search dialog using the search button
@@ -45,23 +45,23 @@ test.skip("chat search - with named chats for easier testing", async ({
   po,
 }) => {
   await po.setUp({ autoApprove: true });
-  await po.appManagement.importApp("minimal");
+  await po.importApp("minimal");
 
   // Create chats with descriptive names that will be useful for testing
-  await po.chatActions.sendPrompt("[dump] hello world app");
+  await po.sendPrompt("[dump] hello world app");
   await po.chatActions.waitForChatCompletion();
 
   // Use a timeout to ensure the UI has updated before trying to interact
   await po.page.waitForTimeout(1000);
 
   await po.chatActions.clickNewChat();
-  await po.chatActions.sendPrompt("[dump] todo list manager");
+  await po.sendPrompt("[dump] todo list manager");
   await po.chatActions.waitForChatCompletion();
 
   await po.page.waitForTimeout(1000);
 
   await po.chatActions.clickNewChat();
-  await po.chatActions.sendPrompt("[dump] weather forecast widget");
+  await po.sendPrompt("[dump] weather forecast widget");
   await po.chatActions.waitForChatCompletion();
 
   await po.page.waitForTimeout(1000);
@@ -87,10 +87,10 @@ test.skip("chat search - with named chats for easier testing", async ({
 
 test.skip("chat search - keyboard shortcut functionality", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.appManagement.importApp("minimal");
+  await po.importApp("minimal");
 
   // Create a chat
-  await po.chatActions.sendPrompt("[dump] sample app");
+  await po.sendPrompt("[dump] sample app");
   await po.chatActions.waitForChatCompletion();
 
   // Test keyboard shortcut (Ctrl+K)
@@ -104,14 +104,14 @@ test.skip("chat search - keyboard shortcut functionality", async ({ po }) => {
 
 test.skip("chat search - navigation and selection", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.appManagement.importApp("minimal");
+  await po.importApp("minimal");
 
   // Create multiple chats
-  await po.chatActions.sendPrompt("[dump] first application");
+  await po.sendPrompt("[dump] first application");
   await po.chatActions.waitForChatCompletion();
 
   await po.chatActions.clickNewChat();
-  await po.chatActions.sendPrompt("[dump] second application");
+  await po.sendPrompt("[dump] second application");
   await po.chatActions.waitForChatCompletion();
 
   // Test selecting a chat through search

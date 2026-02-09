@@ -3,7 +3,7 @@ import { expect } from "@playwright/test";
 
 testSkipIfWindows("fix error with AI", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.chatActions.sendPrompt("tc=create-error");
+  await po.sendPrompt("tc=create-error");
 
   await po.previewPanel.snapshotPreviewErrorBanner();
 
@@ -23,7 +23,7 @@ testSkipIfWindows("fix error with AI", async ({ po }) => {
 
 testSkipIfWindows("copy error message from banner", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.chatActions.sendPrompt("tc=create-error");
+  await po.sendPrompt("tc=create-error");
 
   await po.page.getByText("Error Line 6 error", { exact: true }).waitFor({
     state: "visible",
@@ -43,7 +43,7 @@ testSkipIfWindows("copy error message from banner", async ({ po }) => {
 });
 test("fix all errors button", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.chatActions.sendPrompt("tc=create-multiple-errors");
+  await po.sendPrompt("tc=create-multiple-errors");
 
   await po.previewPanel.clickFixAllErrors();
   await po.chatActions.waitForChatCompletion();

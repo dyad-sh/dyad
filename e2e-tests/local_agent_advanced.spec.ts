@@ -6,7 +6,7 @@ import { testSkipIfWindows } from "./helpers/test_helper";
  */
 testSkipIfWindows("local-agent - security review fix", async ({ po }) => {
   await po.setUpDyadPro({ localAgent: true });
-  await po.appManagement.importApp("minimal");
+  await po.importApp("minimal");
   await po.chatActions.selectLocalAgentMode();
 
   // First, trigger a security review
@@ -23,12 +23,12 @@ testSkipIfWindows("local-agent - mention apps", async ({ po }) => {
   await po.setUpDyadPro({ localAgent: true });
 
   // Import app and reference it.
-  await po.appManagement.importApp("minimal-with-ai-rules");
+  await po.importApp("minimal-with-ai-rules");
   await po.navigation.goToAppsTab();
   await po.chatActions.selectLocalAgentMode();
 
   // Use @app:minimal-with-ai-rules to reference the other app
-  await po.chatActions.sendPrompt("[dump] @app:minimal-with-ai-rules hi");
+  await po.sendPrompt("[dump] @app:minimal-with-ai-rules hi");
 
   await po.snapshotServerDump("request");
 });
@@ -58,11 +58,11 @@ testSkipIfWindows("local-agent - mcp tool call", async ({ po }) => {
   await po.page.getByRole("button", { name: "Add Server" }).click();
 
   await po.navigation.goToAppsTab();
-  await po.appManagement.importApp("minimal");
+  await po.importApp("minimal");
   await po.chatActions.selectLocalAgentMode();
 
   // Send prompt that triggers MCP tool call
-  await po.chatActions.sendPrompt("tc=local-agent/mcp-calculator", {
+  await po.sendPrompt("tc=local-agent/mcp-calculator", {
     skipWaitForCompletion: true,
   });
 

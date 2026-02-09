@@ -8,7 +8,7 @@ testSkipIfWindows(
     await po.setUpDyadPro({ autoApprove: true });
 
     // Create a basic app
-    await po.chatActions.sendPrompt("basic");
+    await po.sendPrompt("basic");
 
     // Click the annotator button to activate annotator mode
     await po.previewPanel.clickPreviewAnnotatorButton();
@@ -24,7 +24,7 @@ testSkipIfWindows(
     );
 
     // Verify the screenshot was attached to chat context
-    await po.chatActions.sendPrompt("[dump]");
+    await po.sendPrompt("[dump]");
 
     // Wait for the LLM response containing the dump path to appear in the UI
     // before attempting to extract it from the messages list

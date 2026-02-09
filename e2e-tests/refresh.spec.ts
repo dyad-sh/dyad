@@ -3,7 +3,7 @@ import { expect } from "@playwright/test";
 
 testSkipIfWindows("refresh app", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.chatActions.sendPrompt("hi");
+  await po.sendPrompt("hi");
 
   // Drop the document.body inside the contentFrame to make
   // sure refresh works.
@@ -23,7 +23,7 @@ testSkipIfWindows("refresh preserves current route", async ({ po }) => {
   await po.setUp({ autoApprove: true });
 
   // Create a multi-page app with react-router navigation
-  await po.chatActions.sendPrompt("tc=multi-page");
+  await po.sendPrompt("tc=multi-page");
 
   // Wait for the preview iframe to be visible and loaded
   await po.previewPanel.expectPreviewIframeIsVisible();
@@ -87,7 +87,7 @@ testSkipIfWindows(
     await po.setUp({ autoApprove: true });
 
     // Create a multi-page app with react-router navigation
-    await po.chatActions.sendPrompt("tc=multi-page");
+    await po.sendPrompt("tc=multi-page");
 
     // Wait for the preview iframe to be visible and loaded
     await po.previewPanel.expectPreviewIframeIsVisible();

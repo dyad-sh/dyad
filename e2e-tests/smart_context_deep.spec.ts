@@ -8,10 +8,10 @@ testSkipIfWindows("smart context deep - read write read", async ({ po }) => {
   await proModesDialog.setSmartContextMode("deep");
   await proModesDialog.close();
 
-  await po.chatActions.sendPrompt("tc=read-index");
-  await po.chatActions.sendPrompt("tc=update-index-1");
-  await po.chatActions.sendPrompt("tc=read-index");
-  await po.chatActions.sendPrompt("[dump]");
+  await po.sendPrompt("tc=read-index");
+  await po.sendPrompt("tc=update-index-1");
+  await po.sendPrompt("tc=read-index");
+  await po.sendPrompt("[dump]");
 
   await po.snapshotServerDump("request");
   await po.snapshotMessages({ replaceDumpPath: true });
@@ -23,7 +23,7 @@ testSkipIfWindows(
     await po.setUpDyadPro();
 
     // First, create an imported app.
-    await po.appManagement.importApp("minimal-with-ai-rules");
+    await po.importApp("minimal-with-ai-rules");
 
     await po.navigation.goToAppsTab();
     await po.chatActions.selectChatMode("build");
@@ -34,7 +34,7 @@ testSkipIfWindows(
     await proModesDialog.close();
 
     // Mentioned the imported app
-    await po.chatActions.sendPrompt("[dump] @app:minimal-with-ai-rules hi");
+    await po.sendPrompt("[dump] @app:minimal-with-ai-rules hi");
 
     await po.snapshotServerDump("request");
   },

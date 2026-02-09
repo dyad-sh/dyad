@@ -18,7 +18,7 @@ testAzure("send message through Azure OpenAI", async ({ po }) => {
   await po.modelPicker.selectTestAzureModel();
 
   // Send a test prompt that returns a normal conversational response
-  await po.chatActions.sendPrompt("tc=basic");
+  await po.sendPrompt("tc=basic");
 
   // Verify we get a response (this means Azure integration is working)
   await po.snapshotMessages();

@@ -5,7 +5,7 @@ import path from "path";
 
 test("edit code", async ({ po }) => {
   const editedFilePath = path.join("src", "components", "made-with-dyad.tsx");
-  await po.chatActions.sendPrompt("foo");
+  await po.sendPrompt("foo");
   const appPath = await po.appManagement.getCurrentAppPath();
 
   await po.previewPanel.clickTogglePreviewPanel();
@@ -40,7 +40,7 @@ test("edit code", async ({ po }) => {
 test("edit code edits the right file", async ({ po }) => {
   const editedFilePath = path.join("src", "components", "made-with-dyad.tsx");
   const robotsFilePath = path.join("public", "robots.txt");
-  await po.chatActions.sendPrompt("foo");
+  await po.sendPrompt("foo");
   const appPath = await po.appManagement.getCurrentAppPath();
   const originalRobotsFile = fs.readFileSync(
     path.join(appPath, robotsFilePath),

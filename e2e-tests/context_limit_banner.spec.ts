@@ -9,9 +9,7 @@ test("context limit banner shows 'running out' when near context limit", async (
   // Send a message that triggers high token usage (110k tokens)
   // With a default context window of 128k, this leaves only 18k tokens remaining
   // which is below the 40k threshold to show the banner
-  await po.chatActions.sendPrompt(
-    "tc=context-limit-response [high-tokens=110000]",
-  );
+  await po.sendPrompt("tc=context-limit-response [high-tokens=110000]");
 
   // Verify the context limit banner appears inside the chat input container
   const contextLimitBanner = po.chatActions
@@ -53,9 +51,7 @@ test("context limit banner shows 'costs extra' for long context", async ({
 
   // Send a message with 250k tokens (above 200k threshold)
   // With 1M context window, 750k tokens remaining > 40k threshold, so not "near limit"
-  await po.chatActions.sendPrompt(
-    "tc=context-limit-response [high-tokens=250000]",
-  );
+  await po.sendPrompt("tc=context-limit-response [high-tokens=250000]");
 
   // Verify the context limit banner appears inside the chat input container
   const contextLimitBanner = po.chatActions
@@ -77,9 +73,7 @@ test("context limit banner does not appear when within limit", async ({
   // Send a message with low token usage (50k tokens)
   // With a 128k context window, this leaves 78k tokens remaining
   // which is above the 40k threshold AND below 200k - banner should NOT appear
-  await po.chatActions.sendPrompt(
-    "tc=context-limit-response [high-tokens=50000]",
-  );
+  await po.sendPrompt("tc=context-limit-response [high-tokens=50000]");
 
   // Verify the context limit banner does NOT appear in the chat input container
   const contextLimitBanner = po.chatActions

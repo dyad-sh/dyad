@@ -10,7 +10,7 @@ test.describe("Git Collaboration", () => {
     po,
   }) => {
     await po.setUp({ disableNativeGit: false });
-    await po.chatActions.sendPrompt("tc=basic");
+    await po.sendPrompt("tc=basic");
 
     await po.appManagement.getTitleBarAppNameButton().click();
     await po.githubConnector.connect();
@@ -204,7 +204,7 @@ test.describe("Git Collaboration", () => {
 
   test("should pull changes from remote", async ({ po }) => {
     await po.setUp({ disableNativeGit: false });
-    await po.chatActions.sendPrompt("tc=basic");
+    await po.sendPrompt("tc=basic");
 
     await po.appManagement.getTitleBarAppNameButton().click();
     await po.githubConnector.connect();
@@ -266,7 +266,7 @@ test.describe("Git Collaboration", () => {
 
   test("should invite and remove collaborators", async ({ po }) => {
     await po.setUp();
-    await po.chatActions.sendPrompt("tc=basic");
+    await po.sendPrompt("tc=basic");
     await po.previewPanel.selectPreviewMode("publish");
     await po.githubConnector.connect();
 

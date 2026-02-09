@@ -3,7 +3,7 @@ import { test } from "./helpers/test_helper";
 
 test("should connect to GitHub using device flow", async ({ po }) => {
   await po.setUp();
-  await po.chatActions.sendPrompt("tc=basic");
+  await po.sendPrompt("tc=basic");
 
   await po.appManagement.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
@@ -22,7 +22,7 @@ test("should connect to GitHub using device flow", async ({ po }) => {
 
 test("create and sync to new repo", async ({ po }) => {
   await po.setUp();
-  await po.chatActions.sendPrompt("tc=basic");
+  await po.sendPrompt("tc=basic");
 
   await po.appManagement.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
@@ -59,7 +59,7 @@ test("create and sync to new repo", async ({ po }) => {
 
 test("create and sync to new repo - custom branch", async ({ po }) => {
   await po.setUp();
-  await po.chatActions.sendPrompt("tc=basic");
+  await po.sendPrompt("tc=basic");
 
   await po.appManagement.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
@@ -88,7 +88,7 @@ test("create repo with spaces in name - should normalize to hyphens", async ({
   po,
 }) => {
   await po.setUp();
-  await po.chatActions.sendPrompt("tc=basic");
+  await po.sendPrompt("tc=basic");
 
   await po.appManagement.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
@@ -120,7 +120,7 @@ test("create repo with spaces in name - should normalize to hyphens", async ({
 
 test("disconnect from repo", async ({ po }) => {
   await po.setUp();
-  await po.chatActions.sendPrompt("tc=basic");
+  await po.sendPrompt("tc=basic");
 
   await po.appManagement.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
@@ -137,7 +137,7 @@ test("disconnect from repo", async ({ po }) => {
 
 test("create and sync to existing repo", async ({ po }) => {
   await po.setUp();
-  await po.chatActions.sendPrompt("tc=basic");
+  await po.sendPrompt("tc=basic");
 
   await po.appManagement.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
@@ -156,7 +156,7 @@ test("create and sync to existing repo - custom branch", async ({ po }) => {
   await po.githubConnector.clearPushEvents();
 
   await po.setUp();
-  await po.chatActions.sendPrompt("tc=basic");
+  await po.sendPrompt("tc=basic");
 
   await po.appManagement.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
@@ -180,7 +180,7 @@ test("create and sync to existing repo - custom branch", async ({ po }) => {
 
 test("github clear integration settings", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.chatActions.sendPrompt("tc=basic");
+  await po.sendPrompt("tc=basic");
 
   await po.appManagement.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
@@ -190,7 +190,7 @@ test("github clear integration settings", async ({ po }) => {
 
   await po.appManagement.clickOpenInChatButton();
   // Make sure we are committing so that githubUser.email is getting set.
-  await po.chatActions.sendPrompt("tc=write-index");
+  await po.sendPrompt("tc=write-index");
   const beforeSettings = po.settings.recordSettings();
 
   // Navigate to settings

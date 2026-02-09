@@ -19,7 +19,7 @@ const tests = [
 for (const { testName, newAppName, buttonName, expectedVersion } of tests) {
   test(`copy app ${testName}`, async ({ po }) => {
     await po.setUp({ autoApprove: true });
-    await po.chatActions.sendPrompt("hi");
+    await po.sendPrompt("hi");
     await po.snapshotAppFiles({ name: "app" });
 
     await po.appManagement.getTitleBarAppNameButton().click();

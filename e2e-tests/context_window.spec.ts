@@ -2,13 +2,13 @@ import { testSkipIfWindows } from "./helpers/test_helper";
 
 testSkipIfWindows("context window", async ({ po }) => {
   await po.setUp();
-  await po.chatActions.sendPrompt("tc=1");
-  await po.chatActions.sendPrompt("tc=2");
-  await po.chatActions.sendPrompt("[dump] tc=3");
+  await po.sendPrompt("tc=1");
+  await po.sendPrompt("tc=2");
+  await po.sendPrompt("[dump] tc=3");
   await po.snapshotServerDump();
-  await po.chatActions.sendPrompt("[dump] tc=4");
+  await po.sendPrompt("[dump] tc=4");
   await po.snapshotServerDump();
-  await po.chatActions.sendPrompt("[dump] tc=5");
+  await po.sendPrompt("[dump] tc=5");
   await po.snapshotServerDump();
 
   await po.navigation.goToSettingsTab();
@@ -23,6 +23,6 @@ testSkipIfWindows("context window", async ({ po }) => {
   po.settings.snapshotSettingsDelta(beforeSettings);
   await po.page.getByText("Go Back").click();
 
-  await po.chatActions.sendPrompt("[dump] tc=6");
+  await po.sendPrompt("[dump] tc=6");
   await po.snapshotServerDump();
 });

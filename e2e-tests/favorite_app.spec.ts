@@ -6,7 +6,7 @@ test.describe("Favorite App Tests", () => {
     await po.setUp({ autoApprove: true });
 
     // Create a test app
-    await po.chatActions.sendPrompt("create a test app");
+    await po.sendPrompt("create a test app");
     await po.navigation.goToAppsTab();
 
     // Get the app name from the UI (randomly generated)
@@ -42,7 +42,7 @@ test.describe("Favorite App Tests", () => {
     await po.setUp({ autoApprove: true });
 
     // Create a test app
-    await po.chatActions.sendPrompt("create a test app");
+    await po.sendPrompt("create a test app");
     await po.navigation.goToAppsTab();
 
     // Get the app name from the UI

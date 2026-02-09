@@ -2,7 +2,7 @@ import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 
 testSkipIfWindows("capacitor upgrade and sync works", async ({ po }) => {
   await po.setUp();
-  await po.chatActions.sendPrompt("hi");
+  await po.sendPrompt("hi");
   await po.appManagement.getTitleBarAppNameButton().click();
   await po.appManagement.clickAppUpgradeButton({ upgradeId: "capacitor" });
   await po.appManagement.expectNoAppUpgrades();

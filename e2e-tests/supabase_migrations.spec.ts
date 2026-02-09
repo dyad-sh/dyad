@@ -6,7 +6,7 @@ import { execSync } from "child_process";
 
 testSkipIfWindows("supabase migrations", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.chatActions.sendPrompt("tc=add-supabase");
+  await po.sendPrompt("tc=add-supabase");
 
   // Connect to Supabase
   await po.page.getByText("Set up supabase").click();
@@ -17,7 +17,7 @@ testSkipIfWindows("supabase migrations", async ({ po }) => {
   const migrationsDir = path.join(appPath, "supabase", "migrations");
 
   // --- SCENARIO 1: OFF BY DEFAULT ---
-  await po.chatActions.sendPrompt("tc=execute-sql-1");
+  await po.sendPrompt("tc=execute-sql-1");
   await po.chatActions.waitForChatCompletion();
 
   expect(fs.existsSync(migrationsDir)).toBe(false);
@@ -35,7 +35,7 @@ testSkipIfWindows("supabase migrations", async ({ po }) => {
   await po.navigation.goToChatTab();
 
   // Send a prompt that triggers a migration
-  await po.chatActions.sendPrompt("tc=execute-sql-1");
+  await po.sendPrompt("tc=execute-sql-1");
   await po.chatActions.waitForChatCompletion();
 
   let files: string[] = [];
@@ -51,7 +51,7 @@ testSkipIfWindows("supabase migrations", async ({ po }) => {
   );
 
   // Send a prompt that triggers a migration
-  await po.chatActions.sendPrompt("tc=execute-sql-no-description");
+  await po.sendPrompt("tc=execute-sql-no-description");
   await po.chatActions.waitForChatCompletion();
 
   await expect(async () => {
@@ -72,7 +72,7 @@ testSkipIfWindows("supabase migrations with native git", async ({ po }) => {
   // Keep native Git on to catch this edge case:
   // https://github.com/dyad-sh/dyad/issues/608
   await po.setUp({ autoApprove: true, disableNativeGit: false });
-  await po.chatActions.sendPrompt("tc=add-supabase");
+  await po.sendPrompt("tc=add-supabase");
 
   // Connect to Supabase
   await po.page.getByText("Set up supabase").click();
@@ -83,7 +83,7 @@ testSkipIfWindows("supabase migrations with native git", async ({ po }) => {
   const migrationsDir = path.join(appPath, "supabase", "migrations");
 
   // --- SCENARIO 1: OFF BY DEFAULT ---
-  await po.chatActions.sendPrompt("tc=execute-sql-1");
+  await po.sendPrompt("tc=execute-sql-1");
   await po.chatActions.waitForChatCompletion();
 
   expect(fs.existsSync(migrationsDir)).toBe(false);
@@ -101,7 +101,7 @@ testSkipIfWindows("supabase migrations with native git", async ({ po }) => {
   await po.navigation.goToChatTab();
 
   // Send a prompt that triggers a migration
-  await po.chatActions.sendPrompt("tc=execute-sql-1");
+  await po.sendPrompt("tc=execute-sql-1");
   await po.chatActions.waitForChatCompletion();
 
   let files: string[] = [];
@@ -124,7 +124,7 @@ testSkipIfWindows("supabase migrations with native git", async ({ po }) => {
   expect(gitStatus).toBe("");
 
   // Send a prompt that triggers a migration
-  await po.chatActions.sendPrompt("tc=execute-sql-no-description");
+  await po.sendPrompt("tc=execute-sql-no-description");
   await po.chatActions.waitForChatCompletion();
 
   await expect(async () => {

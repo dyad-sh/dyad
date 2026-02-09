@@ -9,7 +9,7 @@ test("create next.js app", async ({ po }) => {
   po.settings.snapshotSettingsDelta(beforeSettings);
 
   // Create an app
-  await po.chatActions.sendPrompt("tc=edit-made-with-dyad");
+  await po.sendPrompt("tc=edit-made-with-dyad");
   await po.approveProposal();
 
   await po.clickRestart();

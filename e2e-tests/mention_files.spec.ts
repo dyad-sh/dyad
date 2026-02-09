@@ -4,7 +4,7 @@ import { test, Timeout } from "./helpers/test_helper";
 test("mention file", async ({ po }) => {
   await po.setUp({ autoApprove: true });
 
-  await po.appManagement.importApp("minimal-with-ai-rules");
+  await po.importApp("minimal-with-ai-rules");
   await po.navigation.goToAppsTab();
   await po.chatActions.getChatInput().click();
   // Use pressSequentially so the mention trigger (@) is properly detected by Lexical

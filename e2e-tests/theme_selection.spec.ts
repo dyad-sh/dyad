@@ -41,7 +41,7 @@ test("theme selection - dyad-wide default theme is persisted", async ({
 
 test("theme selection - app-specific theme is persisted", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.appManagement.importApp("minimal");
+  await po.importApp("minimal");
 
   // Open menu and select "Default Theme" for this app
   await po.chatActions

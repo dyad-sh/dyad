@@ -11,7 +11,7 @@ testSkipIfWindows(
     await po.setUp({ autoApprove: true });
 
     // Create a multi-page app with react-router navigation
-    await po.chatActions.sendPrompt("tc=multi-page");
+    await po.sendPrompt("tc=multi-page");
 
     // Wait for the preview iframe to be visible and loaded
     await po.previewPanel.expectPreviewIframeIsVisible();

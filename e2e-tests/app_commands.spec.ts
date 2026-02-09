@@ -3,7 +3,7 @@ import { test } from "./helpers/test_helper";
 
 test("configure app commands", async ({ po }) => {
   // Create an app first
-  await po.chatActions.sendPrompt("tc=1");
+  await po.sendPrompt("tc=1");
 
   // Navigate to configure panel
   await po.previewPanel.selectPreviewMode("configure");

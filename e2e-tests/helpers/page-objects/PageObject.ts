@@ -449,6 +449,21 @@ export class PageObject {
   }
 
   // ================================
+  // Delegated Methods (for shorter calls)
+  // ================================
+
+  async sendPrompt(
+    prompt: string,
+    options?: { skipWaitForCompletion?: boolean },
+  ) {
+    return this.chatActions.sendPrompt(prompt, options);
+  }
+
+  async importApp(appDir: string) {
+    return this.appManagement.importApp(appDir);
+  }
+
+  // ================================
   // Test-only: Node.js Mock Control
   // ================================
 

@@ -6,7 +6,7 @@ const runSwitchVersionTest = async (
   disableNativeGit: boolean,
 ) => {
   await po.setUp({ autoApprove: true, disableNativeGit });
-  await po.chatActions.sendPrompt("tc=write-index");
+  await po.sendPrompt("tc=write-index");
 
   await po.previewPanel.snapshotPreview({ name: `v2` });
 

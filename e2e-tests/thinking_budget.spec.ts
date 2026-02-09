@@ -6,7 +6,7 @@ testSkipIfWindows("thinking budget", async ({ po }) => {
     provider: "Google",
     model: "Gemini 2.5 Pro",
   });
-  await po.chatActions.sendPrompt("tc=1");
+  await po.sendPrompt("tc=1");
 
   // Low
   await po.navigation.goToSettingsTab();
@@ -15,7 +15,7 @@ testSkipIfWindows("thinking budget", async ({ po }) => {
   await po.page.getByRole("option", { name: "Low" }).click();
   po.settings.snapshotSettingsDelta(beforeSettings1);
   await po.page.getByText("Go Back").click();
-  await po.chatActions.sendPrompt("[dump] hi");
+  await po.sendPrompt("[dump] hi");
   await po.snapshotServerDump("request");
 
   // Medium
@@ -25,7 +25,7 @@ testSkipIfWindows("thinking budget", async ({ po }) => {
   await po.page.getByRole("option", { name: "Medium (default)" }).click();
   po.settings.snapshotSettingsDelta(beforeSettings2);
   await po.page.getByText("Go Back").click();
-  await po.chatActions.sendPrompt("[dump] hi");
+  await po.sendPrompt("[dump] hi");
   await po.snapshotServerDump("request");
 
   // High
@@ -35,6 +35,6 @@ testSkipIfWindows("thinking budget", async ({ po }) => {
   await po.page.getByRole("option", { name: "High" }).click();
   po.settings.snapshotSettingsDelta(beforeSettings3);
   await po.page.getByText("Go Back").click();
-  await po.chatActions.sendPrompt("[dump] hi");
+  await po.sendPrompt("[dump] hi");
   await po.snapshotServerDump("request");
 });

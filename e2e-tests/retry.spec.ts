@@ -2,7 +2,7 @@ import { test } from "./helpers/test_helper";
 
 test("retry - should work", async ({ po }) => {
   await po.setUp();
-  await po.chatActions.sendPrompt("[increment]");
+  await po.sendPrompt("[increment]");
   await po.snapshotMessages();
 
   await po.toastNotifications.dismissAllToasts();

@@ -13,7 +13,7 @@ testSkipIfWindows(
   async ({ po }) => {
     // Set up WITHOUT Dyad Pro - use test provider instead
     await po.setUp({ autoApprove: true });
-    await po.appManagement.importApp("minimal");
+    await po.importApp("minimal");
 
     // 1. Verify Basic Agent mode is available (not Agent v2 which is Pro-only)
     await po.page.getByTestId("chat-mode-selector").click();
@@ -38,9 +38,7 @@ testSkipIfWindows(
 
     // 4. Send 5 messages to exhaust quota (this will exhaust quota even if some was already used)
     for (let i = 0; i < 5; i++) {
-      await po.chatActions.sendPrompt(
-        `tc=local-agent/simple-response message ${i + 1}`,
-      );
+      await po.sendPrompt(`tc=local-agent/simple-response message ${i + 1}`);
       await po.chatActions.waitForChatCompletion();
     }
 
@@ -59,7 +57,7 @@ testSkipIfWindows(
     ).toBeVisible();
 
     // 6. Try to send a 6th message - should be blocked with error
-    await po.chatActions.sendPrompt("tc=local-agent/simple-response message 6");
+    await po.sendPrompt("tc=local-agent/simple-response message 6");
     // Verify error message appears indicating quota exceeded
     await expect(po.page.getByTestId("chat-error-box")).toBeVisible({
       timeout: Timeout.MEDIUM,
@@ -80,7 +78,7 @@ testSkipIfWindows(
     ).not.toBeVisible();
 
     // 9. Verify user can still send messages in Build mode
-    await po.chatActions.sendPrompt("[dyad-qa=write] create a simple file");
+    await po.sendPrompt("[dyad-qa=write] create a simple file");
     await po.chatActions.waitForChatCompletion();
   },
 );
@@ -90,7 +88,7 @@ testSkipIfWindows(
   async ({ po }) => {
     // Set up WITHOUT Dyad Pro - use test provider instead
     await po.setUp({ autoApprove: true });
-    await po.appManagement.importApp("minimal");
+    await po.importApp("minimal");
 
     // 1. Select Basic Agent mode and send messages to use some quota
     await po.chatActions.selectChatMode("basic-agent");
@@ -100,9 +98,7 @@ testSkipIfWindows(
 
     // Send 3 messages to use some quota
     for (let i = 0; i < 3; i++) {
-      await po.chatActions.sendPrompt(
-        `tc=local-agent/simple-response message ${i + 1}`,
-      );
+      await po.sendPrompt(`tc=local-agent/simple-response message ${i + 1}`);
       await po.chatActions.waitForChatCompletion();
     }
 
@@ -143,9 +139,7 @@ testSkipIfWindows(
 
     // 6. Verify we can send messages again in Basic Agent mode (proves reset worked)
     await po.chatActions.selectChatMode("basic-agent");
-    await po.chatActions.sendPrompt(
-      "tc=local-agent/simple-response post-reset message",
-    );
+    await po.sendPrompt("tc=local-agent/simple-response post-reset message");
     await po.chatActions.waitForChatCompletion();
     // Successfully sending a message in Basic Agent mode after reset proves the quota was reset
     // and is usable again. No need to verify the exact quota count as that would require

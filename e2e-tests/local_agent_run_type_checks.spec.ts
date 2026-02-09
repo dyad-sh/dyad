@@ -10,7 +10,7 @@ testSkipIfWindows(
   "local-agent - run_type_checks updates problems panel",
   async ({ po }) => {
     await po.setUpDyadPro({ localAgent: true });
-    await po.appManagement.importApp("minimal");
+    await po.importApp("minimal");
     await po.chatActions.selectLocalAgentMode();
 
     // Ensure pnpm install has run so TypeScript is available
@@ -29,7 +29,7 @@ testSkipIfWindows(
     });
 
     // Send prompt that triggers write_file with TS errors, then run_type_checks
-    await po.chatActions.sendPrompt("tc=local-agent/run-type-checks");
+    await po.sendPrompt("tc=local-agent/run-type-checks");
 
     // After the agent runs type checks, the Problems panel should show errors
     // Wait for the fix button to be enabled and show errors

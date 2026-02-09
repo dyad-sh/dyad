@@ -5,7 +5,7 @@ import { test, testSkipIfWindows } from "./helpers/test_helper";
 // get ellipsis'd out.
 testSkipIfWindows("security review", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.chatActions.sendPrompt("tc=1");
+  await po.sendPrompt("tc=1");
 
   await po.previewPanel.selectPreviewMode("security");
 
@@ -22,7 +22,7 @@ testSkipIfWindows(
   "security review - edit and use knowledge",
   async ({ po }) => {
     await po.setUp({ autoApprove: true });
-    await po.chatActions.sendPrompt("tc=1");
+    await po.sendPrompt("tc=1");
 
     await po.previewPanel.selectPreviewMode("security");
     await po.page.getByRole("button", { name: "Edit Security Rules" }).click();
@@ -41,7 +41,7 @@ testSkipIfWindows(
 
 test("security review - multi-select and fix issues", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.chatActions.sendPrompt("tc=1");
+  await po.sendPrompt("tc=1");
 
   await po.previewPanel.selectPreviewMode("security");
 

@@ -6,7 +6,7 @@ testSkipIfWindows("send message to engine", async ({ po }) => {
     provider: "Google",
     model: "Gemini 2.5 Pro",
   });
-  await po.chatActions.sendPrompt("[dump] tc=turbo-edits");
+  await po.sendPrompt("[dump] tc=turbo-edits");
 
   await po.snapshotServerDump("request");
   await po.snapshotMessages({ replaceDumpPath: true });
@@ -17,7 +17,7 @@ testSkipIfWindows("send message to engine - openai gpt-5", async ({ po }) => {
   // By default, it's using auto which points to Flash 2.5 and doesn't
   // use engine.
   await po.modelPicker.selectModel({ provider: "OpenAI", model: "GPT 5" });
-  await po.chatActions.sendPrompt("[dump] tc=turbo-edits");
+  await po.sendPrompt("[dump] tc=turbo-edits");
 
   await po.snapshotServerDump("request");
 });
@@ -32,7 +32,7 @@ testSkipIfWindows(
       provider: "Anthropic",
       model: "Claude Sonnet 4",
     });
-    await po.chatActions.sendPrompt("[dump] tc=turbo-edits");
+    await po.sendPrompt("[dump] tc=turbo-edits");
 
     await po.snapshotServerDump("request");
   },
@@ -42,7 +42,7 @@ testSkipIfWindows(
   "smart auto should send message to engine",
   async ({ po }) => {
     await po.setUpDyadPro();
-    await po.chatActions.sendPrompt("[dump] tc=turbo-edits");
+    await po.sendPrompt("[dump] tc=turbo-edits");
 
     await po.snapshotServerDump("request");
     await po.snapshotMessages({ replaceDumpPath: true });
@@ -58,7 +58,7 @@ testSkipIfWindows(
     });
     await proModesDialog.setSmartContextMode("off");
     await proModesDialog.close();
-    await po.chatActions.sendPrompt("[dump] tc=turbo-edits");
+    await po.sendPrompt("[dump] tc=turbo-edits");
 
     await po.snapshotServerDump("request");
     await po.snapshotMessages({ replaceDumpPath: true });

@@ -3,7 +3,7 @@ import { testSkipIfWindows } from "./helpers/test_helper";
 
 testSkipIfWindows("select component", async ({ po }) => {
   await po.setUp();
-  await po.chatActions.sendPrompt("tc=basic");
+  await po.sendPrompt("tc=basic");
   await po.previewPanel.clickTogglePreviewPanel();
   await po.previewPanel.clickPreviewPickElement();
 
@@ -16,7 +16,7 @@ testSkipIfWindows("select component", async ({ po }) => {
   await po.previewPanel.snapshotPreview();
   await po.previewPanel.snapshotSelectedComponentsDisplay();
 
-  await po.chatActions.sendPrompt("[dump] make it smaller");
+  await po.sendPrompt("[dump] make it smaller");
   await po.previewPanel.snapshotPreview();
   await expect(
     po.previewPanel.getSelectedComponentsDisplay(),
@@ -25,13 +25,13 @@ testSkipIfWindows("select component", async ({ po }) => {
   await po.snapshotServerDump("all-messages");
 
   // Send one more prompt to make sure it's a normal message.
-  await po.chatActions.sendPrompt("[dump] tc=basic");
+  await po.sendPrompt("[dump] tc=basic");
   await po.snapshotServerDump("last-message");
 });
 
 testSkipIfWindows("select multiple components", async ({ po }) => {
   await po.setUp();
-  await po.chatActions.sendPrompt("tc=basic");
+  await po.sendPrompt("tc=basic");
   await po.previewPanel.clickTogglePreviewPanel();
   await po.previewPanel.clickPreviewPickElement();
 
@@ -50,7 +50,7 @@ testSkipIfWindows("select multiple components", async ({ po }) => {
   await po.previewPanel.snapshotPreview();
   await po.previewPanel.snapshotSelectedComponentsDisplay();
 
-  await po.chatActions.sendPrompt("[dump] make both smaller");
+  await po.sendPrompt("[dump] make both smaller");
   await po.previewPanel.snapshotPreview();
   await expect(
     po.previewPanel.getSelectedComponentsDisplay(),
@@ -61,7 +61,7 @@ testSkipIfWindows("select multiple components", async ({ po }) => {
 
 testSkipIfWindows("deselect component", async ({ po }) => {
   await po.setUp();
-  await po.chatActions.sendPrompt("tc=basic");
+  await po.sendPrompt("tc=basic");
   await po.previewPanel.clickTogglePreviewPanel();
   await po.previewPanel.clickPreviewPickElement();
 
@@ -83,7 +83,7 @@ testSkipIfWindows("deselect component", async ({ po }) => {
   ).not.toBeVisible();
 
   // Send one more prompt to make sure it's a normal message.
-  await po.chatActions.sendPrompt("[dump] tc=basic");
+  await po.sendPrompt("[dump] tc=basic");
   await po.snapshotServerDump("last-message");
 });
 
@@ -91,7 +91,7 @@ testSkipIfWindows(
   "deselect individual component from multiple",
   async ({ po }) => {
     await po.setUp();
-    await po.chatActions.sendPrompt("tc=basic");
+    await po.sendPrompt("tc=basic");
     await po.previewPanel.clickTogglePreviewPanel();
     await po.previewPanel.clickPreviewPickElement();
 
@@ -120,7 +120,7 @@ testSkipIfWindows(
 
 testSkipIfWindows("upgrade app to select component", async ({ po }) => {
   await po.setUp();
-  await po.appManagement.importApp("select-component");
+  await po.importApp("select-component");
   await po.appManagement.getTitleBarAppNameButton().click();
   await po.appManagement.clickAppUpgradeButton({
     upgradeId: "component-tagger",
@@ -142,7 +142,7 @@ testSkipIfWindows("upgrade app to select component", async ({ po }) => {
     .getByRole("heading", { name: "Launch Your Next Project" })
     .click();
 
-  await po.chatActions.sendPrompt("[dump] make it smaller");
+  await po.sendPrompt("[dump] make it smaller");
   await po.snapshotServerDump("last-message");
 });
 
@@ -151,7 +151,7 @@ testSkipIfWindows("select component next.js", async ({ po }) => {
 
   await po.navigation.goToHubAndSelectTemplate("Next.js Template");
   await po.chatActions.selectChatMode("build");
-  await po.chatActions.sendPrompt("tc=basic");
+  await po.sendPrompt("tc=basic");
   await po.previewPanel.clickTogglePreviewPanel();
   await po.previewPanel.clickPreviewPickElement();
 
@@ -164,7 +164,7 @@ testSkipIfWindows("select component next.js", async ({ po }) => {
   await po.previewPanel.snapshotPreview();
   await po.previewPanel.snapshotSelectedComponentsDisplay();
 
-  await po.chatActions.sendPrompt("[dump] make it smaller");
+  await po.sendPrompt("[dump] make it smaller");
   await po.previewPanel.snapshotPreview();
 
   await po.snapshotServerDump("all-messages");

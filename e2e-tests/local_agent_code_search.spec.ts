@@ -7,10 +7,10 @@ import { testSkipIfWindows } from "./helpers/test_helper";
 
 testSkipIfWindows("local-agent - code search", async ({ po }) => {
   await po.setUpDyadPro({ localAgent: true });
-  await po.appManagement.importApp("minimal");
+  await po.importApp("minimal");
   await po.chatActions.selectLocalAgentMode();
 
-  await po.chatActions.sendPrompt("tc=local-agent/code-search");
+  await po.sendPrompt("tc=local-agent/code-search");
 
   await po.snapshotMessages();
 });

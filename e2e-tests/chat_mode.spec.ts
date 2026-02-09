@@ -2,9 +2,9 @@ import { test } from "./helpers/test_helper";
 
 test("chat mode selector - default build mode", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.appManagement.importApp("minimal");
+  await po.importApp("minimal");
 
-  await po.chatActions.sendPrompt("[dump] hi");
+  await po.sendPrompt("[dump] hi");
   await po.chatActions.waitForChatCompletion();
 
   await po.snapshotServerDump("all-messages");
@@ -13,10 +13,10 @@ test("chat mode selector - default build mode", async ({ po }) => {
 
 test("chat mode selector - ask mode", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.appManagement.importApp("minimal");
+  await po.importApp("minimal");
 
   await po.chatActions.selectChatMode("ask");
-  await po.chatActions.sendPrompt("[dump] hi");
+  await po.sendPrompt("[dump] hi");
   await po.chatActions.waitForChatCompletion();
 
   await po.snapshotServerDump("all-messages");
@@ -25,10 +25,10 @@ test("chat mode selector - ask mode", async ({ po }) => {
 
 test.skip("dyadwrite edit and save - basic flow", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.appManagement.importApp("minimal");
+  await po.importApp("minimal");
   await po.chatActions.clickNewChat();
 
-  await po.chatActions.sendPrompt(
+  await po.sendPrompt(
     "Create a simple React component in src/components/Hello.tsx",
   );
   await po.chatActions.waitForChatCompletion();

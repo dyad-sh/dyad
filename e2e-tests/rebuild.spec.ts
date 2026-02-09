@@ -5,7 +5,7 @@ import path from "path";
 
 testSkipIfWindows("rebuild app", async ({ po }) => {
   await po.setUp({ autoApprove: true });
-  await po.chatActions.sendPrompt("hi");
+  await po.sendPrompt("hi");
   await po.previewPanel.snapshotPreview();
 
   const currentAppPath = await po.appManagement.getCurrentAppPath();

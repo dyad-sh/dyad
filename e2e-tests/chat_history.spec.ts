@@ -5,10 +5,10 @@ test("should open, navigate, and select from history menu", async ({ po }) => {
   await po.setUp({ autoApprove: true });
 
   // Send messages to populate history
-  await po.chatActions.sendPrompt("First test message");
+  await po.sendPrompt("First test message");
   await po.chatActions.waitForChatCompletion();
 
-  await po.chatActions.sendPrompt("Second test message");
+  await po.sendPrompt("Second test message");
   await po.chatActions.waitForChatCompletion();
 
   // Click on the chat input to focus it
@@ -84,7 +84,7 @@ test("should handle edge cases: guards, escape, and sending after cancel", async
   await expect(historyMenu).not.toBeVisible();
 
   // Create some history
-  await po.chatActions.sendPrompt("History entry for testing");
+  await po.sendPrompt("History entry for testing");
   await po.chatActions.waitForChatCompletion();
 
   // Test 2: Non-empty input guard - menu should not open when input has content

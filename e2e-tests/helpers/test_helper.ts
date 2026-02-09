@@ -1604,6 +1604,12 @@ export const test = base.extend<{
       }
       const baseTmpDir = os.tmpdir();
       const userDataDir = path.join(baseTmpDir, `dyad-e2e-tests-${Date.now()}`);
+      // Disable the template selection dialog for all tests by default
+      fs.mkdirSync(userDataDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(userDataDir, "user-settings.json"),
+        JSON.stringify({ promptForTemplate: false }),
+      );
       if (electronConfig.preLaunchHook) {
         await electronConfig.preLaunchHook({ userDataDir });
       }

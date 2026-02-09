@@ -1,0 +1,4 @@
+- "promptForTemplate": true
++ "promptForTemplate": false
+- "selectedTemplateId": "react"
++ "selectedTemplateId": "next"

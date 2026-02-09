@@ -1,0 +1,91 @@
+name: PR Status Labeler
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  label-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Find PR and check eligibility
+        id: pr-info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+
+            // Find associated PR (same approach as playwright-comment.yml)
+            let prNumber;
+
+            if (run.pull_requests && run.pull_requests.length > 0) {
+              prNumber = run.pull_requests[0].number;
+            } else {
+              if (!run.head_repository) {
+                console.log('Head repository not available');
+                core.setOutput('should_continue', 'false');
+                return;
+              }
+              const { data: prs } = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                head: `${run.head_repository.owner.login}:${run.head_branch}`
+              });
+              if (prs.length === 0) {
+                console.log('No pull requests found for this workflow run');
+                core.setOutput('should_continue', 'false');
+                return;
+              }
+              prNumber = prs[0].number;
+            }
+
+            // Fetch full PR details to check labels
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+
+            // Skip PRs actively managed by pr-review-responder (cc:request* or cc:pending)
+            // PRs with cc:done/cc:failed/cc:needs-human-review ARE eligible —
+            // a human may have pushed new commits after the automation loop ended.
+            const activeLabels = pr.labels.filter(l =>
+              l.name.startsWith('cc:request') || l.name === 'cc:pending'
+            );
+
+            if (activeLabels.length > 0) {
+              console.log(`PR #${prNumber} is in the cc: retry loop (${activeLabels.map(l => l.name).join(', ')}), skipping`);
+              core.setOutput('should_continue', 'false');
+              return;
+            }
+
+            console.log(`PR #${prNumber} is eligible for status labeling`);
+            core.setOutput('should_continue', 'true');
+            core.setOutput('pr_number', prNumber);
+
+      - name: Checkout repository (base branch for scripts)
+        if: steps.pr-info.outputs.should_continue == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.base_ref }}
+
+      - name: Apply status label
+        if: steps.pr-info.outputs.should_continue == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { run } = require('./scripts/pr-status-labeler.js');
+            await run({
+              github,
+              context,
+              core,
+              prNumber: parseInt('${{ steps.pr-info.outputs.pr_number }}', 10),
+              ciConclusion: '${{ github.event.workflow_run.conclusion }}'
+            });

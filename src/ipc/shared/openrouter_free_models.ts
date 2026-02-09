@@ -1,0 +1,120 @@
+import log from "electron-log";
+import type { LanguageModel } from "@/ipc/types";
+import { MODEL_OPTIONS } from "./language_model_constants";
+
+export interface OpenRouterModel {
+  id: string;
+  name?: string;
+  description?: string;
+  context_length?: number;
+  pricing?: {
+    prompt?: number | string;
+    completion?: number | string;
+    image?: number | string;
+  };
+}
+
+const logger = log.scope("openrouter_free_models");
+
+const DEFAULT_FREE_MODELS: LanguageModel[] = MODEL_OPTIONS.openrouter
+  .filter((model) => model.name.endsWith(":free"))
+  .map((model) => ({
+    apiName: model.name,
+    displayName: model.displayName,
+    description: model.description ?? "Free OpenRouter model",
+    maxOutputTokens: model.maxOutputTokens,
+    contextWindow: model.contextWindow,
+    temperature: model.temperature,
+    dollarSigns: 0,
+    tag: "Free",
+    type: "cloud",
+  }));
+
+let cachedFreeModels: LanguageModel[] = DEFAULT_FREE_MODELS;
+
+const FREE_MODEL_HEADERS = {
+  "User-Agent": "Dyad",
+  "HTTP-Referer": "https://dyad.sh",
+  "X-Title": "Dyad",
+};
+
+function normalizePrice(value?: number | string) {
+  if (value == null) return undefined;
+  if (typeof value === "number") return value;
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+function isFreePricing(pricing?: OpenRouterModel["pricing"]) {
+  if (!pricing) return false;
+  const prompt = normalizePrice(pricing.prompt);
+  const completion = normalizePrice(pricing.completion);
+  const image = normalizePrice(pricing.image);
+  if (prompt == null || completion == null) return false;
+  if (prompt !== 0 || completion !== 0) return false;
+  return image == null || image === 0;
+}
+
+function formatFreeDisplayName(name: string) {
+  return name.toLowerCase().includes("free") ? name : `${name} (free)`;
+}
+
+export function buildOpenRouterFreeModels(
+  models: OpenRouterModel[],
+): LanguageModel[] {
+  return models
+    .filter((model) => isFreePricing(model.pricing))
+    .map((model) => {
+      const baseName = model.name?.trim() || model.id;
+      return {
+        apiName: model.id,
+        displayName: formatFreeDisplayName(baseName),
+        description: model.description ?? "Free OpenRouter model",
+        contextWindow: model.context_length,
+        dollarSigns: 0,
+        tag: "Free",
+        type: "cloud",
+      };
+    });
+}
+
+export function getOpenRouterFreeModels() {
+  return cachedFreeModels;
+}
+
+export function getOpenRouterFreeModelNames() {
+  return cachedFreeModels.map((model) => model.apiName);
+}
+
+export async function hydrateOpenRouterFreeModels() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5_000);
+
+  try {
+    const response = await fetch("https://openrouter.ai/api/v1/models", {
+      headers: FREE_MODEL_HEADERS,
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenRouter models request failed: ${response.status}`);
+    }
+
+    const payload = (await response.json()) as { data?: OpenRouterModel[] };
+    const models = Array.isArray(payload.data) ? payload.data : [];
+    const freeModels = buildOpenRouterFreeModels(models);
+
+    if (freeModels.length > 0) {
+      cachedFreeModels = freeModels;
+      logger.info(`Loaded ${freeModels.length} free OpenRouter models.`);
+    } else {
+      logger.warn("OpenRouter free models response was empty.");
+      cachedFreeModels = DEFAULT_FREE_MODELS;
+    }
+  } catch (error) {
+    logger.warn("Failed to load OpenRouter free models", error);
+    cachedFreeModels = DEFAULT_FREE_MODELS;
+  } finally {
+    clearTimeout(timeout);
+  }
+}

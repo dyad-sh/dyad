@@ -55,9 +55,11 @@ export function useResolveMergeConflictsWithAI({
     isResolvingRef.current = true;
     setIsResolving(true);
 
+    let chatId: number | null = null;
     try {
       // Create a new chat for conflict resolution
       const newChatId = await ipc.chat.createChat(appId);
+      chatId = newChatId;
 
       // Clear conflicts state after successful chat creation
       onStartResolving?.();
@@ -135,6 +137,13 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
       );
     } catch (error: any) {
       showError(error?.message || "Failed to start conflict resolution");
+      if (chatId !== null) {
+        setIsStreamingById((prev) => {
+          const next = new Map(prev);
+          next.set(chatId!, false);
+          return next;
+        });
+      }
       isResolvingRef.current = false;
       setIsResolving(false);
     }

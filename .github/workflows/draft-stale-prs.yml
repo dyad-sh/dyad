@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  contents: read
   pull-requests: write
   issues: write
 
@@ -19,23 +20,17 @@ jobs:
             const sevenDaysAgo = new Date();
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-            const prs = await github.paginate(github.rest.pulls.list, {
+            const allPrs = await github.paginate(github.rest.pulls.list, {
               owner: context.repo.owner,
               repo: context.repo.repo,
               state: 'open',
               sort: 'updated',
               direction: 'asc',
             });
+            // Pre-filter to non-draft, stale PRs and cap to avoid rate limit exhaustion
+            const prs = allPrs.filter(pr => !pr.draft && new Date(pr.updated_at) < sevenDaysAgo).slice(0, 30);
 
             for (const pr of prs) {
-              if (pr.draft) {
-                continue;
-              }
-
-              // Skip PRs updated recently (quick filter before detailed check)
-              if (new Date(pr.updated_at) >= sevenDaysAgo) {
-                continue;
-              }
 
               try {
                 // Check the latest commit date using the PR head SHA
@@ -61,27 +56,23 @@ jobs:
                   ? new Date(humanComments[humanComments.length - 1].created_at)
                   : new Date(0);
 
-                const reviewComments = await github.rest.pulls.listReviewComments({
+                const allReviewComments = await github.paginate(github.rest.pulls.listReviewComments, {
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   pull_number: pr.number,
-                  per_page: 1,
-                  sort: 'created',
-                  direction: 'desc',
                 });
-                const lastReviewCommentDate = reviewComments.data.length > 0
-                  ? new Date(reviewComments.data[0].created_at)
+                const lastReviewCommentDate = allReviewComments.length > 0
+                  ? new Date(allReviewComments[allReviewComments.length - 1].created_at)
                   : new Date(0);
 
                 // Check timeline events for re-opens and ready_for_review
-                // Use non-paginated call to avoid excessive API usage
-                const events = await github.rest.issues.listEvents({
+                const events = await github.paginate(github.rest.issues.listEvents, {
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: pr.number,
                   per_page: 100,
                 });
-                const lastReopenOrReadyDate = events.data
+                const lastReopenOrReadyDate = events
                   .filter(e => e.event === 'reopened' || e.event === 'ready_for_review')
                   .reduce((latest, e) => {
                     const d = new Date(e.created_at);
@@ -126,6 +117,9 @@ jobs:
                   console.log(`Converted PR #${pr.number} to draft: ${pr.title} (last activity: ${lastActivity.toISOString()})`);
                 }
               } catch (error) {
-                console.log(`Failed to process PR #${pr.number}: ${error.message}`);
+                core.warning(`Failed to process PR #${pr.number}: ${error.message}`);
+                if (error.status === 403 || error.status === 429) {
+                  throw error;
+                }
               }
             }

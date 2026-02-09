@@ -142,7 +142,9 @@ jobs:
                 labels: ['cc:needs-human-review']
               });
 
-              // Also add needs-human:review-issue (retries exhausted = needs human attention)
+              // Also add needs-human:review-issue (retries exhausted = needs human attention).
+              // NOTE: This duplicates logic from scripts/pr-status-labeler.js because this
+              // runs in the pr-info step before any checkout, so the shared script isn't available.
               try {
                 await github.rest.issues.createLabel({
                   owner: context.repo.owner,
@@ -321,6 +323,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Checkout base repo for labeler script
+        # The earlier checkout (line 186) checks out the PR head repo, which for
+        # fork PRs may not contain scripts/pr-status-labeler.js. Checkout the
+        # base repo's default branch to a separate path so the script is always available.
+        if: >-
+          steps.pr-info.outputs.should_continue == 'true' &&
+          always() &&
+          steps.retrigger.outputs.commits_pushed != 'true'
+        uses: actions/checkout@v5
+        with:
+          path: __base
+          sparse-checkout: scripts/pr-status-labeler.js
+
       - name: Apply needs-human status label
         # Run when PR reaches a terminal state (cc:done or cc:failed) but NOT when
         # commits were pushed (retry loop continues). Uses always() to run even if
@@ -332,7 +347,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const { run } = require('./scripts/pr-status-labeler.js');
+            const { run } = require('./__base/scripts/pr-status-labeler.js');
             await run({
               github,
               context,

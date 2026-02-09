@@ -50,15 +50,22 @@ jobs:
                 repo,
                 pull_number: prNumber,
               });
-              pr = prData;
+              pr = prData.state === 'open' ? prData : undefined;
             } else {
               // Fallback: use listPullRequestsAssociatedWithCommit for targeted lookup
+              // Note: workflow_run.pull_requests is empty for fork PRs
               const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
                 owner,
                 repo,
                 commit_sha: headSha,
               });
-              pr = prs.find(p => p.state === 'open');
+              const headBranch = context.payload.workflow_run.head_branch;
+              const openPrs = prs.filter(p => p.state === 'open' && p.head.ref === headBranch);
+              if (openPrs.length > 1) {
+                console.log(`Multiple open PRs found for SHA ${headSha} on branch ${headBranch} — refusing to merge to avoid ambiguity`);
+                return;
+              }
+              pr = openPrs[0];
             }
 
             if (!pr) {
@@ -70,7 +77,7 @@ jobs:
             console.log(`Author: ${pr.user.login}`);
 
             // Check if author is allowed (read from environment variable)
-            const allowedAuthors = process.env.ALLOWED_AUTHORS.split(',');
+            const allowedAuthors = (process.env.ALLOWED_AUTHORS || '').split(',').map(a => a.trim()).filter(Boolean);
             if (!allowedAuthors.includes(pr.user.login)) {
               console.log(`Author ${pr.user.login} is not in allowed list: ${allowedAuthors.join(', ')}`);
               return;
@@ -86,15 +93,16 @@ jobs:
             }
 
             // Verify all check suites have passed
-            const { data: checkSuites } = await github.rest.checks.listSuitesForRef({
-              owner,
-              repo,
-              ref: headSha,
-            });
+            const allCheckSuites = await github.paginate(
+              github.rest.checks.listSuitesForRef,
+              { owner, repo, ref: headSha, per_page: 100 },
+              (response) => response.data.check_suites
+            );
 
-            const pendingOrFailed = checkSuites.check_suites.filter(suite => {
+            const pendingOrFailed = allCheckSuites.filter(suite => {
               // Skip neutral conclusions (e.g., skipped workflows)
               if (suite.conclusion === 'neutral' || suite.conclusion === 'skipped') {
+                console.log(`Skipping suite with conclusion '${suite.conclusion}': ${suite.app?.name || 'Unknown'}`);
                 return false;
               }
               // Exclude this workflow's own check suite (it's still in-progress)
@@ -117,6 +125,15 @@ jobs:
               // Check if still in progress or failed
               return suite.status !== 'completed' || suite.conclusion !== 'success';
             });
+
+            // Guard: require at least one completed successful check suite
+            const successfulSuites = allCheckSuites.filter(
+              suite => suite.status === 'completed' && suite.conclusion === 'success'
+            );
+            if (successfulSuites.length === 0) {
+              console.log('No completed successful check suites found — refusing to merge');
+              return;
+            }
 
             if (pendingOrFailed.length > 0) {
               console.log('Some check suites are still pending or have failed:');

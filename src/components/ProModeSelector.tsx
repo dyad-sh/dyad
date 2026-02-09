@@ -101,7 +101,7 @@ export function ProModeSelector() {
               </a>
             </div>
           )}
-          <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-3">
             <SelectorRow
               id="pro-enabled"
               label="Enable Dyad Pro"
@@ -111,11 +111,14 @@ export function ProModeSelector() {
               toggle={toggleProEnabled}
             />
             <Accordion>
-              <AccordionItem value="build-mode-settings" className="border-b-0">
-                <AccordionTrigger className="py-2 text-muted-foreground hover:text-foreground hover:no-underline">
+              <AccordionItem
+                value="build-mode-settings"
+                className="rounded-lg border border-border/60 bg-muted/30 px-3 border-b-0"
+              >
+                <AccordionTrigger className="cursor-pointer py-2 text-foreground/80 hover:text-foreground hover:no-underline">
                   Build mode settings
                 </AccordionTrigger>
-                <AccordionContent className="pb-0">
+                <AccordionContent className="pb-3">
                   <div className="flex flex-col gap-5 pt-2">
                     <SelectorRow
                       id="web-search"

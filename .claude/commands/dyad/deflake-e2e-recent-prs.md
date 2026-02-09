@@ -14,17 +14,20 @@ Automatically gather flaky E2E tests from recent PR Playwright summary comments 
 
 1. **Gather flaky tests from recent PRs:**
 
-   Use `gh` to find recent PRs from `wwwillchen-bot` and `wwwillchen` that have Playwright summary comments:
+   Use `gh` to find recent PRs that have Playwright summary comments (search for PRs with `github-actions[bot]` Playwright comments):
 
    ```
-   gh pr list --author wwwillchen-bot --state all --limit ${ARGUMENTS:-20} --json number
-   gh pr list --author wwwillchen --state all --limit ${ARGUMENTS:-20} --json number
+   gh pr list --search 'commenter:github-actions[bot] "Playwright Test Results" in:comments' --state all --limit <PR_COUNT> --json number
    ```
 
-   For each PR, fetch comments from `github-actions[bot]` that contain the Playwright test results:
+   Use `$ARGUMENTS` as the PR count, defaulting to 20 if not provided.
+
+   For each PR, fetch comments from `github-actions[bot]` that contain the Playwright test results.
+
+   **Note:** `{owner}` and `{repo}` are auto-replaced by `gh` CLI. Replace `<pr_number>` with the actual PR number.
 
    ```
-   gh api repos/{owner}/{repo}/issues/{pr_number}/comments --jq '.[] | select(.user.login == "github-actions[bot]") | select(.body | contains("Playwright Test Results")) | .body'
+   gh api repos/{owner}/{repo}/issues/<pr_number>/comments --paginate --jq '.[] | select(.user.login == "github-actions[bot]") | select(.body | contains("Playwright Test Results")) | .body'
    ```
 
 2. **Parse flaky tests from comments:**
@@ -67,10 +70,10 @@ Automatically gather flaky E2E tests from recent PR Playwright summary comments 
 
    For each unique spec file that has flaky tests (ordered by total flaky occurrences, most flaky first):
 
-   a. Run the spec file 10 times to confirm flakiness:
+   a. Run the spec file 10 times to confirm flakiness (note: `<spec_file>` already includes the `.spec.ts` extension from parsing):
 
    ```
-   PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec_file>.spec.ts --repeat-each=10
+   PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec_file> --repeat-each=10
    ```
 
    b. If the test passes all 10 runs, skip it (it may have been fixed already).
@@ -78,7 +81,7 @@ Automatically gather flaky E2E tests from recent PR Playwright summary comments 
    c. If the test fails at least once, investigate with debug logs:
 
    ```
-   DEBUG=pw:browser PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec_file>.spec.ts
+   DEBUG=pw:browser PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec_file>
    ```
 
    d. Fix the flaky test following Playwright best practices:
@@ -94,13 +97,13 @@ Automatically gather flaky E2E tests from recent PR Playwright summary comments 
    e. Update snapshot baselines if needed:
 
    ```
-   PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec_file>.spec.ts --update-snapshots
+   PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec_file> --update-snapshots
    ```
 
    f. Verify the fix by running 10 times again:
 
    ```
-   PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec_file>.spec.ts --repeat-each=10
+   PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec_file> --repeat-each=10
    ```
 
    g. If the test still fails after your fix attempt, revert any changes to that spec file and move on to the next one. Do not spend more than 2 attempts fixing a single spec file.

@@ -2,7 +2,8 @@ name: Claude Deflake E2E
 
 on:
   schedule:
-    - cron: "0 10 * * *" # daily at 2 AM PST (10:00 UTC)
+    # Daily at 10:00 UTC (2 AM PST / 3 AM PDT due to DST)
+    - cron: "0 10 * * *"
   workflow_dispatch:
     inputs:
       pr_count:
@@ -55,6 +56,9 @@ jobs:
 
       - name: Install Chromium browser for Playwright
         run: npx playwright install chromium --with-deps
+
+      - name: Build fake LLM server
+        run: cd testing/fake-llm-server && npm install && npm run build
 
       - name: Deflake E2E tests
         uses: anthropics/claude-code-action@v1

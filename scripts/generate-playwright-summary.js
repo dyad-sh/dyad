@@ -70,34 +70,6 @@ function parseTestTitle(fullTitle) {
   return { specFile, testName };
 }
 
-// Detect if a test failure is due to a snapshot mismatch
-function isSnapshotFailure(errorMessage) {
-  if (!errorMessage) return false;
-  const lower = errorMessage.toLowerCase();
-  return [
-    "screenshot comparison failed",
-    "snapshot comparison failed",
-    "expected to match snapshot",
-    "tomatchsnapshot",
-    "tohavescreenshot",
-    "screenshots are different",
-    "snapshots don't match",
-    "snapshot mismatch",
-    "snapshot",
-    "ratio of different pixels",
-  ].some((pattern) => lower.includes(pattern));
-}
-
-// Generate copy-paste command for running a specific test
-function generateTestCommand(fullTitle) {
-  const { specFile, testName } = parseTestTitle(fullTitle);
-  // Sanitize specFile to only allow safe path characters
-  const safeSpecFile = specFile.replace(/[^a-zA-Z0-9._\-/]/g, "");
-  // Escape special characters in testName for the grep pattern
-  const escapedTestName = testName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return `npm run e2e e2e-tests/${safeSpecFile} -- -g "${escapedTestName}"`;
-}
-
 function detectOperatingSystemsFromReport(report) {
   const detected = new Set();
 
@@ -386,37 +358,26 @@ async function run({ github, context, core }) {
       comment += "\n";
     }
 
-    // Add macOS copy-paste commands section
+    // Add macOS copy-paste command section
     const macOsFailures = resultsByOs["macOS"]?.failures || [];
     if (macOsFailures.length > 0) {
-      comment += "### 📋 Test Commands (macOS)\n\n";
-      comment += "Copy and paste to re-run failing tests locally:\n\n";
+      comment += "### 📋 Re-run Failing Tests (macOS)\n\n";
+      comment += "Copy and paste to re-run all failing spec files locally:\n\n";
 
-      if (macOsFailures.length > 5) {
-        comment += `<details>\n<summary>Show all ${macOsFailures.length} test commands</summary>\n\n`;
-      }
+      // Collect unique spec files from failures
+      const specFiles = [
+        ...new Set(
+          macOsFailures.map((f) => {
+            const { specFile } = parseTestTitle(f.title);
+            return `e2e-tests/${specFile.replace(/[^a-zA-Z0-9._\-/]/g, "")}`;
+          }),
+        ),
+      ];
 
       comment += "```bash\n";
-      comment += "export PLAYWRIGHT_HTML_OPEN=never\n";
-      for (const f of macOsFailures) {
-        const cmd = generateTestCommand(f.title);
-        const snapshot = isSnapshotFailure(f.error);
-        const errorPreview =
-          f.error.length > 120 ? f.error.substring(0, 120) + "..." : f.error;
-        comment += `\n# ${f.title.replace(/\n/g, " ").replace(/`/g, "'")}\n`;
-        comment += `# Expected: ${errorPreview.replace(/\n/g, " ").replace(/`/g, "'")}\n`;
-        if (snapshot) {
-          comment += `${cmd} --update-snapshots\n`;
-        } else {
-          comment += `${cmd}\n`;
-        }
-      }
-      comment += "```\n\n";
-
-      if (macOsFailures.length > 5) {
-        comment += "</details>\n";
-      }
-      comment += "\n";
+      comment += "npm run e2e \\\n";
+      comment += specFiles.map((s) => `  ${s}`).join(" \\\n");
+      comment += "\n```\n\n";
     }
 
     // List flaky tests

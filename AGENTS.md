@@ -26,6 +26,8 @@ Make sure you run this once after doing `npm install` because it will make sure 
 npm run init-precommit
 ```
 
+**Note:** Running `npm install` may update `package-lock.json` with version changes or peer dependency flag removals. If rebasing or performing git operations, commit these changes first to avoid "unstaged changes" errors.
+
 ## Pre-commit checks
 
 RUN THE FOLLOWING CHECKS before you do a commit.

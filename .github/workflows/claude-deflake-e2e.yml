@@ -72,3 +72,6 @@ jobs:
           direct: true
           prompt: |
             /dyad:deflake-e2e-recent-commits ${{ inputs.commit_count || '10' }}
+      - name: Cleanup (self-hosted macOS)
+        if: always()
+        run: bash scripts/ci-cleanup-macos.sh

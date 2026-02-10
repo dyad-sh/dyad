@@ -198,6 +198,9 @@ jobs:
             scaffold/
             testing/fake-llm-server/
           retention-days: 1
+      - name: Cleanup (self-hosted macOS)
+        if: always() && contains(matrix.os.image, 'self-hosted')
+        run: bash scripts/ci-cleanup-macos.sh
 
   e2e-tests:
     needs: [check-changes, build]
@@ -276,6 +279,9 @@ jobs:
           name: blob-report-${{ matrix.os.name }}-shard-${{ matrix.shard }}
           path: blob-report
           retention-days: 1
+      - name: Cleanup (self-hosted macOS)
+        if: always() && contains(matrix.os.image, 'self-hosted')
+        run: bash scripts/ci-cleanup-macos.sh
 
   merge-reports:
     # Merge reports after playwright-tests, even if some shards have failed

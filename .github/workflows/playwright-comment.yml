@@ -79,7 +79,7 @@ jobs:
         if: ${{ steps.pr.outputs.number != '' }}
         uses: actions/download-artifact@v4
         with:
-          name: html-report--attempt-${{ github.event.workflow_run.run_attempt }}
+          name: html-report
           path: playwright-report
           github-token: ${{ github.token }}
           repository: ${{ github.event.workflow_run.repository.full_name }}

@@ -70,14 +70,9 @@ jobs:
             core.setOutput('should_continue', 'true');
             core.setOutput('pr_number', prNumber);
 
-      - name: Checkout repository (head branch for scripts)
+      - name: Checkout repository (default branch for trusted scripts)
         if: steps.pr-info.outputs.should_continue == 'true'
         uses: actions/checkout@v4
-        with:
-          # Use head_branch so the script is available before it's merged to main.
-          # This workflow only applies labels (no secrets or privileged ops), so
-          # running code from the PR head is acceptable.
-          ref: ${{ github.event.workflow_run.head_branch }}
 
       - name: Apply status label
         if: steps.pr-info.outputs.should_continue == 'true'

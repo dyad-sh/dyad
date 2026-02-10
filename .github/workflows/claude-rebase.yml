@@ -76,6 +76,15 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
+            You are orchestrating the /dyad:pr-rebase skill. Your job is to run it end-to-end as a sub-agent with NO shortcuts.
+
+            Rules:
+            1. Execute every step of /dyad:pr-rebase sequentially. Do not skip, summarize, or stop early.
+            2. The skill includes a "/dyad:pr-push" step. This step MUST be fully executed — not just mentioned or planned, but actually run to completion.
+            3. After "/dyad:pr-push" completes, verify its output to confirm success (e.g., a PR URL or push confirmation).
+            4. Do not consider the task complete until "/dyad:pr-push" has succeeded and you have confirmed its output.
+
+            Now run the following command:          
             /dyad:pr-rebase ${{ steps.check-author.outputs.pr_number }}
 
       - name: Update labels on success

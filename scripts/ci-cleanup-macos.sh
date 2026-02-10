@@ -56,8 +56,8 @@ PW_CACHE="${HOME}/Library/Caches/ms-playwright"
 if [ -d "$PW_CACHE" ]; then
   # Detect the expected chromium revision from the installed playwright
   CURRENT_CHROMIUM=""
-  if command -v npx &>/dev/null && [ -f "node_modules/.package-lock.json" ] || [ -d "node_modules/playwright-core" ]; then
-    CURRENT_CHROMIUM=$(npx playwright --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
+  if command -v node &>/dev/null && { [ -f "node_modules/.package-lock.json" ] || [ -d "node_modules/playwright-core" ]; }; then
+    CURRENT_CHROMIUM=$(node -e "const b=require('./node_modules/playwright-core/browsers.json').browsers.find(x=>x.name==='chromium'); console.log(b.revision)" 2>/dev/null || true)
   fi
 
   removed_browsers=0
@@ -95,8 +95,8 @@ fi
 NPM_CACHE="${HOME}/.npm"
 if [ -d "$NPM_CACHE/_cacache" ]; then
   cache_size=$(du -sh "$NPM_CACHE/_cacache" 2>/dev/null | cut -f1 || echo "?")
-  echo "Pruning npm cache (${cache_size})..."
-  npm cache clean --force 2>/dev/null || true
+  echo "Clearing npm cache (${cache_size})..."
+  rm -rf "$NPM_CACHE/_cacache"
 fi
 if [ -d "$NPM_CACHE/_logs" ]; then
   echo "Removing npm logs"

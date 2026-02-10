@@ -73,6 +73,14 @@ If the output under test contains non-deterministic or platform-specific content
 
 The Pro mode build settings (Web Access, Turbo Edits, Smart Context) are inside a collapsed `<Accordion>` in `ProModeSelector`. E2E test helpers must expand the accordion before interacting with elements inside it. The `ProModesDialog` class in `e2e-tests/helpers/page-objects/dialogs/ProModesDialog.ts` has an `expandBuildModeSettings()` method that handles this — call it before clicking any build mode setting buttons.
 
+## Terminal tests and interactive shell output
+
+The terminal feature spawns real interactive shell processes. Shell prompts and output arrive asynchronously and can appear before React empty-state placeholders (like "Terminal ready") render. Don't assert on placeholder text that's only visible when `lines.length === 0` — instead assert on session state (input enabled/disabled) or check that previous output was cleared.
+
+## Posting PR review replies with `gh api`
+
+When using `gh api` to reply to PR review comments, write the reply body to a file and use `-f body=@/tmp/reply.txt` to avoid shell metacharacter issues with hook validation. Direct inline strings with special characters (backticks, quotes, newlines) will be blocked by security hooks.
+
 ## E2E test fixtures with .dyad directories
 
 When adding E2E test fixtures that need a `.dyad` directory for testing:

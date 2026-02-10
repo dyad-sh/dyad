@@ -119,8 +119,10 @@ test.describe("Terminal Drawer", () => {
       // Create new session
       await po.terminal.createNewSession();
 
-      // Output should be cleared and show ready message
-      await po.terminal.expectReady();
+      // Previous output should be cleared
+      await po.terminal.expectOutputNotContains("$ echo first session");
+      // Input should be enabled for the new session
+      await po.terminal.expectInputEnabled();
     });
 
     test("should disable input when no session is active", async ({ po }) => {

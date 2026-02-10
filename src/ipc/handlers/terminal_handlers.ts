@@ -1,4 +1,5 @@
 import { spawn, ChildProcess } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
 import os from "node:os";
 import log from "electron-log";
 import { BrowserWindow } from "electron";
@@ -26,7 +27,7 @@ const terminalSessions = new Map<string, TerminalProcess>();
  */
 function getDefaultShell(): string {
   if (process.platform === "win32") {
-    // Prefer PowerShell on Windows, fall back to cmd
+    // Use the system default shell (typically cmd.exe via COMSPEC)
     return process.env.COMSPEC || "cmd.exe";
   }
   // On Unix-like systems, use the user's configured shell or bash
@@ -107,12 +108,16 @@ export function registerTerminalHandlers() {
       logger.debug(`Shell: ${shell}, Args: ${shellArgs.join(" ")}`);
 
       // Set up environment with proper PATH
+      const homeDir = process.env.HOME || os.homedir();
       const env = {
         ...process.env,
         TERM: "xterm-256color",
         COLORTERM: "truecolor",
-        // Ensure we have a proper HOME directory
-        HOME: process.env.HOME || os.homedir(),
+        // Ensure we have a proper home directory for all platforms
+        HOME: homeDir,
+        ...(process.platform === "win32" && {
+          USERPROFILE: process.env.USERPROFILE || homeDir,
+        }),
         // Force color output for common tools
         FORCE_COLOR: "1",
         CLICOLOR_FORCE: "1",
@@ -139,14 +144,19 @@ export function registerTerminalHandlers() {
         session,
       });
 
+      // Use StringDecoder to correctly handle multi-byte UTF-8 characters
+      // split across chunks
+      const stdoutDecoder = new StringDecoder("utf8");
+      const stderrDecoder = new StringDecoder("utf8");
+
       // Handle stdout
       terminalProcess.stdout?.on("data", (data: Buffer) => {
-        sendTerminalOutput(sessionId, data.toString(), "stdout");
+        sendTerminalOutput(sessionId, stdoutDecoder.write(data), "stdout");
       });
 
       // Handle stderr
       terminalProcess.stderr?.on("data", (data: Buffer) => {
-        sendTerminalOutput(sessionId, data.toString(), "stderr");
+        sendTerminalOutput(sessionId, stderrDecoder.write(data), "stderr");
       });
 
       // Handle process exit
@@ -162,14 +172,20 @@ export function registerTerminalHandlers() {
         sendSessionClosed(sessionId);
       });
 
-      // Handle process errors
+      // Handle process errors (e.g., shell not found, permission denied)
       terminalProcess.on("error", (error) => {
         logger.error(`Terminal session ${sessionId} error:`, error);
+        const termProcess = terminalSessions.get(sessionId);
+        if (termProcess) {
+          termProcess.session.isRunning = false;
+        }
+        terminalSessions.delete(sessionId);
         sendTerminalOutput(
           sessionId,
           `\r\nTerminal error: ${error.message}\r\n`,
           "system",
         );
+        sendSessionClosed(sessionId);
       });
 
       // Send initial welcome message
@@ -247,8 +263,12 @@ export function registerTerminalHandlers() {
 
           // Force kill after timeout
           setTimeout(() => {
-            if (termProcess.session.isRunning) {
-              termProcess.process.kill("SIGKILL");
+            try {
+              if (termProcess.session.isRunning) {
+                termProcess.process.kill("SIGKILL");
+              }
+            } catch {
+              // Process may have already exited
             }
           }, 1000);
         } catch (error) {

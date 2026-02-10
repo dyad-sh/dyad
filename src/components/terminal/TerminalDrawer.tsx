@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAtom, useAtomValue } from "jotai";
-import { isTerminalOpenAtom, terminalHeightAtom } from "@/atoms/viewAtoms";
+import {
+  isTerminalOpenAtom,
+  terminalHeightAtom,
+  isTerminalMaximizedAtom,
+} from "@/atoms/viewAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { ipc, type TerminalOutput, type TerminalSession } from "@/ipc/types";
 import { cn } from "@/lib/utils";
@@ -25,6 +29,7 @@ interface TerminalLine {
 
 const MIN_HEIGHT = 150;
 const MAX_HEIGHT = 600;
+const MAX_LINES = 5000;
 
 export function TerminalDrawer() {
   const [isOpen, setIsOpen] = useAtom(isTerminalOpenAtom);
@@ -35,12 +40,14 @@ export function TerminalDrawer() {
   const [lines, setLines] = useState<TerminalLine[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
-  const [isMaximized, setIsMaximized] = useState(false);
+  const [isMaximized, setIsMaximized] = useAtom(isTerminalMaximizedAtom);
+  const [hasSessionError, setHasSessionError] = useState(false);
 
   const terminalRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const resizeRef = useRef<HTMLDivElement>(null);
   const lineIdCounter = useRef(0);
+  const sessionIdRef = useRef<string | null>(null);
 
   // Auto-scroll to bottom when new lines are added
   useEffect(() => {
@@ -49,25 +56,36 @@ export function TerminalDrawer() {
     }
   }, [lines]);
 
-  // Subscribe to terminal output events
+  // Keep sessionIdRef in sync with session state
+  useEffect(() => {
+    sessionIdRef.current = session?.id ?? null;
+  }, [session]);
+
+  // Subscribe to terminal output events (using ref to avoid stale closures)
   useEffect(() => {
     const unsubscribeOutput = ipc.events.terminal.onOutput(
       (payload: TerminalOutput) => {
-        if (session && payload.sessionId === session.id) {
+        if (
+          sessionIdRef.current &&
+          payload.sessionId === sessionIdRef.current
+        ) {
           const newLine: TerminalLine = {
             id: `line-${lineIdCounter.current++}`,
             content: payload.data,
             type: payload.type,
             timestamp: Date.now(),
           };
-          setLines((prev) => [...prev, newLine]);
+          setLines((prev) => [...prev, newLine].slice(-MAX_LINES));
         }
       },
     );
 
     const unsubscribeClose = ipc.events.terminal.onSessionClosed(
       (payload: { sessionId: string }) => {
-        if (session && payload.sessionId === session.id) {
+        if (
+          sessionIdRef.current &&
+          payload.sessionId === sessionIdRef.current
+        ) {
           setSession(null);
           const newLine: TerminalLine = {
             id: `line-${lineIdCounter.current++}`,
@@ -75,7 +93,7 @@ export function TerminalDrawer() {
             type: "system",
             timestamp: Date.now(),
           };
-          setLines((prev) => [...prev, newLine]);
+          setLines((prev) => [...prev, newLine].slice(-MAX_LINES));
         }
       },
     );
@@ -84,13 +102,14 @@ export function TerminalDrawer() {
       unsubscribeOutput();
       unsubscribeClose();
     };
-  }, [session]);
+  }, []);
 
   // Create a new terminal session
   const createSession = useCallback(async () => {
     if (!selectedAppId || isConnecting) return;
 
     setIsConnecting(true);
+    setHasSessionError(false);
     setLines([]);
 
     try {
@@ -99,6 +118,7 @@ export function TerminalDrawer() {
       });
       setSession(newSession);
     } catch (error) {
+      setHasSessionError(true);
       const errorMessage =
         error instanceof Error ? error.message : "Failed to create session";
       const errorLine: TerminalLine = {
@@ -138,7 +158,7 @@ export function TerminalDrawer() {
         type: "input",
         timestamp: Date.now(),
       };
-      setLines((prev) => [...prev, inputLine]);
+      setLines((prev) => [...prev, inputLine].slice(-MAX_LINES));
 
       // Send command to terminal
       try {
@@ -155,7 +175,7 @@ export function TerminalDrawer() {
           type: "system",
           timestamp: Date.now(),
         };
-        setLines((prev) => [...prev, errorLine]);
+        setLines((prev) => [...prev, errorLine].slice(-MAX_LINES));
       }
 
       setInputValue("");
@@ -168,6 +188,7 @@ export function TerminalDrawer() {
     (e: React.KeyboardEvent) => {
       if (e.key === "c" && e.ctrlKey) {
         // Send SIGINT
+        e.preventDefault();
         if (session) {
           ipc.terminal.write({ sessionId: session.id, data: "\x03" });
         }
@@ -228,13 +249,27 @@ export function TerminalDrawer() {
 
   // Auto-create session when opening with an app selected
   useEffect(() => {
-    if (isOpen && selectedAppId && !session && !isConnecting) {
+    if (
+      isOpen &&
+      selectedAppId &&
+      !session &&
+      !isConnecting &&
+      !hasSessionError
+    ) {
       createSession();
     }
-  }, [isOpen, selectedAppId, session, isConnecting, createSession]);
+  }, [
+    isOpen,
+    selectedAppId,
+    session,
+    isConnecting,
+    hasSessionError,
+    createSession,
+  ]);
 
   // Clean up session when app changes
   useEffect(() => {
+    setHasSessionError(false);
     if (session && selectedAppId !== session.appId) {
       closeSession();
     }
@@ -339,8 +374,8 @@ export function TerminalDrawer() {
             variant="ghost"
             size="icon"
             className="size-7 text-gray-400 hover:text-red-400 hover:bg-gray-700"
-            onClick={() => {
-              closeSession();
+            onClick={async () => {
+              await closeSession();
               setIsOpen(false);
             }}
             title="Close and end session"

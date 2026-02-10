@@ -14,3 +14,4 @@ export const activeSettingsSectionAtom = atom<string | null>(
 // Terminal drawer state
 export const isTerminalOpenAtom = atom(false);
 export const terminalHeightAtom = atom(300); // Height in pixels
+export const isTerminalMaximizedAtom = atom(false);

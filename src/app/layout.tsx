@@ -21,7 +21,11 @@ import { useZoomShortcuts } from "@/hooks/useZoomShortcuts";
 import i18n from "@/i18n";
 import { LanguageSchema } from "@/lib/schemas";
 import { TerminalDrawer } from "@/components/terminal/TerminalDrawer";
-import { isTerminalOpenAtom, terminalHeightAtom } from "@/atoms/viewAtoms";
+import {
+  isTerminalOpenAtom,
+  terminalHeightAtom,
+  isTerminalMaximizedAtom,
+} from "@/atoms/viewAtoms";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   const { refreshAppIframe } = useRunApp();
@@ -45,6 +49,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   // Terminal drawer state
   const isTerminalOpen = useAtomValue(isTerminalOpenAtom);
   const terminalHeight = useAtomValue(terminalHeightAtom);
+  const isTerminalMaximized = useAtomValue(isTerminalMaximizedAtom);
+  const effectiveTerminalHeight = isTerminalMaximized ? 600 : terminalHeight;
 
   useEffect(() => {
     const zoomLevel = settings?.zoomLevel ?? DEFAULT_ZOOM_LEVEL;
@@ -119,7 +125,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               className="flex w-full overflow-x-hidden mt-12 mr-4 border-t border-l border-border rounded-lg bg-background"
               style={{
                 height: isTerminalOpen
-                  ? `calc(100vh - 3rem - 1rem - ${terminalHeight}px)`
+                  ? `calc(100vh - 3rem - 1rem - ${effectiveTerminalHeight}px)`
                   : "calc(100vh - 3rem - 1rem)",
                 marginBottom: isTerminalOpen ? 0 : "1rem",
                 transition:

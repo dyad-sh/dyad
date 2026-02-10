@@ -2,6 +2,9 @@ import { ipcMain, IpcMainInvokeEvent } from "electron";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 
+// Channels whose arguments should not be logged (may contain sensitive user input)
+const REDACTED_CHANNELS = new Set(["terminal:write"]);
+
 export function createLoggedHandler(logger: log.LogFunctions) {
   return (
     channel: string,
@@ -10,7 +13,10 @@ export function createLoggedHandler(logger: log.LogFunctions) {
     ipcMain.handle(
       channel,
       async (event: IpcMainInvokeEvent, ...args: any[]) => {
-        logger.log(`IPC: ${channel} called with args: ${JSON.stringify(args)}`);
+        const argsStr = REDACTED_CHANNELS.has(channel)
+          ? "[redacted]"
+          : JSON.stringify(args);
+        logger.log(`IPC: ${channel} called with args: ${argsStr}`);
         try {
           const result = await fn(event, ...args);
           logger.log(
@@ -18,10 +24,7 @@ export function createLoggedHandler(logger: log.LogFunctions) {
           );
           return result;
         } catch (error) {
-          logger.error(
-            `Error in ${fn.name}: args: ${JSON.stringify(args)}`,
-            error,
-          );
+          logger.error(`Error in ${fn.name}: args: ${argsStr}`, error);
           throw new Error(`[${channel}] ${error}`);
         }
       },

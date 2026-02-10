@@ -173,10 +173,15 @@ jobs:
           # (using GITHUB_REPOSITORY which is always the base repo in workflow_run events).
           # Setting pushurl separately ensures git push still targets the fork,
           # because git uses pushurl over url when both are configured.
-          git remote set-url --push origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ steps.pr-info.outputs.head_repo }}.git"
+          #
+          # We use PR_CONTENTS_RW_GITHUB_TOKEN (a PAT) instead of GITHUB_TOKEN so that
+          # the push creates real PR events (synchronize) that trigger downstream workflows
+          # like CI. Pushes made with GITHUB_TOKEN are silently ignored by GitHub to prevent
+          # infinite loops.
+          git remote set-url --push origin "https://x-access-token:${PR_CONTENTS_RW_GITHUB_TOKEN}@github.com/${{ steps.pr-info.outputs.head_repo }}.git"
           echo "Configured pushurl to ${{ steps.pr-info.outputs.head_repo }}"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_CONTENTS_RW_GITHUB_TOKEN: ${{ secrets.PR_CONTENTS_RW_GITHUB_TOKEN }}
 
       - name: Update labels to pending
         if: steps.pr-info.outputs.should_continue == 'true'
@@ -204,14 +209,15 @@ jobs:
             Now run the following command:
             /dyad:pr-fix ${{ steps.pr-info.outputs.pr_number }}
 
-      - name: Re-trigger workflows if commits were pushed
-        # Use always() to ensure commits get tested even if Claude Code fails partway through
+      - name: Check if commits were pushed
+        # Use always() to ensure we detect commits even if Claude Code fails partway through.
+        # The push itself (made with PR_CONTENTS_RW_GITHUB_TOKEN) triggers downstream workflows
+        # like CI, BugBot, and Claude PR Review naturally via pull_request synchronize events.
         if: steps.pr-info.outputs.should_continue == 'true' && always()
         id: retrigger
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Fetch using the PR's head ref to handle both fork and same-repo PRs correctly
           # Use the GitHub API to get the current head SHA, avoiding race conditions with git fetch
           PR_HEAD_SHA=$(gh pr view ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }} --json headRefOid --jq '.headRefOid')
           if [ -z "$PR_HEAD_SHA" ]; then
@@ -222,34 +228,9 @@ jobs:
 
           if [ "${{ steps.before-claude.outputs.sha }}" != "$PR_HEAD_SHA" ]; then
             echo "Claude pushed new commits (before: ${{ steps.before-claude.outputs.sha }}, after: $PR_HEAD_SHA)"
-            echo "Re-triggering workflows via workflow_dispatch"
             echo "commits_pushed=true" >> $GITHUB_OUTPUT
-            # Use workflow_dispatch to trigger workflows - this works with GITHUB_TOKEN unlike PR events
-            # which are blocked to prevent infinite loops
-            #
-            # Note: We use the default branch (no --ref) instead of head_branch because for fork PRs,
-            # head_branch only exists in the fork repo, not the main repo. The workflows will checkout
-            # the correct PR code using the pr_number input.
-
-            # Trigger CI
-            gh workflow run ci.yml \
-              --repo ${{ github.repository }} \
-              -f pr_number=${{ steps.pr-info.outputs.pr_number }} \
-              || echo "::warning::Failed to trigger CI workflow"
-
-            # Trigger BugBot
-            gh workflow run bugbot-trigger.yml \
-              --repo ${{ github.repository }} \
-              -f pr_number=${{ steps.pr-info.outputs.pr_number }} \
-              || echo "::warning::Failed to trigger BugBot workflow"
-
-            # Trigger Claude PR Review
-            gh workflow run claude-pr-review.yml \
-              --repo ${{ github.repository }} \
-              -f pr_number=${{ steps.pr-info.outputs.pr_number }} \
-              || echo "::warning::Failed to trigger Claude PR Review workflow"
           else
-            echo "No new commits pushed, skipping workflow re-triggers"
+            echo "No new commits pushed"
             echo "commits_pushed=false" >> $GITHUB_OUTPUT
           fi
 

@@ -33,7 +33,7 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const headSha = context.payload.workflow_run.head_sha;
-            const currentCheckSuiteId = context.payload.workflow_run.check_suite_id;
+            const ciCheckSuiteId = context.payload.workflow_run.check_suite_id;
 
             console.log(`Checking PR for head SHA: ${headSha}`);
 
@@ -43,7 +43,10 @@ jobs:
 
             let pr;
             if (workflowRunPRs && workflowRunPRs.length > 0) {
-              // Use the PR from the workflow run event
+              if (workflowRunPRs.length > 1) {
+                console.log(`Multiple PRs (${workflowRunPRs.length}) associated with workflow run — refusing to merge to avoid ambiguity`);
+                return;
+              }
               const prNumber = workflowRunPRs[0].number;
               const { data: prData } = await github.rest.pulls.get({
                 owner,
@@ -96,19 +99,18 @@ jobs:
             const allCheckSuites = await github.paginate(
               github.rest.checks.listSuitesForRef,
               { owner, repo, ref: headSha, per_page: 100 },
-              (response) => response.data.check_suites
+              (response) => response.data
             );
 
             const pendingOrFailed = allCheckSuites.filter(suite => {
               // Skip neutral conclusions (e.g., skipped workflows)
-              if (suite.conclusion === 'neutral' || suite.conclusion === 'skipped') {
+              if (suite.conclusion === 'neutral' || suite.conclusion === 'skipped' || suite.conclusion === 'cancelled') {
                 console.log(`Skipping suite with conclusion '${suite.conclusion}': ${suite.app?.name || 'Unknown'}`);
                 return false;
               }
-              // Exclude this workflow's own check suite (it's still in-progress)
-              // This prevents the workflow from blocking itself
-              if (suite.id === currentCheckSuiteId) {
-                console.log(`Skipping own check suite (id=${suite.id})`);
+              // Exclude the CI workflow's check suite (already completed successfully — it triggered this workflow)
+              if (suite.id === ciCheckSuiteId) {
+                console.log(`Skipping CI check suite (id=${suite.id})`);
                 return false;
               }
               // Skip check suites that are in-progress (conclusion is null)

@@ -936,10 +936,15 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       const baseUrl = new URL(appUrl).origin;
       const newUrl = `${baseUrl}${path}`;
 
-      // Navigate to the URL
-      iframeRef.current.contentWindow.location.href = newUrl;
-
-      // iframeRef.current.src = newUrl;
+      // Use postMessage to navigate (same as back/forward) - this uses location.replace()
+      // which provides smooth navigation without the black screen flicker that location.href causes
+      iframeRef.current.contentWindow.postMessage(
+        {
+          type: "navigate",
+          payload: { url: newUrl },
+        },
+        "*",
+      );
 
       // Update navigation history
       const newHistory = [
@@ -950,6 +955,26 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       setCurrentHistoryPosition(newHistory.length - 1);
       setCanGoBack(true);
       setCanGoForward(false);
+
+      // Update iframe URL ref to match
+      currentIframeUrlRef.current = newUrl;
+
+      // Update preservedUrls to match navigation (for HMR remounts)
+      if (selectedAppId) {
+        // Clear preserved URL if navigating to root, otherwise update it
+        if (path === "/" || path === "") {
+          setPreservedUrls((prev) => {
+            const newUrls = { ...prev };
+            delete newUrls[selectedAppId];
+            return newUrls;
+          });
+        } else {
+          setPreservedUrls((prev) => ({
+            ...prev,
+            [selectedAppId]: newUrl,
+          }));
+        }
+      }
     }
   };
 

@@ -246,6 +246,7 @@ export function TerminalDrawer() {
 
   return (
     <div
+      data-testid="terminal-drawer"
       className="fixed bottom-0 left-0 right-0 z-50 flex flex-col bg-[#1e1e1e] border-t border-gray-700 shadow-2xl"
       style={{ height: displayHeight }}
     >
@@ -261,12 +262,18 @@ export function TerminalDrawer() {
           <Terminal className="size-4 text-gray-400" />
           <span className="text-sm font-medium text-gray-200">Terminal</span>
           {session && (
-            <span className="text-xs text-gray-500 truncate max-w-[200px]">
+            <span
+              data-testid="terminal-session-info"
+              className="text-xs text-gray-500 truncate max-w-[200px]"
+            >
               {session.cwd}
             </span>
           )}
           {isConnecting && (
-            <span className="text-xs text-yellow-500 animate-pulse">
+            <span
+              data-testid="terminal-connecting"
+              className="text-xs text-yellow-500 animate-pulse"
+            >
               Connecting...
             </span>
           )}
@@ -275,6 +282,7 @@ export function TerminalDrawer() {
         <div className="flex items-center gap-1">
           {/* New session button */}
           <Button
+            data-testid="terminal-new-session-button"
             variant="ghost"
             size="icon"
             className="size-7 text-gray-400 hover:text-gray-200 hover:bg-gray-700"
@@ -287,6 +295,7 @@ export function TerminalDrawer() {
 
           {/* Clear button */}
           <Button
+            data-testid="terminal-clear-button"
             variant="ghost"
             size="icon"
             className="size-7 text-gray-400 hover:text-gray-200 hover:bg-gray-700"
@@ -298,6 +307,7 @@ export function TerminalDrawer() {
 
           {/* Maximize/Minimize */}
           <Button
+            data-testid="terminal-maximize-button"
             variant="ghost"
             size="icon"
             className="size-7 text-gray-400 hover:text-gray-200 hover:bg-gray-700"
@@ -313,6 +323,7 @@ export function TerminalDrawer() {
 
           {/* Collapse */}
           <Button
+            data-testid="terminal-collapse-button"
             variant="ghost"
             size="icon"
             className="size-7 text-gray-400 hover:text-gray-200 hover:bg-gray-700"
@@ -324,6 +335,7 @@ export function TerminalDrawer() {
 
           {/* Close */}
           <Button
+            data-testid="terminal-close-button"
             variant="ghost"
             size="icon"
             className="size-7 text-gray-400 hover:text-red-400 hover:bg-gray-700"
@@ -341,6 +353,7 @@ export function TerminalDrawer() {
       {/* Terminal content */}
       <div
         ref={terminalRef}
+        data-testid="terminal-output"
         className="flex-1 overflow-y-auto overflow-x-hidden p-2 font-mono text-sm leading-relaxed"
         onClick={() => inputRef.current?.focus()}
       >
@@ -359,6 +372,7 @@ export function TerminalDrawer() {
           lines.map((line) => (
             <div
               key={line.id}
+              data-testid={`terminal-line-${line.id}`}
               className={cn(
                 "whitespace-pre-wrap break-all",
                 line.type === "stderr" && "text-red-400",
@@ -383,6 +397,7 @@ export function TerminalDrawer() {
         <span className="text-green-400 font-mono text-sm">$</span>
         <input
           ref={inputRef}
+          data-testid="terminal-input"
           type="text"
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}

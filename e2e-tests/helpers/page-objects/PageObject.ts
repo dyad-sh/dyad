@@ -30,6 +30,7 @@ import { ModelPicker } from "./components/ModelPicker";
 import { Settings } from "./components/Settings";
 import { AppManagement } from "./components/AppManagement";
 import { PromptLibrary } from "./components/PromptLibrary";
+import { Terminal } from "./components/Terminal";
 
 // Import dialog page objects
 import { ContextFilesPickerDialog } from "./dialogs/ContextFilesPickerDialog";
@@ -51,6 +52,7 @@ export class PageObject {
   public settings: Settings;
   public appManagement: AppManagement;
   public promptLibrary: PromptLibrary;
+  public terminal: Terminal;
 
   constructor(
     public electronApp: ElectronApplication,
@@ -72,6 +74,7 @@ export class PageObject {
     this.settings = new Settings(this.page, userDataDir);
     this.appManagement = new AppManagement(this.page, electronApp, userDataDir);
     this.promptLibrary = new PromptLibrary(this.page);
+    this.terminal = new Terminal(this.page);
   }
 
   // ================================

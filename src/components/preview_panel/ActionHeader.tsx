@@ -268,26 +268,18 @@ export const ActionHeader = () => {
       </div>
       {/* Chat activity bell and terminal toggle */}
       <div className="flex items-center gap-1">
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                data-testid="terminal-toggle-button"
-                className={`no-app-region-drag flex items-center justify-center p-1.5 rounded-md text-sm transition-colors ${
-                  isTerminalOpen
-                    ? "bg-[var(--background-lightest)] text-foreground"
-                    : "hover:bg-[var(--background-darkest)]"
-                }`}
-                onClick={() => setIsTerminalOpen(!isTerminalOpen)}
-              />
-            }
-          >
-            <Terminal size={16} />
-          </TooltipTrigger>
-          <TooltipContent>
-            {isTerminalOpen ? "Close terminal" : "Open terminal"}
-          </TooltipContent>
-        </Tooltip>
+        <button
+          data-testid="terminal-toggle-button"
+          className={`no-app-region-drag flex items-center justify-center p-1.5 rounded-md text-sm transition-colors ${
+            isTerminalOpen
+              ? "bg-[var(--background-lightest)] text-foreground"
+              : "hover:bg-[var(--background-darkest)]"
+          }`}
+          onClick={() => setIsTerminalOpen(!isTerminalOpen)}
+          title={isTerminalOpen ? "Close terminal" : "Open terminal"}
+        >
+          <Terminal size={16} />
+        </button>
         <ChatActivityButton />
         <DropdownMenu>
           <Tooltip>

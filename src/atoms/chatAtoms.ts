@@ -15,6 +15,24 @@ export const homeChatInputValueAtom = atom<string>("");
 // Used for scrolling to the bottom of the chat messages (per chat)
 export const chatStreamCountByIdAtom = atom<Map<number, number>>(new Map());
 export const recentStreamChatIdsAtom = atom<Set<number>>(new Set<number>());
+export const recentViewedChatIdsAtom = atom<number[]>([]);
+export const pushRecentViewedChatIdAtom = atom(
+  null,
+  (get, set, chatId: number) => {
+    const nextIds = get(recentViewedChatIdsAtom).filter((id) => id !== chatId);
+    nextIds.unshift(chatId);
+    set(recentViewedChatIdsAtom, nextIds);
+  },
+);
+export const removeRecentViewedChatIdAtom = atom(
+  null,
+  (get, set, chatId: number) => {
+    set(
+      recentViewedChatIdsAtom,
+      get(recentViewedChatIdsAtom).filter((id) => id !== chatId),
+    );
+  },
+);
 
 export const attachmentsAtom = atom<FileAttachment[]>([]);
 

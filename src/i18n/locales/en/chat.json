@@ -2,6 +2,7 @@
   "newChat": "New Chat",
   "recentChats": "Recent Chats",
   "searchChats": "Search chats",
+  "closeChatTab": "Close tab: {{title}}",
   "loadingChats": "Loading chats...",
   "noChatsFound": "No chats found",
   "renameChat": "Rename Chat",

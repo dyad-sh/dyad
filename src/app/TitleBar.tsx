@@ -1,4 +1,4 @@
-import { useAtom } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useRouter } from "@tanstack/react-router";
@@ -22,6 +22,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ChatActivityButton } from "@/components/chat/ChatActivity";
+import { ChatTabs } from "@/components/chat/ChatTabs";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { MoreVertical, Cog, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
@@ -36,6 +38,7 @@ import { useTranslation } from "react-i18next";
 
 export const TitleBar = () => {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
+  const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { apps } = useLoadApps();
   const { navigate } = useRouter();
   const { settings, refreshSettings } = useSettings();
@@ -93,8 +96,9 @@ export const TitleBar = () => {
         </Button>
         {isDyadPro && <DyadProButton isDyadProEnabled={isDyadProEnabled} />}
 
-        {/* Spacer to push window controls to the right */}
-        <div className="flex-1" />
+        <div className="flex-1 min-w-0 overflow-hidden no-app-region-drag">
+          <ChatTabs appId={selectedAppId} selectedChatId={selectedChatId} />
+        </div>
 
         <TitleBarActions />
 

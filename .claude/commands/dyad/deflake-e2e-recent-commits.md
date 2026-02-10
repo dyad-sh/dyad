@@ -8,7 +8,7 @@ Automatically gather flaky E2E tests from recent CI runs on the main branch and 
 
 ## Task Tracking
 
-**You MUST use the TaskCreate and TaskUpdate tools to track your progress.** At the start, create tasks for each major step below. Mark each task as `in_progress` when you start it and `completed` when you finish.
+**You MUST use the TodoWrite tool to track your progress.** At the start, create todos for each major step below. Mark each todo as `in_progress` when you start it and `completed` when you finish.
 
 ## Instructions
 
@@ -17,8 +17,10 @@ Automatically gather flaky E2E tests from recent CI runs on the main branch and 
    List recent CI workflow runs triggered by pushes to main:
 
    ```
-   gh api "repos/{owner}/{repo}/actions/workflows/ci.yml/runs?branch=main&event=push&per_page=<COMMIT_COUNT>&status=completed" --jq '.workflow_runs[] | {id, head_sha, conclusion}'
+   gh api "repos/{owner}/{repo}/actions/workflows/ci.yml/runs?branch=main&event=push&per_page=<COMMIT_COUNT * 3>&status=completed" --jq '.workflow_runs[] | select(.conclusion == "success" or .conclusion == "failure") | {id, head_sha, conclusion}'
    ```
+
+   **Note:** We fetch 3x the desired commit count because many runs may be `cancelled` (due to concurrency groups). Filter to only `success` and `failure` conclusions to get runs that actually completed and have artifacts.
 
    Use `$ARGUMENTS` as the commit count, defaulting to 10 if not provided.
 
@@ -27,7 +29,7 @@ Automatically gather flaky E2E tests from recent CI runs on the main branch and 
    a. Find the html-report artifact for the run:
 
    ```
-   gh api "repos/{owner}/{repo}/actions/runs/<run_id>/artifacts?per_page=30" --jq '.artifacts[] | select(.name | startswith("html-report")) | .name'
+   gh api "repos/{owner}/{repo}/actions/runs/<run_id>/artifacts?per_page=30" --jq '.artifacts[] | select(.name | startswith("html-report")) | select(.expired == false) | .name'
    ```
 
    b. Download it using `gh run download`:
@@ -36,11 +38,11 @@ Automatically gather flaky E2E tests from recent CI runs on the main branch and 
    gh run download <run_id> --name <artifact_name> --dir /tmp/playwright-report-<run_id>
    ```
 
-   c. Parse `/tmp/playwright-report-<run_id>/results.json` to extract flaky tests. Write a Python script inside the `.claude/` directory to do this parsing. Flaky tests are those where the final result status is `"passed"` but a prior result has status `"failed"`, `"timedOut"`, or `"interrupted"`. The test title is built by joining parent suite titles with `>` separators plus the spec title.
+   c. Parse `/tmp/playwright-report-<run_id>/results.json` to extract flaky tests. Write a Node.js script inside the `.claude/` directory to do this parsing. Flaky tests are those where the final result status is `"passed"` but a prior result has status `"failed"`, `"timedOut"`, or `"interrupted"`. The test title is built by joining parent suite titles (including the spec file path) and the test title, separated by `>`.
 
    d. Clean up the downloaded artifact directory after parsing.
 
-   **Note:** Some runs may not have an html-report artifact (e.g., if they were cancelled early or the merge-reports job didn't complete). Skip these runs.
+   **Note:** Some runs may not have an html-report artifact (e.g., if they were cancelled early, the merge-reports job didn't complete, or artifacts have expired past the 3-day retention period). Skip these runs and continue to the next one.
 
 2. **Parse flaky tests from results:**
 

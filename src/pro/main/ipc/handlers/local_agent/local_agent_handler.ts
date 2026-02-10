@@ -449,12 +449,7 @@ export async function handleLocalAgentStream(
     // (pre-compaction messages are preserved in DB for the user but not sent to LLM)
     const messageHistory: ModelMessage[] = messageOverride
       ? messageOverride
-      : buildChatMessageHistory(chat.messages, {
-          // Mid-turn compaction summaries are already inlined into the
-          // assistant turn content, so exclude the separate DB summary row
-          // to avoid duplicated compaction blocks on later turns.
-          excludeMessageIds: hiddenMessageIdsForStreaming,
-        });
+      : buildChatMessageHistory(chat.messages);
 
     // Used to swap out pre-compaction history while preserving in-flight turn steps.
     let baseMessageHistoryCount = messageHistory.length;
@@ -571,6 +566,7 @@ export async function handleLocalAgentStream(
       onStepFinish: async (step) => {
         if (
           settings.enableContextCompaction === false ||
+          compactedMidTurn ||
           typeof step.usage.totalTokens !== "number"
         ) {
           return;
@@ -587,7 +583,6 @@ export async function handleLocalAgentStream(
         if (
           shouldCompact &&
           step.toolCalls.length > 0 &&
-          !compactedMidTurn &&
           !compactionFailedMidTurn
         ) {
           compactBeforeNextStep = true;
@@ -751,10 +746,19 @@ export async function handleLocalAgentStream(
       const steps = await streamResult.steps;
       const aiMessagesForPersistence =
         compactedMidTurn && postMidTurnCompactionStartStep !== null
-          ? response.messages.slice(
-              steps[postMidTurnCompactionStartStep - 2]?.response.messages
-                .length ?? 0,
-            )
+          ? (() => {
+              // stepNumber is 0-indexed (from AI SDK: stepNumber = steps.length).
+              // We want the step just before compaction to determine how many
+              // response messages to skip (they belong to pre-compaction context).
+              const prevStepMessages =
+                steps[postMidTurnCompactionStartStep - 1]?.response.messages;
+              if (!prevStepMessages) {
+                logger.warn(
+                  `No step data found at index ${postMidTurnCompactionStartStep - 1} for mid-turn compaction slicing; persisting all messages`,
+                );
+              }
+              return response.messages.slice(prevStepMessages?.length ?? 0);
+            })()
           : response.messages;
 
       const aiMessagesJson = getAiMessagesJsonIfWithinLimit(

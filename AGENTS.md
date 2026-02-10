@@ -124,6 +124,10 @@ When running GitHub Actions with `pull_request_target` on cross-repo PRs (from f
 
 In the AI SDK's `streamText`, `step.usage.totalTokens` in `onStepFinish` is **per-step** (single LLM call), not cumulative. The cumulative usage across all steps is only available in `onFinish` via `response.usage.totalTokens`. For context window comparisons (e.g., compaction thresholds), per-step usage is actually more accurate since each step's input tokens already include the full conversation context.
 
+### AI SDK stepNumber is 0-indexed
+
+In `prepareStep`, the AI SDK sets `stepNumber = steps.length`. The first call has `steps = []` so `stepNumber = 0`, the second call has one step so `stepNumber = 1`, etc. When writing tests that mock `prepareStep`, use 0-indexed step numbers to match real SDK behavior.
+
 ### Custom chat message indicators
 
 The `<dyad-status>` tag in chat messages renders as a collapsible status indicator box. Use it for system messages like compaction notifications:

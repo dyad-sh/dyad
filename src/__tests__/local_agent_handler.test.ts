@@ -502,7 +502,7 @@ describe("handleLocalAgentStream", () => {
           fullStream: (async function* () {
             await options.prepareStep?.({
               messages: firstStepMessages,
-              stepNumber: 1,
+              stepNumber: 0,
               steps: [],
               model: {},
               experimental_context: undefined,
@@ -522,7 +522,7 @@ describe("handleLocalAgentStream", () => {
             ];
             const preparedSecondStep = (await options.prepareStep?.({
               messages: secondStepMessages,
-              stepNumber: 2,
+              stepNumber: 1,
               steps: [],
               model: {},
               experimental_context: undefined,
@@ -532,6 +532,7 @@ describe("handleLocalAgentStream", () => {
             yield { type: "text-delta", text: "done" };
           })(),
           response: Promise.resolve({ messages: [] }),
+          steps: Promise.resolve([]),
         };
       };
 
@@ -706,7 +707,7 @@ describe("handleLocalAgentStream", () => {
           fullStream: (async function* () {
             await options.prepareStep?.({
               messages: firstStepMessages,
-              stepNumber: 1,
+              stepNumber: 0,
               steps: [],
               model: {},
               experimental_context: undefined,
@@ -723,7 +724,7 @@ describe("handleLocalAgentStream", () => {
             ];
             await options.prepareStep?.({
               messages: secondStepMessages,
-              stepNumber: 2,
+              stepNumber: 1,
               steps: [],
               model: {},
               experimental_context: undefined,

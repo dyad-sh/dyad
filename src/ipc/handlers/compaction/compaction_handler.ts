@@ -226,7 +226,7 @@ Note: This file may be large. Read only the sections you need or use grep to sea
       options?.createdAtStrategy === "now"
         ? new Date()
         : latestUserMessage
-          ? new Date(latestUserMessage.createdAt.getTime() - 1)
+          ? new Date(latestUserMessage.createdAt.getTime() - 1000)
           : new Date();
     await db.insert(messages).values({
       chatId,

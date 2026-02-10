@@ -36,10 +36,10 @@ import { useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
 export const TitleBar = () => {
-  const [selectedAppId] = useAtom(selectedAppIdAtom);
+  
   const selectedChatId = useAtomValue(selectedChatIdAtom);
-  const { apps } = useLoadApps();
-  const { navigate } = useRouter();
+  
+  
   const { settings, refreshSettings } = useSettings();
   const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false);
   const platform = useSystemPlatform();

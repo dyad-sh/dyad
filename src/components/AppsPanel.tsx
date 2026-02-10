@@ -34,7 +34,7 @@ export function AppsPanel({ show }: { show?: boolean }) {
       >
         {/* Left panel: App List */}
         <div className="w-1/2" {...(showingChats ? { inert: true } : {})}>
-          <AppList show={!showingChats} />
+          <AppList show />
         </div>
         {/* Right panel: Chat List */}
         <div className="w-1/2" {...(!showingChats ? { inert: true } : {})}>
@@ -51,7 +51,7 @@ export function AppsPanel({ show }: { show?: boolean }) {
               data-floating-app-anchor="sidebar"
               className="block h-7 mx-2"
             />
-            <ChatList show={showingChats} />
+            <ChatList show />
           </div>
         </div>
       </div>

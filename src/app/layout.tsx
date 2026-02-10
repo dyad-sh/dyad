@@ -180,6 +180,18 @@ function FloatingAppButton() {
     if (anchor) {
       const rect = anchor.getBoundingClientRect();
       setPos({ top: rect.top, left: rect.left });
+    } else {
+      // Anchor not in DOM (e.g., AppsPanel unmounted during hover transition)
+      // Fall back to titlebar anchor or hide
+      const fallback = document.querySelector(
+        '[data-floating-app-anchor="titlebar"]',
+      );
+      if (fallback) {
+        const rect = fallback.getBoundingClientRect();
+        setPos({ top: rect.top, left: rect.left });
+      } else {
+        setPos(null);
+      }
     }
   }, [inSidebar]);
 

@@ -78,12 +78,14 @@ The stashed changes will be automatically merged back after the rebase completes
 
 - **Before rebasing:** If `npm install` modified `package-lock.json` (common in CI/local), discard changes with `git restore package-lock.json` to avoid "unstaged changes" errors
 - When resolving import conflicts (e.g., `<<<<<<< HEAD` with different imports), keep **both** imports if both are valid and needed by the component. If both sides have unused imports, prefer HEAD (upstream) to stay aligned with main
+- **Formatting commits removing used code**: If incoming commit removes imports/declarations but HEAD keeps them and they're actively used in the component (e.g., `selectedChatId` used later), keep HEAD's version with the declarations. Verify usage before accepting removals from formatting/cleanup commits
 - When resolving conflicts in i18n-related commits, watch for duplicate constant definitions that conflict with imports from `@/lib/schemas` (e.g., `DEFAULT_ZOOM_LEVEL`)
 - If both sides of a conflict have valid imports/hooks, keep both and remove any duplicate constant redefinitions
-- When rebasing documentation/table conflicts (e.g., workflow README tables), prefer keeping **both** additions from HEAD and upstream - merge new rows/content from both branches rather than choosing one side
+- **When resolving conflicts in documentation files** (e.g., `rules/*.md`, workflow README tables): if both HEAD and incoming changes add new sections that don't conflict semantically, keep both sections rather than choosing one. Merge new rows/content from both branches to preserve all documentation.
 - **Complementary additions**: When both sides added new sections at the end of a file (e.g., both added different documentation tips), keep both sections rather than choosing one — they're not truly conflicting, just different additions
 - **React component wrapper conflicts**: When rebasing UI changes that conflict on wrapper div classes (e.g., `flex items-start space-x-2` vs `flex items-end gap-1`), keep the newer styling from the incoming commit but preserve any functional components (like dialogs or modals) that exist in HEAD but not in the incoming change
 - **Refactoring conflicts**: When incoming commits refactor code (e.g., extracting inline logic into helper functions), and HEAD has new features in the same area, integrate HEAD's features into the new structure. Example: if incoming code moves streaming logic to `runSingleStreamPass()` and HEAD adds mid-turn compaction to the inline code, add compaction support to the new function rather than keeping the old inline version
+- **Avoid redundant tips**: If a conflict includes a brief tip that duplicates content from a detailed section elsewhere in the same file, keep only the unique content and drop the redundant tip to avoid bloat
 
 ## Rebasing with uncommitted changes
 

@@ -7,6 +7,7 @@ import {
 } from "react-resizable-panels";
 import { ChatPanel } from "../components/ChatPanel";
 import { PreviewPanel } from "../components/preview_panel/PreviewPanel";
+import { RightActionSidebar } from "../components/RightActionSidebar";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
@@ -135,6 +136,7 @@ export default function ChatPage() {
       >
         <PreviewPanel />
       </Panel>
+      <RightActionSidebar />
     </PanelGroup>
   );
 }

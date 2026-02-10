@@ -1,48 +1,63 @@
-# Deflake E2E Tests from Recent PRs
+# Deflake E2E Tests from Recent Commits
 
-Automatically gather flaky E2E tests from recent PR Playwright summary comments and deflake them.
+Automatically gather flaky E2E tests from recent CI runs on the main branch and deflake them.
 
 ## Arguments
 
-- `$ARGUMENTS`: (Optional) Number of recent PRs to scan (default: 20)
+- `$ARGUMENTS`: (Optional) Number of recent commits to scan (default: 10)
 
 ## Task Tracking
 
-**You MUST use the TaskCreate and TaskUpdate tools to track your progress.** At the start, create tasks for each major step below. Mark each task as `in_progress` when you start it and `completed` when you finish.
+**You MUST use the TodoWrite tool to track your progress.** At the start, create todos for each major step below. Mark each todo as `in_progress` when you start it and `completed` when you finish.
 
 ## Instructions
 
-1. **Gather flaky tests from recent PRs:**
+1. **Gather flaky tests from recent CI runs on main:**
 
-   Use `gh` to find recent PRs that have Playwright summary comments (search for PRs with `github-actions[bot]` Playwright comments):
-
-   ```
-   gh pr list --search 'commenter:github-actions[bot] "Playwright Test Results" in:comments' --state all --limit <PR_COUNT> --json number
-   ```
-
-   Use `$ARGUMENTS` as the PR count, defaulting to 20 if not provided.
-
-   For each PR, fetch comments from `github-actions[bot]` that contain the Playwright test results.
-
-   **Note:** `{owner}` and `{repo}` are auto-replaced by `gh` CLI. Replace `<pr_number>` with the actual PR number.
+   List recent CI workflow runs triggered by pushes to main:
 
    ```
-   gh api repos/{owner}/{repo}/issues/<pr_number>/comments --paginate --jq '.[] | select(.user.login == "github-actions[bot]") | select(.body | contains("Playwright Test Results")) | .body'
+   gh api "repos/{owner}/{repo}/actions/workflows/ci.yml/runs?branch=main&event=push&per_page=<COMMIT_COUNT * 3>&status=completed" --jq '.workflow_runs[] | select(.conclusion == "success" or .conclusion == "failure") | {id, head_sha, conclusion}'
    ```
 
-2. **Parse flaky tests from comments:**
+   **Note:** We fetch 3x the desired commit count because many runs may be `cancelled` (due to concurrency groups). Filter to only `success` and `failure` conclusions to get runs that actually completed and have artifacts.
 
-   Extract flaky test names from the "Flaky Tests" section of each comment. Flaky tests appear in this format:
+   Use `$ARGUMENTS` as the commit count, defaulting to 10 if not provided.
+
+   For each completed run, download the `html-report` artifact which contains `results.json` with the full Playwright test results:
+
+   a. Find the html-report artifact for the run:
 
    ```
-   - `<spec_file.spec.ts> > <test name>` (passed after N retry/retries)
+   gh api "repos/{owner}/{repo}/actions/runs/<run_id>/artifacts?per_page=30" --jq '.artifacts[] | select(.name | startswith("html-report")) | select(.expired == false) | .name'
    ```
 
-   Parse each line with this pattern to extract the spec file and test name. The spec file is everything before the first `>`.
+   b. Download it using `gh run download`:
+
+   ```
+   gh run download <run_id> --name <artifact_name> --dir /tmp/playwright-report-<run_id>
+   ```
+
+   c. Parse `/tmp/playwright-report-<run_id>/results.json` to extract flaky tests. Write a Node.js script inside the `.claude/` directory to do this parsing. Flaky tests are those where the final result status is `"passed"` but a prior result has status `"failed"`, `"timedOut"`, or `"interrupted"`. The test title is built by joining parent suite titles (including the spec file path) and the test title, separated by `>`.
+
+   d. Clean up the downloaded artifact directory after parsing.
+
+   **Note:** Some runs may not have an html-report artifact (e.g., if they were cancelled early, the merge-reports job didn't complete, or artifacts have expired past the 3-day retention period). Skip these runs and continue to the next one.
+
+2. **Parse flaky tests from results:**
+
+   From each `results.json`, extract flaky test names. A test is flaky if:
+   - It has multiple results (retries occurred)
+   - The final result status is `"passed"`
+   - At least one prior result has status `"failed"`, `"timedOut"`, or `"interrupted"`
+
+   The test title format is: `<spec_file.spec.ts> > <Suite Name> > <Test Name>`
+
+   Parse each title to extract the spec file (everything before the first `>`).
 
 3. **Deduplicate and rank by frequency:**
 
-   Count how many times each test appears as flaky across all PRs. Sort by frequency (most flaky first). Group tests by their spec file.
+   Count how many times each test appears as flaky across all CI runs. Sort by frequency (most flaky first). Group tests by their spec file.
 
    Print a summary table:
 
@@ -55,7 +70,7 @@ Automatically gather flaky E2E tests from recent PR Playwright summary comments 
 
 4. **Skip if no flaky tests found:**
 
-   If no flaky tests are found, report "No flaky tests found in recent PRs" and stop.
+   If no flaky tests are found, report "No flaky tests found in recent commits" and stop.
 
 5. **Install dependencies and build:**
 
@@ -113,7 +128,7 @@ Automatically gather flaky E2E tests from recent PR Playwright summary comments 
 7. **Summarize results:**
 
    Report:
-   - Total flaky tests found across PRs
+   - Total flaky tests found across commits
    - Which tests were successfully deflaked
    - What fixes were applied to each
    - Which tests could not be fixed (and why)

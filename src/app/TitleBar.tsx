@@ -1,7 +1,7 @@
 import { useAtom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useLoadApps } from "@/hooks/useLoadApps";
-import { useRouter, useLocation } from "@tanstack/react-router";
+import { useRouter } from "@tanstack/react-router";
 import { useSettings } from "@/hooks/useSettings";
 import { Button } from "@/components/ui/button";
 // @ts-ignore
@@ -9,7 +9,7 @@ import logo from "../../assets/logo.svg";
 import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
 import { cn } from "@/lib/utils";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { DyadProSuccessDialog } from "@/components/DyadProSuccessDialog";
 import { useTheme } from "@/contexts/ThemeContext";
 import { ipc } from "@/ipc/types";
@@ -21,13 +21,23 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ActionHeader } from "@/components/preview_panel/ActionHeader";
+import { ChatActivityButton } from "@/components/chat/ChatActivity";
+import { MoreVertical, Cog, Trash2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useRunApp } from "@/hooks/useRunApp";
+import { showError, showSuccess } from "@/lib/toast";
+import { useMutation } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 
 export const TitleBar = () => {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
   const { apps } = useLoadApps();
   const { navigate } = useRouter();
-  const location = useLocation();
   const { settings, refreshSettings } = useSettings();
   const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false);
   const platform = useSystemPlatform();
@@ -83,12 +93,10 @@ export const TitleBar = () => {
         </Button>
         {isDyadPro && <DyadProButton isDyadProEnabled={isDyadProEnabled} />}
 
-        {/* Preview Header */}
-        {location.pathname === "/chat" && (
-          <div className="flex-1 flex justify-end">
-            <ActionHeader />
-          </div>
-        )}
+        {/* Spacer to push window controls to the right */}
+        <div className="flex-1" />
+
+        <TitleBarActions />
 
         {showWindowControls && <WindowsControls />}
       </div>
@@ -177,6 +185,70 @@ function WindowsControls() {
           />
         </svg>
       </button>
+    </div>
+  );
+}
+
+function TitleBarActions() {
+  const { t } = useTranslation("home");
+  const { restartApp, refreshAppIframe } = useRunApp();
+
+  const onCleanRestart = useCallback(() => {
+    restartApp({ removeNodeModules: true });
+  }, [restartApp]);
+
+  const useClearSessionData = () => {
+    return useMutation({
+      mutationFn: () => {
+        return ipc.system.clearSessionData();
+      },
+      onSuccess: async () => {
+        await refreshAppIframe();
+        showSuccess("Preview data cleared");
+      },
+      onError: (error) => {
+        showError(`Error clearing preview data: ${error}`);
+      },
+    });
+  };
+
+  const { mutate: clearSessionData } = useClearSessionData();
+
+  const onClearSessionData = useCallback(() => {
+    clearSessionData();
+  }, [clearSessionData]);
+
+  return (
+    <div className="flex items-center gap-0.5 no-app-region-drag mr-2">
+      <ChatActivityButton />
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          data-testid="preview-more-options-button"
+          className="flex items-center justify-center w-8 h-8 rounded-md text-sm hover:bg-sidebar-accent transition-colors"
+        >
+          <MoreVertical size={16} />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-60">
+          <DropdownMenuItem onClick={onCleanRestart}>
+            <Cog size={16} />
+            <div className="flex flex-col">
+              <span>{t("preview.rebuild")}</span>
+              <span className="text-xs text-muted-foreground">
+                {t("preview.rebuildDescription")}
+              </span>
+            </div>
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={onClearSessionData}>
+            <Trash2 size={16} />
+            <div className="flex flex-col">
+              <span>{t("preview.clearCache")}</span>
+              <span className="text-xs text-muted-foreground">
+                {t("preview.clearCacheDescription")}
+              </span>
+            </div>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

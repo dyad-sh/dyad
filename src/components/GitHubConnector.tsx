@@ -30,6 +30,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GithubBranchManager } from "@/components/GithubBranchManager";
+import { useResolveMergeConflictsWithAI } from "@/hooks/useResolveMergeConflictsWithAI";
+import { showSuccess, showError } from "@/lib/toast";
 
 type SyncResult =
   | { error: Error; handled?: boolean }
@@ -91,7 +93,44 @@ function ConnectedGitHubConnector({
     "abort" | "continue" | "safe-push" | null
   >(null);
   const [rebaseInProgress, setRebaseInProgress] = useState(false);
+  const [isCancellingSync, setIsCancellingSync] = useState(false);
   const lastAutoSyncedAppIdRef = useRef<number | null>(null);
+
+  const { resolveWithAI, isResolving } = useResolveMergeConflictsWithAI({
+    appId,
+    conflicts,
+    onStartResolving: () => {
+      // Clear conflicts state when starting AI resolution since user will be navigated to chat
+      setConflicts([]);
+      setSyncError(null);
+    },
+  });
+
+  const handleCancelSync = async () => {
+    setIsCancellingSync(true);
+    try {
+      const state = await ipc.github.getGitState({ appId });
+      let aborted = false;
+      if (state.rebaseInProgress) {
+        await ipc.github.rebaseAbort({ appId });
+        setRebaseInProgress(false);
+        setRebaseStatusMessage("Rebase aborted.");
+        aborted = true;
+      } else if (state.mergeInProgress) {
+        await ipc.github.mergeAbort({ appId });
+        aborted = true;
+      }
+      setConflicts([]);
+      setSyncError(null);
+      if (aborted) {
+        showSuccess("Sync cancelled");
+      }
+    } catch (error: any) {
+      showError(error?.message || "Failed to cancel sync");
+    } finally {
+      setIsCancellingSync(false);
+    }
+  };
 
   const handleDisconnectRepo = async () => {
     setIsDisconnecting(true);
@@ -132,22 +171,41 @@ function ConnectedGitHubConnector({
         setRebaseStatusMessage(null);
         return {};
       } catch (err: any) {
-        if (err?.name === "GitConflictError") {
-          try {
-            const mergeConflicts = await ipc.github.getConflicts({ appId });
-            if (mergeConflicts.length > 0) {
-              setConflicts(mergeConflicts);
-              setSyncError(
-                "Merge conflicts detected. Please resolve them in the editor.",
-              );
-              (err as Error & { handled?: boolean }).handled = true;
-              return { error: err, handled: true };
-            }
-          } catch {
-            // If getGithubMergeConflicts fails, fall through to handle the original GitConflictError
-            // The error from getGithubMergeConflicts is intentionally not handled here
-            // so the original GitConflictError can be displayed to the user
-          }
+        // Always check for conflicts when sync fails, regardless of error type
+        // IPC serialization may not preserve error.name, so we check conflicts directly
+        // This is important because gitPull can throw GitConflictError which might not
+        // be properly serialized through IPC
+        let conflictsDetected: string[] = [];
+        let conflictCheckError: unknown = null;
+        try {
+          conflictsDetected = await ipc.github.getConflicts({ appId });
+        } catch (error) {
+          // If conflict check fails, keep the error to surface it with the sync failure.
+          conflictCheckError = error;
+        }
+
+        if (conflictsDetected.length > 0) {
+          // Conflicts were detected - show resolution buttons below
+          setConflicts(conflictsDetected);
+          setSyncError(
+            "Merge conflicts detected. Use the buttons below to resolve them.",
+          );
+          (err as Error & { handled?: boolean }).handled = true;
+          return { error: err, handled: true };
+        }
+
+        // Check if it's a known conflict error for user messaging
+        // (even if conflicts check failed or returned empty)
+        const errorName = err?.name || "";
+        const isConflict = errorName === "GitConflictError";
+
+        if (isConflict) {
+          // Conflict error detected but no conflicts found - this shouldn't happen
+          // but we'll show an error message
+          setSyncError(
+            "Merge conflict detected, but no conflicting files were returned. Please check git status and try again.",
+          );
+          return { error: err };
         }
 
         // Check for structured error codes instead of parsing error messages
@@ -177,8 +235,15 @@ function ConnectedGitHubConnector({
           inferredRebaseInProgress ||
           messageIndicatesRebase;
 
-        const errorMessage = err.message || "Failed to sync to GitHub.";
-        setSyncError(errorMessage);
+        const baseErrorMessage = err.message || "Failed to sync to GitHub.";
+        const conflictCheckMessage =
+          conflictCheckError instanceof Error
+            ? ` Conflict check failed: ${conflictCheckError.message}`
+            : conflictCheckError
+              ? " Conflict check failed."
+              : "";
+        const finalErrorMessage = `${baseErrorMessage}${conflictCheckMessage}`;
+        setSyncError(finalErrorMessage);
         setRebaseInProgress(rebaseInProgressState);
         setRebaseStatusMessage(null);
         return { error: err };
@@ -460,13 +525,29 @@ function ConnectedGitHubConnector({
           )}
         </div>
       )}
-      {/* Conflict Resolver */}
+      {/* Conflict Resolution Buttons */}
       {conflicts.length > 0 && (
-        //show a message that there are conflicts and to resolve them in Editor
-        <p className="text-sm text-red-600">
-          There are conflicts in the repository. Please resolve them in the
-          editor.
-        </p>
+        <div className="mt-3 p-3 rounded-md border border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/20">
+          <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-3">
+            {conflicts.length} file{conflicts.length > 1 ? "s" : ""} with merge
+            conflicts: {conflicts.join(", ")}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              onClick={resolveWithAI}
+              disabled={isCancellingSync || isResolving}
+            >
+              {isResolving ? "Resolving..." : "Resolve merge conflicts with AI"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleCancelSync}
+              disabled={isCancellingSync || isResolving}
+            >
+              {isCancellingSync ? "Cancelling..." : "Cancel sync"}
+            </Button>
+          </div>
+        </div>
       )}
       {rebaseStatusMessage && (
         <p className="text-sm text-gray-700 dark:text-gray-300 mt-2">

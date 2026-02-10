@@ -114,7 +114,7 @@ export default App;
     // Initially, all selected: button shows Fix X problems and Clear all is visible
     const fixButton = po.page.getByTestId("fix-all-button");
     await expect(fixButton).toBeVisible();
-    await expect(fixButton).toContainText(/Fix \d+ problems/);
+    await expect(fixButton).toContainText(/Fix \d+ problem\(s\)/);
 
     // Click first two rows to toggle off (deselect)
     const rows = po.page.getByTestId("problem-row");
@@ -124,7 +124,7 @@ export default App;
     await rows.nth(1).click();
 
     // Button should update to reflect remaining selected
-    await expect(fixButton).toContainText(/Fix 1 problem/);
+    await expect(fixButton).toContainText(/Fix 1 problem\(s\)/);
 
     // Clear all should switch to Select all when none selected
     // Deselect remaining rows
@@ -141,7 +141,7 @@ export default App;
     await selectButton.click();
     // Unselect the second row
     await rows.nth(1).click();
-    await expect(fixButton).toContainText(/Fix 2 problems/);
+    await expect(fixButton).toContainText(/Fix 2 problem\(s\)/);
 
     await fixButton.click();
     await po.chatActions.waitForChatCompletion();
@@ -170,13 +170,13 @@ export default App;
   await po.previewPanel.selectPreviewMode("problems");
   const fixButton = po.page.getByTestId("fix-all-button");
   await expect(fixButton).toBeEnabled({ timeout: Timeout.LONG });
-  await expect(fixButton).toContainText(/Fix 1 problem/);
+  await expect(fixButton).toContainText(/Fix 1 problem\(s\)/);
 
   fs.unlinkSync(badFilePath);
 
   await po.previewPanel.clickRecheckProblems();
   await expect(fixButton).toBeDisabled({ timeout: Timeout.LONG });
-  await expect(fixButton).toContainText(/Fix 0 problems/);
+  await expect(fixButton).toContainText(/Fix 0 problem\(s\)/);
 });
 
 testSkipIfWindows("problems - manual edit (next.js)", async ({ po }) => {
@@ -200,11 +200,11 @@ testSkipIfWindows("problems - manual edit (next.js)", async ({ po }) => {
   await po.previewPanel.selectPreviewMode("problems");
   const fixButton = po.page.getByTestId("fix-all-button");
   await expect(fixButton).toBeEnabled({ timeout: Timeout.LONG });
-  await expect(fixButton).toContainText(/Fix 1 problem/);
+  await expect(fixButton).toContainText(/Fix 1 problem\(s\)/);
 
   fs.unlinkSync(badFilePath);
 
   await po.previewPanel.clickRecheckProblems();
   await expect(fixButton).toBeDisabled({ timeout: Timeout.LONG });
-  await expect(fixButton).toContainText(/Fix 0 problems/);
+  await expect(fixButton).toContainText(/Fix 0 problem\(s\)/);
 });

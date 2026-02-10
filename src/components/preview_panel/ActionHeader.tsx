@@ -201,7 +201,7 @@ export const ActionHeader = () => {
   const iconSize = 15;
 
   return (
-    <div className="flex items-center justify-between px-1 py-2 mt-1 border-b border-border">
+    <div className="flex items-center justify-between px-2 py-2 border-b border-border bg-(--sidebar)">
       <div className="relative flex rounded-md p-0.5 gap-0.5">
         <motion.div
           className="absolute top-0.5 bottom-0.5 bg-[var(--background-lightest)] shadow rounded-md"

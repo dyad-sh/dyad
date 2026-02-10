@@ -116,6 +116,9 @@ export async function performCompaction(
   appPath: string,
   dyadRequestId: string,
   onSummaryChunk?: (accumulatedText: string) => void,
+  options?: {
+    createdAtStrategy?: "before-latest-user" | "now";
+  },
 ): Promise<CompactionResult> {
   const settings = readSettings();
 
@@ -219,9 +222,12 @@ Note: This file may be large. Read only the sections you need or use grep to sea
     const latestUserMessage = [...chatMessages]
       .reverse()
       .find((m) => m.role === "user");
-    const compactionCreatedAt = latestUserMessage
-      ? new Date(latestUserMessage.createdAt.getTime() - 1)
-      : new Date();
+    const compactionCreatedAt =
+      options?.createdAtStrategy === "now"
+        ? new Date()
+        : latestUserMessage
+          ? new Date(latestUserMessage.createdAt.getTime() - 1)
+          : new Date();
     await db.insert(messages).values({
       chatId,
       role: "assistant",

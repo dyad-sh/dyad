@@ -127,16 +127,30 @@ function createFakeStream(
     delta?: string;
     [key: string]: unknown;
   }>,
-) {
+): FakeStreamResult {
   return {
     fullStream: (async function* () {
       for (const part of parts) {
         yield part;
       }
     })(),
-    response: Promise.resolve({ messages: [] }),
+    response: Promise.resolve({ messages: [] as any[] }),
+    steps: Promise.resolve([] as any[]),
   };
 }
+
+type FakeStreamResult = {
+  fullStream: AsyncGenerator<
+    {
+      type: string;
+      [key: string]: unknown;
+    },
+    void,
+    unknown
+  >;
+  response: Promise<{ messages: any[] }>;
+  steps?: Promise<any[]>;
+};
 
 // ============================================================================
 // Mocks
@@ -210,9 +224,9 @@ vi.mock("@/ipc/utils/safe_sender", () => ({
   }),
 }));
 
-let mockStreamResult: ReturnType<typeof createFakeStream> | null = null;
+let mockStreamResult: FakeStreamResult | null = null;
 let mockStreamTextImpl:
-  | ((options: Record<string, any>) => ReturnType<typeof createFakeStream>)
+  | ((options: Record<string, any>) => FakeStreamResult)
   | null = null;
 
 vi.mock("ai", () => ({
@@ -436,7 +450,7 @@ describe("handleLocalAgentStream", () => {
   describe("Mid-turn compaction", () => {
     it("should compact between steps when token usage crosses threshold", async () => {
       // Arrange
-      const { event } = createFakeEvent();
+      const { event, getMessagesByChannel } = createFakeEvent();
       mockSettings = buildTestSettings({ enableDyadPro: true });
       mockChatData = buildTestChat({
         messages: [
@@ -469,7 +483,11 @@ describe("handleLocalAgentStream", () => {
             },
           ],
         } as any;
-        return { success: true };
+        return {
+          success: true,
+          summary: "mid-turn summary",
+          backupPath: ".dyad/chats/1/compaction-test.md",
+        };
       });
 
       let secondStepPreparedMessages: any[] | undefined;
@@ -489,6 +507,8 @@ describe("handleLocalAgentStream", () => {
               model: {},
               experimental_context: undefined,
             });
+
+            yield { type: "text-delta", text: "before-compaction\n" };
 
             await options.onStepFinish?.({
               usage: { totalTokens: 200_000 },
@@ -530,6 +550,14 @@ describe("handleLocalAgentStream", () => {
       // Assert
       expect(mockCheckAndMarkForCompaction).toHaveBeenCalledWith(1, 200_000);
       expect(mockPerformCompaction).toHaveBeenCalledTimes(1);
+      expect(mockPerformCompaction).toHaveBeenCalledWith(
+        expect.anything(),
+        1,
+        "/mock/apps/test-app-path",
+        dyadRequestId,
+        expect.any(Function),
+        { createdAtStrategy: "now" },
+      );
       expect(secondStepPreparedMessages).toBeDefined();
 
       const secondStepContents = (secondStepPreparedMessages ?? []).map(
@@ -548,6 +576,203 @@ describe("handleLocalAgentStream", () => {
       expect(secondStepContents).not.toContain("old context assistant");
       expect(secondStepContents).toContain("tool state assistant");
       expect(secondStepContents).toContain("tool state result");
+
+      const contentUpdates = dbOperations.updates.filter(
+        (u) => u.data.content !== undefined,
+      );
+      const finalContent = contentUpdates[contentUpdates.length - 1].data
+        .content as string;
+      const beforeCompactionIndex = finalContent.indexOf("before-compaction");
+      const compactionIndex = finalContent.indexOf("Conversation compacted");
+      const doneIndex = finalContent.indexOf("done");
+      const backupPathIndex = finalContent.indexOf(
+        ".dyad/chats/1/compaction-test.md",
+      );
+
+      expect(beforeCompactionIndex).toBeGreaterThanOrEqual(0);
+      expect(compactionIndex).toBeGreaterThan(beforeCompactionIndex);
+      expect(backupPathIndex).toBeGreaterThan(compactionIndex);
+      expect(doneIndex).toBeGreaterThan(compactionIndex);
+
+      const chunkMessages = getMessagesByChannel("chat:response:chunk");
+      const streamedMessageIds = chunkMessages.flatMap((message) => {
+        const payload = message.args[0] as { messages?: Array<{ id: number }> };
+        return (payload.messages ?? []).map((msg) => msg.id);
+      });
+      expect(streamedMessageIds).not.toContain(20);
+    });
+
+    it("should persist post-compaction response messages without reshaping", async () => {
+      // Arrange
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat({
+        messages: [
+          { id: 1, role: "user", content: "old context user" },
+          { id: 2, role: "assistant", content: "old context assistant" },
+          { id: 3, role: "user", content: "current task" },
+          { id: 10, role: "assistant", content: "" }, // placeholder
+        ],
+      });
+
+      mockIsChatPendingCompaction
+        .mockResolvedValueOnce(false) // pre-turn check
+        .mockResolvedValueOnce(true) // mid-turn check
+        .mockResolvedValue(false);
+      mockCheckAndMarkForCompaction.mockResolvedValue(true);
+      mockPerformCompaction.mockImplementation(async () => {
+        if (!mockChatData) {
+          return { success: false, error: "missing chat" };
+        }
+        mockChatData = {
+          ...mockChatData,
+          messages: [
+            ...mockChatData.messages,
+            {
+              id: 20,
+              role: "assistant",
+              content:
+                '<dyad-compaction title="Conversation compacted" state="finished">mid-turn summary</dyad-compaction>',
+              isCompactionSummary: true,
+            },
+          ],
+        } as any;
+        return {
+          success: true,
+          summary: "mid-turn summary",
+          backupPath: ".dyad/chats/1/compaction-test.md",
+        };
+      });
+
+      const preCompactionGenerated = [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: "before compaction",
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolName: "read_file",
+              toolCallId: "call_before",
+              output: "before result",
+            },
+          ],
+        },
+      ];
+      const postCompactionGenerated = [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: "post compaction assistant",
+            },
+            {
+              type: "tool-call",
+              toolCallId: "call_after",
+              toolName: "read_file",
+              input: { path: "SOMEFILE.md" },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolName: "read_file",
+              toolCallId: "call_after",
+              output: "post result",
+            },
+          ],
+        },
+      ];
+
+      mockStreamTextImpl = (options) => {
+        const firstStepMessages = [
+          { role: "user", content: "old context user" },
+          { role: "assistant", content: "old context assistant" },
+          { role: "user", content: "current task" },
+        ];
+
+        return {
+          fullStream: (async function* () {
+            await options.prepareStep?.({
+              messages: firstStepMessages,
+              stepNumber: 1,
+              steps: [],
+              model: {},
+              experimental_context: undefined,
+            });
+
+            await options.onStepFinish?.({
+              usage: { totalTokens: 200_000 },
+              toolCalls: [{}],
+            });
+
+            const secondStepMessages = [
+              ...firstStepMessages,
+              ...preCompactionGenerated,
+            ];
+            await options.prepareStep?.({
+              messages: secondStepMessages,
+              stepNumber: 2,
+              steps: [],
+              model: {},
+              experimental_context: undefined,
+            });
+
+            yield { type: "text-delta", text: "done" };
+          })(),
+          response: Promise.resolve({
+            messages: [...preCompactionGenerated, ...postCompactionGenerated],
+          }),
+          steps: Promise.resolve([
+            {
+              response: {
+                messages: [...preCompactionGenerated],
+              },
+            },
+            {
+              response: {
+                messages: [
+                  ...preCompactionGenerated,
+                  ...postCompactionGenerated,
+                ],
+              },
+            },
+          ]),
+        };
+      };
+
+      // Act
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      // Assert
+      const aiMessagesUpdates = dbOperations.updates.filter(
+        (u) => u.data.aiMessagesJson !== undefined,
+      );
+      expect(aiMessagesUpdates).toHaveLength(1);
+      expect(
+        (aiMessagesUpdates[0].data.aiMessagesJson as { messages: unknown[] })
+          .messages,
+      ).toEqual(postCompactionGenerated);
     });
   });
 

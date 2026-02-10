@@ -11,7 +11,29 @@ export const fixture: LocalAgentFixture = {
   description: "Trigger compaction between tool-loop steps in one turn",
   turns: [
     {
-      text: "I'll inspect the file first.",
+      text: "first step",
+      toolCalls: [
+        {
+          name: "read_file",
+          args: {
+            path: "README.md",
+          },
+        },
+      ],
+    },
+    {
+      text: "second step",
+      toolCalls: [
+        {
+          name: "read_file",
+          args: {
+            path: "AI_RULES.md",
+          },
+        },
+      ],
+    },
+    {
+      text: "This tool call will trigger compaction.",
       toolCalls: [
         {
           name: "read_file",
@@ -27,7 +49,18 @@ export const fixture: LocalAgentFixture = {
       },
     },
     {
-      text: "Done. I compacted context mid-turn and completed this request in the same response.",
+      text: "post-compaction step",
+      toolCalls: [
+        {
+          name: "read_file",
+          args: {
+            path: "SOMEFILE.md",
+          },
+        },
+      ],
+    },
+    {
+      text: "END OF COMPACTED TURN.",
     },
   ],
 };

@@ -14,3 +14,4 @@ export { ModelPicker } from "./ModelPicker";
 export { Settings } from "./Settings";
 export { AppManagement } from "./AppManagement";
 export { PromptLibrary } from "./PromptLibrary";
+export { Terminal } from "./Terminal";

@@ -54,7 +54,7 @@ jobs:
             });
 
             // Skip PRs actively managed by pr-review-responder (cc:request* or cc:pending)
-            // PRs with cc:done/cc:failed/cc:needs-human-review ARE eligible —
+            // PRs with cc:done/cc:failed/needs-human-review ARE eligible —
             // a human may have pushed new commits after the automation loop ended.
             const activeLabels = pr.labels.filter(l =>
               l.name.startsWith('cc:request') || l.name === 'cc:pending'

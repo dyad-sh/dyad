@@ -105,20 +105,7 @@ jobs:
             // Guard: do not loop more than 3 retries (4 total runs: initial + 3 retries)
             // cc:request (0) -> cc:request:1 (1) -> cc:request:2 (2) -> cc:request:3 (3) -> blocked
             if (requestCount >= 4) {
-              console.log(`PR #${prNumber} has reached max retry count (${requestCount}), adding cc:needs-human-review`);
-
-              // Ensure the label exists
-              try {
-                await github.rest.issues.createLabel({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  name: 'cc:needs-human-review',
-                  color: 'd93f0b',
-                  description: 'Claude Code has exhausted auto-retries; needs human review'
-                });
-              } catch (e) {
-                // Label already exists, ignore
-              }
+              console.log(`PR #${prNumber} has reached max retry count (${requestCount}), adding needs-human-review`);
 
               // Remove current label, cc:pending, and add needs-human-review
               await github.rest.issues.removeLabel({
@@ -139,24 +126,10 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: prNumber,
-                labels: ['cc:needs-human-review']
+                labels: ['needs-human-review']
               });
 
               // Also add needs-human:review-issue (retries exhausted = needs human attention).
-              // NOTE: This duplicates logic from scripts/pr-status-labeler.js because this
-              // runs in the pr-info step before any checkout, so the shared script isn't available.
-              try {
-                await github.rest.issues.createLabel({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  name: 'needs-human:review-issue',
-                  color: 'd93f0b',
-                  description: 'PR needs human attention - review issue or CI failure'
-                });
-              } catch (e) {
-                // Label already exists, ignore
-              }
-
               await github.rest.issues.addLabels({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -286,17 +259,6 @@ jobs:
           script: |
             const nextCount = parseInt('${{ steps.pr-info.outputs.request_count }}', 10) + 1;
             const labelName = `cc:request:${nextCount}`;
-            try {
-              await github.rest.issues.createLabel({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                name: labelName,
-                color: '1d76db',
-                description: `Claude Code auto-re-request iteration ${nextCount}`
-              });
-            } catch (e) {
-              // Label already exists, ignore
-            }
 
       - name: Update labels - re-request review (commits pushed)
         # Use always() so retry loop continues even if Claude Code fails after pushing commits

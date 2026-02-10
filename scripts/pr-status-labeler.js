@@ -4,18 +4,6 @@
 const LABEL_REVIEW_ISSUE = "needs-human:review-issue";
 const LABEL_FINAL_CHECK = "needs-human:final-check";
 
-const LABEL_DEFS = {
-  [LABEL_REVIEW_ISSUE]: {
-    color: "d93f0b",
-    description: "PR needs human attention - review issue or CI failure",
-  },
-  [LABEL_FINAL_CHECK]: {
-    color: "0e8a16",
-    description:
-      "PR is green and review-clean - ready for final human check before merge",
-  },
-};
-
 const REVIEW_MARKER = "Dyadbot Code Review Summary";
 
 // Review verdict strings — keep in sync with:
@@ -30,22 +18,6 @@ const MULTI_AGENT_NO_NEW_ISSUES = ":white_check_mark: No new issues found";
 const HIGH_ISSUES_RE = /:red_circle:.*?\|\s*[1-9]/;
 const MEDIUM_ISSUES_RE = /:yellow_circle:.*?\|\s*[1-9]/;
 const LOW_ISSUES_RE = /:green_circle:.*?\|\s*\d/;
-
-async function ensureLabel(github, owner, repo, name) {
-  const def = LABEL_DEFS[name];
-  try {
-    await github.rest.issues.createLabel({
-      owner,
-      repo,
-      name,
-      color: def.color,
-      description: def.description,
-    });
-  } catch (e) {
-    if (e.status !== 422) throw e;
-    // Label already exists, ignore
-  }
-}
 
 function findLatestReviewComment(comments) {
   for (let i = comments.length - 1; i >= 0; i--) {
@@ -101,9 +73,6 @@ function isReviewClean(body) {
 async function applyLabel(github, owner, repo, prNumber, addLabel) {
   const removeLabel =
     addLabel === LABEL_REVIEW_ISSUE ? LABEL_FINAL_CHECK : LABEL_REVIEW_ISSUE;
-
-  await ensureLabel(github, owner, repo, addLabel);
-  await ensureLabel(github, owner, repo, removeLabel);
 
   // Atomically swap labels using setLabels to avoid a window where both exist
   const { data: currentLabels } = await github.rest.issues.listLabelsOnIssue({

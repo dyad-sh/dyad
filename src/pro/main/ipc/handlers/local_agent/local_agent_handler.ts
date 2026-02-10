@@ -431,6 +431,11 @@ export async function handleLocalAgentStream(
 
           if (compacted) {
             compactedMidTurn = true;
+            // Clear stale injected messages — their insertAtIndex values are
+            // based on the pre-compaction message array which has been rebuilt
+            // with a different (typically smaller) count. Keeping them would
+            // cause injectMessagesAtPositions to splice at wrong positions.
+            allInjectedMessages.length = 0;
             const compactedMessageHistory = buildChatMessageHistory(
               chat.messages,
               {
@@ -469,8 +474,6 @@ export async function handleLocalAgentStream(
       onStepFinish: async (step) => {
         if (
           settings.enableContextCompaction === false ||
-          compactedMidTurn ||
-          compactionFailedMidTurn ||
           typeof step.usage.totalTokens !== "number"
         ) {
           return;
@@ -483,7 +486,13 @@ export async function handleLocalAgentStream(
 
         // If this step triggered tool calls, compact before the next step
         // in this same user turn instead of waiting for the next message.
-        if (shouldCompact && step.toolCalls.length > 0) {
+        // Only attempt mid-turn compaction once per turn.
+        if (
+          shouldCompact &&
+          step.toolCalls.length > 0 &&
+          !compactedMidTurn &&
+          !compactionFailedMidTurn
+        ) {
           compactBeforeNextStep = true;
         }
       },

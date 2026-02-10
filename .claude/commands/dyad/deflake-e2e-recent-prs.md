@@ -73,15 +73,17 @@ Automatically gather flaky E2E tests from recent PR Playwright summary comments 
    a. Run the spec file 10 times to confirm flakiness (note: `<spec_file>` already includes the `.spec.ts` extension from parsing):
 
    ```
-   PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec_file> --repeat-each=10
+   PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec_file> --repeat-each=10
    ```
+
+   **IMPORTANT:** `PLAYWRIGHT_RETRIES=0` is required to disable automatic retries. Without it, CI environments (where `CI=true`) default to 2 retries, causing flaky tests to pass on retry and be incorrectly skipped.
 
    b. If the test passes all 10 runs, skip it (it may have been fixed already).
 
    c. If the test fails at least once, investigate with debug logs:
 
    ```
-   DEBUG=pw:browser PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec_file>
+   DEBUG=pw:browser PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec_file>
    ```
 
    d. Fix the flaky test following Playwright best practices:
@@ -97,13 +99,13 @@ Automatically gather flaky E2E tests from recent PR Playwright summary comments 
    e. Update snapshot baselines if needed:
 
    ```
-   PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec_file> --update-snapshots
+   PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec_file> --update-snapshots
    ```
 
    f. Verify the fix by running 10 times again:
 
    ```
-   PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec_file> --repeat-each=10
+   PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec_file> --repeat-each=10
    ```
 
    g. If the test still fails after your fix attempt, revert any changes to that spec file and move on to the next one. Do not spend more than 2 attempts fixing a single spec file.

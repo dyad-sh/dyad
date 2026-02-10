@@ -35,8 +35,10 @@ Identify and fix flaky E2E tests by running them repeatedly and investigating fa
    For each test file, run it 10 times:
 
    ```
-   PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<testfile>.spec.ts --repeat-each=10
+   PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<testfile>.spec.ts --repeat-each=10
    ```
+
+   **IMPORTANT:** `PLAYWRIGHT_RETRIES=0` is required to disable automatic retries. Without it, CI environments (where `CI=true`) default to 2 retries, causing flaky tests to pass on retry and be incorrectly skipped as "not flaky."
 
    Notes:
    - If `$ARGUMENTS` is provided without the `e2e-tests/` prefix, add it
@@ -48,7 +50,7 @@ Identify and fix flaky E2E tests by running them repeatedly and investigating fa
    Run the failing test with Playwright browser debugging enabled:
 
    ```
-   DEBUG=pw:browser PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<testfile>.spec.ts
+   DEBUG=pw:browser PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<testfile>.spec.ts
    ```
 
    Analyze the debug output to understand:
@@ -75,7 +77,7 @@ Identify and fix flaky E2E tests by running them repeatedly and investigating fa
    If the flakiness is due to legitimate visual differences:
 
    ```
-   PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<testfile>.spec.ts --update-snapshots
+   PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<testfile>.spec.ts --update-snapshots
    ```
 
 8. **Verify the fix:**
@@ -83,7 +85,7 @@ Identify and fix flaky E2E tests by running them repeatedly and investigating fa
    Re-run the test 10 times to confirm it's no longer flaky:
 
    ```
-   PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<testfile>.spec.ts --repeat-each=10
+   PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<testfile>.spec.ts --repeat-each=10
    ```
 
    The test should pass all 10 runs consistently.

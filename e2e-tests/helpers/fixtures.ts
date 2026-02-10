@@ -12,7 +12,7 @@ import { execSync } from "child_process";
 
 import { showDebugLogs } from "./constants";
 import { PageObject } from "./page-objects";
-import { FAKE_LLM_BASE_PORT } from "../../playwright.config";
+import { FAKE_LLM_BASE_PORT } from "./test-ports";
 
 export interface ElectronConfig {
   preLaunchHook?: ({
@@ -85,6 +85,7 @@ export const test = base.extend<{
       // Each parallel worker gets its own server to avoid test interference
       const fakeLlmPort = FAKE_LLM_BASE_PORT + testInfo.parallelIndex;
 
+      process.env.FAKE_LLM_PORT = String(fakeLlmPort);
       process.env.OLLAMA_HOST = `http://localhost:${fakeLlmPort}/ollama`;
       process.env.LM_STUDIO_BASE_URL_FOR_TESTING = `http://localhost:${fakeLlmPort}/lmstudio`;
       process.env.DYAD_ENGINE_URL = `http://localhost:${fakeLlmPort}/engine/v1`;

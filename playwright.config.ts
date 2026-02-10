@@ -1,12 +1,11 @@
 import { PlaywrightTestConfig } from "@playwright/test";
 import os from "os";
+import { FAKE_LLM_BASE_PORT } from "./e2e-tests/helpers/test-ports";
+
+export { FAKE_LLM_BASE_PORT };
 
 const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 const parallelism = parseInt(process.env.PLAYWRIGHT_PARALLELISM || "1", 10);
-
-// Base port for fake LLM servers - each worker gets its own port
-// Worker 0 -> 3500, Worker 1 -> 3501, etc.
-export const FAKE_LLM_BASE_PORT = 3500;
 
 // Generate webServer configurations for each parallel worker
 // Each worker needs its own fake LLM server to avoid test interference
@@ -16,13 +15,11 @@ function generateWebServerConfigs(): PlaywrightTestConfig["webServer"] {
   for (let i = 0; i < parallelism; i++) {
     const port = FAKE_LLM_BASE_PORT + i;
     configs.push({
-      // Only build once (on first server), then just start for subsequent servers
-      command:
-        i === 0
-          ? `cd testing/fake-llm-server && npm run build && npm start -- --port=${port}`
-          : `cd testing/fake-llm-server && npm start -- --port=${port}`,
+      // All servers run build to avoid race conditions since Playwright
+      // starts all webServer entries concurrently
+      command: `cd testing/fake-llm-server && npm run build && npm start -- --port=${port}`,
       url: `http://localhost:${port}/health`,
-      // Ensure servers start in order so build completes before other servers try to start
+      // In CI, always start a fresh server; locally, reuse if one is already running
       reuseExistingServer: !process.env.CI,
     });
   }

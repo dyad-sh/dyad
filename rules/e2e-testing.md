@@ -73,6 +73,12 @@ If the output under test contains non-deterministic or platform-specific content
 
 The Pro mode build settings (Web Access, Turbo Edits, Smart Context) are inside a collapsed `<Accordion>` in `ProModeSelector`. E2E test helpers must expand the accordion before interacting with elements inside it. The `ProModesDialog` class in `e2e-tests/helpers/page-objects/dialogs/ProModesDialog.ts` has an `expandBuildModeSettings()` method that handles this — call it before clicking any build mode setting buttons.
 
+## Parallel test port isolation
+
+Each parallel Playwright worker gets its own fake LLM server on port `FAKE_LLM_BASE_PORT + parallelIndex`. The base port constant lives in `e2e-tests/helpers/test-ports.ts` (not in `playwright.config.ts`) to avoid importing the Playwright config from test code.
+
+When adding new test server URLs, update **both** the test fixtures (`e2e-tests/helpers/fixtures.ts`) and the Electron app source that consumes them. The app reads `process.env.FAKE_LLM_PORT` to build its `TEST_SERVER_BASE` URL — if you hardcode a port in app source, parallel workers will all hit the same server.
+
 ## E2E test fixtures with .dyad directories
 
 When adding E2E test fixtures that need a `.dyad` directory for testing:

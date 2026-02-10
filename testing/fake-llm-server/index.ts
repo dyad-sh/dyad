@@ -30,6 +30,9 @@ const portArg = process.argv.find((arg) => arg.startsWith("--port="));
 const PORT = portArg
   ? parseInt(portArg.split("=")[1], 10)
   : parseInt(process.env.PORT || "3500", 10);
+if (isNaN(PORT)) {
+  throw new Error(`Invalid port: ${portArg || process.env.PORT}`);
+}
 
 // Helper function to create OpenAI-like streaming response chunks
 export function createStreamChunk(

@@ -9,7 +9,7 @@ async function createGitConflict(po: PageObject) {
   await po.setUp({ disableNativeGit: false, autoApprove: true });
   await po.sendPrompt("tc=basic");
 
-  await po.getTitleBarAppNameButton().click();
+  await po.appManagement.getTitleBarAppNameButton().click();
   await po.githubConnector.connect();
 
   const repoName = "test-git-conflict-" + Date.now();
@@ -19,7 +19,7 @@ async function createGitConflict(po: PageObject) {
     timeout: Timeout.MEDIUM,
   });
 
-  const appPath = await po.getCurrentAppPath();
+  const appPath = await po.appManagement.getCurrentAppPath();
   if (!appPath) throw new Error("App path not found");
 
   // Setup conflict
@@ -53,8 +53,8 @@ async function createGitConflict(po: PageObject) {
   });
 
   // 4. Try to merge feature into main via UI
-  await po.goToChatTab();
-  await po.getTitleBarAppNameButton().click(); // Open Publish Panel
+  await po.navigation.goToChatTab();
+  await po.appManagement.getTitleBarAppNameButton().click(); // Open Publish Panel
 
   // Open branches accordion
   const branchesCard = po.page.getByTestId("branches-header");

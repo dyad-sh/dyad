@@ -24,6 +24,24 @@ To get additional debug logs when a test is failing, use:
 DEBUG=pw:browser PLAYWRIGHT_HTML_OPEN=never npm run e2e
 ```
 
+## PageObject sub-component pattern
+
+The `PageObject` (aliased as `po` in tests) delegates most methods to sub-component page objects. Don't call methods directly on `po` unless they are explicitly defined on `PageObject` itself:
+
+```ts
+// Wrong: methods don't exist on po directly
+await po.getTitleBarAppNameButton().click();
+await po.getCurrentAppPath();
+await po.goToChatTab();
+
+// Correct: use the appropriate sub-component
+await po.appManagement.getTitleBarAppNameButton().click();
+await po.appManagement.getCurrentAppPath();
+await po.navigation.goToChatTab();
+```
+
+Key sub-components: `po.appManagement`, `po.navigation`, `po.chatActions`, `po.previewPanel`, `po.codeEditor`, `po.githubConnector`, `po.toastNotifications`, `po.settings`, `po.securityReview`, `po.modelPicker`.
+
 ## Base UI Radio component selection in Playwright
 
 Base UI Radio components render a hidden native `<input type="radio">` with `aria-hidden="true"`. Both `getByRole('radio', { name: '...' })` and `getByLabel('...')` find this hidden input but can't click it (element is outside viewport). Use `getByText` to click the visible label text instead.

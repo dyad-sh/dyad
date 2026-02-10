@@ -24,7 +24,12 @@ This is a meta-skill that orchestrates two sub-skills to comprehensively fix PR 
    - Update snapshots if needed
    - Ensure all checks pass
 
-3. **Post Summary Comment:**
+3. **Run `/dyad:pr-push`** to commit and push all changes:
+   - This step is REQUIRED. Do NOT skip it or stop before it completes.
+   - It will commit changes, run lint/tests, and push to GitHub.
+   - Wait for it to finish and verify the push succeeded.
+
+4. **Post Summary Comment:**
    After both sub-skills complete, post a comment on the PR with a consolidated summary using `gh pr comment`. The comment should include:
    - A header indicating success (✅) or failure (❌)
    - Review comments addressed, resolved, or flagged

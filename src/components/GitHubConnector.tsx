@@ -670,6 +670,7 @@ export function UnconnectedGitHubConnector({
   // Organization state
   const [availableOrgs, setAvailableOrgs] = useState<GitHubOrg[]>([]);
   const [isLoadingOrgs, setIsLoadingOrgs] = useState(false);
+  const PERSONAL_ACCOUNT_VALUE = "__personal__";
   const [selectedOrg, setSelectedOrg] = useState<string>(""); // Empty string = personal account
 
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -755,14 +756,7 @@ export function UnconnectedGitHubConnector({
     }
   }, [settings?.githubAccessToken, repoSetupMode]);
 
-  // Load organizations when GitHub is connected and in create mode
-  useEffect(() => {
-    if (settings?.githubAccessToken && repoSetupMode === "create") {
-      loadAvailableOrgs();
-    }
-  }, [settings?.githubAccessToken, repoSetupMode]);
-
-  const loadAvailableOrgs = async () => {
+  const loadAvailableOrgs = useCallback(async () => {
     setIsLoadingOrgs(true);
     try {
       const orgs = await ipc.github.listOrgs();
@@ -772,7 +766,14 @@ export function UnconnectedGitHubConnector({
     } finally {
       setIsLoadingOrgs(false);
     }
-  };
+  }, []);
+
+  // Load organizations when GitHub is connected and in create mode
+  useEffect(() => {
+    if (settings?.githubAccessToken && repoSetupMode === "create") {
+      loadAvailableOrgs();
+    }
+  }, [settings?.githubAccessToken, repoSetupMode, loadAvailableOrgs]);
 
   const loadAvailableRepos = async () => {
     setIsLoadingRepos(true);
@@ -1070,14 +1071,19 @@ export function UnconnectedGitHubConnector({
                 <div>
                   <Label className="block text-sm font-medium">Owner</Label>
                   <Select
-                    value={selectedOrg}
+                    value={selectedOrg || PERSONAL_ACCOUNT_VALUE}
                     onValueChange={(v) => {
-                      setSelectedOrg(v ?? "");
+                      const org = v === PERSONAL_ACCOUNT_VALUE ? "" : (v ?? "");
+                      setSelectedOrg(org);
+                      // Cancel any pending debounced check
+                      if (debounceTimeoutRef.current) {
+                        clearTimeout(debounceTimeoutRef.current);
+                      }
                       // Re-check availability with new org
                       if (repoName) {
                         setRepoAvailable(null);
                         setRepoCheckError(null);
-                        checkRepoAvailability(repoName, v ?? "");
+                        checkRepoAvailability(repoName, org);
                       }
                     }}
                     disabled={isLoadingOrgs || isCreatingRepo}
@@ -1095,7 +1101,9 @@ export function UnconnectedGitHubConnector({
                       />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Personal account</SelectItem>
+                      <SelectItem value={PERSONAL_ACCOUNT_VALUE}>
+                        Personal account
+                      </SelectItem>
                       {availableOrgs.map((org) => (
                         <SelectItem key={org.login} value={org.login}>
                           {org.login}

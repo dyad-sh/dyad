@@ -724,7 +724,7 @@ async function handleCreateRepo(
   }
   // Create repo
   const createUrl = org
-    ? `${GITHUB_API_BASE}/orgs/${owner}/repos`
+    ? `${GITHUB_API_BASE}/orgs/${encodeURIComponent(owner)}/repos`
     : `${GITHUB_API_BASE}/user/repos`;
   const res = await fetch(createUrl, {
     method: "POST",

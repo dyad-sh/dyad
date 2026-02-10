@@ -68,6 +68,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useResolveMergeConflictsWithAI } from "@/hooks/useResolveMergeConflictsWithAI";
 
 interface BranchManagerProps {
   appId: number;
@@ -107,6 +108,40 @@ export function GithubBranchManager({
     operationType: "merge" | "rebase";
     hasConflicts: boolean;
   } | null>(null);
+  const [isCancellingSync, setIsCancellingSync] = useState(false);
+
+  const { resolveWithAI, isResolving } = useResolveMergeConflictsWithAI({
+    appId,
+    conflicts,
+    onStartResolving: () => {
+      // Clear conflicts state when starting AI resolution
+      setConflicts([]);
+    },
+  });
+
+  const handleCancelSync = async () => {
+    setIsCancellingSync(true);
+    try {
+      const state = await ipc.github.getGitState({ appId });
+      let aborted = false;
+      if (state.rebaseInProgress) {
+        await ipc.github.rebaseAbort({ appId });
+        aborted = true;
+      } else if (state.mergeInProgress) {
+        await ipc.github.mergeAbort({ appId });
+        aborted = true;
+      }
+      setConflicts([]);
+      if (aborted) {
+        showSuccess("Sync cancelled");
+        await loadBranches();
+      }
+    } catch (error: any) {
+      showError(error?.message || "Failed to cancel sync");
+    } finally {
+      setIsCancellingSync(false);
+    }
+  };
 
   const loadBranches = useCallback(async () => {
     setIsLoading(true);
@@ -332,34 +367,33 @@ export function GithubBranchManager({
       setBranchToMerge(null);
       await loadBranches(); // Refresh to see any status changes if we implement them
     } catch (error: any) {
-      // Check if it's a merge conflict error (handler converts GitConflictError to MergeConflictError)
+      // Always check for conflicts when merge fails, regardless of error type
+      // IPC serialization may not preserve error.name, so we check conflicts directly
+      let conflictsDetected: string[] = [];
+      try {
+        conflictsDetected = await ipc.github.getConflicts({ appId });
+      } catch {
+        // If conflict check fails, continue with original error handling below
+      }
+
+      if (conflictsDetected.length > 0) {
+        // Conflicts were detected - show the resolver
+        setConflicts(conflictsDetected);
+        setBranchToMerge(null);
+        showInfo("Merge conflict detected. Please resolve them in the dialog.");
+        return;
+      }
+
+      // No conflicts found - show the original error
+      // Check if it's a merge conflict error for user messaging
+      const errorName = error?.name || "";
       const isConflict =
-        error?.name === "MergeConflictError" ||
-        error?.name === "GitConflictError";
+        errorName === "MergeConflictError" || errorName === "GitConflictError";
 
       if (isConflict) {
-        showInfo("Merge conflict detected. Please resolve them in the editor.");
-        // Show conflicts dialog
-        try {
-          const conflicts = await ipc.github.getConflicts({ appId });
-
-          if (conflicts.length > 0) {
-            setConflicts(conflicts);
-            // Close the merge modal since user has been notified
-            setBranchToMerge(null);
-            return;
-          }
-          setConflicts([]);
-          showError(
-            "Merge conflict detected, but no conflicting files were returned. Please check git status and try again.",
-          );
-        } catch (fetchError: any) {
-          setConflicts([]);
-          showError(
-            fetchError.message ||
-              "Merge conflict detected, but failed to fetch conflicting files. Please try again.",
-          );
-        }
+        showError(
+          "Merge conflict detected, but no conflicting files were returned. Please check git status and try again.",
+        );
       } else {
         showError(error.message || "Failed to merge branch");
       }
@@ -703,12 +737,29 @@ export function GithubBranchManager({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Conflict Resolver */}
+      {/* Conflict Resolution Buttons */}
       {conflicts.length > 0 && (
-        <p className="text-sm text-red-600">
-          There are conflicts in the repository. Please resolve them in the
-          editor.
-        </p>
+        <div className="mt-3 p-3 rounded-md border border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/20">
+          <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-3">
+            {conflicts.length} file{conflicts.length > 1 ? "s" : ""} with merge
+            conflicts: {conflicts.join(", ")}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              onClick={resolveWithAI}
+              disabled={isCancellingSync || isResolving}
+            >
+              {isResolving ? "Resolving..." : "Resolve merge conflicts with AI"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleCancelSync}
+              disabled={isCancellingSync || isResolving}
+            >
+              {isCancellingSync ? "Cancelling..." : "Cancel sync"}
+            </Button>
+          </div>
+        </div>
       )}
 
       <Card className="transition-all duration-200">

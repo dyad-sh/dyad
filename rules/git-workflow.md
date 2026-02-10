@@ -29,6 +29,25 @@ When running GitHub Actions with `pull_request_target` on cross-repo PRs (from f
 
 Actions performed using the default `GITHUB_TOKEN` (including labels added by `github-actions[bot]` via `actions/github-script`) do **not** trigger `pull_request_target` or other workflow events. This is a GitHub limitation to prevent infinite loops. If one workflow adds a label that should trigger another workflow (e.g., `label-rebase-prs.yml` adds `cc:rebase` to trigger `claude-rebase.yml`), the label-adding step must use a **PAT** or **GitHub App token** (e.g., `PR_RW_GITHUB_TOKEN`) instead of `GITHUB_TOKEN`.
 
+## GitHub API calls with special characters
+
+When using `gh api` to post comments or replies containing backticks, `$()`, or other shell metacharacters, the security hook will block the command. Instead of passing the body inline with `-f body="..."`, write a JSON file and use `--input`:
+
+```bash
+# Write JSON body to a file (use the Write tool, not echo/cat)
+# File: .claude/tmp/reply_body.json
+# {"body": "Your comment with `backticks` and special chars"}
+
+gh api repos/dyad-sh/dyad/pulls/123/comments/456/replies --input .claude/tmp/reply_body.json
+```
+
+Similarly for GraphQL mutations, write the full query + variables as JSON and use `--input`:
+
+```bash
+# {"query": "mutation($threadId: ID!) { ... }", "variables": {"threadId": "PRRT_abc123"}}
+gh api graphql --input .claude/tmp/resolve_thread.json
+```
+
 ## Adding labels to PRs
 
 `gh pr edit --add-label` fails with a GraphQL "Projects (classic)" deprecation error on repos that had classic projects. Use the REST API instead:

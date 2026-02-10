@@ -170,17 +170,6 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    Use the commit messages and changed files to write a good title and summary.
 
-   **Add labels for non-trivial PRs:**
-   After creating or verifying the PR exists, assess whether the changes are non-trivial:
-   - Non-trivial = more than simple typo fixes, formatting, or config changes
-   - Non-trivial = any code logic changes, new features, bug fixes, refactoring
-
-   For non-trivial PRs, add the `cc:request` label to request code review:
-
-   ```
-   gh pr edit --add-label "cc:request"
-   ```
-
 9. **Summarize the results:**
    - Report if a new feature branch was created (and its name)
    - Report any uncommitted changes that were committed in step 2

@@ -19,6 +19,13 @@ export const GitHubRepoSchema = z.object({
 
 export type GithubRepository = z.infer<typeof GitHubRepoSchema>;
 
+export const GitHubOrgSchema = z.object({
+  login: z.string(),
+  avatar_url: z.string().optional(),
+});
+
+export type GithubOrganization = z.infer<typeof GitHubOrgSchema>;
+
 export const GitHubBranchSchema = z.object({
   name: z.string(),
   commit: z.object({ sha: z.string() }),
@@ -134,6 +141,12 @@ export const githubContracts = {
     channel: "github:list-repos",
     input: z.void(),
     output: z.array(GitHubRepoSchema),
+  }),
+
+  listOrgs: defineContract({
+    channel: "github:list-orgs",
+    input: z.void(),
+    output: z.array(GitHubOrgSchema),
   }),
 
   getRepoBranches: defineContract({

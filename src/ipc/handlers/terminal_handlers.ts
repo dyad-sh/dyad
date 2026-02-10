@@ -84,12 +84,63 @@ function sendSessionClosed(sessionId: string): void {
   }
 }
 
+const MAX_CONCURRENT_SESSIONS = 10;
+
+// Allowlist of safe environment variable keys to forward to spawned shells
+const SAFE_ENV_KEYS = new Set([
+  "PATH",
+  "HOME",
+  "USER",
+  "LOGNAME",
+  "SHELL",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "LC_MESSAGES",
+  "TERM",
+  "COLORTERM",
+  "EDITOR",
+  "VISUAL",
+  "TMPDIR",
+  "TMP",
+  "TEMP",
+  "DISPLAY",
+  "WAYLAND_DISPLAY",
+  "COMSPEC",
+  "SYSTEMROOT",
+  "USERPROFILE",
+  "APPDATA",
+  "LOCALAPPDATA",
+  "PROGRAMFILES",
+  "COMMONPROGRAMFILES",
+]);
+
+function getFilteredEnv(): Record<string, string> {
+  const filtered: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (
+      value !== undefined &&
+      (SAFE_ENV_KEYS.has(key) || key.startsWith("XDG_"))
+    ) {
+      filtered[key] = value;
+    }
+  }
+  return filtered;
+}
+
 export function registerTerminalHandlers() {
   // Create a new terminal session
   handle(
     "terminal:create-session",
     async (_event, params: { appId: number }): Promise<TerminalSession> => {
       const { appId } = params;
+
+      // Enforce session limit
+      if (terminalSessions.size >= MAX_CONCURRENT_SESSIONS) {
+        throw new Error(
+          `Maximum number of terminal sessions (${MAX_CONCURRENT_SESSIONS}) reached. Close an existing session first.`,
+        );
+      }
 
       // Get the app to find its path
       const [app] = await db.select().from(apps).where(eq(apps.id, appId));
@@ -107,18 +158,16 @@ export function registerTerminalHandlers() {
       );
       logger.debug(`Shell: ${shell}, Args: ${shellArgs.join(" ")}`);
 
-      // Set up environment with proper PATH
+      // Set up environment with filtered safe variables only
       const homeDir = process.env.HOME || os.homedir();
       const env = {
-        ...process.env,
+        ...getFilteredEnv(),
         TERM: "xterm-256color",
         COLORTERM: "truecolor",
-        // Ensure we have a proper home directory for all platforms
         HOME: homeDir,
         ...(process.platform === "win32" && {
           USERPROFILE: process.env.USERPROFILE || homeDir,
         }),
-        // Force color output for common tools
         FORCE_COLOR: "1",
         CLICOLOR_FORCE: "1",
       };
@@ -217,7 +266,10 @@ export function registerTerminalHandlers() {
         throw new Error(`Terminal session ${sessionId} is not running`);
       }
 
-      termProcess.process.stdin?.write(data);
+      if (!termProcess.process.stdin) {
+        throw new Error(`Terminal session ${sessionId} has no stdin`);
+      }
+      termProcess.process.stdin.write(data);
     },
   );
 
@@ -235,9 +287,11 @@ export function registerTerminalHandlers() {
         throw new Error(`Terminal session ${sessionId} not found`);
       }
 
-      // Note: Real PTY resize would require node-pty
-      // For now, we just log the resize request
-      logger.debug(`Terminal resize request for ${sessionId}: ${cols}x${rows}`);
+      // Note: Resize is not functional without PTY support (node-pty).
+      // Logging at warn level so callers are aware this is a no-op.
+      logger.warn(
+        `Terminal resize is a no-op without PTY support (session ${sessionId}: ${cols}x${rows})`,
+      );
     },
   );
 
@@ -255,16 +309,20 @@ export function registerTerminalHandlers() {
 
       logger.info(`Closing terminal session ${sessionId}`);
 
-      // Kill the process
+      // Mark session as not running so the close event handler
+      // and SIGKILL timeout can check this correctly
+      termProcess.session.isRunning = false;
+
+      // Kill the process - let the 'close' event handler clean up the map entry
       if (termProcess.process.pid) {
         try {
           // Send SIGTERM first for graceful shutdown
           termProcess.process.kill("SIGTERM");
 
-          // Force kill after timeout
+          // Force kill after timeout if process hasn't exited
           setTimeout(() => {
             try {
-              if (termProcess.session.isRunning) {
+              if (terminalSessions.has(sessionId)) {
                 termProcess.process.kill("SIGKILL");
               }
             } catch {
@@ -275,8 +333,6 @@ export function registerTerminalHandlers() {
           logger.warn(`Error killing terminal process:`, error);
         }
       }
-
-      terminalSessions.delete(sessionId);
     },
   );
 

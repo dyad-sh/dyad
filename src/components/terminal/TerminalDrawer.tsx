@@ -75,7 +75,10 @@ export function TerminalDrawer() {
             type: payload.type,
             timestamp: Date.now(),
           };
-          setLines((prev) => [...prev, newLine].slice(-MAX_LINES));
+          setLines((prev) => {
+            const next = [...prev, newLine];
+            return next.length > MAX_LINES ? next.slice(-MAX_LINES) : next;
+          });
         }
       },
     );
@@ -93,7 +96,10 @@ export function TerminalDrawer() {
             type: "system",
             timestamp: Date.now(),
           };
-          setLines((prev) => [...prev, newLine].slice(-MAX_LINES));
+          setLines((prev) => {
+            const next = [...prev, newLine];
+            return next.length > MAX_LINES ? next.slice(-MAX_LINES) : next;
+          });
         }
       },
     );
@@ -158,7 +164,10 @@ export function TerminalDrawer() {
         type: "input",
         timestamp: Date.now(),
       };
-      setLines((prev) => [...prev, inputLine].slice(-MAX_LINES));
+      setLines((prev) => {
+        const next = [...prev, inputLine];
+        return next.length > MAX_LINES ? next.slice(-MAX_LINES) : next;
+      });
 
       // Send command to terminal
       try {
@@ -175,7 +184,10 @@ export function TerminalDrawer() {
           type: "system",
           timestamp: Date.now(),
         };
-        setLines((prev) => [...prev, errorLine].slice(-MAX_LINES));
+        setLines((prev) => {
+          const next = [...prev, errorLine];
+          return next.length > MAX_LINES ? next.slice(-MAX_LINES) : next;
+        });
       }
 
       setInputValue("");
@@ -201,44 +213,65 @@ export function TerminalDrawer() {
     [session],
   );
 
+  // Use a ref for height so the resize effect doesn't re-run on every change
+  const heightRef = useRef(height);
+  useEffect(() => {
+    heightRef.current = height;
+  }, [height]);
+
   // Handle resize drag
   useEffect(() => {
     const resizeHandle = resizeRef.current;
     if (!resizeHandle) return;
 
-    let startY = 0;
-    let startHeight = 0;
+    let activeMoveHandler: ((e: MouseEvent) => void) | null = null;
+    let activeUpHandler: (() => void) | null = null;
 
     const handleMouseDown = (e: MouseEvent) => {
-      startY = e.clientY;
-      startHeight = height;
+      const startY = e.clientY;
+      const startHeight = heightRef.current;
+
+      const handleMouseMove = (e: MouseEvent) => {
+        const delta = startY - e.clientY;
+        const newHeight = Math.min(
+          MAX_HEIGHT,
+          Math.max(MIN_HEIGHT, startHeight + delta),
+        );
+        setHeight(newHeight);
+      };
+
+      const handleMouseUp = () => {
+        document.removeEventListener("mousemove", handleMouseMove);
+        document.removeEventListener("mouseup", handleMouseUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        activeMoveHandler = null;
+        activeUpHandler = null;
+      };
+
+      activeMoveHandler = handleMouseMove;
+      activeUpHandler = handleMouseUp;
+
       document.addEventListener("mousemove", handleMouseMove);
       document.addEventListener("mouseup", handleMouseUp);
       document.body.style.cursor = "row-resize";
       document.body.style.userSelect = "none";
     };
 
-    const handleMouseMove = (e: MouseEvent) => {
-      const delta = startY - e.clientY;
-      const newHeight = Math.min(
-        MAX_HEIGHT,
-        Math.max(MIN_HEIGHT, startHeight + delta),
-      );
-      setHeight(newHeight);
-    };
-
-    const handleMouseUp = () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
-
     resizeHandle.addEventListener("mousedown", handleMouseDown);
     return () => {
       resizeHandle.removeEventListener("mousedown", handleMouseDown);
+      // Clean up any active drag listeners if unmounting mid-drag
+      if (activeMoveHandler) {
+        document.removeEventListener("mousemove", activeMoveHandler);
+      }
+      if (activeUpHandler) {
+        document.removeEventListener("mouseup", activeUpHandler);
+      }
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
     };
-  }, [height, setHeight]);
+  }, [setHeight]);
 
   // Focus input when terminal opens
   useEffect(() => {
@@ -457,8 +490,19 @@ export function TerminalDrawer() {
  * This is a simple implementation - a full solution would parse and render them
  */
 function stripAnsiCodes(str: string): string {
-  // eslint-disable-next-line no-control-regex
-  return str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").replace(/\r/g, "");
+  return (
+    str
+      // CSI sequences including DEC private mode (e.g., \x1b[?25l)
+      // eslint-disable-next-line no-control-regex
+      .replace(/\x1b\[[\x20-\x3f]*[0-9;]*[\x20-\x3f]*[a-zA-Z@`]/g, "")
+      // OSC sequences (e.g., \x1b]0;title\x07 or \x1b]0;title\x1b\\)
+      // eslint-disable-next-line no-control-regex
+      .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
+      // Single-character escape sequences (e.g., \x1bM)
+      // eslint-disable-next-line no-control-regex
+      .replace(/\x1b[a-zA-Z]/g, "")
+      .replace(/\r/g, "")
+  );
 }
 
 /**

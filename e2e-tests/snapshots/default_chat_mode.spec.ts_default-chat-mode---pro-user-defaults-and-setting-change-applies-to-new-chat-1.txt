@@ -1,2 +1,2 @@
 - "defaultChatMode": "local-agent"
-+ "defaultChatMode": "agent"
++ "defaultChatMode": "build"

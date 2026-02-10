@@ -3,7 +3,7 @@
 - button "Run checks":
   - img
 - button "Clear all"
-- button "Fix 3 problems":
+- button "Fix 3 problem(s)":
   - img
 - checkbox "Select problem src/test-errors.ts 2:7 Type 'string' is not assignable to type 'number'." [checked]:
   - checkbox "Select problem" [checked]:

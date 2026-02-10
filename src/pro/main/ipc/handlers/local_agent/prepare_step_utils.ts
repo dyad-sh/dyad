@@ -6,8 +6,41 @@
  */
 
 import { ImagePart, ModelMessage, TextPart, UserModelMessage } from "ai";
-import type { UserMessageContentPart } from "./tools/types";
+import type { UserMessageContentPart, Todo } from "./tools/types";
 import { cleanMessageForOpenAI } from "@/ipc/utils/ai_messages_utils";
+
+/**
+ * State for tracking todo completion reminders.
+ * We only remind the agent once per turn to avoid infinite loops.
+ */
+export interface TodoReminderState {
+  /** Whether we have already injected a reminder this turn */
+  hasRemindedThisTurn: boolean;
+}
+
+/**
+ * Check if there are incomplete todos (pending or in_progress).
+ */
+export function hasIncompleteTodos(todos: Todo[]): boolean {
+  return todos.some(
+    (todo) => todo.status === "pending" || todo.status === "in_progress",
+  );
+}
+
+/**
+ * Build a reminder message for incomplete todos.
+ */
+export function buildTodoReminderMessage(todos: Todo[]): string {
+  const incompleteTodos = todos.filter(
+    (todo) => todo.status === "pending" || todo.status === "in_progress",
+  );
+
+  const todoList = incompleteTodos
+    .map((t) => `- [${t.status}] ${t.content}`)
+    .join("\n");
+
+  return `You have ${incompleteTodos.length} incomplete todo(s). Please continue and complete them:\n\n${todoList}`;
+}
 
 /**
  * A message that has been processed and is ready to inject.
@@ -102,6 +135,7 @@ export function injectMessagesAtPositions<T>(
  * @param options - The step options containing messages and other properties
  * @param pendingUserMessages - Queue of pending messages to process
  * @param allInjectedMessages - Accumulated list of injected messages
+ * @param todoContext - Optional context for todo completion reminders
  * @returns Modified options with injected messages, or undefined if no changes needed
  */
 export function prepareStepMessages<
@@ -111,6 +145,10 @@ export function prepareStepMessages<
   options: T,
   pendingUserMessages: UserMessageContentPart[][],
   allInjectedMessages: InjectedMessage[],
+  todoContext?: {
+    todos: Todo[];
+    reminderState: TodoReminderState;
+  },
 ): (Omit<T, "messages"> & { messages: TMessage[] }) | undefined {
   const { messages, ...rest } = options;
 
@@ -127,10 +165,41 @@ export function prepareStepMessages<
   const filteredMessages = messages.map(cleanMessageForOpenAI);
 
   // Check if we need to return modified options
-  const hasInjections = allInjectedMessages.length > 0;
+  let hasInjections = allInjectedMessages.length > 0;
   const hasFilteredContent = filteredMessages.some(
     (msg, i) => msg !== messages[i],
   );
+
+  // Check if we need to remind the agent about incomplete todos
+  // Only do this once per turn to avoid infinite loops
+  let todoReminderMessage: UserModelMessage | undefined;
+  if (
+    todoContext &&
+    !todoContext.reminderState.hasRemindedThisTurn &&
+    hasIncompleteTodos(todoContext.todos)
+  ) {
+    // Check if this is the end of a step (no pending tool calls)
+    // We detect this by looking at the last message - if it's an assistant message
+    // without tool calls, the agent is about to finish
+    const lastMessage = messages[messages.length - 1];
+    const isAssistantMessage = lastMessage?.role === "assistant";
+    const hasNoToolCalls =
+      isAssistantMessage &&
+      (typeof lastMessage.content === "string" ||
+        !Array.isArray(lastMessage.content) ||
+        !lastMessage.content.some((part: any) => part.type === "tool-call"));
+
+    if (isAssistantMessage && hasNoToolCalls) {
+      todoReminderMessage = {
+        role: "user" as const,
+        content: [
+          { type: "text", text: buildTodoReminderMessage(todoContext.todos) },
+        ],
+      };
+      todoContext.reminderState.hasRemindedThisTurn = true;
+      hasInjections = true;
+    }
+  }
 
   if (!hasInjections && !hasFilteredContent) {
     return undefined;
@@ -138,12 +207,17 @@ export function prepareStepMessages<
 
   // Build the new messages array with injections
   // Cast is safe because InjectedMessage["message"] is a valid ModelMessage
-  const newMessages = hasInjections
+  let newMessages = hasInjections
     ? (injectMessagesAtPositions(
         filteredMessages,
         allInjectedMessages,
       ) as TMessage[])
     : filteredMessages;
+
+  // Append the todo reminder at the end if needed
+  if (todoReminderMessage) {
+    newMessages = [...newMessages, todoReminderMessage as TMessage];
+  }
 
   return { messages: newMessages, ...rest };
 }

@@ -4,9 +4,14 @@ import {
   processPendingMessages,
   injectMessagesAtPositions,
   prepareStepMessages,
+  hasIncompleteTodos,
+  buildTodoReminderMessage,
   type InjectedMessage,
 } from "@/pro/main/ipc/handlers/local_agent/prepare_step_utils";
-import type { UserMessageContentPart } from "@/pro/main/ipc/handlers/local_agent/tools/types";
+import type {
+  UserMessageContentPart,
+  Todo,
+} from "@/pro/main/ipc/handlers/local_agent/tools/types";
 import { ImagePart, ModelMessage } from "ai";
 
 describe("prepare_step_utils", () => {
@@ -796,6 +801,257 @@ describe("prepare_step_utils", () => {
       expect(
         reasoningPart.providerOptions.openai.reasoningEncryptedContent,
       ).toBe("encrypted-data");
+    });
+  });
+
+  describe("hasIncompleteTodos", () => {
+    it("returns true when there are pending todos", () => {
+      const todos: Todo[] = [
+        { id: "1", content: "Task 1", status: "pending" },
+        { id: "2", content: "Task 2", status: "completed" },
+      ];
+      expect(hasIncompleteTodos(todos)).toBe(true);
+    });
+
+    it("returns true when there are in_progress todos", () => {
+      const todos: Todo[] = [
+        { id: "1", content: "Task 1", status: "in_progress" },
+        { id: "2", content: "Task 2", status: "completed" },
+      ];
+      expect(hasIncompleteTodos(todos)).toBe(true);
+    });
+
+    it("returns false when all todos are completed", () => {
+      const todos: Todo[] = [
+        { id: "1", content: "Task 1", status: "completed" },
+        { id: "2", content: "Task 2", status: "completed" },
+      ];
+      expect(hasIncompleteTodos(todos)).toBe(false);
+    });
+
+    it("returns false when there are no todos", () => {
+      const todos: Todo[] = [];
+      expect(hasIncompleteTodos(todos)).toBe(false);
+    });
+  });
+
+  describe("buildTodoReminderMessage", () => {
+    it("builds a message listing incomplete todos", () => {
+      const todos: Todo[] = [
+        { id: "1", content: "Implement feature A", status: "in_progress" },
+        { id: "2", content: "Write tests", status: "pending" },
+        { id: "3", content: "Setup project", status: "completed" },
+      ];
+
+      const message = buildTodoReminderMessage(todos);
+
+      expect(message).toContain("2 incomplete todo(s)");
+      expect(message).toContain("[in_progress] Implement feature A");
+      expect(message).toContain("[pending] Write tests");
+      expect(message).not.toContain("Setup project");
+    });
+
+    it("handles a single incomplete todo", () => {
+      const todos: Todo[] = [
+        { id: "1", content: "Last task", status: "pending" },
+      ];
+
+      const message = buildTodoReminderMessage(todos);
+
+      expect(message).toContain("1 incomplete todo(s)");
+      expect(message).toContain("[pending] Last task");
+    });
+  });
+
+  describe("todo reminder injection", () => {
+    it("injects reminder when agent finishes with incomplete todos", () => {
+      const pendingUserMessages: UserMessageContentPart[][] = [];
+      const allInjectedMessages: InjectedMessage[] = [];
+      const todoContext = {
+        todos: [
+          { id: "1", content: "Task 1", status: "in_progress" as const },
+          { id: "2", content: "Task 2", status: "pending" as const },
+        ],
+        reminderState: { hasRemindedThisTurn: false },
+      };
+
+      // Simulate agent finishing with a text response (no tool calls)
+      const messages: ModelMessage[] = [
+        { role: "user", content: "Help me build an app" },
+        { role: "assistant", content: "I created the first component." },
+      ];
+
+      const result = prepareStepMessages(
+        { messages },
+        pendingUserMessages,
+        allInjectedMessages,
+        todoContext,
+      );
+
+      expect(result).toBeDefined();
+      // Should have original messages plus reminder
+      expect(result!.messages).toHaveLength(3);
+      // Last message should be the reminder
+      const reminderMsg = result!.messages[2];
+      expect(reminderMsg.role).toBe("user");
+      expect((reminderMsg.content as any[])[0].text).toContain(
+        "2 incomplete todo(s)",
+      );
+      // State should be updated
+      expect(todoContext.reminderState.hasRemindedThisTurn).toBe(true);
+    });
+
+    it("does not inject reminder when already reminded this turn", () => {
+      const pendingUserMessages: UserMessageContentPart[][] = [];
+      const allInjectedMessages: InjectedMessage[] = [];
+      const todoContext = {
+        todos: [{ id: "1", content: "Task 1", status: "pending" as const }],
+        reminderState: { hasRemindedThisTurn: true },
+      };
+
+      const messages: ModelMessage[] = [
+        { role: "user", content: "Continue" },
+        { role: "assistant", content: "Working on it." },
+      ];
+
+      const result = prepareStepMessages(
+        { messages },
+        pendingUserMessages,
+        allInjectedMessages,
+        todoContext,
+      );
+
+      // Should return undefined since no changes needed
+      expect(result).toBeUndefined();
+    });
+
+    it("does not inject reminder when all todos are completed", () => {
+      const pendingUserMessages: UserMessageContentPart[][] = [];
+      const allInjectedMessages: InjectedMessage[] = [];
+      const todoContext = {
+        todos: [
+          { id: "1", content: "Task 1", status: "completed" as const },
+          { id: "2", content: "Task 2", status: "completed" as const },
+        ],
+        reminderState: { hasRemindedThisTurn: false },
+      };
+
+      const messages: ModelMessage[] = [
+        { role: "user", content: "Build an app" },
+        { role: "assistant", content: "All done!" },
+      ];
+
+      const result = prepareStepMessages(
+        { messages },
+        pendingUserMessages,
+        allInjectedMessages,
+        todoContext,
+      );
+
+      // Should return undefined since no changes needed
+      expect(result).toBeUndefined();
+      // State should not be updated
+      expect(todoContext.reminderState.hasRemindedThisTurn).toBe(false);
+    });
+
+    it("does not inject reminder when agent has pending tool calls", () => {
+      const pendingUserMessages: UserMessageContentPart[][] = [];
+      const allInjectedMessages: InjectedMessage[] = [];
+      const todoContext = {
+        todos: [{ id: "1", content: "Task 1", status: "pending" as const }],
+        reminderState: { hasRemindedThisTurn: false },
+      };
+
+      // Simulate agent with a tool call (still working)
+      const messages: ModelMessage[] = [
+        { role: "user", content: "Build an app" },
+        {
+          role: "assistant",
+          content: [
+            { type: "text", text: "Let me create a file" },
+            {
+              type: "tool-call",
+              toolCallId: "call-123",
+              toolName: "write_file",
+              input: { path: "/app.tsx", content: "export default App" },
+            },
+          ],
+        },
+      ];
+
+      const result = prepareStepMessages(
+        { messages },
+        pendingUserMessages,
+        allInjectedMessages,
+        todoContext,
+      );
+
+      // Should return undefined since agent is still working
+      expect(result).toBeUndefined();
+      // State should not be updated
+      expect(todoContext.reminderState.hasRemindedThisTurn).toBe(false);
+    });
+
+    it("does not inject reminder when no todoContext is provided", () => {
+      const pendingUserMessages: UserMessageContentPart[][] = [];
+      const allInjectedMessages: InjectedMessage[] = [];
+
+      const messages: ModelMessage[] = [
+        { role: "user", content: "Build an app" },
+        { role: "assistant", content: "Done!" },
+      ];
+
+      const result = prepareStepMessages(
+        { messages },
+        pendingUserMessages,
+        allInjectedMessages,
+        // No todoContext
+      );
+
+      // Should return undefined
+      expect(result).toBeUndefined();
+    });
+
+    it("combines reminder with existing injected messages", () => {
+      const pendingUserMessages: UserMessageContentPart[][] = [];
+      const allInjectedMessages: InjectedMessage[] = [
+        {
+          insertAtIndex: 1,
+          sequence: 0,
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "Screenshot from crawl" }],
+          },
+        },
+      ];
+      const todoContext = {
+        todos: [{ id: "1", content: "Task 1", status: "pending" as const }],
+        reminderState: { hasRemindedThisTurn: false },
+      };
+
+      const messages: ModelMessage[] = [
+        { role: "user", content: "Build an app" },
+        { role: "assistant", content: "I analyzed the screenshot." },
+      ];
+
+      const result = prepareStepMessages(
+        { messages },
+        pendingUserMessages,
+        allInjectedMessages,
+        todoContext,
+      );
+
+      expect(result).toBeDefined();
+      // Should have: user message, injected screenshot, assistant message, reminder
+      expect(result!.messages).toHaveLength(4);
+      expect(result!.messages[0].role).toBe("user");
+      expect((result!.messages[1].content as any[])[0].text).toBe(
+        "Screenshot from crawl",
+      );
+      expect(result!.messages[2].role).toBe("assistant");
+      expect((result!.messages[3].content as any[])[0].text).toContain(
+        "incomplete todo",
+      );
     });
   });
 });

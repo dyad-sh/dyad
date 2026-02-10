@@ -54,6 +54,7 @@ import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import {
   prepareStepMessages,
   type InjectedMessage,
+  type TodoReminderState,
 } from "./prepare_step_utils";
 import { TOOL_DEFINITIONS } from "./tool_definitions";
 import {
@@ -410,6 +411,8 @@ export async function handleLocalAgentStream(
   const pendingUserMessages: UserMessageContentPart[][] = [];
   // Store injected messages with their insertion index to re-inject at the same spot each step
   const allInjectedMessages: InjectedMessage[] = [];
+  // Track whether we've reminded the agent about incomplete todos (only once per turn)
+  const todoReminderState: TodoReminderState = { hasRemindedThisTurn: false };
 
   try {
     // Get model client
@@ -547,6 +550,7 @@ export async function handleLocalAgentStream(
       // We must re-inject all accumulated messages each step because the AI SDK
       // doesn't persist dynamically injected messages in its internal state.
       // We track the insertion index so messages appear at the same position each step.
+      // Also inject reminders for incomplete todos (once per turn to avoid infinite loops).
       prepareStep: async (options) => {
         let stepOptions = options;
 
@@ -599,6 +603,10 @@ export async function handleLocalAgentStream(
           stepOptions,
           pendingUserMessages,
           allInjectedMessages,
+          {
+            todos: ctx.todos,
+            reminderState: todoReminderState,
+          },
         );
 
         // prepareStepMessages returns undefined when it has no additional

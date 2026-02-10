@@ -9,7 +9,7 @@ on:
       pr_count:
         description: "Number of recent PRs to scan for flaky tests"
         required: false
-        default: "20"
+        default: "10"
         type: string
 
 jobs:
@@ -70,4 +70,4 @@ jobs:
           claude_args: --model claude-opus-4-6
           direct: true
           prompt: |
-            /dyad:deflake-e2e-recent-prs ${{ inputs.pr_count || '20' }}
+            /dyad:deflake-e2e-recent-prs ${{ inputs.pr_count || '10' }}

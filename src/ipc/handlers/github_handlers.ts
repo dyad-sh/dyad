@@ -3,9 +3,7 @@ import fetch from "node-fetch"; // Use node-fetch for making HTTP requests in ma
 import { writeSettings, readSettings } from "../../main/settings";
 import {
   gitSetRemoteUrl,
-  gitPush,
   gitClone,
-  gitPull,
   gitRebaseAbort,
   gitRebaseContinue,
   gitRebase,
@@ -24,6 +22,11 @@ import {
   isGitRebaseInProgress,
   GitConflictError,
 } from "../utils/git_utils";
+import {
+  gitPushWorker,
+  gitPullWorker,
+  gitSetRemoteUrlWorker,
+} from "../utils/git_worker_utils";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
 import { getDyadAppPath } from "../../paths/paths";
@@ -821,6 +824,9 @@ async function handleConnectToExistingRepo(
 }
 
 // --- GitHub Push Handler ---
+// This handler runs git operations in a worker thread to prevent blocking
+// the main process event loop, which would cause the UI to freeze during sync.
+// See: https://github.com/dyad-sh/dyad/issues/2592
 async function handlePushToGithub(
   event: IpcMainInvokeEvent,
   {
@@ -852,17 +858,18 @@ async function handlePushToGithub(
   const remoteUrl = IS_TEST_BUILD
     ? `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`
     : `https://${accessToken}:x-oauth-basic@github.com/${app.githubOrg}/${app.githubRepo}.git`;
-  // Set or update remote URL using git config
-  await gitSetRemoteUrl({
-    path: appPath,
+
+  // Set or update remote URL using git config (in worker thread)
+  await gitSetRemoteUrlWorker({
+    appPath,
     remoteUrl,
   });
 
-  // Pull changes first (unless force push)
+  // Pull changes first (unless force push) - run in worker thread to avoid blocking
   if (!force && !forceWithLease) {
     try {
-      await gitPull({
-        path: appPath,
+      await gitPullWorker({
+        appPath,
         remote: "origin",
         branch,
         accessToken,
@@ -910,9 +917,9 @@ async function handlePushToGithub(
     }
   }
 
-  // Push to GitHub
-  await gitPush({
-    path: appPath,
+  // Push to GitHub (in worker thread to avoid blocking)
+  await gitPushWorker({
+    appPath,
     branch,
     accessToken,
     force,

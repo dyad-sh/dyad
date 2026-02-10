@@ -171,6 +171,11 @@ const config: ForgeConfig = {
           config: "vite.worker.config.mts",
           target: "main",
         },
+        {
+          entry: "workers/git/git_worker.ts",
+          config: "vite.git-worker.config.mts",
+          target: "main",
+        },
       ],
       renderer: [
         {

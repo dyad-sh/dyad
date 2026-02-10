@@ -66,7 +66,9 @@ jobs:
                   : new Date(0);
 
                 // Check timeline events for re-opens and ready_for_review
-                const events = await github.paginate(github.rest.issues.listEvents, {
+                // Note: must use listEventsForTimeline (not listEvents) because
+                // ready_for_review is only available through the Timeline Events API.
+                const events = await github.paginate(github.rest.issues.listEventsForTimeline, {
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: pr.number,

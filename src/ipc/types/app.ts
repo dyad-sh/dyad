@@ -31,6 +31,7 @@ export const AppBaseSchema = z.object({
   installCommand: z.string().nullable(),
   startCommand: z.string().nullable(),
   isFavorite: z.boolean(),
+  autoSyncToGithub: z.boolean(),
 });
 
 /**
@@ -232,6 +233,14 @@ export const UpdateAppCommandsParamsSchema = z.object({
 });
 
 /**
+ * Schema for update app auto-sync setting params.
+ */
+export const UpdateAppAutoSyncParamsSchema = z.object({
+  appId: z.number(),
+  autoSyncToGithub: z.boolean(),
+});
+
+/**
  * Schema for select app location params.
  */
 export const SelectAppLocationParamsSchema = z.object({
@@ -381,6 +390,12 @@ export const appContracts = {
     input: UpdateAppCommandsParamsSchema,
     output: z.void(),
   }),
+
+  updateAppAutoSync: defineContract({
+    channel: "update-app-auto-sync",
+    input: UpdateAppAutoSyncParamsSchema,
+    output: z.void(),
+  }),
 } as const;
 
 // =============================================================================
@@ -420,4 +435,7 @@ export type RenameBranchParams = z.infer<typeof RenameBranchParamsSchema>;
 export type AppSearchResult = z.infer<typeof AppSearchResultSchema>;
 export type UpdateAppCommandsParams = z.infer<
   typeof UpdateAppCommandsParamsSchema
+>;
+export type UpdateAppAutoSyncParams = z.infer<
+  typeof UpdateAppAutoSyncParamsSchema
 >;

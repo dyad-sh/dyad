@@ -47,7 +47,9 @@ export function useAttachments() {
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    setIsDraggingOver(true);
+    if (!pendingFiles) {
+      setIsDraggingOver(true);
+    }
   };
 
   const handleDragLeave = () => {
@@ -57,6 +59,8 @@ export function useAttachments() {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDraggingOver(false);
+
+    if (pendingFiles) return;
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const files = Array.from(e.dataTransfer.files);
@@ -98,6 +102,8 @@ export function useAttachments() {
   };
 
   const handlePaste = async (e: React.ClipboardEvent) => {
+    if (pendingFiles) return;
+
     const clipboardData = e.clipboardData;
     if (!clipboardData) return;
 

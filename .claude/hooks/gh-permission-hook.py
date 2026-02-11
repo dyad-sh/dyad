@@ -150,6 +150,14 @@ SAFE_REDIRECT_PATTERN = re.compile(r'\d*>&\d+|\d*>/dev/null')
 # The echo command only outputs text, making this safe for fallback values
 SAFE_FALLBACK_PATTERN = re.compile(r'\|\|\s*echo\s+(?:"[^"]*"|\'[^\']*\'|\S+)\s*$')
 
+# Safe gh subcommand pattern - $(gh ...) command substitution where the inner
+# command is a safe gh call (no shell metacharacters inside). This is commonly
+# used to dynamically construct API endpoint URLs, e.g.:
+#   gh api repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/pulls/123/comments
+# The inner content must not contain shell metacharacters (;|&`$<>) to prevent
+# nested injection like $(gh pr view 123; rm -rf /)
+SAFE_GH_SUBCOMMAND_PATTERN = re.compile(r'\$\(gh\s+[^)$`;&|<>]*\)')
+
 
 def extract_gh_command(command: str) -> Optional[str]:
     """
@@ -260,9 +268,13 @@ def contains_shell_injection(cmd: str) -> bool:
     # This allows patterns like: grep -E "bug|error"
     cmd_without_safe_doubles = SAFE_DOUBLE_QUOTED_PATTERN.sub('""', cmd_with_neutralized_spans)
 
+    # Replace safe $(gh ...) subcommands with a placeholder before checking
+    # This allows patterns like: gh api repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/...
+    cmd_to_check = SAFE_GH_SUBCOMMAND_PATTERN.sub('SAFE_GH_SUB', cmd_without_safe_doubles)
+
     # Replace safe pipe destinations with a placeholder before checking
     # This allows patterns like: gh api graphql ... | jq '...'
-    cmd_to_check = SAFE_PIPE_PATTERN.sub(' SAFE_PIPE ', cmd_without_safe_doubles)
+    cmd_to_check = SAFE_PIPE_PATTERN.sub(' SAFE_PIPE ', cmd_to_check)
 
     # Replace safe redirect patterns (like 2>&1, 2>/dev/null) before checking
     # These are standard shell redirects, not command execution

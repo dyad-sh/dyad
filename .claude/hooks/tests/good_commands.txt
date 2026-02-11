@@ -758,3 +758,5 @@ gh pr create --title "Test" --body "Run `echo x | sh` here"
 gh pr create --title "Test" --body "Check `env` output"
 gh pr create --title "Test" --body "Run `whoami` here"
 gh pr view 123 --json <(cat)
+gh api repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/pulls/2524/comments --paginate 2>/dev/null | jq -r '.[].body' 2>/dev/null | head -200
+REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner) && gh api "repos/${REPO}/pulls/2524/comments" --paginate | jq -r '.[].body' 2>/dev/null | head -200

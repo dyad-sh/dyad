@@ -2,7 +2,6 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useAtom, useSetAtom } from "jotai";
 import { homeChatInputValueAtom } from "../atoms/chatAtoms";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { ipc } from "@/ipc/types";
 import { generateCuteAppName } from "@/lib/utils";
 import { useLoadApps } from "@/hooks/useLoadApps";
@@ -55,7 +54,6 @@ export default function HomePage() {
   const [inputValue, setInputValue] = useAtom(homeChatInputValueAtom);
   const navigate = useNavigate();
   const search = useSearch({ from: "/" });
-  const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const { refreshApps } = useLoadApps();
   const { settings, updateSettings, envVars } = useSettings();
   const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
@@ -203,7 +201,6 @@ export default function HomePage() {
       );
 
       setInputValue("");
-      setSelectedAppId(result.app.id);
       setIsPreviewOpen(false);
       await refreshApps(); // Ensure refreshApps is awaited if it's async
       await invalidateAppQuery(queryClient, { appId: result.app.id });

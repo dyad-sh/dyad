@@ -24,11 +24,15 @@ export const setRecentViewedChatIdsAtom = atom(
     set(recentViewedChatIdsAtom, chatIds);
   },
 );
+const MAX_RECENT_VIEWED_CHAT_IDS = 100;
 export const pushRecentViewedChatIdAtom = atom(
   null,
   (get, set, chatId: number) => {
     const nextIds = get(recentViewedChatIdsAtom).filter((id) => id !== chatId);
     nextIds.unshift(chatId);
+    if (nextIds.length > MAX_RECENT_VIEWED_CHAT_IDS) {
+      nextIds.length = MAX_RECENT_VIEWED_CHAT_IDS;
+    }
     set(recentViewedChatIdsAtom, nextIds);
     // Remove from closed set when explicitly selected
     const closedIds = get(closedChatIdsAtom);

@@ -147,10 +147,10 @@ export function ChatList({ show }: { show?: boolean }) {
       // Remove from tab tracking to prevent stale IDs
       removeChatIdFromAllTracking(chatId);
 
-      // If the deleted chat was selected, navigate to home
+      // If the deleted chat was selected, navigate to home (matches tab-close behavior)
       if (selectedChatId === chatId) {
         setSelectedChatId(null);
-        navigate({ to: "/chat" });
+        navigate({ to: "/" });
       }
 
       // Refresh the chat list

@@ -1,4 +1,5 @@
 import type { FileAttachment, Message, AgentTodo } from "@/ipc/types";
+import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
 
 // Per-chat atoms implemented with maps keyed by chatId
@@ -19,6 +20,16 @@ export const recentViewedChatIdsAtom = atom<number[]>([]);
 // Track explicitly closed tabs - these should not reappear in the tab bar
 export const closedChatIdsAtom = atom<Set<number>>(new Set<number>());
 const MAX_RECENT_VIEWED_CHAT_IDS = 100;
+
+// Helper to remove a chat ID from the closed set (used when a closed tab is re-opened)
+function removeFromClosedSet(get: Getter, set: Setter, chatId: number): void {
+  const closedIds = get(closedChatIdsAtom);
+  if (closedIds.has(chatId)) {
+    const newClosedIds = new Set(closedIds);
+    newClosedIds.delete(chatId);
+    set(closedChatIdsAtom, newClosedIds);
+  }
+}
 export const setRecentViewedChatIdsAtom = atom(
   null,
   (_get, set, chatIds: number[]) => {
@@ -46,12 +57,7 @@ export const ensureRecentViewedChatIdAtom = atom(
     }
     set(recentViewedChatIdsAtom, nextIds);
     // Remove from closed set when explicitly selected
-    const closedIds = get(closedChatIdsAtom);
-    if (closedIds.has(chatId)) {
-      const newClosedIds = new Set(closedIds);
-      newClosedIds.delete(chatId);
-      set(closedChatIdsAtom, newClosedIds);
-    }
+    removeFromClosedSet(get, set, chatId);
   },
 );
 export const pushRecentViewedChatIdAtom = atom(
@@ -64,12 +70,7 @@ export const pushRecentViewedChatIdAtom = atom(
     }
     set(recentViewedChatIdsAtom, nextIds);
     // Remove from closed set when explicitly selected
-    const closedIds = get(closedChatIdsAtom);
-    if (closedIds.has(chatId)) {
-      const newClosedIds = new Set(closedIds);
-      newClosedIds.delete(chatId);
-      set(closedChatIdsAtom, newClosedIds);
-    }
+    removeFromClosedSet(get, set, chatId);
   },
 );
 export const removeRecentViewedChatIdAtom = atom(
@@ -113,12 +114,7 @@ export const removeChatIdFromAllTrackingAtom = atom(
       recentViewedChatIdsAtom,
       get(recentViewedChatIdsAtom).filter((id) => id !== chatId),
     );
-    const closedIds = get(closedChatIdsAtom);
-    if (closedIds.has(chatId)) {
-      const newClosedIds = new Set(closedIds);
-      newClosedIds.delete(chatId);
-      set(closedChatIdsAtom, newClosedIds);
-    }
+    removeFromClosedSet(get, set, chatId);
   },
 );
 

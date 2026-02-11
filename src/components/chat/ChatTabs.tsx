@@ -477,8 +477,8 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                   {inProgress && (
                     <span
                       className="flex items-center text-purple-600"
-                      aria-label="Chat in progress"
-                      title="Chat in progress"
+                      aria-label={t("chatInProgress")}
+                      title={t("chatInProgress")}
                     >
                       <Loader2 size={12} className="animate-spin" />
                     </span>
@@ -486,8 +486,8 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                   {hasNotification && (
                     <span
                       className="flex items-center"
-                      aria-label="New activity"
-                      title="New activity"
+                      aria-label={t("newActivity")}
+                      title={t("newActivity")}
                     >
                       <span className="h-2 w-2 rounded-full bg-blue-500" />
                     </span>
@@ -573,12 +573,20 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                     className="flex items-center gap-2"
                   >
                     {inProgress && (
-                      <span className="flex items-center text-purple-600">
+                      <span
+                        className="flex items-center text-purple-600"
+                        aria-label={t("chatInProgress")}
+                        title={t("chatInProgress")}
+                      >
                         <Loader2 size={12} className="animate-spin" />
                       </span>
                     )}
                     {hasNotification && (
-                      <span className="flex items-center">
+                      <span
+                        className="flex items-center"
+                        aria-label={t("newActivity")}
+                        title={t("newActivity")}
+                      >
                         <span className="h-2 w-2 rounded-full bg-blue-500" />
                       </span>
                     )}

@@ -6,8 +6,12 @@ import {
   removeRecentViewedChatIdAtom,
 } from "@/atoms/chatAtoms";
 import {
-  getVisibleRecentChats,
+  applySelectionToOrderedChatIds,
+  getOrderedRecentChatIds,
+  getVisibleTabCapacity,
   getFallbackChatIdAfterClose,
+  partitionChatsByVisibleCount,
+  reorderVisibleChatIds,
 } from "@/components/chat/ChatTabs";
 import type { ChatSummary } from "@/lib/schemas";
 
@@ -21,16 +25,49 @@ function chat(id: number): ChatSummary {
 }
 
 describe("ChatTabs helpers", () => {
-  it("returns at most 3 tabs in MRU order", () => {
+  it("keeps MRU order and appends chats that were never viewed", () => {
     const chats = [chat(1), chat(2), chat(3), chat(4)];
-    const visible = getVisibleRecentChats([4, 2, 3, 1], chats);
-    expect(visible.map((c) => c.id)).toEqual([4, 2, 3]);
+    const orderedIds = getOrderedRecentChatIds([4, 2], chats);
+    expect(orderedIds).toEqual([4, 2, 1, 3]);
   });
 
   it("skips stale chat ids that no longer exist", () => {
     const chats = [chat(1), chat(3)];
-    const visible = getVisibleRecentChats([3, 999, 1], chats);
-    expect(visible.map((c) => c.id)).toEqual([3, 1]);
+    const orderedIds = getOrderedRecentChatIds([3, 999, 1], chats);
+    expect(orderedIds).toEqual([3, 1]);
+  });
+
+  it("does not reorder when selecting an already-visible tab", () => {
+    const orderedIds = [4, 2, 3, 1];
+    const nextIds = applySelectionToOrderedChatIds(orderedIds, 2, 3);
+    expect(nextIds).toEqual([4, 2, 3, 1]);
+  });
+
+  it("promotes a non-visible selected tab and bumps the last visible tab", () => {
+    const orderedIds = [4, 2, 3, 1];
+    const nextIds = applySelectionToOrderedChatIds(orderedIds, 1, 3);
+    expect(nextIds).toEqual([1, 4, 2, 3]);
+  });
+
+  it("reorders only visible tabs during drag", () => {
+    const orderedIds = [10, 11, 12, 13, 14];
+    const nextIds = reorderVisibleChatIds(orderedIds, 3, 12, 10);
+    expect(nextIds).toEqual([12, 10, 11, 13, 14]);
+  });
+
+  it("partitions chats into visible and overflow sets", () => {
+    const orderedChats = [chat(1), chat(2), chat(3), chat(4)];
+    const { visibleTabs, overflowTabs } = partitionChatsByVisibleCount(
+      orderedChats,
+      2,
+    );
+    expect(visibleTabs.map((c) => c.id)).toEqual([1, 2]);
+    expect(overflowTabs.map((c) => c.id)).toEqual([3, 4]);
+  });
+
+  it("uses overflow-aware capacity with min width constraints", () => {
+    // 3 tabs fit at 140px each (+ gaps), but with overflow trigger reserved only 2 fit.
+    expect(getVisibleTabCapacity(430, 4, 140)).toBe(2);
   });
 
   it("selects right-adjacent tab when closing active middle tab", () => {

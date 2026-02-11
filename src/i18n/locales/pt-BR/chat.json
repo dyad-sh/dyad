@@ -2,6 +2,8 @@
   "newChat": "Novo Chat",
   "recentChats": "Chats Recentes",
   "searchChats": "Pesquisar chats",
+  "closeChatTab": "Fechar aba: {{title}}",
+  "openOverflowTabs": "Abrir mais abas ({{count}})",
   "loadingChats": "Carregando chats...",
   "noChatsFound": "Nenhum chat encontrado",
   "renameChat": "Renomear Chat",

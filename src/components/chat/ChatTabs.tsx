@@ -1,39 +1,138 @@
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
-import { X } from "lucide-react";
+import { Loader2, MoreHorizontal, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ChatSummary } from "@/lib/schemas";
 import { useChats } from "@/hooks/useChats";
+import { useLoadApps } from "@/hooks/useLoadApps";
 import { useSelectChat } from "@/hooks/useSelectChat";
 import {
+  isStreamingByIdAtom,
   recentViewedChatIdsAtom,
+  setRecentViewedChatIdsAtom,
   removeRecentViewedChatIdAtom,
-  pushRecentViewedChatIdAtom,
 } from "@/atoms/chatAtoms";
 import { cn } from "@/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
-const MAX_VISIBLE_TABS = 3;
+const MIN_VISIBLE_TAB_WIDTH_PX = 160;
+const TAB_GAP_PX = 4;
+const OVERFLOW_TRIGGER_WIDTH_PX = 36;
+const DEFAULT_UNMEASURED_VISIBLE_TABS = 3;
+const MAX_OVERFLOW_MENU_ITEMS = 8;
 
-export function getVisibleRecentChats(
+export function getOrderedRecentChatIds(
   recentViewedChatIds: number[],
   chats: ChatSummary[],
-  limit = MAX_VISIBLE_TABS,
-): ChatSummary[] {
-  if (recentViewedChatIds.length === 0 || chats.length === 0 || limit <= 0) {
-    return [];
-  }
+): number[] {
+  if (chats.length === 0) return [];
 
-  const chatsById = new Map(chats.map((chat) => [chat.id, chat]));
-  const visibleTabs: ChatSummary[] = [];
+  const chatIds = new Set(chats.map((chat) => chat.id));
+  const ordered: number[] = [];
+  const seen = new Set<number>();
 
   for (const chatId of recentViewedChatIds) {
-    const chat = chatsById.get(chatId);
-    if (!chat) continue;
-    visibleTabs.push(chat);
-    if (visibleTabs.length >= limit) break;
+    if (!chatIds.has(chatId) || seen.has(chatId)) continue;
+    ordered.push(chatId);
+    seen.add(chatId);
   }
 
-  return visibleTabs;
+  for (const chat of chats) {
+    if (seen.has(chat.id)) continue;
+    ordered.push(chat.id);
+    seen.add(chat.id);
+  }
+
+  return ordered;
+}
+
+export function getVisibleTabCapacity(
+  containerWidth: number,
+  totalTabs: number,
+  minTabWidth = MIN_VISIBLE_TAB_WIDTH_PX,
+): number {
+  if (containerWidth <= 0 || totalTabs <= 0) return 0;
+
+  const withoutOverflow = Math.max(
+    1,
+    Math.floor((containerWidth + TAB_GAP_PX) / (minTabWidth + TAB_GAP_PX)),
+  );
+
+  if (totalTabs <= withoutOverflow) {
+    return withoutOverflow;
+  }
+
+  const withOverflow = Math.max(
+    1,
+    Math.floor(
+      (containerWidth - OVERFLOW_TRIGGER_WIDTH_PX + TAB_GAP_PX) /
+        (minTabWidth + TAB_GAP_PX),
+    ),
+  );
+
+  return Math.min(withOverflow, totalTabs);
+}
+
+export function applySelectionToOrderedChatIds(
+  orderedChatIds: number[],
+  selectedChatId: number,
+  visibleTabCount: number,
+): number[] {
+  const selectedIndex = orderedChatIds.indexOf(selectedChatId);
+  if (selectedIndex === -1) {
+    return [selectedChatId, ...orderedChatIds];
+  }
+
+  if (selectedIndex < visibleTabCount) {
+    return orderedChatIds;
+  }
+
+  const nextIds = [...orderedChatIds];
+  nextIds.splice(selectedIndex, 1);
+  nextIds.unshift(selectedChatId);
+  return nextIds;
+}
+
+export function reorderVisibleChatIds(
+  orderedChatIds: number[],
+  visibleTabCount: number,
+  sourceChatId: number,
+  targetChatId: number,
+): number[] {
+  const visibleIds = orderedChatIds.slice(0, visibleTabCount);
+  const sourceIndex = visibleIds.indexOf(sourceChatId);
+  const targetIndex = visibleIds.indexOf(targetChatId);
+
+  if (sourceIndex === -1 || targetIndex === -1 || sourceIndex === targetIndex) {
+    return orderedChatIds;
+  }
+
+  const nextVisible = [...visibleIds];
+  const [movedId] = nextVisible.splice(sourceIndex, 1);
+  nextVisible.splice(targetIndex, 0, movedId);
+
+  return [...nextVisible, ...orderedChatIds.slice(visibleTabCount)];
+}
+
+export function partitionChatsByVisibleCount(
+  orderedChats: ChatSummary[],
+  visibleTabCount: number,
+): { visibleTabs: ChatSummary[]; overflowTabs: ChatSummary[] } {
+  return {
+    visibleTabs: orderedChats.slice(0, visibleTabCount),
+    overflowTabs: orderedChats.slice(visibleTabCount),
+  };
 }
 
 export function getFallbackChatIdAfterClose(
@@ -51,36 +150,184 @@ export function getFallbackChatIdAfterClose(
 }
 
 interface ChatTabsProps {
-  appId: number | null;
   selectedChatId: number | null;
 }
 
-export function ChatTabs({ appId, selectedChatId }: ChatTabsProps) {
+export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   const { t } = useTranslation("chat");
-  const { chats } = useChats(appId);
+  const { chats } = useChats(null);
+  const { apps } = useLoadApps();
+  const isStreamingById = useAtomValue(isStreamingByIdAtom);
   const recentViewedChatIds = useAtomValue(recentViewedChatIdsAtom);
+  const setRecentViewedChatIds = useSetAtom(setRecentViewedChatIdsAtom);
   const removeRecentViewedChatId = useSetAtom(removeRecentViewedChatIdAtom);
-  const pushRecentViewedChatId = useSetAtom(pushRecentViewedChatIdAtom);
   const { selectChat } = useSelectChat();
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [draggingChatId, setDraggingChatId] = useState<number | null>(null);
+  const [notifiedChatIds, setNotifiedChatIds] = useState<Set<number>>(
+    new Set(),
+  );
+  const prevStreamingRef = useRef<Map<number, boolean>>(new Map());
 
-  useEffect(() => {
-    if (selectedChatId !== null) {
-      pushRecentViewedChatId(selectedChatId);
-    }
-  }, [selectedChatId, pushRecentViewedChatId]);
+  const chatsById = useMemo(
+    () => new Map(chats.map((chat) => [chat.id, chat])),
+    [chats],
+  );
+  const appNameById = useMemo(
+    () => new Map(apps.map((app) => [app.id, app.name])),
+    [apps],
+  );
 
-  const tabs = useMemo(
-    () => getVisibleRecentChats(recentViewedChatIds, chats),
+  const orderedChatIds = useMemo(
+    () => getOrderedRecentChatIds(recentViewedChatIds, chats),
     [recentViewedChatIds, chats],
   );
 
-  const handleTabClick = (chat: ChatSummary) => {
-    selectChat({ chatId: chat.id, appId: chat.appId });
+  const orderedChats = useMemo(
+    () =>
+      orderedChatIds
+        .map((chatId) => chatsById.get(chatId))
+        .filter((chat): chat is ChatSummary => chat !== undefined),
+    [orderedChatIds, chatsById],
+  );
+
+  const visibleTabCapacity = useMemo(
+    () => getVisibleTabCapacity(containerWidth, orderedChats.length),
+    [containerWidth, orderedChats.length],
+  );
+
+  const visibleTabCount =
+    visibleTabCapacity > 0
+      ? visibleTabCapacity
+      : Math.min(orderedChats.length, DEFAULT_UNMEASURED_VISIBLE_TABS);
+
+  const { visibleTabs, overflowTabs } = useMemo(
+    () => partitionChatsByVisibleCount(orderedChats, visibleTabCount),
+    [orderedChats, visibleTabCount],
+  );
+  const overflowTabsForMenu = useMemo(
+    () => overflowTabs.slice(0, MAX_OVERFLOW_MENU_ITEMS),
+    [overflowTabs],
+  );
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+
+    const updateWidth = () => {
+      const measuredWidth =
+        node.getBoundingClientRect().width ||
+        node.clientWidth ||
+        node.parentElement?.getBoundingClientRect().width ||
+        node.parentElement?.clientWidth ||
+        0;
+      setContainerWidth(measuredWidth);
+    };
+
+    // Measure once on next frame to avoid early 0-width reads during mount/layout.
+    const frameId = window.requestAnimationFrame(updateWidth);
+    updateWidth();
+
+    const observer = new ResizeObserver(() => {
+      updateWidth();
+    });
+    observer.observe(node);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      observer.disconnect();
+    };
+  }, []);
+
+  // Detect streaming → finished transitions for non-active tabs to show a
+  // notification dot.
+  useEffect(() => {
+    const prev = prevStreamingRef.current;
+    const newNotified = new Set(notifiedChatIds);
+    let changed = false;
+
+    for (const [chatId, wasStreaming] of prev) {
+      const isNowStreaming = isStreamingById.get(chatId) === true;
+      if (wasStreaming && !isNowStreaming && chatId !== selectedChatId) {
+        newNotified.add(chatId);
+        changed = true;
+      }
+    }
+
+    // Clear notification for the currently viewed tab
+    if (selectedChatId !== null && newNotified.has(selectedChatId)) {
+      newNotified.delete(selectedChatId);
+      changed = true;
+    }
+
+    if (changed) {
+      setNotifiedChatIds(newNotified);
+    }
+
+    prevStreamingRef.current = new Map(isStreamingById);
+  }, [isStreamingById, selectedChatId, notifiedChatIds]);
+
+  const clearNotification = useCallback((chatId: number) => {
+    setNotifiedChatIds((prev) => {
+      if (!prev.has(chatId)) return prev;
+      const next = new Set(prev);
+      next.delete(chatId);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (
+      selectedChatId === null ||
+      !chatsById.has(selectedChatId) ||
+      containerWidth <= 0
+    ) {
+      return;
+    }
+
+    const nextIds = applySelectionToOrderedChatIds(
+      orderedChatIds,
+      selectedChatId,
+      visibleTabCount,
+    );
+
+    if (!isSameIdOrder(orderedChatIds, nextIds)) {
+      setRecentViewedChatIds(nextIds);
+    }
+  }, [
+    chatsById,
+    containerWidth,
+    orderedChatIds,
+    selectedChatId,
+    setRecentViewedChatIds,
+    visibleTabCount,
+  ]);
+
+  const handleTabClick = (chat: ChatSummary, fromOverflow = false) => {
+    if (fromOverflow) {
+      const nextIds = applySelectionToOrderedChatIds(
+        orderedChatIds,
+        chat.id,
+        visibleTabCount,
+      );
+      if (!isSameIdOrder(orderedChatIds, nextIds)) {
+        setRecentViewedChatIds(nextIds);
+      }
+    }
+
+    clearNotification(chat.id);
+
+    selectChat({
+      chatId: chat.id,
+      appId: chat.appId,
+      preserveTabOrder: true,
+    });
   };
 
   const handleCloseTab = (chatId: number) => {
-    const closedTab = tabs.find((tab) => tab.id === chatId);
-    const fallbackChatId = getFallbackChatIdAfterClose(tabs, chatId);
+    const closedTab = visibleTabs.find((tab) => tab.id === chatId);
+    const fallbackChatId = getFallbackChatIdAfterClose(visibleTabs, chatId);
 
     removeRecentViewedChatId(chatId);
 
@@ -88,57 +335,232 @@ export function ChatTabs({ appId, selectedChatId }: ChatTabsProps) {
       return;
     }
 
-    const fallbackTab = tabs.find((tab) => tab.id === fallbackChatId);
+    const fallbackTab =
+      visibleTabs.find((tab) => tab.id === fallbackChatId) ??
+      chatsById.get(fallbackChatId);
     if (!fallbackTab) return;
 
-    selectChat({ chatId: fallbackTab.id, appId: fallbackTab.appId });
+    selectChat({
+      chatId: fallbackTab.id,
+      appId: fallbackTab.appId,
+      preserveTabOrder: true,
+    });
   };
 
-  if (tabs.length === 0) return null;
+  if (orderedChats.length === 0) return null;
 
   return (
-    <div className="flex items-center gap-1 overflow-x-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      {tabs.map((chat) => {
-        const isActive = selectedChatId === chat.id;
-        const title = chat.title?.trim() || t("newChat");
+    <TooltipProvider delay={500}>
+      <div ref={containerRef} className="flex min-w-0 items-center gap-1 px-2">
+        <div className="flex min-w-0 flex-1 items-center overflow-hidden">
+          {visibleTabs.map((chat, index) => {
+            const isActive = selectedChatId === chat.id;
+            const isNextActive =
+              index < visibleTabs.length - 1 &&
+              selectedChatId === visibleTabs[index + 1].id;
+            const title = chat.title?.trim() || t("newChat");
+            const appName = appNameById.get(chat.appId) ?? `App ${chat.appId}`;
+            const titleExcerpt = getChatTitleExcerpt(title);
+            const isDragging = draggingChatId === chat.id;
+            const inProgress = isStreamingById.get(chat.id) === true;
+            const hasNotification = !inProgress && notifiedChatIds.has(chat.id);
 
-        return (
-          <div
-            key={chat.id}
-            className={cn(
-              "group flex h-7 max-w-44 min-w-0 items-center gap-1 rounded-md border px-2.5 text-xs transition-colors",
-              isActive
-                ? "bg-background text-foreground shadow-sm border-border"
-                : "bg-muted/50 text-muted-foreground hover:bg-muted border-transparent",
-            )}
-          >
-            <button
-              type="button"
-              onClick={() => handleTabClick(chat)}
-              className="min-w-0 flex-1 truncate text-left"
-              aria-current={isActive ? "page" : undefined}
+            return (
+              <Tooltip key={chat.id}>
+                <TooltipTrigger
+                  render={
+                    <div
+                      draggable
+                      onDragStart={(event) => {
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setData(
+                          "text/plain",
+                          String(chat.id),
+                        );
+                        setDraggingChatId(chat.id);
+                      }}
+                      onDragEnd={() => setDraggingChatId(null)}
+                      onDragOver={(event) => {
+                        if (
+                          draggingChatId === null ||
+                          draggingChatId === chat.id
+                        ) {
+                          return;
+                        }
+                        event.preventDefault();
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        if (
+                          draggingChatId === null ||
+                          draggingChatId === chat.id
+                        ) {
+                          return;
+                        }
+
+                        const nextIds = reorderVisibleChatIds(
+                          orderedChatIds,
+                          visibleTabs.length,
+                          draggingChatId,
+                          chat.id,
+                        );
+                        if (!isSameIdOrder(orderedChatIds, nextIds)) {
+                          setRecentViewedChatIds(nextIds);
+                        }
+                        setDraggingChatId(null);
+                      }}
+                      className={cn(
+                        "group relative flex h-10 min-w-[160px] max-w-52 items-center gap-1 rounded-md px-2.5 transition-all active:scale-[0.97]",
+                        isActive
+                          ? "bg-background text-foreground shadow-sm"
+                          : "bg-muted/50 text-muted-foreground hover:bg-muted",
+                        isDragging && "opacity-60",
+                        // Chrome-style divider on right edge
+                        !isActive &&
+                          !isNextActive &&
+                          index < visibleTabs.length - 1 &&
+                          "after:absolute after:right-0 after:top-1/4 after:h-1/2 after:w-px after:bg-border",
+                      )}
+                    />
+                  }
+                >
+                  {inProgress && (
+                    <span
+                      className="flex items-center text-purple-600"
+                      aria-label="Chat in progress"
+                      title="Chat in progress"
+                    >
+                      <Loader2 size={12} className="animate-spin" />
+                    </span>
+                  )}
+                  {hasNotification && (
+                    <span
+                      className="flex items-center"
+                      aria-label="New activity"
+                      title="New activity"
+                    >
+                      <span className="h-2 w-2 rounded-full bg-blue-500" />
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleTabClick(chat)}
+                    className="min-w-0 flex-1 text-left"
+                    aria-current={isActive ? "page" : undefined}
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-[10px] leading-3 font-bold">
+                        {appName}
+                      </div>
+                      <div className="truncate text-xs leading-4">{title}</div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleCloseTab(chat.id);
+                    }}
+                    className={cn(
+                      "rounded-sm p-0.5 transition-colors",
+                      isActive
+                        ? "opacity-80 hover:bg-muted"
+                        : "opacity-0 group-hover:opacity-80 hover:bg-background/50",
+                    )}
+                    aria-label={t("closeChatTab", { title })}
+                  >
+                    <X size={12} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="bottom"
+                  align="start"
+                  sideOffset={6}
+                  className="max-w-80 !rounded-lg !border !border-border !bg-popover !px-3.5 !py-2.5 !text-popover-foreground !shadow-lg [&>:last-child]:!hidden"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-[11px] leading-4 font-semibold">
+                      {appName}
+                    </div>
+                    <div className="mt-0.5 text-[11px] leading-4 break-words opacity-70">
+                      {titleExcerpt}
+                    </div>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            );
+          })}
+        </div>
+
+        {overflowTabs.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className="flex h-7 w-8 items-center justify-center rounded-md border border-transparent bg-muted/50 text-muted-foreground hover:bg-muted"
+              aria-label={t("openOverflowTabs", { count: overflowTabs.length })}
             >
-              {title}
-            </button>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                handleCloseTab(chat.id);
-              }}
-              className={cn(
-                "rounded-sm p-0.5 transition-colors",
-                isActive
-                  ? "opacity-80 hover:bg-muted"
-                  : "opacity-0 group-hover:opacity-80 hover:bg-background/50",
-              )}
-              aria-label={t("closeChatTab", { title })}
-            >
-              <X size={12} />
-            </button>
-          </div>
-        );
-      })}
-    </div>
+              <MoreHorizontal size={14} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              {overflowTabsForMenu.map((chat) => {
+                const title = chat.title?.trim() || t("newChat");
+                const appName =
+                  appNameById.get(chat.appId) ?? `App ${chat.appId}`;
+                const inProgress = isStreamingById.get(chat.id) === true;
+                const hasNotification =
+                  !inProgress && notifiedChatIds.has(chat.id);
+                return (
+                  <DropdownMenuItem
+                    key={chat.id}
+                    onClick={() => handleTabClick(chat, true)}
+                    className="flex items-center gap-2"
+                  >
+                    {inProgress && (
+                      <span className="flex items-center text-purple-600">
+                        <Loader2 size={12} className="animate-spin" />
+                      </span>
+                    )}
+                    {hasNotification && (
+                      <span className="flex items-center">
+                        <span className="h-2 w-2 rounded-full bg-blue-500" />
+                      </span>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[10px] leading-3 font-bold">
+                        {appName}
+                      </div>
+                      <div className="truncate text-xs leading-4">{title}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleCloseTab(chat.id);
+                      }}
+                      className="rounded-sm p-0.5 text-muted-foreground hover:bg-muted"
+                      aria-label={t("closeChatTab", { title })}
+                    >
+                      <X size={12} />
+                    </button>
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+    </TooltipProvider>
   );
+}
+
+function isSameIdOrder(left: number[], right: number[]): boolean {
+  if (left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i += 1) {
+    if (left[i] !== right[i]) return false;
+  }
+  return true;
+}
+
+function getChatTitleExcerpt(title: string, maxLength = 140): string {
+  if (title.length <= maxLength) return title;
+  return `${title.slice(0, maxLength - 1)}...`;
 }

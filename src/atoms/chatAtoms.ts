@@ -16,6 +16,12 @@ export const homeChatInputValueAtom = atom<string>("");
 export const chatStreamCountByIdAtom = atom<Map<number, number>>(new Map());
 export const recentStreamChatIdsAtom = atom<Set<number>>(new Set<number>());
 export const recentViewedChatIdsAtom = atom<number[]>([]);
+export const setRecentViewedChatIdsAtom = atom(
+  null,
+  (_get, set, chatIds: number[]) => {
+    set(recentViewedChatIdsAtom, chatIds);
+  },
+);
 export const pushRecentViewedChatIdAtom = atom(
   null,
   (get, set, chatId: number) => {

@@ -30,7 +30,9 @@ import { ImportAppButton } from "@/components/ImportAppButton";
 import { showError } from "@/lib/toast";
 import { invalidateAppQuery } from "@/hooks/useLoadApp";
 import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
 import { ForceCloseDialog } from "@/components/ForceCloseDialog";
+import { useSelectChat } from "@/hooks/useSelectChat";
 
 import type { FileAttachment } from "@/ipc/types";
 import { NEON_TEMPLATE_IDS } from "@/shared/templates";
@@ -59,6 +61,7 @@ export default function HomePage() {
   const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
 
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
+  const { selectChat } = useSelectChat();
   const [isLoading, setIsLoading] = useState(false);
   const [forceCloseDialogOpen, setForceCloseDialogOpen] = useState(false);
   const [performanceData, setPerformanceData] = useState<any>(undefined);
@@ -204,8 +207,11 @@ export default function HomePage() {
       setIsPreviewOpen(false);
       await refreshApps(); // Ensure refreshApps is awaited if it's async
       await invalidateAppQuery(queryClient, { appId: result.app.id });
+      // Invalidate chats so ChatTabs picks up the new chat immediately.
+      await queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
       posthog.capture("home:chat-submit");
-      navigate({ to: "/chat", search: { id: result.chatId } });
+      // Select newly created first chat so it appears first in tabs.
+      selectChat({ chatId: result.chatId, appId: result.app.id });
     } catch (error) {
       console.error("Failed to create chat:", error);
       showError(t("failedCreateApp", { error: (error as any).toString() }));

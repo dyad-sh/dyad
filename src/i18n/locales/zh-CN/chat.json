@@ -2,6 +2,8 @@
   "newChat": "新建聊天",
   "recentChats": "最近的聊天",
   "searchChats": "搜索聊天",
+  "closeChatTab": "关闭标签页：{{title}}",
+  "openOverflowTabs": "打开更多标签页（{{count}}）",
   "loadingChats": "正在加载聊天...",
   "noChatsFound": "未找到聊天",
   "renameChat": "重命名聊天",

@@ -97,7 +97,7 @@ export const TitleBar = () => {
         {isDyadPro && <DyadProButton isDyadProEnabled={isDyadProEnabled} />}
 
         <div className="flex-1 min-w-0 overflow-hidden no-app-region-drag">
-          <ChatTabs appId={selectedAppId} selectedChatId={selectedChatId} />
+          <ChatTabs selectedChatId={selectedChatId} />
         </div>
 
         <TitleBarActions />

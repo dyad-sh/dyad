@@ -65,9 +65,9 @@ export function ChatList({ show }: { show?: boolean }) {
   useEffect(() => {
     if (isChatRoute) {
       const id = routerState.location.search.id;
-      if (id) {
-        console.log("Setting selected chat id to", id);
-        setSelectedChatId(id);
+      const chatId = Number(id);
+      if (Number.isFinite(chatId) && chatId > 0) {
+        setSelectedChatId(chatId);
       }
     }
   }, [isChatRoute, routerState.location.search, setSelectedChatId]);

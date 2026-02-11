@@ -13,10 +13,20 @@ export function useSelectChat() {
   const navigate = useNavigate();
 
   return {
-    selectChat: ({ chatId, appId }: { chatId: number; appId: number }) => {
+    selectChat: ({
+      chatId,
+      appId,
+      preserveTabOrder = false,
+    }: {
+      chatId: number;
+      appId: number;
+      preserveTabOrder?: boolean;
+    }) => {
       setSelectedChatId(chatId);
       setSelectedAppId(appId);
-      pushRecentViewedChatId(chatId);
+      if (!preserveTabOrder) {
+        pushRecentViewedChatId(chatId);
+      }
       navigate({
         to: "/chat",
         search: { id: chatId },

@@ -531,6 +531,14 @@ export async function handleLocalAgentStream(
     const accumulatedAiMessages: ModelMessage[] = [];
 
     while (!abortController.signal.aborted) {
+      // Reset mid-turn compaction state at the start of each pass.
+      // These flags track compaction within a single pass and must not persist
+      // across passes (e.g., todo follow-up passes).
+      compactedMidTurn = false;
+      compactionFailedMidTurn = false;
+      compactBeforeNextStep = false;
+      postMidTurnCompactionStartStep = null;
+
       // Stream the response
       const streamResult = streamText({
         model: modelClient.model,

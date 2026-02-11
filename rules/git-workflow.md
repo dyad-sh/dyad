@@ -85,6 +85,7 @@ The stashed changes will be automatically merged back after the rebase completes
 - **React component wrapper conflicts**: When rebasing UI changes that conflict on wrapper div classes (e.g., `flex items-start space-x-2` vs `flex items-end gap-1`), keep the newer styling from the incoming commit but preserve any functional components (like dialogs or modals) that exist in HEAD but not in the incoming change
 - **Refactoring conflicts**: When incoming commits refactor code (e.g., extracting inline logic into helper functions), and HEAD has new features in the same area, integrate HEAD's features into the new structure. Example: if incoming code moves streaming logic to `runSingleStreamPass()` and HEAD adds mid-turn compaction to the inline code, add compaction support to the new function rather than keeping the old inline version
 - **Import merge conflicts**: When both HEAD and incoming commit add different imports to the same file (e.g., HEAD adds i18n imports, incoming adds terminal imports), combine both sets of imports instead of choosing one side. This commonly happens with feature branches that touch the same files.
+- **Missing component references**: If rebase conflicts include references to components that don't exist in the codebase (e.g., imports from non-existent files), remove those references during conflict resolution. Verify file existence with `git ls-tree -r HEAD --name-only | grep <filename>` or `Glob` before keeping imports.
 
 ## Rebasing with uncommitted changes
 

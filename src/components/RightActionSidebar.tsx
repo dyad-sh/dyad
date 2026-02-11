@@ -1,9 +1,17 @@
 import { useAtom, useAtomValue } from "jotai";
 import { previewModeAtom, selectedAppIdAtom } from "../atoms/appAtoms";
-import { Eye, Code, AlertTriangle, Wrench, Globe, Shield } from "lucide-react";
+import {
+  Eye,
+  Code,
+  AlertTriangle,
+  Wrench,
+  Globe,
+  Shield,
+  Terminal,
+} from "lucide-react";
 import { motion } from "framer-motion";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
-import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
+import { isPreviewOpenAtom, isTerminalOpenAtom } from "@/atoms/viewAtoms";
 import { useTranslation } from "react-i18next";
 import type { PreviewMode } from "./preview_panel/ActionHeader";
 
@@ -12,6 +20,7 @@ export const RightActionSidebar = () => {
   const { t } = useTranslation("home");
   const [previewMode, setPreviewMode] = useAtom(previewModeAtom);
   const [isPreviewOpen, setIsPreviewOpen] = useAtom(isPreviewOpenAtom);
+  const [isTerminalOpen, setIsTerminalOpen] = useAtom(isTerminalOpenAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { problemReport } = useCheckProblems(selectedAppId);
 
@@ -119,6 +128,33 @@ export const RightActionSidebar = () => {
           t("preview.publish"),
           "publish-mode-button",
         )}
+      </div>
+      {/* Terminal toggle button at bottom */}
+      <div className="flex flex-col items-center gap-1 pb-2 border-t border-sidebar-border pt-2">
+        <button
+          data-testid="terminal-toggle-button"
+          className={`no-app-region-drag cursor-pointer relative flex flex-col items-center justify-center w-12 h-12 rounded-lg font-medium transition-colors duration-150 active:scale-90 ${
+            isTerminalOpen
+              ? "text-sidebar-accent-foreground"
+              : "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          }`}
+          onClick={() => setIsTerminalOpen(!isTerminalOpen)}
+          title={isTerminalOpen ? "Close terminal" : "Open terminal"}
+        >
+          {isTerminalOpen && (
+            <motion.div
+              layoutId="terminal-indicator"
+              className="absolute inset-0 rounded-lg bg-sidebar-accent"
+              transition={{ type: "spring", stiffness: 500, damping: 35 }}
+            />
+          )}
+          <div className="relative z-10">
+            <Terminal size={iconSize} />
+          </div>
+          <span className="relative z-10 text-[10px] leading-tight mt-0.5 truncate max-w-full">
+            Terminal
+          </span>
+        </button>
       </div>
     </div>
   );

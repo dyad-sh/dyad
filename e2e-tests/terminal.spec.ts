@@ -336,11 +336,10 @@ test.describe("Terminal Drawer", () => {
     test("should have terminal toggle button in action header", async ({
       po,
     }) => {
-      await po.setUp();
-      await po.sendPrompt("Create a simple component");
-      await po.approveProposal();
+      await po.setUp({ autoApprove: true });
+      await po.importApp("minimal");
 
-      // Toggle button should be visible in the action header
+      // Toggle button should be visible in the right action sidebar
       await expect(po.terminal.getToggleButton()).toBeVisible();
     });
 

@@ -4,7 +4,7 @@
 name: PR Review Responder
 
 on:
-  pull_request:
+  pull_request_target:
     types: [labeled]
   workflow_run:
     workflows: ["CI"]
@@ -20,7 +20,7 @@ jobs:
   respond-to-pr:
     if: >-
       github.event_name == 'workflow_run' ||
-      (github.event_name == 'pull_request' && github.event.label.name == 'cc:request:now')
+      (github.event_name == 'pull_request_target' && github.event.label.name == 'cc:request:now')
     environment: ai-bots
     runs-on: ubuntu-latest
     permissions:
@@ -36,7 +36,7 @@ jobs:
             const eventName = context.eventName;
             let prNumber, headRepo, headBranch, prLabels, prAuthor;
 
-            if (eventName === 'pull_request') {
+            if (eventName === 'pull_request_target') {
               // Triggered by adding cc:request:now label
               const pr = context.payload.pull_request;
               prNumber = pr.number;
@@ -44,6 +44,15 @@ jobs:
               headBranch = pr.head.ref;
               prLabels = pr.labels;
               prAuthor = pr.user.login;
+
+              // Check that the person who applied the label is a trusted actor
+              const actor = context.actor;
+              const allowedActors = ['wwwillchen', 'wwwillchen-bot', 'azizmejri1', 'princeaden1'];
+              if (!allowedActors.includes(actor)) {
+                console.log(`Label applied by ${actor} who is not in the allowed actors list`);
+                core.setOutput('should_continue', 'false');
+                return;
+              }
 
               if (!headRepo) {
                 console.log('Head repository not available');
@@ -82,6 +91,12 @@ jobs:
                 prNumber = prs[0].number;
               }
 
+              if (!run.head_repository) {
+                console.log('Head repository not available (fork may have been deleted)');
+                core.setOutput('should_continue', 'false');
+                return;
+              }
+
               headRepo = run.head_repository.full_name;
               headBranch = run.head_branch;
 
@@ -108,7 +123,7 @@ jobs:
             let currentLabel = '';
 
             for (const label of prLabels) {
-              if (label.name === 'cc:request' || label.name === 'cc:request:now') {
+              if (label.name === 'cc:request' || (label.name === 'cc:request:now' && eventName === 'pull_request_target')) {
                 if (requestCount < 0) {
                   requestCount = 0;
                   currentLabel = label.name;

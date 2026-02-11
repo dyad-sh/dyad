@@ -152,7 +152,7 @@ export async function getLanguageModels({
   if (providerId === "openrouter") {
     const freeModels = getOpenRouterFreeModels();
     const dedupe = new Map<string, LanguageModel>();
-    [...hardcodedModels, ...freeModels].forEach((model) => {
+    [...freeModels, ...hardcodedModels].forEach((model) => {
       dedupe.set(model.apiName, model);
     });
     hardcodedModels = Array.from(dedupe.values());

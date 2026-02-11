@@ -6,7 +6,7 @@ import {
   previewCurrentUrlAtom,
 } from "@/atoms/appAtoms";
 import { useAtomValue, useSetAtom, useAtom } from "jotai";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -978,6 +978,27 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     }
   };
 
+  // Freeze iframe src between remounts so in-iframe SPA navigation (pushState/replaceState)
+  // doesn't cause React to set a new src and trigger a second full navigation flicker.
+  const iframeSrc = useMemo(() => {
+    if (!appUrl) {
+      return undefined;
+    }
+
+    const currentUrl = currentIframeUrlRef.current;
+    if (!currentUrl) {
+      return appUrl;
+    }
+
+    try {
+      const currentOrigin = new URL(currentUrl).origin;
+      const appOrigin = new URL(appUrl).origin;
+      return currentOrigin === appOrigin ? currentUrl : appUrl;
+    } catch {
+      return appUrl;
+    }
+  }, [appUrl, reloadKey, selectedAppId]);
+
   // Display loading state
   if (loading) {
     return (
@@ -1008,9 +1029,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const onRestart = () => {
     restartApp();
   };
-
-  // Convert null to undefined for iframe src prop compatibility
-  const iframeSrc = currentIframeUrlRef.current ?? appUrl ?? undefined;
 
   return (
     <div className="flex flex-col h-full">

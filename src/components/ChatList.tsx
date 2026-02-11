@@ -8,7 +8,7 @@ import { useAtom, useSetAtom } from "jotai";
 import {
   selectedChatIdAtom,
   removeChatIdFromAllTrackingAtom,
-  pushRecentViewedChatIdAtom,
+  ensureRecentViewedChatIdAtom,
 } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { dropdownOpenAtom } from "@/atoms/uiAtoms";
@@ -67,23 +67,26 @@ export function ChatList({ show }: { show?: boolean }) {
   const removeChatIdFromAllTracking = useSetAtom(
     removeChatIdFromAllTrackingAtom,
   );
-  const pushRecentViewedChatId = useSetAtom(pushRecentViewedChatIdAtom);
+  const ensureRecentViewedChatId = useSetAtom(ensureRecentViewedChatIdAtom);
 
-  // Update selectedChatId when route changes and ensure chat appears in tabs
+  // Update selectedChatId when route changes and ensure chat appears in tabs.
+  // Uses ensureRecentViewedChatId (not push) to avoid moving existing tabs to
+  // the front on every navigation, which would defeat preserveTabOrder and
+  // drag-to-reorder.
   useEffect(() => {
     if (isChatRoute) {
       const id = routerState.location.search.id;
       const chatId = Number(id);
       if (Number.isFinite(chatId) && chatId > 0) {
         setSelectedChatId(chatId);
-        pushRecentViewedChatId(chatId);
+        ensureRecentViewedChatId(chatId);
       }
     }
   }, [
     isChatRoute,
     routerState.location.search,
     setSelectedChatId,
-    pushRecentViewedChatId,
+    ensureRecentViewedChatId,
   ]);
 
   if (!show) {
@@ -120,11 +123,12 @@ export function ChatList({ show }: { show?: boolean }) {
           updateSettings({ selectedChatMode: effectiveDefaultMode });
         }
 
+        // Refresh the chat list first so the new chat is in the cache
+        // before selectChat adds it to the tab bar
+        await invalidateChats();
+
         // Navigate to the new chat (use selectChat so it appears at front of tab bar)
         selectChat({ chatId, appId: selectedAppId });
-
-        // Refresh the chat list
-        await invalidateChats();
       } catch (error) {
         // DO A TOAST
         showError(t("failedCreateChat", { error: (error as any).toString() }));

@@ -32,6 +32,28 @@ export const setRecentViewedChatIdsAtom = atom(
   },
 );
 const MAX_RECENT_VIEWED_CHAT_IDS = 100;
+// Add a chat ID to the recent list only if it's not already present.
+// Unlike pushRecentViewedChatIdAtom, this does NOT move existing IDs to the front,
+// preserving the current tab order for chats already tracked.
+export const ensureRecentViewedChatIdAtom = atom(
+  null,
+  (get, set, chatId: number) => {
+    const currentIds = get(recentViewedChatIdsAtom);
+    if (currentIds.includes(chatId)) return;
+    const nextIds = [chatId, ...currentIds];
+    if (nextIds.length > MAX_RECENT_VIEWED_CHAT_IDS) {
+      nextIds.length = MAX_RECENT_VIEWED_CHAT_IDS;
+    }
+    set(recentViewedChatIdsAtom, nextIds);
+    // Remove from closed set when explicitly selected
+    const closedIds = get(closedChatIdsAtom);
+    if (closedIds.has(chatId)) {
+      const newClosedIds = new Set(closedIds);
+      newClosedIds.delete(chatId);
+      set(closedChatIdsAtom, newClosedIds);
+    }
+  },
+);
 export const pushRecentViewedChatIdAtom = atom(
   null,
   (get, set, chatId: number) => {

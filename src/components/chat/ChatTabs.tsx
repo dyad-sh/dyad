@@ -499,7 +499,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                     aria-current={isActive ? "page" : undefined}
                   >
                     <div className="min-w-0">
-                      <div className="truncate text-[10px] leading-3 font-bold">
+                      <div className="truncate text-xs leading-3.5 font-bold">
                         {appName}
                       </div>
                       <div className="truncate text-xs leading-4">{title}</div>
@@ -583,7 +583,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                       </span>
                     )}
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-[10px] leading-3 font-bold">
+                      <div className="truncate text-xs leading-3.5 font-bold">
                         {appName}
                       </div>
                       <div className="truncate text-xs leading-4">{title}</div>
@@ -594,7 +594,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                         event.stopPropagation();
                         handleCloseTab(chat.id);
                       }}
-                      className="rounded-sm p-0.5 text-muted-foreground hover:bg-muted"
+                      className="flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted"
                       aria-label={t("closeChatTab", { title })}
                     >
                       <X size={12} />

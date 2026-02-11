@@ -39,25 +39,16 @@ const ignore = (file: string) => {
   if (file.startsWith("/node_modules/html-to-image")) {
     return false;
   }
-  if (file.startsWith("/node_modules/better-sqlite3")) {
-    return false;
-  }
-  if (file.startsWith("/node_modules/recast")) {
-    return false;
-  }
-  if (file.startsWith("/node_modules/ast-types")) {
-    return false;
-  }
-  if (file.startsWith("/node_modules/esprima")) {
-    return false;
-  }
-  if (file.startsWith("/node_modules/source-map")) {
-    return false;
-  }
-  if (file.startsWith("/node_modules/tslib")) {
-    return false;
-  }
-  if (file.startsWith("/node_modules/bindings")) {
+  const modulesToInclude = [
+    "better-sqlite3",
+    "recast",
+    "ast-types",
+    "esprima",
+    "source-map",
+    "tslib",
+    "bindings",
+  ];
+  if (modulesToInclude.some(mod => file.startsWith(`/node_modules/${mod}`))) {
     return false;
   }
   if (file.startsWith("/node_modules/file-uri-to-path")) {

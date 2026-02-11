@@ -1,0 +1,1 @@
+ALTER TABLE `apps` ADD `auto_sync_to_github` integer DEFAULT 0 NOT NULL;

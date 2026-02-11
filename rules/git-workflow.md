@@ -89,8 +89,9 @@ If you need to rebase but have uncommitted changes (e.g., package-lock.json from
 
 1. Stash changes: `git stash push -m "Stash changes before rebase"`
 2. Rebase: `git rebase upstream/main` (resolve conflicts if needed)
-3. Pop stash: `git stash pop`
-4. Discard spurious changes like package-lock.json (if package.json unchanged): `git restore package-lock.json`
+3. After rebase completes, review stashed changes: `git stash show -p`
+4. If stashed changes are spurious (e.g., package-lock.json peer markers when package.json conflicts were resolved during rebase), drop the stash: `git stash drop`
+5. Otherwise, pop stash: `git stash pop` and discard spurious changes: `git restore package-lock.json` (if package.json unchanged)
 
 This prevents rebase conflicts from uncommitted changes while preserving any work in progress.
 
@@ -101,3 +102,7 @@ When rebasing a PR branch that conflicts with upstream documentation changes (e.
 - If upstream has reorganized content (e.g., moved sections to separate `rules/*.md` files), keep upstream's version
 - Discard the PR's inline content that conflicts with the new organization
 - The PR's documentation changes may need to be re-applied to the new file locations after the rebase
+
+## Resolving package.json engine conflicts
+
+When rebasing causes conflicts in the `engines` field of `package.json` (e.g., node version requirements), accept the incoming change from upstream/main to maintain consistency with the base branch requirements. The same resolution should be applied to the corresponding section in `package-lock.json`.

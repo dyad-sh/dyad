@@ -233,6 +233,9 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     [overflowTabs],
   );
 
+  // Re-run when orderedChats becomes non-empty so the ResizeObserver attaches
+  // after the container div renders (it returns null when there are no chats).
+  const hasChats = orderedChats.length > 0;
   useEffect(() => {
     const node = containerRef.current;
     if (!node) return;
@@ -260,7 +263,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
       window.cancelAnimationFrame(frameId);
       observer.disconnect();
     };
-  }, []);
+  }, [hasChats]);
 
   // Detect streaming → finished transitions for non-active tabs to show a
   // notification dot.
@@ -603,5 +606,5 @@ function isSameIdOrder(left: number[], right: number[]): boolean {
 
 function getChatTitleExcerpt(title: string, maxLength = 140): string {
   if (title.length <= maxLength) return title;
-  return `${title.slice(0, maxLength - 1)}...`;
+  return `${title.slice(0, maxLength - 3)}...`;
 }

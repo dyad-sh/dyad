@@ -112,12 +112,8 @@ export function ChatList({ show }: { show?: boolean }) {
           updateSettings({ selectedChatMode: effectiveDefaultMode });
         }
 
-        // Navigate to the new chat
-        setSelectedChatId(chatId);
-        navigate({
-          to: "/chat",
-          search: { id: chatId },
-        });
+        // Navigate to the new chat (use selectChat so it appears at front of tab bar)
+        selectChat({ chatId, appId: selectedAppId });
 
         // Refresh the chat list
         await invalidateChats();

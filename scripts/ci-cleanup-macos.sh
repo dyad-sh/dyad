@@ -152,7 +152,8 @@ if [ "${CI_NIGHTLY_CLEANUP:-0}" = "1" ]; then
     if [ -n "$stale" ]; then
       echo "Removing stale _work dirs (older than 2 days):"
       echo "$stale"
-      echo "$stale" | xargs rm -rf 2>/dev/null || true
+      echo "$stale" | while IFS= read -r dir; do rm -rf "$dir"; done
+
     fi
   fi
 fi

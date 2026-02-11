@@ -3,15 +3,19 @@ import { useAtomValue, useSetAtom } from "jotai";
 import { Loader2, MoreHorizontal, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ChatSummary } from "@/lib/schemas";
+import { useNavigate } from "@tanstack/react-router";
 import { useChats } from "@/hooks/useChats";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useSelectChat } from "@/hooks/useSelectChat";
 import {
   isStreamingByIdAtom,
   recentViewedChatIdsAtom,
+  selectedChatIdAtom,
   setRecentViewedChatIdsAtom,
   removeRecentViewedChatIdAtom,
+  pushRecentViewedChatIdAtom,
   closedChatIdsAtom,
+  pruneClosedChatIdsAtom,
 } from "@/atoms/chatAtoms";
 import { cn } from "@/lib/utils";
 import {
@@ -95,7 +99,9 @@ export function applySelectionToOrderedChatIds(
 ): number[] {
   const selectedIndex = orderedChatIds.indexOf(selectedChatId);
   if (selectedIndex === -1) {
-    return [selectedChatId, ...orderedChatIds];
+    // Unknown chat ID — don't modify the order. The caller should
+    // ensure selectedChatId is valid before invoking this function.
+    return orderedChatIds;
   }
 
   if (selectedIndex < visibleTabCount) {
@@ -166,7 +172,11 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   const closedChatIds = useAtomValue(closedChatIdsAtom);
   const setRecentViewedChatIds = useSetAtom(setRecentViewedChatIdsAtom);
   const removeRecentViewedChatId = useSetAtom(removeRecentViewedChatIdAtom);
+  const pushRecentViewedChatId = useSetAtom(pushRecentViewedChatIdAtom);
+  const pruneClosedChatIds = useSetAtom(pruneClosedChatIdsAtom);
+  const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const { selectChat } = useSelectChat();
+  const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [draggingChatId, setDraggingChatId] = useState<number | null>(null);
@@ -179,6 +189,13 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     () => new Map(chats.map((chat) => [chat.id, chat])),
     [chats],
   );
+
+  // Prune stale IDs from closedChatIds when the chat list changes
+  const chatIdSet = useMemo(() => new Set(chats.map((c) => c.id)), [chats]);
+  useEffect(() => {
+    pruneClosedChatIds(chatIdSet);
+  }, [chatIdSet, pruneClosedChatIds]);
+
   const appNameById = useMemo(
     () => new Map(apps.map((app) => [app.id, app.name])),
     [apps],
@@ -292,6 +309,14 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
       return;
     }
 
+    // If the selected chat was previously closed, re-open it as a tab.
+    // This prevents an infinite loop where applySelectionToOrderedChatIds
+    // would try to insert an ID that getOrderedRecentChatIds filters out.
+    if (closedChatIds.has(selectedChatId)) {
+      pushRecentViewedChatId(selectedChatId);
+      return;
+    }
+
     const nextIds = applySelectionToOrderedChatIds(
       orderedChatIds,
       selectedChatId,
@@ -303,8 +328,10 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     }
   }, [
     chatsById,
+    closedChatIds,
     containerWidth,
     orderedChatIds,
+    pushRecentViewedChatId,
     selectedChatId,
     setRecentViewedChatIds,
     visibleTabCount,
@@ -338,7 +365,14 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
 
     removeRecentViewedChatId(chatId);
 
-    if (!closedTab || selectedChatId !== chatId || fallbackChatId === null) {
+    if (!closedTab || selectedChatId !== chatId) {
+      return;
+    }
+
+    // If no fallback tab (last tab closed), navigate to home
+    if (fallbackChatId === null) {
+      setSelectedChatId(null);
+      navigate({ to: "/" });
       return;
     }
 
@@ -501,7 +535,9 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
           <DropdownMenu>
             <DropdownMenuTrigger
               className="flex h-7 w-8 items-center justify-center rounded-md border border-transparent bg-muted/50 text-muted-foreground hover:bg-muted"
-              aria-label={t("openOverflowTabs", { count: overflowTabs.length })}
+              aria-label={t("openOverflowTabs", {
+                count: overflowTabsForMenu.length,
+              })}
             >
               <MoreHorizontal size={14} />
             </DropdownMenuTrigger>

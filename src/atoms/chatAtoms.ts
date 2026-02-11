@@ -53,6 +53,25 @@ export const removeRecentViewedChatIdAtom = atom(
     set(closedChatIdsAtom, newClosedIds);
   },
 );
+// Prune closed chat IDs that no longer exist in the chats list
+export const pruneClosedChatIdsAtom = atom(
+  null,
+  (get, set, validChatIds: Set<number>) => {
+    const closedIds = get(closedChatIdsAtom);
+    let changed = false;
+    const pruned = new Set<number>();
+    for (const id of closedIds) {
+      if (validChatIds.has(id)) {
+        pruned.add(id);
+      } else {
+        changed = true;
+      }
+    }
+    if (changed) {
+      set(closedChatIdsAtom, pruned);
+    }
+  },
+);
 // Remove a chat ID from all tracking (used when chat is deleted)
 export const removeChatIdFromAllTrackingAtom = atom(
   null,

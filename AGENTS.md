@@ -128,10 +128,6 @@ In the AI SDK's `streamText`, `step.usage.totalTokens` in `onStepFinish` is **pe
 
 In `prepareStep`, the AI SDK sets `stepNumber = steps.length`. The first call has `steps = []` so `stepNumber = 0`, the second call has one step so `stepNumber = 1`, etc. When writing tests that mock `prepareStep`, use 0-indexed step numbers to match real SDK behavior.
 
-### Compaction test mock messages need createdAt
-
-`buildChatMessageHistory` and `getMidTurnCompactionSummaryIds` call `createdAt.getTime()` on chat messages to detect mid-turn compaction summaries. Test messages created via `buildTestChat` must include `createdAt` on every message (including mock compaction summaries added by `performCompaction`). Missing `createdAt` causes a silent TypeError inside the async generator that manifests as `undefined` return values rather than an obvious error.
-
 ### Custom chat message indicators
 
 The `<dyad-status>` tag in chat messages renders as a collapsible status indicator box. Use it for system messages like compaction notifications:

@@ -13,6 +13,7 @@ import {
   QueryClient,
   QueryClientProvider,
   MutationCache,
+  useQueryClient,
 } from "@tanstack/react-query";
 import { showError, showMcpConsentToast } from "./lib/toast";
 import { ipc } from "./ipc/types";
@@ -99,6 +100,16 @@ const posthogClient = posthog.init(
 );
 
 function App() {
+  const queryClient = useQueryClient();
+
+  // Fetch user budget on app load
+  useEffect(() => {
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.userBudget.info,
+      queryFn: () => ipc.system.getUserBudget(),
+    });
+  }, [queryClient]);
+
   useEffect(() => {
     // Subscribe to navigation state changes
     const unsubscribe = router.subscribe("onResolved", (navigation) => {

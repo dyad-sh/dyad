@@ -47,7 +47,7 @@ jobs:
 
               // Check that the person who applied the label is a trusted actor
               const actor = context.actor;
-              const allowedActors = ['wwwillchen', 'wwwillchen-bot', 'azizmejri1', 'princeaden1'];
+              const allowedActors = ['wwwillchen', 'wwwillchen-bot'];
               if (!allowedActors.includes(actor)) {
                 console.log(`Label applied by ${actor} who is not in the allowed actors list`);
                 core.setOutput('should_continue', 'false');

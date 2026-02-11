@@ -7,6 +7,7 @@ import { getDyadAppPath } from "../../paths/paths";
 import { spawn } from "child_process";
 import { gitCommit, gitAdd } from "../utils/git_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
+import { autoSyncToGithubIfEnabled } from "./github_handlers";
 
 const logger = log.scope("portal_handlers");
 const handle = createLoggedHandler(logger);
@@ -120,6 +121,9 @@ export function registerPortalHandlers() {
           path: appPath,
           message: "[dyad] Generate database migration file",
         });
+
+        // Auto-sync to GitHub if enabled
+        await autoSyncToGithubIfEnabled(appId);
 
         logger.info(`Successfully committed migration changes: ${commitHash}`);
         return { output: migrationOutput };

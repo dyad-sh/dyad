@@ -178,6 +178,62 @@ test("create and sync to existing repo - custom branch", async ({ po }) => {
   });
 });
 
+test("auto-sync to GitHub after commit", async ({ po }) => {
+  // Clear any previous push events
+  await po.githubConnector.clearPushEvents();
+
+  await po.setUp({ autoApprove: true });
+  await po.sendPrompt("tc=basic");
+
+  // Connect to GitHub and create a repo
+  await po.appManagement.getTitleBarAppNameButton().click();
+  await po.githubConnector.connect();
+
+  await po.githubConnector.fillCreateRepoName("test-auto-sync-repo");
+
+  // Wait for availability check
+  await po.page.waitForSelector("text=Repository name is available!", {
+    timeout: 5000,
+  });
+
+  // Click create repo button
+  await po.githubConnector.clickCreateRepoButton();
+
+  // Get the initial push count (from repo creation)
+  const initialPushEvents = await po.githubConnector.getPushEvents(
+    "test-auto-sync-repo",
+  );
+  const initialPushCount = initialPushEvents.length;
+
+  // Verify auto-sync toggle is visible and initially off
+  await expect(po.githubConnector.getAutoSyncToggle()).toBeVisible();
+  expect(await po.githubConnector.isAutoSyncEnabled()).toBe(false);
+
+  // Enable auto-sync
+  await po.githubConnector.toggleAutoSync();
+
+  // Verify auto-sync is now enabled
+  expect(await po.githubConnector.isAutoSyncEnabled()).toBe(true);
+
+  // Go back to chat and make a change that will trigger a commit
+  await po.appManagement.clickOpenInChatButton();
+  await po.sendPrompt("tc=write-index");
+
+  // Wait for the auto-sync to complete (give it some time to push)
+  await po.page.waitForTimeout(2000);
+
+  // Verify that a new push event was received (should have more push events than initially)
+  const finalPushEvents = await po.githubConnector.getPushEvents(
+    "test-auto-sync-repo",
+  );
+  expect(finalPushEvents.length).toBeGreaterThan(initialPushCount);
+
+  // Verify the latest push event is for the correct repo and branch
+  const latestPush = finalPushEvents[finalPushEvents.length - 1];
+  expect(latestPush.repo).toBe("test-auto-sync-repo");
+  expect(latestPush.branch).toBe("main");
+});
+
 test("github clear integration settings", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.sendPrompt("tc=basic");

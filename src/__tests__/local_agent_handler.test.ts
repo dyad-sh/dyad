@@ -452,12 +452,21 @@ describe("handleLocalAgentStream", () => {
       // Arrange
       const { event, getMessagesByChannel } = createFakeEvent();
       mockSettings = buildTestSettings({ enableDyadPro: true });
+      const t0 = new Date("2025-01-01T00:00:00Z");
+      const t1 = new Date("2025-01-01T00:01:00Z");
+      const t2 = new Date("2025-01-01T00:02:00Z");
+      const t3 = new Date("2025-01-01T00:03:00Z");
       mockChatData = buildTestChat({
         messages: [
-          { id: 1, role: "user", content: "old context user" },
-          { id: 2, role: "assistant", content: "old context assistant" },
-          { id: 3, role: "user", content: "current task" },
-          { id: 10, role: "assistant", content: "" }, // placeholder
+          { id: 1, role: "user", content: "old context user", createdAt: t0 },
+          {
+            id: 2,
+            role: "assistant",
+            content: "old context assistant",
+            createdAt: t1,
+          },
+          { id: 3, role: "user", content: "current task", createdAt: t2 },
+          { id: 10, role: "assistant", content: "", createdAt: t3 }, // placeholder
         ],
       });
 
@@ -480,6 +489,7 @@ describe("handleLocalAgentStream", () => {
               content:
                 '<dyad-compaction title="Conversation compacted" state="finished">mid-turn summary</dyad-compaction>',
               isCompactionSummary: true,
+              createdAt: new Date("2025-01-01T00:03:30Z"),
             },
           ],
         } as any;
@@ -607,12 +617,21 @@ describe("handleLocalAgentStream", () => {
       // Arrange
       const { event } = createFakeEvent();
       mockSettings = buildTestSettings({ enableDyadPro: true });
+      const t0 = new Date("2025-01-01T00:00:00Z");
+      const t1 = new Date("2025-01-01T00:01:00Z");
+      const t2 = new Date("2025-01-01T00:02:00Z");
+      const t3 = new Date("2025-01-01T00:03:00Z");
       mockChatData = buildTestChat({
         messages: [
-          { id: 1, role: "user", content: "old context user" },
-          { id: 2, role: "assistant", content: "old context assistant" },
-          { id: 3, role: "user", content: "current task" },
-          { id: 10, role: "assistant", content: "" }, // placeholder
+          { id: 1, role: "user", content: "old context user", createdAt: t0 },
+          {
+            id: 2,
+            role: "assistant",
+            content: "old context assistant",
+            createdAt: t1,
+          },
+          { id: 3, role: "user", content: "current task", createdAt: t2 },
+          { id: 10, role: "assistant", content: "", createdAt: t3 }, // placeholder
         ],
       });
 
@@ -635,6 +654,7 @@ describe("handleLocalAgentStream", () => {
               content:
                 '<dyad-compaction title="Conversation compacted" state="finished">mid-turn summary</dyad-compaction>',
               isCompactionSummary: true,
+              createdAt: new Date("2025-01-01T00:03:30Z"),
             },
           ],
         } as any;

@@ -181,8 +181,7 @@
     }
   },
   "engines": {
-    "node": ">=20",
-    "npm": "11.8.0"
+    "node": ">=24"
   },
   "productName": "dyad"
 }

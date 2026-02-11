@@ -1,6 +1,6 @@
 # Deflake E2E Tests from Recent Commits
 
-Automatically gather flaky E2E tests from recent CI runs on the main branch and deflake them.
+Automatically gather flaky E2E tests from recent CI runs on the main branch and from recent PRs by wwwillchen/wwwillchen-bot, then deflake them.
 
 ## Arguments
 
@@ -44,16 +44,29 @@ Automatically gather flaky E2E tests from recent CI runs on the main branch and 
 
    **Note:** Some runs may not have an html-report artifact (e.g., if they were cancelled early, the merge-reports job didn't complete, or artifacts have expired past the 3-day retention period). Skip these runs and continue to the next one.
 
-2. **Parse flaky tests from results:**
+2. **Gather flaky tests from recent PRs by wwwillchen and wwwillchen-bot:**
 
-   From each `results.json`, extract flaky test names. A test is flaky if:
-   - It has multiple results (retries occurred)
-   - The final result status is `"passed"`
-   - At least one prior result has status `"failed"`, `"timedOut"`, or `"interrupted"`
+   In addition to main branch CI runs, scan recent open PRs authored by `wwwillchen` or `wwwillchen-bot` for flaky tests reported in Playwright report comments.
 
-   The test title format is: `<spec_file.spec.ts> > <Suite Name> > <Test Name>`
+   a. List recent open PRs by these authors:
 
-   Parse each title to extract the spec file (everything before the first `>`).
+   ```
+   gh pr list --author wwwillchen --state open --limit 10 --json number,title
+   gh pr list --author wwwillchen-bot --state open --limit 10 --json number,title
+   ```
+
+   b. For each PR, find the most recent Playwright Test Results comment (posted by a bot, containing "🎭 Playwright Test Results"):
+
+   ```
+   gh api "repos/{owner}/{repo}/issues/<pr_number>/comments" --jq '[.[] | select(.user.type == "Bot" and (.body | contains("Playwright Test Results")))] | last'
+   ```
+
+   c. Parse the comment body to extract flaky tests. The comment format includes a "⚠️ Flaky Tests" section with test names in backticks:
+   - Look for lines matching the pattern: ``- `<test_title>` (passed after N retries)``
+   - Extract the test title from within the backticks
+   - The test title format is: `<spec_file.spec.ts> > <Suite Name> > <Test Name>`
+
+   d. Add these flaky tests to the overall collection, noting they came from PR #N for the summary
 
 3. **Deduplicate and rank by frequency:**
 
@@ -70,7 +83,7 @@ Automatically gather flaky E2E tests from recent CI runs on the main branch and 
 
 4. **Skip if no flaky tests found:**
 
-   If no flaky tests are found, report "No flaky tests found in recent commits" and stop.
+   If no flaky tests are found, report "No flaky tests found in recent commits or PRs" and stop.
 
 5. **Install dependencies and build:**
 
@@ -128,7 +141,8 @@ Automatically gather flaky E2E tests from recent CI runs on the main branch and 
 7. **Summarize results:**
 
    Report:
-   - Total flaky tests found across commits
+   - Total flaky tests found across main branch commits and PRs
+   - Sources of flaky tests (main branch CI runs vs. PR comments from wwwillchen/wwwillchen-bot)
    - Which tests were successfully deflaked
    - What fixes were applied to each
    - Which tests could not be fixed (and why)

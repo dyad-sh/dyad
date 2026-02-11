@@ -22,9 +22,11 @@ This skill creates three independent sub-agents to review code changes, then agg
 
 ### Step 1: Fetch PR Diff
 
+**IMPORTANT:** Always save files to the current working directory (e.g. `./pr_diff.patch`), never to `/tmp/` or other directories outside the repo. In CI, only the repo working directory is accessible.
+
 ```bash
-# Get changed files from PR
-gh pr diff <PR_NUMBER> --repo <OWNER/REPO> > pr_diff.patch
+# Get changed files from PR (save to current working directory, NOT /tmp/)
+gh pr diff <PR_NUMBER> --repo <OWNER/REPO> > ./pr_diff.patch
 
 # Or get list of changed files
 gh pr view <PR_NUMBER> --repo <OWNER/REPO> --json files -q '.files[].path'
@@ -38,7 +40,7 @@ Execute the orchestrator script:
 python3 scripts/orchestrate_review.py \
   --pr-number <PR_NUMBER> \
   --repo <OWNER/REPO> \
-  --diff-file pr_diff.patch
+  --diff-file ./pr_diff.patch
 ```
 
 The orchestrator:
@@ -177,7 +179,7 @@ To disable extended thinking (faster but less thorough):
 python3 scripts/orchestrate_review.py \
   --pr-number <PR_NUMBER> \
   --repo <OWNER/REPO> \
-  --diff-file pr_diff.patch \
+  --diff-file ./pr_diff.patch \
   --no-thinking
 ```
 
@@ -187,6 +189,6 @@ To customize thinking budget:
 python3 scripts/orchestrate_review.py \
   --pr-number <PR_NUMBER> \
   --repo <OWNER/REPO> \
-  --diff-file pr_diff.patch \
+  --diff-file ./pr_diff.patch \
   --thinking-budget 50000
 ```

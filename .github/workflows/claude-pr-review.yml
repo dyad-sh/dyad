@@ -53,7 +53,7 @@ jobs:
           track_progress: false
 
           prompt: |
-            /dyad:multi-pr-review ${{ github.event.pull_request.number }}
+            /dyad:swarm-pr-review ${{ github.event.pull_request.number }}
 
           # Uses .claude/settings.json for permissions; only add MCP tool not in settings
           claude_args: |

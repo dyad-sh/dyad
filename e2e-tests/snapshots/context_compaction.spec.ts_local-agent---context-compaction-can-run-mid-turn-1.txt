@@ -105,11 +105,16 @@ message: tc=local-agent/compaction-mid-turn
 
 ===
 role: assistant
-message: This tool call will trigger compaction.
+message: <dyad-compaction title="Conversation compacted" state="finished">
+## Key Decisions Made
+- Completed initial task as requested
 
-===
-role: tool
-message: {"type":"text","value":"const App = () => <div>Minimal imported app</div>;\n\nexport default App;\n"}
+## Current Task State
+Conversation was compacted to save context space.
+</dyad-compaction>
+
+If you need to retrieve earlier parts of the conversation history, you can read the backup file at: [[compaction-backup-path]]
+Note: This file may be large. Read only the sections you need or use grep to search for specific content rather than reading the entire file.
 
 ===
 role: assistant

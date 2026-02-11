@@ -114,14 +114,57 @@ function buildChatMessageHistory(
   chatMessages: Array<
     DbMessageForParsing & {
       isCompactionSummary: boolean | null;
+      createdAt: Date;
     }
   >,
   options?: { excludeMessageIds?: Set<number> },
 ): ModelMessage[] {
   const excludedIds = options?.excludeMessageIds;
   const relevantMessages = getPostCompactionMessages(chatMessages);
+  const reorderedMessages = [...relevantMessages];
 
-  return relevantMessages
+  // For mid-turn compaction, keep the summary immediately after the triggering
+  // user message so subsequent turns reflect that compaction happened before
+  // post-compaction tool-loop steps.
+  for (const summary of [...reorderedMessages].filter(
+    (message) => message.isCompactionSummary,
+  )) {
+    const summaryIndex = reorderedMessages.findIndex(
+      (m) => m.id === summary.id,
+    );
+    if (summaryIndex < 0) {
+      continue;
+    }
+
+    const triggeringUser = [...reorderedMessages]
+      .filter((m) => m.role === "user" && m.id < summary.id)
+      .sort((a, b) => b.id - a.id)[0];
+    if (!triggeringUser) {
+      continue;
+    }
+
+    const triggeringUserIndex = reorderedMessages.findIndex(
+      (m) => m.id === triggeringUser.id,
+    );
+    if (triggeringUserIndex < 0) {
+      continue;
+    }
+
+    const isMidTurnSummary =
+      summary.createdAt.getTime() >= triggeringUser.createdAt.getTime();
+    if (!isMidTurnSummary || summaryIndex === triggeringUserIndex + 1) {
+      continue;
+    }
+
+    reorderedMessages.splice(summaryIndex, 1);
+    const targetIndex = Math.min(
+      triggeringUserIndex + 1,
+      reorderedMessages.length,
+    );
+    reorderedMessages.splice(targetIndex, 0, summary);
+  }
+
+  return reorderedMessages
     .filter((msg) => !excludedIds?.has(msg.id))
     .filter((msg) => msg.content || msg.aiMessagesJson)
     .flatMap((msg) => parseAiMessagesJson(msg));

@@ -894,7 +894,7 @@ describe("prepare_step_utils", () => {
       // Last message should be the reminder
       const reminderMsg = result!.messages[2];
       expect(reminderMsg.role).toBe("user");
-      expect((reminderMsg.content as any[])[0].text).toContain(
+      expect((reminderMsg.content as { text: string }[])[0].text).toContain(
         "2 incomplete todo(s)",
       );
       // State should be updated
@@ -954,7 +954,7 @@ describe("prepare_step_utils", () => {
       expect(todoContext.reminderState.hasRemindedThisTurn).toBe(false);
     });
 
-    it("injects reminder even when last assistant message has tool calls", () => {
+    it("does not inject reminder when last assistant message has tool calls", () => {
       const pendingUserMessages: UserMessageContentPart[][] = [];
       const allInjectedMessages: InjectedMessage[] = [];
       const todoContext = {
@@ -986,15 +986,10 @@ describe("prepare_step_utils", () => {
         todoContext,
       );
 
-      expect(result).toBeDefined();
-      // Should append reminder to the original messages
-      expect(result!.messages).toHaveLength(3);
-      expect(result!.messages[2].role).toBe("user");
-      expect((result!.messages[2].content as any[])[0].text).toContain(
-        "1 incomplete todo(s)",
-      );
-      // State should be updated
-      expect(todoContext.reminderState.hasRemindedThisTurn).toBe(true);
+      // No injections or changes needed - should return undefined
+      expect(result).toBeUndefined();
+      // State should NOT be updated (agent is still working)
+      expect(todoContext.reminderState.hasRemindedThisTurn).toBe(false);
     });
 
     it("does not inject reminder when no todoContext is provided", () => {
@@ -1050,13 +1045,13 @@ describe("prepare_step_utils", () => {
       // Should have: user message, injected screenshot, assistant message, reminder
       expect(result!.messages).toHaveLength(4);
       expect(result!.messages[0].role).toBe("user");
-      expect((result!.messages[1].content as any[])[0].text).toBe(
+      expect((result!.messages[1].content as { text: string }[])[0].text).toBe(
         "Screenshot from crawl",
       );
       expect(result!.messages[2].role).toBe("assistant");
-      expect((result!.messages[3].content as any[])[0].text).toContain(
-        "incomplete todo",
-      );
+      expect(
+        (result!.messages[3].content as { text: string }[])[0].text,
+      ).toContain("incomplete todo");
     });
   });
 });

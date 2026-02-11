@@ -19,21 +19,23 @@ export interface TodoReminderState {
 }
 
 /**
+ * Check if a single todo is incomplete (pending or in_progress).
+ */
+const isIncompleteTodo = (todo: Todo): boolean =>
+  todo.status === "pending" || todo.status === "in_progress";
+
+/**
  * Check if there are incomplete todos (pending or in_progress).
  */
 export function hasIncompleteTodos(todos: Todo[]): boolean {
-  return todos.some(
-    (todo) => todo.status === "pending" || todo.status === "in_progress",
-  );
+  return todos.some(isIncompleteTodo);
 }
 
 /**
  * Build a reminder message for incomplete todos.
  */
 export function buildTodoReminderMessage(todos: Todo[]): string {
-  const incompleteTodos = todos.filter(
-    (todo) => todo.status === "pending" || todo.status === "in_progress",
-  );
+  const incompleteTodos = todos.filter(isIncompleteTodo);
 
   const todoList = incompleteTodos
     .map((t) => `- [${t.status}] ${t.content}`)
@@ -171,13 +173,24 @@ export function prepareStepMessages<
   );
 
   // Check if we need to remind the agent about incomplete todos.
-  // prepareStep runs before each generation step, so inject the reminder
-  // the first time we observe incomplete todos in this turn.
+  // Only inject the reminder if:
+  // 1. We haven't already reminded this turn
+  // 2. There are incomplete todos
+  // 3. The agent is not mid-tool-call (no pending tool-calls in the last message)
   let todoReminderMessage: UserModelMessage | undefined;
+  const lastMessage = filteredMessages[filteredMessages.length - 1];
+  const hasNoToolCalls =
+    filteredMessages.length === 0 ||
+    lastMessage?.role !== "assistant" ||
+    !Array.isArray(lastMessage.content) ||
+    !lastMessage.content.some(
+      (part: { type: string }) => part.type === "tool-call",
+    );
   if (
     todoContext &&
     !todoContext.reminderState.hasRemindedThisTurn &&
-    hasIncompleteTodos(todoContext.todos)
+    hasIncompleteTodos(todoContext.todos) &&
+    hasNoToolCalls
   ) {
     todoReminderMessage = {
       role: "user" as const,

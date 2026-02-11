@@ -2,10 +2,8 @@ import { Home, Settings, HelpCircle, Store, BookOpen } from "lucide-react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar"; // import useSidebar hook
 import { useEffect, useState, useRef } from "react";
-import { useAtom, useSetAtom } from "jotai";
+import { useAtom } from "jotai";
 import { dropdownOpenAtom } from "@/atoms/uiAtoms";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 
 import {
   Sidebar,
@@ -62,8 +60,6 @@ export function AppSidebar() {
   const expandedByHover = useRef(false);
   const [isHelpDialogOpen, setIsHelpDialogOpen] = useState(false); // State for dialog
   const [isDropdownOpen] = useAtom(dropdownOpenAtom);
-  const setSelectedAppId = useSetAtom(selectedAppIdAtom);
-  const setSelectedChatId = useSetAtom(selectedChatIdAtom);
 
   useEffect(() => {
     if (hoverState.startsWith("start-hover") && state === "collapsed") {
@@ -127,13 +123,7 @@ export function AppSidebar() {
                 setHoverState("clear-hover");
               }}
             />
-            <AppIcons
-              onHoverChange={setHoverState}
-              onAppsClick={() => {
-                setSelectedAppId(null);
-                setSelectedChatId(null);
-              }}
-            />
+            <AppIcons onHoverChange={setHoverState} />
           </div>
           {/* Right Column: Apps/Chat List Section */}
           <div className="w-[272px]">
@@ -171,10 +161,8 @@ export function AppSidebar() {
 
 function AppIcons({
   onHoverChange,
-  onAppsClick,
 }: {
   onHoverChange: (state: HoverState) => void;
-  onAppsClick: () => void;
 }) {
   const routerState = useRouterState();
   const pathname = routerState.location.pathname;
@@ -210,11 +198,6 @@ function AppIcons({
                       onHoverChange("start-hover:settings");
                     } else if (item.title === "Library") {
                       onHoverChange("start-hover:library");
-                    }
-                  }}
-                  onClick={() => {
-                    if (item.title === "Apps") {
-                      onAppsClick();
                     }
                   }}
                 >

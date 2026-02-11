@@ -25,8 +25,14 @@ export class Navigation {
 
   async goToChatTab() {
     // Chat is now nested under Apps - clicking Apps navigates to "/"
-    // and shows the chat list if an app is already selected
+    // and shows the chat list if an app is already selected.
+    // The sidebar no longer clears app selection when clicking Apps,
+    // so this preserves the selected app and shows the chat UI.
     await this.page.getByRole("link", { name: "Apps" }).click();
+    // Wait for the chat UI to be visible (chat mode selector indicates chat-ready state)
+    await expect(this.page.getByTestId("chat-mode-selector")).toBeVisible({
+      timeout: 5000,
+    });
   }
 
   async goToHubTab() {

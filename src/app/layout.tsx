@@ -144,6 +144,7 @@ function FloatingAppButton() {
 
   const routerState = useRouterState();
   const pathname = routerState.location.pathname;
+  // Check if we're on an app route (where sidebar can show app in expanded state)
   const isAppRoute =
     pathname === "/" ||
     pathname === "/chat" ||
@@ -153,7 +154,9 @@ function FloatingAppButton() {
   const displayText = selectedApp
     ? `App: ${selectedApp.name}`
     : "(no app selected)";
-  const inSidebar = sidebarState === "expanded" && selectedApp != null;
+  // Only show in sidebar when on app routes and sidebar is expanded with app selected
+  const inSidebar =
+    isAppRoute && sidebarState === "expanded" && selectedApp != null;
 
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const prevInSidebar = useRef(inSidebar);
@@ -210,7 +213,8 @@ function FloatingAppButton() {
     };
   }, [inSidebar, sidebarState, measure]);
 
-  if (!pos || !isAppRoute) return null;
+  // Show button if we have position - on any route (always anchors to titlebar on non-app routes)
+  if (!pos) return null;
 
   return (
     <Button

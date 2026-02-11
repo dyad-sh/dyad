@@ -864,7 +864,10 @@ describe("prepare_step_utils", () => {
   });
 
   describe("todo reminder injection", () => {
-    it("injects reminder when agent finishes with incomplete todos", () => {
+    // NOTE: Inner loop todo reminders have been removed. Todo reminders are now
+    // handled exclusively by the outer loop in local_agent_handler.ts.
+    // The following test verifies that prepareStepMessages does NOT inject reminders.
+    it("does not inject reminder (handled by outer loop instead)", () => {
       const pendingUserMessages: UserMessageContentPart[][] = [];
       const allInjectedMessages: InjectedMessage[] = [];
       const todoContext = {
@@ -888,17 +891,11 @@ describe("prepare_step_utils", () => {
         todoContext,
       );
 
-      expect(result).toBeDefined();
-      // Should have original messages plus reminder
-      expect(result!.messages).toHaveLength(3);
-      // Last message should be the reminder
-      const reminderMsg = result!.messages[2];
-      expect(reminderMsg.role).toBe("user");
-      expect((reminderMsg.content as { text: string }[])[0].text).toContain(
-        "2 incomplete todo(s)",
-      );
-      // State should be updated
-      expect(todoContext.reminderState.hasRemindedThisTurn).toBe(true);
+      // Should return undefined since no inner loop changes needed
+      // (todo reminders are now handled by the outer loop)
+      expect(result).toBeUndefined();
+      // State should NOT be updated since we're not injecting reminders
+      expect(todoContext.reminderState.hasRemindedThisTurn).toBe(false);
     });
 
     it("does not inject reminder when already reminded this turn", () => {
@@ -1012,7 +1009,7 @@ describe("prepare_step_utils", () => {
       expect(result).toBeUndefined();
     });
 
-    it("combines reminder with existing injected messages", () => {
+    it("works with existing injected messages (no reminder added)", () => {
       const pendingUserMessages: UserMessageContentPart[][] = [];
       const allInjectedMessages: InjectedMessage[] = [
         {
@@ -1042,16 +1039,14 @@ describe("prepare_step_utils", () => {
       );
 
       expect(result).toBeDefined();
-      // Should have: user message, injected screenshot, assistant message, reminder
-      expect(result!.messages).toHaveLength(4);
+      // Should have: user message, injected screenshot, assistant message
+      // (no reminder - handled by outer loop)
+      expect(result!.messages).toHaveLength(3);
       expect(result!.messages[0].role).toBe("user");
       expect((result!.messages[1].content as { text: string }[])[0].text).toBe(
         "Screenshot from crawl",
       );
       expect(result!.messages[2].role).toBe("assistant");
-      expect(
-        (result!.messages[3].content as { text: string }[])[0].text,
-      ).toContain("incomplete todo");
     });
   });
 });

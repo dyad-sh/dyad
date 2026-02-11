@@ -24,9 +24,27 @@ export type Turn = {
   };
 };
 
+/**
+ * Represents a single outer loop pass.
+ * The outer loop runs when todos are incomplete after a chat response.
+ */
+export type Pass = {
+  /** Ordered turns within this pass */
+  turns: Turn[];
+};
+
 export type LocalAgentFixture = {
   /** Description for debugging */
   description?: string;
-  /** Ordered turns in the conversation */
-  turns: Turn[];
+  /**
+   * Ordered turns in the conversation.
+   * For simple fixtures without outer loop testing.
+   */
+  turns?: Turn[];
+  /**
+   * Ordered passes for testing outer loop behavior.
+   * Each pass contains turns that execute within that outer loop iteration.
+   * Use this when testing todo follow-up loop behavior.
+   */
+  passes?: Pass[];
 };

@@ -38,6 +38,28 @@ function getSessionId(messages: any[]): string {
 }
 
 /**
+ * Check if a message content contains a todo reminder pattern.
+ * The todo reminder is injected by the outer loop when there are incomplete todos.
+ */
+function isTodoReminderMessage(msg: any): boolean {
+  if (msg?.role !== "user") return false;
+  const content = Array.isArray(msg.content)
+    ? msg.content.find((p: any) => p.type === "text")?.text
+    : typeof msg.content === "string"
+      ? msg.content
+      : null;
+  return content?.includes("incomplete todo(s)") ?? false;
+}
+
+/**
+ * Count the number of todo reminder messages in the conversation.
+ * This determines which outer loop pass we're on.
+ */
+function countTodoReminderMessages(messages: any[]): number {
+  return messages.filter(isTodoReminderMessage).length;
+}
+
+/**
  * Count the number of tool result messages AFTER the last user message
  * to determine which turn we're on for the current fixture.
  * This ensures each new user prompt (fixture trigger) starts fresh at turn 0.
@@ -99,9 +121,9 @@ async function loadFixture(fixtureName: string): Promise<LocalAgentFixture> {
     const module = require(fixturePath);
     const fixture = module.fixture as LocalAgentFixture;
 
-    if (!fixture || !fixture.turns) {
+    if (!fixture || (!fixture.turns && !fixture.passes)) {
       throw new Error(
-        `Invalid fixture: missing 'fixture' export or 'turns' array`,
+        `Invalid fixture: missing 'fixture' export or 'turns'/'passes' array`,
       );
     }
 
@@ -111,6 +133,30 @@ async function loadFixture(fixtureName: string): Promise<LocalAgentFixture> {
     console.error(`Failed to load fixture: ${fixturePath}`, error);
     throw error;
   }
+}
+
+/**
+ * Get the turns for the current pass from a fixture.
+ * Supports both simple fixtures (with `turns`) and multi-pass fixtures (with `passes`).
+ */
+function getTurnsForPass(
+  fixture: LocalAgentFixture,
+  passIndex: number,
+): Turn[] {
+  // If fixture uses passes, get the appropriate pass
+  if (fixture.passes && fixture.passes.length > 0) {
+    if (passIndex >= fixture.passes.length) {
+      // All passes exhausted
+      return [];
+    }
+    return fixture.passes[passIndex].turns;
+  }
+
+  // Simple fixture with turns - only valid for pass 0
+  if (passIndex > 0) {
+    return [];
+  }
+  return fixture.turns || [];
 }
 
 /**
@@ -292,26 +338,37 @@ export async function handleLocalAgentFixture(
     const fixture = await loadFixture(fixtureName);
     const sessionId = getSessionId(messages);
 
-    // Determine which turn we're on based on tool result rounds
+    // Determine which outer loop pass we're on based on todo reminder messages
+    const passIndex = countTodoReminderMessages(messages);
+
+    // Determine which turn we're on within the current pass
     const toolResultRounds = countToolResultRounds(messages);
     const turnIndex = toolResultRounds;
 
+    // Get the turns for the current pass
+    const turns = getTurnsForPass(fixture, passIndex);
+
     console.error(
-      `[local-agent] Loaded fixture: ${fixtureName}, Session: ${sessionId}, Turn: ${turnIndex}, Tool rounds: ${toolResultRounds}`,
+      `[local-agent] Loaded fixture: ${fixtureName}, Session: ${sessionId}, Pass: ${passIndex}, Turn: ${turnIndex}, Tool rounds: ${toolResultRounds}`,
     );
 
-    if (turnIndex >= fixture.turns.length) {
-      // All turns exhausted, send a simple completion message
-      console.log(`[local-agent] All turns exhausted, sending completion`);
+    if (turnIndex >= turns.length) {
+      // All turns exhausted for this pass, send a simple completion message
+      console.log(
+        `[local-agent] All turns exhausted for pass ${passIndex}, sending completion`,
+      );
       await streamTextResponse(res, "Task completed.");
       return;
     }
 
-    const turn = fixture.turns[turnIndex];
-    console.log(`[local-agent] Executing turn ${turnIndex}:`, {
-      hasText: !!turn.text,
-      toolCallCount: turn.toolCalls?.length ?? 0,
-    });
+    const turn = turns[turnIndex];
+    console.log(
+      `[local-agent] Executing pass ${passIndex}, turn ${turnIndex}:`,
+      {
+        hasText: !!turn.text,
+        toolCallCount: turn.toolCalls?.length ?? 0,
+      },
+    );
 
     // If this turn has tool calls, stream them
     if (turn.toolCalls && turn.toolCalls.length > 0) {

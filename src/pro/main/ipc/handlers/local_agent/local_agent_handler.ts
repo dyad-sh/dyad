@@ -873,6 +873,7 @@ export async function handleLocalAgentStream(
           todos: ctx.todos,
           todoFollowUpLoops,
           maxTodoFollowUpLoops,
+          hasRemindedThisTurn: todoReminderState.hasRemindedThisTurn,
         })
       ) {
         break;
@@ -1024,6 +1025,7 @@ function shouldRunTodoFollowUpPass(params: {
   todos: AgentContext["todos"];
   todoFollowUpLoops: number;
   maxTodoFollowUpLoops: number;
+  hasRemindedThisTurn: boolean;
 }): boolean {
   const {
     readOnly,
@@ -1032,7 +1034,13 @@ function shouldRunTodoFollowUpPass(params: {
     todos,
     todoFollowUpLoops,
     maxTodoFollowUpLoops,
+    hasRemindedThisTurn,
   } = params;
+  // Don't run another pass if we already reminded the agent via the inner loop
+  // (in prepareStepMessages). This prevents duplicate reminders.
+  if (hasRemindedThisTurn) {
+    return false;
+  }
   return (
     !readOnly &&
     !planModeOnly &&

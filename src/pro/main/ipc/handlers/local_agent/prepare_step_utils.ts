@@ -147,7 +147,7 @@ export function prepareStepMessages<
   options: T,
   pendingUserMessages: UserMessageContentPart[][],
   allInjectedMessages: InjectedMessage[],
-  todoContext?: {
+  _todoContext?: {
     todos: Todo[];
     reminderState: TodoReminderState;
   },
@@ -172,35 +172,16 @@ export function prepareStepMessages<
     (msg, i) => msg !== messages[i],
   );
 
-  // Check if we need to remind the agent about incomplete todos.
-  // Only inject the reminder if:
-  // 1. We haven't already reminded this turn
-  // 2. There are incomplete todos
-  // 3. The agent is not mid-tool-call (no pending tool-calls in the last message)
-  let todoReminderMessage: UserModelMessage | undefined;
-  const lastMessage = filteredMessages[filteredMessages.length - 1];
-  const hasNoToolCalls =
-    filteredMessages.length === 0 ||
-    lastMessage?.role !== "assistant" ||
-    !Array.isArray(lastMessage.content) ||
-    !lastMessage.content.some(
-      (part: { type: string }) => part.type === "tool-call",
-    );
-  if (
-    todoContext &&
-    !todoContext.reminderState.hasRemindedThisTurn &&
-    hasIncompleteTodos(todoContext.todos) &&
-    hasNoToolCalls
-  ) {
-    todoReminderMessage = {
-      role: "user" as const,
-      content: [
-        { type: "text", text: buildTodoReminderMessage(todoContext.todos) },
-      ],
-    };
-    todoContext.reminderState.hasRemindedThisTurn = true;
-    hasInjections = true;
-  }
+  // NOTE: Inner loop todo reminders have been removed to simplify the logic.
+  // Todo reminders are now handled exclusively by the outer loop in
+  // local_agent_handler.ts. This prevents duplicate reminders and makes
+  // the behavior more predictable.
+  //
+  // The outer loop will inject a reminder and do another pass when:
+  // - The agent produced chat text
+  // - There are incomplete todos
+  // - We haven't exceeded the max follow-up loops
+  const todoReminderMessage: UserModelMessage | undefined = undefined;
 
   if (!hasInjections && !hasFilteredContent) {
     return undefined;

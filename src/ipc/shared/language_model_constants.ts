@@ -113,6 +113,17 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   // https://docs.anthropic.com/en/docs/about-claude/models/all-models#model-comparison-table
   anthropic: [
     {
+      name: "claude-opus-4-6",
+      displayName: "Claude Opus 4.6",
+      description:
+        "Anthropic's best model for coding (note: this model is very expensive!)",
+      // Set to 32k since context window is 1M tokens
+      maxOutputTokens: 32_000,
+      contextWindow: 1_000_000,
+      temperature: 0,
+      dollarSigns: 6,
+    },
+    {
       name: "claude-opus-4-5",
       displayName: "Claude Opus 4.5",
       description:
@@ -218,6 +229,16 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
   ],
   openrouter: [
+    {
+      name: "openrouter/free",
+      displayName: "Free (OpenRouter)",
+      description:
+        "Uses one of the free OpenRouter models (data may be used for training)",
+      maxOutputTokens: 32_000,
+      contextWindow: 200_000,
+      temperature: 0,
+      dollarSigns: 0,
+    },
     // https://openrouter.ai/moonshotai/kimi-k2.5
     {
       name: "moonshotai/kimi-k2.5",
@@ -229,27 +250,18 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       dollarSigns: 2,
     },
     {
-      name: "qwen/qwen3-coder:free",
-      displayName: "Qwen3 Coder (free)",
-      description: "Use for free (data may be used for training)",
-      maxOutputTokens: 32_000,
-      contextWindow: 262_000,
-      temperature: 0,
-      dollarSigns: 0,
-    },
-    {
-      name: "mistralai/devstral-2512:free",
-      displayName: "Devstral 2 (free)",
-      description: "Use for free (data may be used for training)",
+      name: "z-ai/glm-5",
+      displayName: "GLM 5",
+      description: "Z-AI's best coding model",
       maxOutputTokens: 32_000,
       contextWindow: 200_000,
-      temperature: 0,
-      dollarSigns: 0,
+      temperature: 0.7,
+      dollarSigns: 2,
     },
     {
       name: "z-ai/glm-4.7",
       displayName: "GLM 4.7",
-      description: "Z-AI's best coding model",
+      description: "Z-AI's coding model",
       maxOutputTokens: 32_000,
       contextWindow: 200_000,
       temperature: 0.7,
@@ -270,16 +282,6 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       description: "Strong cost-effective model with optional thinking",
       maxOutputTokens: 32_000,
       contextWindow: 128_000,
-      temperature: 0,
-      dollarSigns: 2,
-    },
-    // https://openrouter.ai/moonshotai/kimi-k2
-    {
-      name: "moonshotai/kimi-k2-0905",
-      displayName: "Kimi K2",
-      description: "Powerful cost-effective model (updated to 0905)",
-      maxOutputTokens: 32_000,
-      contextWindow: 256_000,
       temperature: 0,
       dollarSigns: 2,
     },
@@ -477,7 +479,9 @@ export const TURBO_MODELS: LanguageModel[] = [
 ];
 
 export const FREE_OPENROUTER_MODEL_NAMES = MODEL_OPTIONS.openrouter
-  .filter((model) => model.name.endsWith(":free"))
+  .filter(
+    (model) => model.name.endsWith(":free") || model.name.endsWith("/free"),
+  )
   .map((model) => model.name);
 
 export const PROVIDER_TO_ENV_VAR: Record<string, string> = {

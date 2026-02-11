@@ -68,28 +68,6 @@ export function useAttachments() {
     }
   };
 
-  const confirmPendingFiles = useCallback(
-    (type: "chat-context" | "upload-to-codebase") => {
-      if (pendingFiles) {
-        const fileAttachments: FileAttachment[] = pendingFiles.map((file) => ({
-          file,
-          type,
-        }));
-        setAttachments((prev) => [...prev, ...fileAttachments]);
-        setPendingFiles(null);
-      }
-    },
-    [pendingFiles, setAttachments],
-  );
-
-  const cancelPendingFiles = useCallback(() => {
-    setPendingFiles(null);
-  }, []);
-
-  const clearAttachments = () => {
-    setAttachments([]);
-  };
-
   const addAttachments = (
     files: File[],
     type: "chat-context" | "upload-to-codebase" = "chat-context",
@@ -99,6 +77,25 @@ export function useAttachments() {
       type,
     }));
     setAttachments((attachments) => [...attachments, ...fileAttachments]);
+  };
+
+  const confirmPendingFiles = useCallback(
+    (type: "chat-context" | "upload-to-codebase") => {
+      if (pendingFiles) {
+        addAttachments(pendingFiles, type);
+        setPendingFiles(null);
+      }
+    },
+    [pendingFiles, addAttachments],
+  );
+
+  const cancelPendingFiles = useCallback(() => {
+    setPendingFiles(null);
+  }, []);
+
+  const clearAttachments = () => {
+    setAttachments([]);
+    setPendingFiles(null);
   };
 
   const handlePaste = async (e: React.ClipboardEvent) => {

@@ -126,6 +126,12 @@
   "uploadFileCodebase": "Enviar arquivo para a base de código",
   "uploadFileCodebaseExample": "Exemplo de uso: adicionar uma imagem para usar no seu app",
   "dropFilesToAttach": "Solte os arquivos para anexar",
+  "attachmentTypeDialog": {
+    "titleSingular": "Como você gostaria de anexar este arquivo?",
+    "titlePlural": "Como você gostaria de anexar estes {{count}} arquivos?",
+    "descriptionSingular": "Escolha como o arquivo deve ser usado.",
+    "descriptionPlural": "Escolha como os arquivos devem ser usados."
+  },
   "selectedComponents": "Componentes Selecionados ({{count}})",
   "clearAllComponents": "Limpar todos os componentes selecionados",
   "deselectComponent": "Desmarcar componente",

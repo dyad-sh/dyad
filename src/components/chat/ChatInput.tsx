@@ -245,7 +245,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     if (
       (!inputValue.trim() && attachments.length === 0) ||
       isStreaming ||
-      !chatId
+      !chatId ||
+      pendingFiles
     ) {
       return;
     }

@@ -59,7 +59,11 @@ export function HomeChatInput({
 
   // Custom submit function that wraps the provided onSubmit
   const handleCustomSubmit = () => {
-    if ((!inputValue.trim() && attachments.length === 0) || isStreaming) {
+    if (
+      (!inputValue.trim() && attachments.length === 0) ||
+      isStreaming ||
+      pendingFiles
+    ) {
       return;
     }
 

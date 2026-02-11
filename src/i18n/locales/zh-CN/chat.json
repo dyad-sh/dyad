@@ -126,6 +126,12 @@
   "uploadFileCodebase": "上传文件到代码库",
   "uploadFileCodebaseExample": "示例用途：添加图片供应用使用",
   "dropFilesToAttach": "拖放文件以附加",
+  "attachmentTypeDialog": {
+    "titleSingular": "您想如何附加此文件？",
+    "titlePlural": "您想如何附加这 {{count}} 个文件？",
+    "descriptionSingular": "选择文件的使用方式。",
+    "descriptionPlural": "选择文件的使用方式。"
+  },
   "selectedComponents": "已选择的组件 ({{count}})",
   "clearAllComponents": "清除所有已选择的组件",
   "deselectComponent": "取消选择组件",

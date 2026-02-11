@@ -156,7 +156,7 @@ test("attach image via drag - chat", async ({ po }) => {
 
   // Choose "Attach as chat context" in the attachment type dialog
   const chatContextButton = po.page.getByRole("button", {
-    name: "Attach as chat context",
+    name: "Attach file as chat context",
   });
   await expect(chatContextButton).toBeVisible();
   await chatContextButton.click();

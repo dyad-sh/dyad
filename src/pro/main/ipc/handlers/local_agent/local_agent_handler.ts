@@ -53,6 +53,8 @@ import {
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
 import {
   prepareStepMessages,
+  buildTodoReminderMessage,
+  hasIncompleteTodos,
   type InjectedMessage,
   type TodoReminderState,
 } from "./prepare_step_utils";
@@ -87,6 +89,15 @@ interface ToolStreamingEntry {
   argsAccumulated: string;
 }
 const toolStreamingEntries = new Map<string, ToolStreamingEntry>();
+type ResolvedModelClient = Awaited<
+  ReturnType<typeof getModelClient>
+>["modelClient"];
+
+interface StreamPassResult {
+  fullResponse: string;
+  passProducedChatText: boolean;
+  responseMessages: ModelMessage[];
+}
 
 function getOrCreateStreamingEntry(
   id: string,
@@ -241,7 +252,7 @@ export async function handleLocalAgentStream(
   // Mid-turn compaction inserts a DB summary row for LLM history, but we render
   // the user-facing compaction indicator inline in the active assistant turn.
   const hiddenMessageIdsForStreaming = new Set<number>();
-  let postMidTurnCompactionStartStep: number | null = null;
+  
 
   const appendInlineCompactionToTurn = async (
     summary?: string,
@@ -502,323 +513,87 @@ export async function handleLocalAgentStream(
       ? messageOverride
       : buildChatMessageHistory(chat.messages);
 
-    // Used to swap out pre-compaction history while preserving in-flight turn steps.
-    let baseMessageHistoryCount = messageHistory.length;
-    let compactBeforeNextStep = false;
-    let compactedMidTurn = false;
-    let compactionFailedMidTurn = false;
+    const maxOutputTokens = await getMaxTokens(settings.selectedModel);
+    const temperature = await getTemperature(settings.selectedModel);
 
-    // Stream the response
-    const streamResult = streamText({
-      model: modelClient.model,
-      headers: getAiHeaders({
-        builtinProviderId: modelClient.builtinProviderId,
-      }),
-      providerOptions: getProviderOptions({
-        dyadAppId: chat.app.id,
-        dyadRequestId,
-        dyadDisableFiles: true, // Local agent uses tools, not file injection
-        files: [],
-        mentionedAppsCodebases: [],
-        builtinProviderId: modelClient.builtinProviderId,
+    // Run one or more generation passes. If the model emits a chat message while
+    // there are still incomplete todos, we append a reminder and do another pass.
+    const maxTodoFollowUpLoops = 1;
+    let todoFollowUpLoops = 0;
+    let currentMessageHistory = messageHistory;
+    const accumulatedAiMessages: ModelMessage[] = [];
+
+    while (!abortController.signal.aborted) {
+      const passResult = await runSingleStreamPass({
+        modelClient,
         settings,
-      }),
-      maxOutputTokens: await getMaxTokens(settings.selectedModel),
-      temperature: await getTemperature(settings.selectedModel),
-      maxRetries: 2,
-      system: systemPrompt,
-      messages: messageHistory,
-      tools: allTools,
-      stopWhen: [
-        stepCountIs(25),
-        hasToolCall(addIntegrationTool.name),
-        // In plan mode, stop immediately after presenting a questionnaire,
-        // writing a plan, or exiting plan mode so the agent yields control
-        // back to the user. Without this, some models (e.g. Gemini Pro 3)
-        // ignore the prompt-level "STOP" instruction and keep calling tools
-        // in a loop.
-        ...(planModeOnly
-          ? [
-              hasToolCall(planningQuestionnaireTool.name),
-              hasToolCall(writePlanTool.name),
-              hasToolCall(exitPlanTool.name),
-            ]
-          : []),
-      ],
-      abortSignal: abortController.signal,
-      // Inject pending user messages (e.g., images from web_crawl) between steps
-      // We must re-inject all accumulated messages each step because the AI SDK
-      // doesn't persist dynamically injected messages in its internal state.
-      // We track the insertion index so messages appear at the same position each step.
-      // Also inject reminders for incomplete todos (once per turn to avoid infinite loops).
-      prepareStep: async (options) => {
-        let stepOptions = options;
+        dyadRequestId,
+        systemPrompt,
+        currentMessageHistory,
+        allTools,
+        abortController,
+        pendingUserMessages,
+        allInjectedMessages,
+        todoReminderState,
+        ctx,
+        event,
+        req,
+        chat,
+        placeholderMessageId,
+        fullResponse,
+        planModeOnly,
+        maxOutputTokens,
+        temperature,
+      });
+      fullResponse = passResult.fullResponse;
 
-        if (
-          !messageOverride &&
-          compactBeforeNextStep &&
-          !compactedMidTurn &&
-          settings.enableContextCompaction !== false
-        ) {
-          compactBeforeNextStep = false;
-          const inFlightTailMessages = options.messages.slice(
-            baseMessageHistoryCount,
-          );
-          const compacted = await maybePerformPendingCompaction({
-            showOnTopOfCurrentResponse: true,
-            force: true,
-          });
+      const { passProducedChatText, responseMessages } = passResult;
+      if (responseMessages.length > 0) {
+        accumulatedAiMessages.push(...responseMessages);
+        currentMessageHistory = [...currentMessageHistory, ...responseMessages];
+      }
 
-          if (compacted) {
-            compactedMidTurn = true;
-            // Preserve only messages generated after this compaction boundary.
-            postMidTurnCompactionStartStep = options.stepNumber;
-            // Clear stale injected messages — their insertAtIndex values are
-            // based on the pre-compaction message array which has been rebuilt
-            // with a different (typically smaller) count. Keeping them would
-            // cause injectMessagesAtPositions to splice at wrong positions.
-            allInjectedMessages.length = 0;
-            const compactedMessageHistory = buildChatMessageHistory(
-              chat.messages,
-              {
-                // Keep the structured in-flight assistant/tool messages from
-                // the current stream instead of the placeholder DB content.
-                excludeMessageIds: new Set([placeholderMessageId]),
-              },
-            );
-            baseMessageHistoryCount = compactedMessageHistory.length;
-            stepOptions = {
-              ...options,
-              // Preserve in-flight turn messages so same-turn tool loops can
-              // continue, while later turns are compacted via persisted history.
-              messages: [...compactedMessageHistory, ...inFlightTailMessages],
-            };
-          } else {
-            // Prevent repeated compaction attempts if the first one fails.
-            compactionFailedMidTurn = true;
-          }
-        }
-
-        const preparedStep = prepareStepMessages(
-          stepOptions,
-          pendingUserMessages,
-          allInjectedMessages,
-          {
-            todos: ctx.todos,
-            reminderState: todoReminderState,
-          },
-        );
-
-        // prepareStepMessages returns undefined when it has no additional
-        // injections/cleanups to apply. If we already replaced the base
-        // message history (e.g., after mid-turn compaction), we still need
-        // to return the updated options.
-        if (preparedStep) {
-          return preparedStep;
-        }
-
-        return stepOptions === options ? undefined : stepOptions;
-      },
-      onStepFinish: async (step) => {
-        if (
-          settings.enableContextCompaction === false ||
-          compactedMidTurn ||
-          typeof step.usage.totalTokens !== "number"
-        ) {
-          return;
-        }
-
-        const shouldCompact = await checkAndMarkForCompaction(
-          req.chatId,
-          step.usage.totalTokens,
-        );
-
-        // If this step triggered tool calls, compact before the next step
-        // in this same user turn instead of waiting for the next message.
-        // Only attempt mid-turn compaction once per turn.
-        if (
-          shouldCompact &&
-          step.toolCalls.length > 0 &&
-          !compactionFailedMidTurn
-        ) {
-          compactBeforeNextStep = true;
-        }
-      },
-      onFinish: async (response) => {
-        const totalTokens = response.usage?.totalTokens;
-        const inputTokens = response.usage?.inputTokens;
-        const cachedInputTokens = response.usage?.cachedInputTokens;
-        logger.log(
-          "Total tokens used:",
-          totalTokens,
-          "Input tokens:",
-          inputTokens,
-          "Cached input tokens:",
-          cachedInputTokens,
-          "Cache hit ratio:",
-          cachedInputTokens ? (cachedInputTokens ?? 0) / (inputTokens ?? 0) : 0,
-        );
-        if (typeof totalTokens === "number") {
-          await db
-            .update(messages)
-            .set({ maxTokensUsed: totalTokens })
-            .where(eq(messages.id, placeholderMessageId))
-            .catch((err) => logger.error("Failed to save token count", err));
-        }
-      },
-      onError: (error: any) => {
-        const errorMessage = error?.error?.message || JSON.stringify(error);
-        logger.error("Local agent stream error:", errorMessage);
-        safeSend(event.sender, "chat:response:error", {
-          chatId: req.chatId,
-          error: `AI error: ${errorMessage}`,
-        });
-      },
-    });
-
-    // Process the stream
-    let inThinkingBlock = false;
-
-    for await (const part of streamResult.fullStream) {
-      if (abortController.signal.aborted) {
-        logger.log(`Stream aborted for chat ${req.chatId}`);
-        // Clean up pending consent requests to prevent stale UI banners
-        clearPendingConsentsForChat(req.chatId);
+      if (
+        !shouldRunTodoFollowUpPass({
+          readOnly,
+          planModeOnly,
+          passProducedChatText,
+          todos: ctx.todos,
+          todoFollowUpLoops,
+          maxTodoFollowUpLoops,
+        })
+      ) {
         break;
       }
 
-      let chunk = "";
-
-      // Handle thinking block transitions
-      if (
-        inThinkingBlock &&
-        !["reasoning-delta", "reasoning-end", "reasoning-start"].includes(
-          part.type,
-        )
-      ) {
-        chunk = "</think>\n";
-        inThinkingBlock = false;
-      }
-
-      switch (part.type) {
-        case "text-delta":
-          chunk += part.text;
-          break;
-
-        case "reasoning-start":
-          if (!inThinkingBlock) {
-            chunk = "<think>";
-            inThinkingBlock = true;
-          }
-          break;
-
-        case "reasoning-delta":
-          if (!inThinkingBlock) {
-            chunk = "<think>";
-            inThinkingBlock = true;
-          }
-          chunk += part.text;
-          break;
-
-        case "reasoning-end":
-          if (inThinkingBlock) {
-            chunk = "</think>\n";
-            inThinkingBlock = false;
-          }
-          break;
-
-        case "tool-input-start": {
-          // Initialize streaming state for this tool call
-          getOrCreateStreamingEntry(part.id, part.toolName);
-          break;
-        }
-
-        case "tool-input-delta": {
-          // Accumulate args and stream XML preview
-          const entry = getOrCreateStreamingEntry(part.id);
-          if (entry) {
-            entry.argsAccumulated += part.delta;
-            const toolDef = findToolDefinition(entry.toolName);
-            if (toolDef?.buildXml) {
-              const argsPartial = parsePartialJson(entry.argsAccumulated);
-              const xml = toolDef.buildXml(argsPartial, false);
-              if (xml) {
-                ctx.onXmlStream(xml);
-              }
-            }
-          }
-          break;
-        }
-
-        case "tool-input-end": {
-          // Build final XML and persist
-          const entry = getOrCreateStreamingEntry(part.id);
-          if (entry) {
-            const toolDef = findToolDefinition(entry.toolName);
-            if (toolDef?.buildXml) {
-              const argsPartial = parsePartialJson(entry.argsAccumulated);
-              const xml = toolDef.buildXml(argsPartial, true);
-              if (xml) {
-                ctx.onXmlComplete(xml);
-              }
-            }
-          }
-          cleanupStreamingEntry(part.id);
-          break;
-        }
-
-        case "tool-call":
-          // Tool execution happens via execute callbacks
-          break;
-
-        case "tool-result":
-          // Tool results are already handled by the execute callback
-          break;
-      }
-
-      if (chunk) {
-        fullResponse += chunk;
-        await updateResponseInDb(placeholderMessageId, fullResponse);
-        sendResponseChunk(
-          event,
-          req.chatId,
-          chat,
-          fullResponse,
-          placeholderMessageId,
-          hiddenMessageIdsForStreaming,
-        );
-      }
+      todoFollowUpLoops += 1;
+      const reminderText = buildTodoReminderMessage(ctx.todos);
+      const reminderMessage: ModelMessage = {
+        role: "user",
+        content: [{ type: "text", text: reminderText }],
+      };
+      currentMessageHistory = [...currentMessageHistory, reminderMessage];
+      accumulatedAiMessages.push(reminderMessage);
+      logger.info(
+        `Starting todo follow-up pass ${todoFollowUpLoops}/${maxTodoFollowUpLoops} for chat ${req.chatId}`,
+      );
     }
 
-    // Close thinking block if still open
-    if (inThinkingBlock) {
-      fullResponse += "</think>\n";
-      await updateResponseInDb(placeholderMessageId, fullResponse);
+    // Handle cancellation paths where stream processing exits cleanly after abort.
+    if (abortController.signal.aborted) {
+      if (fullResponse) {
+        await db
+          .update(messages)
+          .set({ content: `${fullResponse}\n\n[Response cancelled by user]` })
+          .where(eq(messages.id, placeholderMessageId));
+      }
+      return false; // Cancelled - don't consume quota
     }
 
     // Save the AI SDK messages for multi-turn tool call preservation
     try {
-      const response = await streamResult.response;
-      const steps = await streamResult.steps;
-      const aiMessagesForPersistence =
-        compactedMidTurn && postMidTurnCompactionStartStep !== null
-          ? (() => {
-              // stepNumber is 0-indexed (from AI SDK: stepNumber = steps.length).
-              // We want the step just before compaction to determine how many
-              // response messages to skip (they belong to pre-compaction context).
-              const prevStepMessages =
-                steps[postMidTurnCompactionStartStep - 1]?.response.messages;
-              if (!prevStepMessages) {
-                logger.warn(
-                  `No step data found at index ${postMidTurnCompactionStartStep - 1} for mid-turn compaction slicing; persisting all messages`,
-                );
-              }
-              return response.messages.slice(prevStepMessages?.length ?? 0);
-            })()
-          : response.messages;
-
       const aiMessagesJson = getAiMessagesJsonIfWithinLimit(
-        aiMessagesForPersistence,
+        accumulatedAiMessages,
       );
       if (aiMessagesJson) {
         await db
@@ -928,6 +703,297 @@ function sendResponseChunk(
     chatId,
     messages: currentMessages,
   });
+}
+
+function shouldRunTodoFollowUpPass(params: {
+  readOnly: boolean;
+  planModeOnly: boolean;
+  passProducedChatText: boolean;
+  todos: AgentContext["todos"];
+  todoFollowUpLoops: number;
+  maxTodoFollowUpLoops: number;
+}): boolean {
+  const {
+    readOnly,
+    planModeOnly,
+    passProducedChatText,
+    todos,
+    todoFollowUpLoops,
+    maxTodoFollowUpLoops,
+  } = params;
+  return (
+    !readOnly &&
+    !planModeOnly &&
+    passProducedChatText &&
+    hasIncompleteTodos(todos) &&
+    todoFollowUpLoops < maxTodoFollowUpLoops
+  );
+}
+
+async function runSingleStreamPass(params: {
+  modelClient: ResolvedModelClient;
+  settings: Awaited<ReturnType<typeof readSettings>>;
+  dyadRequestId: string;
+  systemPrompt: string;
+  currentMessageHistory: ModelMessage[];
+  allTools: ToolSet;
+  abortController: AbortController;
+  pendingUserMessages: UserMessageContentPart[][];
+  allInjectedMessages: InjectedMessage[];
+  todoReminderState: TodoReminderState;
+  ctx: AgentContext;
+  event: IpcMainInvokeEvent;
+  req: ChatStreamParams;
+  chat: {
+    messages: any[];
+    app: { id: number };
+  };
+  placeholderMessageId: number;
+  fullResponse: string;
+  planModeOnly: boolean;
+  maxOutputTokens: number | undefined;
+  temperature: number | undefined;
+}): Promise<StreamPassResult> {
+  const {
+    modelClient,
+    settings,
+    dyadRequestId,
+    systemPrompt,
+    currentMessageHistory,
+    allTools,
+    abortController,
+    pendingUserMessages,
+    allInjectedMessages,
+    todoReminderState,
+    ctx,
+    event,
+    req,
+    chat,
+    placeholderMessageId,
+    fullResponse: initialFullResponse,
+    planModeOnly,
+    maxOutputTokens,
+    temperature,
+  } = params;
+
+  let fullResponse = initialFullResponse;
+  const streamResult = streamText({
+    model: modelClient.model,
+    headers: getAiHeaders({
+      builtinProviderId: modelClient.builtinProviderId,
+    }),
+    providerOptions: getProviderOptions({
+      dyadAppId: chat.app.id,
+      dyadRequestId,
+      dyadDisableFiles: true, // Local agent uses tools, not file injection
+      files: [],
+      mentionedAppsCodebases: [],
+      builtinProviderId: modelClient.builtinProviderId,
+      settings,
+    }),
+    maxOutputTokens,
+    temperature,
+    maxRetries: 2,
+    system: systemPrompt,
+    messages: currentMessageHistory,
+    tools: allTools,
+    stopWhen: [
+      stepCountIs(25),
+      hasToolCall(addIntegrationTool.name),
+      // In plan mode, stop immediately after presenting a questionnaire,
+      // writing a plan, or exiting plan mode so the agent yields control
+      // back to the user. Without this, some models (e.g. Gemini Pro 3)
+      // ignore the prompt-level "STOP" instruction and keep calling tools
+      // in a loop.
+      ...(planModeOnly
+        ? [
+            hasToolCall(planningQuestionnaireTool.name),
+            hasToolCall(writePlanTool.name),
+            hasToolCall(exitPlanTool.name),
+          ]
+        : []),
+    ],
+    abortSignal: abortController.signal,
+    // Inject pending user messages (e.g., images from web_crawl) between steps
+    // We must re-inject all accumulated messages each step because the AI SDK
+    // doesn't persist dynamically injected messages in its internal state.
+    // We track the insertion index so messages appear at the same position each step.
+    prepareStep: (options) =>
+      prepareStepMessages(options, pendingUserMessages, allInjectedMessages, {
+        todos: ctx.todos,
+        reminderState: todoReminderState,
+      }),
+    onFinish: async (response) => {
+      const totalTokens = response.usage?.totalTokens;
+      const inputTokens = response.usage?.inputTokens;
+      const cachedInputTokens = response.usage?.cachedInputTokens;
+      logger.log(
+        "Total tokens used:",
+        totalTokens,
+        "Input tokens:",
+        inputTokens,
+        "Cached input tokens:",
+        cachedInputTokens,
+        "Cache hit ratio:",
+        cachedInputTokens ? (cachedInputTokens ?? 0) / (inputTokens ?? 0) : 0,
+      );
+      if (typeof totalTokens === "number") {
+        await db
+          .update(messages)
+          .set({ maxTokensUsed: totalTokens })
+          .where(eq(messages.id, placeholderMessageId))
+          .catch((err) => logger.error("Failed to save token count", err));
+
+        // Check if compaction should be triggered for the next message
+        await checkAndMarkForCompaction(req.chatId, totalTokens);
+      }
+    },
+    onError: (error: any) => {
+      const errorMessage = error?.error?.message || JSON.stringify(error);
+      logger.error("Local agent stream error:", errorMessage);
+      safeSend(event.sender, "chat:response:error", {
+        chatId: req.chatId,
+        error: `AI error: ${errorMessage}`,
+      });
+    },
+  });
+
+  let inThinkingBlock = false;
+  let passProducedChatText = false;
+
+  try {
+    for await (const part of streamResult.fullStream) {
+      if (abortController.signal.aborted) {
+        logger.log(`Stream aborted for chat ${req.chatId}`);
+        // Clean up pending consent requests to prevent stale UI banners
+        clearPendingConsentsForChat(req.chatId);
+        break;
+      }
+
+      let chunk = "";
+
+      // Handle thinking block transitions
+      if (
+        inThinkingBlock &&
+        !["reasoning-delta", "reasoning-end", "reasoning-start"].includes(
+          part.type,
+        )
+      ) {
+        chunk = "</think>\n";
+        inThinkingBlock = false;
+      }
+
+      switch (part.type) {
+        case "text-delta":
+          passProducedChatText = true;
+          chunk += part.text;
+          break;
+
+        case "reasoning-start":
+          if (!inThinkingBlock) {
+            chunk = "<think>";
+            inThinkingBlock = true;
+          }
+          break;
+
+        case "reasoning-delta":
+          if (!inThinkingBlock) {
+            chunk = "<think>";
+            inThinkingBlock = true;
+          }
+          chunk += part.text;
+          break;
+
+        case "reasoning-end":
+          if (inThinkingBlock) {
+            chunk = "</think>\n";
+            inThinkingBlock = false;
+          }
+          break;
+
+        case "tool-input-start": {
+          // Initialize streaming state for this tool call
+          getOrCreateStreamingEntry(part.id, part.toolName);
+          break;
+        }
+
+        case "tool-input-delta": {
+          // Accumulate args and stream XML preview
+          const entry = getOrCreateStreamingEntry(part.id);
+          if (entry) {
+            entry.argsAccumulated += part.delta;
+            const toolDef = findToolDefinition(entry.toolName);
+            if (toolDef?.buildXml) {
+              const argsPartial = parsePartialJson(entry.argsAccumulated);
+              const xml = toolDef.buildXml(argsPartial, false);
+              if (xml) {
+                ctx.onXmlStream(xml);
+              }
+            }
+          }
+          break;
+        }
+
+        case "tool-input-end": {
+          // Build final XML and persist
+          const entry = getOrCreateStreamingEntry(part.id);
+          if (entry) {
+            const toolDef = findToolDefinition(entry.toolName);
+            if (toolDef?.buildXml) {
+              const argsPartial = parsePartialJson(entry.argsAccumulated);
+              const xml = toolDef.buildXml(argsPartial, true);
+              if (xml) {
+                ctx.onXmlComplete(xml);
+              }
+            }
+          }
+          cleanupStreamingEntry(part.id);
+          break;
+        }
+
+        case "tool-call":
+          // Tool execution happens via execute callbacks
+          break;
+
+        case "tool-result":
+          // Tool results are already handled by the execute callback
+          break;
+      }
+
+      if (chunk) {
+        fullResponse += chunk;
+        await updateResponseInDb(placeholderMessageId, fullResponse);
+        sendResponseChunk(
+          event,
+          req.chatId,
+          chat,
+          fullResponse,
+          placeholderMessageId,
+        );
+      }
+    }
+  } catch (error) {
+    if (!abortController.signal.aborted) {
+      throw error;
+    }
+    logger.log(`Stream interrupted after abort for chat ${req.chatId}`);
+  }
+
+  // Close thinking block if still open
+  if (inThinkingBlock) {
+    fullResponse += "</think>\n";
+    await updateResponseInDb(placeholderMessageId, fullResponse);
+  }
+
+  let responseMessages: ModelMessage[] = [];
+  try {
+    const response = await streamResult.response;
+    responseMessages = response.messages;
+  } catch (err) {
+    logger.warn("Failed to retrieve stream response messages:", err);
+  }
+
+  return { fullResponse, passProducedChatText, responseMessages };
 }
 
 async function getMcpTools(

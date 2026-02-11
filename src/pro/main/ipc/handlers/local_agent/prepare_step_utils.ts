@@ -170,35 +170,23 @@ export function prepareStepMessages<
     (msg, i) => msg !== messages[i],
   );
 
-  // Check if we need to remind the agent about incomplete todos
-  // Only do this once per turn to avoid infinite loops
+  // Check if we need to remind the agent about incomplete todos.
+  // prepareStep runs before each generation step, so inject the reminder
+  // the first time we observe incomplete todos in this turn.
   let todoReminderMessage: UserModelMessage | undefined;
   if (
     todoContext &&
     !todoContext.reminderState.hasRemindedThisTurn &&
     hasIncompleteTodos(todoContext.todos)
   ) {
-    // Check if this is the end of a step (no pending tool calls)
-    // We detect this by looking at the last message - if it's an assistant message
-    // without tool calls, the agent is about to finish
-    const lastMessage = messages[messages.length - 1];
-    const isAssistantMessage = lastMessage?.role === "assistant";
-    const hasNoToolCalls =
-      isAssistantMessage &&
-      (typeof lastMessage.content === "string" ||
-        !Array.isArray(lastMessage.content) ||
-        !lastMessage.content.some((part: any) => part.type === "tool-call"));
-
-    if (isAssistantMessage && hasNoToolCalls) {
-      todoReminderMessage = {
-        role: "user" as const,
-        content: [
-          { type: "text", text: buildTodoReminderMessage(todoContext.todos) },
-        ],
-      };
-      todoContext.reminderState.hasRemindedThisTurn = true;
-      hasInjections = true;
-    }
+    todoReminderMessage = {
+      role: "user" as const,
+      content: [
+        { type: "text", text: buildTodoReminderMessage(todoContext.todos) },
+      ],
+    };
+    todoContext.reminderState.hasRemindedThisTurn = true;
+    hasInjections = true;
   }
 
   if (!hasInjections && !hasFilteredContent) {

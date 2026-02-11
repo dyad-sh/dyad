@@ -954,7 +954,7 @@ describe("prepare_step_utils", () => {
       expect(todoContext.reminderState.hasRemindedThisTurn).toBe(false);
     });
 
-    it("does not inject reminder when agent has pending tool calls", () => {
+    it("injects reminder even when last assistant message has tool calls", () => {
       const pendingUserMessages: UserMessageContentPart[][] = [];
       const allInjectedMessages: InjectedMessage[] = [];
       const todoContext = {
@@ -986,10 +986,15 @@ describe("prepare_step_utils", () => {
         todoContext,
       );
 
-      // Should return undefined since agent is still working
-      expect(result).toBeUndefined();
-      // State should not be updated
-      expect(todoContext.reminderState.hasRemindedThisTurn).toBe(false);
+      expect(result).toBeDefined();
+      // Should append reminder to the original messages
+      expect(result!.messages).toHaveLength(3);
+      expect(result!.messages[2].role).toBe("user");
+      expect((result!.messages[2].content as any[])[0].text).toContain(
+        "1 incomplete todo(s)",
+      );
+      // State should be updated
+      expect(todoContext.reminderState.hasRemindedThisTurn).toBe(true);
     });
 
     it("does not inject reminder when no todoContext is provided", () => {

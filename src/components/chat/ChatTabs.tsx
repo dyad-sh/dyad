@@ -367,6 +367,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     const fallbackChatId = getFallbackChatIdAfterClose(orderedChats, chatId);
 
     removeRecentViewedChatId(chatId);
+    clearNotification(chatId);
 
     if (!closedTab || selectedChatId !== chatId) {
       return;
@@ -413,6 +414,13 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                   render={
                     <div
                       draggable
+                      onAuxClick={(event) => {
+                        // Middle-click (button 1) to close tab
+                        if (event.button === 1) {
+                          event.preventDefault();
+                          handleCloseTab(chat.id);
+                        }
+                      }}
                       onDragStart={(event) => {
                         event.dataTransfer.effectAllowed = "move";
                         event.dataTransfer.setData(
@@ -504,7 +512,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                       handleCloseTab(chat.id);
                     }}
                     className={cn(
-                      "rounded-sm p-0.5 transition-colors",
+                      "flex h-6 w-6 items-center justify-center rounded-sm transition-colors",
                       isActive
                         ? "opacity-80 hover:bg-muted"
                         : "opacity-0 group-hover:opacity-80 hover:bg-background/50",
@@ -556,6 +564,12 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                   <DropdownMenuItem
                     key={chat.id}
                     onClick={() => handleTabClick(chat, true)}
+                    onAuxClick={(event) => {
+                      if (event.button === 1) {
+                        event.preventDefault();
+                        handleCloseTab(chat.id);
+                      }
+                    }}
                     className="flex items-center gap-2"
                   >
                     {inProgress && (

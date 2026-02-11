@@ -21,7 +21,14 @@ export const closedChatIdsAtom = atom<Set<number>>(new Set<number>());
 export const setRecentViewedChatIdsAtom = atom(
   null,
   (_get, set, chatIds: number[]) => {
-    set(recentViewedChatIdsAtom, chatIds);
+    if (chatIds.length > MAX_RECENT_VIEWED_CHAT_IDS) {
+      set(
+        recentViewedChatIdsAtom,
+        chatIds.slice(0, MAX_RECENT_VIEWED_CHAT_IDS),
+      );
+    } else {
+      set(recentViewedChatIdsAtom, chatIds);
+    }
   },
 );
 const MAX_RECENT_VIEWED_CHAT_IDS = 100;

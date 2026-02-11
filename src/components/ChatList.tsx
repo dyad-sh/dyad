@@ -8,6 +8,7 @@ import { useAtom, useSetAtom } from "jotai";
 import {
   selectedChatIdAtom,
   removeChatIdFromAllTrackingAtom,
+  pushRecentViewedChatIdAtom,
 } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { dropdownOpenAtom } from "@/atoms/uiAtoms";
@@ -66,17 +67,24 @@ export function ChatList({ show }: { show?: boolean }) {
   const removeChatIdFromAllTracking = useSetAtom(
     removeChatIdFromAllTrackingAtom,
   );
+  const pushRecentViewedChatId = useSetAtom(pushRecentViewedChatIdAtom);
 
-  // Update selectedChatId when route changes
+  // Update selectedChatId when route changes and ensure chat appears in tabs
   useEffect(() => {
     if (isChatRoute) {
       const id = routerState.location.search.id;
       const chatId = Number(id);
       if (Number.isFinite(chatId) && chatId > 0) {
         setSelectedChatId(chatId);
+        pushRecentViewedChatId(chatId);
       }
     }
-  }, [isChatRoute, routerState.location.search, setSelectedChatId]);
+  }, [
+    isChatRoute,
+    routerState.location.search,
+    setSelectedChatId,
+    pushRecentViewedChatId,
+  ]);
 
   if (!show) {
     return;

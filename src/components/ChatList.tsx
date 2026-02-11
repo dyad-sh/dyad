@@ -190,6 +190,7 @@ export function ChatList({ show }: { show?: boolean }) {
               onClick={handleNewChat}
               variant="outline"
               className="flex items-center justify-start gap-2 mx-2 py-3"
+              data-testid="new-chat-button"
             >
               <PlusCircle size={16} />
               <span>{t("newChat")}</span>

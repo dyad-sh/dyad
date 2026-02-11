@@ -54,10 +54,7 @@ export class ChatActions {
 
   clickNewChat({ index = 0 }: { index?: number } = {}) {
     // There is two new chat buttons...
-    return this.page
-      .getByRole("button", { name: "New Chat" })
-      .nth(index)
-      .click();
+    return this.page.getByTestId("new-chat-button").nth(index).click();
   }
 
   private getRetryButton() {

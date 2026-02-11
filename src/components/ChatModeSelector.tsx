@@ -128,31 +128,29 @@ export function ChatModeSelector() {
         </Tooltip>
         <SelectContent align="start">
           {isProEnabled && (
-            <>
-              <SelectItem value="local-agent">
-                <div className="flex flex-col items-start">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-medium">Agent v2</span>
-                    <NewBadge />
-                  </div>
-                  <span className="text-xs text-muted-foreground">
-                    Better at bigger tasks and debugging
-                  </span>
+            <SelectItem value="local-agent">
+              <div className="flex flex-col items-start">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-medium">Agent v2</span>
+                  <NewBadge />
                 </div>
-              </SelectItem>
-              <SelectItem value="plan">
-                <div className="flex flex-col items-start">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-medium">Plan</span>
-                    <NewBadge />
-                  </div>
-                  <span className="text-xs text-muted-foreground">
-                    Design before you build
-                  </span>
-                </div>
-              </SelectItem>
-            </>
+                <span className="text-xs text-muted-foreground">
+                  Better at bigger tasks and debugging
+                </span>
+              </div>
+            </SelectItem>
           )}
+          <SelectItem value="plan">
+            <div className="flex flex-col items-start">
+              <div className="flex items-center gap-1.5">
+                <span className="font-medium">Plan</span>
+                <NewBadge />
+              </div>
+              <span className="text-xs text-muted-foreground">
+                Design before you build
+              </span>
+            </div>
+          </SelectItem>
           {!isProEnabled && (
             <SelectItem value="local-agent" disabled={isQuotaExceeded}>
               <div className="flex flex-col items-start">

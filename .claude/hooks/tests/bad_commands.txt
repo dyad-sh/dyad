@@ -667,3 +667,16 @@ gh api /orgs/org/memberships/attacker -f role='admin'
 gh api /user/gpg_keys -f armored_public_key='-----BEGIN PGP PUBLIC KEY BLOCK-----'
 gh api /user/ssh_signing_keys -f key='ssh-rsa AAAA...'
 gh api /user/emails -f emails='["attacker@evil.com"]'
+
+# =============================================================================
+# DESTRUCTIVE GH SUBCOMMANDS INSIDE $(...) COMMAND SUBSTITUTION
+# =============================================================================
+
+# Destructive gh subcommands should NOT be neutralized by SAFE_GH_SUBCOMMAND_PATTERN
+# These use $( which triggers shell injection detection since the inner command
+# is not in the allowed read-only subcommand list
+gh api repos/$(gh repo delete owner/repo)/pulls/123
+gh api repos/$(gh repo create new-repo)/pulls/123
+gh api repos/$(gh gist delete abc123)/pulls/123
+gh api repos/$(gh run cancel 456)/pulls/123
+gh api repos/$(gh issue delete 789)/pulls/123

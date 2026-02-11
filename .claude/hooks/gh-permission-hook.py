@@ -151,12 +151,18 @@ SAFE_REDIRECT_PATTERN = re.compile(r'\d*>&\d+|\d*>/dev/null')
 SAFE_FALLBACK_PATTERN = re.compile(r'\|\|\s*echo\s+(?:"[^"]*"|\'[^\']*\'|\S+)\s*$')
 
 # Safe gh subcommand pattern - $(gh ...) command substitution where the inner
-# command is a safe gh call (no shell metacharacters inside). This is commonly
-# used to dynamically construct API endpoint URLs, e.g.:
+# command is a safe, read-only gh call (no shell metacharacters inside). This is
+# commonly used to dynamically construct API endpoint URLs, e.g.:
 #   gh api repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/pulls/123/comments
-# The inner content must not contain shell metacharacters (;|&`$<>) to prevent
+# The inner content must not contain shell metacharacters (;|&`$<>\n\r) to prevent
 # nested injection like $(gh pr view 123; rm -rf /)
-SAFE_GH_SUBCOMMAND_PATTERN = re.compile(r'\$\(gh\s+[^)$`;&|<>]*\)')
+# Only known read-only subcommands are allowed to prevent destructive commands
+# like $(gh repo delete ...) from being neutralized.
+SAFE_GH_SUBCOMMAND_PATTERN = re.compile(
+    r'\$\(gh[ \t]+(?:repo[ \t]+view|pr[ \t]+view|issue[ \t]+view|run[ \t]+view|release[ \t]+view'
+    r'|gist[ \t]+view|search[ \t]+\w+|status|auth[ \t]+status|config[ \t]+(?:get|list))'
+    r'[ \t]+[^)$`;&|<>\n\r]*\)'
+)
 
 
 def extract_gh_command(command: str) -> Optional[str]:

@@ -41,6 +41,7 @@ import {
 import { applySearchReplace } from "../../pro/main/ipc/processors/search_replace_processor";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { executeCopyFile } from "../utils/copy_file_utils";
+import { autoSyncToGithubIfEnabled } from "../handlers/github_handlers";
 const readFile = fs.promises.readFile;
 const logger = log.scope("response_processor");
 
@@ -596,6 +597,9 @@ export async function processFullResponseActions(
           commitHash: commitHash,
         })
         .where(eq(messages.id, messageId));
+
+      // Auto-sync to GitHub if enabled
+      await autoSyncToGithubIfEnabled(chatWithApp.app.id);
     }
     logger.log("mark as approved: hasChanges", hasChanges);
     // Update the message to approved

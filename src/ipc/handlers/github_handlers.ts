@@ -1417,3 +1417,101 @@ export async function updateAppGithubRepo({
     })
     .where(eq(schema.apps.id, appId));
 }
+
+/**
+ * Auto-push to GitHub if the app has autoSyncToGithub enabled.
+ * This should be called after any commit operation.
+ *
+ * This function silently fails if:
+ * - App is not connected to GitHub
+ * - No GitHub access token
+ * - Push fails (logs warning but doesn't throw)
+ *
+ * @param appId The app ID to potentially push
+ */
+export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
+  try {
+    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+    if (!app) {
+      logger.debug("[Auto-sync] App not found, skipping auto-sync");
+      return;
+    }
+
+    // Check if auto-sync is enabled for this app
+    if (!app.autoSyncToGithub) {
+      logger.debug("[Auto-sync] Auto-sync not enabled for this app");
+      return;
+    }
+
+    // Check if app is connected to GitHub
+    if (!app.githubOrg || !app.githubRepo) {
+      logger.debug("[Auto-sync] App not connected to GitHub, skipping");
+      return;
+    }
+
+    // Check for GitHub access token
+    const settings = readSettings();
+    const accessToken = settings.githubAccessToken?.value;
+    if (!accessToken) {
+      logger.warn("[Auto-sync] No GitHub access token, skipping auto-sync");
+      return;
+    }
+
+    const appPath = getDyadAppPath(app.path);
+    const branch = app.githubBranch || "main";
+
+    // Set up remote URL with token
+    const remoteUrl = IS_TEST_BUILD
+      ? `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`
+      : `https://${accessToken}:x-oauth-basic@github.com/${app.githubOrg}/${app.githubRepo}.git`;
+
+    await gitSetRemoteUrl({
+      path: appPath,
+      remoteUrl,
+    });
+
+    // Try to pull first (to avoid conflicts), but don't fail if remote branch doesn't exist
+    try {
+      await gitPull({
+        path: appPath,
+        remote: "origin",
+        branch,
+        accessToken,
+      });
+    } catch (pullError: any) {
+      const errorMessage = pullError?.message || "";
+      const isMissingRemoteBranch =
+        pullError?.code === "MissingRefError" ||
+        (pullError?.code === "NotFoundError" &&
+          (errorMessage.includes("remote ref") ||
+            errorMessage.includes("remote branch"))) ||
+        errorMessage.includes("couldn't find remote ref") ||
+        errorMessage.includes("Cannot read properties of null");
+
+      if (!isMissingRemoteBranch) {
+        // If there's a conflict or other error, log and skip the push
+        logger.warn(
+          `[Auto-sync] Pull failed, skipping auto-push: ${errorMessage}`,
+        );
+        return;
+      }
+      // Remote branch doesn't exist yet, continue with push
+    }
+
+    // Push to GitHub
+    await gitPush({
+      path: appPath,
+      branch,
+      accessToken,
+      force: false,
+      forceWithLease: false,
+    });
+
+    logger.info(
+      `[Auto-sync] Successfully pushed to GitHub: ${app.githubOrg}/${app.githubRepo}`,
+    );
+  } catch (error: any) {
+    // Log but don't throw - auto-sync should not break the main operation
+    logger.warn(`[Auto-sync] Failed to auto-sync to GitHub: ${error.message}`);
+  }
+}

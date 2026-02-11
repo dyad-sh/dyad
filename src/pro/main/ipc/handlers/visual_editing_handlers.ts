@@ -11,6 +11,7 @@ import {
   extractClassPrefixes,
 } from "../../../../utils/style-utils";
 import { gitAdd, gitCommit } from "../../../../ipc/utils/git_utils";
+import { autoSyncToGithubIfEnabled } from "../../../../ipc/handlers/github_handlers";
 import { safeJoin } from "@/ipc/utils/path_utils";
 import {
   AnalyseComponentParams,
@@ -83,6 +84,9 @@ export function registerVisualEditingHandlers() {
               path: appPath,
               message: `Updated ${normalizedRelativePath}`,
             });
+
+            // Auto-sync to GitHub if enabled
+            await autoSyncToGithubIfEnabled(appId);
           }
         }
       } catch (error) {

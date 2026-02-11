@@ -26,7 +26,11 @@ import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import log from "electron-log";
 import { withLock } from "../utils/lock_utils";
-import { updateAppGithubRepo, ensureCleanWorkspace } from "./github_handlers";
+import {
+  updateAppGithubRepo,
+  ensureCleanWorkspace,
+  autoSyncToGithubIfEnabled,
+} from "./github_handlers";
 import { createTypedHandler } from "./base";
 import { githubContracts, gitContracts } from "../types/github";
 import type {
@@ -344,6 +348,9 @@ async function handleCommitChanges(
 
     // Commit with the provided message
     const commitHash = await gitCommit({ path: appPath, message });
+
+    // Auto-sync to GitHub if enabled
+    await autoSyncToGithubIfEnabled(appId);
 
     return commitHash;
   });

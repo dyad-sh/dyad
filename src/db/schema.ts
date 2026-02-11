@@ -60,6 +60,10 @@ export const apps = sqliteTable("apps", {
     .default(sql`0`),
   // Theme ID for design system theming (null means "no theme")
   themeId: text("theme_id"),
+  // Auto-sync to GitHub after every commit
+  autoSyncToGithub: integer("auto_sync_to_github", { mode: "boolean" })
+    .notNull()
+    .default(sql`0`),
 });
 
 export const chats = sqliteTable("chats", {

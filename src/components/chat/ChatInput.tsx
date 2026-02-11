@@ -148,7 +148,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const {
     attachments,
     isDraggingOver,
-    pendingDroppedFiles,
+    pendingFiles,
     handleFileSelect,
     removeAttachment,
     handleDragOver,
@@ -156,8 +156,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     handleDrop,
     clearAttachments,
     handlePaste,
-    confirmDroppedFiles,
-    cancelDroppedFiles,
+    confirmPendingFiles,
+    cancelPendingFiles,
   } = useAttachments();
 
   // Use the hook to fetch the proposal
@@ -558,11 +558,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           {/* Use the DragDropOverlay component */}
           <DragDropOverlay isDraggingOver={isDraggingOver} />
 
-          {/* Dialog for choosing attachment type on drag & drop */}
+          {/* Dialog for choosing attachment type */}
           <FileAttachmentTypeDialog
-            pendingFiles={pendingDroppedFiles}
-            onConfirm={confirmDroppedFiles}
-            onCancel={cancelDroppedFiles}
+            pendingFiles={pendingFiles}
+            onConfirm={confirmPendingFiles}
+            onCancel={cancelPendingFiles}
           />
 
           <div className="flex items-start space-x-2 ">

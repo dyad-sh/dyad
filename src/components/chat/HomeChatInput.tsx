@@ -45,7 +45,7 @@ export function HomeChatInput({
   const {
     attachments,
     isDraggingOver,
-    pendingDroppedFiles,
+    pendingFiles,
     handleFileSelect,
     removeAttachment,
     handleDragOver,
@@ -53,8 +53,8 @@ export function HomeChatInput({
     handleDrop,
     clearAttachments,
     handlePaste,
-    confirmDroppedFiles,
-    cancelDroppedFiles,
+    confirmPendingFiles,
+    cancelPendingFiles,
   } = useAttachments();
 
   // Custom submit function that wraps the provided onSubmit
@@ -97,11 +97,11 @@ export function HomeChatInput({
           {/* Drag and drop overlay */}
           <DragDropOverlay isDraggingOver={isDraggingOver} />
 
-          {/* Dialog for choosing attachment type on drag & drop */}
+          {/* Dialog for choosing attachment type */}
           <FileAttachmentTypeDialog
-            pendingFiles={pendingDroppedFiles}
-            onConfirm={confirmDroppedFiles}
-            onCancel={cancelDroppedFiles}
+            pendingFiles={pendingFiles}
+            onConfirm={confirmPendingFiles}
+            onCancel={cancelPendingFiles}
           />
 
           <div className="flex items-start space-x-2 ">

@@ -7,9 +7,7 @@ export function useAttachments() {
   const [attachments, setAttachments] = useAtom(attachmentsAtom);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
-  const [pendingDroppedFiles, setPendingDroppedFiles] = useState<File[] | null>(
-    null,
-  );
+  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
 
   const handleAttachmentClick = () => {
     fileInputRef.current?.click();
@@ -62,28 +60,26 @@ export function useAttachments() {
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const files = Array.from(e.dataTransfer.files);
-      setPendingDroppedFiles(files);
+      setPendingFiles(files);
     }
   };
 
-  const confirmDroppedFiles = useCallback(
+  const confirmPendingFiles = useCallback(
     (type: "chat-context" | "upload-to-codebase") => {
-      if (pendingDroppedFiles) {
-        const fileAttachments: FileAttachment[] = pendingDroppedFiles.map(
-          (file) => ({
-            file,
-            type,
-          }),
-        );
+      if (pendingFiles) {
+        const fileAttachments: FileAttachment[] = pendingFiles.map((file) => ({
+          file,
+          type,
+        }));
         setAttachments((prev) => [...prev, ...fileAttachments]);
-        setPendingDroppedFiles(null);
+        setPendingFiles(null);
       }
     },
-    [pendingDroppedFiles, setAttachments],
+    [pendingFiles, setAttachments],
   );
 
-  const cancelDroppedFiles = useCallback(() => {
-    setPendingDroppedFiles(null);
+  const cancelPendingFiles = useCallback(() => {
+    setPendingFiles(null);
   }, []);
 
   const clearAttachments = () => {
@@ -134,9 +130,7 @@ export function useAttachments() {
       }
 
       if (imageFiles.length > 0) {
-        addAttachments(imageFiles, "chat-context");
-        // Show a brief toast or indication that image was pasted
-        console.log(`Pasted ${imageFiles.length} image(s) from clipboard`);
+        setPendingFiles(imageFiles);
       }
     }
   };
@@ -145,7 +139,7 @@ export function useAttachments() {
     attachments,
     fileInputRef,
     isDraggingOver,
-    pendingDroppedFiles,
+    pendingFiles,
     handleAttachmentClick,
     handleFileChange,
     handleFileSelect,
@@ -156,7 +150,7 @@ export function useAttachments() {
     clearAttachments,
     handlePaste,
     addAttachments,
-    confirmDroppedFiles,
-    cancelDroppedFiles,
+    confirmPendingFiles,
+    cancelPendingFiles,
   };
 }

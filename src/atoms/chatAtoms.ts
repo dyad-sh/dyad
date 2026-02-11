@@ -16,6 +16,8 @@ export const homeChatInputValueAtom = atom<string>("");
 export const chatStreamCountByIdAtom = atom<Map<number, number>>(new Map());
 export const recentStreamChatIdsAtom = atom<Set<number>>(new Set<number>());
 export const recentViewedChatIdsAtom = atom<number[]>([]);
+// Track explicitly closed tabs - these should not reappear in the tab bar
+export const closedChatIdsAtom = atom<Set<number>>(new Set<number>());
 export const setRecentViewedChatIdsAtom = atom(
   null,
   (_get, set, chatIds: number[]) => {
@@ -28,6 +30,13 @@ export const pushRecentViewedChatIdAtom = atom(
     const nextIds = get(recentViewedChatIdsAtom).filter((id) => id !== chatId);
     nextIds.unshift(chatId);
     set(recentViewedChatIdsAtom, nextIds);
+    // Remove from closed set when explicitly selected
+    const closedIds = get(closedChatIdsAtom);
+    if (closedIds.has(chatId)) {
+      const newClosedIds = new Set(closedIds);
+      newClosedIds.delete(chatId);
+      set(closedChatIdsAtom, newClosedIds);
+    }
   },
 );
 export const removeRecentViewedChatIdAtom = atom(
@@ -37,6 +46,27 @@ export const removeRecentViewedChatIdAtom = atom(
       recentViewedChatIdsAtom,
       get(recentViewedChatIdsAtom).filter((id) => id !== chatId),
     );
+    // Add to closed set so it doesn't reappear
+    const closedIds = get(closedChatIdsAtom);
+    const newClosedIds = new Set(closedIds);
+    newClosedIds.add(chatId);
+    set(closedChatIdsAtom, newClosedIds);
+  },
+);
+// Remove a chat ID from all tracking (used when chat is deleted)
+export const removeChatIdFromAllTrackingAtom = atom(
+  null,
+  (get, set, chatId: number) => {
+    set(
+      recentViewedChatIdsAtom,
+      get(recentViewedChatIdsAtom).filter((id) => id !== chatId),
+    );
+    const closedIds = get(closedChatIdsAtom);
+    if (closedIds.has(chatId)) {
+      const newClosedIds = new Set(closedIds);
+      newClosedIds.delete(chatId);
+      set(closedChatIdsAtom, newClosedIds);
+    }
   },
 );
 

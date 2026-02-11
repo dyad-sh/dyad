@@ -43,19 +43,11 @@ test("clicking a tab switches to that chat", async ({ po }) => {
   }).toPass({ timeout: Timeout.MEDIUM });
 
   // We're on chat 2 (active). Find and click the inactive tab to switch to chat 1.
-  // Each tab is a div with a title button + close button. The active tab's title button has aria-current="page".
-  const allTabDivs = po.page.locator("div").filter({
-    has: po.page.getByLabel(/^Close tab:/),
-  });
-
-  for (let i = 0; i < (await allTabDivs.count()); i++) {
-    const tabDiv = allTabDivs.nth(i);
-    const activeButton = tabDiv.locator('button[aria-current="page"]');
-    if ((await activeButton.count()) === 0) {
-      await tabDiv.locator("button").first().click();
-      break;
-    }
-  }
+  // Each tab is a div[draggable] with a title button + close button. The active tab's title button has aria-current="page".
+  const inactiveTab = po.page
+    .locator("div[draggable]")
+    .filter({ hasNot: po.page.locator('button[aria-current="page"]') });
+  await inactiveTab.locator("button").first().click();
 
   // After clicking, chat 1's message should be visible
   await expect(

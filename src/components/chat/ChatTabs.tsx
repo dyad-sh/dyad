@@ -11,6 +11,7 @@ import {
   recentViewedChatIdsAtom,
   setRecentViewedChatIdsAtom,
   removeRecentViewedChatIdAtom,
+  closedChatIdsAtom,
 } from "@/atoms/chatAtoms";
 import { cn } from "@/lib/utils";
 import {
@@ -35,6 +36,7 @@ const MAX_OVERFLOW_MENU_ITEMS = 8;
 export function getOrderedRecentChatIds(
   recentViewedChatIds: number[],
   chats: ChatSummary[],
+  closedChatIds: Set<number> = new Set(),
 ): number[] {
   if (chats.length === 0) return [];
 
@@ -43,13 +45,15 @@ export function getOrderedRecentChatIds(
   const seen = new Set<number>();
 
   for (const chatId of recentViewedChatIds) {
-    if (!chatIds.has(chatId) || seen.has(chatId)) continue;
+    if (!chatIds.has(chatId) || seen.has(chatId) || closedChatIds.has(chatId))
+      continue;
     ordered.push(chatId);
     seen.add(chatId);
   }
 
+  // Only add chats that haven't been explicitly closed
   for (const chat of chats) {
-    if (seen.has(chat.id)) continue;
+    if (seen.has(chat.id) || closedChatIds.has(chat.id)) continue;
     ordered.push(chat.id);
     seen.add(chat.id);
   }
@@ -159,6 +163,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   const { apps } = useLoadApps();
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
   const recentViewedChatIds = useAtomValue(recentViewedChatIdsAtom);
+  const closedChatIds = useAtomValue(closedChatIdsAtom);
   const setRecentViewedChatIds = useSetAtom(setRecentViewedChatIdsAtom);
   const removeRecentViewedChatId = useSetAtom(removeRecentViewedChatIdAtom);
   const { selectChat } = useSelectChat();
@@ -180,8 +185,8 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   );
 
   const orderedChatIds = useMemo(
-    () => getOrderedRecentChatIds(recentViewedChatIds, chats),
-    [recentViewedChatIds, chats],
+    () => getOrderedRecentChatIds(recentViewedChatIds, chats, closedChatIds),
+    [recentViewedChatIds, chats, closedChatIds],
   );
 
   const orderedChats = useMemo(
@@ -244,29 +249,30 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   // notification dot.
   useEffect(() => {
     const prev = prevStreamingRef.current;
-    const newNotified = new Set(notifiedChatIds);
-    let changed = false;
 
-    for (const [chatId, wasStreaming] of prev) {
-      const isNowStreaming = isStreamingById.get(chatId) === true;
-      if (wasStreaming && !isNowStreaming && chatId !== selectedChatId) {
-        newNotified.add(chatId);
+    setNotifiedChatIds((currentNotified) => {
+      const newNotified = new Set(currentNotified);
+      let changed = false;
+
+      for (const [chatId, wasStreaming] of prev) {
+        const isNowStreaming = isStreamingById.get(chatId) === true;
+        if (wasStreaming && !isNowStreaming && chatId !== selectedChatId) {
+          newNotified.add(chatId);
+          changed = true;
+        }
+      }
+
+      // Clear notification for the currently viewed tab
+      if (selectedChatId !== null && newNotified.has(selectedChatId)) {
+        newNotified.delete(selectedChatId);
         changed = true;
       }
-    }
 
-    // Clear notification for the currently viewed tab
-    if (selectedChatId !== null && newNotified.has(selectedChatId)) {
-      newNotified.delete(selectedChatId);
-      changed = true;
-    }
-
-    if (changed) {
-      setNotifiedChatIds(newNotified);
-    }
+      return changed ? newNotified : currentNotified;
+    });
 
     prevStreamingRef.current = new Map(isStreamingById);
-  }, [isStreamingById, selectedChatId, notifiedChatIds]);
+  }, [isStreamingById, selectedChatId]);
 
   const clearNotification = useCallback((chatId: number) => {
     setNotifiedChatIds((prev) => {
@@ -326,8 +332,9 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   };
 
   const handleCloseTab = (chatId: number) => {
-    const closedTab = visibleTabs.find((tab) => tab.id === chatId);
-    const fallbackChatId = getFallbackChatIdAfterClose(visibleTabs, chatId);
+    // Use orderedChats (all tabs: visible + overflow) instead of just visibleTabs
+    const closedTab = chatsById.get(chatId);
+    const fallbackChatId = getFallbackChatIdAfterClose(orderedChats, chatId);
 
     removeRecentViewedChatId(chatId);
 
@@ -335,9 +342,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
       return;
     }
 
-    const fallbackTab =
-      visibleTabs.find((tab) => tab.id === fallbackChatId) ??
-      chatsById.get(fallbackChatId);
+    const fallbackTab = chatsById.get(fallbackChatId);
     if (!fallbackTab) return;
 
     selectChat({

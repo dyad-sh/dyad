@@ -4,8 +4,11 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 
 import { formatDistanceToNow } from "date-fns";
 import { PlusCircle, MoreVertical, Trash2, Edit3, Search } from "lucide-react";
-import { useAtom } from "jotai";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { useAtom, useSetAtom } from "jotai";
+import {
+  selectedChatIdAtom,
+  removeChatIdFromAllTrackingAtom,
+} from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { dropdownOpenAtom } from "@/atoms/uiAtoms";
 import { ipc } from "@/ipc/types";
@@ -60,6 +63,9 @@ export function ChatList({ show }: { show?: boolean }) {
   // search dialog state
   const [isSearchDialogOpen, setIsSearchDialogOpen] = useState(false);
   const { selectChat } = useSelectChat();
+  const removeChatIdFromAllTracking = useSetAtom(
+    removeChatIdFromAllTrackingAtom,
+  );
 
   // Update selectedChatId when route changes
   useEffect(() => {
@@ -129,6 +135,9 @@ export function ChatList({ show }: { show?: boolean }) {
     try {
       await ipc.chat.deleteChat(chatId);
       showSuccess(t("chatDeleted"));
+
+      // Remove from tab tracking to prevent stale IDs
+      removeChatIdFromAllTracking(chatId);
 
       // If the deleted chat was selected, navigate to home
       if (selectedChatId === chatId) {

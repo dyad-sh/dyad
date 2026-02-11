@@ -18,6 +18,7 @@ export const recentStreamChatIdsAtom = atom<Set<number>>(new Set<number>());
 export const recentViewedChatIdsAtom = atom<number[]>([]);
 // Track explicitly closed tabs - these should not reappear in the tab bar
 export const closedChatIdsAtom = atom<Set<number>>(new Set<number>());
+const MAX_RECENT_VIEWED_CHAT_IDS = 100;
 export const setRecentViewedChatIdsAtom = atom(
   null,
   (_get, set, chatIds: number[]) => {
@@ -31,7 +32,6 @@ export const setRecentViewedChatIdsAtom = atom(
     }
   },
 );
-const MAX_RECENT_VIEWED_CHAT_IDS = 100;
 // Add a chat ID to the recent list only if it's not already present.
 // Unlike pushRecentViewedChatIdAtom, this does NOT move existing IDs to the front,
 // preserving the current tab order for chats already tracked.

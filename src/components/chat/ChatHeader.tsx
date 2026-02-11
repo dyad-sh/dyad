@@ -89,8 +89,8 @@ export function ChatHeader({
     if (appId) {
       try {
         const chatId = await ipc.chat.createChat(appId);
-        selectChat({ chatId, appId });
         await invalidateChats();
+        selectChat({ chatId, appId });
       } catch (error) {
         showError(t("failedCreateChat", { error: (error as any).toString() }));
       }

@@ -495,7 +495,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                   <button
                     type="button"
                     onClick={() => handleTabClick(chat)}
-                    className="min-w-0 flex-1 text-left"
+                    className="min-w-0 flex-1 text-left rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     aria-current={isActive ? "page" : undefined}
                   >
                     <div className="min-w-0">
@@ -512,10 +512,10 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                       handleCloseTab(chat.id);
                     }}
                     className={cn(
-                      "flex h-6 w-6 items-center justify-center rounded-sm transition-colors",
+                      "flex h-6 w-6 items-center justify-center rounded-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
                       isActive
                         ? "opacity-80 hover:bg-muted"
-                        : "opacity-0 group-hover:opacity-80 hover:bg-background/50",
+                        : "opacity-0 group-hover:opacity-80 hover:bg-background/50 focus-visible:opacity-80",
                     )}
                     aria-label={t("closeChatTab", { title })}
                   >
@@ -547,7 +547,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
             <DropdownMenuTrigger
               className="flex h-7 w-8 items-center justify-center rounded-md border border-transparent bg-muted/50 text-muted-foreground hover:bg-muted"
               aria-label={t("openOverflowTabs", {
-                count: overflowTabsForMenu.length,
+                count: overflowTabs.length,
               })}
             >
               <MoreHorizontal size={14} />
@@ -594,7 +594,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                         event.stopPropagation();
                         handleCloseTab(chat.id);
                       }}
-                      className="flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted"
+                      className="flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       aria-label={t("closeChatTab", { title })}
                     >
                       <X size={12} />

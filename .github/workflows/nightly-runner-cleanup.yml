@@ -1,0 +1,36 @@
+# Nightly disk cleanup for self-hosted macOS CI runners (e.g. ci1).
+# Runs at 4:00 AM PST to prevent disk exhaustion from CI workloads.
+# Safe to run manually via workflow_dispatch for testing.
+
+name: Nightly Runner Cleanup
+
+on:
+  schedule:
+    # 4:00 AM PST = 12:00 UTC (PST is UTC-8)
+    - cron: "0 12 * * *"
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: [self-hosted, macOS, ARM64]
+    steps:
+      - name: Guard — run only on ci1
+        id: guard
+        run: |
+          if [ "$RUNNER_NAME" = "ci1" ]; then
+            echo "run_cleanup=true" >> "$GITHUB_OUTPUT"
+            echo "Running cleanup on runner: $RUNNER_NAME"
+          else
+            echo "run_cleanup=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping cleanup: runner is '$RUNNER_NAME', expected ci1"
+          fi
+
+      - name: Checkout (for cleanup script)
+        if: steps.guard.outputs.run_cleanup == 'true'
+        uses: actions/checkout@v4
+
+      - name: Nightly disk cleanup
+        if: steps.guard.outputs.run_cleanup == 'true'
+        env:
+          CI_NIGHTLY_CLEANUP: "1"
+        run: bash scripts/ci-cleanup-macos.sh

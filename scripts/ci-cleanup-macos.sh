@@ -4,6 +4,9 @@
 # Intended to run as a post-job step in GitHub Actions workflows that use
 # self-hosted macOS ARM64 runners. Safe to run multiple times (idempotent).
 #
+# Set CI_NIGHTLY_CLEANUP=1 for nightly runs to also clean host-level caches
+# (Library/Caches subdirs, runner _work stale dirs). Only allowlisted paths.
+#
 # What it cleans:
 #   1. Build outputs           (out/, out-macos.tar)
 #   2. Blob reports            (blob-report/)
@@ -11,10 +14,16 @@
 #   4. Old Playwright browsers (keeps only the current version)
 #   5. npm cache artifacts     (_cacache, _logs)
 #   6. Old runner diagnostics  (_diag/*.log older than 7 days)
+#   7. [Nightly only] ~/Library/Caches subdirs, runner _work (older than 2 days)
 
 set -euo pipefail
 
 echo "=== CI Cleanup (macOS self-hosted) ==="
+if [ "${CI_NIGHTLY_CLEANUP:-0}" = "1" ]; then
+  echo "Mode: nightly (host-level + workspace)"
+else
+  echo "Mode: per-job (workspace only)"
+fi
 df -h / | tail -1 | awk '{print "Disk before cleanup: "$4" available ("$5" used)"}'
 
 bytes_before=$(df -k / | tail -1 | awk '{print $4}')
@@ -112,6 +121,39 @@ if [ -d "$RUNNER_DIR/_diag" ]; then
   if [ "$old_logs" -gt 0 ]; then
     echo "Removing $old_logs old runner diagnostic log(s)"
     find "$RUNNER_DIR/_diag" -name '*.log' -mtime +7 -delete 2>/dev/null || true
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# 7. [Nightly only] Host-level caches and stale runner _work
+#    Only when CI_NIGHTLY_CLEANUP=1. Allowlisted paths only.
+# ---------------------------------------------------------------------------
+if [ "${CI_NIGHTLY_CLEANUP:-0}" = "1" ]; then
+  CACHES="$HOME/Library/Caches"
+  # Allowlisted subdirs (never wipe entire Caches)
+  for subdir in Homebrew com.apple.dt.Xcode; do
+    d="$CACHES/$subdir"
+    if [ -d "$d" ]; then
+      size=$(du -sh "$d" 2>/dev/null | cut -f1 || echo "?")
+      echo "Removing cache: $d (${size})"
+      rm -rf "$d"
+    fi
+  done
+  for d in "$CACHES"/org.llvm.clang*; do
+    [ -d "$d" ] || continue
+    size=$(du -sh "$d" 2>/dev/null | cut -f1 || echo "?")
+    echo "Removing cache: $d (${size})"
+    rm -rf "$d"
+  done
+
+  # Runner _work: remove stale job workspaces older than 2 days
+  if [ -d "$RUNNER_DIR/_work" ]; then
+    stale=$(find "$RUNNER_DIR/_work" -mindepth 1 -maxdepth 1 -type d -mtime +2 2>/dev/null || true)
+    if [ -n "$stale" ]; then
+      echo "Removing stale _work dirs (older than 2 days):"
+      echo "$stale"
+      echo "$stale" | xargs rm -rf 2>/dev/null || true
+    fi
   fi
 fi
 

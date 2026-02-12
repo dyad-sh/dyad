@@ -152,11 +152,6 @@ function buildChatMessageHistory(
       continue;
     }
 
-    // Guard against missing createdAt (can happen in tests)
-    if (!summary.createdAt || !triggeringUser.createdAt) {
-      continue;
-    }
-
     const isMidTurnSummary =
       summary.createdAt.getTime() >= triggeringUser.createdAt.getTime();
     if (!isMidTurnSummary || summaryIndex === triggeringUserIndex + 1) {
@@ -193,11 +188,6 @@ function getMidTurnCompactionSummaryIds(
       .sort((a, b) => b.id - a.id)[0];
 
     if (!triggeringUserMessage) {
-      continue;
-    }
-
-    // Guard against missing createdAt (can happen in tests)
-    if (!summary.createdAt || !triggeringUserMessage.createdAt) {
       continue;
     }
 

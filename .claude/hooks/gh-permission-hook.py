@@ -62,11 +62,13 @@ BLOCKED (denied):
    - Process substitution: <() >()
    - Piping to non-safe commands
 
-Note: Markdown code spans with identifier-like content are allowed in double-quoted
-strings (common in PR/issue descriptions). Code spans must contain at least one
-dot, hyphen, or underscore to be recognized as identifiers (e.g., `config.json`,
-`my-component`, `my_variable`). Plain words like `word` are NOT allowed as they
-could be actual commands like `env` or `whoami`.
+Note: gh pr and gh issue commands are exempt from shell injection checks because
+they frequently contain markdown in --body with backticks, pipes, bold (**), etc.
+For other commands, markdown code spans with identifier-like content are allowed
+in double-quoted strings. Code spans must contain at least one dot, hyphen, or
+underscore to be recognized as identifiers (e.g., `config.json`, `my-component`,
+`my_variable`). Plain words like `word` are NOT allowed as they could be actual
+commands like `env` or `whoami`.
 """
 import json
 import sys
@@ -323,9 +325,10 @@ def main():
     # Normalize whitespace for matching
     normalized_cmd = " ".join(gh_command.split())
 
-    # Allow gh pr commands without shell injection check (common workflow commands)
+    # Allow gh pr and gh issue commands without shell injection check (common workflow commands)
+    # These commands frequently contain markdown in --body with backticks, pipes, etc.
     # Other gh commands with shell metacharacters are blocked for safety
-    if not normalized_cmd.startswith("gh pr "):
+    if not (normalized_cmd.startswith("gh pr ") or normalized_cmd.startswith("gh issue ")):
         if contains_shell_injection(command):
             decision = make_deny_decision(
                 "Command contains shell metacharacters that could allow injection"

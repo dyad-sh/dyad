@@ -139,3 +139,26 @@ Content here
 ```
 
 Valid states: `"finished"`, `"in-progress"`, `"aborted"`
+
+### React Query prefetch and invalidation patterns
+
+For app-level data that should be available immediately on load (like user budget/subscription info), use `prefetchQuery` in the root `App` component:
+
+```tsx
+const queryClient = useQueryClient();
+useEffect(() => {
+  queryClient.prefetchQuery({
+    queryKey: queryKeys.userBudget.info,
+    queryFn: () => ipc.system.getUserBudget(),
+  });
+}, [queryClient]);
+```
+
+When a mutation (like saving an API key) affects data managed by a different query, invalidate that query to trigger a refetch:
+
+```tsx
+// After saving Dyad Pro key, refetch user budget since subscription status may change
+queryClient.invalidateQueries({ queryKey: queryKeys.userBudget.info });
+```
+
+This ensures related data stays in sync without tight coupling between components.

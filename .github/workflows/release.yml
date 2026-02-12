@@ -33,7 +33,7 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@cdca7365b2dadb8aad0a33bc7601856ffabcc48e # v4.3.0
         with:
-          node-version: 20
+          node-version-file: package.json
       - name: Install npm 11.8.0
         run: npm install -g npm@11.8.0
       - run: npm ci
@@ -170,7 +170,7 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@cdca7365b2dadb8aad0a33bc7601856ffabcc48e # v4.3.0
         with:
-          node-version: 20
+          node-version-file: package.json
       - name: Verify all release assets are uploaded
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

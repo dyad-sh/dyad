@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { z } from "zod";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { safeJoin } from "@/ipc/utils/path_utils";
+import { addLineNumberPrefixes } from "@/pro/main/ipc/processors/line_number_utils";
 
 const readFile = fs.promises.readFile;
 
@@ -92,7 +93,7 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
     const end = args.end_line_one_indexed_inclusive;
 
     if (start == null && end == null) {
-      return content;
+      return addLineNumberPrefixes(content);
     }
 
     const hasTrailingNewline = content.endsWith("\n");
@@ -102,8 +103,8 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
     const startIdx = Math.max(0, (start ?? 1) - 1);
     const endIdx = Math.min(lines.length, end ?? lines.length);
     const result = lines.slice(startIdx, endIdx).join("\n");
-    return endIdx >= lines.length && hasTrailingNewline
-      ? result + "\n"
-      : result;
+    const slicedContent =
+      endIdx >= lines.length && hasTrailingNewline ? result + "\n" : result;
+    return addLineNumberPrefixes(slicedContent);
   },
 };

@@ -91,3 +91,74 @@ Use unit testing for pure business logic and util functions.
 ### E2E testing
 
 See [rules/e2e-testing.md](rules/e2e-testing.md) for full E2E testing guidance, including Playwright tips and fixture setup.
+
+## Git workflow
+
+When pushing changes and creating PRs:
+
+1. If the branch already has an associated PR, push to whichever remote the branch is tracking.
+2. If the branch hasn't been pushed before, default to pushing to `origin` (the fork `wwwillchen/dyad`), then create a PR from the fork to the upstream repo (`dyad-sh/dyad`).
+3. If you cannot push to the fork due to permissions, push directly to `upstream` (`dyad-sh/dyad`) as a last resort.
+
+### Skipping automated review
+
+Add `#skip-bugbot` to the PR description for trivial PRs that won't affect end-users, such as:
+
+- Claude settings, commands, or agent configuration
+- Linting or test setup changes
+- Documentation-only changes
+- CI/build configuration updates
+
+## Learnings
+
+### Cross-repo PR workflows (forks)
+
+When running GitHub Actions with `pull_request_target` on cross-repo PRs (from forks):
+
+- The checkout action sets `origin` to the **fork** (head repo), not the base repo
+- To rebase onto the base repo's main, you must add an `upstream` remote: `git remote add upstream https://github.com/<base-repo>.git`
+- Remote setup for cross-repo PRs: `origin` → fork (push here), `upstream` → base repo (rebase from here)
+- The `GITHUB_TOKEN` can push to the fork if the PR author enabled "Allow edits from maintainers"
+
+### AI SDK step.usage in onStepFinish vs onFinish
+
+In the AI SDK's `streamText`, `step.usage.totalTokens` in `onStepFinish` is **per-step** (single LLM call), not cumulative. The cumulative usage across all steps is only available in `onFinish` via `response.usage.totalTokens`. For context window comparisons (e.g., compaction thresholds), per-step usage is actually more accurate since each step's input tokens already include the full conversation context.
+
+### AI SDK stepNumber is 0-indexed
+
+In `prepareStep`, the AI SDK sets `stepNumber = steps.length`. The first call has `steps = []` so `stepNumber = 0`, the second call has one step so `stepNumber = 1`, etc. When writing tests that mock `prepareStep`, use 0-indexed step numbers to match real SDK behavior.
+
+### Custom chat message indicators
+
+The `<dyad-status>` tag in chat messages renders as a collapsible status indicator box. Use it for system messages like compaction notifications:
+
+```
+<dyad-status title="My Title" state="finished">
+Content here
+</dyad-status>
+```
+
+Valid states: `"finished"`, `"in-progress"`, `"aborted"`
+
+### React Query prefetch and invalidation patterns
+
+For app-level data that should be available immediately on load (like user budget/subscription info), use `prefetchQuery` in the root `App` component:
+
+```tsx
+const queryClient = useQueryClient();
+useEffect(() => {
+  queryClient.prefetchQuery({
+    queryKey: queryKeys.userBudget.info,
+    queryFn: () => ipc.system.getUserBudget(),
+  });
+}, [queryClient]);
+```
+
+When a mutation (like saving an API key) affects data managed by a different query, invalidate that query to trigger a refetch:
+
+```tsx
+// After saving Dyad Pro key, refetch user budget since subscription status may change
+queryClient.invalidateQueries({ queryKey: queryKeys.userBudget.info });
+```
+
+This ensures related data stays in sync without tight coupling between components.

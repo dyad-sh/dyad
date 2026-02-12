@@ -56,7 +56,10 @@ import {
   type InjectedMessage,
 } from "./prepare_step_utils";
 import { TOOL_DEFINITIONS } from "./tool_definitions";
-import { parseAiMessagesJson } from "@/ipc/utils/ai_messages_utils";
+import {
+  parseAiMessagesJson,
+  type DbMessageForParsing,
+} from "@/ipc/utils/ai_messages_utils";
 import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
 import { addIntegrationTool } from "./tools/add_integration";
 import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
@@ -107,6 +110,95 @@ function findToolDefinition(toolName: string) {
   return TOOL_DEFINITIONS.find((t) => t.name === toolName);
 }
 
+function buildChatMessageHistory(
+  chatMessages: Array<
+    DbMessageForParsing & {
+      isCompactionSummary: boolean | null;
+      createdAt: Date;
+    }
+  >,
+  options?: { excludeMessageIds?: Set<number> },
+): ModelMessage[] {
+  const excludedIds = options?.excludeMessageIds;
+  const relevantMessages = getPostCompactionMessages(chatMessages);
+  const reorderedMessages = [...relevantMessages];
+
+  // For mid-turn compaction, keep the summary immediately after the triggering
+  // user message so subsequent turns reflect that compaction happened before
+  // post-compaction tool-loop steps.
+  for (const summary of [...reorderedMessages].filter(
+    (message) => message.isCompactionSummary,
+  )) {
+    const summaryIndex = reorderedMessages.findIndex(
+      (m) => m.id === summary.id,
+    );
+    if (summaryIndex < 0) {
+      continue;
+    }
+
+    const triggeringUser = [...reorderedMessages]
+      .filter((m) => m.role === "user" && m.id < summary.id)
+      .sort((a, b) => b.id - a.id)[0];
+    if (!triggeringUser) {
+      continue;
+    }
+
+    const triggeringUserIndex = reorderedMessages.findIndex(
+      (m) => m.id === triggeringUser.id,
+    );
+    if (triggeringUserIndex < 0) {
+      continue;
+    }
+
+    const isMidTurnSummary =
+      summary.createdAt.getTime() >= triggeringUser.createdAt.getTime();
+    if (!isMidTurnSummary || summaryIndex === triggeringUserIndex + 1) {
+      continue;
+    }
+
+    reorderedMessages.splice(summaryIndex, 1);
+    const targetIndex = Math.min(
+      triggeringUserIndex + 1,
+      reorderedMessages.length,
+    );
+    reorderedMessages.splice(targetIndex, 0, summary);
+  }
+
+  return reorderedMessages
+    .filter((msg) => !excludedIds?.has(msg.id))
+    .filter((msg) => msg.content || msg.aiMessagesJson)
+    .flatMap((msg) => parseAiMessagesJson(msg));
+}
+
+function getMidTurnCompactionSummaryIds(
+  chatMessages: Array<{
+    id: number;
+    role: string;
+    createdAt: Date;
+    isCompactionSummary: boolean | null;
+  }>,
+): Set<number> {
+  const hiddenIds = new Set<number>();
+
+  for (const summary of chatMessages.filter((m) => m.isCompactionSummary)) {
+    const triggeringUserMessage = [...chatMessages]
+      .filter((m) => m.role === "user" && m.id < summary.id)
+      .sort((a, b) => b.id - a.id)[0];
+
+    if (!triggeringUserMessage) {
+      continue;
+    }
+
+    if (
+      summary.createdAt.getTime() >= triggeringUserMessage.createdAt.getTime()
+    ) {
+      hiddenIds.add(summary.id);
+    }
+  }
+
+  return hiddenIds;
+}
+
 /**
  * Handle a chat stream in local-agent mode
  */
@@ -143,11 +235,40 @@ export async function handleLocalAgentStream(
   },
 ): Promise<boolean> {
   const settings = readSettings();
+  let fullResponse = "";
+  let streamingPreview = ""; // Temporary preview for current tool, not persisted
+  // Mid-turn compaction inserts a DB summary row for LLM history, but we render
+  // the user-facing compaction indicator inline in the active assistant turn.
+  const hiddenMessageIdsForStreaming = new Set<number>();
+  let postMidTurnCompactionStartStep: number | null = null;
+
+  const appendInlineCompactionToTurn = async (
+    summary?: string,
+    backupPath?: string,
+  ) => {
+    const summaryText =
+      summary && summary.trim().length > 0
+        ? summary
+        : "Conversation compacted.";
+    const inlineCompaction = `<dyad-compaction title="Conversation compacted" state="finished">\n${escapeXmlContent(summaryText)}\n</dyad-compaction>`;
+    const backupPathNote = backupPath
+      ? `\nIf you need to retrieve earlier parts of the conversation history, you can read the backup file at: ${backupPath}\nNote: This file may be large. Read only the sections you need or use grep to search for specific content rather than reading the entire file.`
+      : "";
+    const separator =
+      fullResponse.length > 0 && !fullResponse.endsWith("\n") ? "\n" : "";
+    fullResponse = `${fullResponse}${separator}${inlineCompaction}${backupPathNote}\n`;
+    await updateResponseInDb(placeholderMessageId, fullResponse);
+  };
 
   // Check Pro status or Basic Agent mode
   // Basic Agent mode allows non-Pro users with quota (quota check is done in chat_stream_handlers)
   // Read-only mode (ask mode) is allowed for all users without Pro
-  if (!readOnly && !isDyadProEnabled(settings) && !isBasicAgentMode(settings)) {
+  if (
+    !readOnly &&
+    !planModeOnly &&
+    !isDyadProEnabled(settings) &&
+    !isBasicAgentMode(settings)
+  ) {
     safeSend(event.sender, "chat:response:error", {
       chatId: req.chatId,
       error:
@@ -156,45 +277,76 @@ export async function handleLocalAgentStream(
     return false;
   }
 
-  // Get the chat and app — may be re-queried after compaction
-  let chat = await db.query.chats.findFirst({
-    where: eq(chats.id, req.chatId),
-    with: {
-      messages: {
-        orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+  const loadChat = async () =>
+    db.query.chats.findFirst({
+      where: eq(chats.id, req.chatId),
+      with: {
+        messages: {
+          orderBy: (messages, { asc }) => [asc(messages.createdAt)],
+        },
+        app: true,
       },
-      app: true,
-    },
-  });
+    });
 
-  if (!chat || !chat.app) {
+  // Get the chat and app — may be re-queried after compaction
+  const initialChat = await loadChat();
+
+  if (!initialChat || !initialChat.app) {
     throw new Error(`Chat not found: ${req.chatId}`);
+  }
+
+  let chat = initialChat;
+
+  for (const id of getMidTurnCompactionSummaryIds(chat.messages)) {
+    hiddenMessageIdsForStreaming.add(id);
   }
 
   const appPath = getDyadAppPath(chat.app.path);
 
-  // Check if compaction is pending and enabled before processing the message
-  if (
-    settings.enableContextCompaction !== false &&
-    (await isChatPendingCompaction(req.chatId))
-  ) {
+  const maybePerformPendingCompaction = async (options?: {
+    showOnTopOfCurrentResponse?: boolean;
+    force?: boolean;
+  }) => {
+    if (
+      settings.enableContextCompaction === false ||
+      (!options?.force && !(await isChatPendingCompaction(req.chatId)))
+    ) {
+      return false;
+    }
+
     logger.info(`Performing pending compaction for chat ${req.chatId}`);
+    const existingCompactionSummaryIds = new Set(
+      chat.messages
+        .filter((message) => message.isCompactionSummary)
+        .map((message) => message.id),
+    );
     const compactionResult = await performCompaction(
       event,
       req.chatId,
       appPath,
       dyadRequestId,
       (accumulatedSummary: string) => {
-        // Stream compaction summary to the frontend in real-time
-        // We temporarily set the placeholder content to show compaction progress;
-        // after compaction, the chat is re-queried and the placeholder is reset.
+        // Stream compaction summary to the frontend in real-time.
+        // During mid-turn compaction, keep already streamed content visible.
+        const compactionPreview = `<dyad-compaction title="Compacting conversation">\n${escapeXmlContent(accumulatedSummary)}\n</dyad-compaction>`;
+        const previewContent = options?.showOnTopOfCurrentResponse
+          ? `${fullResponse}${streamingPreview ? streamingPreview : ""}\n${compactionPreview}`
+          : compactionPreview;
         sendResponseChunk(
           event,
           req.chatId,
           chat,
-          `<dyad-compaction title="Compacting conversation">\n${accumulatedSummary}\n</dyad-compaction>`,
+          previewContent,
           placeholderMessageId,
+          hiddenMessageIdsForStreaming,
         );
+      },
+      {
+        // Mid-turn compaction should not render as a separate message above the
+        // current turn on subsequent streams, so keep its DB timestamp in turn order.
+        createdAtStrategy: options?.showOnTopOfCurrentResponse
+          ? "now"
+          : "before-latest-user",
       },
     );
     if (!compactionResult.success) {
@@ -203,26 +355,56 @@ export async function handleLocalAgentStream(
       );
       // Continue anyway - compaction failure shouldn't block the conversation
     }
-    // Re-query to pick up the newly inserted compaction summary message
-    chat = (await db.query.chats.findFirst({
-      where: eq(chats.id, req.chatId),
-      with: {
-        messages: {
-          orderBy: (messages, { asc }) => [asc(messages.createdAt)],
-        },
-        app: true,
-      },
-    }))!;
-  }
+
+    // Re-query to pick up the newly inserted compaction summary message.
+    // Only update if compaction succeeded — a failed compaction may have left
+    // partial state that would corrupt subsequent message history.
+    if (compactionResult.success) {
+      const refreshedChat = await loadChat();
+      if (refreshedChat?.app) {
+        chat = refreshedChat;
+      }
+
+      if (options?.showOnTopOfCurrentResponse) {
+        for (const message of chat.messages) {
+          if (
+            message.isCompactionSummary &&
+            !existingCompactionSummaryIds.has(message.id)
+          ) {
+            hiddenMessageIdsForStreaming.add(message.id);
+          }
+        }
+        await appendInlineCompactionToTurn(
+          compactionResult.summary,
+          compactionResult.backupPath,
+        );
+      }
+    }
+
+    if (options?.showOnTopOfCurrentResponse) {
+      sendResponseChunk(
+        event,
+        req.chatId,
+        chat,
+        fullResponse + streamingPreview,
+        placeholderMessageId,
+        hiddenMessageIdsForStreaming,
+      );
+    }
+
+    return compactionResult.success;
+  };
+
+  // Check if compaction is pending and enabled before processing the message
+  await maybePerformPendingCompaction();
 
   // Send initial message update
   safeSend(event.sender, "chat:response:chunk", {
     chatId: req.chatId,
-    messages: chat.messages,
+    messages: chat.messages.filter(
+      (message) => !hiddenMessageIdsForStreaming.has(message.id),
+    ),
   });
-
-  let fullResponse = "";
-  let streamingPreview = ""; // Temporary preview for current tool, not persisted
 
   // Track pending user messages to inject after tool results
   const pendingUserMessages: UserMessageContentPart[][] = [];
@@ -260,6 +442,7 @@ export async function handleLocalAgentStream(
           chat,
           fullResponse + streamingPreview,
           placeholderMessageId,
+          hiddenMessageIdsForStreaming,
         );
       },
       onXmlComplete: (finalXml: string) => {
@@ -273,6 +456,7 @@ export async function handleLocalAgentStream(
           chat,
           fullResponse,
           placeholderMessageId,
+          hiddenMessageIdsForStreaming,
         );
       },
       requireConsent: async (params: {
@@ -311,13 +495,15 @@ export async function handleLocalAgentStream(
     // Use messageOverride if provided (e.g., for summarization)
     // If a compaction summary exists, only include messages from that point onward
     // (pre-compaction messages are preserved in DB for the user but not sent to LLM)
-    const relevantMessages = getPostCompactionMessages(chat.messages);
-
     const messageHistory: ModelMessage[] = messageOverride
       ? messageOverride
-      : relevantMessages
-          .filter((msg) => msg.content || msg.aiMessagesJson)
-          .flatMap((msg) => parseAiMessagesJson(msg));
+      : buildChatMessageHistory(chat.messages);
+
+    // Used to swap out pre-compaction history while preserving in-flight turn steps.
+    let baseMessageHistoryCount = messageHistory.length;
+    let compactBeforeNextStep = false;
+    let compactedMidTurn = false;
+    let compactionFailedMidTurn = false;
 
     // Stream the response
     const streamResult = streamText({
@@ -361,8 +547,95 @@ export async function handleLocalAgentStream(
       // We must re-inject all accumulated messages each step because the AI SDK
       // doesn't persist dynamically injected messages in its internal state.
       // We track the insertion index so messages appear at the same position each step.
-      prepareStep: (options) =>
-        prepareStepMessages(options, pendingUserMessages, allInjectedMessages),
+      prepareStep: async (options) => {
+        let stepOptions = options;
+
+        if (
+          !messageOverride &&
+          compactBeforeNextStep &&
+          !compactedMidTurn &&
+          settings.enableContextCompaction !== false
+        ) {
+          compactBeforeNextStep = false;
+          const inFlightTailMessages = options.messages.slice(
+            baseMessageHistoryCount,
+          );
+          const compacted = await maybePerformPendingCompaction({
+            showOnTopOfCurrentResponse: true,
+            force: true,
+          });
+
+          if (compacted) {
+            compactedMidTurn = true;
+            // Preserve only messages generated after this compaction boundary.
+            postMidTurnCompactionStartStep = options.stepNumber;
+            // Clear stale injected messages — their insertAtIndex values are
+            // based on the pre-compaction message array which has been rebuilt
+            // with a different (typically smaller) count. Keeping them would
+            // cause injectMessagesAtPositions to splice at wrong positions.
+            allInjectedMessages.length = 0;
+            const compactedMessageHistory = buildChatMessageHistory(
+              chat.messages,
+              {
+                // Keep the structured in-flight assistant/tool messages from
+                // the current stream instead of the placeholder DB content.
+                excludeMessageIds: new Set([placeholderMessageId]),
+              },
+            );
+            baseMessageHistoryCount = compactedMessageHistory.length;
+            stepOptions = {
+              ...options,
+              // Preserve in-flight turn messages so same-turn tool loops can
+              // continue, while later turns are compacted via persisted history.
+              messages: [...compactedMessageHistory, ...inFlightTailMessages],
+            };
+          } else {
+            // Prevent repeated compaction attempts if the first one fails.
+            compactionFailedMidTurn = true;
+          }
+        }
+
+        const preparedStep = prepareStepMessages(
+          stepOptions,
+          pendingUserMessages,
+          allInjectedMessages,
+        );
+
+        // prepareStepMessages returns undefined when it has no additional
+        // injections/cleanups to apply. If we already replaced the base
+        // message history (e.g., after mid-turn compaction), we still need
+        // to return the updated options.
+        if (preparedStep) {
+          return preparedStep;
+        }
+
+        return stepOptions === options ? undefined : stepOptions;
+      },
+      onStepFinish: async (step) => {
+        if (
+          settings.enableContextCompaction === false ||
+          compactedMidTurn ||
+          typeof step.usage.totalTokens !== "number"
+        ) {
+          return;
+        }
+
+        const shouldCompact = await checkAndMarkForCompaction(
+          req.chatId,
+          step.usage.totalTokens,
+        );
+
+        // If this step triggered tool calls, compact before the next step
+        // in this same user turn instead of waiting for the next message.
+        // Only attempt mid-turn compaction once per turn.
+        if (
+          shouldCompact &&
+          step.toolCalls.length > 0 &&
+          !compactionFailedMidTurn
+        ) {
+          compactBeforeNextStep = true;
+        }
+      },
       onFinish: async (response) => {
         const totalTokens = response.usage?.totalTokens;
         const inputTokens = response.usage?.inputTokens;
@@ -383,9 +656,6 @@ export async function handleLocalAgentStream(
             .set({ maxTokensUsed: totalTokens })
             .where(eq(messages.id, placeholderMessageId))
             .catch((err) => logger.error("Failed to save token count", err));
-
-          // Check if compaction should be triggered for the next message
-          await checkAndMarkForCompaction(req.chatId, totalTokens);
         }
       },
       onError: (error: any) => {
@@ -507,6 +777,7 @@ export async function handleLocalAgentStream(
           chat,
           fullResponse,
           placeholderMessageId,
+          hiddenMessageIdsForStreaming,
         );
       }
     }
@@ -520,7 +791,27 @@ export async function handleLocalAgentStream(
     // Save the AI SDK messages for multi-turn tool call preservation
     try {
       const response = await streamResult.response;
-      const aiMessagesJson = getAiMessagesJsonIfWithinLimit(response.messages);
+      const steps = await streamResult.steps;
+      const aiMessagesForPersistence =
+        compactedMidTurn && postMidTurnCompactionStartStep !== null
+          ? (() => {
+              // stepNumber is 0-indexed (from AI SDK: stepNumber = steps.length).
+              // We want the step just before compaction to determine how many
+              // response messages to skip (they belong to pre-compaction context).
+              const prevStepMessages =
+                steps[postMidTurnCompactionStartStep - 1]?.response.messages;
+              if (!prevStepMessages) {
+                logger.warn(
+                  `No step data found at index ${postMidTurnCompactionStartStep - 1} for mid-turn compaction slicing; persisting all messages`,
+                );
+              }
+              return response.messages.slice(prevStepMessages?.length ?? 0);
+            })()
+          : response.messages;
+
+      const aiMessagesJson = getAiMessagesJsonIfWithinLimit(
+        aiMessagesForPersistence,
+      );
       if (aiMessagesJson) {
         await db
           .update(messages)
@@ -611,8 +902,11 @@ function sendResponseChunk(
   chat: any,
   fullResponse: string,
   placeholderMessageId: number,
+  hiddenMessageIds?: Set<number>,
 ) {
-  const currentMessages = [...chat.messages];
+  const currentMessages = [...chat.messages].filter(
+    (message) => !hiddenMessageIds?.has(message.id),
+  );
   // Find the placeholder message by ID rather than assuming it's the last
   // assistant message. After compaction, a compaction summary message may
   // exist after the placeholder and we must not overwrite it.

@@ -29,6 +29,25 @@ When running GitHub Actions with `pull_request_target` on cross-repo PRs (from f
 
 Actions performed using the default `GITHUB_TOKEN` (including labels added by `github-actions[bot]` via `actions/github-script`) do **not** trigger `pull_request_target` or other workflow events. This is a GitHub limitation to prevent infinite loops. If one workflow adds a label that should trigger another workflow (e.g., `label-rebase-prs.yml` adds `cc:rebase` to trigger `claude-rebase.yml`), the label-adding step must use a **PAT** or **GitHub App token** (e.g., `PR_RW_GITHUB_TOKEN`) instead of `GITHUB_TOKEN`.
 
+## GitHub API calls with special characters
+
+When using `gh api` to post comments or replies containing backticks, `$()`, or other shell metacharacters, the security hook will block the command. Instead of passing the body inline with `-f body="..."`, write a JSON file and use `--input`:
+
+```bash
+# Write JSON body to a file (use the Write tool, not echo/cat)
+# File: .claude/tmp/reply_body.json
+# {"body": "Your comment with `backticks` and special chars"}
+
+gh api repos/dyad-sh/dyad/pulls/123/comments/456/replies --input .claude/tmp/reply_body.json
+```
+
+Similarly for GraphQL mutations, write the full query + variables as JSON and use `--input`:
+
+```bash
+# {"query": "mutation($threadId: ID!) { ... }", "variables": {"threadId": "PRRT_abc123"}}
+gh api graphql --input .claude/tmp/resolve_thread.json
+```
+
 ## Adding labels to PRs
 
 `gh pr edit --add-label` fails with a GraphQL "Projects (classic)" deprecation error on repos that had classic projects. Use the REST API instead:
@@ -37,9 +56,53 @@ Actions performed using the default `GITHUB_TOKEN` (including labels added by `g
 gh api repos/dyad-sh/dyad/issues/{PR_NUMBER}/labels -f "labels[]=label-name"
 ```
 
-## Rebase conflict resolution tips
+## CI file access (claude-code-action)
+
+In CI, `claude-code-action` restricts file access to the repo working directory (e.g., `/home/runner/work/dyad/dyad`). Skills that save intermediate files (like PR diffs) must use `./filename` (current working directory), **never** `/tmp/`. Using `/tmp/` causes errors like: `cat in '/tmp/pr_*_diff.patch' was blocked. For security, Claude Code may only concatenate files from the allowed working directories`.
+
+## Rebase workflow and conflict resolution
+
+### Handling unstaged changes during rebase
+
+If `git rebase` fails with "You have unstaged changes" (common with spurious `package-lock.json` changes):
+
+```bash
+git stash push -m "Stashing changes before rebase"
+git rebase upstream/main
+git stash pop
+```
+
+The stashed changes will be automatically merged back after the rebase completes.
+
+### Conflict resolution tips
 
 - **Before rebasing:** If `npm install` modified `package-lock.json` (common in CI/local), discard changes with `git restore package-lock.json` to avoid "unstaged changes" errors
 - When resolving import conflicts (e.g., `<<<<<<< HEAD` with different imports), keep **both** imports if both are valid and needed by the component
 - When resolving conflicts in i18n-related commits, watch for duplicate constant definitions that conflict with imports from `@/lib/schemas` (e.g., `DEFAULT_ZOOM_LEVEL`)
 - If both sides of a conflict have valid imports/hooks, keep both and remove any duplicate constant redefinitions
+- When rebasing documentation/table conflicts (e.g., workflow README tables), prefer keeping **both** additions from HEAD and upstream - merge new rows/content from both branches rather than choosing one side
+- **Complementary additions**: When both sides added new sections at the end of a file (e.g., both added different documentation tips), keep both sections rather than choosing one — they're not truly conflicting, just different additions
+
+## Rebasing with uncommitted changes
+
+If you need to rebase but have uncommitted changes (e.g., package-lock.json from startup npm install):
+
+1. Stash changes: `git stash push -m "Stash changes before rebase"`
+2. Rebase: `git rebase upstream/main` (resolve conflicts if needed)
+3. After rebase completes, review stashed changes: `git stash show -p`
+4. If stashed changes are spurious (e.g., package-lock.json peer markers when package.json conflicts were resolved during rebase), drop the stash: `git stash drop`
+5. Otherwise, pop stash: `git stash pop` and discard spurious changes: `git restore package-lock.json` (if package.json unchanged)
+
+This prevents rebase conflicts from uncommitted changes while preserving any work in progress.
+
+## Resolving documentation rebase conflicts
+
+When rebasing a PR branch that conflicts with upstream documentation changes (e.g., AGENTS.md):
+
+- If upstream has reorganized content (e.g., moved sections to separate `rules/*.md` files), keep upstream's version
+- Discard the PR's inline content that conflicts with the new organization
+- The PR's documentation changes may need to be re-applied to the new file locations after the rebase
+
+## Resolving package.json engine conflicts
+
+When rebasing causes conflicts in the `engines` field of `package.json` (e.g., node version requirements), accept the incoming change from upstream/main to maintain consistency with the base branch requirements. The same resolution should be applied to the corresponding section in `package-lock.json`.

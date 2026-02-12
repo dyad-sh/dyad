@@ -20,6 +20,7 @@ import {
 import { ipc } from "@/ipc/types";
 import { useRouter } from "@tanstack/react-router";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { useSelectChat } from "@/hooks/useSelectChat";
 import { useChats } from "@/hooks/useChats";
 import { showError, showSuccess } from "@/lib/toast";
 import { useEffect } from "react";
@@ -48,8 +49,9 @@ export function ChatHeader({
   const appId = useAtomValue(selectedAppIdAtom);
   const { versions, loading: versionsLoading } = useVersions(appId);
   const { navigate } = useRouter();
-  const [selectedChatId, setSelectedChatId] = useAtom(selectedChatIdAtom);
+  const [selectedChatId] = useAtom(selectedChatIdAtom);
   const { invalidateChats } = useChats(appId);
+  const { selectChat } = useSelectChat();
   const { isStreaming } = useStreamChat();
   const isAnyCheckoutVersionInProgress = useAtomValue(
     isAnyCheckoutVersionInProgressAtom,
@@ -87,12 +89,8 @@ export function ChatHeader({
     if (appId) {
       try {
         const chatId = await ipc.chat.createChat(appId);
-        setSelectedChatId(chatId);
-        navigate({
-          to: "/chat",
-          search: { id: chatId },
-        });
         await invalidateChats();
+        selectChat({ chatId, appId });
       } catch (error) {
         showError(t("failedCreateChat", { error: (error as any).toString() }));
       }
@@ -194,6 +192,7 @@ export function ChatHeader({
             onClick={handleNewChat}
             variant="ghost"
             className="hidden @2xs:flex items-center justify-start gap-2 mx-2 py-3"
+            data-testid="new-chat-button"
           >
             <PlusCircle size={16} />
             <span>{t("newChat")}</span>

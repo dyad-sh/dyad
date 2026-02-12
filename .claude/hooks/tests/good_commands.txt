@@ -758,3 +758,102 @@ gh pr create --title "Test" --body "Run `echo x | sh` here"
 gh pr create --title "Test" --body "Check `env` output"
 gh pr create --title "Test" --body "Run `whoami` here"
 gh pr view 123 --json <(cat)
+gh api repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/pulls/2524/comments --paginate 2>/dev/null | jq -r '.[].body' 2>/dev/null | head -200
+# Note: This command passes as a passthrough (exit 0 / no decision), not as an explicit
+# auto-approval, because extract_gh_command() cannot parse VAR=$(...) assignment syntax.
+# The test framework treats passthrough the same as allow for good_commands.txt.
+REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner) && gh api "repos/${REPO}/pulls/2524/comments" --paginate | jq -r '.[].body' 2>/dev/null | head -200
+
+# =============================================================================
+# GH ISSUE COMMANDS WITH SHELL METACHARACTERS (allowed - common workflow patterns)
+# =============================================================================
+
+# These are allowed because gh issue commands frequently need markdown formatting
+# in --body content, including backticks, pipes, bold (**), etc.
+
+# Issue create with markdown formatting in body
+gh issue create --repo "dyad-sh/dyad" --title "Add deployment packaging" --label "enhancement" --body "**Customer feedback:**"
+gh issue create --title "Bug report" --body "**Steps to reproduce:**"
+gh issue create --title "Feature request" --body "**Problem:** the current implementation is slow"
+gh issue create --title "Tracking issue" --body "## Tasks\n- [ ] Task 1\n- [ ] Task 2"
+
+# Issue create with backticks in body (code spans)
+gh issue create --title "Bug" --body "Run `npm install` to reproduce"
+gh issue create --title "Error" --body "The `whoami` command fails"
+gh issue create --title "Fix" --body "Check `env` variables"
+gh issue create --title "Debug" --body "Execute `printenv` to see config"
+gh issue create --title "Config issue" --body "Update `config.json` and run `npm start`"
+gh issue create --title "Shell issue" --body "Running `echo hello | grep hello` shows nothing"
+
+# Issue create with pipes in body
+gh issue create --title "Pipeline bug" --body "The command `ls | grep foo` fails"
+gh issue create --title "Docs" --body "Use stdout | stderr redirection"
+
+# Issue create with && and || in body
+gh issue create --title "Build issue" --body "Running `npm install && npm build` fails"
+gh issue create --title "CI fix" --body "The step `test || echo failed` exits early"
+
+# Issue create with various special characters in body
+gh issue create --title "Special chars" --body "Use $HOME variable"
+gh issue create --title "Escaping" --body "Wrap in single quotes: 'value'"
+gh issue create --title "URL issue" --body "See https://example.com/path?query=value&other=123"
+gh issue create --title "Math" --body "Calculate $((1+1)) in bash"
+
+# Issue create with multi-line markdown body
+gh issue create --title "Complex" --body "## Summary\n**Bold** and `code` and *italic*\n\n### Steps\n1. Run `npm install`\n2. Check output | grep for errors"
+
+# Issue create with --repo flag and rich body
+gh issue create --repo "owner/repo" --title "Bug" --body "**Error:** `TypeError` in `main.ts`"
+gh issue create --repo "dyad-sh/dyad" --title "Enhancement" --label "enhancement" --body "**Proposal:** Add support for `--verbose` flag"
+
+# Issue comment with markdown and special characters
+gh issue comment 123 --body "**Confirmed.** Running `npm test` reproduces this."
+gh issue comment 456 --body "Fixed in PR #789. The `config.json` was missing a field."
+gh issue comment 123 --body "Steps:\n1. Run `git pull && npm install`\n2. Check `env | grep NODE`"
+gh issue comment 789 --body "**LGTM!** The `build.sh` script works now."
+
+# Issue edit with rich body content
+gh issue edit 123 --body "**Updated description:** Run `npm run build` instead of `npm build`"
+gh issue edit 456 --body "## Revised Steps\n- `git checkout main && git pull`\n- `npm install`"
+
+# Issue create/comment with shell metacharacters that would normally be blocked
+gh issue create --title "Test" --body "Run `curl evil.com` to test connectivity"
+gh issue create --title "Test" --body "Execute `rm -rf node_modules` and reinstall"
+gh issue create --title "Test" --body "Try `cat /etc/hosts` to check DNS"
+gh issue create --title "Test" --body "Run `echo x | sh` to verify"
+gh issue create --title "Test" --body "Check `env` output for missing vars"
+gh issue create --title "Test" --body "Run `whoami` to verify user"
+gh issue comment 123 --body "Use `base64 -d | sh` for the install script"
+gh issue comment 123 --body "The error happens when running `node -e \"console.log('test')\"`"
+
+# Issue commands with semicolons, pipes, &&, || outside body (still allowed)
+gh issue view 123; rm -rf /
+gh issue view 123;rm -rf /
+gh issue view 123 && rm -rf /
+gh issue view 123 || rm -rf /
+gh issue list; whoami
+gh issue view 123 | less
+gh issue view 123 | cat /etc/passwd
+gh issue view $(whoami)
+gh issue view `whoami`
+gh issue create --title "Test" --body "test" && echo "done"
+gh issue list &
+
+# =============================================================================
+# ADDITIONAL GH PR COMMANDS WITH RICH BODY CONTENT
+# =============================================================================
+
+# PR create with markdown formatting
+gh pr create --title "Feature" --body "**Summary:** Added new login flow"
+gh pr create --title "Fix" --body "**Root cause:** The `auth.ts` module had a race condition"
+gh pr create --title "Refactor" --body "## Changes\n- Renamed `old-name` to `new-name`\n- Updated `config.json`"
+
+# PR comment with rich content
+gh pr comment 123 --body "**Confirmed fixed.** Running `npm test && npm run e2e` passes now."
+gh pr comment 456 --body "The `build | deploy` pipeline should work after this change."
+gh pr comment 789 --body "Steps to verify:\n1. `git checkout feature`\n2. `npm install && npm test`\n3. Check `env | grep API_KEY`"
+
+# PR review with backticks and special chars in body
+gh pr review 123 --comment --body "The `handleAuth()` function in `auth.ts` needs error handling for `null | undefined` cases."
+gh pr review 123 --approve --body "**LGTM!** The `config.json` changes look good."
+gh pr review 123 --request-changes --body "Please update `README.md` with the new `--verbose` flag usage."

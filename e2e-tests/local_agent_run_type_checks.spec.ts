@@ -34,7 +34,7 @@ testSkipIfWindows(
     // After the agent runs type checks, the Problems panel should show errors
     // Wait for the fix button to be enabled and show errors
     await expect(fixButton).toBeEnabled({ timeout: Timeout.LONG });
-    await expect(fixButton).toContainText(/Fix \d+ problem/);
+    await expect(fixButton).toContainText(/Fix \d+ problem\(s\)/);
 
     // Verify the problems are displayed
     const problemRows = po.page.getByTestId("problem-row");

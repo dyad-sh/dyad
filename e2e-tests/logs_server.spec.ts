@@ -16,8 +16,12 @@ testSkipIfWindows(
     await po.approveProposal();
 
     // Wait for app to run - this generates server logs from stdout/stderr
-    const picker = po.page.getByTestId("preview-pick-element-button");
-    await expect(picker).toBeEnabled({ timeout: Timeout.EXTRA_LONG });
+    // Use toPass() for resilience since the picker button needs time to appear and become enabled
+    await expect(async () => {
+      const picker = po.page.getByTestId("preview-pick-element-button");
+      await expect(picker).toBeVisible();
+      await expect(picker).toBeEnabled();
+    }).toPass({ timeout: Timeout.EXTRA_LONG });
 
     // Open the system messages console
     const consoleHeader = po.page.locator('text="System Messages"').first();

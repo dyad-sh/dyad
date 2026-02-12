@@ -10,9 +10,10 @@ This skill creates three independent sub-agents to review code changes, then agg
 ## Overview
 
 1. Fetch PR diff files and existing comments
-2. Spawn 3 sub-agents, each receiving files in different randomized order
-   - **Agent 1**: Code Health focus (maintainability, clarity, abstractions)
-   - **Agents 2-3**: Default focus (correctness, bugs, security)
+2. Spawn 3 sub-agents with specialized personas, each receiving files in different randomized order
+   - **Correctness Expert**: Bugs, edge cases, control flow, security, error handling
+   - **Code Health Expert**: Dead code, duplication, complexity, meaningful comments, abstractions
+   - **UX Wizard**: User experience, consistency, accessibility, error states, delight
 3. Each agent reviews and classifies issues (high/medium/low criticality)
 4. Aggregate results: report issues where 2+ agents agree
 5. Filter out issues already commented on (deduplication)
@@ -22,9 +23,11 @@ This skill creates three independent sub-agents to review code changes, then agg
 
 ### Step 1: Fetch PR Diff
 
+**IMPORTANT:** Always save files to the current working directory (e.g. `./pr_diff.patch`), never to `/tmp/` or other directories outside the repo. In CI, only the repo working directory is accessible.
+
 ```bash
-# Get changed files from PR
-gh pr diff <PR_NUMBER> --repo <OWNER/REPO> > pr_diff.patch
+# Get changed files from PR (save to current working directory, NOT /tmp/)
+gh pr diff <PR_NUMBER> --repo <OWNER/REPO> > ./pr_diff.patch
 
 # Or get list of changed files
 gh pr view <PR_NUMBER> --repo <OWNER/REPO> --json files -q '.files[].path'
@@ -38,7 +41,7 @@ Execute the orchestrator script:
 python3 scripts/orchestrate_review.py \
   --pr-number <PR_NUMBER> \
   --repo <OWNER/REPO> \
-  --diff-file pr_diff.patch
+  --diff-file ./pr_diff.patch
 ```
 
 The orchestrator:
@@ -50,24 +53,32 @@ The orchestrator:
 
 ### Step 3: Review Prompt Templates
 
-Sub-agents receive role-specific prompts (see `references/review_prompt.md`):
+Sub-agents receive role-specific prompts from `references/`:
 
-**Agent 1 (Code Health):**
+**Correctness Expert** (`references/correctness-reviewer.md`):
 
-- Focuses on maintainability, code clarity, abstractions, debugging ease
+- Focuses on bugs, edge cases, control flow, security, error handling
+- Thinks beyond the diff to consider impact on callers and dependent code
+- Rates user-impacting bugs as HIGH, potential bugs as MEDIUM
+
+**Code Health Expert** (`references/code-health-reviewer.md`):
+
+- Focuses on dead code, duplication, complexity, meaningful comments, abstractions
 - Rates sloppy code that hurts maintainability as MEDIUM severity
+- Checks for unused infrastructure (tables/columns no code uses)
 
-**Agents 2-3 (Default):**
+**UX Wizard** (`references/ux-reviewer.md`):
 
-- Focus on correctness, bugs, security, edge cases
-- Also flag significant maintainability issues as MEDIUM
+- Focuses on user experience, consistency, accessibility, error states
+- Reviews from the user's perspective - what will they experience?
+- Rates UX issues that confuse or block users as HIGH
 
 ```
 Severity levels:
-HIGH: Security vulnerabilities, data loss risks, crashes, broken functionality
-MEDIUM: Logic errors, edge cases, performance issues, AND sloppy code that
-        significantly hurts maintainability (confusing logic, poor abstractions)
-LOW: Minor style issues, nitpicks, minor improvements
+HIGH: Security vulnerabilities, data loss risks, crashes, broken functionality, UX blockers
+MEDIUM: Logic errors, edge cases, performance issues, sloppy code that hurts maintainability,
+        UX issues that degrade the experience
+LOW: Minor style issues, nitpicks, minor polish improvements
 
 Output JSON array of issues.
 ```
@@ -144,8 +155,10 @@ scripts/
   aggregate_results.py   - Consensus voting logic
   post_comment.py        - Posts findings to GitHub PR
 references/
-  review_prompt.md       - Sub-agent review prompt template
-  issue_schema.md        - JSON schema for issue output
+  correctness-reviewer.md - Role description for the correctness expert
+  code-health-reviewer.md - Role description for the code health expert
+  ux-reviewer.md          - Role description for the UX wizard
+  issue_schema.md         - JSON schema for issue output
 ```
 
 ## Configuration
@@ -177,7 +190,7 @@ To disable extended thinking (faster but less thorough):
 python3 scripts/orchestrate_review.py \
   --pr-number <PR_NUMBER> \
   --repo <OWNER/REPO> \
-  --diff-file pr_diff.patch \
+  --diff-file ./pr_diff.patch \
   --no-thinking
 ```
 
@@ -187,6 +200,6 @@ To customize thinking budget:
 python3 scripts/orchestrate_review.py \
   --pr-number <PR_NUMBER> \
   --repo <OWNER/REPO> \
-  --diff-file pr_diff.patch \
+  --diff-file ./pr_diff.patch \
   --thinking-budget 50000
 ```

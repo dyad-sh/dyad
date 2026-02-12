@@ -41,6 +41,7 @@
     "build": "npm run pre:e2e",
     "pre:e2e": "cross-env E2E_TEST_BUILD=true npm run package",
     "e2e": "playwright test",
+    "e2e:p3": "PLAYWRIGHT_RETRIES=1 PLAYWRIGHT_PARALLELISM=3 playwright test",
     "e2e:shard": "playwright test --shard",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
@@ -181,7 +182,7 @@
     }
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "productName": "dyad"
 }

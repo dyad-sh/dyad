@@ -13,11 +13,11 @@ test("default chat mode - pro user defaults and setting change applies to new ch
       .getByTestId("chat-mode-selector"),
   ).toHaveText("Agent");
 
-  // Change default chat mode to "agent" (Build with MCP) in settings
+  // Change default chat mode to "Build" in settings
   await po.navigation.goToSettingsTab();
   const beforeSettings = po.settings.recordSettings();
   await po.page.getByLabel("Default Chat Mode").click();
-  await po.page.getByRole("option", { name: "Build with MCP" }).click();
+  await po.page.getByRole("option", { name: /^Build/ }).click();
   po.settings.snapshotSettingsDelta(beforeSettings);
 
   // Import an app and create a new chat to verify the default is applied
@@ -27,7 +27,7 @@ test("default chat mode - pro user defaults and setting change applies to new ch
 
   // Verify the chat mode selector shows the new default mode
   await expect(po.page.getByTestId("chat-mode-selector")).toContainText(
-    "Build (MCP)",
+    "Build",
   );
 });
 

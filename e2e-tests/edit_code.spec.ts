@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 
 test("edit code", async ({ po }) => {
+  await po.setUp({ autoApprove: true });
   const editedFilePath = path.join("src", "components", "made-with-dyad.tsx");
   await po.sendPrompt("foo");
   const appPath = await po.appManagement.getCurrentAppPath();
@@ -12,15 +13,15 @@ test("edit code", async ({ po }) => {
 
   await po.previewPanel.selectPreviewMode("code");
   await po.page.getByText("made-with-dyad.tsx").click();
-  await po.page
-    .getByRole("code")
-    .locator("div")
-    .filter({ hasText: "export const" })
-    .nth(4)
-    .click();
-  await po.page
-    .getByRole("textbox", { name: "Editor content" })
-    .fill("export const MadeWithDyad = ;");
+  // Wait for the editor to load and then fill in the new content
+  const editorContent = po.page.getByRole("textbox", {
+    name: "Editor content",
+  });
+  await expect(editorContent).toBeVisible();
+  // Monaco editor intercepts pointer events, so we need to use force: true
+  await editorContent.click({ force: true });
+  await po.page.keyboard.press("ControlOrMeta+a");
+  await po.page.keyboard.type("export const MadeWithDyad = ;");
 
   // Save the file
   await po.page.getByTestId("save-file-button").click();
@@ -38,6 +39,7 @@ test("edit code", async ({ po }) => {
 });
 
 test("edit code edits the right file", async ({ po }) => {
+  await po.setUp({ autoApprove: true });
   const editedFilePath = path.join("src", "components", "made-with-dyad.tsx");
   const robotsFilePath = path.join("public", "robots.txt");
   await po.sendPrompt("foo");
@@ -51,15 +53,15 @@ test("edit code edits the right file", async ({ po }) => {
 
   await po.previewPanel.selectPreviewMode("code");
   await po.page.getByText("made-with-dyad.tsx").click();
-  await po.page
-    .getByRole("code")
-    .locator("div")
-    .filter({ hasText: "export const" })
-    .nth(4)
-    .click();
-  await po.page
-    .getByRole("textbox", { name: "Editor content" })
-    .fill("export const MadeWithDyad = ;");
+  // Wait for the editor to load and then fill in the new content
+  const editorContent = po.page.getByRole("textbox", {
+    name: "Editor content",
+  });
+  await expect(editorContent).toBeVisible();
+  // Monaco editor intercepts pointer events, so we need to use force: true
+  await editorContent.click({ force: true });
+  await po.page.keyboard.press("ControlOrMeta+a");
+  await po.page.keyboard.type("export const MadeWithDyad = ;");
 
   // Save the file by switching files
   await po.page.getByText("robots.txt").click();

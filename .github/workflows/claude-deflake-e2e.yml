@@ -6,8 +6,8 @@ on:
     - cron: "0 10 * * *"
   workflow_dispatch:
     inputs:
-      pr_count:
-        description: "Number of recent PRs to scan for flaky tests"
+      commit_count:
+        description: "Number of recent commits on main to scan for flaky tests"
         required: false
         default: "10"
         type: string
@@ -20,6 +20,7 @@ jobs:
       - macOS
       - ARM64
     permissions:
+      actions: read
       contents: write
       pull-requests: write
     steps:
@@ -35,6 +36,8 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
+      - name: Install npm 11.8.0
+        run: npm install -g npm@11.8.0
       - name: Install node modules
         run: npm ci --no-audit --no-fund --progress=false
         env:
@@ -70,4 +73,7 @@ jobs:
           claude_args: --model claude-opus-4-6
           direct: true
           prompt: |
-            /dyad:deflake-e2e-recent-prs ${{ inputs.pr_count || '10' }}
+            /dyad:deflake-e2e-recent-commits ${{ inputs.commit_count || '10' }}
+      - name: Cleanup (self-hosted macOS)
+        if: always()
+        run: bash scripts/ci-cleanup-macos.sh

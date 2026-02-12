@@ -126,7 +126,7 @@ export function ChatModeSelector() {
               <MiniSelectTrigger
                 data-testid="chat-mode-selector"
                 className={cn(
-                  "cursor-pointer h-7 w-fit px-2 py-0 text-xs font-medium border-none shadow-none gap-1 rounded-lg transition-colors",
+                  "cursor-pointer w-fit px-2 py-0 text-xs font-medium border-none shadow-none gap-1 rounded-lg transition-colors",
                   selectedMode === "build" || selectedMode === "local-agent"
                     ? "text-foreground/80 hover:text-foreground hover:bg-muted/60"
                     : selectedMode === "ask"

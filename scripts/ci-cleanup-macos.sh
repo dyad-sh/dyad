@@ -105,11 +105,11 @@ NPM_CACHE="${HOME}/.npm"
 if [ -d "$NPM_CACHE/_cacache" ]; then
   cache_size=$(du -sh "$NPM_CACHE/_cacache" 2>/dev/null | cut -f1 || echo "?")
   echo "Clearing npm cache (${cache_size})..."
-  rm -rf "$NPM_CACHE/_cacache"
+  rm -rf "$NPM_CACHE/_cacache" 2>/dev/null || echo "Warning: could not fully remove npm cache (likely in use by another process)"
 fi
 if [ -d "$NPM_CACHE/_logs" ]; then
   echo "Removing npm logs"
-  rm -rf "$NPM_CACHE/_logs"
+  rm -rf "$NPM_CACHE/_logs" 2>/dev/null || echo "Warning: could not fully remove npm logs"
 fi
 
 # ---------------------------------------------------------------------------

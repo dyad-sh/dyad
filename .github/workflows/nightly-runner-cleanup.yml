@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ci1, ci2]
+        runner: [ci1, ci2, ci3]
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout (for cleanup script)

@@ -1,18 +1,40 @@
 import log from "electron-log";
+import { z } from "zod";
 import type { LanguageModel } from "@/ipc/types";
 import { MODEL_OPTIONS } from "./language_model_constants";
 
-export interface OpenRouterModel {
-  id: string;
-  name?: string;
-  description?: string;
-  context_length?: number;
-  pricing?: {
-    prompt?: number | string;
-    completion?: number | string;
-    image?: number | string;
-  };
-}
+const OpenRouterPricingSchema = z
+  .object({
+    prompt: z.union([z.number(), z.string()]).optional(),
+    completion: z.union([z.number(), z.string()]).optional(),
+    image: z.union([z.number(), z.string()]).optional(),
+  })
+  .passthrough();
+
+const OpenRouterTopProviderSchema = z
+  .object({
+    max_completion_tokens: z.number().optional(),
+  })
+  .passthrough();
+
+export const OpenRouterModelSchema = z
+  .object({
+    id: z.string(),
+    name: z.string().optional(),
+    description: z.string().optional(),
+    context_length: z.number().optional(),
+    pricing: OpenRouterPricingSchema.optional(),
+    top_provider: OpenRouterTopProviderSchema.optional(),
+  })
+  .passthrough();
+
+export type OpenRouterModel = z.infer<typeof OpenRouterModelSchema>;
+
+const OpenRouterModelsResponseSchema = z
+  .object({
+    data: z.array(OpenRouterModelSchema),
+  })
+  .passthrough();
 
 const logger = log.scope("openrouter_free_models");
 
@@ -72,6 +94,7 @@ export function buildOpenRouterFreeModels(
         displayName: formatFreeDisplayName(baseName),
         description: model.description ?? "Free OpenRouter model",
         contextWindow: model.context_length,
+        maxOutputTokens: model.top_provider?.max_completion_tokens,
         dollarSigns: 0,
         tag: "Free",
         type: "cloud",
@@ -101,8 +124,18 @@ export async function hydrateOpenRouterFreeModels() {
       throw new Error(`OpenRouter models request failed: ${response.status}`);
     }
 
-    const payload = (await response.json()) as { data?: OpenRouterModel[] };
-    const models = Array.isArray(payload.data) ? payload.data : [];
+    const payload = await response.json();
+    const parseResult = OpenRouterModelsResponseSchema.safeParse(payload);
+
+    if (!parseResult.success) {
+      logger.warn("OpenRouter models response had unexpected shape", {
+        issues: parseResult.error.issues,
+      });
+      cachedFreeModels = DEFAULT_FREE_MODELS;
+      return;
+    }
+
+    const models = parseResult.data.data;
     const freeModels = buildOpenRouterFreeModels(models);
 
     if (freeModels.length > 0) {

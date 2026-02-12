@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/tooltip";
 import { ChatTabs } from "@/components/chat/ChatTabs";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { Wrench, Cog, Trash2 } from "lucide-react";
 import {
   DropdownMenu,

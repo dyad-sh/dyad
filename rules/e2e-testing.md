@@ -145,6 +145,21 @@ The E2E test helpers have been modularized from a single monolithic `test_helper
 
 `test_helper.ts` now just re-exports from these modules for backward compatibility. When making changes to test helpers, edit the modularized files directly rather than `test_helper.ts`.
 
+## Shadcn sidebar component selectors
+
+The shadcn `SidebarMenuItem` renders as `<li data-slot="sidebar-menu-item">`. Use `[data-slot="sidebar-menu-item"]` to target sidebar menu items in Playwright selectors, not `[data-sidebar="menu-item"]`.
+
+```ts
+// Correct: target sidebar menu items via data-slot attribute
+await chatList
+  .locator('[data-slot="sidebar-menu-item"] button')
+  .first()
+  .click();
+
+// Wrong: data-sidebar is not the correct attribute
+await chatList.locator('[data-sidebar="menu-item"] button').first().click();
+```
+
 ## E2E test fixtures with .dyad directories
 
 When adding E2E test fixtures that need a `.dyad` directory for testing:

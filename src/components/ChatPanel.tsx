@@ -100,8 +100,13 @@ export function ChatPanel({
         });
       });
     } else if (!isChatSwitch) {
-      // For stream count changes (new message sent), scroll immediately
-      scrollToBottom();
+      // For stream count changes (new message sent), wait for Virtuoso to render
+      // the placeholder message before scrolling
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          scrollToBottom();
+        });
+      });
     }
     // Note: if isChatSwitch && messages.length === 0, we don't scroll yet.
     // The messages will be fetched and this effect will re-run with messages.length > 0.

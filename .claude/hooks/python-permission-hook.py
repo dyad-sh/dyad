@@ -65,6 +65,19 @@ SINGLE_QUOTED_PATTERN = re.compile(r"'[^']*'")
 # Pattern to match double-quoted strings without command substitution
 SAFE_DOUBLE_QUOTED_PATTERN = re.compile(r'"[^"$`]*"')
 
+# Safe pipe destinations - common text-processing commands (same as gh hook)
+SAFE_PIPE_PATTERN = re.compile(
+    r'\|\s*('
+    r'jq|head|tail|grep|egrep|fgrep|wc|sort|uniq|cut|tr'
+    r'|base64|cat|column|fmt|fold|paste'
+    r'|expand|unexpand|rev|tac|nl|od|xxd|hexdump|strings'
+    r'|md5sum|sha256sum|sha1sum|shasum|cksum'
+    r')\b'
+)
+
+# Safe redirect patterns (same as gh hook)
+SAFE_REDIRECT_PATTERN = re.compile(r'\d*>&\d+|\d*>/dev/null')
+
 
 def contains_shell_injection(cmd: str) -> bool:
     """
@@ -75,9 +88,15 @@ def contains_shell_injection(cmd: str) -> bool:
     cmd_without_single_quotes = SINGLE_QUOTED_PATTERN.sub("''", cmd)
 
     # Strip double-quoted strings that don't contain $( or backticks
-    cmd_without_safe_doubles = SAFE_DOUBLE_QUOTED_PATTERN.sub('""', cmd_without_single_quotes)
+    cmd_to_check = SAFE_DOUBLE_QUOTED_PATTERN.sub('""', cmd_without_single_quotes)
 
-    return bool(SHELL_INJECTION_PATTERNS.search(cmd_without_safe_doubles))
+    # Replace safe pipe destinations (tail, head, grep, etc.) before checking
+    cmd_to_check = SAFE_PIPE_PATTERN.sub(' SAFE_PIPE ', cmd_to_check)
+
+    # Replace safe redirect patterns (2>&1, >/dev/null) before checking
+    cmd_to_check = SAFE_REDIRECT_PATTERN.sub(' ', cmd_to_check)
+
+    return bool(SHELL_INJECTION_PATTERNS.search(cmd_to_check))
 
 
 def is_python_command(cmd: str) -> bool:

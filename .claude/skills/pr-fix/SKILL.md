@@ -15,6 +15,10 @@ Address all outstanding issues on a GitHub Pull Request by handling both review 
 
 **You MUST use the TaskCreate and TaskUpdate tools to track your progress.** At the start, create tasks for each step below. Mark each task as `in_progress` when you start it and `completed` when you finish. This ensures you complete ALL steps.
 
+## Product Principles
+
+When making decisions about review comments, consult `rules/product-principles.md`. Use these principles to resolve ambiguous or subjective feedback autonomously. Only flag issues for human attention when the product principles do not provide enough guidance to make a decision.
+
 ## Instructions
 
 This is a meta-skill that orchestrates two sub-skills to comprehensively fix PR issues.
@@ -22,7 +26,8 @@ This is a meta-skill that orchestrates two sub-skills to comprehensively fix PR 
 1. **Run `/dyad:pr-fix:comments`** to handle all unresolved review comments:
    - Address valid code review concerns
    - Resolve invalid concerns with explanations
-   - Flag ambiguous issues for human attention
+   - Use product principles to resolve ambiguous feedback autonomously
+   - Only flag issues for human attention when product principles are insufficient to decide
 
 2. **Run `/dyad:pr-fix:actions`** to handle failing CI checks:
    - Fix failing tests (unit and E2E)

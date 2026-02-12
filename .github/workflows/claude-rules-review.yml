@@ -1,16 +1,16 @@
-# Nightly review of AGENTS.md and rules/ to ensure documentation stays
+# Weekly review of AGENTS.md and rules/ to ensure documentation stays
 # current, valuable, and cost-effective. Uses Claude Code to audit existing
 # rules and propose improvements.
 #
-# Runs at 5:00 AM PST = 13:00 UTC (PST is UTC-8)
+# Runs every Monday at 5:00 AM PST = 13:00 UTC (PST is UTC-8)
 # Can be triggered manually via workflow_dispatch for testing.
 
 name: Claude Rules Review
 
 on:
   schedule:
-    # 5:00 AM PST = 13:00 UTC (PST is UTC-8)
-    - cron: "0 13 * * *"
+    # Every Monday at 5:00 AM PST = 13:00 UTC (PST is UTC-8)
+    - cron: "0 13 * * 1"
   workflow_dispatch:
 
 jobs:
@@ -21,12 +21,11 @@ jobs:
     permissions:
       contents: read
       issues: write
-      pull-requests: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 200
 
       - name: Review AGENTS.md and rules/
         uses: anthropics/claude-code-action@v1
@@ -35,9 +34,9 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          model: claude-opus-4-6
           direct: true
-          allowed_tools: "Read,Glob,Grep,Bash(git log:*),Bash(gh issue create:*),Bash(gh label:*)"
+          allowed_tools: "Read,Glob,Grep,Bash(git log:*),Bash(gh issue create:*),Bash(gh issue list:*),Bash(gh issue close:*),Bash(gh label:*)"
+          claude_args: --model claude-opus-4-6
           prompt: |
             # Rules Documentation Review Agent
 
@@ -122,7 +121,13 @@ jobs:
 
             After completing your review, create a single GitHub issue summarizing your findings.
 
-            First, ensure the required labels exist:
+            First, close any previous rules review issues to avoid duplicates:
+
+            ```bash
+            gh issue list --label agent-review --state open --json number --jq '.[].number' | xargs -I{} gh issue close {} --comment "Closing in favor of new weekly review."
+            ```
+
+            Then, ensure the required labels exist:
 
             ```bash
             gh label create documentation --force 2>/dev/null || true
@@ -132,7 +137,7 @@ jobs:
             Then create the issue:
 
             ```bash
-            gh issue create --title "Nightly Rules Review: [Date]" --body "..." --label documentation --label agent-review
+            gh issue create --title "Weekly Rules Review: [Date]" --body "..." --label documentation --label agent-review
             ```
 
             The issue should include:

@@ -535,6 +535,7 @@ export async function handleLocalAgentStream(
       compactionFailedMidTurn = false;
       compactBeforeNextStep = false;
       postMidTurnCompactionStartStep = null;
+      baseMessageHistoryCount = currentMessageHistory.length;
 
       // Stream the response
       const streamResult = streamText({
@@ -866,11 +867,18 @@ export async function handleLocalAgentStream(
         ];
       }
 
+      // Check if the model ended with text only (no tool calls in the final step).
+      // This is more reliable than passProducedChatText which is set on any text-delta
+      // during the stream (including preambles before tool calls).
+      const lastStep = steps.length > 0 ? steps[steps.length - 1] : null;
+      const passEndedWithText =
+        passProducedChatText && (!lastStep || lastStep.toolCalls.length === 0);
+
       if (
         !shouldRunTodoFollowUpPass({
           readOnly,
           planModeOnly,
-          passProducedChatText,
+          passEndedWithText,
           todos: ctx.todos,
           todoFollowUpLoops,
           maxTodoFollowUpLoops,
@@ -886,7 +894,9 @@ export async function handleLocalAgentStream(
         content: [{ type: "text", text: reminderText }],
       };
       currentMessageHistory = [...currentMessageHistory, reminderMessage];
-      accumulatedAiMessages.push(reminderMessage);
+      // Note: Do NOT push reminderMessage to accumulatedAiMessages.
+      // It is a synthetic message that should not be persisted to aiMessagesJson,
+      // as it would pollute future conversation history with stale todo state.
       logger.info(
         `Starting todo follow-up pass ${todoFollowUpLoops}/${maxTodoFollowUpLoops} for chat ${req.chatId}`,
       );
@@ -1021,7 +1031,7 @@ function sendResponseChunk(
 function shouldRunTodoFollowUpPass(params: {
   readOnly: boolean;
   planModeOnly: boolean;
-  passProducedChatText: boolean;
+  passEndedWithText: boolean;
   todos: AgentContext["todos"];
   todoFollowUpLoops: number;
   maxTodoFollowUpLoops: number;
@@ -1029,7 +1039,7 @@ function shouldRunTodoFollowUpPass(params: {
   const {
     readOnly,
     planModeOnly,
-    passProducedChatText,
+    passEndedWithText,
     todos,
     todoFollowUpLoops,
     maxTodoFollowUpLoops,
@@ -1037,7 +1047,7 @@ function shouldRunTodoFollowUpPass(params: {
   return (
     !readOnly &&
     !planModeOnly &&
-    passProducedChatText &&
+    passEndedWithText &&
     hasIncompleteTodos(todos) &&
     todoFollowUpLoops < maxTodoFollowUpLoops
   );

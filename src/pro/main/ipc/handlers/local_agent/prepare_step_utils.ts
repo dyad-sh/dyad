@@ -32,6 +32,9 @@ export function buildTodoReminderMessage(todos: Todo[]): string {
     .map((t) => `- [${t.status}] ${t.content}`)
     .join("\n");
 
+  // Note: The "incomplete todo(s)" substring is used as a detection marker by test
+  // infrastructure in testing/fake-llm-server/ (chatCompletionHandler.ts and
+  // localAgentHandler.ts). Update those files if this text changes.
   return `You have ${incompleteTodos.length} incomplete todo(s). Please continue and complete them:\n\n${todoList}`;
 }
 

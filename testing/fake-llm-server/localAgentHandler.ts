@@ -48,6 +48,8 @@ function isTodoReminderMessage(msg: any): boolean {
     : typeof msg.content === "string"
       ? msg.content
       : null;
+  // Note: This magic string must match the reminder text in prepare_step_utils.ts
+  // buildTodoReminderMessage(). Update both if the text changes.
   return content?.includes("incomplete todo(s)") ?? false;
 }
 

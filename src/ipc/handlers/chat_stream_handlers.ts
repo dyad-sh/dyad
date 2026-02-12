@@ -685,10 +685,7 @@ ${componentSnippet}
 
         let systemPrompt = constructSystemPrompt({
           aiRules,
-          chatMode:
-            settings.selectedChatMode === "agent"
-              ? "build"
-              : settings.selectedChatMode,
+          chatMode: settings.selectedChatMode,
           enableTurboEditsV2: isTurboEditsV2Enabled(settings),
           themePrompt,
           basicAgentMode: isBasicAgentMode(settings),
@@ -1204,18 +1201,15 @@ This conversation includes one or more image attachments. When the user uploads 
 
         // Use MCP agent code path if:
         // 1. The enableMcpServersForBuildMode experiment is on AND
-        // 2. Mode is explicitly "agent" (backwards compatibility for existing settings)
-        //    OR mode is "build" AND there are enabled MCP servers
+        // 2. Mode is "build" AND there are enabled MCP servers
         if (
           settings.enableMcpServersForBuildMode &&
-          (settings.selectedChatMode === "agent" ||
-            settings.selectedChatMode === "build")
+          settings.selectedChatMode === "build"
         ) {
           const tools = await getMcpTools(event);
           const hasEnabledMcpServers = Object.keys(tools).length > 0;
 
-          // Only run MCP agent path if mode is "agent" OR if build mode has enabled MCP servers
-          if (settings.selectedChatMode === "agent" || hasEnabledMcpServers) {
+          if (hasEnabledMcpServers) {
             const { fullStream } = await simpleStreamText({
               chatMessages: limitedHistoryChatMessages,
               modelClient,
@@ -1232,7 +1226,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 aiRules: await readAiRules(
                   getDyadAppPath(updatedChat.app.path),
                 ),
-                chatMode: "agent",
+                chatMode: "build",
                 enableTurboEditsV2: false,
               }),
               files: files,

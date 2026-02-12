@@ -68,7 +68,6 @@ export function registerTokenCountHandlers() {
       let systemPrompt = constructSystemPrompt({
         aiRules: await readAiRules(getDyadAppPath(chat.app.path)),
         chatMode:
-          settings.selectedChatMode === "agent" ||
           settings.selectedChatMode === "local-agent"
             ? "build"
             : settings.selectedChatMode,

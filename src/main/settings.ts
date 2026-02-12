@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { getUserDataPath } from "../paths/paths";
 import {
-  UserSettingsSchema,
+  StoredUserSettingsSchema,
   type UserSettings,
   Secret,
   VertexProviderSetting,
@@ -165,13 +165,23 @@ export function readSettings(): UserSettings {
       }
     }
 
-    // Validate and merge with defaults
-    const validatedSettings = UserSettingsSchema.parse(combinedSettings);
+    // Validate with StoredUserSettingsSchema (accepts deprecated fields from disk)
+    const validatedSettings = StoredUserSettingsSchema.parse(combinedSettings);
+
+    // Migrate deprecated values
     // "conservative" is deprecated, use undefined to use the default value
     if (validatedSettings.proSmartContextOption === "conservative") {
       validatedSettings.proSmartContextOption = undefined;
     }
-    return validatedSettings;
+    // "agent" chat mode is deprecated, migrate to "build"
+    if (validatedSettings.selectedChatMode === "agent") {
+      validatedSettings.selectedChatMode = "build";
+    }
+    if (validatedSettings.defaultChatMode === "agent") {
+      validatedSettings.defaultChatMode = "build";
+    }
+
+    return validatedSettings as UserSettings;
   } catch (error) {
     logger.error("Error reading settings:", error);
     return DEFAULT_SETTINGS;
@@ -242,7 +252,7 @@ export function writeSettings(settings: Partial<UserSettings>): void {
         v.serviceAccountKey = encrypt(v.serviceAccountKey.value);
       }
     }
-    const validatedSettings = UserSettingsSchema.parse(newSettings);
+    const validatedSettings = StoredUserSettingsSchema.parse(newSettings);
     fs.writeFileSync(filePath, JSON.stringify(validatedSettings, null, 2));
   } catch (error) {
     logger.error("Error writing settings:", error);

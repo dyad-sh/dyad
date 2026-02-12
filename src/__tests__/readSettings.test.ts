@@ -116,6 +116,32 @@ describe("readSettings", () => {
       expect(result.releaseChannel).toBe("stable");
     });
 
+    it("should migrate selectedChatMode 'agent' to 'build'", () => {
+      const mockFileContent = {
+        selectedChatMode: "agent",
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+
+      const result = readSettings();
+
+      expect(result.selectedChatMode).toBe("build");
+    });
+
+    it("should migrate defaultChatMode 'agent' to 'build'", () => {
+      const mockFileContent = {
+        defaultChatMode: "agent",
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+
+      const result = readSettings();
+
+      expect(result.defaultChatMode).toBe("build");
+    });
+
     it("should decrypt encrypted provider API keys", () => {
       const mockFileContent = {
         providerSettings: {

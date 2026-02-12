@@ -1,22 +1,19 @@
-# Fast Push
+---
+name: dyad:pr-push
+description: Commit any uncommitted changes, run lint checks, fix any issues, and push the current branch.
+---
 
-Commit any uncommitted changes, run lint checks, fix any issues, and push the current branch. Delegates to a haiku sub-agent for speed.
+# PR Push
+
+Commit any uncommitted changes, run lint checks, fix any issues, and push the current branch.
 
 **IMPORTANT:** This skill MUST complete all steps autonomously. Do NOT ask for user confirmation at any step. Do NOT stop partway through. You MUST push to GitHub by the end of this skill.
 
-## Execution
+## Task Tracking
 
-You MUST use the Task tool to spawn a sub-agent with `model: "haiku"` and `subagent_type: "general-purpose"` to execute all the steps below. Pass the full instructions to the sub-agent. Wait for it to complete and report the results.
+**You MUST use the TaskCreate and TaskUpdate tools to track your progress.** At the start, create tasks for each step below. Mark each task as `in_progress` when you start it and `completed` when you finish. This ensures you complete ALL steps.
 
-## Instructions (for the sub-agent)
-
-Pass these instructions verbatim to the sub-agent:
-
----
-
-**IMPORTANT:** This skill MUST complete all steps autonomously. Do NOT ask for user confirmation at any step. Do NOT stop partway through. You MUST push to GitHub by the end.
-
-You MUST use the TaskCreate and TaskUpdate tools to track your progress. At the start, create tasks for each step below. Mark each task as `in_progress` when you start it and `completed` when you finish.
+## Instructions
 
 1. **Ensure you are NOT on main branch:**
 
@@ -42,7 +39,22 @@ You MUST use the TaskCreate and TaskUpdate tools to track your progress. At the 
 
    If there are no uncommitted changes, proceed to the next step.
 
-3. **Run lint checks:**
+3. **Remember learnings:**
+
+   Run the `/remember-learnings` skill to capture any errors, snags, or insights from this session into `AGENTS.md`.
+
+   If `AGENTS.md` was modified by the skill, stage it and amend the latest commit to include the changes:
+
+   ```
+   git add AGENTS.md
+   git diff --cached --quiet AGENTS.md || git commit --amend --no-edit
+   ```
+
+   This ensures `AGENTS.md` is always included in the committed changes before lint/formatting runs.
+
+   **IMPORTANT:** Do NOT stop here. You MUST continue to step 4.
+
+4. **Run lint checks:**
 
    Run these commands to ensure the code passes all pre-commit checks:
 
@@ -52,9 +64,21 @@ You MUST use the TaskCreate and TaskUpdate tools to track your progress. At the 
 
    If there are errors that could not be auto-fixed, read the affected files and fix them manually, then re-run the checks until they pass.
 
-   **IMPORTANT:** Do NOT stop after lint passes. You MUST continue to step 4.
+   **IMPORTANT:** Do NOT stop after lint passes. You MUST continue to step 5.
 
-4. **If lint made changes, amend the last commit:**
+5. **Run tests:**
+
+   Run the test suite to ensure nothing is broken:
+
+   ```
+   npm test
+   ```
+
+   If any tests fail, fix them before proceeding. Do NOT skip failing tests.
+
+   **IMPORTANT:** Do NOT stop after tests pass. You MUST continue to step 6.
+
+6. **If lint made changes, amend the last commit:**
 
    If the lint checks made any changes, stage and amend them into the last commit:
 
@@ -63,9 +87,9 @@ You MUST use the TaskCreate and TaskUpdate tools to track your progress. At the 
    git commit --amend --no-edit
    ```
 
-   **IMPORTANT:** Do NOT stop here. You MUST continue to step 5.
+   **IMPORTANT:** Do NOT stop here. You MUST continue to step 7.
 
-5. **Push the branch (REQUIRED):**
+7. **Push the branch (REQUIRED):**
 
    You MUST push the branch to GitHub. Do NOT skip this step or ask for confirmation.
 
@@ -122,7 +146,7 @@ You MUST use the TaskCreate and TaskUpdate tools to track your progress. At the 
 
    Note: `--force-with-lease` is used because the commit may have been amended. It's safer than `--force` as it will fail if someone else has pushed to the branch.
 
-6. **Create or update the PR (REQUIRED):**
+8. **Create or update the PR (REQUIRED):**
 
    **CRITICAL:** Do NOT tell the user to visit a URL to create a PR. You MUST create it automatically.
 
@@ -151,28 +175,21 @@ You MUST use the TaskCreate and TaskUpdate tools to track your progress. At the 
 
    Use the commit messages and changed files to write a good title and summary.
 
-   **Add labels for non-trivial PRs:**
-   After creating or verifying the PR exists, assess whether the changes are non-trivial:
-   - Non-trivial = more than simple typo fixes, formatting, or config changes
-   - Non-trivial = any code logic changes, new features, bug fixes, refactoring
+9. **Remove review-issue label:**
 
-   For non-trivial PRs, add the `cc:request` label to request code review:
-
-   ```
-   gh pr edit --add-label "cc:request"
-   ```
-
-   **Remove review-issue label:**
    After pushing, remove the `needs-human:review-issue` label if it exists (this label indicates the issue needed human review before work started, which is now complete):
 
    ```
    gh pr edit --remove-label "needs-human:review-issue" 2>/dev/null || true
    ```
 
-7. **Summarize the results:**
-   - Report if a new feature branch was created (and its name)
-   - Report any uncommitted changes that were committed in step 2
-   - Report any files that were IGNORED and not committed (if any), explaining why they were skipped
-   - Report any lint fixes that were applied
-   - Confirm the branch has been pushed
-   - **Include the PR URL** (either newly created or existing)
+10. **Summarize the results:**
+
+- Report if a new feature branch was created (and its name)
+- Report any uncommitted changes that were committed in step 2
+- Report any files that were IGNORED and not committed (if any), explaining why they were skipped
+- Report any lint fixes that were applied
+- Confirm tests passed
+- Confirm the branch has been pushed
+- Report any learnings added to `AGENTS.md`
+- **Include the PR URL** (either newly created or existing)

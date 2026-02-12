@@ -1,3 +1,8 @@
+---
+name: dyad:pr-screencast
+description: Record a visual demonstration of the key feature of this PR using screenshots and add it as a new comment to the PR.
+---
+
 # PR Screencast
 
 Record a visual demonstration of the key feature of this PR using screenshots and add it as a new comment to the PR.

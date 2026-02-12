@@ -1,3 +1,8 @@
+---
+name: dyad:session-debug
+description: Analyze session debugging data to identify errors and issues that may have caused a user-reported problem.
+---
+
 # Session Debug
 
 Analyze session debugging data to identify errors and issues that may have caused a user-reported problem.

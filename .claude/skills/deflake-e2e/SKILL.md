@@ -1,3 +1,8 @@
+---
+name: dyad:deflake-e2e
+description: Identify and fix flaky E2E tests by running them repeatedly and investigating failures.
+---
+
 # Deflake E2E Tests
 
 Identify and fix flaky E2E tests by running them repeatedly and investigating failures.

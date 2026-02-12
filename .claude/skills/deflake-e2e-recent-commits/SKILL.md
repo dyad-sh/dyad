@@ -1,3 +1,8 @@
+---
+name: dyad:deflake-e2e-recent-commits
+description: Automatically gather flaky E2E tests from recent CI runs on the main branch and from recent PRs by wwwillchen/wwwillchen-bot, then deflake them.
+---
+
 # Deflake E2E Tests from Recent Commits
 
 Automatically gather flaky E2E tests from recent CI runs on the main branch and from recent PRs by wwwillchen/wwwillchen-bot, then deflake them.

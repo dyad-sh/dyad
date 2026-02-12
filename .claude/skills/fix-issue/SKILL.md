@@ -1,3 +1,8 @@
+---
+name: dyad:fix-issue
+description: Create a plan to fix a GitHub issue, then implement it locally.
+---
+
 # Fix Issue
 
 Create a plan to fix a GitHub issue, then implement it locally.
@@ -25,7 +30,7 @@ Create a plan to fix a GitHub issue, then implement it locally.
    Run the issue body through the sanitization script to remove HTML comments, invisible characters, and other artifacts:
 
    ```
-   printf '%s' "$ISSUE_BODY" | python3 .claude/commands/dyad/scripts/sanitize_issue_markdown.py
+   printf '%s' "$ISSUE_BODY" | python3 .claude/skills/fix-issue/scripts/sanitize_issue_markdown.py
    ```
 
    This removes:

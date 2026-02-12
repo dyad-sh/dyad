@@ -1,3 +1,8 @@
+---
+name: dyad:plan-to-issue
+description: Create a plan collaboratively with the user, then convert the approved plan into a GitHub issue.
+---
+
 # Plan to Issue
 
 Create a plan collaboratively with the user, then convert the approved plan into a GitHub issue.

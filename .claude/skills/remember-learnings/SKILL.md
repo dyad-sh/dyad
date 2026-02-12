@@ -1,3 +1,8 @@
+---
+name: remember-learnings
+description: Review the current session for errors, issues, snags, and hard-won knowledge, then update the rules/ files (or AGENTS.md if no suitable rule file exists) with actionable learnings.
+---
+
 # Remember Learnings
 
 Review the current session for errors, issues, snags, and hard-won knowledge, then update the `rules/` files (or `AGENTS.md` if no suitable rule file exists) with actionable learnings so future agent sessions run more smoothly.

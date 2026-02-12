@@ -1,3 +1,8 @@
+---
+name: dyad:pr-fix:comments
+description: Read all unresolved GitHub PR comments from trusted authors and address or resolve them appropriately.
+---
+
 # PR Fix: Comments
 
 Read all unresolved GitHub PR comments from trusted authors and address or resolve them appropriately.

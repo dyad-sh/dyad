@@ -1,3 +1,8 @@
+---
+name: dyad:pr-fix:actions
+description: Fix failing CI checks and GitHub Actions on a Pull Request.
+---
+
 # PR Fix: Actions
 
 Fix failing CI checks and GitHub Actions on a Pull Request.

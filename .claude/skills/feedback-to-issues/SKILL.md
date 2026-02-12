@@ -1,3 +1,8 @@
+---
+name: dyad:feedback-to-issues
+description: Turn customer feedback (usually an email) into discrete GitHub issues. Checks for duplicates, proposes new issues for approval, creates them, and drafts a reply email.
+---
+
 # Feedback to Issues
 
 Turn customer feedback (usually an email) into discrete GitHub issues. Checks for duplicates, proposes new issues for approval, creates them, and drafts a reply email.

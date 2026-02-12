@@ -1,3 +1,8 @@
+---
+name: dyad:pr-fix
+description: Address all outstanding issues on a GitHub Pull Request by handling both review comments and failing CI checks.
+---
+
 # PR Fix
 
 Address all outstanding issues on a GitHub Pull Request by handling both review comments and failing CI checks.

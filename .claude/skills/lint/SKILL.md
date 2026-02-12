@@ -1,3 +1,8 @@
+---
+name: dyad:lint
+description: Run pre-commit checks including formatting, linting, and type-checking, and fix any errors.
+---
+
 # Lint
 
 Run pre-commit checks including formatting, linting, and type-checking, and fix any errors.

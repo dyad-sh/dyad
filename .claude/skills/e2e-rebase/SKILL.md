@@ -1,3 +1,8 @@
+---
+name: dyad:e2e-rebase
+description: Rebase E2E test snapshots based on failed tests from the PR comments.
+---
+
 # E2E Snapshot Rebase
 
 Rebase E2E test snapshots based on failed tests from the PR comments.

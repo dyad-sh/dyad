@@ -14,6 +14,7 @@ describe("buildOpenRouterFreeModels", () => {
         name: "Awesome Model",
         pricing: { prompt: "0", completion: "0" },
         context_length: 128_000,
+        top_provider: { max_completion_tokens: 16_384 },
       },
       {
         id: "free/with-label",
@@ -28,6 +29,7 @@ describe("buildOpenRouterFreeModels", () => {
     const awesome = result.find((model) => model.apiName === "free/model");
     expect(awesome?.displayName).toBe("Awesome Model");
     expect(awesome?.contextWindow).toBe(128_000);
+    expect(awesome?.maxOutputTokens).toBe(16_384);
     expect(awesome?.tag).toBe("Free");
 
     const labeled = result.find((model) => model.apiName === "free/with-label");

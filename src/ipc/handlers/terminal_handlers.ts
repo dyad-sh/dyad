@@ -172,12 +172,9 @@ export function registerTerminalHandlers() {
         );
       });
 
-      // Send initial welcome message
-      sendTerminalOutput(
-        sessionId,
-        `\x1b[2m# Terminal started in ${appPath}\x1b[0m\r\n`,
-        "system",
-      );
+      // Note: We don't send an initial welcome message here because
+      // the frontend shows "Terminal ready" when lines are empty.
+      // The session info (cwd) is already displayed in the header.
 
       return session;
     },

@@ -82,17 +82,29 @@ function formatFreeDisplayName(name: string) {
   return name.replace(/\s*\(free\)\s*/gi, "").trim();
 }
 
+function sanitizeExternalModelText(value: string | undefined) {
+  if (value == null) return undefined;
+
+  return value
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function buildOpenRouterFreeModels(
   models: OpenRouterModel[],
 ): LanguageModel[] {
   return models
     .filter((model) => isFreePricing(model.pricing))
     .map((model) => {
-      const baseName = model.name?.trim() || model.id;
+      const sanitizedName = sanitizeExternalModelText(model.name);
+      const sanitizedDescription = sanitizeExternalModelText(model.description);
+      const baseName = sanitizedName || model.id;
+
       return {
         apiName: model.id,
         displayName: formatFreeDisplayName(baseName),
-        description: model.description ?? "Free OpenRouter model",
+        description: sanitizedDescription || "Free OpenRouter model",
         contextWindow: model.context_length,
         maxOutputTokens: model.top_provider?.max_completion_tokens,
         dollarSigns: 0,

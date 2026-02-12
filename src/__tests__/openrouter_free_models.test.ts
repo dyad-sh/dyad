@@ -36,4 +36,21 @@ describe("buildOpenRouterFreeModels", () => {
     expect(labeled?.displayName).toBe("Free Model");
     expect(labeled?.dollarSigns).toBe(0);
   });
+
+  it("sanitizes external model name and description fields", () => {
+    const models = [
+      {
+        id: "free/sanitized",
+        name: "  <img src=x onerror=alert(1)>Safe Name (free)  ",
+        description: "<script>alert(1)</script>  Useful model  ",
+        pricing: { prompt: 0, completion: 0 },
+      },
+    ];
+
+    const result = buildOpenRouterFreeModels(models);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.displayName).toBe("Safe Name");
+    expect(result[0]?.description).toBe("alert(1) Useful model");
+  });
 });

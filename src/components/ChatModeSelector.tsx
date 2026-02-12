@@ -40,9 +40,8 @@ export function ChatModeSelector() {
   const chatId = routerState.location.search.id as number | undefined;
   const currentChatMessages = chatId ? (messagesById.get(chatId) ?? []) : [];
 
-  // Treat "agent" mode as "build" for UI purposes (backwards compatibility)
-  const rawSelectedMode = settings?.selectedChatMode || "build";
-  const selectedMode = rawSelectedMode === "agent" ? "build" : rawSelectedMode;
+  // Migration happens on read, so selectedChatMode will never be "agent"
+  const selectedMode = settings?.selectedChatMode || "build";
   const isProEnabled = settings ? isDyadProEnabled(settings) : false;
   const { messagesRemaining, isQuotaExceeded } = useFreeAgentQuota();
   const { servers } = useMcp();
@@ -83,7 +82,6 @@ export function ChatModeSelector() {
   const getModeDisplayName = (mode: ChatMode) => {
     switch (mode) {
       case "build":
-      case "agent": // backwards compatibility - treat as build
         return "Build";
       case "ask":
         return "Ask";
@@ -100,7 +98,6 @@ export function ChatModeSelector() {
   const getModeIcon = (mode: ChatMode) => {
     switch (mode) {
       case "build":
-      case "agent":
         return <Hammer size={14} />;
       case "ask":
         return <MessageCircle size={14} />;

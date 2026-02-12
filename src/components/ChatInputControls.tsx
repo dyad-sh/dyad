@@ -17,12 +17,11 @@ export function ChatInputControls({
 
   // Show MCP tools picker when:
   // 1. The enableMcpServersForBuildMode experiment is on AND
-  // 2. Mode is "agent" (backwards compatibility) OR
-  //    mode is "build" AND there are enabled MCP servers
+  // 2. Mode is "build" AND there are enabled MCP servers
   const showMcpToolsPicker =
     !!settings?.enableMcpServersForBuildMode &&
-    (settings?.selectedChatMode === "agent" ||
-      (settings?.selectedChatMode === "build" && enabledMcpServersCount > 0));
+    settings?.selectedChatMode === "build" &&
+    enabledMcpServersCount > 0;
 
   return (
     <div className="flex items-center">

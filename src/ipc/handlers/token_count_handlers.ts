@@ -64,11 +64,11 @@ export function registerTokenCountHandlers() {
       const mentionedAppNames = parseAppMentions(req.input);
 
       // Count system prompt tokens
+      // Migration on read converts "agent" to "build", so no need to check for it here
       const themePrompt = await getThemePromptById(chat.app?.themeId ?? null);
       let systemPrompt = constructSystemPrompt({
         aiRules: await readAiRules(getDyadAppPath(chat.app.path)),
         chatMode:
-          settings.selectedChatMode === "agent" ||
           settings.selectedChatMode === "local-agent"
             ? "build"
             : settings.selectedChatMode,

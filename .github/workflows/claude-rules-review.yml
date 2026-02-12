@@ -1,0 +1,141 @@
+# Nightly review of AGENTS.md and rules/ to ensure documentation stays
+# current, valuable, and cost-effective. Uses Claude Code to audit existing
+# rules and propose improvements.
+#
+# Runs at 5:00 AM PST = 13:00 UTC (PST is UTC-8)
+# Can be triggered manually via workflow_dispatch for testing.
+
+name: Claude Rules Review
+
+on:
+  schedule:
+    # 5:00 AM PST = 13:00 UTC (PST is UTC-8)
+    - cron: "0 13 * * *"
+  workflow_dispatch:
+
+jobs:
+  review-rules:
+    environment: ai-bots
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Review AGENTS.md and rules/
+        uses: anthropics/claude-code-action@v1
+        env:
+          CLAUDE_CODE_MAX_OUTPUT_TOKENS: 48000
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          model: claude-opus-4-6
+          prompt: |
+            # Rules Documentation Review Agent
+
+            ## Context
+
+            You are reviewing the repository's agent guidance documentation to ensure it remains valuable, up-to-date, and worth the token cost of including in context windows.
+
+            ## Files to Review
+
+            1. `AGENTS.md` - Main repository agent guide
+            2. All files in `rules/` directory - Domain-specific guidance
+
+            ## Review Criteria
+
+            For each rule/section, evaluate:
+
+            ### 1. Relevance Check
+            - Does this rule still apply to the current codebase?
+            - Has the underlying code/pattern changed since this rule was written?
+            - Search the codebase to verify examples still exist and patterns are still used
+
+            ### 2. Value Assessment
+            - Is this a recurring pattern that agents encounter frequently, or a one-off edge case?
+            - Does the benefit (avoiding mistakes) outweigh the cost (tokens in context)?
+            - Would an agent reasonably make this mistake without the rule?
+
+            ### 3. Accuracy Check
+            - Are code examples still accurate?
+            - Do file paths referenced still exist?
+            - Are the described patterns still the recommended approach?
+
+            ### 4. Completeness
+            - Are there gaps in coverage for common agent tasks?
+            - Are there patterns in the codebase that cause repeated issues but aren't documented?
+
+            ## Tasks
+
+            ### Task 1: Audit Existing Rules
+
+            Review each file and create a structured assessment:
+
+            ```
+            ## [filename]
+
+            **Status**: ✅ Keep | ⚠️ Needs Update | ❌ Remove
+
+            **Reasoning**: [1-2 sentences explaining the assessment]
+
+            **Issues Found** (if any):
+            - [Specific issue 1]
+            - [Specific issue 2]
+
+            **Suggested Changes** (if any):
+            - [Change 1]
+            - [Change 2]
+            ```
+
+            ### Task 2: Identify Missing Rules
+
+            Search the codebase for patterns that could benefit from documentation:
+
+            1. Look at recent commits (last 30 days) for patterns that required fixes
+            2. Check for complex patterns that aren't documented
+            3. Look for patterns with non-obvious gotchas
+
+            For each proposed new rule:
+
+            ```
+            ## Proposed: [Rule Name]
+
+            **File**: rules/[suggested-filename].md
+
+            **Problem it solves**: [What mistake does this prevent?]
+
+            **Evidence**: [Where in the codebase is this pattern used?]
+
+            **Draft content**:
+            [Brief outline of what the rule would cover]
+            ```
+
+            ### Task 3: Create GitHub Issue
+
+            After completing your review, create a single GitHub issue summarizing your findings:
+
+            ```bash
+            gh issue create --title "Nightly Rules Review: [Date]" --body "..."
+            ```
+
+            The issue should include:
+            - Summary of rules reviewed
+            - Rules recommended for removal (with reasoning)
+            - Rules that need updates (with specific changes)
+            - Proposed new rules (with brief descriptions)
+            - Overall health assessment of the documentation
+
+            Use labels: `documentation`, `agent-review`
+
+            ## Guidelines
+
+            - Be concise in your assessments
+            - Only recommend removal if the rule is truly outdated or low-value
+            - Prioritize high-impact updates over minor tweaks
+            - When proposing new rules, focus on patterns that cause repeated issues
+            - Include evidence from the codebase to support your recommendations

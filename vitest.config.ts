@@ -8,6 +8,9 @@ export default defineConfig({
     environment: "happy-dom",
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
     globals: true,
+    onConsoleLog() {
+      return false;
+    },
   },
   resolve: {
     alias: {

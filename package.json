@@ -33,7 +33,7 @@
     "fmt:check": "npx oxfmt --check",
     "fmt": "npx oxfmt",
     "presubmit": "npm run fmt:check && npm run lint",
-    "test": "vitest run",
+    "test": "cross-env NODE_OPTIONS=--no-deprecation VITE_CJS_IGNORE_WARNING=true vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "extract-codebase": "ts-node scripts/extract-codebase.ts",

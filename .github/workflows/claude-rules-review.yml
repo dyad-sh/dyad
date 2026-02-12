@@ -124,7 +124,7 @@ jobs:
             First, close any previous rules review issues to avoid duplicates:
 
             ```bash
-            gh issue list --label agent-review --state open --json number --jq '.[].number' | xargs -I{} gh issue close {} --comment "Closing in favor of new weekly review."
+            gh issue list --label agent-review --state open --json number --jq '.[].number' | xargs -r -I{} gh issue close {} --comment "Closing in favor of new weekly review."
             ```
 
             Then, ensure the required labels exist:

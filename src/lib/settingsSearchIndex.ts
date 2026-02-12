@@ -308,7 +308,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
   {
     id: SETTING_IDS.enableMcpServersForBuildMode,
     label: "Enable MCP servers for Build mode",
-    description: "Allow MCP servers to be used when in Build or Agent mode",
+    description: "Allow MCP servers to be used when in Build mode",
     keywords: ["mcp", "build", "agent", "tools", "experiment", "server"],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",

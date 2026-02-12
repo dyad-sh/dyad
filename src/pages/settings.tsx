@@ -214,8 +214,8 @@ export default function SettingsPage() {
                   </Label>
                 </div>
                 <div className="text-sm text-gray-500 dark:text-gray-400">
-                  Allow MCP servers to be used when in Build or Agent mode. When
-                  disabled, MCP servers are only available in Local Agent mode.
+                  Allow MCP servers to be used when in Build mode. Note: MCP
+                  servers are always enabled in Agent mode.
                 </div>
               </div>
             </div>

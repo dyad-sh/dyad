@@ -13,7 +13,6 @@ import {
   Globe,
   Shield,
 } from "lucide-react";
-import { ChatActivityButton } from "@/components/chat/ChatActivity";
 import { motion } from "framer-motion";
 import { useEffect, useRef, useState, useCallback } from "react";
 
@@ -264,9 +263,7 @@ export const ActionHeader = () => {
           "publish-mode-button",
         )}
       </div>
-      {/* Chat activity bell */}
       <div className="flex items-center gap-1">
-        <ChatActivityButton />
         <DropdownMenu>
           <Tooltip>
             <TooltipTrigger

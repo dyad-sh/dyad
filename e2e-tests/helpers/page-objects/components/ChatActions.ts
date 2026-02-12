@@ -115,16 +115,6 @@ export class ChatActions {
     await this.selectChatMode("local-agent");
   }
 
-  async clickChatActivityButton() {
-    await this.page.getByTestId("chat-activity-button").click();
-  }
-
-  async snapshotChatActivityList() {
-    await expect(
-      this.page.getByTestId("chat-activity-list"),
-    ).toMatchAriaSnapshot();
-  }
-
   async snapshotChatInputContainer() {
     await expect(this.getChatInputContainer()).toMatchAriaSnapshot();
   }

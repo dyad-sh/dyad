@@ -21,7 +21,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ChatActivityButton } from "@/components/chat/ChatActivity";
 import { ChatTabs } from "@/components/chat/ChatTabs";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { MoreVertical, Cog, Trash2 } from "lucide-react";
@@ -224,7 +223,6 @@ function TitleBarActions() {
 
   return (
     <div className="flex items-center gap-0.5 no-app-region-drag mr-2">
-      <ChatActivityButton />
       <DropdownMenu>
         <DropdownMenuTrigger
           data-testid="preview-more-options-button"

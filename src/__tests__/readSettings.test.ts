@@ -436,6 +436,36 @@ describe("readSettings", () => {
       expect(result.enableAutoUpdate).toBe(true);
       expect(result.releaseChannel).toBe("stable");
     });
+
+    it("should migrate deprecated 'agent' chat mode to 'build'", () => {
+      const mockFileContent = {
+        selectedChatMode: "agent",
+        defaultChatMode: "agent",
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+
+      const result = readSettings();
+
+      expect(result.selectedChatMode).toBe("build");
+      expect(result.defaultChatMode).toBe("build");
+    });
+
+    it("should preserve valid chat modes during migration", () => {
+      const mockFileContent = {
+        selectedChatMode: "local-agent",
+        defaultChatMode: "ask",
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+
+      const result = readSettings();
+
+      expect(result.selectedChatMode).toBe("local-agent");
+      expect(result.defaultChatMode).toBe("ask");
+    });
   });
 
   describe("error handling", () => {

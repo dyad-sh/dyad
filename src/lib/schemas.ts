@@ -419,6 +419,7 @@ export function migrateStoredSettings(
   };
 }
 
+
 export function isDyadProEnabled(settings: UserSettings): boolean {
   return settings.enableDyadPro === true && hasDyadProKey(settings);
 }

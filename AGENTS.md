@@ -66,6 +66,18 @@ npm run ts
 
 Note: if you do this, then you will need to re-add the changes and commit again.
 
+## Running TypeScript
+
+> **WARNING: Do NOT run `npx tsc` or `tsc` directly.** The project is not set up for direct `tsc` invocation and will produce incorrect or misleading results.
+
+**Always use:**
+
+```sh
+npm run ts
+```
+
+This is the only supported way to type-check the project. It uses the correct configuration and compiler (`tsgo`). Any other method of running TypeScript checks is unsupported and will likely give wrong results.
+
 ## Project context
 
 - This is an Electron application with a secure IPC boundary.
@@ -108,57 +120,3 @@ Add `#skip-bugbot` to the PR description for trivial PRs that won't affect end-u
 - Linting or test setup changes
 - Documentation-only changes
 - CI/build configuration updates
-
-## Learnings
-
-### Cross-repo PR workflows (forks)
-
-When running GitHub Actions with `pull_request_target` on cross-repo PRs (from forks):
-
-- The checkout action sets `origin` to the **fork** (head repo), not the base repo
-- To rebase onto the base repo's main, you must add an `upstream` remote: `git remote add upstream https://github.com/<base-repo>.git`
-- Remote setup for cross-repo PRs: `origin` → fork (push here), `upstream` → base repo (rebase from here)
-- The `GITHUB_TOKEN` can push to the fork if the PR author enabled "Allow edits from maintainers"
-
-### AI SDK step.usage in onStepFinish vs onFinish
-
-In the AI SDK's `streamText`, `step.usage.totalTokens` in `onStepFinish` is **per-step** (single LLM call), not cumulative. The cumulative usage across all steps is only available in `onFinish` via `response.usage.totalTokens`. For context window comparisons (e.g., compaction thresholds), per-step usage is actually more accurate since each step's input tokens already include the full conversation context.
-
-### AI SDK stepNumber is 0-indexed
-
-In `prepareStep`, the AI SDK sets `stepNumber = steps.length`. The first call has `steps = []` so `stepNumber = 0`, the second call has one step so `stepNumber = 1`, etc. When writing tests that mock `prepareStep`, use 0-indexed step numbers to match real SDK behavior.
-
-### Custom chat message indicators
-
-The `<dyad-status>` tag in chat messages renders as a collapsible status indicator box. Use it for system messages like compaction notifications:
-
-```
-<dyad-status title="My Title" state="finished">
-Content here
-</dyad-status>
-```
-
-Valid states: `"finished"`, `"in-progress"`, `"aborted"`
-
-### React Query prefetch and invalidation patterns
-
-For app-level data that should be available immediately on load (like user budget/subscription info), use `prefetchQuery` in the root `App` component:
-
-```tsx
-const queryClient = useQueryClient();
-useEffect(() => {
-  queryClient.prefetchQuery({
-    queryKey: queryKeys.userBudget.info,
-    queryFn: () => ipc.system.getUserBudget(),
-  });
-}, [queryClient]);
-```
-
-When a mutation (like saving an API key) affects data managed by a different query, invalidate that query to trigger a refetch:
-
-```tsx
-// After saving Dyad Pro key, refetch user budget since subscription status may change
-queryClient.invalidateQueries({ queryKey: queryKeys.userBudget.info });
-```
-
-This ensures related data stays in sync without tight coupling between components.

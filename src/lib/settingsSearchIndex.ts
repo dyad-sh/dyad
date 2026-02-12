@@ -32,6 +32,7 @@ export const SETTING_IDS = {
   supabase: "setting-supabase",
   neon: "setting-neon",
   nativeGit: "setting-native-git",
+  enableMcpServersForBuildMode: "setting-enable-mcp-servers-for-build-mode",
   reset: "setting-reset",
 } as const;
 
@@ -300,6 +301,15 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     description:
       "Use native Git for faster performance without external installation",
     keywords: ["git", "native", "experiment", "beta", "performance"],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+
+  {
+    id: SETTING_IDS.enableMcpServersForBuildMode,
+    label: "Enable MCP servers for Build mode",
+    description: "Allow MCP servers to be used when in Build or Agent mode",
+    keywords: ["mcp", "build", "agent", "tools", "experiment", "server"],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
   },

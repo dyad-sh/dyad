@@ -1203,11 +1203,13 @@ This conversation includes one or more image attachments. When the user uploads 
         }
 
         // Use MCP agent code path if:
-        // 1. Mode is explicitly "agent" (backwards compatibility for existing settings)
-        // 2. Mode is "build" AND there are enabled MCP servers
+        // 1. The enableMcpServersForBuildMode experiment is on AND
+        // 2. Mode is explicitly "agent" (backwards compatibility for existing settings)
+        //    OR mode is "build" AND there are enabled MCP servers
         if (
-          settings.selectedChatMode === "agent" ||
-          settings.selectedChatMode === "build"
+          settings.enableMcpServersForBuildMode &&
+          (settings.selectedChatMode === "agent" ||
+            settings.selectedChatMode === "build")
         ) {
           const tools = await getMcpTools(event);
           const hasEnabledMcpServers = Object.keys(tools).length > 0;

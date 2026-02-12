@@ -194,6 +194,30 @@ export default function SettingsPage() {
                   a faster, native-Git performance experience.
                 </div>
               </div>
+              <div
+                id={SETTING_IDS.enableMcpServersForBuildMode}
+                className="space-y-1 mt-4"
+              >
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="enable-mcp-servers-for-build-mode"
+                    aria-label="Enable MCP servers for Build mode"
+                    checked={!!settings?.enableMcpServersForBuildMode}
+                    onCheckedChange={(checked) => {
+                      updateSettings({
+                        enableMcpServersForBuildMode: checked,
+                      });
+                    }}
+                  />
+                  <Label htmlFor="enable-mcp-servers-for-build-mode">
+                    Enable MCP servers for Build mode
+                  </Label>
+                </div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  Allow MCP servers to be used when in Build or Agent mode. When
+                  disabled, MCP servers are only available in Local Agent mode.
+                </div>
+              </div>
             </div>
           </div>
 

@@ -12,25 +12,15 @@ on:
 
 jobs:
   cleanup:
-    runs-on: [self-hosted, macOS, ARM64]
+    strategy:
+      matrix:
+        runner: [ci1, ci2]
+    runs-on: ${{ matrix.runner }}
     steps:
-      - name: Guard — run only on ci1 or ci2
-        id: guard
-        run: |
-          if [ "$RUNNER_NAME" = "ci1" ] || [ "$RUNNER_NAME" = "ci2" ]; then
-            echo "run_cleanup=true" >> "$GITHUB_OUTPUT"
-            echo "Running cleanup on runner: $RUNNER_NAME"
-          else
-            echo "run_cleanup=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping cleanup: runner is '$RUNNER_NAME', expected ci1 or ci2"
-          fi
-
       - name: Checkout (for cleanup script)
-        if: steps.guard.outputs.run_cleanup == 'true'
         uses: actions/checkout@v4
 
       - name: Nightly disk cleanup
-        if: steps.guard.outputs.run_cleanup == 'true'
         env:
           CI_NIGHTLY_CLEANUP: "1"
         run: bash scripts/ci-cleanup-macos.sh

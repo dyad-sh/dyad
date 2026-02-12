@@ -357,6 +357,46 @@ describe("readSettings", () => {
       expect(result.enableAutoUpdate).toBe(true);
       expect(result.releaseChannel).toBe("stable");
     });
+
+    it("should migrate deprecated 'agent' chat mode to 'build'", () => {
+      const mockFileContent = {
+        selectedModel: {
+          name: "gpt-4",
+          provider: "openai",
+        },
+        selectedChatMode: "agent",
+        defaultChatMode: "agent",
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+
+      const result = readSettings();
+
+      // Both selectedChatMode and defaultChatMode should be migrated from "agent" to "build"
+      expect(result.selectedChatMode).toBe("build");
+      expect(result.defaultChatMode).toBe("build");
+    });
+
+    it("should not modify non-deprecated chat modes during migration", () => {
+      const mockFileContent = {
+        selectedModel: {
+          name: "gpt-4",
+          provider: "openai",
+        },
+        selectedChatMode: "local-agent",
+        defaultChatMode: "ask",
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+
+      const result = readSettings();
+
+      // Non-deprecated modes should remain unchanged
+      expect(result.selectedChatMode).toBe("local-agent");
+      expect(result.defaultChatMode).toBe("ask");
+    });
   });
 
   describe("error handling", () => {

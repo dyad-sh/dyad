@@ -2,8 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { getUserDataPath } from "../paths/paths";
 import {
+  StoredUserSettingsSchema,
   UserSettingsSchema,
+  type StoredUserSettings,
   type UserSettings,
+  type ChatMode,
   Secret,
   VertexProviderSetting,
 } from "../lib/schemas";
@@ -15,6 +18,19 @@ import { DEFAULT_THEME_ID } from "@/shared/themes";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
 
 const logger = log.scope("settings");
+
+/**
+ * Migrates deprecated chat modes to their active equivalents.
+ * "agent" mode is deprecated and converted to "build".
+ */
+function migrateChatMode(
+  mode: StoredUserSettings["selectedChatMode"],
+): ChatMode | undefined {
+  if (mode === "agent") {
+    return "build";
+  }
+  return mode;
+}
 
 // IF YOU NEED TO UPDATE THIS, YOU'RE PROBABLY DOING SOMETHING WRONG!
 // Need to maintain backwards compatibility!
@@ -165,13 +181,23 @@ export function readSettings(): UserSettings {
       }
     }
 
-    // Validate and merge with defaults
-    const validatedSettings = UserSettingsSchema.parse(combinedSettings);
+    // Validate with StoredUserSettingsSchema (allows deprecated "agent" mode)
+    const storedSettings = StoredUserSettingsSchema.parse(combinedSettings);
+
+    // Apply migrations on read
     // "conservative" is deprecated, use undefined to use the default value
-    if (validatedSettings.proSmartContextOption === "conservative") {
-      validatedSettings.proSmartContextOption = undefined;
+    if (storedSettings.proSmartContextOption === "conservative") {
+      storedSettings.proSmartContextOption = undefined;
     }
-    return validatedSettings;
+
+    // Migrate deprecated "agent" chat mode to "build"
+    const migratedSettings: UserSettings = {
+      ...storedSettings,
+      selectedChatMode: migrateChatMode(storedSettings.selectedChatMode),
+      defaultChatMode: migrateChatMode(storedSettings.defaultChatMode),
+    };
+
+    return migratedSettings;
   } catch (error) {
     logger.error("Error reading settings:", error);
     return DEFAULT_SETTINGS;

@@ -20,17 +20,13 @@ export function useChatModeToggle() {
     [isMac],
   );
 
-  // Function to toggle between chat modes (skipping deprecated "agent" mode)
+  // Function to toggle between chat modes
   const toggleChatMode = useCallback(() => {
     if (!settings || !settings.selectedChatMode) return;
 
     const currentMode = settings.selectedChatMode;
-    // Filter out deprecated "agent" mode from toggle cycle
-    const modes = ChatModeSchema.options.filter((m) => m !== "agent");
-    // If current mode is "agent", treat it as "build" for indexing
-    const effectiveCurrentMode =
-      currentMode === "agent" ? "build" : currentMode;
-    const currentIndex = modes.indexOf(effectiveCurrentMode);
+    const modes = ChatModeSchema.options;
+    const currentIndex = modes.indexOf(currentMode);
     const newMode = modes[(currentIndex + 1) % modes.length];
 
     updateSettings({ selectedChatMode: newMode });

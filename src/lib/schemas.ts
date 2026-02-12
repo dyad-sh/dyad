@@ -143,13 +143,24 @@ export type RuntimeMode = z.infer<typeof RuntimeModeSchema>;
 export const RuntimeMode2Schema = z.enum(["host", "docker"]);
 export type RuntimeMode2 = z.infer<typeof RuntimeMode2Schema>;
 
-export const ChatModeSchema = z.enum([
+/**
+ * Stored chat mode schema - includes deprecated "agent" mode for backwards compatibility
+ * when reading from settings file.
+ */
+export const StoredChatModeSchema = z.enum([
   "build",
   "ask",
-  "agent",
+  "agent", // DEPRECATED: converted to "build" on read
   "local-agent",
   "plan",
 ]);
+export type StoredChatMode = z.infer<typeof StoredChatModeSchema>;
+
+/**
+ * Active chat mode schema - excludes deprecated modes.
+ * "agent" mode has been deprecated and is converted to "build" on read.
+ */
+export const ChatModeSchema = z.enum(["build", "ask", "local-agent", "plan"]);
 export type ChatMode = z.infer<typeof ChatModeSchema>;
 
 export const GitHubSecretsSchema = z.object({
@@ -270,80 +281,109 @@ export const AgentToolConsentSchema = z.enum(["ask", "always", "never"]);
 export type AgentToolConsent = z.infer<typeof AgentToolConsentSchema>;
 
 /**
- * Zod schema for user settings
+ * Base user settings object definition shared between stored and active schemas.
+ */
+const baseUserSettingsObject = {
+  ////////////////////////////////
+  // E2E TESTING ONLY.
+  ////////////////////////////////
+  isTestMode: z.boolean().optional(),
+
+  ////////////////////////////////
+  // DEPRECATED.
+  ////////////////////////////////
+  enableProSaverMode: z.boolean().optional(),
+  dyadProBudget: DyadProBudgetSchema.optional(),
+  runtimeMode: RuntimeModeSchema.optional(),
+
+  ////////////////////////////////
+  // ACTIVE FIELDS.
+  ////////////////////////////////
+  selectedModel: LargeLanguageModelSchema,
+  providerSettings: z.record(z.string(), ProviderSettingSchema),
+  agentToolConsents: z.record(z.string(), AgentToolConsentSchema).optional(),
+  githubUser: GithubUserSchema.optional(),
+  githubAccessToken: SecretSchema.optional(),
+  vercelAccessToken: SecretSchema.optional(),
+  supabase: SupabaseSchema.optional(),
+  neon: NeonSchema.optional(),
+  autoApproveChanges: z.boolean().optional(),
+  telemetryConsent: z.enum(["opted_in", "opted_out", "unset"]).optional(),
+  telemetryUserId: z.string().optional(),
+  hasRunBefore: z.boolean().optional(),
+  enableDyadPro: z.boolean().optional(),
+  experiments: ExperimentsSchema.optional(),
+  lastShownReleaseNotesVersion: z.string().optional(),
+  maxChatTurnsInContext: z.number().optional(),
+  thinkingBudget: z.enum(["low", "medium", "high"]).optional(),
+  enableProLazyEditsMode: z.boolean().optional(),
+  proLazyEditsMode: z.enum(["off", "v1", "v2"]).optional(),
+  enableProSmartFilesContextMode: z.boolean().optional(),
+  enableProWebSearch: z.boolean().optional(),
+  proSmartContextOption: SmartContextModeSchema.optional(),
+  selectedTemplateId: z.string(),
+  selectedThemeId: z.string().optional(),
+  enableSupabaseWriteSqlMigration: z.boolean().optional(),
+  skipPruneEdgeFunctions: z.boolean().optional(),
+  acceptedCommunityCode: z.boolean().optional(),
+  zoomLevel: ZoomLevelSchema.optional(),
+  language: LanguageSchema.optional(),
+  previewDeviceMode: DeviceModeSchema.optional(),
+
+  enableAutoFixProblems: z.boolean().optional(),
+  autoExpandPreviewPanel: z.boolean().optional(),
+  enableChatCompletionNotifications: z.boolean().optional(),
+  enableNativeGit: z.boolean().optional(),
+  enableMcpServersForBuildMode: z.boolean().optional(),
+  enableAutoUpdate: z.boolean(),
+  releaseChannel: ReleaseChannelSchema,
+  runtimeMode2: RuntimeMode2Schema.optional(),
+  customNodePath: z.string().optional().nullable(),
+  isRunning: z.boolean().optional(),
+  lastKnownPerformance: z
+    .object({
+      timestamp: z.number(),
+      memoryUsageMB: z.number(),
+      cpuUsagePercent: z.number().optional(),
+      systemMemoryUsageMB: z.number().optional(),
+      systemMemoryTotalMB: z.number().optional(),
+      systemCpuPercent: z.number().optional(),
+    })
+    .optional(),
+  hideLocalAgentNewChatToast: z.boolean().optional(),
+  enableContextCompaction: z.boolean().optional(),
+};
+
+/**
+ * Stored user settings schema - used for reading from the settings file.
+ * Includes deprecated fields like "agent" chat mode for backwards compatibility.
+ */
+export const StoredUserSettingsSchema = z
+  .object({
+    ...baseUserSettingsObject,
+    // Use StoredChatModeSchema which includes deprecated "agent" mode
+    selectedChatMode: StoredChatModeSchema.optional(),
+    defaultChatMode: StoredChatModeSchema.optional(),
+  })
+  // Allow unknown properties to pass through (e.g. future settings
+  // that should be preserved if user downgrades to an older version)
+  .passthrough();
+
+/**
+ * Type derived from the StoredUserSettingsSchema
+ */
+export type StoredUserSettings = z.infer<typeof StoredUserSettingsSchema>;
+
+/**
+ * Zod schema for user settings - the active schema used throughout the app.
+ * Does not include deprecated fields.
  */
 export const UserSettingsSchema = z
   .object({
-    ////////////////////////////////
-    // E2E TESTING ONLY.
-    ////////////////////////////////
-    isTestMode: z.boolean().optional(),
-
-    ////////////////////////////////
-    // DEPRECATED.
-    ////////////////////////////////
-    enableProSaverMode: z.boolean().optional(),
-    dyadProBudget: DyadProBudgetSchema.optional(),
-    runtimeMode: RuntimeModeSchema.optional(),
-
-    ////////////////////////////////
-    // ACTIVE FIELDS.
-    ////////////////////////////////
-    selectedModel: LargeLanguageModelSchema,
-    providerSettings: z.record(z.string(), ProviderSettingSchema),
-    agentToolConsents: z.record(z.string(), AgentToolConsentSchema).optional(),
-    githubUser: GithubUserSchema.optional(),
-    githubAccessToken: SecretSchema.optional(),
-    vercelAccessToken: SecretSchema.optional(),
-    supabase: SupabaseSchema.optional(),
-    neon: NeonSchema.optional(),
-    autoApproveChanges: z.boolean().optional(),
-    telemetryConsent: z.enum(["opted_in", "opted_out", "unset"]).optional(),
-    telemetryUserId: z.string().optional(),
-    hasRunBefore: z.boolean().optional(),
-    enableDyadPro: z.boolean().optional(),
-    experiments: ExperimentsSchema.optional(),
-    lastShownReleaseNotesVersion: z.string().optional(),
-    maxChatTurnsInContext: z.number().optional(),
-    thinkingBudget: z.enum(["low", "medium", "high"]).optional(),
-    enableProLazyEditsMode: z.boolean().optional(),
-    proLazyEditsMode: z.enum(["off", "v1", "v2"]).optional(),
-    enableProSmartFilesContextMode: z.boolean().optional(),
-    enableProWebSearch: z.boolean().optional(),
-    proSmartContextOption: SmartContextModeSchema.optional(),
-    selectedTemplateId: z.string(),
-    selectedThemeId: z.string().optional(),
-    enableSupabaseWriteSqlMigration: z.boolean().optional(),
-    skipPruneEdgeFunctions: z.boolean().optional(),
+    ...baseUserSettingsObject,
+    // Use ChatModeSchema which excludes deprecated "agent" mode
     selectedChatMode: ChatModeSchema.optional(),
     defaultChatMode: ChatModeSchema.optional(),
-    acceptedCommunityCode: z.boolean().optional(),
-    zoomLevel: ZoomLevelSchema.optional(),
-    language: LanguageSchema.optional(),
-    previewDeviceMode: DeviceModeSchema.optional(),
-
-    enableAutoFixProblems: z.boolean().optional(),
-    autoExpandPreviewPanel: z.boolean().optional(),
-    enableChatCompletionNotifications: z.boolean().optional(),
-    enableNativeGit: z.boolean().optional(),
-    enableMcpServersForBuildMode: z.boolean().optional(),
-    enableAutoUpdate: z.boolean(),
-    releaseChannel: ReleaseChannelSchema,
-    runtimeMode2: RuntimeMode2Schema.optional(),
-    customNodePath: z.string().optional().nullable(),
-    isRunning: z.boolean().optional(),
-    lastKnownPerformance: z
-      .object({
-        timestamp: z.number(),
-        memoryUsageMB: z.number(),
-        cpuUsagePercent: z.number().optional(),
-        systemMemoryUsageMB: z.number().optional(),
-        systemMemoryTotalMB: z.number().optional(),
-        systemCpuPercent: z.number().optional(),
-      })
-      .optional(),
-    hideLocalAgentNewChatToast: z.boolean().optional(),
-    enableContextCompaction: z.boolean().optional(),
   })
   // Allow unknown properties to pass through (e.g. future settings
   // that should be preserved if user downgrades to an older version)

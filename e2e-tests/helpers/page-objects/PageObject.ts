@@ -226,11 +226,15 @@ export class PageObject {
   // ================================
 
   async approveProposal() {
-    await this.page.getByTestId("approve-proposal-button").click();
+    const button = this.page.getByTestId("approve-proposal-button");
+    await button.waitFor({ state: "visible" });
+    await button.click();
   }
 
   async rejectProposal() {
-    await this.page.getByTestId("reject-proposal-button").click();
+    const button = this.page.getByTestId("reject-proposal-button");
+    await button.waitFor({ state: "visible" });
+    await button.click();
   }
 
   async clickRestart() {

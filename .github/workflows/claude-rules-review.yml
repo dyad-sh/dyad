@@ -17,6 +17,7 @@ jobs:
   review-rules:
     environment: ai-bots
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       issues: write
@@ -35,6 +36,8 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           model: claude-opus-4-6
+          direct: true
+          allowed_tools: "Read,Glob,Grep,Bash(git log:*),Bash(gh issue create:*),Bash(gh label:*)"
           prompt: |
             # Rules Documentation Review Agent
 
@@ -117,10 +120,19 @@ jobs:
 
             ### Task 3: Create GitHub Issue
 
-            After completing your review, create a single GitHub issue summarizing your findings:
+            After completing your review, create a single GitHub issue summarizing your findings.
+
+            First, ensure the required labels exist:
 
             ```bash
-            gh issue create --title "Nightly Rules Review: [Date]" --body "..."
+            gh label create documentation --force 2>/dev/null || true
+            gh label create agent-review --force 2>/dev/null || true
+            ```
+
+            Then create the issue:
+
+            ```bash
+            gh issue create --title "Nightly Rules Review: [Date]" --body "..." --label documentation --label agent-review
             ```
 
             The issue should include:
@@ -129,8 +141,6 @@ jobs:
             - Rules that need updates (with specific changes)
             - Proposed new rules (with brief descriptions)
             - Overall health assessment of the documentation
-
-            Use labels: `documentation`, `agent-review`
 
             ## Guidelines
 

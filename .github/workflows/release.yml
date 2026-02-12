@@ -51,32 +51,13 @@ jobs:
         if: contains(matrix.os.name, 'windows')
         shell: powershell
         run: |
-          winget install -e --id Microsoft.Azure.TrustedSigningClientTools --source winget --accept-source-agreements --accept-package-agreements
+          # Install via NuGet instead of winget (winget is slow/unreliable in CI)
+          $installDir = "$env:RUNNER_TEMP\TrustedSigning"
+          nuget install Microsoft.Trusted.Signing.Client -Version 1.0.95 -OutputDirectory $installDir -Source https://api.nuget.org/v3/index.json
 
-          $known = Join-Path $env:LOCALAPPDATA "Microsoft\MicrosoftTrustedSigningClientTools\Azure.CodeSigning.Dlib.dll"
-          $dllPath = $null
-
-          if (Test-Path $known) {
-            $dllPath = $known
-          } else {
-            $searchPaths = @(
-              (Join-Path $env:LOCALAPPDATA "Microsoft\MicrosoftTrustedSigningClientTools"),
-              "C:\Program Files",
-              "$env:LOCALAPPDATA",
-              "$env:LOCALAPPDATA\Microsoft\WinGet\Packages",
-              "C:\Users\runneradmin\AppData\Local\Microsoft\WinGet\Packages"
-            )
-
-            foreach ($searchPath in $searchPaths) {
-              if (Test-Path $searchPath) {
-                Write-Host "Searching in: $searchPath"
-                $found = Get-ChildItem -Path $searchPath -Recurse -Filter "Azure.CodeSigning.Dlib.dll" -ErrorAction SilentlyContinue |
-                  Sort-Object { $_.FullName -notlike "*x64*" } |
-                  Select-Object -First 1 -ExpandProperty FullName
-                if ($found) { $dllPath = $found; break }
-              }
-            }
-          }
+          $dllPath = Get-ChildItem -Path $installDir -Recurse -Filter "Azure.CodeSigning.Dlib.dll" |
+            Where-Object { $_.FullName -match "x64" } |
+            Select-Object -First 1 -ExpandProperty FullName
 
           if ($dllPath) {
             Write-Host "Found DLL at: $dllPath"

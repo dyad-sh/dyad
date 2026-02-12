@@ -153,7 +153,17 @@ jobs:
       - name: Install npm 11.8.0
         run: npm install -g npm@11.8.0
       - name: Install node modules
-        run: npm ci --no-audit --no-fund --progress=false
+        run: |
+          for i in 1 2 3; do
+            if npm ci --no-audit --no-fund --progress=false; then
+              exit 0
+            fi
+            echo "npm ci attempt $i failed, retrying in 10s..."
+            sleep 10
+            rm -rf node_modules || true
+          done
+          echo "npm ci failed after 3 attempts"
+          exit 1
         env:
           # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -228,7 +238,17 @@ jobs:
       - name: Install npm 11.8.0
         run: npm install -g npm@11.8.0
       - name: Install node modules
-        run: npm ci --no-audit --no-fund --progress=false
+        run: |
+          for i in 1 2 3; do
+            if npm ci --no-audit --no-fund --progress=false; then
+              exit 0
+            fi
+            echo "npm ci attempt $i failed, retrying in 10s..."
+            sleep 10
+            rm -rf node_modules || true
+          done
+          echo "npm ci failed after 3 attempts"
+          exit 1
         env:
           # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

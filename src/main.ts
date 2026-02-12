@@ -32,6 +32,7 @@ import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai
 import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
 import { getDyadAppsBaseDirectory } from "./paths/paths";
+import { hydrateOpenRouterFreeModels } from "./ipc/shared/openrouter_free_models";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -91,6 +92,8 @@ export async function onReady() {
 
   // Cleanup old ai_messages_json entries to prevent database bloat
   cleanupOldAiMessagesJson();
+
+  hydrateOpenRouterFreeModels();
 
   const settings = readSettings();
 

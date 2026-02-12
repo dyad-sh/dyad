@@ -16,11 +16,11 @@ import type {
 import { getEnvVar } from "./read_env";
 import log from "electron-log";
 import {
-  FREE_OPENROUTER_MODEL_NAMES,
   GEMINI_3_FLASH,
   GPT_5_2_MODEL_NAME,
   SONNET_4_5,
 } from "../shared/language_model_constants";
+import { getOpenRouterFreeModelNames } from "../shared/openrouter_free_models";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
 import { LanguageModelProvider } from "@/ipc/types";
 import {
@@ -144,13 +144,12 @@ export async function getModelClient(
       return {
         modelClient: {
           model: createFallback({
-            models: FREE_OPENROUTER_MODEL_NAMES.map(
-              (name: string) =>
-                getRegularModelClient(
-                  { provider: "openrouter", name },
-                  settings,
-                  openRouterProvider,
-                ).modelClient.model,
+            models: getOpenRouterFreeModelNames().map((name: string) =>
+              getRegularModelClient(
+                { provider: "openrouter", name },
+                settings,
+                openRouterProvider,
+              ).modelClient.model,
             ),
           }),
           builtinProviderId: "openrouter",

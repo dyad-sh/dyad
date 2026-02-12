@@ -104,6 +104,8 @@ Use unit testing for pure business logic and util functions.
 
 See [rules/e2e-testing.md](rules/e2e-testing.md) for full E2E testing guidance, including Playwright tips and fixture setup.
 
+**Debugging E2E test failures with screenshots:** When an E2E test fails and you can't determine the cause from the error message alone, use the `/dyad:debug-with-playwright` skill to add screenshots at key points in the test. Playwright's built-in `screenshot: "on"` does NOT work with Electron — you must use manual `page.screenshot()` calls. The skill walks you through adding debug screenshots, running the test, viewing the captured PNGs, and cleaning up afterward.
+
 ## Git workflow
 
 When pushing changes and creating PRs:

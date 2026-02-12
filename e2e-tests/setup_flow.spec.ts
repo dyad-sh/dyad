@@ -40,6 +40,7 @@ testSetup.describe("Setup Flow", () => {
     // Start with Node.js not installed
     await po.setNodeMock(false);
     await po.page.reload();
+    await po.page.waitForLoadState("domcontentloaded");
 
     // Verify setup banner and install button are visible
     await expect(
@@ -47,7 +48,7 @@ testSetup.describe("Setup Flow", () => {
     ).toBeVisible();
     await expect(
       po.page.getByRole("button", { name: "Install Node.js Runtime" }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 10000 });
 
     // Manual configuration link should be visible
     await expect(

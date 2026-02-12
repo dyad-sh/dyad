@@ -97,6 +97,13 @@ Each parallel Playwright worker gets its own fake LLM server on port `FAKE_LLM_B
 
 When adding new test server URLs, update **both** the test fixtures (`e2e-tests/helpers/fixtures.ts`) and the Electron app source that consumes them. The app reads `process.env.FAKE_LLM_PORT` to build its `TEST_SERVER_BASE` URL — if you hardcode a port in app source, parallel workers will all hit the same server.
 
+## Common flaky test patterns and fixes
+
+- **After `page.reload()`**: Always add `await page.waitForLoadState("domcontentloaded")` before interacting with elements. Without this, the page may not have re-rendered yet.
+- **Keyboard navigation events (ArrowUp/ArrowDown)**: Add `await page.waitForTimeout(100)` between sequential keyboard presses to let the UI state settle. Rapid keypresses can cause race conditions in menu navigation.
+- **Navigation to tabs**: Use `await expect(link).toBeVisible({ timeout: 60000 })` before clicking tab links (especially in `goToAppsTab()`). Electron sidebar links can take time to render during app initialization.
+- **Confirming flakiness**: Use `PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec> --repeat-each=10` to reproduce flaky tests. `PLAYWRIGHT_RETRIES=0` is critical — CI defaults to 2 retries, hiding flakiness.
+
 ## E2E test fixtures with .dyad directories
 
 When adding E2E test fixtures that need a `.dyad` directory for testing:

@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import { LocalAgentNewChatToast } from "./LocalAgentNewChatToast";
 import { useAtomValue } from "jotai";
 import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
+import { Hammer, Bot, MessageCircle, Lightbulb } from "lucide-react";
 
 function NewBadge() {
   return (
@@ -95,6 +96,22 @@ export function ChatModeSelector() {
         return "Build";
     }
   };
+
+  const getModeIcon = (mode: ChatMode) => {
+    switch (mode) {
+      case "build":
+      case "agent":
+        return <Hammer size={14} />;
+      case "ask":
+        return <MessageCircle size={14} />;
+      case "local-agent":
+        return <Bot size={14} />;
+      case "plan":
+        return <Lightbulb size={14} />;
+      default:
+        return <Hammer size={14} />;
+    }
+  };
   const isMac = detectIsMac();
 
   return (
@@ -110,17 +127,24 @@ export function ChatModeSelector() {
                 data-testid="chat-mode-selector"
                 className={cn(
                   "h-7 w-fit px-2 py-0 text-xs font-medium border-none shadow-none gap-1 rounded-lg transition-colors",
-                  selectedMode === "build" ||
-                    selectedMode === "local-agent" ||
-                    selectedMode === "plan"
+                  selectedMode === "build" || selectedMode === "local-agent"
                     ? "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                    : "bg-primary/10 text-primary hover:bg-primary/15 dark:bg-primary/15 dark:hover:bg-primary/20",
+                    : selectedMode === "ask"
+                      ? "bg-purple-500/10 text-purple-600 hover:bg-purple-500/15 dark:bg-purple-500/15 dark:text-purple-400 dark:hover:bg-purple-500/20"
+                      : selectedMode === "plan"
+                        ? "bg-blue-500/10 text-blue-600 hover:bg-blue-500/15 dark:bg-blue-500/15 dark:text-blue-400 dark:hover:bg-blue-500/20"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/60",
                 )}
                 size="sm"
               />
             }
           >
-            <SelectValue>{getModeDisplayName(selectedMode)}</SelectValue>
+            <SelectValue>
+              <span className="flex items-center gap-1.5">
+                {getModeIcon(selectedMode)}
+                {getModeDisplayName(selectedMode)}
+              </span>
+            </SelectValue>
           </TooltipTrigger>
           <TooltipContent>
             {`Open mode menu (${isMac ? "\u2318 + ." : "Ctrl + ."} to toggle)`}
@@ -131,10 +155,11 @@ export function ChatModeSelector() {
             <SelectItem value="local-agent">
               <div className="flex flex-col items-start">
                 <div className="flex items-center gap-1.5">
+                  <Bot size={14} className="text-muted-foreground" />
                   <span className="font-medium">Agent v2</span>
                   <NewBadge />
                 </div>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground ml-[22px]">
                   Better at bigger tasks and debugging
                 </span>
               </div>
@@ -143,10 +168,11 @@ export function ChatModeSelector() {
           <SelectItem value="plan">
             <div className="flex flex-col items-start">
               <div className="flex items-center gap-1.5">
+                <Lightbulb size={14} className="text-blue-500" />
                 <span className="font-medium">Plan</span>
                 <NewBadge />
               </div>
-              <span className="text-xs text-muted-foreground">
+              <span className="text-xs text-muted-foreground ml-[22px]">
                 Design before you build
               </span>
             </div>
@@ -155,13 +181,14 @@ export function ChatModeSelector() {
             <SelectItem value="local-agent" disabled={isQuotaExceeded}>
               <div className="flex flex-col items-start">
                 <div className="flex items-center gap-1.5">
+                  <Bot size={14} className="text-muted-foreground" />
                   <span className="font-medium">Basic Agent</span>
                   <span className="text-xs text-muted-foreground">
                     ({isQuotaExceeded ? "0" : messagesRemaining}/5 remaining for
                     today)
                   </span>
                 </div>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground ml-[22px]">
                   {isQuotaExceeded
                     ? "Daily limit reached"
                     : "Try our AI agent for free"}
@@ -171,16 +198,22 @@ export function ChatModeSelector() {
           )}
           <SelectItem value="build">
             <div className="flex flex-col items-start">
-              <span className="font-medium">Build</span>
-              <span className="text-xs text-muted-foreground">
+              <div className="flex items-center gap-1.5">
+                <Hammer size={14} className="text-muted-foreground" />
+                <span className="font-medium">Build</span>
+              </div>
+              <span className="text-xs text-muted-foreground ml-[22px]">
                 Generate and edit code
               </span>
             </div>
           </SelectItem>
           <SelectItem value="ask">
             <div className="flex flex-col items-start">
-              <span className="font-medium">Ask</span>
-              <span className="text-xs text-muted-foreground">
+              <div className="flex items-center gap-1.5">
+                <MessageCircle size={14} className="text-purple-500" />
+                <span className="font-medium">Ask</span>
+              </div>
+              <span className="text-xs text-muted-foreground ml-[22px]">
                 Ask questions about the app
               </span>
             </div>

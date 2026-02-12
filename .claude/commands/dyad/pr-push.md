@@ -170,12 +170,21 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    Use the commit messages and changed files to write a good title and summary.
 
-9. **Summarize the results:**
-   - Report if a new feature branch was created (and its name)
-   - Report any uncommitted changes that were committed in step 2
-   - Report any files that were IGNORED and not committed (if any), explaining why they were skipped
-   - Report any lint fixes that were applied
-   - Confirm tests passed
-   - Confirm the branch has been pushed
-   - Report any learnings added to `AGENTS.md`
-   - **Include the PR URL** (either newly created or existing)
+9. **Remove review-issue label:**
+
+   After pushing, remove the `needs-human:review-issue` label if it exists (this label indicates the issue needed human review before work started, which is now complete):
+
+   ```
+   gh pr edit --remove-label "needs-human:review-issue" 2>/dev/null || true
+   ```
+
+10. **Summarize the results:**
+
+- Report if a new feature branch was created (and its name)
+- Report any uncommitted changes that were committed in step 2
+- Report any files that were IGNORED and not committed (if any), explaining why they were skipped
+- Report any lint fixes that were applied
+- Confirm tests passed
+- Confirm the branch has been pushed
+- Report any learnings added to `AGENTS.md`
+- **Include the PR URL** (either newly created or existing)

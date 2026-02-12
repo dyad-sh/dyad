@@ -162,6 +162,13 @@ You MUST use the TaskCreate and TaskUpdate tools to track your progress. At the 
    gh pr edit --add-label "cc:request"
    ```
 
+   **Remove review-issue label:**
+   After pushing, remove the `needs-human:review-issue` label if it exists (this label indicates the issue needed human review before work started, which is now complete):
+
+   ```
+   gh pr edit --remove-label "needs-human:review-issue" 2>/dev/null || true
+   ```
+
 7. **Summarize the results:**
    - Report if a new feature branch was created (and its name)
    - Report any uncommitted changes that were committed in step 2

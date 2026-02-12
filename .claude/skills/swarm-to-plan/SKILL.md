@@ -30,6 +30,8 @@ Read the idea from `$ARGUMENTS`. Explore the codebase briefly to understand:
 - Existing patterns relevant to the idea
 - Files and modules that may be affected
 
+**IMPORTANT**: Read `rules/product-principles.md` and include the product design principles in the context summary shared with the team. All agents should use these principles to guide decisions autonomously — only flag a tension or trade-off to the user if it is genuinely unresolvable within the principles.
+
 Prepare a brief context summary to share with the team.
 
 ### Step 2: Create the Planning Team

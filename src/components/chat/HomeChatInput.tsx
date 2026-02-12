@@ -159,7 +159,7 @@ export function HomeChatInput({
               </Tooltip>
             )}
           </div>
-          <div className="pl-3 pr-2 flex items-center justify-between pb-2.5 pt-0.5">
+          <div className="pl-3 pr-2 flex items-center justify-between pb-0.5 pt-0.5">
             <div className="flex items-center">
               <ChatInputControls showContextFilesPicker={false} />
             </div>

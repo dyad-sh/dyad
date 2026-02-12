@@ -425,7 +425,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           {t("errorLoadingProposal", { message: proposalError.message })}
         </div>
       )}
-      <div className="p-4" data-testid="chat-input-container">
+      <div className="p-2 pt-0" data-testid="chat-input-container">
         {/* Show context limit banner above chat input for visibility */}
         {showBanner && tokenCountResult && (
           <ContextLimitBanner
@@ -618,7 +618,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               </Tooltip>
             )}
           </div>
-          <div className="pl-3 pr-2 flex items-center justify-between pb-2.5 pt-0.5">
+          <div className="pl-3 pr-2 flex items-center justify-between pb-0.5 pt-0.5">
             <div className="flex items-center">
               <ChatInputControls showContextFilesPicker={false} />
             </div>

@@ -863,153 +863,8 @@ describe("prepare_step_utils", () => {
     });
   });
 
-  describe("todo reminder injection", () => {
-    // NOTE: Inner loop todo reminders have been removed. Todo reminders are now
-    // handled exclusively by the outer loop in local_agent_handler.ts.
-    // The following test verifies that prepareStepMessages does NOT inject reminders.
-    it("does not inject reminder (handled by outer loop instead)", () => {
-      const pendingUserMessages: UserMessageContentPart[][] = [];
-      const allInjectedMessages: InjectedMessage[] = [];
-      const todoContext = {
-        todos: [
-          { id: "1", content: "Task 1", status: "in_progress" as const },
-          { id: "2", content: "Task 2", status: "pending" as const },
-        ],
-        reminderState: { hasRemindedThisTurn: false },
-      };
-
-      // Simulate agent finishing with a text response (no tool calls)
-      const messages: ModelMessage[] = [
-        { role: "user", content: "Help me build an app" },
-        { role: "assistant", content: "I created the first component." },
-      ];
-
-      const result = prepareStepMessages(
-        { messages },
-        pendingUserMessages,
-        allInjectedMessages,
-        todoContext,
-      );
-
-      // Should return undefined since no inner loop changes needed
-      // (todo reminders are now handled by the outer loop)
-      expect(result).toBeUndefined();
-      // State should NOT be updated since we're not injecting reminders
-      expect(todoContext.reminderState.hasRemindedThisTurn).toBe(false);
-    });
-
-    it("does not inject reminder when already reminded this turn", () => {
-      const pendingUserMessages: UserMessageContentPart[][] = [];
-      const allInjectedMessages: InjectedMessage[] = [];
-      const todoContext = {
-        todos: [{ id: "1", content: "Task 1", status: "pending" as const }],
-        reminderState: { hasRemindedThisTurn: true },
-      };
-
-      const messages: ModelMessage[] = [
-        { role: "user", content: "Continue" },
-        { role: "assistant", content: "Working on it." },
-      ];
-
-      const result = prepareStepMessages(
-        { messages },
-        pendingUserMessages,
-        allInjectedMessages,
-        todoContext,
-      );
-
-      // Should return undefined since no changes needed
-      expect(result).toBeUndefined();
-    });
-
-    it("does not inject reminder when all todos are completed", () => {
-      const pendingUserMessages: UserMessageContentPart[][] = [];
-      const allInjectedMessages: InjectedMessage[] = [];
-      const todoContext = {
-        todos: [
-          { id: "1", content: "Task 1", status: "completed" as const },
-          { id: "2", content: "Task 2", status: "completed" as const },
-        ],
-        reminderState: { hasRemindedThisTurn: false },
-      };
-
-      const messages: ModelMessage[] = [
-        { role: "user", content: "Build an app" },
-        { role: "assistant", content: "All done!" },
-      ];
-
-      const result = prepareStepMessages(
-        { messages },
-        pendingUserMessages,
-        allInjectedMessages,
-        todoContext,
-      );
-
-      // Should return undefined since no changes needed
-      expect(result).toBeUndefined();
-      // State should not be updated
-      expect(todoContext.reminderState.hasRemindedThisTurn).toBe(false);
-    });
-
-    it("does not inject reminder when last assistant message has tool calls", () => {
-      const pendingUserMessages: UserMessageContentPart[][] = [];
-      const allInjectedMessages: InjectedMessage[] = [];
-      const todoContext = {
-        todos: [{ id: "1", content: "Task 1", status: "pending" as const }],
-        reminderState: { hasRemindedThisTurn: false },
-      };
-
-      // Simulate agent with a tool call (still working)
-      const messages: ModelMessage[] = [
-        { role: "user", content: "Build an app" },
-        {
-          role: "assistant",
-          content: [
-            { type: "text", text: "Let me create a file" },
-            {
-              type: "tool-call",
-              toolCallId: "call-123",
-              toolName: "write_file",
-              input: { path: "/app.tsx", content: "export default App" },
-            },
-          ],
-        },
-      ];
-
-      const result = prepareStepMessages(
-        { messages },
-        pendingUserMessages,
-        allInjectedMessages,
-        todoContext,
-      );
-
-      // No injections or changes needed - should return undefined
-      expect(result).toBeUndefined();
-      // State should NOT be updated (agent is still working)
-      expect(todoContext.reminderState.hasRemindedThisTurn).toBe(false);
-    });
-
-    it("does not inject reminder when no todoContext is provided", () => {
-      const pendingUserMessages: UserMessageContentPart[][] = [];
-      const allInjectedMessages: InjectedMessage[] = [];
-
-      const messages: ModelMessage[] = [
-        { role: "user", content: "Build an app" },
-        { role: "assistant", content: "Done!" },
-      ];
-
-      const result = prepareStepMessages(
-        { messages },
-        pendingUserMessages,
-        allInjectedMessages,
-        // No todoContext
-      );
-
-      // Should return undefined
-      expect(result).toBeUndefined();
-    });
-
-    it("works with existing injected messages (no reminder added)", () => {
+  describe("prepareStepMessages with injected messages", () => {
+    it("works with existing injected messages", () => {
       const pendingUserMessages: UserMessageContentPart[][] = [];
       const allInjectedMessages: InjectedMessage[] = [
         {
@@ -1021,10 +876,6 @@ describe("prepare_step_utils", () => {
           },
         },
       ];
-      const todoContext = {
-        todos: [{ id: "1", content: "Task 1", status: "pending" as const }],
-        reminderState: { hasRemindedThisTurn: false },
-      };
 
       const messages: ModelMessage[] = [
         { role: "user", content: "Build an app" },
@@ -1035,12 +886,10 @@ describe("prepare_step_utils", () => {
         { messages },
         pendingUserMessages,
         allInjectedMessages,
-        todoContext,
       );
 
       expect(result).toBeDefined();
       // Should have: user message, injected screenshot, assistant message
-      // (no reminder - handled by outer loop)
       expect(result!.messages).toHaveLength(3);
       expect(result!.messages[0].role).toBe("user");
       expect((result!.messages[1].content as { text: string }[])[0].text).toBe(

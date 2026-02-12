@@ -10,15 +10,6 @@ import type { UserMessageContentPart, Todo } from "./tools/types";
 import { cleanMessageForOpenAI } from "@/ipc/utils/ai_messages_utils";
 
 /**
- * State for tracking todo completion reminders.
- * We only remind the agent once per turn to avoid infinite loops.
- */
-export interface TodoReminderState {
-  /** Whether we have already injected a reminder this turn */
-  hasRemindedThisTurn: boolean;
-}
-
-/**
  * Check if a single todo is incomplete (pending or in_progress).
  */
 const isIncompleteTodo = (todo: Todo): boolean =>
@@ -137,7 +128,6 @@ export function injectMessagesAtPositions<T>(
  * @param options - The step options containing messages and other properties
  * @param pendingUserMessages - Queue of pending messages to process
  * @param allInjectedMessages - Accumulated list of injected messages
- * @param todoContext - Optional context for todo completion reminders
  * @returns Modified options with injected messages, or undefined if no changes needed
  */
 export function prepareStepMessages<
@@ -147,10 +137,6 @@ export function prepareStepMessages<
   options: T,
   pendingUserMessages: UserMessageContentPart[][],
   allInjectedMessages: InjectedMessage[],
-  _todoContext?: {
-    todos: Todo[];
-    reminderState: TodoReminderState;
-  },
 ): (Omit<T, "messages"> & { messages: TMessage[] }) | undefined {
   const { messages, ...rest } = options;
 
@@ -167,21 +153,10 @@ export function prepareStepMessages<
   const filteredMessages = messages.map(cleanMessageForOpenAI);
 
   // Check if we need to return modified options
-  let hasInjections = allInjectedMessages.length > 0;
+  const hasInjections = allInjectedMessages.length > 0;
   const hasFilteredContent = filteredMessages.some(
     (msg, i) => msg !== messages[i],
   );
-
-  // NOTE: Inner loop todo reminders have been removed to simplify the logic.
-  // Todo reminders are now handled exclusively by the outer loop in
-  // local_agent_handler.ts. This prevents duplicate reminders and makes
-  // the behavior more predictable.
-  //
-  // The outer loop will inject a reminder and do another pass when:
-  // - The agent produced chat text
-  // - There are incomplete todos
-  // - We haven't exceeded the max follow-up loops
-  const todoReminderMessage: UserModelMessage | undefined = undefined;
 
   if (!hasInjections && !hasFilteredContent) {
     return undefined;
@@ -189,17 +164,12 @@ export function prepareStepMessages<
 
   // Build the new messages array with injections
   // Cast is safe because InjectedMessage["message"] is a valid ModelMessage
-  let newMessages = hasInjections
+  const newMessages = hasInjections
     ? (injectMessagesAtPositions(
         filteredMessages,
         allInjectedMessages,
       ) as TMessage[])
     : filteredMessages;
-
-  // Append the todo reminder at the end if needed
-  if (todoReminderMessage) {
-    newMessages = [...newMessages, todoReminderMessage as TMessage];
-  }
 
   return { messages: newMessages, ...rest };
 }

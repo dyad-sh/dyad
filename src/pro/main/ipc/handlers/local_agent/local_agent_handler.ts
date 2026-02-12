@@ -56,7 +56,6 @@ import {
   buildTodoReminderMessage,
   hasIncompleteTodos,
   type InjectedMessage,
-  type TodoReminderState,
 } from "./prepare_step_utils";
 import { TOOL_DEFINITIONS } from "./tool_definitions";
 import {
@@ -423,8 +422,6 @@ export async function handleLocalAgentStream(
   const pendingUserMessages: UserMessageContentPart[][] = [];
   // Store injected messages with their insertion index to re-inject at the same spot each step
   const allInjectedMessages: InjectedMessage[] = [];
-  // Track whether we've reminded the agent about incomplete todos (only once per turn)
-  const todoReminderState: TodoReminderState = { hasRemindedThisTurn: false };
 
   try {
     // Get model client
@@ -633,10 +630,6 @@ export async function handleLocalAgentStream(
             stepOptions,
             pendingUserMessages,
             allInjectedMessages,
-            {
-              todos: ctx.todos,
-              reminderState: todoReminderState,
-            },
           );
 
           // prepareStepMessages returns undefined when it has no additional
@@ -881,7 +874,6 @@ export async function handleLocalAgentStream(
           todos: ctx.todos,
           todoFollowUpLoops,
           maxTodoFollowUpLoops,
-          hasRemindedThisTurn: todoReminderState.hasRemindedThisTurn,
         })
       ) {
         break;
@@ -1033,7 +1025,6 @@ function shouldRunTodoFollowUpPass(params: {
   todos: AgentContext["todos"];
   todoFollowUpLoops: number;
   maxTodoFollowUpLoops: number;
-  hasRemindedThisTurn: boolean;
 }): boolean {
   const {
     readOnly,
@@ -1042,13 +1033,7 @@ function shouldRunTodoFollowUpPass(params: {
     todos,
     todoFollowUpLoops,
     maxTodoFollowUpLoops,
-    hasRemindedThisTurn,
   } = params;
-  // Don't run another pass if we already reminded the agent via the inner loop
-  // (in prepareStepMessages). This prevents duplicate reminders.
-  if (hasRemindedThisTurn) {
-    return false;
-  }
   return (
     !readOnly &&
     !planModeOnly &&

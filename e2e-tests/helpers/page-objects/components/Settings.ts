@@ -40,6 +40,17 @@ export class Settings {
     await this.page.getByRole("switch", { name: "Auto-update" }).click();
   }
 
+  async toggleExploreSubAgent() {
+    // Scroll to AI Settings section first to ensure the switch is in view
+    await this.page
+      .locator('[id="setting-explore-sub-agent"]')
+      .scrollIntoViewIfNeeded();
+    const switchElement = this.page.getByRole("switch", {
+      name: "Explore sub-agent",
+    });
+    await switchElement.click();
+  }
+
   async changeReleaseChannel(channel: "stable" | "beta") {
     await this.page.getByRole("combobox", { name: "Release Channel" }).click();
     await this.page

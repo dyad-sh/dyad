@@ -117,8 +117,8 @@ jobs:
           if [ "${{ steps.author-check.outputs.is_privileged }}" = "true" ]; then
             echo 'build_os=[{"name":"macos","image":"[\"self-hosted\",\"macOS\",\"ARM64\"]"}]' >> $GITHUB_OUTPUT
             echo 'e2e_os=[{"name":"macos","image":"[\"self-hosted\",\"macOS\",\"ARM64\"]"}]' >> $GITHUB_OUTPUT
-            echo 'e2e_shard=[1]' >> $GITHUB_OUTPUT
-            echo 'e2e_shard_total=[1]' >> $GITHUB_OUTPUT
+            echo 'e2e_shard=[1,2]' >> $GITHUB_OUTPUT
+            echo 'e2e_shard_total=[2]' >> $GITHUB_OUTPUT
           else
             echo 'build_os=[{"name":"windows","image":"[\"windows-latest\"]"},{"name":"macos","image":"[\"macos-latest\"]"}]' >> $GITHUB_OUTPUT
             echo 'e2e_os=[{"name":"windows","image":"[\"windows-latest\"]"},{"name":"macos","image":"[\"macos-latest\"]"}]' >> $GITHUB_OUTPUT
@@ -150,8 +150,10 @@ jobs:
           node-version-file: package.json
           cache: npm
           cache-dependency-path: package-lock.json
+      - name: Install npm 11.8.0
+        run: npm install -g npm@11.8.0
       - name: Install node modules
-        run: npm ci --no-audit --no-fund --progress=false
+        run: bash scripts/npm-ci-retry.sh
         env:
           # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -198,6 +200,9 @@ jobs:
             scaffold/
             testing/fake-llm-server/
           retention-days: 1
+      - name: Cleanup (self-hosted macOS)
+        if: always() && contains(matrix.os.image, 'self-hosted')
+        run: bash scripts/ci-cleanup-macos.sh
 
   e2e-tests:
     needs: [check-changes, build]
@@ -220,8 +225,10 @@ jobs:
           node-version-file: package.json
           cache: npm
           cache-dependency-path: package-lock.json
+      - name: Install npm 11.8.0
+        run: npm install -g npm@11.8.0
       - name: Install node modules
-        run: npm ci --no-audit --no-fund --progress=false
+        run: bash scripts/npm-ci-retry.sh
         env:
           # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -269,6 +276,17 @@ jobs:
         # by adding "DEBUG=pw:browser" in front.
         # Use blob reporter for sharding and merge capabilities
         run: DEBUG=pw:browser npx playwright test --shard=${{ matrix.shard }}/${{ matrix.shardTotal }}
+      - name: Record shard metadata
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p blob-report
+          cat <<EOF > "blob-report/_playwright-shard-metadata-${{ matrix.os.name }}-shard-${{ matrix.shard }}-of-${{ matrix.shardTotal }}.json"
+          {
+            "os": "${{ matrix.os.name }}",
+            "shard": ${{ matrix.shard }},
+            "total": ${{ matrix.shardTotal }}
+          }
+          EOF
       - name: Upload shard results
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: ${{ !cancelled() }}
@@ -276,6 +294,9 @@ jobs:
           name: blob-report-${{ matrix.os.name }}-shard-${{ matrix.shard }}
           path: blob-report
           retention-days: 1
+      - name: Cleanup (self-hosted macOS)
+        if: always() && contains(matrix.os.image, 'self-hosted')
+        run: bash scripts/ci-cleanup-macos.sh
 
   merge-reports:
     # Merge reports after playwright-tests, even if some shards have failed
@@ -296,6 +317,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: lts/*
+      - name: Install npm 11.8.0
+        run: npm install -g npm@11.8.0
       - name: Install dependencies
         run: npm ci --no-audit --no-fund --progress=false
         env:

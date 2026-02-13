@@ -27,7 +27,7 @@ import {
 const logger = log.scope("vercel_handlers");
 
 // Use test server URLs when in test mode
-const TEST_SERVER_BASE = "http://localhost:3500";
+const TEST_SERVER_BASE = `http://localhost:${process.env.FAKE_LLM_PORT || "3500"}`;
 
 const VERCEL_API_BASE = IS_TEST_BUILD
   ? `${TEST_SERVER_BASE}/vercel/api`

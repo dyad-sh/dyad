@@ -13,9 +13,11 @@ permissions:
 jobs:
   draft-stale-prs:
     runs-on: ubuntu-latest
+    environment: ai-bots
     steps:
       - uses: actions/github-script@v7
         with:
+          github-token: ${{ secrets.PR_RW_GITHUB_TOKEN }}
           script: |
             const sevenDaysAgo = new Date();
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);

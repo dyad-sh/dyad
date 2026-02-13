@@ -37,6 +37,7 @@ import { ProModesDialog } from "./dialogs/ProModesDialog";
 
 export class PageObject {
   public userDataDir: string;
+  public fakeLlmPort: number;
 
   // Component page objects (exposed for direct access)
   public githubConnector: GitHubConnector;
@@ -55,12 +56,13 @@ export class PageObject {
   constructor(
     public electronApp: ElectronApplication,
     public page: Page,
-    { userDataDir }: { userDataDir: string },
+    { userDataDir, fakeLlmPort }: { userDataDir: string; fakeLlmPort: number },
   ) {
     this.userDataDir = userDataDir;
+    this.fakeLlmPort = fakeLlmPort;
 
     // Initialize component page objects
-    this.githubConnector = new GitHubConnector(this.page);
+    this.githubConnector = new GitHubConnector(this.page, fakeLlmPort);
     this.chatActions = new ChatActions(this.page);
     this.previewPanel = new PreviewPanel(this.page);
     this.codeEditor = new CodeEditor(this.page);
@@ -69,7 +71,7 @@ export class PageObject {
     this.agentConsent = new AgentConsent(this.page);
     this.navigation = new Navigation(this.page);
     this.modelPicker = new ModelPicker(this.page);
-    this.settings = new Settings(this.page, userDataDir);
+    this.settings = new Settings(this.page, userDataDir, fakeLlmPort);
     this.appManagement = new AppManagement(this.page, electronApp, userDataDir);
     this.promptLibrary = new PromptLibrary(this.page);
   }
@@ -401,29 +403,30 @@ export class PageObject {
         /\.dyad\/chats\/\d+\/compaction-[^\s"\\]+\.md/g,
         "[[compaction-backup-path]]",
       );
+
     // Perform snapshot comparison
     const parsedDump = JSON.parse(dumpContent);
+    if (parsedDump["body"]["input"]) {
+      parsedDump["body"]["input"] = parsedDump["body"]["input"].map(
+        (input: any) => {
+          if (input.role === "system") {
+            input.content = "[[SYSTEM_MESSAGE]]";
+          }
+          return input;
+        },
+      );
+    }
+    if (parsedDump["body"]["messages"]) {
+      parsedDump["body"]["messages"] = parsedDump["body"]["messages"].map(
+        (message: any) => {
+          if (message.role === "system") {
+            message.content = "[[SYSTEM_MESSAGE]]";
+          }
+          return message;
+        },
+      );
+    }
     if (type === "request") {
-      if (parsedDump["body"]["input"]) {
-        parsedDump["body"]["input"] = parsedDump["body"]["input"].map(
-          (input: any) => {
-            if (input.role === "system") {
-              input.content = "[[SYSTEM_MESSAGE]]";
-            }
-            return input;
-          },
-        );
-      }
-      if (parsedDump["body"]["messages"]) {
-        parsedDump["body"]["messages"] = parsedDump["body"]["messages"].map(
-          (message: any) => {
-            if (message.role === "system") {
-              message.content = "[[SYSTEM_MESSAGE]]";
-            }
-            return message;
-          },
-        );
-      }
       // Normalize fileIds to be deterministic based on content
       normalizeVersionedFiles(parsedDump);
       // Normalize item_reference IDs (e.g., msg_1234567890) to be deterministic

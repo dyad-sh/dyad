@@ -57,7 +57,7 @@ const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || "Ov23liWV2HdC0RBLecWx";
 
 // Use test server URLs when in test mode
 
-const TEST_SERVER_BASE = "http://localhost:3500";
+const TEST_SERVER_BASE = `http://localhost:${process.env.FAKE_LLM_PORT || "3500"}`;
 
 const GITHUB_DEVICE_CODE_URL = IS_TEST_BUILD
   ? `${TEST_SERVER_BASE}/github/login/device/code`

@@ -20,7 +20,7 @@
   - text: ""
 - paragraph: tc=local-agent/read-logs
 - paragraph: Let me check the recent console logs to see what's happening in the application.
-- button "LOGS Reading 1 logs":
+- button /LOGS Reading \d+ logs/:
   - img
   - text: ""
   - img

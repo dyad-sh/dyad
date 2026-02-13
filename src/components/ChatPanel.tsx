@@ -79,11 +79,38 @@ export function ChatPanel({
 
   // Scroll to bottom when a new stream starts (user sent a message)
   const streamCount = chatId ? (streamCountById.get(chatId) ?? 0) : 0;
+  const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
+
+  // Track previous chatId to detect chat switches
+  const prevChatIdRef = useRef<number | undefined>(undefined);
+
   useEffect(() => {
+    const isChatSwitch = prevChatIdRef.current !== chatId;
+    prevChatIdRef.current = chatId;
+
     isAtBottomRef.current = true;
     setShowScrollButton(false);
-    scrollToBottom();
-  }, [chatId, streamCount, scrollToBottom]);
+
+    if (isChatSwitch && messages.length > 0) {
+      // When switching chats with existing messages, wait for Virtuoso to render
+      // then scroll to ensure we're at the bottom
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          scrollToBottom("instant");
+        });
+      });
+    } else if (!isChatSwitch) {
+      // For stream count changes (new message sent), wait for Virtuoso to render
+      // the placeholder message before scrolling
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          scrollToBottom();
+        });
+      });
+    }
+    // Note: if isChatSwitch && messages.length === 0, we don't scroll yet.
+    // The messages will be fetched and this effect will re-run with messages.length > 0.
+  }, [chatId, streamCount, messages.length, scrollToBottom]);
 
   const fetchChatMessages = useCallback(async () => {
     if (!chatId) {
@@ -102,7 +129,6 @@ export function ChatPanel({
     fetchChatMessages();
   }, [fetchChatMessages]);
 
-  const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
   const isStreaming = chatId ? (isStreamingById.get(chatId) ?? false) : false;
 
   // Scroll to bottom when streaming completes to ensure footer content is visible,

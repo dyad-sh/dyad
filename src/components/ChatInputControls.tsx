@@ -16,14 +16,15 @@ export function ChatInputControls({
   const enabledMcpServersCount = servers.filter((s) => s.enabled).length;
 
   // Show MCP tools picker when:
-  // 1. Mode is "agent" (backwards compatibility) OR
+  // 1. The enableMcpServersForBuildMode experiment is on AND
   // 2. Mode is "build" AND there are enabled MCP servers
   const showMcpToolsPicker =
-    settings?.selectedChatMode === "agent" ||
-    (settings?.selectedChatMode === "build" && enabledMcpServersCount > 0);
+    !!settings?.enableMcpServersForBuildMode &&
+    settings?.selectedChatMode === "build" &&
+    enabledMcpServersCount > 0;
 
   return (
-    <div className="flex">
+    <div className="flex items-center">
       <ChatModeSelector />
       {showMcpToolsPicker && (
         <>
@@ -33,15 +34,8 @@ export function ChatInputControls({
       )}
       <div className="w-1.5"></div>
       <ModelPicker />
-      <div className="w-1.5"></div>
       <ProModeSelector />
-      <div className="w-1"></div>
-      {showContextFilesPicker && (
-        <>
-          <ContextFilesPicker />
-          <div className="w-0.5"></div>
-        </>
-      )}
+      {showContextFilesPicker && <ContextFilesPicker />}
     </div>
   );
 }

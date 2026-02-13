@@ -6,7 +6,10 @@
 import { Page, expect } from "@playwright/test";
 
 export class GitHubConnector {
-  constructor(public page: Page) {}
+  constructor(
+    public page: Page,
+    public fakeLlmPort: number,
+  ) {}
 
   async connect() {
     await this.page.getByRole("button", { name: "Connect to GitHub" }).click();
@@ -94,15 +97,15 @@ export class GitHubConnector {
 
   async clearPushEvents() {
     const response = await this.page.request.post(
-      "http://localhost:3500/github/api/test/clear-push-events",
+      `http://localhost:${this.fakeLlmPort}/github/api/test/clear-push-events`,
     );
     return await response.json();
   }
 
   async getPushEvents(repo?: string) {
     const url = repo
-      ? `http://localhost:3500/github/api/test/push-events?repo=${repo}`
-      : "http://localhost:3500/github/api/test/push-events";
+      ? `http://localhost:${this.fakeLlmPort}/github/api/test/push-events?repo=${repo}`
+      : `http://localhost:${this.fakeLlmPort}/github/api/test/push-events`;
     const response = await this.page.request.get(url);
     return await response.json();
   }

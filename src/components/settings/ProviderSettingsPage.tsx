@@ -3,6 +3,8 @@ import { useRouter } from "@tanstack/react-router";
 import { ArrowLeft, AlertTriangle } from "lucide-react";
 import { useSettings } from "@/hooks/useSettings";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -62,6 +64,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   // Use fetched data (or defaults for Dyad)
   const providerDisplayName = isDyad
@@ -148,7 +151,11 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
       }
       await updateSettings(settingsUpdate);
       setApiKeyInput(""); // Clear input on success
-      // Optionally show a success message
+
+      // Refetch user budget when Dyad Pro key is saved
+      if (isDyad) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.userBudget.info });
+      }
     } catch (error: any) {
       console.error("Error saving API key:", error);
       setSaveError(error.message || "Failed to save API key.");

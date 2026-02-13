@@ -2,9 +2,7 @@
 // Used by the CI workflow's merge-reports job
 
 const fs = require("fs");
-
-// Expected number of shards per OS
-const EXPECTED_SHARDS_PER_OS = 4;
+const path = require("path");
 
 // Strip ANSI escape codes from terminal output
 function stripAnsi(str) {
@@ -27,29 +25,123 @@ function ensureOsBucket(resultsByOs, os) {
   }
 }
 
-// Check if any shards are missing based on blob report file counts.
-// Blob files are named report-${platform}-${timestamp}.zip (e.g., report-darwin-2024-01-01T12-00-00-000Z.zip)
-// We can't identify WHICH shards are missing, only that some are missing by counting files per OS.
-function detectMissingShards(blobFiles) {
-  let macosCount = 0;
-  let windowsCount = 0;
+function collectBlobFiles(dir) {
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const files = [];
 
-  for (const file of blobFiles) {
-    // Blob files are named: report-darwin-*.zip or report-win32-*.zip
-    if (file.includes("darwin")) {
-      macosCount++;
-    } else if (file.includes("win32")) {
-      windowsCount++;
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+
+    if (entry.isDirectory()) {
+      files.push(...collectBlobFiles(fullPath));
+    } else {
+      files.push(fullPath);
     }
   }
 
-  const macosMissing = Math.max(0, EXPECTED_SHARDS_PER_OS - macosCount);
-  const windowsMissing = Math.max(0, EXPECTED_SHARDS_PER_OS - windowsCount);
+  return files;
+}
+
+function detectOsFromPath(p) {
+  if (p.includes("darwin") || p.includes("macos")) {
+    return "macOS";
+  }
+  if (p.includes("win32") || p.includes("windows")) {
+    return "Windows";
+  }
+  return null;
+}
+
+function normalizeMetadataOs(rawOs) {
+  const os = (rawOs || "").toLowerCase();
+  if (os.includes("darwin") || os.includes("mac") || os.includes("macos")) {
+    return "macOS";
+  }
+  if (os.includes("win32") || os.includes("windows")) {
+    return "Windows";
+  }
+  return null;
+}
+
+function parseShardMetadata(filePath) {
+  const normalizedPath = filePath.toLowerCase();
+  // Example: _playwright-shard-metadata-macos-shard-1-of-4.json
+  const metadataMatch = normalizedPath.match(
+    /_playwright-shard-metadata-([a-z0-9_-]+)-shard-(\d+)-of-(\d+)\.json$/,
+  );
+  if (metadataMatch) {
+    return {
+      os: normalizeMetadataOs(metadataMatch[1]),
+      shard: Number(metadataMatch[2]),
+      total: Number(metadataMatch[3]),
+    };
+  }
+
+  const shardMatch = normalizedPath.match(/shard-(\d+)-of-(\d+)/);
+  if (!shardMatch) return null;
+
+  return {
+    os: detectOsFromPath(normalizedPath),
+    shard: Number(shardMatch[1]),
+    total: Number(shardMatch[2]),
+  };
+}
+
+// Check if any shards are missing based on blob report file metadata.
+// We can't identify WHICH shards are missing, only that some are missing by counting shard IDs per OS.
+function detectMissingShards(blobFiles) {
+  const shardStateByOs = {
+    macOS: { found: new Set(), expected: 0 },
+    Windows: { found: new Set(), expected: 0 },
+  };
+
+  for (const file of blobFiles) {
+    const normalizedPath = file.toLowerCase();
+    const os = detectOsFromPath(normalizedPath);
+    if (!os) continue;
+
+    const parsed = parseShardMetadata(file);
+    if (!parsed || !parsed.total || !parsed.os) {
+      const state = shardStateByOs[os];
+      // Fall back to file-counting behavior if metadata isn't available.
+      state.found.add(state.found.size + 1);
+      continue;
+    }
+
+    const state = shardStateByOs[parsed.os];
+    if (!Number.isNaN(parsed.shard) && parsed.shard > 0) {
+      state.found.add(parsed.shard);
+    }
+    if (!Number.isNaN(parsed.total) && parsed.total > state.expected) {
+      state.expected = parsed.total;
+    }
+  }
+
+  for (const state of Object.values(shardStateByOs)) {
+    if (state.expected === 0) {
+      state.expected = state.found.size;
+    }
+  }
+
+  const macosFound = shardStateByOs.macOS.found.size;
+  const windowsFound = shardStateByOs.Windows.found.size;
+  const macosExpected = shardStateByOs.macOS.expected;
+  const windowsExpected = shardStateByOs.Windows.expected;
+  const macosMissing = Math.max(0, macosExpected - macosFound);
+  const windowsMissing = Math.max(0, windowsExpected - windowsFound);
 
   return {
     counts: {
-      macos: { found: macosCount, missing: macosMissing },
-      windows: { found: windowsCount, missing: windowsMissing },
+      macos: {
+        found: macosFound,
+        expected: macosExpected,
+        missing: macosMissing,
+      },
+      windows: {
+        found: windowsFound,
+        expected: windowsExpected,
+        missing: windowsMissing,
+      },
     },
     hasMissing: macosMissing > 0 || windowsMissing > 0,
   };
@@ -68,34 +160,6 @@ function parseTestTitle(fullTitle) {
   }
 
   return { specFile, testName };
-}
-
-// Detect if a test failure is due to a snapshot mismatch
-function isSnapshotFailure(errorMessage) {
-  if (!errorMessage) return false;
-  const lower = errorMessage.toLowerCase();
-  return [
-    "screenshot comparison failed",
-    "snapshot comparison failed",
-    "expected to match snapshot",
-    "tomatchsnapshot",
-    "tohavescreenshot",
-    "screenshots are different",
-    "snapshots don't match",
-    "snapshot mismatch",
-    "snapshot",
-    "ratio of different pixels",
-  ].some((pattern) => lower.includes(pattern));
-}
-
-// Generate copy-paste command for running a specific test
-function generateTestCommand(fullTitle) {
-  const { specFile, testName } = parseTestTitle(fullTitle);
-  // Sanitize specFile to only allow safe path characters
-  const safeSpecFile = specFile.replace(/[^a-zA-Z0-9._\-/]/g, "");
-  // Escape special characters in testName for the grep pattern
-  const escapedTestName = testName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return `npm run e2e e2e-tests/${safeSpecFile} -- -g "${escapedTestName}"`;
 }
 
 function detectOperatingSystemsFromReport(report) {
@@ -164,9 +228,11 @@ async function run({ github, context, core }) {
 
   // Identify which OS each blob report came from
   const blobDir = "all-blob-reports";
-  const blobFiles = fs.existsSync(blobDir) ? fs.readdirSync(blobDir) : [];
-  const hasMacOS = blobFiles.some((f) => f.includes("darwin"));
-  const hasWindows = blobFiles.some((f) => f.includes("win32"));
+  const blobFiles = fs.existsSync(blobDir) ? collectBlobFiles(blobDir) : [];
+  const hasMacOS = blobFiles.some((f) => detectOsFromPath(f.toLowerCase()));
+  const hasWindows = blobFiles.some(
+    (f) => detectOsFromPath(f.toLowerCase()) === "Windows",
+  );
 
   // Check for missing shards
   const { counts: shardCounts, hasMissing } = detectMissingShards(blobFiles);
@@ -312,10 +378,10 @@ async function run({ github, context, core }) {
     comment +=
       "Some test shards did not report results. This may indicate CI failures or timeouts.\n\n";
     if (shardCounts.macos.missing > 0) {
-      comment += `- 🍎 **macOS**: found ${shardCounts.macos.found}/${EXPECTED_SHARDS_PER_OS} shards (${shardCounts.macos.missing} missing)\n`;
+      comment += `- 🍎 **macOS**: found ${shardCounts.macos.found}/${shardCounts.macos.expected} shards (${shardCounts.macos.missing} missing)\n`;
     }
     if (shardCounts.windows.missing > 0) {
-      comment += `- 🪟 **Windows**: found ${shardCounts.windows.found}/${EXPECTED_SHARDS_PER_OS} shards (${shardCounts.windows.missing} missing)\n`;
+      comment += `- 🪟 **Windows**: found ${shardCounts.windows.found}/${shardCounts.windows.expected} shards (${shardCounts.windows.missing} missing)\n`;
     }
     comment += "\n";
   }
@@ -386,37 +452,26 @@ async function run({ github, context, core }) {
       comment += "\n";
     }
 
-    // Add macOS copy-paste commands section
+    // Add macOS copy-paste command section
     const macOsFailures = resultsByOs["macOS"]?.failures || [];
     if (macOsFailures.length > 0) {
-      comment += "### 📋 Test Commands (macOS)\n\n";
-      comment += "Copy and paste to re-run failing tests locally:\n\n";
+      comment += "### 📋 Re-run Failing Tests (macOS)\n\n";
+      comment += "Copy and paste to re-run all failing spec files locally:\n\n";
 
-      if (macOsFailures.length > 5) {
-        comment += `<details>\n<summary>Show all ${macOsFailures.length} test commands</summary>\n\n`;
-      }
+      // Collect unique spec files from failures
+      const specFiles = [
+        ...new Set(
+          macOsFailures.map((f) => {
+            const { specFile } = parseTestTitle(f.title);
+            return `e2e-tests/${specFile.replace(/[^a-zA-Z0-9._\-/]/g, "")}`;
+          }),
+        ),
+      ];
 
       comment += "```bash\n";
-      comment += "export PLAYWRIGHT_HTML_OPEN=never\n";
-      for (const f of macOsFailures) {
-        const cmd = generateTestCommand(f.title);
-        const snapshot = isSnapshotFailure(f.error);
-        const errorPreview =
-          f.error.length > 120 ? f.error.substring(0, 120) + "..." : f.error;
-        comment += `\n# ${f.title.replace(/\n/g, " ").replace(/`/g, "'")}\n`;
-        comment += `# Expected: ${errorPreview.replace(/\n/g, " ").replace(/`/g, "'")}\n`;
-        if (snapshot) {
-          comment += `${cmd} --update-snapshots\n`;
-        } else {
-          comment += `${cmd}\n`;
-        }
-      }
-      comment += "```\n\n";
-
-      if (macOsFailures.length > 5) {
-        comment += "</details>\n";
-      }
-      comment += "\n";
+      comment += "npm run e2e \\\n";
+      comment += specFiles.map((s) => `  ${s}`).join(" \\\n");
+      comment += "\n```\n\n";
     }
 
     // List flaky tests

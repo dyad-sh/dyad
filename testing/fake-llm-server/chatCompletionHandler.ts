@@ -28,38 +28,56 @@ export const createChatCompletionHandler =
     }
 
     // Check for local-agent fixture requests (tc=local-agent/*)
-    // This needs to be checked on the first user message, not the last (which might be tool results)
-    const lastUserMessage = messages
-      .slice()
-      .reverse()
-      .find((m: any) => m.role === "user");
+    // We need to check ALL user messages, not just the last one, because
+    // outer loop follow-up requests inject a todo reminder as the last user message.
+    // The fixture trigger (tc=local-agent/...) will be in an earlier user message.
+    const userMessages = messages.filter((m: any) => m.role === "user");
 
-    // Extract text content from last user message (handles both string and array content)
-    let userTextContent = "";
-    if (lastUserMessage) {
-      if (typeof lastUserMessage.content === "string") {
-        userTextContent = lastUserMessage.content;
-      } else if (Array.isArray(lastUserMessage.content)) {
-        const textPart = lastUserMessage.content.find(
-          (p: any) => p.type === "text",
-        );
-        if (textPart) {
-          userTextContent = textPart.text;
+    // Helper to extract text content from a message (handles both string and array content)
+    const getTextContent = (msg: any): string => {
+      if (typeof msg.content === "string") {
+        return msg.content;
+      } else if (Array.isArray(msg.content)) {
+        const textPart = msg.content.find((p: any) => p.type === "text");
+        return textPart ? textPart.text : "";
+      }
+      return "";
+    };
+
+    // Get the last user message's text content for other checks
+    const lastUserMessage = userMessages[userMessages.length - 1];
+    const userTextContent = lastUserMessage
+      ? getTextContent(lastUserMessage)
+      : "";
+
+    // First, check if the LAST user message is a fixture trigger
+    let localAgentFixture = extractLocalAgentFixture(userTextContent);
+
+    // If last message isn't a fixture but contains a todo reminder, search earlier messages
+    // This handles the outer loop case where a reminder is injected after the original fixture trigger
+    // Note: This magic string must match the reminder text in prepare_step_utils.ts
+    // buildTodoReminderMessage(). Update both if the text changes.
+    if (!localAgentFixture && userTextContent.includes("incomplete todo(s)")) {
+      for (const msg of userMessages) {
+        const textContent = getTextContent(msg);
+        const fixture = extractLocalAgentFixture(textContent);
+        if (fixture) {
+          localAgentFixture = fixture;
+          break; // Use the first (original) fixture trigger found
         }
       }
+    }
 
-      const localAgentFixture = extractLocalAgentFixture(userTextContent);
-      console.error(
-        `[local-agent] Checking message: "${userTextContent.slice(0, 50)}", fixture: ${localAgentFixture}`,
-      );
-      if (localAgentFixture) {
-        return handleLocalAgentFixture(req, res, localAgentFixture);
-      }
+    console.error(
+      `[local-agent] Checking message: "${userTextContent.slice(0, 50)}", fixture: ${localAgentFixture}`,
+    );
+    if (localAgentFixture) {
+      return handleLocalAgentFixture(req, res, localAgentFixture);
+    }
 
-      // Route plan acceptance message to exit-plan fixture
-      if (userTextContent.includes("I accept this plan")) {
-        return handleLocalAgentFixture(req, res, "exit-plan");
-      }
+    // Route plan acceptance message to exit-plan fixture
+    if (userTextContent.includes("I accept this plan")) {
+      return handleLocalAgentFixture(req, res, "exit-plan");
     }
 
     let messageContent = CANNED_MESSAGE;

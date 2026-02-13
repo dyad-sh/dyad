@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import type { FileAttachment } from "@/ipc/types";
 import { useAtom } from "jotai";
 import { attachmentsAtom } from "@/atoms/chatAtoms";
@@ -7,6 +7,7 @@ export function useAttachments() {
   const [attachments, setAttachments] = useAtom(attachmentsAtom);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
 
   const handleAttachmentClick = () => {
     fileInputRef.current?.click();
@@ -46,7 +47,9 @@ export function useAttachments() {
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    setIsDraggingOver(true);
+    if (!pendingFiles) {
+      setIsDraggingOver(true);
+    }
   };
 
   const handleDragLeave = () => {
@@ -57,18 +60,12 @@ export function useAttachments() {
     e.preventDefault();
     setIsDraggingOver(false);
 
+    if (pendingFiles) return;
+
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const files = Array.from(e.dataTransfer.files);
-      const fileAttachments: FileAttachment[] = files.map((file) => ({
-        file,
-        type: "chat-context" as const,
-      }));
-      setAttachments((attachments) => [...attachments, ...fileAttachments]);
+      setPendingFiles(files);
     }
-  };
-
-  const clearAttachments = () => {
-    setAttachments([]);
   };
 
   const addAttachments = (
@@ -82,7 +79,28 @@ export function useAttachments() {
     setAttachments((attachments) => [...attachments, ...fileAttachments]);
   };
 
+  const confirmPendingFiles = useCallback(
+    (type: "chat-context" | "upload-to-codebase") => {
+      if (pendingFiles) {
+        addAttachments(pendingFiles, type);
+        setPendingFiles(null);
+      }
+    },
+    [pendingFiles, addAttachments],
+  );
+
+  const cancelPendingFiles = useCallback(() => {
+    setPendingFiles(null);
+  }, []);
+
+  const clearAttachments = () => {
+    setAttachments([]);
+    setPendingFiles(null);
+  };
+
   const handlePaste = async (e: React.ClipboardEvent) => {
+    if (pendingFiles) return;
+
     const clipboardData = e.clipboardData;
     if (!clipboardData) return;
 
@@ -115,9 +133,7 @@ export function useAttachments() {
       }
 
       if (imageFiles.length > 0) {
-        addAttachments(imageFiles, "chat-context");
-        // Show a brief toast or indication that image was pasted
-        console.log(`Pasted ${imageFiles.length} image(s) from clipboard`);
+        setPendingFiles(imageFiles);
       }
     }
   };
@@ -126,6 +142,7 @@ export function useAttachments() {
     attachments,
     fileInputRef,
     isDraggingOver,
+    pendingFiles,
     handleAttachmentClick,
     handleFileChange,
     handleFileSelect,
@@ -136,5 +153,7 @@ export function useAttachments() {
     clearAttachments,
     handlePaste,
     addAttachments,
+    confirmPendingFiles,
+    cancelPendingFiles,
   };
 }

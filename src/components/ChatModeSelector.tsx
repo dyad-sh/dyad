@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import { LocalAgentNewChatToast } from "./LocalAgentNewChatToast";
 import { useAtomValue } from "jotai";
 import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
+import { Hammer, Bot, MessageCircle, Lightbulb } from "lucide-react";
 
 function NewBadge() {
   return (
@@ -39,9 +40,8 @@ export function ChatModeSelector() {
   const chatId = routerState.location.search.id as number | undefined;
   const currentChatMessages = chatId ? (messagesById.get(chatId) ?? []) : [];
 
-  // Treat "agent" mode as "build" for UI purposes (backwards compatibility)
-  const rawSelectedMode = settings?.selectedChatMode || "build";
-  const selectedMode = rawSelectedMode === "agent" ? "build" : rawSelectedMode;
+  // Migration happens on read, so selectedChatMode will never be "agent"
+  const selectedMode = settings?.selectedChatMode || "build";
   const isProEnabled = settings ? isDyadProEnabled(settings) : false;
   const { messagesRemaining, isQuotaExceeded } = useFreeAgentQuota();
   const { servers } = useMcp();
@@ -82,7 +82,6 @@ export function ChatModeSelector() {
   const getModeDisplayName = (mode: ChatMode) => {
     switch (mode) {
       case "build":
-      case "agent": // backwards compatibility - treat as build
         return "Build";
       case "ask":
         return "Ask";
@@ -93,6 +92,21 @@ export function ChatModeSelector() {
         return "Plan";
       default:
         return "Build";
+    }
+  };
+
+  const getModeIcon = (mode: ChatMode) => {
+    switch (mode) {
+      case "build":
+        return <Hammer size={14} />;
+      case "ask":
+        return <MessageCircle size={14} />;
+      case "local-agent":
+        return <Bot size={14} />;
+      case "plan":
+        return <Lightbulb size={14} />;
+      default:
+        return <Hammer size={14} />;
     }
   };
   const isMac = detectIsMac();
@@ -109,18 +123,25 @@ export function ChatModeSelector() {
               <MiniSelectTrigger
                 data-testid="chat-mode-selector"
                 className={cn(
-                  "h-6 w-fit px-1.5 py-0 text-xs-sm font-medium shadow-none gap-0.5",
-                  selectedMode === "build" ||
-                    selectedMode === "local-agent" ||
-                    selectedMode === "plan"
-                    ? "bg-background hover:bg-muted/50 focus:bg-muted/50"
-                    : "bg-primary/10 hover:bg-primary/20 focus:bg-primary/20 text-primary border-primary/20 dark:bg-primary/20 dark:hover:bg-primary/30 dark:focus:bg-primary/30",
+                  "cursor-pointer w-fit px-2 py-0 text-xs font-medium border-none shadow-none gap-1 rounded-lg transition-colors",
+                  selectedMode === "build" || selectedMode === "local-agent"
+                    ? "text-foreground/80 hover:text-foreground hover:bg-muted/60"
+                    : selectedMode === "ask"
+                      ? "bg-purple-500/10 text-purple-600 hover:bg-purple-500/15 dark:bg-purple-500/15 dark:text-purple-400 dark:hover:bg-purple-500/20"
+                      : selectedMode === "plan"
+                        ? "bg-blue-500/10 text-blue-600 hover:bg-blue-500/15 dark:bg-blue-500/15 dark:text-blue-400 dark:hover:bg-blue-500/20"
+                        : "text-foreground/80 hover:text-foreground hover:bg-muted/60",
                 )}
                 size="sm"
               />
             }
           >
-            <SelectValue>{getModeDisplayName(selectedMode)}</SelectValue>
+            <SelectValue>
+              <span className="flex items-center gap-1.5">
+                {getModeIcon(selectedMode)}
+                {getModeDisplayName(selectedMode)}
+              </span>
+            </SelectValue>
           </TooltipTrigger>
           <TooltipContent>
             {`Open mode menu (${isMac ? "\u2318 + ." : "Ctrl + ."} to toggle)`}
@@ -128,42 +149,43 @@ export function ChatModeSelector() {
         </Tooltip>
         <SelectContent align="start">
           {isProEnabled && (
-            <>
-              <SelectItem value="local-agent">
-                <div className="flex flex-col items-start">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-medium">Agent v2</span>
-                    <NewBadge />
-                  </div>
-                  <span className="text-xs text-muted-foreground">
-                    Better at bigger tasks and debugging
-                  </span>
+            <SelectItem value="local-agent">
+              <div className="flex flex-col items-start">
+                <div className="flex items-center gap-1.5">
+                  <Bot size={14} className="text-muted-foreground" />
+                  <span className="font-medium">Agent v2</span>
+                  <NewBadge />
                 </div>
-              </SelectItem>
-              <SelectItem value="plan">
-                <div className="flex flex-col items-start">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-medium">Plan</span>
-                    <NewBadge />
-                  </div>
-                  <span className="text-xs text-muted-foreground">
-                    Design before you build
-                  </span>
-                </div>
-              </SelectItem>
-            </>
+                <span className="text-xs text-muted-foreground ml-[22px]">
+                  Better at bigger tasks and debugging
+                </span>
+              </div>
+            </SelectItem>
           )}
+          <SelectItem value="plan">
+            <div className="flex flex-col items-start">
+              <div className="flex items-center gap-1.5">
+                <Lightbulb size={14} className="text-blue-500" />
+                <span className="font-medium">Plan</span>
+                <NewBadge />
+              </div>
+              <span className="text-xs text-muted-foreground ml-[22px]">
+                Design before you build
+              </span>
+            </div>
+          </SelectItem>
           {!isProEnabled && (
             <SelectItem value="local-agent" disabled={isQuotaExceeded}>
               <div className="flex flex-col items-start">
                 <div className="flex items-center gap-1.5">
+                  <Bot size={14} className="text-muted-foreground" />
                   <span className="font-medium">Basic Agent</span>
                   <span className="text-xs text-muted-foreground">
                     ({isQuotaExceeded ? "0" : messagesRemaining}/5 remaining for
                     today)
                   </span>
                 </div>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground ml-[22px]">
                   {isQuotaExceeded
                     ? "Daily limit reached"
                     : "Try our AI agent for free"}
@@ -173,16 +195,22 @@ export function ChatModeSelector() {
           )}
           <SelectItem value="build">
             <div className="flex flex-col items-start">
-              <span className="font-medium">Build</span>
-              <span className="text-xs text-muted-foreground">
+              <div className="flex items-center gap-1.5">
+                <Hammer size={14} className="text-muted-foreground" />
+                <span className="font-medium">Build</span>
+              </div>
+              <span className="text-xs text-muted-foreground ml-[22px]">
                 Generate and edit code
               </span>
             </div>
           </SelectItem>
           <SelectItem value="ask">
             <div className="flex flex-col items-start">
-              <span className="font-medium">Ask</span>
-              <span className="text-xs text-muted-foreground">
+              <div className="flex items-center gap-1.5">
+                <MessageCircle size={14} className="text-purple-500" />
+                <span className="font-medium">Ask</span>
+              </div>
+              <span className="text-xs text-muted-foreground ml-[22px]">
                 Ask questions about the app
               </span>
             </div>

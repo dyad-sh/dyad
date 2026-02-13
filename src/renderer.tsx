@@ -4,7 +4,11 @@ import { router } from "./router";
 import { RouterProvider } from "@tanstack/react-router";
 import { PostHogProvider } from "posthog-js/react";
 import posthog from "posthog-js";
-import { getTelemetryUserId, isTelemetryOptedIn } from "./hooks/useSettings";
+import {
+  getTelemetryUserId,
+  isTelemetryOptedIn,
+  isDyadProUser,
+} from "./hooks/useSettings";
 
 // Initialize i18next before any rendering
 import "./i18n";
@@ -13,6 +17,7 @@ import {
   QueryClient,
   QueryClientProvider,
   MutationCache,
+  useQueryClient,
 } from "@tanstack/react-query";
 import { showError, showMcpConsentToast } from "./lib/toast";
 import { ipc } from "./ipc/types";
@@ -86,6 +91,20 @@ const posthogClient = posthog.init(
         event.properties["$ip"] = null;
       }
 
+      // For non-Pro users, only send 10% of events (but always send errors)
+      if (!isDyadProUser()) {
+        const isErrorEvent =
+          event?.event === "$exception" ||
+          event?.event?.toLowerCase().includes("error") ||
+          event?.properties?.$exception_type ||
+          event?.properties?.error;
+
+        if (!isErrorEvent && Math.random() > 0.1) {
+          console.debug("Non-Pro user: sampling out event", event?.event);
+          return null;
+        }
+      }
+
       console.debug(
         "Telemetry opted in - UUID:",
         telemetryUserId,
@@ -99,6 +118,16 @@ const posthogClient = posthog.init(
 );
 
 function App() {
+  const queryClient = useQueryClient();
+
+  // Fetch user budget on app load
+  useEffect(() => {
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.userBudget.info,
+      queryFn: () => ipc.system.getUserBudget(),
+    });
+  }, [queryClient]);
+
   useEffect(() => {
     // Subscribe to navigation state changes
     const unsubscribe = router.subscribe("onResolved", (navigation) => {

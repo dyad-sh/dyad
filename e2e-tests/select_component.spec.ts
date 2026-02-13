@@ -1,5 +1,5 @@
 import { expect } from "@playwright/test";
-import { testSkipIfWindows } from "./helpers/test_helper";
+import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 
 testSkipIfWindows("select component", async ({ po }) => {
   await po.setUp();
@@ -153,13 +153,30 @@ testSkipIfWindows("select component next.js", async ({ po }) => {
   await po.chatActions.selectChatMode("build");
   await po.sendPrompt("tc=basic");
   await po.previewPanel.clickTogglePreviewPanel();
-  await po.previewPanel.clickPreviewPickElement();
 
-  await po.previewPanel
+  // Wait for the preview iframe to be visible before interacting
+  // Next.js apps take longer to compile and start the dev server
+  await po.previewPanel.expectPreviewIframeIsVisible();
+
+  // Wait for the heading to be visible in the iframe before interacting
+  // This ensures the Next.js page has fully loaded
+  const heading = po.previewPanel
     .getPreviewIframeElement()
     .contentFrame()
-    .getByRole("heading", { name: "Blank page" })
-    .click();
+    .getByRole("heading", { name: "Blank page" });
+  await expect(heading).toBeVisible({ timeout: Timeout.EXTRA_LONG });
+
+  // Click pick element button to enter component selection mode
+  await po.previewPanel.clickPreviewPickElement();
+
+  // Click the heading to select it as a component
+  await heading.click();
+
+  // Wait for the selected component display to appear after clicking the component
+  // Use toPass() for retry logic since component selection may take time to register
+  await expect(async () => {
+    await expect(po.previewPanel.getSelectedComponentsDisplay()).toBeVisible();
+  }).toPass({ timeout: Timeout.MEDIUM });
 
   await po.previewPanel.snapshotPreview();
   await po.previewPanel.snapshotSelectedComponentsDisplay();

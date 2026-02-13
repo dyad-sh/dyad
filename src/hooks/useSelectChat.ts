@@ -1,17 +1,32 @@
 import { useSetAtom } from "jotai";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import {
+  selectedChatIdAtom,
+  pushRecentViewedChatIdAtom,
+} from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useNavigate } from "@tanstack/react-router";
 
 export function useSelectChat() {
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
+  const pushRecentViewedChatId = useSetAtom(pushRecentViewedChatIdAtom);
   const navigate = useNavigate();
 
   return {
-    selectChat: ({ chatId, appId }: { chatId: number; appId: number }) => {
+    selectChat: ({
+      chatId,
+      appId,
+      preserveTabOrder = false,
+    }: {
+      chatId: number;
+      appId: number;
+      preserveTabOrder?: boolean;
+    }) => {
       setSelectedChatId(chatId);
       setSelectedAppId(appId);
+      if (!preserveTabOrder) {
+        pushRecentViewedChatId(chatId);
+      }
       navigate({
         to: "/chat",
         search: { id: chatId },

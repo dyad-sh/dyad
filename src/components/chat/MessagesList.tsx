@@ -347,7 +347,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
       if (setupBanner) {
         return (
           <div
-            className="absolute inset-0 overflow-y-auto p-4"
+            className="absolute inset-0 overflow-y-auto p-4 pb-0 pr-0"
             ref={ref}
             data-testid="messages-list"
           >
@@ -357,7 +357,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
       }
       return (
         <div
-          className="absolute inset-0 overflow-y-auto p-4"
+          className="absolute inset-0 overflow-y-auto p-4 pb-0 pr-0"
           ref={ref}
           data-testid="messages-list"
         >
@@ -375,7 +375,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     if (isTestMode) {
       return (
         <div
-          className="absolute inset-0 p-4 overflow-y-auto"
+          className="absolute inset-0 p-4 pb-0 pr-0 overflow-y-auto"
           ref={ref}
           data-testid="messages-list"
         >
@@ -394,7 +394,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
 
     return (
       <div
-        className="absolute inset-0 overflow-y-auto p-4"
+        className="absolute inset-0 overflow-y-auto p-4 pb-0 mb-2 pr-0"
         ref={ref}
         data-testid="messages-list"
       >

@@ -24,6 +24,24 @@ To get additional debug logs when a test is failing, use:
 DEBUG=pw:browser PLAYWRIGHT_HTML_OPEN=never npm run e2e
 ```
 
+## PageObject sub-component pattern
+
+The `PageObject` (aliased as `po` in tests) delegates most methods to sub-component page objects. Don't call methods directly on `po` unless they are explicitly defined on `PageObject` itself:
+
+```ts
+// Wrong: methods don't exist on po directly
+await po.getTitleBarAppNameButton().click();
+await po.getCurrentAppPath();
+await po.goToChatTab();
+
+// Correct: use the appropriate sub-component
+await po.appManagement.getTitleBarAppNameButton().click();
+await po.appManagement.getCurrentAppPath();
+await po.navigation.goToChatTab();
+```
+
+Key sub-components: `po.appManagement`, `po.navigation`, `po.chatActions`, `po.previewPanel`, `po.codeEditor`, `po.githubConnector`, `po.toastNotifications`, `po.settings`, `po.securityReview`, `po.modelPicker`.
+
 ## Base UI Radio component selection in Playwright
 
 Base UI Radio components render a hidden native `<input type="radio">` with `aria-hidden="true"`. Both `getByRole('radio', { name: '...' })` and `getByLabel('...')` find this hidden input but can't click it (element is outside viewport). Use `getByText` to click the visible label text instead.
@@ -90,6 +108,45 @@ If the output under test contains non-deterministic or platform-specific content
 ## Accordion-wrapped settings in E2E tests
 
 The Pro mode build settings (Web Access, Turbo Edits, Smart Context) are inside a collapsed `<Accordion>` in `ProModeSelector`. E2E test helpers must expand the accordion before interacting with elements inside it. The `ProModesDialog` class in `e2e-tests/helpers/page-objects/dialogs/ProModesDialog.ts` has an `expandBuildModeSettings()` method that handles this — call it before clicking any build mode setting buttons.
+
+## Parallel test port isolation
+
+Each parallel Playwright worker gets its own fake LLM server on port `FAKE_LLM_BASE_PORT + parallelIndex`. The base port constant lives in `e2e-tests/helpers/test-ports.ts` (not in `playwright.config.ts`) to avoid importing the Playwright config from test code.
+
+When adding new test server URLs, update **both** the test fixtures (`e2e-tests/helpers/fixtures.ts`) and the Electron app source that consumes them. The app reads `process.env.FAKE_LLM_PORT` to build its `TEST_SERVER_BASE` URL — if you hardcode a port in app source, parallel workers will all hit the same server.
+
+## Common flaky test patterns and fixes
+
+- **After `page.reload()`**: Always add `await page.waitForLoadState("domcontentloaded")` before interacting with elements. Without this, the page may not have re-rendered yet.
+- **Keyboard navigation events (ArrowUp/ArrowDown)**: Add `await page.waitForTimeout(100)` between sequential keyboard presses to let the UI state settle. Rapid keypresses can cause race conditions in menu navigation.
+- **Navigation to tabs**: Use `await expect(link).toBeVisible({ timeout: Timeout.EXTRA_LONG })` before clicking tab links (especially in `goToAppsTab()`). Electron sidebar links can take time to render during app initialization.
+- **Confirming flakiness**: Use `PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec> --repeat-each=10` to reproduce flaky tests. `PLAYWRIGHT_RETRIES=0` is critical — CI defaults to 2 retries, hiding flakiness.
+
+## Waiting for button state transitions
+
+When clicking a button that triggers an async operation and changes its text/state (e.g., "Run Security Review" → "Running Security Review..."), wait for the loading state to appear and disappear rather than just waiting for the original button to be hidden:
+
+```ts
+// Wrong: waiting for original button to be hidden may race
+const button = page.getByRole("button", { name: "Run Security Review" });
+await button.click();
+await button.waitFor({ state: "hidden" }); // Unreliable
+
+// Correct: wait for loading state to appear then disappear
+const button = page.getByRole("button", { name: "Run Security Review" });
+await button.click();
+const loadingButton = page.getByRole("button", {
+  name: "Running Security Review...",
+});
+await loadingButton.waitFor({ state: "visible" });
+await loadingButton.waitFor({ state: "hidden" });
+```
+
+This pattern provides a more reliable signal that the async operation has completed, because:
+
+1. It confirms the operation actually started (loading state appeared)
+2. It confirms the operation finished (loading state disappeared)
+3. It avoids race conditions where the button might briefly be in the DOM but not yet updated
 
 ## E2E test fixtures with .dyad directories
 

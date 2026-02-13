@@ -25,11 +25,11 @@ export function McpToolsPicker() {
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger
-        className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-8 px-2"
+        className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border-none bg-transparent shadow-none text-muted-foreground hover:text-foreground hover:bg-muted/60 h-7 px-1.5 cursor-pointer"
         data-testid="mcp-tools-button"
         title="Tools"
       >
-        <Wrench className="size-4" />
+        <Wrench className="size-3.5" />
       </PopoverTrigger>
       <PopoverContent
         className="w-120 max-h-[80vh] overflow-y-auto"

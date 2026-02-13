@@ -11,6 +11,7 @@ export class Settings {
   constructor(
     public page: Page,
     private userDataDir: string,
+    private fakeLlmPort: number,
   ) {}
 
   async toggleAutoApprove() {
@@ -27,6 +28,12 @@ export class Settings {
 
   async toggleAutoFixProblems() {
     await this.page.getByRole("switch", { name: "Auto-fix problems" }).click();
+  }
+
+  async toggleEnableMcpServersForBuildMode() {
+    await this.page
+      .getByRole("switch", { name: "Enable MCP servers for Build mode" })
+      .click();
   }
 
   async toggleAutoUpdate() {
@@ -130,7 +137,7 @@ export class Settings {
     await this.page.getByText("API Base URLThe base URL for").click();
     await this.page
       .getByRole("textbox", { name: "API Base URL" })
-      .fill("http://localhost:3500/v1");
+      .fill(`http://localhost:${this.fakeLlmPort}/v1`);
     await this.page.getByRole("button", { name: "Add Provider" }).click();
   }
 

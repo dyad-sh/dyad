@@ -6,6 +6,8 @@ import { expect } from "@playwright/test";
 testSkipIfWindows("mcp - call calculator", async ({ po }) => {
   await po.setUp();
   await po.navigation.goToSettingsTab();
+  await po.page.getByRole("button", { name: "Experiments" }).click();
+  await po.settings.toggleEnableMcpServersForBuildMode();
   await po.page.getByRole("button", { name: "Tools (MCP)" }).click();
 
   await po.page
@@ -90,6 +92,8 @@ testSkipIfWindows("mcp - call calculator via http", async ({ po }) => {
   try {
     await po.setUp();
     await po.navigation.goToSettingsTab();
+    await po.page.getByRole("button", { name: "Experiments" }).click();
+    await po.settings.toggleEnableMcpServersForBuildMode();
     await po.page.getByRole("button", { name: "Tools (MCP)" }).click();
 
     // Fill in server name
@@ -105,8 +109,10 @@ testSkipIfWindows("mcp - call calculator via http", async ({ po }) => {
 
     await po.page.getByRole("button", { name: "Add Server" }).click();
 
-    // Wait for the server to be created and the "Add Header" button to become visible
-    const addHeaderButton = po.page.getByRole("button", { name: "Add Header" });
+    // Wait for the server to be created and the "Add Environment Variable" button (for headers) to become visible
+    const addHeaderButton = po.page.getByRole("button", {
+      name: "Add Environment Variable",
+    });
     await expect(addHeaderButton).toBeVisible({ timeout: 10000 });
     await addHeaderButton.click();
     await po.page.getByRole("textbox", { name: "Key" }).fill("Authorization");

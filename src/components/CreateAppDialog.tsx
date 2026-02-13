@@ -13,11 +13,8 @@ import {
 } from "@/components/ui/dialog";
 import { useCreateApp } from "@/hooks/useCreateApp";
 import { useCheckName } from "@/hooks/useCheckName";
-import { useSetAtom } from "jotai";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { NEON_TEMPLATE_IDS, Template } from "@/shared/templates";
-
-import { useRouter } from "@tanstack/react-router";
+import { useSelectChat } from "@/hooks/useSelectChat";
 
 import { Loader2 } from "lucide-react";
 import { neonTemplateHook } from "@/client_logic/template_hook";
@@ -35,12 +32,11 @@ export function CreateAppDialog({
   template,
 }: CreateAppDialogProps) {
   const { t } = useTranslation(["home", "common"]);
-  const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const [appName, setAppName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { createApp } = useCreateApp();
   const { data: nameCheckResult } = useCheckName(appName);
-  const router = useRouter();
+  const { selectChat } = useSelectChat();
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -61,12 +57,8 @@ export function CreateAppDialog({
           appName: result.app.name,
         });
       }
-      setSelectedAppId(result.app.id);
-      // Navigate to the new app's first chat
-      router.navigate({
-        to: "/chat",
-        search: { id: result.chatId },
-      });
+      // Selecting the new chat seeds recent tab order immediately.
+      selectChat({ chatId: result.chatId, appId: result.app.id });
       setAppName("");
       onOpenChange(false);
     } catch (error) {

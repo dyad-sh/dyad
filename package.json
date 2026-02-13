@@ -1,6 +1,6 @@
 {
   "name": "dyad",
-  "version": "0.36.0",
+  "version": "0.37.0",
   "description": "Free, local, open-source AI app builder",
   "keywords": [],
   "license": "MIT",
@@ -33,14 +33,15 @@
     "fmt:check": "npx oxfmt --check",
     "fmt": "npx oxfmt",
     "presubmit": "npm run fmt:check && npm run lint",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:ui": "vitest --ui",
+    "test": "cross-env NODE_OPTIONS=--no-deprecation VITE_CJS_IGNORE_WARNING=true vitest run",
+    "test:watch": "cross-env NODE_OPTIONS=--no-deprecation VITE_CJS_IGNORE_WARNING=true vitest",
+    "test:ui": "cross-env NODE_OPTIONS=--no-deprecation VITE_CJS_IGNORE_WARNING=true vitest --ui",
     "extract-codebase": "ts-node scripts/extract-codebase.ts",
     "init-precommit": "husky",
     "build": "npm run pre:e2e",
     "pre:e2e": "cross-env E2E_TEST_BUILD=true npm run package",
     "e2e": "playwright test",
+    "e2e:p3": "PLAYWRIGHT_RETRIES=1 PLAYWRIGHT_PARALLELISM=3 playwright test",
     "e2e:shard": "playwright test --shard",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
@@ -181,7 +182,7 @@
     }
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "productName": "dyad"
 }

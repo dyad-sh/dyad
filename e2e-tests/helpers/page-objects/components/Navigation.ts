@@ -17,7 +17,9 @@ export class Navigation {
   }
 
   async goToAppsTab() {
-    await this.page.getByRole("link", { name: "Apps" }).click();
+    const appsLink = this.page.getByRole("link", { name: "Apps" });
+    await expect(appsLink).toBeVisible({ timeout: 60000 });
+    await appsLink.click();
     await expect(this.page.getByText("Build a new app")).toBeVisible();
   }
 

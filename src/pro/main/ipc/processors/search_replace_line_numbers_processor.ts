@@ -184,8 +184,13 @@ function generateNoMatchError(
   });
 
   lines.push("");
+  // Clamp the displayed end line to actual file length
+  const displayEnd = Math.min(
+    bestMatch.startIndex + searchLines.length,
+    resultLines.length,
+  );
   lines.push(
-    `BEST PARTIAL MATCH (${bestMatch.matchingLines}/${searchLines.length} lines matched at file lines ${bestMatch.startIndex + 1}-${bestMatch.startIndex + searchLines.length}):`,
+    `BEST PARTIAL MATCH (${bestMatch.matchingLines}/${searchLines.length} lines matched at file lines ${bestMatch.startIndex + 1}-${displayEnd}):`,
   );
 
   for (let j = 0; j < searchLines.length; j++) {
@@ -393,16 +398,30 @@ export function applySearchReplaceWithLineNumbers(
   let resultLines = originalContent.split(/\r?\n/);
   let appliedCount = 0;
 
+  // Track whether we're processing diff-format blocks (2-arg path) vs direct invocation (3-arg path)
+  const isDiffFormat = newContent === undefined;
+
   for (const block of blocks) {
     let { searchContent, replaceContent } = block;
 
-    searchContent = unescapeMarkers(searchContent);
-    replaceContent = unescapeMarkers(replaceContent);
+    // Only unescape markers for diff-format blocks (they were escaped by escapeSearchReplaceMarkers).
+    // In the 3-arg direct invocation path, content was never escaped, so skip unescaping
+    // to avoid corrupting user content that happens to contain backslash-prefixed markers.
+    if (isDiffFormat) {
+      searchContent = unescapeMarkers(searchContent);
+      replaceContent = unescapeMarkers(replaceContent);
+    }
+
+    // Save original content before stripping line numbers for fallback
+    const originalSearchContent = searchContent;
+    const originalReplaceContent = replaceContent;
+    let usedLineNumberStripping = false;
 
     // Strip line numbers from search content if present
     const strippedSearch = stripLineNumberPrefixes(searchContent);
     if (strippedSearch.hasLineNumbers) {
       searchContent = strippedSearch.content;
+      usedLineNumberStripping = true;
       logger.debug("Stripped line number prefixes from search content");
     }
 
@@ -444,6 +463,33 @@ export function applySearchReplaceWithLineNumbers(
             "Matched after trimming leading/trailing empty lines from search content",
           );
         }
+      }
+    }
+
+    // If still no match and we stripped line numbers, try again with original (unstripped) content.
+    // This handles false positives where the file actually contains the N| pattern as real content.
+    if (
+      matchResult.error &&
+      !matchResult.ambiguousPositions &&
+      usedLineNumberStripping
+    ) {
+      const originalSearchLines =
+        originalSearchContent === ""
+          ? []
+          : originalSearchContent.split(/\r?\n/);
+      const originalMatchResult = cascadingMatch(
+        resultLines,
+        originalSearchLines,
+      );
+      if (!originalMatchResult.error) {
+        matchResult = originalMatchResult;
+        searchLines = originalSearchLines;
+        replaceContent = originalReplaceContent;
+        replaceLines =
+          replaceContent === "" ? [] : replaceContent.split(/\r?\n/);
+        logger.debug(
+          "Matched after falling back to original (un-stripped) search content",
+        );
       }
     }
 

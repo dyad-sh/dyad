@@ -40,7 +40,8 @@ export function addLineNumberPrefixes(
     return "";
   }
 
-  const lines = content.split("\n");
+  // Normalize CRLF to LF for consistent output (line numbers are for display to LLM, not for writing back)
+  const lines = content.split(/\r?\n/);
   const totalLines = lines.length;
   // Calculate width based on the largest line number
   const maxLineNumber = startLineNumber + totalLines - 1;
@@ -71,7 +72,8 @@ export function stripLineNumberPrefixes(content: string): {
     return { content: "", hasLineNumbers: false };
   }
 
-  const lines = content.split("\n");
+  // Normalize CRLF to LF for consistent processing
+  const lines = content.split(/\r?\n/);
   const extractedNumbers: number[] = [];
 
   // Check if all non-empty lines have line number prefixes
@@ -90,14 +92,20 @@ export function stripLineNumberPrefixes(content: string): {
     return { content, hasLineNumbers: false };
   }
 
+  // Require at least 2 line numbers to validate sequentiality.
+  // Single lines matching the pattern are too ambiguous to confidently strip
+  // (e.g., "42| some data" could be actual file content, not a line number prefix).
+  // Also handles the all-empty-lines edge case where extractedNumbers would be empty.
+  if (extractedNumbers.length < 2) {
+    return { content, hasLineNumbers: false };
+  }
+
   // Verify that extracted line numbers are sequential (monotonically increasing by 1)
   // This dramatically reduces false positives on content that coincidentally matches
   // the line number pattern (e.g., "1| Alice", "2| Bob" as data content)
-  if (extractedNumbers.length > 1) {
-    for (let i = 1; i < extractedNumbers.length; i++) {
-      if (extractedNumbers[i] !== extractedNumbers[i - 1] + 1) {
-        return { content, hasLineNumbers: false };
-      }
+  for (let i = 1; i < extractedNumbers.length; i++) {
+    if (extractedNumbers[i] !== extractedNumbers[i - 1] + 1) {
+      return { content, hasLineNumbers: false };
     }
   }
 

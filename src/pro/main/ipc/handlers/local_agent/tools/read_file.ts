@@ -96,10 +96,12 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
       return addLineNumberPrefixes(content);
     }
 
-    const hasTrailingNewline = content.endsWith("\n");
-    const lines = (hasTrailingNewline ? content.slice(0, -1) : content).split(
-      "\n",
-    );
+    // Normalize CRLF to LF before line operations to avoid embedded \r characters
+    const normalized = content.replace(/\r\n/g, "\n");
+    const hasTrailingNewline = normalized.endsWith("\n");
+    const lines = (
+      hasTrailingNewline ? normalized.slice(0, -1) : normalized
+    ).split("\n");
     const startIdx = Math.max(0, (start ?? 1) - 1);
     const endIdx = Math.min(lines.length, end ?? lines.length);
     const result = lines.slice(startIdx, endIdx).join("\n");

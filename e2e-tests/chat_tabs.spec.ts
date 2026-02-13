@@ -96,3 +96,115 @@ test("closing a tab removes it and selects adjacent tab", async ({ po }) => {
     expect(newCount).toBe(initialCount - 1);
   }).toPass({ timeout: Timeout.MEDIUM });
 });
+
+test("right-click context menu: Close other tabs", async ({ po }) => {
+  await po.setUp({ autoApprove: true });
+  await po.importApp("minimal");
+
+  // Chat 1
+  await po.sendPrompt("[dump] Chat one context menu");
+  await po.chatActions.waitForChatCompletion();
+
+  // Chat 2
+  await po.chatActions.clickNewChat();
+  await po.sendPrompt("[dump] Chat two context menu");
+  await po.chatActions.waitForChatCompletion();
+
+  // Chat 3
+  await po.chatActions.clickNewChat();
+  await po.sendPrompt("[dump] Chat three context menu");
+  await po.chatActions.waitForChatCompletion();
+
+  // Wait for 3 tabs to appear
+  const closeButtons = po.page.getByLabel(/^Close tab:/);
+  await expect(async () => {
+    const count = await closeButtons.count();
+    expect(count).toBe(3);
+  }).toPass({ timeout: Timeout.MEDIUM });
+
+  // Right-click on the second tab to open context menu
+  const tabs = po.page.locator("div[draggable]");
+  await tabs.nth(1).click({ button: "right" });
+
+  // Click "Close other tabs" from context menu
+  await po.page.getByText("Close other tabs").click();
+
+  // After closing other tabs, only 1 tab should remain
+  await expect(async () => {
+    const newCount = await closeButtons.count();
+    expect(newCount).toBe(1);
+  }).toPass({ timeout: Timeout.MEDIUM });
+});
+
+test("right-click context menu: Close tabs to the right", async ({ po }) => {
+  await po.setUp({ autoApprove: true });
+  await po.importApp("minimal");
+
+  // Chat 1
+  await po.sendPrompt("[dump] Left tab one");
+  await po.chatActions.waitForChatCompletion();
+
+  // Chat 2
+  await po.chatActions.clickNewChat();
+  await po.sendPrompt("[dump] Left tab two");
+  await po.chatActions.waitForChatCompletion();
+
+  // Chat 3
+  await po.chatActions.clickNewChat();
+  await po.sendPrompt("[dump] Right tab one");
+  await po.chatActions.waitForChatCompletion();
+
+  // Chat 4
+  await po.chatActions.clickNewChat();
+  await po.sendPrompt("[dump] Right tab two");
+  await po.chatActions.waitForChatCompletion();
+
+  // Wait for 4 tabs to appear
+  const closeButtons = po.page.getByLabel(/^Close tab:/);
+  await expect(async () => {
+    const count = await closeButtons.count();
+    expect(count).toBe(4);
+  }).toPass({ timeout: Timeout.MEDIUM });
+
+  // Right-click on the second tab (index 1) to open context menu
+  const tabs = po.page.locator("div[draggable]");
+  await tabs.nth(1).click({ button: "right" });
+
+  // Click "Close tabs to the right" from context menu
+  await po.page.getByText("Close tabs to the right").click();
+
+  // After closing tabs to the right, only 2 tabs should remain (first and second)
+  await expect(async () => {
+    const newCount = await closeButtons.count();
+    expect(newCount).toBe(2);
+  }).toPass({ timeout: Timeout.MEDIUM });
+});
+
+test("only shows tabs for chats opened in current session", async ({ po }) => {
+  await po.setUp({ autoApprove: true });
+  await po.importApp("minimal");
+
+  // Initially no tabs should be visible (no chats opened yet in this session)
+  const closeButtons = po.page.getByLabel(/^Close tab:/);
+
+  // Create first chat
+  await po.sendPrompt("[dump] Session chat one");
+  await po.chatActions.waitForChatCompletion();
+
+  // Now exactly 1 tab should be visible
+  await expect(async () => {
+    const count = await closeButtons.count();
+    expect(count).toBe(1);
+  }).toPass({ timeout: Timeout.MEDIUM });
+
+  // Create second chat
+  await po.chatActions.clickNewChat();
+  await po.sendPrompt("[dump] Session chat two");
+  await po.chatActions.waitForChatCompletion();
+
+  // Now exactly 2 tabs should be visible
+  await expect(async () => {
+    const count = await closeButtons.count();
+    expect(count).toBe(2);
+  }).toPass({ timeout: Timeout.MEDIUM });
+});

@@ -19,6 +19,8 @@ export const recentStreamChatIdsAtom = atom<Set<number>>(new Set<number>());
 export const recentViewedChatIdsAtom = atom<number[]>([]);
 // Track explicitly closed tabs - these should not reappear in the tab bar
 export const closedChatIdsAtom = atom<Set<number>>(new Set<number>());
+// Track chats opened in the current session - tabs are only shown for these
+export const sessionOpenedChatIdsAtom = atom<Set<number>>(new Set<number>());
 const MAX_RECENT_VIEWED_CHAT_IDS = 100;
 
 // Helper to remove a chat ID from the closed set (used when a closed tab is re-opened)
@@ -104,6 +106,41 @@ export const pruneClosedChatIdsAtom = atom(
     if (changed) {
       set(closedChatIdsAtom, pruned);
     }
+  },
+);
+// Add a chat ID to the session-opened set
+export const addSessionOpenedChatIdAtom = atom(
+  null,
+  (get, set, chatId: number) => {
+    const sessionIds = get(sessionOpenedChatIdsAtom);
+    if (!sessionIds.has(chatId)) {
+      const newSessionIds = new Set(sessionIds);
+      newSessionIds.add(chatId);
+      set(sessionOpenedChatIdsAtom, newSessionIds);
+    }
+  },
+);
+// Close multiple tabs at once (for "Close other tabs" / "Close tabs to the right")
+export const closeMultipleTabsAtom = atom(
+  null,
+  (get, set, chatIdsToClose: number[]) => {
+    if (chatIdsToClose.length === 0) return;
+
+    // Remove from recent viewed
+    const currentIds = get(recentViewedChatIdsAtom);
+    const closeSet = new Set(chatIdsToClose);
+    set(
+      recentViewedChatIdsAtom,
+      currentIds.filter((id) => !closeSet.has(id)),
+    );
+
+    // Add to closed set
+    const closedIds = get(closedChatIdsAtom);
+    const newClosedIds = new Set(closedIds);
+    for (const id of chatIdsToClose) {
+      newClosedIds.add(id);
+    }
+    set(closedChatIdsAtom, newClosedIds);
   },
 );
 // Remove a chat ID from all tracking (used when chat is deleted)

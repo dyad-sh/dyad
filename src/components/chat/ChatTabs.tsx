@@ -16,6 +16,8 @@ import {
   pushRecentViewedChatIdAtom,
   closedChatIdsAtom,
   pruneClosedChatIdsAtom,
+  sessionOpenedChatIdsAtom,
+  closeMultipleTabsAtom,
 } from "@/atoms/chatAtoms";
 import { cn } from "@/lib/utils";
 import {
@@ -24,6 +26,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import {
   Tooltip,
   TooltipContent,
@@ -41,6 +50,7 @@ export function getOrderedRecentChatIds(
   recentViewedChatIds: number[],
   chats: ChatSummary[],
   closedChatIds: Set<number> = new Set(),
+  sessionOpenedChatIds: Set<number> = new Set(),
 ): number[] {
   if (chats.length === 0) return [];
 
@@ -49,15 +59,26 @@ export function getOrderedRecentChatIds(
   const seen = new Set<number>();
 
   for (const chatId of recentViewedChatIds) {
-    if (!chatIds.has(chatId) || seen.has(chatId) || closedChatIds.has(chatId))
+    // Only show chats that were opened in this session
+    if (
+      !chatIds.has(chatId) ||
+      seen.has(chatId) ||
+      closedChatIds.has(chatId) ||
+      !sessionOpenedChatIds.has(chatId)
+    )
       continue;
     ordered.push(chatId);
     seen.add(chatId);
   }
 
-  // Only add chats that haven't been explicitly closed
+  // Only add chats that haven't been explicitly closed AND were opened in this session
   for (const chat of chats) {
-    if (seen.has(chat.id) || closedChatIds.has(chat.id)) continue;
+    if (
+      seen.has(chat.id) ||
+      closedChatIds.has(chat.id) ||
+      !sessionOpenedChatIds.has(chat.id)
+    )
+      continue;
     ordered.push(chat.id);
     seen.add(chat.id);
   }
@@ -170,10 +191,12 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
   const recentViewedChatIds = useAtomValue(recentViewedChatIdsAtom);
   const closedChatIds = useAtomValue(closedChatIdsAtom);
+  const sessionOpenedChatIds = useAtomValue(sessionOpenedChatIdsAtom);
   const setRecentViewedChatIds = useSetAtom(setRecentViewedChatIdsAtom);
   const removeRecentViewedChatId = useSetAtom(removeRecentViewedChatIdAtom);
   const pushRecentViewedChatId = useSetAtom(pushRecentViewedChatIdAtom);
   const pruneClosedChatIds = useSetAtom(pruneClosedChatIdsAtom);
+  const closeMultipleTabs = useSetAtom(closeMultipleTabsAtom);
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const { selectChat } = useSelectChat();
   const navigate = useNavigate();
@@ -202,8 +225,14 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   );
 
   const orderedChatIds = useMemo(
-    () => getOrderedRecentChatIds(recentViewedChatIds, chats, closedChatIds),
-    [recentViewedChatIds, chats, closedChatIds],
+    () =>
+      getOrderedRecentChatIds(
+        recentViewedChatIds,
+        chats,
+        closedChatIds,
+        sessionOpenedChatIds,
+      ),
+    [recentViewedChatIds, chats, closedChatIds, sessionOpenedChatIds],
   );
 
   const orderedChats = useMemo(
@@ -390,6 +419,55 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     });
   };
 
+  const handleCloseOtherTabs = (keepChatId: number) => {
+    const idsToClose = orderedChatIds.filter((id) => id !== keepChatId);
+    if (idsToClose.length === 0) return;
+
+    // Clear notifications for all closing tabs
+    for (const id of idsToClose) {
+      clearNotification(id);
+    }
+
+    closeMultipleTabs(idsToClose);
+
+    // If we're not on the kept tab, switch to it
+    const keptTab = chatsById.get(keepChatId);
+    if (keptTab && selectedChatId !== keepChatId) {
+      selectChat({
+        chatId: keptTab.id,
+        appId: keptTab.appId,
+        preserveTabOrder: true,
+      });
+    }
+  };
+
+  const handleCloseTabsToRight = (chatId: number) => {
+    const chatIndex = orderedChatIds.indexOf(chatId);
+    if (chatIndex === -1) return;
+
+    const idsToClose = orderedChatIds.slice(chatIndex + 1);
+    if (idsToClose.length === 0) return;
+
+    // Clear notifications for all closing tabs
+    for (const id of idsToClose) {
+      clearNotification(id);
+    }
+
+    closeMultipleTabs(idsToClose);
+
+    // If the selected chat is being closed, switch to the rightmost remaining tab
+    if (selectedChatId !== null && idsToClose.includes(selectedChatId)) {
+      const keptTab = chatsById.get(chatId);
+      if (keptTab) {
+        selectChat({
+          chatId: keptTab.id,
+          appId: keptTab.appId,
+          preserveTabOrder: true,
+        });
+      }
+    }
+  };
+
   if (orderedChats.length === 0) return null;
 
   return (
@@ -408,136 +486,165 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
             const inProgress = isStreamingById.get(chat.id) === true;
             const hasNotification = !inProgress && notifiedChatIds.has(chat.id);
 
-            return (
-              <Tooltip key={chat.id}>
-                <TooltipTrigger
-                  render={
-                    <div
-                      draggable
-                      onAuxClick={(event) => {
-                        // Middle-click (button 1) to close tab
-                        if (event.button === 1) {
-                          event.preventDefault();
-                          handleCloseTab(chat.id);
-                        }
-                      }}
-                      onDragStart={(event) => {
-                        event.dataTransfer.effectAllowed = "move";
-                        event.dataTransfer.setData(
-                          "text/plain",
-                          String(chat.id),
-                        );
-                        setDraggingChatId(chat.id);
-                      }}
-                      onDragEnd={() => setDraggingChatId(null)}
-                      onDragOver={(event) => {
-                        if (
-                          draggingChatId === null ||
-                          draggingChatId === chat.id
-                        ) {
-                          return;
-                        }
-                        event.preventDefault();
-                      }}
-                      onDrop={(event) => {
-                        event.preventDefault();
-                        if (
-                          draggingChatId === null ||
-                          draggingChatId === chat.id
-                        ) {
-                          return;
-                        }
+            const tabIndex = orderedChatIds.indexOf(chat.id);
+            const hasTabsToRight =
+              tabIndex !== -1 && tabIndex < orderedChatIds.length - 1;
+            const hasOtherTabs = orderedChatIds.length > 1;
 
-                        const nextIds = reorderVisibleChatIds(
-                          orderedChatIds,
-                          visibleTabs.length,
-                          draggingChatId,
-                          chat.id,
-                        );
-                        if (!isSameIdOrder(orderedChatIds, nextIds)) {
-                          setRecentViewedChatIds(nextIds);
-                        }
-                        setDraggingChatId(null);
-                      }}
-                      className={cn(
-                        "group relative flex h-10 min-w-[160px] max-w-52 items-center gap-1 rounded-md px-2.5 transition-all active:scale-[0.97]",
-                        isActive
-                          ? "bg-background text-foreground shadow-sm"
-                          : "bg-muted/50 text-muted-foreground hover:bg-muted",
-                        isDragging && "opacity-60",
-                        // Chrome-style divider on right edge
-                        !isActive &&
-                          !isNextActive &&
-                          index < visibleTabs.length - 1 &&
-                          "after:absolute after:right-0 after:top-1/4 after:h-1/2 after:w-px after:bg-border",
+            return (
+              <ContextMenu key={chat.id}>
+                <ContextMenuTrigger asChild>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <div
+                          draggable
+                          onAuxClick={(event) => {
+                            // Middle-click (button 1) to close tab
+                            if (event.button === 1) {
+                              event.preventDefault();
+                              handleCloseTab(chat.id);
+                            }
+                          }}
+                          onDragStart={(event) => {
+                            event.dataTransfer.effectAllowed = "move";
+                            event.dataTransfer.setData(
+                              "text/plain",
+                              String(chat.id),
+                            );
+                            setDraggingChatId(chat.id);
+                          }}
+                          onDragEnd={() => setDraggingChatId(null)}
+                          onDragOver={(event) => {
+                            if (
+                              draggingChatId === null ||
+                              draggingChatId === chat.id
+                            ) {
+                              return;
+                            }
+                            event.preventDefault();
+                          }}
+                          onDrop={(event) => {
+                            event.preventDefault();
+                            if (
+                              draggingChatId === null ||
+                              draggingChatId === chat.id
+                            ) {
+                              return;
+                            }
+
+                            const nextIds = reorderVisibleChatIds(
+                              orderedChatIds,
+                              visibleTabs.length,
+                              draggingChatId,
+                              chat.id,
+                            );
+                            if (!isSameIdOrder(orderedChatIds, nextIds)) {
+                              setRecentViewedChatIds(nextIds);
+                            }
+                            setDraggingChatId(null);
+                          }}
+                          className={cn(
+                            "group relative flex h-10 min-w-[160px] max-w-52 items-center gap-1 rounded-md px-2.5 transition-all active:scale-[0.97]",
+                            isActive
+                              ? "bg-background text-foreground shadow-sm"
+                              : "bg-muted/50 text-muted-foreground hover:bg-muted",
+                            isDragging && "opacity-60",
+                            // Chrome-style divider on right edge
+                            !isActive &&
+                              !isNextActive &&
+                              index < visibleTabs.length - 1 &&
+                              "after:absolute after:right-0 after:top-1/4 after:h-1/2 after:w-px after:bg-border",
+                          )}
+                        />
+                      }
+                    >
+                      {inProgress && (
+                        <span
+                          className="flex items-center text-purple-600"
+                          aria-label={t("chatInProgress")}
+                          title={t("chatInProgress")}
+                        >
+                          <Loader2 size={12} className="animate-spin" />
+                        </span>
                       )}
-                    />
-                  }
-                >
-                  {inProgress && (
-                    <span
-                      className="flex items-center text-purple-600"
-                      aria-label={t("chatInProgress")}
-                      title={t("chatInProgress")}
+                      {hasNotification && (
+                        <span
+                          className="flex items-center"
+                          aria-label={t("newActivity")}
+                          title={t("newActivity")}
+                        >
+                          <span className="h-2 w-2 rounded-full bg-blue-500" />
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleTabClick(chat)}
+                        className="min-w-0 flex-1 text-left rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        aria-current={isActive ? "page" : undefined}
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate text-xs leading-3.5 font-bold">
+                            {appName}
+                          </div>
+                          <div className="truncate text-xs leading-4">
+                            {title}
+                          </div>
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleCloseTab(chat.id);
+                        }}
+                        className={cn(
+                          "flex h-6 w-6 items-center justify-center rounded-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                          isActive
+                            ? "opacity-80 hover:bg-muted"
+                            : "opacity-0 group-hover:opacity-80 hover:bg-background/50 focus-visible:opacity-80",
+                        )}
+                        aria-label={t("closeChatTab", { title })}
+                      >
+                        <X size={12} />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="bottom"
+                      align="start"
+                      sideOffset={6}
+                      className="max-w-80 !rounded-lg !border !border-border !bg-popover !px-3.5 !py-2.5 !text-popover-foreground !shadow-lg [&>:last-child]:!hidden"
                     >
-                      <Loader2 size={12} className="animate-spin" />
-                    </span>
-                  )}
-                  {hasNotification && (
-                    <span
-                      className="flex items-center"
-                      aria-label={t("newActivity")}
-                      title={t("newActivity")}
-                    >
-                      <span className="h-2 w-2 rounded-full bg-blue-500" />
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => handleTabClick(chat)}
-                    className="min-w-0 flex-1 text-left rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    aria-current={isActive ? "page" : undefined}
-                  >
-                    <div className="min-w-0">
-                      <div className="truncate text-xs leading-3.5 font-bold">
-                        {appName}
+                      <div className="min-w-0">
+                        <div className="truncate text-[11px] leading-4 font-semibold">
+                          {appName}
+                        </div>
+                        <div className="mt-0.5 text-[11px] leading-4 break-words opacity-70">
+                          {titleExcerpt}
+                        </div>
                       </div>
-                      <div className="truncate text-xs leading-4">{title}</div>
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      handleCloseTab(chat.id);
-                    }}
-                    className={cn(
-                      "flex h-6 w-6 items-center justify-center rounded-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                      isActive
-                        ? "opacity-80 hover:bg-muted"
-                        : "opacity-0 group-hover:opacity-80 hover:bg-background/50 focus-visible:opacity-80",
-                    )}
-                    aria-label={t("closeChatTab", { title })}
+                    </TooltipContent>
+                  </Tooltip>
+                </ContextMenuTrigger>
+                <ContextMenuContent>
+                  <ContextMenuItem onClick={() => handleCloseTab(chat.id)}>
+                    {t("closeTab")}
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem
+                    onClick={() => handleCloseOtherTabs(chat.id)}
+                    disabled={!hasOtherTabs}
                   >
-                    <X size={12} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent
-                  side="bottom"
-                  align="start"
-                  sideOffset={6}
-                  className="max-w-80 !rounded-lg !border !border-border !bg-popover !px-3.5 !py-2.5 !text-popover-foreground !shadow-lg [&>:last-child]:!hidden"
-                >
-                  <div className="min-w-0">
-                    <div className="truncate text-[11px] leading-4 font-semibold">
-                      {appName}
-                    </div>
-                    <div className="mt-0.5 text-[11px] leading-4 break-words opacity-70">
-                      {titleExcerpt}
-                    </div>
-                  </div>
-                </TooltipContent>
-              </Tooltip>
+                    {t("closeOtherTabs")}
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    onClick={() => handleCloseTabsToRight(chat.id)}
+                    disabled={!hasTabsToRight}
+                  >
+                    {t("closeTabsToRight")}
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              </ContextMenu>
             );
           })}
         </div>

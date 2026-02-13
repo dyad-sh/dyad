@@ -33,8 +33,7 @@ jobs:
         run: bash scripts/ci-cleanup-macos.sh
 
       - name: Reboot runner
-        # Already running as root user so no "sudo"
-        run: reboot
+        run: sudo reboot
 
   verify:
     needs: cleanup

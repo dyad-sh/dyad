@@ -28,6 +28,19 @@ describe("search_replace_line_numbers_processor", () => {
   });
 
   describe("basic search/replace operations", () => {
+    it("accepts direct old/new content arguments", () => {
+      const original = ["alpha", "beta", "gamma"].join("\n");
+
+      const { success, content } = applySearchReplaceWithLineNumbers(
+        original,
+        "beta",
+        "BETA",
+      );
+
+      expect(success).toBe(true);
+      expect(content).toBe(["alpha", "BETA", "gamma"].join("\n"));
+    });
+
     it("applies single block with exact match", () => {
       const original = [
         "def calculate_total(items):",

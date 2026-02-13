@@ -27,6 +27,7 @@ import {
   getSupabaseAvailableSystemPrompt,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
+import { getConvexAvailableSystemPrompt } from "../../prompts/convex_prompt";
 import { getDyadAppPath } from "../../paths/paths";
 import { readSettings } from "../../main/settings";
 import type { ChatResponseEnd, ChatStreamParams } from "@/ipc/types";
@@ -725,6 +726,10 @@ ${componentSnippet}
           }
         }
 
+        const hasConvexIntegration = await fileExists(
+          path.join(getDyadAppPath(updatedChat.app.path), "convex", "auth.ts"),
+        );
+
         if (
           updatedChat.app?.supabaseProjectId &&
           isSupabaseConnected(settings)
@@ -748,12 +753,21 @@ ${componentSnippet}
         } else if (
           // Neon projects don't need Supabase.
           !updatedChat.app?.neonProjectId &&
+          // Convex-enabled projects don't need the backend setup reminder.
+          !hasConvexIntegration &&
           // In local agent mode, we will suggest supabase as part of the add-integration tool
           settings.selectedChatMode !== "local-agent" &&
           // If in security review mode, we don't need to mention supabase is available.
           !isSecurityReviewIntent
         ) {
           systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
+        } else if (
+          // For non-local-agent mode, include Convex-specific guidance when Convex is configured.
+          settings.selectedChatMode !== "local-agent" &&
+          !isSecurityReviewIntent &&
+          hasConvexIntegration
+        ) {
+          systemPrompt += "\n\n" + getConvexAvailableSystemPrompt();
         }
         const isSummarizeIntent = req.prompt.startsWith(
           "Summarize from chat-id=",

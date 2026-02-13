@@ -107,6 +107,20 @@ export const AppIdParamsSchema = z.object({
 });
 
 /**
+ * Schema for setting up Convex integration on an app.
+ */
+export const SetupConvexParamsSchema = z.object({
+  appId: z.number(),
+});
+
+/**
+ * Schema for Convex setup result.
+ */
+export const SetupConvexResultSchema = z.object({
+  alreadySetup: z.boolean(),
+});
+
+/**
  * Schema for restart app params (with optional removeNodeModules).
  */
 export const RestartAppParamsSchema = z.object({
@@ -310,6 +324,12 @@ export const appContracts = {
     output: z.void(),
   }),
 
+  setupConvex: defineContract({
+    channel: "setup-convex",
+    input: SetupConvexParamsSchema,
+    output: SetupConvexResultSchema,
+  }),
+
   restartApp: defineContract({
     channel: "restart-app",
     input: RestartAppParamsSchema,
@@ -418,6 +438,7 @@ export type ChangeAppLocationResult = z.infer<
 export type ListAppsResponse = z.infer<typeof ListAppsResponseSchema>;
 export type RenameBranchParams = z.infer<typeof RenameBranchParamsSchema>;
 export type AppSearchResult = z.infer<typeof AppSearchResultSchema>;
+export type SetupConvexResult = z.infer<typeof SetupConvexResultSchema>;
 export type UpdateAppCommandsParams = z.infer<
   typeof UpdateAppCommandsParamsSchema
 >;

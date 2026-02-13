@@ -13,6 +13,7 @@ import {
   type ToolExecutionOptions,
 } from "ai";
 import log from "electron-log";
+import path from "node:path";
 
 import { db } from "@/db";
 import { chats, messages } from "@/db/schema";
@@ -40,6 +41,7 @@ import { mcpManager } from "@/ipc/utils/mcp_manager";
 import { mcpServers } from "@/db/schema";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
 import { getAiMessagesJsonIfWithinLimit } from "@/ipc/utils/ai_messages_utils";
+import { fileExists } from "@/ipc/utils/file_utils";
 
 import type { ChatStreamParams, ChatResponseEnd } from "@/ipc/types";
 import {
@@ -420,6 +422,10 @@ export async function handleLocalAgentStream(
       settings,
     );
 
+    const convexEnabled = await fileExists(
+      path.join(appPath, "convex", "auth.ts"),
+    );
+
     // Build tool execute context
     const fileEditTracker: FileEditTracker = Object.create(null);
     const ctx: AgentContext = {
@@ -429,6 +435,7 @@ export async function handleLocalAgentStream(
       chatId: chat.id,
       supabaseProjectId: chat.app.supabaseProjectId,
       supabaseOrganizationSlug: chat.app.supabaseOrganizationSlug,
+      convexEnabled,
       messageId: placeholderMessageId,
       isSharedModulesChanged: false,
       todos: [],

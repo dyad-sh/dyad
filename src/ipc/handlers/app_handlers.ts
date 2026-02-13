@@ -15,7 +15,10 @@ import { promises as fsPromises } from "node:fs";
 
 // Import our utility modules
 import { withLock } from "../utils/lock_utils";
-import { getFilesRecursively } from "../utils/file_utils";
+import {
+  copyDirectoryRecursive,
+  getFilesRecursively,
+} from "../utils/file_utils";
 import {
   runningApps,
   processCounter,
@@ -59,6 +62,10 @@ import {
 import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { AppSearchResult } from "@/lib/schemas";
+import {
+  addConvexToPackageJsonContent,
+  isConvexConfigured,
+} from "../utils/convex_setup";
 
 import { getAppPort } from "../../../shared/ports";
 import {
@@ -148,6 +155,82 @@ async function copyDir(
       return true;
     },
   });
+}
+
+async function setupConvex({
+  appPath,
+}: {
+  appPath: string;
+}): Promise<{ alreadySetup: boolean }> {
+  const currentFiles = getFilesRecursively(appPath, appPath).map((filePath) =>
+    normalizePath(filePath),
+  );
+  const hasConvexFiles = isConvexConfigured(currentFiles);
+  let wroteConvexFiles = false;
+
+  const scaffoldConvexPath = path.join(app.getAppPath(), "scaffold", "convex");
+  if (!fs.existsSync(scaffoldConvexPath)) {
+    throw new Error(`Convex scaffold not found: ${scaffoldConvexPath}`);
+  }
+
+  if (!hasConvexFiles) {
+    await copyDirectoryRecursive(
+      scaffoldConvexPath,
+      path.join(appPath, "convex"),
+    );
+    wroteConvexFiles = true;
+  }
+
+  const packageJsonPath = path.join(appPath, "package.json");
+  if (!fs.existsSync(packageJsonPath)) {
+    throw new Error("Missing package.json in app root");
+  }
+  const packageJsonContent = await fsPromises.readFile(
+    packageJsonPath,
+    "utf-8",
+  );
+  const { content: updatedPackageJson, changed: packageJsonChanged } =
+    addConvexToPackageJsonContent(packageJsonContent);
+  if (packageJsonChanged) {
+    await fsPromises.writeFile(packageJsonPath, updatedPackageJson, "utf-8");
+  }
+
+  const gitignorePath = path.join(appPath, ".gitignore");
+  let gitignoreChanged = false;
+  if (fs.existsSync(gitignorePath)) {
+    const gitignore = await fsPromises.readFile(gitignorePath, "utf-8");
+    if (!gitignore.includes("convex/_generated")) {
+      const prefix = gitignore.endsWith("\n") ? "" : "\n";
+      await fsPromises.writeFile(
+        gitignorePath,
+        `${gitignore}${prefix}\n# Convex generated files\nconvex/_generated\n`,
+        "utf-8",
+      );
+      gitignoreChanged = true;
+    }
+  }
+
+  const hasChanges = wroteConvexFiles || packageJsonChanged || gitignoreChanged;
+  const gitPath = path.join(appPath, ".git");
+  if (fs.existsSync(gitPath) && hasChanges) {
+    if (wroteConvexFiles) {
+      await gitAdd({ path: appPath, filepath: "convex" });
+    }
+    if (packageJsonChanged) {
+      await gitAdd({ path: appPath, filepath: "package.json" });
+    }
+    if (gitignoreChanged) {
+      await gitAdd({ path: appPath, filepath: ".gitignore" });
+    }
+    await gitCommit({
+      path: appPath,
+      message: "Set up Convex backend",
+    });
+  }
+
+  return {
+    alreadySetup: hasConvexFiles && !packageJsonChanged && !gitignoreChanged,
+  };
 }
 
 let proxyWorker: Worker | null = null;
@@ -1046,6 +1129,20 @@ export function registerAppHandlers() {
         throw new Error(`Failed to run app ${appId}: ${error.message}`);
       }
     });
+  });
+
+  createTypedHandler(appContracts.setupConvex, async (_, params) => {
+    const { appId } = params;
+    const appRecord = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
+
+    if (!appRecord) {
+      throw new Error("App not found");
+    }
+
+    const appPath = getDyadAppPath(appRecord.path);
+    return setupConvex({ appPath });
   });
 
   createTypedHandler(appContracts.stopApp, async (_, params) => {

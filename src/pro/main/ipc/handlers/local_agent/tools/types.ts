@@ -48,6 +48,7 @@ export interface AgentContext {
   chatId: number;
   supabaseProjectId: string | null;
   supabaseOrganizationSlug: string | null;
+  convexEnabled?: boolean;
   messageId: number;
   isSharedModulesChanged: boolean;
   chatSummary?: string;

@@ -3,7 +3,8 @@
 Multi-Agent PR Review Orchestrator
 
 Spawns multiple Claude sub-agents to review a PR diff, each receiving files
-in a different randomized order. Aggregates results using consensus voting.
+in a different randomized order. Uses reasoned validation to assess each issue
+and determine merge verdict.
 """
 
 import argparse
@@ -25,10 +26,9 @@ except ImportError:
 
 # Configuration
 NUM_AGENTS = 3
-CONSENSUS_THRESHOLD = 2
 MIN_SEVERITY = "MEDIUM"
 REVIEW_MODEL = "claude-opus-4-6"
-DEDUP_MODEL = "claude-sonnet-4-5"
+VALIDATION_MODEL = "claude-sonnet-4-5"
 
 # Extended thinking configuration (interleaved thinking with max effort)
 # Using maximum values for most thorough analysis
@@ -349,7 +349,7 @@ Output ONLY the JSON array, no other text."""
 
     try:
         response = await client.messages.create(
-            model=DEDUP_MODEL,
+            model=VALIDATION_MODEL,
             max_tokens=4096,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -402,20 +402,217 @@ Output ONLY the JSON array, no other text."""
         return [[i] for i in range(len(issues))]
 
 
+async def validate_issues(
+    client: anthropic.AsyncAnthropic,
+    grouped_issues: list[list[Issue]],
+    min_severity: str = MIN_SEVERITY
+) -> tuple[list[dict], list[dict]]:
+    """Use LLM to validate each issue group through reasoned analysis.
+
+    Instead of simple consensus voting, reason through each issue to determine
+    if it's a real problem and whether the severity is merited.
+
+    Returns:
+        Tuple of (validated_issues, dropped_issues)
+    """
+    if not grouped_issues:
+        return [], []
+
+    # Build issue descriptions for validation
+    issue_descriptions = []
+    for i, group in enumerate(grouped_issues):
+        representative = max(group, key=lambda x: SEVERITY_RANK.get(x.severity, 0))
+        agent_count = len(set(issue.agent_id for issue in group))
+        severities = [issue.severity for issue in group]
+
+        issue_descriptions.append(
+            f"Issue {i + 1}:\n"
+            f"  File: {representative.file}\n"
+            f"  Lines: {representative.line_start}-{representative.line_end}\n"
+            f"  Severity: {representative.severity} (agents rated: {', '.join(severities)})\n"
+            f"  Category: {representative.category}\n"
+            f"  Title: {representative.title}\n"
+            f"  Description: {representative.description}\n"
+            f"  Flagged by: {agent_count} agent(s)\n"
+        )
+
+    prompt = f"""You are a senior code reviewer validating issues found by multiple review agents.
+
+For each issue below, reason through whether it's a REAL problem that should be fixed:
+
+1. **Validate the issue**: Is this actually a bug/problem, or could the agents be misunderstanding?
+   - Consider framework conventions, common patterns, and surrounding context
+   - Consider if this could be a false positive from not having full project context
+
+2. **Assess severity**: Is the assigned severity merited?
+   - HIGH: security vulnerabilities, data loss, crashes, broken functionality
+   - MEDIUM: logic errors, edge cases, performance issues, maintainability problems
+   - LOW: style issues, minor improvements, nitpicks
+   - Adjust severity up or down based on actual impact
+
+3. **Make a decision**: Keep the issue (with potentially adjusted severity) or DROP it
+
+Issues to validate:
+{chr(10).join(issue_descriptions)}
+
+Output a JSON object with:
+{{
+  "validated_issues": [
+    {{
+      "issue_index": 1,
+      "is_valid": true,
+      "reasoning": "Brief explanation of why this is a real issue",
+      "adjusted_severity": "HIGH/MEDIUM/LOW",
+      "severity_rationale": "Why this severity (only if adjusted)"
+    }}
+  ]
+}}
+
+Be conservative - only DROP issues you're confident are false positives.
+Output ONLY the JSON object, no other text."""
+
+    try:
+        print("  Validating issues through reasoned analysis...")
+        response = await client.messages.create(
+            model=VALIDATION_MODEL,
+            max_tokens=8192,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        content = None
+        for block in response.content:
+            if block.type == "text":
+                content = block.text.strip()
+                break
+
+        if content is None:
+            raise ValueError("No text response from validation model")
+
+        if content.startswith('```'):
+            content = re.sub(r'^```\w*\n?', '', content)
+            content = re.sub(r'\n?```$', '', content)
+
+        result = json.loads(content)
+        validations = result.get('validated_issues', [])
+
+        validated_issues = []
+        dropped_issues = []
+        min_rank = SEVERITY_RANK.get(min_severity, 2)
+
+        for validation in validations:
+            idx = validation.get('issue_index', 0) - 1
+            if idx < 0 or idx >= len(grouped_issues):
+                continue
+
+            group = grouped_issues[idx]
+            representative = max(group, key=lambda x: SEVERITY_RANK.get(x.severity, 0))
+            agent_count = len(set(issue.agent_id for issue in group))
+            adjusted_severity = validation.get('adjusted_severity', representative.severity)
+
+            if validation.get('is_valid', True):
+                # Check minimum severity threshold
+                if SEVERITY_RANK.get(adjusted_severity, 0) >= min_rank:
+                    validated_issues.append({
+                        **asdict(representative),
+                        'severity': adjusted_severity,
+                        'original_severity': representative.severity,
+                        'validation_reasoning': validation.get('reasoning', ''),
+                        'agent_count': agent_count,
+                        'all_severities': [i.severity for i in group]
+                    })
+            else:
+                dropped_issues.append({
+                    'file': representative.file,
+                    'line_start': representative.line_start,
+                    'title': representative.title,
+                    'original_severity': representative.severity,
+                    'drop_reason': validation.get('reasoning', 'Determined to be false positive'),
+                    'agent_count': agent_count
+                })
+
+        # Handle issues not in validation response (keep by default if they meet severity threshold)
+        validated_indices = set(v.get('issue_index', 0) - 1 for v in validations)
+        for idx, group in enumerate(grouped_issues):
+            if idx not in validated_indices:
+                representative = max(group, key=lambda x: SEVERITY_RANK.get(x.severity, 0))
+                if SEVERITY_RANK.get(representative.severity, 0) >= min_rank:
+                    agent_count = len(set(issue.agent_id for issue in group))
+                    validated_issues.append({
+                        **asdict(representative),
+                        'original_severity': representative.severity,
+                        'validation_reasoning': 'Not explicitly validated, kept by default',
+                        'agent_count': agent_count,
+                        'all_severities': [i.severity for i in group]
+                    })
+
+        # Sort by severity
+        validated_issues.sort(
+            key=lambda x: (-SEVERITY_RANK.get(x['severity'], 0), x['file'], x['line_start'])
+        )
+
+        print(f"  Validated {len(validated_issues)} issues, dropped {len(dropped_issues)} false positives")
+        return validated_issues, dropped_issues
+
+    except (json.JSONDecodeError, ValueError) as e:
+        print(f"  Warning: Failed to parse validation response: {e}")
+        # Fall back to keeping all issues that meet severity threshold
+        validated_issues = []
+        min_rank = SEVERITY_RANK.get(min_severity, 2)
+        for group in grouped_issues:
+            representative = max(group, key=lambda x: SEVERITY_RANK.get(x.severity, 0))
+            if SEVERITY_RANK.get(representative.severity, 0) >= min_rank:
+                agent_count = len(set(issue.agent_id for issue in group))
+                validated_issues.append({
+                    **asdict(representative),
+                    'original_severity': representative.severity,
+                    'validation_reasoning': 'Validation failed, kept by default',
+                    'agent_count': agent_count,
+                    'all_severities': [i.severity for i in group]
+                })
+        validated_issues.sort(
+            key=lambda x: (-SEVERITY_RANK.get(x['severity'], 0), x['file'], x['line_start'])
+        )
+        return validated_issues, []
+
+
+def determine_merge_verdict(issues: list[dict]) -> tuple[str, str]:
+    """Determine merge verdict based on validated issues.
+
+    Returns:
+        Tuple of (verdict, rationale) where verdict is YES/NOT SURE/NO
+    """
+    high_issues = [i for i in issues if i.get('severity') == 'HIGH']
+    medium_issues = [i for i in issues if i.get('severity') == 'MEDIUM']
+
+    if high_issues:
+        return "NO", f"Do NOT merge: {len(high_issues)} HIGH severity issue(s) found"
+    elif len(medium_issues) >= 3:
+        return "NO", f"Do NOT merge: {len(medium_issues)} MEDIUM severity issues need attention"
+    elif len(medium_issues) >= 2:
+        return "NOT SURE", f"Review recommended: {len(medium_issues)} MEDIUM severity issues found"
+    elif len(medium_issues) == 1:
+        return "NOT SURE", "Review recommended: 1 MEDIUM severity issue found"
+    else:
+        return "YES", "Merge with confidence: No significant issues found"
+
+
 async def aggregate_issues(
     client: anthropic.AsyncAnthropic,
     all_issues: list[list[Issue]],
-    consensus_threshold: int = CONSENSUS_THRESHOLD,
     min_severity: str = MIN_SEVERITY
-) -> list[dict]:
-    """Aggregate issues using LLM-based deduplication and consensus voting."""
+) -> tuple[list[dict], list[dict]]:
+    """Aggregate issues using LLM-based deduplication and reasoned validation.
+
+    Returns:
+        Tuple of (validated_issues, dropped_issues)
+    """
     # Flatten all issues with their source agent
     flat_issues = []
     for agent_issues in all_issues:
         flat_issues.extend(agent_issues)
 
     if not flat_issues:
-        return []
+        return [], []
 
     # Use LLM to group similar issues
     print("  Using Sonnet to identify duplicate issues...")
@@ -425,71 +622,113 @@ async def aggregate_issues(
     groups = [[flat_issues[i] for i in group] for group in groups_indices]
     print(f"  Grouped {len(flat_issues)} issues into {len(groups)} unique issues")
 
-    # Filter by consensus and severity
-    min_rank = SEVERITY_RANK.get(min_severity, 2)
-    consensus_issues = []
-
-    for group in groups:
-        # Count unique agents
-        agents = set(issue.agent_id for issue in group)
-        if len(agents) < consensus_threshold:
-            continue
-
-        # Check if any agent rated it at min_severity or above
-        max_severity = max(SEVERITY_RANK.get(i.severity, 0) for i in group)
-        if max_severity < min_rank:
-            continue
-
-        # Use the highest-severity version as the representative
-        representative = max(group, key=lambda i: SEVERITY_RANK.get(i.severity, 0))
-
-        consensus_issues.append({
-            **asdict(representative),
-            'consensus_count': len(agents),
-            'all_severities': [i.severity for i in group]
-        })
-
-    # Sort by severity (highest first), then by file
-    consensus_issues.sort(
-        key=lambda x: (-SEVERITY_RANK.get(x['severity'], 0), x['file'], x['line_start'])
+    # Use reasoned validation instead of consensus voting
+    validated_issues, dropped_issues = await validate_issues(
+        client, groups, min_severity
     )
 
-    return consensus_issues
+    return validated_issues, dropped_issues
 
 
-def format_pr_comment(issues: list[dict]) -> str:
-    """Format consensus issues as a GitHub PR comment."""
-    if not issues:
-        return "## 🔍 Multi-Agent Code Review\n\nNo significant issues found by consensus review."
-    
+def format_pr_comment(
+    issues: list[dict],
+    dropped_issues: list[dict],
+    verdict: str,
+    rationale: str
+) -> str:
+    """Format validated issues as a GitHub PR comment with merge verdict."""
+    verdict_emoji = {"YES": "✅", "NOT SURE": "🤔", "NO": "🚫"}.get(verdict, "⚪")
+
     lines = [
         "## 🔍 Multi-Agent Code Review",
         "",
-        f"Found **{len(issues)}** issue(s) flagged by multiple reviewers:",
-        ""
+        f"**Verdict: {verdict_emoji} {verdict}**",
+        "",
+        f"Reviewed by {NUM_AGENTS} specialized agents: Correctness Expert, Code Health Expert, UX Wizard.",
     ]
-    
-    for issue in issues:
-        severity_emoji = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}.get(issue['severity'], "⚪")
-        
-        lines.append(f"### {severity_emoji} {issue['title']}")
-        lines.append("")
-        lines.append(f"**File:** `{issue['file']}` (lines {issue['line_start']}-{issue['line_end']})")
-        lines.append(f"**Severity:** {issue['severity']} | **Category:** {issue['category']}")
-        lines.append(f"**Consensus:** {issue['consensus_count']}/{NUM_AGENTS} reviewers")
-        lines.append("")
-        lines.append(issue['description'])
-        
-        if issue.get('suggestion'):
+
+    if not issues:
+        lines.append("Found **0** issues after reasoned validation.")
+        if dropped_issues:
             lines.append("")
-            lines.append(f"💡 **Suggestion:** {issue['suggestion']}")
-        
+            lines.append("<details>")
+            lines.append(f"<summary>🚫 Dropped Issues ({len(dropped_issues)} items)</summary>")
+            lines.append("")
+            for d in dropped_issues:
+                lines.append(f"- **~~{d.get('title', 'Unknown')}~~** - Dropped: {d.get('drop_reason', 'False positive')}")
+            lines.append("")
+            lines.append("</details>")
         lines.append("")
-        lines.append("---")
+        lines.append("*Generated by Dyadbot code review*")
+        return '\n'.join(lines)
+
+    lines.append(f"Found **{len(issues)}** new issue(s) after reasoned validation.")
+    lines.append("")
+
+    # Summary table
+    high_count = len([i for i in issues if i.get('severity') == 'HIGH'])
+    medium_count = len([i for i in issues if i.get('severity') == 'MEDIUM'])
+    low_count = len([i for i in issues if i.get('severity') == 'LOW'])
+
+    lines.append("### Summary")
+    lines.append("")
+    lines.append("| Severity | Count |")
+    lines.append("|----------|-------|")
+    lines.append(f"| 🔴 HIGH | {high_count} |")
+    lines.append(f"| 🟡 MEDIUM | {medium_count} |")
+    lines.append(f"| 🟢 LOW | {low_count} |")
+    lines.append("")
+
+    # Issues table (HIGH and MEDIUM)
+    high_medium = [i for i in issues if i.get('severity') in ('HIGH', 'MEDIUM')]
+    if high_medium:
+        lines.append("### Issues to Address")
         lines.append("")
-    
-    lines.append("*Generated by multi-agent consensus review*")
-    
+        lines.append("| # | Severity | File | Issue |")
+        lines.append("|---|----------|------|-------|")
+        for idx, issue in enumerate(high_medium, 1):
+            severity = issue.get('severity', 'LOW')
+            emoji = {"HIGH": "🔴", "MEDIUM": "🟡"}.get(severity, "⚪")
+            file_path = issue.get('file', 'unknown')
+            line_start = issue.get('line_start', 0)
+            title = issue.get('title', 'Issue')
+            location = f"`{file_path}:{line_start}`" if line_start > 0 else f"`{file_path}`"
+            lines.append(f"| {idx} | {emoji} {severity} | {location} | {title} |")
+        lines.append("")
+
+    # Low priority issues (collapsible)
+    low_issues = [i for i in issues if i.get('severity') == 'LOW']
+    if low_issues:
+        lines.append("<details>")
+        lines.append(f"<summary>🟢 Low Priority Issues ({len(low_issues)} items)</summary>")
+        lines.append("")
+        for issue in low_issues:
+            file_path = issue.get('file', 'unknown')
+            line_start = issue.get('line_start', 0)
+            title = issue.get('title', 'Issue')
+            location = f"`{file_path}:{line_start}`" if line_start > 0 else f"`{file_path}`"
+            lines.append(f"- **{title}** - {location}")
+        lines.append("")
+        lines.append("</details>")
+        lines.append("")
+
+    # Dropped issues (collapsible)
+    if dropped_issues:
+        lines.append("<details>")
+        lines.append(f"<summary>🚫 Dropped Issues ({len(dropped_issues)} items)</summary>")
+        lines.append("")
+        for d in dropped_issues:
+            lines.append(f"- **~~{d.get('title', 'Unknown')}~~** - Dropped: {d.get('drop_reason', 'False positive')}")
+        lines.append("")
+        lines.append("</details>")
+        lines.append("")
+
+    if high_medium:
+        lines.append("See inline comments for details.")
+        lines.append("")
+
+    lines.append("*Generated by Dyadbot code review*")
+
     return '\n'.join(lines)
 
 
@@ -500,7 +739,6 @@ async def main():
     parser.add_argument('--diff-file', type=str, required=True, help='Path to diff file')
     parser.add_argument('--output', type=str, default='consensus_results.json', help='Output file')
     parser.add_argument('--num-agents', type=int, default=NUM_AGENTS, help='Number of sub-agents')
-    parser.add_argument('--threshold', type=int, default=CONSENSUS_THRESHOLD, help='Consensus threshold')
     parser.add_argument('--min-severity', type=str, default=MIN_SEVERITY,
                        choices=['HIGH', 'MEDIUM', 'LOW'], help='Minimum severity to report')
     parser.add_argument('--no-thinking', action='store_true',
@@ -529,7 +767,6 @@ async def main():
     print(f"=====================")
     print(f"PR: {args.repo}#{args.pr_number}")
     print(f"Agents: {args.num_agents}")
-    print(f"Consensus threshold: {args.threshold}")
     print(f"Min severity: {args.min_severity}")
     print(f"Extended thinking: {'enabled' if use_thinking else 'disabled'}")
     if use_thinking:
@@ -578,48 +815,64 @@ async def main():
     
     all_results = await asyncio.gather(*tasks)
     
-    # Aggregate results
-    print(f"\nAggregating results...")
-    consensus_issues = await aggregate_issues(
+    # Aggregate and validate results
+    print(f"\nAggregating and validating results...")
+    validated_issues, dropped_issues = await aggregate_issues(
         client,
         all_results,
-        consensus_threshold=args.threshold,
         min_severity=args.min_severity
     )
-    
-    print(f"Found {len(consensus_issues)} consensus issues")
-    
+
+    # Determine merge verdict
+    verdict, rationale = determine_merge_verdict(validated_issues)
+
+    print(f"Found {len(validated_issues)} validated issues, dropped {len(dropped_issues)} false positives")
+    print(f"\nMerge verdict: {verdict}")
+    print(f"  {rationale}")
+
     # Save results
     output = {
         'pr_number': args.pr_number,
         'repo': args.repo,
         'num_agents': args.num_agents,
-        'consensus_threshold': args.threshold,
         'min_severity': args.min_severity,
         'extended_thinking': use_thinking,
         'thinking_budget': thinking_budget if use_thinking else None,
         'total_issues_per_agent': [len(r) for r in all_results],
-        'consensus_issues': consensus_issues,
+        'validated_issues': validated_issues,
+        'dropped_issues': dropped_issues,
+        'merge_verdict': verdict,
+        'merge_rationale': rationale,
         'existing_comments': existing_comments,
-        'comment_body': format_pr_comment(consensus_issues)
+        'comment_body': format_pr_comment(validated_issues, dropped_issues, verdict, rationale)
     }
-    
+
     output_path = Path(args.output)
     output_path.write_text(json.dumps(output, indent=2))
     print(f"Results saved to: {args.output}")
-    
+
     # Print summary
     print(f"\n{'='*50}")
-    print("CONSENSUS ISSUES SUMMARY")
+    print("VALIDATED ISSUES SUMMARY")
     print(f"{'='*50}")
-    
-    if not consensus_issues:
-        print("No issues met consensus threshold")
+
+    if not validated_issues:
+        print("No issues passed validation")
     else:
-        for issue in consensus_issues:
+        for issue in validated_issues:
             print(f"\n[{issue['severity']}] {issue['title']}")
             print(f"  File: {issue['file']}:{issue['line_start']}")
-            print(f"  Consensus: {issue['consensus_count']}/{args.num_agents} agents")
+            print(f"  Flagged by: {issue.get('agent_count', 'N/A')} agent(s)")
+            if issue.get('validation_reasoning'):
+                print(f"  Reasoning: {issue['validation_reasoning'][:100]}...")
+
+    if dropped_issues:
+        print(f"\n{'='*50}")
+        print("DROPPED ISSUES")
+        print(f"{'='*50}")
+        for d in dropped_issues:
+            print(f"\n[DROPPED] {d['title']}")
+            print(f"  Reason: {d['drop_reason']}")
     
     return 0
 

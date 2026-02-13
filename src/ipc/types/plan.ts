@@ -23,27 +23,14 @@ export const PlanExitSchema = z.object({
 
 export type PlanExitPayload = z.infer<typeof PlanExitSchema>;
 
-const TextQuestionSchema = z.object({
+export const QuestionSchema = z.object({
   id: z.string(),
-  type: z.literal("text"),
+  type: z.enum(["text", "radio", "checkbox"]),
   question: z.string(),
+  options: z.array(z.string()).min(1).optional(),
   required: z.boolean().optional(),
   placeholder: z.string().optional(),
 });
-
-const MultipleChoiceQuestionSchema = z.object({
-  id: z.string(),
-  type: z.enum(["radio", "checkbox"]),
-  question: z.string(),
-  options: z.array(z.string()).min(1),
-  required: z.boolean().optional(),
-  placeholder: z.string().optional(),
-});
-
-export const QuestionSchema = z.union([
-  TextQuestionSchema,
-  MultipleChoiceQuestionSchema,
-]);
 
 export type Question = z.infer<typeof QuestionSchema>;
 

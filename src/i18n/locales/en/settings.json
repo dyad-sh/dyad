@@ -30,7 +30,24 @@
     "systemPath": "System PATH:",
     "notFound": "Not found",
     "nodeConfigured": "Node.js is properly configured and ready to use.",
-    "nodeSelectFolder": "Select the folder where Node.js is installed if it's not in your system PATH."
+    "nodeSelectFolder": "Select the folder where Node.js is installed if it's not in your system PATH.",
+    "dockerWarning": "Docker mode is experimental and requires",
+    "dockerWarningEnd": "to be installed and running",
+    "cloudSandbox": {
+      "description": "Cloud Sandbox runs your app on Vercel's infrastructure. Enter your own Vercel access token to use this feature.",
+      "tokenLabel": "Vercel Access Token",
+      "tokenPlaceholder": "Enter your Vercel access token",
+      "tokenHelp": "You'll need a Vercel access token with appropriate permissions.",
+      "getToken": "Get your token from Vercel",
+      "saveToken": "Save",
+      "tokenSaved": "Vercel access token saved successfully",
+      "tokenRemoved": "Vercel access token removed",
+      "tokenRemoveFailed": "Failed to remove Vercel access token",
+      "tokenRequired": "Access token is required",
+      "tokenInvalid": "Invalid access token. Please check your token and try again.",
+      "tokenConnected": "Vercel token connected",
+      "removeToken": "Remove"
+    }
   },
   "workflow": {
     "title": "Workflow Settings",

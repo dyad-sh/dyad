@@ -30,7 +30,24 @@
     "systemPath": "系统 PATH：",
     "notFound": "未找到",
     "nodeConfigured": "Node.js 已正确配置，可以使用。",
-    "nodeSelectFolder": "如果 Node.js 不在系统 PATH 中，请选择其安装文件夹。"
+    "nodeSelectFolder": "如果 Node.js 不在系统 PATH 中，请选择其安装文件夹。",
+    "dockerWarning": "Docker 模式是实验性的，需要安装并运行",
+    "dockerWarningEnd": "",
+    "cloudSandbox": {
+      "description": "云沙盒在 Vercel 的基础设施上运行您的应用。输入您自己的 Vercel 访问令牌以使用此功能。",
+      "tokenLabel": "Vercel 访问令牌",
+      "tokenPlaceholder": "输入您的 Vercel 访问令牌",
+      "tokenHelp": "您需要一个具有适当权限的 Vercel 访问令牌。",
+      "getToken": "从 Vercel 获取令牌",
+      "saveToken": "保存",
+      "tokenSaved": "Vercel 访问令牌保存成功",
+      "tokenRemoved": "Vercel 访问令牌已移除",
+      "tokenRemoveFailed": "移除 Vercel 访问令牌失败",
+      "tokenRequired": "需要访问令牌",
+      "tokenInvalid": "无效的访问令牌。请检查您的令牌并重试。",
+      "tokenConnected": "Vercel 令牌已连接",
+      "removeToken": "移除"
+    }
   },
   "workflow": {
     "title": "工作流设置",

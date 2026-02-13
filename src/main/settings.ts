@@ -145,6 +145,14 @@ export function readSettings(): UserSettings {
         encryptionType,
       };
     }
+    if (combinedSettings.userVercelSandboxToken) {
+      const encryptionType =
+        combinedSettings.userVercelSandboxToken.encryptionType;
+      combinedSettings.userVercelSandboxToken = {
+        value: decrypt(combinedSettings.userVercelSandboxToken),
+        encryptionType,
+      };
+    }
     for (const provider in combinedSettings.providerSettings) {
       if (combinedSettings.providerSettings[provider].apiKey) {
         const encryptionType =
@@ -196,6 +204,11 @@ export function writeSettings(settings: Partial<UserSettings>): void {
     if (newSettings.vercelAccessToken) {
       newSettings.vercelAccessToken = encrypt(
         newSettings.vercelAccessToken.value,
+      );
+    }
+    if (newSettings.userVercelSandboxToken) {
+      newSettings.userVercelSandboxToken = encrypt(
+        newSettings.userVercelSandboxToken.value,
       );
     }
     if (newSettings.supabase) {

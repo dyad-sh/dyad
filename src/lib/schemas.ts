@@ -403,27 +403,21 @@ export function migrateStoredSettings(
  * This removes properties that are no longer used by the application.
  */
 export function stripDeprecatedSettings(settings: UserSettings): UserSettings {
-  // Create a shallow copy to avoid mutating the original
-  const cleaned = { ...settings };
-
-  // Remove top-level deprecated properties
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const settingsAny = cleaned as any;
-  delete settingsAny.enableProSaverMode;
-  delete settingsAny.dyadProBudget;
-  delete settingsAny.runtimeMode;
+  const { enableProSaverMode, dyadProBudget, runtimeMode, ...cleanedSettings } =
+    settings as any;
 
-  // Remove deprecated experiment properties
-  if (cleaned.experiments) {
-    cleaned.experiments = { ...cleaned.experiments };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const experimentsAny = cleaned.experiments as any;
-    delete experimentsAny.enableLocalAgent;
-    delete experimentsAny.enableSupabaseIntegration;
-    delete experimentsAny.enableFileEditing;
+  if (cleanedSettings.experiments) {
+    const {
+      enableLocalAgent,
+      enableSupabaseIntegration,
+      enableFileEditing,
+      ...restExperiments
+    } = cleanedSettings.experiments;
+    cleanedSettings.experiments = restExperiments;
   }
 
-  return cleaned;
+  return cleanedSettings as UserSettings;
 }
 
 export function isDyadProEnabled(settings: UserSettings): boolean {

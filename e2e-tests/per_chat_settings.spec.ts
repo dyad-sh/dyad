@@ -6,50 +6,55 @@ test("per-chat settings - mode is isolated between chats", async ({ po }) => {
   await po.importApp("minimal");
 
   // First chat: switch to Ask mode
-  await po.selectChatMode("ask");
+  await po.chatActions.selectChatMode("ask");
 
   // Verify Chat #1 shows Ask mode
   await expect(po.page.getByTestId("chat-mode-selector")).toContainText("Ask");
 
   // Send a message in Ask mode to ensure the mode is persisted
   await po.sendPrompt("tc=local-agent/ask-read-file");
-  await po.waitForChatCompletion();
+  await po.chatActions.waitForChatCompletion();
 
   // Create a new chat
-  await po.clickNewChat();
+  await po.chatActions.clickNewChat();
 
   // Change Chat #2 to Agent mode
-  await po.selectChatMode("local-agent");
+  await po.chatActions.selectChatMode("local-agent");
   await expect(po.page.getByTestId("chat-mode-selector")).toContainText(
     "Agent",
   );
 
   // Send a message in Chat #2 to ensure it's saved
   await po.sendPrompt("tc=local-agent/simple-response");
-  await po.waitForChatCompletion();
+  await po.chatActions.waitForChatCompletion();
 
-  // Use the chat activity panel to navigate between chats
-  await po.clickChatActivityButton();
+  // Wait for tabs to appear (at least 2 tabs should exist now)
+  const closeButtons = po.page.getByLabel(/^Close tab:/);
+  await expect(async () => {
+    const count = await closeButtons.count();
+    expect(count).toBeGreaterThanOrEqual(2);
+  }).toPass({ timeout: 10000 });
 
-  // Find and click Chat #1 (should be at index 1 since Chat #2 is most recent)
-  const chat1ItemInList = po.page
-    .locator('[data-testid^="chat-activity-list-item-"]')
-    .filter({ hasText: "Chat #1" });
-  await expect(chat1ItemInList).toBeVisible();
-  await chat1ItemInList.click();
+  // Switch back to Chat #1 by clicking the inactive tab
+  const inactiveTab = po.page
+    .locator("div[draggable]")
+    .filter({ hasNot: po.page.locator('button[aria-current="page"]') })
+    .first();
+
+  await expect(inactiveTab).toBeVisible();
+  await inactiveTab.locator("button").first().click();
 
   // Chat #1 should still be in Ask mode (not affected by Chat #2's mode change)
   await expect(po.page.getByTestId("chat-mode-selector")).toContainText("Ask");
 
-  // Go back to Chat #2 through activity panel
-  await po.clickChatActivityButton();
+  // Switch back to Chat #2 - find the tab that's now inactive (should be Chat #2)
+  const chat2Tab = po.page
+    .locator("div[draggable]")
+    .filter({ hasNot: po.page.locator('button[aria-current="page"]') })
+    .first();
 
-  // Find and click Chat #2 (now Chat #1 is most recent, so Chat #2 should be at a different index)
-  const chat2ItemInList = po.page
-    .locator('[data-testid^="chat-activity-list-item-"]')
-    .filter({ hasText: "Chat #2" });
-  await expect(chat2ItemInList).toBeVisible();
-  await chat2ItemInList.click();
+  await expect(chat2Tab).toBeVisible();
+  await chat2Tab.locator("button").first().click();
 
   // Chat #2 should still be in Agent mode (persisted its own setting)
   await expect(po.page.getByTestId("chat-mode-selector")).toContainText(

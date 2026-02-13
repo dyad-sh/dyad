@@ -18,6 +18,7 @@ import { db } from "../../db";
 import { chats, messages } from "../../db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import type { SmartContextMode } from "../../lib/schemas";
+import { migrateStoredChatMode } from "../../lib/schemas";
 import {
   constructSystemPrompt,
   readAiRules,
@@ -262,8 +263,10 @@ export function registerChatStreamHandlers() {
       const globalSettings = readSettings();
       const settings = {
         ...globalSettings,
-        // Per-chat mode overrides global if set
-        selectedChatMode: chat.chatMode ?? globalSettings.selectedChatMode,
+        // Per-chat mode overrides global if set (migrate deprecated "agent" to "build")
+        selectedChatMode: chat.chatMode
+          ? migrateStoredChatMode(chat.chatMode)
+          : globalSettings.selectedChatMode,
         // Per-chat model overrides global if set
         selectedModel: chat.selectedModel ?? globalSettings.selectedModel,
       };

@@ -96,3 +96,147 @@ test("closing a tab removes it and selects adjacent tab", async ({ po }) => {
     expect(newCount).toBe(initialCount - 1);
   }).toPass({ timeout: Timeout.MEDIUM });
 });
+
+test("only shows tabs for chats opened in current session", async ({ po }) => {
+  await po.setUp({ autoApprove: true });
+  await po.importApp("minimal");
+
+  // Initially, there should be no tabs since no chats have been opened this session
+  const closeButtons = po.page.getByLabel(/^Close tab:/);
+  await expect(closeButtons).toHaveCount(0);
+
+  // Create a chat - it should appear as a tab since it's opened in this session
+  await po.sendPrompt("Session chat message zeta");
+  await po.chatActions.waitForChatCompletion();
+
+  // Now there should be 1 tab
+  await expect(async () => {
+    const count = await closeButtons.count();
+    expect(count).toBe(1);
+  }).toPass({ timeout: Timeout.MEDIUM });
+});
+
+test("right-click context menu shows close options", async ({ po }) => {
+  await po.setUp({ autoApprove: true });
+  await po.importApp("minimal");
+
+  // Create 3 chats
+  await po.sendPrompt("Context menu test chat 1");
+  await po.chatActions.waitForChatCompletion();
+
+  await po.chatActions.clickNewChat();
+  await po.sendPrompt("Context menu test chat 2");
+  await po.chatActions.waitForChatCompletion();
+
+  await po.chatActions.clickNewChat();
+  await po.sendPrompt("Context menu test chat 3");
+  await po.chatActions.waitForChatCompletion();
+
+  // Wait for tabs to appear
+  const closeButtons = po.page.getByLabel(/^Close tab:/);
+  await expect(async () => {
+    const count = await closeButtons.count();
+    expect(count).toBeGreaterThanOrEqual(3);
+  }).toPass({ timeout: Timeout.MEDIUM });
+
+  // Right-click on the second tab to open context menu
+  const tabs = po.page.locator("div[draggable]");
+  await tabs.nth(1).click({ button: "right" });
+
+  // Verify context menu appears with expected options
+  await expect(po.page.getByRole("menuitem", { name: "Close" })).toBeVisible({
+    timeout: Timeout.SHORT,
+  });
+  await expect(
+    po.page.getByRole("menuitem", { name: "Close other tabs" }),
+  ).toBeVisible({ timeout: Timeout.SHORT });
+  await expect(
+    po.page.getByRole("menuitem", { name: "Close tabs to the right" }),
+  ).toBeVisible({ timeout: Timeout.SHORT });
+});
+
+test("close other tabs via context menu", async ({ po }) => {
+  await po.setUp({ autoApprove: true });
+  await po.importApp("minimal");
+
+  // Create 3 chats
+  await po.sendPrompt("Close others test chat 1");
+  await po.chatActions.waitForChatCompletion();
+
+  await po.chatActions.clickNewChat();
+  await po.sendPrompt("Close others test chat 2");
+  await po.chatActions.waitForChatCompletion();
+
+  await po.chatActions.clickNewChat();
+  await po.sendPrompt("Close others test chat 3");
+  await po.chatActions.waitForChatCompletion();
+
+  // Wait for 3 tabs
+  const closeButtons = po.page.getByLabel(/^Close tab:/);
+  await expect(async () => {
+    const count = await closeButtons.count();
+    expect(count).toBeGreaterThanOrEqual(3);
+  }).toPass({ timeout: Timeout.MEDIUM });
+
+  // Right-click on the second tab
+  const tabs = po.page.locator("div[draggable]");
+  await tabs.nth(1).click({ button: "right" });
+
+  // Click "Close other tabs"
+  await po.page.getByRole("menuitem", { name: "Close other tabs" }).click();
+
+  // Should now have only 1 tab
+  await expect(async () => {
+    const count = await closeButtons.count();
+    expect(count).toBe(1);
+  }).toPass({ timeout: Timeout.MEDIUM });
+
+  // The remaining tab should show chat 2's content
+  await expect(po.page.getByText("Close others test chat 2")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
+});
+
+test("close tabs to the right via context menu", async ({ po }) => {
+  await po.setUp({ autoApprove: true });
+  await po.importApp("minimal");
+
+  // Create 3 chats
+  await po.sendPrompt("Close right test chat 1");
+  await po.chatActions.waitForChatCompletion();
+
+  await po.chatActions.clickNewChat();
+  await po.sendPrompt("Close right test chat 2");
+  await po.chatActions.waitForChatCompletion();
+
+  await po.chatActions.clickNewChat();
+  await po.sendPrompt("Close right test chat 3");
+  await po.chatActions.waitForChatCompletion();
+
+  // Wait for 3 tabs
+  const closeButtons = po.page.getByLabel(/^Close tab:/);
+  await expect(async () => {
+    const count = await closeButtons.count();
+    expect(count).toBeGreaterThanOrEqual(3);
+  }).toPass({ timeout: Timeout.MEDIUM });
+
+  // Right-click on the first tab
+  const tabs = po.page.locator("div[draggable]");
+  await tabs.first().click({ button: "right" });
+
+  // Click "Close tabs to the right"
+  await po.page
+    .getByRole("menuitem", { name: "Close tabs to the right" })
+    .click();
+
+  // Should now have only 1 tab (the first one)
+  await expect(async () => {
+    const count = await closeButtons.count();
+    expect(count).toBe(1);
+  }).toPass({ timeout: Timeout.MEDIUM });
+
+  // The remaining tab should show chat 1's content
+  await expect(po.page.getByText("Close right test chat 1")).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
+});

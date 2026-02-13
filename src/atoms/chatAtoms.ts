@@ -19,6 +19,8 @@ export const recentStreamChatIdsAtom = atom<Set<number>>(new Set<number>());
 export const recentViewedChatIdsAtom = atom<number[]>([]);
 // Track explicitly closed tabs - these should not reappear in the tab bar
 export const closedChatIdsAtom = atom<Set<number>>(new Set<number>());
+// Track chats that were opened/created in the current session - only these show as tabs
+export const sessionOpenedChatIdsAtom = atom<Set<number>>(new Set<number>());
 const MAX_RECENT_VIEWED_CHAT_IDS = 100;
 
 // Helper to remove a chat ID from the closed set (used when a closed tab is re-opened)
@@ -50,14 +52,22 @@ export const ensureRecentViewedChatIdAtom = atom(
   null,
   (get, set, chatId: number) => {
     const currentIds = get(recentViewedChatIdsAtom);
-    if (currentIds.includes(chatId)) return;
-    const nextIds = [chatId, ...currentIds];
-    if (nextIds.length > MAX_RECENT_VIEWED_CHAT_IDS) {
-      nextIds.length = MAX_RECENT_VIEWED_CHAT_IDS;
+    if (!currentIds.includes(chatId)) {
+      const nextIds = [chatId, ...currentIds];
+      if (nextIds.length > MAX_RECENT_VIEWED_CHAT_IDS) {
+        nextIds.length = MAX_RECENT_VIEWED_CHAT_IDS;
+      }
+      set(recentViewedChatIdsAtom, nextIds);
     }
-    set(recentViewedChatIdsAtom, nextIds);
     // Remove from closed set when explicitly selected
     removeFromClosedSet(get, set, chatId);
+    // Add to session set when chat is selected/opened
+    const sessionIds = get(sessionOpenedChatIdsAtom);
+    if (!sessionIds.has(chatId)) {
+      const newSessionIds = new Set(sessionIds);
+      newSessionIds.add(chatId);
+      set(sessionOpenedChatIdsAtom, newSessionIds);
+    }
   },
 );
 export const pushRecentViewedChatIdAtom = atom(
@@ -71,6 +81,13 @@ export const pushRecentViewedChatIdAtom = atom(
     set(recentViewedChatIdsAtom, nextIds);
     // Remove from closed set when explicitly selected
     removeFromClosedSet(get, set, chatId);
+    // Add to session set when chat is selected/opened
+    const sessionIds = get(sessionOpenedChatIdsAtom);
+    if (!sessionIds.has(chatId)) {
+      const newSessionIds = new Set(sessionIds);
+      newSessionIds.add(chatId);
+      set(sessionOpenedChatIdsAtom, newSessionIds);
+    }
   },
 );
 export const removeRecentViewedChatIdAtom = atom(

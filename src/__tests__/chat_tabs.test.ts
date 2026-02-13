@@ -3,6 +3,7 @@ import { createStore } from "jotai";
 import {
   recentViewedChatIdsAtom,
   closedChatIdsAtom,
+  sessionOpenedChatIdsAtom,
   pushRecentViewedChatIdAtom,
   removeRecentViewedChatIdAtom,
   pruneClosedChatIdsAtom,
@@ -27,16 +28,42 @@ function chat(id: number): ChatSummary {
 }
 
 describe("ChatTabs helpers", () => {
-  it("keeps MRU order and appends chats that were never viewed", () => {
+  it("keeps MRU order for session-opened chats only", () => {
     const chats = [chat(1), chat(2), chat(3), chat(4)];
-    const orderedIds = getOrderedRecentChatIds([4, 2], chats);
-    expect(orderedIds).toEqual([4, 2, 1, 3]);
+    // Only chats in sessionOpenedChatIds should appear
+    const sessionOpened = new Set([4, 2]);
+    const orderedIds = getOrderedRecentChatIds(
+      [4, 2],
+      chats,
+      new Set(),
+      sessionOpened,
+    );
+    expect(orderedIds).toEqual([4, 2]);
   });
 
   it("skips stale chat ids that no longer exist", () => {
     const chats = [chat(1), chat(3)];
-    const orderedIds = getOrderedRecentChatIds([3, 999, 1], chats);
+    const sessionOpened = new Set([3, 999, 1]);
+    const orderedIds = getOrderedRecentChatIds(
+      [3, 999, 1],
+      chats,
+      new Set(),
+      sessionOpened,
+    );
     expect(orderedIds).toEqual([3, 1]);
+  });
+
+  it("only shows chats opened in current session", () => {
+    const chats = [chat(1), chat(2), chat(3), chat(4)];
+    // Even if chat is in recentViewedChatIds, it shouldn't show unless in sessionOpened
+    const sessionOpened = new Set([2, 3]);
+    const orderedIds = getOrderedRecentChatIds(
+      [1, 2, 3, 4],
+      chats,
+      new Set(),
+      sessionOpened,
+    );
+    expect(orderedIds).toEqual([2, 3]);
   });
 
   it("does not reorder when selecting an already-visible tab", () => {
@@ -128,5 +155,13 @@ describe("recent viewed chat atoms", () => {
     expect(pruned.has(1)).toBe(true);
     expect(pruned.has(2)).toBe(true);
     expect(pruned.has(99)).toBe(false);
+  });
+
+  it("adds chat to sessionOpenedChatIds when pushed", () => {
+    const store = createStore();
+    store.set(recentViewedChatIdsAtom, [1, 2]);
+    store.set(sessionOpenedChatIdsAtom, new Set([1, 2]));
+    store.set(pushRecentViewedChatIdAtom, 3);
+    expect(store.get(sessionOpenedChatIdsAtom).has(3)).toBe(true);
   });
 });

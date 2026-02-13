@@ -56,6 +56,10 @@ gh api graphql --input .claude/tmp/resolve_thread.json
 gh api repos/dyad-sh/dyad/issues/{PR_NUMBER}/labels -f "labels[]=label-name"
 ```
 
+## CI permission allowlist (claude-code-action)
+
+In CI, `claude-code-action@v1` runs without an interactive user. Any Bash command not explicitly listed in `.claude/settings.json`'s `permissions.allow` will be denied (the `PermissionRequest` hook's YELLOW score also results in denial since there's no user to approve). When adding new CI scripts or tools, ensure the corresponding `Bash(command:*)` pattern is in the allowlist. For example, `node .claude/*.js` scripts require `Bash(node:*)`.
+
 ## CI file access (claude-code-action)
 
 In CI, `claude-code-action` restricts file access to the repo working directory (e.g., `/home/runner/work/dyad/dyad`). Skills that save intermediate files (like PR diffs) must use `./filename` (current working directory), **never** `/tmp/`. Using `/tmp/` causes errors like: `cat in '/tmp/pr_*_diff.patch' was blocked. For security, Claude Code may only concatenate files from the allowed working directories`.

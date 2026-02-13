@@ -75,6 +75,8 @@
 
       "Bash(git:*)",
 
+      "Bash(node:*)",
+
       "Bash(gh api:*)",
       "Bash(gh pr view:*)",
       "Bash(gh pr list:*)",

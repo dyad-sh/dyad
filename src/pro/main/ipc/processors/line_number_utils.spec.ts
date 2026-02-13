@@ -146,10 +146,12 @@ describe("line_number_utils", () => {
       expect(result.hasLineNumbers).toBe(false);
     });
 
-    it("strips line numbers from single line", () => {
+    it("does not strip line numbers from single line (too ambiguous)", () => {
+      // Single lines matching the pattern are too ambiguous to confidently strip
+      // (e.g., "42| some data" could be actual file content, not a line number prefix)
       const result = stripLineNumberPrefixes("1| hello");
-      expect(result.content).toBe("hello");
-      expect(result.hasLineNumbers).toBe(true);
+      expect(result.content).toBe("1| hello");
+      expect(result.hasLineNumbers).toBe(false);
     });
 
     it("strips line numbers from multiple lines", () => {

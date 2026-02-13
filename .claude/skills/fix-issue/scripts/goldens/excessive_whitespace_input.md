@@ -1,12 +1,6 @@
 # Issue Title
 
-
-
-
 Too many blank lines above.
-
-
-
 
 And here too.
 

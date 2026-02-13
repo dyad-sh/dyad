@@ -124,6 +124,19 @@ describe("line_number_utils", () => {
       const expected = "1| const x = 1;\n2| const y = 'hello | world';";
       expect(addLineNumberPrefixes(input)).toBe(expected);
     });
+
+    it("supports custom start line number", () => {
+      const input = "line one\nline two\nline three";
+      const expected = "5| line one\n6| line two\n7| line three";
+      expect(addLineNumberPrefixes(input, 5)).toBe(expected);
+    });
+
+    it("adjusts width based on max line number with custom start", () => {
+      const input = "a\nb\nc";
+      // Starting at line 98 means max line is 100, so width is 3
+      const expected = " 98| a\n 99| b\n100| c";
+      expect(addLineNumberPrefixes(input, 98)).toBe(expected);
+    });
   });
 
   describe("stripLineNumberPrefixes", () => {
@@ -147,9 +160,10 @@ describe("line_number_utils", () => {
     });
 
     it("strips padded line numbers", () => {
-      const input = " 1| line one\n 2| line two\n10| line ten";
+      // Use sequential line numbers (e.g., 8, 9, 10) with padding
+      const input = " 8| line eight\n 9| line nine\n10| line ten";
       const result = stripLineNumberPrefixes(input);
-      expect(result.content).toBe("line one\nline two\nline ten");
+      expect(result.content).toBe("line eight\nline nine\nline ten");
       expect(result.hasLineNumbers).toBe(true);
     });
 
@@ -187,6 +201,22 @@ describe("line_number_utils", () => {
       const result = stripLineNumberPrefixes(input);
       expect(result.content).toBe(input);
       expect(result.hasLineNumbers).toBe(false);
+    });
+
+    it("rejects non-sequential line numbers as false positives", () => {
+      // Content that looks like line numbers but isn't sequential
+      const input = "1| Alice\n3| Bob\n5| Charlie";
+      const result = stripLineNumberPrefixes(input);
+      expect(result.content).toBe(input);
+      expect(result.hasLineNumbers).toBe(false);
+    });
+
+    it("accepts sequential line numbers starting from any number", () => {
+      // Sequential line numbers starting from 5
+      const input = "5| line five\n6| line six\n7| line seven";
+      const result = stripLineNumberPrefixes(input);
+      expect(result.content).toBe("line five\nline six\nline seven");
+      expect(result.hasLineNumbers).toBe(true);
     });
 
     it("round-trips correctly with addLineNumberPrefixes", () => {

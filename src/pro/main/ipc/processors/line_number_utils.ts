@@ -29,20 +29,26 @@ export const LINE_NUMBER_REGEX = /^\s*(\d+)\| ?(.*)$/;
  * The width dynamically adjusts based on total line count.
  *
  * @param content - The content to add line numbers to
+ * @param startLineNumber - The line number to start from (default 1)
  * @returns Content with line number prefixes
  */
-export function addLineNumberPrefixes(content: string): string {
+export function addLineNumberPrefixes(
+  content: string,
+  startLineNumber: number = 1,
+): string {
   if (content === "") {
     return "";
   }
 
   const lines = content.split("\n");
   const totalLines = lines.length;
-  const width = String(totalLines).length;
+  // Calculate width based on the largest line number
+  const maxLineNumber = startLineNumber + totalLines - 1;
+  const width = String(maxLineNumber).length;
 
   return lines
     .map((line, index) => {
-      const lineNum = String(index + 1).padStart(width, " ");
+      const lineNum = String(startLineNumber + index).padStart(width, " ");
       return `${lineNum}| ${line}`;
     })
     .join("\n");
@@ -51,6 +57,8 @@ export function addLineNumberPrefixes(content: string): string {
 /**
  * Strip line number prefixes from content.
  * Detects if all non-empty lines have the line number format and strips them.
+ * Also validates that line numbers are sequential (monotonically increasing)
+ * to reduce false positives on content that coincidentally matches the pattern.
  *
  * @param content - The content that may have line number prefixes
  * @returns Object with stripped content and whether line numbers were found
@@ -64,16 +72,33 @@ export function stripLineNumberPrefixes(content: string): {
   }
 
   const lines = content.split("\n");
+  const extractedNumbers: number[] = [];
 
   // Check if all non-empty lines have line number prefixes
-  const hasLineNumbers = lines.every((line) => {
+  const hasLineNumberFormat = lines.every((line) => {
     // Empty lines after splitting might not have prefixes (edge case)
     if (line === "") return true;
-    return LINE_NUMBER_REGEX.test(line);
+    const match = line.match(LINE_NUMBER_REGEX);
+    if (match) {
+      extractedNumbers.push(parseInt(match[1], 10));
+      return true;
+    }
+    return false;
   });
 
-  if (!hasLineNumbers) {
+  if (!hasLineNumberFormat) {
     return { content, hasLineNumbers: false };
+  }
+
+  // Verify that extracted line numbers are sequential (monotonically increasing by 1)
+  // This dramatically reduces false positives on content that coincidentally matches
+  // the line number pattern (e.g., "1| Alice", "2| Bob" as data content)
+  if (extractedNumbers.length > 1) {
+    for (let i = 1; i < extractedNumbers.length; i++) {
+      if (extractedNumbers[i] !== extractedNumbers[i - 1] + 1) {
+        return { content, hasLineNumbers: false };
+      }
+    }
   }
 
   // Strip the line number prefixes

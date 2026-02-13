@@ -177,12 +177,12 @@ line 5`;
   });
 
   describe("execute - start_line_one_indexed only", () => {
-    it("reads from start line to end of file with line numbers", async () => {
+    it("reads from start line to end of file with line numbers reflecting actual positions", async () => {
       const result = await readFileTool.execute(
         { path: "test.txt", start_line_one_indexed: 3 },
         mockContext,
       );
-      expect(result).toBe("1| line 3\n2| line 4\n3| line 5");
+      expect(result).toBe("3| line 3\n4| line 4\n5| line 5");
     });
 
     it("reads from line 1 with line numbers (same as full file)", async () => {
@@ -200,7 +200,7 @@ line 5`;
         { path: "test.txt", start_line_one_indexed: 5 },
         mockContext,
       );
-      expect(result).toBe("1| line 5");
+      expect(result).toBe("5| line 5");
     });
 
     it("returns empty string when start exceeds line count", async () => {
@@ -251,7 +251,7 @@ line 5`;
   });
 
   describe("execute - both start and end", () => {
-    it("reads a middle range with line numbers", async () => {
+    it("reads a middle range with line numbers reflecting actual positions", async () => {
       const result = await readFileTool.execute(
         {
           path: "test.txt",
@@ -260,7 +260,7 @@ line 5`;
         },
         mockContext,
       );
-      expect(result).toBe("1| line 2\n2| line 3\n3| line 4");
+      expect(result).toBe("2| line 2\n3| line 3\n4| line 4");
     });
 
     it("reads a single line with line numbers when start equals end", async () => {
@@ -272,7 +272,7 @@ line 5`;
         },
         mockContext,
       );
-      expect(result).toBe("1| line 3");
+      expect(result).toBe("3| line 3");
     });
 
     it("clamps both to valid range", async () => {
@@ -284,7 +284,7 @@ line 5`;
         },
         mockContext,
       );
-      expect(result).toBe("1| line 4\n2| line 5");
+      expect(result).toBe("4| line 4\n5| line 5");
     });
   });
 
@@ -316,7 +316,7 @@ line 5`;
         {
           path: "trailing-newline.txt",
           start_line_one_indexed: 1,
-          end_line_one_indexed_inclusive: 3,
+          end_line_one_indexed_inclusive: 4,
         },
         mockContext,
       );

@@ -404,11 +404,18 @@ export function migrateStoredSettings(
  */
 export function stripDeprecatedSettings(settings: UserSettings): UserSettings {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { ...cleanedSettings } =
-    settings as any;
+  const {
+    enableProSaverMode: _enableProSaverMode,
+    dyadProBudget: _dyadProBudget,
+    runtimeMode: _runtimeMode,
+    ...cleanedSettings
+  } = settings as any;
 
   if (cleanedSettings.experiments) {
     const {
+      enableLocalAgent: _enableLocalAgent,
+      enableSupabaseIntegration: _enableSupabaseIntegration,
+      enableFileEditing: _enableFileEditing,
       ...restExperiments
     } = cleanedSettings.experiments;
     cleanedSettings.experiments = restExperiments;

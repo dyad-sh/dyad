@@ -107,12 +107,11 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
 
     const original = await fs.promises.readFile(fullFilePath, "utf8");
 
-    // Construct the operations string in the expected format
-    const escapedOld = escapeSearchReplaceMarkers(args.old_string);
-    const escapedNew = escapeSearchReplaceMarkers(args.new_string);
-    const operations = `<<<<<<< SEARCH\n${escapedOld}\n=======\n${escapedNew}\n>>>>>>> REPLACE`;
-
-    const result = applySearchReplaceWithLineNumbers(original, operations);
+    const result = applySearchReplaceWithLineNumbers(
+      original,
+      args.old_string,
+      args.new_string,
+    );
 
     if (!result.success || typeof result.content !== "string") {
       sendTelemetryEvent("local_agent:search_replace:failure", {

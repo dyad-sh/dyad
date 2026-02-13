@@ -37,7 +37,7 @@
       {
         "role": "tool",
         "tool_call_id": "[[TOOL_CALL_0]]",
-        "content": "{\"type\":\"text\",\"value\":\"const App = () => <div>Minimal imported app</div>;\\n\\nexport default App;\\n\"}"
+        "content": "{\"type\":\"text\",\"value\":\"1| const App = () => <div>Minimal imported app</div>;\\n2| \\n3| export default App;\\n4| \"}"
       },
       {
         "role": "assistant",

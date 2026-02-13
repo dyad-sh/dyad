@@ -1,22 +1,9 @@
-/* eslint-disable no-irregular-whitespace */
-
 import { parseSearchReplaceBlocks } from "@/pro/shared/search_replace_parser";
 import { normalizeString } from "@/utils/text_normalization";
 import { stripLineNumberPrefixes } from "./line_number_utils";
 import log from "electron-log";
 
 const logger = log.scope("search_replace_line_numbers_processor");
-
-// ============================================================================
-// Line Number Stripping for Search Content
-// ============================================================================
-
-function unescapeMarkers(content: string): string {
-  return content
-    .replace(/^\\<<<<<<</gm, "<<<<<<<")
-    .replace(/^\\=======/gm, "=======")
-    .replace(/^\\>>>>>>>/gm, ">>>>>>>");
-}
 
 // ============================================================================
 // Cascading Fuzzy Matching
@@ -75,6 +62,10 @@ const MATCHING_PASSES: Array<{ name: string; comparator: LineComparator }> = [
   { name: "all-edge-whitespace-ignored", comparator: allEdgeWhitespaceIgnored },
   { name: "unicode-normalized", comparator: unicodeNormalized },
 ];
+
+function unescapeMarkers(content: string): string {
+  return content.replace(/^\\(<<<<<<<|=======|>>>>>>>)/gm, "$1");
+}
 
 /**
  * Trim leading and trailing empty lines from an array of lines
@@ -379,18 +370,22 @@ function cascadingMatch(
 
 export function applySearchReplaceWithLineNumbers(
   originalContent: string,
-  diffContent: string,
+  oldOrDiffContent: string,
+  newContent?: string,
 ): {
   success: boolean;
   content?: string;
   error?: string;
 } {
-  const blocks = parseSearchReplaceBlocks(diffContent);
+  const blocks =
+    newContent === undefined
+      ? parseSearchReplaceBlocks(oldOrDiffContent)
+      : [{ searchContent: oldOrDiffContent, replaceContent: newContent }];
+
   if (blocks.length === 0) {
     return {
       success: false,
-      error:
-        "Invalid diff format - missing required sections. Expected <<<<<<< SEARCH / ======= / >>>>>>> REPLACE",
+      error: "Invalid search/replace input - no replace blocks found",
     };
   }
 
@@ -401,7 +396,6 @@ export function applySearchReplaceWithLineNumbers(
   for (const block of blocks) {
     let { searchContent, replaceContent } = block;
 
-    // Normalize markers
     searchContent = unescapeMarkers(searchContent);
     replaceContent = unescapeMarkers(replaceContent);
 

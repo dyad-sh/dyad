@@ -107,7 +107,7 @@ export function QueuedMessagesList({
   isStreaming,
   hasError,
 }: QueuedMessagesListProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);
 
   if (!messages.length) return null;
 
@@ -138,22 +138,29 @@ export function QueuedMessagesList({
         </div>
       </button>
 
-      {isExpanded && (
-        <ul className="px-3 pb-2.5 space-y-1.5">
-          {messages.map((msg, index) => (
-            <QueuedMessageItemRow
-              key={msg.id}
-              message={msg}
-              index={index}
-              total={messages.length}
-              onEdit={() => onEdit(msg.id)}
-              onDelete={() => onDelete(msg.id)}
-              onMoveUp={() => onMoveUp(msg.id)}
-              onMoveDown={() => onMoveDown(msg.id)}
-            />
-          ))}
-        </ul>
-      )}
+      <div
+        className="grid transition-[grid-template-rows] duration-200 ease-in-out"
+        style={{
+          gridTemplateRows: isExpanded ? "1fr" : "0fr",
+        }}
+      >
+        <div className="overflow-hidden">
+          <ul className="px-3 pb-2.5 space-y-1.5">
+            {messages.map((msg, index) => (
+              <QueuedMessageItemRow
+                key={msg.id}
+                message={msg}
+                index={index}
+                total={messages.length}
+                onEdit={() => onEdit(msg.id)}
+                onDelete={() => onDelete(msg.id)}
+                onMoveUp={() => onMoveUp(msg.id)}
+                onMoveDown={() => onMoveDown(msg.id)}
+              />
+            ))}
+          </ul>
+        </div>
+      </div>
     </div>
   );
 }

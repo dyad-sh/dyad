@@ -4,7 +4,6 @@ import { getUserDataPath } from "../paths/paths";
 import {
   StoredUserSettingsSchema,
   UserSettingsSchema,
-  StoredUserSettingsSchema,
   type UserSettings,
   Secret,
   VertexProviderSetting,

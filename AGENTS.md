@@ -91,6 +91,15 @@ This is the only supported way to type-check the project. It uses the correct co
 - Keep Electron security practices in mind (no `remote`, validate/lock by `appId` when mutating shared resources).
 - Add tests in the same folder tree when touching renderer components.
 
+### Schema migrations and backward compatibility
+
+When deprecating enum values in Zod schemas (e.g., chat modes, settings):
+
+- Create separate `Stored*Schema` (with deprecated values) and active schema (without deprecated values)
+- Use a migration function to convert deprecated values on read (e.g., `migrateStoredChatMode`)
+- In conflict resolution, preserve HEAD's naming/comments for consistency (e.g., "Base fields" vs "base settings object")
+- When both HEAD and incoming changes add migration logic, keep the more complete version (usually HEAD if it has a `migrateStoredSettings` wrapper function)
+
 Use these guidelines whenever you work within this repository.
 
 ## Testing

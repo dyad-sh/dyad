@@ -1228,7 +1228,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 aiRules: await readAiRules(
                   getDyadAppPath(updatedChat.app.path),
                 ),
-                chatMode: "build",
+                chatMode: "mcp-tool-gather",
                 enableTurboEditsV2: false,
               }),
               files: files,

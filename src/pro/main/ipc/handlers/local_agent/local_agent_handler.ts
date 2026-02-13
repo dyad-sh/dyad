@@ -429,6 +429,7 @@ export async function handleLocalAgentStream(
       chatId: chat.id,
       supabaseProjectId: chat.app.supabaseProjectId,
       supabaseOrganizationSlug: chat.app.supabaseOrganizationSlug,
+      convexDeploymentUrl: chat.app.convexDeploymentUrl,
       messageId: placeholderMessageId,
       isSharedModulesChanged: false,
       todos: [],

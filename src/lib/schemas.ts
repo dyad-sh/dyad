@@ -207,6 +207,14 @@ export const NeonSchema = z.object({
 });
 export type Neon = z.infer<typeof NeonSchema>;
 
+export const ConvexSchema = z.object({
+  // Convex deployment URL (e.g., "https://some-animal-123.convex.cloud")
+  deploymentUrl: z.string().optional(),
+  // Convex deploy key for management API operations
+  deployKey: SecretSchema.optional(),
+});
+export type Convex = z.infer<typeof ConvexSchema>;
+
 export const ExperimentsSchema = z.object({
   // Deprecated
   enableLocalAgent: z.boolean().describe("DEPRECATED").optional(),
@@ -379,6 +387,7 @@ export type StoredUserSettings = z.infer<typeof StoredUserSettingsSchema>;
 export const UserSettingsSchema = z
   .object({
     ...BaseUserSettingsFields,
+    convex: ConvexSchema.optional(),
     // Use ChatModeSchema which excludes deprecated "agent" value
     selectedChatMode: ChatModeSchema.optional(),
     defaultChatMode: ChatModeSchema.optional(),
@@ -489,6 +498,13 @@ export function isSupabaseConnected(settings: UserSettings | null): boolean {
     (settings.supabase?.organizations &&
       Object.keys(settings.supabase.organizations).length > 0),
   );
+}
+
+export function isConvexConnected(settings: UserSettings | null): boolean {
+  if (!settings) {
+    return false;
+  }
+  return Boolean(settings.convex?.deploymentUrl);
 }
 
 export function isTurboEditsV2Enabled(settings: UserSettings): boolean {

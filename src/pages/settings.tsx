@@ -25,6 +25,7 @@ import { ChatCompletionNotificationSwitch } from "@/components/ChatCompletionNot
 import { AutoUpdateSwitch } from "@/components/AutoUpdateSwitch";
 import { ReleaseChannelSelector } from "@/components/ReleaseChannelSelector";
 import { NeonIntegration } from "@/components/NeonIntegration";
+import { ConvexIntegration } from "@/components/ConvexIntegration";
 import { RuntimeModeSelector } from "@/components/RuntimeModeSelector";
 import { NodePathSelector } from "@/components/NodePathSelector";
 import { ToolsMcpSettings } from "@/components/settings/ToolsMcpSettings";
@@ -139,6 +140,9 @@ export default function SettingsPage() {
               </div>
               <div id={SETTING_IDS.neon}>
                 <NeonIntegration />
+              </div>
+              <div id={SETTING_IDS.convex}>
+                <ConvexIntegration />
               </div>
             </div>
           </div>

@@ -48,6 +48,8 @@ export const apps = sqliteTable("apps", {
   neonProjectId: text("neon_project_id"),
   neonDevelopmentBranchId: text("neon_development_branch_id"),
   neonPreviewBranchId: text("neon_preview_branch_id"),
+  // Convex deployment URL (e.g., "https://some-animal-123.convex.cloud")
+  convexDeploymentUrl: text("convex_deployment_url"),
   vercelProjectId: text("vercel_project_id"),
   vercelProjectName: text("vercel_project_name"),
   vercelTeamId: text("vercel_team_id"),

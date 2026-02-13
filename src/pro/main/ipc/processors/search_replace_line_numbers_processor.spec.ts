@@ -389,6 +389,39 @@ BAR
       expect(error).toContain("context");
     });
 
+    it("shows correct line range in ambiguous match error for multi-line search", () => {
+      const original = [
+        "start",
+        "match line 1",
+        "match line 2",
+        "match line 3",
+        "middle",
+        "match line 1",
+        "match line 2",
+        "match line 3",
+        "end",
+      ].join("\n");
+
+      const diff = `
+<<<<<<< SEARCH
+match line 1
+match line 2
+match line 3
+=======
+replaced
+>>>>>>> REPLACE
+`;
+
+      const { success, error } = applySearchReplaceWithLineNumbers(
+        original,
+        diff,
+      );
+      expect(success).toBe(false);
+      // Should show Lines 2-4 and Lines 6-8 (not Lines 2-3 and Lines 6-7)
+      expect(error).toContain("Lines 2-4");
+      expect(error).toContain("Lines 6-8");
+    });
+
     it("shows line numbers in error messages", () => {
       const original = [
         "line one",
@@ -552,6 +585,26 @@ middle
       expect(content).toContain("  if (x) {");
       expect(content).toContain("      doOther();");
       expect(content).toContain("    doAnother();");
+    });
+
+    it("preserves intentional trailing whitespace in replacement", () => {
+      // Trailing whitespace can be significant in some file types (e.g., Markdown hard breaks)
+      const original = ["line 1", "line 2", "line 3"].join("\n");
+      // Build the diff manually to ensure trailing spaces are preserved in the replacement
+      const diff = [
+        "<<<<<<< SEARCH",
+        "line 2",
+        "=======",
+        "line 2 with trailing   ", // 3 trailing spaces
+        ">>>>>>> REPLACE",
+      ].join("\n");
+      const { success, content } = applySearchReplaceWithLineNumbers(
+        original,
+        diff,
+      );
+      expect(success).toBe(true);
+      // The trailing spaces should be preserved
+      expect(content).toContain("line 2 with trailing   ");
     });
   });
 

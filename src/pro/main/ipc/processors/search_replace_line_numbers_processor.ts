@@ -237,7 +237,10 @@ function generateNoMatchError(
 /**
  * Generate an enhanced error message for ambiguous match failures
  */
-function generateAmbiguousMatchError(positions: number[]): string {
+function generateAmbiguousMatchError(
+  positions: number[],
+  searchLineCount: number,
+): string {
   const lines: string[] = [];
   lines.push(
     "Search block matched multiple locations in the file (ambiguous).",
@@ -246,7 +249,7 @@ function generateAmbiguousMatchError(positions: number[]): string {
   lines.push("MATCHED LOCATIONS:");
 
   positions.forEach((pos, i) => {
-    lines.push(`  ${i + 1}. Lines ${pos + 1}-${pos + 2}`);
+    lines.push(`  ${i + 1}. Lines ${pos + 1}-${pos + searchLineCount}`);
   });
 
   lines.push("");
@@ -358,7 +361,7 @@ function cascadingMatch(
     if (positions.length > 1) {
       return {
         matchIndex: -1,
-        error: generateAmbiguousMatchError(positions),
+        error: generateAmbiguousMatchError(positions, searchLines.length),
         ambiguousPositions: positions,
       };
     }
@@ -494,7 +497,7 @@ export function applySearchReplaceWithLineNumbers(
             )
           : matchedIndent + currentIndent.slice(searchBaseLevel);
 
-      return finalIndent + line.trim();
+      return finalIndent + line.trimStart();
     });
 
     const beforeMatch = resultLines.slice(0, matchIndex);

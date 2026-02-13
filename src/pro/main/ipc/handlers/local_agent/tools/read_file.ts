@@ -105,6 +105,7 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
     const result = lines.slice(startIdx, endIdx).join("\n");
     const slicedContent =
       endIdx >= lines.length && hasTrailingNewline ? result + "\n" : result;
-    return addLineNumberPrefixes(slicedContent);
+    // Pass the actual starting line number so line numbers reflect file positions
+    return addLineNumberPrefixes(slicedContent, startIdx + 1);
   },
 };

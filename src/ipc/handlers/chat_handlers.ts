@@ -2,6 +2,7 @@ import { db } from "../../db";
 import { apps, chats, messages } from "../../db/schema";
 import { desc, eq, and, like } from "drizzle-orm";
 import type { ChatSearchResult, ChatSummary } from "../../lib/schemas";
+import { migrateStoredChatMode } from "../../lib/schemas";
 
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -73,6 +74,8 @@ export function registerChatHandlers() {
     return {
       ...chat,
       title: chat.title ?? "",
+      // Migrate deprecated "agent" to "build" for chat mode
+      chatMode: chat.chatMode ? migrateStoredChatMode(chat.chatMode) : null,
       messages: chat.messages.map((m) => ({
         ...m,
         role: m.role as "user" | "assistant",
@@ -187,7 +190,9 @@ export function registerChatHandlers() {
     }
 
     return {
-      chatMode: chat.chatMode ?? null,
+      chatMode: chat.chatMode
+        ? (migrateStoredChatMode(chat.chatMode) ?? null)
+        : null,
       selectedModel: chat.selectedModel ?? null,
     };
   });

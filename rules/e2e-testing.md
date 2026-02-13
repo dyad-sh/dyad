@@ -104,6 +104,32 @@ When adding new test server URLs, update **both** the test fixtures (`e2e-tests/
 - **Navigation to tabs**: Use `await expect(link).toBeVisible({ timeout: Timeout.EXTRA_LONG })` before clicking tab links (especially in `goToAppsTab()`). Electron sidebar links can take time to render during app initialization.
 - **Confirming flakiness**: Use `PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec> --repeat-each=10` to reproduce flaky tests. `PLAYWRIGHT_RETRIES=0` is critical — CI defaults to 2 retries, hiding flakiness.
 
+## Waiting for button state transitions
+
+When clicking a button that triggers an async operation and changes its text/state (e.g., "Run Security Review" → "Running Security Review..."), wait for the loading state to appear and disappear rather than just waiting for the original button to be hidden:
+
+```ts
+// Wrong: waiting for original button to be hidden may race
+const button = page.getByRole("button", { name: "Run Security Review" });
+await button.click();
+await button.waitFor({ state: "hidden" }); // Unreliable
+
+// Correct: wait for loading state to appear then disappear
+const button = page.getByRole("button", { name: "Run Security Review" });
+await button.click();
+const loadingButton = page.getByRole("button", {
+  name: "Running Security Review...",
+});
+await loadingButton.waitFor({ state: "visible" });
+await loadingButton.waitFor({ state: "hidden" });
+```
+
+This pattern provides a more reliable signal that the async operation has completed, because:
+
+1. It confirms the operation actually started (loading state appeared)
+2. It confirms the operation finished (loading state disappeared)
+3. It avoids race conditions where the button might briefly be in the DOM but not yet updated
+
 ## E2E test fixtures with .dyad directories
 
 When adding E2E test fixtures that need a `.dyad` directory for testing:

@@ -404,10 +404,13 @@ export function migrateStoredSettings(
  */
 export function stripDeprecatedSettings(settings: UserSettings): UserSettings {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { ...cleanedSettings } = settings as any;
+  const { ...cleanedSettings } =
+    settings as any;
 
   if (cleanedSettings.experiments) {
-    const { ...restExperiments } = cleanedSettings.experiments;
+    const {
+      ...restExperiments
+    } = cleanedSettings.experiments;
     cleanedSettings.experiments = restExperiments;
   }
 

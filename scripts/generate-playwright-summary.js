@@ -104,7 +104,8 @@ function detectMissingShards(blobFiles) {
     if (!parsed || !parsed.total || !parsed.os) {
       const state = shardStateByOs[os];
       // Fall back to file-counting behavior if metadata isn't available.
-      state.found.add(state.found.size + 1);
+      // Use the file path as a unique identifier to avoid collisions with real shard IDs.
+      state.found.add(file);
       continue;
     }
 
@@ -229,7 +230,9 @@ async function run({ github, context, core }) {
   // Identify which OS each blob report came from
   const blobDir = "all-blob-reports";
   const blobFiles = fs.existsSync(blobDir) ? collectBlobFiles(blobDir) : [];
-  const hasMacOS = blobFiles.some((f) => detectOsFromPath(f.toLowerCase()));
+  const hasMacOS = blobFiles.some(
+    (f) => detectOsFromPath(f.toLowerCase()) === "macOS",
+  );
   const hasWindows = blobFiles.some(
     (f) => detectOsFromPath(f.toLowerCase()) === "Windows",
   );

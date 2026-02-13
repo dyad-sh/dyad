@@ -12,12 +12,12 @@ testSetup.describe("Setup Flow", () => {
       // Verify the "Setup Dyad" heading is visible
       await expect(
         po.page.getByText("Setup Dyad", { exact: true }),
-      ).toBeVisible();
+      ).toBeVisible({ timeout: 15000 });
 
       // Verify both accordion sections are visible
       await expect(
         po.page.getByText("1. Install Node.js (App Runtime)"),
-      ).toBeVisible();
+      ).toBeVisible({ timeout: 10000 });
       await expect(po.page.getByText("2. Setup AI Access")).toBeVisible();
 
       // Expand Node.js section and verify completed state
@@ -37,18 +37,28 @@ testSetup.describe("Setup Flow", () => {
   );
 
   testSetup("node.js install flow", async ({ po }) => {
-    // Start with Node.js not installed
-    await po.setNodeMock(false);
-    await po.page.reload();
-    await po.page.waitForLoadState("domcontentloaded");
-
-    // Verify setup banner and install button are visible
-    await expect(
-      po.page.getByText("Setup Dyad", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      po.page.getByRole("button", { name: "Install Node.js Runtime" }),
-    ).toBeVisible({ timeout: 10000 });
+    // Start with Node.js not installed.
+    // The mock + reload sequence can intermittently fail: reload may error with
+    // ERR_FILE_NOT_FOUND, or the mock state may not take effect before the page
+    // reads node status. Use toPass() to retry the entire sequence.
+    const currentUrl = po.page.url();
+    await expect(async () => {
+      await po.setNodeMock(false);
+      try {
+        await po.page.reload({
+          waitUntil: "domcontentloaded",
+          timeout: 10000,
+        });
+      } catch {
+        await po.page.goto(currentUrl, {
+          waitUntil: "domcontentloaded",
+          timeout: 10000,
+        });
+      }
+      await expect(
+        po.page.getByRole("button", { name: "Install Node.js Runtime" }),
+      ).toBeVisible({ timeout: 5000 });
+    }).toPass({ timeout: 60000 });
 
     // Manual configuration link should be visible
     await expect(

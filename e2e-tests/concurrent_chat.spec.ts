@@ -12,14 +12,17 @@ test("concurrent chat", async ({ po }) => {
   await po.navigation.goToAppsTab();
   await po.sendPrompt("tc=chat2");
   await po.snapshotMessages();
-  await po.chatActions.clickChatActivityButton();
 
-  // Chat #1 will be the last in the list
-  expect(
-    await po.page.getByTestId(`chat-activity-list-item-1`).textContent(),
-  ).toContain("Chat #1");
-  await po.page.getByTestId(`chat-activity-list-item-1`).click();
+  // Chat #1 tab should be visible in the chat tabs with an "in progress" indicator
+  // Find the tab that contains the "Chat in progress" indicator and click it
+  const chat1TabContainer = po.page
+    .locator('[aria-label="Chat in progress"]')
+    .locator(
+      "xpath=ancestor::div[contains(@class, 'flex') and contains(@class, 'h-10')]",
+    );
+  await expect(chat1TabContainer).toBeVisible();
+
+  // Click the button inside the tab to select it
+  await chat1TabContainer.locator("button").first().click();
   await po.snapshotMessages({ timeout: 12_000 });
-
-  //
 });

@@ -41,8 +41,10 @@ test("should open, navigate, and select from history menu", async ({ po }) => {
   await expect(firstItem).toContainText("First test message");
 
   // Navigate up again to wrap to last item (newest message)
+  // Wait briefly to ensure the previous navigation state has settled
+  await po.page.waitForTimeout(100);
   await po.page.keyboard.press("ArrowUp");
-  await expect(lastItem).toHaveClass(/bg-accent/);
+  await expect(lastItem).toHaveClass(/bg-accent/, { timeout: Timeout.MEDIUM });
 
   // Select with Enter (selects newest message)
   await po.page.keyboard.press("Enter");

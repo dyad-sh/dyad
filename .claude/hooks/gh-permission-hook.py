@@ -166,6 +166,14 @@ SAFE_GH_SUBCOMMAND_PATTERN = re.compile(
     r'[ \t]+[^)$`;&|<>\n\r]*\)'
 )
 
+# Safe $(cat ...) pattern - commonly used to load file contents into arguments
+# e.g., gh api graphql -f query="$(cat /tmp/query.graphql)"
+# cat is a read-only command that just outputs file contents.
+# The file path must not contain shell metacharacters to prevent nested injection.
+SAFE_CAT_SUBCOMMAND_PATTERN = re.compile(
+    r'\$\(cat\s+[^)$`;&|<>\n\r]+\)'
+)
+
 
 def extract_gh_command(command: str) -> Optional[str]:
     """
@@ -279,6 +287,10 @@ def contains_shell_injection(cmd: str) -> bool:
     # Replace safe $(gh ...) subcommands with a placeholder before checking
     # This allows patterns like: gh api repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/...
     cmd_to_check = SAFE_GH_SUBCOMMAND_PATTERN.sub('SAFE_GH_SUB', cmd_without_safe_doubles)
+
+    # Replace safe $(cat ...) subcommands with a placeholder before checking
+    # This allows patterns like: gh api graphql -f query="$(cat /tmp/query.graphql)"
+    cmd_to_check = SAFE_CAT_SUBCOMMAND_PATTERN.sub('SAFE_CAT_SUB', cmd_to_check)
 
     # Replace safe pipe destinations with a placeholder before checking
     # This allows patterns like: gh api graphql ... | jq '...'

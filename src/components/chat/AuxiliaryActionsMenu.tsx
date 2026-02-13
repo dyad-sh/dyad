@@ -132,7 +132,7 @@ export function AuxiliaryActionsMenu({
     <>
       <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
         <DropdownMenuTrigger
-          className="inline-flex items-center justify-center whitespace-nowrap rounded-xl text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-muted bg-primary/10 text-primary cursor-pointer h-8 px-2"
+          className="inline-flex items-center justify-center whitespace-nowrap rounded-full text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-primary/20 hover:scale-105 bg-primary/10 text-primary cursor-pointer h-8 w-8 mb-1"
           data-testid="auxiliary-actions-menu"
         >
           <Plus

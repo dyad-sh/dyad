@@ -64,9 +64,6 @@
   "allowOnce": "Allow once",
   "alwaysAllow": "Always allow",
   "removeAttachment": "Remove attachment",
-  "recentChatActivity": "Recent chat activity",
-  "loadingActivity": "Loading activity...",
-  "noRecentChats": "No recent chats",
   "uncommittedChanges": "You have {{count}} uncommitted change(s).",
   "reviewAndCommit": "Review & commit",
   "reviewCommitChanges": "Review & Commit Changes",
@@ -126,6 +123,12 @@
   "uploadFileCodebase": "Upload file to codebase",
   "uploadFileCodebaseExample": "Example use case: add an image to use for your app",
   "dropFilesToAttach": "Drop files to attach",
+  "attachmentTypeDialog": {
+    "titleSingular": "How would you like to attach this file?",
+    "titlePlural": "How would you like to attach these {{count}} files?",
+    "descriptionSingular": "Choose how the file should be used.",
+    "descriptionPlural": "Choose how the files should be used."
+  },
   "selectedComponents": "Selected Components ({{count}})",
   "clearAllComponents": "Clear all selected components",
   "deselectComponent": "Deselect component",

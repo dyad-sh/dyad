@@ -765,6 +765,16 @@ gh api repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/pulls/2524/c
 REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner) && gh api "repos/${REPO}/pulls/2524/comments" --paginate | jq -r '.[].body' 2>/dev/null | head -200
 
 # =============================================================================
+# SAFE $(cat ...) SUBCOMMAND PATTERNS (passthrough - cat is read-only)
+# =============================================================================
+
+# Loading GraphQL query from file into gh api graphql argument
+gh api graphql -F owner=dyad-sh -F repo=dyad -F pr=2284 -f query="$(cat /tmp/pr_threads_query.graphql)" > /tmp/all_threads.json
+# Note: $(cat ...) is recognized as safe (read-only command) and neutralized before
+# shell injection checking. The > redirect doesn't match any injection pattern either
+# (only >( process substitution does). This command passes as a passthrough.
+
+# =============================================================================
 # GH ISSUE COMMANDS WITH SHELL METACHARACTERS (allowed - common workflow patterns)
 # =============================================================================
 

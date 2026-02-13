@@ -14,10 +14,6 @@ jobs:
     strategy:
       # Continue building other platforms even if one fails
       fail-fast: false
-      # Uncomment max-parallel to prevent race condition (where multiple releases are
-      # created concurrently). Typically though, we'll create a release manually ahead of time
-      # which prevents the race.
-      # max-parallel: 1
       matrix:
         os: [
             { name: "windows", image: "windows-latest" },
@@ -33,7 +29,7 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@cdca7365b2dadb8aad0a33bc7601856ffabcc48e # v4.3.0
         with:
-          node-version: 20
+          node-version-file: package.json
       - name: Install npm 11.8.0
         run: npm install -g npm@11.8.0
       - run: npm ci
@@ -51,32 +47,13 @@ jobs:
         if: contains(matrix.os.name, 'windows')
         shell: powershell
         run: |
-          winget install -e --id Microsoft.Azure.TrustedSigningClientTools --source winget --accept-source-agreements --accept-package-agreements
+          # Install via NuGet instead of winget (winget is slow/unreliable in CI)
+          $installDir = "$env:RUNNER_TEMP\TrustedSigning"
+          nuget install Microsoft.Trusted.Signing.Client -Version 1.0.95 -OutputDirectory $installDir -Source https://api.nuget.org/v3/index.json
 
-          $known = Join-Path $env:LOCALAPPDATA "Microsoft\MicrosoftTrustedSigningClientTools\Azure.CodeSigning.Dlib.dll"
-          $dllPath = $null
-
-          if (Test-Path $known) {
-            $dllPath = $known
-          } else {
-            $searchPaths = @(
-              (Join-Path $env:LOCALAPPDATA "Microsoft\MicrosoftTrustedSigningClientTools"),
-              "C:\Program Files",
-              "$env:LOCALAPPDATA",
-              "$env:LOCALAPPDATA\Microsoft\WinGet\Packages",
-              "C:\Users\runneradmin\AppData\Local\Microsoft\WinGet\Packages"
-            )
-
-            foreach ($searchPath in $searchPaths) {
-              if (Test-Path $searchPath) {
-                Write-Host "Searching in: $searchPath"
-                $found = Get-ChildItem -Path $searchPath -Recurse -Filter "Azure.CodeSigning.Dlib.dll" -ErrorAction SilentlyContinue |
-                  Sort-Object { $_.FullName -notlike "*x64*" } |
-                  Select-Object -First 1 -ExpandProperty FullName
-                if ($found) { $dllPath = $found; break }
-              }
-            }
-          }
+          $dllPath = Get-ChildItem -Path $installDir -Recurse -Filter "Azure.CodeSigning.Dlib.dll" |
+            Where-Object { $_.FullName -match "x64" } |
+            Select-Object -First 1 -ExpandProperty FullName
 
           if ($dllPath) {
             Write-Host "Found DLL at: $dllPath"
@@ -118,39 +95,16 @@ jobs:
 
           echo "AZURE_METADATA_JSON=$PWD\signing-metadata.json" >> $env:GITHUB_ENV
 
-      # - name: Set up certificate
-      #   if: contains(matrix.os.name, 'windows')
-      #   run: |
-      #     echo "${{ secrets.SM_CLIENT_CERT_FILE_B64 }}" | base64 --decode > /d/Certificate_pkcs12.p12
-      #   shell: bash
-      # - name: Set variables
-      #   if: contains(matrix.os.name, 'windows')
-      #   id: variables
-      #   run: |
-      #     echo "SM_HOST=${{ secrets.SM_HOST }}" >> "$GITHUB_ENV"
-      #     echo "SM_API_KEY=${{ secrets.SM_API_KEY }}" >> "$GITHUB_ENV"
-      #     echo "SM_CLIENT_CERT_FILE=D:\\Certificate_pkcs12.p12" >> "$GITHUB_ENV"
-      #     echo "SM_CLIENT_CERT_PASSWORD=${{ secrets.SM_CLIENT_CERT_PASSWORD }}" >> "$GITHUB_ENV"
-      #   shell: bash
-      # - name: Code signing with Software Trust Manager
-      #   if: contains(matrix.os.name, 'windows')
-      #   uses: digicert/ssm-code-signing@v1.1.0
-      # - name: Sync certificate (Windows)
-      #   if: contains(matrix.os.name, 'windows')
-      #   run: |
-      #     smctl windows certsync --keypair-alias=${{ secrets.DIGICERT_KEYPAIR_ALIAS }}
-      #   shell: bash
-      # Publish (all platforms)
-      - name: Publish app
+      # Build (dry-run) - does NOT publish
+      - name: Build app (dry-run)
         uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
         with:
           timeout_minutes: 30
           max_attempts: 3
-          command: ./node_modules/.bin/electron-forge publish
+          command: npm run publish -- --dry-run
         env:
           DEBUG: "@electron/*,electron-forge:*,electron-osx-sign*,electron-notarize*,electron-windows-installer:main,electron-windows-sign"
           NODE_OPTIONS: "--max-old-space-size=4096"
-          # SM_CODE_SIGNING_CERT_SHA1_HASH: ${{ secrets.SM_CODE_SIGNING_CERT_SHA1_HASH }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -160,9 +114,50 @@ jobs:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           WINDOWS_SIGN: ${{ contains(matrix.os.name, 'windows') && 'true' || '' }}
 
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: build-${{ matrix.os.name }}
+          path: out/
+          retention-days: 1
+
+  publish:
+    name: Publish Release
+    needs: build
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - name: Github checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      - name: Use Node.js
+        uses: actions/setup-node@cdca7365b2dadb8aad0a33bc7601856ffabcc48e # v4.3.0
+        with:
+          node-version-file: package.json
+      - name: Install npm 11.8.0
+        run: npm install -g npm@11.8.0
+      - run: npm ci
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: out/
+          pattern: build-*
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -laR out/
+
+      - name: Publish from dry-run
+        run: npm run publish -- --from-dry-run
+        env:
+          DEBUG: "@electron/*,electron-forge:*"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   verify-assets:
     name: Verify Release Assets
-    needs: build
+    needs: publish
     runs-on: ubuntu-latest
     steps:
       - name: Github checkout
@@ -170,7 +165,7 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@cdca7365b2dadb8aad0a33bc7601856ffabcc48e # v4.3.0
         with:
-          node-version: 20
+          node-version-file: package.json
       - name: Verify all release assets are uploaded
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

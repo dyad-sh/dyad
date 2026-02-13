@@ -1,5 +1,6 @@
 # Nightly disk cleanup for self-hosted macOS CI runners.
 # Runs at 4:00 AM PST to prevent disk exhaustion from CI workloads.
+# After cleanup, reboots runners, then a verification job checks disk space.
 # Safe to run manually via workflow_dispatch for testing.
 
 name: Nightly Runner Cleanup
@@ -25,3 +26,23 @@ jobs:
         env:
           CI_NIGHTLY_CLEANUP: "1"
         run: bash scripts/ci-cleanup-macos.sh
+
+      - name: Reboot runner
+        run: sudo reboot
+
+  verify:
+    needs: cleanup
+    # Allow verify to run even if cleanup "fails" (reboot kills the runner mid-job)
+    if: always()
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ci1, ci2, ci3]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Print available disk space
+        run: |
+          echo "=== Post-Reboot Disk Space ==="
+          df -h /
+          echo ""
+          echo "Available space: $(df -h / | tail -1 | awk '{print $4}')"

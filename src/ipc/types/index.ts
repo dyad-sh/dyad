@@ -35,6 +35,7 @@ export { mcpContracts, mcpEvents } from "./mcp";
 export { vercelContracts } from "./vercel";
 export { supabaseContracts } from "./supabase";
 export { neonContracts } from "./neon";
+export { convexContracts } from "./convex";
 export { systemContracts, systemEvents } from "./system";
 export { versionContracts } from "./version";
 export { languageModelContracts } from "./language-model";
@@ -64,6 +65,7 @@ export { mcpClient, mcpEventClient } from "./mcp";
 export { vercelClient } from "./vercel";
 export { supabaseClient } from "./supabase";
 export { neonClient } from "./neon";
+export { convexClient } from "./convex";
 export { systemClient, systemEventClient } from "./system";
 export { versionClient } from "./version";
 export { languageModelClient } from "./language-model";
@@ -198,6 +200,9 @@ export type {
   GetNeonProjectResponse,
 } from "./neon";
 
+// Convex types
+export type { SetConvexAppDeploymentParams } from "./convex";
+
 // System types
 export type {
   NodeSystemInfo,
@@ -331,6 +336,7 @@ import { mcpClient, mcpEventClient } from "./mcp";
 import { vercelClient } from "./vercel";
 import { supabaseClient } from "./supabase";
 import { neonClient } from "./neon";
+import { convexClient } from "./convex";
 import { systemClient, systemEventClient } from "./system";
 import { versionClient } from "./version";
 import { languageModelClient } from "./language-model";
@@ -384,6 +390,7 @@ export const ipc = {
   vercel: vercelClient,
   supabase: supabaseClient,
   neon: neonClient,
+  convex: convexClient,
 
   // Features
   system: systemClient,

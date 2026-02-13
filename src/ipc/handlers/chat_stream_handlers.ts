@@ -27,6 +27,7 @@ import {
   getSupabaseAvailableSystemPrompt,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
+import { getConvexAvailableSystemPrompt } from "../../prompts/convex_prompt";
 import { getDyadAppPath } from "../../paths/paths";
 import { readSettings } from "../../main/settings";
 import type { ChatResponseEnd, ChatStreamParams } from "@/ipc/types";
@@ -89,6 +90,7 @@ import z from "zod";
 import {
   isBasicAgentMode,
   isSupabaseConnected,
+  isConvexConnected,
   isTurboEditsV2Enabled,
 } from "@/lib/schemas";
 import {
@@ -746,6 +748,8 @@ ${componentSnippet}
         } else if (
           // Neon projects don't need Supabase.
           !updatedChat.app?.neonProjectId &&
+          // Convex projects don't need Supabase.
+          !updatedChat.app?.convexDeploymentUrl &&
           // In local agent mode, we will suggest supabase as part of the add-integration tool
           settings.selectedChatMode !== "local-agent" &&
           // If in security review mode, we don't need to mention supabase is available.
@@ -753,6 +757,17 @@ ${componentSnippet}
         ) {
           systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
         }
+
+        // Convex integration context
+        if (
+          updatedChat.app?.convexDeploymentUrl &&
+          isConvexConnected(settings)
+        ) {
+          systemPrompt +=
+            "\n\n" +
+            getConvexAvailableSystemPrompt(updatedChat.app.convexDeploymentUrl);
+        }
+
         const isSummarizeIntent = req.prompt.startsWith(
           "Summarize from chat-id=",
         );

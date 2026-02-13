@@ -12,6 +12,7 @@ import { registerProposalHandlers } from "./handlers/proposal_handlers";
 import { registerDebugHandlers } from "./handlers/debug_handlers";
 import { registerSupabaseHandlers } from "./handlers/supabase_handlers";
 import { registerNeonHandlers } from "./handlers/neon_handlers";
+import { registerConvexHandlers } from "./handlers/convex_handlers";
 import { registerLocalModelHandlers } from "./handlers/local_model_handlers";
 import { registerTokenCountHandlers } from "./handlers/token_count_handlers";
 import { registerWindowHandlers } from "./handlers/window_handlers";
@@ -56,6 +57,7 @@ export function registerIpcHandlers() {
   registerDebugHandlers();
   registerSupabaseHandlers();
   registerNeonHandlers();
+  registerConvexHandlers();
   registerLocalModelHandlers();
   registerTokenCountHandlers();
   registerWindowHandlers();

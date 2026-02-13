@@ -1,12 +1,15 @@
 import { ChildProcess, spawn } from "node:child_process";
 import treeKill from "tree-kill";
+import type { RuntimeMode2 } from "@/lib/schemas";
 
 // Define a type for the value stored in runningApps
 export interface RunningAppInfo {
-  process: ChildProcess;
+  process: ChildProcess | null; // null for cloud mode
   processId: number;
-  isDocker: boolean;
-  containerName?: string;
+  mode: RuntimeMode2;
+  containerName?: string; // docker only
+  cloudSandboxId?: string; // cloud only
+  cloudPreviewUrl?: string; // cloud only
 }
 
 // Store running app processes
@@ -111,17 +114,37 @@ export function removeDockerVolumesForApp(appId: number): Promise<void> {
 }
 
 /**
- * Stops an app based on its RunningAppInfo (container vs host) and removes it from the running map.
+ * Stops an app based on its RunningAppInfo (container vs host vs cloud) and removes it from the running map.
  */
 export async function stopAppByInfo(
   appId: number,
   appInfo: RunningAppInfo,
 ): Promise<void> {
-  if (appInfo.isDocker) {
-    const containerName = appInfo.containerName || `dyad-app-${appId}`;
-    await stopDockerContainer(containerName);
-  } else {
-    await killProcess(appInfo.process);
+  switch (appInfo.mode) {
+    case "docker": {
+      const containerName = appInfo.containerName || `dyad-app-${appId}`;
+      await stopDockerContainer(containerName);
+      break;
+    }
+    case "cloud": {
+      // Cloud sandbox teardown will be handled by the cloud sandbox provider
+      // For now, we just remove from the map since cloud sandboxes auto-hibernate
+      if (appInfo.cloudSandboxId) {
+        console.log(
+          `Stopping cloud sandbox ${appInfo.cloudSandboxId} for app ${appId}`,
+        );
+        // Cloud sandbox destruction will be implemented via CloudSandboxProvider
+        // For MVP, we rely on auto-hibernate and cleanup on next startup
+      }
+      break;
+    }
+    case "host":
+    default: {
+      if (appInfo.process) {
+        await killProcess(appInfo.process);
+      }
+      break;
+    }
   }
   runningApps.delete(appId);
 }
@@ -146,4 +169,14 @@ export function removeAppIfCurrentProcess(
       `App ${appId} process was already removed or replaced in running map. Ignoring.`,
     );
   }
+}
+
+/**
+ * Gets all running cloud sandboxes
+ * @returns An array of [appId, RunningAppInfo] pairs for cloud mode apps
+ */
+export function getRunningCloudSandboxes(): [number, RunningAppInfo][] {
+  return Array.from(runningApps.entries()).filter(
+    ([, info]) => info.mode === "cloud",
+  );
 }

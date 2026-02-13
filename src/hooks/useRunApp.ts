@@ -41,10 +41,14 @@ export function useAppOutputSubscription() {
         if (proxyUrlMatch && proxyUrlMatch[1]) {
           const proxyUrl = proxyUrlMatch[1];
           const originalUrl = originalUrlMatch && originalUrlMatch[1];
+          // Detect if this is a cloud sandbox based on the original URL
+          // Cloud URLs don't start with localhost
+          const isCloudMode = originalUrl && !originalUrl.includes("localhost");
           setAppUrlObj({
             appUrl: proxyUrl,
             appId: output.appId,
             originalUrl: originalUrl!,
+            runtimeMode: isCloudMode ? "cloud" : "host",
           });
         }
       }

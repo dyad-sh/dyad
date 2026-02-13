@@ -1,6 +1,6 @@
 import { atom } from "jotai";
 import type { App, Version, ConsoleEntry } from "@/ipc/types";
-import type { UserSettings } from "@/lib/schemas";
+import type { UserSettings, RuntimeMode2 } from "@/lib/schemas";
 
 export const currentAppAtom = atom<App | null>(null);
 export const selectedAppIdAtom = atom<number | null>(null);
@@ -18,8 +18,13 @@ export const selectedVersionIdAtom = atom<string | null>(null);
 
 export const appConsoleEntriesAtom = atom<ConsoleEntry[]>([]);
 export const appUrlAtom = atom<
-  | { appUrl: string; appId: number; originalUrl: string }
-  | { appUrl: null; appId: null; originalUrl: null }
+  | {
+      appUrl: string;
+      appId: number;
+      originalUrl: string;
+      runtimeMode?: RuntimeMode2;
+    }
+  | { appUrl: null; appId: null; originalUrl: null; runtimeMode?: RuntimeMode2 }
 >({ appUrl: null, appId: null, originalUrl: null });
 export const userSettingsAtom = atom<UserSettings | null>(null);
 

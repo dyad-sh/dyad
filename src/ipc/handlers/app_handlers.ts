@@ -66,6 +66,10 @@ import {
   MAX_FILE_SEARCH_SIZE,
   RIPGREP_EXCLUDED_GLOBS,
 } from "../utils/ripgrep_utils";
+import {
+  getCloudSandboxProvider,
+  DyadEngineCloudSandboxProvider,
+} from "../utils/cloud_sandbox_provider";
 
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
@@ -178,24 +182,35 @@ async function executeApp({
   const settings = readSettings();
   const runtimeMode = settings.runtimeMode2 ?? "host";
 
-  if (runtimeMode === "docker") {
-    await executeAppInDocker({
-      appPath,
-      appId,
-      event,
-      isNeon,
-      installCommand,
-      startCommand,
-    });
-  } else {
-    await executeAppLocalNode({
-      appPath,
-      appId,
-      event,
-      isNeon,
-      installCommand,
-      startCommand,
-    });
+  switch (runtimeMode) {
+    case "docker":
+      await executeAppInDocker({
+        appPath,
+        appId,
+        event,
+        isNeon,
+        installCommand,
+        startCommand,
+      });
+      break;
+    case "cloud":
+      await executeAppInCloud({
+        appPath,
+        appId,
+        event,
+      });
+      break;
+    case "host":
+    default:
+      await executeAppLocalNode({
+        appPath,
+        appId,
+        event,
+        isNeon,
+        installCommand,
+        startCommand,
+      });
+      break;
   }
 }
 
@@ -271,7 +286,7 @@ Details: ${details || "n/a"}
   runningApps.set(appId, {
     process: spawnedProcess,
     processId: currentProcessId,
-    isDocker: false,
+    mode: "host",
   });
 
   listenToProcess({
@@ -394,6 +409,146 @@ function listenToProcess({
     // Note: We don't throw here as the error is asynchronous. The caller got a success response already.
     // Consider adding ipcRenderer event emission to notify UI of the error.
   });
+}
+
+/**
+ * Execute an app in a cloud sandbox (Dyad Pro feature)
+ * Creates a sandbox via Dyad Engine, uploads files, and streams logs
+ */
+async function executeAppInCloud({
+  appPath,
+  appId,
+  event,
+}: {
+  appPath: string;
+  appId: number;
+  event: Electron.IpcMainInvokeEvent;
+}): Promise<void> {
+  logger.info(`Starting cloud sandbox for app ${appId}`);
+
+  // Get Pro API key from settings
+  const settings = readSettings();
+  const proApiKey = settings.providerSettings?.auto?.apiKey?.value;
+
+  if (!proApiKey) {
+    throw new Error(
+      "Cloud sandbox requires Dyad Pro. Please set up your Dyad Pro subscription in Settings.",
+    );
+  }
+
+  // Send initial status
+  safeSend(event.sender, "app:output", {
+    type: "stdout",
+    message: "[cloud-sandbox] Starting cloud sandbox...\n",
+    appId,
+  });
+
+  // Add to log store
+  addLog({
+    level: "info",
+    type: "server",
+    message: "[cloud-sandbox] Starting cloud sandbox...",
+    timestamp: Date.now(),
+    appId,
+  });
+
+  try {
+    // Get the cloud sandbox provider and set auth
+    const provider = getCloudSandboxProvider();
+    if (provider instanceof DyadEngineCloudSandboxProvider) {
+      provider.setAuthToken(proApiKey);
+    }
+
+    // Create sandbox
+    safeSend(event.sender, "app:output", {
+      type: "stdout",
+      message: "[cloud-sandbox] Creating sandbox...\n",
+      appId,
+    });
+
+    const { sandboxId, previewUrl } = await provider.createSandbox(
+      appPath,
+      appId,
+    );
+
+    logger.info(
+      `Cloud sandbox created: ${sandboxId} with preview URL: ${previewUrl}`,
+    );
+
+    // Store in running apps
+    const currentProcessId = processCounter.increment();
+    runningApps.set(appId, {
+      process: null, // No local process for cloud mode
+      processId: currentProcessId,
+      mode: "cloud",
+      cloudSandboxId: sandboxId,
+      cloudPreviewUrl: previewUrl,
+    });
+
+    safeSend(event.sender, "app:output", {
+      type: "stdout",
+      message: `[cloud-sandbox] Sandbox ready!\n`,
+      appId,
+    });
+
+    // Start the proxy server to inject Dyad scripts
+    proxyWorker = await startProxy(previewUrl, {
+      onStarted: (proxyUrl) => {
+        safeSend(event.sender, "app:output", {
+          type: "stdout",
+          message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${previewUrl}]`,
+          appId,
+        });
+      },
+    });
+
+    // Stream logs from the sandbox in the background
+    (async () => {
+      try {
+        for await (const logLine of provider.streamLogs(sandboxId)) {
+          // Check if app is still running
+          const appInfo = runningApps.get(appId);
+          if (!appInfo || appInfo.cloudSandboxId !== sandboxId) {
+            break;
+          }
+
+          safeSend(event.sender, "app:output", {
+            type: "stdout",
+            message: logLine,
+            appId,
+          });
+
+          addLog({
+            level: "info",
+            type: "server",
+            message: logLine,
+            timestamp: Date.now(),
+            appId,
+          });
+        }
+      } catch (err) {
+        logger.warn(`Log streaming ended for sandbox ${sandboxId}:`, err);
+      }
+    })();
+  } catch (error: any) {
+    logger.error(`Failed to create cloud sandbox for app ${appId}:`, error);
+
+    safeSend(event.sender, "app:output", {
+      type: "stderr",
+      message: `[cloud-sandbox] Error: ${error.message}\n`,
+      appId,
+    });
+
+    addLog({
+      level: "error",
+      type: "server",
+      message: `[cloud-sandbox] Error: ${error.message}`,
+      timestamp: Date.now(),
+      appId,
+    });
+
+    throw new Error(`Failed to start cloud sandbox: ${error.message}`);
+  }
 }
 
 async function executeAppInDocker({
@@ -575,7 +730,7 @@ ${errorOutput || "(empty)"}`,
   runningApps.set(appId, {
     process,
     processId: currentProcessId,
-    isDocker: true,
+    mode: "docker",
     containerName,
   });
 
@@ -1063,13 +1218,16 @@ export function registerAppHandlers() {
         return;
       }
 
-      const { process, processId } = appInfo;
+      const { process, processId, mode } = appInfo;
       logger.log(
-        `Found running app ${appId} with processId ${processId} (PID: ${process.pid}). Attempting to stop.`,
+        `Found running app ${appId} with processId ${processId} (mode: ${mode}, PID: ${process?.pid ?? "N/A"}). Attempting to stop.`,
       );
 
-      // Check if the process is already exited or closed
-      if (process.exitCode !== null || process.signalCode !== null) {
+      // Check if the process is already exited or closed (only for host/docker modes)
+      if (
+        process &&
+        (process.exitCode !== null || process.signalCode !== null)
+      ) {
         logger.log(
           `Process for app ${appId} (PID: ${process.pid}) already exited (code: ${process.exitCode}, signal: ${process.signalCode}). Cleaning up map.`,
         );
@@ -1081,16 +1239,23 @@ export function registerAppHandlers() {
         await stopAppByInfo(appId, appInfo);
 
         // Now, safely remove the app from the map *after* confirming closure
-        removeAppIfCurrentProcess(appId, process);
+        // Only call removeAppIfCurrentProcess if we have a process (not cloud mode)
+        if (process) {
+          removeAppIfCurrentProcess(appId, process);
+        }
 
         return;
       } catch (error: any) {
         logger.error(
-          `Error stopping app ${appId} (PID: ${process.pid}, processId: ${processId}):`,
+          `Error stopping app ${appId} (mode: ${mode}, processId: ${processId}):`,
           error,
         );
         // Attempt cleanup even if an error occurred during the stop process
-        removeAppIfCurrentProcess(appId, process);
+        if (process) {
+          removeAppIfCurrentProcess(appId, process);
+        } else {
+          runningApps.delete(appId);
+        }
         throw new Error(`Failed to stop app ${appId}: ${error.message}`);
       }
     });
@@ -1239,6 +1404,32 @@ export function registerAppHandlers() {
     } catch (error: any) {
       logger.error(`Error writing file ${filePath} for app ${appId}:`, error);
       throw new Error(`Failed to write file: ${error.message}`);
+    }
+
+    // Sync to cloud sandbox if app is running in cloud mode
+    const runningAppInfo = runningApps.get(appId);
+    if (runningAppInfo?.mode === "cloud" && runningAppInfo.cloudSandboxId) {
+      try {
+        const provider = getCloudSandboxProvider();
+        const settings = readSettings();
+        const proApiKey = settings.providerSettings?.auto?.apiKey?.value;
+
+        if (proApiKey && provider instanceof DyadEngineCloudSandboxProvider) {
+          provider.setAuthToken(proApiKey);
+          await provider.uploadFiles(runningAppInfo.cloudSandboxId, {
+            [filePath]: content,
+          });
+          logger.info(
+            `Synced file ${filePath} to cloud sandbox ${runningAppInfo.cloudSandboxId}`,
+          );
+        }
+      } catch (error) {
+        logger.warn(`Failed to sync file to cloud sandbox:`, error);
+        // Don't fail the file save operation, just warn
+        return {
+          warning: `File saved locally, but failed to sync to cloud sandbox: ${error}`,
+        };
+      }
     }
 
     if (app.supabaseProjectId) {
@@ -1676,6 +1867,12 @@ export function registerAppHandlers() {
     }
 
     const { process } = appInfo;
+
+    if (!process) {
+      throw new Error(
+        `App ${appId} has no local process (possibly running in cloud mode)`,
+      );
+    }
 
     if (!process.stdin) {
       throw new Error(`App ${appId} process has no stdin available`);

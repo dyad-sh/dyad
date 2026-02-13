@@ -553,11 +553,55 @@ app.on("window-all-closed", () => {
 });
 
 // Only set isRunning to false when the app is properly quit by the user
-app.on("will-quit", () => {
+app.on("will-quit", async () => {
   logger.info("App is quitting, setting isRunning to false");
 
   // Stop performance monitoring and capture final metrics
   stopPerformanceMonitoring();
+
+  // Clean up any running cloud sandboxes
+  try {
+    const { getRunningCloudSandboxes } =
+      await import("./ipc/utils/process_manager");
+    const { getCloudSandboxProvider, DyadEngineCloudSandboxProvider } =
+      await import("./ipc/utils/cloud_sandbox_provider");
+
+    const cloudSandboxes = getRunningCloudSandboxes();
+    if (cloudSandboxes.length > 0) {
+      logger.info(`Cleaning up ${cloudSandboxes.length} cloud sandbox(es)...`);
+
+      const settings = readSettings();
+      const proApiKey = settings.providerSettings?.auto?.apiKey?.value;
+
+      if (proApiKey) {
+        const provider = getCloudSandboxProvider();
+        if (provider instanceof DyadEngineCloudSandboxProvider) {
+          provider.setAuthToken(proApiKey);
+        }
+
+        // Best-effort cleanup of all cloud sandboxes
+        await Promise.allSettled(
+          cloudSandboxes.map(async ([appId, info]) => {
+            if (info.cloudSandboxId) {
+              try {
+                await provider.destroySandbox(info.cloudSandboxId);
+                logger.info(
+                  `Cleaned up cloud sandbox ${info.cloudSandboxId} for app ${appId}`,
+                );
+              } catch (err) {
+                logger.warn(
+                  `Failed to cleanup cloud sandbox ${info.cloudSandboxId}:`,
+                  err,
+                );
+              }
+            }
+          }),
+        );
+      }
+    }
+  } catch (error) {
+    logger.warn("Error during cloud sandbox cleanup:", error);
+  }
 
   writeSettings({ isRunning: false });
 });

@@ -8,6 +8,7 @@ import {
   Secret,
   VertexProviderSetting,
   migrateStoredSettings,
+  stripDeprecatedSettings,
 } from "../lib/schemas";
 import { safeStorage } from "electron";
 import { v4 as uuidv4 } from "uuid";
@@ -175,8 +176,10 @@ export function readSettings(): UserSettings {
     }
     // Migrate stored settings to active settings (converts deprecated values)
     const migratedSettings = migrateStoredSettings(storedSettings);
+    // Strip deprecated properties to improve code health
+    const cleanedSettings = stripDeprecatedSettings(migratedSettings);
     // Validate the migrated settings against the active schema
-    return UserSettingsSchema.parse(migratedSettings);
+    return UserSettingsSchema.parse(cleanedSettings);
   } catch (error) {
     logger.error("Error reading settings:", error);
     return DEFAULT_SETTINGS;

@@ -137,9 +137,6 @@ export type RegularProviderSetting = z.infer<
 export type AzureProviderSetting = z.infer<typeof AzureProviderSettingSchema>;
 export type VertexProviderSetting = z.infer<typeof VertexProviderSettingSchema>;
 
-export const RuntimeModeSchema = z.enum(["web-sandbox", "local-node", "unset"]);
-export type RuntimeMode = z.infer<typeof RuntimeModeSchema>;
-
 export const RuntimeMode2Schema = z.enum(["host", "docker"]);
 export type RuntimeMode2 = z.infer<typeof RuntimeMode2Schema>;
 
@@ -207,19 +204,8 @@ export const NeonSchema = z.object({
 });
 export type Neon = z.infer<typeof NeonSchema>;
 
-export const ExperimentsSchema = z.object({
-  // Deprecated
-  enableLocalAgent: z.boolean().describe("DEPRECATED").optional(),
-  enableSupabaseIntegration: z.boolean().describe("DEPRECATED").optional(),
-  enableFileEditing: z.boolean().describe("DEPRECATED").optional(),
-});
+export const ExperimentsSchema = z.object({});
 export type Experiments = z.infer<typeof ExperimentsSchema>;
-
-export const DyadProBudgetSchema = z.object({
-  budgetResetAt: z.string(),
-  maxBudget: z.number(),
-});
-export type DyadProBudget = z.infer<typeof DyadProBudgetSchema>;
 
 export const GlobPathSchema = z.object({
   globPath: z.string(),
@@ -286,13 +272,6 @@ const BaseUserSettingsFields = {
   // E2E TESTING ONLY.
   ////////////////////////////////
   isTestMode: z.boolean().optional(),
-
-  ////////////////////////////////
-  // DEPRECATED.
-  ////////////////////////////////
-  enableProSaverMode: z.boolean().optional(),
-  dyadProBudget: DyadProBudgetSchema.optional(),
-  runtimeMode: RuntimeModeSchema.optional(),
 
   ////////////////////////////////
   // ACTIVE FIELDS.
@@ -417,6 +396,34 @@ export function migrateStoredSettings(
     selectedChatMode: migrateStoredChatMode(stored.selectedChatMode),
     defaultChatMode: migrateStoredChatMode(stored.defaultChatMode),
   };
+}
+
+/**
+ * Strips deprecated properties from settings to improve code health.
+ * This removes properties that are no longer used by the application.
+ */
+export function stripDeprecatedSettings(settings: UserSettings): UserSettings {
+  // Create a shallow copy to avoid mutating the original
+  const cleaned = { ...settings };
+
+  // Remove top-level deprecated properties
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const settingsAny = cleaned as any;
+  delete settingsAny.enableProSaverMode;
+  delete settingsAny.dyadProBudget;
+  delete settingsAny.runtimeMode;
+
+  // Remove deprecated experiment properties
+  if (cleaned.experiments) {
+    cleaned.experiments = { ...cleaned.experiments };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const experimentsAny = cleaned.experiments as any;
+    delete experimentsAny.enableLocalAgent;
+    delete experimentsAny.enableSupabaseIntegration;
+    delete experimentsAny.enableFileEditing;
+  }
+
+  return cleaned;
 }
 
 export function isDyadProEnabled(settings: UserSettings): boolean {

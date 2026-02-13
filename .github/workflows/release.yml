@@ -150,7 +150,7 @@ jobs:
         run: ls -laR out/
 
       - name: Publish from dry-run
-        run: npm run publish -- --from-dry-run
+        run: ./node_modules/.bin/electron-forge publish --from-dry-run
         env:
           DEBUG: "@electron/*,electron-forge:*"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

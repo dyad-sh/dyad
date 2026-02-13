@@ -3,6 +3,8 @@
   "recentChats": "Recent Chats",
   "searchChats": "Search chats",
   "closeChatTab": "Close tab: {{title}}",
+  "closeOtherTabs": "Close other tabs",
+  "closeTabsToRight": "Close all tabs to the right",
   "chatInProgress": "Chat in progress",
   "newActivity": "New activity",
   "openOverflowTabs": "Open more tabs ({{count}})",

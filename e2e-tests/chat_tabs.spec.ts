@@ -96,3 +96,63 @@ test("closing a tab removes it and selects adjacent tab", async ({ po }) => {
     expect(newCount).toBe(initialCount - 1);
   }).toPass({ timeout: Timeout.MEDIUM });
 });
+
+test("tabs are session-scoped and support right-click bulk close actions", async ({
+  po,
+}) => {
+  await po.setUp({ autoApprove: true });
+  await po.importApp("minimal");
+
+  await po.page.evaluate(async () => {
+    const ipcRenderer = (window as any).electron?.ipcRenderer;
+    if (!ipcRenderer) throw new Error("ipcRenderer is not available");
+
+    const apps = await ipcRenderer.invoke("list-apps");
+    const appId = apps[0]?.id;
+    if (!appId) throw new Error("No app found");
+
+    for (const title of ["Session tab A", "Session tab B", "Session tab C"]) {
+      const chatId = await ipcRenderer.invoke("create-chat", appId);
+      await ipcRenderer.invoke("update-chat", { chatId, title });
+    }
+  });
+
+  const closeButtons = po.page.getByLabel(/^Close tab:/);
+  await expect(closeButtons).toHaveCount(0);
+
+  await po.page.getByRole("button", { name: /Session tab A/ }).click();
+  await po.page.getByRole("button", { name: /Session tab B/ }).click();
+  await po.page.getByRole("button", { name: /Session tab C/ }).click();
+
+  await expect(async () => {
+    expect(await closeButtons.count()).toBeGreaterThanOrEqual(3);
+  }).toPass({ timeout: Timeout.MEDIUM });
+
+  const tabB = po.page.locator("div[draggable]").filter({
+    has: po.page.getByText("Session tab B", { exact: true }),
+  });
+  await tabB.click({ button: "right" });
+  await po.page
+    .getByRole("menuitem", { name: "Close all tabs to the right" })
+    .click();
+
+  await expect(
+    po.page.locator("div[draggable]").filter({
+      has: po.page.getByText("Session tab C", { exact: true }),
+    }),
+  ).toHaveCount(0);
+
+  const tabA = po.page.locator("div[draggable]").filter({
+    has: po.page.getByText("Session tab A", { exact: true }),
+  });
+  await tabA.click({ button: "right" });
+  await po.page.getByRole("menuitem", { name: "Close other tabs" }).click();
+
+  await expect(tabA).toHaveCount(1);
+  await expect(
+    po.page.locator("div[draggable]").filter({
+      has: po.page.getByText("Session tab B", { exact: true }),
+    }),
+  ).toHaveCount(0);
+  await expect(closeButtons).toHaveCount(1);
+});

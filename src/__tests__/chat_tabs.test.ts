@@ -27,15 +27,21 @@ function chat(id: number): ChatSummary {
 }
 
 describe("ChatTabs helpers", () => {
-  it("keeps MRU order and appends chats that were never viewed", () => {
+  it("keeps MRU order for chats viewed in this session", () => {
     const chats = [chat(1), chat(2), chat(3), chat(4)];
     const orderedIds = getOrderedRecentChatIds([4, 2], chats);
-    expect(orderedIds).toEqual([4, 2, 1, 3]);
+    expect(orderedIds).toEqual([4, 2]);
   });
 
   it("skips stale chat ids that no longer exist", () => {
     const chats = [chat(1), chat(3)];
     const orderedIds = getOrderedRecentChatIds([3, 999, 1], chats);
+    expect(orderedIds).toEqual([3, 1]);
+  });
+
+  it("omits chats closed from the tab bar", () => {
+    const chats = [chat(1), chat(2), chat(3)];
+    const orderedIds = getOrderedRecentChatIds([3, 2, 1], chats, new Set([2]));
     expect(orderedIds).toEqual([3, 1]);
   });
 

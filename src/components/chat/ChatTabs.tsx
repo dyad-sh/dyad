@@ -42,8 +42,6 @@ export function getOrderedRecentChatIds(
   chats: ChatSummary[],
   closedChatIds: Set<number> = new Set(),
 ): number[] {
-  if (chats.length === 0) return [];
-
   const chatIds = new Set(chats.map((chat) => chat.id));
   const ordered: number[] = [];
   const seen = new Set<number>();
@@ -53,13 +51,6 @@ export function getOrderedRecentChatIds(
       continue;
     ordered.push(chatId);
     seen.add(chatId);
-  }
-
-  // Only add chats that haven't been explicitly closed
-  for (const chat of chats) {
-    if (seen.has(chat.id) || closedChatIds.has(chat.id)) continue;
-    ordered.push(chat.id);
-    seen.add(chat.id);
   }
 
   return ordered;
@@ -183,6 +174,11 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   const [notifiedChatIds, setNotifiedChatIds] = useState<Set<number>>(
     new Set(),
   );
+  const [tabContextMenu, setTabContextMenu] = useState<{
+    chatId: number;
+    x: number;
+    y: number;
+  } | null>(null);
   const prevStreamingRef = useRef<Map<number, boolean>>(new Map());
 
   const chatsById = useMemo(
@@ -390,6 +386,65 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     });
   };
 
+  const closeMultipleTabs = (
+    chatIdsToClose: number[],
+    nextActiveId: number,
+  ) => {
+    if (chatIdsToClose.length === 0) return;
+
+    for (const chatId of chatIdsToClose) {
+      removeRecentViewedChatId(chatId);
+      clearNotification(chatId);
+    }
+
+    const nextActiveChat = chatsById.get(nextActiveId);
+    if (!nextActiveChat) return;
+
+    if (selectedChatId === nextActiveId) {
+      clearNotification(nextActiveId);
+      return;
+    }
+
+    selectChat({
+      chatId: nextActiveChat.id,
+      appId: nextActiveChat.appId,
+      preserveTabOrder: true,
+    });
+  };
+
+  const closeOtherTabs = (chatId: number) => {
+    const chatIdsToClose = orderedChats
+      .map((chat) => chat.id)
+      .filter((id) => id !== chatId);
+    closeMultipleTabs(chatIdsToClose, chatId);
+  };
+
+  const closeTabsToRight = (chatId: number) => {
+    const clickedIndex = orderedChats.findIndex((chat) => chat.id === chatId);
+    if (clickedIndex === -1) return;
+
+    const chatIdsToClose = orderedChats
+      .slice(clickedIndex + 1)
+      .map((chat) => chat.id);
+    if (chatIdsToClose.length === 0) return;
+
+    const selectedChatWillClose =
+      selectedChatId !== null && chatIdsToClose.includes(selectedChatId);
+    const nextActiveId = selectedChatWillClose
+      ? chatId
+      : (selectedChatId ?? chatId);
+    closeMultipleTabs(chatIdsToClose, nextActiveId);
+  };
+
+  const contextMenuTargetIndex = useMemo(() => {
+    if (!tabContextMenu) return -1;
+    return orderedChats.findIndex((chat) => chat.id === tabContextMenu.chatId);
+  }, [orderedChats, tabContextMenu]);
+  const canCloseOthers = orderedChats.length > 1;
+  const canCloseTabsToRight =
+    contextMenuTargetIndex >= 0 &&
+    contextMenuTargetIndex < orderedChats.length - 1;
+
   if (orderedChats.length === 0) return null;
 
   return (
@@ -420,6 +475,14 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                           event.preventDefault();
                           handleCloseTab(chat.id);
                         }
+                      }}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        setTabContextMenu({
+                          chatId: chat.id,
+                          x: event.clientX,
+                          y: event.clientY,
+                        });
                       }}
                       onDragStart={(event) => {
                         event.dataTransfer.effectAllowed = "move";
@@ -614,6 +677,45 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
           </DropdownMenu>
         )}
       </div>
+      <DropdownMenu
+        open={tabContextMenu !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setTabContextMenu(null);
+          }
+        }}
+      >
+        <DropdownMenuTrigger
+          aria-hidden
+          className="fixed h-px w-px opacity-0 pointer-events-none"
+          style={{
+            left: tabContextMenu?.x ?? 0,
+            top: tabContextMenu?.y ?? 0,
+          }}
+        />
+        <DropdownMenuContent align="start" side="bottom">
+          <DropdownMenuItem
+            disabled={!canCloseOthers}
+            onClick={() => {
+              if (!tabContextMenu) return;
+              closeOtherTabs(tabContextMenu.chatId);
+              setTabContextMenu(null);
+            }}
+          >
+            {t("closeOtherTabs")}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={!canCloseTabsToRight}
+            onClick={() => {
+              if (!tabContextMenu) return;
+              closeTabsToRight(tabContextMenu.chatId);
+              setTabContextMenu(null);
+            }}
+          >
+            {t("closeTabsToRight")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </TooltipProvider>
   );
 }

@@ -3,6 +3,8 @@
   "recentChats": "Chats Recentes",
   "searchChats": "Pesquisar chats",
   "closeChatTab": "Fechar aba: {{title}}",
+  "closeOtherTabs": "Fechar outras abas",
+  "closeTabsToRight": "Fechar todas as abas à direita",
   "chatInProgress": "Chat em andamento",
   "newActivity": "Nova atividade",
   "openOverflowTabs": "Abrir mais abas ({{count}})",

@@ -153,3 +153,28 @@ testSkipIfWindows(
     ).toBeVisible({ timeout: Timeout.MEDIUM });
   },
 );
+
+testSkipIfWindows(
+  "spa navigation inside iframe does not change iframe src attribute",
+  async ({ po }) => {
+    await po.setUp({ autoApprove: true });
+    await po.sendPrompt("tc=multi-page");
+
+    await po.previewPanel.expectPreviewIframeIsVisible();
+
+    const iframe = po.previewPanel.getPreviewIframeElement();
+    await expect(
+      iframe.contentFrame().getByRole("heading", { name: "Home Page" }),
+    ).toBeVisible({ timeout: Timeout.LONG });
+
+    const srcBeforeNavigation = await iframe.getAttribute("src");
+
+    await iframe.contentFrame().getByText("Go to About Page").click();
+    await expect(
+      iframe.contentFrame().getByRole("heading", { name: "About Page" }),
+    ).toBeVisible({ timeout: Timeout.MEDIUM });
+
+    const srcAfterNavigation = await iframe.getAttribute("src");
+    expect(srcAfterNavigation).toBe(srcBeforeNavigation);
+  },
+);

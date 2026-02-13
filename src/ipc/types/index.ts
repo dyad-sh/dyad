@@ -284,7 +284,12 @@ export type {
 export type { SecurityReviewResult } from "./security";
 
 // Misc types
-export type { ChatLogsData, DeepLinkData, AppOutput, EnvVar } from "./misc";
+export type {
+  SessionDebugBundle,
+  DeepLinkData,
+  AppOutput,
+  EnvVar,
+} from "./misc";
 
 // Free agent quota types
 export type { FreeAgentQuotaStatus } from "./free_agent_quota";

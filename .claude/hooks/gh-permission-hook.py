@@ -62,11 +62,13 @@ BLOCKED (denied):
    - Process substitution: <() >()
    - Piping to non-safe commands
 
-Note: Markdown code spans with identifier-like content are allowed in double-quoted
-strings (common in PR/issue descriptions). Code spans must contain at least one
-dot, hyphen, or underscore to be recognized as identifiers (e.g., `config.json`,
-`my-component`, `my_variable`). Plain words like `word` are NOT allowed as they
-could be actual commands like `env` or `whoami`.
+Note: gh pr and gh issue commands are exempt from shell injection checks because
+they frequently contain markdown in --body with backticks, pipes, bold (**), etc.
+For other commands, markdown code spans with identifier-like content are allowed
+in double-quoted strings. Code spans must contain at least one dot, hyphen, or
+underscore to be recognized as identifiers (e.g., `config.json`, `my-component`,
+`my_variable`). Plain words like `word` are NOT allowed as they could be actual
+commands like `env` or `whoami`.
 """
 import json
 import sys
@@ -149,6 +151,28 @@ SAFE_REDIRECT_PATTERN = re.compile(r'\d*>&\d+|\d*>/dev/null')
 # This pattern matches: || echo "string" or || echo 'string' or || echo WORD
 # The echo command only outputs text, making this safe for fallback values
 SAFE_FALLBACK_PATTERN = re.compile(r'\|\|\s*echo\s+(?:"[^"]*"|\'[^\']*\'|\S+)\s*$')
+
+# Safe gh subcommand pattern - $(gh ...) command substitution where the inner
+# command is a safe, read-only gh call (no shell metacharacters inside). This is
+# commonly used to dynamically construct API endpoint URLs, e.g.:
+#   gh api repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/pulls/123/comments
+# The inner content must not contain shell metacharacters (;|&`$<>\n\r) to prevent
+# nested injection like $(gh pr view 123; rm -rf /)
+# Only known read-only subcommands are allowed to prevent destructive commands
+# like $(gh repo delete ...) from being neutralized.
+SAFE_GH_SUBCOMMAND_PATTERN = re.compile(
+    r'\$\(gh[ \t]+(?:repo[ \t]+view|pr[ \t]+view|issue[ \t]+view|run[ \t]+view|release[ \t]+view'
+    r'|gist[ \t]+view|search[ \t]+\w+|status|auth[ \t]+status|config[ \t]+(?:get|list))'
+    r'[ \t]+[^)$`;&|<>\n\r]*\)'
+)
+
+# Safe $(cat ...) pattern - commonly used to load file contents into arguments
+# e.g., gh api graphql -f query="$(cat /tmp/query.graphql)"
+# cat is a read-only command that just outputs file contents.
+# The file path must not contain shell metacharacters to prevent nested injection.
+SAFE_CAT_SUBCOMMAND_PATTERN = re.compile(
+    r'\$\(cat\s+[^)$`;&|<>\n\r]+\)'
+)
 
 
 def extract_gh_command(command: str) -> Optional[str]:
@@ -260,9 +284,17 @@ def contains_shell_injection(cmd: str) -> bool:
     # This allows patterns like: grep -E "bug|error"
     cmd_without_safe_doubles = SAFE_DOUBLE_QUOTED_PATTERN.sub('""', cmd_with_neutralized_spans)
 
+    # Replace safe $(gh ...) subcommands with a placeholder before checking
+    # This allows patterns like: gh api repos/$(gh repo view --json nameWithOwner -q .nameWithOwner)/...
+    cmd_to_check = SAFE_GH_SUBCOMMAND_PATTERN.sub('SAFE_GH_SUB', cmd_without_safe_doubles)
+
+    # Replace safe $(cat ...) subcommands with a placeholder before checking
+    # This allows patterns like: gh api graphql -f query="$(cat /tmp/query.graphql)"
+    cmd_to_check = SAFE_CAT_SUBCOMMAND_PATTERN.sub('SAFE_CAT_SUB', cmd_to_check)
+
     # Replace safe pipe destinations with a placeholder before checking
     # This allows patterns like: gh api graphql ... | jq '...'
-    cmd_to_check = SAFE_PIPE_PATTERN.sub(' SAFE_PIPE ', cmd_without_safe_doubles)
+    cmd_to_check = SAFE_PIPE_PATTERN.sub(' SAFE_PIPE ', cmd_to_check)
 
     # Replace safe redirect patterns (like 2>&1, 2>/dev/null) before checking
     # These are standard shell redirects, not command execution
@@ -305,9 +337,10 @@ def main():
     # Normalize whitespace for matching
     normalized_cmd = " ".join(gh_command.split())
 
-    # Allow gh pr commands without shell injection check (common workflow commands)
+    # Allow gh pr and gh issue commands without shell injection check (common workflow commands)
+    # These commands frequently contain markdown in --body with backticks, pipes, etc.
     # Other gh commands with shell metacharacters are blocked for safety
-    if not normalized_cmd.startswith("gh pr "):
+    if not (normalized_cmd.startswith("gh pr ") or normalized_cmd.startswith("gh issue ")):
         if contains_shell_injection(command):
             decision = make_deny_decision(
                 "Command contains shell metacharacters that could allow injection"

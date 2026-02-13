@@ -56,3 +56,7 @@ python3 -m pytest ./tests
 # Pytest with options and paths
 python -m pytest -v tests/
 python3 -m pytest --tb=short tests/unit/
+
+# Pytest with pipes and redirects (common for test output formatting)
+python -m pytest .claude/hooks/tests/test_gh_permission_hook.py -v 2>&1
+python -m pytest .claude/hooks/tests/test_gh_permission_hook.py -v 2>&1 | tail -60

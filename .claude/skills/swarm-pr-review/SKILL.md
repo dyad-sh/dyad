@@ -41,9 +41,11 @@ gh pr view --json number -q '.number'
 
 ### Step 2: Fetch PR Diff and Context
 
+**IMPORTANT:** Always save files to the current working directory (e.g. `./pr_diff.patch`), never to `/tmp/` or other directories outside the repo. In CI, only the repo working directory is accessible.
+
 ```bash
-# Save the diff to scratchpad
-gh pr diff <PR_NUMBER> --repo <OWNER/REPO> > $SCRATCHPAD/pr_diff.patch
+# Save the diff to current working directory (NOT /tmp/ or $SCRATCHPAD)
+gh pr diff <PR_NUMBER> --repo <OWNER/REPO> > ./pr_diff.patch
 
 # Get PR metadata
 gh pr view <PR_NUMBER> --repo <OWNER/REPO> --json title,body,files,headRefOid

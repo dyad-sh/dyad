@@ -18,6 +18,9 @@ export function useCreateApp() {
     onSuccess: () => {
       // Invalidate apps list to trigger refetch
       queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
+      // Creating an app also creates the first chat, so refresh the chat list
+      // so ChatTabs can see it immediately.
+      queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
     },
     onError: (error) => {
       showError(error);

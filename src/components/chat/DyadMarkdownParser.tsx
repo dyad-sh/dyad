@@ -352,6 +352,8 @@ function renderCustomTag(
           node={{
             properties: {
               path: attributes.path || "",
+              startLine: attributes.start_line || "",
+              endLine: attributes.end_line || "",
             },
           }}
         >

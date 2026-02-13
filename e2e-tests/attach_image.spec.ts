@@ -154,6 +154,13 @@ test("attach image via drag - chat", async ({ po }) => {
     });
   }, fileBase64);
 
+  // Choose "Attach as chat context" in the attachment type dialog
+  const chatContextButton = po.page.getByRole("button", {
+    name: "Attach file as chat context",
+  });
+  await expect(chatContextButton).toBeVisible();
+  await chatContextButton.click();
+
   // submit and verify
   await po.sendPrompt("[dump]");
   // Note: this should match EXACTLY the server dump from the previous test.

@@ -406,29 +406,30 @@ export class PageObject {
         /\.dyad\/chats\/\d+\/compaction-[^\s"\\]+\.md/g,
         "[[compaction-backup-path]]",
       );
+
     // Perform snapshot comparison
     const parsedDump = JSON.parse(dumpContent);
+    if (parsedDump["body"]["input"]) {
+      parsedDump["body"]["input"] = parsedDump["body"]["input"].map(
+        (input: any) => {
+          if (input.role === "system") {
+            input.content = "[[SYSTEM_MESSAGE]]";
+          }
+          return input;
+        },
+      );
+    }
+    if (parsedDump["body"]["messages"]) {
+      parsedDump["body"]["messages"] = parsedDump["body"]["messages"].map(
+        (message: any) => {
+          if (message.role === "system") {
+            message.content = "[[SYSTEM_MESSAGE]]";
+          }
+          return message;
+        },
+      );
+    }
     if (type === "request") {
-      if (parsedDump["body"]["input"]) {
-        parsedDump["body"]["input"] = parsedDump["body"]["input"].map(
-          (input: any) => {
-            if (input.role === "system") {
-              input.content = "[[SYSTEM_MESSAGE]]";
-            }
-            return input;
-          },
-        );
-      }
-      if (parsedDump["body"]["messages"]) {
-        parsedDump["body"]["messages"] = parsedDump["body"]["messages"].map(
-          (message: any) => {
-            if (message.role === "system") {
-              message.content = "[[SYSTEM_MESSAGE]]";
-            }
-            return message;
-          },
-        );
-      }
       // Normalize fileIds to be deterministic based on content
       normalizeVersionedFiles(parsedDump);
       // Normalize item_reference IDs (e.g., msg_1234567890) to be deterministic

@@ -4,8 +4,12 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 
 import { formatDistanceToNow } from "date-fns";
 import { PlusCircle, MoreVertical, Trash2, Edit3, Search } from "lucide-react";
-import { useAtom } from "jotai";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { useAtom, useSetAtom } from "jotai";
+import {
+  selectedChatIdAtom,
+  removeChatIdFromAllTrackingAtom,
+  ensureRecentViewedChatIdAtom,
+} from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { dropdownOpenAtom } from "@/atoms/uiAtoms";
 import { ipc } from "@/ipc/types";
@@ -60,17 +64,30 @@ export function ChatList({ show }: { show?: boolean }) {
   // search dialog state
   const [isSearchDialogOpen, setIsSearchDialogOpen] = useState(false);
   const { selectChat } = useSelectChat();
+  const removeChatIdFromAllTracking = useSetAtom(
+    removeChatIdFromAllTrackingAtom,
+  );
+  const ensureRecentViewedChatId = useSetAtom(ensureRecentViewedChatIdAtom);
 
-  // Update selectedChatId when route changes
+  // Update selectedChatId when route changes and ensure chat appears in tabs.
+  // Uses ensureRecentViewedChatId (not push) to avoid moving existing tabs to
+  // the front on every navigation, which would defeat preserveTabOrder and
+  // drag-to-reorder.
   useEffect(() => {
     if (isChatRoute) {
       const id = routerState.location.search.id;
-      if (id) {
-        console.log("Setting selected chat id to", id);
-        setSelectedChatId(id);
+      const chatId = Number(id);
+      if (Number.isFinite(chatId) && chatId > 0) {
+        setSelectedChatId(chatId);
+        ensureRecentViewedChatId(chatId);
       }
     }
-  }, [isChatRoute, routerState.location.search, setSelectedChatId]);
+  }, [
+    isChatRoute,
+    routerState.location.search,
+    setSelectedChatId,
+    ensureRecentViewedChatId,
+  ]);
 
   if (!show) {
     return;
@@ -106,15 +123,12 @@ export function ChatList({ show }: { show?: boolean }) {
           updateSettings({ selectedChatMode: effectiveDefaultMode });
         }
 
-        // Navigate to the new chat
-        setSelectedChatId(chatId);
-        navigate({
-          to: "/chat",
-          search: { id: chatId },
-        });
-
-        // Refresh the chat list
+        // Refresh the chat list first so the new chat is in the cache
+        // before selectChat adds it to the tab bar
         await invalidateChats();
+
+        // Navigate to the new chat (use selectChat so it appears at front of tab bar)
+        selectChat({ chatId, appId: selectedAppId });
       } catch (error) {
         // DO A TOAST
         showError(t("failedCreateChat", { error: (error as any).toString() }));
@@ -130,10 +144,13 @@ export function ChatList({ show }: { show?: boolean }) {
       await ipc.chat.deleteChat(chatId);
       showSuccess(t("chatDeleted"));
 
-      // If the deleted chat was selected, navigate to home
+      // Remove from tab tracking to prevent stale IDs
+      removeChatIdFromAllTracking(chatId);
+
+      // If the deleted chat was selected, navigate to home (matches tab-close behavior)
       if (selectedChatId === chatId) {
         setSelectedChatId(null);
-        navigate({ to: "/chat" });
+        navigate({ to: "/" });
       }
 
       // Refresh the chat list
@@ -185,6 +202,7 @@ export function ChatList({ show }: { show?: boolean }) {
               onClick={handleNewChat}
               variant="outline"
               className="flex items-center justify-start gap-2 mx-2 py-3"
+              data-testid="new-chat-button"
             >
               <PlusCircle size={16} />
               <span>{t("newChat")}</span>

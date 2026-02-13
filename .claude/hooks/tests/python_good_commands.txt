@@ -96,3 +96,9 @@ python -W ignore -X dev .claude/script.py
 python -- .claude/script.py
 python3 -- .claude/script.py
 python -u -- .claude/script.py
+
+# =============================================================================
+# PIPES TO SAFE COMMANDS
+# =============================================================================
+
+python .claude/script.py | cat

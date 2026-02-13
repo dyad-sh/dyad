@@ -7,8 +7,10 @@ const logger = log.scope("exit_plan");
 
 const exitPlanSchema = z.object({
   confirmation: z
-    .literal(true)
-    .describe("Must be true to confirm the user has accepted the plan"),
+    .boolean()
+    .describe(
+      "Whether the user has accepted the plan. Must be true to proceed.",
+    ),
 });
 
 const DESCRIPTION = `
@@ -50,7 +52,11 @@ export const exitPlanTool: ToolDefinition<z.infer<typeof exitPlanSchema>> = {
     return `<dyad-exit-plan></dyad-exit-plan>`;
   },
 
-  execute: async (_args, ctx: AgentContext) => {
+  execute: async (args, ctx: AgentContext) => {
+    if (!args.confirmation) {
+      throw new Error("User must confirm the plan before exiting plan mode");
+    }
+
     logger.log("Exiting plan mode, transitioning to implementation");
 
     safeSend(ctx.event.sender, "plan:exit", {

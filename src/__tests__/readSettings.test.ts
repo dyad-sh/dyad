@@ -310,6 +310,85 @@ describe("readSettings", () => {
       );
     });
 
+    it("should migrate deprecated 'agent' chat mode to 'build'", () => {
+      const mockFileContent = {
+        selectedModel: {
+          name: "gpt-4",
+          provider: "openai",
+        },
+        selectedChatMode: "agent",
+        defaultChatMode: "agent",
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+
+      const result = readSettings();
+
+      // "agent" should be migrated to "build"
+      expect(result.selectedChatMode).toBe("build");
+      expect(result.defaultChatMode).toBe("build");
+    });
+
+    it("should preserve non-deprecated chat modes", () => {
+      const mockFileContent = {
+        selectedModel: {
+          name: "gpt-4",
+          provider: "openai",
+        },
+        selectedChatMode: "local-agent",
+        defaultChatMode: "ask",
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+
+      const result = readSettings();
+
+      expect(result.selectedChatMode).toBe("local-agent");
+      expect(result.defaultChatMode).toBe("ask");
+    });
+
+    it("should migrate deprecated 'agent' chat mode to 'build'", () => {
+      const mockFileContent = {
+        selectedModel: {
+          name: "gpt-4",
+          provider: "openai",
+        },
+        selectedChatMode: "agent",
+        defaultChatMode: "agent",
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+
+      const result = readSettings();
+
+      // "agent" should be converted to "build" on read
+      expect(result.selectedChatMode).toBe("build");
+      expect(result.defaultChatMode).toBe("build");
+    });
+
+    it("should preserve non-deprecated chat modes during migration", () => {
+      const mockFileContent = {
+        selectedModel: {
+          name: "gpt-4",
+          provider: "openai",
+        },
+        selectedChatMode: "local-agent",
+        defaultChatMode: "ask",
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+
+      const result = readSettings();
+
+      // non-deprecated modes should be preserved
+      expect(result.selectedChatMode).toBe("local-agent");
+      expect(result.defaultChatMode).toBe("ask");
+    });
+
     it("should preserve extra fields not recognized by the schema", () => {
       const mockFileContent = {
         selectedModel: {

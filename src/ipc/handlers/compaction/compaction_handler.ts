@@ -25,6 +25,7 @@ import {
 } from "./compaction_storage";
 import { getPostCompactionMessages } from "./compaction_utils";
 import { getProviderOptions, getAiHeaders } from "@/ipc/utils/provider_options";
+import { escapeXmlContent } from "../../../../shared/xmlEscape";
 
 const logger = log.scope("compaction_handler");
 
@@ -115,6 +116,9 @@ export async function performCompaction(
   appPath: string,
   dyadRequestId: string,
   onSummaryChunk?: (accumulatedText: string) => void,
+  options?: {
+    createdAtStrategy?: "before-latest-user" | "now";
+  },
 ): Promise<CompactionResult> {
   const settings = readSettings();
 
@@ -197,7 +201,7 @@ export async function performCompaction(
     // Create the compaction indicator message
     // Include relative backup path so the AI can read the full original conversation later
     const compactionMessageContent = `<dyad-compaction title="Conversation compacted" state="finished">
-${summary}
+${escapeXmlContent(summary)}
 </dyad-compaction>
 
 If you need to retrieve earlier parts of the conversation history, you can read the backup file at: ${backupPath}
@@ -218,9 +222,12 @@ Note: This file may be large. Read only the sections you need or use grep to sea
     const latestUserMessage = [...chatMessages]
       .reverse()
       .find((m) => m.role === "user");
-    const compactionCreatedAt = latestUserMessage
-      ? new Date(latestUserMessage.createdAt.getTime() - 1)
-      : new Date();
+    const compactionCreatedAt =
+      options?.createdAtStrategy === "now"
+        ? new Date()
+        : latestUserMessage
+          ? new Date(latestUserMessage.createdAt.getTime() - 1000)
+          : new Date();
     await db.insert(messages).values({
       chatId,
       role: "assistant",

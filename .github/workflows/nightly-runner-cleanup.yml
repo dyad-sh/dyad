@@ -1,0 +1,27 @@
+# Nightly disk cleanup for self-hosted macOS CI runners.
+# Runs at 4:00 AM PST to prevent disk exhaustion from CI workloads.
+# Safe to run manually via workflow_dispatch for testing.
+
+name: Nightly Runner Cleanup
+
+on:
+  schedule:
+    # 4:00 AM PST = 12:00 UTC (PST is UTC-8)
+    - cron: "0 12 * * *"
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ci1, ci2, ci3]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout (for cleanup script)
+        uses: actions/checkout@v4
+
+      - name: Nightly disk cleanup
+        env:
+          CI_NIGHTLY_CLEANUP: "1"
+        run: bash scripts/ci-cleanup-macos.sh

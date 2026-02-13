@@ -6,7 +6,7 @@ import {
   previewCurrentUrlAtom,
 } from "@/atoms/appAtoms";
 import { useAtomValue, useSetAtom, useAtom } from "jotai";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -936,10 +936,15 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       const baseUrl = new URL(appUrl).origin;
       const newUrl = `${baseUrl}${path}`;
 
-      // Navigate to the URL
-      iframeRef.current.contentWindow.location.href = newUrl;
-
-      // iframeRef.current.src = newUrl;
+      // Use postMessage to navigate (same as back/forward) - this uses location.replace()
+      // which provides smooth navigation without the black screen flicker that location.href causes
+      iframeRef.current.contentWindow.postMessage(
+        {
+          type: "navigate",
+          payload: { url: newUrl },
+        },
+        "*",
+      );
 
       // Update navigation history
       const newHistory = [
@@ -950,8 +955,49 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       setCurrentHistoryPosition(newHistory.length - 1);
       setCanGoBack(true);
       setCanGoForward(false);
+
+      // Update iframe URL ref to match
+      currentIframeUrlRef.current = newUrl;
+
+      // Update preservedUrls to match navigation (for HMR remounts)
+      if (selectedAppId) {
+        // Clear preserved URL if navigating to root, otherwise update it
+        if (path === "/" || path === "") {
+          setPreservedUrls((prev) => {
+            const newUrls = { ...prev };
+            delete newUrls[selectedAppId];
+            return newUrls;
+          });
+        } else {
+          setPreservedUrls((prev) => ({
+            ...prev,
+            [selectedAppId]: newUrl,
+          }));
+        }
+      }
     }
   };
+
+  // Freeze iframe src between remounts so in-iframe SPA navigation (pushState/replaceState)
+  // doesn't cause React to set a new src and trigger a second full navigation flicker.
+  const iframeSrc = useMemo(() => {
+    if (!appUrl) {
+      return undefined;
+    }
+
+    const currentUrl = currentIframeUrlRef.current;
+    if (!currentUrl) {
+      return appUrl;
+    }
+
+    try {
+      const currentOrigin = new URL(currentUrl).origin;
+      const appOrigin = new URL(appUrl).origin;
+      return currentOrigin === appOrigin ? currentUrl : appUrl;
+    } catch {
+      return appUrl;
+    }
+  }, [appUrl, reloadKey, selectedAppId]);
 
   // Display loading state
   if (loading) {
@@ -983,9 +1029,6 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const onRestart = () => {
     restartApp();
   };
-
-  // Convert null to undefined for iframe src prop compatibility
-  const iframeSrc = currentIframeUrlRef.current ?? appUrl ?? undefined;
 
   return (
     <div className="flex flex-col h-full">

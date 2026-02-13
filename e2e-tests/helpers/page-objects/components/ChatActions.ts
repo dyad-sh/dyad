@@ -54,10 +54,7 @@ export class ChatActions {
 
   clickNewChat({ index = 0 }: { index?: number } = {}) {
     // There is two new chat buttons...
-    return this.page
-      .getByRole("button", { name: "New Chat" })
-      .nth(index)
-      .click();
+    return this.page.getByTestId("new-chat-button").nth(index).click();
   }
 
   private getRetryButton() {
@@ -116,16 +113,6 @@ export class ChatActions {
 
   async selectLocalAgentMode() {
     await this.selectChatMode("local-agent");
-  }
-
-  async clickChatActivityButton() {
-    await this.page.getByTestId("chat-activity-button").click();
-  }
-
-  async snapshotChatActivityList() {
-    await expect(
-      this.page.getByTestId("chat-activity-list"),
-    ).toMatchAriaSnapshot();
   }
 
   async snapshotChatInputContainer() {

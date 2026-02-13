@@ -1,0 +1,20 @@
+=== src/utils/helper.test.ts ===
+import { helper } from "./helper";
+
+test("helper doubles input", () => {
+  expect(helper(5)).toBe(10);
+});
+
+
+=== src/utils/helper.ts ===
+export function helper(x: number): number {
+  return x * 2;
+}
+
+
+=== src/utils/README.md ===
+# Utils
+
+## helper(x)
+
+Doubles the input number.

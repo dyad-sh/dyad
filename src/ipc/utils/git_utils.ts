@@ -419,6 +419,17 @@ export async function gitAddAll({ path }: GitBaseParams): Promise<void> {
 export async function gitAdd({ path, filepath }: GitFileParams): Promise<void> {
   const normalizedFilepath = normalizePath(filepath);
   const settings = readSettings();
+
+  // Check if the file is ignored by .gitignore before attempting to stage
+  // This prevents errors when trying to stage files like .env.local
+  const isIgnored = await gitIsIgnored({ path, filepath: normalizedFilepath });
+  if (isIgnored) {
+    logger.debug(
+      `Skipping staging of ignored file '${normalizedFilepath}' (file is in .gitignore)`,
+    );
+    return;
+  }
+
   if (settings.enableNativeGit) {
     await execOrThrow(
       ["add", "--", normalizedFilepath],

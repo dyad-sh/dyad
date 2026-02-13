@@ -1,11 +1,11 @@
 ---
 name: dyad:multi-pr-review
-description: Multi-agent code review system that spawns three independent Claude sub-agents to review PR diffs. Each agent receives files in different randomized order to reduce ordering bias. One agent focuses specifically on code health and maintainability. Issues are classified as high/medium/low severity (sloppy code that hurts maintainability is MEDIUM). Results are aggregated using consensus voting - only issues identified by 2+ agents where at least one rated it medium or higher severity are reported. Automatically deduplicates against existing PR comments. Always posts a summary (even if no new issues), with low priority issues mentioned in a collapsible section.
+description: Multi-agent code review system that spawns three independent Claude sub-agents to review PR diffs. Each agent receives files in different randomized order to reduce ordering bias. One agent focuses specifically on code health and maintainability. Issues are classified as high/medium/low severity (sloppy code that hurts maintainability is MEDIUM). After collecting all agent findings, the orchestrator reasons through each issue to validate whether it's a real problem and whether the severity is merited—rather than relying on simple consensus voting. Automatically deduplicates against existing PR comments. Posts a summary with merge confidence verdict (YES/NOT SURE/NO) and low priority issues in a collapsible section.
 ---
 
 # Multi-Agent PR Review
 
-This skill creates three independent sub-agents to review code changes, then aggregates their findings using consensus voting.
+This skill creates three independent sub-agents to review code changes, then reasons through each finding to validate it and determine the correct severity.
 
 ## Overview
 
@@ -15,9 +15,10 @@ This skill creates three independent sub-agents to review code changes, then agg
    - **Code Health Expert**: Dead code, duplication, complexity, meaningful comments, abstractions
    - **UX Wizard**: User experience, consistency, accessibility, error states, delight
 3. Each agent reviews and classifies issues (high/medium/low criticality)
-4. Aggregate results: report issues where 2+ agents agree
-5. Filter out issues already commented on (deduplication)
-6. Post findings: summary table + inline comments for HIGH/MEDIUM issues
+4. Reason through each reported issue: validate whether it's a real problem, assess if the severity is merited, drop false positives
+5. Determine merge confidence verdict (YES / NOT SURE / NO)
+6. Filter out issues already commented on (deduplication)
+7. Post findings: summary with merge verdict + inline comments for HIGH/MEDIUM issues
 
 ## Workflow
 
@@ -83,16 +84,32 @@ LOW: Minor style issues, nitpicks, minor polish improvements
 Output JSON array of issues.
 ```
 
-### Step 4: Consensus Aggregation & Deduplication
+### Step 4: Reasoned Validation & Deduplication
 
-Issues are matched across agents by file + approximate line range + issue type. An issue is reported only if:
+After collecting all agent findings, the orchestrator reasons through each reported issue independently. Do NOT rely on simple consensus voting (i.e., "2+ agents agree so it must be real"). Instead:
 
-- 2+ agents identified it AND
-- At least one agent rated it MEDIUM or higher
+1. **Merge duplicates**: Group issues from different agents that refer to the same code location and problem.
+2. **Validate each issue**: For each unique issue, reason about whether it's a real problem:
+   - Is this actually a bug, or is the agent misunderstanding the code?
+   - Does the code context (surrounding logic, framework conventions, existing patterns) make this a non-issue?
+   - Could this be a false positive from the agent not having full project context?
+3. **Assess severity**: For each validated issue, determine if the assigned severity is merited:
+   - Is a HIGH really a security vulnerability / data loss / crash, or is it overstated?
+   - Is a MEDIUM really impactful, or is it a stylistic preference disguised as a real issue?
+   - Downgrade or upgrade severity based on actual impact analysis.
+4. **Drop false positives**: Remove issues that don't hold up under scrutiny, even if multiple agents flagged them.
 
-**Deduplication:** Before posting, the script fetches existing PR comments and filters out issues that have already been commented on (matching by file, line, and issue keywords). This prevents duplicate comments when re-running the review.
+**Deduplication:** Before posting, fetch existing PR comments and filter out issues that have already been commented on (matching by file, line, and issue keywords). This prevents duplicate comments when re-running the review.
 
-### Step 5: Post PR Comments
+### Step 5: Determine Merge Verdict
+
+Based on the validated issues, determine a merge confidence verdict:
+
+- **:white_check_mark: YES - Ready to merge**: No HIGH issues, at most minor MEDIUM issues that are judgment calls
+- **:thinking: NOT SURE - Potential issues**: Has MEDIUM issues that should probably be addressed, but none are clear blockers
+- **:no_entry: NO - Do NOT merge**: Has HIGH severity issues or multiple serious MEDIUM issues that NEED to be fixed
+
+### Step 6: Post PR Comments
 
 The script posts two types of comments:
 
@@ -116,7 +133,10 @@ Options:
 ```markdown
 ## :mag: Dyadbot Code Review Summary
 
-Found **4** new issue(s) flagged by 3 independent reviewers.
+**Verdict: :no_entry: NO - Do NOT merge**
+
+Reviewed by 3 specialized agents: Correctness Expert, Code Health Expert, UX Wizard.
+Found **4** new issue(s) after reasoned validation.
 (2 issue(s) skipped - already commented)
 
 ### Summary
@@ -129,16 +149,23 @@ Found **4** new issue(s) flagged by 3 independent reviewers.
 
 ### Issues to Address
 
-| Severity               | File                     | Issue                                    |
-| ---------------------- | ------------------------ | ---------------------------------------- |
-| :red_circle: HIGH      | `src/auth/login.ts:45`   | SQL injection in user lookup             |
-| :yellow_circle: MEDIUM | `src/utils/cache.ts:112` | Missing error handling for Redis failure |
-| :yellow_circle: MEDIUM | `src/api/handler.ts:89`  | Confusing control flow - hard to debug   |
+| #   | Severity               | File                     | Issue                                    |
+| --- | ---------------------- | ------------------------ | ---------------------------------------- |
+| 1   | :red_circle: HIGH      | `src/auth/login.ts:45`   | SQL injection in user lookup             |
+| 2   | :yellow_circle: MEDIUM | `src/utils/cache.ts:112` | Missing error handling for Redis failure |
+| 3   | :yellow_circle: MEDIUM | `src/api/handler.ts:89`  | Confusing control flow - hard to debug   |
 
 <details>
 <summary>:green_circle: Low Priority Issues (1 items)</summary>
 
 - **Inconsistent naming convention** - `src/utils/helpers.ts:23`
+
+</details>
+
+<details>
+<summary>:no_entry_sign: Dropped Issues (1 items)</summary>
+
+- **~~Potential null pointer~~** - Dropped: Framework guarantees non-null in this context
 
 </details>
 
@@ -152,7 +179,7 @@ _Generated by Dyadbot code review_
 ```
 scripts/
   orchestrate_review.py  - Main orchestrator, spawns sub-agents
-  aggregate_results.py   - Consensus voting logic
+  validate_results.py    - Reasoned validation logic
   post_comment.py        - Posts findings to GitHub PR
 references/
   correctness-reviewer.md - Role description for the correctness expert
@@ -172,7 +199,6 @@ Note: `ANTHROPIC_API_KEY` is **not required** - sub-agents spawned via the Task 
 Optional tuning in `orchestrate_review.py`:
 
 - `NUM_AGENTS` - Number of sub-agents (default: 3)
-- `CONSENSUS_THRESHOLD` - Min agents to agree (default: 2)
 - `MIN_SEVERITY` - Minimum severity to report (default: MEDIUM)
 - `THINKING_BUDGET_TOKENS` - Extended thinking budget (default: 128000)
 - `MAX_TOKENS` - Maximum output tokens (default: 128000)

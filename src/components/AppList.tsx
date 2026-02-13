@@ -13,15 +13,12 @@ import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { useMemo, useState } from "react";
 import { AppSearchDialog } from "./AppSearchDialog";
-import { useAddAppToFavorite } from "@/hooks/useAddAppToFavorite";
 import { AppItem } from "./appItem";
 export function AppList({ show }: { show?: boolean }) {
   const navigate = useNavigate();
   const [selectedAppId, setSelectedAppId] = useAtom(selectedAppIdAtom);
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const { apps, loading, error } = useLoadApps();
-  const { toggleFavorite, isLoading: isFavoriteLoading } =
-    useAddAppToFavorite();
   // search dialog state
   const [isSearchDialogOpen, setIsSearchDialogOpen] = useState(false);
 
@@ -64,11 +61,6 @@ export function AppList({ show }: { show?: boolean }) {
   const handleNewApp = () => {
     navigate({ to: "/" });
     // We'll eventually need a create app workflow
-  };
-
-  const handleToggleFavorite = (appId: number, e: React.MouseEvent) => {
-    e.stopPropagation();
-    toggleFavorite(appId);
   };
 
   return (
@@ -119,8 +111,6 @@ export function AppList({ show }: { show?: boolean }) {
                     app={app}
                     handleAppClick={handleAppClick}
                     selectedAppId={selectedAppId}
-                    handleToggleFavorite={handleToggleFavorite}
-                    isFavoriteLoading={isFavoriteLoading}
                   />
                 ))}
                 <SidebarGroupLabel>Other apps</SidebarGroupLabel>
@@ -130,8 +120,6 @@ export function AppList({ show }: { show?: boolean }) {
                     app={app}
                     handleAppClick={handleAppClick}
                     selectedAppId={selectedAppId}
-                    handleToggleFavorite={handleToggleFavorite}
-                    isFavoriteLoading={isFavoriteLoading}
                   />
                 ))}
               </SidebarMenu>

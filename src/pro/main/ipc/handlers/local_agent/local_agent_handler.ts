@@ -58,6 +58,8 @@ import {
   hasIncompleteTodos,
   type InjectedMessage,
 } from "./prepare_step_utils";
+import { loadTodos } from "./todo_persistence";
+import { ensureDyadGitignored } from "@/ipc/handlers/planUtils";
 import { TOOL_DEFINITIONS } from "./tool_definitions";
 import {
   parseAiMessagesJson,
@@ -421,6 +423,20 @@ export async function handleLocalAgentStream(
       settings,
     );
 
+    // Load persisted todos from a previous turn (if any)
+    const persistedTodos = await loadTodos(appPath, chat.id);
+    // Ensure .dyad/ is gitignored (idempotent; also done by compaction/plans)
+    await ensureDyadGitignored(appPath).catch((err) =>
+      logger.warn("Failed to ensure .dyad gitignored:", err),
+    );
+    if (persistedTodos.length > 0) {
+      // Emit loaded todos to the renderer so the UI shows them immediately
+      safeSend(event.sender, "agent-tool:todos-update", {
+        chatId: chat.id,
+        todos: persistedTodos,
+      });
+    }
+
     // Build tool execute context
     const fileEditTracker: FileEditTracker = Object.create(null);
     const ctx: AgentContext = {
@@ -432,7 +448,7 @@ export async function handleLocalAgentStream(
       supabaseOrganizationSlug: chat.app.supabaseOrganizationSlug,
       messageId: placeholderMessageId,
       isSharedModulesChanged: false,
-      todos: [],
+      todos: persistedTodos,
       dyadRequestId,
       fileEditTracker,
       isDyadPro: isDyadProEnabled(settings),
@@ -522,6 +538,26 @@ export async function handleLocalAgentStream(
     let hasInjectedPlanningQuestionnaireReflection = false;
     let currentMessageHistory = messageHistory;
     const accumulatedAiMessages: ModelMessage[] = [];
+
+    // If there are persisted todos from a previous turn, inject a synthetic
+    // user message so the LLM is aware of them. This follows the same pattern
+    // as buildTodoReminderMessage — a transient message not persisted to
+    // accumulatedAiMessages.
+    if (persistedTodos.length > 0 && hasIncompleteTodos(persistedTodos)) {
+      const todoSummary = persistedTodos
+        .map((t) => `- [${t.status}] ${t.content}`)
+        .join("\n");
+      const syntheticMessage: ModelMessage = {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: `[System] Previous turn's todos:\n${todoSummary}\n\nContinue working on incomplete todos if relevant.`,
+          },
+        ],
+      };
+      currentMessageHistory = [...currentMessageHistory, syntheticMessage];
+    }
 
     while (!abortController.signal.aborted) {
       // Reset mid-turn compaction state at the start of each pass.

@@ -108,3 +108,7 @@ When rebasing a PR branch that conflicts with upstream documentation changes (e.
 ## Resolving package.json engine conflicts
 
 When rebasing causes conflicts in the `engines` field of `package.json` (e.g., node version requirements), accept the incoming change from upstream/main to maintain consistency with the base branch requirements. The same resolution should be applied to the corresponding section in `package-lock.json`.
+
+## CI Node version limitations
+
+If the project requires Node 24+ but CI runs Node 20, `npm install` and `npm run ts` will fail with `EBADENGINE`. However, individual tools invoked via `npx` (oxfmt, oxlint) still work. For documentation-only changes during rebase/push operations, it's acceptable to skip type checking if lint passes successfully.

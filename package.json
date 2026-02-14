@@ -67,7 +67,6 @@
     "@monaco-editor/react": "^4.7.0-rc.0",
     "@neondatabase/api-client": "^2.1.0",
     "@neondatabase/serverless": "^1.0.1",
-    "@radix-ui/react-context-menu": "^2.2.16",
     "@rollup/plugin-commonjs": "^28.0.3",
     "@tailwindcss/typography": "^0.5.16",
     "@tailwindcss/vite": "^4.1.3",

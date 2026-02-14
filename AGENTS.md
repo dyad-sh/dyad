@@ -92,6 +92,7 @@ This is the only supported way to type-check the project. It uses the correct co
 - Favor descriptive module/function names that mirror IPC channel semantics.
 - Keep Electron security practices in mind (no `remote`, validate/lock by `appId` when mutating shared resources).
 - Add tests in the same folder tree when touching renderer components.
+- **Always use Base UI (`@base-ui/react`) for UI primitives, never Radix UI.** This includes menus, tooltips, accordions, context menus, and other headless UI components. See [rules/base-ui-components.md](rules/base-ui-components.md) for component-specific guidance.
 
 Use these guidelines whenever you work within this repository.
 

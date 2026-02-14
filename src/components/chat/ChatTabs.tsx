@@ -640,18 +640,18 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                   </Tooltip>
                 </ContextMenuTrigger>
                 <ContextMenuContent>
-                  <ContextMenuItem onSelect={() => handleCloseTab(chat.id)}>
+                  <ContextMenuItem onClick={() => handleCloseTab(chat.id)}>
                     {t("closeTab")}
                   </ContextMenuItem>
                   <ContextMenuSeparator />
                   <ContextMenuItem
-                    onSelect={() => handleCloseOtherTabs(chat.id)}
+                    onClick={() => handleCloseOtherTabs(chat.id)}
                     disabled={!hasOtherTabs}
                   >
                     {t("closeOtherTabs")}
                   </ContextMenuItem>
                   <ContextMenuItem
-                    onSelect={() => handleCloseTabsToRight(chat.id)}
+                    onClick={() => handleCloseTabsToRight(chat.id)}
                     disabled={!hasTabsToRight}
                   >
                     {t("closeTabsToRight")}

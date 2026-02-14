@@ -1,5 +1,36 @@
 # Base UI Component Patterns
 
+## Always Use Base UI, Never Radix UI
+
+This project uses **Base UI** (`@base-ui/react`) for all headless UI primitives. **Do not use Radix UI** (`@radix-ui/*`) for any new components. This ensures:
+
+- Consistent animation/transition behavior across all menus and popups
+- Uniform keyboard navigation and focus management patterns
+- Consistent ARIA attribute usage for accessibility
+- A single set of APIs to learn and maintain
+
+If you need a component not yet wrapped in `src/components/ui/`, build it using Base UI primitives following the existing patterns in that directory.
+
+### Context Menu
+
+The `ContextMenu` in `src/components/ui/context-menu.tsx` uses Base UI's `Menu` primitives with a custom trigger that listens for right-click events. Key differences from Radix's API:
+
+- Use `onClick` instead of `onSelect` on `ContextMenuItem`
+- The `ContextMenuTrigger` supports `asChild` to merge handlers onto the child element
+- Menu positioning is handled via a virtual anchor at the cursor position
+
+```tsx
+// Correct usage
+<ContextMenu>
+  <ContextMenuTrigger asChild>
+    <div>Right-click me</div>
+  </ContextMenuTrigger>
+  <ContextMenuContent>
+    <ContextMenuItem onClick={() => doSomething()}>Action</ContextMenuItem>
+  </ContextMenuContent>
+</ContextMenu>
+```
+
 ## TooltipTrigger render prop
 
 `TooltipTrigger` from `@base-ui/react/tooltip` (wrapped in `src/components/ui/tooltip.tsx`) renders a `<button>` by default. Wrapping another button-like element (`<button>`, `<Button>`, `<DropdownMenuTrigger>`, `<PopoverTrigger>`, `<MiniSelectTrigger>`, `<ToggleGroupItem>`) inside it creates invalid nested `<button>` HTML. Use the `render` prop instead:

@@ -1694,10 +1694,11 @@ ${problemReport.problems
       logger.warn(`No active stream found for chat ${chatId}`);
     }
 
-    // Send the end event to the renderer
+    // Send the end event to the renderer with wasCancelled flag
     safeSend(event.sender, "chat:response:end", {
       chatId,
       updatedFiles: false,
+      wasCancelled: true,
     } satisfies ChatResponseEnd);
 
     // Also emit stream:end so cleanup listeners (e.g., pending agent consents) fire

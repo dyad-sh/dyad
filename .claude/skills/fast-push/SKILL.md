@@ -156,17 +156,6 @@ You MUST use the TaskCreate and TaskUpdate tools to track your progress. At the 
 
    Use the commit messages and changed files to write a good title and summary.
 
-   **Add labels for non-trivial PRs:**
-   After creating or verifying the PR exists, assess whether the changes are non-trivial:
-   - Non-trivial = more than simple typo fixes, formatting, or config changes
-   - Non-trivial = any code logic changes, new features, bug fixes, refactoring
-
-   For non-trivial PRs, add the `cc:request` label to request code review:
-
-   ```
-   gh pr edit --add-label "cc:request"
-   ```
-
    **Remove review-issue label:**
    After pushing, remove the `needs-human:review-issue` label if it exists (this label indicates the issue needed human review before work started, which is now complete):
 

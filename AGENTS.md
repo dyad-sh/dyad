@@ -4,6 +4,8 @@ Please read `CONTRIBUTING.md` which includes information for human code contribu
 
 ## Rules index
 
+> **IMPORTANT: BEFORE writing any code or making changes, you MUST read the relevant rule files from the table below.** Identify which areas your task touches and read those rule files first. Skipping this step leads to avoidable mistakes and rework.
+
 Detailed rules and learnings are in the `rules/` directory. Read the relevant file when working in that area.
 
 | File                                                                 | Read when...                                                                                     |
@@ -90,6 +92,7 @@ This is the only supported way to type-check the project. It uses the correct co
 - Favor descriptive module/function names that mirror IPC channel semantics.
 - Keep Electron security practices in mind (no `remote`, validate/lock by `appId` when mutating shared resources).
 - Add tests in the same folder tree when touching renderer components.
+- **Always use Base UI (`@base-ui/react`) for UI primitives, never Radix UI.** This includes menus, tooltips, accordions, context menus, and other headless UI components. See [rules/base-ui-components.md](rules/base-ui-components.md) for component-specific guidance.
 
 Use these guidelines whenever you work within this repository.
 
@@ -102,6 +105,8 @@ Our project relies on a combination of unit testing and E2E testing. Unless your
 Use unit testing for pure business logic and util functions.
 
 ### E2E testing
+
+> **IMPORTANT: You MUST run `npm run build` before running E2E tests.** E2E tests run against the built application, not the dev server. If you have changed any application code (i.e. anything outside of test files), you MUST re-run `npm run build` before running the tests, otherwise the tests will run against stale code and results will be misleading. Only changes to test code itself (e.g. files in `e2e-tests/`) do not require a rebuild.
 
 See [rules/e2e-testing.md](rules/e2e-testing.md) for full E2E testing guidance, including Playwright tips and fixture setup.
 

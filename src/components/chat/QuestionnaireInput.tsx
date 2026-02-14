@@ -243,7 +243,7 @@ export function QuestionnaireInput() {
                   currentQuestion.options && (
                     <RadioGroup
                       value={(responses[currentQuestion.id] as string) || ""}
-                      onValueChange={(value: string) => {
+                      onValueChange={(value) => {
                         setResponses((prev) => ({
                           ...prev,
                           [currentQuestion.id]: value,

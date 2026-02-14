@@ -19,10 +19,7 @@ jobs:
       - self-hosted
       - macOS
       - ARM64
-    permissions:
-      actions: read
-      contents: write
-      pull-requests: write
+    permissions: {}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -41,7 +38,7 @@ jobs:
       - name: Install node modules
         run: npm ci --no-audit --no-fund --progress=false
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.DEFLAKE_E2E_PAT_GITHUB_TOKEN }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
@@ -66,11 +63,11 @@ jobs:
       - name: Deflake E2E tests
         uses: anthropics/claude-code-action@v1
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.DEFLAKE_E2E_PAT_GITHUB_TOKEN }}
           CLAUDE_CODE_MAX_OUTPUT_TOKENS: 48000
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.DEFLAKE_E2E_PAT_GITHUB_TOKEN }}
           claude_args: --model claude-opus-4-6
           prompt: |
             /dyad:deflake-e2e-recent-commits ${{ inputs.commit_count || '10' }}

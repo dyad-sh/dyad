@@ -12,6 +12,7 @@ import {
   MessageCircle,
   Pencil,
   Folder,
+  Star,
 } from "lucide-react";
 import {
   Popover,
@@ -44,6 +45,7 @@ import { useCheckName } from "@/hooks/useCheckName";
 import { AppUpgrades } from "@/components/AppUpgrades";
 import { CapacitorControls } from "@/components/CapacitorControls";
 import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManager";
+import { useAddAppToFavorite } from "@/hooks/useAddAppToFavorite";
 
 export default function AppDetailsPage() {
   const navigate = useNavigate();
@@ -75,6 +77,8 @@ export default function AppDetailsPage() {
     debouncedNewCopyAppName,
   );
   const nameExists = checkNameResult?.exists ?? false;
+  const { toggleFavorite, isLoading: isFavoriteLoading } =
+    useAddAppToFavorite();
 
   // Get the appId from search params and find the corresponding app
   const appId = search.appId ? Number(search.appId) : null;
@@ -284,6 +288,33 @@ export default function AppDetailsPage() {
       <div className="w-full max-w-2xl mx-auto mt-10 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm relative">
         <div className="flex items-center mb-3">
           <h2 className="text-2xl font-bold">{selectedApp.name}</h2>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="ml-1 p-0.5 h-auto"
+                  onClick={() => appId && toggleFavorite(appId)}
+                  disabled={isFavoriteLoading}
+                  data-testid="favorite-button"
+                />
+              }
+            >
+              <Star
+                className={`h-4 w-4 ${
+                  selectedApp.isFavorite
+                    ? "fill-[#6c55dc] text-[#6c55dc]"
+                    : "hover:fill-[#6c55dc] hover:text-[#6c55dc]"
+                }`}
+              />
+            </TooltipTrigger>
+            <TooltipContent>
+              {selectedApp.isFavorite
+                ? "Remove from favorites"
+                : "Add to favorites"}
+            </TooltipContent>
+          </Tooltip>
           <Button
             variant="ghost"
             size="sm"

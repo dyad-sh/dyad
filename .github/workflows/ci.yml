@@ -294,6 +294,13 @@ jobs:
           name: blob-report-${{ matrix.os.name }}-shard-${{ matrix.shard }}
           path: blob-report
           retention-days: 1
+      - name: Upload flakiness report (for fork PRs)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: ${{ !cancelled() }}
+        with:
+          name: flakiness-report-${{ matrix.os.name }}-shard-${{ matrix.shard }}
+          path: flakiness-report
+          retention-days: 1
       - name: Cleanup (self-hosted macOS)
         if: always() && contains(matrix.os.image, 'self-hosted')
         run: bash scripts/ci-cleanup-macos.sh

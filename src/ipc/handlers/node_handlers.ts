@@ -17,6 +17,11 @@ const logger = log.scope("node_handlers");
 let mockNodeInstalled: boolean | null = null;
 
 function getNodeDownloadUrl(): string {
+  // In E2E test mode, return a trivially small file to avoid actual Node.js downloads
+  if (process.env.E2E_TEST_BUILD === "true") {
+    return "https://httpbin.org/bytes/100";
+  }
+
   // Default to mac download url.
   let nodeDownloadUrl = "https://nodejs.org/dist/v22.14.0/node-v22.14.0.pkg";
   if (platform() == "win32") {

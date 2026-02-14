@@ -13,6 +13,11 @@ export function registerShellHandlers() {
     if (!url.startsWith("http://") && !url.startsWith("https://")) {
       throw new Error("Attempted to open invalid or non-http URL: " + url);
     }
+    // In E2E test mode, skip actually opening external URLs to avoid browser windows
+    if (process.env.E2E_TEST_BUILD === "true") {
+      logger.debug("E2E test mode: skipped opening external URL:", url);
+      return;
+    }
     await shell.openExternal(url);
     logger.debug("Opened external URL:", url);
   });

@@ -46,6 +46,16 @@ const OVERFLOW_TRIGGER_WIDTH_PX = 36;
 const DEFAULT_UNMEASURED_VISIBLE_TABS = 3;
 const MAX_OVERFLOW_MENU_ITEMS = 8;
 
+/**
+ * Returns an ordered list of chat IDs to display as tabs.
+ *
+ * @param recentViewedChatIds - IDs in the order they were recently viewed
+ * @param chats - All available chats
+ * @param closedChatIds - IDs of explicitly closed tabs
+ * @param sessionOpenedChatIds - IDs of chats opened in the current session.
+ *   If empty, no tabs will be shown (session-scoped behavior). This is intentional:
+ *   tabs only appear for chats explicitly opened during the current app session.
+ */
 export function getOrderedRecentChatIds(
   recentViewedChatIds: number[],
   chats: ChatSummary[],
@@ -58,29 +68,23 @@ export function getOrderedRecentChatIds(
   const ordered: number[] = [];
   const seen = new Set<number>();
 
+  // Helper to check if a chat ID should be shown as a tab
+  const canShow = (id: number) =>
+    !seen.has(id) && !closedChatIds.has(id) && sessionOpenedChatIds.has(id);
+
   for (const chatId of recentViewedChatIds) {
-    // Only show chats that were opened in this session
-    if (
-      !chatIds.has(chatId) ||
-      seen.has(chatId) ||
-      closedChatIds.has(chatId) ||
-      !sessionOpenedChatIds.has(chatId)
-    )
-      continue;
-    ordered.push(chatId);
-    seen.add(chatId);
+    if (chatIds.has(chatId) && canShow(chatId)) {
+      ordered.push(chatId);
+      seen.add(chatId);
+    }
   }
 
-  // Only add chats that haven't been explicitly closed AND were opened in this session
+  // Add remaining chats that were opened in this session but not in recentViewedChatIds
   for (const chat of chats) {
-    if (
-      seen.has(chat.id) ||
-      closedChatIds.has(chat.id) ||
-      !sessionOpenedChatIds.has(chat.id)
-    )
-      continue;
-    ordered.push(chat.id);
-    seen.add(chat.id);
+    if (canShow(chat.id)) {
+      ordered.push(chat.id);
+      seen.add(chat.id);
+    }
   }
 
   return ordered;
@@ -419,26 +423,46 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     });
   };
 
+  // Helper to close multiple tabs and optionally switch to a fallback
+  const closeTabsAndClearNotifications = useCallback(
+    (idsToClose: number[], fallbackChatId?: number) => {
+      if (idsToClose.length === 0) return;
+
+      for (const id of idsToClose) {
+        clearNotification(id);
+      }
+
+      closeMultipleTabs(idsToClose);
+
+      // Switch to fallback if the selected chat is being closed or if explicitly requested
+      if (
+        fallbackChatId !== undefined &&
+        (selectedChatId === null || idsToClose.includes(selectedChatId))
+      ) {
+        const fallbackTab = chatsById.get(fallbackChatId);
+        if (fallbackTab) {
+          selectChat({
+            chatId: fallbackTab.id,
+            appId: fallbackTab.appId,
+            preserveTabOrder: true,
+          });
+        }
+      }
+    },
+    [
+      clearNotification,
+      closeMultipleTabs,
+      selectedChatId,
+      chatsById,
+      selectChat,
+    ],
+  );
+
   const handleCloseOtherTabs = (keepChatId: number) => {
     const idsToClose = orderedChatIds.filter((id) => id !== keepChatId);
-    if (idsToClose.length === 0) return;
-
-    // Clear notifications for all closing tabs
-    for (const id of idsToClose) {
-      clearNotification(id);
-    }
-
-    closeMultipleTabs(idsToClose);
-
-    // If we're not on the kept tab, switch to it
-    const keptTab = chatsById.get(keepChatId);
-    if (keptTab && selectedChatId !== keepChatId) {
-      selectChat({
-        chatId: keptTab.id,
-        appId: keptTab.appId,
-        preserveTabOrder: true,
-      });
-    }
+    // Always switch to the kept tab if we're not already on it
+    const fallback = selectedChatId !== keepChatId ? keepChatId : undefined;
+    closeTabsAndClearNotifications(idsToClose, fallback);
   };
 
   const handleCloseTabsToRight = (chatId: number) => {
@@ -446,26 +470,12 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     if (chatIndex === -1) return;
 
     const idsToClose = orderedChatIds.slice(chatIndex + 1);
-    if (idsToClose.length === 0) return;
-
-    // Clear notifications for all closing tabs
-    for (const id of idsToClose) {
-      clearNotification(id);
-    }
-
-    closeMultipleTabs(idsToClose);
-
-    // If the selected chat is being closed, switch to the rightmost remaining tab
-    if (selectedChatId !== null && idsToClose.includes(selectedChatId)) {
-      const keptTab = chatsById.get(chatId);
-      if (keptTab) {
-        selectChat({
-          chatId: keptTab.id,
-          appId: keptTab.appId,
-          preserveTabOrder: true,
-        });
-      }
-    }
+    // Only switch to this chat if the selected one is being closed
+    const fallback =
+      selectedChatId !== null && idsToClose.includes(selectedChatId)
+        ? chatId
+        : undefined;
+    closeTabsAndClearNotifications(idsToClose, fallback);
   };
 
   if (orderedChats.length === 0) return null;
@@ -627,18 +637,18 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                   </Tooltip>
                 </ContextMenuTrigger>
                 <ContextMenuContent>
-                  <ContextMenuItem onClick={() => handleCloseTab(chat.id)}>
+                  <ContextMenuItem onSelect={() => handleCloseTab(chat.id)}>
                     {t("closeTab")}
                   </ContextMenuItem>
                   <ContextMenuSeparator />
                   <ContextMenuItem
-                    onClick={() => handleCloseOtherTabs(chat.id)}
+                    onSelect={() => handleCloseOtherTabs(chat.id)}
                     disabled={!hasOtherTabs}
                   >
                     {t("closeOtherTabs")}
                   </ContextMenuItem>
                   <ContextMenuItem
-                    onClick={() => handleCloseTabsToRight(chat.id)}
+                    onSelect={() => handleCloseTabsToRight(chat.id)}
                     disabled={!hasTabsToRight}
                   >
                     {t("closeTabsToRight")}

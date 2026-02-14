@@ -45,21 +45,34 @@ export const setRecentViewedChatIdsAtom = atom(
     }
   },
 );
+// Helper to add a chat ID to the session-opened set
+function addToSessionSet(get: Getter, set: Setter, chatId: number): void {
+  const sessionIds = get(sessionOpenedChatIdsAtom);
+  if (!sessionIds.has(chatId)) {
+    const newSessionIds = new Set(sessionIds);
+    newSessionIds.add(chatId);
+    set(sessionOpenedChatIdsAtom, newSessionIds);
+  }
+}
 // Add a chat ID to the recent list only if it's not already present.
 // Unlike pushRecentViewedChatIdAtom, this does NOT move existing IDs to the front,
 // preserving the current tab order for chats already tracked.
+// Also adds to session tracking so the tab appears in the tab bar.
 export const ensureRecentViewedChatIdAtom = atom(
   null,
   (get, set, chatId: number) => {
     const currentIds = get(recentViewedChatIdsAtom);
-    if (currentIds.includes(chatId)) return;
-    const nextIds = [chatId, ...currentIds];
-    if (nextIds.length > MAX_RECENT_VIEWED_CHAT_IDS) {
-      nextIds.length = MAX_RECENT_VIEWED_CHAT_IDS;
+    if (!currentIds.includes(chatId)) {
+      const nextIds = [chatId, ...currentIds];
+      if (nextIds.length > MAX_RECENT_VIEWED_CHAT_IDS) {
+        nextIds.length = MAX_RECENT_VIEWED_CHAT_IDS;
+      }
+      set(recentViewedChatIdsAtom, nextIds);
     }
-    set(recentViewedChatIdsAtom, nextIds);
     // Remove from closed set when explicitly selected
     removeFromClosedSet(get, set, chatId);
+    // Track in session so the tab appears
+    addToSessionSet(get, set, chatId);
   },
 );
 export const pushRecentViewedChatIdAtom = atom(
@@ -120,6 +133,25 @@ export const addSessionOpenedChatIdAtom = atom(
     }
   },
 );
+// Helper to remove chat IDs from the session-opened set
+function removeFromSessionSet(
+  get: Getter,
+  set: Setter,
+  chatIds: number[],
+): void {
+  const sessionIds = get(sessionOpenedChatIdsAtom);
+  let changed = false;
+  const newSessionIds = new Set(sessionIds);
+  for (const id of chatIds) {
+    if (newSessionIds.has(id)) {
+      newSessionIds.delete(id);
+      changed = true;
+    }
+  }
+  if (changed) {
+    set(sessionOpenedChatIdsAtom, newSessionIds);
+  }
+}
 // Close multiple tabs at once (for "Close other tabs" / "Close tabs to the right")
 export const closeMultipleTabsAtom = atom(
   null,
@@ -141,6 +173,9 @@ export const closeMultipleTabsAtom = atom(
       newClosedIds.add(id);
     }
     set(closedChatIdsAtom, newClosedIds);
+
+    // Remove from session tracking to prevent unbounded growth
+    removeFromSessionSet(get, set, chatIdsToClose);
   },
 );
 // Remove a chat ID from all tracking (used when chat is deleted)
@@ -152,6 +187,8 @@ export const removeChatIdFromAllTrackingAtom = atom(
       get(recentViewedChatIdsAtom).filter((id) => id !== chatId),
     );
     removeFromClosedSet(get, set, chatId);
+    // Also remove from session tracking
+    removeFromSessionSet(get, set, [chatId]);
   },
 );
 

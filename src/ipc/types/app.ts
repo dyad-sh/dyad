@@ -9,6 +9,12 @@ import { defineContract, createClient } from "../contracts/core";
  * Base app schema with fields from the database.
  * These are the core fields stored in the apps table.
  */
+/**
+ * Icon type for apps - can be an emoji or a generated geometric avatar
+ */
+export const IconTypeSchema = z.enum(["emoji", "generated"]);
+export type IconType = z.infer<typeof IconTypeSchema>;
+
 export const AppBaseSchema = z.object({
   id: z.number(),
   name: z.string(),
@@ -31,6 +37,8 @@ export const AppBaseSchema = z.object({
   installCommand: z.string().nullable(),
   startCommand: z.string().nullable(),
   isFavorite: z.boolean(),
+  iconType: IconTypeSchema.nullable(),
+  iconData: z.string().nullable(),
 });
 
 /**
@@ -257,6 +265,15 @@ export const AppSearchResultSchema = z.object({
   matchedChatMessage: z.string().nullable(),
 });
 
+/**
+ * Schema for update app icon params.
+ */
+export const UpdateAppIconParamsSchema = z.object({
+  appId: z.number(),
+  iconType: IconTypeSchema,
+  iconData: z.string(),
+});
+
 // =============================================================================
 // App Contracts
 // =============================================================================
@@ -381,6 +398,12 @@ export const appContracts = {
     input: UpdateAppCommandsParamsSchema,
     output: z.void(),
   }),
+
+  updateAppIcon: defineContract({
+    channel: "update-app-icon",
+    input: UpdateAppIconParamsSchema,
+    output: z.void(),
+  }),
 } as const;
 
 // =============================================================================
@@ -421,3 +444,4 @@ export type AppSearchResult = z.infer<typeof AppSearchResultSchema>;
 export type UpdateAppCommandsParams = z.infer<
   typeof UpdateAppCommandsParamsSchema
 >;
+export type UpdateAppIconParams = z.infer<typeof UpdateAppIconParamsSchema>;

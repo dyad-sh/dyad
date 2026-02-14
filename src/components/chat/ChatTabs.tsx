@@ -39,6 +39,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { AppIcon } from "@/components/ui/AppIcon";
+import type { IconType } from "@/ipc/types/app";
 
 const MIN_VISIBLE_TAB_WIDTH_PX = 160;
 const TAB_GAP_PX = 4;
@@ -223,8 +225,19 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     pruneClosedChatIds(chatIdSet);
   }, [chatIdSet, pruneClosedChatIds]);
 
-  const appNameById = useMemo(
-    () => new Map(apps.map((app) => [app.id, app.name])),
+  // Map of app info including icon data for tab display
+  const appInfoById = useMemo(
+    () =>
+      new Map(
+        apps.map((app) => [
+          app.id,
+          {
+            name: app.name,
+            iconType: app.iconType,
+            iconData: app.iconData,
+          },
+        ]),
+      ),
     [apps],
   );
 
@@ -493,7 +506,8 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
               index < visibleTabs.length - 1 &&
               selectedChatId === visibleTabs[index + 1].id;
             const title = chat.title?.trim() || t("newChat");
-            const appName = appNameById.get(chat.appId) ?? `App ${chat.appId}`;
+            const appInfo = appInfoById.get(chat.appId);
+            const appName = appInfo?.name ?? `App ${chat.appId}`;
             const titleExcerpt = getChatTitleExcerpt(title);
             const isDragging = draggingChatId === chat.id;
             const inProgress = isStreamingById.get(chat.id) === true;
@@ -558,7 +572,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                             setDraggingChatId(null);
                           }}
                           className={cn(
-                            "group relative flex h-10 min-w-[160px] max-w-52 items-center gap-1 rounded-md px-2.5 transition-all active:scale-[0.97]",
+                            "group relative flex h-8 min-w-[140px] max-w-48 items-center gap-1.5 rounded-md px-2 transition-all active:scale-[0.97]",
                             isActive
                               ? "bg-background text-foreground shadow-sm"
                               : "bg-muted/50 text-muted-foreground hover:bg-muted",
@@ -572,6 +586,14 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                         />
                       }
                     >
+                      {/* App Icon */}
+                      <AppIcon
+                        appId={chat.appId}
+                        appName={appName}
+                        iconType={appInfo?.iconType as IconType | null}
+                        iconData={appInfo?.iconData ?? null}
+                        size={16}
+                      />
                       {inProgress && (
                         <span
                           className="flex items-center text-purple-600"
@@ -597,11 +619,11 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                         aria-current={isActive ? "page" : undefined}
                       >
                         <div className="min-w-0">
-                          <div className="truncate text-xs leading-3.5 font-bold">
-                            {appName}
-                          </div>
+                          {/* Single-line layout: app name - chat title */}
                           <div className="truncate text-xs leading-4">
-                            {title}
+                            <span className="font-semibold">{appName}</span>
+                            <span className="mx-1 opacity-50">-</span>
+                            <span className="opacity-80">{title}</span>
                           </div>
                         </div>
                       </button>
@@ -612,7 +634,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                           handleCloseTab(chat.id);
                         }}
                         className={cn(
-                          "flex h-6 w-6 items-center justify-center rounded-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                          "flex h-5 w-5 items-center justify-center rounded-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
                           isActive
                             ? "opacity-80 hover:bg-muted"
                             : "opacity-0 group-hover:opacity-80 hover:bg-background/50 focus-visible:opacity-80",
@@ -628,12 +650,21 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                       sideOffset={6}
                       className="max-w-80 !rounded-lg !border !border-border !bg-popover !px-3.5 !py-2.5 !text-popover-foreground !shadow-lg [&>:last-child]:!hidden"
                     >
-                      <div className="min-w-0">
-                        <div className="truncate text-[11px] leading-4 font-semibold">
-                          {appName}
-                        </div>
-                        <div className="mt-0.5 text-[11px] leading-4 break-words opacity-70">
-                          {titleExcerpt}
+                      <div className="min-w-0 flex items-start gap-2">
+                        <AppIcon
+                          appId={chat.appId}
+                          appName={appName}
+                          iconType={appInfo?.iconType as IconType | null}
+                          iconData={appInfo?.iconData ?? null}
+                          size={20}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-[11px] leading-4 font-semibold">
+                            {appName}
+                          </div>
+                          <div className="mt-0.5 text-[11px] leading-4 break-words opacity-70">
+                            {titleExcerpt}
+                          </div>
                         </div>
                       </div>
                     </TooltipContent>
@@ -675,8 +706,8 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
             <DropdownMenuContent align="end" className="w-64">
               {overflowTabsForMenu.map((chat) => {
                 const title = chat.title?.trim() || t("newChat");
-                const appName =
-                  appNameById.get(chat.appId) ?? `App ${chat.appId}`;
+                const appInfo = appInfoById.get(chat.appId);
+                const appName = appInfo?.name ?? `App ${chat.appId}`;
                 const inProgress = isStreamingById.get(chat.id) === true;
                 const hasNotification =
                   !inProgress && notifiedChatIds.has(chat.id);
@@ -692,6 +723,14 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                     }}
                     className="flex items-center gap-2"
                   >
+                    {/* App Icon */}
+                    <AppIcon
+                      appId={chat.appId}
+                      appName={appName}
+                      iconType={appInfo?.iconType as IconType | null}
+                      iconData={appInfo?.iconData ?? null}
+                      size={16}
+                    />
                     {inProgress && (
                       <span
                         className="flex items-center text-purple-600"
@@ -711,10 +750,11 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                       </span>
                     )}
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-xs leading-3.5 font-bold">
-                        {appName}
+                      <div className="truncate text-xs leading-4">
+                        <span className="font-semibold">{appName}</span>
+                        <span className="mx-1 opacity-50">-</span>
+                        <span className="opacity-80">{title}</span>
                       </div>
-                      <div className="truncate text-xs leading-4">{title}</div>
                     </div>
                     <button
                       type="button"
@@ -722,7 +762,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                         event.stopPropagation();
                         handleCloseTab(chat.id);
                       }}
-                      className="flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      className="flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       aria-label={t("closeChatTab", { title })}
                     >
                       <X size={12} />

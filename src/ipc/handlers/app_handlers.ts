@@ -66,6 +66,10 @@ import {
   MAX_FILE_SEARCH_SIZE,
   RIPGREP_EXCLUDED_GLOBS,
 } from "../utils/ripgrep_utils";
+import {
+  generateAvatarSeed,
+  generateAvatarConfig,
+} from "../../lib/avatarGenerator";
 
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
@@ -768,13 +772,21 @@ export function registerAppHandlers() {
     if (fs.existsSync(fullAppPath)) {
       throw new Error(`App already exists at: ${fullAppPath}`);
     }
-    // Create a new app
+
+    // Generate avatar seed before inserting so we have the app name
+    // We'll use a temporary ID (timestamp) for the seed until we have the real ID
+    const tempSeed = generateAvatarSeed(Date.now(), params.name);
+    const avatarConfig = generateAvatarConfig(tempSeed);
+
+    // Create a new app with auto-generated icon
     const [app] = await db
       .insert(apps)
       .values({
         name: params.name,
         // Use the name as the path for now
         path: appPath,
+        iconType: "generated",
+        iconData: JSON.stringify(avatarConfig),
       })
       .returning();
 
@@ -873,7 +885,11 @@ export function registerAppHandlers() {
       });
     }
 
-    // 4. Create a new app entry in the database
+    // 4. Generate a NEW avatar for the copied app (different from original)
+    const newAvatarSeed = generateAvatarSeed(Date.now(), newAppName);
+    const newAvatarConfig = generateAvatarConfig(newAvatarSeed);
+
+    // 5. Create a new app entry in the database
     const [newDbApp] = await db
       .insert(apps)
       .values({
@@ -887,6 +903,9 @@ export function registerAppHandlers() {
         githubRepo: null,
         installCommand: originalApp.installCommand,
         startCommand: originalApp.startCommand,
+        // Always generate a new icon for copied apps (never copy from original)
+        iconType: "generated",
+        iconData: JSON.stringify(newAvatarConfig),
       })
       .returning();
 
@@ -2003,6 +2022,28 @@ export function registerAppHandlers() {
         throw new Error(`Failed to move app files: ${error.message}`);
       }
     });
+  });
+
+  createTypedHandler(appContracts.updateAppIcon, async (_, params) => {
+    const { appId, iconType, iconData } = params;
+
+    const app = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
+
+    if (!app) {
+      throw new Error("App not found");
+    }
+
+    await db
+      .update(apps)
+      .set({
+        iconType,
+        iconData,
+      })
+      .where(eq(apps.id, appId));
+
+    logger.info(`Updated icon for app ${appId}: type=${iconType}`);
   });
 }
 

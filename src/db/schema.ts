@@ -60,6 +60,10 @@ export const apps = sqliteTable("apps", {
     .default(sql`0`),
   // Theme ID for design system theming (null means "no theme")
   themeId: text("theme_id"),
+  // App icon type: "emoji" | "generated" | null
+  iconType: text("icon_type", { enum: ["emoji", "generated"] }),
+  // App icon data: emoji character or JSON config for generated avatars
+  iconData: text("icon_data"),
 });
 
 export const chats = sqliteTable("chats", {

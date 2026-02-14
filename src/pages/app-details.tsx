@@ -46,6 +46,10 @@ import { AppUpgrades } from "@/components/AppUpgrades";
 import { CapacitorControls } from "@/components/CapacitorControls";
 import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManager";
 import { useAddAppToFavorite } from "@/hooks/useAddAppToFavorite";
+import { useUpdateAppIcon } from "@/hooks/useUpdateAppIcon";
+import { AppIcon } from "@/components/ui/AppIcon";
+import { IconPickerModal } from "@/components/IconPickerModal";
+import type { IconType } from "@/ipc/types/app";
 
 export default function AppDetailsPage() {
   const navigate = useNavigate();
@@ -79,6 +83,8 @@ export default function AppDetailsPage() {
   const nameExists = checkNameResult?.exists ?? false;
   const { toggleFavorite, isLoading: isFavoriteLoading } =
     useAddAppToFavorite();
+  const { updateIcon } = useUpdateAppIcon();
+  const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
 
   // Get the appId from search params and find the corresponding app
   const appId = search.appId ? Number(search.appId) : null;
@@ -287,6 +293,16 @@ export default function AppDetailsPage() {
 
       <div className="w-full max-w-2xl mx-auto mt-10 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm relative">
         <div className="flex items-center mb-3">
+          <AppIcon
+            appId={selectedApp.id}
+            appName={selectedApp.name}
+            iconType={selectedApp.iconType}
+            iconData={selectedApp.iconData}
+            size={32}
+            className="mr-3"
+            showEditOverlay
+            onClick={() => setIsIconPickerOpen(true)}
+          />
           <h2 className="text-2xl font-bold">{selectedApp.name}</h2>
           <Tooltip>
             <TooltipTrigger
@@ -817,6 +833,19 @@ export default function AppDetailsPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Icon Picker Modal */}
+        <IconPickerModal
+          open={isIconPickerOpen}
+          onOpenChange={setIsIconPickerOpen}
+          appId={selectedApp.id}
+          appName={selectedApp.name}
+          currentIconType={selectedApp.iconType}
+          currentIconData={selectedApp.iconData}
+          onSave={(iconType: IconType, iconData: string) => {
+            updateIcon({ appId: selectedApp.id, iconType, iconData });
+          }}
+        />
       </div>
     </div>
   );

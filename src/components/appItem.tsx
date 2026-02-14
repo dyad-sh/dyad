@@ -3,6 +3,7 @@ import { Star } from "lucide-react";
 import { SidebarMenuItem } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import type { ListedApp } from "@/ipc/types/app";
+import { AppIcon } from "@/components/ui/AppIcon";
 
 type AppItemProps = {
   app: ListedApp;
@@ -24,21 +25,30 @@ export function AppItem({ app, handleAppClick, selectedAppId }: AppItemProps) {
           }`}
           data-testid={`app-list-item-${app.name}`}
         >
-          <div className="flex flex-col w-4/5">
-            <div className="flex items-center gap-1">
-              <span className="truncate">{app.name}</span>
-              {app.isFavorite && (
-                <Star
-                  size={12}
-                  className="fill-[#6c55dc] text-[#6c55dc] flex-shrink-0"
-                />
-              )}
+          <div className="flex items-center gap-2 w-full">
+            <AppIcon
+              appId={app.id}
+              appName={app.name}
+              iconType={app.iconType}
+              iconData={app.iconData}
+              size={20}
+            />
+            <div className="flex flex-col min-w-0 flex-1">
+              <div className="flex items-center gap-1">
+                <span className="truncate">{app.name}</span>
+                {app.isFavorite && (
+                  <Star
+                    size={12}
+                    className="fill-[#6c55dc] text-[#6c55dc] flex-shrink-0"
+                  />
+                )}
+              </div>
+              <span className="text-xs text-gray-500">
+                {formatDistanceToNow(new Date(app.createdAt), {
+                  addSuffix: true,
+                })}
+              </span>
             </div>
-            <span className="text-xs text-gray-500">
-              {formatDistanceToNow(new Date(app.createdAt), {
-                addSuffix: true,
-              })}
-            </span>
           </div>
         </Button>
       </div>

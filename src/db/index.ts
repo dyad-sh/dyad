@@ -6,10 +6,15 @@ import {
 import Database from "better-sqlite3";
 import * as schema from "./schema";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { eq, isNull } from "drizzle-orm";
 import path from "node:path";
 import fs from "node:fs";
 import { getDyadAppPath, getUserDataPath } from "../paths/paths";
 import log from "electron-log";
+import {
+  generateAvatarSeed,
+  generateAvatarConfig,
+} from "../lib/avatarGenerator";
 
 const logger = log.scope("db");
 
@@ -92,3 +97,56 @@ export const db = new Proxy({} as any, {
 }) as BetterSQLite3Database<typeof schema> & {
   $client: Database.Database;
 };
+
+/**
+ * Backfill icons for existing apps that don't have one.
+ * Runs once after database initialization.
+ * Processes apps in batches to avoid blocking the main thread.
+ */
+export async function backfillAppIcons(): Promise<void> {
+  const database = getDb();
+  const BATCH_SIZE = 10;
+
+  try {
+    // Find all apps without an icon
+    const appsWithoutIcons = await database.query.apps.findMany({
+      where: isNull(schema.apps.iconType),
+    });
+
+    if (appsWithoutIcons.length === 0) {
+      logger.log("No apps need icon backfill");
+      return;
+    }
+
+    logger.log(`Backfilling icons for ${appsWithoutIcons.length} apps...`);
+
+    // Process in batches
+    for (let i = 0; i < appsWithoutIcons.length; i += BATCH_SIZE) {
+      const batch = appsWithoutIcons.slice(i, i + BATCH_SIZE);
+
+      for (const app of batch) {
+        const seed = generateAvatarSeed(app.id, app.name);
+        const config = generateAvatarConfig(seed);
+
+        await database
+          .update(schema.apps)
+          .set({
+            iconType: "generated",
+            iconData: JSON.stringify(config),
+          })
+          .where(eq(schema.apps.id, app.id));
+      }
+
+      // Yield to the main thread between batches
+      if (i + BATCH_SIZE < appsWithoutIcons.length) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    }
+
+    logger.log(
+      `Successfully backfilled icons for ${appsWithoutIcons.length} apps`,
+    );
+  } catch (error) {
+    logger.error("Error backfilling app icons:", error);
+  }
+}

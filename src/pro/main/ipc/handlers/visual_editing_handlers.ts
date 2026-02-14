@@ -43,13 +43,10 @@ export function registerVisualEditingHandlers() {
         // Process image uploads - write files to public directory
         for (const change of changes) {
           if (change.imageUpload) {
-            const { fileName, base64Data, mimeType } = change.imageUpload;
+            const { fileName, base64Data } = change.imageUpload;
 
             // Sanitize filename
-            const sanitizedFileName = fileName.replace(
-              /[^a-zA-Z0-9._-]/g,
-              "_",
-            );
+            const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
             const timestamp = Date.now();
             const finalFileName = `${timestamp}-${sanitizedFileName}`;
 
@@ -64,6 +61,9 @@ export function registerVisualEditingHandlers() {
               "base64",
             );
             await fsPromises.writeFile(destPath, buffer);
+
+            // Update imageSrc to match the actual filename written to disk
+            change.imageSrc = `/images/${finalFileName}`;
 
             // Git-add the uploaded image
             if (fs.existsSync(path.join(appPath, ".git"))) {

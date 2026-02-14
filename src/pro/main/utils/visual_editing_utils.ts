@@ -232,10 +232,7 @@ export function transformContent(
 
           // Determine which element to update (self or child <img>)
           let targetElement: any = null;
-          if (
-            tagName.type === "JSXIdentifier" &&
-            tagName.name === "img"
-          ) {
+          if (tagName.type === "JSXIdentifier" && tagName.name === "img") {
             targetElement = path.node.openingElement;
           } else {
             // Look for child <img>
@@ -340,7 +337,7 @@ export function analyzeComponent(
   walk(ast);
 
   if (!foundElement) {
-    return { isDynamic: false, hasStaticText: false };
+    return { isDynamic: false, hasStaticText: false, hasImage: false };
   }
 
   let dynamic = false;
@@ -421,8 +418,7 @@ export function analyzeComponent(
   if (tagName.type === "JSXIdentifier" && tagName.name === "img") {
     hasImage = true;
     const srcAttr = foundElement.openingElement.attributes.find(
-      (attr: any) =>
-        attr.type === "JSXAttribute" && attr.name?.name === "src",
+      (attr: any) => attr.type === "JSXAttribute" && attr.name?.name === "src",
     );
     if (srcAttr?.value) {
       if (srcAttr.value.type === "StringLiteral") {

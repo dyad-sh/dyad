@@ -238,6 +238,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // AST Analysis State
   const [isDynamicComponent, setIsDynamicComponent] = useState(false);
   const [hasStaticText, setHasStaticText] = useState(false);
+  const [hasImage, setHasImage] = useState(false);
+  const [currentImageSrc, setCurrentImageSrc] = useState("");
 
   // Device mode state
   const deviceMode: DeviceMode = settings?.previewDeviceMode ?? "desktop";
@@ -262,6 +264,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       });
       setIsDynamicComponent(result.isDynamic);
       setHasStaticText(result.hasStaticText);
+      setHasImage(result.hasImage);
+      setCurrentImageSrc(result.imageSrc || "");
 
       // Automatically enable text editing if component has static text
       if (result.hasStaticText && iframeRef.current?.contentWindow) {
@@ -280,6 +284,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       console.error("Failed to analyze component", err);
       setIsDynamicComponent(false);
       setHasStaticText(false);
+      setHasImage(false);
+      setCurrentImageSrc("");
     }
   };
 
@@ -1368,6 +1374,8 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                       iframeRef={iframeRef}
                       isDynamic={isDynamicComponent}
                       hasStaticText={hasStaticText}
+                      hasImage={hasImage}
+                      currentImageSrc={currentImageSrc}
                     />
                   )}
               </>

@@ -40,11 +40,53 @@ export function registerVisualEditingHandlers() {
         }
 
         const appPath = getDyadAppPath(app.path);
+        // Process image uploads - write files to public directory
+        for (const change of changes) {
+          if (change.imageUpload) {
+            const { fileName, base64Data, mimeType } = change.imageUpload;
+
+            // Sanitize filename
+            const sanitizedFileName = fileName.replace(
+              /[^a-zA-Z0-9._-]/g,
+              "_",
+            );
+            const timestamp = Date.now();
+            const finalFileName = `${timestamp}-${sanitizedFileName}`;
+
+            // Ensure the public/images directory exists
+            const publicImagesDir = path.join(appPath, "public", "images");
+            await fsPromises.mkdir(publicImagesDir, { recursive: true });
+
+            // Write the file from base64
+            const destPath = path.join(publicImagesDir, finalFileName);
+            const buffer = Buffer.from(
+              base64Data.replace(/^data:[^;]+;base64,/, ""),
+              "base64",
+            );
+            await fsPromises.writeFile(destPath, buffer);
+
+            // Git-add the uploaded image
+            if (fs.existsSync(path.join(appPath, ".git"))) {
+              await gitAdd({
+                path: appPath,
+                filepath: normalizePath(
+                  path.join("public", "images", finalFileName),
+                ),
+              });
+            }
+          }
+        }
+
         const fileChanges = new Map<
           string,
           Map<
             number,
-            { classes: string[]; prefixes: string[]; textContent?: string }
+            {
+              classes: string[];
+              prefixes: string[];
+              textContent?: string;
+              imageSrc?: string;
+            }
           >
         >();
 
@@ -61,6 +103,9 @@ export function registerVisualEditingHandlers() {
             prefixes: changePrefixes,
             ...(change.textContent !== undefined && {
               textContent: change.textContent,
+            }),
+            ...(change.imageSrc !== undefined && {
+              imageSrc: change.imageSrc,
             }),
           });
         }
@@ -100,7 +145,7 @@ export function registerVisualEditingHandlers() {
         const line = parseInt(lineStr, 10);
 
         if (!filePath || isNaN(line)) {
-          return { isDynamic: false, hasStaticText: false };
+          return { isDynamic: false, hasStaticText: false, hasImage: false };
         }
 
         // Get the app to find its path
@@ -118,7 +163,7 @@ export function registerVisualEditingHandlers() {
         return analyzeComponent(content, line);
       } catch (error) {
         console.error("Failed to analyze component:", error);
-        return { isDynamic: false, hasStaticText: false };
+        return { isDynamic: false, hasStaticText: false, hasImage: false };
       }
     },
   );

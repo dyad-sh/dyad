@@ -244,6 +244,56 @@
     );
   }
 
+  function handleModifyImageSrc(data) {
+    const { elementId, runtimeId, src } = data;
+    const element = findElementByDyadId(elementId, runtimeId);
+    if (!element) return;
+
+    // Find the <img> element (self or child)
+    let imgEl = null;
+    if (element.tagName === "IMG") {
+      imgEl = element;
+    } else {
+      imgEl = element.querySelector("img");
+    }
+
+    if (imgEl) {
+      imgEl.src = src;
+
+      // Send updated coordinates after visual change
+      const rect = element.getBoundingClientRect();
+      window.parent.postMessage(
+        {
+          type: "dyad-component-coordinates-updated",
+          coordinates: {
+            top: rect.top,
+            left: rect.left,
+            width: rect.width,
+            height: rect.height,
+          },
+        },
+        "*",
+      );
+    }
+  }
+
+  function handleGetImageSrc(data) {
+    const { elementId, runtimeId } = data;
+    const element = findElementByDyadId(elementId, runtimeId);
+    if (!element) return;
+
+    let imgEl =
+      element.tagName === "IMG" ? element : element.querySelector("img");
+    window.parent.postMessage(
+      {
+        type: "dyad-image-src-response",
+        elementId,
+        src: imgEl ? imgEl.getAttribute("src") || imgEl.src : null,
+      },
+      "*",
+    );
+  }
+
   /* ---------- message bridge -------------------------------------------- */
 
   window.addEventListener("message", (e) => {
@@ -266,6 +316,12 @@
         break;
       case "get-dyad-text-content":
         handleGetTextContent(data);
+        break;
+      case "modify-dyad-image-src":
+        handleModifyImageSrc(data);
+        break;
+      case "get-dyad-image-src":
+        handleGetImageSrc(data);
         break;
       case "cleanup-all-text-editing":
         // Clean up all text editing states

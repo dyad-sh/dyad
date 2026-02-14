@@ -6,11 +6,14 @@ interface ContentChange {
   classes: string[];
   prefixes: string[];
   textContent?: string;
+  imageSrc?: string;
 }
 
 interface ComponentAnalysis {
   isDynamic: boolean;
   hasStaticText: boolean;
+  hasImage: boolean;
+  imageSrc?: string;
 }
 
 /**
@@ -222,6 +225,57 @@ export function transformContent(
             ];
           }
         }
+
+        // Handle image source change
+        if (change.imageSrc !== undefined) {
+          const tagName = path.node.openingElement.name;
+
+          // Determine which element to update (self or child <img>)
+          let targetElement: any = null;
+          if (
+            tagName.type === "JSXIdentifier" &&
+            tagName.name === "img"
+          ) {
+            targetElement = path.node.openingElement;
+          } else {
+            // Look for child <img>
+            for (const child of path.node.children) {
+              if (
+                (child as any).type === "JSXElement" &&
+                (child as any).openingElement.name.type === "JSXIdentifier" &&
+                (child as any).openingElement.name.name === "img"
+              ) {
+                targetElement = (child as any).openingElement;
+                break;
+              }
+            }
+          }
+
+          if (targetElement) {
+            const srcAttr = targetElement.attributes.find(
+              (attr: any) =>
+                attr.type === "JSXAttribute" && attr.name?.name === "src",
+            );
+
+            if (srcAttr) {
+              // Replace the value with a string literal
+              srcAttr.value = {
+                type: "StringLiteral",
+                value: change.imageSrc,
+              };
+            } else {
+              // Add src attribute
+              targetElement.attributes.push({
+                type: "JSXAttribute",
+                name: { type: "JSXIdentifier", name: "src" },
+                value: {
+                  type: "StringLiteral",
+                  value: change.imageSrc,
+                },
+              });
+            }
+          }
+        }
       }
     },
   });
@@ -357,5 +411,58 @@ export function analyzeComponent(
     staticText = true;
   }
 
-  return { isDynamic: dynamic, hasStaticText: staticText };
+  // Check for image elements
+  let hasImage = false;
+  let imageSrc: string | undefined;
+
+  const tagName = foundElement.openingElement.name;
+
+  // Check if the element itself is an <img>
+  if (tagName.type === "JSXIdentifier" && tagName.name === "img") {
+    hasImage = true;
+    const srcAttr = foundElement.openingElement.attributes.find(
+      (attr: any) =>
+        attr.type === "JSXAttribute" && attr.name?.name === "src",
+    );
+    if (srcAttr?.value) {
+      if (srcAttr.value.type === "StringLiteral") {
+        imageSrc = srcAttr.value.value;
+      } else if (
+        srcAttr.value.type === "JSXExpressionContainer" &&
+        srcAttr.value.expression.type === "StringLiteral"
+      ) {
+        imageSrc = srcAttr.value.expression.value;
+      }
+    }
+  }
+
+  // Also check direct children for <img> elements
+  if (!hasImage && foundElement.children) {
+    for (const child of foundElement.children) {
+      if (
+        child.type === "JSXElement" &&
+        child.openingElement.name.type === "JSXIdentifier" &&
+        child.openingElement.name.name === "img"
+      ) {
+        hasImage = true;
+        const srcAttr = child.openingElement.attributes.find(
+          (attr: any) =>
+            attr.type === "JSXAttribute" && attr.name?.name === "src",
+        );
+        if (srcAttr?.value) {
+          if (srcAttr.value.type === "StringLiteral") {
+            imageSrc = srcAttr.value.value;
+          } else if (
+            srcAttr.value.type === "JSXExpressionContainer" &&
+            srcAttr.value.expression.type === "StringLiteral"
+          ) {
+            imageSrc = srcAttr.value.expression.value;
+          }
+        }
+        break;
+      }
+    }
+  }
+
+  return { isDynamic: dynamic, hasStaticText: staticText, hasImage, imageSrc };
 }

@@ -51,6 +51,14 @@ export const VisualEditingChangeSchema = z.object({
       .optional(),
   }),
   textContent: z.string().optional(),
+  imageSrc: z.string().optional(),
+  imageUpload: z
+    .object({
+      fileName: z.string(),
+      base64Data: z.string(),
+      mimeType: z.string(),
+    })
+    .optional(),
 });
 
 export type VisualEditingChange = z.infer<typeof VisualEditingChangeSchema>;
@@ -76,6 +84,8 @@ export type AnalyseComponentParams = z.infer<
 export const AnalyseComponentResultSchema = z.object({
   isDynamic: z.boolean(),
   hasStaticText: z.boolean(),
+  hasImage: z.boolean(),
+  imageSrc: z.string().optional(),
 });
 
 // =============================================================================

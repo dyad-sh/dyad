@@ -15,13 +15,14 @@ export function registerPromptHandlers() {
       title: r.title,
       description: r.description,
       content: r.content,
+      slug: r.slug,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
     }));
   });
 
   createTypedHandler(promptContracts.create, async (_, params) => {
-    const { title, content, description } = params;
+    const { title, content, description, slug } = params;
     if (!title || !content) {
       throw new Error("Title and content are required");
     }
@@ -31,6 +32,7 @@ export function registerPromptHandlers() {
         title,
         description,
         content,
+        slug: slug ?? null,
       })
       .run();
 
@@ -42,19 +44,21 @@ export function registerPromptHandlers() {
       title: row.title,
       description: row.description,
       content: row.content,
+      slug: row.slug,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
   });
 
   createTypedHandler(promptContracts.update, async (_, params) => {
-    const { id, title, content, description } = params;
+    const { id, title, content, description, slug } = params;
     if (!id) throw new Error("Prompt id is required");
     const now = new Date();
     const updateData: Record<string, any> = { updatedAt: now };
     if (title !== undefined) updateData.title = title;
     if (content !== undefined) updateData.content = content;
     if (description !== undefined) updateData.description = description;
+    if (slug !== undefined) updateData.slug = slug ?? null;
     db.update(prompts).set(updateData).where(eq(prompts.id, id)).run();
   });
 

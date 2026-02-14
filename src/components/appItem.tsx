@@ -3,6 +3,7 @@ import { Star } from "lucide-react";
 import { SidebarMenuItem } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import type { ListedApp } from "@/ipc/types/app";
+import { AppIcon } from "@/components/ui/AppIcon";
 
 type AppItemProps = {
   app: ListedApp;
@@ -24,7 +25,17 @@ export function AppItem({ app, handleAppClick, selectedAppId }: AppItemProps) {
           }`}
           data-testid={`app-list-item-${app.name}`}
         >
-          <div className="flex flex-col w-4/5">
+          <div className="mr-2">
+            <AppIcon
+              appId={app.id}
+              appName={app.name}
+              iconType={app.iconType}
+              iconData={app.iconData}
+              size={20}
+              className="rounded-md"
+            />
+          </div>
+          <div className="flex flex-col w-4/5 min-w-0">
             <div className="flex items-center gap-1">
               <span className="truncate">{app.name}</span>
               {app.isFavorite && (

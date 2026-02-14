@@ -46,6 +46,11 @@ import { AppUpgrades } from "@/components/AppUpgrades";
 import { CapacitorControls } from "@/components/CapacitorControls";
 import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManager";
 import { useAddAppToFavorite } from "@/hooks/useAddAppToFavorite";
+import { AppIcon } from "@/components/ui/AppIcon";
+import { IconPickerModal } from "@/components/ui/IconPickerModal";
+import { queryKeys } from "@/lib/queryKeys";
+import type { ListedApp } from "@/ipc/types/app";
+import type { App } from "@/ipc/types";
 
 export default function AppDetailsPage() {
   const navigate = useNavigate();
@@ -68,6 +73,7 @@ export default function AppDetailsPage() {
   const [newCopyAppName, setNewCopyAppName] = useState("");
   const [isChangeLocationDialogOpen, setIsChangeLocationDialogOpen] =
     useState(false);
+  const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
 
   const queryClient = useQueryClient();
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
@@ -249,6 +255,66 @@ export default function AppDetailsPage() {
     },
   });
 
+  const updateAppIconMutation = useMutation({
+    mutationFn: async ({
+      iconType,
+      iconData,
+    }: {
+      iconType: "emoji" | "generated";
+      iconData: string;
+    }) => {
+      if (!appId) {
+        throw new Error("App not found");
+      }
+      await ipc.app.updateAppIcon({
+        appId,
+        iconType,
+        iconData,
+      });
+      return { iconType, iconData };
+    },
+    onMutate: async ({ iconType, iconData }) => {
+      if (!appId) {
+        return;
+      }
+
+      await queryClient.cancelQueries({ queryKey: queryKeys.apps.all });
+      const previousApps = queryClient.getQueryData<ListedApp[]>(
+        queryKeys.apps.all,
+      );
+
+      queryClient.setQueryData<ListedApp[]>(queryKeys.apps.all, (oldApps) =>
+        (oldApps ?? []).map((app) =>
+          app.id === appId ? { ...app, iconType, iconData } : app,
+        ),
+      );
+
+      queryClient.setQueryData(
+        queryKeys.apps.detail({ appId }),
+        (oldData: App | null | undefined) => {
+          if (!oldData) return oldData;
+          return {
+            ...oldData,
+            iconType,
+            iconData,
+          };
+        },
+      );
+
+      return { previousApps };
+    },
+    onError: (error, _variables, context) => {
+      if (context?.previousApps) {
+        queryClient.setQueryData(queryKeys.apps.all, context.previousApps);
+      }
+      showError(error);
+    },
+    onSettled: async () => {
+      await invalidateAppQuery(queryClient, { appId });
+      await refreshApps();
+    },
+  });
+
   if (!selectedApp) {
     return (
       <div className="relative min-h-screen p-8">
@@ -286,7 +352,32 @@ export default function AppDetailsPage() {
       </Button>
 
       <div className="w-full max-w-2xl mx-auto mt-10 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm relative">
-        <div className="flex items-center mb-3">
+        <div className="mb-3 flex items-center gap-3">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  className="group relative inline-flex h-12 w-12 items-center justify-center rounded-lg border border-border/60 bg-muted/20 p-0.5 transition-colors hover:bg-muted/40"
+                  onClick={() => setIsIconPickerOpen(true)}
+                  aria-label={`Change icon for ${selectedApp.name}`}
+                  data-testid="app-details-icon-button"
+                />
+              }
+            >
+              <AppIcon
+                appId={selectedApp.id}
+                appName={selectedApp.name}
+                iconType={selectedApp.iconType}
+                iconData={selectedApp.iconData}
+                size={40}
+              />
+              <span className="pointer-events-none absolute inset-0 hidden items-center justify-center rounded-lg bg-black/40 text-white group-hover:flex">
+                <Pencil className="h-4 w-4" />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>Change icon</TooltipContent>
+          </Tooltip>
           <h2 className="text-2xl font-bold">{selectedApp.name}</h2>
           <Tooltip>
             <TooltipTrigger
@@ -817,6 +908,18 @@ export default function AppDetailsPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        <IconPickerModal
+          open={isIconPickerOpen}
+          onOpenChange={setIsIconPickerOpen}
+          appId={selectedApp.id}
+          appName={selectedApp.name}
+          currentIconType={selectedApp.iconType}
+          currentIconData={selectedApp.iconData}
+          onSave={async ({ iconType, iconData }) => {
+            await updateAppIconMutation.mutateAsync({ iconType, iconData });
+          }}
+          isSaving={updateAppIconMutation.isPending}
+        />
       </div>
     </div>
   );

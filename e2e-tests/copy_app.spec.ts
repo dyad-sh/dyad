@@ -23,6 +23,9 @@ for (const { testName, newAppName, buttonName, expectedVersion } of tests) {
     await po.snapshotAppFiles({ name: "app" });
 
     await po.appManagement.getTitleBarAppNameButton().click();
+    const sourceIconMarkup = await po.page
+      .getByTestId("app-details-icon-button")
+      .innerHTML();
 
     // Open the dropdown menu
     await po.appManagement.clickAppDetailsMoreOptions();
@@ -52,6 +55,11 @@ for (const { testName, newAppName, buttonName, expectedVersion } of tests) {
 
     const currentAppName = await po.appManagement.getCurrentAppName();
     expect(currentAppName).toBe(newAppName);
+    await expect(po.page.getByTestId("app-details-icon-button")).toBeVisible();
+    const copiedIconMarkup = await po.page
+      .getByTestId("app-details-icon-button")
+      .innerHTML();
+    expect(copiedIconMarkup).not.toBe(sourceIconMarkup);
 
     await po.appManagement.clickOpenInChatButton();
 

@@ -39,8 +39,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { AppIcon } from "@/components/ui/AppIcon";
 
-const MIN_VISIBLE_TAB_WIDTH_PX = 160;
+const MIN_VISIBLE_TAB_WIDTH_PX = 140;
 const TAB_GAP_PX = 4;
 const OVERFLOW_TRIGGER_WIDTH_PX = 36;
 const DEFAULT_UNMEASURED_VISIBLE_TABS = 3;
@@ -223,8 +224,8 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
     pruneClosedChatIds(chatIdSet);
   }, [chatIdSet, pruneClosedChatIds]);
 
-  const appNameById = useMemo(
-    () => new Map(apps.map((app) => [app.id, app.name])),
+  const appById = useMemo(
+    () => new Map(apps.map((app) => [app.id, app])),
     [apps],
   );
 
@@ -484,7 +485,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   if (orderedChats.length === 0) return null;
 
   return (
-    <TooltipProvider delay={500}>
+    <TooltipProvider delay={300}>
       <div ref={containerRef} className="flex min-w-0 items-center gap-1 px-2">
         <div className="flex min-w-0 flex-1 items-center overflow-hidden">
           {visibleTabs.map((chat, index) => {
@@ -493,7 +494,8 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
               index < visibleTabs.length - 1 &&
               selectedChatId === visibleTabs[index + 1].id;
             const title = chat.title?.trim() || t("newChat");
-            const appName = appNameById.get(chat.appId) ?? `App ${chat.appId}`;
+            const selectedApp = appById.get(chat.appId);
+            const appName = selectedApp?.name ?? `App ${chat.appId}`;
             const titleExcerpt = getChatTitleExcerpt(title);
             const isDragging = draggingChatId === chat.id;
             const inProgress = isStreamingById.get(chat.id) === true;
@@ -558,7 +560,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                             setDraggingChatId(null);
                           }}
                           className={cn(
-                            "group relative flex h-10 min-w-[160px] max-w-52 items-center gap-1 rounded-md px-2.5 transition-all active:scale-[0.97]",
+                            "group relative flex h-10 min-w-[140px] max-w-52 items-center gap-1 rounded-md px-2.5 transition-all active:scale-[0.97]",
                             isActive
                               ? "bg-background text-foreground shadow-sm"
                               : "bg-muted/50 text-muted-foreground hover:bg-muted",
@@ -593,17 +595,20 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                       <button
                         type="button"
                         onClick={() => handleTabClick(chat)}
-                        className="min-w-0 flex-1 text-left rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        className="flex min-w-0 flex-1 items-center gap-2 text-left rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                         aria-current={isActive ? "page" : undefined}
+                        aria-label={`${appName}: ${title}`}
                       >
-                        <div className="min-w-0">
-                          <div className="truncate text-xs leading-3.5 font-bold">
-                            {appName}
-                          </div>
-                          <div className="truncate text-xs leading-4">
-                            {title}
-                          </div>
-                        </div>
+                        <AppIcon
+                          appId={chat.appId}
+                          appName={appName}
+                          iconType={selectedApp?.iconType ?? null}
+                          iconData={selectedApp?.iconData ?? null}
+                          size={16}
+                        />
+                        <span className="truncate text-xs leading-4">
+                          {title}
+                        </span>
                       </button>
                       <button
                         type="button"
@@ -629,11 +634,9 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                       className="max-w-80 !rounded-lg !border !border-border !bg-popover !px-3.5 !py-2.5 !text-popover-foreground !shadow-lg [&>:last-child]:!hidden"
                     >
                       <div className="min-w-0">
-                        <div className="truncate text-[11px] leading-4 font-semibold">
-                          {appName}
-                        </div>
-                        <div className="mt-0.5 text-[11px] leading-4 break-words opacity-70">
-                          {titleExcerpt}
+                        <div className="text-[11px] leading-4 break-words">
+                          <span className="font-semibold">{appName}</span> -{" "}
+                          <span className="opacity-70">{titleExcerpt}</span>
                         </div>
                       </div>
                     </TooltipContent>
@@ -675,8 +678,8 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
             <DropdownMenuContent align="end" className="w-64">
               {overflowTabsForMenu.map((chat) => {
                 const title = chat.title?.trim() || t("newChat");
-                const appName =
-                  appNameById.get(chat.appId) ?? `App ${chat.appId}`;
+                const selectedApp = appById.get(chat.appId);
+                const appName = selectedApp?.name ?? `App ${chat.appId}`;
                 const inProgress = isStreamingById.get(chat.id) === true;
                 const hasNotification =
                   !inProgress && notifiedChatIds.has(chat.id);
@@ -692,6 +695,13 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                     }}
                     className="flex items-center gap-2"
                   >
+                    <AppIcon
+                      appId={chat.appId}
+                      appName={appName}
+                      iconType={selectedApp?.iconType ?? null}
+                      iconData={selectedApp?.iconData ?? null}
+                      size={14}
+                    />
                     {inProgress && (
                       <span
                         className="flex items-center text-purple-600"
@@ -710,11 +720,8 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                         <span className="h-2 w-2 rounded-full bg-blue-500" />
                       </span>
                     )}
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-xs leading-3.5 font-bold">
-                        {appName}
-                      </div>
-                      <div className="truncate text-xs leading-4">{title}</div>
+                    <div className="min-w-0 flex-1 truncate text-xs leading-4">
+                      {appName} - {title}
                     </div>
                     <button
                       type="button"

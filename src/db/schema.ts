@@ -54,6 +54,8 @@ export const apps = sqliteTable("apps", {
   vercelDeploymentUrl: text("vercel_deployment_url"),
   installCommand: text("install_command"),
   startCommand: text("start_command"),
+  iconType: text("icon_type", { enum: ["emoji", "generated"] }),
+  iconData: text("icon_data"),
   chatContext: text("chat_context", { mode: "json" }),
   isFavorite: integer("is_favorite", { mode: "boolean" })
     .notNull()

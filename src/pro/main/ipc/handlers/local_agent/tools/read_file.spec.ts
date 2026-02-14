@@ -320,8 +320,9 @@ line 5`;
         },
         mockContext,
       );
-      // Note: trailing newline becomes an empty line 4 when split, so we get 4 lines
-      expect(result).toBe("1| line 1\n2| line 2\n3| line 3\n4| ");
+      // File has 3 lines with trailing newline. Requesting line 4 clamps to line 3.
+      // Trailing newline is preserved but does not create a phantom empty numbered line.
+      expect(result).toBe("1| line 1\n2| line 2\n3| line 3\n");
     });
 
     it("does not add trailing newline for partial range", async () => {

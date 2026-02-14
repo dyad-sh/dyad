@@ -93,7 +93,16 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
     const end = args.end_line_one_indexed_inclusive;
 
     if (start == null && end == null) {
-      return addLineNumberPrefixes(content);
+      // Normalize CRLF to LF and handle trailing newlines consistently.
+      // A file ending with \n should not produce a phantom empty numbered line.
+      const normalized = content.replace(/\r\n/g, "\n");
+      const hasTrailingNewline = normalized.endsWith("\n");
+      const contentToNumber = hasTrailingNewline
+        ? normalized.slice(0, -1)
+        : normalized;
+      const numbered = addLineNumberPrefixes(contentToNumber);
+      // Restore trailing newline in the output
+      return hasTrailingNewline ? numbered + "\n" : numbered;
     }
 
     // Normalize CRLF to LF before line operations to avoid embedded \r characters
@@ -105,9 +114,11 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
     const startIdx = Math.max(0, (start ?? 1) - 1);
     const endIdx = Math.min(lines.length, end ?? lines.length);
     const result = lines.slice(startIdx, endIdx).join("\n");
-    const slicedContent =
-      endIdx >= lines.length && hasTrailingNewline ? result + "\n" : result;
-    // Pass the actual starting line number so line numbers reflect file positions
-    return addLineNumberPrefixes(slicedContent, startIdx + 1);
+    // Add line number prefixes first, then restore trailing newline if applicable.
+    // This prevents a phantom empty numbered line for files ending with \n.
+    const numbered = addLineNumberPrefixes(result, startIdx + 1);
+    return endIdx >= lines.length && hasTrailingNewline
+      ? numbered + "\n"
+      : numbered;
   },
 };

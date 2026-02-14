@@ -206,11 +206,29 @@ function generateNoMatchError(
   const lines: string[] = [];
   lines.push("Search block did not match any content in the file.");
   lines.push("");
+
+  // Cap the number of displayed lines to keep errors concise and agent-friendly
+  const MAX_DISPLAY_LINES = 10;
+  const TAIL_LINES = 3;
+
   lines.push(`SEARCH CONTENT (${searchLines.length} lines):`);
 
-  searchLines.forEach((line, i) => {
-    lines.push(`  Line ${i + 1}: ${JSON.stringify(line)}`);
-  });
+  if (searchLines.length <= MAX_DISPLAY_LINES + TAIL_LINES) {
+    searchLines.forEach((line, i) => {
+      lines.push(`  Line ${i + 1}: ${JSON.stringify(line)}`);
+    });
+  } else {
+    // Show first MAX_DISPLAY_LINES + last TAIL_LINES with ellipsis
+    for (let i = 0; i < MAX_DISPLAY_LINES; i++) {
+      lines.push(`  Line ${i + 1}: ${JSON.stringify(searchLines[i])}`);
+    }
+    lines.push(
+      `  ... (${searchLines.length - MAX_DISPLAY_LINES - TAIL_LINES} lines omitted)`,
+    );
+    for (let i = searchLines.length - TAIL_LINES; i < searchLines.length; i++) {
+      lines.push(`  Line ${i + 1}: ${JSON.stringify(searchLines[i])}`);
+    }
+  }
 
   lines.push("");
   // Clamp the displayed end line to actual file length
@@ -436,11 +454,15 @@ export function applySearchReplaceWithLineNumbers(
       );
     }
 
-    // Also strip line numbers from replace content if present
-    const strippedReplace = stripLineNumberPrefixes(replaceContent);
-    if (strippedReplace.hasLineNumbers) {
-      replaceContent = strippedReplace.content;
-      logger.debug("Stripped line number prefixes from replace content");
+    // Only strip line numbers from replace content if search content also had line numbers.
+    // This prevents silent data loss when the user legitimately wants to insert content
+    // that matches the line number format (e.g., a markdown numbered list like "1| Item A").
+    if (hasLineNumbers) {
+      const strippedReplace = stripLineNumberPrefixes(replaceContent);
+      if (strippedReplace.hasLineNumbers) {
+        replaceContent = strippedReplace.content;
+        logger.debug("Stripped line number prefixes from replace content");
+      }
     }
 
     let searchLines = searchContent === "" ? [] : searchContent.split(/\r?\n/);

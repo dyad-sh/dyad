@@ -48,6 +48,10 @@ Similarly for GraphQL mutations, write the full query + variables as JSON and us
 gh api graphql --input .claude/tmp/resolve_thread.json
 ```
 
+## Creating PRs in restricted shells
+
+In some sandboxed environments, `gh pr create --body "$(cat <<'EOF' ... EOF)"` fails with `can't create temp file for here document`. Use `--body` with inline escaped newlines or write the body to a workspace file and pass it without shell here-docs.
+
 ## Adding labels to PRs
 
 `gh pr edit --add-label` fails with a GraphQL "Projects (classic)" deprecation error on repos that had classic projects. Use the REST API instead:

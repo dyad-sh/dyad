@@ -10,6 +10,7 @@ import {
   getSupabaseAvailableSystemPrompt,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
+import { getConvexAvailableSystemPrompt } from "../../prompts/convex_prompt";
 import { getDyadAppPath } from "../../paths/paths";
 import log from "electron-log";
 import { extractCodebase } from "../../utils/codebase";
@@ -17,6 +18,8 @@ import {
   getSupabaseContext,
   getSupabaseClientCode,
 } from "../../supabase_admin/supabase_context";
+import path from "node:path";
+import { fileExists } from "../utils/file_utils";
 
 import { TokenCountParams, TokenCountResult } from "@/ipc/types";
 import { estimateTokens, getContextWindow } from "../utils/token_utils";
@@ -76,6 +79,9 @@ export function registerTokenCountHandlers() {
         themePrompt,
       });
       let supabaseContext = "";
+      const hasConvexIntegration = await fileExists(
+        path.join(getDyadAppPath(chat.app.path), "convex", "auth.ts"),
+      );
 
       if (chat.app?.supabaseProjectId) {
         const supabaseClientCode = await getSupabaseClientCode({
@@ -90,9 +96,12 @@ export function registerTokenCountHandlers() {
         });
       } else if (
         // Neon projects don't need Supabase.
-        !chat.app?.neonProjectId
+        !chat.app?.neonProjectId &&
+        !hasConvexIntegration
       ) {
         systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
+      } else if (hasConvexIntegration) {
+        systemPrompt += "\n\n" + getConvexAvailableSystemPrompt();
       }
 
       const systemPromptTokens = estimateTokens(systemPrompt + supabaseContext);

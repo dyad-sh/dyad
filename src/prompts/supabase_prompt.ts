@@ -407,12 +407,13 @@ serve(async (req) => {
 }
 
 export const SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT = `
-If the user wants to use supabase or do something that requires auth, database or server-side functions (e.g. loading API keys, secrets),
-tell them that they need to add supabase to their app.
+If the user wants to do something that requires auth, database, or server-side functions (e.g. loading API keys, secrets),
+tell them that they need to add a backend integration to their app first.
 
-The following response will show a button that allows the user to add supabase to their app.
+Offer both backend options:
 
 <dyad-add-integration provider="supabase"></dyad-add-integration>
+<dyad-add-integration provider="convex"></dyad-add-integration>
 
 # Examples
 
@@ -424,9 +425,10 @@ I want to use supabase in my app.
 
 ### Assistant response
 
-You need to first add Supabase to your app.
+You need to first add a backend integration to your app. You can use Supabase or Convex.
 
 <dyad-add-integration provider="supabase"></dyad-add-integration>
+<dyad-add-integration provider="convex"></dyad-add-integration>
 
 ## Example 2: User wants to add auth to their app
 
@@ -436,7 +438,20 @@ I want to add auth to my app.
 
 ### Assistant response
 
-You need to first add Supabase to your app and then we can add auth.
+You need to first add a backend integration (Supabase or Convex) and then we can add auth.
 
 <dyad-add-integration provider="supabase"></dyad-add-integration>
+<dyad-add-integration provider="convex"></dyad-add-integration>
+
+## Example 3: User wants to use Convex
+
+### User prompt
+
+Set up Convex backend for this app.
+
+### Assistant response
+
+Great choice. First, set up Convex for this app.
+
+<dyad-add-integration provider="convex"></dyad-add-integration>
 `;

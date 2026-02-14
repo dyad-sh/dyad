@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { ToolDefinition, escapeXmlAttr } from "./types";
 
-const SUPPORTED_PROVIDERS = ["supabase"] as const;
+const SUPPORTED_PROVIDERS = ["supabase", "convex"] as const;
 
 const addIntegrationSchema = z.object({
   provider: z
@@ -14,11 +14,11 @@ export const addIntegrationTool: ToolDefinition<
 > = {
   name: "add_integration",
   description:
-    "Add an integration provider to the app (e.g., Supabase for auth, database, or server-side functions). Once you have called this tool, stop and do not call any more tools because you need to wait for the user to set up the integration.",
+    "Add an integration provider to the app (e.g., Supabase or Convex for auth, database, or server-side functions). Once you have called this tool, stop and do not call any more tools because you need to wait for the user to set up the integration.",
   inputSchema: addIntegrationSchema,
   defaultConsent: "always",
   modifiesState: true,
-  isEnabled: (ctx) => !ctx.supabaseProjectId,
+  isEnabled: (ctx) => !ctx.supabaseProjectId && !ctx.convexEnabled,
 
   getConsentPreview: (args) => `Add ${args.provider} integration`,
 

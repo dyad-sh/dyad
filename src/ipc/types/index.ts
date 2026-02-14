@@ -105,6 +105,7 @@ export type {
   ChangeAppLocationResult,
   ListAppsResponse,
   RenameBranchParams,
+  SetupConvexResult,
   UpdateAppCommandsParams,
 } from "./app";
 

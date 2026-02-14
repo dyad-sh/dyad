@@ -9,6 +9,8 @@ import { useLoadApp } from "@/hooks/useLoadApp";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { CheckCircle2, Plug } from "lucide-react";
 import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
+import { ipc } from "@/ipc/types";
+import { toast } from "sonner";
 
 interface DyadAddIntegrationProps {
   node: {
@@ -29,43 +31,73 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   const { provider } = node.properties;
   const appId = useAtomValue(selectedAppIdAtom);
   const chatId = useAtomValue(selectedChatIdAtom);
-  const { app } = useLoadApp(appId);
+  const { app, refreshApp } = useLoadApp(appId);
+  const hasConvexIntegration =
+    provider === "convex" &&
+    !!app?.files?.some(
+      (filePath) => filePath === "convex" || filePath.startsWith("convex/"),
+    );
+  const isIntegrationComplete =
+    provider === "supabase" ? !!app?.supabaseProjectName : hasConvexIntegration;
 
   const handleKeepGoingClick = () => {
     if (chatId === null) {
       showError("No chat found");
       return;
     }
+    const continuePrompt =
+      provider === "convex"
+        ? "Continue. I have completed the Convex integration."
+        : "Continue. I have completed the Supabase integration.";
     streamMessage({
-      prompt: "Continue. I have completed the Supabase integration.",
+      prompt: continuePrompt,
       chatId,
     });
   };
 
-  const handleSetupClick = () => {
+  const handleSetupClick = async () => {
     if (!appId) {
       showError("No app ID found");
       return;
     }
+
+    if (provider === "convex") {
+      try {
+        await ipc.app.setupConvex({ appId });
+        await refreshApp();
+        toast.success("Convex backend initialized.");
+      } catch (error) {
+        showError(error);
+      }
+      return;
+    }
+
     navigate({ to: "/app-details", search: { appId } });
   };
 
-  if (app?.supabaseProjectName) {
+  if (isIntegrationComplete) {
+    const integrationName = provider === "convex" ? "Convex" : "Supabase";
     return (
       <DyadCard accentColor="green" state="finished">
         <DyadCardHeader icon={<CheckCircle2 size={15} />} accentColor="green">
           <DyadBadge color="green">Integration Complete</DyadBadge>
           <span className="text-sm font-medium text-foreground">
-            Supabase integration complete
+            {integrationName} integration complete
           </span>
         </DyadCardHeader>
         <div className="px-3 pb-3">
-          <p className="text-sm text-muted-foreground mb-2">
-            This app is connected to Supabase project:{" "}
-            <span className="font-mono font-medium px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200">
-              {app.supabaseProjectName}
-            </span>
-          </p>
+          {provider === "supabase" ? (
+            <p className="text-sm text-muted-foreground mb-2">
+              This app is connected to Supabase project:{" "}
+              <span className="font-mono font-medium px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200">
+                {app?.supabaseProjectName}
+              </span>
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground mb-2">
+              Convex backend files were added to this app.
+            </p>
+          )}
           <Button
             onClick={handleKeepGoingClick}
             variant="default"

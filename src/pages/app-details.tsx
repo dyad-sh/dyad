@@ -44,6 +44,7 @@ import { useCheckName } from "@/hooks/useCheckName";
 import { AppUpgrades } from "@/components/AppUpgrades";
 import { CapacitorControls } from "@/components/CapacitorControls";
 import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManager";
+import { ConvexConnector } from "@/components/ConvexConnector";
 
 export default function AppDetailsPage() {
   const navigate = useNavigate();
@@ -406,6 +407,7 @@ export default function AppDetailsPage() {
             )}
           </div>
           {appId && <SupabaseConnector appId={appId} />}
+          {appId && <ConvexConnector appId={appId} />}
           {appId && <CapacitorControls appId={appId} />}
           <AppUpgrades appId={appId} />
         </div>

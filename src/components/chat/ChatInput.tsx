@@ -409,6 +409,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     // This prevents race conditions where the queue-processing effect
     // could potentially run if the backend responds before queue clearing.
     clearAllQueuedMessages();
+    // Reset editing state so the "Editing queued message" banner is dismissed
+    if (editingQueuedMessageId) {
+      setEditingQueuedMessageId(null);
+      setInputValue("");
+    }
     if (chatId) {
       ipc.chat.cancelStream(chatId);
     }

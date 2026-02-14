@@ -105,14 +105,20 @@ export function AppList({ show }: { show?: boolean }) {
             ) : (
               <SidebarMenu className="space-y-1" data-testid="app-list">
                 <SidebarGroupLabel>Favorite apps</SidebarGroupLabel>
-                {favoriteApps.map((app) => (
-                  <AppItem
-                    key={app.id}
-                    app={app}
-                    handleAppClick={handleAppClick}
-                    selectedAppId={selectedAppId}
-                  />
-                ))}
+                {favoriteApps.length === 0 ? (
+                  <div className="px-4 text-xs text-gray-500 italic">
+                    Star an app from its details page to pin it here
+                  </div>
+                ) : (
+                  favoriteApps.map((app) => (
+                    <AppItem
+                      key={app.id}
+                      app={app}
+                      handleAppClick={handleAppClick}
+                      selectedAppId={selectedAppId}
+                    />
+                  ))
+                )}
                 <SidebarGroupLabel>Other apps</SidebarGroupLabel>
                 {nonFavoriteApps.map((app) => (
                   <AppItem

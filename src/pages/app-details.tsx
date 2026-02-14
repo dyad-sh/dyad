@@ -288,22 +288,33 @@ export default function AppDetailsPage() {
       <div className="w-full max-w-2xl mx-auto mt-10 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm relative">
         <div className="flex items-center mb-3">
           <h2 className="text-2xl font-bold">{selectedApp.name}</h2>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="ml-1 p-0.5 h-auto"
-            onClick={() => appId && toggleFavorite(appId)}
-            disabled={isFavoriteLoading}
-            data-testid="favorite-button"
-          >
-            <Star
-              className={`h-4 w-4 ${
-                selectedApp.isFavorite
-                  ? "fill-[#6c55dc] text-[#6c55dc]"
-                  : "hover:fill-[#6c55dc] hover:text-[#6c55dc]"
-              }`}
-            />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="ml-1 p-0.5 h-auto"
+                  onClick={() => appId && toggleFavorite(appId)}
+                  disabled={isFavoriteLoading}
+                  data-testid="favorite-button"
+                />
+              }
+            >
+              <Star
+                className={`h-4 w-4 ${
+                  selectedApp.isFavorite
+                    ? "fill-[#6c55dc] text-[#6c55dc]"
+                    : "hover:fill-[#6c55dc] hover:text-[#6c55dc]"
+                }`}
+              />
+            </TooltipTrigger>
+            <TooltipContent>
+              {selectedApp.isFavorite
+                ? "Remove from favorites"
+                : "Add to favorites"}
+            </TooltipContent>
+          </Tooltip>
           <Button
             variant="ghost"
             size="sm"

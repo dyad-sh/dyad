@@ -1,4 +1,3 @@
-import { parseSearchReplaceBlocks } from "@/pro/shared/search_replace_parser";
 import { normalizeString } from "@/utils/text_normalization";
 import { stripLineNumberPrefixes } from "./line_number_utils";
 import log from "electron-log";
@@ -63,8 +62,38 @@ const MATCHING_PASSES: Array<{ name: string; comparator: LineComparator }> = [
   { name: "unicode-normalized", comparator: unicodeNormalized },
 ];
 
-function unescapeMarkers(content: string): string {
-  return content.replace(/^\\(<<<<<<<|=======|>>>>>>>)/gm, "$1");
+/**
+ * Check if the search content at the given line numbers matches the file content.
+ * Returns true if the lines at the specified positions match using cascading fuzzy matching.
+ */
+function lineNumbersMatchFileContent(
+  resultLines: string[],
+  searchLines: string[],
+  startLineNumber: number,
+): boolean {
+  // Convert 1-indexed line number to 0-indexed array index
+  const startIndex = startLineNumber - 1;
+
+  // Check if the start index is valid
+  if (startIndex < 0 || startIndex + searchLines.length > resultLines.length) {
+    return false;
+  }
+
+  // Try each matching pass to see if the content matches at the expected location
+  for (const pass of MATCHING_PASSES) {
+    let allMatch = true;
+    for (let j = 0; j < searchLines.length; j++) {
+      if (!pass.comparator(resultLines[startIndex + j], searchLines[j])) {
+        allMatch = false;
+        break;
+      }
+    }
+    if (allMatch) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -375,54 +404,36 @@ function cascadingMatch(
 
 export function applySearchReplaceWithLineNumbers(
   originalContent: string,
-  oldOrDiffContent: string,
-  newContent?: string,
+  oldContent: string,
+  newContent: string,
 ): {
   success: boolean;
   content?: string;
   error?: string;
 } {
-  const blocks =
-    newContent === undefined
-      ? parseSearchReplaceBlocks(oldOrDiffContent)
-      : [{ searchContent: oldOrDiffContent, replaceContent: newContent }];
-
-  if (blocks.length === 0) {
-    return {
-      success: false,
-      error: "Invalid search/replace input - no replace blocks found",
-    };
-  }
+  const blocks = [{ searchContent: oldContent, replaceContent: newContent }];
 
   const lineEnding = originalContent.includes("\r\n") ? "\r\n" : "\n";
   let resultLines = originalContent.split(/\r?\n/);
   let appliedCount = 0;
 
-  // Track whether we're processing diff-format blocks (2-arg path) vs direct invocation (3-arg path)
-  const isDiffFormat = newContent === undefined;
-
   for (const block of blocks) {
     let { searchContent, replaceContent } = block;
-
-    // Only unescape markers for diff-format blocks (they were escaped by escapeSearchReplaceMarkers).
-    // In the 3-arg direct invocation path, content was never escaped, so skip unescaping
-    // to avoid corrupting user content that happens to contain backslash-prefixed markers.
-    if (isDiffFormat) {
-      searchContent = unescapeMarkers(searchContent);
-      replaceContent = unescapeMarkers(replaceContent);
-    }
 
     // Save original content before stripping line numbers for fallback
     const originalSearchContent = searchContent;
     const originalReplaceContent = replaceContent;
-    let usedLineNumberStripping = false;
 
     // Strip line numbers from search content if present
     const strippedSearch = stripLineNumberPrefixes(searchContent);
-    if (strippedSearch.hasLineNumbers) {
+    const hasLineNumbers = strippedSearch.hasLineNumbers;
+    const startLineNumber = strippedSearch.startLineNumber;
+
+    if (hasLineNumbers) {
       searchContent = strippedSearch.content;
-      usedLineNumberStripping = true;
-      logger.debug("Stripped line number prefixes from search content");
+      logger.debug(
+        `Stripped line number prefixes from search content (starting at line ${startLineNumber})`,
+      );
     }
 
     // Also strip line numbers from replace content if present
@@ -448,48 +459,75 @@ export function applySearchReplaceWithLineNumbers(
       logger.warn("Search and replace blocks are identical");
     }
 
-    // Use cascading fuzzy matching to find the match
-    let matchResult = cascadingMatch(resultLines, searchLines);
+    let matchResult: {
+      matchIndex: number;
+      error?: string;
+      passName?: string;
+      ambiguousPositions?: number[];
+    };
 
-    // If no match found, try with trimmed leading/trailing empty lines as a fallback
-    if (matchResult.error && !matchResult.ambiguousPositions) {
-      const trimmedSearchLines = trimEmptyLines(searchLines);
-      if (trimmedSearchLines.length !== searchLines.length) {
-        const trimmedResult = cascadingMatch(resultLines, trimmedSearchLines);
-        if (!trimmedResult.error) {
-          matchResult = trimmedResult;
-          searchLines = trimmedSearchLines;
-          logger.debug(
-            "Matched after trimming leading/trailing empty lines from search content",
-          );
+    // First pass: if line numbers are present, try to match at that exact location
+    if (
+      hasLineNumbers &&
+      lineNumbersMatchFileContent(resultLines, searchLines, startLineNumber)
+    ) {
+      // Line numbers match up with file content - use them directly
+      matchResult = {
+        matchIndex: startLineNumber - 1,
+        passName: "line-number-direct",
+      };
+      logger.debug(
+        `Matched using line numbers directly at line ${startLineNumber}`,
+      );
+    } else {
+      // Line numbers don't match up or weren't present - fall back to cascading fuzzy matching
+      if (hasLineNumbers) {
+        logger.debug(
+          "Line numbers didn't match file content, falling back to fuzzy matching",
+        );
+      }
+      matchResult = cascadingMatch(resultLines, searchLines);
+
+      // If no match found, try with trimmed leading/trailing empty lines as a fallback
+      if (matchResult.error && !matchResult.ambiguousPositions) {
+        const trimmedSearchLines = trimEmptyLines(searchLines);
+        if (trimmedSearchLines.length !== searchLines.length) {
+          const trimmedResult = cascadingMatch(resultLines, trimmedSearchLines);
+          if (!trimmedResult.error) {
+            matchResult = trimmedResult;
+            searchLines = trimmedSearchLines;
+            logger.debug(
+              "Matched after trimming leading/trailing empty lines from search content",
+            );
+          }
         }
       }
-    }
 
-    // If still no match and we stripped line numbers, try again with original (unstripped) content.
-    // This handles false positives where the file actually contains the N| pattern as real content.
-    if (
-      matchResult.error &&
-      !matchResult.ambiguousPositions &&
-      usedLineNumberStripping
-    ) {
-      const originalSearchLines =
-        originalSearchContent === ""
-          ? []
-          : originalSearchContent.split(/\r?\n/);
-      const originalMatchResult = cascadingMatch(
-        resultLines,
-        originalSearchLines,
-      );
-      if (!originalMatchResult.error) {
-        matchResult = originalMatchResult;
-        searchLines = originalSearchLines;
-        replaceContent = originalReplaceContent;
-        replaceLines =
-          replaceContent === "" ? [] : replaceContent.split(/\r?\n/);
-        logger.debug(
-          "Matched after falling back to original (un-stripped) search content",
+      // If still no match and we stripped line numbers, try again with original (unstripped) content.
+      // This handles false positives where the file actually contains the N| pattern as real content.
+      if (
+        matchResult.error &&
+        !matchResult.ambiguousPositions &&
+        hasLineNumbers
+      ) {
+        const originalSearchLines =
+          originalSearchContent === ""
+            ? []
+            : originalSearchContent.split(/\r?\n/);
+        const originalMatchResult = cascadingMatch(
+          resultLines,
+          originalSearchLines,
         );
+        if (!originalMatchResult.error) {
+          matchResult = originalMatchResult;
+          searchLines = originalSearchLines;
+          replaceContent = originalReplaceContent;
+          replaceLines =
+            replaceContent === "" ? [] : replaceContent.split(/\r?\n/);
+          logger.debug(
+            "Matched after falling back to original (un-stripped) search content",
+          );
+        }
       }
     }
 

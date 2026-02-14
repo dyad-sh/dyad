@@ -62,14 +62,15 @@ export function addLineNumberPrefixes(
  * to reduce false positives on content that coincidentally matches the pattern.
  *
  * @param content - The content that may have line number prefixes
- * @returns Object with stripped content and whether line numbers were found
+ * @returns Object with stripped content, whether line numbers were found, and the starting line number
  */
 export function stripLineNumberPrefixes(content: string): {
   content: string;
   hasLineNumbers: boolean;
+  startLineNumber: number;
 } {
   if (content === "") {
-    return { content: "", hasLineNumbers: false };
+    return { content: "", hasLineNumbers: false, startLineNumber: 0 };
   }
 
   // Normalize CRLF to LF for consistent processing
@@ -89,7 +90,7 @@ export function stripLineNumberPrefixes(content: string): {
   });
 
   if (!hasLineNumberFormat) {
-    return { content, hasLineNumbers: false };
+    return { content, hasLineNumbers: false, startLineNumber: 0 };
   }
 
   // Require at least 2 line numbers to validate sequentiality.
@@ -97,7 +98,7 @@ export function stripLineNumberPrefixes(content: string): {
   // (e.g., "42| some data" could be actual file content, not a line number prefix).
   // Also handles the all-empty-lines edge case where extractedNumbers would be empty.
   if (extractedNumbers.length < 2) {
-    return { content, hasLineNumbers: false };
+    return { content, hasLineNumbers: false, startLineNumber: 0 };
   }
 
   // Verify that extracted line numbers are sequential (monotonically increasing by 1)
@@ -105,7 +106,7 @@ export function stripLineNumberPrefixes(content: string): {
   // the line number pattern (e.g., "1| Alice", "2| Bob" as data content)
   for (let i = 1; i < extractedNumbers.length; i++) {
     if (extractedNumbers[i] !== extractedNumbers[i - 1] + 1) {
-      return { content, hasLineNumbers: false };
+      return { content, hasLineNumbers: false, startLineNumber: 0 };
     }
   }
 
@@ -119,5 +120,9 @@ export function stripLineNumberPrefixes(content: string): {
     return line;
   });
 
-  return { content: strippedLines.join("\n"), hasLineNumbers: true };
+  return {
+    content: strippedLines.join("\n"),
+    hasLineNumbers: true,
+    startLineNumber: extractedNumbers[0],
+  };
 }

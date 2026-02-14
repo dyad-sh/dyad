@@ -51,63 +51,22 @@ describe("search_replace_line_numbers_processor", () => {
         "",
       ].join("\n");
 
-      const diff = `
-<<<<<<< SEARCH
-def calculate_total(items):
-    total = 0
-=======
-def calculate_sum(items):
-    total = 0
->>>>>>> REPLACE
-`;
-
       const { success, content } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "def calculate_total(items):\n    total = 0",
+        "def calculate_sum(items):\n    total = 0",
       );
       expect(success).toBe(true);
       expect(content).toContain("def calculate_sum(items):");
       expect(content).not.toContain("def calculate_total(items):");
     });
 
-    it("applies multiple blocks in order", () => {
-      const original = ["1", "2", "3", "4", "5"].join("\n");
-      const diff = `
-<<<<<<< SEARCH
-1
-=======
-ONE
-ONE-EXTRA
->>>>>>> REPLACE
-
-<<<<<<< SEARCH
-4
-=======
-FOUR
->>>>>>> REPLACE
-`;
-      const { success, content } = applySearchReplaceWithLineNumbers(
-        original,
-        diff,
-      );
-      expect(success).toBe(true);
-      expect(content).toBe(
-        ["ONE", "ONE-EXTRA", "2", "3", "FOUR", "5"].join("\n"),
-      );
-    });
-
     it("supports deletions when replace content is empty", () => {
       const original = ["x", "y", "z"].join("\n");
-      const diff = `
-<<<<<<< SEARCH
-y
-=======
-
->>>>>>> REPLACE
-`;
       const { success, content } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "y",
+        "",
       );
       expect(success).toBe(true);
       expect(content).toBe(["x", "z"].join("\n"));
@@ -115,16 +74,10 @@ y
 
     it("preserves CRLF line endings", () => {
       const original = ["a", "b", "c"].join("\r\n");
-      const diff = `
-<<<<<<< SEARCH
-b
-=======
-B
->>>>>>> REPLACE
-`;
       const { success, content } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "b",
+        "B",
       );
       expect(success).toBe(true);
       expect(content).toBe(["a", "B", "c"].join("\r\n"));
@@ -141,19 +94,10 @@ B
       ].join("\n");
 
       // Search content has line number prefixes (as if copied from read_file output)
-      const diff = `
-<<<<<<< SEARCH
-1| function greet() {
-2|   console.log('Hello');
-=======
-function greet() {
-  console.log('Hi there');
->>>>>>> REPLACE
-`;
-
       const { success, content } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "1| function greet() {\n2|   console.log('Hello');",
+        "function greet() {\n  console.log('Hi there');",
       );
       expect(success).toBe(true);
       expect(content).toContain("console.log('Hi there')");
@@ -168,19 +112,10 @@ function greet() {
         "}",
       ].join("\n");
 
-      const diff = `
-<<<<<<< SEARCH
-1| function test() {
-2|   const x = 1;
-=======
-1| function test() {
-2|   const y = 2;
->>>>>>> REPLACE
-`;
-
       const { success, content } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "1| function test() {\n2|   const x = 1;",
+        "1| function test() {\n2|   const y = 2;",
       );
       expect(success).toBe(true);
       expect(content).toContain("const y = 2");
@@ -194,21 +129,10 @@ function greet() {
       ).join("\n");
 
       // Padded line numbers for a file with 15+ lines
-      const diff = `
-<<<<<<< SEARCH
-10| line 10
-11| line 11
-12| line 12
-=======
-line 10 modified
-line 11 modified
-line 12 modified
->>>>>>> REPLACE
-`;
-
       const { success, content } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "10| line 10\n11| line 11\n12| line 12",
+        "line 10 modified\nline 11 modified\nline 12 modified",
       );
       expect(success).toBe(true);
       expect(content).toContain("line 10 modified");
@@ -218,16 +142,10 @@ line 12 modified
 
     it("works without line numbers (backward compatible)", () => {
       const original = ["alpha", "beta", "gamma"].join("\n");
-      const diff = `
-<<<<<<< SEARCH
-beta
-=======
-BETA
->>>>>>> REPLACE
-`;
       const { success, content } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "beta",
+        "BETA",
       );
       expect(success).toBe(true);
       expect(content).toBe(["alpha", "BETA", "gamma"].join("\n"));
@@ -239,38 +157,84 @@ BETA
       );
 
       // This should NOT be treated as having line numbers since not all lines match
-      const diff = `
-<<<<<<< SEARCH
-const x = '1| hello';
-const y = 'world';
-=======
-const x = 'changed';
-const y = 'also changed';
->>>>>>> REPLACE
-`;
-
       const { success, content } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "const x = '1| hello';\nconst y = 'world';",
+        "const x = 'changed';\nconst y = 'also changed';",
       );
       expect(success).toBe(true);
       expect(content).toContain("const x = 'changed'");
     });
   });
 
+  describe("line number direct matching", () => {
+    it("uses line numbers to match directly when they match file content", () => {
+      const original = ["line 1", "line 2", "line 3", "line 4", "line 5"].join(
+        "\n",
+      );
+
+      // Line numbers 2-3 should match lines 2-3 in file
+      const { success, content } = applySearchReplaceWithLineNumbers(
+        original,
+        "2| line 2\n3| line 3",
+        "modified 2\nmodified 3",
+      );
+      expect(success).toBe(true);
+      expect(content).toBe(
+        ["line 1", "modified 2", "modified 3", "line 4", "line 5"].join("\n"),
+      );
+      expect(mockDebug).toHaveBeenCalledWith(
+        expect.stringContaining("line numbers directly"),
+      );
+    });
+
+    it("falls back to fuzzy matching when line numbers don't match file", () => {
+      const original = ["line 1", "line 2", "line 3", "line 4", "line 5"].join(
+        "\n",
+      );
+
+      // Search content claims to be at lines 10-11, but content matches lines 2-3
+      const { success, content } = applySearchReplaceWithLineNumbers(
+        original,
+        "10| line 2\n11| line 3",
+        "modified 2\nmodified 3",
+      );
+      expect(success).toBe(true);
+      expect(content).toBe(
+        ["line 1", "modified 2", "modified 3", "line 4", "line 5"].join("\n"),
+      );
+      expect(mockDebug).toHaveBeenCalledWith(
+        expect.stringContaining("falling back to fuzzy matching"),
+      );
+    });
+
+    it("handles file modifications that shift line numbers", () => {
+      // Simulates a file where content has moved from its original position
+      const original = [
+        "new line added at top",
+        "function test() {",
+        "  return 42;",
+        "}",
+      ].join("\n");
+
+      // Search claims line 1-2, but content is now at lines 2-3
+      const { success, content } = applySearchReplaceWithLineNumbers(
+        original,
+        "1| function test() {\n2|   return 42;",
+        "function test() {\n  return 100;",
+      );
+      expect(success).toBe(true);
+      expect(content).toContain("return 100");
+    });
+  });
+
   describe("cascading fuzzy matching", () => {
     it("Pass 1: matches exactly when content is identical", () => {
       const original = ["  hello world", "  goodbye"].join("\n");
-      const diff = `
-<<<<<<< SEARCH
-  hello world
-=======
-  hi world
->>>>>>> REPLACE
-`;
       const { success, content } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "  hello world",
+        "  hi world",
       );
       expect(success).toBe(true);
       expect(content).toContain("hi world");
@@ -278,16 +242,10 @@ const y = 'also changed';
 
     it("Pass 2: matches when only trailing whitespace differs", () => {
       const original = ["hello world   ", "goodbye"].join("\n");
-      const diff = `
-<<<<<<< SEARCH
-hello world
-=======
-hi world
->>>>>>> REPLACE
-`;
       const { success, content } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "hello world",
+        "hi world",
       );
       expect(success).toBe(true);
       expect(content).toContain("hi world");
@@ -295,16 +253,10 @@ hi world
 
     it("Pass 3: matches when leading/trailing whitespace differs", () => {
       const original = ["  hello world  ", "goodbye"].join("\n");
-      const diff = `
-<<<<<<< SEARCH
-hello world
-=======
-hi world
->>>>>>> REPLACE
-`;
       const { success, content } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "hello world",
+        "hi world",
       );
       expect(success).toBe(true);
       expect(content).toContain("hi world");
@@ -312,16 +264,10 @@ hi world
 
     it("Pass 4: matches with unicode normalization (smart quotes)", () => {
       const original = ['console.log("hello")', "other line"].join("\n");
-      const diff = `
-<<<<<<< SEARCH
-console.log("hello")
-=======
-console.log("goodbye")
->>>>>>> REPLACE
-`;
       const { success, content } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        'console.log("hello")',
+        'console.log("goodbye")',
       );
       expect(success).toBe(true);
       expect(content).toContain('console.log("goodbye")');
@@ -329,16 +275,10 @@ console.log("goodbye")
 
     it("Pass 4: matches with unicode normalization (en-dash)", () => {
       const original = ["value = 10–20", "other line"].join("\n");
-      const diff = `
-<<<<<<< SEARCH
-value = 10-20
-=======
-value = 5-15
->>>>>>> REPLACE
-`;
       const { success, content } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "value = 10-20",
+        "value = 5-15",
       );
       expect(success).toBe(true);
       expect(content).toContain("value = 5-15");
@@ -354,23 +294,10 @@ value = 5-15
         "}",
       ].join("\n");
 
-      const diff = `
-<<<<<<< SEARCH
-function greet() {
-  console.log('Hi there');
-  return true;
-}
-=======
-function greet() {
-  console.log('Hello World');
-  return true;
-}
->>>>>>> REPLACE
-`;
-
       const { success, error } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "function greet() {\n  console.log('Hi there');\n  return true;\n}",
+        "function greet() {\n  console.log('Hello World');\n  return true;\n}",
       );
       expect(success).toBe(false);
       expect(error).toContain("Search block did not match any content");
@@ -383,17 +310,10 @@ function greet() {
     it("provides detailed ambiguous match error", () => {
       const original = ["foo", "bar", "baz", "bar", "qux"].join("\n");
 
-      const diff = `
-<<<<<<< SEARCH
-bar
-=======
-BAR
->>>>>>> REPLACE
-`;
-
       const { success, error } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "bar",
+        "BAR",
       );
       expect(success).toBe(false);
       expect(error).toContain("matched multiple locations");
@@ -415,19 +335,10 @@ BAR
         "end",
       ].join("\n");
 
-      const diff = `
-<<<<<<< SEARCH
-match line 1
-match line 2
-match line 3
-=======
-replaced
->>>>>>> REPLACE
-`;
-
       const { success, error } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "match line 1\nmatch line 2\nmatch line 3",
+        "replaced",
       );
       expect(success).toBe(false);
       // Should show Lines 2-4 and Lines 6-8 (not Lines 2-3 and Lines 6-7)
@@ -444,19 +355,10 @@ replaced
         "line five",
       ].join("\n");
 
-      const diff = `
-<<<<<<< SEARCH
-line two
-WRONG LINE
-line four
-=======
-replaced
->>>>>>> REPLACE
-`;
-
       const { success, error } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "line two\nWRONG LINE\nline four",
+        "replaced",
       );
       expect(success).toBe(false);
       expect(error).toContain("Line 1:");
@@ -467,17 +369,10 @@ replaced
     it("shows JSON-escaped content in error messages for invisible characters", () => {
       const original = "hello\tworld\ntest";
 
-      const diff = `
-<<<<<<< SEARCH
-hello world
-=======
-replaced
->>>>>>> REPLACE
-`;
-
       const { success, error } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "hello world",
+        "replaced",
       );
       expect(success).toBe(false);
       // The error message should show the tab character escaped
@@ -488,15 +383,10 @@ replaced
   describe("edge cases", () => {
     it("errors when SEARCH block is empty", () => {
       const original = ["a", "b"].join("\n");
-      const diff = `
-<<<<<<< SEARCH
-=======
-REPLACEMENT
->>>>>>> REPLACE
-`;
       const { success, error } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "",
+        "REPLACEMENT",
       );
       expect(success).toBe(false);
       expect(error).toContain("empty SEARCH block");
@@ -504,17 +394,10 @@ REPLACEMENT
 
     it("matches when search has extra trailing newline", () => {
       const original = ["function test() {", "  return 1;", "}"].join("\n");
-      const diff = `
-<<<<<<< SEARCH
-  return 1;
-
-=======
-  return 2;
->>>>>>> REPLACE
-`;
       const { success, content } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "  return 1;\n",
+        "  return 2;",
       );
       expect(success).toBe(true);
       expect(content).toContain("return 2");
@@ -522,51 +405,21 @@ REPLACEMENT
 
     it("matches when search has extra leading newline", () => {
       const original = ["function test() {", "  return 1;", "}"].join("\n");
-      const diff = `
-<<<<<<< SEARCH
-
-  return 1;
-=======
-  return 2;
->>>>>>> REPLACE
-`;
       const { success, content } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "\n  return 1;",
+        "  return 2;",
       );
       expect(success).toBe(true);
       expect(content).toContain("return 2");
     });
 
-    it("unescapes markers inside content and matches literally", () => {
-      const original = ["begin", ">>>>>>> REPLACE", "end"].join("\n");
-      const diff = `
-<<<<<<< SEARCH
-\\>>>>>>> REPLACE
-=======
-LITERAL MARKER
->>>>>>> REPLACE
-`;
-      const { success, content } = applySearchReplaceWithLineNumbers(
-        original,
-        diff,
-      );
-      expect(success).toBe(true);
-      expect(content).toBe(["begin", "LITERAL MARKER", "end"].join("\n"));
-    });
-
     it("not an error when SEARCH and REPLACE blocks are identical", () => {
       const original = ["x", "middle", "z"].join("\n");
-      const diff = `
-<<<<<<< SEARCH
-middle
-=======
-middle
->>>>>>> REPLACE
-`;
       const { success, content } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "middle",
+        "middle",
       );
       expect(success).toBe(true);
       expect(content).toBe(original);
@@ -580,19 +433,10 @@ middle
         "  }",
         "}",
       ].join("\n");
-      const diff = `
-<<<<<<< SEARCH
-  if (x) {
-    doThing();
-=======
-  if (x) {
-      doOther();
-    doAnother();
->>>>>>> REPLACE
-`;
       const { success, content } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "  if (x) {\n    doThing();",
+        "  if (x) {\n      doOther();\n    doAnother();",
       );
       expect(success).toBe(true);
       expect(content).toContain("  if (x) {");
@@ -603,39 +447,36 @@ middle
     it("preserves intentional trailing whitespace in replacement", () => {
       // Trailing whitespace can be significant in some file types (e.g., Markdown hard breaks)
       const original = ["line 1", "line 2", "line 3"].join("\n");
-      // Build the diff manually to ensure trailing spaces are preserved in the replacement
-      const diff = [
-        "<<<<<<< SEARCH",
-        "line 2",
-        "=======",
-        "line 2 with trailing   ", // 3 trailing spaces
-        ">>>>>>> REPLACE",
-      ].join("\n");
       const { success, content } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "line 2",
+        "line 2 with trailing   ", // 3 trailing spaces
       );
       expect(success).toBe(true);
       // The trailing spaces should be preserved
       expect(content).toContain("line 2 with trailing   ");
+    });
+
+    it("handles content with literal search/replace markers", () => {
+      // Content that literally contains marker-like patterns (no escaping needed in 3-arg mode)
+      const original = ["begin", ">>>>>>> REPLACE", "end"].join("\n");
+      const { success, content } = applySearchReplaceWithLineNumbers(
+        original,
+        ">>>>>>> REPLACE",
+        "LITERAL MARKER",
+      );
+      expect(success).toBe(true);
+      expect(content).toBe(["begin", "LITERAL MARKER", "end"].join("\n"));
     });
   });
 
   describe("line numbers with various formats", () => {
     it("handles single digit line numbers", () => {
       const original = ["a", "b", "c"].join("\n");
-      const diff = `
-<<<<<<< SEARCH
-1| a
-2| b
-=======
-A
-B
->>>>>>> REPLACE
-`;
       const { success, content } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "1| a\n2| b",
+        "A\nB",
       );
       expect(success).toBe(true);
       expect(content).toBe(["A", "B", "c"].join("\n"));
@@ -646,20 +487,10 @@ B
       const original = lines.join("\n");
 
       // Simulate line-numbered content with padding for 100+ lines
-      const diff = `
-<<<<<<< SEARCH
-100| line 100
-101| line 101
-102| line 102
-=======
-modified 100
-modified 101
-modified 102
->>>>>>> REPLACE
-`;
       const { success, content } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "100| line 100\n101| line 101\n102| line 102",
+        "modified 100\nmodified 101\nmodified 102",
       );
       expect(success).toBe(true);
       expect(content).toContain("modified 100");
@@ -669,20 +500,10 @@ modified 102
 
     it("handles empty lines in line-numbered content", () => {
       const original = ["line 1", "", "line 3"].join("\n");
-      const diff = `
-<<<<<<< SEARCH
-1| line 1
-2|
-3| line 3
-=======
-modified 1
-still empty
-modified 3
->>>>>>> REPLACE
-`;
       const { success, content } = applySearchReplaceWithLineNumbers(
         original,
-        diff,
+        "1| line 1\n2|\n3| line 3",
+        "modified 1\nstill empty\nmodified 3",
       );
       expect(success).toBe(true);
       expect(content).toBe(

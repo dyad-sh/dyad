@@ -144,6 +144,7 @@ describe("line_number_utils", () => {
       const result = stripLineNumberPrefixes("");
       expect(result.content).toBe("");
       expect(result.hasLineNumbers).toBe(false);
+      expect(result.startLineNumber).toBe(0);
     });
 
     it("does not strip line numbers from single line (too ambiguous)", () => {
@@ -152,6 +153,7 @@ describe("line_number_utils", () => {
       const result = stripLineNumberPrefixes("1| hello");
       expect(result.content).toBe("1| hello");
       expect(result.hasLineNumbers).toBe(false);
+      expect(result.startLineNumber).toBe(0);
     });
 
     it("strips line numbers from multiple lines", () => {
@@ -159,6 +161,7 @@ describe("line_number_utils", () => {
       const result = stripLineNumberPrefixes(input);
       expect(result.content).toBe("line one\nline two\nline three");
       expect(result.hasLineNumbers).toBe(true);
+      expect(result.startLineNumber).toBe(1);
     });
 
     it("strips padded line numbers", () => {
@@ -219,6 +222,7 @@ describe("line_number_utils", () => {
       const result = stripLineNumberPrefixes(input);
       expect(result.content).toBe("line five\nline six\nline seven");
       expect(result.hasLineNumbers).toBe(true);
+      expect(result.startLineNumber).toBe(5);
     });
 
     it("round-trips correctly with addLineNumberPrefixes", () => {

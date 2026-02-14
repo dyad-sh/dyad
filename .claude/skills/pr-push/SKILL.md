@@ -39,22 +39,7 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    If there are no uncommitted changes, proceed to the next step.
 
-3. **Remember learnings:**
-
-   Run the `/remember-learnings` skill to capture any errors, snags, or insights from this session into `AGENTS.md`.
-
-   If `AGENTS.md` was modified by the skill, stage it and amend the latest commit to include the changes:
-
-   ```
-   git add AGENTS.md
-   git diff --cached --quiet AGENTS.md || git commit --amend --no-edit
-   ```
-
-   This ensures `AGENTS.md` is always included in the committed changes before lint/formatting runs.
-
-   **IMPORTANT:** Do NOT stop here. You MUST continue to step 4.
-
-4. **Run lint checks:**
+3. **Run lint checks:**
 
    Run these commands to ensure the code passes all pre-commit checks:
 
@@ -64,9 +49,9 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    If there are errors that could not be auto-fixed, read the affected files and fix them manually, then re-run the checks until they pass.
 
-   **IMPORTANT:** Do NOT stop after lint passes. You MUST continue to step 5.
+   **IMPORTANT:** Do NOT stop after lint passes. You MUST continue to step 4.
 
-5. **Run tests:**
+4. **Run tests:**
 
    Run the test suite to ensure nothing is broken:
 
@@ -76,9 +61,9 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    If any tests fail, fix them before proceeding. Do NOT skip failing tests.
 
-   **IMPORTANT:** Do NOT stop after tests pass. You MUST continue to step 6.
+   **IMPORTANT:** Do NOT stop after tests pass. You MUST continue to step 5.
 
-6. **If lint made changes, amend the last commit:**
+5. **If lint made changes, amend the last commit:**
 
    If the lint checks made any changes, stage and amend them into the last commit:
 
@@ -87,9 +72,9 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
    git commit --amend --no-edit
    ```
 
-   **IMPORTANT:** Do NOT stop here. You MUST continue to step 7.
+   **IMPORTANT:** Do NOT stop here. You MUST continue to step 6.
 
-7. **Push the branch (REQUIRED):**
+6. **Push the branch (REQUIRED):**
 
    You MUST push the branch to GitHub. Do NOT skip this step or ask for confirmation.
 
@@ -146,7 +131,7 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    Note: `--force-with-lease` is used because the commit may have been amended. It's safer than `--force` as it will fail if someone else has pushed to the branch.
 
-8. **Create or update the PR (REQUIRED):**
+7. **Create or update the PR (REQUIRED):**
 
    **CRITICAL:** Do NOT tell the user to visit a URL to create a PR. You MUST create it automatically.
 
@@ -175,13 +160,30 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    Use the commit messages and changed files to write a good title and summary.
 
-9. **Remove review-issue label:**
+8. **Remove review-issue label:**
 
    After pushing, remove the `needs-human:review-issue` label if it exists (this label indicates the issue needed human review before work started, which is now complete):
 
    ```
    gh pr edit --remove-label "needs-human:review-issue" 2>/dev/null || true
    ```
+
+9. **Remember learnings (after initial push):**
+
+   Run the `/remember-learnings` skill to capture any errors, snags, or insights from this session into `AGENTS.md` or `rules/` files.
+
+   If any files were modified by the skill (check with `git status`):
+   - Stage the modified files: `git add AGENTS.md rules/`
+   - Create a new commit for the learnings:
+     ```
+     git commit -m "docs: record session learnings"
+     ```
+   - Push the learnings commit:
+     ```
+     git push
+     ```
+
+   **IMPORTANT:** Do NOT amend the previous commit. Create a separate commit for learnings so the main work is already pushed before this step.
 
 10. **Summarize the results:**
 
@@ -191,5 +193,5 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 - Report any lint fixes that were applied
 - Confirm tests passed
 - Confirm the branch has been pushed
-- Report any learnings added to `AGENTS.md`
+- Report any learnings added to `AGENTS.md` or `rules/` (and whether a follow-up push was made)
 - **Include the PR URL** (either newly created or existing)

@@ -4,7 +4,7 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
-import { X, Move, Square, Palette, Type, ImageIcon } from "lucide-react";
+import { X, Move, Square, Palette, Type } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { ComponentSelection } from "@/ipc/types";
 import { useSetAtom, useAtomValue } from "jotai";
@@ -18,10 +18,7 @@ import { StylePopover } from "./StylePopover";
 import { ColorPicker } from "@/components/ui/ColorPicker";
 import { NumberInput } from "@/components/ui/NumberInput";
 import { rgbToHex, processNumericValue } from "@/utils/style-utils";
-import {
-  ImageSwapPopover,
-  type ImageUploadData,
-} from "./ImageSwapPopover";
+import { ImageSwapPopover, type ImageUploadData } from "./ImageSwapPopover";
 
 const FONT_WEIGHT_OPTIONS = [
   { value: "", label: "Default" },
@@ -533,24 +530,16 @@ export function VisualEditingToolbar({
           {hasImage && (
             <ImageSwapPopover
               currentSrc={currentImageSrc}
-              onSwap={(
-                newSrc: string,
-                uploadData?: ImageUploadData,
-              ) => {
+              onSwap={(newSrc: string, uploadData?: ImageUploadData) => {
                 // 1. Send preview to iframe
-                if (
-                  iframeRef.current?.contentWindow &&
-                  selectedComponent
-                ) {
+                if (iframeRef.current?.contentWindow && selectedComponent) {
                   iframeRef.current.contentWindow.postMessage(
                     {
                       type: "modify-dyad-image-src",
                       data: {
                         elementId: selectedComponent.id,
                         runtimeId: selectedComponent.runtimeId,
-                        src: uploadData
-                          ? uploadData.base64Data
-                          : newSrc,
+                        src: uploadData ? uploadData.base64Data : newSrc,
                       },
                     },
                     "*",
@@ -561,14 +550,11 @@ export function VisualEditingToolbar({
                 if (selectedComponent) {
                   setPendingChanges((prev) => {
                     const updated = new Map(prev);
-                    const existing = updated.get(
-                      selectedComponent.id,
-                    );
+                    const existing = updated.get(selectedComponent.id);
                     updated.set(selectedComponent.id, {
                       componentId: selectedComponent.id,
                       componentName: selectedComponent.name,
-                      relativePath:
-                        selectedComponent.relativePath,
+                      relativePath: selectedComponent.relativePath,
                       lineNumber: selectedComponent.lineNumber,
                       styles: existing?.styles || {},
                       textContent: existing?.textContent,

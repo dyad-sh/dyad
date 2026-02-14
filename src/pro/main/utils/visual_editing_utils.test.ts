@@ -735,7 +735,14 @@ function Component() {
 }`;
 
     const changes = new Map([
-      [3, { classes: [], prefixes: [], imageSrc: "https://cdn.example.com/new.jpg" }],
+      [
+        3,
+        {
+          classes: [],
+          prefixes: [],
+          imageSrc: "https://cdn.example.com/new.jpg",
+        },
+      ],
     ]);
 
     const result = transformContent(content, changes);
@@ -750,7 +757,14 @@ function Component() {
 }`;
 
     const changes = new Map([
-      [3, { classes: ["rounded-lg"], prefixes: ["rounded-"], imageSrc: "/new.png" }],
+      [
+        3,
+        {
+          classes: ["rounded-lg"],
+          prefixes: ["rounded-"],
+          imageSrc: "/new.png",
+        },
+      ],
     ]);
 
     const result = transformContent(content, changes);

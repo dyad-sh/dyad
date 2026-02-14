@@ -230,22 +230,23 @@ export function transformContent(
         if (change.imageSrc !== undefined) {
           const tagName = path.node.openingElement.name;
 
-          // Determine which element to update (self or child <img>)
+          // Determine which element to update (self or descendant <img>)
           let targetElement: any = null;
           if (tagName.type === "JSXIdentifier" && tagName.name === "img") {
             targetElement = path.node.openingElement;
           } else {
-            // Look for child <img>
-            for (const child of path.node.children) {
-              if (
-                (child as any).type === "JSXElement" &&
-                (child as any).openingElement.name.type === "JSXIdentifier" &&
-                (child as any).openingElement.name.name === "img"
-              ) {
-                targetElement = (child as any).openingElement;
-                break;
-              }
-            }
+            // Recursively search for the first <img> descendant
+            path.traverse({
+              JSXElement(innerPath) {
+                if (
+                  innerPath.node.openingElement.name.type === "JSXIdentifier" &&
+                  innerPath.node.openingElement.name.name === "img"
+                ) {
+                  targetElement = innerPath.node.openingElement;
+                  innerPath.stop();
+                }
+              },
+            });
           }
 
           if (targetElement) {
@@ -432,16 +433,18 @@ export function analyzeComponent(
     }
   }
 
-  // Also check direct children for <img> elements
-  if (!hasImage && foundElement.children) {
-    for (const child of foundElement.children) {
+  // Recursively check descendants for <img> elements
+  if (!hasImage && foundElement) {
+    const findImg = (node: any): void => {
+      if (!node || hasImage) return;
+
       if (
-        child.type === "JSXElement" &&
-        child.openingElement.name.type === "JSXIdentifier" &&
-        child.openingElement.name.name === "img"
+        node.type === "JSXElement" &&
+        node.openingElement.name.type === "JSXIdentifier" &&
+        node.openingElement.name.name === "img"
       ) {
         hasImage = true;
-        const srcAttr = child.openingElement.attributes.find(
+        const srcAttr = node.openingElement.attributes.find(
           (attr: any) =>
             attr.type === "JSXAttribute" && attr.name?.name === "src",
         );
@@ -455,9 +458,17 @@ export function analyzeComponent(
             imageSrc = srcAttr.value.expression.value;
           }
         }
-        break;
+        return;
       }
-    }
+
+      if (Array.isArray(node.children)) {
+        for (const child of node.children) {
+          findImg(child);
+          if (hasImage) return;
+        }
+      }
+    };
+    findImg(foundElement);
   }
 
   return { isDynamic: dynamic, hasStaticText: staticText, hasImage, imageSrc };

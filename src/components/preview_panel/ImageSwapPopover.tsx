@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { ImageIcon, Upload, Link, Check } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -30,7 +30,15 @@ export function ImageSwapPopover({
   const [mode, setMode] = useState<"url" | "upload">("url");
   const [urlValue, setUrlValue] = useState(currentSrc);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync urlValue when a different component is selected
+  useEffect(() => {
+    setUrlValue(currentSrc);
+    setSelectedFileName(null);
+    setFileError(null);
+  }, [currentSrc]);
 
   const handleUrlSubmit = () => {
     if (urlValue.trim()) {
@@ -43,8 +51,10 @@ export function ImageSwapPopover({
     if (!file) return;
 
     if (!VALID_IMAGE_TYPES.includes(file.type)) {
+      setFileError("Unsupported file type. Please use JPG, PNG, GIF, or WebP.");
       return;
     }
+    setFileError(null);
 
     setSelectedFileName(file.name);
 
@@ -52,13 +62,10 @@ export function ImageSwapPopover({
     reader.onload = () => {
       const base64DataUrl = reader.result as string;
 
-      // Generate a unique filename for the public directory
+      // The backend will generate the final unique filename.
+      // We just need a placeholder path for the pending change.
       const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const timestamp = Date.now();
-      const finalFileName = `${timestamp}-${sanitizedName}`;
-
-      // The src path that will be written into JSX
-      const newSrc = `/images/${finalFileName}`;
+      const newSrc = `/images/${sanitizedName}`;
 
       onSwap(newSrc, {
         fileName: file.name,
@@ -145,6 +152,7 @@ export function ImageSwapPopover({
               <Upload size={14} className="mr-1" />
               {selectedFileName || "Choose File"}
             </Button>
+            {fileError && <p className="text-xs text-red-500">{fileError}</p>}
             <p className="text-xs text-gray-500">
               Supports: JPG, PNG, GIF, WebP
             </p>

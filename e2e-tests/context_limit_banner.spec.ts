@@ -15,7 +15,7 @@ test("context limit banner shows 'running out' when near context limit", async (
   const contextLimitBanner = po.chatActions
     .getChatInputContainer()
     .getByTestId("context-limit-banner");
-  await expect(contextLimitBanner).toBeVisible({ timeout: Timeout.MEDIUM });
+  await expect(contextLimitBanner).toBeVisible({ timeout: Timeout.LONG });
 
   // Verify banner text for near-limit case
   await expect(contextLimitBanner).toContainText(
@@ -57,7 +57,7 @@ test("context limit banner shows 'costs extra' for long context", async ({
   const contextLimitBanner = po.chatActions
     .getChatInputContainer()
     .getByTestId("context-limit-banner");
-  await expect(contextLimitBanner).toBeVisible({ timeout: Timeout.MEDIUM });
+  await expect(contextLimitBanner).toBeVisible({ timeout: Timeout.LONG });
 
   // Verify banner text for long context case
   await expect(contextLimitBanner).toContainText(

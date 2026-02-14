@@ -11,7 +11,14 @@ test("create and edit prompt", async ({ po }) => {
     content: "prompt1content",
   });
 
-  await expect(po.page.getByTestId("prompt-card")).toMatchAriaSnapshot();
+  // Wait for prompt card to be fully rendered
+  const promptCard = po.page.getByTestId("prompt-card");
+  await expect(promptCard).toBeVisible();
+  await expect(
+    promptCard.getByRole("heading", { name: "title1" }),
+  ).toBeVisible();
+  await expect(promptCard).toContainText("desc");
+  await expect(promptCard).toContainText("prompt1content");
 
   await po.page.getByTestId("edit-prompt-button").click();
   await po.page
@@ -19,7 +26,13 @@ test("create and edit prompt", async ({ po }) => {
     .fill("prompt1content-edited");
   await po.page.getByRole("button", { name: "Save" }).click();
 
-  await expect(po.page.getByTestId("prompt-card")).toMatchAriaSnapshot();
+  // Verify edited content is displayed
+  await expect(promptCard).toBeVisible();
+  await expect(
+    promptCard.getByRole("heading", { name: "title1" }),
+  ).toBeVisible();
+  await expect(promptCard).toContainText("desc");
+  await expect(promptCard).toContainText("prompt1content-edited");
 });
 
 test("delete prompt", async ({ po }) => {

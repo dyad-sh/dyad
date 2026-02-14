@@ -87,6 +87,10 @@ This is the only supported way to type-check the project. It uses the correct co
 - Frontend is a React app that uses TanStack Router (not Next.js or React Router).
 - Data fetching/mutations should be handled with TanStack Query when touching IPC-backed endpoints.
 
+## Verifying your changes
+
+You should test your changes before committing or pushing. Run relevant unit tests and E2E tests to verify expected behavior. If it's truly impossible to test a change locally (e.g. CI-only behavior, third-party service integration), note this in the PR description explaining why and what manual verification is needed.
+
 ## General guidance
 
 - Favor descriptive module/function names that mirror IPC channel semantics.

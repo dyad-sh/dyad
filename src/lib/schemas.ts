@@ -241,6 +241,8 @@ export const DeprecatedRuntimeModeSchema = z.enum([
   "web-sandbox",
   "local-node",
   "unset",
+  "host",
+  "docker",
 ]);
 export type DeprecatedRuntimeMode = z.infer<typeof DeprecatedRuntimeModeSchema>;
 

@@ -86,6 +86,8 @@ export const pushRecentViewedChatIdAtom = atom(
     set(recentViewedChatIdsAtom, nextIds);
     // Remove from closed set when explicitly selected
     removeFromClosedSet(get, set, chatId);
+    // Track in session so the tab appears (fixes re-open after bulk close)
+    addToSessionSet(get, set, chatId);
   },
 );
 export const removeRecentViewedChatIdAtom = atom(
@@ -100,6 +102,8 @@ export const removeRecentViewedChatIdAtom = atom(
     const newClosedIds = new Set(closedIds);
     newClosedIds.add(chatId);
     set(closedChatIdsAtom, newClosedIds);
+    // Also remove from session tracking (consistent with closeMultipleTabsAtom)
+    removeFromSessionSet(get, set, [chatId]);
   },
 );
 // Prune closed chat IDs that no longer exist in the chats list
@@ -121,17 +125,10 @@ export const pruneClosedChatIdsAtom = atom(
     }
   },
 );
-// Add a chat ID to the session-opened set
+// Add a chat ID to the session-opened set (delegates to helper)
 export const addSessionOpenedChatIdAtom = atom(
   null,
-  (get, set, chatId: number) => {
-    const sessionIds = get(sessionOpenedChatIdsAtom);
-    if (!sessionIds.has(chatId)) {
-      const newSessionIds = new Set(sessionIds);
-      newSessionIds.add(chatId);
-      set(sessionOpenedChatIdsAtom, newSessionIds);
-    }
-  },
+  (get, set, chatId: number) => addToSessionSet(get, set, chatId),
 );
 // Helper to remove chat IDs from the session-opened set
 function removeFromSessionSet(

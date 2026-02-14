@@ -4,6 +4,7 @@
 <summary>Click to expand logs</summary>
 
 Error log content here:
+
 ```
 ERROR: Something went wrong
 Stack trace follows

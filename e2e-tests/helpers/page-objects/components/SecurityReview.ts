@@ -18,7 +18,13 @@ export class SecurityReview {
       .getByRole("button", { name: "Run Security Review" })
       .first();
     await runSecurityReviewButton.click();
-    await runSecurityReviewButton.waitFor({ state: "hidden" });
+    // Wait for the "Running Security Review..." button to appear and then disappear
+    // This indicates the security review has completed
+    const runningButton = this.page.getByRole("button", {
+      name: "Running Security Review...",
+    });
+    await runningButton.waitFor({ state: "visible" });
+    await runningButton.waitFor({ state: "hidden" });
     await this.chatActions.waitForChatCompletion();
   }
 

@@ -1,8 +1,6 @@
 # Bug Report
 
-
 There's a bug in the login flow.
-
 
 ## Steps to Reproduce
 

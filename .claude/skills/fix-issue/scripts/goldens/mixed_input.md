@@ -4,8 +4,6 @@
 
 This​ issue has multiple problems.
 
-
-
 <details>
 <summary>Stack trace</summary>
 

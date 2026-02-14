@@ -2,12 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import log from "electron-log";
-import {
-  ToolDefinition,
-  AgentContext,
-  escapeXmlAttr,
-  escapeXmlContent,
-} from "./types";
+import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { safeJoin } from "@/ipc/utils/path_utils";
 import { applySearchReplace } from "@/pro/main/ipc/processors/search_replace_processor";
 import { escapeSearchReplaceMarkers } from "@/pro/shared/search_replace_markers";
@@ -70,12 +65,12 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
 
     const escapedOld = escapeSearchReplaceMarkers(args.old_string ?? "");
 
-    let xml = `<dyad-search-replace path="${escapeXmlAttr(args.file_path)}" description="">\n<<<<<<< SEARCH\n${escapeXmlContent(escapedOld)}`;
+    let xml = `<dyad-search-replace path="${escapeXmlAttr(args.file_path)}" description="">\n<<<<<<< SEARCH\n${escapedOld}`;
 
     // Add separator and replace content if new_string has started
     if (args.new_string !== undefined) {
       const escapedNew = escapeSearchReplaceMarkers(args.new_string);
-      xml += `\n=======\n${escapeXmlContent(escapedNew)}`;
+      xml += `\n=======\n${escapedNew}`;
     }
 
     if (isComplete) {

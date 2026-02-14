@@ -678,3 +678,172 @@ replaced
     `);
   });
 });
+
+describe("search_replace_processor - line number based matching", () => {
+  it("matches using line numbers when content has arrow-format prefixes", () => {
+    const original = ["alpha", "beta", "gamma", "delta", "epsilon"].join("\n");
+
+    // Search content with line number prefixes (like from Read tool output)
+    const diff = `
+<<<<<<< SEARCH
+     2→beta
+     3→gamma
+=======
+BETA
+GAMMA
+>>>>>>> REPLACE
+`;
+
+    const { success, content } = applySearchReplace(original, diff);
+    expect(success).toBe(true);
+    expect(content).toBe(
+      ["alpha", "BETA", "GAMMA", "delta", "epsilon"].join("\n"),
+    );
+  });
+
+  it("matches using line numbers when content has tab-format prefixes", () => {
+    const original = ["alpha", "beta", "gamma", "delta", "epsilon"].join("\n");
+
+    // Search content with tab-separated line numbers
+    const diff = `
+<<<<<<< SEARCH
+   3\tgamma
+   4\tdelta
+=======
+GAMMA
+DELTA
+>>>>>>> REPLACE
+`;
+
+    const { success, content } = applySearchReplace(original, diff);
+    expect(success).toBe(true);
+    expect(content).toBe(
+      ["alpha", "beta", "GAMMA", "DELTA", "epsilon"].join("\n"),
+    );
+  });
+
+  it("falls back to content matching when line numbers don't match content at position", () => {
+    const original = ["alpha", "beta", "gamma", "delta", "epsilon"].join("\n");
+
+    // Line numbers say lines 2-3, but content is actually at lines 3-4
+    // Should fallback and find the content match
+    const diff = `
+<<<<<<< SEARCH
+     2→gamma
+     3→delta
+=======
+GAMMA
+DELTA
+>>>>>>> REPLACE
+`;
+
+    const { success, content } = applySearchReplace(original, diff);
+    expect(success).toBe(true);
+    expect(content).toBe(
+      ["alpha", "beta", "GAMMA", "DELTA", "epsilon"].join("\n"),
+    );
+  });
+
+  it("falls back when line numbers are out of bounds", () => {
+    const original = ["alpha", "beta", "gamma"].join("\n");
+
+    // Line numbers 10-11 are out of bounds
+    const diff = `
+<<<<<<< SEARCH
+    10→beta
+    11→gamma
+=======
+BETA
+GAMMA
+>>>>>>> REPLACE
+`;
+
+    const { success, content } = applySearchReplace(original, diff);
+    expect(success).toBe(true);
+    expect(content).toBe(["alpha", "BETA", "GAMMA"].join("\n"));
+  });
+
+  it("handles non-sequential line numbers by falling back", () => {
+    const original = ["alpha", "beta", "gamma", "delta"].join("\n");
+
+    // Non-sequential line numbers (2, 4 instead of 2, 3)
+    // Since lines aren't sequential, it falls back to content matching
+    // The search content "beta\ndelta" (with prefixes stripped) doesn't exist
+    // as adjacent lines, so it should fail
+    const diff = `
+<<<<<<< SEARCH
+     2→beta
+     4→delta
+=======
+BETA
+DELTA
+>>>>>>> REPLACE
+`;
+
+    const { success, error } = applySearchReplace(original, diff);
+    expect(success).toBe(false);
+    expect(error).toMatch(/did not match/i);
+  });
+
+  it("works when only some lines have prefixes (falls back with original lines)", () => {
+    const original = ["alpha", "     2→beta", "gamma", "delta"].join("\n");
+
+    // Search content includes a line number prefix that's literally in the file
+    // When not all lines have prefixes, we use original lines including the prefix
+    const diff = `
+<<<<<<< SEARCH
+     2→beta
+gamma
+=======
+BETA
+GAMMA
+>>>>>>> REPLACE
+`;
+
+    const { success, content } = applySearchReplace(original, diff);
+    expect(success).toBe(true);
+    expect(content).toBe(["alpha", "BETA", "GAMMA", "delta"].join("\n"));
+  });
+
+  it("preserves original indentation when matching with line numbers", () => {
+    const original = [
+      "function test() {",
+      "  const x = 1;",
+      "  return x;",
+      "}",
+    ].join("\n");
+
+    const diff = `
+<<<<<<< SEARCH
+     2→  const x = 1;
+     3→  return x;
+=======
+  const y = 2;
+  return y;
+>>>>>>> REPLACE
+`;
+
+    const { success, content } = applySearchReplace(original, diff);
+    expect(success).toBe(true);
+    expect(content).toContain("  const y = 2;");
+    expect(content).toContain("  return y;");
+  });
+
+  it("uses line numbers with whitespace normalization when needed", () => {
+    const original = ["alpha", "  beta  ", "gamma"].join("\n"); // beta has extra spaces
+
+    // Line number prefix and content without the extra spaces
+    const diff = `
+<<<<<<< SEARCH
+     2→beta
+=======
+BETA
+>>>>>>> REPLACE
+`;
+
+    const { success, content } = applySearchReplace(original, diff);
+    expect(success).toBe(true);
+    // The indentation is preserved from the original line (2 spaces)
+    expect(content).toBe(["alpha", "  BETA", "gamma"].join("\n"));
+  });
+});

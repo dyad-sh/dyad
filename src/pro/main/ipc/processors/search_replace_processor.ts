@@ -18,11 +18,66 @@ function unescapeMarkers(content: string): string {
 }
 
 // ============================================================================
+// Line Number Stripping
+// ============================================================================
+// When content comes from file reads, it may include line number prefixes.
+// Format: optional spaces + line number + tab/arrow + content
+// Examples: "  1→content" or "   42	content"
+// ============================================================================
+
+/**
+ * Regex to detect line number prefix format.
+ * Matches: optional spaces, digits, then either → (arrow) or tab
+ */
+const LINE_NUMBER_PREFIX_REGEX = /^(\s*)(\d+)(?:→|\t)/;
+
+/**
+ * Parse line number prefixes from content lines.
+ * Returns the stripped lines and the starting line number if all lines have valid prefixes.
+ */
+function parseLineNumberedContent(lines: string[]): {
+  strippedLines: string[];
+  startLine: number | null;
+} {
+  if (lines.length === 0) {
+    return { strippedLines: [], startLine: null };
+  }
+
+  const strippedLines: string[] = [];
+  let startLine: number | null = null;
+  let expectedLine: number | null = null;
+
+  for (const line of lines) {
+    const match = line.match(LINE_NUMBER_PREFIX_REGEX);
+    if (!match) {
+      // Not all lines have prefixes, return original
+      return { strippedLines: lines, startLine: null };
+    }
+
+    const lineNum = parseInt(match[2], 10);
+    if (startLine === null) {
+      startLine = lineNum;
+      expectedLine = lineNum;
+    } else if (lineNum !== expectedLine) {
+      // Line numbers not sequential, return original
+      return { strippedLines: lines, startLine: null };
+    }
+
+    expectedLine = lineNum + 1;
+    // Strip the prefix (spaces + digits + arrow/tab)
+    strippedLines.push(line.slice(match[0].length));
+  }
+
+  return { strippedLines, startLine };
+}
+
+// ============================================================================
 // Cascading Fuzzy Matching
 // ============================================================================
 // The tool locates where to apply changes by matching context lines against the file.
 // Implements cascading fuzzy matching with decreasing strictness:
 //
+// Pass 0 (if line numbers present): Line-Number-Based Match
 // Pass 1: Exact Match
 // Pass 2: Trailing Whitespace Ignored
 // Pass 3: All Edge Whitespace Ignored
@@ -236,19 +291,90 @@ function logMatchFailure(
 }
 
 /**
+ * Try to match using line numbers embedded in the search content.
+ * If the search content has line number prefixes (e.g., "  1→content"),
+ * try to match at that specific position in the file first.
+ *
+ * Returns: match result if line numbers matched content, null to fallback to regular matching
+ */
+function tryLineNumberMatch(
+  resultLines: string[],
+  searchLines: string[],
+): {
+  matchIndex: number;
+  strippedSearchLines: string[];
+  passName: string;
+} | null {
+  const { strippedLines, startLine } = parseLineNumberedContent(searchLines);
+
+  // No line numbers found, fallback to regular matching
+  if (startLine === null) {
+    return null;
+  }
+
+  // Convert 1-based line number to 0-based index
+  const expectedIndex = startLine - 1;
+
+  // Check if the position is valid
+  if (
+    expectedIndex < 0 ||
+    expectedIndex + strippedLines.length > resultLines.length
+  ) {
+    // Line numbers out of bounds, fallback to regular matching
+    return null;
+  }
+
+  // Try to match at the expected position using cascading comparators
+  for (const pass of MATCHING_PASSES) {
+    let allMatch = true;
+    for (let j = 0; j < strippedLines.length; j++) {
+      if (!pass.comparator(resultLines[expectedIndex + j], strippedLines[j])) {
+        allMatch = false;
+        break;
+      }
+    }
+    if (allMatch) {
+      return {
+        matchIndex: expectedIndex,
+        strippedSearchLines: strippedLines,
+        passName: `line-number-${pass.name}`,
+      };
+    }
+  }
+
+  // Line numbers didn't match content at that position, fallback to regular matching
+  return null;
+}
+
+/**
  * Cascading fuzzy matching: try each pass in order until we find a match
  * Returns the match index or -1 if no match found, along with any error
  */
 function cascadingMatch(
   resultLines: string[],
   searchLines: string[],
-): { matchIndex: number; error?: string; passName?: string } {
+): {
+  matchIndex: number;
+  error?: string;
+  passName?: string;
+  strippedSearchLines?: string[];
+} {
+  // Pass 0: Try line-number-based matching first
+  const lineNumberResult = tryLineNumberMatch(resultLines, searchLines);
+  if (lineNumberResult) {
+    return lineNumberResult;
+  }
+
+  // Strip line numbers for subsequent passes if they exist but didn't match at position
+  const { strippedLines, startLine } = parseLineNumberedContent(searchLines);
+  const linesToMatch = startLine !== null ? strippedLines : searchLines;
+
   const passesToTry = MATCHING_PASSES;
 
   for (const pass of passesToTry) {
     const positions = findMatchPositions(
       resultLines,
-      searchLines,
+      linesToMatch,
       pass.comparator,
     );
 
@@ -260,7 +386,11 @@ function cascadingMatch(
     }
 
     if (positions.length === 1) {
-      return { matchIndex: positions[0], passName: pass.name };
+      return {
+        matchIndex: positions[0],
+        passName: pass.name,
+        strippedSearchLines: startLine !== null ? strippedLines : undefined,
+      };
     }
   }
 
@@ -317,14 +447,18 @@ export function applySearchReplace(
     // Use cascading fuzzy matching to find the match
     let matchResult = cascadingMatch(resultLines, searchLines);
 
+    // Use stripped search lines if line numbers were present
+    let effectiveSearchLines = matchResult.strippedSearchLines ?? searchLines;
+
     // If no match found, try with trimmed leading/trailing empty lines as a fallback
     if (matchResult.error && !matchResult.error.includes("ambiguous")) {
-      const trimmedSearchLines = trimEmptyLines(searchLines);
-      if (trimmedSearchLines.length !== searchLines.length) {
+      const trimmedSearchLines = trimEmptyLines(effectiveSearchLines);
+      if (trimmedSearchLines.length !== effectiveSearchLines.length) {
         const trimmedResult = cascadingMatch(resultLines, trimmedSearchLines);
         if (!trimmedResult.error) {
           matchResult = trimmedResult;
-          searchLines = trimmedSearchLines;
+          effectiveSearchLines =
+            trimmedResult.strippedSearchLines ?? trimmedSearchLines;
           logger.debug(
             "Matched after trimming leading/trailing empty lines from search content",
           );
@@ -334,7 +468,7 @@ export function applySearchReplace(
 
     if (matchResult.error) {
       // Log detailed diagnostic information for debugging
-      logMatchFailure(resultLines, searchLines, appliedCount);
+      logMatchFailure(resultLines, effectiveSearchLines, appliedCount);
       return {
         success: false,
         error: matchResult.error,
@@ -345,7 +479,7 @@ export function applySearchReplace(
 
     const matchedLines = resultLines.slice(
       matchIndex,
-      matchIndex + searchLines.length,
+      matchIndex + effectiveSearchLines.length,
     );
 
     // Preserve indentation relative to first matched line
@@ -353,7 +487,7 @@ export function applySearchReplace(
       const m = line.match(/^[\t ]*/);
       return m ? m[0] : "";
     });
-    const searchIndents = searchLines.map((line) => {
+    const searchIndents = effectiveSearchLines.map((line) => {
       const m = line.match(/^[\t ]*/);
       return m ? m[0] : "";
     });
@@ -380,7 +514,9 @@ export function applySearchReplace(
     });
 
     const beforeMatch = resultLines.slice(0, matchIndex);
-    const afterMatch = resultLines.slice(matchIndex + searchLines.length);
+    const afterMatch = resultLines.slice(
+      matchIndex + effectiveSearchLines.length,
+    );
     resultLines = [...beforeMatch, ...indentedReplaceLines, ...afterMatch];
     appliedCount++;
   }

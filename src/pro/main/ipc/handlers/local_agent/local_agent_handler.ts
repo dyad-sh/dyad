@@ -540,9 +540,9 @@ export async function handleLocalAgentStream(
     const accumulatedAiMessages: ModelMessage[] = [];
 
     // If there are persisted todos from a previous turn, inject a synthetic
-    // user message so the LLM is aware of them. This follows the same pattern
-    // as buildTodoReminderMessage — a transient message not persisted to
-    // accumulatedAiMessages.
+    // user message so the LLM is aware of them. Inserted BEFORE the user's
+    // current message so the user's actual request is the last thing the LLM
+    // reads, giving it natural priority over stale todos.
     if (persistedTodos.length > 0 && hasIncompleteTodos(persistedTodos)) {
       const todoSummary = persistedTodos
         .map((t) => `- [${t.status}] ${t.content}`)
@@ -552,11 +552,18 @@ export async function handleLocalAgentStream(
         content: [
           {
             type: "text",
-            text: `[System] Previous turn's todos:\n${todoSummary}\n\nContinue working on incomplete todos if relevant.`,
+            text: `[System] You have unfinished todos from your previous turn:\n${todoSummary}\n\nThe user's next message is their current request. If their request relates to these todos, continue working on them. If their request is about something different, discard these old todos by calling update_todos with merge=false and an empty list, then focus entirely on the user's new request.`,
           },
         ],
       };
-      currentMessageHistory = [...currentMessageHistory, syntheticMessage];
+      // Insert before the last message (the user's current message) so the
+      // user's intent is the final thing the LLM sees.
+      const insertIndex = Math.max(0, currentMessageHistory.length - 1);
+      currentMessageHistory = [
+        ...currentMessageHistory.slice(0, insertIndex),
+        syntheticMessage,
+        ...currentMessageHistory.slice(insertIndex),
+      ];
     }
 
     while (!abortController.signal.aborted) {

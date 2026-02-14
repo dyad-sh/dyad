@@ -239,8 +239,8 @@ export type DeprecatedDyadProBudget = z.infer<
  */
 export const DeprecatedRuntimeModeSchema = z.enum([
   "web-sandbox",
-  "host",
-  "docker",
+  "local-node",
+  "unset",
 ]);
 export type DeprecatedRuntimeMode = z.infer<typeof DeprecatedRuntimeModeSchema>;
 

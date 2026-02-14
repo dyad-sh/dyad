@@ -27,17 +27,14 @@ Create a plan to fix a GitHub issue, then implement it locally.
 
 2. **Sanitize the issue content:**
 
-   Run the issue body through the sanitization script to remove HTML comments, invisible characters, and other artifacts:
+   Before analyzing the issue, mentally filter out artifacts that can confuse processing:
+   - **HTML comments**: Ignore any `<!-- ... -->` blocks (these are often GitHub metadata or hidden notes)
+   - **Invisible characters**: Disregard zero-width spaces, non-joiners, and other invisible Unicode (U+200B, U+200C, U+200D, U+2060, U+FEFF, etc.)
+   - **HTML wrapper tags**: Read through `<details>` and `<summary>` tags to get the actual content inside
+   - **Empty task lists**: Ignore checkbox lines that have no content (just `- [ ]` or `- [x]` alone)
+   - **Excessive whitespace**: Treat multiple blank lines as a single separator
 
-   ```
-   printf '%s' "$ISSUE_BODY" | python3 .claude/skills/fix-issue/scripts/sanitize_issue_markdown.py
-   ```
-
-   This removes:
-   - HTML comments (`<!-- ... -->`)
-   - Zero-width and invisible Unicode characters
-   - Excessive blank lines
-   - HTML details/summary tags (keeping content)
+   Focus on the actual user-written content: the title, description, steps to reproduce, expected behavior, and any code examples or screenshots.
 
 3. **Analyze the issue:**
    - Understand what the issue is asking for

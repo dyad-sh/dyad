@@ -506,7 +506,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
 
             return (
               <ContextMenu key={chat.id}>
-                <ContextMenuTrigger asChild>
+                <ContextMenuTrigger>
                   <Tooltip>
                     <TooltipTrigger
                       render={

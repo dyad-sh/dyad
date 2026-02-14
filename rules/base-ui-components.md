@@ -13,16 +13,16 @@ If you need a component not yet wrapped in `src/components/ui/`, build it using 
 
 ### Context Menu
 
-The `ContextMenu` in `src/components/ui/context-menu.tsx` uses Base UI's `Menu` primitives with a custom trigger that listens for right-click events. Key differences from Radix's API:
+The `ContextMenu` in `src/components/ui/context-menu.tsx` uses Base UI's native `ContextMenu` primitive (`@base-ui/react/context-menu`), which handles right-click and long-press detection automatically. Key differences from Radix's API:
 
 - Use `onClick` instead of `onSelect` on `ContextMenuItem`
-- The `ContextMenuTrigger` supports `asChild` to merge handlers onto the child element
-- Menu positioning is handled via a virtual anchor at the cursor position
+- `ContextMenuTrigger` renders a `<div>` wrapper — no `asChild` needed (use the `render` prop if you need to change the element type)
+- Menu positioning at the cursor is handled natively by Base UI
 
 ```tsx
 // Correct usage
 <ContextMenu>
-  <ContextMenuTrigger asChild>
+  <ContextMenuTrigger>
     <div>Right-click me</div>
   </ContextMenuTrigger>
   <ContextMenuContent>

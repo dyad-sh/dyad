@@ -279,8 +279,15 @@ export default function AppDetailsPage() {
       }
 
       await queryClient.cancelQueries({ queryKey: queryKeys.apps.all });
+      await queryClient.cancelQueries({
+        queryKey: queryKeys.apps.detail({ appId }),
+      });
+
       const previousApps = queryClient.getQueryData<ListedApp[]>(
         queryKeys.apps.all,
+      );
+      const previousDetail = queryClient.getQueryData<App>(
+        queryKeys.apps.detail({ appId }),
       );
 
       queryClient.setQueryData<ListedApp[]>(queryKeys.apps.all, (oldApps) =>
@@ -301,11 +308,17 @@ export default function AppDetailsPage() {
         },
       );
 
-      return { previousApps };
+      return { previousApps, previousDetail };
     },
     onError: (error, _variables, context) => {
       if (context?.previousApps) {
         queryClient.setQueryData(queryKeys.apps.all, context.previousApps);
+      }
+      if (context?.previousDetail) {
+        queryClient.setQueryData(
+          queryKeys.apps.detail({ appId }),
+          context.previousDetail,
+        );
       }
       showError(error);
     },

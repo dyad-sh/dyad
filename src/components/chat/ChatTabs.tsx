@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { Loader2, MoreHorizontal, X } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import type { ChatSummary } from "@/lib/schemas";
 import { useNavigate } from "@tanstack/react-router";
@@ -487,7 +488,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
   return (
     <TooltipProvider delay={300}>
       <div ref={containerRef} className="flex min-w-0 items-center gap-1 px-2">
-        <div className="flex min-w-0 flex-1 items-center overflow-hidden">
+        <AnimatePresence initial={false} mode="popLayout">
           {visibleTabs.map((chat, index) => {
             const isActive = selectedChatId === chat.id;
             const isNextActive =
@@ -507,163 +508,176 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
             const hasOtherTabs = orderedChatIds.length > 1;
 
             return (
-              <ContextMenu key={chat.id}>
-                <ContextMenuTrigger>
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <div
-                          draggable
-                          onAuxClick={(event) => {
-                            // Middle-click (button 1) to close tab
-                            if (event.button === 1) {
+              <motion.div
+                key={chat.id}
+                layout
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                transition={{
+                  layout: { type: "spring", stiffness: 500, damping: 35 },
+                  opacity: { duration: 0.15 },
+                  scale: { duration: 0.15 },
+                }}
+              >
+                <ContextMenu>
+                  <ContextMenuTrigger>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <div
+                            draggable
+                            onAuxClick={(event) => {
+                              // Middle-click (button 1) to close tab
+                              if (event.button === 1) {
+                                event.preventDefault();
+                                handleCloseTab(chat.id);
+                              }
+                            }}
+                            onDragStart={(event) => {
+                              event.dataTransfer.effectAllowed = "move";
+                              event.dataTransfer.setData(
+                                "text/plain",
+                                String(chat.id),
+                              );
+                              setDraggingChatId(chat.id);
+                            }}
+                            onDragEnd={() => setDraggingChatId(null)}
+                            onDragOver={(event) => {
+                              if (
+                                draggingChatId === null ||
+                                draggingChatId === chat.id
+                              ) {
+                                return;
+                              }
                               event.preventDefault();
-                              handleCloseTab(chat.id);
-                            }
-                          }}
-                          onDragStart={(event) => {
-                            event.dataTransfer.effectAllowed = "move";
-                            event.dataTransfer.setData(
-                              "text/plain",
-                              String(chat.id),
-                            );
-                            setDraggingChatId(chat.id);
-                          }}
-                          onDragEnd={() => setDraggingChatId(null)}
-                          onDragOver={(event) => {
-                            if (
-                              draggingChatId === null ||
-                              draggingChatId === chat.id
-                            ) {
-                              return;
-                            }
-                            event.preventDefault();
-                          }}
-                          onDrop={(event) => {
-                            event.preventDefault();
-                            if (
-                              draggingChatId === null ||
-                              draggingChatId === chat.id
-                            ) {
-                              return;
-                            }
+                            }}
+                            onDrop={(event) => {
+                              event.preventDefault();
+                              if (
+                                draggingChatId === null ||
+                                draggingChatId === chat.id
+                              ) {
+                                return;
+                              }
 
-                            const nextIds = reorderVisibleChatIds(
-                              orderedChatIds,
-                              visibleTabs.length,
-                              draggingChatId,
-                              chat.id,
-                            );
-                            if (!isSameIdOrder(orderedChatIds, nextIds)) {
-                              setRecentViewedChatIds(nextIds);
-                            }
-                            setDraggingChatId(null);
+                              const nextIds = reorderVisibleChatIds(
+                                orderedChatIds,
+                                visibleTabs.length,
+                                draggingChatId,
+                                chat.id,
+                              );
+                              if (!isSameIdOrder(orderedChatIds, nextIds)) {
+                                setRecentViewedChatIds(nextIds);
+                              }
+                              setDraggingChatId(null);
+                            }}
+                            className={cn(
+                              "group relative flex h-10 min-w-[140px] max-w-52 items-center gap-1 rounded-md px-2.5 transition-colors active:scale-[0.97]",
+                              isActive
+                                ? "bg-background text-foreground shadow-sm"
+                                : "bg-muted/50 text-muted-foreground hover:bg-muted",
+                              isDragging && "opacity-60",
+                              // Chrome-style divider on right edge
+                              !isActive &&
+                                !isNextActive &&
+                                index < visibleTabs.length - 1 &&
+                                "after:absolute after:right-0 after:top-1/4 after:h-1/2 after:w-px after:bg-border",
+                            )}
+                          />
+                        }
+                      >
+                        {inProgress && (
+                          <span
+                            className="flex items-center text-purple-600"
+                            aria-label={t("chatInProgress")}
+                            title={t("chatInProgress")}
+                          >
+                            <Loader2 size={12} className="animate-spin" />
+                          </span>
+                        )}
+                        {hasNotification && (
+                          <span
+                            className="flex items-center"
+                            aria-label={t("newActivity")}
+                            title={t("newActivity")}
+                          >
+                            <span className="h-2 w-2 rounded-full bg-blue-500" />
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleTabClick(chat)}
+                          className="flex min-w-0 flex-1 items-center gap-2 text-left rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                          aria-current={isActive ? "page" : undefined}
+                          aria-label={`${appName}: ${title}`}
+                        >
+                          <AppIcon
+                            appId={chat.appId}
+                            appName={appName}
+                            iconType={selectedApp?.iconType ?? null}
+                            iconData={selectedApp?.iconData ?? null}
+                            size={16}
+                          />
+                          <span className="truncate text-xs leading-4">
+                            {title}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleCloseTab(chat.id);
                           }}
                           className={cn(
-                            "group relative flex h-10 min-w-[140px] max-w-52 items-center gap-1 rounded-md px-2.5 transition-all active:scale-[0.97]",
+                            "flex h-6 w-6 items-center justify-center rounded-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
                             isActive
-                              ? "bg-background text-foreground shadow-sm"
-                              : "bg-muted/50 text-muted-foreground hover:bg-muted",
-                            isDragging && "opacity-60",
-                            // Chrome-style divider on right edge
-                            !isActive &&
-                              !isNextActive &&
-                              index < visibleTabs.length - 1 &&
-                              "after:absolute after:right-0 after:top-1/4 after:h-1/2 after:w-px after:bg-border",
+                              ? "opacity-80 hover:bg-muted"
+                              : "opacity-0 group-hover:opacity-80 hover:bg-background/50 focus-visible:opacity-80",
                           )}
-                        />
-                      }
-                    >
-                      {inProgress && (
-                        <span
-                          className="flex items-center text-purple-600"
-                          aria-label={t("chatInProgress")}
-                          title={t("chatInProgress")}
+                          aria-label={t("closeChatTab", { title })}
                         >
-                          <Loader2 size={12} className="animate-spin" />
-                        </span>
-                      )}
-                      {hasNotification && (
-                        <span
-                          className="flex items-center"
-                          aria-label={t("newActivity")}
-                          title={t("newActivity")}
-                        >
-                          <span className="h-2 w-2 rounded-full bg-blue-500" />
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => handleTabClick(chat)}
-                        className="flex min-w-0 flex-1 items-center gap-2 text-left rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        aria-current={isActive ? "page" : undefined}
-                        aria-label={`${appName}: ${title}`}
+                          <X size={12} />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent
+                        side="bottom"
+                        align="start"
+                        sideOffset={6}
+                        className="max-w-80 !rounded-lg !border !border-border !bg-popover !px-3.5 !py-2.5 !text-popover-foreground !shadow-lg [&>:last-child]:!hidden"
                       >
-                        <AppIcon
-                          appId={chat.appId}
-                          appName={appName}
-                          iconType={selectedApp?.iconType ?? null}
-                          iconData={selectedApp?.iconData ?? null}
-                          size={16}
-                        />
-                        <span className="truncate text-xs leading-4">
-                          {title}
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleCloseTab(chat.id);
-                        }}
-                        className={cn(
-                          "flex h-6 w-6 items-center justify-center rounded-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                          isActive
-                            ? "opacity-80 hover:bg-muted"
-                            : "opacity-0 group-hover:opacity-80 hover:bg-background/50 focus-visible:opacity-80",
-                        )}
-                        aria-label={t("closeChatTab", { title })}
-                      >
-                        <X size={12} />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent
-                      side="bottom"
-                      align="start"
-                      sideOffset={6}
-                      className="max-w-80 !rounded-lg !border !border-border !bg-popover !px-3.5 !py-2.5 !text-popover-foreground !shadow-lg [&>:last-child]:!hidden"
-                    >
-                      <div className="min-w-0">
-                        <div className="text-[11px] leading-4 break-words">
-                          <span className="font-semibold">{appName}</span> -{" "}
-                          <span className="opacity-70">{titleExcerpt}</span>
+                        <div className="min-w-0">
+                          <div className="text-[11px] leading-4 break-words">
+                            <span className="font-semibold">{appName}</span> -{" "}
+                            <span className="opacity-70">{titleExcerpt}</span>
+                          </div>
                         </div>
-                      </div>
-                    </TooltipContent>
-                  </Tooltip>
-                </ContextMenuTrigger>
-                <ContextMenuContent>
-                  <ContextMenuItem onClick={() => handleCloseTab(chat.id)}>
-                    {t("closeTab")}
-                  </ContextMenuItem>
-                  <ContextMenuSeparator />
-                  <ContextMenuItem
-                    onClick={() => handleCloseOtherTabs(chat.id)}
-                    disabled={!hasOtherTabs}
-                  >
-                    {t("closeOtherTabs")}
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    onClick={() => handleCloseTabsToRight(chat.id)}
-                    disabled={!hasTabsToRight}
-                  >
-                    {t("closeTabsToRight")}
-                  </ContextMenuItem>
-                </ContextMenuContent>
-              </ContextMenu>
+                      </TooltipContent>
+                    </Tooltip>
+                  </ContextMenuTrigger>
+                  <ContextMenuContent>
+                    <ContextMenuItem onClick={() => handleCloseTab(chat.id)}>
+                      {t("closeTab")}
+                    </ContextMenuItem>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem
+                      onClick={() => handleCloseOtherTabs(chat.id)}
+                      disabled={!hasOtherTabs}
+                    >
+                      {t("closeOtherTabs")}
+                    </ContextMenuItem>
+                    <ContextMenuItem
+                      onClick={() => handleCloseTabsToRight(chat.id)}
+                      disabled={!hasTabsToRight}
+                    >
+                      {t("closeTabsToRight")}
+                    </ContextMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
+              </motion.div>
             );
           })}
-        </div>
+        </AnimatePresence>
 
         {overflowTabs.length > 0 && (
           <DropdownMenu>

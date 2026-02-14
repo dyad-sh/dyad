@@ -784,13 +784,17 @@ export function registerAppHandlers() {
       })
       .returning();
 
+    const correctIconData = createGeneratedIconDataForApp(app.id, params.name);
     await db
       .update(apps)
       .set({
         iconType: "generated",
-        iconData: createGeneratedIconDataForApp(app.id, params.name),
+        iconData: correctIconData,
       })
       .where(eq(apps.id, app.id));
+
+    // Update the app object with the correct iconData so the returned value matches the DB
+    app.iconData = correctIconData;
 
     // Create an initial chat for this app
     const [chat] = await db
@@ -906,13 +910,20 @@ export function registerAppHandlers() {
       })
       .returning();
 
+    const correctIconData = createGeneratedIconDataForApp(
+      newDbApp.id,
+      newAppName,
+    );
     await db
       .update(apps)
       .set({
         iconType: "generated",
-        iconData: createGeneratedIconDataForApp(newDbApp.id, newAppName),
+        iconData: correctIconData,
       })
       .where(eq(apps.id, newDbApp.id));
+
+    // Update the app object with the correct iconData so the returned value matches the DB
+    newDbApp.iconData = correctIconData;
 
     return { app: newDbApp };
   });

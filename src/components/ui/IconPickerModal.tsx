@@ -154,8 +154,14 @@ export function IconPickerModal({
     onOpenChange(false);
   };
 
+  const handleOpenChange = (nextOpen: boolean) => {
+    // Prevent closing the dialog while saving
+    if (!nextOpen && isSaving) return;
+    onOpenChange(nextOpen);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>Choose app icon</DialogTitle>
@@ -196,7 +202,7 @@ export function IconPickerModal({
                 <EmojiPicker
                   data={emojiData}
                   onEmojiSelect={(emoji: PickerEmojiPayload) => {
-                    if (!emoji.native) return;
+                    if (isSaving || !emoji.native) return;
                     void handleSaveEmoji(emoji.native);
                   }}
                   previewPosition="none"

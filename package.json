@@ -183,6 +183,9 @@
   "overrides": {
     "@vercel/sdk": {
       "@modelcontextprotocol/sdk": "$@modelcontextprotocol/sdk"
+    },
+    "@emoji-mart/react": {
+      "react": "$react"
     }
   },
   "engines": {

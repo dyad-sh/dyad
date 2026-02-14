@@ -77,6 +77,7 @@ The stashed changes will be automatically merged back after the rebase completes
 ### Conflict resolution tips
 
 - **Before rebasing:** If `npm install` modified `package-lock.json` (common in CI/local), discard changes with `git restore package-lock.json` to avoid "unstaged changes" errors
+- **Modify/delete conflicts:** When git reports "deleted in HEAD and modified in commit" (e.g., Python scripts removed from main but modified in PR), use `git rm <file>` to accept the deletion
 - When resolving import conflicts (e.g., `<<<<<<< HEAD` with different imports), keep **both** imports if both are valid and needed by the component
 - When resolving conflicts in i18n-related commits, watch for duplicate constant definitions that conflict with imports from `@/lib/schemas` (e.g., `DEFAULT_ZOOM_LEVEL`)
 - If both sides of a conflict have valid imports/hooks, keep both and remove any duplicate constant redefinitions
@@ -84,6 +85,7 @@ The stashed changes will be automatically merged back after the rebase completes
 - **Complementary additions**: When both sides added new sections at the end of a file (e.g., both added different documentation tips), keep both sections rather than choosing one — they're not truly conflicting, just different additions
 - **React component wrapper conflicts**: When rebasing UI changes that conflict on wrapper div classes (e.g., `flex items-start space-x-2` vs `flex items-end gap-1`), keep the newer styling from the incoming commit but preserve any functional components (like dialogs or modals) that exist in HEAD but not in the incoming change
 - **Refactoring conflicts**: When incoming commits refactor code (e.g., extracting inline logic into helper functions), and HEAD has new features in the same area, integrate HEAD's features into the new structure. Example: if incoming code moves streaming logic to `runSingleStreamPass()` and HEAD adds mid-turn compaction to the inline code, add compaction support to the new function rather than keeping the old inline version
+- **Skill documentation conflicts:** When resolving conflicts in `.claude/skills/*/SKILL.md` files, prefer HEAD's version if it's more comprehensive and includes all necessary workflow steps
 
 ## Rebasing with uncommitted changes
 
@@ -108,3 +110,7 @@ When rebasing a PR branch that conflicts with upstream documentation changes (e.
 ## Resolving package.json engine conflicts
 
 When rebasing causes conflicts in the `engines` field of `package.json` (e.g., node version requirements), accept the incoming change from upstream/main to maintain consistency with the base branch requirements. The same resolution should be applied to the corresponding section in `package-lock.json`.
+
+## Force push after rebase
+
+When `git push --force-with-lease` fails with "stale info" error after rebasing (because local and remote histories have diverged), use `git push --force` instead. The `--force-with-lease` safety check is too strict for rebased branches.

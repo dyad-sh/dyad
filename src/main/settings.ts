@@ -8,7 +8,6 @@ import {
   Secret,
   VertexProviderSetting,
   migrateStoredSettings,
-  stripDeprecatedSettings,
 } from "../lib/schemas";
 import { safeStorage } from "electron";
 import { v4 as uuidv4 } from "uuid";
@@ -174,12 +173,11 @@ export function readSettings(): UserSettings {
     if (storedSettings.proSmartContextOption === "conservative") {
       storedSettings.proSmartContextOption = undefined;
     }
-    // Migrate stored settings to active settings (converts deprecated values)
+    // Migrate stored settings to active settings (converts deprecated values
+    // and removes deprecated properties)
     const migratedSettings = migrateStoredSettings(storedSettings);
-    // Strip deprecated properties to improve code health
-    const cleanedSettings = stripDeprecatedSettings(migratedSettings);
     // Validate the migrated settings against the active schema
-    return UserSettingsSchema.parse(cleanedSettings);
+    return UserSettingsSchema.parse(migratedSettings);
   } catch (error) {
     logger.error("Error reading settings:", error);
     return DEFAULT_SETTINGS;

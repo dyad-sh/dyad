@@ -204,8 +204,45 @@ export const NeonSchema = z.object({
 });
 export type Neon = z.infer<typeof NeonSchema>;
 
+/**
+ * Experiments schema for stored settings (includes deprecated values for backwards compat).
+ */
+export const StoredExperimentsSchema = z.object({
+  // DEPRECATED: These experiment properties are no longer used
+  enableLocalAgent: z.boolean().optional(),
+  enableSupabaseIntegration: z.boolean().optional(),
+  enableFileEditing: z.boolean().optional(),
+});
+export type StoredExperiments = z.infer<typeof StoredExperimentsSchema>;
+
+/**
+ * Active experiments schema (excludes deprecated values).
+ */
 export const ExperimentsSchema = z.object({});
 export type Experiments = z.infer<typeof ExperimentsSchema>;
+
+/**
+ * DEPRECATED: Budget schema for old Dyad Pro budget tracking.
+ * Only used in StoredUserSettingsSchema for backwards compatibility.
+ */
+export const DeprecatedDyadProBudgetSchema = z.object({
+  budgetResetAt: z.string().optional(),
+  maxBudget: z.number().optional(),
+});
+export type DeprecatedDyadProBudget = z.infer<
+  typeof DeprecatedDyadProBudgetSchema
+>;
+
+/**
+ * DEPRECATED: Runtime mode schema for old runtime mode setting.
+ * Replaced by runtimeMode2. Only used in StoredUserSettingsSchema for backwards compatibility.
+ */
+export const DeprecatedRuntimeModeSchema = z.enum([
+  "web-sandbox",
+  "host",
+  "docker",
+]);
+export type DeprecatedRuntimeMode = z.infer<typeof DeprecatedRuntimeModeSchema>;
 
 export const GlobPathSchema = z.object({
   globPath: z.string(),
@@ -289,7 +326,7 @@ const BaseUserSettingsFields = {
   telemetryUserId: z.string().optional(),
   hasRunBefore: z.boolean().optional(),
   enableDyadPro: z.boolean().optional(),
-  experiments: ExperimentsSchema.optional(),
+  // Note: experiments field is different between Stored and Active schemas
   lastShownReleaseNotesVersion: z.string().optional(),
   maxChatTurnsInContext: z.number().optional(),
   thinkingBudget: z.enum(["low", "medium", "high"]).optional(),
@@ -341,6 +378,12 @@ export const StoredUserSettingsSchema = z
     // Use StoredChatModeSchema to allow deprecated "agent" value
     selectedChatMode: StoredChatModeSchema.optional(),
     defaultChatMode: StoredChatModeSchema.optional(),
+    // Use StoredExperimentsSchema to allow deprecated experiment properties
+    experiments: StoredExperimentsSchema.optional(),
+    // DEPRECATED: These properties are no longer used but kept for backwards compat
+    enableProSaverMode: z.boolean().optional(),
+    dyadProBudget: DeprecatedDyadProBudgetSchema.optional(),
+    runtimeMode: DeprecatedRuntimeModeSchema.optional(),
   })
   // Allow unknown properties to pass through (e.g. future settings
   // that should be preserved if user downgrades to an older version)
@@ -361,6 +404,8 @@ export const UserSettingsSchema = z
     // Use ChatModeSchema which excludes deprecated "agent" value
     selectedChatMode: ChatModeSchema.optional(),
     defaultChatMode: ChatModeSchema.optional(),
+    // Use active ExperimentsSchema (excludes deprecated experiment properties)
+    experiments: ExperimentsSchema.optional(),
   })
   // Allow unknown properties to pass through (e.g. future settings
   // that should be preserved if user downgrades to an older version)
@@ -385,43 +430,50 @@ export function migrateStoredChatMode(
 }
 
 /**
+ * Migrates stored experiments to active experiments.
+ * Removes deprecated experiment properties.
+ */
+export function migrateStoredExperiments(
+  experiments: StoredExperiments | undefined,
+): Experiments {
+  if (!experiments) {
+    return {};
+  }
+  // Remove deprecated experiment properties by destructuring
+  const {
+    enableLocalAgent: _enableLocalAgent,
+    enableSupabaseIntegration: _enableSupabaseIntegration,
+    enableFileEditing: _enableFileEditing,
+    ...activeExperiments
+  } = experiments;
+  return activeExperiments;
+}
+
+/**
  * Migrates stored settings to active settings.
- * Applies necessary transformations for deprecated values.
+ * Applies necessary transformations for deprecated values:
+ * - Converts deprecated "agent" chat mode to "build"
+ * - Removes deprecated experiment properties
+ * - Removes deprecated top-level properties (enableProSaverMode, dyadProBudget, runtimeMode)
  */
 export function migrateStoredSettings(
   stored: StoredUserSettings,
 ): UserSettings {
-  return {
-    ...stored,
-    selectedChatMode: migrateStoredChatMode(stored.selectedChatMode),
-    defaultChatMode: migrateStoredChatMode(stored.defaultChatMode),
-  };
-}
-
-/**
- * Strips deprecated properties from settings to improve code health.
- * This removes properties that are no longer used by the application.
- */
-export function stripDeprecatedSettings(settings: UserSettings): UserSettings {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // Remove deprecated top-level properties by destructuring
   const {
     enableProSaverMode: _enableProSaverMode,
     dyadProBudget: _dyadProBudget,
     runtimeMode: _runtimeMode,
-    ...cleanedSettings
-  } = settings as any;
+    experiments,
+    ...restSettings
+  } = stored;
 
-  if (cleanedSettings.experiments) {
-    const {
-      enableLocalAgent: _enableLocalAgent,
-      enableSupabaseIntegration: _enableSupabaseIntegration,
-      enableFileEditing: _enableFileEditing,
-      ...restExperiments
-    } = cleanedSettings.experiments;
-    cleanedSettings.experiments = restExperiments;
-  }
-
-  return cleanedSettings as UserSettings;
+  return {
+    ...restSettings,
+    selectedChatMode: migrateStoredChatMode(stored.selectedChatMode),
+    defaultChatMode: migrateStoredChatMode(stored.defaultChatMode),
+    experiments: migrateStoredExperiments(experiments),
+  };
 }
 
 export function isDyadProEnabled(settings: UserSettings): boolean {

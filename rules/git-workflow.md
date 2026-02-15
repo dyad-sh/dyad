@@ -108,3 +108,11 @@ When rebasing a PR branch that conflicts with upstream documentation changes (e.
 ## Resolving package.json engine conflicts
 
 When rebasing causes conflicts in the `engines` field of `package.json` (e.g., node version requirements), accept the incoming change from upstream/main to maintain consistency with the base branch requirements. The same resolution should be applied to the corresponding section in `package-lock.json`.
+
+## CI environment limitations during rebase
+
+When rebasing in CI environments (e.g., GitHub Actions), the Node version may not match project requirements (e.g., Node 20 available when project requires Node 24). If `npm install` fails due to engine mismatch:
+
+- Complete the rebase and push without running lint/test checks locally
+- The CI system will run proper checks with the correct environment after the push
+- This is acceptable for rebase-only operations where no new code was written

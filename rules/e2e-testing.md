@@ -42,6 +42,15 @@ await po.navigation.goToChatTab();
 
 Key sub-components: `po.appManagement`, `po.navigation`, `po.chatActions`, `po.previewPanel`, `po.codeEditor`, `po.githubConnector`, `po.toastNotifications`, `po.settings`, `po.securityReview`, `po.modelPicker`.
 
+## Selector strategy preferences
+
+Prefer semantic selectors over ID-based selectors for better test resilience:
+
+- **Prefer**: `getByRole()`, `getByLabel()`, `getByText()` - these are tied to the user experience
+- **Avoid**: `locator('#id')` - these are implementation details that may change
+
+When resolving rebase conflicts in E2E tests, keep semantic selectors over ID-based ones.
+
 ## Base UI Radio component selection in Playwright
 
 Base UI Radio components render a hidden native `<input type="radio">` with `aria-hidden="true"`. Both `getByRole('radio', { name: '...' })` and `getByLabel('...')` find this hidden input but can't click it (element is outside viewport). Use `getByText` to click the visible label text instead.

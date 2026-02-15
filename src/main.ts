@@ -32,6 +32,7 @@ import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai
 import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
 import { getDyadAppsBaseDirectory } from "./paths/paths";
+import { runAppIconBackfill } from "./main/app_icon_backfill";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -88,6 +89,7 @@ export async function onReady() {
     logger.error("Error initializing backup manager", e);
   }
   initializeDatabase();
+  runAppIconBackfill();
 
   // Cleanup old ai_messages_json entries to prevent database bloat
   cleanupOldAiMessagesJson();

@@ -57,6 +57,8 @@ import {
   hasIncompleteTodos,
   type InjectedMessage,
 } from "./prepare_step_utils";
+import { loadTodos } from "./todo_persistence";
+import { ensureDyadGitignored } from "@/ipc/handlers/planUtils";
 import { TOOL_DEFINITIONS } from "./tool_definitions";
 import {
   parseAiMessagesJson,
@@ -420,6 +422,20 @@ export async function handleLocalAgentStream(
       settings,
     );
 
+    // Load persisted todos from a previous turn (if any)
+    const persistedTodos = await loadTodos(appPath, chat.id);
+    // Ensure .dyad/ is gitignored (idempotent; also done by compaction/plans)
+    await ensureDyadGitignored(appPath).catch((err) =>
+      logger.warn("Failed to ensure .dyad gitignored:", err),
+    );
+    if (persistedTodos.length > 0) {
+      // Emit loaded todos to the renderer so the UI shows them immediately
+      safeSend(event.sender, "agent-tool:todos-update", {
+        chatId: chat.id,
+        todos: persistedTodos,
+      });
+    }
+
     // Build tool execute context
     const fileEditTracker: FileEditTracker = Object.create(null);
     const ctx: AgentContext = {
@@ -431,7 +447,7 @@ export async function handleLocalAgentStream(
       supabaseOrganizationSlug: chat.app.supabaseOrganizationSlug,
       messageId: placeholderMessageId,
       isSharedModulesChanged: false,
-      todos: [],
+      todos: persistedTodos,
       dyadRequestId,
       fileEditTracker,
       isDyadPro: isDyadProEnabled(settings),
@@ -516,6 +532,33 @@ export async function handleLocalAgentStream(
     let todoFollowUpLoops = 0;
     let currentMessageHistory = messageHistory;
     const accumulatedAiMessages: ModelMessage[] = [];
+
+    // If there are persisted todos from a previous turn, inject a synthetic
+    // user message so the LLM is aware of them. Inserted BEFORE the user's
+    // current message so the user's actual request is the last thing the LLM
+    // reads, giving it natural priority over stale todos.
+    if (persistedTodos.length > 0 && hasIncompleteTodos(persistedTodos)) {
+      const todoSummary = persistedTodos
+        .map((t) => `- [${t.status}] ${t.content}`)
+        .join("\n");
+      const syntheticMessage: ModelMessage = {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: `[System] You have unfinished todos from your previous turn:\n${todoSummary}\n\nThe user's next message is their current request. If their request relates to these todos, continue working on them. If their request is about something different, discard these old todos by calling update_todos with merge=false and an empty list, then focus entirely on the user's new request.`,
+          },
+        ],
+      };
+      // Insert before the last message (the user's current message) so the
+      // user's intent is the final thing the LLM sees.
+      const insertIndex = Math.max(0, currentMessageHistory.length - 1);
+      currentMessageHistory = [
+        ...currentMessageHistory.slice(0, insertIndex),
+        syntheticMessage,
+        ...currentMessageHistory.slice(insertIndex),
+      ];
+    }
 
     while (!abortController.signal.aborted) {
       // Reset mid-turn compaction state at the start of each pass.

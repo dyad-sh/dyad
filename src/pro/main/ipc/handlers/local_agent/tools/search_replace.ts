@@ -9,7 +9,7 @@ import {
   escapeXmlContent,
 } from "./types";
 import { safeJoin } from "@/ipc/utils/path_utils";
-import { applySearchReplace } from "@/pro/main/ipc/processors/search_replace_processor";
+import { applySearchReplaceWithLineNumbers } from "@/pro/main/ipc/processors/search_replace_line_numbers_processor";
 import { escapeSearchReplaceMarkers } from "@/pro/shared/search_replace_markers";
 import { deploySupabaseFunction } from "@/supabase_admin/supabase_management_client";
 import {
@@ -107,21 +107,18 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
 
     const original = await fs.promises.readFile(fullFilePath, "utf8");
 
-    // Construct the operations string in the expected format
-    const escapedOld = escapeSearchReplaceMarkers(args.old_string);
-    const escapedNew = escapeSearchReplaceMarkers(args.new_string);
-    const operations = `<<<<<<< SEARCH\n${escapedOld}\n=======\n${escapedNew}\n>>>>>>> REPLACE`;
-
-    const result = applySearchReplace(original, operations);
+    const result = applySearchReplaceWithLineNumbers(
+      original,
+      args.old_string,
+      args.new_string,
+    );
 
     if (!result.success || typeof result.content !== "string") {
       sendTelemetryEvent("local_agent:search_replace:failure", {
         filePath: args.file_path,
         error: result.error ?? "unknown",
       });
-      throw new Error(
-        `Failed to apply search-replace: ${result.error ?? "unknown"}`,
-      );
+      throw new Error(result.error ?? "Failed to apply search-replace");
     }
 
     await fs.promises.writeFile(fullFilePath, result.content);

@@ -47,6 +47,7 @@ ${COMMON_GUIDELINES}
   - Don't add error handling, fallbacks, or validation for scenarios that can't happen. Trust internal code and framework guarantees. Only validate at system boundaries (user input, external APIs). Don't use feature flags or backwards-compatibility shims when you can just change the code.
   - Don't create helpers, utilities, or abstractions for one-time operations. Don't design for hypothetical future requirements. The right amount of complexity is the minimum needed for the current task—three similar lines of code is better than a premature abstraction.
   - Avoid backwards-compatibility hacks like renaming unused _vars, re-exporting types, adding // removed comments for removed code, etc. If you are certain that something is unused, you can delete it completely.
+- At the end of the turn, call \`set_prompt_suggestions\` with 2-4 short follow-up suggestions so the user can quickly ask a related next step. Each suggestion needs a short summary (button label, under ~40 chars) and the full prompt text. Only include suggestions when they are relevant and helpful.
 </general_guidelines>`;
 
 const TOOL_CALLING_BLOCK = `<tool_calling>

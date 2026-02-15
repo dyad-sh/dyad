@@ -17,6 +17,7 @@ import { listFilesTool } from "./tools/list_files";
 import { getSupabaseProjectInfoTool } from "./tools/get_supabase_project_info";
 import { getSupabaseTableSchemaTool } from "./tools/get_supabase_table_schema";
 import { setChatSummaryTool } from "./tools/set_chat_summary";
+import { setPromptSuggestionsTool } from "./tools/set_prompt_suggestions";
 import { addIntegrationTool } from "./tools/add_integration";
 import { readLogsTool } from "./tools/read_logs";
 import { editFileTool } from "./tools/edit_file";
@@ -58,6 +59,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   getSupabaseProjectInfoTool,
   getSupabaseTableSchemaTool,
   setChatSummaryTool,
+  setPromptSuggestionsTool,
   addIntegrationTool,
   readLogsTool,
   webSearchTool,

@@ -33,6 +33,7 @@ import { ZoomSelector } from "@/components/ZoomSelector";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { DefaultChatModeSelector } from "@/components/DefaultChatModeSelector";
 import { ContextCompactionSwitch } from "@/components/ContextCompactionSwitch";
+import { ExploreSubAgentSwitch } from "@/components/ExploreSubAgentSwitch";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
 import { SECTION_IDS, SETTING_IDS } from "@/lib/settingsSearchIndex";
@@ -420,6 +421,10 @@ export function AISettings() {
           Automatically compact long conversations to stay within context
           limits. Original messages are preserved in the app data directory.
         </div>
+      </div>
+
+      <div id={SETTING_IDS.exploreSubAgent} className="mt-4">
+        <ExploreSubAgentSwitch />
       </div>
     </div>
   );

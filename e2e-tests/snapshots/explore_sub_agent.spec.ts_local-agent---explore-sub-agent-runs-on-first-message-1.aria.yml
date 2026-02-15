@@ -1,0 +1,41 @@
+- paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
+- button "Exploring codebase":
+  - img
+  - text: ""
+  - img
+- button "file1.txt file1.txt Edit":
+  - img
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
+  - img
+- paragraph: More EOM
+- button "Copy":
+  - img
+- img
+- text: Approved
+- img
+- text: claude-opus-4-5
+- img
+- text: less than a minute ago
+- button "Copy Request ID":
+  - img
+  - text: ""
+- paragraph: tc=local-agent/simple-response
+- paragraph: Hello! I understand your request. This is a simple response from the Basic Agent mode.
+- button "Copy":
+  - img
+- img
+- text: claude-opus-4-5
+- img
+- text: less than a minute ago
+- button "Copy Request ID":
+  - img
+  - text: ""
+- button "Undo":
+  - img
+  - text: ""
+- button "Retry":
+  - img
+  - text: ""

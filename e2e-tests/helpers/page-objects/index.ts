@@ -22,4 +22,5 @@ export {
   Settings,
   AppManagement,
   PromptLibrary,
+  Terminal,
 } from "./components";

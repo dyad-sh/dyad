@@ -1243,6 +1243,7 @@ export async function handleLocalAgentStream(
       chatId: req.chatId,
       updatedFiles: !readOnly,
       chatSummary: ctx.chatSummary,
+      promptSuggestions: ctx.promptSuggestions,
     } satisfies ChatResponseEnd);
 
     return true; // Success

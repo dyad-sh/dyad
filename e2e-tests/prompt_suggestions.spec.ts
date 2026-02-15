@@ -9,12 +9,12 @@ test("AI prompt suggestions: visible after AI response, hover shows full prompt,
 }) => {
   await po.setUp({ autoApprove: true });
   await po.importApp("minimal");
-  await po.clickNewChat();
-  await po.selectChatMode("build");
+  await po.chatActions.clickNewChat();
+  await po.chatActions.selectChatMode("build");
   await po.sendPrompt("tc=prompt-suggestions");
-  await po.waitForChatCompletion();
+  await po.chatActions.waitForChatCompletion();
 
-  const container = po.getChatInputContainer();
+  const container = po.chatActions.getChatInputContainer();
   const suggestions = container.getByTestId("prompt-suggestion-buttons");
   await expect(suggestions).toBeVisible();
 
@@ -29,5 +29,7 @@ test("AI prompt suggestions: visible after AI response, hover shows full prompt,
   await expect(tooltip).toContainText(ADD_CONTACT_FORM_PROMPT);
 
   await addContactFormButton.click();
-  await expect(po.getChatInput()).toContainText(ADD_CONTACT_FORM_PROMPT);
+  await expect(po.chatActions.getChatInput()).toContainText(
+    ADD_CONTACT_FORM_PROMPT,
+  );
 });

@@ -360,18 +360,21 @@ export function DyadDiffStats({
   removedLines,
   totalLines,
 }: DyadDiffStatsProps) {
-  if (addedLines != null || removedLines != null) {
+  const showAdded = addedLines != null && addedLines > 0;
+  const showRemoved = removedLines != null && removedLines > 0;
+
+  if (showAdded || showRemoved) {
     return (
       <span className="inline-flex items-center gap-1 text-[11px] font-medium shrink-0">
-        {addedLines != null && (
+        {showAdded && (
           <span className="text-green-600 dark:text-green-400">
             +{addedLines}
           </span>
         )}
-        {addedLines != null && removedLines != null && (
+        {showAdded && showRemoved && (
           <span className="text-muted-foreground">/</span>
         )}
-        {removedLines != null && (
+        {showRemoved && (
           <span className="text-red-600 dark:text-red-400">
             -{removedLines}
           </span>

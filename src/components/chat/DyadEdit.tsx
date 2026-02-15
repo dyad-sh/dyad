@@ -38,8 +38,9 @@ export const DyadEdit: React.FC<DyadEditProps> = ({
 
   const lineCount = useMemo(() => {
     const content = String(children ?? "");
-    if (!content.trim()) return 0;
-    return content.split("\n").length;
+    if (content === "") return 0;
+    const count = content.split("\n").length;
+    return content.endsWith("\n") ? count - 1 : count;
   }, [children]);
 
   const fileName = path ? path.split("/").pop() : "";

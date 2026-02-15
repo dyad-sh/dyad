@@ -173,7 +173,8 @@ export function readSettings(): UserSettings {
     if (storedSettings.proSmartContextOption === "conservative") {
       storedSettings.proSmartContextOption = undefined;
     }
-    // Migrate stored settings to active settings (converts deprecated values)
+    // Migrate stored settings to active settings (converts deprecated values
+    // and removes deprecated properties)
     const migratedSettings = migrateStoredSettings(storedSettings);
     // Validate the migrated settings against the active schema
     return UserSettingsSchema.parse(migratedSettings);

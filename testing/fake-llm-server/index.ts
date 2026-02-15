@@ -8,6 +8,7 @@ import {
   handleAccessToken,
   handleUser,
   handleUserEmails,
+  handleUserOrgs,
   handleUserRepos,
   handleRepo,
   handleRepoBranches,
@@ -187,6 +188,7 @@ app.post("/github/login/oauth/access_token", handleAccessToken);
 // GitHub API endpoints
 app.get("/github/api/user", handleUser);
 app.get("/github/api/user/emails", handleUserEmails);
+app.get("/github/api/user/orgs", handleUserOrgs);
 app.get("/github/api/user/repos", handleUserRepos);
 app.post("/github/api/user/repos", handleUserRepos);
 app.get("/github/api/repos/:owner/:repo", handleRepo);

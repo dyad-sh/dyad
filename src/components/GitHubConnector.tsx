@@ -54,6 +54,11 @@ interface GitHubBranch {
   commit: { sha: string };
 }
 
+interface GitHubOrg {
+  login: string;
+  avatar_url?: string;
+}
+
 interface ConnectedGitHubConnectorProps {
   appId: number;
   app: any;
@@ -662,8 +667,11 @@ export function UnconnectedGitHubConnector({
   const [createRepoError, setCreateRepoError] = useState<string | null>(null);
   const [createRepoSuccess, setCreateRepoSuccess] = useState<boolean>(false);
 
-  // Assume org is the authenticated user for now (could add org input later)
-  const githubOrg = ""; // Use empty string for now (GitHub API will default to the authenticated user)
+  // Organization state
+  const [availableOrgs, setAvailableOrgs] = useState<GitHubOrg[]>([]);
+  const [isLoadingOrgs, setIsLoadingOrgs] = useState(false);
+  const PERSONAL_ACCOUNT_VALUE = "__personal__";
+  const [selectedOrg, setSelectedOrg] = useState<string>(""); // Empty string = personal account
 
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -748,6 +756,25 @@ export function UnconnectedGitHubConnector({
     }
   }, [settings?.githubAccessToken, repoSetupMode]);
 
+  const loadAvailableOrgs = useCallback(async () => {
+    setIsLoadingOrgs(true);
+    try {
+      const orgs = await ipc.github.listOrgs();
+      setAvailableOrgs(orgs);
+    } catch (error) {
+      console.error("Failed to load GitHub organizations:", error);
+    } finally {
+      setIsLoadingOrgs(false);
+    }
+  }, []);
+
+  // Load organizations when GitHub is connected and in create mode
+  useEffect(() => {
+    if (settings?.githubAccessToken && repoSetupMode === "create") {
+      loadAvailableOrgs();
+    }
+  }, [settings?.githubAccessToken, repoSetupMode, loadAvailableOrgs]);
+
   const loadAvailableRepos = async () => {
     setIsLoadingRepos(true);
     try {
@@ -792,14 +819,14 @@ export function UnconnectedGitHubConnector({
   };
 
   const checkRepoAvailability = useCallback(
-    async (name: string) => {
+    async (name: string, org: string = selectedOrg) => {
       setRepoCheckError(null);
       setRepoAvailable(null);
       if (!name) return;
       setIsCheckingRepo(true);
       try {
         const result = await ipc.github.isRepoAvailable({
-          org: githubOrg,
+          org,
           repo: name,
         });
         setRepoAvailable(result.available);
@@ -814,7 +841,7 @@ export function UnconnectedGitHubConnector({
         setIsCheckingRepo(false);
       }
     },
-    [githubOrg],
+    [selectedOrg],
   );
 
   const debouncedCheckRepoAvailability = useCallback(
@@ -840,7 +867,7 @@ export function UnconnectedGitHubConnector({
     try {
       if (repoSetupMode === "create") {
         await ipc.github.createRepo({
-          org: githubOrg,
+          org: selectedOrg,
           repo: repoName,
           appId,
           branch: selectedBranch,
@@ -1040,6 +1067,52 @@ export function UnconnectedGitHubConnector({
           <form className="space-y-4" onSubmit={handleSetupRepo}>
             {repoSetupMode === "create" ? (
               <>
+                {/* Organization Selector */}
+                <div>
+                  <Label className="block text-sm font-medium">Owner</Label>
+                  <Select
+                    value={selectedOrg || PERSONAL_ACCOUNT_VALUE}
+                    onValueChange={(v) => {
+                      const org = v === PERSONAL_ACCOUNT_VALUE ? "" : (v ?? "");
+                      setSelectedOrg(org);
+                      // Cancel any pending debounced check
+                      if (debounceTimeoutRef.current) {
+                        clearTimeout(debounceTimeoutRef.current);
+                      }
+                      // Re-check availability with new org
+                      if (repoName) {
+                        setRepoAvailable(null);
+                        setRepoCheckError(null);
+                        checkRepoAvailability(repoName, org);
+                      }
+                    }}
+                    disabled={isLoadingOrgs || isCreatingRepo}
+                  >
+                    <SelectTrigger
+                      className="w-full mt-1"
+                      data-testid="github-org-select"
+                    >
+                      <SelectValue
+                        placeholder={
+                          isLoadingOrgs
+                            ? "Loading..."
+                            : "Select owner (personal or organization)"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={PERSONAL_ACCOUNT_VALUE}>
+                        Personal account
+                      </SelectItem>
+                      {availableOrgs.map((org) => (
+                        <SelectItem key={org.login} value={org.login}>
+                          {org.login}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div>
                   <Label className="block text-sm font-medium">
                     Repository Name

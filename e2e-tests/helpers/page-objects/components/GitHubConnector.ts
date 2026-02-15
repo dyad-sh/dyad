@@ -90,6 +90,49 @@ export class GitHubConnector {
       .click();
   }
 
+  getAutoSyncToggle() {
+    return this.page.getByTestId("auto-sync-github-toggle");
+  }
+
+  async toggleAutoSync() {
+    const currentState = await this.isAutoSyncEnabled();
+    await this.getAutoSyncToggle().click();
+    // Wait for the toggle state to change
+    if (currentState) {
+      // Was enabled, wait for it to be disabled
+      await this.getAutoSyncToggle().waitFor({
+        state: "attached",
+      });
+      await this.page.waitForFunction(
+        (testId) => {
+          const el = document.querySelector(`[data-testid="${testId}"]`);
+          return el && !el.hasAttribute("data-checked");
+        },
+        "auto-sync-github-toggle",
+        { timeout: 5000 },
+      );
+    } else {
+      // Was disabled, wait for it to be enabled
+      await this.page.waitForFunction(
+        (testId) => {
+          const el = document.querySelector(`[data-testid="${testId}"]`);
+          return el && el.hasAttribute("data-checked");
+        },
+        "auto-sync-github-toggle",
+        { timeout: 5000 },
+      );
+    }
+  }
+
+  async isAutoSyncEnabled(): Promise<boolean> {
+    const toggle = this.getAutoSyncToggle();
+    // base-ui Switch uses data-checked attribute (present when checked, absent when unchecked)
+    const hasDataChecked = await toggle.evaluate((el) =>
+      el.hasAttribute("data-checked"),
+    );
+    return hasDataChecked;
+  }
+
   async clearPushEvents() {
     const response = await this.page.request.post(
       `http://localhost:${this.fakeLlmPort}/github/api/test/clear-push-events`,

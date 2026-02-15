@@ -27,6 +27,8 @@ import {
   Pen,
   Maximize2,
   Minimize2,
+  Cloud,
+  Copy,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { CopyErrorMessage } from "@/components/CopyErrorMessage";
@@ -67,7 +69,7 @@ import { useSettings } from "@/hooks/useSettings";
 import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
 import { normalizePath } from "../../../shared/normalizePath";
-import { showError } from "@/lib/toast";
+import { showError, showSuccess } from "@/lib/toast";
 import type { DeviceMode } from "@/lib/schemas";
 import { AnnotatorOnlyForPro } from "./AnnotatorOnlyForPro";
 import { useAttachments } from "@/hooks/useAttachments";
@@ -174,7 +176,8 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
 // Preview iframe component
 export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const { appUrl, originalUrl } = useAtomValue(appUrlAtom);
+  const { appUrl, originalUrl, runtimeMode } = useAtomValue(appUrlAtom);
+  const isCloudMode = runtimeMode === "cloud";
   const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
   // State to trigger iframe reload
   const [reloadKey, setReloadKey] = useState(0);
@@ -1175,7 +1178,27 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex space-x-1">
+          <div className="flex space-x-1 items-center">
+            {/* Cloud Mode Badge */}
+            {isCloudMode && (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <div
+                      className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 text-xs font-medium"
+                      aria-label="Running in cloud sandbox"
+                    />
+                  }
+                >
+                  <Cloud size={12} />
+                  <span>Cloud</span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Running in cloud sandbox (Dyad Pro)
+                </TooltipContent>
+              </Tooltip>
+            )}
+
             <Tooltip>
               <TooltipTrigger
                 render={
@@ -1188,19 +1211,58 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 <Power size={16} />
                 <span>Restart</span>
               </TooltipTrigger>
-              <TooltipContent>Restart App</TooltipContent>
+              <TooltipContent>
+                {isCloudMode ? "Restart Cloud Sandbox" : "Restart App"}
+              </TooltipContent>
             </Tooltip>
-            <button
-              data-testid="preview-open-browser-button"
-              onClick={() => {
-                if (originalUrl) {
-                  ipc.system.openExternalUrl(originalUrl);
+
+            {/* Copy Shareable Link (Cloud Mode Only) */}
+            {isCloudMode && originalUrl && (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      data-testid="preview-copy-link-button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(originalUrl);
+                          showSuccess("Link copied!");
+                        } catch {
+                          showError("Failed to copy link");
+                        }
+                      }}
+                      className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-blue-600 dark:text-blue-400"
+                    />
+                  }
+                >
+                  <Copy size={16} />
+                </TooltipTrigger>
+                <TooltipContent>Copy shareable link</TooltipContent>
+              </Tooltip>
+            )}
+
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    data-testid="preview-open-browser-button"
+                    onClick={() => {
+                      if (originalUrl) {
+                        ipc.system.openExternalUrl(originalUrl);
+                      }
+                    }}
+                    className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
+                  />
                 }
-              }}
-              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
-            >
-              <ExternalLink size={16} />
-            </button>
+              >
+                <ExternalLink size={16} />
+              </TooltipTrigger>
+              <TooltipContent>
+                {isCloudMode
+                  ? "Open sandbox URL in browser"
+                  : "Open in browser"}
+              </TooltipContent>
+            </Tooltip>
 
             {/* Device Mode Button */}
             <Popover open={isDevicePopoverOpen} modal={false}>

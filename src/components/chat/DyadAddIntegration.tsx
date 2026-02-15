@@ -36,8 +36,12 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
       showError("No chat found");
       return;
     }
+    const message =
+      provider === "convex"
+        ? "Continue. I have completed the Convex integration."
+        : "Continue. I have completed the Supabase integration.";
     streamMessage({
-      prompt: "Continue. I have completed the Supabase integration.",
+      prompt: message,
       chatId,
     });
   };
@@ -50,20 +54,31 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     navigate({ to: "/app-details", search: { appId } });
   };
 
-  if (app?.supabaseProjectName) {
+  const isIntegrated =
+    provider === "convex"
+      ? !!app?.convexDeploymentUrl
+      : !!app?.supabaseProjectName;
+
+  const integrationLabel =
+    provider === "convex"
+      ? (app?.convexDeploymentUrl ?? "")
+      : (app?.supabaseProjectName ?? "");
+
+  if (isIntegrated) {
     return (
       <DyadCard accentColor="green" state="finished">
         <DyadCardHeader icon={<CheckCircle2 size={15} />} accentColor="green">
           <DyadBadge color="green">Integration Complete</DyadBadge>
           <span className="text-sm font-medium text-foreground">
-            Supabase integration complete
+            {provider === "convex" ? "Convex" : "Supabase"} integration complete
           </span>
         </DyadCardHeader>
         <div className="px-3 pb-3">
           <p className="text-sm text-muted-foreground mb-2">
-            This app is connected to Supabase project:{" "}
+            This app is connected to{" "}
+            {provider === "convex" ? "Convex deployment" : "Supabase project"}:{" "}
             <span className="font-mono font-medium px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200">
-              {app.supabaseProjectName}
+              {integrationLabel}
             </span>
           </p>
           <Button

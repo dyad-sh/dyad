@@ -262,6 +262,21 @@ export const mcpToolConsents = sqliteTable(
   (table) => [unique("uniq_mcp_consent").on(table.serverId, table.toolName)],
 );
 
+// --- Custom Templates table ---
+export const customTemplates = sqliteTable("custom_templates", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  description: text("description"),
+  githubUrl: text("github_url").notNull(),
+  imageUrl: text("image_url"),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
 // --- Custom Themes table ---
 export const customThemes = sqliteTable("custom_themes", {
   id: integer("id").primaryKey({ autoIncrement: true }),

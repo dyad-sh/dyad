@@ -5,9 +5,22 @@ import { safeSend } from "@/ipc/utils/safe_sender";
 
 const logger = log.scope("planning_questionnaire");
 
-const BaseQuestionFields = {
+const QuestionSchema = z.object({
   id: z.string().describe("Unique identifier for this question"),
   question: z.string().describe("The question text to display to the user"),
+  type: z
+    .enum(["text", "radio", "checkbox"])
+    .describe(
+      "text for free-form input, radio for single choice, checkbox for multiple choice",
+    ),
+  options: z
+    .array(z.string())
+    .min(1)
+    .max(3)
+    .optional()
+    .describe(
+      "Options for radio/checkbox questions. Keep to max 3 — users can always provide a custom answer via the free-form text input. Omit for text questions.",
+    ),
   required: z
     .boolean()
     .optional()
@@ -16,31 +29,7 @@ const BaseQuestionFields = {
     .string()
     .optional()
     .describe("Placeholder text for text inputs"),
-};
-
-const TextQuestionSchema = z.object({
-  ...BaseQuestionFields,
-  type: z.literal("text"),
 });
-
-const MultipleChoiceQuestionSchema = z.object({
-  ...BaseQuestionFields,
-  type: z
-    .enum(["radio", "checkbox"])
-    .describe("radio for single choice, checkbox for multiple choice"),
-  options: z
-    .array(z.string())
-    .min(1)
-    .max(3)
-    .describe(
-      "Options for the question. Keep to max 3 — users can always provide a custom answer via the free-form text input.",
-    ),
-});
-
-const QuestionSchema = z.union([
-  TextQuestionSchema,
-  MultipleChoiceQuestionSchema,
-]);
 
 const planningQuestionnaireSchema = z.object({
   title: z.string().describe("Title of this questionnaire section"),
@@ -58,7 +47,7 @@ const planningQuestionnaireSchema = z.object({
 });
 
 const DESCRIPTION = `
-Present a structured questionnaire to gather requirements from the user during the planning phase.
+Present a structured questionnaire to gather requirements from the user .
 
 **CRITICAL**: After calling this tool, you MUST STOP and wait for the user's responses before proceeding. Do NOT create a plan or take further action until the user has answered all questions. The user's responses will be sent as a follow-up message.
 

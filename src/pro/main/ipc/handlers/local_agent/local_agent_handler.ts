@@ -527,6 +527,10 @@ export async function handleLocalAgentStream(
       postMidTurnCompactionStartStep = null;
       baseMessageHistoryCount = currentMessageHistory.length;
 
+      // Set when the questionnaire tool executes so that prepareStep can
+      // strip tools on the next step, forcing the model to stop.
+      let questionnairePresented = false;
+
       // Stream the response
       const streamResult = streamText({
         model: modelClient.model,
@@ -551,17 +555,9 @@ export async function handleLocalAgentStream(
         stopWhen: [
           stepCountIs(25),
           hasToolCall(addIntegrationTool.name),
-          // In plan mode, stop immediately after presenting a questionnaire,
-          // writing a plan, or exiting plan mode so the agent yields control
-          // back to the user. Without this, some models (e.g. Gemini Pro 3)
-          // ignore the prompt-level "STOP" instruction and keep calling tools
-          // in a loop.
+          // In plan mode, also stop after writing a plan or exiting plan mode.
           ...(planModeOnly
-            ? [
-                hasToolCall(planningQuestionnaireTool.name),
-                hasToolCall(writePlanTool.name),
-                hasToolCall(exitPlanTool.name),
-              ]
+            ? [hasToolCall(writePlanTool.name), hasToolCall(exitPlanTool.name)]
             : []),
         ],
         abortSignal: abortController.signal,
@@ -627,13 +623,30 @@ export async function handleLocalAgentStream(
           // injections/cleanups to apply. If we already replaced the base
           // message history (e.g., after mid-turn compaction), we still need
           // to return the updated options.
-          if (preparedStep) {
-            return preparedStep;
+          let result =
+            preparedStep ?? (stepOptions === options ? undefined : stepOptions);
+
+          // After the questionnaire is presented, strip all tools so the
+          // model is forced to stop instead of continuing to call tools.
+          // This replaces hasToolCall() in stopWhen which closed the stream
+          // before the frontend could process the questionnaire IPC message.
+          if (questionnairePresented) {
+            return { ...(result ?? options), toolChoice: "none" as const };
           }
 
-          return stepOptions === options ? undefined : stepOptions;
+          return result;
         },
         onStepFinish: async (step) => {
+          // Track if the questionnaire was presented so prepareStep can
+          // strip tools on the next step, forcing the model to yield.
+          if (
+            step.toolCalls.some(
+              (tc) => tc.toolName === planningQuestionnaireTool.name,
+            )
+          ) {
+            questionnairePresented = true;
+          }
+
           if (
             settings.enableContextCompaction === false ||
             compactedMidTurn ||

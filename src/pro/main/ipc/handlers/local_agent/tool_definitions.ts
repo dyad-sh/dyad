@@ -305,7 +305,7 @@ function trackFileEditTool(
 }
 
 /**
- * Planning-specific tools that are only available in plan mode.
+ * Planning-specific tools that are allowed in plan mode despite modifying state.
  * In plan mode, all non-state-modifying tools are also included automatically.
  */
 const PLANNING_SPECIFIC_TOOLS = new Set([
@@ -313,6 +313,12 @@ const PLANNING_SPECIFIC_TOOLS = new Set([
   "write_plan",
   "exit_plan",
 ]);
+
+/**
+ * Tools that should ONLY be available in plan mode (excluded from normal agent mode).
+ * Note: planning_questionnaire is intentionally omitted so it's available in both modes.
+ */
+const PLAN_MODE_ONLY_TOOLS = new Set(["write_plan", "exit_plan"]);
 
 /**
  * Build ToolSet for AI SDK from tool definitions
@@ -338,8 +344,8 @@ export function buildAgentToolSet(
       continue;
     }
 
-    // Skip planning-specific tools when NOT in plan mode
-    if (!options.planModeOnly && PLANNING_SPECIFIC_TOOLS.has(tool.name)) {
+    // Skip plan-mode-only tools when NOT in plan mode
+    if (!options.planModeOnly && PLAN_MODE_ONLY_TOOLS.has(tool.name)) {
       continue;
     }
 

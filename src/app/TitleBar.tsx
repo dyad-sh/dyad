@@ -1,6 +1,4 @@
-import { useAtom, useAtomValue } from "jotai";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { useLoadApps } from "@/hooks/useLoadApps";
+import { useAtomValue } from "jotai";
 import { useRouter } from "@tanstack/react-router";
 import { useSettings } from "@/hooks/useSettings";
 import { Button } from "@/components/ui/button";
@@ -23,6 +21,7 @@ import {
 } from "@/components/ui/tooltip";
 import { ChatTabs } from "@/components/chat/ChatTabs";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { Wrench, Cog, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
@@ -36,10 +35,8 @@ import { useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
 export const TitleBar = () => {
-  const [selectedAppId] = useAtom(selectedAppIdAtom);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
-  const { apps } = useLoadApps();
-  const { navigate } = useRouter();
+
   const { settings, refreshSettings } = useSettings();
   const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false);
   const platform = useSystemPlatform();
@@ -61,18 +58,6 @@ export const TitleBar = () => {
     handleDeepLink();
   }, [lastDeepLink?.timestamp]);
 
-  // Get selected app name
-  const selectedApp = apps.find((app) => app.id === selectedAppId);
-  const displayText = selectedApp
-    ? `App: ${selectedApp.name}`
-    : "(no app selected)";
-
-  const handleAppClick = () => {
-    if (selectedApp) {
-      navigate({ to: "/app-details", search: { appId: selectedApp.id } });
-    }
-  };
-
   const isDyadPro = !!settings?.providerSettings?.auto?.apiKey?.value;
   const isDyadProEnabled = Boolean(settings?.enableDyadPro);
 
@@ -81,19 +66,12 @@ export const TitleBar = () => {
       <div className="@container z-11 w-full h-11 pt-3 bg-(--sidebar) absolute top-0 left-0 app-region-drag flex items-center">
         <div className={`${showWindowControls ? "pl-2" : "pl-18"}`}></div>
 
-        <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-0.5 ml-2" />
-        <Button
-          data-testid="title-bar-app-name-button"
-          variant="outline"
-          size="sm"
-          className={`hidden @2xl:block no-app-region-drag text-xs max-w-38 truncate font-medium ${
-            selectedApp ? "cursor-pointer" : ""
-          }`}
-          onClick={handleAppClick}
-        >
-          {displayText}
-        </Button>
+        <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-0.5" />
         {isDyadPro && <DyadProButton isDyadProEnabled={isDyadProEnabled} />}
+        <span
+          data-floating-app-anchor="titlebar"
+          className="inline-flex items-center h-7 ml-1"
+        />
 
         <div className="flex-1 min-w-0 overflow-hidden no-app-region-drag">
           <ChatTabs selectedChatId={selectedChatId} />

@@ -14,6 +14,7 @@ import {
   queuedMessagesByIdAtom,
   streamCompletedSuccessfullyByIdAtom,
   type QueuedMessageItem,
+  agentPromptSuggestionsByChatIdAtom,
 } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
@@ -68,7 +69,9 @@ export function useStreamChat({
   );
   const [streamCompletedSuccessfullyById, setStreamCompletedSuccessfullyById] =
     useAtom(streamCompletedSuccessfullyByIdAtom);
-
+  const setAgentPromptSuggestions = useSetAtom(
+    agentPromptSuggestionsByChatIdAtom,
+  );
   const posthog = usePostHog();
   const queryClient = useQueryClient();
   let chatId: number | undefined;
@@ -137,6 +140,12 @@ export function useStreamChat({
         next.set(chatId, false);
         return next;
       });
+      // Clear previous prompt suggestions when a new stream starts
+      setAgentPromptSuggestions((prev) => {
+        const next = new Map(prev);
+        next.delete(chatId);
+        return next;
+      });
 
       // Convert FileAttachment[] (with File objects) to ChatAttachment[] (base64 encoded)
       let convertedAttachments: ChatAttachment[] | undefined;
@@ -197,6 +206,18 @@ export function useStreamChat({
                 setStreamCompletedSuccessfullyById((prev) => {
                   const next = new Map(prev);
                   next.set(chatId, true);
+                  return next;
+                });
+              }
+
+              // Store prompt suggestions from local-agent mode
+              if (
+                response.promptSuggestions &&
+                response.promptSuggestions.length > 0
+              ) {
+                setAgentPromptSuggestions((prev) => {
+                  const next = new Map(prev);
+                  next.set(chatId, response.promptSuggestions!);
                   return next;
                 });
               }
@@ -332,6 +353,7 @@ export function useStreamChat({
       checkProblems,
       selectedAppId,
       refetchUserBudget,
+      setAgentPromptSuggestions,
       settings,
       queryClient,
     ],

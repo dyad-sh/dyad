@@ -26,20 +26,22 @@ export function PromptSuggestionButtons({
       <TooltipProvider>
         {suggestions.map((suggestion) => (
           <Tooltip key={suggestion.prompt}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={disabled}
-                onClick={() => onSelect(suggestion.prompt)}
-                className="shrink-0 max-w-[180px]"
-                data-testid="prompt-suggestion-button"
-              >
-                <span className="overflow-hidden whitespace-nowrap text-ellipsis">
-                  {suggestion.summary}
-                </span>
-              </Button>
-            </TooltipTrigger>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={disabled}
+                  onClick={() => onSelect(suggestion.prompt)}
+                  className="shrink-0 max-w-[180px]"
+                  data-testid="prompt-suggestion-button"
+                >
+                  <span className="overflow-hidden whitespace-nowrap text-ellipsis">
+                    {suggestion.summary}
+                  </span>
+                </Button>
+              }
+            />
             <TooltipContent
               className="max-w-md whitespace-pre-wrap text-left"
               side="top"

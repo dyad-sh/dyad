@@ -29,6 +29,7 @@ import {
   selectedChatIdAtom,
   pendingAgentConsentsAtom,
   agentTodosByChatIdAtom,
+  agentPromptSuggestionsByChatIdAtom,
   needsFreshPlanChatAtom,
 } from "@/atoms/chatAtoms";
 import { atom, useAtom, useSetAtom, useAtomValue } from "jotai";
@@ -156,6 +157,13 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   // Get todos for this chat
   const agentTodosByChatId = useAtomValue(agentTodosByChatIdAtom);
   const chatTodos = chatId ? (agentTodosByChatId.get(chatId) ?? []) : [];
+  // Get agent prompt suggestions for this chat (local-agent mode)
+  const agentPromptSuggestionsByChatId = useAtomValue(
+    agentPromptSuggestionsByChatIdAtom,
+  );
+  const agentPromptSuggestions = chatId
+    ? (agentPromptSuggestionsByChatId.get(chatId) ?? [])
+    : [];
   const { checkProblems } = useCheckProblems(appId);
   const { refreshAppIframe } = useRunApp();
   const { navigate } = useRouter();
@@ -709,13 +717,20 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             onCancel={cancelPendingFiles}
           />
 
+          {/* Prompt suggestions: from proposal (build mode) or agent tool (local-agent mode) */}
           {chatId &&
             settings.selectedChatMode !== "ask" &&
-            settings.selectedChatMode !== "local-agent" &&
-            proposalResult?.chatId === chatId &&
-            promptSuggestions.length > 0 && (
+            ((settings.selectedChatMode !== "local-agent" &&
+              proposalResult?.chatId === chatId &&
+              promptSuggestions.length > 0) ||
+              (settings.selectedChatMode === "local-agent" &&
+                agentPromptSuggestions.length > 0)) && (
               <PromptSuggestionButtons
-                suggestions={promptSuggestions}
+                suggestions={
+                  settings.selectedChatMode === "local-agent"
+                    ? agentPromptSuggestions
+                    : promptSuggestions
+                }
                 onSelect={(prompt) => setInputValue(prompt)}
                 disabled={isStreaming}
               />

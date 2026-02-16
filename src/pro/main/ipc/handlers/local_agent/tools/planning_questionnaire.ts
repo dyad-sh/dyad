@@ -71,23 +71,6 @@ Each question object has these fields:
 - "placeholder" (string, optional): Placeholder for text inputs
 </input_schema>
 
-<steps-before-tool-calling>
-Before calling this tool, you MUST complete these steps in your reasoning:
-1. Identify what information is missing from the user's request
-2. Draft each question: decide the question text, whether it should be text/radio/checkbox, and list options (if radio/checkbox)
-3. Build the "questions" array as a valid JSON object in your mind
-4. Verify: each question has "question" and "type", radio/checkbox questions have 1-3 "options", text questions have NO "options", and the array is non-empty (1-3 questions)
-5. Only after all the above, call the tool with the constructed object
-</steps-before-tool-calling>
-
-<rules>
-1. Pass ONLY the "questions" array — no other top-level fields exist
-2. Maximum 3 questions per call
-3. Maximum 3 options per question
-4. "options" is REQUIRED for radio/checkbox, must be OMITTED for text
-5. All question types include a free-form "Other" input, so you don't need to cover every option
-</rules>
-
 <correct_example>
 Reasoning: The user asked to "build me a todo app". I need to clarify the tech stack and key features. I'll use radio for single-choice and checkbox for multi-choice.
 

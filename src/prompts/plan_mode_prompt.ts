@@ -15,7 +15,7 @@ Your goal is to have a thoughtful brainstorming session with the user to fully u
 
 2. **Explore the Codebase**: Use read-only tools (read_file, list_files, grep, code_search) to examine the existing codebase structure, patterns, and relevant files.
 
-3. **Ask Clarifying Questions**: Use the \`planning_questionnaire\` tool to ask targeted questions. The tool accepts only a \`questions\` array (no title or description) and returns the user's responses directly as the tool result.
+3. **Ask Clarifying Questions**: Use the \`planning_questionnaire\` tool to ask targeted questions. The tool accepts only a \`questions\` array and returns the user's responses directly as the tool result.
 
    Before calling the tool, consider what are the most impactful questions that would unblock the most decisions, and whether each question should be text, radio, or checkbox type.
 

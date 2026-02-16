@@ -102,6 +102,7 @@ export const updateTodosTool: ToolDefinition<
   description: DESCRIPTION,
   inputSchema: updateTodosSchema,
   defaultConsent: "always",
+  modifiesState: true,
 
   getConsentPreview: (args) => {
     const count = args.todos.length;
@@ -151,7 +152,7 @@ export const updateTodosTool: ToolDefinition<
     // Persist todos to disk so they survive across turns
     const allCompleted =
       ctx.todos.length > 0 && ctx.todos.every((t) => t.status === "completed");
-    if (allCompleted) {
+    if (allCompleted || ctx.todos.length === 0) {
       await deleteTodos(ctx.appPath, ctx.chatId);
     } else {
       await saveTodos(ctx.appPath, ctx.chatId, ctx.todos);

@@ -92,13 +92,24 @@ After every edit, read the file to verify changes applied correctly. If somethin
 
 const PRO_DEVELOPMENT_WORKFLOW_BLOCK = `<development_workflow>
 1. **Understand:** Think about the user's request and the relevant codebase context. Use \`grep\` and \`code_search\` search tools extensively (in parallel if independent) to understand file structures, existing code patterns, and conventions. Use \`read_file\` to understand context and validate any assumptions you may have. If you need to read multiple files, you should make multiple parallel calls to \`read_file\`.
-2. **Clarify (when needed):** When the request lacks sufficient detail, your next action MUST be a \`planning_questionnaire\` tool call with 1-3 focused questions. After the tool call, wait for the user's answers before moving to the Plan step. Skip this step only if the request is fully specific and actionable.
-   **CRITICAL — Your next tool call MUST be \`planning_questionnaire\` when any of these apply:**
-   - The user is asking you to create a NEW app or project (e.g. "Build me a todo app", "Create a landing page", "Make me a chat app"). New app requests are NEVER specific enough without clarifying questions about tech stack, features, styling, etc.
-   - The request is vague or open-ended (e.g. "Add authentication", "Make it look better", "Improve performance")
+2. **Clarify (when needed):** When the request lacks sufficient detail, use the \`planning_questionnaire\` tool to ask 1-3 focused questions.
+
+   **Think before calling the tool:**
+   <clarify_checklist>
+   - What specific information am I missing to implement this correctly?
+   - What decisions have the most impact on the implementation?
+   - For each question: should it be text (open-ended), radio (pick one), or checkbox (pick many)?
+   - For radio/checkbox: what are the 2-3 most likely options? (users can always type a custom answer)
+   </clarify_checklist>
+
+   **Use \`planning_questionnaire\` when:**
+   - The user is asking to create a NEW app or project (always needs clarification on tech stack, features, styling)
+   - The request is vague or open-ended (e.g. "Add authentication", "Make it look better")
    - There are multiple reasonable interpretations of what the user wants
-   When any of the above apply, do NOT output any text explanation — just immediately call the \`planning_questionnaire\` tool.
-   **Skip the questionnaire ONLY when** the request is a specific, concrete change like: "Add a dark mode toggle to the navbar", "Fix the login button — it's not calling the API", "Change the primary color from blue to green"
+
+   **Skip when** the request is a specific, concrete change like: "Add a dark mode toggle to the navbar", "Fix the login button", "Change the primary color from blue to green"
+
+   The tool accepts ONLY a \`questions\` array (DO NOT send an array with empty objects that's forbidden). It returns the user's answers as the tool result.
 3. **Plan:** Build a coherent and grounded (based on the understanding in steps 1-2) plan for how you intend to resolve the user's task. For complex tasks, break them down into smaller, manageable subtasks and use the \`update_todos\` tool to track your progress. Share an extremely concise yet clear plan with the user if it would help the user understand your thought process.
 4. **Implement:** Use the available tools (e.g., \`edit_file\`, \`write_file\`, ...) to act on the plan, strictly adhering to the project's established conventions. When debugging, add targeted console.log statements to trace data flow and identify root causes. **Important:** After adding logs, you must ask the user to interact with the application (e.g., click a button, submit a form, navigate to a page) to trigger the code paths where logs were added—the logs will only be available once that code actually executes.
 5. **Verify:** After making code changes, use \`run_type_checks\` to verify that the changes are correct and read the file contents to ensure the changes are what you intended.

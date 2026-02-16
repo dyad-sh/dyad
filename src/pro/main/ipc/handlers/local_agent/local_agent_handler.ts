@@ -31,6 +31,7 @@ import {
   buildAgentToolSet,
   requireAgentToolConsent,
   clearPendingConsentsForChat,
+  clearPendingQuestionnairesForChat,
 } from "./tool_definitions";
 import {
   deployAllFunctionsIfNeeded,
@@ -64,7 +65,6 @@ import {
 } from "@/ipc/utils/ai_messages_utils";
 import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
 import { addIntegrationTool } from "./tools/add_integration";
-import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
 import {
@@ -75,6 +75,7 @@ import {
 import { getPostCompactionMessages } from "@/ipc/handlers/compaction/compaction_utils";
 
 const logger = log.scope("local_agent_handler");
+const PLANNING_QUESTIONNAIRE_TOOL_NAME = "planning_questionnaire";
 
 // ============================================================================
 // Tool Streaming State Management
@@ -514,6 +515,7 @@ export async function handleLocalAgentStream(
     // there are still incomplete todos, we append a reminder and do another pass.
     const maxTodoFollowUpLoops = 1;
     let todoFollowUpLoops = 0;
+    let hasInjectedPlanningQuestionnaireReflection = false;
     let currentMessageHistory = messageHistory;
     const accumulatedAiMessages: ModelMessage[] = [];
 
@@ -526,10 +528,6 @@ export async function handleLocalAgentStream(
       compactBeforeNextStep = false;
       postMidTurnCompactionStartStep = null;
       baseMessageHistoryCount = currentMessageHistory.length;
-
-      // Set when the questionnaire tool executes so that prepareStep can
-      // strip tools on the next step, forcing the model to stop.
-      let questionnairePresented = false;
 
       // Stream the response
       const streamResult = streamText({
@@ -626,25 +624,23 @@ export async function handleLocalAgentStream(
           let result =
             preparedStep ?? (stepOptions === options ? undefined : stepOptions);
 
-          // After the questionnaire is presented, strip all tools so the
-          // model is forced to stop instead of continuing to call tools.
-          // This replaces hasToolCall() in stopWhen which closed the stream
-          // before the frontend could process the questionnaire IPC message.
-          if (questionnairePresented) {
-            return { ...(result ?? options), toolChoice: "none" as const };
-          }
-
           return result;
         },
         onStepFinish: async (step) => {
-          // Track if the questionnaire was presented so prepareStep can
-          // strip tools on the next step, forcing the model to yield.
-          if (
-            step.toolCalls.some(
-              (tc) => tc.toolName === planningQuestionnaireTool.name,
-            )
-          ) {
-            questionnairePresented = true;
+          if (!hasInjectedPlanningQuestionnaireReflection) {
+            const questionnaireError = getPlanningQuestionnaireErrorFromStep(step);
+            if (questionnaireError) {
+              pendingUserMessages.push([
+                {
+                  type: "text",
+                  text: buildPlanningQuestionnaireReflectionMessage(questionnaireError),
+                },
+              ]);
+              hasInjectedPlanningQuestionnaireReflection = true;
+              logger.info(
+                `Injected synthetic planning_questionnaire reflection message for chat ${req.chatId}`,
+              );
+            }
           }
 
           if (
@@ -713,8 +709,9 @@ export async function handleLocalAgentStream(
         for await (const part of streamResult.fullStream) {
           if (abortController.signal.aborted) {
             logger.log(`Stream aborted for chat ${req.chatId}`);
-            // Clean up pending consent requests to prevent stale UI banners
+            // Clean up pending consent/questionnaire requests to prevent stale UI banners
             clearPendingConsentsForChat(req.chatId);
+            clearPendingQuestionnairesForChat(req.chatId);
             break;
           }
 
@@ -973,9 +970,10 @@ export async function handleLocalAgentStream(
 
     return true; // Success
   } catch (error) {
-    // Clean up any pending consent requests for this chat to prevent
+    // Clean up any pending consent/questionnaire requests for this chat to prevent
     // stale UI banners and orphaned promises
     clearPendingConsentsForChat(req.chatId);
+    clearPendingQuestionnairesForChat(req.chatId);
 
     if (abortController.signal.aborted) {
       // Handle cancellation
@@ -1029,6 +1027,44 @@ function sendResponseChunk(
     chatId,
     messages: currentMessages,
   });
+}
+
+function getPlanningQuestionnaireErrorFromStep(step: {
+  content?: unknown;
+}): string | null {
+  if (!Array.isArray(step.content)) {
+    return null;
+  }
+
+  for (const part of step.content) {
+    if (!isRecord(part) || part.toolName !== PLANNING_QUESTIONNAIRE_TOOL_NAME) {
+      continue;
+    }
+
+    if (part.type === "tool-error") {
+      return typeof part.output === "string" ? part.output : "Unknown tool error";
+    }
+
+    if (
+      part.type === "tool-result" &&
+      typeof part.output === "string" &&
+      part.output.startsWith("Error:")
+    ) {
+      return part.output;
+    }
+  }
+
+  return null;
+}
+
+function buildPlanningQuestionnaireReflectionMessage(errorDetail?: string): string {
+  const base = "Your planning_questionnaire tool call had a format error.";
+  const detail = errorDetail ? ` The error was: ${errorDetail}` : "";
+  return `${base}${detail} Review the tool's input schema, fix the issue, and re-call planning_questionnaire with correct arguments.`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function shouldRunTodoFollowUpPass(params: {

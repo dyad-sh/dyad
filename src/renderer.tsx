@@ -26,6 +26,7 @@ import {
   pendingAgentConsentsAtom,
   agentTodosByChatIdAtom,
 } from "./atoms/chatAtoms";
+import { pendingQuestionnaireAtom } from "./atoms/planAtoms";
 import { queryKeys } from "./lib/queryKeys";
 
 // @ts-ignore
@@ -168,6 +169,7 @@ function App() {
 
   // Agent v2 tool consent requests - queue consents instead of overwriting
   const setPendingAgentConsents = useSetAtom(pendingAgentConsentsAtom);
+  const setPendingQuestionnaire = useSetAtom(pendingQuestionnaireAtom);
   const setAgentTodosByChatId = useSetAtom(agentTodosByChatIdAtom);
 
   // Agent todos updates
@@ -217,9 +219,12 @@ function App() {
       setPendingAgentConsents((prev) =>
         prev.filter((consent) => consent.chatId !== chatId),
       );
+      setPendingQuestionnaire((prev) =>
+        prev?.chatId === chatId ? null : prev,
+      );
     });
     return () => unsubscribe();
-  }, [setPendingAgentConsents]);
+  }, [setPendingAgentConsents, setPendingQuestionnaire]);
 
   // Forward telemetry events from main process to PostHog
   useEffect(() => {

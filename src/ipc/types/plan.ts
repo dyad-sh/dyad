@@ -36,12 +36,20 @@ export type Question = z.infer<typeof QuestionSchema>;
 
 export const PlanQuestionnaireSchema = z.object({
   chatId: z.number(),
-  title: z.string(),
-  description: z.string().optional(),
+  requestId: z.string(),
   questions: z.array(QuestionSchema),
 });
 
 export type PlanQuestionnairePayload = z.infer<typeof PlanQuestionnaireSchema>;
+
+export const QuestionnaireResponseSchema = z.object({
+  requestId: z.string(),
+  answers: z.record(z.string(), z.string()).nullable(),
+});
+
+export type QuestionnaireResponsePayload = z.infer<
+  typeof QuestionnaireResponseSchema
+>;
 
 export const PlanSchema = z.object({
   id: z.string(),
@@ -125,6 +133,12 @@ export const planContracts = {
   deletePlan: defineContract({
     channel: "plan:delete",
     input: z.object({ appId: z.number(), planId: z.string() }),
+    output: z.void(),
+  }),
+
+  respondToQuestionnaire: defineContract({
+    channel: "plan:questionnaire-response",
+    input: QuestionnaireResponseSchema,
     output: z.void(),
   }),
 } as const;

@@ -5,26 +5,26 @@ import { MODEL_OPTIONS } from "./language_model_constants";
 
 const OpenRouterPricingSchema = z
   .object({
-    prompt: z.union([z.number(), z.string()]).optional(),
-    completion: z.union([z.number(), z.string()]).optional(),
-    image: z.union([z.number(), z.string()]).optional(),
+    prompt: z.union([z.number(), z.string()]).nullish(),
+    completion: z.union([z.number(), z.string()]).nullish(),
+    image: z.union([z.number(), z.string()]).nullish(),
   })
   .passthrough();
 
 const OpenRouterTopProviderSchema = z
   .object({
-    max_completion_tokens: z.number().optional(),
+    max_completion_tokens: z.number().nullish(),
   })
   .passthrough();
 
 export const OpenRouterModelSchema = z
   .object({
     id: z.string(),
-    name: z.string().optional(),
-    description: z.string().optional(),
-    context_length: z.number().optional(),
-    pricing: OpenRouterPricingSchema.optional(),
-    top_provider: OpenRouterTopProviderSchema.optional(),
+    name: z.string().nullish(),
+    description: z.string().nullish(),
+    context_length: z.number().nullish(),
+    pricing: OpenRouterPricingSchema.nullish(),
+    top_provider: OpenRouterTopProviderSchema.nullish(),
   })
   .passthrough();
 
@@ -60,7 +60,7 @@ const FREE_MODEL_HEADERS = {
   "X-Title": "Dyad",
 };
 
-function normalizePrice(value?: number | string) {
+function normalizePrice(value?: number | string | null) {
   if (value == null) return undefined;
   if (typeof value === "number") return value;
   const parsed = Number(value);
@@ -82,7 +82,7 @@ function formatFreeDisplayName(name: string) {
   return name.replace(/\s*\(free\)\s*/gi, "").trim();
 }
 
-function sanitizeExternalModelText(value: string | undefined) {
+function sanitizeExternalModelText(value: string | null | undefined) {
   if (value == null) return undefined;
 
   return value
@@ -105,8 +105,8 @@ export function buildOpenRouterFreeModels(
         apiName: model.id,
         displayName: formatFreeDisplayName(baseName),
         description: sanitizedDescription || "Free OpenRouter model",
-        contextWindow: model.context_length,
-        maxOutputTokens: model.top_provider?.max_completion_tokens,
+        contextWindow: model.context_length ?? undefined,
+        maxOutputTokens: model.top_provider?.max_completion_tokens ?? undefined,
         dollarSigns: 0,
         tag: "Free",
         type: "cloud",

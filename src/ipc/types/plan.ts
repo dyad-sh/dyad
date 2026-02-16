@@ -23,14 +23,19 @@ export const PlanExitSchema = z.object({
 
 export type PlanExitPayload = z.infer<typeof PlanExitSchema>;
 
-export const QuestionSchema = z.object({
-  id: z.string(),
-  type: z.enum(["text", "radio", "checkbox"]),
-  question: z.string(),
-  options: z.array(z.string()).min(1).optional(),
-  required: z.boolean().optional(),
-  placeholder: z.string().optional(),
-});
+export const QuestionSchema = z
+  .object({
+    id: z.string(),
+    type: z.enum(["text", "radio", "checkbox"]),
+    question: z.string(),
+    options: z.array(z.string()).min(1).optional(),
+    required: z.boolean().optional(),
+    placeholder: z.string().optional(),
+  })
+  .refine((q) => q.type === "text" || (q.options && q.options.length >= 1), {
+    message: "options are required for radio and checkbox questions",
+    path: ["options"],
+  });
 
 export type Question = z.infer<typeof QuestionSchema>;
 

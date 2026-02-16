@@ -7,36 +7,39 @@ import { waitForQuestionnaireResponse } from "../tool_definitions";
 
 const logger = log.scope("planning_questionnaire");
 
-const QuestionSchema = z.object({
-  id: z
-    .string()
-    .optional()
-    .describe(
-      "Unique identifier for this question (auto-generated if omitted)",
-    ),
-  question: z
-    .string()
-    .describe("The question text to display to the user"),
-  type: z
-    .enum(["text", "radio", "checkbox"])
-    .describe(
-      "text for free-form input, radio for single choice, checkbox for multiple choice",
-    ),
-  options: z
-    .array(z.string())
-    .optional()
-    .describe(
-      "Options for radio/checkbox questions. Keep to max 3 — users can always provide a custom answer via the free-form text input. Omit for text questions.",
-    ),
-  required: z
-    .boolean()
-    .optional()
-    .describe("Whether this question requires an answer (defaults to true)"),
-  placeholder: z
-    .string()
-    .optional()
-    .describe("Placeholder text for text inputs"),
-});
+const QuestionSchema = z
+  .object({
+    id: z
+      .string()
+      .optional()
+      .describe(
+        "Unique identifier for this question (auto-generated if omitted)",
+      ),
+    question: z.string().describe("The question text to display to the user"),
+    type: z
+      .enum(["text", "radio", "checkbox"])
+      .describe(
+        "text for free-form input, radio for single choice, checkbox for multiple choice",
+      ),
+    options: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Options for radio/checkbox questions. Keep to max 3 — users can always provide a custom answer via the free-form text input. Omit for text questions.",
+      ),
+    required: z
+      .boolean()
+      .optional()
+      .describe("Whether this question requires an answer (defaults to true)"),
+    placeholder: z
+      .string()
+      .optional()
+      .describe("Placeholder text for text inputs"),
+  })
+  .refine((q) => q.type === "text" || (q.options && q.options.length >= 1), {
+    message: "options are required for radio and checkbox questions",
+    path: ["options"],
+  });
 
 const planningQuestionnaireSchema = z.object({
   questions: z
@@ -136,9 +139,7 @@ export const planningQuestionnaireTool: ToolDefinition<
     `Questionnaire (${args.questions.length} questions)`,
 
   execute: async (args, ctx: AgentContext) => {
-    ctx.onXmlComplete(
-      `\n\n**[DEBUG] planning_questionnaire args:**\n\`\`\`json\n${JSON.stringify(args, null, 2)}\n\`\`\`\n`,
-    );
+    logger.debug("planning_questionnaire args:", JSON.stringify(args, null, 2));
 
     // Runtime guard: reject malformed questions (e.g. [{}] from models that omit required fields)
     const malformed = args.questions.filter((q) => !q.question || !q.type);

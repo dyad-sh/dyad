@@ -489,7 +489,11 @@ export async function handleLocalAgentStream(
     // In read-only mode, only include read-only tools and skip MCP tools
     // (since we can't determine if MCP tools modify state)
     // In plan mode, only include planning tools (read + questionnaire/plan tools)
-    const agentTools = buildAgentToolSet(ctx, { readOnly, planModeOnly });
+    const agentTools = buildAgentToolSet(ctx, {
+      readOnly,
+      planModeOnly,
+      basicAgentMode: !readOnly && !planModeOnly && isBasicAgentMode(settings),
+    });
     const mcpTools =
       readOnly || planModeOnly ? {} : await getMcpTools(event, ctx);
     const allTools: ToolSet = { ...agentTools, ...mcpTools };
@@ -628,12 +632,15 @@ export async function handleLocalAgentStream(
         },
         onStepFinish: async (step) => {
           if (!hasInjectedPlanningQuestionnaireReflection) {
-            const questionnaireError = getPlanningQuestionnaireErrorFromStep(step);
+            const questionnaireError =
+              getPlanningQuestionnaireErrorFromStep(step);
             if (questionnaireError) {
               pendingUserMessages.push([
                 {
                   type: "text",
-                  text: buildPlanningQuestionnaireReflectionMessage(questionnaireError),
+                  text: buildPlanningQuestionnaireReflectionMessage(
+                    questionnaireError,
+                  ),
                 },
               ]);
               hasInjectedPlanningQuestionnaireReflection = true;
@@ -1042,7 +1049,7 @@ function getPlanningQuestionnaireErrorFromStep(step: {
     }
 
     if (part.type === "tool-error") {
-      return typeof part.output === "string" ? part.output : "Unknown tool error";
+      return typeof part.error === "string" ? part.error : "Unknown tool error";
     }
 
     if (
@@ -1057,7 +1064,9 @@ function getPlanningQuestionnaireErrorFromStep(step: {
   return null;
 }
 
-function buildPlanningQuestionnaireReflectionMessage(errorDetail?: string): string {
+function buildPlanningQuestionnaireReflectionMessage(
+  errorDetail?: string,
+): string {
   const base = "Your planning_questionnaire tool call had a format error.";
   const detail = errorDetail ? ` The error was: ${errorDetail}` : "";
   return `${base}${detail} Review the tool's input schema, fix the issue, and re-call planning_questionnaire with correct arguments.`;

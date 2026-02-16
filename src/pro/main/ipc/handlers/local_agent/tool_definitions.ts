@@ -322,6 +322,11 @@ export interface BuildAgentToolSetOptions {
    * Plan mode has access to read-only tools plus planning-specific tools.
    */
   planModeOnly?: boolean;
+  /**
+   * If true, exclude Pro-only tools (e.g., planning_questionnaire).
+   * Used for basic agent mode where prompt guidance for these tools is not provided.
+   */
+  basicAgentMode?: boolean;
 }
 
 const FILE_EDIT_TOOLS: Set<FileEditToolName> = new Set(FILE_EDIT_TOOL_NAMES);
@@ -352,20 +357,25 @@ function trackFileEditTool(
 }
 
 /**
+ * Tools that should ONLY be available in plan mode (excluded from normal agent mode).
+ * Note: planning_questionnaire is intentionally omitted so it's available in pro agent mode too.
+ */
+const PLAN_MODE_ONLY_TOOLS = new Set(["write_plan", "exit_plan"]);
+
+/**
  * Planning-specific tools that are allowed in plan mode despite modifying state.
- * In plan mode, all non-state-modifying tools are also included automatically.
+ * Superset of PLAN_MODE_ONLY_TOOLS plus tools that participate in planning
+ * but are also available in normal (pro) agent mode.
  */
 const PLANNING_SPECIFIC_TOOLS = new Set([
+  ...PLAN_MODE_ONLY_TOOLS,
   "planning_questionnaire",
-  "write_plan",
-  "exit_plan",
 ]);
 
 /**
- * Tools that should ONLY be available in plan mode (excluded from normal agent mode).
- * Note: planning_questionnaire is intentionally omitted so it's available in both modes.
+ * Tools only available in Pro agent mode (excluded from basic agent mode).
  */
-const PLAN_MODE_ONLY_TOOLS = new Set(["write_plan", "exit_plan"]);
+const PRO_AGENT_ONLY_TOOLS = new Set(["planning_questionnaire"]);
 
 /**
  * Build ToolSet for AI SDK from tool definitions
@@ -393,6 +403,11 @@ export function buildAgentToolSet(
 
     // Skip plan-mode-only tools when NOT in plan mode
     if (!options.planModeOnly && PLAN_MODE_ONLY_TOOLS.has(tool.name)) {
+      continue;
+    }
+
+    // Skip Pro-only tools in basic agent mode
+    if (options.basicAgentMode && PRO_AGENT_ONLY_TOOLS.has(tool.name)) {
       continue;
     }
 

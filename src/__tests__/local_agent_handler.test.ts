@@ -1037,7 +1037,7 @@ describe("handleLocalAgentStream", () => {
               part.type === "text" &&
               typeof part.text === "string" &&
               part.text.includes(
-                "explain the issue you're having with the tool call format",
+                "planning_questionnaire tool call had a format error",
               ),
           ),
       );
@@ -1052,7 +1052,7 @@ describe("handleLocalAgentStream", () => {
           .messages,
       );
       expect(persistedAiMessages).not.toContain(
-        "explain the issue you're having with the tool call format",
+        "planning_questionnaire tool call had a format error",
       );
     });
   });

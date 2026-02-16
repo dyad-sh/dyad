@@ -6,6 +6,8 @@ import { expect } from "@playwright/test";
 testSkipIfWindows("mcp - call calculator", async ({ po }) => {
   await po.setUp();
   await po.navigation.goToSettingsTab();
+  await po.page.getByRole("button", { name: "Experiments" }).click();
+  await po.settings.toggleEnableMcpServersForBuildMode();
   await po.page.getByRole("button", { name: "Tools (MCP)" }).click();
 
   await po.page
@@ -90,6 +92,8 @@ testSkipIfWindows("mcp - call calculator via http", async ({ po }) => {
   try {
     await po.setUp();
     await po.navigation.goToSettingsTab();
+    await po.page.getByRole("button", { name: "Experiments" }).click();
+    await po.settings.toggleEnableMcpServersForBuildMode();
     await po.page.getByRole("button", { name: "Tools (MCP)" }).click();
 
     // Fill in server name

@@ -104,6 +104,11 @@ test("attach image - chat - upload to codebase", async ({ po }) => {
 
   await po.sendPrompt("[[UPLOAD_IMAGE_TO_CODEBASE]]");
 
+  // Wait for the uploaded file card to render before snapshotting
+  await expect(
+    po.page.getByRole("button", { name: /file\.png/ }),
+  ).toBeVisible();
+
   await po.snapshotServerDump("last-message", { name: "upload-to-codebase" });
   await po.snapshotMessages({ replaceDumpPath: true });
 
@@ -153,6 +158,13 @@ test("attach image via drag - chat", async ({ po }) => {
       );
     });
   }, fileBase64);
+
+  // Choose "Attach as chat context" in the attachment type dialog
+  const chatContextButton = po.page.getByRole("button", {
+    name: "Attach file as chat context",
+  });
+  await expect(chatContextButton).toBeVisible();
+  await chatContextButton.click();
 
   // submit and verify
   await po.sendPrompt("[dump]");

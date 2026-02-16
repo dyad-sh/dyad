@@ -55,6 +55,7 @@ import { useVersions } from "@/hooks/useVersions";
 import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
+import { FileAttachmentTypeDialog } from "./FileAttachmentTypeDialog";
 import { showExtraFilesToast, showInfo } from "@/lib/toast";
 import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
 import { ChatInputControls } from "../ChatInputControls";
@@ -62,6 +63,7 @@ import { ChatErrorBox } from "./ChatErrorBox";
 import { AgentConsentBanner } from "./AgentConsentBanner";
 import { TodoList } from "./TodoList";
 import { QuestionnaireInput } from "./QuestionnaireInput";
+import { QueuedMessagesList } from "./QueuedMessagesList";
 import {
   selectedComponentsPreviewAtom,
   previewIframeRefAtom,
@@ -91,6 +93,7 @@ import { useCountTokens } from "@/hooks/useCountTokens";
 import { useChats } from "@/hooks/useChats";
 import { useRouter } from "@tanstack/react-router";
 import { showError as showErrorToast } from "@/lib/toast";
+import { cn } from "@/lib/utils";
 
 const showTokenBarAtom = atom(false);
 
@@ -101,11 +104,25 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const { settings } = useSettings();
   const appId = useAtomValue(selectedAppIdAtom);
   const { refreshVersions } = useVersions(appId);
-  const { streamMessage, isStreaming, setIsStreaming, error, setError } =
-    useStreamChat();
+  const {
+    streamMessage,
+    isStreaming,
+    setIsStreaming,
+    error,
+    setError,
+    queuedMessages,
+    queueMessage,
+    updateQueuedMessage,
+    removeQueuedMessage,
+    reorderQueuedMessages,
+    clearAllQueuedMessages,
+  } = useStreamChat({ shouldProcessQueue: true });
   const [showError, setShowError] = useState(true);
   const [isApproving, setIsApproving] = useState(false); // State for approving
   const [isRejecting, setIsRejecting] = useState(false); // State for rejecting
+  const [editingQueuedMessageId, setEditingQueuedMessageId] = useState<
+    string | null
+  >(null);
   const messagesById = useAtomValue(chatMessagesByIdAtom);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
@@ -147,6 +164,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const {
     attachments,
     isDraggingOver,
+    pendingFiles,
     handleFileSelect,
     removeAttachment,
     handleDragOver,
@@ -154,6 +172,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     handleDrop,
     clearAttachments,
     handlePaste,
+    confirmPendingFiles,
+    cancelPendingFiles,
   } = useAttachments();
 
   // Use the hook to fetch the proposal
@@ -237,11 +257,56 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     });
   }, [chatId, setMessagesById]);
 
+  // Queue management handlers
+  const handleEditQueuedMessage = useCallback(
+    (id: string) => {
+      const msg = queuedMessages.find((m) => m.id === id);
+      if (!msg) return;
+      // Load the message content into the input
+      setInputValue(msg.prompt);
+      // Set editing mode
+      setEditingQueuedMessageId(id);
+    },
+    [queuedMessages, setInputValue],
+  );
+
+  const handleMoveUp = useCallback(
+    (id: string) => {
+      const index = queuedMessages.findIndex((m) => m.id === id);
+      if (index > 0) {
+        reorderQueuedMessages(index, index - 1);
+      }
+    },
+    [queuedMessages, reorderQueuedMessages],
+  );
+
+  const handleMoveDown = useCallback(
+    (id: string) => {
+      const index = queuedMessages.findIndex((m) => m.id === id);
+      if (index >= 0 && index < queuedMessages.length - 1) {
+        reorderQueuedMessages(index, index + 1);
+      }
+    },
+    [queuedMessages, reorderQueuedMessages],
+  );
+
+  const handleDeleteQueuedMessage = useCallback(
+    (id: string) => {
+      // Clear editing state if deleting the message being edited
+      if (editingQueuedMessageId === id) {
+        setEditingQueuedMessageId(null);
+        setInputValue("");
+      }
+      removeQueuedMessage(id);
+    },
+    [editingQueuedMessageId, removeQueuedMessage, setInputValue],
+  );
+
   const handleSubmit = async () => {
     if (
       (!inputValue.trim() && attachments.length === 0) ||
-      isStreaming ||
-      !chatId
+      !chatId ||
+      pendingFiles
     ) {
       return;
     }
@@ -271,13 +336,51 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     }
 
     const currentInput = inputValue;
-    setInputValue("");
 
     // Use all selected components for multi-component editing
     const componentsToSend =
       selectedComponents && selectedComponents.length > 0
         ? selectedComponents
         : [];
+
+    // Handle editing a queued message
+    if (editingQueuedMessageId) {
+      updateQueuedMessage(editingQueuedMessageId, {
+        prompt: currentInput,
+      });
+      setInputValue("");
+      setEditingQueuedMessageId(null);
+      return;
+    }
+
+    // If streaming, queue the message instead of sending immediately
+    if (isStreaming) {
+      const queued = queueMessage({
+        prompt: currentInput,
+        attachments,
+        selectedComponents: componentsToSend,
+      });
+      if (queued) {
+        // Only clear input, attachments, and components on successful queue
+        setInputValue("");
+        clearAttachments();
+        setSelectedComponents([]);
+        setVisualEditingSelectedComponent(null);
+        // Clear overlays in the preview iframe
+        if (previewIframeRef?.contentWindow) {
+          previewIframeRef.contentWindow.postMessage(
+            { type: "clear-dyad-component-overlays" },
+            "*",
+          );
+        }
+      }
+      // If queue failed, leave input/attachments intact for the user
+      return;
+    }
+
+    // Not streaming - send immediately
+    // Clear input and components before sending
+    setInputValue("");
     setSelectedComponents([]);
     setVisualEditingSelectedComponent(null);
     // Clear overlays in the preview iframe
@@ -301,6 +404,16 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   };
 
   const handleCancel = () => {
+    // Clear all queued messages first, BEFORE the IPC call, to ensure
+    // the queue is empty even if the backend response arrives quickly.
+    // This prevents race conditions where the queue-processing effect
+    // could potentially run if the backend responds before queue clearing.
+    clearAllQueuedMessages();
+    // Reset editing state so the "Editing queued message" banner is dismissed
+    if (editingQueuedMessageId) {
+      setEditingQueuedMessageId(null);
+      setInputValue("");
+    }
     if (chatId) {
       ipc.chat.cancelStream(chatId);
     }
@@ -419,7 +532,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           {t("errorLoadingProposal", { message: proposalError.message })}
         </div>
       )}
-      <div className="p-4" data-testid="chat-input-container">
+      <div className="p-2 pt-0" data-testid="chat-input-container">
         {/* Show context limit banner above chat input for visibility */}
         {showBanner && tokenCountResult && (
           <ContextLimitBanner
@@ -428,9 +541,12 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           />
         )}
         <div
-          className={`relative flex flex-col border border-border rounded-lg bg-(--background-lighter) shadow-sm ${
-            isDraggingOver ? "ring-2 ring-blue-500 border-blue-500" : ""
-          } ${showBanner ? "rounded-t-none border-t-0" : ""}`}
+          className={cn(
+            "relative flex flex-col border border-border rounded-2xl bg-(--background-lighter) transition-colors duration-200",
+            "focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/20",
+            isDraggingOver && "ring-2 ring-blue-500 border-blue-500",
+            showBanner && "rounded-t-none border-t-0",
+          )}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
@@ -470,6 +586,36 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                 );
               }}
             />
+          )}
+          {/* Show queued messages list */}
+          {queuedMessages.length > 0 && (
+            <QueuedMessagesList
+              messages={queuedMessages}
+              onEdit={handleEditQueuedMessage}
+              onDelete={handleDeleteQueuedMessage}
+              onMoveUp={handleMoveUp}
+              onMoveDown={handleMoveDown}
+              isStreaming={isStreaming}
+              hasError={!!error}
+            />
+          )}
+          {/* Show editing indicator when editing a queued message */}
+          {editingQueuedMessageId && (
+            <div className="border-b border-border p-2 bg-yellow-500/10 flex items-center justify-between">
+              <span className="text-sm text-yellow-700 dark:text-yellow-400">
+                Editing queued message
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingQueuedMessageId(null);
+                  setInputValue("");
+                }}
+                className="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
           )}
           {/* Only render ChatInputActions if proposal is loaded and no pending consent */}
           {!pendingAgentConsent &&
@@ -554,7 +700,14 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           {/* Use the DragDropOverlay component */}
           <DragDropOverlay isDraggingOver={isDraggingOver} />
 
-          <div className="flex items-start space-x-2 ">
+          {/* Dialog for choosing attachment type */}
+          <FileAttachmentTypeDialog
+            pendingFiles={pendingFiles}
+            onConfirm={confirmPendingFiles}
+            onCancel={cancelPendingFiles}
+          />
+
+          <div className="flex items-end gap-1">
             <LexicalChatInput
               value={inputValue}
               onChange={setInputValue}
@@ -573,7 +726,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                     <button
                       onClick={handleCancel}
                       aria-label={t("cancelGeneration")}
-                      className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg"
+                      className="px-2 py-2 mb-0.5 mr-1 text-muted-foreground hover:text-destructive rounded-lg transition-colors duration-150 cursor-pointer"
                     />
                   }
                 >
@@ -592,7 +745,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                         disableSendButton
                       }
                       aria-label={t("sendMessage")}
-                      className="px-2 py-2 mt-1 mr-1 hover:bg-(--background-darkest) text-(--sidebar-accent-fg) rounded-lg disabled:opacity-50"
+                      className="px-2 py-2 mb-0.5 mr-1 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 disabled:opacity-30 disabled:hover:text-muted-foreground cursor-pointer disabled:cursor-default"
                     />
                   }
                 >
@@ -602,7 +755,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               </Tooltip>
             )}
           </div>
-          <div className="pl-2 pr-1 flex items-center justify-between pb-2">
+          <div className="px-2 flex items-center justify-between pb-0.5 pt-0.5">
             <div className="flex items-center">
               <ChatInputControls showContextFilesPicker={false} />
             </div>

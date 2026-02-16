@@ -760,6 +760,7 @@ describe("handleLocalAgentStream", () => {
               response: {
                 messages: [...preCompactionGenerated],
               },
+              toolCalls: [{}], // First step has tool calls
             },
             {
               response: {
@@ -768,6 +769,7 @@ describe("handleLocalAgentStream", () => {
                   ...postCompactionGenerated,
                 ],
               },
+              toolCalls: [], // Last step has no tool calls (ended with text)
             },
           ]),
         };

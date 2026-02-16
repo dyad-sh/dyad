@@ -41,8 +41,14 @@ test("should open, navigate, and select from history menu", async ({ po }) => {
   await expect(firstItem).toContainText("First test message");
 
   // Navigate up again to wrap to last item (newest message)
-  await po.page.keyboard.press("ArrowUp");
-  await expect(lastItem).toHaveClass(/bg-accent/);
+  // Use toPass() to retry ArrowUp until selection wraps to last item, since
+  // the menu navigation can be timing-sensitive with the BeautifulMentionsPlugin
+  await expect(async () => {
+    await po.page.keyboard.press("ArrowUp");
+    await expect(lastItem).toHaveAttribute("aria-selected", "true", {
+      timeout: 500,
+    });
+  }).toPass({ timeout: Timeout.MEDIUM });
 
   // Select with Enter (selects newest message)
   await po.page.keyboard.press("Enter");

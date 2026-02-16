@@ -21,10 +21,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ChatActivityButton } from "@/components/chat/ChatActivity";
 import { ChatTabs } from "@/components/chat/ChatTabs";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { MoreVertical, Cog, Trash2 } from "lucide-react";
+import { Wrench, Cog, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -79,10 +78,10 @@ export const TitleBar = () => {
 
   return (
     <>
-      <div className="@container z-11 w-full h-11 bg-(--sidebar) absolute top-0 left-0 app-region-drag flex items-center">
+      <div className="@container z-11 w-full h-11 pt-3 bg-(--sidebar) absolute top-0 left-0 app-region-drag flex items-center">
         <div className={`${showWindowControls ? "pl-2" : "pl-18"}`}></div>
 
-        <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-0.5" />
+        <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-0.5 ml-2" />
         <Button
           data-testid="title-bar-app-name-button"
           variant="outline"
@@ -195,6 +194,7 @@ function WindowsControls() {
 
 function TitleBarActions() {
   const { t } = useTranslation("home");
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { restartApp, refreshAppIframe } = useRunApp();
 
   const onCleanRestart = useCallback(() => {
@@ -223,14 +223,16 @@ function TitleBarActions() {
   }, [clearSessionData]);
 
   return (
-    <div className="flex items-center gap-0.5 no-app-region-drag mr-2">
-      <ChatActivityButton />
+    <div
+      className="flex items-center gap-0.5 no-app-region-drag mr-2"
+      style={{ visibility: selectedAppId ? "visible" : "hidden" }}
+    >
       <DropdownMenu>
         <DropdownMenuTrigger
           data-testid="preview-more-options-button"
           className="flex items-center justify-center w-8 h-8 rounded-md text-sm hover:bg-sidebar-accent transition-colors"
         >
-          <MoreVertical size={16} />
+          <Wrench size={16} />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-60">
           <DropdownMenuItem onClick={onCleanRestart}>

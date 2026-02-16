@@ -30,6 +30,12 @@ export class Settings {
     await this.page.getByRole("switch", { name: "Auto-fix problems" }).click();
   }
 
+  async toggleEnableMcpServersForBuildMode() {
+    await this.page
+      .getByRole("switch", { name: "Enable MCP servers for Build mode" })
+      .click();
+  }
+
   async toggleAutoUpdate() {
     await this.page.getByRole("switch", { name: "Auto-update" }).click();
   }

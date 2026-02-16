@@ -71,11 +71,11 @@ export function ProModeSelector() {
       <Tooltip>
         <TooltipTrigger
           render={
-            <PopoverTrigger className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border border-primary/50 bg-background shadow-sm hover:bg-primary/10 h-8 px-1.5 gap-1.5 shadow-primary/10 hover:shadow-md hover:shadow-primary/15" />
+            <PopoverTrigger className="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border-none bg-transparent shadow-none text-primary/95 hover:text-primary hover:bg-primary/10 h-7 px-2 gap-1 cursor-pointer" />
           }
         >
-          <Sparkles className="h-4 w-4 text-primary" />
-          <span className="text-primary font-medium text-xs-sm">Pro</span>
+          <Sparkles className="h-3.5 w-3.5" />
+          <span className="font-medium">Pro</span>
         </TooltipTrigger>
         <TooltipContent>Configure Dyad Pro settings</TooltipContent>
       </Tooltip>

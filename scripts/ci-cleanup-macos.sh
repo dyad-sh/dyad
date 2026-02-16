@@ -102,14 +102,16 @@ fi
 # 5. npm cache bloat (_cacache, _logs inside ~/.npm)
 # ---------------------------------------------------------------------------
 NPM_CACHE="${HOME}/.npm"
+# npm cache dirs may be locked by concurrent npm processes on shared runners,
+# so these rm -rf calls use || to avoid aborting the script under set -e.
 if [ -d "$NPM_CACHE/_cacache" ]; then
   cache_size=$(du -sh "$NPM_CACHE/_cacache" 2>/dev/null | cut -f1 || echo "?")
   echo "Clearing npm cache (${cache_size})..."
-  rm -rf "$NPM_CACHE/_cacache"
+  rm -rf "$NPM_CACHE/_cacache" 2>/dev/null || echo "Warning: could not fully remove npm cache (likely in use by another process)" >&2
 fi
 if [ -d "$NPM_CACHE/_logs" ]; then
   echo "Removing npm logs"
-  rm -rf "$NPM_CACHE/_logs"
+  rm -rf "$NPM_CACHE/_logs" 2>/dev/null || echo "Warning: could not fully remove npm logs (likely in use by another process)" >&2
 fi
 
 # ---------------------------------------------------------------------------

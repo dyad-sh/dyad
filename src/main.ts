@@ -205,8 +205,8 @@ const createWindow = () => {
     titleBarStyle: "hidden",
     titleBarOverlay: false,
     trafficLightPosition: {
-      x: 10,
-      y: 8,
+      x: 13,
+      y: 13,
     },
     webPreferences: {
       nodeIntegration: false,

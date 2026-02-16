@@ -1,6 +1,12 @@
-# Nightly disk cleanup for self-hosted macOS CI runners (e.g. ci1).
+# Nightly disk cleanup for self-hosted macOS CI runners.
 # Runs at 4:00 AM PST to prevent disk exhaustion from CI workloads.
+# After cleanup, reboots runners, then a verification job checks disk space.
 # Safe to run manually via workflow_dispatch for testing.
+#
+# NOTE: Runners must have the GitHub Actions runner service configured as a
+# LaunchDaemon (or equivalent) so that it auto-starts after reboot.
+# Without this, the verify job will hang waiting for a runner that never
+# re-registers with GitHub Actions.
 
 name: Nightly Runner Cleanup
 
@@ -12,25 +18,38 @@ on:
 
 jobs:
   cleanup:
-    runs-on: [self-hosted, macOS, ARM64]
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ci1, ci2, ci3]
+    runs-on: ${{ matrix.runner }}
     steps:
-      - name: Guard — run only on ci1
-        id: guard
-        run: |
-          if [ "$RUNNER_NAME" = "ci1" ]; then
-            echo "run_cleanup=true" >> "$GITHUB_OUTPUT"
-            echo "Running cleanup on runner: $RUNNER_NAME"
-          else
-            echo "run_cleanup=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping cleanup: runner is '$RUNNER_NAME', expected ci1"
-          fi
-
       - name: Checkout (for cleanup script)
-        if: steps.guard.outputs.run_cleanup == 'true'
         uses: actions/checkout@v4
 
       - name: Nightly disk cleanup
-        if: steps.guard.outputs.run_cleanup == 'true'
         env:
           CI_NIGHTLY_CLEANUP: "1"
         run: bash scripts/ci-cleanup-macos.sh
+
+      - name: Reboot runner
+        run: sudo reboot
+
+  verify:
+    needs: cleanup
+    # Run even if cleanup "fails" (reboot kills the runner mid-job), but still
+    # respect manual workflow cancellation.
+    if: ${{ !cancelled() }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ci1, ci2, ci3]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Print available disk space
+        run: |
+          echo "=== Post-Reboot Disk Space ==="
+          df -h /
+          echo ""
+          echo "Available space: $(df -h / | tail -1 | awk '{print $4}')"

@@ -6,8 +6,37 @@
  */
 
 import { ImagePart, ModelMessage, TextPart, UserModelMessage } from "ai";
-import type { UserMessageContentPart } from "./tools/types";
+import type { UserMessageContentPart, Todo } from "./tools/types";
 import { cleanMessageForOpenAI } from "@/ipc/utils/ai_messages_utils";
+
+/**
+ * Check if a single todo is incomplete (pending or in_progress).
+ */
+const isIncompleteTodo = (todo: Todo): boolean =>
+  todo.status === "pending" || todo.status === "in_progress";
+
+/**
+ * Check if there are incomplete todos (pending or in_progress).
+ */
+export function hasIncompleteTodos(todos: Todo[]): boolean {
+  return todos.some(isIncompleteTodo);
+}
+
+/**
+ * Build a reminder message for incomplete todos.
+ */
+export function buildTodoReminderMessage(todos: Todo[]): string {
+  const incompleteTodos = todos.filter(isIncompleteTodo);
+
+  const todoList = incompleteTodos
+    .map((t) => `- [${t.status}] ${t.content}`)
+    .join("\n");
+
+  // Note: The "incomplete todo(s)" substring is used as a detection marker by test
+  // infrastructure in testing/fake-llm-server/ (chatCompletionHandler.ts and
+  // localAgentHandler.ts). Update those files if this text changes.
+  return `You have ${incompleteTodos.length} incomplete todo(s). Please continue and complete them:\n\n${todoList}`;
+}
 
 /**
  * A message that has been processed and is ready to inject.

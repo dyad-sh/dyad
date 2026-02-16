@@ -683,12 +683,10 @@ ${componentSnippet}
           `Theme for app ${updatedChat.app.id}: ${updatedChat.app.themeId ?? "none"}, prompt length: ${themePrompt.length} chars`,
         );
 
+        // Migration on read converts "agent" to "build", so no need to check for it here
         let systemPrompt = constructSystemPrompt({
           aiRules,
-          chatMode:
-            settings.selectedChatMode === "agent"
-              ? "build"
-              : settings.selectedChatMode,
+          chatMode: settings.selectedChatMode,
           enableTurboEditsV2: isTurboEditsV2Enabled(settings),
           themePrompt,
           basicAgentMode: isBasicAgentMode(settings),
@@ -1203,17 +1201,17 @@ This conversation includes one or more image attachments. When the user uploads 
         }
 
         // Use MCP agent code path if:
-        // 1. Mode is explicitly "agent" (backwards compatibility for existing settings)
+        // 1. The enableMcpServersForBuildMode experiment is on AND
         // 2. Mode is "build" AND there are enabled MCP servers
         if (
-          settings.selectedChatMode === "agent" ||
+          settings.enableMcpServersForBuildMode &&
           settings.selectedChatMode === "build"
         ) {
           const tools = await getMcpTools(event);
           const hasEnabledMcpServers = Object.keys(tools).length > 0;
 
-          // Only run MCP agent path if mode is "agent" OR if build mode has enabled MCP servers
-          if (settings.selectedChatMode === "agent" || hasEnabledMcpServers) {
+          // Only run MCP agent path if build mode has enabled MCP servers
+          if (hasEnabledMcpServers) {
             const { fullStream } = await simpleStreamText({
               chatMessages: limitedHistoryChatMessages,
               modelClient,
@@ -1230,7 +1228,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 aiRules: await readAiRules(
                   getDyadAppPath(updatedChat.app.path),
                 ),
-                chatMode: "agent",
+                chatMode: "build",
                 enableTurboEditsV2: false,
               }),
               files: files,
@@ -1696,10 +1694,11 @@ ${problemReport.problems
       logger.warn(`No active stream found for chat ${chatId}`);
     }
 
-    // Send the end event to the renderer
+    // Send the end event to the renderer with wasCancelled flag
     safeSend(event.sender, "chat:response:end", {
       chatId,
       updatedFiles: false,
+      wasCancelled: true,
     } satisfies ChatResponseEnd);
 
     // Also emit stream:end so cleanup listeners (e.g., pending agent consents) fire

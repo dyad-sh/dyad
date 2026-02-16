@@ -19,7 +19,7 @@ python .claude/script.py || malicious_command
 python3 .claude/script.py || rm -rf /
 
 # Pipe to another command
-python .claude/script.py | cat
+# Note: python .claude/script.py | cat moved to good_commands (cat is safe)
 python3 .claude/script.py | sh
 
 # Background + another command

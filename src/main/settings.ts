@@ -2,10 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { getUserDataPath } from "../paths/paths";
 import {
+  StoredUserSettingsSchema,
   UserSettingsSchema,
   type UserSettings,
   Secret,
   VertexProviderSetting,
+  migrateStoredSettings,
 } from "../lib/schemas";
 import { safeStorage } from "electron";
 import { v4 as uuidv4 } from "uuid";
@@ -165,13 +167,16 @@ export function readSettings(): UserSettings {
       }
     }
 
-    // Validate and merge with defaults
-    const validatedSettings = UserSettingsSchema.parse(combinedSettings);
+    // Validate stored settings (allows deprecated values like "agent" chat mode)
+    const storedSettings = StoredUserSettingsSchema.parse(combinedSettings);
     // "conservative" is deprecated, use undefined to use the default value
-    if (validatedSettings.proSmartContextOption === "conservative") {
-      validatedSettings.proSmartContextOption = undefined;
+    if (storedSettings.proSmartContextOption === "conservative") {
+      storedSettings.proSmartContextOption = undefined;
     }
-    return validatedSettings;
+    // Migrate stored settings to active settings (converts deprecated values)
+    const migratedSettings = migrateStoredSettings(storedSettings);
+    // Validate the migrated settings against the active schema
+    return UserSettingsSchema.parse(migratedSettings);
   } catch (error) {
     logger.error("Error reading settings:", error);
     return DEFAULT_SETTINGS;
@@ -242,7 +247,8 @@ export function writeSettings(settings: Partial<UserSettings>): void {
         v.serviceAccountKey = encrypt(v.serviceAccountKey.value);
       }
     }
-    const validatedSettings = UserSettingsSchema.parse(newSettings);
+    // Use StoredUserSettingsSchema for writing to maintain backwards compatibility
+    const validatedSettings = StoredUserSettingsSchema.parse(newSettings);
     fs.writeFileSync(filePath, JSON.stringify(validatedSettings, null, 2));
   } catch (error) {
     logger.error("Error writing settings:", error);

@@ -1,0 +1,54 @@
+name: Upload to Flakiness.io
+
+# This workflow uploads Playwright test results to flakiness.io for PRs from forks.
+# Fork PRs don't have access to secrets during CI, so we use workflow_run to upload
+# results after CI completes (workflow_run has access to secrets from the base repo).
+# See: https://flakiness.io/docs/integrations/github-actions/#pull-requests-from-forks
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  upload:
+    # Only run for fork PRs (head_repository differs from repository)
+    # Skip if CI was cancelled
+    if: >
+      github.event.workflow_run.conclusion != 'cancelled' &&
+      github.event.workflow_run.head_repository.full_name != github.event.workflow_run.repository.full_name
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      # Download each shard's flakiness report separately to preserve structure
+      - name: Download flakiness reports
+        uses: actions/download-artifact@v4
+        with:
+          path: flakiness-reports
+          pattern: flakiness-report-*
+          github-token: ${{ github.token }}
+          repository: ${{ github.event.workflow_run.repository.full_name }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: List downloaded reports
+        run: |
+          echo "Downloaded flakiness reports:"
+          ls -laR flakiness-reports/ || echo "No flakiness reports found"
+
+      - name: Upload to Flakiness.io
+        env:
+          FLAKINESS_ACCESS_TOKEN: ${{ secrets.FLAKINESS_ACCESS_TOKEN }}
+        run: |
+          find . -name report.json -exec npx -y flakiness upload {} +
+

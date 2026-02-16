@@ -32,13 +32,13 @@ export async function saveTodos(
 ): Promise<void> {
   const filePath = getTodosFilePath(appPath, chatId);
   try {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
     const data = JSON.stringify(
       { todos, updatedAt: new Date().toISOString() },
       null,
       2,
     );
-    fs.writeFileSync(filePath, data, "utf-8");
+    await fs.promises.writeFile(filePath, data, "utf-8");
   } catch (err) {
     logger.warn("Failed to save todos:", err);
   }
@@ -55,17 +55,28 @@ export async function loadTodos(
 ): Promise<Todo[]> {
   const filePath = getTodosFilePath(appPath, chatId);
   try {
-    if (!fs.existsSync(filePath)) {
-      return [];
-    }
-    const raw = fs.readFileSync(filePath, "utf-8");
+    const raw = await fs.promises.readFile(filePath, "utf-8");
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed?.todos)) {
-      return parsed.todos as Todo[];
+      // Validate each todo entry to guard against corrupted/hand-edited files
+      const validated = parsed.todos.filter(
+        (t: unknown) =>
+          typeof t === "object" &&
+          t !== null &&
+          typeof (t as Record<string, unknown>).id === "string" &&
+          typeof (t as Record<string, unknown>).content === "string" &&
+          ["pending", "in_progress", "completed"].includes(
+            (t as Record<string, unknown>).status as string,
+          ),
+      );
+      return validated as Todo[];
     }
     logger.warn("Unexpected todos file format, returning empty list");
     return [];
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === "ENOENT") {
+      return [];
+    }
     logger.warn("Failed to load todos, returning empty list:", err);
     return [];
   }
@@ -80,10 +91,10 @@ export async function deleteTodos(
 ): Promise<void> {
   const filePath = getTodosFilePath(appPath, chatId);
   try {
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
+    await fs.promises.unlink(filePath);
   } catch (err) {
-    logger.warn("Failed to delete todos file:", err);
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      logger.warn("Failed to delete todos file:", err);
+    }
   }
 }

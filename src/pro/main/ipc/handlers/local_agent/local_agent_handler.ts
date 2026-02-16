@@ -56,6 +56,7 @@ import {
   prepareStepMessages,
   buildTodoReminderMessage,
   hasIncompleteTodos,
+  formatTodoSummary,
   type InjectedMessage,
 } from "./prepare_step_utils";
 import { loadTodos } from "./todo_persistence";
@@ -426,9 +427,12 @@ export async function handleLocalAgentStream(
     // Load persisted todos from a previous turn (if any)
     const persistedTodos = await loadTodos(appPath, chat.id);
     // Ensure .dyad/ is gitignored (idempotent; also done by compaction/plans)
-    await ensureDyadGitignored(appPath).catch((err) =>
-      logger.warn("Failed to ensure .dyad gitignored:", err),
-    );
+    // Skip in read-only/plan-only mode to avoid modifying the workspace
+    if (!readOnly && !planModeOnly) {
+      await ensureDyadGitignored(appPath).catch((err) =>
+        logger.warn("Failed to ensure .dyad gitignored:", err),
+      );
+    }
     if (persistedTodos.length > 0) {
       // Emit loaded todos to the renderer so the UI shows them immediately
       safeSend(event.sender, "agent-tool:todos-update", {
@@ -543,10 +547,12 @@ export async function handleLocalAgentStream(
     // user message so the LLM is aware of them. Inserted BEFORE the user's
     // current message so the user's actual request is the last thing the LLM
     // reads, giving it natural priority over stale todos.
-    if (persistedTodos.length > 0 && hasIncompleteTodos(persistedTodos)) {
-      const todoSummary = persistedTodos
-        .map((t) => `- [${t.status}] ${t.content}`)
-        .join("\n");
+    if (
+      !messageOverride &&
+      persistedTodos.length > 0 &&
+      hasIncompleteTodos(persistedTodos)
+    ) {
+      const todoSummary = formatTodoSummary(persistedTodos);
       const syntheticMessage: ModelMessage = {
         role: "user",
         content: [

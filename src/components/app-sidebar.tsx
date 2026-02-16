@@ -27,6 +27,7 @@ import {
   Plug,
   Network,
   Brain,
+  HardDrive,
 } from "lucide-react";
 import { Link, useRouterState, useRouter } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -164,6 +165,15 @@ const menuCategories = [
         hoverBg: "hover:bg-fuchsia-500/10",
         activeBg: "bg-fuchsia-500/15",
         activeText: "text-fuchsia-600 dark:text-fuchsia-400",
+      },
+      {
+        title: "Data Vault",
+        to: "/local-vault",
+        icon: HardDrive,
+        gradient: "from-amber-500 to-orange-500",
+        hoverBg: "hover:bg-amber-500/10",
+        activeBg: "bg-amber-500/15",
+        activeText: "text-amber-600 dark:text-amber-400",
       },
     ],
   },

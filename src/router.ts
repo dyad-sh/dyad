@@ -25,6 +25,10 @@ import { agentSwarmRoute } from "./routes/agent-swarm";
 import { autonomousAgentRoute } from "./routes/autonomous-agent";
 import { autonomousAgentProductionRoute } from "./routes/autonomous-agent-production";
 import { cnsRoute } from "./routes/cns";
+import { localVaultRoute } from "./routes/local-vault";
+import { connectorsRoute } from "./routes/local-vault-connectors";
+import { dataStudioLocalRoute } from "./routes/local-vault-data-studio";
+import { packagingRoute } from "./routes/local-vault-packaging";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -53,6 +57,10 @@ const routeTree = rootRoute.addChildren([
   autonomousAgentRoute,
   autonomousAgentProductionRoute,
   cnsRoute,
+  localVaultRoute,
+  connectorsRoute,
+  dataStudioLocalRoute,
+  packagingRoute,
 ]);
 
 // src/components/NotFoundRedirect.tsx

@@ -65,7 +65,6 @@ export function registerLocalVaultHandlers() {
 
   handle("local-vault:connector:remove", async (_, id: string) => {
     vault.removeConnector(id);
-    return { success: true };
   });
 
   handle("local-vault:connector:enable", async (_, id: string) => {
@@ -167,7 +166,6 @@ export function registerLocalVaultHandlers() {
 
   handle("local-vault:asset:delete", async (_, id: string) => {
     vault.deleteAsset(id);
-    return { success: true };
   });
 
   // ---- Transform Pipeline ----

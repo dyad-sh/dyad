@@ -17,6 +17,7 @@ import {
   DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import { useEffect, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { useLocalModels } from "@/hooks/useLocalModels";
 import { useLocalLMSModels } from "@/hooks/useLMStudioModels";
 import { useLanguageModelsByProviders } from "@/hooks/useLanguageModelsByProviders";
@@ -29,10 +30,12 @@ import { TURBO_MODELS } from "@/ipc/shared/language_model_constants";
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { TOKEN_COUNT_QUERY_KEY } from "@/hooks/useCountTokens";
+import { KeyRound, Settings } from "lucide-react";
 
 export function ModelPicker() {
   const { settings, updateSettings } = useSettings();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const onModelSelect = (model: LargeLanguageModel) => {
     updateSettings({ selectedModel: model });
     // Invalidate token count when model changes since different models have different context windows
@@ -46,7 +49,7 @@ export function ModelPicker() {
   const { data: modelsByProviders, isLoading: modelsByProvidersLoading } =
     useLanguageModelsByProviders();
 
-  const { data: providers, isLoading: providersLoading } =
+  const { data: providers, isLoading: providersLoading, isProviderSetup } =
     useLanguageModelProviders();
 
   const loading = modelsByProvidersLoading || providersLoading;
@@ -282,12 +285,18 @@ export function ModelPicker() {
                 provider?.id === "auto"
                   ? "Joy Turbo"
                   : (provider?.name ?? providerId);
+              const needsSetup = providerId !== "auto" && !isProviderSetup(providerId);
               return (
                 <DropdownMenuSub key={providerId}>
                   <DropdownMenuSubTrigger className="w-full font-normal">
                     <div className="flex flex-col items-start w-full">
                       <div className="flex items-center gap-2">
                         <span>{providerDisplayName}</span>
+                        {needsSetup && (
+                          <span className="text-[10px] bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 px-1.5 py-0.5 rounded-full font-medium">
+                            Setup
+                          </span>
+                        )}
                         {provider?.type === "cloud" &&
                           !provider?.secondary &&
                           isJoyProEnabled(settings) && (
@@ -311,6 +320,24 @@ export function ModelPicker() {
                       {providerDisplayName + " Models"}
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
+                    {needsSetup && (
+                      <>
+                        <DropdownMenuItem
+                          className="text-yellow-700 dark:text-yellow-400 font-medium"
+                          onClick={() => {
+                            setOpen(false);
+                            navigate({
+                              to: "/providers/$provider",
+                              params: { provider: providerId },
+                            });
+                          }}
+                        >
+                          <KeyRound className="h-4 w-4 mr-2" />
+                          Set up API Key
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                      </>
+                    )}
                     {models.map((model) => (
                       <Tooltip key={`${providerId}-${model.apiName}`}>
                         <TooltipTrigger asChild>
@@ -371,12 +398,18 @@ export function ModelPicker() {
                     const provider = providers?.find(
                       (p) => p.id === providerId,
                     );
+                    const secondaryNeedsSetup = !isProviderSetup(providerId);
                     return (
                       <DropdownMenuSub key={providerId}>
                         <DropdownMenuSubTrigger className="w-full font-normal">
                           <div className="flex flex-col items-start w-full">
                             <div className="flex items-center gap-2">
                               <span>{provider?.name ?? providerId}</span>
+                              {secondaryNeedsSetup && (
+                                <span className="text-[10px] bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 px-1.5 py-0.5 rounded-full font-medium">
+                                  Setup
+                                </span>
+                              )}
                               {provider?.type === "custom" && (
                                 <span className="text-[10px] bg-amber-500/20 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">
                                   Custom
@@ -393,6 +426,24 @@ export function ModelPicker() {
                             {(provider?.name ?? providerId) + " Models"}
                           </DropdownMenuLabel>
                           <DropdownMenuSeparator />
+                          {secondaryNeedsSetup && (
+                            <>
+                              <DropdownMenuItem
+                                className="text-yellow-700 dark:text-yellow-400 font-medium"
+                                onClick={() => {
+                                  setOpen(false);
+                                  navigate({
+                                    to: "/providers/$provider",
+                                    params: { provider: providerId },
+                                  });
+                                }}
+                              >
+                                <KeyRound className="h-4 w-4 mr-2" />
+                                Set up API Key
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                            </>
+                          )}
                           {models.map((model) => (
                             <Tooltip key={`${providerId}-${model.apiName}`}>
                               <TooltipTrigger asChild>
@@ -441,6 +492,18 @@ export function ModelPicker() {
           </>
         )}
 
+        <DropdownMenuSeparator />
+        {/* Quick link to manage API keys */}
+        <DropdownMenuItem
+          className="text-muted-foreground text-xs"
+          onClick={() => {
+            setOpen(false);
+            navigate({ to: "/settings" });
+          }}
+        >
+          <Settings className="h-3.5 w-3.5 mr-2" />
+          Manage API Keys
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         {/* Local Models Parent SubMenu */}
         <DropdownMenuSub>

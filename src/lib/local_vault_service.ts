@@ -131,6 +131,11 @@ export function getVaultStatus(): VaultStatus {
 export function initializeVault(passphrase?: string): void {
   ensureVaultDirs();
 
+  // Guard: don't overwrite an existing vault
+  if (fs.existsSync(getVaultConfigPath())) {
+    throw new Error("Vault is already initialized");
+  }
+
   if (passphrase) {
     const salt = randomBytes(32);
     const key = pbkdf2Sync(passphrase, salt, 100_000, 32, "sha512");
@@ -150,6 +155,10 @@ export function initializeVault(passphrase?: string): void {
       }),
     );
     vaultMasterKey = masterKey;
+    vaultUnlocked = true;
+  } else {
+    // No passphrase — vault is unlocked by default, encryption at rest disabled
+    vaultConfig = { ...vaultConfig, encryptAtRest: false };
     vaultUnlocked = true;
   }
 
@@ -171,6 +180,13 @@ export function loadVaultConfigFromDisk(): void {
       const persisted = JSON.parse(raw);
       vaultConfig = { ...DEFAULT_CONFIG, ...persisted };
       logger.info("Vault config loaded from disk");
+
+      // If vault was initialized WITHOUT a passphrase (no key file),
+      // auto-unlock on startup since there's nothing to decrypt
+      if (!vaultConfig.encryptAtRest && !fs.existsSync(getVaultKeyPath())) {
+        vaultUnlocked = true;
+        logger.info("Vault auto-unlocked (no passphrase)");
+      }
     }
   } catch (err) {
     logger.warn("Could not load vault config from disk:", err);
@@ -263,8 +279,10 @@ function storeContent(buffer: Buffer, encrypt: boolean): { hash: string; storage
   const storagePath = getStoragePath(hash);
 
   if (fs.existsSync(storagePath)) {
-    // Deduplicated — already stored
-    return { hash, storagePath, encrypted: false };
+    // Deduplicated — already stored; check if it was encrypted
+    const metaPath = `${storagePath}.meta`;
+    const wasEncrypted = fs.existsSync(metaPath);
+    return { hash, storagePath, encrypted: wasEncrypted };
   }
 
   if (encrypt && vaultMasterKey) {
@@ -402,14 +420,14 @@ function rowToConnectorConfig(row: any): ConnectorConfig {
     maxFileSize: row.maxFileSize ?? undefined,
     excludePatterns: row.excludePatterns ?? undefined,
     syncIntervalMinutes: row.syncIntervalMinutes ?? undefined,
-    lastSyncAt: row.lastSyncAt?.toISOString() ?? undefined,
-    nextSyncAt: row.nextSyncAt?.toISOString() ?? undefined,
+    lastSyncAt: row.lastSyncAt instanceof Date ? row.lastSyncAt.toISOString() : (row.lastSyncAt ? new Date(row.lastSyncAt * 1000).toISOString() : undefined),
+    nextSyncAt: row.nextSyncAt instanceof Date ? row.nextSyncAt.toISOString() : (row.nextSyncAt ? new Date(row.nextSyncAt * 1000).toISOString() : undefined),
     totalImported: row.totalImported ?? 0,
     totalBytes: row.totalBytes ?? 0,
     errorCount: row.errorCount ?? 0,
     lastError: row.lastError ?? undefined,
-    createdAt: row.createdAt?.toISOString() ?? new Date().toISOString(),
-    updatedAt: row.updatedAt?.toISOString() ?? new Date().toISOString(),
+    createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : new Date((row.createdAt ?? Date.now() / 1000) * 1000).toISOString(),
+    updatedAt: row.updatedAt instanceof Date ? row.updatedAt.toISOString() : new Date((row.updatedAt ?? Date.now() / 1000) * 1000).toISOString(),
   };
 }
 
@@ -419,6 +437,7 @@ function rowToConnectorConfig(row: any): ConnectorConfig {
 
 export function importFile(filePath: string, connectorId?: string): VaultAsset {
   ensureVaultDirs();
+  if (!vaultUnlocked) throw new Error("Vault is locked");
   if (!fs.existsSync(filePath)) {
     throw new Error(`File not found: ${filePath}`);
   }
@@ -487,6 +506,7 @@ export function importFolder(
   connectorId?: string,
   options?: { recursive?: boolean; allowedExtensions?: string[] },
 ): VaultAsset[] {
+  if (!vaultUnlocked) throw new Error("Vault is locked");
   if (!fs.existsSync(folderPath)) {
     throw new Error(`Folder not found: ${folderPath}`);
   }
@@ -520,6 +540,7 @@ export function importText(
   connectorId?: string,
 ): VaultAsset {
   ensureVaultDirs();
+  if (!vaultUnlocked) throw new Error("Vault is locked");
   const buffer = Buffer.from(content, "utf-8");
   const { hash, storagePath, encrypted } = storeContent(
     buffer,
@@ -598,6 +619,7 @@ export function getAsset(id: string): VaultAsset | null {
 }
 
 export function getAssetContent(id: string): Buffer {
+  if (!vaultUnlocked) throw new Error("Vault is locked");
   const asset = db.select().from(vaultAssets).where(eq(vaultAssets.id, id)).get();
   if (!asset) throw new Error(`Asset not found: ${id}`);
   return readContent(asset.storagePath);
@@ -628,6 +650,7 @@ export function updateAsset(
 }
 
 export function deleteAsset(id: string): void {
+  if (!vaultUnlocked) throw new Error("Vault is locked");
   const asset = db.select().from(vaultAssets).where(eq(vaultAssets.id, id)).get();
   if (asset) {
     // Remove content file if no other assets reference the same hash
@@ -660,6 +683,7 @@ export function createTransformJob(config: {
   inputDatasetId?: string;
   stages: TransformStageConfig[];
 }): TransformJob {
+  if (!vaultUnlocked) throw new Error("Vault is locked");
   const id = randomUUID();
   const itemsTotal = config.inputAssetIds.length;
 
@@ -1098,6 +1122,7 @@ export function createPackageManifest(config: {
   assetIds: string[];
   publisherWallet?: string;
 }): any {
+  if (!vaultUnlocked) throw new Error("Vault is locked");
   const id = randomUUID();
 
   // Compute integrity hashes from assets
@@ -1194,6 +1219,7 @@ export function createPolicy(config: {
   sovereignExitEnabled?: boolean;
   publisherWallet?: string;
 }): any {
+  if (!vaultUnlocked) throw new Error("Vault is locked");
   const id = randomUUID();
 
   db.insert(policyDocuments)
@@ -1249,6 +1275,8 @@ export function createPublishBundle(config: {
   };
   publisherWallet: string;
 }): any {
+  if (!vaultUnlocked) throw new Error("Vault is locked");
+
   const manifest = getPackage(config.manifestId);
   if (!manifest) throw new Error("Manifest not found");
 
@@ -1260,13 +1288,17 @@ export function createPublishBundle(config: {
     .update(`${config.manifestId}:${config.policyId}:${config.publisherWallet}:${Date.now()}`)
     .digest("hex");
 
+  // Use content-derived CIDs — manifestCid from the merkle root, policyCid hashed from policy content
+  const manifestCid = manifest.manifestCid ?? manifest.merkleRoot ?? createHash("sha256").update(JSON.stringify(manifest)).digest("hex");
+  const policyCid = policy.policyCid ?? createHash("sha256").update(JSON.stringify(policy)).digest("hex");
+
   db.insert(publishBundles)
     .values({
       id,
       manifestId: config.manifestId,
       policyId: config.policyId,
-      manifestCid: manifest.manifestCid || manifest.merkleRoot || id,
-      policyCid: policy.policyCid || id,
+      manifestCid,
+      policyCid,
       listingName: config.listing.name,
       listingDescription: config.listing.description ?? null,
       listingCategory: config.listing.category ?? null,
@@ -1340,7 +1372,7 @@ export function getAuditLog(limit = 200): VaultAuditEntry[] {
     targetType: r.targetType ?? undefined,
     details: r.details ?? undefined,
     metadata: (r.metadataJson as any) ?? undefined,
-    timestamp: r.timestamp?.toISOString() ?? new Date().toISOString(),
+    timestamp: r.timestamp instanceof Date ? r.timestamp.toISOString() : (r.timestamp ? new Date(r.timestamp * 1000).toISOString() : new Date().toISOString()),
   }));
 }
 
@@ -1418,10 +1450,10 @@ function rowToVaultAsset(row: any): VaultAsset {
     piiDetected: row.piiDetected ?? false,
     piiRedacted: row.piiRedacted ?? false,
     piiFieldsJson: (row.piiFieldsJson as any) ?? undefined,
-    importedAt: row.importedAt?.toISOString() ?? new Date().toISOString(),
-    processedAt: row.processedAt?.toISOString() ?? undefined,
-    publishedAt: row.publishedAt?.toISOString() ?? undefined,
-    updatedAt: row.updatedAt?.toISOString() ?? new Date().toISOString(),
+    importedAt: row.importedAt instanceof Date ? row.importedAt.toISOString() : (row.importedAt ? new Date(row.importedAt * 1000).toISOString() : new Date().toISOString()),
+    processedAt: row.processedAt instanceof Date ? row.processedAt.toISOString() : (row.processedAt ? new Date(row.processedAt * 1000).toISOString() : undefined),
+    publishedAt: row.publishedAt instanceof Date ? row.publishedAt.toISOString() : (row.publishedAt ? new Date(row.publishedAt * 1000).toISOString() : undefined),
+    updatedAt: row.updatedAt instanceof Date ? row.updatedAt.toISOString() : (row.updatedAt ? new Date(row.updatedAt * 1000).toISOString() : new Date().toISOString()),
   };
 }
 
@@ -1442,8 +1474,8 @@ function rowToTransformJob(row: any): TransformJob {
     errorMessage: row.errorMessage ?? undefined,
     errorCount: row.errorCount ?? 0,
     auditLogJson: (row.auditLogJson as any[]) ?? [],
-    createdAt: row.createdAt?.toISOString() ?? new Date().toISOString(),
-    startedAt: row.startedAt?.toISOString() ?? undefined,
-    completedAt: row.completedAt?.toISOString() ?? undefined,
+    createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : (row.createdAt ? new Date(row.createdAt * 1000).toISOString() : new Date().toISOString()),
+    startedAt: row.startedAt instanceof Date ? row.startedAt.toISOString() : (row.startedAt ? new Date(row.startedAt * 1000).toISOString() : undefined),
+    completedAt: row.completedAt instanceof Date ? row.completedAt.toISOString() : (row.completedAt ? new Date(row.completedAt * 1000).toISOString() : undefined),
   };
 }

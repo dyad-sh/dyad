@@ -629,25 +629,35 @@ export function registerAppHandlers() {
       });
 
       // Initialize git repo and create first commit
+      // Wrap in try/catch so app creation succeeds even if git is unavailable
+      let commitHash: string | undefined;
+      try {
+        await gitInit({ path: fullAppPath, ref: "main" });
 
-      await gitInit({ path: fullAppPath, ref: "main" });
+        // Stage all files
+        await gitAdd({ path: fullAppPath, filepath: "." });
 
-      // Stage all files
-      await gitAdd({ path: fullAppPath, filepath: "." });
+        // Create initial commit
+        commitHash = await gitCommit({
+          path: fullAppPath,
+          message: "Init Joy app",
+        });
+      } catch (gitError: any) {
+        console.warn(
+          "Git initialization failed (git may not be installed). App was created without version control:",
+          gitError.message,
+        );
+      }
 
-      // Create initial commit
-      const commitHash = await gitCommit({
-        path: fullAppPath,
-        message: "Init Joy app",
-      });
-
-      // Update chat with initial commit hash
-      await db
-        .update(chats)
-        .set({
-          initialCommitHash: commitHash,
-        })
-        .where(eq(chats.id, chat.id));
+      // Update chat with initial commit hash (if git succeeded)
+      if (commitHash) {
+        await db
+          .update(chats)
+          .set({
+            initialCommitHash: commitHash,
+          })
+          .where(eq(chats.id, chat.id));
+      }
 
       return { app, chatId: chat.id };
     },

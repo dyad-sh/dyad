@@ -100,6 +100,7 @@ import { registerStudioAIHandlers } from "./handlers/studio_ai_handlers";
 import { registerServicesHandlers } from "./handlers/services_handlers";
 import { registerCelestiaBlobHandlers } from "./handlers/celestia_blob_handlers";
 import { registerLifecycleHandlers } from "./handlers/lifecycle_handlers";
+import { registerLocalVaultHandlers } from "./handlers/local_vault_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -273,4 +274,8 @@ export function registerIpcHandlers() {
 
   // Creator Lifecycle Engine — Create → Verify → Use → Receipts → Rewards → Reputation → Better Create
   registerLifecycleHandlers();
+
+  // Local Vault — Sovereign local-first data vault
+  // Ingest → Transform → Package → Publish (encrypted only)
+  registerLocalVaultHandlers();
 }

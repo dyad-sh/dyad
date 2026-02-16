@@ -1798,3 +1798,6 @@ export const creatorFeedback = sqliteTable("creator_feedback", {
     .notNull()
     .default(sql`(unixepoch())`),
 });
+
+// ── Local Vault (Sovereign Data Vault) ────────────────────────
+export * from "./vault_schema";

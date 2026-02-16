@@ -197,6 +197,13 @@
       "when": 1770328335705,
       "tag": "0027_curved_preak",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "6",
+      "when": 1771197073652,
+      "tag": "0028_sticky_molten_man",
+      "breakpoints": true
     }
   ]
 }

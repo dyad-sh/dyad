@@ -56,6 +56,10 @@ gh api graphql --input .claude/tmp/resolve_thread.json
 gh api repos/dyad-sh/dyad/issues/{PR_NUMBER}/labels -f "labels[]=label-name"
 ```
 
+## Creating PRs from no-diff branches
+
+If `gh pr create` fails with `GraphQL: No commits between <base> and <branch> (createPullRequest)`, the branch has no commits ahead of base. Create an empty commit (`git commit --allow-empty -m "chore: trigger PR"`) or add a real change, then push and re-run `gh pr create`.
+
 ## CI file access (claude-code-action)
 
 In CI, `claude-code-action` restricts file access to the repo working directory (e.g., `/home/runner/work/dyad/dyad`). Skills that save intermediate files (like PR diffs) must use `./filename` (current working directory), **never** `/tmp/`. Using `/tmp/` causes errors like: `cat in '/tmp/pr_*_diff.patch' was blocked. For security, Claude Code may only concatenate files from the allowed working directories`.

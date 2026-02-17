@@ -552,7 +552,10 @@ export async function handleLocalAgentStream(
       persistedTodos.length > 0 &&
       hasIncompleteTodos(persistedTodos)
     ) {
-      const todoSummary = formatTodoSummary(persistedTodos);
+      const incompleteTodos = persistedTodos.filter(
+        (t) => t.status === "pending" || t.status === "in_progress",
+      );
+      const todoSummary = formatTodoSummary(incompleteTodos);
       const syntheticMessage: ModelMessage = {
         role: "user",
         content: [

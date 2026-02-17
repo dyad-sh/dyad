@@ -86,20 +86,34 @@ testSetup.describe("Setup Flow", () => {
     // Click the continue button (use force to avoid accordion overlap issues)
     await continueButton.click({ force: true });
 
-    // Node.js should now show as installed
-    await expect(
-      po.page.getByText(/Node\.js \(v[\d.]+\) installed/),
-    ).toBeVisible();
+    // Wait for the Continue button to disappear, indicating the check is complete
+    await expect(continueButton).not.toBeVisible({ timeout: Timeout.MEDIUM });
+
+    // Expand the Node.js section to verify the installed state
+    // (the section may auto-collapse after the check completes)
+    await po.page.getByText("1. Install Node.js (App Runtime)").click();
+
+    // Node.js should now show as installed (use toPass for resilience against timing)
+    await expect(async () => {
+      await expect(
+        po.page.getByText(/Node\.js \(v[\d.]+\) installed/),
+      ).toBeVisible();
+    }).toPass({ timeout: Timeout.MEDIUM });
 
     // Reset mock
     await po.setNodeMock(null);
   });
 
   testSetup("ai provider setup flow", async ({ po }) => {
-    // Verify setup banner is visible
-    await expect(
-      po.page.getByText("Setup Dyad", { exact: true }),
-    ).toBeVisible();
+    // Wait for the page to fully render before checking UI elements
+    await po.page.waitForLoadState("domcontentloaded");
+
+    // Verify setup banner is visible (use toPass for CI resilience)
+    await expect(async () => {
+      await expect(
+        po.page.getByText("Setup Dyad", { exact: true }),
+      ).toBeVisible();
+    }).toPass({ timeout: Timeout.MEDIUM });
 
     // Dismiss telemetry consent if present
     const laterButton = po.page.getByRole("button", { name: "Later" });

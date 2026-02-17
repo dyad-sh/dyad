@@ -102,6 +102,7 @@ export const updateTodosTool: ToolDefinition<
   description: DESCRIPTION,
   inputSchema: updateTodosSchema,
   defaultConsent: "always",
+  modifiesState:true,
 
   getConsentPreview: (args) => {
     const count = args.todos.length;

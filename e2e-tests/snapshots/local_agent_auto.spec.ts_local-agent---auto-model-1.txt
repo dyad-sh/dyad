@@ -526,6 +526,8 @@
                   },
                   "options": {
                     "description": "Options for radio/checkbox questions. Keep to max 3 — users can always provide a custom answer via the free-form text input. Omit for text questions.",
+                    "minItems": 1,
+                    "maxItems": 3,
                     "type": "array",
                     "items": {
                       "type": "string"

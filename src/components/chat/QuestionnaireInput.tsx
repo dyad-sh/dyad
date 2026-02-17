@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { useAtom, useAtomValue } from "jotai";
-import { pendingQuestionnaireAtom } from "@/atoms/planAtoms";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { pendingQuestionnaireAtom, questionnaireSubmittedChatIdsAtom } from "@/atoms/planAtoms";
 import { planClient } from "@/ipc/types/plan";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,8 +21,12 @@ import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 const MAX_DISPLAYED_OPTIONS = 3;
 
 export function QuestionnaireInput() {
-  const [questionnaire, setQuestionnaire] = useAtom(pendingQuestionnaireAtom);
+  const [questionnaireMap, setQuestionnaireMap] = useAtom(
+    pendingQuestionnaireAtom,
+  );
+  const setSubmittedChatIds = useSetAtom(questionnaireSubmittedChatIdsAtom);
   const chatId = useAtomValue(selectedChatIdAtom);
+  const questionnaire = chatId != null ? questionnaireMap.get(chatId) : undefined;
 
   // Track current question index
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -60,7 +64,30 @@ export function QuestionnaireInput() {
     questionnaire?.questions?.length,
   ]);
 
-  if (!questionnaire || questionnaire.chatId !== chatId) return null;
+  const clearQuestionnaire = () => {
+    if (chatId == null) return;
+    setQuestionnaireMap((prev) => {
+      const next = new Map(prev);
+      next.delete(chatId);
+      return next;
+    });
+  };
+
+  // Auto-dismiss after 5 minutes to match the backend timeout
+  useEffect(() => {
+    if (!questionnaire) return;
+    const timeout = setTimeout(() => {
+      planClient.respondToQuestionnaire({
+        requestId: questionnaire.requestId,
+        answers: null,
+      });
+      clearQuestionnaire();
+    }, 5 * 60 * 1000);
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questionnaire?.requestId, chatId]);
+
+  if (!questionnaire) return null;
 
   const currentQuestion = questionnaire.questions[currentIndex];
 
@@ -141,7 +168,7 @@ export function QuestionnaireInput() {
   };
 
   const handleSubmit = () => {
-    if (!questionnaire) return;
+    if (!questionnaire || chatId == null) return;
 
     const answers: Record<string, string> = {};
     for (const q of questionnaire.questions) {
@@ -153,7 +180,20 @@ export function QuestionnaireInput() {
       answers,
     });
 
-    setQuestionnaire(null);
+    clearQuestionnaire();
+
+    // Show brief confirmation in message list
+    setSubmittedChatIds((prev) => new Map([...prev, [chatId, "visible"]]));
+    setTimeout(() => {
+      setSubmittedChatIds((prev) => new Map([...prev, [chatId, "fading"]]));
+      setTimeout(() => {
+        setSubmittedChatIds((prev) => {
+          const next = new Map(prev);
+          next.delete(chatId);
+          return next;
+        });
+      }, 300);
+    }, 1700);
   };
 
   // Helper to determine if Next button should be disabled

@@ -640,6 +640,7 @@ export async function handleLocalAgentStream(
                   type: "text",
                   text: buildPlanningQuestionnaireReflectionMessage(
                     questionnaireError,
+                    planModeOnly,
                   ),
                 },
               ]);
@@ -1066,10 +1067,14 @@ function getPlanningQuestionnaireErrorFromStep(step: {
 
 function buildPlanningQuestionnaireReflectionMessage(
   errorDetail?: string,
+  planModeOnly?: boolean,
 ): string {
   const base = "Your planning_questionnaire tool call had a format error.";
   const detail = errorDetail ? ` The error was: ${errorDetail}` : "";
-  return `${base}${detail} Review the tool's input schema, fix the issue, and re-call planning_questionnaire with correct arguments.`;
+  if (planModeOnly) {
+    return `[System]${base}${detail} Review the tool's input schema, fix the issue, and re-call planning_questionnaire with correct arguments.`;
+  }
+  return `[System]${base}${detail} Skip the questionnaire step and proceed directly to the planning phase.`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

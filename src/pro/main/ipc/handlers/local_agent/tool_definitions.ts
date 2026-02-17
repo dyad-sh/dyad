@@ -135,12 +135,28 @@ const pendingQuestionnaireResolvers = new Map<
   PendingQuestionnaireEntry
 >();
 
+const QUESTIONNAIRE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
 export function waitForQuestionnaireResponse(
   requestId: string,
   chatId: number,
 ): Promise<Record<string, string> | null> {
   return new Promise((resolve) => {
-    pendingQuestionnaireResolvers.set(requestId, { chatId, resolve });
+    const timeout = setTimeout(() => {
+      const entry = pendingQuestionnaireResolvers.get(requestId);
+      if (entry) {
+        pendingQuestionnaireResolvers.delete(requestId);
+        entry.resolve(null);
+      }
+    }, QUESTIONNAIRE_TIMEOUT_MS);
+
+    pendingQuestionnaireResolvers.set(requestId, {
+      chatId,
+      resolve: (answers) => {
+        clearTimeout(timeout);
+        resolve(answers);
+      },
+    });
   });
 }
 

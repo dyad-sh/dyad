@@ -219,9 +219,12 @@ function App() {
       setPendingAgentConsents((prev) =>
         prev.filter((consent) => consent.chatId !== chatId),
       );
-      setPendingQuestionnaire((prev) =>
-        prev?.chatId === chatId ? null : prev,
-      );
+      setPendingQuestionnaire((prev) => {
+        if (!prev.has(chatId)) return prev;
+        const next = new Map(prev);
+        next.delete(chatId);
+        return next;
+      });
     });
     return () => unsubscribe();
   }, [setPendingAgentConsents, setPendingQuestionnaire]);

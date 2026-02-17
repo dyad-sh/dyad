@@ -172,7 +172,11 @@ export function usePlanEvents() {
     // Handle questionnaire events
     const unsubscribeQuestionnaire = planEventClient.onQuestionnaire(
       (payload: PlanQuestionnairePayload) => {
-        setPendingQuestionnaire(payload);
+        setPendingQuestionnaire((prev) => {
+          const next = new Map(prev);
+          next.set(payload.chatId, payload);
+          return next;
+        });
       },
     );
 

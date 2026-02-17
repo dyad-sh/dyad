@@ -23,6 +23,8 @@ const QuestionSchema = z
       ),
     options: z
       .array(z.string())
+      .min(1)
+      .max(3)
       .optional()
       .describe(
         "Options for radio/checkbox questions. Keep to max 3 — users can always provide a custom answer via the free-form text input. Omit for text questions.",
@@ -122,14 +124,6 @@ export const planningQuestionnaireTool: ToolDefinition<
     `Questionnaire (${args.questions.length} questions)`,
 
   execute: async (args, ctx: AgentContext) => {
-    logger.debug("planning_questionnaire args:", JSON.stringify(args, null, 2));
-
-    // Runtime guard: reject malformed questions (e.g. [{}] from models that omit required fields)
-    const malformed = args.questions.filter((q) => !q.question || !q.type);
-    if (malformed.length > 0) {
-      return `Error: Each question object MUST have a "question" (string) and "type" ("text"|"radio"|"checkbox") field. You sent ${malformed.length} malformed question(s). Please retry with properly formed questions. Example: { "questions": [{ "question": "What style?", "type": "radio", "options": ["Modern", "Classic"] }] }`;
-    }
-
     const requestId = `questionnaire:${crypto.randomUUID()}`;
 
     // Auto-generate missing IDs

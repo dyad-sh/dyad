@@ -15,7 +15,6 @@ import {
   ChevronDown,
   ChevronUp,
   Circle,
-  X,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 
@@ -157,17 +156,6 @@ export function QuestionnaireInput() {
     setQuestionnaire(null);
   };
 
-  const handleDismiss = () => {
-    if (!questionnaire) return;
-
-    planClient.respondToQuestionnaire({
-      requestId: questionnaire.requestId,
-      answers: null,
-    });
-
-    setQuestionnaire(null);
-  };
-
   // Helper to determine if Next button should be disabled
   const isNextDisabled = () => {
     if (currentQuestion.required === false) return false;
@@ -225,15 +213,6 @@ export function QuestionnaireInput() {
               <ChevronDown className="w-4 h-4 text-muted-foreground" />
             )}
           </div>
-        </button>
-        <button
-          type="button"
-          onClick={handleDismiss}
-          className="px-2 py-2 hover:bg-muted/50 transition-colors text-muted-foreground hover:text-foreground"
-          title="Dismiss questionnaire"
-          aria-label="Dismiss questionnaire"
-        >
-          <X className="w-4 h-4" />
         </button>
       </div>
 

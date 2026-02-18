@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { pendingQuestionnaireAtom, questionnaireSubmittedChatIdsAtom } from "@/atoms/planAtoms";
+import {
+  pendingQuestionnaireAtom,
+  questionnaireSubmittedChatIdsAtom,
+} from "@/atoms/planAtoms";
 import { planClient } from "@/ipc/types/plan";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,7 +29,8 @@ export function QuestionnaireInput() {
   );
   const setSubmittedChatIds = useSetAtom(questionnaireSubmittedChatIdsAtom);
   const chatId = useAtomValue(selectedChatIdAtom);
-  const questionnaire = chatId != null ? questionnaireMap.get(chatId) : undefined;
+  const questionnaire =
+    chatId != null ? questionnaireMap.get(chatId) : undefined;
 
   // Track current question index
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -76,13 +80,16 @@ export function QuestionnaireInput() {
   // Auto-dismiss after 5 minutes to match the backend timeout
   useEffect(() => {
     if (!questionnaire) return;
-    const timeout = setTimeout(() => {
-      planClient.respondToQuestionnaire({
-        requestId: questionnaire.requestId,
-        answers: null,
-      });
-      clearQuestionnaire();
-    }, 5 * 60 * 1000);
+    const timeout = setTimeout(
+      () => {
+        planClient.respondToQuestionnaire({
+          requestId: questionnaire.requestId,
+          answers: null,
+        });
+        clearQuestionnaire();
+      },
+      5 * 60 * 1000,
+    );
     return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [questionnaire?.requestId, chatId]);

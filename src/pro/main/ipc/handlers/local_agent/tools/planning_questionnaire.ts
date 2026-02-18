@@ -4,6 +4,10 @@ import log from "electron-log";
 import { ToolDefinition, AgentContext } from "./types";
 import { safeSend } from "@/ipc/utils/safe_sender";
 import { waitForQuestionnaireResponse } from "../tool_definitions";
+import {
+  escapeXmlAttr,
+  escapeXmlContent,
+} from "../../../../../../../shared/xmlEscape";
 
 const logger = log.scope("planning_questionnaire");
 
@@ -154,6 +158,18 @@ export const planningQuestionnaireTool: ToolDefinition<
         return `**${q.question}**\n${answer}`;
       })
       .join("\n\n");
+
+    // Build XML with questions and answers for the chat UI
+    const qaEntries = questions
+      .map((q) => {
+        const answer = answers[q.id] || "(no answer)";
+        return `<qa question="${escapeXmlAttr(q.question)}" type="${escapeXmlAttr(q.type)}">${escapeXmlContent(answer)}</qa>`;
+      })
+      .join("\n");
+
+    ctx.onXmlComplete(
+      `<dyad-questionnaire count="${questions.length}">\n${qaEntries}\n</dyad-questionnaire>`,
+    );
 
     return `User responses:\n\n${formattedAnswers}`;
   },

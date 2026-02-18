@@ -226,7 +226,9 @@ function FooterComponent({ context }: { context?: FooterContext }) {
       )}
 
       {questionnaireState && (
-        <div className={`flex justify-start px-4 duration-300 ${questionnaireState === "fading" ? "animate-out fade-out-0 slide-out-to-bottom-2" : "animate-in fade-in-0 slide-in-from-bottom-2"}`}>
+        <div
+          className={`flex justify-start px-4 duration-300 ${questionnaireState === "fading" ? "animate-out fade-out-0 slide-out-to-bottom-2" : "animate-in fade-in-0 slide-in-from-bottom-2"}`}
+        >
           <div className="max-w-3xl w-full mx-auto">
             <div className="flex items-center gap-1.5 text-sm text-muted-foreground py-2">
               <CheckCircle2 className="h-4 w-4 text-green-500" />

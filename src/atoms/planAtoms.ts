@@ -34,4 +34,6 @@ export const pendingQuestionnaireAtom = atom<
 
 // Transient flag: chatIds that just had a questionnaire submitted (for brief confirmation)
 // "visible" = showing, "fading" = fade-out in progress
-export const questionnaireSubmittedChatIdsAtom = atom<Map<number, "visible" | "fading">>(new Map());
+export const questionnaireSubmittedChatIdsAtom = atom<
+  Map<number, "visible" | "fading">
+>(new Map());

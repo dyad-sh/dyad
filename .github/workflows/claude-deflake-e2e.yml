@@ -30,35 +30,33 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version-file: package.json
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Install npm 11.8.0
-        run: npm install -g npm@11.8.0
-      - name: Install node modules
-        run: npm ci --no-audit --no-fund --progress=false
-        env:
-          GITHUB_TOKEN: ${{ secrets.DEFLAKE_E2E_PAT_GITHUB_TOKEN }}
-
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            testing/fake-llm-server/pnpm-lock.yaml
       - name: Setup pnpm
         uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
         with:
-          version: latest
+          version: 10.17.1
+      - name: Install node modules
+        run: pnpm install --frozen-lockfile
+        env:
+          GITHUB_TOKEN: ${{ secrets.DEFLAKE_E2E_PAT_GITHUB_TOKEN }}
 
       - name: Clone nextjs-template
         run: git clone --depth 1 https://github.com/dyad-sh/nextjs-template.git nextjs-template
 
       - name: Install scaffold dependencies
-        run: cd scaffold && pnpm install
+        run: cd scaffold && pnpm install --frozen-lockfile
 
       - name: Install nextjs-template dependencies
-        run: cd nextjs-template && pnpm install
+        run: cd nextjs-template && pnpm install --frozen-lockfile
 
       - name: Install Chromium browser for Playwright
-        run: npx playwright install chromium --with-deps
+        run: pnpm exec playwright install chromium --with-deps
 
       - name: Build fake LLM server
-        run: cd testing/fake-llm-server && npm install && npm run build
+        run: cd testing/fake-llm-server && pnpm install --frozen-lockfile && pnpm run build
 
       - name: Deflake E2E tests
         uses: anthropics/claude-code-action@v1

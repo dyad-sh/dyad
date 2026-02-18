@@ -13,7 +13,7 @@ A simple server that mimics the OpenAI streaming chat completions API for testin
 ## Installation
 
 ```bash
-npm install
+pnpm install
 ```
 
 ## Usage
@@ -22,11 +22,11 @@ Start the server:
 
 ```bash
 # Development mode
-npm run dev
+pnpm run dev
 
 # Production mode
-npm run build
-npm start
+pnpm run build
+pnpm start
 ```
 
 ### Example usage

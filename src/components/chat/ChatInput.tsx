@@ -63,6 +63,7 @@ import { ChatErrorBox } from "./ChatErrorBox";
 import { AgentConsentBanner } from "./AgentConsentBanner";
 import { TodoList } from "./TodoList";
 import { QuestionnaireInput } from "./QuestionnaireInput";
+import { QueuedMessagesList } from "./QueuedMessagesList";
 import {
   selectedComponentsPreviewAtom,
   previewIframeRefAtom,
@@ -103,11 +104,25 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const { settings } = useSettings();
   const appId = useAtomValue(selectedAppIdAtom);
   const { refreshVersions } = useVersions(appId);
-  const { streamMessage, isStreaming, setIsStreaming, error, setError } =
-    useStreamChat();
+  const {
+    streamMessage,
+    isStreaming,
+    setIsStreaming,
+    error,
+    setError,
+    queuedMessages,
+    queueMessage,
+    updateQueuedMessage,
+    removeQueuedMessage,
+    reorderQueuedMessages,
+    clearAllQueuedMessages,
+  } = useStreamChat({ shouldProcessQueue: true });
   const [showError, setShowError] = useState(true);
   const [isApproving, setIsApproving] = useState(false); // State for approving
   const [isRejecting, setIsRejecting] = useState(false); // State for rejecting
+  const [editingQueuedMessageId, setEditingQueuedMessageId] = useState<
+    string | null
+  >(null);
   const messagesById = useAtomValue(chatMessagesByIdAtom);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
@@ -242,10 +257,54 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     });
   }, [chatId, setMessagesById]);
 
+  // Queue management handlers
+  const handleEditQueuedMessage = useCallback(
+    (id: string) => {
+      const msg = queuedMessages.find((m) => m.id === id);
+      if (!msg) return;
+      // Load the message content into the input
+      setInputValue(msg.prompt);
+      // Set editing mode
+      setEditingQueuedMessageId(id);
+    },
+    [queuedMessages, setInputValue],
+  );
+
+  const handleMoveUp = useCallback(
+    (id: string) => {
+      const index = queuedMessages.findIndex((m) => m.id === id);
+      if (index > 0) {
+        reorderQueuedMessages(index, index - 1);
+      }
+    },
+    [queuedMessages, reorderQueuedMessages],
+  );
+
+  const handleMoveDown = useCallback(
+    (id: string) => {
+      const index = queuedMessages.findIndex((m) => m.id === id);
+      if (index >= 0 && index < queuedMessages.length - 1) {
+        reorderQueuedMessages(index, index + 1);
+      }
+    },
+    [queuedMessages, reorderQueuedMessages],
+  );
+
+  const handleDeleteQueuedMessage = useCallback(
+    (id: string) => {
+      // Clear editing state if deleting the message being edited
+      if (editingQueuedMessageId === id) {
+        setEditingQueuedMessageId(null);
+        setInputValue("");
+      }
+      removeQueuedMessage(id);
+    },
+    [editingQueuedMessageId, removeQueuedMessage, setInputValue],
+  );
+
   const handleSubmit = async () => {
     if (
       (!inputValue.trim() && attachments.length === 0) ||
-      isStreaming ||
       !chatId ||
       pendingFiles
     ) {
@@ -277,13 +336,51 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     }
 
     const currentInput = inputValue;
-    setInputValue("");
 
     // Use all selected components for multi-component editing
     const componentsToSend =
       selectedComponents && selectedComponents.length > 0
         ? selectedComponents
         : [];
+
+    // Handle editing a queued message
+    if (editingQueuedMessageId) {
+      updateQueuedMessage(editingQueuedMessageId, {
+        prompt: currentInput,
+      });
+      setInputValue("");
+      setEditingQueuedMessageId(null);
+      return;
+    }
+
+    // If streaming, queue the message instead of sending immediately
+    if (isStreaming) {
+      const queued = queueMessage({
+        prompt: currentInput,
+        attachments,
+        selectedComponents: componentsToSend,
+      });
+      if (queued) {
+        // Only clear input, attachments, and components on successful queue
+        setInputValue("");
+        clearAttachments();
+        setSelectedComponents([]);
+        setVisualEditingSelectedComponent(null);
+        // Clear overlays in the preview iframe
+        if (previewIframeRef?.contentWindow) {
+          previewIframeRef.contentWindow.postMessage(
+            { type: "clear-dyad-component-overlays" },
+            "*",
+          );
+        }
+      }
+      // If queue failed, leave input/attachments intact for the user
+      return;
+    }
+
+    // Not streaming - send immediately
+    // Clear input and components before sending
+    setInputValue("");
     setSelectedComponents([]);
     setVisualEditingSelectedComponent(null);
     // Clear overlays in the preview iframe
@@ -307,6 +404,16 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   };
 
   const handleCancel = () => {
+    // Clear all queued messages first, BEFORE the IPC call, to ensure
+    // the queue is empty even if the backend response arrives quickly.
+    // This prevents race conditions where the queue-processing effect
+    // could potentially run if the backend responds before queue clearing.
+    clearAllQueuedMessages();
+    // Reset editing state so the "Editing queued message" banner is dismissed
+    if (editingQueuedMessageId) {
+      setEditingQueuedMessageId(null);
+      setInputValue("");
+    }
     if (chatId) {
       ipc.chat.cancelStream(chatId);
     }
@@ -479,6 +586,36 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                 );
               }}
             />
+          )}
+          {/* Show queued messages list */}
+          {queuedMessages.length > 0 && (
+            <QueuedMessagesList
+              messages={queuedMessages}
+              onEdit={handleEditQueuedMessage}
+              onDelete={handleDeleteQueuedMessage}
+              onMoveUp={handleMoveUp}
+              onMoveDown={handleMoveDown}
+              isStreaming={isStreaming}
+              hasError={!!error}
+            />
+          )}
+          {/* Show editing indicator when editing a queued message */}
+          {editingQueuedMessageId && (
+            <div className="border-b border-border p-2 bg-yellow-500/10 flex items-center justify-between">
+              <span className="text-sm text-yellow-700 dark:text-yellow-400">
+                Editing queued message
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingQueuedMessageId(null);
+                  setInputValue("");
+                }}
+                className="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
           )}
           {/* Only render ChatInputActions if proposal is loaded and no pending consent */}
           {!pendingAgentConsent &&

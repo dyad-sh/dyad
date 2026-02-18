@@ -1,6 +1,7 @@
 import { shell } from "electron";
 import log from "electron-log";
 import { createLoggedHandler } from "./safe_handle";
+import { IS_TEST_BUILD } from "../utils/test_utils";
 
 const logger = log.scope("shell_handlers");
 const handle = createLoggedHandler(logger);
@@ -12,6 +13,11 @@ export function registerShellHandlers() {
     }
     if (!url.startsWith("http://") && !url.startsWith("https://")) {
       throw new Error("Attempted to open invalid or non-http URL: " + url);
+    }
+    // In E2E test mode, skip actually opening external URLs to avoid browser windows
+    if (IS_TEST_BUILD) {
+      logger.debug("E2E test mode: skipped opening external URL:", url);
+      return;
     }
     await shell.openExternal(url);
     logger.debug("Opened external URL:", url);

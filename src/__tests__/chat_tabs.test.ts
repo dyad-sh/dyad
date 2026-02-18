@@ -6,6 +6,9 @@ import {
   pushRecentViewedChatIdAtom,
   removeRecentViewedChatIdAtom,
   pruneClosedChatIdsAtom,
+  sessionOpenedChatIdsAtom,
+  addSessionOpenedChatIdAtom,
+  closeMultipleTabsAtom,
 } from "@/atoms/chatAtoms";
 import {
   applySelectionToOrderedChatIds,
@@ -27,15 +30,42 @@ function chat(id: number): ChatSummary {
 }
 
 describe("ChatTabs helpers", () => {
-  it("keeps MRU order and appends chats that were never viewed", () => {
+  it("keeps MRU order and appends chats that were never viewed (session filter)", () => {
     const chats = [chat(1), chat(2), chat(3), chat(4)];
-    const orderedIds = getOrderedRecentChatIds([4, 2], chats);
+    // All chats are in the session
+    const sessionIds = new Set([1, 2, 3, 4]);
+    const orderedIds = getOrderedRecentChatIds(
+      [4, 2],
+      chats,
+      new Set(),
+      sessionIds,
+    );
     expect(orderedIds).toEqual([4, 2, 1, 3]);
+  });
+
+  it("only shows chats opened in current session", () => {
+    const chats = [chat(1), chat(2), chat(3), chat(4)];
+    // Only chats 1 and 3 are opened in the current session
+    const sessionIds = new Set([1, 3]);
+    const orderedIds = getOrderedRecentChatIds(
+      [4, 2, 3, 1],
+      chats,
+      new Set(),
+      sessionIds,
+    );
+    // Should only include chats 3 and 1 (in MRU order)
+    expect(orderedIds).toEqual([3, 1]);
   });
 
   it("skips stale chat ids that no longer exist", () => {
     const chats = [chat(1), chat(3)];
-    const orderedIds = getOrderedRecentChatIds([3, 999, 1], chats);
+    const sessionIds = new Set([1, 3, 999]);
+    const orderedIds = getOrderedRecentChatIds(
+      [3, 999, 1],
+      chats,
+      new Set(),
+      sessionIds,
+    );
     expect(orderedIds).toEqual([3, 1]);
   });
 
@@ -128,5 +158,42 @@ describe("recent viewed chat atoms", () => {
     expect(pruned.has(1)).toBe(true);
     expect(pruned.has(2)).toBe(true);
     expect(pruned.has(99)).toBe(false);
+  });
+});
+
+describe("session opened chat atoms", () => {
+  it("adds chat to session when opened", () => {
+    const store = createStore();
+    store.set(addSessionOpenedChatIdAtom, 1);
+    store.set(addSessionOpenedChatIdAtom, 2);
+    const sessionIds = store.get(sessionOpenedChatIdsAtom);
+    expect(sessionIds.has(1)).toBe(true);
+    expect(sessionIds.has(2)).toBe(true);
+  });
+
+  it("does not duplicate chat IDs in session", () => {
+    const store = createStore();
+    store.set(addSessionOpenedChatIdAtom, 1);
+    store.set(addSessionOpenedChatIdAtom, 1);
+    const sessionIds = store.get(sessionOpenedChatIdsAtom);
+    expect(sessionIds.size).toBe(1);
+  });
+});
+
+describe("close multiple tabs", () => {
+  it("closes multiple tabs at once", () => {
+    const store = createStore();
+    store.set(recentViewedChatIdsAtom, [1, 2, 3, 4, 5]);
+    store.set(closeMultipleTabsAtom, [2, 4]);
+    expect(store.get(recentViewedChatIdsAtom)).toEqual([1, 3, 5]);
+    expect(store.get(closedChatIdsAtom).has(2)).toBe(true);
+    expect(store.get(closedChatIdsAtom).has(4)).toBe(true);
+  });
+
+  it("handles empty array gracefully", () => {
+    const store = createStore();
+    store.set(recentViewedChatIdsAtom, [1, 2, 3]);
+    store.set(closeMultipleTabsAtom, []);
+    expect(store.get(recentViewedChatIdsAtom)).toEqual([1, 2, 3]);
   });
 });

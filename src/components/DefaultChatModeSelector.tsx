@@ -38,11 +38,13 @@ export function DefaultChatModeSelector() {
   const getModeDisplayName = (mode: ChatMode) => {
     switch (mode) {
       case "build":
-      case "agent": // backwards compatibility - treat as build
         return "Build";
       case "local-agent":
         return isProEnabled ? "Agent" : "Basic Agent";
       case "ask":
+        return "Ask";
+      case "plan":
+        return "Plan";
       default:
         throw new Error(`Unknown chat mode: ${mode}`);
     }

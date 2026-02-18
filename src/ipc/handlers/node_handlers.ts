@@ -9,6 +9,7 @@ import { join } from "path";
 import { readSettings } from "../../main/settings";
 import { createTypedHandler } from "./base";
 import { systemContracts } from "../types/system";
+import { IS_TEST_BUILD } from "../utils/test_utils";
 
 const logger = log.scope("node_handlers");
 
@@ -17,6 +18,12 @@ const logger = log.scope("node_handlers");
 let mockNodeInstalled: boolean | null = null;
 
 function getNodeDownloadUrl(): string {
+  // In E2E test mode, return a placeholder URL to avoid actual Node.js downloads.
+  // This URL is never actually fetched since open-external-url is also skipped in test mode.
+  if (IS_TEST_BUILD) {
+    return "https://example.com/fake-node-installer.pkg";
+  }
+
   // Default to mac download url.
   let nodeDownloadUrl = "https://nodejs.org/dist/v22.14.0/node-v22.14.0.pkg";
   if (platform() == "win32") {
@@ -35,8 +42,8 @@ function getNodeDownloadUrl(): string {
 
 export function registerNodeHandlers() {
   // Test-only handler to control Node.js mock state
-  // Guarded by E2E_TEST_BUILD environment variable
-  if (process.env.E2E_TEST_BUILD === "true") {
+  // Guarded by IS_TEST_BUILD constant
+  if (IS_TEST_BUILD) {
     ipcMain.handle(
       "test:set-node-mock",
       async (_, { installed }: { installed: boolean | null }) => {
@@ -57,7 +64,7 @@ export function registerNodeHandlers() {
     const nodeDownloadUrl = getNodeDownloadUrl();
 
     // Test-only: Return mock state if set
-    if (process.env.E2E_TEST_BUILD === "true" && mockNodeInstalled !== null) {
+    if (IS_TEST_BUILD && mockNodeInstalled !== null) {
       logger.log("Using mock Node.js status:", mockNodeInstalled);
       if (mockNodeInstalled) {
         return {

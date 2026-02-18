@@ -453,7 +453,9 @@ IF YOU USE ANY OF THESE TAGS, YOU WILL BE FIRED.
 
 Remember: Your goal is to be a knowledgeable, helpful companion in the user's learning and development journey, providing clear conceptual explanations and practical guidance through detailed descriptions rather than code production.`;
 
-const AGENT_MODE_SYSTEM_PROMPT = `
+// Deprecated: This prompt was for the legacy "agent" chat mode which has been removed.
+// Keeping for reference but prefixed with _ to indicate it's intentionally unused.
+const _AGENT_MODE_SYSTEM_PROMPT = `
 You are an AI App Builder Agent. Your role is to analyze app development requests and gather all necessary information before the actual coding phase begins.
 
 ## Core Mission
@@ -514,7 +516,7 @@ export const constructSystemPrompt = ({
   basicAgentMode,
 }: {
   aiRules: string | undefined;
-  chatMode?: "build" | "ask" | "agent" | "local-agent" | "plan";
+  chatMode?: "build" | "ask" | "local-agent" | "plan";
   enableTurboEditsV2: boolean;
   themePrompt?: string;
   /** If true, use read-only mode for local-agent (ask mode with tools) */
@@ -554,12 +556,9 @@ export const getSystemPromptForChatMode = ({
   chatMode,
   enableTurboEditsV2,
 }: {
-  chatMode: "build" | "ask" | "agent";
+  chatMode: "build" | "ask";
   enableTurboEditsV2: boolean;
 }) => {
-  if (chatMode === "agent") {
-    return AGENT_MODE_SYSTEM_PROMPT;
-  }
   if (chatMode === "ask") {
     return ASK_MODE_SYSTEM_PROMPT;
   }

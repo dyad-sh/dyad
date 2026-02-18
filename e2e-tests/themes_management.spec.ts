@@ -27,7 +27,7 @@ test("themes management - CRUD operations", async ({ po }) => {
   await po.page.getByRole("tab", { name: "Manual Configuration" }).click();
 
   // Fill in manual configuration form
-  await po.page.getByLabel("Theme Name").fill("My Test Theme");
+  await po.page.locator("#manual-name").fill("My Test Theme");
   await po.page
     .getByLabel("Description (optional)")
     .fill("A test theme description");
@@ -53,9 +53,12 @@ test("themes management - CRUD operations", async ({ po }) => {
     po.page.getByRole("dialog").getByText("Edit Theme"),
   ).toBeVisible();
 
-  // Update the theme details
-  await po.page.getByLabel("Theme Name").clear();
-  await po.page.getByLabel("Theme Name").fill("Updated Theme");
+  // Update the theme details (edit dialog uses different input IDs)
+  await po.page.getByRole("dialog").getByLabel("Theme Name").clear();
+  await po.page
+    .getByRole("dialog")
+    .getByLabel("Theme Name")
+    .fill("Updated Theme");
   await po.page
     .getByLabel("Description (optional)")
     .fill("Updated description");
@@ -122,7 +125,7 @@ test("themes management - create theme from chat input", async ({ po }) => {
   await po.page.getByRole("tab", { name: "Manual Configuration" }).click();
 
   // Fill in manual configuration form
-  await po.page.getByLabel("Theme Name").fill("Chat Input Theme");
+  await po.page.locator("#manual-name").fill("Chat Input Theme");
   await po.page
     .getByLabel("Description (optional)")
     .fill("Created from chat input");
@@ -236,7 +239,7 @@ test("themes management - AI generator flow", async ({ po }) => {
   await expect(generateButton).toBeDisabled();
 
   // Fill in theme details
-  await po.page.getByLabel("Theme Name").fill("AI Generated Theme");
+  await po.page.locator("#ai-name").fill("AI Generated Theme");
   await po.page
     .getByLabel("Description (optional)")
     .fill("Created via AI generator");
@@ -306,7 +309,7 @@ test("themes management - AI generator from website URL", async ({ po }) => {
   await expect(generateButton).toBeDisabled();
 
   // Fill in theme details
-  await po.page.getByLabel("Theme Name").fill("Website Theme");
+  await po.page.locator("#ai-name").fill("Website Theme");
   await po.page
     .getByLabel("Description (optional)")
     .fill("Generated from website");

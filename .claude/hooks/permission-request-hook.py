@@ -179,6 +179,10 @@ def main():
     tool_name = input_data.get("tool_name", "")
     tool_input = input_data.get("tool_input")
 
+    # Never auto-answer AskUserQuestion - let the user respond
+    if tool_name == "AskUserQuestion":
+        sys.exit(0)
+
     if not isinstance(tool_input, dict):
         sys.exit(0)
 

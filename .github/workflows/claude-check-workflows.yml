@@ -1,0 +1,41 @@
+name: Claude Check Workflows
+
+on:
+  schedule:
+    # Daily at 13:00 UTC (5 AM PST / 6 AM PDT)
+    - cron: "0 13 * * *"
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: "Number of hours to look back for workflow runs"
+        required: false
+        default: "24"
+        type: string
+
+jobs:
+  check-workflows:
+    environment: ai-bots
+    runs-on:
+      - self-hosted
+      - macOS
+      - ARM64
+    permissions:
+      issues: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Check workflow health
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.DEFLAKE_E2E_PAT_GITHUB_TOKEN }}
+          CLAUDE_CODE_MAX_OUTPUT_TOKENS: 48000
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.DEFLAKE_E2E_PAT_GITHUB_TOKEN }}
+          claude_args: --model claude-sonnet-4-5-20250929
+          prompt: |
+            /dyad:check-workflows ${{ inputs.hours || '24' }}
+      - name: Cleanup (self-hosted macOS)
+        if: always()
+        run: bash scripts/ci-cleanup-macos.sh

@@ -154,7 +154,7 @@ Record a visual demonstration of the key feature of this PR using screenshots an
    The app must be built before recording:
 
    ```
-   npm run build
+   pnpm run build
    ```
 
 6. **Run the screencast test:**

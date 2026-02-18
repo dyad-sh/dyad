@@ -59,7 +59,7 @@ Create a plan to fix a GitHub issue, then implement it locally.
 
    Note: Per project guidelines, avoid writing many E2E tests for one feature. Prefer one or two E2E tests with broad coverage. If unsure, ask the user for guidance on testing approach.
 
-   **IMPORTANT for E2E tests:** You MUST run `npm run build` before running E2E tests. E2E tests run against the built application binary. If you make any changes to application code (anything outside of `e2e-tests/`), you MUST re-run `npm run build` before running E2E tests, otherwise you'll be testing the old version.
+   **IMPORTANT for E2E tests:** You MUST run `pnpm run build` before running E2E tests. E2E tests run against the built application binary. If you make any changes to application code (anything outside of `e2e-tests/`), you MUST re-run `pnpm run build` before running E2E tests, otherwise you'll be testing the old version.
 
 6. **Create a detailed plan:**
 

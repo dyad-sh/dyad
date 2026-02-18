@@ -24,23 +24,23 @@ Identify and fix flaky E2E tests by running them repeatedly and investigating fa
 2. **Install dependencies:**
 
    ```
-   npm install
+   pnpm install
    ```
 
 3. **Build the app binary:**
 
    ```
-   npm run build
+   pnpm run build
    ```
 
-   **IMPORTANT:** This step is required before running E2E tests. E2E tests run against the built binary. If you make any changes to application code (anything outside of `e2e-tests/`), you MUST re-run `npm run build` before running E2E tests again, otherwise you'll be testing the old version.
+   **IMPORTANT:** This step is required before running E2E tests. E2E tests run against the built binary. If you make any changes to application code (anything outside of `e2e-tests/`), you MUST re-run `pnpm run build` before running E2E tests again, otherwise you'll be testing the old version.
 
 4. **Run tests repeatedly to detect flakiness:**
 
    For each test file, run it 10 times:
 
    ```
-   PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<testfile>.spec.ts --repeat-each=10
+   PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never pnpm run e2e -- e2e-tests/<testfile>.spec.ts --repeat-each=10
    ```
 
    **IMPORTANT:** `PLAYWRIGHT_RETRIES=0` is required to disable automatic retries. Without it, CI environments (where `CI=true`) default to 2 retries, causing flaky tests to pass on retry and be incorrectly skipped as "not flaky."
@@ -55,7 +55,7 @@ Identify and fix flaky E2E tests by running them repeatedly and investigating fa
    Run the failing test with Playwright browser debugging enabled:
 
    ```
-   DEBUG=pw:browser PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<testfile>.spec.ts
+   DEBUG=pw:browser PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never pnpm run e2e -- e2e-tests/<testfile>.spec.ts
    ```
 
    Analyze the debug output to understand:
@@ -82,7 +82,7 @@ Identify and fix flaky E2E tests by running them repeatedly and investigating fa
    If the flakiness is due to legitimate visual differences:
 
    ```
-   PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<testfile>.spec.ts --update-snapshots
+   PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never pnpm run e2e -- e2e-tests/<testfile>.spec.ts --update-snapshots
    ```
 
 8. **Verify the fix:**
@@ -90,7 +90,7 @@ Identify and fix flaky E2E tests by running them repeatedly and investigating fa
    Re-run the test 10 times to confirm it's no longer flaky:
 
    ```
-   PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<testfile>.spec.ts --repeat-each=10
+   PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never pnpm run e2e -- e2e-tests/<testfile>.spec.ts --repeat-each=10
    ```
 
    The test should pass all 10 runs consistently.

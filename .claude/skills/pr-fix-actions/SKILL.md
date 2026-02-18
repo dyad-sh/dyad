@@ -36,19 +36,19 @@ Fix failing CI checks and GitHub Actions on a Pull Request.
    - Build checks
 
 3. **For failing lint/formatting checks:**
-   - Run `npm run lint:fix` to auto-fix lint issues
-   - Run `npm run fmt` to fix formatting
+   - Run `pnpm run lint:fix` to auto-fix lint issues
+   - Run `pnpm run fmt` to fix formatting
    - Review the changes made
 
 4. **For failing type checks:**
-   - Run `npm run ts` to identify type errors
+   - Run `pnpm run ts` to identify type errors
    - Read the relevant files and fix the type issues
    - Re-run type checks to verify fixes
 
 5. **For failing unit tests:**
    - Run the failing tests locally to reproduce:
      ```
-     npm run test -- <test-file-pattern>
+     pnpm run test -- <test-file-pattern>
      ```
    - Investigate the test failures
    - Fix the underlying code issues or update tests if the behavior change is intentional
@@ -59,25 +59,25 @@ Fix failing CI checks and GitHub Actions on a Pull Request.
    - If the failures are not snapshot-related:
      - **IMPORTANT:** First build the application before running E2E tests:
        ```
-       npm run build
+       pnpm run build
        ```
-       E2E tests run against the built binary. If you make any changes to application code (anything outside of `e2e-tests/`), you MUST re-run `npm run build` before running E2E tests again.
+       E2E tests run against the built binary. If you make any changes to application code (anything outside of `e2e-tests/`), you MUST re-run `pnpm run build` before running E2E tests again.
      - Run the failing tests locally with debug output:
        ```
-       DEBUG=pw:browser PLAYWRIGHT_HTML_OPEN=never npm run e2e -- <test-file>
+       DEBUG=pw:browser PLAYWRIGHT_HTML_OPEN=never pnpm run e2e -- <test-file>
        ```
      - Investigate and fix the underlying issues
 
 7. **For failing build checks:**
    - Run the build locally:
      ```
-     npm run build
+     pnpm run build
      ```
    - Fix any build errors that appear
 
 8. **After making all fixes, verify:**
-   - Run the full lint check: `npm run lint`
-   - Run type checks: `npm run ts`
+   - Run the full lint check: `pnpm run lint`
+   - Run type checks: `pnpm run ts`
    - Run relevant unit tests
    - Optionally run E2E tests locally if they were failing
 

@@ -12,7 +12,7 @@
 #   2. Blob reports            (blob-report/)
 #   3. Cloned template repos   (nextjs-template/)
 #   4. Old Playwright browsers (keeps only the current version)
-#   5. npm cache artifacts     (_cacache, _logs)
+#   5. pnpm/npm cache artifacts
 #   6. Old runner diagnostics  (_diag/*.log older than 7 days)
 #   7. [Nightly only] ~/Library/Caches subdirs, runner _work (older than 2 days)
 
@@ -65,7 +65,7 @@ PW_CACHE="${HOME}/Library/Caches/ms-playwright"
 if [ -d "$PW_CACHE" ]; then
   # Detect the expected chromium revision from the installed playwright
   CURRENT_CHROMIUM=""
-  if command -v node &>/dev/null && { [ -f "node_modules/.package-lock.json" ] || [ -d "node_modules/playwright-core" ]; }; then
+  if command -v node &>/dev/null && [ -d "node_modules/playwright-core" ]; then
     CURRENT_CHROMIUM=$(node -e "const b=require('./node_modules/playwright-core/browsers.json').browsers.find(x=>x.name==='chromium'); console.log(b.revision)" 2>/dev/null || true)
   fi
 
@@ -99,8 +99,15 @@ if [ -d "$PW_CACHE" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 5. npm cache bloat (_cacache, _logs inside ~/.npm)
+# 5. pnpm/npm cache bloat
 # ---------------------------------------------------------------------------
+PNPM_CACHE="${HOME}/.pnpm-store"
+if [ -d "$PNPM_CACHE" ]; then
+  cache_size=$(du -sh "$PNPM_CACHE" 2>/dev/null | cut -f1 || echo "?")
+  echo "Pruning pnpm store (${cache_size})..."
+  pnpm store prune >/dev/null 2>&1 || true
+fi
+
 NPM_CACHE="${HOME}/.npm"
 # npm cache dirs may be locked by concurrent npm processes on shared runners,
 # so these rm -rf calls use || to avoid aborting the script under set -e.

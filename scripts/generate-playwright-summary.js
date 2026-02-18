@@ -469,7 +469,7 @@ async function run({ github, context, core }) {
       ];
 
       comment += "```bash\n";
-      comment += "npm run e2e \\\n";
+      comment += "pnpm run e2e \\\n";
       comment += specFiles.map((s) => `  ${s}`).join(" \\\n");
       comment += "\n```\n\n";
     }

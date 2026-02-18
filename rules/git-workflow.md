@@ -64,7 +64,7 @@ In CI, `claude-code-action` restricts file access to the repo working directory 
 
 ### Handling unstaged changes during rebase
 
-If `git rebase` fails with "You have unstaged changes" (common with spurious `package-lock.json` changes):
+If `git rebase` fails with "You have unstaged changes" (common with spurious `pnpm-lock.yaml` changes):
 
 ```bash
 git stash push -m "Stashing changes before rebase"
@@ -76,7 +76,7 @@ The stashed changes will be automatically merged back after the rebase completes
 
 ### Conflict resolution tips
 
-- **Before rebasing:** If `npm install` modified `package-lock.json` (common in CI/local), discard changes with `git restore package-lock.json` to avoid "unstaged changes" errors
+- **Before rebasing:** If `pnpm install` modified `pnpm-lock.yaml` (common in CI/local), discard changes with `git restore pnpm-lock.yaml` to avoid "unstaged changes" errors
 - When resolving import conflicts (e.g., `<<<<<<< HEAD` with different imports), keep **both** imports if both are valid and needed by the component
 - When resolving conflicts in i18n-related commits, watch for duplicate constant definitions that conflict with imports from `@/lib/schemas` (e.g., `DEFAULT_ZOOM_LEVEL`)
 - If both sides of a conflict have valid imports/hooks, keep both and remove any duplicate constant redefinitions
@@ -88,13 +88,13 @@ The stashed changes will be automatically merged back after the rebase completes
 
 ## Rebasing with uncommitted changes
 
-If you need to rebase but have uncommitted changes (e.g., package-lock.json from startup npm install):
+If you need to rebase but have uncommitted changes (e.g., `pnpm-lock.yaml` from startup `pnpm install`):
 
 1. Stash changes: `git stash push -m "Stash changes before rebase"`
 2. Rebase: `git rebase upstream/main` (resolve conflicts if needed)
 3. After rebase completes, review stashed changes: `git stash show -p`
-4. If stashed changes are spurious (e.g., package-lock.json peer markers when package.json conflicts were resolved during rebase), drop the stash: `git stash drop`
-5. Otherwise, pop stash: `git stash pop` and discard spurious changes: `git restore package-lock.json` (if package.json unchanged)
+4. If stashed changes are spurious (e.g., `pnpm-lock.yaml` peer markers when package.json conflicts were resolved during rebase), drop the stash: `git stash drop`
+5. Otherwise, pop stash: `git stash pop` and discard spurious changes: `git restore pnpm-lock.yaml` (if package.json unchanged)
 
 This prevents rebase conflicts from uncommitted changes while preserving any work in progress.
 
@@ -108,4 +108,4 @@ When rebasing a PR branch that conflicts with upstream documentation changes (e.
 
 ## Resolving package.json engine conflicts
 
-When rebasing causes conflicts in the `engines` field of `package.json` (e.g., node version requirements), accept the incoming change from upstream/main to maintain consistency with the base branch requirements. The same resolution should be applied to the corresponding section in `package-lock.json`.
+When rebasing causes conflicts in the `engines` field of `package.json` (e.g., node version requirements), accept the incoming change from upstream/main to maintain consistency with the base branch requirements. The same resolution should be applied to the corresponding section in `pnpm-lock.yaml`.

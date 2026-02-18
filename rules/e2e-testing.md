@@ -6,22 +6,22 @@ If you would need to mock a lot of things to unit test a feature, prefer to writ
 
 Do NOT write lots of e2e test cases for one feature. Each e2e test case adds a significant amount of overhead, so instead prefer just one or two E2E test cases that each have broad coverage of the feature in question.
 
-**IMPORTANT: You MUST run `npm run build` before running E2E tests.** E2E tests run against the built application binary, not the source code. If you make any changes to application code (anything outside of `e2e-tests/`), you MUST re-run `npm run build` before running E2E tests, otherwise you'll be testing the old version of the application.
+**IMPORTANT: You MUST run `pnpm run build` before running E2E tests.** E2E tests run against the built application binary, not the source code. If you make any changes to application code (anything outside of `e2e-tests/`), you MUST re-run `pnpm run build` before running E2E tests, otherwise you'll be testing the old version of the application.
 
 ```sh
-npm run build
+pnpm run build
 ```
 
 To run e2e tests without opening the HTML report (which blocks the terminal), use:
 
 ```sh
-PLAYWRIGHT_HTML_OPEN=never npm run e2e
+PLAYWRIGHT_HTML_OPEN=never pnpm run e2e
 ```
 
 To get additional debug logs when a test is failing, use:
 
 ```sh
-DEBUG=pw:browser PLAYWRIGHT_HTML_OPEN=never npm run e2e
+DEBUG=pw:browser PLAYWRIGHT_HTML_OPEN=never pnpm run e2e
 ```
 
 ## PageObject sub-component pattern
@@ -102,7 +102,7 @@ When adding new test server URLs, update **both** the test fixtures (`e2e-tests/
 - **After `page.reload()`**: Always add `await page.waitForLoadState("domcontentloaded")` before interacting with elements. Without this, the page may not have re-rendered yet.
 - **Keyboard navigation events (ArrowUp/ArrowDown)**: Add `await page.waitForTimeout(100)` between sequential keyboard presses to let the UI state settle. Rapid keypresses can cause race conditions in menu navigation.
 - **Navigation to tabs**: Use `await expect(link).toBeVisible({ timeout: Timeout.EXTRA_LONG })` before clicking tab links (especially in `goToAppsTab()`). Electron sidebar links can take time to render during app initialization.
-- **Confirming flakiness**: Use `PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec> --repeat-each=10` to reproduce flaky tests. `PLAYWRIGHT_RETRIES=0` is critical — CI defaults to 2 retries, hiding flakiness.
+- **Confirming flakiness**: Use `PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never pnpm run e2e -- e2e-tests/<spec> --repeat-each=10` to reproduce flaky tests. `PLAYWRIGHT_RETRIES=0` is critical — CI defaults to 2 retries, hiding flakiness.
 
 ## Waiting for button state transitions
 

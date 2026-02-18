@@ -148,33 +148,37 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version-file: package.json
-          cache: npm
-          cache-dependency-path: package-lock.json
-      - name: Install npm 11.8.0
-        run: npm install -g npm@11.8.0
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            testing/fake-llm-server/pnpm-lock.yaml
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with:
+          version: 10.17.1
       - name: Install node modules
-        run: bash scripts/npm-ci-retry.sh
+        run: bash scripts/pnpm-install-retry.sh
         env:
           # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Presubmit check (e.g. lint, format)
         # do not run this on Windows (it fails and not necessary)
         if: contains(matrix.os.name, 'macos')
-        run: npm run presubmit
+        run: pnpm run presubmit
       - name: Type-checking
         # do not run this on windows (it's redundant)
         if: contains(matrix.os.name, 'macos')
-        run: npm run ts
+        run: pnpm run ts
       - name: Unit tests
         # do not run this on windows (it's redundant)
         if: contains(matrix.os.name, 'macos')
-        run: npm run test
+        run: pnpm run test
       - name: Build
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
-        run: npm run pre:e2e
+        run: pnpm run pre:e2e
       - name: Prep test server
-        run: cd testing/fake-llm-server && npm install && npm run build && cd -
+        run: cd testing/fake-llm-server && pnpm install --frozen-lockfile && pnpm run build && cd -
       # macOS: Archive app bundle with tar to preserve metadata (code signatures, extended attributes)
       # This is necessary because GitHub artifact upload/download loses these attributes
       - name: Archive macOS app bundle
@@ -223,19 +227,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version-file: package.json
-          cache: npm
-          cache-dependency-path: package-lock.json
-      - name: Install npm 11.8.0
-        run: npm install -g npm@11.8.0
-      - name: Install node modules
-        run: bash scripts/npm-ci-retry.sh
-        env:
-          # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            testing/fake-llm-server/pnpm-lock.yaml
       - name: Setup pnpm
         uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
         with:
-          version: latest
+          version: 10.17.1
+      - name: Install node modules
+        run: bash scripts/pnpm-install-retry.sh
+        env:
+          # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Clone nextjs-template
         run: git clone --depth 1 https://github.com/dyad-sh/nextjs-template.git nextjs-template
       - name: Get pnpm store directory
@@ -252,9 +256,9 @@ jobs:
             ${{ matrix.os.name }}-pnpm-store-
       # Not strictly needed but makes the e2e tests faster (and less flaky)
       - name: Install scaffold dependencies
-        run: cd scaffold && pnpm install
+        run: cd scaffold && pnpm install --frozen-lockfile
       - name: Install nextjs-template dependencies
-        run: cd nextjs-template && pnpm install
+        run: cd nextjs-template && pnpm install --frozen-lockfile
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
@@ -264,7 +268,7 @@ jobs:
         if: contains(matrix.os.name, 'macos')
         run: tar -xvf out-macos.tar
       - name: Install Chromium browser for Playwright
-        run: npx playwright install chromium --with-deps
+        run: pnpm exec playwright install chromium --with-deps
       - name: E2E tests (Shard ${{ matrix.shard }}/${{ matrix.shardTotal }})
         env:
           FLAKINESS_ACCESS_TOKEN: ${{ secrets.FLAKINESS_ACCESS_TOKEN }}
@@ -275,7 +279,7 @@ jobs:
         # You can add debug logging to make it easier to see what's failing
         # by adding "DEBUG=pw:browser" in front.
         # Use blob reporter for sharding and merge capabilities
-        run: DEBUG=pw:browser npx playwright test --shard=${{ matrix.shard }}/${{ matrix.shardTotal }}
+        run: DEBUG=pw:browser pnpm exec playwright test --shard=${{ matrix.shard }}/${{ matrix.shardTotal }}
       - name: Record shard metadata
         if: ${{ !cancelled() }}
         run: |
@@ -324,10 +328,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: lts/*
-      - name: Install npm 11.8.0
-        run: npm install -g npm@11.8.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with:
+          version: 10.17.1
       - name: Install dependencies
-        run: npm ci --no-audit --no-fund --progress=false
+        run: pnpm install --frozen-lockfile
         env:
           # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -347,7 +355,7 @@ jobs:
           find all-blob-reports/ -type f -exec ls -lh {} \; || echo "No files found"
 
       - name: Merge into HTML Report
-        run: PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report npx playwright merge-reports --config=merge.config.ts ./all-blob-reports
+        run: PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report pnpm exec playwright merge-reports --config=merge.config.ts ./all-blob-reports
 
       - name: Debug - List playwright-report contents
         run: |

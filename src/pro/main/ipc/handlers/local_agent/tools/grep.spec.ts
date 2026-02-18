@@ -91,6 +91,7 @@ function deepHello() {
       chatId: 1,
       supabaseProjectId: null,
       supabaseOrganizationSlug: null,
+      convexDeploymentUrl: null,
       messageId: 1,
       isSharedModulesChanged: false,
       isDyadPro: false,

@@ -31,6 +31,8 @@ pnpm run init-precommit
 
 **Note:** Running `pnpm install` may update `pnpm-lock.yaml` with version changes or peer dependency flag removals. If rebasing or performing git operations, commit these changes first to avoid "unstaged changes" errors.
 
+**Sandbox note:** In restricted environments where Corepack cannot write to `~/.cache` (error like `EPERM: operation not permitted, mkdir .../.cache/node/corepack`), run pnpm commands with `COREPACK_HOME=/tmp/corepack` (or another writable directory) prefixed.
+
 ## Pre-commit checks
 
 RUN THE FOLLOWING CHECKS before you do a commit.

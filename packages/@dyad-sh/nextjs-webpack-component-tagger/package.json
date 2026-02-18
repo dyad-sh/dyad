@@ -23,9 +23,9 @@
   },
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts",
-    "dev": "npm run build -- --watch",
+    "dev": "pnpm run build -- --watch",
     "lint": "eslint . --max-warnings 0",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
     "@babel/parser": "^7.23.0",

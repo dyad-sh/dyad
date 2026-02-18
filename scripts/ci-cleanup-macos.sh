@@ -101,10 +101,12 @@ fi
 # ---------------------------------------------------------------------------
 # 5. pnpm/npm cache bloat
 # ---------------------------------------------------------------------------
-PNPM_CACHE="${HOME}/.pnpm-store"
-if [ -d "$PNPM_CACHE" ]; then
-  cache_size=$(du -sh "$PNPM_CACHE" 2>/dev/null | cut -f1 || echo "?")
-  echo "Pruning pnpm store (${cache_size})..."
+if command -v pnpm &>/dev/null; then
+  PNPM_STORE=$(pnpm store path 2>/dev/null || echo "")
+  if [ -n "$PNPM_STORE" ] && [ -d "$PNPM_STORE" ]; then
+    cache_size=$(du -sh "$PNPM_STORE" 2>/dev/null | cut -f1 || echo "?")
+    echo "Pruning pnpm store (${cache_size})..."
+  fi
   pnpm store prune >/dev/null 2>&1 || true
 fi
 

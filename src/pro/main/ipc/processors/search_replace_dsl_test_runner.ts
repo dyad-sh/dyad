@@ -87,7 +87,7 @@ function parseTestCase(name: string, content: string): TestCase | null {
     console.warn(`Test case "${name}": missing <original_file> tag`);
     return null;
   }
-  const original = originalMatch[1].replace(/\r\n/g, "\n");
+  const original = originalMatch[1];
 
   // Extract diff content (everything between </original_file> and <output_file> or <error_pattern>)
   const afterOriginal = content.slice(
@@ -114,7 +114,7 @@ function parseTestCase(name: string, content: string): TestCase | null {
   }
 
   // Trim leading/trailing whitespace but preserve internal structure
-  diff = diff.trim().replace(/\r\n/g, "\n");
+  diff = diff.trim();
 
   // Check for output_file (passing test)
   const outputMatch = content.match(
@@ -125,7 +125,7 @@ function parseTestCase(name: string, content: string): TestCase | null {
       name,
       original,
       diff,
-      expectedOutput: outputMatch[1].replace(/\r\n/g, "\n"),
+      expectedOutput: outputMatch[1],
     };
   }
 
@@ -140,7 +140,7 @@ function parseTestCase(name: string, content: string): TestCase | null {
         name,
         original,
         diff,
-        errorPattern: new RegExp(patternStr.replace(/\r\n/g, "\n"), "i"),
+        errorPattern: new RegExp(patternStr, "i"),
       };
     } catch {
       console.warn(

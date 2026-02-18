@@ -31,6 +31,7 @@ export function ImageSwapPopover({
   const [urlValue, setUrlValue] = useState(currentSrc);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [urlError, setUrlError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync urlValue when a different component is selected
@@ -38,12 +39,28 @@ export function ImageSwapPopover({
     setUrlValue(currentSrc);
     setSelectedFileName(null);
     setFileError(null);
+    setUrlError(null);
   }, [currentSrc]);
 
   const handleUrlSubmit = () => {
-    if (urlValue.trim()) {
-      onSwap(urlValue.trim());
+    const trimmed = urlValue.trim();
+    if (!trimmed) {
+      setUrlError("Please enter a URL.");
+      return;
     }
+    // Accept absolute URLs (http/https/protocol-relative) and root-relative paths
+    if (
+      !/^https?:\/\//i.test(trimmed) &&
+      !trimmed.startsWith("//") &&
+      !trimmed.startsWith("/")
+    ) {
+      setUrlError(
+        "Please enter a valid URL (https://...) or an absolute path (/...).",
+      );
+      return;
+    }
+    setUrlError(null);
+    onSwap(trimmed);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -72,6 +89,12 @@ export function ImageSwapPopover({
         base64Data: base64DataUrl,
         mimeType: file.type,
       });
+    };
+    reader.onerror = () => {
+      setFileError(
+        "Failed to read the file. Please try again or choose a different file.",
+      );
+      setSelectedFileName(null);
     };
     reader.readAsDataURL(file);
 
@@ -123,11 +146,15 @@ export function ImageSwapPopover({
               placeholder="https://example.com/image.png"
               className="h-8 text-xs"
               value={urlValue}
-              onChange={(e) => setUrlValue(e.target.value)}
+              onChange={(e) => {
+                setUrlValue(e.target.value);
+                setUrlError(null);
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleUrlSubmit();
               }}
             />
+            {urlError && <p className="text-xs text-red-500">{urlError}</p>}
             <Button size="sm" onClick={handleUrlSubmit} className="w-full">
               <Check size={14} className="mr-1" />
               Apply

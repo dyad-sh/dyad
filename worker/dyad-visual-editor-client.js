@@ -258,40 +258,26 @@
     }
 
     if (imgEl) {
-      imgEl.src = src;
-
-      // Send updated coordinates after visual change
-      const rect = element.getBoundingClientRect();
-      window.parent.postMessage(
-        {
-          type: "dyad-component-coordinates-updated",
-          coordinates: {
-            top: rect.top,
-            left: rect.left,
-            width: rect.width,
-            height: rect.height,
+      const sendCoordinates = () => {
+        const rect = element.getBoundingClientRect();
+        window.parent.postMessage(
+          {
+            type: "dyad-component-coordinates-updated",
+            coordinates: {
+              top: rect.top,
+              left: rect.left,
+              width: rect.width,
+              height: rect.height,
+            },
           },
-        },
-        "*",
-      );
+          "*",
+        );
+      };
+
+      imgEl.addEventListener("load", sendCoordinates, { once: true });
+      imgEl.addEventListener("error", sendCoordinates, { once: true });
+      imgEl.src = src;
     }
-  }
-
-  function handleGetImageSrc(data) {
-    const { elementId, runtimeId } = data;
-    const element = findElementByDyadId(elementId, runtimeId);
-    if (!element) return;
-
-    let imgEl =
-      element.tagName === "IMG" ? element : element.querySelector("img");
-    window.parent.postMessage(
-      {
-        type: "dyad-image-src-response",
-        elementId,
-        src: imgEl ? imgEl.getAttribute("src") || imgEl.src : null,
-      },
-      "*",
-    );
   }
 
   /* ---------- message bridge -------------------------------------------- */
@@ -319,9 +305,6 @@
         break;
       case "modify-dyad-image-src":
         handleModifyImageSrc(data);
-        break;
-      case "get-dyad-image-src":
-        handleGetImageSrc(data);
         break;
       case "cleanup-all-text-editing":
         // Clean up all text editing states

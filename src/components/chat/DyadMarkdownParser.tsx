@@ -765,11 +765,7 @@ function renderCustomTag(
       );
 
     case "dyad-questionnaire":
-      return (
-        <DyadQuestionnaire>
-          {content}
-        </DyadQuestionnaire>
-      );
+      return <DyadQuestionnaire>{content}</DyadQuestionnaire>;
 
     default:
       return null;

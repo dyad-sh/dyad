@@ -39,16 +39,10 @@ const ignore = (file: string) => {
   if (file.startsWith("/node_modules/html-to-image")) {
     return false;
   }
-  const modulesToInclude = [
-    "better-sqlite3",
-    "recast",
-    "ast-types",
-    "esprima",
-    "source-map",
-    "tslib",
-    "bindings",
-  ];
-  if (modulesToInclude.some(mod => file.startsWith(`/node_modules/${mod}`))) {
+  if (file.startsWith("/node_modules/better-sqlite3")) {
+    return false;
+  }
+  if (file.startsWith("/node_modules/bindings")) {
     return false;
   }
   if (file.startsWith("/node_modules/file-uri-to-path")) {

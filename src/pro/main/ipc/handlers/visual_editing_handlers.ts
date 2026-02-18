@@ -49,35 +49,47 @@ export function registerVisualEditingHandlers() {
         }
 
         const appPath = getDyadAppPath(app.path);
-        // Process image uploads - write files to public directory
+
+        // Validate all image uploads upfront before making any changes
+        const imageValidationErrors: string[] = [];
         for (const change of changes) {
           if (change.imageUpload) {
             const { fileName, base64Data, mimeType } = change.imageUpload;
 
-            // Validate MIME type against allowlist
             if (!VALID_IMAGE_MIME_TYPES.includes(mimeType)) {
-              throw new Error(
-                `Unsupported image type: ${mimeType}. Allowed types: ${VALID_IMAGE_MIME_TYPES.join(", ")}`,
+              imageValidationErrors.push(
+                `"${fileName}": Unsupported image type (${mimeType}). Allowed types: JPEG, PNG, GIF, WebP.`,
               );
             }
 
-            // Validate file size
             if (base64Data.length > MAX_IMAGE_SIZE) {
-              throw new Error(
-                "Image file is too large. Maximum size is approximately 7.5MB.",
+              imageValidationErrors.push(
+                `"${fileName}": The image is too large (max 7.5 MB). Please choose a smaller file.`,
               );
             }
+          }
+        }
 
-            // Sanitize filename
+        if (imageValidationErrors.length > 0) {
+          throw new Error(
+            imageValidationErrors.length === 1
+              ? imageValidationErrors[0]
+              : `Multiple image issues:\n${imageValidationErrors.join("\n")}`,
+          );
+        }
+
+        // Write validated image files to public directory
+        for (const change of changes) {
+          if (change.imageUpload) {
+            const { fileName, base64Data } = change.imageUpload;
+
             const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
             const timestamp = Date.now();
             const finalFileName = `${timestamp}-${sanitizedFileName}`;
 
-            // Ensure the public/images directory exists
             const publicImagesDir = path.join(appPath, "public", "images");
             await fsPromises.mkdir(publicImagesDir, { recursive: true });
 
-            // Write the file from base64
             const destPath = path.join(publicImagesDir, finalFileName);
             const buffer = Buffer.from(
               base64Data.replace(/^data:[^;]+;base64,/, ""),
@@ -85,10 +97,8 @@ export function registerVisualEditingHandlers() {
             );
             await fsPromises.writeFile(destPath, buffer);
 
-            // Update imageSrc to match the actual filename written to disk
             change.imageSrc = `/images/${finalFileName}`;
 
-            // Git-add the uploaded image
             if (fs.existsSync(path.join(appPath, ".git"))) {
               await gitAdd({
                 path: appPath,
@@ -154,7 +164,10 @@ export function registerVisualEditingHandlers() {
           }
         }
       } catch (error) {
-        throw new Error(`Failed to apply visual editing changes: ${error}`);
+        if (error instanceof Error) {
+          throw error;
+        }
+        throw new Error(String(error));
       }
     },
   );

@@ -311,6 +311,44 @@ export function VisualEditingToolbar({
     }
   };
 
+  const handleImageSwap = (newSrc: string, uploadData?: ImageUploadData) => {
+    // 1. Send preview to iframe
+    if (iframeRef.current?.contentWindow && selectedComponent) {
+      iframeRef.current.contentWindow.postMessage(
+        {
+          type: "modify-dyad-image-src",
+          data: {
+            elementId: selectedComponent.id,
+            runtimeId: selectedComponent.runtimeId,
+            src: uploadData ? uploadData.base64Data : newSrc,
+          },
+        },
+        "*",
+      );
+    }
+
+    // 2. Store in pending changes
+    if (selectedComponent) {
+      setPendingChanges((prev) => {
+        const updated = new Map(prev);
+        const existing = updated.get(selectedComponent.id);
+        updated.set(selectedComponent.id, {
+          componentId: selectedComponent.id,
+          componentName: selectedComponent.name,
+          relativePath: selectedComponent.relativePath,
+          lineNumber: selectedComponent.lineNumber,
+          styles: existing?.styles || {},
+          textContent: existing?.textContent,
+          imageSrc: newSrc,
+          ...(uploadData && {
+            imageUpload: uploadData,
+          }),
+        });
+        return updated;
+      });
+    }
+  };
+
   if (!selectedComponent || !coordinates) return null;
 
   const toolbarTop = coordinates.top + coordinates.height + 4;
@@ -530,43 +568,7 @@ export function VisualEditingToolbar({
           {hasImage && (
             <ImageSwapPopover
               currentSrc={currentImageSrc}
-              onSwap={(newSrc: string, uploadData?: ImageUploadData) => {
-                // 1. Send preview to iframe
-                if (iframeRef.current?.contentWindow && selectedComponent) {
-                  iframeRef.current.contentWindow.postMessage(
-                    {
-                      type: "modify-dyad-image-src",
-                      data: {
-                        elementId: selectedComponent.id,
-                        runtimeId: selectedComponent.runtimeId,
-                        src: uploadData ? uploadData.base64Data : newSrc,
-                      },
-                    },
-                    "*",
-                  );
-                }
-
-                // 2. Store in pending changes
-                if (selectedComponent) {
-                  setPendingChanges((prev) => {
-                    const updated = new Map(prev);
-                    const existing = updated.get(selectedComponent.id);
-                    updated.set(selectedComponent.id, {
-                      componentId: selectedComponent.id,
-                      componentName: selectedComponent.name,
-                      relativePath: selectedComponent.relativePath,
-                      lineNumber: selectedComponent.lineNumber,
-                      styles: existing?.styles || {},
-                      textContent: existing?.textContent,
-                      imageSrc: newSrc,
-                      ...(uploadData && {
-                        imageUpload: uploadData,
-                      }),
-                    });
-                    return updated;
-                  });
-                }
-              }}
+              onSwap={handleImageSwap}
             />
           )}
         </>

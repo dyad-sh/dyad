@@ -37,7 +37,7 @@ Learnings should go into the most relevant `rules/*.md` file. Only add to `AGENT
 3. **Draft concise, actionable additions:**
 
    For each learning, write a short bullet point or section that would help a future agent avoid the same issue. Follow these rules:
-   - Be specific and actionable (e.g., "Run `npm run build` before E2E tests" not "remember to build first")
+   - Be specific and actionable (e.g., "Run `pnpm run build` before E2E tests" not "remember to build first")
    - Include the actual error message or symptom when relevant so agents can recognize the situation
    - Don't duplicate what's already in `AGENTS.md` or `rules/`
    - Keep it concise: each learning should be 1-3 lines max

@@ -82,7 +82,7 @@ The test fixtures in `e2e-tests/helpers/fixtures.ts` already auto-capture a scre
    E2E tests run against the built binary. If you made any application code changes:
 
    ```
-   npm run build
+   pnpm run build
    ```
 
    If you only changed test files, you can skip this step.
@@ -90,7 +90,7 @@ The test fixtures in `e2e-tests/helpers/fixtures.ts` already auto-capture a scre
 5. **Run the test:**
 
    ```
-   PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<testfile>.spec.ts
+   PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never pnpm run e2e -- e2e-tests/<testfile>.spec.ts
    ```
 
 6. **View the screenshots:**

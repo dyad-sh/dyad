@@ -93,11 +93,11 @@ Automatically gather flaky E2E tests from recent CI runs on the main branch and 
 5. **Install dependencies and build:**
 
    ```
-   npm install
-   npm run build
+   pnpm install
+   pnpm run build
    ```
 
-   **IMPORTANT:** This build step is required before running E2E tests. If you make any changes to application code (anything outside of `e2e-tests/`), you MUST re-run `npm run build`.
+   **IMPORTANT:** This build step is required before running E2E tests. If you make any changes to application code (anything outside of `e2e-tests/`), you MUST re-run `pnpm run build`.
 
 6. **Deflake each flaky test spec file (sequentially):**
 
@@ -106,7 +106,7 @@ Automatically gather flaky E2E tests from recent CI runs on the main branch and 
    a. Run the spec file 10 times to confirm flakiness (note: `<spec_file>` already includes the `.spec.ts` extension from parsing):
 
    ```
-   PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec_file> --repeat-each=10
+   PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never pnpm run e2e -- e2e-tests/<spec_file> --repeat-each=10
    ```
 
    **IMPORTANT:** `PLAYWRIGHT_RETRIES=0` is required to disable automatic retries. Without it, CI environments (where `CI=true`) default to 2 retries, causing flaky tests to pass on retry and be incorrectly skipped.
@@ -116,7 +116,7 @@ Automatically gather flaky E2E tests from recent CI runs on the main branch and 
    c. If the test fails at least once, investigate with debug logs:
 
    ```
-   DEBUG=pw:browser PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec_file>
+   DEBUG=pw:browser PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never pnpm run e2e -- e2e-tests/<spec_file>
    ```
 
    d. Fix the flaky test following Playwright best practices:
@@ -132,13 +132,13 @@ Automatically gather flaky E2E tests from recent CI runs on the main branch and 
    e. Update snapshot baselines if needed:
 
    ```
-   PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec_file> --update-snapshots
+   PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never pnpm run e2e -- e2e-tests/<spec_file> --update-snapshots
    ```
 
    f. Verify the fix by running 10 times again:
 
    ```
-   PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never npm run e2e -- e2e-tests/<spec_file> --repeat-each=10
+   PLAYWRIGHT_RETRIES=0 PLAYWRIGHT_HTML_OPEN=never pnpm run e2e -- e2e-tests/<spec_file> --repeat-each=10
    ```
 
    g. If the test still fails after your fix attempt, revert any changes to that spec file and move on to the next one. Do not spend more than 2 attempts fixing a single spec file.

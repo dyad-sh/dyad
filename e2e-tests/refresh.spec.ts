@@ -14,9 +14,12 @@ testSkipIfWindows("refresh app", async ({ po }) => {
 
   // Drop the document.body inside the contentFrame to make
   // sure refresh works.
-  await iframe.contentFrame().locator("body").evaluate((body) => {
-    body.remove();
-  });
+  await iframe
+    .contentFrame()
+    .locator("body")
+    .evaluate((body) => {
+      body.remove();
+    });
 
   await po.previewPanel.clickPreviewRefresh();
 

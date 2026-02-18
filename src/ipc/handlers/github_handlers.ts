@@ -352,7 +352,11 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
       }),
     });
 
-    const data = (await response.json()) as { access_token?: string; error?: string; error_description?: string };
+    const data = (await response.json()) as {
+      access_token?: string;
+      error?: string;
+      error_description?: string;
+    };
 
     if (response.ok && data.access_token) {
       logger.log("Successfully obtained GitHub Access Token.");
@@ -499,27 +503,34 @@ function handleStartGithubFlow(
       }
       return res.json();
     })
-    .then((data: { device_code: string; interval: number; user_code: string; verification_uri: string }) => {
-      logger.info("Received device code response");
-      if (!currentFlowState) return; // Flow might have been cancelled
+    .then(
+      (data: {
+        device_code: string;
+        interval: number;
+        user_code: string;
+        verification_uri: string;
+      }) => {
+        logger.info("Received device code response");
+        if (!currentFlowState) return; // Flow might have been cancelled
 
-      currentFlowState.deviceCode = data.device_code;
-      currentFlowState.interval = data.interval || 5;
-      currentFlowState.isPolling = true;
+        currentFlowState.deviceCode = data.device_code;
+        currentFlowState.interval = data.interval || 5;
+        currentFlowState.isPolling = true;
 
-      // Send user code and verification URI to renderer
-      event.sender.send("github:flow-update", {
-        userCode: data.user_code,
-        verificationUri: data.verification_uri,
-        message: "Please authorize in your browser.",
-      });
+        // Send user code and verification URI to renderer
+        event.sender.send("github:flow-update", {
+          userCode: data.user_code,
+          verificationUri: data.verification_uri,
+          message: "Please authorize in your browser.",
+        });
 
-      // Start polling after the initial interval
-      currentFlowState.timeoutId = setTimeout(
-        () => pollForAccessToken(event),
-        currentFlowState.interval * 1000,
-      );
-    })
+        // Start polling after the initial interval
+        currentFlowState.timeoutId = setTimeout(
+          () => pollForAccessToken(event),
+          currentFlowState.interval * 1000,
+        );
+      },
+    )
     .catch((error) => {
       logger.error("Error initiating GitHub device flow:", error);
       event.sender.send("github:flow-error", {
@@ -560,7 +571,11 @@ async function handleListGithubRepos(): Promise<
       );
     }
 
-    const repos = (await response.json()) as { name: string; full_name: string; private: boolean }[];
+    const repos = (await response.json()) as {
+      name: string;
+      full_name: string;
+      private: boolean;
+    }[];
     return repos.map((repo) => ({
       name: repo.name,
       full_name: repo.full_name,
@@ -603,7 +618,10 @@ async function handleGetRepoBranches(
       );
     }
 
-    const branches = (await response.json()) as { name: string; commit: { sha: string } }[];
+    const branches = (await response.json()) as {
+      name: string;
+      commit: { sha: string };
+    }[];
     return branches.map((branch) => ({
       name: branch.name,
       commit: { sha: branch.commit.sha },
@@ -703,7 +721,10 @@ async function handleCreateRepo(
   if (!res.ok) {
     let errorMessage = `Failed to create repository (${res.status} ${res.statusText})`;
     try {
-      const data = (await res.json()) as { message?: string; errors?: { message?: string; field?: string; code?: string }[] };
+      const data = (await res.json()) as {
+        message?: string;
+        errors?: { message?: string; field?: string; code?: string }[];
+      };
       logger.error("GitHub API error when creating repo:", {
         status: res.status,
         statusText: res.statusText,
@@ -1047,7 +1068,11 @@ async function handleListCollaborators(
       );
     }
 
-    const collaborators = (await response.json()) as { login: string; avatar_url: string; permissions: unknown }[];
+    const collaborators = (await response.json()) as {
+      login: string;
+      avatar_url: string;
+      permissions: unknown;
+    }[];
     return collaborators.map((c) => ({
       login: c.login,
       avatar_url: c.avatar_url,

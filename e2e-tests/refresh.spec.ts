@@ -5,17 +5,26 @@ testSkipIfWindows("refresh app", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.sendPrompt("hi");
 
+  // Wait for the preview iframe to have content before removing body
+  await po.previewPanel.expectPreviewIframeIsVisible();
+  const iframe = po.previewPanel.getPreviewIframeElement();
+  await expect(iframe.contentFrame().locator("body")).not.toBeEmpty({
+    timeout: Timeout.LONG,
+  });
+
   // Drop the document.body inside the contentFrame to make
   // sure refresh works.
-  await po.previewPanel
-    .getPreviewIframeElement()
-    .contentFrame()
-    .locator("body")
-    .evaluate((body) => {
-      body.remove();
-    });
+  await iframe.contentFrame().locator("body").evaluate((body) => {
+    body.remove();
+  });
 
   await po.previewPanel.clickPreviewRefresh();
+
+  // Wait for the iframe to reload with content after refresh
+  await expect(iframe.contentFrame().locator("body")).not.toBeEmpty({
+    timeout: Timeout.LONG,
+  });
+
   await po.previewPanel.snapshotPreview();
 });
 

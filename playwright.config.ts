@@ -17,7 +17,7 @@ function generateWebServerConfigs(): PlaywrightTestConfig["webServer"] {
     configs.push({
       // All servers run build to avoid race conditions since Playwright
       // starts all webServer entries concurrently
-      command: `cd testing/fake-llm-server && npm run build && npm start -- --port=${port}`,
+      command: `cd testing/fake-llm-server && pnpm run build && pnpm start -- --port=${port}`,
       url: `http://localhost:${port}/health`,
       // In CI, always start a fresh server; locally, reuse if one is already running
       reuseExistingServer: !process.env.CI,

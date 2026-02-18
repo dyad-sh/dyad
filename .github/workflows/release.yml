@@ -26,13 +26,16 @@ jobs:
     steps:
       - name: Github checkout
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with:
+          version: 10
       - name: Use Node.js
         uses: actions/setup-node@cdca7365b2dadb8aad0a33bc7601856ffabcc48e # v4.3.0
         with:
           node-version-file: package.json
-      - name: Install npm 11.8.0
-        run: npm install -g npm@11.8.0
-      - run: npm ci
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
         env:
           # Required for @vscode/ripgrep to download binaries without hitting GitHub API rate limits
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -101,7 +104,7 @@ jobs:
         with:
           timeout_minutes: 30
           max_attempts: 3
-          command: npm run publish -- --dry-run
+          command: pnpm run publish -- --dry-run
         env:
           DEBUG: "@electron/*,electron-forge:*,electron-osx-sign*,electron-notarize*,electron-windows-installer:main,electron-windows-sign"
           NODE_OPTIONS: "--max-old-space-size=4096"
@@ -129,13 +132,16 @@ jobs:
     steps:
       - name: Github checkout
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with:
+          version: 10
       - name: Use Node.js
         uses: actions/setup-node@cdca7365b2dadb8aad0a33bc7601856ffabcc48e # v4.3.0
         with:
           node-version-file: package.json
-      - name: Install npm 11.8.0
-        run: npm install -g npm@11.8.0
-      - run: npm ci
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

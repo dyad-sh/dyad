@@ -5,7 +5,7 @@ This app uses SQLite and drizzle ORM.
 Generate SQL migrations by running this:
 
 ```sh
-npm run db:generate
+pnpm run db:generate
 ```
 
 IMPORTANT: Do NOT generate SQL migration files by hand! This is wrong.

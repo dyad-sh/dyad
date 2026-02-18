@@ -15,7 +15,7 @@ Detailed rules and learnings are in the `rules/` directory. Read the relevant fi
 | [rules/git-workflow.md](rules/git-workflow.md)                       | Pushing branches, creating PRs, or dealing with fork/upstream remotes                            |
 | [rules/base-ui-components.md](rules/base-ui-components.md)           | Using TooltipTrigger, ToggleGroupItem, or other Base UI wrapper components                       |
 | [rules/database-drizzle.md](rules/database-drizzle.md)               | Modifying the database schema, generating migrations, or resolving migration conflicts           |
-| [rules/typescript-strict-mode.md](rules/typescript-strict-mode.md)   | Debugging type errors from `npm run ts` (tsgo) that pass normal tsc                              |
+| [rules/typescript-strict-mode.md](rules/typescript-strict-mode.md)   | Debugging type errors from `pnpm run ts` (tsgo) that pass normal tsc                             |
 | [rules/openai-reasoning-models.md](rules/openai-reasoning-models.md) | Working with OpenAI reasoning model (o1/o3/o4-mini) conversation history                         |
 | [rules/adding-settings.md](rules/adding-settings.md)                 | Adding a new user-facing setting or toggle to the Settings page                                  |
 | [rules/chat-message-indicators.md](rules/chat-message-indicators.md) | Using `<dyad-status>` tags in chat messages for system indicators                                |
@@ -23,13 +23,13 @@ Detailed rules and learnings are in the `rules/` directory. Read the relevant fi
 
 ## Project setup and lints
 
-Make sure you run this once after doing `npm install` because it will make sure whenever you commit something, it will run pre-commit hooks like linting and formatting.
+Make sure you run this once after doing `pnpm install` because it will make sure whenever you commit something, it will run pre-commit hooks like linting and formatting.
 
 ```sh
-npm run init-precommit
+pnpm run init-precommit
 ```
 
-**Note:** Running `npm install` may update `package-lock.json` with version changes or peer dependency flag removals. If rebasing or performing git operations, commit these changes first to avoid "unstaged changes" errors.
+**Note:** Running `pnpm install` may update `pnpm-lock.yaml` with version changes or peer dependency flag removals. If rebasing or performing git operations, commit these changes first to avoid "unstaged changes" errors.
 
 ## Pre-commit checks
 
@@ -46,25 +46,25 @@ Otherwise, run the following commands directly:
 **Formatting**
 
 ```sh
-npm run fmt
+pnpm run fmt
 ```
 
 **Linting**
 
 ```sh
-npm run lint
+pnpm run lint
 ```
 
 If you get any lint errors, you can usually fix it by doing:
 
 ```sh
-npm run lint:fix
+pnpm run lint:fix
 ```
 
 **Type-checks**
 
 ```sh
-npm run ts
+pnpm run ts
 ```
 
 Note: if you do this, then you will need to re-add the changes and commit again.
@@ -76,7 +76,7 @@ Note: if you do this, then you will need to re-add the changes and commit again.
 **Always use:**
 
 ```sh
-npm run ts
+pnpm run ts
 ```
 
 This is the only supported way to type-check the project. It uses the correct configuration and compiler (`tsgo`). Any other method of running TypeScript checks is unsupported and will likely give wrong results.
@@ -110,7 +110,7 @@ Use unit testing for pure business logic and util functions.
 
 ### E2E testing
 
-> **IMPORTANT: You MUST run `npm run build` before running E2E tests.** E2E tests run against the built application, not the dev server. If you have changed any application code (i.e. anything outside of test files), you MUST re-run `npm run build` before running the tests, otherwise the tests will run against stale code and results will be misleading. Only changes to test code itself (e.g. files in `e2e-tests/`) do not require a rebuild.
+> **IMPORTANT: You MUST run `pnpm run build` before running E2E tests.** E2E tests run against the built application, not the dev server. If you have changed any application code (i.e. anything outside of test files), you MUST re-run `pnpm run build` before running the tests, otherwise the tests will run against stale code and results will be misleading. Only changes to test code itself (e.g. files in `e2e-tests/`) do not require a rebuild.
 
 See [rules/e2e-testing.md](rules/e2e-testing.md) for full E2E testing guidance, including Playwright tips and fixture setup.
 

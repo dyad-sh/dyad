@@ -26,24 +26,21 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with:
+          version: 10
+
       - name: Initialize environment
         uses: actions/setup-node@v4
         with:
           node-version-file: package.json
-          cache: npm
-          cache-dependency-path: package-lock.json
+          cache: pnpm
 
-      - name: Install npm 11.8.0
-        run: npm install -g npm@11.8.0
       - name: Install node modules
-        run: npm ci --no-audit --no-fund --progress=false
+        run: pnpm install --frozen-lockfile
         env:
           GITHUB_TOKEN: ${{ secrets.DEFLAKE_E2E_PAT_GITHUB_TOKEN }}
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
-        with:
-          version: latest
 
       - name: Clone nextjs-template
         run: git clone --depth 1 https://github.com/dyad-sh/nextjs-template.git nextjs-template
@@ -58,7 +55,7 @@ jobs:
         run: npx playwright install chromium --with-deps
 
       - name: Build fake LLM server
-        run: cd testing/fake-llm-server && npm install && npm run build
+        run: cd testing/fake-llm-server && pnpm install && pnpm run build
 
       - name: Deflake E2E tests
         uses: anthropics/claude-code-action@v1

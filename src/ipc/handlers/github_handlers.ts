@@ -495,21 +495,22 @@ function handleStartGithubFlow(
   })
     .then((res) => {
       if (!res.ok) {
-        return res.json().then((errData: { error_description?: string }) => {
+        return (
+          res.json() as Promise<{ error_description?: string }>
+        ).then((errData) => {
           throw new Error(
             `GitHub API Error: ${errData.error_description || res.statusText}`,
           );
         });
       }
-      return res.json();
-    })
-    .then(
-      (data: {
+      return res.json() as Promise<{
         device_code: string;
         interval: number;
         user_code: string;
         verification_uri: string;
-      }) => {
+      }>;
+    })
+    .then((data) => {
         logger.info("Received device code response");
         if (!currentFlowState) return; // Flow might have been cancelled
 
@@ -653,8 +654,8 @@ async function handleIsRepoAvailable(
       (await fetch(`${GITHUB_API_BASE}/user`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       })
-        .then((r) => r.json())
-        .then((u: { login: string }) => u.login));
+        .then((r) => r.json() as Promise<{ login: string }>)
+        .then((u) => u.login));
     // Check if repo exists (using normalized name)
     const url = `${GITHUB_API_BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(normalizedRepo)}`;
     const res = await fetch(url, {

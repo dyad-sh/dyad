@@ -60,5 +60,5 @@ export function safeJoin(basePath: string, ...paths: string[]): string {
     );
   }
 
-  return normalizePath(joinedPath);
+  return joinedPath;
 }

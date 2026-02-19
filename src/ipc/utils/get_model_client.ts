@@ -144,12 +144,13 @@ export async function getModelClient(
       return {
         modelClient: {
           model: createFallback({
-            models: getOpenRouterFreeModelNames().map((name: string) =>
-              getRegularModelClient(
-                { provider: "openrouter", name },
-                settings,
-                openRouterProvider,
-              ).modelClient.model,
+            models: getOpenRouterFreeModelNames().map(
+              (name: string) =>
+                getRegularModelClient(
+                  { provider: "openrouter", name },
+                  settings,
+                  openRouterProvider,
+                ).modelClient.model,
             ),
           }),
           builtinProviderId: "openrouter",

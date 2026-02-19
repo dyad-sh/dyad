@@ -29,6 +29,7 @@ test("themes management - CRUD operations", async ({ po }) => {
   // Fill in manual configuration form
   await po.page.locator("#manual-name").fill("My Test Theme");
   await po.page.locator("#manual-description").fill("A test theme description");
+  await po.page.locator("#manual-description").fill("A test theme description");
   await po.page
     .locator("#manual-prompt")
     .fill("Use blue colors and modern styling");
@@ -128,6 +129,7 @@ test("themes management - create theme from chat input", async ({ po }) => {
 
   // Fill in manual configuration form
   await po.page.locator("#manual-name").fill("Chat Input Theme");
+  await po.page.locator("#manual-description").fill("Created from chat input");
   await po.page.locator("#manual-description").fill("Created from chat input");
   await po.page
     .locator("#manual-prompt")

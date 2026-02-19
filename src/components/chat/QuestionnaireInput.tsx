@@ -18,6 +18,7 @@ import {
   ChevronDown,
   ChevronUp,
   Circle,
+  X,
 } from "lucide-react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 
@@ -75,6 +76,15 @@ export function QuestionnaireInput() {
       next.delete(chatId);
       return next;
     });
+  };
+
+  const handleDismiss = () => {
+    if (!questionnaire) return;
+    planClient.respondToQuestionnaire({
+      requestId: questionnaire.requestId,
+      answers: null,
+    });
+    clearQuestionnaire();
   };
 
   // Auto-dismiss after 5 minutes to match the backend timeout
@@ -433,15 +443,26 @@ export function QuestionnaireInput() {
             </div>
 
             <div className="flex justify-between">
-              <Button
-                onClick={() => setCurrentIndex((prev) => prev - 1)}
-                disabled={currentIndex === 0}
-                variant="ghost"
-                size="sm"
-              >
-                <ArrowLeft size={14} className="mr-1.5" />
-                Back
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  onClick={() => setCurrentIndex((prev) => prev - 1)}
+                  disabled={currentIndex === 0}
+                  variant="ghost"
+                  size="sm"
+                >
+                  <ArrowLeft size={14} className="mr-1.5" />
+                  Back
+                </Button>
+                <Button
+                  onClick={handleDismiss}
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground"
+                >
+                  <X size={14} className="mr-1.5" />
+                  Dismiss Questionnaire
+                </Button>
+              </div>
               <Button
                 onClick={handleNext}
                 disabled={isNextDisabled()}

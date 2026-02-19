@@ -8,6 +8,7 @@ import {
   CircleDot,
   ListChecks,
 } from "lucide-react";
+import { unescapeXmlAttr, unescapeXmlContent } from "../../../shared/xmlEscape";
 
 interface QAEntry {
   question: string;
@@ -19,24 +20,15 @@ interface DyadQuestionnaireProps {
   children?: React.ReactNode;
 }
 
-function unescapeXml(str: string): string {
-  return str
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'");
-}
-
 function parseQAEntries(content: string): QAEntry[] {
   const entries: QAEntry[] = [];
   const pattern = /<qa\s+question="([^"]*)"\s+type="([^"]*)">([\s\S]*?)<\/qa>/g;
   let match;
   while ((match = pattern.exec(content)) !== null) {
     entries.push({
-      question: unescapeXml(match[1]),
-      type: unescapeXml(match[2]),
-      answer: unescapeXml(match[3].trim()),
+      question: unescapeXmlAttr(match[1]),
+      type: unescapeXmlAttr(match[2]),
+      answer: unescapeXmlContent(match[3].trim()),
     });
   }
   return entries;

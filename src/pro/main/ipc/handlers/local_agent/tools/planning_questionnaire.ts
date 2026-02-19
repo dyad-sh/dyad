@@ -131,9 +131,9 @@ export const planningQuestionnaireTool: ToolDefinition<
     const requestId = `questionnaire:${crypto.randomUUID()}`;
 
     // Auto-generate missing IDs
-    const questions = args.questions.map((q, i) => ({
+    const questions = args.questions.map((q) => ({
       ...q,
-      id: q.id || `q${i}`,
+      id: q.id || `q_${crypto.randomUUID().slice(0, 8)}`,
     }));
 
     logger.log(

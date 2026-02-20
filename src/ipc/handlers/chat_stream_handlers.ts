@@ -77,7 +77,6 @@ import {
   getDyadRenameTags,
 } from "../utils/dyad_tag_parser";
 import { fileExists } from "../utils/file_utils";
-import { FileUploadsState } from "../utils/file_uploads_state";
 import { extractMentionedAppsCodebases } from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
 import { prompts as promptsTable } from "../../db/schema";
@@ -232,9 +231,6 @@ export function registerChatStreamHandlers() {
   ipcMain.handle("chat:stream", async (event, req: ChatStreamParams) => {
     let attachmentPaths: string[] = [];
     try {
-      const fileUploadsState = FileUploadsState.getInstance();
-      // Clear any stale state from previous requests for this chat
-      fileUploadsState.clear(req.chatId);
       let dyadRequestId: string | undefined;
       // Create an AbortController for this stream
       const abortController = new AbortController();
@@ -298,7 +294,7 @@ export function registerChatStreamHandlers() {
       if (req.attachments && req.attachments.length > 0) {
         attachmentInfo = "\n\nAttachments:\n";
 
-        for (const [index, attachment] of req.attachments.entries()) {
+        for (const attachment of req.attachments) {
           // Generate a unique filename
           const hash = crypto
             .createHash("md5")
@@ -315,22 +311,11 @@ export function registerChatStreamHandlers() {
           attachmentPaths.push(filePath);
 
           if (attachment.attachmentType === "upload-to-codebase") {
-            // For upload-to-codebase, create a unique file ID and store the mapping
-            const fileId = `DYAD_ATTACHMENT_${index}`;
-
-            fileUploadsState.addFileUpload(
-              { chatId: req.chatId, fileId },
-              {
-                filePath,
-                originalName: attachment.name,
-              },
-            );
-
-            // Add instruction for AI to use dyad-write tag
-            attachmentInfo += `\n\nFile to upload to codebase: ${attachment.name} (file id: ${fileId})\n`;
+            // Provide the temp path so the AI can copy it into the codebase
+            attachmentInfo += `\n\nFile to upload to codebase: "${attachment.name}" (temp path: ${filePath})\nUse the copy_file tool (or <dyad-copy> tag) to copy this file into the codebase at the appropriate location.\n`;
           } else {
-            // For chat-context, use the existing logic
-            attachmentInfo += `- ${attachment.name} (${attachment.type})\n`;
+            // For chat-context, include temp path so AI can optionally copy into codebase
+            attachmentInfo += `- ${attachment.name} (${attachment.type}, temp path: ${filePath})\n`;
             // If it's a text-based file, try to include the content
             if (await isTextFile(filePath)) {
               try {
@@ -782,30 +767,24 @@ ${componentSnippet}
           if (willUseLocalAgentStream && !isAskMode) {
             systemPrompt += `
 
-When files are attached to this conversation, upload them to the codebase using the \`write_file\` tool.
-Use the attachment ID (e.g., DYAD_ATTACHMENT_0) as the content, and it will be automatically resolved to the actual file content.
+When files are attached for upload to the codebase, use the \`copy_file\` tool to copy them from their temporary path into the project.
 
-Example for file with id of DYAD_ATTACHMENT_0:
+Example:
 \`\`\`
-write_file(path="src/components/Button.jsx", content="DYAD_ATTACHMENT_0", description="Upload file to codebase")
+copy_file(from="/tmp/dyad-attachments/abc123.png", to="src/assets/logo.png", description="Copy uploaded image into project")
 \`\`\`
 
+The temporary file paths are provided in the attachment information above.
 `;
           } else if (!isAskMode) {
             systemPrompt += `
-  
-When files are attached to this conversation, upload them to the codebase using this exact format:
 
-<dyad-write path="path/to/destination/filename.ext" description="Upload file to codebase">
-DYAD_ATTACHMENT_X
-</dyad-write>
+When files are attached for upload to the codebase, copy them into the project using this format:
 
-Example for file with id of DYAD_ATTACHMENT_0:
-<dyad-write path="src/components/Button.jsx" description="Upload file to codebase">
-DYAD_ATTACHMENT_0
-</dyad-write>
+<dyad-copy from="/tmp/dyad-attachments/abc123.png" to="src/assets/logo.png" description="Copy uploaded file"></dyad-copy>
 
-  `;
+The temporary file paths are provided in the attachment information above.
+`;
           }
         } else if (hasImageAttachments) {
           systemPrompt += `

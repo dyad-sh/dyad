@@ -36,12 +36,13 @@ import {
   getDyadAddDependencyTags,
   getDyadExecuteSqlTags,
   getDyadSearchReplaceTags,
+  getDyadCopyTags,
 } from "../utils/dyad_tag_parser";
 import { applySearchReplace } from "../../pro/main/ipc/processors/search_replace_processor";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
+import os from "node:os";
 
-import { FileUploadsState } from "../utils/file_uploads_state";
-
+const TEMP_DIR = path.join(os.tmpdir(), "dyad-attachments");
 const readFile = fs.promises.readFile;
 const logger = log.scope("response_processor");
 
@@ -110,9 +111,6 @@ export async function processFullResponseActions(
   extraFiles?: string[];
   extraFilesError?: string;
 }> {
-  const fileUploadsState = FileUploadsState.getInstance();
-  const fileUploadsMap = fileUploadsState.getFileUploadsForChat(chatId);
-  fileUploadsState.clear(chatId);
   logger.log("processFullResponseActions for chatId", chatId);
   // Get the app associated with the chat
   const chatWithApp = await db.query.chats.findFirst({
@@ -416,39 +414,66 @@ export async function processFullResponseActions(
       }
     }
 
+    // Process all file copies
+    const dyadCopyTags = getDyadCopyTags(fullResponse);
+    for (const tag of dyadCopyTags) {
+      try {
+        let fromFullPath: string;
+        if (path.isAbsolute(tag.from)) {
+          // Security: only allow absolute paths within the temp attachments directory
+          const resolvedFrom = path.resolve(tag.from);
+          const resolvedTempDir = path.resolve(TEMP_DIR);
+          if (
+            !resolvedFrom.startsWith(resolvedTempDir + path.sep) &&
+            resolvedFrom !== resolvedTempDir
+          ) {
+            errors.push({
+              message: `Unsafe source path: ${tag.from}`,
+              error: "Path outside allowed temp directory",
+            });
+            continue;
+          }
+          fromFullPath = resolvedFrom;
+        } else {
+          fromFullPath = safeJoin(appPath, tag.from);
+        }
+
+        const toFullPath = safeJoin(appPath, tag.to);
+
+        if (!fs.existsSync(fromFullPath)) {
+          errors.push({
+            message: `Source file not found: ${tag.from}`,
+            error: "File not found",
+          });
+          continue;
+        }
+
+        const dirPath = path.dirname(toFullPath);
+        fs.mkdirSync(dirPath, { recursive: true });
+        fs.copyFileSync(fromFullPath, toFullPath);
+        writtenFiles.push(tag.to);
+        logger.log(
+          `Successfully copied file: ${fromFullPath} -> ${toFullPath}`,
+        );
+
+        await gitAdd({ path: appPath, filepath: tag.to });
+      } catch (error) {
+        errors.push({
+          message: `Failed to copy ${tag.from} to ${tag.to}`,
+          error: error,
+        });
+      }
+    }
+
     // Process all file writes
     for (const tag of dyadWriteTags) {
       const filePath = tag.path;
-      let content: string | Buffer = tag.content;
+      const content = tag.content;
       const fullFilePath = safeJoin(appPath, filePath);
 
       // Track if this is a shared module
       if (isSharedServerModule(filePath)) {
         sharedModulesChanged = true;
-      }
-
-      // Check if content (stripped of whitespace) exactly matches a file ID and replace with actual file content
-      if (fileUploadsMap) {
-        const trimmedContent = tag.content.trim();
-        const fileInfo = fileUploadsMap.get(trimmedContent);
-        if (fileInfo) {
-          try {
-            const fileContent = await readFile(fileInfo.filePath);
-            content = fileContent;
-            logger.log(
-              `Replaced file ID ${trimmedContent} with content from ${fileInfo.originalName}`,
-            );
-          } catch (error) {
-            logger.error(
-              `Failed to read uploaded file ${fileInfo.originalName}:`,
-              error,
-            );
-            errors.push({
-              message: `Failed to read uploaded file: ${fileInfo.originalName}`,
-              error: error,
-            });
-          }
-        }
       }
 
       // Ensure directory exists

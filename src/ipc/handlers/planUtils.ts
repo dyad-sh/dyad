@@ -1,36 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
-
-/**
- * Ensures `.dyad/` is listed in the project's `.gitignore`.
- * Creates `.gitignore` if it doesn't exist.
- */
-export async function ensureDyadGitignored(appPath: string): Promise<void> {
-  const gitignorePath = path.join(appPath, ".gitignore");
-  let content = "";
-  try {
-    content = await fs.promises.readFile(gitignorePath, "utf-8");
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-    // .gitignore doesn't exist yet — will be created below
-  }
-
-  // Check if .dyad or .dyad/ is already ignored
-  const lines = content.split(/\r?\n/);
-  const alreadyIgnored = lines.some(
-    (line) => line.trim() === ".dyad" || line.trim() === ".dyad/",
-  );
-  if (alreadyIgnored) return;
-
-  // Append .dyad/ to the end, ensuring a leading newline if file has content
-  const suffix = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
-  await fs.promises.writeFile(
-    gitignorePath,
-    content + suffix + ".dyad/\n",
-    "utf-8",
-  );
-}
-
 export function slugify(text: string): string {
   const result = text
     .toLowerCase()

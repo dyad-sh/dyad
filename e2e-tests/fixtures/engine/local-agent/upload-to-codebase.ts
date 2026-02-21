@@ -14,7 +14,7 @@ export const fixture: LocalAgentFixture = {
         {
           name: "copy_file",
           args: {
-            from: "/tmp/dyad-attachments/abc123.png",
+            from: "{{TEMP_ATTACHMENT_PATH}}",
             to: "assets/uploaded-file.png",
             description: "Copy uploaded file to codebase",
           },

@@ -92,6 +92,27 @@ function countToolResultRounds(messages: any[]): number {
 }
 
 /**
+ * Extract the temp attachment path from the last user message.
+ * The user message format includes: "temp path: /tmp/dyad-attachments/hash.png"
+ */
+function extractTempAttachmentPath(messages: any[]): string | null {
+  // Search from the end to find the most recent user message with a temp path
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg?.role !== "user") continue;
+    const text = Array.isArray(msg.content)
+      ? msg.content.find((p: any) => p.type === "text")?.text
+      : typeof msg.content === "string"
+        ? msg.content
+        : null;
+    if (!text) continue;
+    const match = text.match(/temp path: ([^\s)]+)/);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+/**
  * Load a fixture file dynamically
  * Tries .ts first (for dev mode with ts-node), then .js
  */
@@ -363,7 +384,7 @@ export async function handleLocalAgentFixture(
       return;
     }
 
-    const turn = turns[turnIndex];
+    let turn = turns[turnIndex];
     console.log(
       `[local-agent] Executing pass ${passIndex}, turn ${turnIndex}:`,
       {
@@ -371,6 +392,26 @@ export async function handleLocalAgentFixture(
         toolCallCount: turn.toolCalls?.length ?? 0,
       },
     );
+
+    // Replace {{TEMP_ATTACHMENT_PATH}} placeholders in tool call args
+    // with the actual temp path extracted from the user message
+    if (turn.toolCalls) {
+      const tempPath = extractTempAttachmentPath(messages);
+      if (tempPath) {
+        turn = {
+          ...turn,
+          toolCalls: turn.toolCalls.map((tc) => ({
+            ...tc,
+            args: JSON.parse(
+              JSON.stringify(tc.args).replace(
+                /\{\{TEMP_ATTACHMENT_PATH\}\}/g,
+                tempPath,
+              ),
+            ),
+          })),
+        };
+      }
+    }
 
     // If this turn has tool calls, stream them
     if (turn.toolCalls && turn.toolCalls.length > 0) {

@@ -9,6 +9,11 @@ import {
   DYAD_ATTACHMENTS_DIR,
   isWithinTempAttachmentsDir,
 } from "@/ipc/utils/temp_path_utils";
+import { deploySupabaseFunction } from "../../../../../../supabase_admin/supabase_management_client";
+import {
+  isServerFunction,
+  isSharedServerModule,
+} from "../../../../../../supabase_admin/supabase_utils";
 
 const logger = log.scope("copy_file");
 
@@ -61,6 +66,11 @@ export const copyFileTool: ToolDefinition<z.infer<typeof copyFileSchema>> = {
       throw new Error(`Source file does not exist: ${args.from}`);
     }
 
+    // Track if this is a shared module
+    if (isSharedServerModule(args.to)) {
+      ctx.isSharedModulesChanged = true;
+    }
+
     // Ensure destination directory exists
     const dirPath = path.dirname(toFullPath);
     fs.mkdirSync(dirPath, { recursive: true });
@@ -71,6 +81,24 @@ export const copyFileTool: ToolDefinition<z.infer<typeof copyFileSchema>> = {
 
     // Add to git
     await gitAdd({ path: ctx.appPath, filepath: args.to });
+
+    // Deploy Supabase function if applicable
+    if (
+      ctx.supabaseProjectId &&
+      isServerFunction(args.to) &&
+      !ctx.isSharedModulesChanged
+    ) {
+      try {
+        await deploySupabaseFunction({
+          supabaseProjectId: ctx.supabaseProjectId,
+          functionName: path.basename(path.dirname(args.to)),
+          appPath: ctx.appPath,
+          organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+        });
+      } catch (error) {
+        return `File copied, but failed to deploy Supabase function: ${error}`;
+      }
+    }
 
     return `Successfully copied ${args.from} to ${args.to}`;
   },

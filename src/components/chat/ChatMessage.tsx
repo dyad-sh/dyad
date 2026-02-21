@@ -65,16 +65,11 @@ function extractAttachments(content: string): {
   return results;
 }
 
-/** Strip <dyad-attachment> tags and legacy attachment info text from user message content. */
+/** Strip <dyad-attachment> tags from user message content. */
 function stripAttachmentInfo(content: string): string {
-  // Strip <dyad-attachment> tags
-  let stripped = content.replace(
-    /<dyad-attachment\s+[^>]*><\/dyad-attachment>/g,
-    "",
-  );
-  // Strip legacy attachment info (for old messages without <dyad-attachment> tags)
-  stripped = stripped.replace(/\n\nAttachments:\n[\s\S]*$/, "");
-  return stripped.trim();
+  return content
+    .replace(/<dyad-attachment\s+[^>]*><\/dyad-attachment>/g, "")
+    .trim();
 }
 
 interface ChatMessageProps {
@@ -146,10 +141,8 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
       className={`flex ${message.role === "assistant" ? "justify-start" : "justify-end"}`}
     >
       <div className={`mt-2 w-full max-w-3xl mx-auto group`}>
-        {/* Show message box for assistant messages, user text, or attachment-only messages */}
-        {(message.role === "assistant" ||
-          hasUserText ||
-          attachments.length > 0) && (
+        {/* Show message box for assistant messages or user messages with text */}
+        {(message.role === "assistant" || hasUserText) && (
           <div
             className={`rounded-lg p-2 ${
               message.role === "assistant" ? "" : "ml-24 bg-(--sidebar-accent)"

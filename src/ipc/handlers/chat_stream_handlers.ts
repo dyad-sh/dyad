@@ -82,6 +82,7 @@ import { prompts as promptsTable } from "../../db/schema";
 import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
 import { parsePlanFile, validatePlanId } from "./planUtils";
+import { ensureDyadMediaGitignored } from "./gitignoreUtils";
 import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
 import {
@@ -301,6 +302,7 @@ export function registerChatStreamHandlers() {
         const mediaDir = path.join(appPath, "dyad-media");
         if (!fs.existsSync(mediaDir)) {
           fs.mkdirSync(mediaDir, { recursive: true });
+          await ensureDyadMediaGitignored(appPath);
         }
 
         for (const attachment of req.attachments) {
@@ -327,7 +329,9 @@ export function registerChatStreamHandlers() {
 
           // Build dyad-media:// URL for display
           // Use a fixed hostname to avoid URL hostname normalization (lowercasing)
-          const mediaUrl = `dyad-media://media/${chat.app.path}/dyad-media/${filename}`;
+          // Encode path segments so special characters (spaces, #, ?, %) don't
+          // break URL parsing. The protocol handler already decodeURIComponent's.
+          const mediaUrl = `dyad-media://media/${encodeURIComponent(chat.app.path)}/dyad-media/${encodeURIComponent(filename)}`;
 
           // Build display tag for inline rendering (escape attribute values)
           displayAttachmentInfo += `\n<dyad-attachment name="${escapeXmlAttr(attachment.name)}" type="${escapeXmlAttr(attachment.type)}" url="${escapeXmlAttr(mediaUrl)}" path="${escapeXmlAttr(persistentPath)}" attachment-type="${escapeXmlAttr(attachment.attachmentType)}"></dyad-attachment>\n`;
@@ -800,7 +804,7 @@ When files are attached for upload to the codebase, use the \`copy_file\` tool t
 
 Example:
 \`\`\`
-copy_file(from="/tmp/dyad-attachments/abc123.png", to="src/assets/logo.png", description="Copy uploaded image into project")
+copy_file(from="${TEMP_DIR}/abc123.png", to="src/assets/logo.png", description="Copy uploaded image into project")
 \`\`\`
 
 The temporary file paths are provided in the attachment information above.
@@ -810,7 +814,7 @@ The temporary file paths are provided in the attachment information above.
 
 When files are attached for upload to the codebase, copy them into the project using this format:
 
-<dyad-copy from="/tmp/dyad-attachments/abc123.png" to="src/assets/logo.png" description="Copy uploaded file"></dyad-copy>
+<dyad-copy from="${TEMP_DIR}/abc123.png" to="src/assets/logo.png" description="Copy uploaded file"></dyad-copy>
 
 The temporary file paths are provided in the attachment information above.
 `;

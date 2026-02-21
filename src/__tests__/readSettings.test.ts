@@ -436,6 +436,51 @@ describe("readSettings", () => {
       expect(result.enableAutoUpdate).toBe(true);
       expect(result.releaseChannel).toBe("stable");
     });
+
+    it("should strip known deprecated properties from settings", () => {
+      const mockFileContent = {
+        selectedModel: {
+          name: "gpt-4",
+          provider: "openai",
+        },
+        // Deprecated properties that should be stripped
+        enableProSaverMode: true,
+        dyadProBudget: {
+          budgetResetAt: "2024-01-01",
+          maxBudget: 100,
+        },
+        runtimeMode: "web-sandbox",
+        experiments: {
+          enableLocalAgent: true,
+          enableSupabaseIntegration: true,
+          enableFileEditing: true,
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
+
+      const result = readSettings();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const resultAny = result as any;
+
+      // These deprecated properties should be stripped
+      expect(resultAny.enableProSaverMode).toBeUndefined();
+      expect(resultAny.dyadProBudget).toBeUndefined();
+      expect(resultAny.runtimeMode).toBeUndefined();
+
+      // Deprecated experiment properties should be stripped
+      expect(resultAny.experiments?.enableLocalAgent).toBeUndefined();
+      expect(resultAny.experiments?.enableSupabaseIntegration).toBeUndefined();
+      expect(resultAny.experiments?.enableFileEditing).toBeUndefined();
+
+      // Non-deprecated fields should still work
+      expect(result.selectedModel).toEqual({
+        name: "gpt-4",
+        provider: "openai",
+      });
+    });
   });
 
   describe("error handling", () => {

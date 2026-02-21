@@ -29,10 +29,7 @@ test("themes management - CRUD operations", async ({ po }) => {
   // Fill in manual configuration form
   await po.page.locator("#manual-name").fill("My Test Theme");
   await po.page
-    .getByLabel("Description (optional)")
-    .fill("A test theme description");
-  await po.page
-    .getByLabel("Theme Prompt")
+    .locator("#manual-prompt")
     .fill("Use blue colors and modern styling");
 
   // Save the theme
@@ -42,7 +39,6 @@ test("themes management - CRUD operations", async ({ po }) => {
   await expect(po.page.getByRole("dialog")).not.toBeVisible();
   await expect(po.page.getByTestId("theme-card")).toBeVisible();
   await expect(po.page.getByText("My Test Theme")).toBeVisible();
-  await expect(po.page.getByText("A test theme description")).toBeVisible();
 
   // === UPDATE ===
   // Click edit button on the theme card
@@ -127,10 +123,7 @@ test("themes management - create theme from chat input", async ({ po }) => {
   // Fill in manual configuration form
   await po.page.locator("#manual-name").fill("Chat Input Theme");
   await po.page
-    .getByLabel("Description (optional)")
-    .fill("Created from chat input");
-  await po.page
-    .getByLabel("Theme Prompt")
+    .locator("#manual-prompt")
     .fill("Use dark mode with purple accents");
 
   // Save the theme

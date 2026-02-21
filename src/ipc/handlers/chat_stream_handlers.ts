@@ -53,7 +53,7 @@ import { SECURITY_REVIEW_SYSTEM_PROMPT } from "../../prompts/security_review_pro
 import fs from "node:fs";
 import * as path from "path";
 import * as crypto from "crypto";
-import { readFile, writeFile, unlink } from "fs/promises";
+import { readFile, writeFile } from "fs/promises";
 import { getMaxTokens, getTemperature } from "../utils/token_utils";
 import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 import { validateChatContext } from "../utils/context_paths_utils";
@@ -113,10 +113,6 @@ const activeStreams = new Map<number, AbortController>();
 // Track partial responses for cancelled streams
 const partialResponses = new Map<number, string>();
 
-// Shared temp directory for file attachments
-import { DYAD_ATTACHMENTS_DIR } from "../utils/temp_path_utils";
-const TEMP_DIR = DYAD_ATTACHMENTS_DIR;
-
 // Common helper functions
 const TEXT_FILE_EXTENSIONS = [
   ".md",
@@ -151,11 +147,6 @@ function parseMcpToolKey(toolKey: string): {
   const serverName = toolKey.slice(0, lastIndex);
   const toolName = toolKey.slice(lastIndex + separator.length);
   return { serverName, toolName };
-}
-
-// Ensure the temp directory exists
-if (!fs.existsSync(TEMP_DIR)) {
-  fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
 
 // Helper function to process stream chunks
@@ -313,19 +304,15 @@ export function registerChatStreamHandlers() {
             .digest("hex");
           const fileExtension = path.extname(attachment.name);
           const filename = `${hash}${fileExtension}`;
-          const filePath = path.join(TEMP_DIR, filename);
 
           // Extract the base64 data (remove the data:mime/type;base64, prefix)
           const base64Data = attachment.data.split(";base64,").pop() || "";
           const fileBuffer = Buffer.from(base64Data, "base64");
 
-          // Save to temp dir (for AI copy_file operations)
-          await writeFile(filePath, fileBuffer);
-          attachmentPaths.push(filePath);
-
-          // Save to persistent dyad-media dir
+          // Save to dyad-media dir
           const persistentPath = path.join(mediaDir, filename);
           await writeFile(persistentPath, fileBuffer);
+          attachmentPaths.push(persistentPath);
 
           // Build dyad-media:// URL for display
           // Use a fixed hostname to avoid URL hostname normalization (lowercasing)
@@ -337,15 +324,15 @@ export function registerChatStreamHandlers() {
           displayAttachmentInfo += `\n<dyad-attachment name="${escapeXmlAttr(attachment.name)}" type="${escapeXmlAttr(attachment.type)}" url="${escapeXmlAttr(mediaUrl)}" path="${escapeXmlAttr(persistentPath)}" attachment-type="${escapeXmlAttr(attachment.attachmentType)}"></dyad-attachment>\n`;
 
           if (attachment.attachmentType === "upload-to-codebase") {
-            // Provide the temp path so the AI can copy it into the codebase
-            attachmentInfo += `\n\nFile to upload to codebase: "${attachment.name}" (temp path: ${filePath})\nUse the copy_file tool (or <dyad-copy> tag) to copy this file into the codebase at the appropriate location.\n`;
+            // Provide the dyad-media path so the AI can copy it into the codebase
+            attachmentInfo += `\n\nFile to upload to codebase: "${attachment.name}" (path: ${persistentPath})\nUse the copy_file tool (or <dyad-copy> tag) to copy this file into the codebase at the appropriate location.\n`;
           } else {
-            // For chat-context, provide file info for reference (no temp path to avoid auto-copying)
+            // For chat-context, provide file info for reference (no path to avoid auto-copying)
             attachmentInfo += `- ${attachment.name} (${attachment.type})\n`;
             // If it's a text-based file, try to include the content
-            if (await isTextFile(filePath)) {
+            if (await isTextFile(persistentPath)) {
               try {
-                attachmentInfo += `<dyad-text-attachment filename="${attachment.name}" type="${attachment.type}" path="${filePath}">
+                attachmentInfo += `<dyad-text-attachment filename="${attachment.name}" type="${attachment.type}" path="${persistentPath}">
                 </dyad-text-attachment>
                 \n\n`;
               } catch (err) {
@@ -356,7 +343,7 @@ export function registerChatStreamHandlers() {
         }
       }
 
-      // Build the full AI prompt (with temp paths and copy_file instructions)
+      // Build the full AI prompt (with dyad-media paths and copy_file instructions)
       let userPrompt = req.prompt + (attachmentInfo ? attachmentInfo : "");
       // Build the display prompt (with <dyad-attachment> tags for inline rendering)
       // This separates what the user sees from what the AI receives.
@@ -636,7 +623,7 @@ ${componentSnippet}
 
         // The DB stores display-friendly versions (short /implement-plan= form
         // or clean <dyad-attachment> tags). Replace the last user message with the
-        // full AI prompt so the model receives expanded plan content or temp paths.
+        // full AI prompt so the model receives expanded plan content or attachment paths.
         if (implementPlanDisplayPrompt || displayUserPrompt) {
           for (let i = messageHistory.length - 1; i >= 0; i--) {
             if (messageHistory[i].role === "user") {
@@ -800,23 +787,23 @@ ${componentSnippet}
           if (willUseLocalAgentStream && !isAskMode) {
             systemPrompt += `
 
-When files are attached for upload to the codebase, use the \`copy_file\` tool to copy them from their temporary path into the project.
+When files are attached for upload to the codebase, use the \`copy_file\` tool to copy them from their path into the project.
 
 Example:
 \`\`\`
-copy_file(from="${TEMP_DIR}/abc123.png", to="src/assets/logo.png", description="Copy uploaded image into project")
+copy_file(from="dyad-media/abc123.png", to="src/assets/logo.png", description="Copy uploaded image into project")
 \`\`\`
 
-The temporary file paths are provided in the attachment information above.
+The file paths are provided in the attachment information above.
 `;
           } else if (!isAskMode) {
             systemPrompt += `
 
 When files are attached for upload to the codebase, copy them into the project using this format:
 
-<dyad-copy from="${TEMP_DIR}/abc123.png" to="src/assets/logo.png" description="Copy uploaded file"></dyad-copy>
+<dyad-copy from="dyad-media/abc123.png" to="src/assets/logo.png" description="Copy uploaded file"></dyad-copy>
 
-The temporary file paths are provided in the attachment information above.
+The file paths are provided in the attachment information above.
 `;
           }
         } else if (hasImageAttachments) {
@@ -1669,27 +1656,6 @@ ${problemReport.problems
 
       // Notify renderer that stream has ended
       safeSend(event.sender, "chat:stream:end", { chatId: req.chatId });
-
-      // Clean up any temporary files
-      if (attachmentPaths.length > 0) {
-        for (const filePath of attachmentPaths) {
-          try {
-            // We don't immediately delete files because they might be needed for reference
-            // Instead, schedule them for deletion after some time
-            setTimeout(
-              async () => {
-                if (fs.existsSync(filePath)) {
-                  await unlink(filePath);
-                  logger.log(`Deleted temporary file: ${filePath}`);
-                }
-              },
-              30 * 60 * 1000,
-            ); // Delete after 30 minutes
-          } catch (error) {
-            logger.error(`Error scheduling file deletion: ${error}`);
-          }
-        }
-      }
     }
   });
 

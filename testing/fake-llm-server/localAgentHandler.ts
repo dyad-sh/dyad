@@ -92,11 +92,11 @@ function countToolResultRounds(messages: any[]): number {
 }
 
 /**
- * Extract the temp attachment path from the last user message.
- * The user message format includes: "temp path: /tmp/dyad-attachments/hash.png"
+ * Extract the attachment path from the last user message.
+ * The user message format includes: "path: /path/to/app/dyad-media/hash.png"
  */
-function extractTempAttachmentPath(messages: any[]): string | null {
-  // Search from the end to find the most recent user message with a temp path
+function extractAttachmentPath(messages: any[]): string | null {
+  // Search from the end to find the most recent user message with an attachment path
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
     if (msg?.role !== "user") continue;
@@ -106,7 +106,7 @@ function extractTempAttachmentPath(messages: any[]): string | null {
         ? msg.content
         : null;
     if (!text) continue;
-    const match = text.match(/temp path: ([^\s)]+)/);
+    const match = text.match(/\(path: ([^\s)]+)\)/);
     if (match) return match[1];
   }
   return null;
@@ -393,19 +393,19 @@ export async function handleLocalAgentFixture(
       },
     );
 
-    // Replace {{TEMP_ATTACHMENT_PATH}} placeholders in tool call args
-    // with the actual temp path extracted from the user message
+    // Replace {{ATTACHMENT_PATH}} placeholders in tool call args
+    // with the actual path extracted from the user message
     if (turn.toolCalls) {
-      const tempPath = extractTempAttachmentPath(messages);
-      if (tempPath) {
+      const attachmentPath = extractAttachmentPath(messages);
+      if (attachmentPath) {
         turn = {
           ...turn,
           toolCalls: turn.toolCalls.map((tc) => ({
             ...tc,
             args: JSON.parse(
               JSON.stringify(tc.args).replace(
-                /\{\{TEMP_ATTACHMENT_PATH\}\}/g,
-                tempPath,
+                /\{\{ATTACHMENT_PATH\}\}/g,
+                attachmentPath,
               ),
             ),
           })),

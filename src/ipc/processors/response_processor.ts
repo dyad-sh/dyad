@@ -40,7 +40,7 @@ import {
 } from "../utils/dyad_tag_parser";
 import { applySearchReplace } from "../../pro/main/ipc/processors/search_replace_processor";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
-import { isWithinTempAttachmentsDir } from "../utils/temp_path_utils";
+import { isWithinDyadMediaDir } from "../utils/media_path_utils";
 const readFile = fs.promises.readFile;
 const logger = log.scope("response_processor");
 
@@ -418,11 +418,11 @@ export async function processFullResponseActions(
       try {
         let fromFullPath: string;
         if (path.isAbsolute(tag.from)) {
-          // Security: only allow absolute paths within the temp attachments directory
-          if (!isWithinTempAttachmentsDir(tag.from)) {
+          // Security: only allow absolute paths within the app's dyad-media directory
+          if (!isWithinDyadMediaDir(tag.from, appPath)) {
             errors.push({
               message: `Unsafe source path: ${tag.from}`,
-              error: "Path outside allowed temp directory",
+              error: "Path outside allowed dyad-media directory",
             });
             continue;
           }

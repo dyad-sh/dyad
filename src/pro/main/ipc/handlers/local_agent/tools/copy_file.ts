@@ -5,10 +5,7 @@ import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { safeJoin } from "@/ipc/utils/path_utils";
 import { gitAdd } from "@/ipc/utils/git_utils";
-import {
-  DYAD_ATTACHMENTS_DIR,
-  isWithinTempAttachmentsDir,
-} from "@/ipc/utils/temp_path_utils";
+import { isWithinDyadMediaDir } from "@/ipc/utils/media_path_utils";
 import { deploySupabaseFunction } from "../../../../../../supabase_admin/supabase_management_client";
 import {
   isServerFunction,
@@ -21,7 +18,7 @@ const copyFileSchema = z.object({
   from: z
     .string()
     .describe(
-      "The source file path (can be a temp attachment path or a path relative to the app root)",
+      "The source file path (can be a dyad-media path or a path relative to the app root)",
     ),
   to: z.string().describe("The destination file path relative to the app root"),
   description: z
@@ -33,7 +30,7 @@ const copyFileSchema = z.object({
 export const copyFileTool: ToolDefinition<z.infer<typeof copyFileSchema>> = {
   name: "copy_file",
   description:
-    "Copy a file from one location to another. Can copy uploaded attachment files (from temp paths) into the codebase, or copy files within the codebase.",
+    "Copy a file from one location to another. Can copy uploaded attachment files (from dyad-media) into the codebase, or copy files within the codebase.",
   inputSchema: copyFileSchema,
   defaultConsent: "always",
   modifiesState: true,
@@ -46,13 +43,13 @@ export const copyFileTool: ToolDefinition<z.infer<typeof copyFileSchema>> = {
   },
 
   execute: async (args, ctx: AgentContext) => {
-    // Resolve the source path: allow both temp attachment paths and app-relative paths
+    // Resolve the source path: allow both dyad-media paths and app-relative paths
     let fromFullPath: string;
     if (path.isAbsolute(args.from)) {
-      // Security: only allow absolute paths within the temp attachments directory
-      if (!isWithinTempAttachmentsDir(args.from)) {
+      // Security: only allow absolute paths within the app's dyad-media directory
+      if (!isWithinDyadMediaDir(args.from, ctx.appPath)) {
         throw new Error(
-          `Absolute source paths are only allowed within the temp attachments directory: ${DYAD_ATTACHMENTS_DIR}`,
+          `Absolute source paths are only allowed within the dyad-media directory`,
         );
       }
       fromFullPath = path.resolve(args.from);

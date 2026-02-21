@@ -2,7 +2,7 @@ import type { LocalAgentFixture } from "../../../../testing/fake-llm-server/loca
 
 /**
  * Test fixture for file upload to codebase in local-agent mode.
- * The AI receives a temp file path and uses the copy_file tool
+ * The AI receives a dyad-media file path and uses the copy_file tool
  * to copy the uploaded file into the codebase.
  */
 export const fixture: LocalAgentFixture = {
@@ -14,7 +14,7 @@ export const fixture: LocalAgentFixture = {
         {
           name: "copy_file",
           args: {
-            from: "{{TEMP_ATTACHMENT_PATH}}",
+            from: "{{ATTACHMENT_PATH}}",
             to: "assets/uploaded-file.png",
             description: "Copy uploaded file to codebase",
           },

@@ -29,10 +29,10 @@ export function prettifyDump(
     .map((message) => {
       const content = Array.isArray(message.content)
         ? JSON.stringify(message.content)
-            // Normalize temp attachment paths (dynamic MD5 hashes)
+            // Normalize attachment paths (dynamic MD5 hashes in dyad-media)
             .replace(
-              /temp path: [^"\\]+\/dyad-attachments\/[a-f0-9]+\.\w+/g,
-              "temp path: [[TEMP_ATTACHMENT_PATH]]",
+              /path: [^"\\]+\/dyad-media\/[a-f0-9]+\.\w+/g,
+              "path: [[ATTACHMENT_PATH]]",
             )
         : message.content
             .replace(BUILD_SYSTEM_PREFIX, "\n${BUILD_SYSTEM_PREFIX}")

@@ -408,10 +408,12 @@ serve(async (req) => {
 
 export const SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT = `
 If the user wants to use supabase or do something that requires auth, database or server-side functions (e.g. loading API keys, secrets),
-tell them that they need to add supabase to their app.
+tell them that they need to add a backend to their app. They can choose between Supabase and Convex.
 
-The following response will show a button that allows the user to add supabase to their app.
+If the user explicitly asks for Convex or a real-time reactive backend, suggest Convex:
+<dyad-add-integration provider="convex"></dyad-add-integration>
 
+Otherwise, suggest Supabase by default:
 <dyad-add-integration provider="supabase"></dyad-add-integration>
 
 # Examples
@@ -436,7 +438,31 @@ I want to add auth to my app.
 
 ### Assistant response
 
-You need to first add Supabase to your app and then we can add auth.
+You need to first add a backend to your app. I recommend Supabase for authentication support.
 
 <dyad-add-integration provider="supabase"></dyad-add-integration>
+
+## Example 3: User wants to use Convex
+
+### User prompt
+
+I want to use Convex in my app.
+
+### Assistant response
+
+You need to first add Convex to your app.
+
+<dyad-add-integration provider="convex"></dyad-add-integration>
+
+## Example 4: User wants a real-time backend
+
+### User prompt
+
+I want a real-time reactive backend for my app.
+
+### Assistant response
+
+I recommend Convex for a real-time reactive backend. You need to first add it to your app.
+
+<dyad-add-integration provider="convex"></dyad-add-integration>
 `;

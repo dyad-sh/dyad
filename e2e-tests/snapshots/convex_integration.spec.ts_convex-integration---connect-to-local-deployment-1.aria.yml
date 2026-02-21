@@ -1,0 +1,39 @@
+- paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
+- button "file1.txt file1.txt Edit":
+  - img
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
+  - img
+- paragraph: More EOM
+- button "Copy":
+  - img
+- img
+- text: Approved
+- img
+- text: test-model
+- img
+- text: less than a minute ago
+- img
+- text: wrote 1 file(s)
+- paragraph: tc=add-convex
+- paragraph: Adding convex...
+- img
+- text: Integration Complete Convex integration complete
+- paragraph: "/This app is connected to Convex deployment: https:\\/\\/test-deployment-\\d+\\.convex\\.cloud/"
+- button "Continue"
+- button "Copy":
+  - img
+- img
+- text: Approved
+- img
+- text: test-model
+- img
+- text: less than a minute ago
+- button "Undo":
+  - img
+  - text: ""
+- button "Retry":
+  - img
+  - text: ""

@@ -1,0 +1,18 @@
+- paragraph: tc=add-convex
+- paragraph: Adding convex...
+- img
+- text: Integration Complete Convex integration complete
+- paragraph: "This app is connected to Convex deployment: https://app1-deployment.convex.cloud"
+- button "Continue"
+- button "Copy":
+  - img
+- img
+- text: test-model
+- img
+- text: less than a minute ago
+- button "Undo":
+  - img
+  - text: ""
+- button "Retry":
+  - img
+  - text: ""

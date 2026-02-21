@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/dialog";
 import { GitHubConnector } from "@/components/GitHubConnector";
 import { SupabaseConnector } from "@/components/SupabaseConnector";
+import { ConvexConnector } from "@/components/ConvexConnector";
 import { showError, showSuccess } from "@/lib/toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Label } from "@/components/ui/label";
@@ -437,6 +438,7 @@ export default function AppDetailsPage() {
             )}
           </div>
           {appId && <SupabaseConnector appId={appId} />}
+          {appId && <ConvexConnector appId={appId} />}
           {appId && <CapacitorControls appId={appId} />}
           <AppUpgrades appId={appId} />
         </div>

@@ -106,6 +106,15 @@ export class AppManagement {
     await this.page.getByTestId("connect-supabase-button").click();
   }
 
+  async connectConvexDeployment(deploymentUrl: string) {
+    // Fill in the deployment URL
+    await this.page
+      .getByTestId("convex-deployment-url-input")
+      .fill(deploymentUrl);
+    // Click the connect button
+    await this.page.getByTestId("connect-convex-button").click();
+  }
+
   async importApp(appDir: string) {
     await this.page.getByRole("button", { name: "Import App" }).click();
     await eph.stubDialog(this.electronApp, "showOpenDialog", {

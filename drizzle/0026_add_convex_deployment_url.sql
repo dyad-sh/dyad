@@ -1,0 +1,1 @@
+ALTER TABLE `apps` ADD `convex_deployment_url` text;

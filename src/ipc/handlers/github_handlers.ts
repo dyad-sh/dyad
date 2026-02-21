@@ -104,8 +104,8 @@ export async function getGithubUser(): Promise<GithubUser | null> {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     if (!res.ok) return null;
-    const emails = await res.json();
-    const email = emails.find((e: any) => e.primary)?.email;
+    const emails = (await res.json()) as { email: string; primary: boolean }[];
+    const email = emails.find((e) => e.primary)?.email;
     if (!email) return null;
 
     writeSettings({
@@ -352,7 +352,11 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
       }),
     });
 
-    const data = await response.json();
+    const data = (await response.json()) as {
+      access_token?: string;
+      error?: string;
+      error_description?: string;
+    };
 
     if (response.ok && data.access_token) {
       logger.log("Successfully obtained GitHub Access Token.");
@@ -491,35 +495,43 @@ function handleStartGithubFlow(
   })
     .then((res) => {
       if (!res.ok) {
-        return res.json().then((errData) => {
+        return (
+          res.json() as Promise<{ error_description?: string }>
+        ).then((errData) => {
           throw new Error(
             `GitHub API Error: ${errData.error_description || res.statusText}`,
           );
         });
       }
-      return res.json();
+      return res.json() as Promise<{
+        device_code: string;
+        interval: number;
+        user_code: string;
+        verification_uri: string;
+      }>;
     })
     .then((data) => {
-      logger.info("Received device code response");
-      if (!currentFlowState) return; // Flow might have been cancelled
+        logger.info("Received device code response");
+        if (!currentFlowState) return; // Flow might have been cancelled
 
-      currentFlowState.deviceCode = data.device_code;
-      currentFlowState.interval = data.interval || 5;
-      currentFlowState.isPolling = true;
+        currentFlowState.deviceCode = data.device_code;
+        currentFlowState.interval = data.interval || 5;
+        currentFlowState.isPolling = true;
 
-      // Send user code and verification URI to renderer
-      event.sender.send("github:flow-update", {
-        userCode: data.user_code,
-        verificationUri: data.verification_uri,
-        message: "Please authorize in your browser.",
-      });
+        // Send user code and verification URI to renderer
+        event.sender.send("github:flow-update", {
+          userCode: data.user_code,
+          verificationUri: data.verification_uri,
+          message: "Please authorize in your browser.",
+        });
 
-      // Start polling after the initial interval
-      currentFlowState.timeoutId = setTimeout(
-        () => pollForAccessToken(event),
-        currentFlowState.interval * 1000,
-      );
-    })
+        // Start polling after the initial interval
+        currentFlowState.timeoutId = setTimeout(
+          () => pollForAccessToken(event),
+          currentFlowState.interval * 1000,
+        );
+      },
+    )
     .catch((error) => {
       logger.error("Error initiating GitHub device flow:", error);
       event.sender.send("github:flow-error", {
@@ -554,14 +566,18 @@ async function handleListGithubRepos(): Promise<
     );
 
     if (!response.ok) {
-      const errorData = await response.json();
+      const errorData = (await response.json()) as { message?: string };
       throw new Error(
         `GitHub API error: ${errorData.message || response.statusText}`,
       );
     }
 
-    const repos = await response.json();
-    return repos.map((repo: any) => ({
+    const repos = (await response.json()) as {
+      name: string;
+      full_name: string;
+      private: boolean;
+    }[];
+    return repos.map((repo) => ({
       name: repo.name,
       full_name: repo.full_name,
       private: repo.private,
@@ -597,14 +613,17 @@ async function handleGetRepoBranches(
     );
 
     if (!response.ok) {
-      const errorData = await response.json();
+      const errorData = (await response.json()) as { message?: string };
       throw new Error(
         `GitHub API error: ${errorData.message || response.statusText}`,
       );
     }
 
-    const branches = await response.json();
-    return branches.map((branch: any) => ({
+    const branches = (await response.json()) as {
+      name: string;
+      commit: { sha: string };
+    }[];
+    return branches.map((branch) => ({
       name: branch.name,
       commit: { sha: branch.commit.sha },
     }));
@@ -635,7 +654,7 @@ async function handleIsRepoAvailable(
       (await fetch(`${GITHUB_API_BASE}/user`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       })
-        .then((r) => r.json())
+        .then((r) => r.json() as Promise<{ login: string }>)
         .then((u) => u.login));
     // Check if repo exists (using normalized name)
     const url = `${GITHUB_API_BASE}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(normalizedRepo)}`;
@@ -647,7 +666,7 @@ async function handleIsRepoAvailable(
     } else if (res.ok) {
       return { available: false, error: "Repository already exists." };
     } else {
-      const data = await res.json();
+      const data = (await res.json()) as { message?: string };
       return { available: false, error: data.message || "Unknown error" };
     }
   } catch (err: any) {
@@ -681,7 +700,7 @@ async function handleCreateRepo(
     const userRes = await fetch(`${GITHUB_API_BASE}/user`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-    const user = await userRes.json();
+    const user = (await userRes.json()) as { login: string };
     owner = user.login;
   }
   // Create repo
@@ -703,7 +722,10 @@ async function handleCreateRepo(
   if (!res.ok) {
     let errorMessage = `Failed to create repository (${res.status} ${res.statusText})`;
     try {
-      const data = await res.json();
+      const data = (await res.json()) as {
+        message?: string;
+        errors?: { message?: string; field?: string; code?: string }[];
+      };
       logger.error("GitHub API error when creating repo:", {
         status: res.status,
         statusText: res.statusText,
@@ -718,7 +740,7 @@ async function handleCreateRepo(
       // Handle validation errors with more details
       if (data.errors && Array.isArray(data.errors)) {
         const errorDetails = data.errors
-          .map((err: any) => {
+          .map((err) => {
             if (typeof err === "string") return err;
             if (err.message) return err.message;
             if (err.code) return `${err.field || "field"}: ${err.code}`;
@@ -793,7 +815,7 @@ async function handleConnectToExistingRepo(
     );
 
     if (!repoResponse.ok) {
-      const errorData = await repoResponse.json();
+      const errorData = (await repoResponse.json()) as { message: string };
       throw new Error(
         `Repository not found or access denied: ${errorData.message}`,
       );
@@ -1018,7 +1040,7 @@ async function handleGetGitState(
 async function handleListCollaborators(
   event: IpcMainInvokeEvent,
   { appId }: { appId: number },
-): Promise<{ login: string; avatar_url: string; permissions: any }[]> {
+): Promise<{ login: string; avatar_url: string; permissions: unknown }[]> {
   try {
     const settings = readSettings();
     const accessToken = settings.githubAccessToken?.value;
@@ -1047,8 +1069,12 @@ async function handleListCollaborators(
       );
     }
 
-    const collaborators = await response.json();
-    return collaborators.map((c: any) => ({
+    const collaborators = (await response.json()) as {
+      login: string;
+      avatar_url: string;
+      permissions: unknown;
+    }[];
+    return collaborators.map((c) => ({
       login: c.login,
       avatar_url: c.avatar_url,
       permissions: c.permissions,
@@ -1115,7 +1141,7 @@ async function handleInviteCollaborator(
     );
 
     if (!response.ok) {
-      const data = await response.json();
+      const data = (await response.json()) as { message?: string };
       throw new Error(
         data.message ||
           `Failed to invite collaborator: ${response.status} ${response.statusText}`,
@@ -1155,7 +1181,7 @@ async function handleRemoveCollaborator(
     );
 
     if (!response.ok) {
-      const data = await response.json();
+      const data = (await response.json()) as { message?: string };
       throw new Error(
         data.message ||
           `Failed to remove collaborator: ${response.status} ${response.statusText}`,

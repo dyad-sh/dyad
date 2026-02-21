@@ -38,7 +38,7 @@ A script that verifies all expected binary assets are present in the GitHub rele
 export GITHUB_TOKEN=your_github_token
 
 # Run the verification script
-npm run verify-release
+pnpm run verify-release
 
 # Or run directly
 node scripts/verify-release-assets.js

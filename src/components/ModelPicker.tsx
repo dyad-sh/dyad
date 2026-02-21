@@ -16,7 +16,7 @@ import { useLocalModels } from "@/hooks/useLocalModels";
 import { useLocalLMSModels } from "@/hooks/useLMStudioModels";
 import { useLanguageModelsByProviders } from "@/hooks/useLanguageModelsByProviders";
 
-import { ipc, LocalModel } from "@/ipc/types";
+import { ipc, LocalModel, type LanguageModel } from "@/ipc/types";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useSettings } from "@/hooks/useSettings";
 import { PriceBadge } from "@/components/PriceBadge";
@@ -304,6 +304,22 @@ export function ModelPicker() {
                   provider?.id === "auto"
                     ? "Dyad Turbo"
                     : (provider?.name ?? providerId);
+                const isOpenRouter = providerId === "openrouter";
+                const isOpenRouterFreeModel = (model: LanguageModel) =>
+                  model.tag === "Free" ||
+                  model.apiName.endsWith(":free") ||
+                  model.dollarSigns === 0;
+                const openRouterFreeModels = isOpenRouter
+                  ? models.filter((model) => isOpenRouterFreeModel(model))
+                  : [];
+                const openRouterFreeModelNames = new Set(
+                  openRouterFreeModels.map((model) => model.apiName),
+                );
+                const displayModels = isOpenRouter
+                  ? models.filter(
+                      (model) => !openRouterFreeModelNames.has(model.apiName),
+                    )
+                  : models;
                 return (
                   <DropdownMenuSub key={providerId}>
                     <DropdownMenuSubTrigger className="w-full font-normal">
@@ -333,7 +349,68 @@ export function ModelPicker() {
                         {providerDisplayName + " Models"}
                       </DropdownMenuLabel>
                       <DropdownMenuSeparator />
-                      {models.map((model) => (
+                      {isOpenRouter && openRouterFreeModels.length > 0 && (
+                        <>
+                          <DropdownMenuSub>
+                            <DropdownMenuSubTrigger className="w-full font-normal">
+                              <div className="flex flex-col items-start w-full">
+                                <span>Free models</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {openRouterFreeModels.length} models
+                                </span>
+                              </div>
+                            </DropdownMenuSubTrigger>
+                            <DropdownMenuSubContent className="w-56 max-h-100 overflow-y-auto">
+                              <DropdownMenuLabel>
+                                OpenRouter Free Models
+                              </DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              {openRouterFreeModels.map((model) => (
+                                <DropdownMenuItem
+                                  key={`${providerId}-${model.apiName}-free`}
+                                  title={model.description}
+                                  className={
+                                    selectedModel.provider === providerId &&
+                                    selectedModel.name === model.apiName
+                                      ? "bg-secondary"
+                                      : ""
+                                  }
+                                  onClick={() => {
+                                    const customModelId =
+                                      model.type === "custom"
+                                        ? model.id
+                                        : undefined;
+                                    onModelSelect({
+                                      name: model.apiName,
+                                      provider: providerId,
+                                      customModelId,
+                                    });
+                                    setOpen(false);
+                                  }}
+                                >
+                                  <div className="flex justify-between items-start w-full">
+                                    <span>{model.displayName}</span>
+                                    <PriceBadge
+                                      dollarSigns={model.dollarSigns}
+                                    />
+                                    {model.tag &&
+                                      (model.tag !== "Free" ||
+                                        model.dollarSigns !== 0) && (
+                                        <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
+                                          {model.tag}
+                                        </span>
+                                      )}
+                                  </div>
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuSubContent>
+                          </DropdownMenuSub>
+                          {displayModels.length > 0 && (
+                            <DropdownMenuSeparator />
+                          )}
+                        </>
+                      )}
+                      {displayModels.map((model) => (
                         <DropdownMenuItem
                           key={`${providerId}-${model.apiName}`}
                           title={model.description}
@@ -357,11 +434,13 @@ export function ModelPicker() {
                           <div className="flex justify-between items-start w-full">
                             <span>{model.displayName}</span>
                             <PriceBadge dollarSigns={model.dollarSigns} />
-                            {model.tag && (
-                              <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
-                                {model.tag}
-                              </span>
-                            )}
+                            {model.tag &&
+                              (model.tag !== "Free" ||
+                                model.dollarSigns !== 0) && (
+                                <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-medium">
+                                  {model.tag}
+                                </span>
+                              )}
                           </div>
                         </DropdownMenuItem>
                       ))}

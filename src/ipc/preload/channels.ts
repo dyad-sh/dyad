@@ -39,6 +39,7 @@ import { securityContracts } from "../types/security";
 import { miscContracts, miscEvents } from "../types/misc";
 import { freeAgentQuotaContracts } from "../types/free_agent_quota";
 import { planEvents, planContracts } from "../types/plan";
+import { terminalContracts, terminalEvents } from "../types/terminal";
 
 // =============================================================================
 // Invoke Channels (derived from all contracts)
@@ -93,6 +94,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(miscContracts),
   ...getInvokeChannels(freeAgentQuotaContracts),
   ...getInvokeChannels(planContracts),
+  ...getInvokeChannels(terminalContracts),
 
   // Test-only channels
   ...TEST_INVOKE_CHANNELS,
@@ -118,6 +120,7 @@ export const VALID_RECEIVE_CHANNELS = [
   ...getReceiveChannels(systemEvents),
   ...getReceiveChannels(miscEvents),
   ...getReceiveChannels(planEvents),
+  ...getReceiveChannels(terminalEvents),
 ] as const;
 
 // =============================================================================

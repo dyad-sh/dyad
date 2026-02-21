@@ -42,6 +42,7 @@ export {
   Settings,
   AppManagement,
   PromptLibrary,
+  Terminal,
 } from "./page-objects";
 
 // Re-export utilities (for tests that may need direct access)

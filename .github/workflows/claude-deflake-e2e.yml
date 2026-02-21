@@ -2,8 +2,8 @@ name: Claude Deflake E2E
 
 on:
   schedule:
-    # Daily at 10:00 UTC (2 AM PST / 3 AM PDT due to DST)
-    - cron: "0 10 * * *"
+    # Weekdays at 10:00 UTC (2 AM PST / 3 AM PDT due to DST)
+    - cron: "0 10 * * 1-5"
   workflow_dispatch:
     inputs:
       commit_count:

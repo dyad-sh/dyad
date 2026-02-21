@@ -12,7 +12,7 @@ Run pre-commit checks including formatting, linting, and type-checking, and fix 
 1. **Run formatting check and fix:**
 
    ```
-   npm run fmt
+   pnpm run fmt
    ```
 
    This will automatically fix any formatting issues.
@@ -20,7 +20,7 @@ Run pre-commit checks including formatting, linting, and type-checking, and fix 
 2. **Run linting with auto-fix:**
 
    ```
-   npm run lint:fix
+   pnpm run lint:fix
    ```
 
    This will fix any auto-fixable lint errors.
@@ -35,7 +35,7 @@ Run pre-commit checks including formatting, linting, and type-checking, and fix 
 4. **Run type-checking:**
 
    ```
-   npm run ts
+   pnpm run ts
    ```
 
 5. **Fix any type errors:**
@@ -50,7 +50,7 @@ Run pre-commit checks including formatting, linting, and type-checking, and fix 
    After making manual fixes, re-run the checks to ensure everything passes:
 
    ```
-   npm run fmt && npm run lint && npm run ts
+   pnpm run fmt && pnpm run lint && pnpm run ts
    ```
 
 7. **Summarize the results:**

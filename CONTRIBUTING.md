@@ -19,7 +19,7 @@ Dyad is an Electron app.
 **Install dependencies:**
 
 ```sh
-npm install
+pnpm install
 ```
 
 **Create the userData directory (required for database)**
@@ -40,7 +40,7 @@ md userData
 If you change the DB schema (i.e. `src/db/schema.ts`), you will need to generate a DB migration.
 
 ```sh
-npm run db:generate
+pnpm run db:generate
 ```
 
 > If you want to discard a DB migration, you will likely need to reset your database which you can do by deleting the file in `userData/sqlite.db`.
@@ -48,7 +48,7 @@ npm run db:generate
 **Run locally:**
 
 ```sh
-npm start
+pnpm start
 ```
 
 ## Setup
@@ -58,7 +58,7 @@ If you'd like to contribute a pull request, we highly recommend setting the pre-
 Simply run this once in your repo:
 
 ```sh
-npm run init-precommit
+pnpm run init-precommit
 ```
 
 ## Testing
@@ -66,7 +66,7 @@ npm run init-precommit
 ### Unit tests
 
 ```sh
-npm test
+pnpm test
 ```
 
 ### E2E tests
@@ -74,7 +74,7 @@ npm test
 Build the app for E2E testing:
 
 ```sh
-npm run build
+pnpm run build
 ```
 
 > Note: you only need to re-build the app when changing the app code. You don't need to re-build the app if you're just updating the tests.
@@ -82,19 +82,19 @@ npm run build
 Run the whole e2e test suite:
 
 ```sh
-npm run e2e
+pnpm run e2e
 ```
 
 Run a specific test file:
 
 ```sh
-npm run e2e e2e-tests/context_manage.spec.ts
+pnpm run e2e e2e-tests/context_manage.spec.ts
 ```
 
 Update snapshots for a test:
 
 ```sh
-npm run e2e e2e-tests/context_manage.spec.ts -- --update-snapshots
+pnpm run e2e e2e-tests/context_manage.spec.ts -- --update-snapshots
 ```
 
 ## Code reviews

@@ -33,7 +33,7 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
    If there are uncommitted changes:
    - **When in doubt, `git add` the files.** Assume changed/untracked files are related to the current work unless they are egregiously unrelated (e.g., completely different feature area with no connection to the current changes).
    - Only exclude files that are clearly secrets or artifacts that should never be committed (e.g., `.env`, `.env.*`, `credentials.*`, `*.secret`, `*.key`, `*.pem`, `.DS_Store`, `node_modules/`, `*.log`).
-   - **Do NOT stage `package-lock.json` unless `package.json` has also been modified.** Changes to `package-lock.json` without a corresponding `package.json` change are spurious diffs (e.g., from running `npm install` locally) and should be excluded. If `package-lock.json` is dirty but `package.json` is not, run `git checkout -- package-lock.json` to discard the changes.
+   - **Do NOT stage `pnpm-lock.yaml` unless `package.json` has also been modified.** Changes to `pnpm-lock.yaml` without a corresponding `package.json` change are spurious diffs (e.g., from running `pnpm install` locally) and should be excluded. If `pnpm-lock.yaml` is dirty but `package.json` is not, run `git checkout -- pnpm-lock.yaml` to discard the changes.
    - Stage and commit all relevant files with a descriptive commit message summarizing the changes.
    - Keep track of any files you ignored so you can report them at the end.
 
@@ -44,7 +44,7 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
    Run these commands to ensure the code passes all pre-commit checks:
 
    ```
-   npm run fmt && npm run lint:fix && npm run ts
+   pnpm run fmt && pnpm run lint:fix && pnpm run ts
    ```
 
    If there are errors that could not be auto-fixed, read the affected files and fix them manually, then re-run the checks until they pass.
@@ -56,7 +56,7 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
    Run the test suite to ensure nothing is broken:
 
    ```
-   npm test
+   pnpm test
    ```
 
    If any tests fail, fix them before proceeding. Do NOT skip failing tests.

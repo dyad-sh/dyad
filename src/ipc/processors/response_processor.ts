@@ -340,7 +340,11 @@ export async function processFullResponseActions(
         }
       }
       // Deploy renamed function (skip if shared modules changed - will be handled later)
-      if (isServerFunction(tag.to) && !sharedModulesChanged) {
+      if (
+        chatWithApp.app.supabaseProjectId &&
+        isServerFunction(tag.to) &&
+        !sharedModulesChanged
+      ) {
         try {
           await deploySupabaseFunction({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
@@ -457,7 +461,11 @@ export async function processFullResponseActions(
         await gitAdd({ path: appPath, filepath: tag.to });
 
         // Deploy individual function (skip if shared modules changed)
-        if (isServerFunction(tag.to) && !sharedModulesChanged) {
+        if (
+          chatWithApp.app.supabaseProjectId &&
+          isServerFunction(tag.to) &&
+          !sharedModulesChanged
+        ) {
           try {
             await deploySupabaseFunction({
               supabaseProjectId: chatWithApp.app.supabaseProjectId!,

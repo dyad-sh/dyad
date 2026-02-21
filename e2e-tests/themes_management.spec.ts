@@ -28,11 +28,9 @@ test("themes management - CRUD operations", async ({ po }) => {
 
   // Fill in manual configuration form
   await po.page.locator("#manual-name").fill("My Test Theme");
+  await po.page.locator("#manual-description").fill("A test theme description");
   await po.page
-    .getByLabel("Description (optional)")
-    .fill("A test theme description");
-  await po.page
-    .getByLabel("Theme Prompt")
+    .locator("#manual-prompt")
     .fill("Use blue colors and modern styling");
 
   // Save the theme
@@ -60,10 +58,14 @@ test("themes management - CRUD operations", async ({ po }) => {
     .getByLabel("Theme Name")
     .fill("Updated Theme");
   await po.page
+    .getByRole("dialog")
     .getByLabel("Description (optional)")
     .fill("Updated description");
-  await po.page.getByLabel("Theme Prompt").clear();
-  await po.page.getByLabel("Theme Prompt").fill("Updated prompt content");
+  await po.page.getByRole("dialog").getByLabel("Theme Prompt").clear();
+  await po.page
+    .getByRole("dialog")
+    .getByLabel("Theme Prompt")
+    .fill("Updated prompt content");
 
   // Save changes
   await po.page.getByRole("button", { name: "Save" }).click();
@@ -126,11 +128,9 @@ test("themes management - create theme from chat input", async ({ po }) => {
 
   // Fill in manual configuration form
   await po.page.locator("#manual-name").fill("Chat Input Theme");
+  await po.page.locator("#manual-description").fill("Created from chat input");
   await po.page
-    .getByLabel("Description (optional)")
-    .fill("Created from chat input");
-  await po.page
-    .getByLabel("Theme Prompt")
+    .locator("#manual-prompt")
     .fill("Use dark mode with purple accents");
 
   // Save the theme
@@ -240,9 +240,7 @@ test("themes management - AI generator flow", async ({ po }) => {
 
   // Fill in theme details
   await po.page.locator("#ai-name").fill("AI Generated Theme");
-  await po.page
-    .getByLabel("Description (optional)")
-    .fill("Created via AI generator");
+  await po.page.locator("#ai-description").fill("Created via AI generator");
 
   // Upload an image
   const fileChooserPromise = po.page.waitForEvent("filechooser");
@@ -310,9 +308,7 @@ test("themes management - AI generator from website URL", async ({ po }) => {
 
   // Fill in theme details
   await po.page.locator("#ai-name").fill("Website Theme");
-  await po.page
-    .getByLabel("Description (optional)")
-    .fill("Generated from website");
+  await po.page.locator("#ai-description").fill("Generated from website");
 
   // Enter a website URL
   await urlInput.fill("https://example.com");

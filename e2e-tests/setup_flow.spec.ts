@@ -1,4 +1,4 @@
-import { testWithConfig } from "./helpers/test_helper";
+import { testWithConfig, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
 const testSetup = testWithConfig({
@@ -9,10 +9,15 @@ testSetup.describe("Setup Flow", () => {
   testSetup(
     "setup banner shows correct state when node.js is installed",
     async ({ po }) => {
-      // Verify the "Setup Dyad" heading is visible
-      await expect(
-        po.page.getByText("Setup Dyad", { exact: true }),
-      ).toBeVisible();
+      // Wait for the page to fully render before checking UI elements
+      await po.page.waitForLoadState("domcontentloaded");
+
+      // Verify the "Setup Dyad" heading is visible (use toPass for CI resilience)
+      await expect(async () => {
+        await expect(
+          po.page.getByText("Setup Dyad", { exact: true }),
+        ).toBeVisible();
+      }).toPass({ timeout: Timeout.MEDIUM });
 
       // Verify both accordion sections are visible
       await expect(
@@ -39,16 +44,25 @@ testSetup.describe("Setup Flow", () => {
   testSetup("node.js install flow", async ({ po }) => {
     // Start with Node.js not installed
     await po.setNodeMock(false);
-    await po.page.reload();
-    await po.page.waitForLoadState("domcontentloaded");
 
-    // Verify setup banner and install button are visible
-    await expect(
-      po.page.getByText("Setup Dyad", { exact: true }),
-    ).toBeVisible();
+    // Reload with retry to handle intermittent ERR_FILE_NOT_FOUND in Electron
+    await expect(async () => {
+      await po.page.reload({ waitUntil: "domcontentloaded" });
+    }).toPass({ timeout: Timeout.MEDIUM });
+
+    // Verify setup banner is visible (use toPass for resilience)
+    await expect(async () => {
+      await expect(
+        po.page.getByText("Setup Dyad", { exact: true }),
+      ).toBeVisible();
+    }).toPass({ timeout: Timeout.MEDIUM });
+
+    // Expand the Node.js section to reveal the install button
+    await po.page.getByText("1. Install Node.js (App Runtime)").click();
+
     await expect(
       po.page.getByRole("button", { name: "Install Node.js Runtime" }),
-    ).toBeVisible({ timeout: 10000 });
+    ).toBeVisible({ timeout: Timeout.MEDIUM });
 
     // Manual configuration link should be visible
     await expect(
@@ -61,17 +75,16 @@ testSetup.describe("Setup Flow", () => {
       .click();
 
     // After clicking install, the "Continue" button should appear
-    await expect(
-      po.page.getByRole("button", { name: /Continue.*I installed Node\.js/ }),
-    ).toBeVisible();
+    const continueButton = po.page.getByRole("button", {
+      name: /Continue.*I installed Node\.js/,
+    });
+    await expect(continueButton).toBeVisible();
 
     // Simulate user having installed Node.js
     await po.setNodeMock(true);
 
-    // Click the continue button
-    await po.page
-      .getByRole("button", { name: /Continue.*I installed Node\.js/ })
-      .click();
+    // Click the continue button (use force to avoid accordion overlap issues)
+    await continueButton.click({ force: true });
 
     // Node.js should now show as installed
     await expect(

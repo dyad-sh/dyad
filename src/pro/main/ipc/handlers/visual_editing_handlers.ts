@@ -22,6 +22,15 @@ import {
 } from "../../utils/visual_editing_utils";
 import { normalizePath } from "../../../../../shared/normalizePath";
 
+const VALID_IMAGE_MIME_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+];
+
+const MAX_IMAGE_SIZE = 10_000_000; // ~7.5MB decoded
+
 export function registerVisualEditingHandlers() {
   ipcMain.handle(
     "apply-visual-editing-changes",
@@ -40,11 +49,77 @@ export function registerVisualEditingHandlers() {
         }
 
         const appPath = getDyadAppPath(app.path);
+
+        // Validate all image uploads upfront before making any changes
+        const imageValidationErrors: string[] = [];
+        for (const change of changes) {
+          if (change.imageUpload) {
+            const { fileName, base64Data, mimeType } = change.imageUpload;
+
+            if (!VALID_IMAGE_MIME_TYPES.includes(mimeType)) {
+              imageValidationErrors.push(
+                `"${fileName}": Unsupported image type (${mimeType}). Allowed types: JPEG, PNG, GIF, WebP.`,
+              );
+            }
+
+            if (base64Data.length > MAX_IMAGE_SIZE) {
+              imageValidationErrors.push(
+                `"${fileName}": The image is too large (max 7.5 MB). Please choose a smaller file.`,
+              );
+            }
+          }
+        }
+
+        if (imageValidationErrors.length > 0) {
+          throw new Error(
+            imageValidationErrors.length === 1
+              ? imageValidationErrors[0]
+              : `Multiple image issues:\n${imageValidationErrors.join("\n")}`,
+          );
+        }
+
+        // Write validated image files to public directory
+        for (const change of changes) {
+          if (change.imageUpload) {
+            const { fileName, base64Data } = change.imageUpload;
+
+            const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+            const timestamp = Date.now();
+            const finalFileName = `${timestamp}-${sanitizedFileName}`;
+
+            const publicImagesDir = path.join(appPath, "public", "images");
+            await fsPromises.mkdir(publicImagesDir, { recursive: true });
+
+            const destPath = path.join(publicImagesDir, finalFileName);
+            const buffer = Buffer.from(
+              base64Data.replace(/^data:[^;]+;base64,/, ""),
+              "base64",
+            );
+            await fsPromises.writeFile(destPath, buffer);
+
+            change.imageSrc = `/images/${finalFileName}`;
+
+            if (fs.existsSync(path.join(appPath, ".git"))) {
+              await gitAdd({
+                path: appPath,
+                filepath: normalizePath(
+                  path.join("public", "images", finalFileName),
+                ),
+              });
+            }
+          }
+        }
+
         const fileChanges = new Map<
           string,
           Map<
             number,
-            { classes: string[]; prefixes: string[]; textContent?: string }
+            {
+              classes: string[];
+              prefixes: string[];
+              textContent?: string;
+              imageSrc?: string;
+            }
           >
         >();
 
@@ -61,6 +136,9 @@ export function registerVisualEditingHandlers() {
             prefixes: changePrefixes,
             ...(change.textContent !== undefined && {
               textContent: change.textContent,
+            }),
+            ...(change.imageSrc !== undefined && {
+              imageSrc: change.imageSrc,
             }),
           });
         }
@@ -86,7 +164,10 @@ export function registerVisualEditingHandlers() {
           }
         }
       } catch (error) {
-        throw new Error(`Failed to apply visual editing changes: ${error}`);
+        if (error instanceof Error) {
+          throw error;
+        }
+        throw new Error(String(error));
       }
     },
   );
@@ -100,7 +181,7 @@ export function registerVisualEditingHandlers() {
         const line = parseInt(lineStr, 10);
 
         if (!filePath || isNaN(line)) {
-          return { isDynamic: false, hasStaticText: false };
+          return { isDynamic: false, hasStaticText: false, hasImage: false };
         }
 
         // Get the app to find its path
@@ -118,7 +199,7 @@ export function registerVisualEditingHandlers() {
         return analyzeComponent(content, line);
       } catch (error) {
         console.error("Failed to analyze component:", error);
-        return { isDynamic: false, hasStaticText: false };
+        return { isDynamic: false, hasStaticText: false, hasImage: false };
       }
     },
   );

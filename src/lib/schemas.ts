@@ -140,7 +140,7 @@ export type VertexProviderSetting = z.infer<typeof VertexProviderSettingSchema>;
 export const RuntimeModeSchema = z.enum(["web-sandbox", "local-node", "unset"]);
 export type RuntimeMode = z.infer<typeof RuntimeModeSchema>;
 
-export const RuntimeMode2Schema = z.enum(["host", "docker"]);
+export const RuntimeMode2Schema = z.enum(["host", "docker", "cloud"]);
 export type RuntimeMode2 = z.infer<typeof RuntimeMode2Schema>;
 
 /**
@@ -303,6 +303,8 @@ const BaseUserSettingsFields = {
   githubUser: GithubUserSchema.optional(),
   githubAccessToken: SecretSchema.optional(),
   vercelAccessToken: SecretSchema.optional(),
+  /** User's own Vercel access token for cloud sandbox mode (BYOT - Bring Your Own Token) */
+  userVercelSandboxToken: SecretSchema.optional(),
   supabase: SupabaseSchema.optional(),
   neon: NeonSchema.optional(),
   autoApproveChanges: z.boolean().optional(),

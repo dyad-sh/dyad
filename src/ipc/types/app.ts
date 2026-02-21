@@ -30,6 +30,8 @@ export const AppBaseSchema = z.object({
   vercelTeamId: z.string().nullable(),
   installCommand: z.string().nullable(),
   startCommand: z.string().nullable(),
+  iconType: z.enum(["emoji", "generated"]).nullable(),
+  iconData: z.string().nullable(),
   isFavorite: z.boolean(),
 });
 
@@ -232,6 +234,15 @@ export const UpdateAppCommandsParamsSchema = z.object({
 });
 
 /**
+ * Schema for update app icon params.
+ */
+export const UpdateAppIconParamsSchema = z.object({
+  appId: z.number(),
+  iconType: z.enum(["emoji", "generated"]),
+  iconData: z.string(),
+});
+
+/**
  * Schema for select app location params.
  */
 export const SelectAppLocationParamsSchema = z.object({
@@ -381,6 +392,12 @@ export const appContracts = {
     input: UpdateAppCommandsParamsSchema,
     output: z.void(),
   }),
+
+  updateAppIcon: defineContract({
+    channel: "update-app-icon",
+    input: UpdateAppIconParamsSchema,
+    output: z.void(),
+  }),
 } as const;
 
 // =============================================================================
@@ -421,3 +438,4 @@ export type AppSearchResult = z.infer<typeof AppSearchResultSchema>;
 export type UpdateAppCommandsParams = z.infer<
   typeof UpdateAppCommandsParamsSchema
 >;
+export type UpdateAppIconParams = z.infer<typeof UpdateAppIconParamsSchema>;

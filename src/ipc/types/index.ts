@@ -106,6 +106,7 @@ export type {
   ListAppsResponse,
   RenameBranchParams,
   UpdateAppCommandsParams,
+  UpdateAppIconParams,
 } from "./app";
 
 // Chat types

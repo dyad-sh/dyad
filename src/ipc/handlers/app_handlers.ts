@@ -59,6 +59,10 @@ import {
 import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { AppSearchResult } from "@/lib/schemas";
+import {
+  createGeneratedIconDataForApp,
+  parseGeneratedIconData,
+} from "@/lib/appIcons";
 
 import { getAppPort } from "../../../shared/ports";
 import {
@@ -775,8 +779,22 @@ export function registerAppHandlers() {
         name: params.name,
         // Use the name as the path for now
         path: appPath,
+        iconType: "generated",
+        iconData: createGeneratedIconDataForApp(0, params.name, params.name),
       })
       .returning();
+
+    const correctIconData = createGeneratedIconDataForApp(app.id, params.name);
+    await db
+      .update(apps)
+      .set({
+        iconType: "generated",
+        iconData: correctIconData,
+      })
+      .where(eq(apps.id, app.id));
+
+    // Update the app object with the correct iconData so the returned value matches the DB
+    app.iconData = correctIconData;
 
     // Create an initial chat for this app
     const [chat] = await db
@@ -887,8 +905,25 @@ export function registerAppHandlers() {
         githubRepo: null,
         installCommand: originalApp.installCommand,
         startCommand: originalApp.startCommand,
+        iconType: "generated",
+        iconData: createGeneratedIconDataForApp(appId, newAppName, "copy"),
       })
       .returning();
+
+    const correctIconData = createGeneratedIconDataForApp(
+      newDbApp.id,
+      newAppName,
+    );
+    await db
+      .update(apps)
+      .set({
+        iconType: "generated",
+        iconData: correctIconData,
+      })
+      .where(eq(apps.id, newDbApp.id));
+
+    // Update the app object with the correct iconData so the returned value matches the DB
+    newDbApp.iconData = correctIconData;
 
     return { app: newDbApp };
   });
@@ -1864,6 +1899,41 @@ export function registerAppHandlers() {
       .where(eq(apps.id, appId));
 
     logger.info(`Updated commands for app ${appId}`);
+  });
+
+  createTypedHandler(appContracts.updateAppIcon, async (_, params) => {
+    const { appId, iconType, iconData } = params;
+    const selectedApp = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
+
+    if (!selectedApp) {
+      throw new Error("App not found");
+    }
+
+    const trimmedIconData = iconData.trim();
+    if (trimmedIconData.length === 0) {
+      throw new Error("Icon data is required");
+    }
+
+    if (iconType === "emoji" && [...trimmedIconData].length > 16) {
+      throw new Error("Emoji icon is too long");
+    }
+
+    if (
+      iconType === "generated" &&
+      !parseGeneratedIconData(iconType, trimmedIconData)
+    ) {
+      throw new Error("Invalid generated icon payload");
+    }
+
+    await db
+      .update(apps)
+      .set({
+        iconType,
+        iconData: trimmedIconData,
+      })
+      .where(eq(apps.id, appId));
   });
 
   createTypedHandler(appContracts.changeAppLocation, async (_, params) => {

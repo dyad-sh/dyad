@@ -25,6 +25,7 @@ test("file tree search finds content matches and surfaces line numbers", async (
 
   // Files are collapsed by default in the new accordion UI, so we need to click to expand
   // Find the file name container (the clickable div that toggles expansion)
+  // The search result item structure is: div.py-1 > div.cursor-pointer > span (path)
   const fileContainer = resultItem
     .locator("xpath=ancestor::div[contains(@class, 'cursor-pointer')]")
     .first();

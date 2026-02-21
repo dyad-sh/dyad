@@ -130,6 +130,36 @@ This pattern provides a more reliable signal that the async operation has comple
 2. It confirms the operation finished (loading state disappeared)
 3. It avoids race conditions where the button might briefly be in the DOM but not yet updated
 
+## Modularized test helpers
+
+The E2E test helpers have been modularized from a single monolithic `test_helper.ts` into separate modules:
+
+- `e2e-tests/helpers/constants.ts` — timeout constants and configuration
+- `e2e-tests/helpers/fixtures.ts` — Playwright test fixtures and setup
+- `e2e-tests/helpers/utils/` — normalization and dump prettification utilities
+- `e2e-tests/helpers/page-objects/` — page object classes organized by component
+  - `page-objects/PageObject.ts` — main page object composing all components
+  - `page-objects/components/Navigation.ts` — tab navigation methods (`goToChatTab`, `goToAppsTab`, etc.)
+  - `page-objects/components/` — individual component page objects
+  - `page-objects/dialogs/` — dialog-specific page objects
+
+`test_helper.ts` now just re-exports from these modules for backward compatibility. When making changes to test helpers, edit the modularized files directly rather than `test_helper.ts`.
+
+## Shadcn sidebar component selectors
+
+The shadcn `SidebarMenuItem` renders as `<li data-slot="sidebar-menu-item">`. Use `[data-slot="sidebar-menu-item"]` to target sidebar menu items in Playwright selectors, not `[data-sidebar="menu-item"]`.
+
+```ts
+// Correct: target sidebar menu items via data-slot attribute
+await chatList
+  .locator('[data-slot="sidebar-menu-item"] button')
+  .first()
+  .click();
+
+// Wrong: data-sidebar is not the correct attribute
+await chatList.locator('[data-sidebar="menu-item"] button').first().click();
+```
+
 ## E2E test fixtures with .dyad directories
 
 When adding E2E test fixtures that need a `.dyad` directory for testing:

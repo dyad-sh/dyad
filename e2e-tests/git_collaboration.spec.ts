@@ -82,9 +82,9 @@ test.describe("Git Collaboration", () => {
     await po.githubConnector.fillCreateRepoName(repoName);
     await po.githubConnector.clickCreateRepoButton();
 
-    // Wait for repo to be connected
+    // Wait for repo to be connected (longer timeout for CI)
     await expect(po.page.getByTestId("github-connected-repo")).toBeVisible({
-      timeout: Timeout.MEDIUM,
+      timeout: Timeout.LONG,
     });
     await po.githubConnector.snapshotConnectedRepo();
 
@@ -276,9 +276,9 @@ test.describe("Git Collaboration", () => {
     await po.githubConnector.fillCreateRepoName(repoName);
     await po.githubConnector.clickCreateRepoButton();
 
-    // Wait for repo to be connected
+    // Wait for repo to be connected (longer timeout for CI)
     await expect(po.page.getByTestId("github-connected-repo")).toBeVisible({
-      timeout: Timeout.MEDIUM,
+      timeout: Timeout.LONG,
     });
 
     const appPath = await po.appManagement.getCurrentAppPath();

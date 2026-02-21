@@ -32,4 +32,17 @@ export function registerShellHandlers() {
     shell.showItemInFolder(fullPath);
     logger.debug("Showed item in folder:", fullPath);
   });
+
+  handle("open-file-path", async (_event, fullPath: string) => {
+    if (!fullPath) {
+      throw new Error("No file path provided.");
+    }
+
+    const result = await shell.openPath(fullPath);
+    if (result) {
+      // shell.openPath returns an error string if it fails, empty string on success
+      throw new Error(`Failed to open file: ${result}`);
+    }
+    logger.debug("Opened file:", fullPath);
+  });
 }

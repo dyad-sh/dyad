@@ -38,6 +38,7 @@ import { DyadStatus } from "./DyadStatus";
 import { DyadCompaction } from "./DyadCompaction";
 import { DyadWritePlan } from "./DyadWritePlan";
 import { DyadExitPlan } from "./DyadExitPlan";
+import { DyadAttachment } from "./DyadAttachment";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
@@ -75,6 +76,7 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-status",
   "dyad-compaction",
   "dyad-copy",
+  "dyad-attachment",
   // Plan mode tags
   "dyad-write-plan",
   "dyad-exit-plan",
@@ -475,6 +477,21 @@ function renderCustomTag(
         >
           {content}
         </DyadCopy>
+      );
+
+    case "dyad-attachment":
+      return (
+        <DyadAttachment
+          node={{
+            properties: {
+              name: attributes.name || "",
+              type: attributes.type || "",
+              url: attributes.url || "",
+              path: attributes.path || "",
+              attachmentType: attributes["attachment-type"] || "chat-context",
+            },
+          }}
+        />
       );
 
     case "dyad-delete":

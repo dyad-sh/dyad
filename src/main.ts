@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, Menu } from "electron";
+import { app, BrowserWindow, dialog, Menu, protocol, net } from "electron";
 import * as path from "node:path";
 import { registerIpcHandlers } from "./ipc/ipc_host";
 import dotenv from "dotenv";
@@ -119,6 +119,26 @@ export async function onReady() {
 
   // Start performance monitoring
   startPerformanceMonitoring();
+
+  // Handle dyad-media:// protocol requests to serve persistent media files.
+  protocol.handle("dyad-media", async (request) => {
+    const url = new URL(request.url);
+    // URL format: dyad-media://{relative-app-path}/dyad-media/{filename}
+    // hostname + pathname gives us the relative path within dyad-apps
+    const relativePath = decodeURIComponent(url.hostname + url.pathname);
+    const fullPath = path.join(getDyadAppsBaseDirectory(), relativePath);
+
+    const resolvedPath = path.resolve(fullPath);
+    const resolvedBase = path.resolve(getDyadAppsBaseDirectory());
+    if (
+      !resolvedPath.startsWith(resolvedBase + path.sep) ||
+      !resolvedPath.includes(path.sep + "dyad-media" + path.sep)
+    ) {
+      return new Response("Forbidden", { status: 403 });
+    }
+
+    return net.fetch("file://" + resolvedPath);
+  });
 
   await onFirstRunMaybe(settings);
   createWindow();
@@ -375,6 +395,20 @@ const createApplicationMenu = () => {
   const appMenu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(appMenu);
 };
+
+// Register dyad-media:// protocol for serving persistent media attachments.
+// Must be called before app.whenReady().
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "dyad-media",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+    },
+  },
+]);
 
 // Skip singleton lock for E2E test builds to allow parallel test execution.
 // Deep link handling still works via the 'open-url' event registered below.

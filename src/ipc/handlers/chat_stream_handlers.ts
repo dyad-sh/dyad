@@ -290,9 +290,18 @@ export function registerChatStreamHandlers() {
 
       // Process attachments if any
       let attachmentInfo = "";
+      // Display-only attachment info uses <dyad-attachment> tags for inline rendering
+      let displayAttachmentInfo = "";
 
       if (req.attachments && req.attachments.length > 0) {
         attachmentInfo = "\n\nAttachments:\n";
+
+        // Create persistent dyad-media directory for this app
+        const appPath = getDyadAppPath(chat.app.path);
+        const mediaDir = path.join(appPath, "dyad-media");
+        if (!fs.existsSync(mediaDir)) {
+          fs.mkdirSync(mediaDir, { recursive: true });
+        }
 
         for (const attachment of req.attachments) {
           // Generate a unique filename
@@ -306,9 +315,21 @@ export function registerChatStreamHandlers() {
 
           // Extract the base64 data (remove the data:mime/type;base64, prefix)
           const base64Data = attachment.data.split(";base64,").pop() || "";
+          const fileBuffer = Buffer.from(base64Data, "base64");
 
-          await writeFile(filePath, Buffer.from(base64Data, "base64"));
+          // Save to temp dir (for AI copy_file operations)
+          await writeFile(filePath, fileBuffer);
           attachmentPaths.push(filePath);
+
+          // Save to persistent dyad-media dir
+          const persistentPath = path.join(mediaDir, filename);
+          await writeFile(persistentPath, fileBuffer);
+
+          // Build dyad-media:// URL for display
+          const mediaUrl = `dyad-media://${chat.app.path}/dyad-media/${filename}`;
+
+          // Build display tag for inline rendering
+          displayAttachmentInfo += `\n<dyad-attachment name="${attachment.name}" type="${attachment.type}" url="${mediaUrl}" path="${persistentPath}" attachment-type="${attachment.attachmentType}"></dyad-attachment>\n`;
 
           if (attachment.attachmentType === "upload-to-codebase") {
             // Provide the temp path so the AI can copy it into the codebase
@@ -330,8 +351,14 @@ export function registerChatStreamHandlers() {
         }
       }
 
-      // Add user message to database with attachment info
+      // Build the full AI prompt (with temp paths and copy_file instructions)
       let userPrompt = req.prompt + (attachmentInfo ? attachmentInfo : "");
+      // Build the display prompt (with <dyad-attachment> tags for inline rendering)
+      // This separates what the user sees from what the AI receives.
+      let displayUserPrompt: string | undefined;
+      if (displayAttachmentInfo) {
+        displayUserPrompt = req.prompt + displayAttachmentInfo;
+      }
       // Inline referenced prompt contents for mentions like @prompt:<id>
       try {
         const matches = Array.from(userPrompt.matchAll(/@prompt:(\d+)/g));
@@ -438,7 +465,8 @@ ${componentSnippet}
         .values({
           chatId: req.chatId,
           role: "user",
-          content: implementPlanDisplayPrompt ?? userPrompt,
+          content:
+            implementPlanDisplayPrompt ?? displayUserPrompt ?? userPrompt,
         })
         .returning({ id: messages.id });
       const userMessageId = insertedUserMessage.id;
@@ -605,6 +633,21 @@ ${componentSnippet}
         // expanded plan content into the AI message history so the model
         // receives the full plan.
         if (implementPlanDisplayPrompt) {
+          for (let i = messageHistory.length - 1; i >= 0; i--) {
+            if (messageHistory[i].role === "user") {
+              messageHistory[i] = {
+                ...messageHistory[i],
+                content: userPrompt,
+              };
+              break;
+            }
+          }
+        }
+
+        // The DB stores the clean display version with <dyad-attachment> tags;
+        // inject the full AI prompt (with temp paths and copy_file instructions)
+        // into the message history so the model can work with attachments.
+        if (displayUserPrompt) {
           for (let i = messageHistory.length - 1; i >= 0; i--) {
             if (messageHistory[i].role === "user") {
               messageHistory[i] = {

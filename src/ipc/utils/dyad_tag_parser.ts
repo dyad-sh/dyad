@@ -72,7 +72,7 @@ export function getDyadCopyTags(fullResponse: string): {
   to: string;
   description?: string;
 }[] {
-  const dyadCopyRegex = /<dyad-copy([^>]*)>([\s\S]*?)<\/dyad-copy>/gi;
+  const dyadCopyRegex = /<dyad-copy([^>]*?)(?:>([\s\S]*?)<\/dyad-copy>|\/>)/gi;
   const fromRegex = /from="([^"]+)"/;
   const toRegex = /to="([^"]+)"/;
   const descriptionRegex = /description="([^"]+)"/;

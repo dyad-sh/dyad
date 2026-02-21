@@ -1,5 +1,5 @@
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FileText, Image, X, ExternalLink } from "lucide-react";
 import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
 import { ipc } from "@/ipc/types";
@@ -47,16 +47,16 @@ export const DyadAttachment: React.FC<DyadAttachmentProps> = ({
   const [imageError, setImageError] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Close lightbox on Escape key
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Lock body scroll and auto-focus close button when lightbox opens
   useEffect(() => {
     if (!isExpanded) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setIsExpanded(false);
-      }
+    document.body.style.overflow = "hidden";
+    closeButtonRef.current?.focus();
+    return () => {
+      document.body.style.overflow = "";
     };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isExpanded]);
 
   if (isImage && !imageError && url) {
@@ -87,6 +87,11 @@ export const DyadAttachment: React.FC<DyadAttachmentProps> = ({
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
             onClick={() => setIsExpanded(false)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setIsExpanded(false);
+              }
+            }}
             role="dialog"
             aria-modal="true"
             aria-label={`Expanded image: ${name}`}
@@ -106,6 +111,7 @@ export const DyadAttachment: React.FC<DyadAttachmentProps> = ({
                 </button>
               )}
               <button
+                ref={closeButtonRef}
                 className="text-white hover:text-gray-300 cursor-pointer"
                 onClick={() => setIsExpanded(false)}
                 aria-label="Close"

@@ -146,7 +146,7 @@ export async function onReady() {
       return new Response("Forbidden", { status: 403 });
     }
 
-    return net.fetch("file://" + resolvedPath);
+    return net.fetch(require("node:url").pathToFileURL(resolvedPath).href);
   });
 
   await onFirstRunMaybe(settings);

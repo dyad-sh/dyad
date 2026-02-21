@@ -32,6 +32,7 @@ import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai
 import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
 import { getDyadAppsBaseDirectory } from "./paths/paths";
+import { DYAD_MEDIA_DIR_NAME } from "./ipc/utils/media_path_utils";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -141,12 +142,18 @@ export async function onReady() {
     const resolvedBase = path.resolve(getDyadAppsBaseDirectory());
     if (
       !resolvedPath.startsWith(resolvedBase + path.sep) ||
-      !resolvedPath.includes(path.sep + "dyad-media" + path.sep)
+      !resolvedPath.includes(path.sep + DYAD_MEDIA_DIR_NAME + path.sep)
     ) {
       return new Response("Forbidden", { status: 403 });
     }
 
-    return net.fetch(require("node:url").pathToFileURL(resolvedPath).href);
+    try {
+      return await net.fetch(
+        require("node:url").pathToFileURL(resolvedPath).href,
+      );
+    } catch {
+      return new Response("Not Found", { status: 404 });
+    }
   });
 
   await onFirstRunMaybe(settings);

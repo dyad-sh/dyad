@@ -83,6 +83,7 @@ import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
 import { parsePlanFile, validatePlanId } from "./planUtils";
 import { ensureDyadMediaGitignored } from "./gitignoreUtils";
+import { DYAD_MEDIA_DIR_NAME } from "../utils/media_path_utils";
 import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
 import {
@@ -290,7 +291,7 @@ export function registerChatStreamHandlers() {
 
         // Create persistent dyad-media directory for this app
         const appPath = getDyadAppPath(chat.app.path);
-        const mediaDir = path.join(appPath, "dyad-media");
+        const mediaDir = path.join(appPath, DYAD_MEDIA_DIR_NAME);
         if (!fs.existsSync(mediaDir)) {
           fs.mkdirSync(mediaDir, { recursive: true });
           await ensureDyadMediaGitignored(appPath);

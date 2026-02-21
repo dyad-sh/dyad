@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { FileText, Image, X, ExternalLink } from "lucide-react";
 import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
 import { ipc } from "@/ipc/types";
+import { toast } from "sonner";
 
 export type AttachmentSize = "sm" | "md" | "lg";
 
@@ -25,9 +26,13 @@ interface DyadAttachmentProps {
   };
 }
 
-function openFile(filePath: string) {
+async function openFile(filePath: string) {
   if (filePath) {
-    ipc.system.openFilePath(filePath);
+    try {
+      await ipc.system.openFilePath(filePath);
+    } catch {
+      toast.error("Could not open file. It may have been moved or deleted.");
+    }
   }
 }
 
@@ -99,7 +104,7 @@ export const DyadAttachment: React.FC<DyadAttachmentProps> = ({
             <div className="absolute top-4 right-4 flex items-center gap-2">
               {filePath && (
                 <button
-                  className="text-white hover:text-gray-300 cursor-pointer"
+                  className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer transition-colors"
                   onClick={(e) => {
                     e.stopPropagation();
                     openFile(filePath);
@@ -107,16 +112,16 @@ export const DyadAttachment: React.FC<DyadAttachmentProps> = ({
                   title="Open file"
                   aria-label="Open file"
                 >
-                  <ExternalLink size={22} />
+                  <ExternalLink size={20} />
                 </button>
               )}
               <button
                 ref={closeButtonRef}
-                className="text-white hover:text-gray-300 cursor-pointer"
+                className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer transition-colors"
                 onClick={() => setIsExpanded(false)}
                 aria-label="Close"
               >
-                <X size={24} />
+                <X size={20} />
               </button>
             </div>
             <img

@@ -10,6 +10,7 @@ import { deploySupabaseFunction } from "../../../../../../supabase_admin/supabas
 import {
   isServerFunction,
   isSharedServerModule,
+  extractFunctionNameFromPath,
 } from "../../../../../../supabase_admin/supabase_utils";
 
 const logger = log.scope("copy_file");
@@ -88,7 +89,7 @@ export const copyFileTool: ToolDefinition<z.infer<typeof copyFileSchema>> = {
       try {
         await deploySupabaseFunction({
           supabaseProjectId: ctx.supabaseProjectId,
-          functionName: path.basename(path.dirname(args.to)),
+          functionName: extractFunctionNameFromPath(args.to),
           appPath: ctx.appPath,
           organizationSlug: ctx.supabaseOrganizationSlug ?? null,
         });

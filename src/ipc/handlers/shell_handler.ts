@@ -4,6 +4,7 @@ import path from "node:path";
 import { createLoggedHandler } from "./safe_handle";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import { getDyadAppsBaseDirectory } from "../../paths/paths";
+import { DYAD_MEDIA_DIR_NAME } from "../utils/media_path_utils";
 
 const logger = log.scope("shell_handlers");
 const handle = createLoggedHandler(logger);
@@ -40,11 +41,19 @@ export function registerShellHandlers() {
       throw new Error("No file path provided.");
     }
 
-    // Security: only allow opening files within the dyad-apps directory
+    // Security: only allow opening files within dyad-media subdirectories.
+    // The dyad-apps tree contains AI-generated code, so opening arbitrary files
+    // there via shell.openPath could execute malicious executables.
     const resolvedPath = path.resolve(fullPath);
     const resolvedBase = path.resolve(getDyadAppsBaseDirectory());
     if (!resolvedPath.startsWith(resolvedBase + path.sep)) {
       throw new Error("Cannot open files outside the dyad-apps directory.");
+    }
+    const relativePath = path.relative(resolvedBase, resolvedPath);
+    const segments = relativePath.split(path.sep);
+    // Expected pattern: {app-name}/dyad-media/{filename...}
+    if (segments.length < 3 || segments[1] !== DYAD_MEDIA_DIR_NAME) {
+      throw new Error("Can only open files within dyad-media directories.");
     }
 
     const result = await shell.openPath(resolvedPath);

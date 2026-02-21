@@ -51,6 +51,8 @@ export interface AgentContext {
   messageId: number;
   isSharedModulesChanged: boolean;
   chatSummary?: string;
+  /** Turn-scoped prompt suggestions for follow-up actions */
+  promptSuggestions?: { summary: string; prompt: string }[];
   /** Turn-scoped todo list for agent task tracking */
   todos: Todo[];
   /** Request ID for tracking requests to the Dyad engine */

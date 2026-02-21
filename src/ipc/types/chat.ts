@@ -111,6 +111,9 @@ export const ChatResponseEndSchema = z.object({
   chatSummary: z.string().optional(),
   /** Indicates the stream was cancelled by the user, not completed successfully */
   wasCancelled: z.boolean().optional(),
+  promptSuggestions: z
+    .array(z.object({ summary: z.string(), prompt: z.string() }))
+    .optional(),
 });
 
 export type ChatResponseEnd = z.infer<typeof ChatResponseEndSchema>;

@@ -1,15 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
-import os from "node:os";
 import { z } from "zod";
 import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { safeJoin } from "@/ipc/utils/path_utils";
 import { gitAdd } from "@/ipc/utils/git_utils";
+import {
+  DYAD_ATTACHMENTS_DIR,
+  isWithinTempAttachmentsDir,
+} from "@/ipc/utils/temp_path_utils";
 
 const logger = log.scope("copy_file");
-
-const ALLOWED_TEMP_DIR = path.join(os.tmpdir(), "dyad-attachments");
 
 const copyFileSchema = z.object({
   from: z
@@ -44,17 +45,12 @@ export const copyFileTool: ToolDefinition<z.infer<typeof copyFileSchema>> = {
     let fromFullPath: string;
     if (path.isAbsolute(args.from)) {
       // Security: only allow absolute paths within the temp attachments directory
-      const resolvedFrom = path.resolve(args.from);
-      const resolvedTempDir = path.resolve(ALLOWED_TEMP_DIR);
-      if (
-        !resolvedFrom.startsWith(resolvedTempDir + path.sep) &&
-        resolvedFrom !== resolvedTempDir
-      ) {
+      if (!isWithinTempAttachmentsDir(args.from)) {
         throw new Error(
-          `Absolute source paths are only allowed within the temp attachments directory: ${ALLOWED_TEMP_DIR}`,
+          `Absolute source paths are only allowed within the temp attachments directory: ${DYAD_ATTACHMENTS_DIR}`,
         );
       }
-      fromFullPath = resolvedFrom;
+      fromFullPath = path.resolve(args.from);
     } else {
       fromFullPath = safeJoin(ctx.appPath, args.from);
     }

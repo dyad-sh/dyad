@@ -52,7 +52,6 @@ import { SUMMARIZE_CHAT_SYSTEM_PROMPT } from "../../prompts/summarize_chat_syste
 import { SECURITY_REVIEW_SYSTEM_PROMPT } from "../../prompts/security_review_prompt";
 import fs from "node:fs";
 import * as path from "path";
-import * as os from "os";
 import * as crypto from "crypto";
 import { readFile, writeFile, unlink } from "fs/promises";
 import { getMaxTokens, getTemperature } from "../utils/token_utils";
@@ -113,8 +112,9 @@ const activeStreams = new Map<number, AbortController>();
 // Track partial responses for cancelled streams
 const partialResponses = new Map<number, string>();
 
-// Directory for storing temporary files
-const TEMP_DIR = path.join(os.tmpdir(), "dyad-attachments");
+// Shared temp directory for file attachments
+import { DYAD_ATTACHMENTS_DIR } from "../utils/temp_path_utils";
+const TEMP_DIR = DYAD_ATTACHMENTS_DIR;
 
 // Common helper functions
 const TEXT_FILE_EXTENSIONS = [
@@ -326,17 +326,18 @@ export function registerChatStreamHandlers() {
           await writeFile(persistentPath, fileBuffer);
 
           // Build dyad-media:// URL for display
-          const mediaUrl = `dyad-media://${chat.app.path}/dyad-media/${filename}`;
+          // Use a fixed hostname to avoid URL hostname normalization (lowercasing)
+          const mediaUrl = `dyad-media://media/${chat.app.path}/dyad-media/${filename}`;
 
-          // Build display tag for inline rendering
-          displayAttachmentInfo += `\n<dyad-attachment name="${attachment.name}" type="${attachment.type}" url="${mediaUrl}" path="${persistentPath}" attachment-type="${attachment.attachmentType}"></dyad-attachment>\n`;
+          // Build display tag for inline rendering (escape attribute values)
+          displayAttachmentInfo += `\n<dyad-attachment name="${escapeXmlAttr(attachment.name)}" type="${escapeXmlAttr(attachment.type)}" url="${escapeXmlAttr(mediaUrl)}" path="${escapeXmlAttr(persistentPath)}" attachment-type="${escapeXmlAttr(attachment.attachmentType)}"></dyad-attachment>\n`;
 
           if (attachment.attachmentType === "upload-to-codebase") {
             // Provide the temp path so the AI can copy it into the codebase
             attachmentInfo += `\n\nFile to upload to codebase: "${attachment.name}" (temp path: ${filePath})\nUse the copy_file tool (or <dyad-copy> tag) to copy this file into the codebase at the appropriate location.\n`;
           } else {
-            // For chat-context, include temp path so AI can optionally copy into codebase
-            attachmentInfo += `- ${attachment.name} (${attachment.type}, temp path: ${filePath})\n`;
+            // For chat-context, provide file info for reference (no temp path to avoid auto-copying)
+            attachmentInfo += `- ${attachment.name} (${attachment.type})\n`;
             // If it's a text-based file, try to include the content
             if (await isTextFile(filePath)) {
               try {
@@ -629,25 +630,10 @@ ${componentSnippet}
           commitHash: message.commitHash,
         }));
 
-        // The DB stores the short /implement-plan= display form; inject the
-        // expanded plan content into the AI message history so the model
-        // receives the full plan.
-        if (implementPlanDisplayPrompt) {
-          for (let i = messageHistory.length - 1; i >= 0; i--) {
-            if (messageHistory[i].role === "user") {
-              messageHistory[i] = {
-                ...messageHistory[i],
-                content: userPrompt,
-              };
-              break;
-            }
-          }
-        }
-
-        // The DB stores the clean display version with <dyad-attachment> tags;
-        // inject the full AI prompt (with temp paths and copy_file instructions)
-        // into the message history so the model can work with attachments.
-        if (displayUserPrompt) {
+        // The DB stores display-friendly versions (short /implement-plan= form
+        // or clean <dyad-attachment> tags). Replace the last user message with the
+        // full AI prompt so the model receives expanded plan content or temp paths.
+        if (implementPlanDisplayPrompt || displayUserPrompt) {
           for (let i = messageHistory.length - 1; i >= 0; i--) {
             if (messageHistory[i].role === "user") {
               messageHistory[i] = {

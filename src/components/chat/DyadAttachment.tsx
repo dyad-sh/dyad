@@ -1,5 +1,5 @@
 import type React from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FileText, Image, X, ExternalLink } from "lucide-react";
 import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
 import { ipc } from "@/ipc/types";
@@ -47,12 +47,33 @@ export const DyadAttachment: React.FC<DyadAttachmentProps> = ({
   const [imageError, setImageError] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
 
+  // Close lightbox on Escape key
+  useEffect(() => {
+    if (!isExpanded) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsExpanded(false);
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isExpanded]);
+
   if (isImage && !imageError && url) {
     return (
       <>
         <div
           className={`relative ${SIZE_CLASSES[size]} rounded-lg overflow-hidden border border-border/60 cursor-pointer hover:brightness-90 transition-all`}
           onClick={() => setIsExpanded(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setIsExpanded(true);
+            }
+          }}
+          role="button"
+          tabIndex={0}
+          aria-label={`Expand image: ${name}`}
           title={name}
         >
           <img
@@ -66,6 +87,9 @@ export const DyadAttachment: React.FC<DyadAttachmentProps> = ({
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
             onClick={() => setIsExpanded(false)}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Expanded image: ${name}`}
           >
             <div className="absolute top-4 right-4 flex items-center gap-2">
               {filePath && (
@@ -76,6 +100,7 @@ export const DyadAttachment: React.FC<DyadAttachmentProps> = ({
                     openFile(filePath);
                   }}
                   title="Open file"
+                  aria-label="Open file"
                 >
                   <ExternalLink size={22} />
                 </button>
@@ -83,6 +108,7 @@ export const DyadAttachment: React.FC<DyadAttachmentProps> = ({
               <button
                 className="text-white hover:text-gray-300 cursor-pointer"
                 onClick={() => setIsExpanded(false)}
+                aria-label="Close"
               >
                 <X size={24} />
               </button>

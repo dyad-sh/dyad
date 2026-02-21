@@ -40,9 +40,7 @@ import {
 } from "../utils/dyad_tag_parser";
 import { applySearchReplace } from "../../pro/main/ipc/processors/search_replace_processor";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
-import os from "node:os";
-
-const TEMP_DIR = path.join(os.tmpdir(), "dyad-attachments");
+import { isWithinTempAttachmentsDir } from "../utils/temp_path_utils";
 const readFile = fs.promises.readFile;
 const logger = log.scope("response_processor");
 
@@ -421,19 +419,14 @@ export async function processFullResponseActions(
         let fromFullPath: string;
         if (path.isAbsolute(tag.from)) {
           // Security: only allow absolute paths within the temp attachments directory
-          const resolvedFrom = path.resolve(tag.from);
-          const resolvedTempDir = path.resolve(TEMP_DIR);
-          if (
-            !resolvedFrom.startsWith(resolvedTempDir + path.sep) &&
-            resolvedFrom !== resolvedTempDir
-          ) {
+          if (!isWithinTempAttachmentsDir(tag.from)) {
             errors.push({
               message: `Unsafe source path: ${tag.from}`,
               error: "Path outside allowed temp directory",
             });
             continue;
           }
-          fromFullPath = resolvedFrom;
+          fromFullPath = path.resolve(tag.from);
         } else {
           fromFullPath = safeJoin(appPath, tag.from);
         }
@@ -448,6 +441,11 @@ export async function processFullResponseActions(
           continue;
         }
 
+        // Track if this involves shared modules
+        if (isSharedServerModule(tag.to)) {
+          sharedModulesChanged = true;
+        }
+
         const dirPath = path.dirname(toFullPath);
         fs.mkdirSync(dirPath, { recursive: true });
         fs.copyFileSync(fromFullPath, toFullPath);
@@ -457,6 +455,24 @@ export async function processFullResponseActions(
         );
 
         await gitAdd({ path: appPath, filepath: tag.to });
+
+        // Deploy individual function (skip if shared modules changed)
+        if (isServerFunction(tag.to) && !sharedModulesChanged) {
+          try {
+            await deploySupabaseFunction({
+              supabaseProjectId: chatWithApp.app.supabaseProjectId!,
+              functionName: extractFunctionNameFromPath(tag.to),
+              appPath,
+              organizationSlug:
+                chatWithApp.app.supabaseOrganizationSlug ?? null,
+            });
+          } catch (error) {
+            errors.push({
+              message: `Failed to deploy Supabase function after copy: ${tag.to}`,
+              error: error,
+            });
+          }
+        }
       } catch (error) {
         errors.push({
           message: `Failed to copy ${tag.from} to ${tag.to}`,

@@ -1,7 +1,9 @@
 import { shell } from "electron";
 import log from "electron-log";
+import path from "node:path";
 import { createLoggedHandler } from "./safe_handle";
 import { IS_TEST_BUILD } from "../utils/test_utils";
+import { getDyadAppsBaseDirectory } from "../../paths/paths";
 
 const logger = log.scope("shell_handlers");
 const handle = createLoggedHandler(logger);
@@ -38,11 +40,18 @@ export function registerShellHandlers() {
       throw new Error("No file path provided.");
     }
 
-    const result = await shell.openPath(fullPath);
+    // Security: only allow opening files within the dyad-apps directory
+    const resolvedPath = path.resolve(fullPath);
+    const resolvedBase = path.resolve(getDyadAppsBaseDirectory());
+    if (!resolvedPath.startsWith(resolvedBase + path.sep)) {
+      throw new Error("Cannot open files outside the dyad-apps directory.");
+    }
+
+    const result = await shell.openPath(resolvedPath);
     if (result) {
       // shell.openPath returns an error string if it fails, empty string on success
       throw new Error(`Failed to open file: ${result}`);
     }
-    logger.debug("Opened file:", fullPath);
+    logger.debug("Opened file:", resolvedPath);
   });
 }

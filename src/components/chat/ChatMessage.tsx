@@ -27,6 +27,7 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
+import { unescapeXmlAttr } from "../../../shared/xmlEscape";
 
 /** Extract <dyad-attachment> tags from message content and return parsed attachment data. */
 function extractAttachments(content: string): {
@@ -51,7 +52,7 @@ function extractAttachments(content: string): {
     const attrs: Record<string, string> = {};
     let attrMatch;
     while ((attrMatch = attrRegex.exec(match[1])) !== null) {
-      attrs[attrMatch[1]] = attrMatch[2];
+      attrs[attrMatch[1]] = unescapeXmlAttr(attrMatch[2]);
     }
     results.push({
       name: attrs.name || "",
@@ -145,8 +146,10 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
       className={`flex ${message.role === "assistant" ? "justify-start" : "justify-end"}`}
     >
       <div className={`mt-2 w-full max-w-3xl mx-auto group`}>
-        {/* Hide the message box entirely for user messages with only attachments and no text */}
-        {(message.role === "assistant" || hasUserText) && (
+        {/* Show message box for assistant messages, user text, or attachment-only messages */}
+        {(message.role === "assistant" ||
+          hasUserText ||
+          attachments.length > 0) && (
           <div
             className={`rounded-lg p-2 ${
               message.role === "assistant" ? "" : "ml-24 bg-(--sidebar-accent)"

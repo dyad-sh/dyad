@@ -7,6 +7,7 @@ import {
   DyadBadge,
   DyadFilePath,
   DyadDescription,
+  DyadStateIndicator,
 } from "./DyadCardPrimitives";
 import { CustomTagState } from "./stateTypes";
 
@@ -22,6 +23,9 @@ export const DyadCopy: React.FC<DyadCopyProps> = ({ children, node }) => {
   const state = node?.properties?.state as CustomTagState;
 
   const toFileName = to ? to.split("/").pop() : "";
+  // Hide the "From" line for temp attachment paths (absolute paths) since they
+  // show cryptic hash filenames that mean nothing to the user.
+  const isTempAttachment = from.startsWith("/");
 
   return (
     <DyadCard accentColor="teal" state={state}>
@@ -33,7 +37,13 @@ export const DyadCopy: React.FC<DyadCopyProps> = ({ children, node }) => {
         )}
         <DyadBadge color="teal">Copy</DyadBadge>
       </DyadCardHeader>
-      {from && <DyadFilePath path={`From: ${from}`} />}
+      {state === "pending" && (
+        <DyadStateIndicator state="pending" pendingLabel="Copying..." />
+      )}
+      {state === "aborted" && (
+        <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
+      )}
+      {from && !isTempAttachment && <DyadFilePath path={`From: ${from}`} />}
       {to && <DyadFilePath path={`To: ${to}`} />}
       {description && <DyadDescription>{description}</DyadDescription>}
       {children && <DyadDescription>{children}</DyadDescription>}

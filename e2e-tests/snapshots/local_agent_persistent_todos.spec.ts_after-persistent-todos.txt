@@ -1,0 +1,29 @@
+=== src/lib/utils.test.ts ===
+import { formatDate, safeParseJSON } from "./utils";
+
+test("formatDate returns ISO string", () => {
+  const d = new Date("2024-01-01");
+  expect(formatDate(d)).toBe("2024-01-01T00:00:00.000Z");
+});
+
+test("safeParseJSON parses valid JSON", () => {
+  expect(safeParseJSON('{"a":1}')).toEqual({ a: 1 });
+});
+
+test("safeParseJSON returns null for invalid JSON", () => {
+  expect(safeParseJSON("not json")).toBeNull();
+});
+
+
+=== src/lib/utils.ts ===
+export function formatDate(d: Date): string {
+  return d.toISOString();
+}
+
+export function safeParseJSON(str: string): unknown {
+  try {
+    return JSON.parse(str);
+  } catch {
+    return null;
+  }
+}

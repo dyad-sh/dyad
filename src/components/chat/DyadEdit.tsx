@@ -1,6 +1,6 @@
 import type React from "react";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Zap } from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
 import { CustomTagState } from "./stateTypes";
@@ -12,6 +12,7 @@ import {
   DyadStateIndicator,
   DyadDescription,
   DyadCardContent,
+  DyadDiffStats,
 } from "./DyadCardPrimitives";
 
 interface DyadEditProps {
@@ -34,6 +35,13 @@ export const DyadEdit: React.FC<DyadEditProps> = ({
   const state = node?.properties?.state as CustomTagState;
   const inProgress = state === "pending";
   const aborted = state === "aborted";
+
+  const lineCount = useMemo(() => {
+    const content = String(children ?? "");
+    if (content === "") return 0;
+    const count = content.split("\n").length;
+    return content.endsWith("\n") ? count - 1 : count;
+  }, [children]);
 
   const fileName = path ? path.split("/").pop() : "";
 
@@ -64,6 +72,9 @@ export const DyadEdit: React.FC<DyadEditProps> = ({
           <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
         )}
         <div className="ml-auto flex items-center gap-1">
+          {!inProgress && lineCount > 0 && (
+            <DyadDiffStats totalLines={lineCount} />
+          )}
           <DyadBadge color="sky">Turbo Edit</DyadBadge>
           <DyadExpandIcon isExpanded={isContentVisible} />
         </div>

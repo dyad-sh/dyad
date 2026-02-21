@@ -35,6 +35,11 @@ export class GitHubConnector {
     await this.page.getByTestId("github-create-repo-name-input").fill(name);
   }
 
+  async selectOrg(org: string) {
+    await this.page.getByTestId("github-org-select").click();
+    await this.page.getByRole("option", { name: org }).click();
+  }
+
   async fillNewRepoBranchName(name: string) {
     await this.page.getByTestId("github-new-repo-branch-input").fill(name);
   }

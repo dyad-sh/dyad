@@ -148,8 +148,13 @@ export function registerTypedHandlers<
   for (const [key, contract] of Object.entries(contracts)) {
     const handler = handlers[key as keyof typeof handlers];
     if (handler) {
-      // @ts-expect-error zod v4 type inference is not working correctly
-      createTypedHandler(contract, handler);
+      createTypedHandler(
+        contract as IpcContract<string, z.ZodType, z.ZodType>,
+        handler as (
+          event: IpcMainInvokeEvent,
+          input: unknown,
+        ) => Promise<unknown>,
+      );
     }
   }
 }

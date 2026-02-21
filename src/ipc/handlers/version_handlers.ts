@@ -32,6 +32,7 @@ import {
 } from "../utils/app_env_var_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { retryOnLocked } from "../utils/retryOnLocked";
+import { autoSyncToGithubIfEnabled } from "./github_handlers";
 
 const logger = log.scope("version_handlers");
 
@@ -189,6 +190,9 @@ export function registerVersionHandlers() {
           path: appPath,
           message: `Reverted all changes back to version ${previousVersionId}`,
         });
+
+        // Auto-sync to GitHub if enabled
+        await autoSyncToGithubIfEnabled(appId);
       }
 
       // Delete messages based on currentChatMessageId if provided, otherwise use commit hash lookup

@@ -52,44 +52,41 @@ export function TokenBar({ chatId }: TokenBarProps) {
 
   return (
     <div className="px-4 pb-2 text-xs" data-testid="token-bar">
+      <div className="flex justify-between mb-1 text-xs text-muted-foreground">
+        <span>Tokens: {totalTokens.toLocaleString()}</span>
+        <span>
+          {Math.round(percentUsed)}% of {(contextWindow / 1000).toFixed(0)}K
+        </span>
+      </div>
       <TooltipProvider>
         <Tooltip>
-          <TooltipTrigger>
-            <div className="w-full">
-              <div className="flex justify-between mb-1 text-xs text-muted-foreground">
-                <span>Tokens: {totalTokens.toLocaleString()}</span>
-                <span>
-                  {Math.round(percentUsed)}% of{" "}
-                  {(contextWindow / 1000).toFixed(0)}K
-                </span>
-              </div>
-              <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden flex">
-                {/* Message history tokens */}
-                <div
-                  className="h-full bg-blue-400"
-                  style={{ width: `${messageHistoryPercent}%` }}
-                />
-                {/* Codebase tokens */}
-                <div
-                  className="h-full bg-green-400"
-                  style={{ width: `${codebasePercent}%` }}
-                />
-                {/* Mentioned apps tokens */}
-                <div
-                  className="h-full bg-orange-400"
-                  style={{ width: `${mentionedAppsPercent}%` }}
-                />
-                {/* System prompt tokens */}
-                <div
-                  className="h-full bg-purple-400"
-                  style={{ width: `${systemPromptPercent}%` }}
-                />
-                {/* Input tokens */}
-                <div
-                  className="h-full bg-yellow-400"
-                  style={{ width: `${inputPercent}%` }}
-                />
-              </div>
+          <TooltipTrigger className="w-full block">
+            <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden flex">
+              {/* Message history tokens */}
+              <div
+                className="h-full bg-blue-400"
+                style={{ width: `${messageHistoryPercent}%` }}
+              />
+              {/* Codebase tokens */}
+              <div
+                className="h-full bg-green-400"
+                style={{ width: `${codebasePercent}%` }}
+              />
+              {/* Mentioned apps tokens */}
+              <div
+                className="h-full bg-orange-400"
+                style={{ width: `${mentionedAppsPercent}%` }}
+              />
+              {/* System prompt tokens */}
+              <div
+                className="h-full bg-purple-400"
+                style={{ width: `${systemPromptPercent}%` }}
+              />
+              {/* Input tokens */}
+              <div
+                className="h-full bg-yellow-400"
+                style={{ width: `${inputPercent}%` }}
+              />
             </div>
           </TooltipTrigger>
           <TooltipContent side="top" className="w-64 p-2">

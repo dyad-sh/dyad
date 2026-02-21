@@ -74,6 +74,14 @@ git stash pop
 
 The stashed changes will be automatically merged back after the rebase completes.
 
+### CI agent environment limitations (lint/test steps)
+
+In the GitHub Actions agent runner, `npm run ts` and `npm test` may fail even when the code is correct:
+- `npm run ts` uses `tsgo` which is not in the npm registry (pre-release tool unavailable via `npx`)
+- `npm test` requires `cross-env`/vitest which may not be installed if `node_modules` is absent
+
+These are environment limitations, not code issues. Skip or tolerate these failures in the agent runner; CI will run the full suite on the pushed branch.
+
 ### Conflict resolution tips
 
 - **Before rebasing:** If `npm install` modified `package-lock.json` (common in CI/local), discard changes with `git restore package-lock.json` to avoid "unstaged changes" errors

@@ -23,10 +23,7 @@ testSkipIfWindows("refresh app", async ({ po }) => {
   // Wait for the iframe to reload and have content after refresh.
   // Use a short poll to ensure body has meaningful content before snapshotting.
   await expect(
-    po.previewPanel
-      .getPreviewIframeElement()
-      .contentFrame()
-      .locator("body"),
+    po.previewPanel.getPreviewIframeElement().contentFrame().locator("body"),
   ).not.toHaveText("", { timeout: Timeout.LONG });
 
   await po.previewPanel.snapshotPreview();

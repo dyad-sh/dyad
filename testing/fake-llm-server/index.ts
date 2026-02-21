@@ -17,6 +17,18 @@ import {
   handleClearPushEvents,
   handleRepoCollaborators,
 } from "./githubHandler";
+import {
+  handleGetUser as handleVercelGetUser,
+  handleGetTeams as handleVercelGetTeams,
+  handleGetProjects as handleVercelGetProjects,
+  handleCreateProject as handleVercelCreateProject,
+  handleGetProjectDomains as handleVercelGetProjectDomains,
+  handleGetDeployments as handleVercelGetDeployments,
+  handleCreateDeployment as handleVercelCreateDeployment,
+  handleSetSoftBlock as handleVercelSetSoftBlock,
+  handleClearSoftBlock as handleVercelClearSoftBlock,
+  handleGetSoftBlock as handleVercelGetSoftBlock,
+} from "./vercelHandler";
 
 // Create Express app
 const app = express();
@@ -211,6 +223,32 @@ app.post("/github/api/test/clear-push-events", handleClearPushEvents);
 
 // GitHub Git endpoints - intercept all paths with /github/git prefix
 app.all("/github/git/*", handleGitPush);
+
+// Vercel API Mock Endpoints
+console.log("Setting up Vercel mock endpoints");
+
+// Vercel User API
+app.get("/vercel/api/v2/user", handleVercelGetUser);
+
+// Vercel Teams API
+app.get("/vercel/api/v2/teams", handleVercelGetTeams);
+
+// Vercel Projects API
+app.get("/vercel/api/v9/projects", handleVercelGetProjects);
+app.post("/vercel/api/v10/projects", handleVercelCreateProject);
+app.get(
+  "/vercel/api/v9/projects/:projectId/domains",
+  handleVercelGetProjectDomains,
+);
+
+// Vercel Deployments API
+app.get("/vercel/api/v6/deployments", handleVercelGetDeployments);
+app.post("/vercel/api/v13/deployments", handleVercelCreateDeployment);
+
+// Vercel Test Endpoints (for E2E tests)
+app.post("/vercel/api/test/set-soft-block", handleVercelSetSoftBlock);
+app.post("/vercel/api/test/clear-soft-block", handleVercelClearSoftBlock);
+app.get("/vercel/api/test/soft-block", handleVercelGetSoftBlock);
 
 // Dyad Engine turbo-file-edit endpoint for edit_file tool
 app.post("/engine/v1/tools/turbo-file-edit", (req, res) => {

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { z } from "zod";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { safeJoin } from "@/ipc/utils/path_utils";
+import { addLineNumberPrefixes } from "@/pro/main/ipc/processors/line_number_utils";
 
 const readFile = fs.promises.readFile;
 
@@ -92,18 +93,32 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
     const end = args.end_line_one_indexed_inclusive;
 
     if (start == null && end == null) {
-      return content;
+      // Normalize CRLF to LF and handle trailing newlines consistently.
+      // A file ending with \n should not produce a phantom empty numbered line.
+      const normalized = content.replace(/\r\n/g, "\n");
+      const hasTrailingNewline = normalized.endsWith("\n");
+      const contentToNumber = hasTrailingNewline
+        ? normalized.slice(0, -1)
+        : normalized;
+      const numbered = addLineNumberPrefixes(contentToNumber);
+      // Restore trailing newline in the output
+      return hasTrailingNewline ? numbered + "\n" : numbered;
     }
 
-    const hasTrailingNewline = content.endsWith("\n");
-    const lines = (hasTrailingNewline ? content.slice(0, -1) : content).split(
-      "\n",
-    );
+    // Normalize CRLF to LF before line operations to avoid embedded \r characters
+    const normalized = content.replace(/\r\n/g, "\n");
+    const hasTrailingNewline = normalized.endsWith("\n");
+    const lines = (
+      hasTrailingNewline ? normalized.slice(0, -1) : normalized
+    ).split("\n");
     const startIdx = Math.max(0, (start ?? 1) - 1);
     const endIdx = Math.min(lines.length, end ?? lines.length);
     const result = lines.slice(startIdx, endIdx).join("\n");
+    // Add line number prefixes first, then restore trailing newline if applicable.
+    // This prevents a phantom empty numbered line for files ending with \n.
+    const numbered = addLineNumberPrefixes(result, startIdx + 1);
     return endIdx >= lines.length && hasTrailingNewline
-      ? result + "\n"
-      : result;
+      ? numbered + "\n"
+      : numbered;
   },
 };

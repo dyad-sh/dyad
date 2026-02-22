@@ -470,6 +470,7 @@ export async function processFullResponseActions(
       writtenFiles.push(filePath);
       // Deploy individual function (skip if shared modules changed - will be handled later)
       if (
+        chatWithApp.app.supabaseProjectId &&
         isServerFunction(filePath) &&
         typeof content === "string" &&
         !sharedModulesChanged

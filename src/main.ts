@@ -131,9 +131,11 @@ export async function onReady() {
 
     const resolvedPath = path.resolve(fullPath);
     const resolvedBase = path.resolve(getDyadAppsBaseDirectory());
+    const relativeFromBase = path.relative(resolvedBase, resolvedPath);
     if (
-      !resolvedPath.startsWith(resolvedBase + path.sep) ||
-      !resolvedPath.includes(path.sep + DYAD_MEDIA_DIR_NAME + path.sep)
+      relativeFromBase.startsWith("..") ||
+      path.isAbsolute(relativeFromBase) ||
+      !relativeFromBase.includes(path.sep + DYAD_MEDIA_DIR_NAME + path.sep)
     ) {
       return new Response("Forbidden", { status: 403 });
     }

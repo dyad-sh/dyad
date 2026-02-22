@@ -31,8 +31,13 @@ export function prettifyDump(
         ? JSON.stringify(message.content)
             // Normalize attachment paths (dynamic MD5 hashes in dyad-media)
             .replace(
-              /path: [^"]*?[\/\\]{1,2}dyad-media[\/\\]{1,2}[a-f0-9]+\.\w+/g,
+              /path: [^"]*?[/\\]{1,2}dyad-media[/\\]{1,2}[a-f0-9]+\.\w+/g,
               "path: [[ATTACHMENT_PATH]]",
+            )
+            // Also normalize dyad-media paths in escaped attribute format
+            .replace(
+              /[/\\]{1,2}dyad-media[/\\]{1,2}[a-f0-9]{6,}\.\w+/g,
+              "/dyad-media/[[ATTACHMENT_HASH]]",
             )
         : message.content
             .replace(BUILD_SYSTEM_PREFIX, "\n${BUILD_SYSTEM_PREFIX}")

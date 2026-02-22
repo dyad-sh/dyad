@@ -17,8 +17,6 @@ export function isWithinDyadMediaDir(
   const resolvedMediaDir = path.resolve(
     path.join(appPath, DYAD_MEDIA_DIR_NAME),
   );
-  return (
-    resolved.startsWith(resolvedMediaDir + path.sep) ||
-    resolved === resolvedMediaDir
-  );
+  const relativePath = path.relative(resolvedMediaDir, resolved);
+  return !relativePath.startsWith("..") && !path.isAbsolute(relativePath);
 }

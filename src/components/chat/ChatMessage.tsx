@@ -50,6 +50,7 @@ function extractAttachments(content: string): {
   let match;
   while ((match = tagRegex.exec(content)) !== null) {
     const attrs: Record<string, string> = {};
+    attrRegex.lastIndex = 0;
     let attrMatch;
     while ((attrMatch = attrRegex.exec(match[1])) !== null) {
       attrs[attrMatch[1]] = unescapeXmlAttr(attrMatch[2]);

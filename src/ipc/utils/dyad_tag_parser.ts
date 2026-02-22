@@ -88,12 +88,17 @@ export function getDyadCopyTags(fullResponse: string): {
 
     if (fromMatch?.[1] && toMatch?.[1]) {
       tags.push({
-        from: unescapeXmlAttr(fromMatch[1]),
+        from: normalizePath(unescapeXmlAttr(fromMatch[1])),
         to: normalizePath(unescapeXmlAttr(toMatch[1])),
         description: descriptionMatch?.[1]
           ? unescapeXmlAttr(descriptionMatch[1])
           : undefined,
       });
+    } else {
+      logger.warn(
+        "Found <dyad-copy> tag without valid 'from' or 'to' attributes:",
+        match[0],
+      );
     }
   }
   return tags;

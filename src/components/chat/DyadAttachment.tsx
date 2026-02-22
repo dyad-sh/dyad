@@ -52,6 +52,11 @@ export const DyadAttachment: React.FC<DyadAttachmentProps> = ({
   const [imageError, setImageError] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
 
+  // Reset error state when the image URL changes (e.g., new attachment rendered)
+  useEffect(() => {
+    setImageError(false);
+  }, [url]);
+
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   // Lock body scroll and auto-focus close button when lightbox opens
@@ -152,6 +157,13 @@ export const DyadAttachment: React.FC<DyadAttachmentProps> = ({
         <DyadBadge color={accentColor}>
           {attachmentType === "upload-to-codebase" ? "Upload" : "Context"}
         </DyadBadge>
+        {filePath && (
+          <ExternalLink
+            size={14}
+            className="ml-auto text-muted-foreground shrink-0"
+            aria-hidden
+          />
+        )}
       </DyadCardHeader>
     </DyadCard>
   );

@@ -405,7 +405,7 @@ export async function handleLocalAgentFixture(
             args: JSON.parse(
               JSON.stringify(tc.args).replace(
                 /\{\{ATTACHMENT_PATH\}\}/g,
-                attachmentPath,
+                JSON.stringify(attachmentPath).slice(1, -1),
               ),
             ),
           })),

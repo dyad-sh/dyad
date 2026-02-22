@@ -93,6 +93,7 @@ export async function executeCopyFile({
         organizationSlug: supabaseOrganizationSlug ?? null,
       });
     } catch (error) {
+      logger.error("Failed to deploy Supabase function after copy:", error);
       deployError = error;
     }
   }

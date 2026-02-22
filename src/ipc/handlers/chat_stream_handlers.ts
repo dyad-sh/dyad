@@ -294,14 +294,16 @@ export function registerChatStreamHandlers() {
         const mediaDir = path.join(appPath, DYAD_MEDIA_DIR_NAME);
         if (!fs.existsSync(mediaDir)) {
           fs.mkdirSync(mediaDir, { recursive: true });
-          await ensureDyadMediaGitignored(appPath);
         }
+        await ensureDyadMediaGitignored(appPath);
 
-        for (const attachment of req.attachments) {
-          // Generate a unique filename
+        for (let i = 0; i < req.attachments.length; i++) {
+          const attachment = req.attachments[i];
+          // Generate a unique filename (include index to avoid collisions
+          // when multiple attachments share the same name within the same ms)
           const hash = crypto
             .createHash("md5")
-            .update(attachment.name + Date.now())
+            .update(attachment.name + Date.now() + i)
             .digest("hex");
           const fileExtension = path.extname(attachment.name);
           const filename = `${hash}${fileExtension}`;
@@ -319,7 +321,7 @@ export function registerChatStreamHandlers() {
           // Use a fixed hostname to avoid URL hostname normalization (lowercasing)
           // Encode path segments so special characters (spaces, #, ?, %) don't
           // break URL parsing. The protocol handler already decodeURIComponent's.
-          const mediaUrl = `dyad-media://media/${encodeURIComponent(chat.app.path)}/dyad-media/${encodeURIComponent(filename)}`;
+          const mediaUrl = `dyad-media://media/${encodeURIComponent(chat.app.path)}/${DYAD_MEDIA_DIR_NAME}/${encodeURIComponent(filename)}`;
 
           // Build display tag for inline rendering (escape attribute values)
           displayAttachmentInfo += `\n<dyad-attachment name="${escapeXmlAttr(attachment.name)}" type="${escapeXmlAttr(attachment.type)}" url="${escapeXmlAttr(mediaUrl)}" path="${escapeXmlAttr(persistentPath)}" attachment-type="${escapeXmlAttr(attachment.attachmentType)}"></dyad-attachment>\n`;

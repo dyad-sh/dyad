@@ -271,6 +271,15 @@ export function QuestionnaireInput() {
             )}
           </div>
         </button>
+        <Button
+          onClick={handleDismiss}
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-muted-foreground flex-shrink-0 mr-1.5"
+          aria-label="Dismiss questionnaire"
+        >
+          <X size={14} />
+        </Button>
       </div>
 
       {isExpanded && (
@@ -284,17 +293,13 @@ export function QuestionnaireInput() {
                   <span className="text-red-500 ml-1">*</span>
                 )}
               </Label>
-              {currentQuestion.placeholder && (
-                <p className="text-xs text-muted-foreground">
-                  {currentQuestion.placeholder}
-                </p>
-              )}
-
               <div className="mt-2">
                 {effectiveType === "text" && (
                   <Input
                     autoFocus
-                    placeholder="Type your answer..."
+                    placeholder={
+                      currentQuestion.placeholder || "Type your answer..."
+                    }
                     value={(responses[currentQuestion.id] as string) || ""}
                     onChange={(e) =>
                       setResponses((prev) => ({
@@ -443,26 +448,15 @@ export function QuestionnaireInput() {
             </div>
 
             <div className="flex justify-between">
-              <div className="flex items-center gap-1">
-                <Button
-                  onClick={() => setCurrentIndex((prev) => prev - 1)}
-                  disabled={currentIndex === 0}
-                  variant="ghost"
-                  size="sm"
-                >
-                  <ArrowLeft size={14} className="mr-1.5" />
-                  Back
-                </Button>
-                <Button
-                  onClick={handleDismiss}
-                  variant="ghost"
-                  size="sm"
-                  className="text-muted-foreground"
-                >
-                  <X size={14} className="mr-1.5" />
-                  Dismiss Questionnaire
-                </Button>
-              </div>
+              <Button
+                onClick={() => setCurrentIndex((prev) => prev - 1)}
+                disabled={currentIndex === 0}
+                variant="ghost"
+                size="sm"
+              >
+                <ArrowLeft size={14} className="mr-1.5" />
+                Back
+              </Button>
               <Button
                 onClick={handleNext}
                 disabled={isNextDisabled()}

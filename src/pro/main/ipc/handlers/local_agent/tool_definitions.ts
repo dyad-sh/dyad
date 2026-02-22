@@ -339,8 +339,8 @@ export interface BuildAgentToolSetOptions {
    */
   planModeOnly?: boolean;
   /**
-   * If true, exclude Pro-only tools (e.g., planning_questionnaire).
-   * Used for basic agent mode where prompt guidance for these tools is not provided.
+   * If true, exclude Pro-only tools.
+   * Used for basic agent mode where some tools may not be available.
    */
   basicAgentMode?: boolean;
 }
@@ -391,7 +391,7 @@ const PLANNING_SPECIFIC_TOOLS = new Set([
 /**
  * Tools only available in Pro agent mode (excluded from basic agent mode).
  */
-const PRO_AGENT_ONLY_TOOLS = new Set(["planning_questionnaire"]);
+const PRO_AGENT_ONLY_TOOLS = new Set<string>();
 
 /**
  * Build ToolSet for AI SDK from tool definitions

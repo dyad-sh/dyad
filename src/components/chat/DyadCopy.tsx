@@ -36,13 +36,18 @@ export const DyadCopy: React.FC<DyadCopyProps> = ({ children, node }) => {
           </span>
         )}
         <DyadBadge color="teal">Copy</DyadBadge>
+        <span className="ml-auto">
+          {state === "pending" && (
+            <DyadStateIndicator state="pending" pendingLabel="Copying..." />
+          )}
+          {state === "aborted" && (
+            <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
+          )}
+          {state === "finished" && (
+            <DyadStateIndicator state="finished" finishedLabel="Copied" />
+          )}
+        </span>
       </DyadCardHeader>
-      {state === "pending" && (
-        <DyadStateIndicator state="pending" pendingLabel="Copying..." />
-      )}
-      {state === "aborted" && (
-        <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
-      )}
       {from && !isTempAttachment && <DyadFilePath path={`From: ${from}`} />}
       {to && <DyadFilePath path={`To: ${to}`} />}
       {description && <DyadDescription>{description}</DyadDescription>}

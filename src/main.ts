@@ -124,18 +124,9 @@ export async function onReady() {
   // Handle dyad-media:// protocol requests to serve persistent media files.
   protocol.handle("dyad-media", async (request) => {
     const url = new URL(request.url);
-    // New format: dyad-media://media/{app-path}/dyad-media/{filename}
+    // Format: dyad-media://media/{app-path}/dyad-media/{filename}
     //   Uses a fixed hostname to avoid URL hostname normalization (lowercasing).
-    // Legacy format: dyad-media://{app-path}/dyad-media/{filename}
-    //   hostname + pathname (hostname may be lowercased by URL spec).
-    let relativePath: string;
-    if (url.hostname === "media") {
-      // New format: full path is in the pathname (skip leading /)
-      relativePath = decodeURIComponent(url.pathname.slice(1));
-    } else {
-      // Legacy format: hostname + pathname
-      relativePath = decodeURIComponent(url.hostname + url.pathname);
-    }
+    const relativePath = decodeURIComponent(url.pathname.slice(1));
     const fullPath = path.join(getDyadAppsBaseDirectory(), relativePath);
 
     const resolvedPath = path.resolve(fullPath);

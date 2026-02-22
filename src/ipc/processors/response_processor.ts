@@ -40,7 +40,7 @@ import {
 } from "../utils/dyad_tag_parser";
 import { applySearchReplace } from "../../pro/main/ipc/processors/search_replace_processor";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
-import { isWithinDyadMediaDir } from "../utils/media_path_utils";
+import { executeCopyFile } from "../utils/copy_file_utils";
 const readFile = fs.promises.readFile;
 const logger = log.scope("response_processor");
 
@@ -420,66 +420,26 @@ export async function processFullResponseActions(
     const dyadCopyTags = getDyadCopyTags(fullResponse);
     for (const tag of dyadCopyTags) {
       try {
-        let fromFullPath: string;
-        if (path.isAbsolute(tag.from)) {
-          // Security: only allow absolute paths within the app's dyad-media directory
-          if (!isWithinDyadMediaDir(tag.from, appPath)) {
-            errors.push({
-              message: `Unsafe source path: ${tag.from}`,
-              error: "Path outside allowed dyad-media directory",
-            });
-            continue;
-          }
-          fromFullPath = path.resolve(tag.from);
-        } else {
-          fromFullPath = safeJoin(appPath, tag.from);
-        }
+        const result = await executeCopyFile({
+          from: tag.from,
+          to: tag.to,
+          appPath,
+          supabaseProjectId: chatWithApp.app.supabaseProjectId,
+          supabaseOrganizationSlug: chatWithApp.app.supabaseOrganizationSlug,
+          isSharedModulesChanged: sharedModulesChanged,
+        });
 
-        const toFullPath = safeJoin(appPath, tag.to);
+        writtenFiles.push(tag.to);
 
-        if (!fs.existsSync(fromFullPath)) {
-          errors.push({
-            message: `Source file not found: ${tag.from}`,
-            error: "File not found",
-          });
-          continue;
-        }
-
-        // Track if this involves shared modules
-        if (isSharedServerModule(tag.to)) {
+        if (result.sharedModuleChanged) {
           sharedModulesChanged = true;
         }
 
-        const dirPath = path.dirname(toFullPath);
-        fs.mkdirSync(dirPath, { recursive: true });
-        fs.copyFileSync(fromFullPath, toFullPath);
-        writtenFiles.push(tag.to);
-        logger.log(
-          `Successfully copied file: ${fromFullPath} -> ${toFullPath}`,
-        );
-
-        await gitAdd({ path: appPath, filepath: tag.to });
-
-        // Deploy individual function (skip if shared modules changed)
-        if (
-          chatWithApp.app.supabaseProjectId &&
-          isServerFunction(tag.to) &&
-          !sharedModulesChanged
-        ) {
-          try {
-            await deploySupabaseFunction({
-              supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-              functionName: extractFunctionNameFromPath(tag.to),
-              appPath,
-              organizationSlug:
-                chatWithApp.app.supabaseOrganizationSlug ?? null,
-            });
-          } catch (error) {
-            errors.push({
-              message: `Failed to deploy Supabase function after copy: ${tag.to}`,
-              error: error,
-            });
-          }
+        if (result.deployError) {
+          errors.push({
+            message: `Failed to deploy Supabase function after copy: ${tag.to}`,
+            error: result.deployError,
+          });
         }
       } catch (error) {
         errors.push({

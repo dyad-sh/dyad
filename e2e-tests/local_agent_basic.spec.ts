@@ -1,4 +1,5 @@
-import { testSkipIfWindows } from "./helpers/test_helper";
+import { expect } from "@playwright/test";
+import { Timeout, testSkipIfWindows } from "./helpers/test_helper";
 
 /**
  * E2E tests for local-agent mode (Agent v2)
@@ -41,4 +42,44 @@ testSkipIfWindows("local-agent - parallel tool calls", async ({ po }) => {
     name: "after-parallel",
     files: ["src/utils/math.ts", "src/utils/string.ts"],
   });
+});
+
+testSkipIfWindows("local-agent - questionnaire flow", async ({ po }) => {
+  await po.setUpDyadPro({ localAgent: true });
+  await po.importApp("minimal");
+  await po.chatActions.selectLocalAgentMode();
+
+  // Wait for the auto-generated AI_RULES response to fully complete,
+  // then start a new chat to avoid the chat:stream:end event from the
+  // AI_RULES stream clearing the questionnaire state.
+  await po.chatActions.waitForChatCompletion();
+  await po.chatActions.clickNewChat();
+
+  // Trigger questionnaire fixture
+  await po.sendPrompt("tc=local-agent/questionnaire", {
+    skipWaitForCompletion: true,
+  });
+
+  // Wait for questionnaire UI to appear
+  await expect(po.page.getByText("Which framework do you prefer?")).toBeVisible(
+    {
+      timeout: Timeout.MEDIUM,
+    },
+  );
+
+  await expect(po.page.getByRole("button", { name: "Submit" })).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
+
+  // Select "Vue" radio option
+  await po.page.getByText("Vue", { exact: true }).click();
+
+  // Submit the questionnaire
+  await po.page.getByRole("button", { name: /Submit/ }).click();
+
+  // Wait for the LLM response after submitting answers
+  await po.chatActions.waitForChatCompletion();
+
+  // Snapshot the messages
+  await po.snapshotMessages();
 });

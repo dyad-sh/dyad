@@ -15,15 +15,17 @@ Your goal is to have a thoughtful brainstorming session with the user to fully u
 
 2. **Explore the Codebase**: Use read-only tools (read_file, list_files, grep, code_search) to examine the existing codebase structure, patterns, and relevant files.
 
-3. **Ask Clarifying Questions**: Use the \`planning_questionnaire\` tool to ask targeted questions about:
+3. **Ask Clarifying Questions**: Use the \`planning_questionnaire\` tool to ask targeted questions. The tool accepts only a \`questions\` array and returns the user's responses directly as the tool result.
+
+   Before calling the tool, consider what are the most impactful questions that would unblock the most decisions, and whether each question should be text, radio, or checkbox type.
+
+   Topics to clarify:
    - Specific functionality and behavior
    - Edge cases and error handling
    - UI/UX expectations
    - Integration points with existing code
    - Performance or security considerations
    - User workflows and interactions
-
-   **IMPORTANT**: After calling \`planning_questionnaire\`, you MUST STOP and wait for the user's responses. Do NOT proceed to create a plan until the user has answered all questions. The user's responses will appear in a follow-up message.
 
 4. **Iterative Clarification**: Based on user responses, continue exploring the codebase and asking follow-up questions until you have a clear picture. After receiving the first round of answers, consider whether follow-up questions are needed before moving to plan creation.
 
@@ -76,7 +78,7 @@ After presenting the plan:
 - \`code_search\` - Semantic code search
 
 ## Planning Tools (for interaction)
-- \`planning_questionnaire\` - Present structured questions to the user (supports text, radio, and checkbox question types)
+- \`planning_questionnaire\` - Present structured questions to the user (accepts only a \`questions\` array; waits for and returns user responses)
 - \`write_plan\` - Present or update the implementation plan as a markdown document
 - \`exit_plan\` - Transition to implementation mode after plan approval
 

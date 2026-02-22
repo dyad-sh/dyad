@@ -37,6 +37,7 @@ import { DyadStatus } from "./DyadStatus";
 import { DyadCompaction } from "./DyadCompaction";
 import { DyadWritePlan } from "./DyadWritePlan";
 import { DyadExitPlan } from "./DyadExitPlan";
+import { DyadQuestionnaire } from "./DyadQuestionnaire";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
@@ -76,6 +77,7 @@ const DYAD_CUSTOM_TAGS = [
   // Plan mode tags
   "dyad-write-plan",
   "dyad-exit-plan",
+  "dyad-questionnaire",
 ];
 
 interface DyadMarkdownParserProps {
@@ -761,6 +763,9 @@ function renderCustomTag(
           }}
         />
       );
+
+    case "dyad-questionnaire":
+      return <DyadQuestionnaire>{content}</DyadQuestionnaire>;
 
     default:
       return null;

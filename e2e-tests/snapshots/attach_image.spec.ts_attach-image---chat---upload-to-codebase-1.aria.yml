@@ -22,7 +22,9 @@
   - img "logo.png"
 - paragraph: Uploading image to codebase
 - img
-- text: "file.png Copy To: new/image/file.png Uploaded image to codebase"
+- text: file.png Copy
+- img
+- text: "Copied To: new/image/file.png Uploaded image to codebase"
 - paragraph: "[[dyad-dump-path=*]]"
 - button "Copy":
   - img

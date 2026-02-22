@@ -23,7 +23,9 @@
   - img "logo.png"
 - paragraph: I'll upload your file to the codebase.
 - img
-- text: "uploaded-file.png Copy To: assets/uploaded-file.png Copy uploaded file to codebase"
+- text: uploaded-file.png Copy
+- img
+- text: "Copied To: assets/uploaded-file.png Copy uploaded file to codebase"
 - paragraph: I've successfully copied your file to assets/uploaded-file.png in the codebase.
 - button "Copy":
   - img

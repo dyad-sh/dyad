@@ -24,7 +24,8 @@ export interface CopyFileResult {
  * Copy a file within a Dyad app, with security validation, git staging,
  * and optional Supabase function deployment.
  *
- * @throws Error if the source path is outside the allowed dyad-media directory
+ * @throws Error if an absolute source path is outside the app's dyad-media directory.
+ *   Relative paths are resolved within the app root (consistent with write_file access).
  * @throws Error if the source file does not exist
  */
 export async function executeCopyFile({

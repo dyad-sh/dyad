@@ -32,7 +32,10 @@ import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai
 import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
 import { getDyadAppsBaseDirectory, getDyadAppPath } from "./paths/paths";
-import { DYAD_MEDIA_DIR_NAME } from "./ipc/utils/media_path_utils";
+import {
+  DYAD_MEDIA_DIR_NAME,
+  isWithinDyadMediaDir,
+} from "./ipc/utils/media_path_utils";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -138,17 +141,12 @@ export async function onReady() {
 
     // Resolve the app directory, handling both relative names and absolute
     // paths from imported apps (skipCopy).
-    const mediaDir = path.resolve(
-      path.join(getDyadAppPath(appPathRaw), DYAD_MEDIA_DIR_NAME),
-    );
+    const appPath = getDyadAppPath(appPathRaw);
+    const mediaDir = path.resolve(path.join(appPath, DYAD_MEDIA_DIR_NAME));
     const resolvedPath = path.resolve(path.join(mediaDir, filename));
 
     // Security: ensure the resolved path stays within the app's dyad-media directory
-    const relativeFromMedia = path.relative(mediaDir, resolvedPath);
-    if (
-      relativeFromMedia.startsWith("..") ||
-      path.isAbsolute(relativeFromMedia)
-    ) {
+    if (!isWithinDyadMediaDir(resolvedPath, appPath)) {
       return new Response("Forbidden", { status: 403 });
     }
 

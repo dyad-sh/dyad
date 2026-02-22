@@ -1729,8 +1729,11 @@ async function replaceTextAttachmentWithContent(
       // Read the full content
       const fullContent = await readFile(filePath, "utf-8");
 
-      // Replace the placeholder tag with the full content
-      const escapedPath = filePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      // Replace the placeholder tag with the full content.
+      // The path attribute in the tag is XML-escaped (via escapeXmlAttr), so we
+      // must also XML-escape the path before regex-escaping to ensure a match.
+      const xmlEscapedPath = escapeXmlAttr(filePath);
+      const escapedPath = xmlEscapedPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const tagPattern = new RegExp(
         `<dyad-text-attachment filename="[^"]*" type="[^"]*" path="${escapedPath}">\\s*<\\/dyad-text-attachment>`,
         "g",

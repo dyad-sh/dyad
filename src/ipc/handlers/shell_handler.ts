@@ -8,6 +8,31 @@ import { DYAD_MEDIA_DIR_NAME } from "../utils/media_path_utils";
 const logger = log.scope("shell_handlers");
 const handle = createLoggedHandler(logger);
 
+// Only allow opening files with known safe media extensions via shell.openPath.
+// This prevents execution of arbitrary executables even if they reside under a
+// dyad-media directory.
+const ALLOWED_MEDIA_EXTENSIONS = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".svg",
+  ".bmp",
+  ".ico",
+  ".pdf",
+  ".txt",
+  ".md",
+  ".csv",
+  ".json",
+  ".xml",
+  ".mp3",
+  ".mp4",
+  ".wav",
+  ".ogg",
+  ".webm",
+]);
+
 export function registerShellHandlers() {
   handle("open-external-url", async (_event, url: string) => {
     if (!url) {
@@ -60,6 +85,14 @@ export function registerShellHandlers() {
       path.isAbsolute(relativeFromMedia)
     ) {
       throw new Error("Can only open files within dyad-media directories.");
+    }
+
+    // Defense-in-depth: only allow known media file extensions
+    const ext = path.extname(resolvedPath).toLowerCase();
+    if (!ALLOWED_MEDIA_EXTENSIONS.has(ext)) {
+      throw new Error(
+        `File type '${ext}' is not allowed. Only media files can be opened.`,
+      );
     }
 
     const result = await shell.openPath(resolvedPath);

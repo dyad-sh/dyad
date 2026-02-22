@@ -8,7 +8,7 @@ import { toast } from "sonner";
 export type AttachmentSize = "sm" | "md" | "lg";
 
 const SIZE_CLASSES: Record<AttachmentSize, string> = {
-  sm: "size-14",
+  sm: "size-20",
   md: "size-24",
   lg: "size-40",
 };
@@ -152,7 +152,7 @@ export const DyadAttachment: React.FC<DyadAttachmentProps> = ({
         accentColor={accentColor}
       >
         <span className="font-medium text-sm text-foreground truncate">
-          {name}
+          {imageError ? "Image unavailable" : name}
         </span>
         <DyadBadge color={accentColor}>
           {attachmentType === "upload-to-codebase" ? "Upload" : "Context"}

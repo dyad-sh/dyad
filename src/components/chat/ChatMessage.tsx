@@ -3,6 +3,7 @@ import {
   DyadMarkdownParser,
   VanillaMarkdownParser,
 } from "./DyadMarkdownParser";
+import { DyadAttachment, type AttachmentSize } from "./DyadAttachment";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { StreamingLoadingAnimation } from "./StreamingLoadingAnimation";
 import {
@@ -26,6 +27,51 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
+import { unescapeXmlAttr } from "../../../shared/xmlEscape";
+
+/** Extract <dyad-attachment> tags from message content and return parsed attachment data. */
+function extractAttachments(content: string): {
+  name: string;
+  type: string;
+  url: string;
+  path: string;
+  attachmentType: string;
+}[] {
+  const tagRegex = /<dyad-attachment\s+([^>]*)><\/dyad-attachment>/g;
+  const attrRegex = /([\w-]+)="([^"]*)"/g;
+  const results: {
+    name: string;
+    type: string;
+    url: string;
+    path: string;
+    attachmentType: string;
+  }[] = [];
+
+  let match;
+  while ((match = tagRegex.exec(content)) !== null) {
+    const attrs: Record<string, string> = {};
+    attrRegex.lastIndex = 0;
+    let attrMatch;
+    while ((attrMatch = attrRegex.exec(match[1])) !== null) {
+      attrs[attrMatch[1]] = unescapeXmlAttr(attrMatch[2]);
+    }
+    results.push({
+      name: attrs.name || "",
+      type: attrs.type || "",
+      url: attrs.url || "",
+      path: attrs.path || "",
+      attachmentType: attrs["attachment-type"] || "chat-context",
+    });
+  }
+  return results;
+}
+
+/** Strip <dyad-attachment> tags from user message content. */
+function stripAttachmentInfo(content: string): string {
+  return content
+    .replace(/<dyad-attachment\s+[^>]*><\/dyad-attachment>/g, "")
+    .trim();
+}
 
 interface ChatMessageProps {
   message: Message;
@@ -83,99 +129,134 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
     }
   };
 
+  const userTextContent =
+    message.role === "user" ? stripAttachmentInfo(message.content) : "";
+  const attachments =
+    message.role === "user" ? extractAttachments(message.content) : [];
+  const hasUserText = userTextContent.length > 0;
+  const attachmentSize: AttachmentSize =
+    attachments.length === 1 ? "lg" : attachments.length <= 3 ? "md" : "sm";
+
   return (
     <div
       className={`flex ${message.role === "assistant" ? "justify-start" : "justify-end"}`}
     >
       <div className={`mt-2 w-full max-w-3xl mx-auto group`}>
-        <div
-          className={`rounded-lg p-2 ${
-            message.role === "assistant" ? "" : "ml-24 bg-(--sidebar-accent)"
-          }`}
-        >
-          {message.role === "assistant" &&
-          !message.content &&
-          isStreaming &&
-          isLastMessage ? (
-            <StreamingLoadingAnimation variant="initial" />
-          ) : (
-            <div
-              className="prose dark:prose-invert prose-headings:mb-2 prose-p:my-1 prose-pre:my-0 max-w-none break-words text-[15px]"
-              suppressHydrationWarning
-            >
-              {message.role === "assistant" ? (
-                <>
-                  <DyadMarkdownParser content={message.content} />
-                  {isLastMessage && isStreaming && (
-                    <StreamingLoadingAnimation variant="streaming" />
-                  )}
-                </>
-              ) : (
-                <VanillaMarkdownParser content={message.content} />
-              )}
-            </div>
-          )}
-          {(message.role === "assistant" && message.content && !isStreaming) ||
-          message.approvalState ? (
-            <div
-              className={`mt-2 flex items-center ${
-                message.role === "assistant" && message.content && !isStreaming
-                  ? "justify-between"
-                  : ""
-              } text-xs`}
-            >
-              {message.role === "assistant" &&
-                message.content &&
-                !isStreaming && (
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <button
-                          data-testid="copy-message-button"
-                          onClick={handleCopyFormatted}
-                          aria-label="Copy"
-                          className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
-                        />
-                      }
-                    >
-                      {copied ? (
-                        <Check className="h-4 w-4 text-green-500" />
-                      ) : (
-                        <Copy className="h-4 w-4" />
-                      )}
-                      <span className="hidden sm:inline"></span>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      {copied ? "Copied!" : "Copy"}
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-              <div className="flex flex-wrap gap-2">
-                {message.approvalState && (
-                  <div className="flex items-center space-x-1">
-                    {message.approvalState === "approved" ? (
-                      <>
-                        <CheckCircle className="h-4 w-4 text-green-500" />
-                        <span>Approved</span>
-                      </>
-                    ) : message.approvalState === "rejected" ? (
-                      <>
-                        <XCircle className="h-4 w-4 text-red-500" />
-                        <span>Rejected</span>
-                      </>
-                    ) : null}
-                  </div>
-                )}
-                {message.role === "assistant" && message.model && (
-                  <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400 w-full sm:w-auto">
-                    <Bot className="h-4 w-4 flex-shrink-0" />
-                    <span>{message.model}</span>
-                  </div>
+        {/* Show message box for assistant messages or user messages with text */}
+        {(message.role === "assistant" || hasUserText) && (
+          <div
+            className={`rounded-lg p-2 ${
+              message.role === "assistant" ? "" : "ml-24 bg-(--sidebar-accent)"
+            }`}
+          >
+            {message.role === "assistant" &&
+            !message.content &&
+            isStreaming &&
+            isLastMessage ? (
+              <StreamingLoadingAnimation variant="initial" />
+            ) : (
+              <div
+                className="prose dark:prose-invert prose-headings:mb-2 prose-p:my-1 prose-pre:my-0 max-w-none break-words text-[15px]"
+                suppressHydrationWarning
+              >
+                {message.role === "assistant" ? (
+                  <>
+                    <DyadMarkdownParser content={message.content} />
+                    {isLastMessage && isStreaming && (
+                      <StreamingLoadingAnimation variant="streaming" />
+                    )}
+                  </>
+                ) : (
+                  <VanillaMarkdownParser content={userTextContent} />
                 )}
               </div>
-            </div>
-          ) : null}
-        </div>
+            )}
+            {(message.role === "assistant" &&
+              message.content &&
+              !isStreaming) ||
+            message.approvalState ? (
+              <div
+                className={`mt-2 flex items-center ${
+                  message.role === "assistant" &&
+                  message.content &&
+                  !isStreaming
+                    ? "justify-between"
+                    : ""
+                } text-xs`}
+              >
+                {message.role === "assistant" &&
+                  message.content &&
+                  !isStreaming && (
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            data-testid="copy-message-button"
+                            onClick={handleCopyFormatted}
+                            aria-label="Copy"
+                            className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
+                          />
+                        }
+                      >
+                        {copied ? (
+                          <Check className="h-4 w-4 text-green-500" />
+                        ) : (
+                          <Copy className="h-4 w-4" />
+                        )}
+                        <span className="hidden sm:inline"></span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {copied ? "Copied!" : "Copy"}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                <div className="flex flex-wrap gap-2">
+                  {message.approvalState && (
+                    <div className="flex items-center space-x-1">
+                      {message.approvalState === "approved" ? (
+                        <>
+                          <CheckCircle className="h-4 w-4 text-green-500" />
+                          <span>Approved</span>
+                        </>
+                      ) : message.approvalState === "rejected" ? (
+                        <>
+                          <XCircle className="h-4 w-4 text-red-500" />
+                          <span>Rejected</span>
+                        </>
+                      ) : null}
+                    </div>
+                  )}
+                  {message.role === "assistant" && message.model && (
+                    <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400 w-full sm:w-auto">
+                      <Bot className="h-4 w-4 flex-shrink-0" />
+                      <span>{message.model}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        )}
+        {/* Render attachments outside the message box */}
+        {attachments.length > 0 && (
+          <div className="mt-2 ml-24 flex flex-wrap gap-2 justify-end">
+            {attachments.map((att, i) => (
+              <DyadAttachment
+                key={i}
+                size={attachmentSize}
+                node={{
+                  properties: {
+                    name: att.name,
+                    type: att.type,
+                    url: att.url,
+                    path: att.path,
+                    attachmentType: att.attachmentType,
+                  },
+                }}
+              />
+            ))}
+          </div>
+        )}
         {/* Timestamp and commit info for assistant messages - only visible on hover */}
         {message.role === "assistant" && message.createdAt && (
           <div className="mt-1 flex flex-wrap items-center justify-start space-x-2 text-xs text-gray-500 dark:text-gray-400 ">

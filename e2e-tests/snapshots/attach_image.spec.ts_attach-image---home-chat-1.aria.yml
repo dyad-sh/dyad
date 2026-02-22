@@ -1,7 +1,16 @@
 - paragraph: "[dump]"
-- paragraph: "Attachments:"
-- list:
-  - listitem: logo.png (image/png)
+- 'button "Expand image: logo.png"':
+  - img "logo.png"
 - paragraph: "[[dyad-dump-path=*]]"
+- button "Copy":
+  - img
+- img
+- text: test-model
+- img
+- text: less than a minute ago
+- button "Undo":
+  - img
+  - text: ""
 - button "Retry":
   - img
+  - text: ""

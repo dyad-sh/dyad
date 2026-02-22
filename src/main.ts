@@ -31,7 +31,7 @@ import {
 import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai_messages_cleanup";
 import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
-import { getDyadAppsBaseDirectory } from "./paths/paths";
+import { getDyadAppsBaseDirectory, getDyadAppPath } from "./paths/paths";
 import { DYAD_MEDIA_DIR_NAME } from "./ipc/utils/media_path_utils";
 
 log.errorHandler.startCatching();
@@ -126,16 +126,28 @@ export async function onReady() {
     const url = new URL(request.url);
     // Format: dyad-media://media/{app-path}/dyad-media/{filename}
     //   Uses a fixed hostname to avoid URL hostname normalization (lowercasing).
-    const relativePath = decodeURIComponent(url.pathname.slice(1));
-    const fullPath = path.join(getDyadAppsBaseDirectory(), relativePath);
+    //   The app-path segment is URI-encoded, so split on "/" before decoding
+    //   to correctly handle absolute paths (which contain encoded slashes).
+    const pathSegments = url.pathname.slice(1).split("/");
+    if (pathSegments.length < 3 || pathSegments[1] !== DYAD_MEDIA_DIR_NAME) {
+      return new Response("Forbidden", { status: 403 });
+    }
 
-    const resolvedPath = path.resolve(fullPath);
-    const resolvedBase = path.resolve(getDyadAppsBaseDirectory());
-    const relativeFromBase = path.relative(resolvedBase, resolvedPath);
+    const appPathRaw = decodeURIComponent(pathSegments[0]);
+    const filename = decodeURIComponent(pathSegments.slice(2).join("/"));
+
+    // Resolve the app directory, handling both relative names and absolute
+    // paths from imported apps (skipCopy).
+    const mediaDir = path.resolve(
+      path.join(getDyadAppPath(appPathRaw), DYAD_MEDIA_DIR_NAME),
+    );
+    const resolvedPath = path.resolve(path.join(mediaDir, filename));
+
+    // Security: ensure the resolved path stays within the app's dyad-media directory
+    const relativeFromMedia = path.relative(mediaDir, resolvedPath);
     if (
-      relativeFromBase.startsWith("..") ||
-      path.isAbsolute(relativeFromBase) ||
-      !relativeFromBase.includes(path.sep + DYAD_MEDIA_DIR_NAME + path.sep)
+      relativeFromMedia.startsWith("..") ||
+      path.isAbsolute(relativeFromMedia)
     ) {
       return new Response("Forbidden", { status: 403 });
     }

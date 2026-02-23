@@ -121,6 +121,69 @@ export function clearPendingConsentsForChat(chatId: number): void {
   }
 }
 
+// ============================================================================
+// Questionnaire Response Management
+// ============================================================================
+
+interface PendingQuestionnaireEntry {
+  chatId: number;
+  resolve: (answers: Record<string, string> | null) => void;
+}
+
+const pendingQuestionnaireResolvers = new Map<
+  string,
+  PendingQuestionnaireEntry
+>();
+
+const QUESTIONNAIRE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+export function waitForQuestionnaireResponse(
+  requestId: string,
+  chatId: number,
+): Promise<Record<string, string> | null> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      const entry = pendingQuestionnaireResolvers.get(requestId);
+      if (entry) {
+        pendingQuestionnaireResolvers.delete(requestId);
+        entry.resolve(null);
+      }
+    }, QUESTIONNAIRE_TIMEOUT_MS);
+
+    pendingQuestionnaireResolvers.set(requestId, {
+      chatId,
+      resolve: (answers) => {
+        clearTimeout(timeout);
+        resolve(answers);
+      },
+    });
+  });
+}
+
+export function resolveQuestionnaireResponse(
+  requestId: string,
+  answers: Record<string, string> | null,
+) {
+  const entry = pendingQuestionnaireResolvers.get(requestId);
+  if (entry) {
+    pendingQuestionnaireResolvers.delete(requestId);
+    entry.resolve(answers);
+  }
+}
+
+/**
+ * Clean up all pending questionnaire requests for a given chat.
+ * Called when a stream is cancelled/aborted to prevent orphaned promises.
+ */
+export function clearPendingQuestionnairesForChat(chatId: number): void {
+  for (const [requestId, entry] of pendingQuestionnaireResolvers) {
+    if (entry.chatId === chatId) {
+      pendingQuestionnaireResolvers.delete(requestId);
+      entry.resolve(null);
+    }
+  }
+}
+
 export function getDefaultConsent(toolName: AgentToolName): AgentToolConsent {
   const tool = TOOL_DEFINITIONS.find((t) => t.name === toolName);
   return tool?.defaultConsent ?? "ask";
@@ -275,6 +338,11 @@ export interface BuildAgentToolSetOptions {
    * Plan mode has access to read-only tools plus planning-specific tools.
    */
   planModeOnly?: boolean;
+  /**
+   * If true, exclude Pro-only tools.
+   * Used for basic agent mode where some tools may not be available.
+   */
+  basicAgentMode?: boolean;
 }
 
 const FILE_EDIT_TOOLS: Set<FileEditToolName> = new Set(FILE_EDIT_TOOL_NAMES);
@@ -305,14 +373,25 @@ function trackFileEditTool(
 }
 
 /**
- * Planning-specific tools that are only available in plan mode.
- * In plan mode, all non-state-modifying tools are also included automatically.
+ * Tools that should ONLY be available in plan mode (excluded from normal agent mode).
+ * Note: planning_questionnaire is intentionally omitted so it's available in pro agent mode too.
+ */
+const PLAN_MODE_ONLY_TOOLS = new Set(["write_plan", "exit_plan"]);
+
+/**
+ * Planning-specific tools that are allowed in plan mode despite modifying state.
+ * Superset of PLAN_MODE_ONLY_TOOLS plus tools that participate in planning
+ * but are also available in normal (pro) agent mode.
  */
 const PLANNING_SPECIFIC_TOOLS = new Set([
+  ...PLAN_MODE_ONLY_TOOLS,
   "planning_questionnaire",
-  "write_plan",
-  "exit_plan",
 ]);
+
+/**
+ * Tools only available in Pro agent mode (excluded from basic agent mode).
+ */
+const PRO_AGENT_ONLY_TOOLS = new Set<string>();
 
 /**
  * Build ToolSet for AI SDK from tool definitions
@@ -338,8 +417,13 @@ export function buildAgentToolSet(
       continue;
     }
 
-    // Skip planning-specific tools when NOT in plan mode
-    if (!options.planModeOnly && PLANNING_SPECIFIC_TOOLS.has(tool.name)) {
+    // Skip plan-mode-only tools when NOT in plan mode
+    if (!options.planModeOnly && PLAN_MODE_ONLY_TOOLS.has(tool.name)) {
+      continue;
+    }
+
+    // Skip Pro-only tools in basic agent mode
+    if (options.basicAgentMode && PRO_AGENT_ONLY_TOOLS.has(tool.name)) {
       continue;
     }
 

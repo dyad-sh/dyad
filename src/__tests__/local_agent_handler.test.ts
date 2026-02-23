@@ -269,6 +269,7 @@ vi.mock("@/pro/main/ipc/handlers/local_agent/tool_definitions", () => ({
   buildAgentToolSet: vi.fn(() => ({})),
   requireAgentToolConsent: vi.fn(async () => true),
   clearPendingConsentsForChat: vi.fn(),
+  clearPendingQuestionnairesForChat: vi.fn(),
 }));
 
 vi.mock(
@@ -925,6 +926,134 @@ describe("handleLocalAgentStream", () => {
       const thinkEndIndex = finalContent.indexOf("</think>");
       const answerIndex = finalContent.indexOf("Answer");
       expect(thinkEndIndex).toBeLessThan(answerIndex);
+    });
+  });
+
+  describe("Synthetic planning_questionnaire reflection", () => {
+    it("injects a non-persisted reflection message after invalid planning_questionnaire input", async () => {
+      // Arrange
+      const { event } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat({
+        messages: [{ id: 1, role: "user", content: "Help me plan this app" }],
+      });
+
+      const invalidQuestionnaireInput = {
+        title: "Project Requirements",
+        questions: [{}],
+      };
+
+      let secondStepPreparedMessages: any[] | undefined;
+
+      mockStreamTextImpl = (options) => {
+        const firstStepMessages = [
+          { role: "user", content: "Help me plan this app" },
+        ];
+
+        return {
+          fullStream: (async function* () {
+            await options.prepareStep?.({
+              messages: firstStepMessages,
+              stepNumber: 0,
+              steps: [],
+              model: {},
+              experimental_context: undefined,
+            });
+
+            await options.onStepFinish?.({
+              content: [
+                {
+                  type: "tool-error",
+                  toolName: "planning_questionnaire",
+                  toolCallId: "call_plan_q",
+                  input: invalidQuestionnaireInput,
+                  error:
+                    "Invalid input for tool planning_questionnaire: questions[0].question is required",
+                },
+              ],
+              usage: { totalTokens: 1234 },
+              toolCalls: [
+                {
+                  type: "tool-call",
+                  toolName: "planning_questionnaire",
+                  toolCallId: "call_plan_q",
+                  input: invalidQuestionnaireInput,
+                },
+              ],
+            });
+
+            const secondStepMessages = [
+              ...firstStepMessages,
+              { role: "assistant", content: "retrying questionnaire call" },
+            ];
+            const preparedSecondStep = (await options.prepareStep?.({
+              messages: secondStepMessages,
+              stepNumber: 1,
+              steps: [],
+              model: {},
+              experimental_context: undefined,
+            })) ?? { messages: secondStepMessages };
+
+            secondStepPreparedMessages = preparedSecondStep.messages;
+            yield {
+              type: "text-delta",
+              text: "I fixed the questionnaire call.",
+            };
+          })(),
+          response: Promise.resolve({
+            messages: [
+              {
+                role: "assistant",
+                content: [
+                  { type: "text", text: "I fixed the questionnaire call." },
+                ],
+              },
+            ],
+          }),
+          steps: Promise.resolve([{ toolCalls: [{}] }, { toolCalls: [] }]),
+        };
+      };
+
+      // Act
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      // Assert
+      expect(secondStepPreparedMessages).toBeDefined();
+      const reflectionMessage = (secondStepPreparedMessages ?? []).find(
+        (message: any) =>
+          message.role === "user" &&
+          Array.isArray(message.content) &&
+          message.content.some(
+            (part: any) =>
+              part.type === "text" &&
+              typeof part.text === "string" &&
+              part.text.includes(
+                "planning_questionnaire tool call had a format error",
+              ),
+          ),
+      );
+      expect(reflectionMessage).toBeDefined();
+
+      const aiMessagesUpdate = dbOperations.updates.find(
+        (u) => u.data.aiMessagesJson !== undefined,
+      );
+      expect(aiMessagesUpdate).toBeDefined();
+      const persistedAiMessages = JSON.stringify(
+        (aiMessagesUpdate!.data.aiMessagesJson as { messages: unknown[] })
+          .messages,
+      );
+      expect(persistedAiMessages).not.toContain(
+        "planning_questionnaire tool call had a format error",
+      );
     });
   });
 

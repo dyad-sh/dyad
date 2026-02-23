@@ -1,5 +1,13 @@
 - paragraph: tc=local-agent/questionnaire
 - paragraph: Let me ask you a few questions to understand your requirements.
+- img
+- text: Questionnaire Responses 1 answered
+- img
+- img
+- text: Single choice
+- paragraph: Which framework do you prefer?
+- paragraph: Vue
+- paragraph: Thanks, I'll wait for your responses before proceeding.
 - button "Copy":
   - img
 - img

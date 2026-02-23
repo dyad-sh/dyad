@@ -2379,4 +2379,80 @@ export class IpcClient {
   ): Promise<import("../types/data_sovereignty_types").AccessLogEntry[]> {
     return this.ipcRenderer.invoke("sovereignty:get-access-logs", assetId, limit);
   }
+
+  // ─── Web Scraping ───────────────────────────────────────────────────────
+
+  /** Initialize the scraping engine (call once) */
+  public async scrapingInit(): Promise<void> {
+    return this.ipcRenderer.invoke("scraping:init");
+  }
+
+  /** Get available scraping templates */
+  public async scrapingTemplates(): Promise<any[]> {
+    return this.ipcRenderer.invoke("scraping:templates");
+  }
+
+  /** Preview a URL before scraping */
+  public async scrapingPreview(args: { url: string; templateId?: string; config?: any }): Promise<any> {
+    return this.ipcRenderer.invoke("scraping:preview", args);
+  }
+
+  /** Scrape a single URL */
+  public async scrapingScrapeUrl(args: { url: string; templateId?: string; config?: any }): Promise<any> {
+    return this.ipcRenderer.invoke("scraping:scrape-url", args);
+  }
+
+  /** Create a scraping job */
+  public async scrapingCreateJob(args: { name: string; config: any }): Promise<any> {
+    return this.ipcRenderer.invoke("scraping:create-job", args);
+  }
+
+  /** Start a scraping job */
+  public async scrapingStartJob(jobId: string): Promise<any> {
+    return this.ipcRenderer.invoke("scraping:start-job", jobId);
+  }
+
+  /** Stop a running scraping job */
+  public async scrapingStopJob(jobId: string): Promise<void> {
+    return this.ipcRenderer.invoke("scraping:stop-job", jobId);
+  }
+
+  /** List all scraping jobs */
+  public async scrapingListJobs(): Promise<any[]> {
+    return this.ipcRenderer.invoke("scraping:list-jobs");
+  }
+
+  /** Get a scraping job by ID */
+  public async scrapingGetJob(jobId: string): Promise<any> {
+    return this.ipcRenderer.invoke("scraping:get-job", jobId);
+  }
+
+  /** Delete a scraping job */
+  public async scrapingDeleteJob(jobId: string): Promise<void> {
+    return this.ipcRenderer.invoke("scraping:delete-job", jobId);
+  }
+
+  /** Parse NLP query into scraping config */
+  public async scrapingNlpConfigure(args: { query: string }): Promise<any> {
+    return this.ipcRenderer.invoke("scraping:nlp-configure", args);
+  }
+
+  /** Parse an RSS/Atom feed */
+  public async scrapingParseFeed(url: string): Promise<any> {
+    return this.ipcRenderer.invoke("scraping:parse-feed", url);
+  }
+
+  /** Parse a sitemap */
+  public async scrapingParseSitemap(url: string): Promise<any> {
+    return this.ipcRenderer.invoke("scraping:parse-sitemap", url);
+  }
+
+  /** Import scraped dataset items into the local vault */
+  public async importDatasetItems(args: {
+    datasetId: string;
+    markReady?: boolean;
+    tags?: string[];
+  }): Promise<{ imported: number; skipped: number; assetIds: string[] }> {
+    return this.ipcRenderer.invoke("local-vault:import:dataset-items", args);
+  }
 }

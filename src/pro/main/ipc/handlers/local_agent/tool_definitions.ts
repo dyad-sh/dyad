@@ -21,6 +21,8 @@ import { createDocumentTool } from "./tools/create_document";
 import { runCommandTool } from "./tools/run_command";
 import { thinkAndPlanTool } from "./tools/think_and_plan";
 import { getAppLogsTool } from "./tools/get_app_logs";
+import { webScraperTool } from "./tools/web_scraper";
+import { packageDatasetTool } from "./tools/package_dataset";
 import {
   escapeXmlAttr,
   escapeXmlContent,
@@ -46,6 +48,8 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   runCommandTool,
   thinkAndPlanTool,
   getAppLogsTool,
+  webScraperTool,
+  packageDatasetTool,
 ];
 // ============================================================================
 // Agent Tool Name Type (derived from TOOL_DEFINITIONS)

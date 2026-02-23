@@ -20,11 +20,13 @@ import {
   Cable,
   Wand2,
   Package,
+  Search,
 } from "lucide-react";
 
 const TAB_ICONS: Record<string, React.ReactNode> = {
   Overview: <HardDrive className="w-4 h-4" />,
   Connectors: <Cable className="w-4 h-4" />,
+  "Web Scraper": <Search className="w-4 h-4" />,
   Transform: <Wand2 className="w-4 h-4" />,
   "Package & Publish": <Package className="w-4 h-4" />,
 };

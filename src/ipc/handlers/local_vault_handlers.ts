@@ -4,6 +4,11 @@
 
 import { ipcMain, dialog, BrowserWindow } from "electron";
 import log from "electron-log";
+import { eq } from "drizzle-orm";
+import { db } from "../../db";
+import { datasetItems, studioDatasets } from "../../db/schema";
+import { vaultAssets } from "../../db/vault_schema";
+import { readContent as readScraperContent } from "../handlers/scraping/storage";
 import { createLoggedHandler } from "./safe_handle";
 import * as vault from "../../lib/local_vault_service";
 
@@ -241,4 +246,120 @@ export function registerLocalVaultHandlers() {
   handle("local-vault:audit:list", async (_, limit?: number) => {
     return vault.getAuditLog(limit);
   });
+
+  // ---- Dataset → Vault Bridge ----
+
+  handle(
+    "local-vault:import:dataset-items",
+    async (
+      _,
+      args: {
+        datasetId: string;
+        markReady?: boolean;
+        tags?: string[];
+      },
+    ) => {
+      const { datasetId, markReady = true, tags: extraTags = [] } = args;
+
+      // Verify dataset exists
+      const dataset = db
+        .select()
+        .from(studioDatasets)
+        .where(eq(studioDatasets.id, datasetId))
+        .get();
+      if (!dataset) throw new Error(`Dataset "${datasetId}" not found`);
+
+      const items = db
+        .select()
+        .from(datasetItems)
+        .where(eq(datasetItems.datasetId, datasetId))
+        .all();
+
+      if (items.length === 0) {
+        throw new Error(`Dataset "${datasetId}" has no items`);
+      }
+
+      const results = { promoted: 0, skipped: 0, failed: 0, assetIds: [] as string[] };
+
+      for (const item of items) {
+        try {
+          // Dedup by content hash
+          const existing = db
+            .select()
+            .from(vaultAssets)
+            .where(eq(vaultAssets.contentHash, item.contentHash))
+            .get();
+
+          if (existing) {
+            if (markReady && (existing.status === "ingested" || existing.status === "processing")) {
+              db.update(vaultAssets)
+                .set({ status: "ready", updatedAt: new Date() })
+                .where(eq(vaultAssets.id, existing.id))
+                .run();
+            }
+            results.assetIds.push(existing.id);
+            results.skipped++;
+            continue;
+          }
+
+          // Read from scraper storage
+          const contentBuffer = await readScraperContent(item.contentHash);
+          if (!contentBuffer) {
+            logger.warn(`Content not found for hash: ${item.contentHash}`);
+            results.failed++;
+            continue;
+          }
+
+          const textContent = item.modality === "text"
+            ? contentBuffer.toString("utf-8")
+            : contentBuffer.toString("base64");
+
+          const itemName = `${item.modality}-${item.contentHash.slice(0, 8)}`;
+          const asset = vault.importText(itemName, textContent);
+
+          // Parse tags
+          let itemTags = [...extraTags];
+          try {
+            const labels = typeof item.labelsJson === "string"
+              ? JSON.parse(item.labelsJson as string)
+              : item.labelsJson;
+            if (labels?.tags) {
+              itemTags = [...new Set([...itemTags, ...labels.tags])];
+            }
+          } catch { /* ignore */ }
+
+          // Update with scraping metadata
+          db.update(vaultAssets)
+            .set({
+              status: markReady ? "ready" : "ingested",
+              connectorType: "web_scraper",
+              sourceUrl: item.sourcePath ?? undefined,
+              tags: itemTags,
+              metadataJson: {
+                originalDatasetId: item.datasetId,
+                originalItemId: item.id,
+                sourceType: item.sourceType,
+                modality: item.modality,
+              },
+              updatedAt: new Date(),
+            })
+            .where(eq(vaultAssets.id, asset.id))
+            .run();
+
+          results.assetIds.push(asset.id);
+          results.promoted++;
+        } catch (err) {
+          logger.warn(`Failed to promote item ${item.id}: ${(err as Error).message}`);
+          results.failed++;
+        }
+      }
+
+      return {
+        datasetId,
+        datasetName: dataset.name,
+        totalItems: items.length,
+        ...results,
+      };
+    },
+  );
 }

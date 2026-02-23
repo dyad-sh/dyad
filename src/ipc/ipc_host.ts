@@ -101,6 +101,7 @@ import { registerServicesHandlers } from "./handlers/services_handlers";
 import { registerCelestiaBlobHandlers } from "./handlers/celestia_blob_handlers";
 import { registerLifecycleHandlers } from "./handlers/lifecycle_handlers";
 import { registerLocalVaultHandlers } from "./handlers/local_vault_handlers";
+import { registerScrapingV2Handlers } from "./handlers/scraping/handler";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -278,4 +279,7 @@ export function registerIpcHandlers() {
   // Local Vault — Sovereign local-first data vault
   // Ingest → Transform → Package → Publish (encrypted only)
   registerLocalVaultHandlers();
+
+  // Scraping Engine v2 — Best-in-class web scraping with cheerio, Playwright, AI extraction, auto-tagging
+  registerScrapingV2Handlers();
 }

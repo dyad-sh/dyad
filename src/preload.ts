@@ -453,6 +453,24 @@ const validInvokeChannels = [
   "scraper:dataset:create",
   "scraper:dataset:import",
   "scraper:quick-scrape",
+  // Scraping Engine v2 — Best-in-class web scraping
+  "scraping:init",
+  "scraping:scrape-url",
+  "scraping:preview",
+  "scraping:create-job",
+  "scraping:start-job",
+  "scraping:pause-job",
+  "scraping:cancel-job",
+  "scraping:delete-job",
+  "scraping:get-job",
+  "scraping:list-jobs",
+  "scraping:templates",
+  "scraping:detect-schema",
+  "scraping:auto-tag",
+  "scraping:check-robots",
+  "scraping:parse-sitemap",
+  "scraping:parse-feed",
+  "scraping:nlp-configure",
   // Asset Studio
   "assets:stats",
   "assets:list",
@@ -1091,6 +1109,7 @@ const validInvokeChannels = [
   "local-vault:import:folder",
   "local-vault:import:folder-dialog",
   "local-vault:import:text",
+  "local-vault:import:dataset-items",
   "local-vault:asset:list",
   "local-vault:asset:get",
   "local-vault:asset:content",
@@ -1242,6 +1261,8 @@ const validReceiveChannels = [
   // Studio AI Service events
   "studio-ai:event",
   "studio-ai:chat:stream-chunk",
+  // Scraping Engine v2 progress events
+  "scraping:job-progress",
 ] as const;
 
 type ValidInvokeChannel = (typeof validInvokeChannels)[number];

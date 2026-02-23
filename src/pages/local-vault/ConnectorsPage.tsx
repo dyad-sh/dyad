@@ -28,6 +28,7 @@ import {
   Monitor,
   Wifi,
   X,
+  Search,
 } from "lucide-react";
 
 const CONNECTOR_TYPES: Array<{
@@ -35,7 +36,7 @@ const CONNECTOR_TYPES: Array<{
   label: string;
   description: string;
   icon: React.ReactNode;
-  category: "safe" | "browser";
+  category: "safe" | "browser" | "scraper";
 }> = [
   { type: "file_import", label: "File Import", description: "Import specific files from your filesystem", icon: <FolderOpen className="w-5 h-5" />, category: "safe" },
   { type: "folder_watch", label: "Folder Watch", description: "Watch a folder for new files and auto-import", icon: <FolderOpen className="w-5 h-5" />, category: "safe" },
@@ -46,6 +47,7 @@ const CONNECTOR_TYPES: Array<{
   { type: "manual_capture", label: "Manual Capture", description: "Manually add notes, prompts, and structured data", icon: <Clipboard className="w-5 h-5" />, category: "safe" },
   { type: "clipboard", label: "Clipboard", description: "Paste content directly from your clipboard", icon: <Clipboard className="w-5 h-5" />, category: "safe" },
   { type: "api_endpoint", label: "API Endpoint", description: "Ingest data from a REST API endpoint", icon: <Globe className="w-5 h-5" />, category: "safe" },
+  { type: "web_scraper", label: "Web Scraper", description: "Scrape websites, feeds, and sitemaps with AI extraction and auto-tagging", icon: <Search className="w-5 h-5" />, category: "scraper" },
   { type: "browser_extension", label: "Browser Extension", description: "Save pages to vault via browser extension", icon: <Monitor className="w-5 h-5" />, category: "browser" },
   { type: "bookmarks_import", label: "Bookmarks Import", description: "Import bookmarks from your browser (opt-in)", icon: <BookMarked className="w-5 h-5" />, category: "browser" },
   { type: "history_import", label: "History Import", description: "Import browsing history (opt-in, time-range, preview)", icon: <History className="w-5 h-5" />, category: "browser" },
@@ -231,6 +233,36 @@ export default function ConnectorsPage() {
                   <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
                     <Wifi className="w-3 h-3" />
                     Browser data stays local — transported via localhost bridge, never sent to remote servers
+                  </p>
+                </div>
+
+                {/* Web Scraper */}
+                <div>
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase mb-2 flex items-center gap-2">
+                    <Search className="w-4 h-4" />
+                    Web Scraping (AI-Powered)
+                  </h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    {CONNECTOR_TYPES.filter((t) => t.category === "scraper").map((t) => (
+                      <button
+                        key={t.type}
+                        onClick={() => {
+                          setSelectedType(t.type);
+                          setNewName(t.label);
+                        }}
+                        className="p-3 border rounded-lg text-left hover:bg-muted/50 flex items-start gap-3 border-blue-500/30"
+                      >
+                        <div className="text-blue-500 mt-0.5">{t.icon}</div>
+                        <div>
+                          <div className="font-medium text-sm">{t.label}</div>
+                          <div className="text-xs text-muted-foreground">{t.description}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                    <Globe className="w-3 h-3" />
+                    Scrape any website with cheerio DOM parsing, Playwright JS rendering, AI extraction, and auto-tagging
                   </p>
                 </div>
               </>

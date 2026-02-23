@@ -41,7 +41,8 @@ export type ConnectorType =
   | "history_import"
   | "manual_capture"
   | "clipboard"
-  | "api_endpoint";
+  | "api_endpoint"
+  | "web_scraper";
 
 export type ConnectorStatus =
   | "disabled"

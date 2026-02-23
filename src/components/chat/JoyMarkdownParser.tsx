@@ -30,6 +30,8 @@ import { JoyListFiles } from "./JoyListFiles";
 import { JoyRunCommand } from "./JoyRunCommand";
 import { JoyDatabaseSchema } from "./JoyDatabaseSchema";
 import { JoyDocument } from "./JoyDocument";
+import { JoyWebScraper } from "./JoyWebScraper";
+import { JoyPackageDataset } from "./JoyPackageDataset";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
@@ -60,6 +62,8 @@ const CUSTOM_TAG_NAMES = [
   "joy-list-files",
   "joy-run-command",
   "joy-database-schema",
+  "joy-web-scraper",
+  "joy-package-dataset",
 ];
 
 interface JoyMarkdownParserProps {
@@ -638,6 +642,34 @@ function renderCustomTag(
         >
           {content}
         </JoyDocument>
+      );
+
+    case "joy-web-scraper":
+      return (
+        <JoyWebScraper
+          url={attributes.url || ""}
+          template={attributes.template}
+          dataset={attributes.dataset}
+          crawl={attributes.crawl}
+          maxPages={attributes.maxPages}
+          status={attributes.status}
+          state={getState({ isStreaming, inProgress })}
+        >
+          {content}
+        </JoyWebScraper>
+      );
+
+    case "joy-package-dataset":
+      return (
+        <JoyPackageDataset
+          dataset={attributes.dataset || ""}
+          name={attributes.name}
+          status={attributes.status}
+          bundle={attributes.bundle}
+          state={getState({ isStreaming, inProgress })}
+        >
+          {content}
+        </JoyPackageDataset>
       );
 
     default:

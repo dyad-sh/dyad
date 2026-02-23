@@ -17,6 +17,7 @@ export function formatBytes(bytes: number): string {
 export const VAULT_TABS = [
   { label: "Overview", path: "/local-vault" },
   { label: "Connectors", path: "/local-vault/connectors" },
+  { label: "Web Scraper", path: "/local-vault/web-scraper" },
   { label: "Transform", path: "/local-vault/data-studio" },
   { label: "Package & Publish", path: "/local-vault/packaging" },
 ] as const;

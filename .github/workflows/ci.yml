@@ -242,18 +242,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Clone nextjs-template
         run: git clone --depth 1 https://github.com/dyad-sh/nextjs-template.git nextjs-template
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
-      - name: Setup pnpm cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ matrix.os.name }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ matrix.os.name }}-pnpm-store-
       # Not strictly needed but makes the e2e tests faster (and less flaky)
       - name: Install scaffold dependencies
         run: cd scaffold && pnpm install --frozen-lockfile

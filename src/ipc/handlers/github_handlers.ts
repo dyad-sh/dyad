@@ -724,7 +724,7 @@ async function handleCreateRepo(
     try {
       const data = (await res.json()) as {
         message?: string;
-        errors?: { message?: string; field?: string; code?: string }[];
+        errors?: (string | { message?: string; field?: string; code?: string })[];
       };
       logger.error("GitHub API error when creating repo:", {
         status: res.status,
@@ -815,9 +815,9 @@ async function handleConnectToExistingRepo(
     );
 
     if (!repoResponse.ok) {
-      const errorData = (await repoResponse.json()) as { message: string };
+      const errorData = (await repoResponse.json()) as { message?: string };
       throw new Error(
-        `Repository not found or access denied: ${errorData.message}`,
+        `Repository not found or access denied: ${errorData.message || repoResponse.statusText}`,
       );
     }
 

@@ -3,9 +3,11 @@ import {
   appUrlAtom,
   appConsoleEntriesAtom,
   previewErrorMessageAtom,
+  autoFixPreviewErrorsAtom,
+  lastAutoFixedErrorAtom,
 } from "@/atoms/appAtoms";
 import { useAtomValue, useSetAtom, useAtom } from "jotai";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -207,6 +209,42 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
   const { addAttachments } = useAttachments();
   const setPendingChanges = useSetAtom(pendingVisualChangesAtom);
+
+  // Auto-fix state
+  const [autoFixEnabled, setAutoFixEnabled] = useAtom(autoFixPreviewErrorsAtom);
+  const [lastAutoFixedError, setLastAutoFixedError] = useAtom(lastAutoFixedErrorAtom);
+  const { isStreaming } = useStreamChat();
+  const autoFixTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Auto-fix: when a new error appears and auto-fix is enabled, debounce and
+  // send a structured fix request to the AI after 1.5s.
+  const triggerAutoFix = useCallback(
+    (errMsg: string, consoleErrors: string[]) => {
+      if (!selectedChatId || !autoFixEnabled || isStreaming) return;
+
+      // Fingerprint to avoid sending the same error twice in a row
+      const fingerprint = errMsg.slice(0, 200);
+      if (fingerprint === lastAutoFixedError) return;
+
+      // Clear any pending timer
+      if (autoFixTimerRef.current) clearTimeout(autoFixTimerRef.current);
+
+      autoFixTimerRef.current = setTimeout(() => {
+        setLastAutoFixedError(fingerprint);
+
+        // Build a structured prompt with full context
+        let prompt = `The app has a runtime error that needs to be fixed.\n\n`;
+        prompt += `**Error:**\n\`\`\`\n${errMsg}\n\`\`\`\n`;
+        if (consoleErrors.length > 0) {
+          prompt += `\n**Recent console errors:**\n\`\`\`\n${consoleErrors.slice(-5).join("\n")}\n\`\`\`\n`;
+        }
+        prompt += `\nPlease analyze and fix the root cause of this error. Don't just suppress it — fix the underlying issue.`;
+
+        streamMessage({ prompt, chatId: selectedChatId });
+      }, 1500);
+    },
+    [selectedChatId, autoFixEnabled, isStreaming, lastAutoFixedError, setLastAutoFixedError, streamMessage],
+  );
 
   // AST Analysis State
   const [isDynamicComponent, setIsDynamicComponent] = useState(false);
@@ -552,30 +590,46 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         }\nStack trace: ${stack}`;
         console.error("Iframe error:", errorMessage);
         setErrorMessage({ message: errorMessage, source: "preview-app" });
-        setConsoleEntries((prev) => [
-          ...prev,
-          {
-            level: "error",
-            type: "client",
-            message: `Iframe error: ${errorMessage}`,
-            timestamp: Date.now(),
-            appId: selectedAppId!,
-          },
-        ]);
+        setConsoleEntries((prev) => {
+          const next = [
+            ...prev,
+            {
+              level: "error" as const,
+              type: "client" as const,
+              message: `Iframe error: ${errorMessage}`,
+              timestamp: Date.now(),
+              appId: selectedAppId!,
+            },
+          ];
+          // Trigger auto-fix with recent console errors
+          triggerAutoFix(
+            errorMessage,
+            next.filter((e) => e.level === "error").map((e) => e.message).slice(-5),
+          );
+          return next;
+        });
       } else if (type === "build-error-report") {
         console.debug(`Build error report: ${payload}`);
         const errorMessage = `${payload?.message} from file ${payload?.file}.\n\nSource code:\n${payload?.frame}`;
         setErrorMessage({ message: errorMessage, source: "preview-app" });
-        setConsoleEntries((prev) => [
-          ...prev,
-          {
-            level: "error",
-            type: "client",
-            message: `Build error report: ${JSON.stringify(payload)}`,
-            timestamp: Date.now(),
-            appId: selectedAppId!,
-          },
-        ]);
+        setConsoleEntries((prev) => {
+          const next = [
+            ...prev,
+            {
+              level: "error" as const,
+              type: "client" as const,
+              message: `Build error report: ${JSON.stringify(payload)}`,
+              timestamp: Date.now(),
+              appId: selectedAppId!,
+            },
+          ];
+          // Auto-fix build errors (high priority)
+          triggerAutoFix(
+            errorMessage,
+            next.filter((e) => e.level === "error").map((e) => e.message).slice(-5),
+          );
+          return next;
+        });
       } else if (type === "pushState" || type === "replaceState") {
         console.debug(`Navigation event: ${type}`, payload);
 

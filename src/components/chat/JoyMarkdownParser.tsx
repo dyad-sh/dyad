@@ -27,6 +27,7 @@ import { JoyCodeSearchResult } from "./JoyCodeSearchResult";
 import { JoyCodeSearch } from "./JoyCodeSearch";
 import { JoyRead } from "./JoyRead";
 import { JoyListFiles } from "./JoyListFiles";
+import { JoyRunCommand } from "./JoyRunCommand";
 import { JoyDatabaseSchema } from "./JoyDatabaseSchema";
 import { JoyDocument } from "./JoyDocument";
 import { mapActionToButton } from "./ChatInput";
@@ -57,6 +58,7 @@ const CUSTOM_TAG_NAMES = [
   "joy-mcp-tool-call",
   "joy-mcp-tool-result",
   "joy-list-files",
+  "joy-run-command",
   "joy-database-schema",
 ];
 
@@ -585,6 +587,15 @@ function renderCustomTag(
         return <>{mapActionToButton(action)}</>;
       }
       return null;
+
+    case "joy-run-command":
+      return (
+        <JoyRunCommand
+          command={(content as string) || ""}
+          directory={attributes.directory}
+          state={getState({ isStreaming, inProgress })}
+        />
+      );
 
     case "joy-list-files":
       return (

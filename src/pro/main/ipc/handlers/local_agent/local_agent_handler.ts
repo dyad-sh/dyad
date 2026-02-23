@@ -31,6 +31,8 @@ import { mcpManager } from "@/ipc/utils/mcp_manager";
 import { mcpServers } from "@/db/schema";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
 import { getAiMessagesJsonIfWithinLimit } from "@/ipc/utils/ai_messages_utils";
+import { generateProblemReport } from "@/ipc/processors/tsc";
+import { createProblemFixPrompt } from "../../../../shared/problem_prompt";
 
 import type { ChatStreamParams, ChatResponseEnd } from "@/ipc/ipc_types";
 import {
@@ -42,6 +44,12 @@ import {
 import { TOOL_DEFINITIONS } from "./tool_definitions";
 import { parseAiMessagesJson } from "@/ipc/utils/ai_messages_utils";
 import { parseMcpToolKey, sanitizeMcpName } from "@/ipc/utils/mcp_tool_utils";
+import {
+  generateXmlToolDocumentation,
+  parseXmlToolCalls,
+  hasToolCalls,
+  formatToolResults,
+} from "./xml_tool_emulator";
 
 const logger = log.scope("local_agent_handler");
 
@@ -186,20 +194,27 @@ export async function handleLocalAgentStream(
     // Check if this is a local model that may not support tools
     const isLocal = isLocalModel(settings.selectedModel.provider);
     
-    // Build tool set (agent tools + MCP tools) - only if not a local model
+    // Build tool set (agent tools + MCP tools)
+    const agentTools = buildAgentToolSet(ctx);
+    const mcpTools = isLocal ? {} : await getMcpTools(event, ctx);
     let allTools: ToolSet | undefined;
     if (!isLocal) {
-      const agentTools = buildAgentToolSet(ctx);
-      const mcpTools = await getMcpTools(event, ctx);
       allTools = { ...agentTools, ...mcpTools };
     } else {
-      logger.info("Local model detected, skipping tools (no function calling support)");
+      logger.info("Local model detected — using XML tool emulation for agent loop");
+      // For local models, we don't pass tools to streamText but handle them via XML parsing
+      allTools = undefined;
     }
 
     // Prepare message history with graceful fallback
     const messageHistory: ModelMessage[] = chat.messages
       .filter((msg) => msg.content || msg.aiMessagesJson)
       .flatMap((msg) => parseAiMessagesJson(msg));
+
+    // For local models, append XML tool documentation to the system prompt
+    const effectiveSystemPrompt = isLocal
+      ? systemPrompt + "\n\n" + generateXmlToolDocumentation(TOOL_DEFINITIONS)
+      : systemPrompt;
 
     // Stream the response
     const streamResult = streamText({
@@ -218,9 +233,9 @@ export async function handleLocalAgentStream(
       maxOutputTokens: await getMaxTokens(settings.selectedModel),
       temperature: await getTemperature(settings.selectedModel),
       maxRetries: 2,
-      system: systemPrompt,
+      system: effectiveSystemPrompt,
       messages: messageHistory,
-      ...(allTools ? { tools: allTools, stopWhen: stepCountIs(25) } : {}), // Only include tools if not a local model
+      ...(allTools ? { tools: allTools, stopWhen: stepCountIs(25) } : {}),
       abortSignal: abortController.signal,
       onFinish: async (response) => {
         const totalTokens = response.usage?.totalTokens;
@@ -377,6 +392,126 @@ export async function handleLocalAgentStream(
       await updateResponseInDb(placeholderMessageId, fullResponse);
     }
 
+    // ===================================================================
+    // XML Tool Emulation Loop (for local models only)
+    // ===================================================================
+    if (isLocal && !abortController.signal.aborted) {
+      let xmlLoopStep = 0;
+      const XML_MAX_STEPS = 15;
+      let currentResponse = fullResponse;
+
+      while (
+        hasToolCalls(currentResponse.slice(currentResponse.lastIndexOf("</tool-result>") + 14 || 0)) &&
+        xmlLoopStep < XML_MAX_STEPS &&
+        !abortController.signal.aborted
+      ) {
+        xmlLoopStep++;
+        logger.info(`XML tool emulation step ${xmlLoopStep}/${XML_MAX_STEPS}`);
+
+        const { toolCalls, textSegments } = parseXmlToolCalls(
+          // Only parse the latest response segment (after last tool-result, or full if first pass)
+          xmlLoopStep === 1 ? currentResponse : currentResponse,
+        );
+
+        if (toolCalls.length === 0) break;
+
+        // Execute each tool call
+        const results: Array<{ toolName: string; result: string; isError?: boolean }> = [];
+
+        for (const tc of toolCalls) {
+          const toolDef = TOOL_DEFINITIONS.find((t) => t.name === tc.toolName);
+          if (!toolDef) {
+            results.push({
+              toolName: tc.toolName,
+              result: `Unknown tool: ${tc.toolName}. Available tools: ${TOOL_DEFINITIONS.map((t) => t.name).join(", ")}`,
+              isError: true,
+            });
+            continue;
+          }
+
+          try {
+            // Check consent
+            const allowed = await ctx.requireConsent({
+              toolName: toolDef.name,
+              toolDescription: toolDef.description,
+              inputPreview: toolDef.getConsentPreview?.(tc.args) ?? JSON.stringify(tc.args).slice(0, 200),
+            });
+
+            if (!allowed) {
+              results.push({
+                toolName: tc.toolName,
+                result: `User denied permission for ${tc.toolName}`,
+                isError: true,
+              });
+              continue;
+            }
+
+            // Build XML preview for the tool call
+            if (toolDef.buildXml) {
+              const xml = toolDef.buildXml(tc.args, true);
+              if (xml) ctx.onXmlComplete(xml);
+            }
+
+            // Execute the tool
+            const result = await toolDef.execute(tc.args, ctx);
+            results.push({ toolName: tc.toolName, result });
+          } catch (error) {
+            const errMsg = error instanceof Error ? error.message : String(error);
+            results.push({ toolName: tc.toolName, result: errMsg, isError: true });
+          }
+        }
+
+        // Format results and append to the response
+        const resultsText = formatToolResults(results);
+        fullResponse += "\n" + resultsText + "\n";
+        await updateResponseInDb(placeholderMessageId, fullResponse);
+        sendResponseChunk(event, req.chatId, chat, fullResponse);
+
+        // Re-prompt the model with tool results for the next iteration
+        const updatedHistory: ModelMessage[] = [
+          ...messageHistory,
+          { role: "assistant" as const, content: currentResponse },
+          { role: "user" as const, content: resultsText + "\n\nContinue based on these tool results. Use more tool calls if needed, or provide your final response." },
+        ];
+
+        currentResponse = "";
+        const continueResult = streamText({
+          model: modelClient.model,
+          headers: getAiHeaders({
+            builtinProviderId: modelClient.builtinProviderId,
+          }),
+          providerOptions: getProviderOptions({
+            joyAppId: chat.app.id,
+            joyDisableFiles: true,
+            files: [],
+            mentionedAppsCodebases: [],
+            builtinProviderId: modelClient.builtinProviderId,
+            settings,
+          }),
+          maxOutputTokens: await getMaxTokens(settings.selectedModel),
+          temperature: await getTemperature(settings.selectedModel),
+          maxRetries: 2,
+          system: effectiveSystemPrompt,
+          messages: updatedHistory,
+          abortSignal: abortController.signal,
+        });
+
+        for await (const part of continueResult.fullStream) {
+          if (abortController.signal.aborted) break;
+          if (part.type === "text-delta") {
+            currentResponse += part.text;
+            fullResponse += part.text;
+            await updateResponseInDb(placeholderMessageId, fullResponse);
+            sendResponseChunk(event, req.chatId, chat, fullResponse);
+          }
+        }
+      }
+
+      if (xmlLoopStep > 0) {
+        logger.info(`XML tool emulation completed after ${xmlLoopStep} steps`);
+      }
+    }
+
     // Save the AI SDK messages for multi-turn tool call preservation
     try {
       const response = await streamResult.response;
@@ -389,6 +524,124 @@ export async function handleLocalAgentStream(
       }
     } catch (err) {
       logger.warn("Failed to save AI messages JSON:", err);
+    }
+
+    // ===================================================================
+    // Post-agent verification: check for TypeScript errors and auto-fix
+    // ===================================================================
+    if (!abortController.signal.aborted) {
+      try {
+        const problemReport = await generateProblemReport({
+          fullResponse: "", // empty = check disk state directly
+          appPath,
+        });
+
+        if (problemReport.problems.length > 0) {
+          logger.info(
+            `Post-agent verification found ${problemReport.problems.length} TS errors, requesting fix...`,
+          );
+
+          const fixPrompt = createProblemFixPrompt(problemReport);
+
+          // Append the problem report to the response for visibility
+          fullResponse += `\n<joy-problem-report summary="${problemReport.problems.length} problems found after implementation">
+${problemReport.problems.map((p) => `<problem file="${p.file}" line="${p.line}" column="${p.column}" code="${p.code}">${p.message}</problem>`).join("\n")}
+</joy-problem-report>\n`;
+          await updateResponseInDb(placeholderMessageId, fullResponse);
+          sendResponseChunk(event, req.chatId, chat, fullResponse);
+
+          // Send a follow-up fix request through the same agent loop
+          // (uses the remaining step budget from the original 25)
+          const { modelClient: fixModelClient } = await getModelClient(
+            settings.selectedModel,
+            settings,
+          );
+
+          // Rebuild message history including the fix request
+          const fixMessages: ModelMessage[] = [
+            ...chat.messages
+              .filter((msg) => msg.content || msg.aiMessagesJson)
+              .flatMap((msg) => parseAiMessagesJson(msg)),
+            { role: "assistant" as const, content: fullResponse },
+            { role: "user" as const, content: fixPrompt },
+          ];
+
+          const fixResult = streamText({
+            model: fixModelClient.model,
+            headers: getAiHeaders({
+              builtinProviderId: fixModelClient.builtinProviderId,
+            }),
+            providerOptions: getProviderOptions({
+              joyAppId: chat.app.id,
+              joyDisableFiles: true,
+              files: [],
+              mentionedAppsCodebases: [],
+              builtinProviderId: fixModelClient.builtinProviderId,
+              settings,
+            }),
+            maxOutputTokens: await getMaxTokens(settings.selectedModel),
+            temperature: await getTemperature(settings.selectedModel),
+            maxRetries: 2,
+            system: systemPrompt,
+            messages: fixMessages,
+            ...(allTools
+              ? { tools: allTools, stopWhen: stepCountIs(10) }
+              : {}),
+            abortSignal: abortController.signal,
+          });
+
+          for await (const part of fixResult.fullStream) {
+            if (abortController.signal.aborted) break;
+
+            let chunk = "";
+            switch (part.type) {
+              case "text-delta":
+                chunk = part.text;
+                break;
+              case "tool-input-start":
+                getOrCreateStreamingEntry(part.id, part.toolName);
+                break;
+              case "tool-input-delta": {
+                const entry = getOrCreateStreamingEntry(part.id);
+                if (entry) {
+                  entry.argsAccumulated += part.delta;
+                  const toolDef = findToolDefinition(entry.toolName);
+                  if (toolDef?.buildXml) {
+                    const argsPartial = parsePartialJson(
+                      entry.argsAccumulated,
+                    );
+                    const xml = toolDef.buildXml(argsPartial, false);
+                    if (xml) ctx.onXmlStream(xml);
+                  }
+                }
+                break;
+              }
+              case "tool-input-end": {
+                const entry = getOrCreateStreamingEntry(part.id);
+                if (entry) {
+                  const toolDef = findToolDefinition(entry.toolName);
+                  if (toolDef?.buildXml) {
+                    const argsPartial = parsePartialJson(
+                      entry.argsAccumulated,
+                    );
+                    const xml = toolDef.buildXml(argsPartial, true);
+                    if (xml) ctx.onXmlComplete(xml);
+                  }
+                }
+                cleanupStreamingEntry(part.id);
+                break;
+              }
+            }
+            if (chunk) {
+              fullResponse += chunk;
+              await updateResponseInDb(placeholderMessageId, fullResponse);
+              sendResponseChunk(event, req.chatId, chat, fullResponse);
+            }
+          }
+        }
+      } catch (verifyError) {
+        logger.warn("Post-agent verification failed (non-fatal):", verifyError);
+      }
     }
 
     // Deploy all Supabase functions if shared modules changed

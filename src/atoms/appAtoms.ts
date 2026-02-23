@@ -41,3 +41,16 @@ export const previewPanelKeyAtom = atom<number>(0);
 export const previewErrorMessageAtom = atom<
   { message: string; source: "preview-app" | "joy-app" } | undefined
 >(undefined);
+
+/**
+ * When true, runtime/build errors from the preview will automatically trigger
+ * an AI fix request instead of waiting for the user to click "Fix error with AI".
+ * Resets to false while a fix stream is in-flight to prevent re-entrant loops.
+ */
+export const autoFixPreviewErrorsAtom = atom<boolean>(true);
+
+/**
+ * Tracks the last error fingerprint that was auto-sent to the AI so we don't
+ * re-send the same error repeatedly (e.g., React re-render loops).
+ */
+export const lastAutoFixedErrorAtom = atom<string | null>(null);

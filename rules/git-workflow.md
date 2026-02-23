@@ -76,6 +76,7 @@ The stashed changes will be automatically merged back after the rebase completes
 
 ### Conflict resolution tips
 
+- **Modify/delete conflicts (e.g., package-lock.json):** When a PR deletes a file but upstream modified it, `git rebase` presents `CONFLICT (modify/delete): <file> deleted in <commit> and modified in HEAD`. Resolve by running `git rm <file>` to preserve the deletion intent, then `git rebase --continue`. This is common when rebasing an npm→pnpm migration PR where `package-lock.json` was deleted.
 - **Before rebasing:** If `pnpm install` modified `pnpm-lock.yaml` (common in CI/local), discard changes with `git restore pnpm-lock.yaml` to avoid "unstaged changes" errors
 - When resolving import conflicts (e.g., `<<<<<<< HEAD` with different imports), keep **both** imports if both are valid and needed by the component
 - When resolving conflicts in i18n-related commits, watch for duplicate constant definitions that conflict with imports from `@/lib/schemas` (e.g., `DEFAULT_ZOOM_LEVEL`)

@@ -255,6 +255,8 @@ jobs:
       - name: Extract macOS app bundle
         if: contains(matrix.os.name, 'macos')
         run: tar -xvf out-macos.tar
+      - name: Install fake-llm-server dependencies
+        run: cd testing/fake-llm-server && pnpm install --frozen-lockfile
       - name: Install Chromium browser for Playwright
         run: pnpm exec playwright install chromium --with-deps
       - name: E2E tests (Shard ${{ matrix.shard }}/${{ matrix.shardTotal }})

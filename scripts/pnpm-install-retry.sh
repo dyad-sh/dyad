@@ -8,6 +8,8 @@ set -e
 MAX_ATTEMPTS=3
 RETRY_DELAY=10
 
+rm -rf node_modules || true
+
 for i in $(seq 1 $MAX_ATTEMPTS); do
   if pnpm install --frozen-lockfile; then
     exit 0

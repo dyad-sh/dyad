@@ -495,13 +495,13 @@ function handleStartGithubFlow(
   })
     .then((res) => {
       if (!res.ok) {
-        return (
-          res.json() as Promise<{ error_description?: string }>
-        ).then((errData) => {
-          throw new Error(
-            `GitHub API Error: ${errData.error_description || res.statusText}`,
-          );
-        });
+        return (res.json() as Promise<{ error_description?: string }>).then(
+          (errData) => {
+            throw new Error(
+              `GitHub API Error: ${errData.error_description || res.statusText}`,
+            );
+          },
+        );
       }
       return res.json() as Promise<{
         device_code: string;
@@ -511,27 +511,26 @@ function handleStartGithubFlow(
       }>;
     })
     .then((data) => {
-        logger.info("Received device code response");
-        if (!currentFlowState) return; // Flow might have been cancelled
+      logger.info("Received device code response");
+      if (!currentFlowState) return; // Flow might have been cancelled
 
-        currentFlowState.deviceCode = data.device_code;
-        currentFlowState.interval = data.interval || 5;
-        currentFlowState.isPolling = true;
+      currentFlowState.deviceCode = data.device_code;
+      currentFlowState.interval = data.interval || 5;
+      currentFlowState.isPolling = true;
 
-        // Send user code and verification URI to renderer
-        event.sender.send("github:flow-update", {
-          userCode: data.user_code,
-          verificationUri: data.verification_uri,
-          message: "Please authorize in your browser.",
-        });
+      // Send user code and verification URI to renderer
+      event.sender.send("github:flow-update", {
+        userCode: data.user_code,
+        verificationUri: data.verification_uri,
+        message: "Please authorize in your browser.",
+      });
 
-        // Start polling after the initial interval
-        currentFlowState.timeoutId = setTimeout(
-          () => pollForAccessToken(event),
-          currentFlowState.interval * 1000,
-        );
-      },
-    )
+      // Start polling after the initial interval
+      currentFlowState.timeoutId = setTimeout(
+        () => pollForAccessToken(event),
+        currentFlowState.interval * 1000,
+      );
+    })
     .catch((error) => {
       logger.error("Error initiating GitHub device flow:", error);
       event.sender.send("github:flow-error", {
@@ -724,7 +723,10 @@ async function handleCreateRepo(
     try {
       const data = (await res.json()) as {
         message?: string;
-        errors?: (string | { message?: string; field?: string; code?: string })[];
+        errors?: (
+          | string
+          | { message?: string; field?: string; code?: string }
+        )[];
       };
       logger.error("GitHub API error when creating repo:", {
         status: res.status,

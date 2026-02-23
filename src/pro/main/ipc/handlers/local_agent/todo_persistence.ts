@@ -7,6 +7,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import log from "electron-log";
+import { AgentTodoSchema } from "@/ipc/types";
 import type { Todo } from "./tools/types";
 
 const logger = log.scope("todo_persistence");
@@ -59,21 +60,16 @@ export async function loadTodos(
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed?.todos)) {
       // Validate each todo entry to guard against corrupted/hand-edited files
-      const validated = parsed.todos.filter(
-        (t: unknown) =>
-          typeof t === "object" &&
-          t !== null &&
-          typeof (t as Record<string, unknown>).id === "string" &&
-          typeof (t as Record<string, unknown>).content === "string" &&
-          ["pending", "in_progress", "completed"].includes(
-            (t as Record<string, unknown>).status as string,
-          ),
-      );
-      return validated as Todo[];
+      const validated = parsed.todos.flatMap((t: unknown) => {
+        const result = AgentTodoSchema.safeParse(t);
+        return result.success ? [result.data] : [];
+      });
+      return validated;
     }
     logger.warn("Unexpected todos file format, returning empty list");
     return [];
   } catch (err: any) {
+    // ENOENT just means no todos have been saved for this chat yet.
     if (err?.code === "ENOENT") {
       return [];
     }
@@ -93,6 +89,8 @@ export async function deleteTodos(
   try {
     await fs.promises.unlink(filePath);
   } catch (err) {
+    // ENOENT is fine — the file may not exist if no todos were ever persisted,
+    // or parallel tool executions in the same step may race on deletion.
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
       logger.warn("Failed to delete todos file:", err);
     }

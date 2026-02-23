@@ -549,6 +549,8 @@ export async function handleLocalAgentStream(
     // reads, giving it natural priority over stale todos.
     if (
       !messageOverride &&
+      !readOnly &&
+      !planModeOnly &&
       persistedTodos.length > 0 &&
       hasIncompleteTodos(persistedTodos)
     ) {

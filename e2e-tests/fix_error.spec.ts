@@ -1,4 +1,4 @@
-import { testSkipIfWindows, test } from "./helpers/test_helper";
+import { testSkipIfWindows, test, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
 testSkipIfWindows("fix error with AI", async ({ po }) => {
@@ -14,10 +14,19 @@ testSkipIfWindows("fix error with AI", async ({ po }) => {
   await po.chatActions.waitForChatCompletion();
   await po.snapshotMessages();
 
-  // TODO: this is an actual bug where the error banner should not
-  // be shown, however there's some kind of race condition and
-  // we don't reliably detect when the HMR update has completed.
-  // await po.previewPanel.locatePreviewErrorBanner().waitFor({ state: "hidden" });
+  // The HMR update after an error fix may leave the iframe body empty
+  // due to a Vite recovery-from-error race condition. If the body stays
+  // empty, restart the app server to force a full reload.
+  const iframeBody = po.previewPanel
+    .getPreviewIframeElement()
+    .contentFrame()
+    .locator("body");
+  try {
+    await expect(iframeBody).not.toHaveText("", { timeout: 5_000 });
+  } catch {
+    await po.clickRestart();
+  }
+
   await po.previewPanel.snapshotPreview();
 });
 

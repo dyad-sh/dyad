@@ -1037,14 +1037,10 @@ This conversation includes one or more image attachments. When the user uploads 
         // Handle local-agent mode (Agent v2)
         // Mentioned apps can't be handled by the local agent (defer to balanced smart context
         // in build mode)
-        // Note: For local models (Ollama, LM Studio), we skip local-agent mode as they 
-        // typically don't support function calling
-        const isLocal = isLocalModel(settings.selectedModel.provider);
-        
+        // Local models now supported via XML tool emulation
         if (
           settings.selectedChatMode === "local-agent" &&
-          !mentionedAppsCodebases.length &&
-          !isLocal // Skip local-agent for local models - they don't support tools
+          !mentionedAppsCodebases.length
         ) {
           await handleLocalAgentStream(event, req, abortController, {
             placeholderMessageId: placeholderAssistantMessage.id,
@@ -1054,6 +1050,7 @@ This conversation includes one or more image attachments. When the user uploads 
         }
 
         // For agent mode, skip tools for local models (they don't support function calling)
+        const isLocal = isLocalModel(settings.selectedModel.provider);
         if (settings.selectedChatMode === "agent" && !isLocal) {
           const tools = await getMcpTools(event);
 
@@ -1276,7 +1273,7 @@ ${formattedSearchReplaceIssues}`,
               const previousAttempts: ModelMessage[] = [];
               while (
                 problemReport.problems.length > 0 &&
-                autoFixAttempts < 2 &&
+                autoFixAttempts < 4 &&
                 !abortController.signal.aborted
               ) {
                 fullResponse += `<joy-problem-report summary="${problemReport.problems.length} problems">

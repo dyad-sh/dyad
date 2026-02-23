@@ -19,7 +19,7 @@ import { detectIsMac } from "@/hooks/useChatModeToggle";
 export function ChatModeSelector() {
   const { settings, updateSettings } = useSettings();
 
-  const selectedMode = settings?.selectedChatMode || "build";
+  const selectedMode = settings?.selectedChatMode || "local-agent";
   // All features are free in JoyCreate - no Pro check needed
 
   const handleModeChange = (value: string) => {
@@ -29,13 +29,13 @@ export function ChatModeSelector() {
   const getModeDisplayName = (mode: ChatMode) => {
     switch (mode) {
       case "build":
-        return "Build";
+        return "Build (Classic)";
       case "ask":
         return "Ask";
       case "agent":
         return "Build (MCP)";
       case "local-agent":
-        return "Agent";
+        return "Build";
       default:
         return "Build";
     }
@@ -69,11 +69,19 @@ export function ChatModeSelector() {
         </TooltipContent>
       </Tooltip>
       <SelectContent align="start" onCloseAutoFocus={(e) => e.preventDefault()}>
-        <SelectItem value="build">
+        <SelectItem value="local-agent">
           <div className="flex flex-col items-start">
             <span className="font-medium">Build</span>
             <span className="text-xs text-muted-foreground">
-              Generate and edit code
+              Autonomous agent — reads, plans, writes, and verifies code
+            </span>
+          </div>
+        </SelectItem>
+        <SelectItem value="build">
+          <div className="flex flex-col items-start">
+            <span className="font-medium">Build (Classic)</span>
+            <span className="text-xs text-muted-foreground">
+              Single-shot code generation (faster for simple edits)
             </span>
           </div>
         </SelectItem>
@@ -87,17 +95,9 @@ export function ChatModeSelector() {
         </SelectItem>
         <SelectItem value="agent">
           <div className="flex flex-col items-start">
-            <span className="font-medium">Build with MCP (experimental)</span>
+            <span className="font-medium">Build with MCP</span>
             <span className="text-xs text-muted-foreground">
-              Like Build, but can use tools (MCP) to generate code
-            </span>
-          </div>
-        </SelectItem>
-        <SelectItem value="local-agent">
-          <div className="flex flex-col items-start">
-            <span className="font-medium">Agent v2</span>
-            <span className="text-xs text-muted-foreground">
-              More autonomous agent with advanced capabilities
+              Like Build, but can use external MCP tools
             </span>
           </div>
         </SelectItem>

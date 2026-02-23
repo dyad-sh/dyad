@@ -4,7 +4,10 @@ import type { ProblemReport } from "../ipc/ipc_types";
  * Creates a more concise version of the problem fix prompt for cases where
  * brevity is preferred.
  */
-export function createProblemFixPrompt(problemReport: ProblemReport): string {
+export function createProblemFixPrompt(
+  problemReport: ProblemReport,
+  options?: { consoleErrors?: string[] },
+): string {
   const { problems } = problemReport;
 
   if (problems.length === 0) {
@@ -21,6 +24,14 @@ export function createProblemFixPrompt(problemReport: ProblemReport): string {
     }
     prompt += "\n";
   });
+
+  if (options?.consoleErrors && options.consoleErrors.length > 0) {
+    prompt += "\nRecent console errors from the running app:\n";
+    for (const err of options.consoleErrors.slice(-5)) {
+      prompt += `- ${err}\n`;
+    }
+    prompt += "\n";
+  }
 
   prompt += "\nPlease fix all errors in a concise way.";
 

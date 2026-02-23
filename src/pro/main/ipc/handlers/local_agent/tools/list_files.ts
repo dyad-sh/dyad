@@ -26,7 +26,6 @@ export const listFilesTool: ToolDefinition<z.infer<typeof listFilesSchema>> = {
   execute: async (args, ctx: AgentContext) => {
     const { files } = await extractCodebase({
       appPath: ctx.appPath,
-      // TODO
       chatContext: {
         contextPaths: args.directory
           ? [{ globPath: args.directory + "/**" }]
@@ -36,6 +35,12 @@ export const listFilesTool: ToolDefinition<z.infer<typeof listFilesSchema>> = {
       },
     });
 
-    return files.map((file) => " - " + file.path).join("\n") || "";
+    if (files.length === 0) {
+      return args.directory
+        ? `No files found in directory: ${args.directory}`
+        : "No files found in the project.";
+    }
+
+    return files.map((file) => " - " + file.path).join("\n");
   },
 };

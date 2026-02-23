@@ -18,6 +18,9 @@ import { getDatabaseSchemaTool } from "./tools/get_database_schema";
 import { setChatSummaryTool } from "./tools/set_chat_summary";
 import { addIntegrationTool } from "./tools/add_integration";
 import { createDocumentTool } from "./tools/create_document";
+import { runCommandTool } from "./tools/run_command";
+import { thinkAndPlanTool } from "./tools/think_and_plan";
+import { getAppLogsTool } from "./tools/get_app_logs";
 import {
   escapeXmlAttr,
   escapeXmlContent,
@@ -40,6 +43,9 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   setChatSummaryTool,
   addIntegrationTool,
   createDocumentTool,
+  runCommandTool,
+  thinkAndPlanTool,
+  getAppLogsTool,
 ];
 // ============================================================================
 // Agent Tool Name Type (derived from TOOL_DEFINITIONS)

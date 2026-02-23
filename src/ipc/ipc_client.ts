@@ -95,6 +95,19 @@ import type {
 } from "@/types/ipld_receipt";
 import { showError } from "@/lib/toast";
 import { DeepLinkData } from "./deep_link_data";
+import type {
+  CollectionId,
+  ModelId,
+  VectorCollection,
+  VectorDocument,
+  VectorSearchRequest,
+  VectorSearchResult,
+  RAGRequest,
+  RAGResponse,
+  VectorBackend,
+  DistanceMetric,
+  ChunkingConfig,
+} from "@/types/sovereign_stack_types";
 
 export interface ChatStreamCallbacks {
   onUpdate: (messages: Message[]) => void;
@@ -2454,5 +2467,314 @@ export class IpcClient {
     tags?: string[];
   }): Promise<{ imported: number; skipped: number; assetIds: string[] }> {
     return this.ipcRenderer.invoke("local-vault:import:dataset-items", args);
+  }
+
+  // ===========================================================================
+  // Vector Store (sqlite-vec)
+  // ===========================================================================
+
+  /** Initialize the vector store backend */
+  public async vectorInit(): Promise<{ success: boolean; backend: string }> {
+    return this.ipcRenderer.invoke("vector:init");
+  }
+
+  /** Create a new vector collection */
+  public async vectorCreateCollection(params: {
+    name: string;
+    description?: string;
+    embeddingModel?: string;
+    dimension?: number;
+    distanceMetric?: DistanceMetric;
+    backend?: VectorBackend;
+    chunkingConfig?: ChunkingConfig;
+  }): Promise<VectorCollection> {
+    return this.ipcRenderer.invoke("vector:create-collection", params);
+  }
+
+  /** List all vector collections */
+  public async vectorListCollections(): Promise<VectorCollection[]> {
+    return this.ipcRenderer.invoke("vector:list-collections");
+  }
+
+  /** Get a specific vector collection by ID */
+  public async vectorGetCollection(id: string): Promise<VectorCollection | null> {
+    return this.ipcRenderer.invoke("vector:get-collection", id);
+  }
+
+  /** Delete a vector collection */
+  public async vectorDeleteCollection(id: string): Promise<void> {
+    return this.ipcRenderer.invoke("vector:delete-collection", id);
+  }
+
+  /** Add documents to a vector collection */
+  public async vectorAddDocuments(args: {
+    collectionId: string;
+    documents: Array<{
+      content: string;
+      title?: string;
+      metadata?: Record<string, unknown>;
+      source?: string;
+    }>;
+  }): Promise<{ added: number; documentIds: string[] }> {
+    return this.ipcRenderer.invoke("vector:add-documents", args);
+  }
+
+  /** Delete a document from a vector collection */
+  public async vectorDeleteDocument(args: {
+    collectionId: string;
+    documentId: string;
+  }): Promise<void> {
+    return this.ipcRenderer.invoke("vector:delete-document", args);
+  }
+
+  /** List documents in a vector collection */
+  public async vectorListDocuments(collectionId: string): Promise<VectorDocument[]> {
+    return this.ipcRenderer.invoke("vector:list-documents", collectionId);
+  }
+
+  /** Search vectors in a collection */
+  public async vectorSearch(request: VectorSearchRequest): Promise<VectorSearchResult[]> {
+    return this.ipcRenderer.invoke("vector:search", request);
+  }
+
+  /** Perform RAG (Retrieval-Augmented Generation) */
+  public async vectorRag(request: RAGRequest): Promise<RAGResponse> {
+    return this.ipcRenderer.invoke("vector:rag", request);
+  }
+
+  /** Get stats for a vector collection */
+  public async vectorGetStats(collectionId: string): Promise<{
+    documentCount: number;
+    chunkCount: number;
+    vectorCount: number;
+    totalSize: number;
+    indexType: string;
+    dimension: number;
+  }> {
+    return this.ipcRenderer.invoke("vector:get-stats", collectionId);
+  }
+
+  /** Set the embedding model for vector operations */
+  public async vectorSetEmbeddingModel(modelId: string): Promise<void> {
+    return this.ipcRenderer.invoke("vector:set-embedding-model", modelId);
+  }
+
+  // ===========================================================================
+  // Embedding Pipeline
+  // ===========================================================================
+
+  /** Initialize the embedding pipeline (detect Ollama models, etc.) */
+  public async embeddingInit(): Promise<{
+    initialized: boolean;
+    embeddingModel: { id: string; name: string; dimension: number; provider: string; available: boolean } | null;
+    ollamaAvailable: boolean;
+    collectionCount: number;
+    totalDocuments: number;
+    activeIngestions: number;
+  }> {
+    return this.ipcRenderer.invoke("embedding:init");
+  }
+
+  /** Detect available embedding models */
+  public async embeddingDetectModels(): Promise<Array<{
+    id: string;
+    name: string;
+    dimension: number;
+    maxTokens: number;
+    provider: string;
+    available: boolean;
+  }>> {
+    return this.ipcRenderer.invoke("embedding:detect-models");
+  }
+
+  /** Set the embedding model */
+  public async embeddingSetModel(modelId: string): Promise<{
+    id: string;
+    name: string;
+    dimension: number;
+    provider: string;
+    available: boolean;
+  }> {
+    return this.ipcRenderer.invoke("embedding:set-model", modelId);
+  }
+
+  /** Get pipeline status */
+  public async embeddingGetStatus(): Promise<{
+    initialized: boolean;
+    embeddingModel: { id: string; name: string; dimension: number; provider: string; available: boolean } | null;
+    ollamaAvailable: boolean;
+    collectionCount: number;
+    totalDocuments: number;
+    activeIngestions: number;
+  }> {
+    return this.ipcRenderer.invoke("embedding:get-status");
+  }
+
+  /** Ingest a single document (chunk → embed → store) */
+  public async embeddingIngestDocument(request: {
+    collectionId: string;
+    content: string;
+    title?: string;
+    source?: string;
+    metadata?: Record<string, unknown>;
+    chunkingConfig?: ChunkingConfig;
+  }): Promise<{ documentId: string; chunkCount: number; embeddingDimension: number; durationMs: number }> {
+    return this.ipcRenderer.invoke("embedding:ingest-document", request);
+  }
+
+  /** Ingest a local file */
+  public async embeddingIngestFile(request: {
+    collectionId: string;
+    filePath: string;
+    metadata?: Record<string, unknown>;
+    chunkingConfig?: ChunkingConfig;
+  }): Promise<{ documentId: string; chunkCount: number; embeddingDimension: number; durationMs: number }> {
+    return this.ipcRenderer.invoke("embedding:ingest-file", request);
+  }
+
+  /** Ingest a URL */
+  public async embeddingIngestUrl(request: {
+    collectionId: string;
+    url: string;
+    metadata?: Record<string, unknown>;
+    chunkingConfig?: ChunkingConfig;
+    extractText?: boolean;
+  }): Promise<{ documentId: string; chunkCount: number; embeddingDimension: number; durationMs: number }> {
+    return this.ipcRenderer.invoke("embedding:ingest-url", request);
+  }
+
+  /** Batch ingest multiple documents */
+  public async embeddingIngestBatch(request: {
+    collectionId: string;
+    documents: Array<{
+      content: string;
+      title?: string;
+      source?: string;
+      metadata?: Record<string, unknown>;
+    }>;
+    chunkingConfig?: ChunkingConfig;
+    concurrency?: number;
+  }): Promise<{
+    total: number;
+    successful: number;
+    failed: number;
+    results: Array<{ documentId: string; chunkCount: number; embeddingDimension: number; durationMs: number }>;
+    errors: Array<{ index: number; error: string }>;
+    durationMs: number;
+  }> {
+    return this.ipcRenderer.invoke("embedding:ingest-batch", request);
+  }
+
+  /** Retrieve relevant chunks for a query */
+  public async embeddingRetrieve(request: {
+    collectionIds: string[];
+    query: string;
+    topK?: number;
+    minScore?: number;
+    queryEmbedding?: number[];
+  }): Promise<{
+    chunks: Array<{
+      content: string;
+      score: number;
+      documentId: string;
+      documentTitle?: string;
+      source?: string;
+      chunkIndex: number;
+      metadata?: Record<string, unknown>;
+    }>;
+    contextString: string;
+    totalChunks: number;
+    queryDurationMs: number;
+  }> {
+    return this.ipcRenderer.invoke("embedding:retrieve", request);
+  }
+
+  /** Retrieve formatted context for chat injection */
+  public async embeddingRetrieveForChat(args: {
+    query: string;
+    collectionIds: string[];
+    topK?: number;
+    minScore?: number;
+  }): Promise<string> {
+    return this.ipcRenderer.invoke("embedding:retrieve-for-chat", args);
+  }
+
+  /** Generate embedding for a single query */
+  public async embeddingEmbedQuery(query: string): Promise<number[]> {
+    return this.ipcRenderer.invoke("embedding:embed-query", query);
+  }
+
+  /** Cancel all active ingestion operations */
+  public async embeddingCancelAll(): Promise<{ cancelled: boolean }> {
+    return this.ipcRenderer.invoke("embedding:cancel-all");
+  }
+
+  // ===== Model Download Manager =====
+
+  /** Detect system hardware (GPU, RAM, CPU) */
+  public async modelManagerDetectHardware(): Promise<any> {
+    return this.ipcRenderer.invoke("model-manager:detect-hardware");
+  }
+
+  /** Get full model catalog */
+  public async modelManagerGetCatalog(): Promise<any[]> {
+    return this.ipcRenderer.invoke("model-manager:get-catalog");
+  }
+
+  /** Get model catalog filtered by detected hardware */
+  public async modelManagerGetFilteredCatalog(): Promise<any[]> {
+    return this.ipcRenderer.invoke("model-manager:get-filtered-catalog");
+  }
+
+  /** Pull a model from Ollama (streams progress via model-manager:pull-progress) */
+  public async modelManagerPullModel(
+    modelId: string,
+  ): Promise<{ success: boolean; modelId: string }> {
+    return this.ipcRenderer.invoke("model-manager:pull-model", modelId);
+  }
+
+  /** Delete a model from Ollama */
+  public async modelManagerDeleteModel(
+    modelId: string,
+  ): Promise<{ success: boolean; modelId: string }> {
+    return this.ipcRenderer.invoke("model-manager:delete-model", modelId);
+  }
+
+  /** List installed Ollama models */
+  public async modelManagerListInstalled(): Promise<any[]> {
+    return this.ipcRenderer.invoke("model-manager:list-installed");
+  }
+
+  /** Get current pull status for all active downloads */
+  public async modelManagerGetPullStatus(): Promise<
+    Record<string, { progress: number; status: string; durationMs: number }>
+  > {
+    return this.ipcRenderer.invoke("model-manager:get-pull-status");
+  }
+
+  /** Listen for model pull progress events */
+  public onModelPullProgress(
+    callback: (data: {
+      modelId: string;
+      progress: number;
+      status: string;
+      total?: number;
+      completed?: number;
+    }) => void,
+  ): () => void {
+    const handler = (_event: any, data: any) => callback(data);
+    this.ipcRenderer.on("model-manager:pull-progress", handler);
+    return () =>
+      this.ipcRenderer.removeListener("model-manager:pull-progress", handler);
+  }
+
+  /** Listen for model pull completion events */
+  public onModelPullComplete(
+    callback: (data: { modelId: string }) => void,
+  ): () => void {
+    const handler = (_event: any, data: any) => callback(data);
+    this.ipcRenderer.on("model-manager:pull-complete", handler);
+    return () =>
+      this.ipcRenderer.removeListener("model-manager:pull-complete", handler);
   }
 }

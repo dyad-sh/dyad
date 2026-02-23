@@ -28,6 +28,7 @@ import {
   Network,
   Brain,
   HardDrive,
+  Download,
 } from "lucide-react";
 import { Link, useRouterState, useRouter } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -174,6 +175,24 @@ const menuCategories = [
         hoverBg: "hover:bg-amber-500/10",
         activeBg: "bg-amber-500/15",
         activeText: "text-amber-600 dark:text-amber-400",
+      },
+      {
+        title: "Knowledge Base",
+        to: "/knowledge-base",
+        icon: Brain,
+        gradient: "from-violet-500 to-purple-500",
+        hoverBg: "hover:bg-violet-500/10",
+        activeBg: "bg-violet-500/15",
+        activeText: "text-violet-600 dark:text-violet-400",
+      },
+      {
+        title: "Model Manager",
+        to: "/model-download",
+        icon: Download,
+        gradient: "from-teal-500 to-cyan-500",
+        hoverBg: "hover:bg-teal-500/10",
+        activeBg: "bg-teal-500/15",
+        activeText: "text-teal-600 dark:text-teal-400",
       },
     ],
   },

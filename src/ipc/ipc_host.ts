@@ -102,6 +102,9 @@ import { registerCelestiaBlobHandlers } from "./handlers/celestia_blob_handlers"
 import { registerLifecycleHandlers } from "./handlers/lifecycle_handlers";
 import { registerLocalVaultHandlers } from "./handlers/local_vault_handlers";
 import { registerScrapingV2Handlers } from "./handlers/scraping/handler";
+import { registerVectorStoreHandlers } from "./handlers/vector_store_handlers";
+import { registerEmbeddingPipelineHandlers } from "./handlers/embedding_pipeline_handlers";
+import { registerModelDownloadManagerHandlers } from "./handlers/model_download_manager_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -282,4 +285,13 @@ export function registerIpcHandlers() {
 
   // Scraping Engine v2 — Best-in-class web scraping with cheerio, Playwright, AI extraction, auto-tagging
   registerScrapingV2Handlers();
+
+  // Vector Store — sqlite-vec powered local vector search & RAG
+  registerVectorStoreHandlers();
+
+  // Embedding Pipeline — chunk → embed (Ollama) → store (sqlite-vec) → retrieve for RAG
+  registerEmbeddingPipelineHandlers();
+
+  // Model Download Manager — GPU detection, model catalog, Ollama pull/delete
+  registerModelDownloadManagerHandlers();
 }

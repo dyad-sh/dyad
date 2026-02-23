@@ -299,7 +299,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
     {
       name: "free",
-      displayName: "Free (OpenRouter)",
+      displayName: "Free",
       description: "Selects from one of the free OpenRouter models",
       tag: "Free",
       // These are below Gemini 2.5 Pro & Flash limits

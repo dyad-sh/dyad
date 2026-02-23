@@ -11,6 +11,7 @@ import {
   MODEL_OPTIONS,
   PROVIDER_TO_ENV_VAR,
 } from "./language_model_constants";
+import { getOpenRouterFreeModels } from "./openrouter_free_models";
 /**
  * Fetches language model providers from both the database (custom) and hardcoded constants (cloud),
  * merging them with custom providers taking precedence.
@@ -146,6 +147,15 @@ export async function getLanguageModels({
         `Provider "${providerId}" is cloud type but not found in MODEL_OPTIONS.`,
       );
     }
+  }
+
+  if (providerId === "openrouter") {
+    const freeModels = getOpenRouterFreeModels();
+    const dedupe = new Map<string, LanguageModel>();
+    [...freeModels, ...hardcodedModels].forEach((model) => {
+      dedupe.set(model.apiName, model);
+    });
+    hardcodedModels = Array.from(dedupe.values());
   }
 
   return [...hardcodedModels, ...customModels];

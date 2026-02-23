@@ -27,6 +27,16 @@ import type {
 } from "@/types/sovereign_stack_types";
 
 import { localModelManager } from "./local_model_manager";
+import {
+  createSqliteVecIndex,
+  insertDocument as vecInsertDocument,
+  searchVectors,
+  deleteDocumentFromIndex,
+  getIndexStats,
+  closeIndex,
+  dropIndex,
+  type SqliteVecIndex,
+} from "./sqlite_vec_backend";
 
 const logger = log.scope("vector_store_service");
 
@@ -240,6 +250,7 @@ export class VectorStoreService extends EventEmitter {
   private vectorDir: string;
   private collections: Map<CollectionId, VectorCollection> = new Map();
   private databases: Map<CollectionId, DatabaseType> = new Map();
+  private vecIndexes: Map<CollectionId, SqliteVecIndex> = new Map();
   private embeddingModelId?: ModelId;
   
   constructor(vectorDir?: string) {
@@ -316,7 +327,7 @@ export class VectorStoreService extends EventEmitter {
       id,
       name: params.name,
       description: params.description,
-      backend: params.backend || "sqlite-vss",
+      backend: params.backend || "sqlite-vec",
       embeddingModel: "builtin",
       dimension: params.dimension || 384, // all-minilm-l6-v2 default
       distanceMetric: params.distanceMetric || "cosine",
@@ -355,6 +366,17 @@ export class VectorStoreService extends EventEmitter {
    */
   private async initializeBackend(collection: VectorCollection, collectionDir: string): Promise<void> {
     switch (collection.backend) {
+      case "sqlite-vec": {
+        const dbPath = path.join(collectionDir, "vectors.db");
+        const index = createSqliteVecIndex(
+          dbPath,
+          collection.id,
+          collection.dimension,
+          collection.distanceMetric,
+        );
+        this.vecIndexes.set(collection.id, index);
+        break;
+      }
       case "sqlite-vss":
         await this.initializeSqliteVss(collection, collectionDir);
         break;
@@ -441,6 +463,13 @@ export class VectorStoreService extends EventEmitter {
    * Delete a collection
    */
   async deleteCollection(id: CollectionId): Promise<void> {
+    // Close sqlite-vec index if present
+    const vecIndex = this.vecIndexes.get(id);
+    if (vecIndex) {
+      closeIndex(vecIndex);
+      this.vecIndexes.delete(id);
+    }
+
     const db = this.databases.get(id);
     if (db) {
       db.close();
@@ -476,57 +505,84 @@ export class VectorStoreService extends EventEmitter {
     if (!collection) {
       throw new Error(`Collection not found: ${collectionId}`);
     }
-    
-    const db = await this.getDatabase(collectionId);
+
     const results: VectorDocument[] = [];
-    
+
     // Ensure we have a chunking config
     const chunkingConfig = collection.chunkingConfig || {
       strategy: "sentence" as const,
       chunkSize: DEFAULT_CHUNK_SIZE,
       chunkOverlap: DEFAULT_CHUNK_OVERLAP,
     };
-    
+
+    // Use sqlite-vec fast path if available
+    const vecIndex = this.vecIndexes.get(collectionId);
+
     for (const doc of documents) {
       const docId = crypto.randomUUID();
       const chunks = this.chunkText(doc.content, chunkingConfig);
-      
-      // Insert document
-      db.prepare(`
-        INSERT INTO documents (id, content, title, source, metadata, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(
-        docId,
-        doc.content,
-        doc.title || null,
-        doc.source || null,
-        doc.metadata ? JSON.stringify(doc.metadata) : null,
-        Date.now()
-      );
-      
-      // Insert chunks and embeddings
-      const chunkIds: string[] = [];
-      for (let i = 0; i < chunks.length; i++) {
-        const chunkId = crypto.randomUUID();
-        chunkIds.push(chunkId);
-        
-        db.prepare(`
-          INSERT INTO chunks (id, document_id, content, chunk_index, metadata)
-          VALUES (?, ?, ?, ?, ?)
-        `).run(chunkId, docId, chunks[i], i, null);
-      }
-      
-      // Generate embeddings
+
+      // Generate embeddings for all chunks
       const embeddings = await this.generateEmbeddings(chunks);
-      
-      for (let i = 0; i < chunkIds.length; i++) {
-        const embeddingBuffer = this.embeddingToBuffer(embeddings[i]);
+
+      if (vecIndex) {
+        // ── sqlite-vec path ──────────────────────────────────────────
+        const chunkData = chunks.map((content, i) => ({
+          id: crypto.randomUUID(),
+          content,
+          chunkIndex: i,
+          startPos: undefined as number | undefined,
+          endPos: undefined as number | undefined,
+          embedding: embeddings[i],
+        }));
+
+        vecInsertDocument(
+          vecIndex,
+          {
+            id: docId,
+            content: doc.content,
+            title: doc.title,
+            source: doc.source,
+            metadata: doc.metadata,
+          },
+          chunkData,
+        );
+      } else {
+        // ── Legacy sqlite-vss path ───────────────────────────────────
+        const db = await this.getDatabase(collectionId);
+
         db.prepare(`
-          INSERT INTO embeddings (chunk_id, embedding)
-          VALUES (?, ?)
-        `).run(chunkIds[i], embeddingBuffer);
+          INSERT INTO documents (id, content, title, source, metadata, created_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(
+          docId,
+          doc.content,
+          doc.title || null,
+          doc.source || null,
+          doc.metadata ? JSON.stringify(doc.metadata) : null,
+          Date.now()
+        );
+
+        const chunkIds: string[] = [];
+        for (let i = 0; i < chunks.length; i++) {
+          const chunkId = crypto.randomUUID();
+          chunkIds.push(chunkId);
+
+          db.prepare(`
+            INSERT INTO chunks (id, document_id, content, chunk_index, metadata)
+            VALUES (?, ?, ?, ?, ?)
+          `).run(chunkId, docId, chunks[i], i, null);
+        }
+
+        for (let i = 0; i < chunkIds.length; i++) {
+          const embeddingBuffer = this.embeddingToBuffer(embeddings[i]);
+          db.prepare(`
+            INSERT INTO embeddings (chunk_id, embedding)
+            VALUES (?, ?)
+          `).run(chunkIds[i], embeddingBuffer);
+        }
       }
-      
+
       const now = Date.now();
       const vectorDoc: VectorDocument = {
         id: docId,
@@ -539,7 +595,7 @@ export class VectorStoreService extends EventEmitter {
         createdAt: now,
         updatedAt: now,
       };
-      
+
       results.push(vectorDoc);
     }
     
@@ -562,7 +618,20 @@ export class VectorStoreService extends EventEmitter {
     if (!collection) {
       throw new Error(`Collection not found: ${collectionId}`);
     }
-    
+
+    // sqlite-vec path
+    const vecIndex = this.vecIndexes.get(collectionId);
+    if (vecIndex) {
+      const removed = deleteDocumentFromIndex(vecIndex, documentId);
+      collection.documentCount -= 1;
+      collection.vectorCount = Math.max(0, (collection.vectorCount || 0) - removed);
+      collection.updatedAt = Date.now();
+      await this.saveCollectionConfig(collection);
+      this.emit("document:deleted", { collectionId, documentId });
+      return;
+    }
+
+    // Legacy path
     const db = await this.getDatabase(collectionId);
     
     // Get chunk count for stats
@@ -596,6 +665,39 @@ export class VectorStoreService extends EventEmitter {
    * List documents in a collection
    */
   async listDocuments(collectionId: CollectionId): Promise<VectorDocument[]> {
+    // sqlite-vec path
+    const vecIndex = this.vecIndexes.get(collectionId);
+    if (vecIndex) {
+      const rows = vecIndex.db.prepare(`
+        SELECT d.*, COUNT(c.id) as chunk_count
+        FROM vec_documents d
+        LEFT JOIN vec_chunks c ON c.document_id = d.id
+        GROUP BY d.id
+        ORDER BY d.created_at DESC
+      `).all() as Array<{
+        id: string;
+        content: string;
+        title: string | null;
+        source: string | null;
+        metadata: string | null;
+        created_at: number;
+        chunk_count: number;
+      }>;
+
+      return rows.map((row) => ({
+        id: row.id,
+        collectionId,
+        content: row.content,
+        title: row.title || undefined,
+        source: row.source || undefined,
+        metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+        chunkCount: row.chunk_count,
+        createdAt: row.created_at,
+        updatedAt: row.created_at,
+      }));
+    }
+
+    // Legacy path
     const db = await this.getDatabase(collectionId);
     
     const rows = db.prepare(`
@@ -639,11 +741,32 @@ export class VectorStoreService extends EventEmitter {
     if (!collection) {
       throw new Error(`Collection not found: ${request.collectionId}`);
     }
-    
-    const db = await this.getDatabase(request.collectionId);
-    
+
     // Generate query embedding
-    const queryEmbedding = (await this.generateEmbeddings([request.query]))[0];
+    const queryEmbedding = request.queryEmbedding ?? (await this.generateEmbeddings([request.query]))[0];
+
+    // sqlite-vec fast path
+    const vecIndex = this.vecIndexes.get(request.collectionId);
+    if (vecIndex) {
+      const vecResults = searchVectors(vecIndex, queryEmbedding, request.topK ?? 10, {
+        minScore: request.threshold ?? request.minScore,
+        filter: request.filter,
+      });
+
+      return vecResults.map((r) => ({
+        id: r.chunkId,
+        content: r.content,
+        score: r.score,
+        documentId: r.documentId,
+        chunkIndex: r.chunkIndex,
+        title: r.title,
+        source: r.source,
+        metadata: r.metadata,
+      }));
+    }
+
+    // Legacy brute-force path
+    const db = await this.getDatabase(request.collectionId);
     
     // Get all embeddings (in production, use VSS index)
     const rows = db.prepare(`
@@ -895,6 +1018,10 @@ Answer based on the context above:`;
    * Shutdown service
    */
   async shutdown(): Promise<void> {
+    for (const index of this.vecIndexes.values()) {
+      closeIndex(index);
+    }
+    this.vecIndexes.clear();
     for (const db of this.databases.values()) {
       db.close();
     }

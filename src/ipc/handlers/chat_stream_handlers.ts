@@ -76,6 +76,7 @@ import { fileExists } from "../utils/file_utils";
 import { FileUploadsState } from "../utils/file_uploads_state";
 import { extractMentionedAppsCodebases } from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
+import { embeddingPipeline } from "../../lib/embedding_pipeline";
 import { prompts as promptsTable } from "../../db/schema";
 import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
@@ -755,6 +756,25 @@ This conversation includes one or more image attachments. When the user uploads 
 4. For diagrams or wireframes, try to understand the content and structure shown.
 5. For screenshots of code or errors, try to identify the issue or explain the code.
 `;
+        }
+
+        // --- RAG Knowledge Base Context Injection ---
+        // If the chat has an agent with knowledge bases, retrieve relevant context
+        // from the embedding pipeline and inject it into the system prompt.
+        try {
+          const agentKbCollectionIds = (req as any).knowledgeBaseCollectionIds as string[] | undefined;
+          if (agentKbCollectionIds && agentKbCollectionIds.length > 0) {
+            const ragContext = await embeddingPipeline.retrieveForChat(
+              req.prompt,
+              agentKbCollectionIds,
+              { topK: 5, minScore: 0.3 },
+            );
+            if (ragContext) {
+              systemPrompt += `\n\n# Knowledge Base Context\nThe following relevant information was retrieved from the agent's knowledge base. Use it to answer the user's question accurately. Cite sources when possible.\n\n${ragContext}`;
+            }
+          }
+        } catch (ragError) {
+          logger.warn("RAG context injection failed (non-fatal)", { error: ragError });
         }
 
         const codebasePrefix = isEngineEnabled

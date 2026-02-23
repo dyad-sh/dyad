@@ -31,6 +31,8 @@ import { dataStudioLocalRoute } from "./routes/local-vault-data-studio";
 import { packagingRoute } from "./routes/local-vault-packaging";
 import { webScraperRoute } from "./routes/local-vault-web-scraper";
 import { scrapeWizardRoute } from "./routes/local-vault-scrape-wizard";
+import { knowledgeBaseRoute } from "./routes/knowledge-base";
+import { modelDownloadRoute } from "./routes/model-download";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -66,6 +68,8 @@ const routeTree = rootRoute.addChildren([
   packagingRoute,
   webScraperRoute,
   scrapeWizardRoute,
+  knowledgeBaseRoute,
+  modelDownloadRoute,
 ]);
 
 // src/components/NotFoundRedirect.tsx

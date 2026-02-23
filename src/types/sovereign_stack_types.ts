@@ -173,7 +173,7 @@ export interface InferenceResponse {
 // VECTOR STORE SERVICE
 // =============================================================================
 
-export type VectorBackend = "sqlite-vss" | "faiss" | "annoy" | "hnswlib" | "chromadb-local";
+export type VectorBackend = "sqlite-vss" | "sqlite-vec" | "faiss" | "annoy" | "hnswlib" | "chromadb-local";
 export type DistanceMetric = "cosine" | "euclidean" | "dot_product" | "dot" | "manhattan";
 
 export interface VectorCollection {

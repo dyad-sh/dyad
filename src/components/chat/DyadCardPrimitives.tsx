@@ -343,6 +343,57 @@ export function DyadFilePath({ path }: DyadFilePathProps) {
   );
 }
 
+// -- DyadDiffStats --
+
+interface DyadDiffStatsProps {
+  addedLines?: number;
+  removedLines?: number;
+  totalLines?: number;
+}
+
+/**
+ * Inline line-count badge for file change cards.
+ * Shows "+X / -Y" for search-replace diffs, or "N lines" for full file writes.
+ */
+export function DyadDiffStats({
+  addedLines,
+  removedLines,
+  totalLines,
+}: DyadDiffStatsProps) {
+  const showAdded = addedLines != null && addedLines > 0;
+  const showRemoved = removedLines != null && removedLines > 0;
+
+  if (showAdded || showRemoved) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-medium shrink-0">
+        {showAdded && (
+          <span className="text-green-600 dark:text-green-400">
+            +{addedLines}
+          </span>
+        )}
+        {showAdded && showRemoved && (
+          <span className="text-muted-foreground">/</span>
+        )}
+        {showRemoved && (
+          <span className="text-red-600 dark:text-red-400">
+            -{removedLines}
+          </span>
+        )}
+      </span>
+    );
+  }
+
+  if (totalLines != null && totalLines > 0) {
+    return (
+      <span className="text-[11px] font-medium text-muted-foreground shrink-0">
+        {totalLines} {totalLines === 1 ? "line" : "lines"}
+      </span>
+    );
+  }
+
+  return null;
+}
+
 // -- DyadDescription --
 
 interface DyadDescriptionProps {

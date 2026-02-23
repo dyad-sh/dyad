@@ -3,6 +3,7 @@ import { ImageIcon, Upload, Link, Check } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StylePopover } from "./StylePopover";
 
 export interface ImageUploadData {
@@ -110,30 +111,21 @@ export function ImageSwapPopover({
     >
       <div className="space-y-3">
         {/* Mode toggle tabs */}
-        <div className="flex gap-1 border rounded-md p-0.5">
-          <button
-            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-xs ${
-              mode === "url"
-                ? "bg-[#7f22fe] text-white"
-                : "hover:bg-gray-100 dark:hover:bg-gray-700"
-            }`}
-            onClick={() => setMode("url")}
-          >
-            <Link size={12} />
-            URL
-          </button>
-          <button
-            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-xs ${
-              mode === "upload"
-                ? "bg-[#7f22fe] text-white"
-                : "hover:bg-gray-100 dark:hover:bg-gray-700"
-            }`}
-            onClick={() => setMode("upload")}
-          >
-            <Upload size={12} />
-            Upload
-          </button>
-        </div>
+        <Tabs
+          value={mode}
+          onValueChange={(val) => setMode(val as "url" | "upload")}
+        >
+          <TabsList className="w-full h-8">
+            <TabsTrigger value="url" className="flex-1 gap-1 text-xs">
+              <Link size={12} />
+              URL
+            </TabsTrigger>
+            <TabsTrigger value="upload" className="flex-1 gap-1 text-xs">
+              <Upload size={12} />
+              Upload
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
 
         {mode === "url" ? (
           <div className="space-y-2">
@@ -176,8 +168,10 @@ export function ImageSwapPopover({
               onClick={() => fileInputRef.current?.click()}
               className="w-full"
             >
-              <Upload size={14} className="mr-1" />
-              {selectedFileName || "Choose File"}
+              <Upload size={14} className="mr-1 shrink-0" />
+              <span className="truncate">
+                {selectedFileName || "Choose File"}
+              </span>
             </Button>
             {fileError && <p className="text-xs text-red-500">{fileError}</p>}
             <p className="text-xs text-gray-500">

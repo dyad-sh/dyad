@@ -139,6 +139,10 @@ export const FileEditor = ({
     (theme === "system" &&
       window.matchMedia("(prefers-color-scheme: dark)").matches);
   const editorTheme = isDarkMode ? "dyad-dark" : "dyad-light";
+  const modelPath = React.useMemo(() => {
+    const normalizedPath = filePath.replace(/^\/+/, "");
+    return `file:///app-${appId ?? "unknown"}/${encodeURI(normalizedPath)}`;
+  }, [appId, filePath]);
 
   // Navigate to a specific line in the editor
   const navigateToLine = React.useCallback((line: number | null) => {
@@ -260,6 +264,7 @@ export const FileEditor = ({
       <div className="flex-1 overflow-hidden">
         <Editor
           height="100%"
+          path={modelPath}
           defaultLanguage={getLanguage(filePath)}
           value={value}
           theme={editorTheme}

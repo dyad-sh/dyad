@@ -70,8 +70,11 @@ test("should import GitHub URL", async ({ po }) => {
     .getByPlaceholder("https://github.com/user/repo.git")
     .fill("https://github.com/dyad-sh/nextjs-template.git");
 
-  // Click import
-  await po.page.getByRole("button", { name: "Import", exact: true }).click();
+  // Click import (scoped to GitHub URL tab panel to avoid strict mode violation)
+  await po.page
+    .getByLabel("GitHub URL")
+    .getByRole("button", { name: "Import", exact: true })
+    .click();
   // Should close modal and navigate to chat
   await expect(
     po.page.getByRole("heading", { name: "Import App" }),
@@ -119,26 +122,29 @@ test("should support advanced options with custom commands", async ({ po }) => {
   await po.page.getByRole("button", { name: "Advanced options" }).click();
 
   // Fill one command - should show error
+  const githubUrlPanel = po.page.getByLabel("GitHub URL");
   await po.page.getByPlaceholder("pnpm install").fill("npm install");
   await expect(
     po.page.getByText("Both commands are required when customizing"),
   ).toBeVisible();
   await expect(
-    po.page.getByRole("button", { name: "Import", exact: true }),
+    githubUrlPanel.getByRole("button", { name: "Import", exact: true }),
   ).toBeDisabled();
 
   // Fill both commands
   await po.page.getByPlaceholder("pnpm dev").fill("npm start");
 
   await expect(
-    po.page.getByRole("button", { name: "Import", exact: true }),
+    githubUrlPanel.getByRole("button", { name: "Import", exact: true }),
   ).toBeEnabled();
   await expect(
     po.page.getByText("Both commands are required when customizing"),
   ).not.toBeVisible();
 
   // Import with custom commands
-  await po.page.getByRole("button", { name: "Import", exact: true }).click();
+  await githubUrlPanel
+    .getByRole("button", { name: "Import", exact: true })
+    .click();
 
   await expect(
     po.page.getByRole("heading", { name: "Import App" }),
@@ -158,11 +164,14 @@ test("should allow empty commands to use defaults", async ({ po }) => {
     .fill("https://github.com/dyad-sh/nextjs-template.git");
 
   // Commands are empty by default, so import should be enabled
+  const githubUrlPanel = po.page.getByLabel("GitHub URL");
   await expect(
-    po.page.getByRole("button", { name: "Import", exact: true }),
+    githubUrlPanel.getByRole("button", { name: "Import", exact: true }),
   ).toBeEnabled();
 
-  await po.page.getByRole("button", { name: "Import", exact: true }).click();
+  await githubUrlPanel
+    .getByRole("button", { name: "Import", exact: true })
+    .click();
 
   await expect(
     po.page.getByRole("heading", { name: "Import App" }),

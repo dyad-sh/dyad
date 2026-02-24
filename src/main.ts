@@ -127,17 +127,21 @@ export async function onReady() {
   // Handle dyad-media:// protocol requests to serve persistent media files.
   protocol.handle("dyad-media", async (request) => {
     const url = new URL(request.url);
-    // Format: dyad-media://media/{app-path}/dyad-media/{filename}
+    // Format: dyad-media://media/{app-path}/.dyad/media/{filename}
     //   Uses a fixed hostname to avoid URL hostname normalization (lowercasing).
     //   The app-path segment is URI-encoded, so split on "/" before decoding
     //   to correctly handle absolute paths (which contain encoded slashes).
     const pathSegments = url.pathname.slice(1).split("/");
-    if (pathSegments.length < 3 || pathSegments[1] !== DYAD_MEDIA_DIR_NAME) {
+    if (
+      pathSegments.length < 4 ||
+      pathSegments[1] !== ".dyad" ||
+      pathSegments[2] !== "media"
+    ) {
       return new Response("Forbidden", { status: 403 });
     }
 
     const appPathRaw = decodeURIComponent(pathSegments[0]);
-    const filename = decodeURIComponent(pathSegments.slice(2).join("/"));
+    const filename = decodeURIComponent(pathSegments.slice(3).join("/"));
 
     // Resolve the app directory, handling both relative names and absolute
     // paths from imported apps (skipCopy).
@@ -145,7 +149,7 @@ export async function onReady() {
     const mediaDir = path.resolve(path.join(appPath, DYAD_MEDIA_DIR_NAME));
     const resolvedPath = path.resolve(path.join(mediaDir, filename));
 
-    // Security: ensure the resolved path stays within the app's dyad-media directory
+    // Security: ensure the resolved path stays within the app's .dyad/media directory
     if (!isWithinDyadMediaDir(resolvedPath, appPath)) {
       return new Response("Forbidden", { status: 403 });
     }

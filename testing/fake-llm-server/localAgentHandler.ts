@@ -93,7 +93,7 @@ function countToolResultRounds(messages: any[]): number {
 
 /**
  * Extract the attachment path from the last user message.
- * The user message format includes: "path: /path/to/app/dyad-media/hash.png"
+ * The user message format includes: "path: /path/to/app/.dyad/media/hash.png"
  */
 function extractAttachmentPath(messages: any[]): string | null {
   // Search from the end to find the most recent user message with an attachment path

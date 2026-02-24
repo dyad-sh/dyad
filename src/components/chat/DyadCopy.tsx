@@ -26,7 +26,7 @@ export const DyadCopy: React.FC<DyadCopyProps> = ({ children, node }) => {
   // Hide the "From" line for temp attachment paths (absolute paths) since they
   // show cryptic hash filenames that mean nothing to the user.
   const isTempAttachment =
-    /^(\/|[A-Za-z]:\\)/.test(from) || from.includes("dyad-media/");
+    /^(\/|[A-Za-z]:\\)/.test(from) || from.includes(".dyad/media/");
 
   return (
     <DyadCard accentColor="teal" state={state}>

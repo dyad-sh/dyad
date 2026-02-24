@@ -43,13 +43,3 @@ async function ensureGitignored(
 export async function ensureDyadGitignored(appPath: string): Promise<void> {
   await ensureGitignored(appPath, [".dyad/"]);
 }
-
-/**
- * Ensures `dyad-media/` is listed in the project's `.gitignore`.
- * Creates `.gitignore` if it doesn't exist.
- */
-export async function ensureDyadMediaGitignored(
-  appPath: string,
-): Promise<void> {
-  await ensureGitignored(appPath, ["dyad-media/"]);
-}

@@ -56,6 +56,14 @@ gh api graphql --input .claude/tmp/resolve_thread.json
 gh api repos/dyad-sh/dyad/issues/{PR_NUMBER}/labels -f "labels[]=label-name"
 ```
 
+## `gh pr create` may require explicit `--head`
+
+If `gh pr create` fails with `aborted: you must first push the current branch to a remote, or use the --head flag` even after pushing and setting upstream, retry with an explicit head ref:
+
+```bash
+gh pr create --head <owner>:<branch> ...
+```
+
 ## CI file access (claude-code-action)
 
 In CI, `claude-code-action` restricts file access to the repo working directory (e.g., `/home/runner/work/dyad/dyad`). Skills that save intermediate files (like PR diffs) must use `./filename` (current working directory), **never** `/tmp/`. Using `/tmp/` causes errors like: `cat in '/tmp/pr_*_diff.patch' was blocked. For security, Claude Code may only concatenate files from the allowed working directories`.

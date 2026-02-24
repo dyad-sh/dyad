@@ -259,6 +259,7 @@ export const FileEditor = ({
       />
       <div className="flex-1 overflow-hidden">
         <Editor
+          key={filePath}
           height="100%"
           defaultLanguage={getLanguage(filePath)}
           value={value}

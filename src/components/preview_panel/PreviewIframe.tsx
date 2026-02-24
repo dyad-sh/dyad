@@ -548,6 +548,11 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         return;
       }
 
+      if (event.data?.type === "dyad-image-load-error") {
+        showError("Image failed to load. Please check the URL and try again.");
+        return;
+      }
+
       if (event.data?.type === "dyad-component-coordinates-updated") {
         if (event.data.coordinates) {
           setCurrentComponentCoordinates(event.data.coordinates);

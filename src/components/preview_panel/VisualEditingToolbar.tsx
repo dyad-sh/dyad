@@ -173,6 +173,8 @@ export function VisualEditingToolbar({
         lineNumber: selectedComponent.lineNumber,
         styles: newStyles,
         textContent: existing?.textContent || "",
+        imageSrc: existing?.imageSrc,
+        imageUpload: existing?.imageUpload,
       });
       return updated;
     });

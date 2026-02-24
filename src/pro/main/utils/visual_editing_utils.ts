@@ -17,6 +17,27 @@ interface ComponentAnalysis {
 }
 
 /**
+ * Extracts the static src value from a JSX opening element's attributes.
+ * Handles both StringLiteral and JSXExpressionContainer wrapping a StringLiteral.
+ */
+function extractStaticSrc(openingElement: any): string | undefined {
+  const srcAttr = openingElement.attributes.find(
+    (attr: any) => attr.type === "JSXAttribute" && attr.name?.name === "src",
+  );
+  if (!srcAttr?.value) return undefined;
+  if (srcAttr.value.type === "StringLiteral") {
+    return srcAttr.value.value;
+  }
+  if (
+    srcAttr.value.type === "JSXExpressionContainer" &&
+    srcAttr.value.expression.type === "StringLiteral"
+  ) {
+    return srcAttr.value.expression.value;
+  }
+  return undefined;
+}
+
+/**
  * Pure function that transforms JSX/TSX content by applying style and text changes
  * @param content - The source code content to transform
  * @param changes - Map of line numbers to their changes
@@ -418,19 +439,7 @@ export function analyzeComponent(
   // Check if the element itself is an <img>
   if (tagName.type === "JSXIdentifier" && tagName.name === "img") {
     hasImage = true;
-    const srcAttr = foundElement.openingElement.attributes.find(
-      (attr: any) => attr.type === "JSXAttribute" && attr.name?.name === "src",
-    );
-    if (srcAttr?.value) {
-      if (srcAttr.value.type === "StringLiteral") {
-        imageSrc = srcAttr.value.value;
-      } else if (
-        srcAttr.value.type === "JSXExpressionContainer" &&
-        srcAttr.value.expression.type === "StringLiteral"
-      ) {
-        imageSrc = srcAttr.value.expression.value;
-      }
-    }
+    imageSrc = extractStaticSrc(foundElement.openingElement);
   }
 
   // Recursively check descendants for <img> elements
@@ -444,20 +453,7 @@ export function analyzeComponent(
         node.openingElement.name.name === "img"
       ) {
         hasImage = true;
-        const srcAttr = node.openingElement.attributes.find(
-          (attr: any) =>
-            attr.type === "JSXAttribute" && attr.name?.name === "src",
-        );
-        if (srcAttr?.value) {
-          if (srcAttr.value.type === "StringLiteral") {
-            imageSrc = srcAttr.value.value;
-          } else if (
-            srcAttr.value.type === "JSXExpressionContainer" &&
-            srcAttr.value.expression.type === "StringLiteral"
-          ) {
-            imageSrc = srcAttr.value.expression.value;
-          }
-        }
+        imageSrc = extractStaticSrc(node.openingElement);
         return;
       }
 

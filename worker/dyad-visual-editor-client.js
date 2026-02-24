@@ -275,7 +275,21 @@
       };
 
       imgEl.addEventListener("load", sendCoordinates, { once: true });
-      imgEl.addEventListener("error", sendCoordinates, { once: true });
+      imgEl.addEventListener(
+        "error",
+        () => {
+          sendCoordinates();
+          window.parent.postMessage(
+            {
+              type: "dyad-image-load-error",
+              elementId,
+              src,
+            },
+            "*",
+          );
+        },
+        { once: true },
+      );
       imgEl.src = src;
     }
   }

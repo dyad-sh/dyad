@@ -60,6 +60,17 @@ testSkipIfWindows(
       "/",
     );
 
+    // Open the routes dropdown and ensure catch-all "*" route is not shown
+    await po.page.getByTestId("preview-address-bar-path").click();
+    await expect(po.page.getByRole("menuitem", { name: /about/i })).toBeVisible(
+      {
+        timeout: Timeout.MEDIUM,
+      },
+    );
+    await expect(po.page.getByRole("menuitem", { name: /^\*$/ })).toHaveCount(
+      0,
+    );
+
     // Get the app path to modify the Index.tsx file
     const appPath = await po.appManagement.getCurrentAppPath();
     if (!appPath) {

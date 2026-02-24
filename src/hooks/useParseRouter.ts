@@ -7,6 +7,40 @@ export interface ParsedRoute {
   label: string;
 }
 
+export const isPreviewNavigableRoutePath = (path: string): boolean =>
+  !path.includes("*");
+
+export const extractRoutesFromReactRouterContent = (
+  content: string,
+): ParsedRoute[] => {
+  const parsedRoutes: ParsedRoute[] = [];
+  const routePathsRegex = /<Route\s+(?:[^>]*\s+)?path=["']([^"']+)["']/g;
+
+  const buildLabel = (path: string) =>
+    path === "/"
+      ? "Home"
+      : path
+          .split("/")
+          .filter((segment) => segment && !segment.startsWith(":"))
+          .pop()
+          ?.replace(/[-_]/g, " ")
+          .replace(/^\w/, (c) => c.toUpperCase()) || path;
+
+  let match: RegExpExecArray | null;
+  while ((match = routePathsRegex.exec(content)) !== null) {
+    const path = match[1];
+    if (!isPreviewNavigableRoutePath(path)) {
+      continue;
+    }
+    const label = buildLabel(path);
+    if (!parsedRoutes.some((r) => r.path === path)) {
+      parsedRoutes.push({ path, label });
+    }
+  }
+
+  return parsedRoutes;
+};
+
 /**
  * Loads the app router file and parses available routes for quick navigation.
  */
@@ -127,18 +161,7 @@ export function useParseRouter(appId: number | null) {
       }
 
       try {
-        const parsedRoutes: ParsedRoute[] = [];
-        const routePathsRegex = /<Route\s+(?:[^>]*\s+)?path=["']([^"']+)["']/g;
-        let match: RegExpExecArray | null;
-
-        while ((match = routePathsRegex.exec(content)) !== null) {
-          const path = match[1];
-          const label = buildLabel(path);
-          if (!parsedRoutes.some((r) => r.path === path)) {
-            parsedRoutes.push({ path, label });
-          }
-        }
-        setRoutes(parsedRoutes);
+        setRoutes(extractRoutesFromReactRouterContent(content));
       } catch (e) {
         console.error("Error parsing router file:", e);
         setRoutes([]);

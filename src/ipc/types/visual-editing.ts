@@ -2,6 +2,17 @@ import { z } from "zod";
 import { defineContract, createClient } from "../contracts/core";
 
 // =============================================================================
+// Visual Editing Constants
+// =============================================================================
+
+export const VALID_IMAGE_MIME_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+] as const;
+
+// =============================================================================
 // Visual Editing Schemas
 // =============================================================================
 

@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StylePopover } from "./StylePopover";
+import { VALID_IMAGE_MIME_TYPES } from "@/ipc/types/visual-editing";
 
 export interface ImageUploadData {
   fileName: string;
@@ -16,13 +17,6 @@ interface ImageSwapPopoverProps {
   currentSrc: string;
   onSwap: (newSrc: string, uploadData?: ImageUploadData) => void;
 }
-
-const VALID_IMAGE_TYPES = [
-  "image/jpeg",
-  "image/png",
-  "image/gif",
-  "image/webp",
-];
 
 export function ImageSwapPopover({
   currentSrc,
@@ -68,8 +62,14 @@ export function ImageSwapPopover({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!VALID_IMAGE_TYPES.includes(file.type)) {
+    if (!(VALID_IMAGE_MIME_TYPES as readonly string[]).includes(file.type)) {
       setFileError("Unsupported file type. Please use JPG, PNG, GIF, or WebP.");
+      return;
+    }
+    if (file.size > 7.5 * 1024 * 1024) {
+      setFileError(
+        "Image is too large (max 7.5 MB). Please choose a smaller file.",
+      );
       return;
     }
     setFileError(null);
@@ -138,6 +138,8 @@ export function ImageSwapPopover({
               placeholder="https://example.com/image.png"
               className="h-8 text-xs"
               value={urlValue}
+              aria-invalid={!!urlError}
+              aria-describedby={urlError ? "image-url-error" : undefined}
               onChange={(e) => {
                 setUrlValue(e.target.value);
                 setUrlError(null);
@@ -146,7 +148,15 @@ export function ImageSwapPopover({
                 if (e.key === "Enter") handleUrlSubmit();
               }}
             />
-            {urlError && <p className="text-xs text-red-500">{urlError}</p>}
+            {urlError && (
+              <p
+                id="image-url-error"
+                role="alert"
+                className="text-xs text-red-500"
+              >
+                {urlError}
+              </p>
+            )}
             <Button size="sm" onClick={handleUrlSubmit} className="w-full">
               <Check size={14} className="mr-1" />
               Apply
@@ -173,7 +183,11 @@ export function ImageSwapPopover({
                 {selectedFileName || "Choose File"}
               </span>
             </Button>
-            {fileError && <p className="text-xs text-red-500">{fileError}</p>}
+            {fileError && (
+              <p role="alert" className="text-xs text-red-500">
+                {fileError}
+              </p>
+            )}
             <p className="text-xs text-gray-500">
               Supports: JPG, PNG, GIF, WebP
             </p>

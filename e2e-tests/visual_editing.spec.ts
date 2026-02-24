@@ -140,6 +140,80 @@ testSkipIfWindows("edit text of the selected component", async ({ po }) => {
   });
 });
 
+testSkipIfWindows("swap image via URL", async ({ po }) => {
+  await po.setUpDyadPro();
+  await po.sendPrompt("tc=image-basic");
+  await po.approveProposal();
+
+  // Wait for the app to rebuild with the new code
+  await po.previewPanel.clickPreviewPickElement();
+
+  // Wait for the image element to appear in the iframe after rebuild
+  const heroImage = po.previewPanel
+    .getPreviewIframeElement()
+    .contentFrame()
+    .getByRole("img", { name: "Hero image" });
+  await expect(heroImage).toBeVisible({ timeout: Timeout.LONG });
+
+  // Select the image element in the preview
+  await heroImage.click();
+
+  // Wait for the toolbar to appear (check for the Margin button which is always visible)
+  const marginButton = po.page.getByRole("button", { name: "Margin" });
+  await expect(marginButton).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
+
+  // Ensure the toolbar has proper coordinates before clicking
+  await expect(async () => {
+    const box = await marginButton.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.y).toBeGreaterThan(0);
+  }).toPass({ timeout: Timeout.MEDIUM });
+
+  // Click the Swap Image button to open the image popover
+  const swapImageButton = po.page.getByRole("button", { name: "Swap Image" });
+  await expect(swapImageButton).toBeVisible({ timeout: Timeout.LONG });
+  await swapImageButton.click();
+
+  // Wait for the Image Source popover to appear
+  const imagePopover = po.page
+    .locator('[role="dialog"]')
+    .filter({ hasText: "Image Source" });
+  await expect(imagePopover).toBeVisible({
+    timeout: Timeout.LONG,
+  });
+
+  // Enter a new image URL
+  const urlInput = po.page.getByLabel("Image URL");
+  await urlInput.fill("https://example.com/new-hero.png");
+
+  // Click Apply to submit the new URL
+  await po.page.getByRole("button", { name: "Apply" }).click();
+
+  // Close the popover
+  await po.page.keyboard.press("Escape");
+
+  // Verify the visual changes dialog appears
+  await expect(po.page.getByText(/\d+ component[s]? modified/)).toBeVisible({
+    timeout: Timeout.MEDIUM,
+  });
+
+  // Save the changes
+  await po.page.getByRole("button", { name: "Save Changes" }).click();
+
+  // Wait for the success toast
+  await po.toastNotifications.waitForToastWithText(
+    "Visual changes saved to source files",
+  );
+
+  // Verify that the changes are applied to the codebase
+  await po.snapshotAppFiles({
+    name: "visual-editing-swap-image",
+    files: ["src/pages/Index.tsx"],
+  });
+});
+
 testSkipIfWindows("discard changes", async ({ po }) => {
   await po.setUpDyadPro();
   await po.sendPrompt("tc=basic");

@@ -16,18 +16,12 @@ import {
   AnalyseComponentParams,
   ApplyVisualEditingChangesParams,
 } from "@/ipc/types";
+import { VALID_IMAGE_MIME_TYPES } from "@/ipc/types/visual-editing";
 import {
   transformContent,
   analyzeComponent,
 } from "../../utils/visual_editing_utils";
 import { normalizePath } from "../../../../../shared/normalizePath";
-
-const VALID_IMAGE_MIME_TYPES = [
-  "image/jpeg",
-  "image/png",
-  "image/gif",
-  "image/webp",
-];
 
 const MAX_IMAGE_SIZE = 10_000_000; // ~7.5MB decoded
 
@@ -56,7 +50,9 @@ export function registerVisualEditingHandlers() {
           if (change.imageUpload) {
             const { fileName, base64Data, mimeType } = change.imageUpload;
 
-            if (!VALID_IMAGE_MIME_TYPES.includes(mimeType)) {
+            if (
+              !(VALID_IMAGE_MIME_TYPES as readonly string[]).includes(mimeType)
+            ) {
               imageValidationErrors.push(
                 `"${fileName}": Unsupported image type (${mimeType}). Allowed types: JPEG, PNG, GIF, WebP.`,
               );

@@ -58,9 +58,10 @@ export function TokenBar({ chatId }: TokenBarProps) {
             <div className="w-full">
               <div className="flex justify-between mb-1 text-xs text-muted-foreground">
                 <span>Tokens: {totalTokens.toLocaleString()}</span>
-                <span>
-                  {Math.round(percentUsed)}% of{" "}
-                  {(contextWindow / 1000).toFixed(0)}K
+                <span className="flex items-center gap-1.5">
+                  <span>{Math.round(percentUsed)}%</span>
+                  <span className="text-muted-foreground/50">·</span>
+                  <span>{(contextWindow / 1000).toFixed(0)}K</span>
                 </span>
               </div>
               <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden flex">

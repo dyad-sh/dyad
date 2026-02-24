@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { AlertTriangle, XCircle, Sparkles } from "lucide-react";
 import { useAtomValue } from "jotai";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { selectedChatIdAtom, isStreamingByIdAtom } from "@/atoms/chatAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { CopyErrorMessage } from "@/components/CopyErrorMessage";
 import {
@@ -25,6 +25,10 @@ export const DyadOutput: React.FC<DyadOutputProps> = ({
 }) => {
   const [isContentVisible, setIsContentVisible] = useState(false);
   const selectedChatId = useAtomValue(selectedChatIdAtom);
+  const isStreamingById = useAtomValue(isStreamingByIdAtom);
+  const isStreaming = selectedChatId
+    ? (isStreamingById.get(selectedChatId) ?? false)
+    : false;
   const { streamMessage } = useStreamChat();
 
   // If the type is not warning, it is an error (in case LLM gives a weird "type")
@@ -76,13 +80,15 @@ export const DyadOutput: React.FC<DyadOutputProps> = ({
           <CopyErrorMessage
             errorMessage={children ? `${message}\n${children}` : message}
           />
-          <button
-            onClick={handleAIFix}
-            className="cursor-pointer flex items-center justify-center bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-800 text-white rounded-md text-xs px-2.5 py-1 h-6 transition-colors"
-          >
-            <Sparkles size={13} className="mr-1" />
-            <span>Fix with AI</span>
-          </button>
+          {!isStreaming && (
+            <button
+              onClick={handleAIFix}
+              className="cursor-pointer flex items-center justify-center bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-800 text-white rounded-md text-xs px-2.5 py-1 h-6 transition-colors"
+            >
+              <Sparkles size={13} className="mr-1" />
+              <span>Fix with AI</span>
+            </button>
+          )}
         </div>
       )}
     </DyadCard>

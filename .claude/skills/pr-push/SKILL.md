@@ -160,7 +160,28 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    Use the commit messages and changed files to write a good title and summary.
 
-8. **Remove review-issue label:**
+8. **Add `cc:request` label for non-trivial PRs:**
+
+   After creating or updating the PR, determine if the PR is non-trivial and add the `cc:request` label to trigger a code review.
+
+   A PR is **trivial** (skip the label) if it ONLY contains:
+   - Documentation-only changes (`.md` files, comments)
+   - Snapshot/baseline updates with no test logic changes
+   - Single-line typo or formatting fixes
+
+   All other PRs are **non-trivial** (add the label), including:
+   - Any changes to source code (`.ts`, `.tsx`, `.js`, etc.)
+   - Changes to test logic (not just snapshot baselines)
+   - Configuration changes (`.yml`, `.json`, etc.)
+   - Any PR touching 3+ files
+
+   If the PR is non-trivial:
+
+   ```
+   gh pr edit --add-label "cc:request"
+   ```
+
+9. **Remove review-issue label:**
 
    After pushing, remove the `needs-human:review-issue` label if it exists (this label indicates the issue needed human review before work started, which is now complete):
 
@@ -168,24 +189,25 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
    gh pr edit --remove-label "needs-human:review-issue" 2>/dev/null || true
    ```
 
-9. **Remember learnings (after initial push):**
+10. **Remember learnings (after initial push):**
 
-   Run the `/remember-learnings` skill to capture any errors, snags, or insights from this session into `AGENTS.md` or `rules/` files.
+Run the `/remember-learnings` skill to capture any errors, snags, or insights from this session into `AGENTS.md` or `rules/` files.
 
-   If any files were modified by the skill (check with `git status`):
-   - Stage the modified files: `git add AGENTS.md rules/`
-   - Create a new commit for the learnings:
-     ```
-     git commit -m "docs: record session learnings"
-     ```
-   - Push the learnings commit:
-     ```
-     git push
-     ```
+If any files were modified by the skill (check with `git status`):
 
-   **IMPORTANT:** Do NOT amend the previous commit. Create a separate commit for learnings so the main work is already pushed before this step.
+- Stage the modified files: `git add AGENTS.md rules/`
+- Create a new commit for the learnings:
+  ```
+  git commit -m "docs: record session learnings"
+  ```
+- Push the learnings commit:
+  ```
+  git push
+  ```
 
-10. **Summarize the results:**
+**IMPORTANT:** Do NOT amend the previous commit. Create a separate commit for learnings so the main work is already pushed before this step.
+
+11. **Summarize the results:**
 
 - Report if a new feature branch was created (and its name)
 - Report any uncommitted changes that were committed in step 2

@@ -537,6 +537,73 @@
             "additionalProperties": false
           }
         }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "planning_questionnaire",
+          "description": "Present a structured questionnaire to gather requirements from the user. The tool displays questions in the UI and waits for the user's responses, returning them as the tool result.\n\n<when_to_use>\nUse this tool when:\n- The user wants to create a NEW app or project\n- The request is vague or open-ended\n- There are multiple reasonable interpretations\nSkip when the request is a specific, concrete change.\n</when_to_use>\n\n<input_schema>\nThe tool accepts ONLY a \"questions\" array.\n\nEach question object has these fields:\n- \"question\" (string, REQUIRED): The question text shown to the user\n- \"type\" (string, REQUIRED): One of \"text\", \"radio\", or \"checkbox\"\n- \"options\" (string array, REQUIRED for radio/checkbox, OMIT for text): 1-3 predefined choices\n- \"id\" (string, optional): Unique identifier, auto-generated if omitted\n- \"required\" (boolean, optional): Defaults to true\n- \"placeholder\" (string, optional): Placeholder for text inputs\n</input_schema>\n\n<correct_example>\nReasoning: The user asked to \"build me a todo app\". I need to clarify the tech stack and key features. I'll use radio for single-choice and checkbox for multi-choice.\n\n{\n  \"questions\": [\n    {\n      \"type\": \"radio\",\n      \"question\": \"What visual style do you prefer?\",\n      \"options\": [\"Minimal & clean\", \"Colorful & playful\", \"Dark & modern\"]\n    },\n    {\n      \"type\": \"checkbox\",\n      \"question\": \"Which features do you want?\",\n      \"options\": [\"Due dates\", \"Categories/tags\", \"Priority levels\"]\n    }\n  ]\n}\n</correct_example>\n\n<incorrect_examples>\nWRONG — Empty questions array:\n{ \"questions\": [] }\n\nWRONG — options on text type:\n{ \"type\": \"text\", \"question\": \"...\", \"options\": [\"a\"] }\n\nWRONG — Empty options array:\n{ \"type\": \"radio\", \"question\": \"...\", \"options\": [] }\n\nWRONG — Missing options for radio:\n{ \"type\": \"radio\", \"question\": \"...\" }\n\nWRONG — More than 3 questions or more than 3 options\n\nWRONG — Array with empty object (missing required \"question\" and \"type\" fields):\n{ \"questions\": [{}] }\n</incorrect_examples>",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "properties": {
+              "questions": {
+                "minItems": 1,
+                "maxItems": 3,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "description": "Unique identifier for this question (auto-generated if omitted)",
+                      "type": "string"
+                    },
+                    "question": {
+                      "type": "string",
+                      "description": "The question text to display to the user"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "text",
+                        "radio",
+                        "checkbox"
+                      ],
+                      "description": "text for free-form input, radio for single choice, checkbox for multiple choice"
+                    },
+                    "options": {
+                      "description": "Options for radio/checkbox questions. Keep to max 3 — users can always provide a custom answer via the free-form text input. Omit for text questions.",
+                      "minItems": 1,
+                      "maxItems": 3,
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "required": {
+                      "description": "Whether this question requires an answer (defaults to true)",
+                      "type": "boolean"
+                    },
+                    "placeholder": {
+                      "description": "Placeholder text for text inputs",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "question",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                "description": "A non empty array of 1-3 questions to present to the user"
+              }
+            },
+            "required": [
+              "questions"
+            ],
+            "additionalProperties": false
+          }
+        }
       }
     ],
     "tool_choice": "auto",

@@ -5,12 +5,9 @@ testSkipIfWindows("refresh app", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.sendPrompt("hi");
 
-  // Wait for the preview iframe to have content before removing body
-  await po.previewPanel.expectPreviewIframeIsVisible();
+  // Verify the preview content loads before we test refresh
+  await po.previewPanel.snapshotPreview();
   const iframe = po.previewPanel.getPreviewIframeElement();
-  await expect(iframe.contentFrame().locator("body")).not.toBeEmpty({
-    timeout: Timeout.LONG,
-  });
 
   // Drop the document.body inside the contentFrame to make
   // sure refresh works.
@@ -23,10 +20,11 @@ testSkipIfWindows("refresh app", async ({ po }) => {
 
   await po.previewPanel.clickPreviewRefresh();
 
-  // Wait for the iframe to reload with content after refresh
-  await expect(iframe.contentFrame().locator("body")).not.toBeEmpty({
-    timeout: Timeout.LONG,
-  });
+  // Wait for the iframe to reload and have content after refresh.
+  // Use a short poll to ensure body has meaningful content before snapshotting.
+  await expect(
+    po.previewPanel.getPreviewIframeElement().contentFrame().locator("body"),
+  ).not.toHaveText("", { timeout: Timeout.LONG });
 
   await po.previewPanel.snapshotPreview();
 });

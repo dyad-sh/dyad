@@ -52,7 +52,7 @@ Never use closely matched colors for an element's background and its foreground 
 Follow this workflow when building web apps:
 1. **Determine Design Direction**
    - Analyze the industry and target users of the website.
-   - Define colors, fonts, mood, and visual style.
+   - Define colors, fonts, mood, and visual style (you are allowed to ask the user if you have access to planning_questionnaire tool).
    - Ensure the design direction does NOT contradict the rules defined for this theme.
 2. **Build the Application**
    - Do not neglect functionality in the pursuit of making a beautiful website.

@@ -8,6 +8,127 @@ export interface ParsedRoute {
 }
 
 /**
+ * Builds a human-readable label from a route path.
+ */
+export function buildRouteLabel(path: string): string {
+  return path === "/"
+    ? "Home"
+    : path
+        .split("/")
+        .filter((segment) => segment && !segment.startsWith(":"))
+        .pop()
+        ?.replace(/[-_]/g, " ")
+        .replace(/^\w/, (c) => c.toUpperCase()) || path;
+}
+
+/**
+ * Parses routes from a React Router file content (e.g., App.tsx).
+ * Extracts route paths from <Route path="..." /> elements.
+ */
+export function parseRoutesFromRouterFile(
+  content: string | null,
+): ParsedRoute[] {
+  if (!content) {
+    return [];
+  }
+
+  try {
+    const parsedRoutes: ParsedRoute[] = [];
+    const routePathsRegex = /<Route\s+(?:[^>]*\s+)?path=["']([^"']+)["']/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = routePathsRegex.exec(content)) !== null) {
+      const path = match[1];
+      // Skip wildcard/catch-all routes like "*" - they are not valid navigation targets
+      // and cause 'Invalid URL' TypeError when clicked
+      if (path === "*" || path === "/*") continue;
+      const label = buildRouteLabel(path);
+      if (!parsedRoutes.some((r) => r.path === path)) {
+        parsedRoutes.push({ path, label });
+      }
+    }
+    return parsedRoutes;
+  } catch (e) {
+    console.error("Error parsing router file:", e);
+    return [];
+  }
+}
+
+/**
+ * Parses routes from Next.js file-based routing (pages/ or app/ directories).
+ */
+export function parseRoutesFromNextFiles(files: string[]): ParsedRoute[] {
+  const nextRoutes = new Set<string>();
+
+  // pages directory (pages router)
+  const pageFileRegex = /^(?:pages)\/(.+)\.(?:js|jsx|ts|tsx|mdx)$/i;
+  for (const file of files) {
+    if (!file.startsWith("pages/")) continue;
+    if (file.startsWith("pages/api/")) continue; // skip api routes
+    const baseName = file.split("/").pop() || "";
+    if (baseName.startsWith("_")) continue; // _app, _document, etc.
+
+    const m = file.match(pageFileRegex);
+    if (!m) continue;
+    let routePath = m[1];
+
+    // Ignore dynamic routes containing [ ]
+    if (routePath.includes("[")) continue;
+
+    // Normalize index files
+    if (routePath === "index") {
+      nextRoutes.add("/");
+      continue;
+    }
+    if (routePath.endsWith("/index")) {
+      routePath = routePath.slice(0, -"/index".length);
+    }
+
+    nextRoutes.add("/" + routePath);
+  }
+
+  // app directory (app router)
+  const appPageRegex = /^(?:src\/)?app\/(.*)\/page\.(?:js|jsx|ts|tsx|mdx)$/i;
+  for (const file of files) {
+    const lower = file.toLowerCase();
+    if (
+      lower === "app/page.tsx" ||
+      lower === "app/page.jsx" ||
+      lower === "app/page.js" ||
+      lower === "app/page.mdx" ||
+      lower === "app/page.ts" ||
+      lower === "src/app/page.tsx" ||
+      lower === "src/app/page.jsx" ||
+      lower === "src/app/page.js" ||
+      lower === "src/app/page.mdx" ||
+      lower === "src/app/page.ts"
+    ) {
+      nextRoutes.add("/");
+      continue;
+    }
+    const m = file.match(appPageRegex);
+    if (!m) continue;
+    const routeSeg = m[1];
+    // Ignore dynamic segments and grouping folders like (marketing)
+    if (routeSeg.includes("[")) continue;
+    const cleaned = routeSeg
+      .split("/")
+      .filter((s) => s && !s.startsWith("("))
+      .join("/");
+    if (!cleaned) {
+      nextRoutes.add("/");
+    } else {
+      nextRoutes.add("/" + cleaned);
+    }
+  }
+
+  return Array.from(nextRoutes).map((path) => ({
+    path,
+    label: buildRouteLabel(path),
+  }));
+}
+
+/**
  * Loads the app router file and parses available routes for quick navigation.
  */
 export function useParseRouter(appId: number | null) {
@@ -37,118 +158,10 @@ export function useParseRouter(appId: number | null) {
 
   // Parse routes either from Next.js file-based routing or from router file
   useEffect(() => {
-    const buildLabel = (path: string) =>
-      path === "/"
-        ? "Home"
-        : path
-            .split("/")
-            .filter((segment) => segment && !segment.startsWith(":"))
-            .pop()
-            ?.replace(/[-_]/g, " ")
-            .replace(/^\w/, (c) => c.toUpperCase()) || path;
-
-    const setFromNextFiles = (files: string[]) => {
-      const nextRoutes = new Set<string>();
-
-      // pages directory (pages router)
-      const pageFileRegex = /^(?:pages)\/(.+)\.(?:js|jsx|ts|tsx|mdx)$/i;
-      for (const file of files) {
-        if (!file.startsWith("pages/")) continue;
-        if (file.startsWith("pages/api/")) continue; // skip api routes
-        const baseName = file.split("/").pop() || "";
-        if (baseName.startsWith("_")) continue; // _app, _document, etc.
-
-        const m = file.match(pageFileRegex);
-        if (!m) continue;
-        let routePath = m[1];
-
-        // Ignore dynamic routes containing [ ]
-        if (routePath.includes("[")) continue;
-
-        // Normalize index files
-        if (routePath === "index") {
-          nextRoutes.add("/");
-          continue;
-        }
-        if (routePath.endsWith("/index")) {
-          routePath = routePath.slice(0, -"/index".length);
-        }
-
-        nextRoutes.add("/" + routePath);
-      }
-
-      // app directory (app router)
-      const appPageRegex =
-        /^(?:src\/)?app\/(.*)\/page\.(?:js|jsx|ts|tsx|mdx)$/i;
-      for (const file of files) {
-        const lower = file.toLowerCase();
-        if (
-          lower === "app/page.tsx" ||
-          lower === "app/page.jsx" ||
-          lower === "app/page.js" ||
-          lower === "app/page.mdx" ||
-          lower === "app/page.ts" ||
-          lower === "src/app/page.tsx" ||
-          lower === "src/app/page.jsx" ||
-          lower === "src/app/page.js" ||
-          lower === "src/app/page.mdx" ||
-          lower === "src/app/page.ts"
-        ) {
-          nextRoutes.add("/");
-          continue;
-        }
-        const m = file.match(appPageRegex);
-        if (!m) continue;
-        const routeSeg = m[1];
-        // Ignore dynamic segments and grouping folders like (marketing)
-        if (routeSeg.includes("[")) continue;
-        const cleaned = routeSeg
-          .split("/")
-          .filter((s) => s && !s.startsWith("("))
-          .join("/");
-        if (!cleaned) {
-          nextRoutes.add("/");
-        } else {
-          nextRoutes.add("/" + cleaned);
-        }
-      }
-
-      const parsed = Array.from(nextRoutes).map((path) => ({
-        path,
-        label: buildLabel(path),
-      }));
-      setRoutes(parsed);
-    };
-
-    const setFromRouterFile = (content: string | null) => {
-      if (!content) {
-        setRoutes([]);
-        return;
-      }
-
-      try {
-        const parsedRoutes: ParsedRoute[] = [];
-        const routePathsRegex = /<Route\s+(?:[^>]*\s+)?path=["']([^"']+)["']/g;
-        let match: RegExpExecArray | null;
-
-        while ((match = routePathsRegex.exec(content)) !== null) {
-          const path = match[1];
-          const label = buildLabel(path);
-          if (!parsedRoutes.some((r) => r.path === path)) {
-            parsedRoutes.push({ path, label });
-          }
-        }
-        setRoutes(parsedRoutes);
-      } catch (e) {
-        console.error("Error parsing router file:", e);
-        setRoutes([]);
-      }
-    };
-
     if (isNextApp && app?.files) {
-      setFromNextFiles(app.files);
+      setRoutes(parseRoutesFromNextFiles(app.files));
     } else {
-      setFromRouterFile(routerContent ?? null);
+      setRoutes(parseRoutesFromRouterFile(routerContent ?? null));
     }
   }, [isNextApp, app?.files, routerContent]);
 

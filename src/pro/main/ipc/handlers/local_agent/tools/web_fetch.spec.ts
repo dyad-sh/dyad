@@ -42,7 +42,7 @@ describe("webFetchTool", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.stubGlobal("fetch", vi.fn());
-    vi.mocked(lookup).mockResolvedValue([
+    (vi.mocked(lookup) as any).mockResolvedValue([
       { address: "93.184.216.34", family: 4 },
     ]);
   });
@@ -352,7 +352,9 @@ describe("webFetchTool", () => {
   });
 
   it("rejects domains that resolve to private IPs", async () => {
-    vi.mocked(lookup).mockResolvedValue([{ address: "127.0.0.1", family: 4 }]);
+    (vi.mocked(lookup) as any).mockResolvedValue([
+      { address: "127.0.0.1", family: 4 },
+    ]);
 
     await expect(
       webFetchTool.execute(

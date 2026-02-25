@@ -429,8 +429,11 @@ export async function handleLocalAgentStream(
     // Ensure .dyad/ is gitignored (idempotent; also done by compaction/plans)
     // Skip in read-only/plan-only mode to avoid modifying the workspace
     if (!readOnly && !planModeOnly) {
-      await ensureDyadGitignored(appPath).catch((err) =>
-        logger.warn("Failed to ensure .dyad gitignored:", err),
+      await ensureDyadGitignored(appPath).catch((err: unknown) =>
+        logger.warn(
+          "Failed to ensure .dyad gitignored:",
+          err instanceof Error ? err.message : String(err),
+        ),
       );
     }
     if (persistedTodos.length > 0) {

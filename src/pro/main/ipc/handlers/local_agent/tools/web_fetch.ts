@@ -22,6 +22,127 @@ const MAX_RESPONSE_SIZE = 5 * 1024 * 1024; // 5MB
 const DEFAULT_TIMEOUT = 30 * 1000; // 30 seconds
 const MAX_TIMEOUT = 120 * 1000; // 2 minutes
 
+/**
+ * Decode HTML entities including named, decimal, and hexadecimal entities.
+ * IMPORTANT: &amp; must be decoded last to prevent double-decoding (e.g., &amp;lt; → &lt; not <)
+ */
+function decodeHTMLEntities(text: string): string {
+  return text
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) =>
+      String.fromCharCode(parseInt(hex, 16)),
+    )
+    .replace(/&amp;/g, "&");
+}
+
+/**
+ * Check if a URL targets a private/internal network address.
+ * Prevents SSRF attacks via prompt injection.
+ */
+function isPrivateURL(urlString: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(urlString);
+  } catch {
+    return true; // Block malformed URLs
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+
+  // Block localhost variants
+  if (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "::1" ||
+    hostname === "0.0.0.0" ||
+    hostname === "[::1]"
+  ) {
+    return true;
+  }
+
+  // Block cloud metadata endpoints
+  if (
+    hostname === "169.254.169.254" ||
+    hostname === "metadata.google.internal"
+  ) {
+    return true;
+  }
+
+  // Block private IP ranges
+  const parts = hostname.split(".").map(Number);
+  if (parts.length === 4 && parts.every((p) => !isNaN(p) && p >= 0 && p <= 255)) {
+    if (parts[0] === 10) return true; // 10.0.0.0/8
+    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true; // 172.16.0.0/12
+    if (parts[0] === 192 && parts[1] === 168) return true; // 192.168.0.0/16
+    if (parts[0] === 0) return true; // 0.0.0.0/8
+    if (parts[0] === 169 && parts[1] === 254) return true; // link-local 169.254.0.0/16
+  }
+
+  // Block .local and .internal domains
+  if (hostname.endsWith(".local") || hostname.endsWith(".internal")) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Read response body with a streaming size limit to prevent memory exhaustion
+ * from servers that don't send Content-Length headers.
+ */
+async function readResponseBodyWithLimit(
+  response: Response,
+  maxSize: number,
+): Promise<ArrayBuffer> {
+  // Check content-length header first for early rejection
+  const contentLength = response.headers.get("content-length");
+  if (contentLength && parseInt(contentLength) > maxSize) {
+    throw new Error("Response too large (exceeds 5MB limit)");
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    // Fallback if body stream is unavailable
+    const buffer = await response.arrayBuffer();
+    if (buffer.byteLength > maxSize) {
+      throw new Error("Response too large (exceeds 5MB limit)");
+    }
+    return buffer;
+  }
+
+  const chunks: Uint8Array[] = [];
+  let totalSize = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      totalSize += value.byteLength;
+      if (totalSize > maxSize) {
+        await reader.cancel();
+        throw new Error("Response too large (exceeds 5MB limit)");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const result = new Uint8Array(totalSize);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return result.buffer;
+}
+
 const DESCRIPTION = `
 Fetches content from a URL and returns it in the requested format.
 
@@ -77,8 +198,12 @@ function createAbortSignal(
  * Extract text from HTML by removing script/style tags and extracting text content
  */
 function extractTextFromHTML(html: string): string {
+  // Decode HTML entities FIRST to prevent XSS bypass via encoded tags
+  // (e.g., &lt;script&gt; surviving tag stripping then being decoded)
+  let text = decodeHTMLEntities(html);
+
   // Remove script and style tags and their content
-  let text = html
+  text = text
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
     .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
     .replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, "")
@@ -88,15 +213,6 @@ function extractTextFromHTML(html: string): string {
 
   // Remove HTML tags
   text = text.replace(/<[^>]+>/g, " ");
-
-  // Decode HTML entities
-  text = text
-    .replace(/&nbsp;/g, " ")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
 
   // Collapse whitespace and trim
   text = text.replace(/\s+/g, " ").trim();
@@ -109,7 +225,8 @@ function extractTextFromHTML(html: string): string {
  * This is a basic implementation - for production use consider a library like turndown
  */
 function convertHTMLToMarkdown(html: string): string {
-  let markdown = html;
+  // Decode HTML entities FIRST to prevent XSS bypass via encoded tags
+  let markdown = decodeHTMLEntities(html);
 
   // Remove script, style, meta, link tags
   markdown = markdown
@@ -200,15 +317,6 @@ function convertHTMLToMarkdown(html: string): string {
   // Remove remaining HTML tags
   markdown = markdown.replace(/<[^>]+>/g, "");
 
-  // Decode HTML entities
-  markdown = markdown
-    .replace(/&nbsp;/g, " ")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
-
   // Clean up excessive newlines
   markdown = markdown.replace(/\n{3,}/g, "\n\n");
 
@@ -229,6 +337,13 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
     // Validate URL
     if (!args.url.startsWith("http://") && !args.url.startsWith("https://")) {
       throw new Error("URL must start with http:// or https://");
+    }
+
+    // Block private/internal network addresses to prevent SSRF
+    if (isPrivateURL(args.url)) {
+      throw new Error(
+        "Access to private/internal network addresses is not allowed",
+      );
     }
 
     const timeout = Math.min(
@@ -294,16 +409,11 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
       );
     }
 
-    // Check content length
-    const contentLength = response.headers.get("content-length");
-    if (contentLength && parseInt(contentLength) > MAX_RESPONSE_SIZE) {
-      throw new Error("Response too large (exceeds 5MB limit)");
-    }
-
-    const arrayBuffer = await response.arrayBuffer();
-    if (arrayBuffer.byteLength > MAX_RESPONSE_SIZE) {
-      throw new Error("Response too large (exceeds 5MB limit)");
-    }
+    // Read response body with streaming size limit
+    const arrayBuffer = await readResponseBodyWithLimit(
+      response,
+      MAX_RESPONSE_SIZE,
+    );
 
     const contentType = response.headers.get("content-type") || "";
     const mime = contentType.split(";")[0]?.trim().toLowerCase() || "";

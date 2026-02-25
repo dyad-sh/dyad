@@ -228,12 +228,25 @@ describe("web_fetch tool", () => {
   });
 
   it("should respect max timeout limit", async () => {
+    vi.useFakeTimers();
+    const setTimeoutSpy = vi.spyOn(global, "setTimeout");
     const mockHtml = "<html><body>Test</body></html>";
+    const mockReader = {
+      read: vi
+        .fn()
+        .mockResolvedValueOnce({
+          done: false,
+          value: new TextEncoder().encode(mockHtml),
+        })
+        .mockResolvedValueOnce({ done: true, value: undefined }),
+      cancel: vi.fn(),
+      releaseLock: vi.fn(),
+    };
     (global.fetch as any).mockResolvedValue({
       ok: true,
       status: 200,
       headers: new Map([["content-type", "text/html"]]),
-      arrayBuffer: async () => new TextEncoder().encode(mockHtml).buffer,
+      body: { getReader: () => mockReader },
     });
 
     // Request 200 seconds but max is 120
@@ -242,7 +255,66 @@ describe("web_fetch tool", () => {
       mockContext,
     );
 
-    expect(global.fetch).toHaveBeenCalled();
+    expect(setTimeoutSpy).toHaveBeenCalledWith(
+      expect.any(Function),
+      120 * 1000,
+    );
+    vi.useRealTimers();
+    setTimeoutSpy.mockRestore();
+  });
+
+  it("should block private/internal URLs (SSRF protection)", async () => {
+    const privateUrls = [
+      "http://localhost/secret",
+      "http://127.0.0.1/admin",
+      "http://0.0.0.0/",
+      "http://10.0.0.1/internal",
+      "http://172.16.0.1/data",
+      "http://192.168.1.1/config",
+      "http://169.254.169.254/latest/meta-data/",
+      "http://metadata.google.internal/computeMetadata/v1/",
+      "https://app.local/api",
+    ];
+
+    for (const url of privateUrls) {
+      await expect(
+        webFetchTool.execute({ url, format: "text" }, mockContext),
+      ).rejects.toThrow("Access to private/internal network addresses is not allowed");
+    }
+
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("should strip encoded script tags to prevent XSS bypass", async () => {
+    const mockHtml =
+      "<html><body>Hello &lt;script&gt;alert('xss')&lt;/script&gt; World</body></html>";
+    const mockReader = {
+      read: vi
+        .fn()
+        .mockResolvedValueOnce({
+          done: false,
+          value: new TextEncoder().encode(mockHtml),
+        })
+        .mockResolvedValueOnce({ done: true, value: undefined }),
+      cancel: vi.fn(),
+      releaseLock: vi.fn(),
+    };
+    (global.fetch as any).mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Map([["content-type", "text/html"]]),
+      body: { getReader: () => mockReader },
+    });
+
+    const result = await webFetchTool.execute(
+      { url: "https://example.com", format: "text" },
+      mockContext,
+    );
+
+    expect(result).not.toContain("<script>");
+    expect(result).not.toContain("alert");
+    expect(result).toContain("Hello");
+    expect(result).toContain("World");
   });
 
   it("should generate consent preview", () => {

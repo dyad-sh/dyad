@@ -10,3 +10,10 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 ## Async I/O
 
 - Use `fs.promises` (not sync `fs` methods) in any code running on the Electron main process (e.g., `todo_persistence.ts`) to avoid blocking the event loop.
+
+## Common import locations
+
+When implementing local agent features, be aware of these common module locations:
+
+- **Git ignore utilities**: `ensureDyadGitignored` is exported from `@/ipc/handlers/gitignoreUtils`, NOT from `@/ipc/handlers/planUtils` (which exports plan-related utilities like `slugify`, `buildFrontmatter`, `validatePlanId`).
+- **Error handling**: When using `.catch()` with error handlers, always type the error parameter explicitly as `unknown` (e.g., `catch((err: unknown) => ...)`) to satisfy TypeScript strict mode.

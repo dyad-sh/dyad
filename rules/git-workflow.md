@@ -117,6 +117,27 @@ When rebasing a PR branch that conflicts with upstream documentation changes (e.
 - Discard the PR's inline content that conflicts with the new organization
 - The PR's documentation changes may need to be re-applied to the new file locations after the rebase
 
+## `--force-with-lease` failures with split fetch/push remotes
+
+In CI, `claude-code-action` configures `origin` with different fetch and push URLs (fetch from `dyad-sh/dyad`, push to fork like `wwwillchen-bot/dyad`). This causes `git push --force-with-lease` to always fail with "stale info" because:
+
+1. `git fetch origin` fetches from the base repo (where the branch doesn't exist)
+2. The tracking ref gets set to the base repo's state
+3. `--force-with-lease` compares against this stale tracking ref when pushing to the fork
+
+**Fix:** Fetch from the fork URL directly, then update the tracking ref:
+
+```bash
+# Get the push URL
+PUSH_URL=$(git remote get-url --push origin)
+# Fetch the branch from the push target
+git fetch "$PUSH_URL" <branch>
+# Update tracking ref to match actual fork state
+git update-ref refs/remotes/origin/<branch> FETCH_HEAD
+# Now --force-with-lease will work
+git push --force-with-lease origin <branch>
+```
+
 ## Resolving package.json engine conflicts
 
 When rebasing causes conflicts in the `engines` field of `package.json` (e.g., node version requirements), accept the incoming change from upstream/main to maintain consistency with the base branch requirements. The same resolution should be applied to the corresponding section in `package-lock.json`.

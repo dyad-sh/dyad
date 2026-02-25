@@ -85,11 +85,11 @@ function isTextLikeMime(mime: string): boolean {
 function decodeHtmlEntities(input: string): string {
   return input
     .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&");
 }
 
 function collapseWhitespace(input: string): string {
@@ -104,12 +104,12 @@ function collapseWhitespace(input: string): string {
 
 function removeNonContentTags(html: string): string {
   return html
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
-    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ")
-    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, " ")
-    .replace(/<object\b[^>]*>[\s\S]*?<\/object>/gi, " ")
-    .replace(/<embed\b[^>]*>[\s\S]*?<\/embed>/gi, " ");
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, " ")
+    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript\s*>/gi, " ")
+    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe\s*>/gi, " ")
+    .replace(/<object\b[^>]*>[\s\S]*?<\/object\s*>/gi, " ")
+    .replace(/<embed\b[^>]*>[\s\S]*?<\/embed\s*>/gi, " ");
 }
 
 function extractTextFromHtml(html: string): string {

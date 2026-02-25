@@ -92,6 +92,27 @@ function countToolResultRounds(messages: any[]): number {
 }
 
 /**
+ * Extract the attachment path from the last user message.
+ * The user message format includes: "path: /path/to/app/.dyad/media/hash.png"
+ */
+function extractAttachmentPath(messages: any[]): string | null {
+  // Search from the end to find the most recent user message with an attachment path
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg?.role !== "user") continue;
+    const text = Array.isArray(msg.content)
+      ? msg.content.find((p: any) => p.type === "text")?.text
+      : typeof msg.content === "string"
+        ? msg.content
+        : null;
+    if (!text) continue;
+    const match = text.match(/\(path: ([^\s)]+)\)/);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+/**
  * Load a fixture file dynamically
  * Tries .ts first (for dev mode with ts-node), then .js
  */
@@ -363,7 +384,7 @@ export async function handleLocalAgentFixture(
       return;
     }
 
-    const turn = turns[turnIndex];
+    let turn = turns[turnIndex];
     console.log(
       `[local-agent] Executing pass ${passIndex}, turn ${turnIndex}:`,
       {
@@ -371,6 +392,26 @@ export async function handleLocalAgentFixture(
         toolCallCount: turn.toolCalls?.length ?? 0,
       },
     );
+
+    // Replace {{ATTACHMENT_PATH}} placeholders in tool call args
+    // with the actual path extracted from the user message
+    if (turn.toolCalls) {
+      const attachmentPath = extractAttachmentPath(messages);
+      if (attachmentPath) {
+        turn = {
+          ...turn,
+          toolCalls: turn.toolCalls.map((tc) => ({
+            ...tc,
+            args: JSON.parse(
+              JSON.stringify(tc.args).replace(
+                /\{\{ATTACHMENT_PATH\}\}/g,
+                JSON.stringify(attachmentPath).slice(1, -1),
+              ),
+            ),
+          })),
+        };
+      }
+    }
 
     // If this turn has tool calls, stream them
     if (turn.toolCalls && turn.toolCalls.length > 0) {

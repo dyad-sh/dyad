@@ -67,6 +67,43 @@ export function getDyadRenameTags(fullResponse: string): {
   return tags;
 }
 
+export function getDyadCopyTags(fullResponse: string): {
+  from: string;
+  to: string;
+  description?: string;
+}[] {
+  const dyadCopyRegex = /<dyad-copy([^>]*?)(?:>([\s\S]*?)<\/dyad-copy>|\/>)/gi;
+  const fromRegex = /from="([^"]+)"/;
+  const toRegex = /to="([^"]+)"/;
+  const descriptionRegex = /description="([^"]+)"/;
+
+  let match;
+  const tags: { from: string; to: string; description?: string }[] = [];
+
+  while ((match = dyadCopyRegex.exec(fullResponse)) !== null) {
+    const attrs = match[1];
+    const fromMatch = fromRegex.exec(attrs);
+    const toMatch = toRegex.exec(attrs);
+    const descriptionMatch = descriptionRegex.exec(attrs);
+
+    if (fromMatch?.[1] && toMatch?.[1]) {
+      tags.push({
+        from: normalizePath(unescapeXmlAttr(fromMatch[1])),
+        to: normalizePath(unescapeXmlAttr(toMatch[1])),
+        description: descriptionMatch?.[1]
+          ? unescapeXmlAttr(descriptionMatch[1])
+          : undefined,
+      });
+    } else {
+      logger.warn(
+        "Found <dyad-copy> tag without valid 'from' or 'to' attributes:",
+        match[0],
+      );
+    }
+  }
+  return tags;
+}
+
 export function getDyadDeleteTags(fullResponse: string): string[] {
   const dyadDeleteRegex =
     /<dyad-delete path="([^"]+)"[^>]*>([\s\S]*?)<\/dyad-delete>/g;

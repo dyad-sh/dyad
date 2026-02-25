@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 
 import { DyadWrite } from "./DyadWrite";
 import { DyadRename } from "./DyadRename";
+import { DyadCopy } from "./DyadCopy";
 import { DyadDelete } from "./DyadDelete";
 import { DyadAddDependency } from "./DyadAddDependency";
 import { DyadExecuteSql } from "./DyadExecuteSql";
@@ -74,6 +75,7 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-supabase-project-info",
   "dyad-status",
   "dyad-compaction",
+  "dyad-copy",
   // Plan mode tags
   "dyad-write-plan",
   "dyad-exit-plan",
@@ -459,6 +461,22 @@ function renderCustomTag(
         >
           {content}
         </DyadRename>
+      );
+
+    case "dyad-copy":
+      return (
+        <DyadCopy
+          node={{
+            properties: {
+              from: attributes.from || "",
+              to: attributes.to || "",
+              description: attributes.description || "",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadCopy>
       );
 
     case "dyad-delete":

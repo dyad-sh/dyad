@@ -116,6 +116,36 @@
       {
         "type": "function",
         "function": {
+          "name": "copy_file",
+          "description": "Copy a file from one location to another. Can copy uploaded attachment files (from .dyad/media) into the codebase, or copy files within the codebase.",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string",
+                "description": "The source file path (can be a .dyad/media path or a path relative to the app root)"
+              },
+              "to": {
+                "type": "string",
+                "description": "The destination file path relative to the app root"
+              },
+              "description": {
+                "description": "Brief description of why the file is being copied",
+                "type": "string"
+              }
+            },
+            "required": [
+              "from",
+              "to"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
           "name": "delete_file",
           "description": "Delete a file from the codebase",
           "parameters": {

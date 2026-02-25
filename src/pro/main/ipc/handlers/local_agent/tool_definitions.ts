@@ -9,6 +9,7 @@ import { readSettings, writeSettings } from "@/main/settings";
 import { writeFileTool } from "./tools/write_file";
 import { deleteFileTool } from "./tools/delete_file";
 import { renameFileTool } from "./tools/rename_file";
+import { copyFileTool } from "./tools/copy_file";
 import { addDependencyTool } from "./tools/add_dependency";
 import { executeSqlTool } from "./tools/execute_sql";
 
@@ -47,6 +48,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   writeFileTool,
   editFileTool,
   searchReplaceTool,
+  copyFileTool,
   deleteFileTool,
   renameFileTool,
   addDependencyTool,

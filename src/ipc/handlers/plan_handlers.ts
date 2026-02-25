@@ -13,8 +13,8 @@ import {
   buildFrontmatter,
   validatePlanId,
   parsePlanFile,
-  ensureDyadGitignored,
 } from "./planUtils";
+import { ensureDyadGitignored } from "./gitignoreUtils";
 
 const logger = log.scope("plan_handlers");
 

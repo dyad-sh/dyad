@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, Menu } from "electron";
+import { app, BrowserWindow, dialog, Menu, protocol, net } from "electron";
 import * as path from "node:path";
 import { registerIpcHandlers } from "./ipc/ipc_host";
 import dotenv from "dotenv";
@@ -31,7 +31,11 @@ import {
 import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai_messages_cleanup";
 import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
-import { getDyadAppsBaseDirectory } from "./paths/paths";
+import { getDyadAppsBaseDirectory, getDyadAppPath } from "./paths/paths";
+import {
+  DYAD_MEDIA_DIR_NAME,
+  isWithinDyadMediaDir,
+} from "./ipc/utils/media_path_utils";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -119,6 +123,45 @@ export async function onReady() {
 
   // Start performance monitoring
   startPerformanceMonitoring();
+
+  // Handle dyad-media:// protocol requests to serve persistent media files.
+  protocol.handle("dyad-media", async (request) => {
+    const url = new URL(request.url);
+    // Format: dyad-media://media/{app-path}/.dyad/media/{filename}
+    //   Uses a fixed hostname to avoid URL hostname normalization (lowercasing).
+    //   The app-path segment is URI-encoded, so split on "/" before decoding
+    //   to correctly handle absolute paths (which contain encoded slashes).
+    const pathSegments = url.pathname.slice(1).split("/");
+    if (
+      pathSegments.length < 4 ||
+      pathSegments[1] !== ".dyad" ||
+      pathSegments[2] !== "media"
+    ) {
+      return new Response("Forbidden", { status: 403 });
+    }
+
+    const appPathRaw = decodeURIComponent(pathSegments[0]);
+    const filename = decodeURIComponent(pathSegments.slice(3).join("/"));
+
+    // Resolve the app directory, handling both relative names and absolute
+    // paths from imported apps (skipCopy).
+    const appPath = getDyadAppPath(appPathRaw);
+    const mediaDir = path.resolve(path.join(appPath, DYAD_MEDIA_DIR_NAME));
+    const resolvedPath = path.resolve(path.join(mediaDir, filename));
+
+    // Security: ensure the resolved path stays within the app's .dyad/media directory
+    if (!isWithinDyadMediaDir(resolvedPath, appPath)) {
+      return new Response("Forbidden", { status: 403 });
+    }
+
+    try {
+      return await net.fetch(
+        require("node:url").pathToFileURL(resolvedPath).href,
+      );
+    } catch {
+      return new Response("Not Found", { status: 404 });
+    }
+  });
 
   await onFirstRunMaybe(settings);
   createWindow();
@@ -375,6 +418,20 @@ const createApplicationMenu = () => {
   const appMenu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(appMenu);
 };
+
+// Register dyad-media:// protocol for serving persistent media attachments.
+// Must be called before app.whenReady().
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "dyad-media",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+    },
+  },
+]);
 
 // Skip singleton lock for E2E test builds to allow parallel test execution.
 // Deep link handling still works via the 'open-url' event registered below.

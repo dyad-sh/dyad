@@ -7,8 +7,8 @@ import { testSkipIfWindows } from "./helpers/test_helper";
  * Test for file upload to codebase in local-agent mode.
  *
  * This tests that when a file is uploaded with "upload to codebase" mode,
- * the local agent's write_file tool correctly resolves the file ID
- * (e.g., DYAD_ATTACHMENT_0) to the actual uploaded file content.
+ * the local agent's copy_file tool correctly copies the temp file
+ * into the codebase at the destination path.
  */
 testSkipIfWindows("local-agent - upload file to codebase", async ({ po }) => {
   await po.setUpDyadPro({ localAgent: true });

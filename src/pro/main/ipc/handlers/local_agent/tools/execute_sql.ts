@@ -36,7 +36,7 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
         throw new Error("Supabase is not connected to this app");
       }
 
-      await executeSupabaseSql({
+      const sqlResult = await executeSupabaseSql({
         supabaseProjectId: ctx.supabaseProjectId,
         query: args.query,
         organizationSlug: ctx.supabaseOrganizationSlug ?? null,
@@ -48,10 +48,10 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
         try {
           await writeMigrationFile(ctx.appPath, args.query, args.description);
         } catch (error) {
-          return `SQL executed, but failed to write migration file: ${error}`;
+          return `SQL executed, but failed to write migration file: ${error}\n\nSQL result:\n${sqlResult}`;
         }
       }
 
-      return "Successfully executed SQL query";
+      return `Successfully executed SQL query.\n\nSQL result:\n${sqlResult}`;
     },
   };

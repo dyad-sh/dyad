@@ -54,14 +54,13 @@ export function TokenBar({ chatId }: TokenBarProps) {
     <div className="px-4 pb-2 text-xs" data-testid="token-bar">
       <TooltipProvider>
         <Tooltip>
-          <TooltipTrigger>
+          <TooltipTrigger className="w-full">
             <div className="w-full">
-              <div className="flex justify-between mb-1 text-xs text-muted-foreground">
+              <div className="flex gap-3 mb-1 text-xs text-muted-foreground">
                 <span>Tokens: {totalTokens.toLocaleString()}</span>
-                <span className="flex items-center gap-1.5">
-                  <span>{Math.round(percentUsed)}%</span>
-                  <span className="text-muted-foreground/50">·</span>
-                  <span>{(contextWindow / 1000).toFixed(0)}K</span>
+                <span>{Math.round(percentUsed)}%</span>
+                <span>
+                  Context window: {(contextWindow / 1000).toFixed(0)}K
                 </span>
               </div>
               <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden flex">

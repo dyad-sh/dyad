@@ -468,6 +468,27 @@
       {
         "type": "function",
         "function": {
+          "name": "generate_image",
+          "description": "Generate an image using AI based on a text prompt. The generated image is saved to the project's .dyad/media directory.\n\n### When to Use\n- User requests a custom image, illustration, icon, or graphic for their app\n- User wants a hero image, background, banner, or visual asset\n- Creating images that are more visually relevant than placeholder rectangles\n\n### Prompt Guidelines\nWrite detailed, descriptive prompts. Be specific about:\n- **Subject**: What is in the image (objects, people, scenes)\n- **Style**: Photography, illustration, flat design, 3D render, watercolor, etc.\n- **Composition**: Layout, perspective, framing\n- **Colors**: Specific color palette or mood\n- **Mood**: Cheerful, professional, dramatic, minimal, etc.\n\n### Examples\n- \"A modern flat illustration of a team collaborating around a laptop, using a blue and purple color palette, clean minimal style with subtle gradients, white background\"\n- \"Professional product photography of a sleek smartphone on a marble surface, soft studio lighting, shallow depth of field, warm neutral tones\"\n\n### After Generation\nThe tool returns the file path in .dyad/media. Use the copy_file tool to copy it to the appropriate location in the project (e.g., public/assets/) and reference that path in your code.\n",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "properties": {
+              "prompt": {
+                "type": "string",
+                "description": "A detailed, descriptive prompt for the image to generate. Be specific about colors, composition, style, mood, and subject matter. Avoid generic or vague descriptions."
+              }
+            },
+            "required": [
+              "prompt"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
           "name": "update_todos",
           "description": "\n### When to Use This Tool\n\nUse proactively for:\n1. Complex multi-step tasks (3+ distinct steps)\n2. Non-trivial tasks requiring careful planning\n3. User explicitly requests todo list\n4. User provides multiple tasks (numbered/comma-separated)\n5. After completing tasks - mark complete with merge=true and add follow-ups\n6. When starting new tasks - mark as in_progress (ideally only one at a time)\n\n### When NOT to Use\n\nSkip for:\n1. Single, straightforward tasks\n2. Trivial tasks with no organizational benefit\n3. Tasks completable in < 3 trivial steps\n4. Purely conversational/informational requests\n5. Todo items should NOT include operational actions done in service of higher-level tasks.\n\nNEVER INCLUDE THESE IN TODOS: linting; testing; searching or examining the codebase.\n\n### Examples\n\n<example>\nUser: Add dark mode toggle to settings\nAssistant:\n- *Creates todo list:*\n1. Add state management [in_progress]\n2. Implement styles\n3. Create toggle component\n4. Update components\n- [Immediately begins working on todo 1 in the same tool call batch]\n<reasoning>\nMulti-step feature with dependencies.\n</reasoning>\n</example>\n\n<example>\n// User: Implement user registration, product catalog, shopping cart, checkout flow.\nAssistant: *Creates todo list breaking down each feature into specific tasks*\n<reasoning>\nMultiple complex features provided as list requiring organized task management.\n</reasoning>\n</example>\n\n### Task States and Management\n\n1. **Task States:**\n- pending: Not yet started\n- in_progress: Currently working on\n- completed: Finished successfully\n\n2. **Task Management:**\n- Update status in real-time\n- Mark complete IMMEDIATELY after finishing\n- Only ONE task in_progress at a time\n- Complete current tasks before starting new ones\n\n3. **Task Breakdown:**\n- Create specific, actionable items\n- Break complex tasks into manageable steps\n- Use clear, descriptive names\n\n4. **Parallel Todo Writes:**\n- Prefer creating the first todo as in_progress\n- Start working on todos by using tool calls in the same tool call batch as the todo write\n- Batch todo updates with other tool calls for better latency and lower costs for the user\n",
           "parameters": {

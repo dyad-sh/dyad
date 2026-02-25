@@ -37,10 +37,7 @@ Notes:
 - Responses larger than 5MB are rejected.
 - Binary responses (including images) are not returned as text content.`;
 
-const BLOCKED_HOSTNAMES = new Set([
-  "localhost",
-  "metadata.google.internal",
-]);
+const BLOCKED_HOSTNAMES = new Set(["localhost", "metadata.google.internal"]);
 
 function isPrivateIp(hostname: string): boolean {
   // IPv6 loopback
@@ -304,9 +301,7 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
         throw new Error(`Request timed out after ${timeoutSeconds}s`);
       }
       if (error instanceof Error) throw error;
-      throw new Error(
-        `Failed to fetch URL: ${String(error)}`,
-      );
+      throw new Error(`Failed to fetch URL: ${String(error)}`);
     } finally {
       clearTimeout(timeoutId);
     }

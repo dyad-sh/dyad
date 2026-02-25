@@ -279,6 +279,43 @@
       {
         "type": "function",
         "function": {
+          "name": "web_fetch",
+          "description": "\nFetches content from a URL and returns it in the requested format.\n\n**When to use:**\n- Fetch documentation, blog posts, or web content\n- Retrieve API responses or JSON data\n- Download HTML pages for parsing\n\n**Format options:**\n- markdown: Converts HTML to markdown (default)\n- text: Extracts plain text from HTML\n- html: Returns raw HTML\n\n**Important:**\n- URLs must start with http:// or https://\n- Maximum response size: 5MB\n- Default timeout: 30 seconds (max: 120 seconds)\n- Images are returned as base64-encoded data URLs\n\n**Examples:**\n\n<example>\nFetch documentation as markdown:\n{ \"url\": \"https://example.com/docs\", \"format\": \"markdown\" }\n</example>\n\n<example>\nFetch API response:\n{ \"url\": \"https://api.example.com/data\", \"format\": \"text\" }\n</example>\n",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "The URL to fetch content from"
+              },
+              "format": {
+                "type": "string",
+                "enum": [
+                  "text",
+                  "markdown",
+                  "html"
+                ],
+                "default": "markdown",
+                "description": "The format to return the content in (text, markdown, or html). Defaults to markdown."
+              },
+              "timeout": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 120,
+                "description": "Optional timeout in seconds (max 120)"
+              }
+            },
+            "required": [
+              "url"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
           "name": "run_type_checks",
           "description": "Run TypeScript type checks on the current workspace. You can provide paths to specific files or directories, or omit the argument to get diagnostics for all files.\n\n- If a file path is provided, returns diagnostics for that file only\n- If a directory path is provided, returns diagnostics for all files within that directory\n- If no path is provided, returns diagnostics for all files in the workspace\n- This tool can return type errors that were already present before your edits, so avoid calling it with a very wide scope of files\n- NEVER call this tool on a file unless you've edited it or are about to edit it",
           "parameters": {

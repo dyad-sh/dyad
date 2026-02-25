@@ -253,9 +253,7 @@ function buildPinnedUrl(
   const hostHeader = parsed.host; // includes port if present
 
   // For IPv6 addresses, wrap in brackets for URL
-  const ipForUrl = resolvedIP.includes(":")
-    ? `[${resolvedIP}]`
-    : resolvedIP;
+  const ipForUrl = resolvedIP.includes(":") ? `[${resolvedIP}]` : resolvedIP;
 
   parsed.hostname = ipForUrl;
   return { pinnedUrl: parsed.href, hostHeader };
@@ -652,8 +650,7 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
     }
 
     // Parse charset from Content-Type to avoid garbling non-UTF-8 responses
-    const charset =
-      contentType.match(/charset=([\w-]+)/i)?.[1] || "utf-8";
+    const charset = contentType.match(/charset=([\w-]+)/i)?.[1] || "utf-8";
     let content: string;
     try {
       content = new TextDecoder(charset).decode(arrayBuffer);

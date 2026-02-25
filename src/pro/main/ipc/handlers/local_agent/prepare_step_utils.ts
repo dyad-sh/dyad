@@ -151,8 +151,7 @@ export function prepareStepMessages<
   );
 
   // Clean messages for OpenAI compatibility during multi-step agent flows:
-  // 1. Strip itemId to prevent "Item with id not found" errors
-  // 2. Filter orphaned reasoning to prevent "reasoning without following item" errors
+  // Filter orphaned reasoning to prevent "reasoning without following item" errors
   const filteredMessages = messages.map(cleanMessageForOpenAI);
 
   // Check if we need to return modified options

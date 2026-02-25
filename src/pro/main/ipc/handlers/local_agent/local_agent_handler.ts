@@ -40,7 +40,11 @@ import {
 import { mcpManager } from "@/ipc/utils/mcp_manager";
 import { mcpServers } from "@/db/schema";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
-import { getAiMessagesJsonIfWithinLimit } from "@/ipc/utils/ai_messages_utils";
+import {
+  getAiMessagesJsonIfWithinLimit,
+  isItemNotFoundError,
+  stripItemIdsFromMessages,
+} from "@/ipc/utils/ai_messages_utils";
 
 import type { ChatStreamParams, ChatResponseEnd } from "@/ipc/types";
 import {
@@ -522,6 +526,7 @@ export async function handleLocalAgentStream(
     let hasInjectedPlanningQuestionnaireReflection = false;
     let currentMessageHistory = messageHistory;
     const accumulatedAiMessages: ModelMessage[] = [];
+    let itemIdRetryAttempted = false;
 
     while (!abortController.signal.aborted) {
       // Reset mid-turn compaction state at the start of each pass.
@@ -700,6 +705,12 @@ export async function handleLocalAgentStream(
           }
         },
         onError: (error: any) => {
+          if (isItemNotFoundError(error)) {
+            logger.warn(
+              "Suppressing item-not-found error in onError (will retry with stripped itemIds)",
+            );
+            return;
+          }
           const errorMessage = error?.error?.message || JSON.stringify(error);
           logger.error("Local agent stream error:", errorMessage);
           safeSend(event.sender, "chat:response:error", {
@@ -827,6 +838,18 @@ export async function handleLocalAgentStream(
           }
         }
       } catch (error) {
+        if (
+          !abortController.signal.aborted &&
+          isItemNotFoundError(error) &&
+          !itemIdRetryAttempted
+        ) {
+          itemIdRetryAttempted = true;
+          logger.warn(
+            "Retrying local agent stream after stripping stale itemIds",
+          );
+          stripItemIdsFromMessages(currentMessageHistory);
+          continue;
+        }
         if (!abortController.signal.aborted) {
           throw error;
         }

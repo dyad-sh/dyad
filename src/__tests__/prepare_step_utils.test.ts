@@ -730,7 +730,7 @@ describe("prepare_step_utils", () => {
       expect((result!.messages[1].content as any[])[0].type).toBe("text");
     });
 
-    it("strips itemId from provider metadata during multi-step flow", () => {
+    it("preserves itemId in provider metadata during multi-step flow", () => {
       const pendingUserMessages: UserMessageContentPart[][] = [];
       const allInjectedMessages: InjectedMessage[] = [];
 
@@ -756,14 +756,12 @@ describe("prepare_step_utils", () => {
         allInjectedMessages,
       );
 
-      // Should strip itemId
-      expect(result).toBeDefined();
-      const textPart = (result!.messages[1].content as any[])[0];
-      expect(textPart.text).toBe("Here is my response");
-      expect(textPart.providerOptions).toBeUndefined();
+      // itemId is preserved (no longer stripped upfront); callers retry with
+      // stripItemIdsFromMessages when OpenAI returns "item not found" errors.
+      expect(result).toBeUndefined();
     });
 
-    it("strips itemId from reasoning parts while preserving reasoningEncryptedContent", () => {
+    it("preserves itemId in reasoning parts alongside reasoningEncryptedContent", () => {
       const pendingUserMessages: UserMessageContentPart[][] = [];
       const allInjectedMessages: InjectedMessage[] = [];
 
@@ -793,14 +791,8 @@ describe("prepare_step_utils", () => {
         allInjectedMessages,
       );
 
-      // Should strip itemId but preserve reasoningEncryptedContent
-      expect(result).toBeDefined();
-      const reasoningPart = (result!.messages[1].content as any[])[0];
-      expect(reasoningPart.text).toBe("Thinking...");
-      expect(reasoningPart.providerOptions.openai.itemId).toBeUndefined();
-      expect(
-        reasoningPart.providerOptions.openai.reasoningEncryptedContent,
-      ).toBe("encrypted-data");
+      // No modifications needed — itemId and reasoningEncryptedContent are both preserved.
+      expect(result).toBeUndefined();
     });
   });
 

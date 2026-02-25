@@ -102,7 +102,11 @@ import {
   processChatMessagesWithVersionedFiles as getVersionedFiles,
   VersionedFiles,
 } from "../utils/versioned_codebase_context";
-import { getAiMessagesJsonIfWithinLimit } from "../utils/ai_messages_utils";
+import {
+  getAiMessagesJsonIfWithinLimit,
+  isItemNotFoundError,
+  stripItemIdsFromMessages,
+} from "../utils/ai_messages_utils";
 
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
@@ -1013,6 +1017,14 @@ This conversation includes one or more image attachments. When the user uploads 
               }
             },
             onError: (error: any) => {
+              // Don't send error to renderer for item-not-found errors;
+              // the caller will strip stale itemIds and retry.
+              if (isItemNotFoundError(error)) {
+                logger.warn(
+                  "Suppressing item-not-found error in onError (will retry with stripped itemIds)",
+                );
+                return;
+              }
               let errorMessage = (error as any)?.error?.message;
               const responseBody = error?.error?.responseBody;
               if (errorMessage && responseBody) {
@@ -1255,21 +1267,25 @@ This conversation includes one or more image attachments. When the user uploads 
         }
 
         // When calling streamText, the messages need to be properly formatted for mixed content
-        const { fullStream } = await simpleStreamText({
-          chatMessages,
-          modelClient,
-          files: files,
-        });
-
-        // Process the stream as before
-        try {
-          const result = await processStreamChunks({
+        let itemIdRetryAttempted = false;
+        const runBuildModeStream = async () => {
+          const { fullStream } = await simpleStreamText({
+            chatMessages,
+            modelClient,
+            files: files,
+          });
+          return processStreamChunks({
             fullStream,
             fullResponse,
             abortController,
             chatId: req.chatId,
             processResponseChunkUpdate,
           });
+        };
+
+        // Process the stream as before
+        try {
+          const result = await runBuildModeStream();
           fullResponse = result.fullResponse;
 
           if (
@@ -1536,23 +1552,18 @@ ${problemReport.problems
             }
           }
         } catch (streamError) {
-          // Check if this was an abort error
-          if (abortController.signal.aborted) {
+          const handleAbortError = async () => {
+            if (!abortController.signal.aborted) return false;
             const chatId = req.chatId;
             const partialResponse = partialResponses.get(req.chatId);
-            // If we have a partial response, save it to the database
             if (partialResponse) {
               try {
-                // Update the placeholder assistant message with the partial content and cancellation note
                 await db
                   .update(messages)
                   .set({
-                    content: `${partialResponse}
-
-[Response cancelled by user]`,
+                    content: `${partialResponse}\n\n[Response cancelled by user]`,
                   })
                   .where(eq(messages.id, placeholderAssistantMessage.id));
-
                 logger.log(
                   `Updated cancelled response for placeholder message ${placeholderAssistantMessage.id} in chat ${chatId}`,
                 );
@@ -1564,9 +1575,27 @@ ${problemReport.problems
                 );
               }
             }
-            return req.chatId;
+            return true;
+          };
+
+          // Retry once with stripped itemIds for stale item_reference errors
+          if (isItemNotFoundError(streamError) && !itemIdRetryAttempted) {
+            itemIdRetryAttempted = true;
+            logger.warn(
+              "Retrying build mode stream after stripping stale itemIds",
+            );
+            stripItemIdsFromMessages(chatMessages);
+            try {
+              const retryResult = await runBuildModeStream();
+              fullResponse = retryResult.fullResponse;
+            } catch (retryError) {
+              if (await handleAbortError()) return req.chatId;
+              throw retryError;
+            }
+          } else {
+            if (await handleAbortError()) return req.chatId;
+            throw streamError;
           }
-          throw streamError;
         }
       }
 

@@ -1,7 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
   parseAiMessagesJson,
+  cleanMessageForOpenAI,
   getAiMessagesJsonIfWithinLimit,
+  stripItemIdsFromMessages,
+  isItemNotFoundError,
   MAX_AI_MESSAGES_SIZE,
   type DbMessageForParsing,
 } from "@/ipc/utils/ai_messages_utils";
@@ -204,8 +207,8 @@ describe("parseAiMessagesJson", () => {
     });
   });
 
-  describe("OpenAI itemId stripping", () => {
-    it("should strip itemId from text parts with providerOptions", () => {
+  describe("itemId preservation (no longer stripped on parse)", () => {
+    it("should preserve itemId in text parts with providerOptions", () => {
       const msg: DbMessageForParsing = {
         id: 20,
         role: "assistant",
@@ -232,10 +235,10 @@ describe("parseAiMessagesJson", () => {
       const result = parseAiMessagesJson(msg);
       const part = (result[0].content as any[])[0];
       expect(part.text).toBe("Hello");
-      expect(part.providerOptions).toBeUndefined();
+      expect(part.providerOptions.openai.itemId).toBe("msg_abc123");
     });
 
-    it("should strip itemId from tool-call parts", () => {
+    it("should preserve itemId in tool-call parts", () => {
       const msg: DbMessageForParsing = {
         id: 21,
         role: "assistant",
@@ -264,10 +267,10 @@ describe("parseAiMessagesJson", () => {
       const result = parseAiMessagesJson(msg);
       const part = (result[0].content as any[])[0];
       expect(part.toolCallId).toBe("call-123");
-      expect(part.providerOptions).toBeUndefined();
+      expect(part.providerOptions.openai.itemId).toBe("fc_abc123");
     });
 
-    it("should strip itemId from reasoning parts but preserve reasoningEncryptedContent when followed by output", () => {
+    it("should preserve itemId and reasoningEncryptedContent in reasoning parts when followed by output", () => {
       const msg: DbMessageForParsing = {
         id: 22,
         role: "assistant",
@@ -302,7 +305,7 @@ describe("parseAiMessagesJson", () => {
       expect((result[0].content as any[]).length).toBe(2);
       const reasoningPart = (result[0].content as any[])[0];
       expect(reasoningPart.text).toBe("thinking...");
-      expect(reasoningPart.providerOptions.openai.itemId).toBeUndefined();
+      expect(reasoningPart.providerOptions.openai.itemId).toBe("rs_abc123");
       expect(
         reasoningPart.providerOptions.openai.reasoningEncryptedContent,
       ).toBe("encrypted-data");
@@ -404,7 +407,7 @@ describe("parseAiMessagesJson", () => {
       expect((result[0].content as any[])[0].type).toBe("text");
     });
 
-    it("should strip itemId from legacy providerMetadata", () => {
+    it("should preserve itemId in legacy providerMetadata", () => {
       const msg: DbMessageForParsing = {
         id: 23,
         role: "assistant",
@@ -431,10 +434,10 @@ describe("parseAiMessagesJson", () => {
       const result = parseAiMessagesJson(msg);
       const part = (result[0].content as any[])[0];
       expect(part.text).toBe("Hello");
-      expect(part.providerMetadata).toBeUndefined();
+      expect(part.providerMetadata.openai.itemId).toBe("msg_legacy123");
     });
 
-    it("should strip itemId from legacy array format", () => {
+    it("should preserve itemId in legacy array format", () => {
       const msg: DbMessageForParsing = {
         id: 24,
         role: "assistant",
@@ -458,10 +461,10 @@ describe("parseAiMessagesJson", () => {
       const result = parseAiMessagesJson(msg);
       const part = (result[0].content as any[])[0];
       expect(part.text).toBe("Legacy");
-      expect(part.providerOptions).toBeUndefined();
+      expect(part.providerOptions.openai.itemId).toBe("msg_legacy_arr");
     });
 
-    it("should strip itemId from azure provider key", () => {
+    it("should preserve itemId in azure provider key", () => {
       const msg: DbMessageForParsing = {
         id: 25,
         role: "assistant",
@@ -488,10 +491,10 @@ describe("parseAiMessagesJson", () => {
       const result = parseAiMessagesJson(msg);
       const part = (result[0].content as any[])[0];
       expect(part.text).toBe("Azure");
-      expect(part.providerOptions).toBeUndefined();
+      expect(part.providerOptions.azure.itemId).toBe("msg_azure123");
     });
 
-    it("should preserve non-OpenAI providerOptions", () => {
+    it("should preserve all providerOptions including OpenAI", () => {
       const msg: DbMessageForParsing = {
         id: 26,
         role: "assistant",
@@ -506,7 +509,7 @@ describe("parseAiMessagesJson", () => {
                   type: "text",
                   text: "Mixed",
                   providerOptions: {
-                    openai: { itemId: "msg_strip" },
+                    openai: { itemId: "msg_keep" },
                     "dyad-engine": { someFlag: true },
                   },
                 },
@@ -518,7 +521,7 @@ describe("parseAiMessagesJson", () => {
 
       const result = parseAiMessagesJson(msg);
       const part = (result[0].content as any[])[0];
-      expect(part.providerOptions.openai).toBeUndefined();
+      expect(part.providerOptions.openai.itemId).toBe("msg_keep");
       expect(part.providerOptions["dyad-engine"]).toEqual({ someFlag: true });
     });
 
@@ -659,5 +662,545 @@ describe("getAiMessagesJsonIfWithinLimit", () => {
     expect(result).toBeDefined();
     expect(result?.sdkVersion).toBe(AI_MESSAGES_SDK_VERSION);
     expect(result?.messages[0]).toEqual(messages[0]);
+  });
+});
+
+describe("cleanMessageForOpenAI", () => {
+  it("should preserve itemId in providerOptions (no longer strips)", () => {
+    const message: ModelMessage = {
+      role: "assistant",
+      content: [
+        {
+          type: "text",
+          text: "Hello",
+          providerOptions: {
+            openai: { itemId: "msg_abc123", other: "keep" },
+          },
+        },
+      ],
+    };
+
+    const result = cleanMessageForOpenAI(message);
+    const part = (result.content as any[])[0];
+    expect(part.providerOptions.openai.itemId).toBe("msg_abc123");
+    expect(part.providerOptions.openai.other).toBe("keep");
+  });
+
+  it("should preserve itemId in providerMetadata (no longer strips)", () => {
+    const message: ModelMessage = {
+      role: "assistant",
+      content: [
+        {
+          type: "text",
+          text: "Hello",
+          providerMetadata: {
+            openai: { itemId: "msg_legacy" },
+          },
+        } as any,
+      ],
+    };
+
+    const result = cleanMessageForOpenAI(message);
+    const part = (result.content as any[])[0];
+    expect(part.providerMetadata.openai.itemId).toBe("msg_legacy");
+  });
+
+  it("should return original message reference when no changes needed", () => {
+    const message: ModelMessage = {
+      role: "assistant",
+      content: [
+        {
+          type: "text",
+          text: "Hello",
+          providerOptions: { openai: { itemId: "msg_123" } },
+        },
+      ],
+    };
+
+    const result = cleanMessageForOpenAI(message);
+    expect(result).toBe(message);
+  });
+
+  it("should still filter orphaned reasoning at end of content", () => {
+    const message: ModelMessage = {
+      role: "assistant",
+      content: [
+        { type: "text", text: "output" },
+        {
+          type: "reasoning",
+          text: "orphaned thinking",
+          providerOptions: { openai: { itemId: "rs_orphan" } },
+        },
+      ],
+    };
+
+    const result = cleanMessageForOpenAI(message);
+    expect((result.content as any[]).length).toBe(1);
+    expect((result.content as any[])[0].type).toBe("text");
+  });
+
+  it("should keep reasoning that has a following output", () => {
+    const message: ModelMessage = {
+      role: "assistant",
+      content: [
+        {
+          type: "reasoning",
+          text: "thinking...",
+          providerOptions: { openai: { itemId: "rs_keep" } },
+        },
+        { type: "text", text: "response" },
+      ],
+    };
+
+    const result = cleanMessageForOpenAI(message);
+    expect((result.content as any[]).length).toBe(2);
+    const reasoning = (result.content as any[])[0];
+    expect(reasoning.providerOptions.openai.itemId).toBe("rs_keep");
+  });
+
+  it("should return original message for string content", () => {
+    const message: ModelMessage = {
+      role: "user",
+      content: "just a string",
+    };
+
+    const result = cleanMessageForOpenAI(message);
+    expect(result).toBe(message);
+  });
+
+  it("should handle message with only orphaned reasoning (all parts filtered)", () => {
+    const message: ModelMessage = {
+      role: "assistant",
+      content: [
+        { type: "reasoning", text: "orphan 1" },
+        { type: "reasoning", text: "orphan 2" },
+      ],
+    };
+
+    const result = cleanMessageForOpenAI(message);
+    expect((result.content as any[]).length).toBe(0);
+  });
+
+  it("should handle empty content array without modification", () => {
+    const message: ModelMessage = {
+      role: "assistant",
+      content: [],
+    };
+
+    const result = cleanMessageForOpenAI(message);
+    expect(result).toBe(message);
+  });
+});
+
+describe("stripItemIdsFromMessages", () => {
+  it("should strip itemId from providerOptions.openai", () => {
+    const messages: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "text",
+            text: "Hello",
+            providerOptions: {
+              openai: { itemId: "msg_abc123" },
+            },
+          },
+        ],
+      },
+    ];
+
+    stripItemIdsFromMessages(messages);
+    const part = (messages[0].content as any[])[0];
+    expect(part.providerOptions).toBeUndefined();
+  });
+
+  it("should strip itemId from providerMetadata.openai", () => {
+    const messages: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "text",
+            text: "Hello",
+            providerMetadata: {
+              openai: { itemId: "msg_legacy123" },
+            },
+          } as any,
+        ],
+      },
+    ];
+
+    stripItemIdsFromMessages(messages);
+    const part = (messages[0].content as any[])[0];
+    expect(part.providerMetadata).toBeUndefined();
+  });
+
+  it("should strip itemId from azure provider key", () => {
+    const messages: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "text",
+            text: "Azure",
+            providerOptions: {
+              azure: { itemId: "msg_azure123" },
+            },
+          },
+        ],
+      },
+    ];
+
+    stripItemIdsFromMessages(messages);
+    const part = (messages[0].content as any[])[0];
+    expect(part.providerOptions).toBeUndefined();
+  });
+
+  it("should preserve non-OpenAI providerOptions while stripping itemId", () => {
+    const messages: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "text",
+            text: "Mixed",
+            providerOptions: {
+              openai: { itemId: "msg_strip" },
+              "dyad-engine": { someFlag: true },
+            },
+          },
+        ],
+      },
+    ];
+
+    stripItemIdsFromMessages(messages);
+    const part = (messages[0].content as any[])[0];
+    expect(part.providerOptions.openai).toBeUndefined();
+    expect(part.providerOptions["dyad-engine"]).toEqual({ someFlag: true });
+  });
+
+  it("should preserve reasoningEncryptedContent while stripping itemId", () => {
+    const messages: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "reasoning",
+            text: "thinking...",
+            providerOptions: {
+              openai: {
+                itemId: "rs_abc123",
+                reasoningEncryptedContent: "encrypted-data",
+              },
+            },
+          },
+          { type: "text", text: "response" },
+        ],
+      },
+    ];
+
+    stripItemIdsFromMessages(messages);
+    const part = (messages[0].content as any[])[0];
+    expect(part.providerOptions.openai.itemId).toBeUndefined();
+    expect(part.providerOptions.openai.reasoningEncryptedContent).toBe(
+      "encrypted-data",
+    );
+  });
+
+  it("should skip string content messages", () => {
+    const messages: ModelMessage[] = [
+      { role: "user", content: "Hello" },
+      { role: "assistant", content: "Hi there!" },
+    ];
+
+    stripItemIdsFromMessages(messages);
+    expect(messages[0].content).toBe("Hello");
+    expect(messages[1].content).toBe("Hi there!");
+  });
+
+  it("should handle multiple messages with itemIds", () => {
+    const messages: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "text",
+            text: "First",
+            providerOptions: { openai: { itemId: "msg_1" } },
+          },
+        ],
+      },
+      { role: "user", content: "question" },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "text",
+            text: "Second",
+            providerOptions: { openai: { itemId: "msg_2" } },
+          },
+        ],
+      },
+    ];
+
+    stripItemIdsFromMessages(messages);
+    expect((messages[0].content as any[])[0].providerOptions).toBeUndefined();
+    expect(messages[1].content).toBe("question");
+    expect((messages[2].content as any[])[0].providerOptions).toBeUndefined();
+  });
+
+  it("should handle empty messages array", () => {
+    const messages: ModelMessage[] = [];
+    stripItemIdsFromMessages(messages);
+    expect(messages).toEqual([]);
+  });
+
+  it("should be a no-op for parts without providerOptions or providerMetadata", () => {
+    const messages: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "no provider data" },
+          { type: "tool-call", toolCallId: "c1", toolName: "t", input: {} },
+        ],
+      },
+    ];
+
+    const contentBefore = JSON.stringify(messages);
+    stripItemIdsFromMessages(messages);
+    expect(JSON.stringify(messages)).toBe(contentBefore);
+  });
+
+  it("should strip itemId from both providerOptions and providerMetadata on the same part", () => {
+    const messages: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "text",
+            text: "dual",
+            providerOptions: { openai: { itemId: "opt_id" } },
+            providerMetadata: { openai: { itemId: "meta_id" } },
+          } as any,
+        ],
+      },
+    ];
+
+    stripItemIdsFromMessages(messages);
+    const part = (messages[0].content as any[])[0];
+    expect(part.providerOptions).toBeUndefined();
+    expect(part.providerMetadata).toBeUndefined();
+  });
+
+  it("should strip itemIds from multiple parts in a single message", () => {
+    const messages: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "reasoning",
+            text: "thinking",
+            providerOptions: {
+              openai: { itemId: "rs_1", reasoningEncryptedContent: "enc" },
+            },
+          },
+          {
+            type: "text",
+            text: "output",
+            providerOptions: { openai: { itemId: "msg_1" } },
+          },
+          {
+            type: "tool-call",
+            toolCallId: "c1",
+            toolName: "t",
+            input: {},
+            providerOptions: { openai: { itemId: "fc_1" } },
+          },
+        ],
+      },
+    ];
+
+    stripItemIdsFromMessages(messages);
+    const parts = messages[0].content as any[];
+    expect(parts[0].providerOptions.openai.itemId).toBeUndefined();
+    expect(parts[0].providerOptions.openai.reasoningEncryptedContent).toBe(
+      "enc",
+    );
+    expect(parts[1].providerOptions).toBeUndefined();
+    expect(parts[2].providerOptions).toBeUndefined();
+  });
+});
+
+describe("isItemNotFoundError", () => {
+  it("should match error with nested error.message", () => {
+    const error = {
+      error: {
+        message:
+          "Item with id 'rs_04332f10855e4dab00691afad78d748197b3bfb853fc97ce92' not found",
+      },
+    };
+    expect(isItemNotFoundError(error)).toBe(true);
+  });
+
+  it("should match Error instance", () => {
+    const error = new Error("Item with id 'msg_abc123' not found");
+    expect(isItemNotFoundError(error)).toBe(true);
+  });
+
+  it("should match string error", () => {
+    expect(isItemNotFoundError("Item with id 'fc_xyz' not found")).toBe(true);
+  });
+
+  it("should not match unrelated errors", () => {
+    expect(isItemNotFoundError(new Error("Rate limit exceeded"))).toBe(false);
+    expect(isItemNotFoundError({ error: { message: "Server error" } })).toBe(
+      false,
+    );
+  });
+
+  it("should return false for null/undefined", () => {
+    expect(isItemNotFoundError(null)).toBe(false);
+    expect(isItemNotFoundError(undefined)).toBe(false);
+  });
+
+  it("should return false for empty object", () => {
+    expect(isItemNotFoundError({})).toBe(false);
+  });
+
+  it("should return false for number and boolean", () => {
+    expect(isItemNotFoundError(42)).toBe(false);
+    expect(isItemNotFoundError(true)).toBe(false);
+  });
+
+  it("should prefer error.error.message over Error.message", () => {
+    const error = Object.assign(new Error("some other message"), {
+      error: {
+        message: "Item with id 'rs_abc' not found",
+      },
+    });
+    expect(isItemNotFoundError(error)).toBe(true);
+  });
+
+  it("should fall back to Error.message when error.error.message is absent", () => {
+    const error = new Error("Item with id 'msg_fallback' not found");
+    expect(isItemNotFoundError(error)).toBe(true);
+  });
+
+  it("should match item id with various prefixes", () => {
+    expect(
+      isItemNotFoundError({
+        error: { message: "Item with id 'fc_call123' not found" },
+      }),
+    ).toBe(true);
+    expect(
+      isItemNotFoundError({
+        error: { message: "Item with id 'msg_output456' not found" },
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("round-trip: parseAiMessagesJson preserves itemIds, stripItemIdsFromMessages removes them", () => {
+  it("should preserve itemIds through parse, then strip them on demand", () => {
+    const msg: DbMessageForParsing = {
+      id: 100,
+      role: "assistant",
+      content: "fallback",
+      aiMessagesJson: {
+        sdkVersion: AI_MESSAGES_SDK_VERSION,
+        messages: [
+          {
+            role: "assistant",
+            content: [
+              {
+                type: "reasoning",
+                text: "thinking...",
+                providerOptions: {
+                  openai: {
+                    itemId: "rs_roundtrip",
+                    reasoningEncryptedContent: "enc-data",
+                  },
+                },
+              },
+              {
+                type: "text",
+                text: "response",
+                providerOptions: {
+                  openai: { itemId: "msg_roundtrip" },
+                },
+              },
+            ],
+          },
+        ] as ModelMessage[],
+      },
+    };
+
+    // Step 1: Parse preserves itemIds
+    const parsed = parseAiMessagesJson(msg);
+    const parts = parsed[0].content as any[];
+    expect(parts[0].providerOptions.openai.itemId).toBe("rs_roundtrip");
+    expect(parts[1].providerOptions.openai.itemId).toBe("msg_roundtrip");
+
+    // Step 2: stripItemIdsFromMessages removes them
+    stripItemIdsFromMessages(parsed);
+    expect(parts[0].providerOptions.openai.itemId).toBeUndefined();
+    expect(parts[0].providerOptions.openai.reasoningEncryptedContent).toBe(
+      "enc-data",
+    );
+    expect(parts[1].providerOptions).toBeUndefined();
+  });
+
+  it("should strip itemIds from both openai and azure across multiple messages", () => {
+    const msg: DbMessageForParsing = {
+      id: 101,
+      role: "assistant",
+      content: "fallback",
+      aiMessagesJson: {
+        sdkVersion: AI_MESSAGES_SDK_VERSION,
+        messages: [
+          {
+            role: "assistant",
+            content: [
+              {
+                type: "text",
+                text: "openai part",
+                providerOptions: { openai: { itemId: "oai_1" } },
+              },
+            ],
+          },
+          { role: "user", content: "follow up" },
+          {
+            role: "assistant",
+            content: [
+              {
+                type: "text",
+                text: "azure part",
+                providerOptions: { azure: { itemId: "az_1" } },
+              },
+            ],
+          },
+        ] as ModelMessage[],
+      },
+    };
+
+    const parsed = parseAiMessagesJson(msg);
+
+    // Verify preserved after parse
+    expect(
+      ((parsed[0].content as any[])[0] as any).providerOptions.openai.itemId,
+    ).toBe("oai_1");
+    expect(
+      ((parsed[2].content as any[])[0] as any).providerOptions.azure.itemId,
+    ).toBe("az_1");
+
+    // Strip and verify removed
+    stripItemIdsFromMessages(parsed);
+    expect(
+      ((parsed[0].content as any[])[0] as any).providerOptions,
+    ).toBeUndefined();
+    expect(parsed[1].content).toBe("follow up");
+    expect(
+      ((parsed[2].content as any[])[0] as any).providerOptions,
+    ).toBeUndefined();
   });
 });

@@ -49,17 +49,16 @@ function stripItemIdFromPart(part: Record<string, unknown>): boolean {
 
 /**
  * Clean up a message's content parts for OpenAI compatibility:
- * 1. Strip itemId from provider metadata (prevents "Item with id not found" errors)
- * 2. Filter orphaned reasoning parts (prevents "reasoning without following item" errors)
+ * - Filter orphaned reasoning parts (prevents "reasoning without following item" errors)
  *
- * When messages contain `providerMetadata.openai.itemId` values, the AI SDK converts
- * these to `item_reference` payloads. If OpenAI has expired those items, this causes
- * "Item with id 'rs_...' not found" errors.
- *
- * Additionally, OpenAI's Responses API requires that reasoning items are always
+ * OpenAI's Responses API requires that reasoning items are always
  * followed by an output item (text, tool-call, etc.). If a reasoning item appears
  * at the end of a message without a following output, OpenAI returns:
  * "Item of type 'reasoning' was provided without its required following item."
+ *
+ * Note: itemId values in provider metadata are intentionally preserved. If OpenAI
+ * returns "Item with id ... not found", callers should use `stripItemIdsFromMessages`
+ * and retry the request.
  *
  * Returns the original message if no changes were needed, or a new message with cleaned content.
  */
@@ -89,11 +88,6 @@ export function cleanMessageForOpenAI<T extends ModelMessage>(message: T): T {
       }
     }
 
-    // Strip itemId from provider metadata
-    if (stripItemIdFromPart(part)) {
-      didModify = true;
-    }
-
     cleanedContent.push(part);
   }
 
@@ -109,6 +103,40 @@ export function cleanMessageForOpenAI<T extends ModelMessage>(message: T): T {
  */
 function cleanMessagesForOpenAI(messages: ModelMessage[]): ModelMessage[] {
   return messages.map(cleanMessageForOpenAI);
+}
+
+/**
+ * Strip all itemId references from provider metadata across all messages.
+ * Mutates messages in-place. Use this as a retry strategy when OpenAI returns
+ * "Item with id 'rs_...' not found" errors.
+ */
+export function stripItemIdsFromMessages(messages: ModelMessage[]): void {
+  for (const message of messages) {
+    if (
+      typeof message.content === "string" ||
+      !Array.isArray(message.content)
+    ) {
+      continue;
+    }
+    for (const part of message.content) {
+      stripItemIdFromPart(part as Record<string, unknown>);
+    }
+  }
+}
+
+const ITEM_NOT_FOUND_RE = /Item with id .* not found/;
+
+/**
+ * Check whether an error is OpenAI's "Item with id ... not found" error,
+ * which indicates stale item_reference payloads in the request.
+ */
+export function isItemNotFoundError(error: unknown): boolean {
+  if (!error) return false;
+
+  const msg =
+    (error as any)?.error?.message ??
+    (error instanceof Error ? error.message : String(error));
+  return ITEM_NOT_FOUND_RE.test(msg);
 }
 
 /** Maximum size in bytes for ai_messages_json (10MB) */

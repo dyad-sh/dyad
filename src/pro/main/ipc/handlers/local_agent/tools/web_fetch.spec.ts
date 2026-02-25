@@ -17,6 +17,9 @@ vi.mock("dns", async (importOriginal) => {
   };
 });
 
+// Re-import mocked dns so we can restore the mock after clearAllMocks
+import { promises as mockDns } from "dns";
+
 describe("web_fetch tool", () => {
   let mockContext: AgentContext;
 
@@ -42,6 +45,10 @@ describe("web_fetch tool", () => {
     };
 
     vi.clearAllMocks();
+    // Restore DNS mock after clearAllMocks resets it
+    vi.mocked(mockDns.lookup).mockResolvedValue({
+      address: "93.184.216.34",
+    } as any);
   });
 
   it("should have correct name and schema", () => {

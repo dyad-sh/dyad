@@ -81,13 +81,11 @@ describe("web_fetch tool", () => {
     );
 
     expect(result).toBe(mockHtml);
-    // fetch is called with pinned IP URL and Host header for DNS rebinding protection
     expect(global.fetch).toHaveBeenCalledWith(
-      "https://93.184.216.34/",
+      "https://example.com/",
       expect.objectContaining({
         headers: expect.objectContaining({
           Accept: expect.stringContaining("text/html"),
-          Host: "example.com",
         }),
       }),
     );
@@ -216,11 +214,10 @@ describe("web_fetch tool", () => {
 
     expect(global.fetch).toHaveBeenCalledTimes(2);
     expect(global.fetch).toHaveBeenLastCalledWith(
-      "https://93.184.216.34/",
+      "https://example.com/",
       expect.objectContaining({
         headers: expect.objectContaining({
           "User-Agent": "dyad-agent",
-          Host: "example.com",
         }),
       }),
     );
@@ -241,9 +238,9 @@ describe("web_fetch tool", () => {
       mockContext,
     );
 
-    // Verify fetch was called with a signal (URL is pinned to resolved IP)
+    // Verify fetch was called with a signal
     expect(global.fetch).toHaveBeenCalledWith(
-      "https://93.184.216.34/",
+      "https://example.com/",
       expect.objectContaining({
         signal: expect.any(AbortSignal),
       }),
@@ -298,6 +295,10 @@ describe("web_fetch tool", () => {
       "http://169.254.169.254/latest/meta-data/",
       "http://metadata.google.internal/computeMetadata/v1/",
       "https://app.local/api",
+      "http://[::]/secret", // IPv6 unspecified address
+      "http://[::1]/admin", // IPv6 loopback
+      "http://[0:0:0:0:0:0:0:1]/admin", // IPv6 loopback expanded
+      "http://[0:0:0:0:0:0:0:0]/secret", // IPv6 unspecified expanded
     ];
 
     for (const url of privateUrls) {
@@ -307,6 +308,19 @@ describe("web_fetch tool", () => {
         "Access to private/internal network addresses is not allowed",
       );
     }
+
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("should block requests when DNS resolution fails", async () => {
+    vi.mocked(mockDns.lookup).mockRejectedValue(new Error("ENOTFOUND"));
+
+    await expect(
+      webFetchTool.execute(
+        { url: "https://evil.example.com", format: "text" },
+        mockContext,
+      ),
+    ).rejects.toThrow("DNS resolution failed");
 
     expect(global.fetch).not.toHaveBeenCalled();
   });

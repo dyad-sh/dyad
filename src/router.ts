@@ -8,12 +8,14 @@ import { appDetailsRoute } from "./routes/app-details";
 import { hubRoute } from "./routes/hub";
 import { libraryRoute } from "./routes/library";
 import { themesRoute } from "./routes/themes";
+import { promptsRoute } from "./routes/prompts";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
   hubRoute,
   libraryRoute,
   themesRoute,
+  promptsRoute,
   chatRoute,
   appDetailsRoute,
   settingsRoute.addChildren([providerSettingsRoute]),

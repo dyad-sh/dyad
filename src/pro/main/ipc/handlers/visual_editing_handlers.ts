@@ -84,11 +84,11 @@ export function registerVisualEditingHandlers() {
               path: appPath,
               message: `Updated ${normalizedRelativePath}`,
             });
-
-            // Auto-sync to GitHub if enabled
-            await autoSyncToGithubIfEnabled(appId);
           }
         }
+
+        // Auto-sync to GitHub once after all files are processed
+        await autoSyncToGithubIfEnabled(appId);
       } catch (error) {
         throw new Error(`Failed to apply visual editing changes: ${error}`);
       }

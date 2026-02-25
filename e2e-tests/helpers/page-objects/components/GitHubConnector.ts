@@ -95,30 +95,21 @@ export class GitHubConnector {
   }
 
   async toggleAutoSync() {
-    const currentState = await this.isAutoSyncEnabled();
+    const isCurrentlyEnabled = await this.isAutoSyncEnabled();
     await this.getAutoSyncToggle().click();
-    // Wait for the toggle state to change
-    if (currentState) {
-      // Was enabled, wait for it to be disabled
-      await this.getAutoSyncToggle().waitFor({
-        state: "attached",
-      });
-      await this.page.waitForFunction(
-        (testId) => {
-          const el = document.querySelector(`[data-testid="${testId}"]`);
-          return el && !el.hasAttribute("data-checked");
-        },
-        "auto-sync-github-toggle",
+
+    if (isCurrentlyEnabled) {
+      // Wait for it to be disabled (attribute is absent)
+      await expect(this.getAutoSyncToggle()).not.toHaveAttribute(
+        "data-checked",
+        /.*/,
         { timeout: 5000 },
       );
     } else {
-      // Was disabled, wait for it to be enabled
-      await this.page.waitForFunction(
-        (testId) => {
-          const el = document.querySelector(`[data-testid="${testId}"]`);
-          return el && el.hasAttribute("data-checked");
-        },
-        "auto-sync-github-toggle",
+      // Wait for it to be enabled (attribute is present)
+      await expect(this.getAutoSyncToggle()).toHaveAttribute(
+        "data-checked",
+        /.*/,
         { timeout: 5000 },
       );
     }

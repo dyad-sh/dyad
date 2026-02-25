@@ -6,6 +6,16 @@ When pushing changes and creating PRs:
 2. If the branch hasn't been pushed before, default to pushing to `origin` (the fork `wwwillchen/dyad`), then create a PR from the fork to the upstream repo (`dyad-sh/dyad`).
 3. If you cannot push to the fork due to permissions, push directly to `upstream` (`dyad-sh/dyad`) as a last resort.
 
+## `gh pr create` branch detection
+
+If `gh pr create` says `you must first push the current branch to a remote` even though `git push -u` succeeded, create the PR with an explicit head ref:
+
+```bash
+gh pr create --head <owner>:<branch> ...
+```
+
+This can happen when remotes are configured in a non-fork layout and `gh` fails to infer the branch mapping.
+
 ## Skipping automated review
 
 Add `#skip-bugbot` to the PR description for trivial PRs that won't affect end-users, such as:

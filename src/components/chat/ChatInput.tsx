@@ -74,6 +74,8 @@ import {
 import { SelectedComponentsDisplay } from "./SelectedComponentDisplay";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { LexicalChatInput } from "./LexicalChatInput";
+import { MediaMentionPreview } from "./MediaMentionPreview";
+import { useAppMediaFiles } from "@/hooks/useAppMediaFiles";
 import { AuxiliaryActionsMenu } from "./AuxiliaryActionsMenu";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
 import { VisualEditingChangesDialog } from "@/components/preview_panel/VisualEditingChangesDialog";
@@ -143,6 +145,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     currentComponentCoordinatesAtom,
   );
   const setPendingVisualChanges = useSetAtom(pendingVisualChangesAtom);
+  const { mediaApps } = useAppMediaFiles();
   const [pendingAgentConsents, setPendingAgentConsents] = useAtom(
     pendingAgentConsentsAtom,
   );
@@ -696,6 +699,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             attachments={attachments}
             onRemove={removeAttachment}
           />
+
+          {/* Media mention previews */}
+          <MediaMentionPreview inputValue={inputValue} mediaApps={mediaApps} />
 
           {/* Use the DragDropOverlay component */}
           <DragDropOverlay isDraggingOver={isDraggingOver} />

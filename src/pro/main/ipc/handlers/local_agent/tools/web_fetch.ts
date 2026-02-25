@@ -1,5 +1,6 @@
 import { z } from "zod";
 import log from "electron-log";
+import { lookup } from "node:dns/promises";
 import type { AgentContext, ToolDefinition } from "./types";
 
 const logger = log.scope("web_fetch");
@@ -8,6 +9,7 @@ const MAX_RESPONSE_SIZE_BYTES = 5 * 1024 * 1024;
 const DEFAULT_TIMEOUT_SECONDS = 30;
 const MAX_TIMEOUT_SECONDS = 120;
 const MAX_OUTPUT_CHARS = 60_000;
+const MAX_REDIRECTS = 5;
 
 const webFetchSchema = z.object({
   url: z.string().describe("The URL to fetch content from"),
@@ -39,14 +41,7 @@ Notes:
 
 const BLOCKED_HOSTNAMES = new Set(["localhost", "metadata.google.internal"]);
 
-function isPrivateIp(hostname: string): boolean {
-  // IPv6 loopback
-  if (hostname === "[::1]" || hostname === "::1") return true;
-
-  // Strip brackets for IPv6
-  const ip = hostname.replace(/^\[|\]$/g, "");
-
-  // IPv4 patterns
+function isPrivateIpv4(ip: string): boolean {
   const parts = ip.split(".");
   if (parts.length === 4 && parts.every((p) => /^\d{1,3}$/.test(p))) {
     const [a, b] = parts.map(Number);
@@ -57,8 +52,69 @@ function isPrivateIp(hostname: string): boolean {
     if (a === 169 && b === 254) return true; // 169.254.0.0/16 link-local / cloud metadata
     if (a === 0) return true; // 0.0.0.0/8
   }
-
   return false;
+}
+
+function isPrivateIp(hostname: string): boolean {
+  // IPv6 loopback
+  if (hostname === "[::1]" || hostname === "::1") return true;
+
+  // Strip brackets for IPv6
+  const ip = hostname.replace(/^\[|\]$/g, "");
+  const lowerIp = ip.toLowerCase();
+
+  // Unspecified address
+  if (lowerIp === "::" || /^0(:0){7}$/.test(lowerIp)) return true;
+
+  // Unique local addresses (fc00::/7)
+  if (/^f[cd]/i.test(lowerIp)) return true;
+
+  // Link-local addresses (fe80::/10)
+  if (/^fe[89ab]/i.test(lowerIp)) return true;
+
+  // IPv4-mapped IPv6 in dotted form (::ffff:x.x.x.x)
+  const v4MappedMatch = lowerIp.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (v4MappedMatch) {
+    return isPrivateIpv4(v4MappedMatch[1]);
+  }
+
+  // IPv4-mapped IPv6 in hex form (e.g. ::ffff:7f00:1 = ::ffff:127.0.0.1)
+  const v4MappedHexMatch = lowerIp.match(
+    /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/,
+  );
+  if (v4MappedHexMatch) {
+    const high = parseInt(v4MappedHexMatch[1], 16);
+    const low = parseInt(v4MappedHexMatch[2], 16);
+    const reconstructed = `${(high >> 8) & 0xff}.${high & 0xff}.${(low >> 8) & 0xff}.${low & 0xff}`;
+    return isPrivateIpv4(reconstructed);
+  }
+
+  // IPv4 patterns
+  return isPrivateIpv4(ip);
+}
+
+async function resolveAndValidateHost(hostname: string): Promise<void> {
+  // Skip validation for IP literals — already checked by isPrivateIp in validateHttpUrl
+  if (/^\[/.test(hostname) || /^\d+\.\d+\.\d+\.\d+$/.test(hostname)) return;
+  // Skip blocked hostnames — already checked
+  if (BLOCKED_HOSTNAMES.has(hostname.toLowerCase())) return;
+
+  try {
+    const results = await lookup(hostname, { all: true });
+    for (const entry of results) {
+      if (isPrivateIp(entry.address)) {
+        throw new Error(
+          "URL resolves to a private or internal network address, which is not allowed",
+        );
+      }
+    }
+  } catch (err) {
+    // Re-throw our own private-network errors
+    if (err instanceof Error && err.message.includes("private or internal")) {
+      throw err;
+    }
+    // DNS resolution failures are left for fetch to surface
+  }
 }
 
 function redactUrl(url: string): string {
@@ -127,6 +183,7 @@ function isTextLikeMime(mime: string): boolean {
   );
 }
 
+// Decode &amp; last to prevent double-unescaping (e.g. &amp;lt; → &lt; not <)
 function decodeHtmlEntities(input: string): string {
   return input
     .replace(/&nbsp;/g, " ")
@@ -143,18 +200,20 @@ function collapseWhitespace(input: string): string {
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .replace(/[ \t]{2,}/g, " ")
-    .replace(/\s+([,.;!?])/g, "$1")
+    .replace(/[ \t]+([,.;!?])/g, "$1")
     .trim();
 }
 
+// Using regex-based HTML conversion to avoid adding an HTML parser dependency.
+// Handles common tags; approximate conversion is acceptable for this tool's use case.
 function removeNonContentTags(html: string): string {
   return html
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script[^>]*>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style[^>]*>/gi, " ")
-    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript[^>]*>/gi, " ")
-    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe[^>]*>/gi, " ")
-    .replace(/<object\b[^>]*>[\s\S]*?<\/object[^>]*>/gi, " ")
-    .replace(/<embed\b[^>]*>[\s\S]*?<\/embed[^>]*>/gi, " ");
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, " ")
+    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript\s*>/gi, " ")
+    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe\s*>/gi, " ")
+    .replace(/<object\b[^>]*>[\s\S]*?<\/object\s*>/gi, " ")
+    .replace(/<embed\b[^>]*>[\s\S]*?<\/embed\s*>/gi, " ");
 }
 
 function extractTextFromHtml(html: string): string {
@@ -227,6 +286,10 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
       MAX_TIMEOUT_SECONDS,
     );
 
+    // Validate that the hostname does not resolve to a private IP
+    const parsedUrl = new URL(normalizedUrl);
+    await resolveAndValidateHost(parsedUrl.hostname);
+
     const safeUrl = redactUrl(normalizedUrl);
     logger.log(`Fetching URL: ${safeUrl} (format=${args.format})`);
 
@@ -240,9 +303,13 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
     let response: Response;
     let arrayBuffer: ArrayBuffer;
     try {
-      try {
-        response = await fetch(normalizedUrl, {
+      // Follow redirects manually to validate each target against SSRF rules
+      let currentUrl = normalizedUrl;
+      let redirectCount = 0;
+      while (true) {
+        response = await fetch(currentUrl, {
           signal: abortController.signal,
+          redirect: "manual",
           headers: {
             "User-Agent":
               "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
@@ -250,13 +317,26 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
             "Accept-Language": "en-US,en;q=0.9",
           },
         });
-      } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") {
-          throw new Error(`Request timed out after ${timeoutSeconds}s`);
+
+        if ([301, 302, 303, 307, 308].includes(response.status)) {
+          const location = response.headers.get("location");
+          if (!location) {
+            throw new Error("Redirect response missing Location header");
+          }
+          if (redirectCount >= MAX_REDIRECTS) {
+            throw new Error(
+              `Too many redirects (exceeded ${MAX_REDIRECTS})`,
+            );
+          }
+          const redirectUrl = new URL(location, currentUrl).toString();
+          validateHttpUrl(redirectUrl);
+          const redirectParsed = new URL(redirectUrl);
+          await resolveAndValidateHost(redirectParsed.hostname);
+          currentUrl = redirectUrl;
+          redirectCount++;
+          continue;
         }
-        throw new Error(
-          `Failed to fetch URL: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        break;
       }
 
       if (!response.ok) {
@@ -268,6 +348,9 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
         throw new Error("Response too large (exceeds 5MB limit)");
       }
 
+      // Stream the body to enforce the size limit without buffering the entire
+      // response. The abort signal from the timeout propagates to reader.read(),
+      // so slow-drip responses are also terminated by the overall timeout.
       if (response.body) {
         const reader = response.body.getReader();
         const chunks: Uint8Array[] = [];

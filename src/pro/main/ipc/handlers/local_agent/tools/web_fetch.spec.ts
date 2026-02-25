@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { webFetchTool } from "./web_fetch";
 import type { AgentContext } from "./types";
+import { lookup } from "node:dns/promises";
 
 vi.mock("electron-log", () => ({
   default: {
@@ -11,6 +12,10 @@ vi.mock("electron-log", () => ({
       debug: vi.fn(),
     }),
   },
+}));
+
+vi.mock("node:dns/promises", () => ({
+  lookup: vi.fn().mockResolvedValue([{ address: "93.184.216.34", family: 4 }]),
 }));
 
 describe("webFetchTool", () => {
@@ -37,6 +42,9 @@ describe("webFetchTool", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.stubGlobal("fetch", vi.fn());
+    vi.mocked(lookup).mockResolvedValue([
+      { address: "93.184.216.34", family: 4 },
+    ]);
   });
 
   it("has the correct name and default consent", () => {
@@ -151,6 +159,40 @@ describe("webFetchTool", () => {
     ).rejects.toThrow("private or internal network address");
   });
 
+  it("rejects private IPv6 addresses", async () => {
+    await expect(
+      webFetchTool.execute(
+        { url: "http://[::1]/admin", format: "text" },
+        mockContext,
+      ),
+    ).rejects.toThrow("private or internal network address");
+
+    await expect(
+      webFetchTool.execute(
+        { url: "http://[fc00::1]/admin", format: "text" },
+        mockContext,
+      ),
+    ).rejects.toThrow("private or internal network address");
+
+    await expect(
+      webFetchTool.execute(
+        { url: "http://[fe80::1]/admin", format: "text" },
+        mockContext,
+      ),
+    ).rejects.toThrow("private or internal network address");
+  });
+
+  it("rejects IPv4-mapped IPv6 addresses pointing to private IPs", async () => {
+    // ::ffff:7f00:1 is the hex form of ::ffff:127.0.0.1
+    // Node's URL parser normalizes [::ffff:127.0.0.1] to this form
+    await expect(
+      webFetchTool.execute(
+        { url: "http://[::ffff:127.0.0.1]/admin", format: "text" },
+        mockContext,
+      ),
+    ).rejects.toThrow("private or internal network address");
+  });
+
   it("rejects responses above the 5MB content-length limit", async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response("small", {
@@ -189,6 +231,26 @@ describe("webFetchTool", () => {
     expect(result).toContain("image/png");
   });
 
+  it("returns a binary content summary for non-image binary types", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(new Uint8Array([0x50, 0x4b, 0x03, 0x04]), {
+        status: 200,
+        headers: {
+          "content-type": "application/zip",
+        },
+      }),
+    );
+
+    const result = await webFetchTool.execute(
+      { url: "https://example.com/file.zip", format: "text" },
+      mockContext,
+    );
+
+    expect(result).toContain("Fetched binary content");
+    expect(result).toContain("application/zip");
+    expect(result).toContain("only returns text-like content");
+  });
+
   it("throws on non-2xx responses", async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response("Not found", {
@@ -202,5 +264,139 @@ describe("webFetchTool", () => {
         mockContext,
       ),
     ).rejects.toThrow("Request failed with status code: 404");
+  });
+
+  it("truncates output exceeding 60K characters", async () => {
+    const longContent = "a".repeat(70_000);
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(longContent, {
+        status: 200,
+        headers: {
+          "content-type": "text/plain",
+        },
+      }),
+    );
+
+    const result = await webFetchTool.execute(
+      { url: "https://example.com/long", format: "text" },
+      mockContext,
+    );
+
+    expect(result).toContain("[truncated 10000 characters]");
+    expect(result.length).toBeLessThan(70_000);
+  });
+
+  it("handles timeout via AbortError", async () => {
+    vi.mocked(fetch).mockImplementation(() => {
+      const error = new DOMException("The operation was aborted", "AbortError");
+      return Promise.reject(error);
+    });
+
+    await expect(
+      webFetchTool.execute(
+        { url: "https://example.com/slow", format: "text", timeout: 1 },
+        mockContext,
+      ),
+    ).rejects.toThrow("Request timed out after 1s");
+  });
+
+  it("blocks redirects to private IP addresses", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(null, {
+        status: 302,
+        headers: {
+          location: "http://127.0.0.1/admin",
+        },
+      }),
+    );
+
+    await expect(
+      webFetchTool.execute(
+        { url: "https://example.com/redirect", format: "text" },
+        mockContext,
+      ),
+    ).rejects.toThrow("private or internal network address");
+  });
+
+  it("follows safe redirects and returns content", async () => {
+    let callCount = 0;
+    vi.mocked(fetch).mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) {
+        return Promise.resolve(
+          new Response(null, {
+            status: 302,
+            headers: {
+              location: "https://example.com/final",
+            },
+          }),
+        );
+      }
+      return Promise.resolve(
+        new Response("Final content", {
+          status: 200,
+          headers: {
+            "content-type": "text/plain",
+          },
+        }),
+      );
+    });
+
+    const result = await webFetchTool.execute(
+      { url: "https://example.com/start", format: "text" },
+      mockContext,
+    );
+
+    expect(result).toBe("Final content");
+    expect(callCount).toBe(2);
+  });
+
+  it("rejects domains that resolve to private IPs", async () => {
+    vi.mocked(lookup).mockResolvedValue([
+      { address: "127.0.0.1", family: 4 },
+    ]);
+
+    await expect(
+      webFetchTool.execute(
+        { url: "https://evil.example.com/", format: "text" },
+        mockContext,
+      ),
+    ).rejects.toThrow(
+      "URL resolves to a private or internal network address",
+    );
+  });
+
+  it("enforces streaming body size limit", async () => {
+    // Create a response body that exceeds the 5MB limit via streaming
+    const chunkSize = 1024 * 1024; // 1MB chunks
+    const chunk = new Uint8Array(chunkSize);
+    let chunksSent = 0;
+
+    const stream = new ReadableStream({
+      pull(controller) {
+        chunksSent++;
+        if (chunksSent <= 6) {
+          controller.enqueue(chunk);
+        } else {
+          controller.close();
+        }
+      },
+    });
+
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(stream, {
+        status: 200,
+        headers: {
+          "content-type": "text/plain",
+        },
+      }),
+    );
+
+    await expect(
+      webFetchTool.execute(
+        { url: "https://example.com/large-stream", format: "text" },
+        mockContext,
+      ),
+    ).rejects.toThrow("Response too large (exceeds 5MB limit)");
   });
 });

@@ -13,3 +13,11 @@ The project's `tsconfig.app.json` targets ES2020 with `lib: ["ES2020"]`. Methods
 ## `response.json()` returns `unknown`
 
 In IPC handlers that use `node-fetch`, `await response.json()` is treated as `unknown` by `tsgo`. If you access fields directly (for example `data.message` or `data.access_token`), add an explicit cast or narrow first (for example `const data = (await response.json()) as { message?: string }`) to avoid `TS18046`.
+
+## Zod schema defaults and TypeScript types
+
+When using Zod schemas with `.default()` values (e.g., `z.string().default("markdown")`), TypeScript does not automatically infer that the field is optional or will have a default value. The generated TypeScript type still requires the field to be provided explicitly.
+
+**Example:** If a schema has `format: z.enum(["text", "markdown", "html"]).default("markdown")`, TypeScript will require `format` to be present in objects of that type, even though Zod will apply the default at runtime.
+
+**Solution:** Always include all fields (even those with defaults) when constructing objects for Zod-validated types, or explicitly type the object with `z.input<typeof schema>` to get the pre-validation type where defaults are optional.

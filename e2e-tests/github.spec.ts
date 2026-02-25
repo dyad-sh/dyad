@@ -219,14 +219,19 @@ test("auto-sync to GitHub after commit", async ({ po }) => {
   await po.appManagement.clickOpenInChatButton();
   await po.sendPrompt("tc=write-index");
 
-  // Wait for the auto-sync to complete (give it some time to push)
-  await po.page.waitForTimeout(2000);
+  // Wait for the auto-sync to complete by polling for the push event
+  await expect
+    .poll(
+      async () =>
+        (await po.githubConnector.getPushEvents("test-auto-sync-repo")).length,
+      { timeout: 10000 },
+    )
+    .toBeGreaterThan(initialPushCount);
 
-  // Verify that a new push event was received (should have more push events than initially)
+  // Verify that a new push event was received
   const finalPushEvents = await po.githubConnector.getPushEvents(
     "test-auto-sync-repo",
   );
-  expect(finalPushEvents.length).toBeGreaterThan(initialPushCount);
 
   // Verify the latest push event is for the correct repo and branch
   const latestPush = finalPushEvents[finalPushEvents.length - 1];

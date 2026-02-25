@@ -23,6 +23,7 @@ import {
   isGitMergeInProgress,
   isGitRebaseInProgress,
   GitConflictError,
+  gitMergeAbort,
 } from "../utils/git_utils";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
@@ -1194,13 +1195,14 @@ async function handleDisconnectGithubRepo(
     throw new Error("App not found");
   }
 
-  // Update app in database to remove GitHub repo, org, and branch
+  // Update app in database to remove GitHub repo, org, branch, and auto-sync flag
   await db
     .update(apps)
     .set({
       githubRepo: null,
       githubOrg: null,
       githubBranch: null,
+      autoSyncToGithub: false,
     })
     .where(eq(apps.id, appId));
 }
@@ -1489,9 +1491,21 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
         errorMessage.includes("Cannot read properties of null");
 
       if (!isMissingRemoteBranch) {
-        // If there's a conflict or other error, log and skip the push
+        // If there's a conflict, abort the merge to leave repo in a clean state
+        if (isGitMergeInProgress({ path: appPath })) {
+          try {
+            await gitMergeAbort({ path: appPath });
+          } catch {
+            // Best-effort merge abort
+          }
+        }
+        // Sanitize error message to avoid leaking tokens
+        const sanitizedMessage = errorMessage.replace(
+          /https:\/\/[^@]+@/g,
+          "https://***@",
+        );
         logger.warn(
-          `[Auto-sync] Pull failed, skipping auto-push: ${errorMessage}`,
+          `[Auto-sync] Pull failed, skipping auto-push: ${sanitizedMessage}`,
         );
         return;
       }
@@ -1512,6 +1526,13 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
     );
   } catch (error: any) {
     // Log but don't throw - auto-sync should not break the main operation
-    logger.warn(`[Auto-sync] Failed to auto-sync to GitHub: ${error.message}`);
+    // Sanitize error message to avoid leaking tokens
+    const sanitizedMessage = (error.message || "").replace(
+      /https:\/\/[^@]+@/g,
+      "https://***@",
+    );
+    logger.warn(
+      `[Auto-sync] Failed to auto-sync to GitHub: ${sanitizedMessage}`,
+    );
   }
 }

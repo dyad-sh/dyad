@@ -413,6 +413,8 @@ function ConnectedGitHubConnector({
               refreshApp();
             } catch (error: any) {
               console.error("Failed to update auto-sync setting:", error);
+              showError(error?.message || "Failed to update auto-sync setting");
+              refreshApp();
             }
           }}
           data-testid="auto-sync-github-toggle"

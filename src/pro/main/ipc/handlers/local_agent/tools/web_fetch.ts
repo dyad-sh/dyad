@@ -106,9 +106,10 @@ function isPrivateHostname(hostname: string): boolean {
   try {
     const normalizedHost = new URL(`http://[${bare}]/`).hostname;
     // URL.hostname may or may not include brackets depending on runtime
-    ipv6 = normalizedHost.startsWith("[") && normalizedHost.endsWith("]")
-      ? normalizedHost.slice(1, -1)
-      : normalizedHost;
+    ipv6 =
+      normalizedHost.startsWith("[") && normalizedHost.endsWith("]")
+        ? normalizedHost.slice(1, -1)
+        : normalizedHost;
   } catch {
     ipv6 = bare;
   }
@@ -262,10 +263,10 @@ async function readResponseBodyWithLimit(
 
 /**
  * Follow redirects manually, validating each target against SSRF blocklist.
- * DNS is validated pre-fetch but not pinned to the resolved IP because
- * Electron/Chromium's fetch does not support custom DNS resolvers, and
- * rewriting the URL to an IP breaks HTTPS (TLS SNI/certificate validation
- * uses the URL authority, not the Host header).
+ * DNS is validated pre-fetch to mitigate SSRF via DNS rebinding. Note: a
+ * TOCTOU gap remains because fetch() performs its own DNS resolution after
+ * validation. We use the original hostname (not a rewritten IP) to preserve
+ * TLS certificate validation and SNI.
  */
 async function fetchWithRedirectValidation(
   url: string,

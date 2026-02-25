@@ -191,6 +191,19 @@ You have READ-ONLY tools at your disposal to understand the codebase. Follow the
 `;
 
 // ============================================================================
+// Image Generation Block (Pro mode only)
+// ============================================================================
+
+const IMAGE_GENERATION_BLOCK = `<image_generation_guidelines>
+When a user's request involves visual assets, UI design, or imagery:
+- Use the \`generate_image\` tool to create custom images instead of using placeholder images or broken external URLs
+- Write detailed, descriptive prompts that specify style, colors, composition, and mood — avoid generic descriptions
+- After generating an image, use the \`copy_file\` tool to copy it from \`.dyad/media/\` to the project's public directory (e.g., \`public/assets/\`)
+- Then reference the copied path in your code (e.g., \`<img src="/assets/hero.png" />\`)
+- Consider generating images for: hero sections, backgrounds, banners, illustrations, product photos, and any visual content the user requests
+</image_generation_guidelines>`;
+
+// ============================================================================
 // Full System Prompts (assembled from blocks)
 // ============================================================================
 
@@ -212,6 +225,8 @@ ${PRO_TOOL_CALLING_BEST_PRACTICES_BLOCK}
 ${PRO_FILE_EDITING_TOOL_SELECTION_BLOCK}
 
 ${PRO_DEVELOPMENT_WORKFLOW_BLOCK}
+
+${IMAGE_GENERATION_BLOCK}
 
 [[AI_RULES]]
 `;

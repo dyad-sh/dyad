@@ -24,6 +24,7 @@ import { editFileTool } from "./tools/edit_file";
 import { searchReplaceTool } from "./tools/search_replace";
 import { webSearchTool } from "./tools/web_search";
 import { webCrawlTool } from "./tools/web_crawl";
+import { generateImageTool } from "./tools/generate_image";
 import { updateTodosTool } from "./tools/update_todos";
 import { runTypeChecksTool } from "./tools/run_type_checks";
 import { grepTool } from "./tools/grep";
@@ -64,6 +65,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   readLogsTool,
   webSearchTool,
   webCrawlTool,
+  generateImageTool,
   updateTodosTool,
   runTypeChecksTool,
   // Plan mode tools

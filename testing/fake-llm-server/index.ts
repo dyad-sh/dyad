@@ -248,6 +248,32 @@ app.post("/engine/v1/tools/code-search", (req, res) => {
   }
 });
 
+// Dyad Engine image generation endpoint for generate_image tool
+app.post("/engine/v1/images/generations", (req, res) => {
+  const { prompt, model } = req.body;
+  console.log(
+    `* images/generations: model=${model}, prompt="${prompt?.slice(0, 50)}..."`,
+  );
+
+  try {
+    // Return a small 1x1 white PNG as base64 for testing
+    const TINY_PNG_B64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+
+    res.json({
+      created: Math.floor(Date.now() / 1000),
+      data: [
+        {
+          b64_json: TINY_PNG_B64,
+        },
+      ],
+    });
+  } catch (error) {
+    console.error(`* images/generations error:`, error);
+    res.status(400).json({ error: String(error) });
+  }
+});
+
 // Start the server
 const server = createServer(app);
 server.listen(PORT, () => {

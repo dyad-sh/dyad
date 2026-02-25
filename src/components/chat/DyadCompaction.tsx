@@ -4,6 +4,8 @@ import { VanillaMarkdownParser } from "./DyadMarkdownParser";
 import { CustomTagState } from "./stateTypes";
 import { useSettings } from "@/hooks/useSettings";
 
+const AUTO_COLLAPSE_DELAY_MS = 600;
+
 interface DyadCompactionProps {
   node: {
     properties: {
@@ -25,14 +27,14 @@ export const DyadCompaction: React.FC<DyadCompactionProps> = ({
 
   // Auto-collapse when compaction finishes
   useEffect(() => {
-    if (!inProgress && isExpanded) {
+    if (!inProgress) {
       // Small delay so the user can see the final state before collapsing
       // In test mode, collapse immediately for faster e2e tests
-      const delay = settings?.isTestMode ? 0 : 600;
+      const delay = settings?.isTestMode ? 0 : AUTO_COLLAPSE_DELAY_MS;
       const timer = setTimeout(() => setIsExpanded(false), delay);
       return () => clearTimeout(timer);
     }
-  }, [inProgress, isExpanded, settings?.isTestMode]);
+  }, [inProgress, settings?.isTestMode]);
 
   const content = typeof children === "string" ? children : "";
 

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import log from "electron-log";
-import { ToolDefinition, AgentContext } from "./types";
+import { promises as dns } from "dns";
+import { ToolDefinition, escapeXmlContent, AgentContext } from "./types";
 
 const logger = log.scope("web_fetch");
 
@@ -14,13 +15,17 @@ const webFetchSchema = z.object({
     ),
   timeout: z
     .number()
+    .positive()
+    .max(120)
     .optional()
     .describe("Optional timeout in seconds (max 120)"),
 });
 
 const MAX_RESPONSE_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_OUTPUT_LENGTH = 16_000; // Match web_crawl's truncation limit
 const DEFAULT_TIMEOUT = 30 * 1000; // 30 seconds
 const MAX_TIMEOUT = 120 * 1000; // 2 minutes
+const MAX_REDIRECTS = 10;
 
 /**
  * Decode HTML entities including named, decimal, and hexadecimal entities.
@@ -41,6 +46,99 @@ function decodeHTMLEntities(text: string): string {
 }
 
 /**
+ * Check if an IP address string is in a private/reserved range.
+ */
+function isPrivateIP(ip: string): boolean {
+  // Check IPv4
+  const parts = ip.split(".").map(Number);
+  if (
+    parts.length === 4 &&
+    parts.every((p) => !isNaN(p) && p >= 0 && p <= 255)
+  ) {
+    if (parts[0] === 10) return true; // 10.0.0.0/8
+    if (parts[0] === 127) return true; // 127.0.0.0/8 (loopback)
+    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true; // 172.16.0.0/12
+    if (parts[0] === 192 && parts[1] === 168) return true; // 192.168.0.0/16
+    if (parts[0] === 0) return true; // 0.0.0.0/8
+    if (parts[0] === 169 && parts[1] === 254) return true; // link-local 169.254.0.0/16
+  }
+
+  return false;
+}
+
+/**
+ * Check if a hostname (from URL parsing) is a private/internal address.
+ * Covers IPv4, IPv6 (including IPv4-mapped), and special hostnames.
+ */
+function isPrivateHostname(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+
+  // Block localhost variants
+  if (
+    h === "localhost" ||
+    h === "127.0.0.1" ||
+    h === "::1" ||
+    h === "0.0.0.0" ||
+    h === "[::1]"
+  ) {
+    return true;
+  }
+
+  // Block cloud metadata endpoints
+  if (h === "169.254.169.254" || h === "metadata.google.internal") {
+    return true;
+  }
+
+  // Block private IPv4 ranges
+  if (isPrivateIP(h)) {
+    return true;
+  }
+
+  // Block IPv6 private/reserved ranges
+  // Strip brackets from IPv6 literals (URL parser may include them)
+  const ipv6 = h.startsWith("[") && h.endsWith("]") ? h.slice(1, -1) : h;
+
+  // Block IPv4-mapped IPv6 addresses (e.g., ::ffff:127.0.0.1 or ::ffff:7f00:1)
+  if (ipv6.includes("::ffff:")) {
+    const mapped = ipv6.split("::ffff:")[1];
+    if (mapped) {
+      // May be dotted notation (::ffff:127.0.0.1) or hex (::ffff:7f00:1)
+      if (mapped.includes(".")) {
+        if (isPrivateIP(mapped)) return true;
+      } else {
+        // Convert hex pairs to IPv4 and check
+        const hexParts = mapped.split(":");
+        if (hexParts.length === 2) {
+          const high = parseInt(hexParts[0], 16);
+          const low = parseInt(hexParts[1], 16);
+          if (!isNaN(high) && !isNaN(low)) {
+            const ipv4 = `${(high >> 8) & 0xff}.${high & 0xff}.${(low >> 8) & 0xff}.${low & 0xff}`;
+            if (isPrivateIP(ipv4)) return true;
+          }
+        }
+      }
+    }
+  }
+
+  // Block IPv6 unique local addresses (fc00::/7 = fc00:: through fdff::)
+  if (ipv6.startsWith("fc") || ipv6.startsWith("fd")) {
+    return true;
+  }
+
+  // Block IPv6 link-local (fe80::/10)
+  if (ipv6.startsWith("fe80")) {
+    return true;
+  }
+
+  // Block .local and .internal domains
+  if (h.endsWith(".local") || h.endsWith(".internal")) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Check if a URL targets a private/internal network address.
  * Prevents SSRF attacks via prompt injection.
  */
@@ -52,46 +150,34 @@ function isPrivateURL(urlString: string): boolean {
     return true; // Block malformed URLs
   }
 
-  const hostname = parsed.hostname.toLowerCase();
+  return isPrivateHostname(parsed.hostname);
+}
 
-  // Block localhost variants
-  if (
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname === "::1" ||
-    hostname === "0.0.0.0" ||
-    hostname === "[::1]"
-  ) {
-    return true;
+/**
+ * Resolve hostname via DNS and check if it points to a private IP.
+ * Prevents DNS rebinding attacks where a public domain resolves to a private IP.
+ */
+async function resolveAndValidate(hostname: string): Promise<void> {
+  // Skip DNS check for IP literals (already checked by isPrivateHostname)
+  const isIPLiteral =
+    /^\d+\.\d+\.\d+\.\d+$/.test(hostname) ||
+    hostname.startsWith("[") ||
+    hostname.includes(":");
+  if (isIPLiteral) return;
+
+  try {
+    const { address } = await dns.lookup(hostname);
+    if (isPrivateIP(address)) {
+      throw new Error(
+        "Hostname resolves to a private/internal network address",
+      );
+    }
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message.includes("private/internal")) {
+      throw err;
+    }
+    // DNS resolution failure - let fetch handle it
   }
-
-  // Block cloud metadata endpoints
-  if (
-    hostname === "169.254.169.254" ||
-    hostname === "metadata.google.internal"
-  ) {
-    return true;
-  }
-
-  // Block private IP ranges
-  const parts = hostname.split(".").map(Number);
-  if (
-    parts.length === 4 &&
-    parts.every((p) => !isNaN(p) && p >= 0 && p <= 255)
-  ) {
-    if (parts[0] === 10) return true; // 10.0.0.0/8
-    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true; // 172.16.0.0/12
-    if (parts[0] === 192 && parts[1] === 168) return true; // 192.168.0.0/16
-    if (parts[0] === 0) return true; // 0.0.0.0/8
-    if (parts[0] === 169 && parts[1] === 254) return true; // link-local 169.254.0.0/16
-  }
-
-  // Block .local and .internal domains
-  if (hostname.endsWith(".local") || hostname.endsWith(".internal")) {
-    return true;
-  }
-
-  return false;
 }
 
 /**
@@ -128,7 +214,11 @@ async function readResponseBodyWithLimit(
 
       totalSize += value.byteLength;
       if (totalSize > maxSize) {
-        await reader.cancel();
+        try {
+          await reader.cancel();
+        } catch {
+          /* ignore cancel errors */
+        }
         throw new Error("Response too large (exceeds 5MB limit)");
       }
       chunks.push(value);
@@ -144,6 +234,54 @@ async function readResponseBodyWithLimit(
     offset += chunk.byteLength;
   }
   return result.buffer;
+}
+
+/**
+ * Follow redirects manually, validating each target against SSRF blocklist.
+ */
+async function fetchWithRedirectValidation(
+  url: string,
+  options: RequestInit,
+): Promise<Response> {
+  let currentUrl = url;
+  let redirectCount = 0;
+
+  while (redirectCount < MAX_REDIRECTS) {
+    const response = await fetch(currentUrl, {
+      ...options,
+      redirect: "manual",
+    });
+
+    if (![301, 302, 303, 307, 308].includes(response.status)) {
+      return response;
+    }
+
+    const location = response.headers.get("location");
+    if (!location) {
+      return response;
+    }
+
+    const redirectUrl = new URL(location, currentUrl).href;
+    if (isPrivateURL(redirectUrl)) {
+      throw new Error(
+        "Redirect to private/internal network address is not allowed",
+      );
+    }
+
+    // Validate DNS of redirect target
+    const redirectParsed = new URL(redirectUrl);
+    await resolveAndValidate(redirectParsed.hostname);
+
+    currentUrl = redirectUrl;
+    redirectCount++;
+  }
+
+  throw new Error(`Too many redirects (exceeded ${MAX_REDIRECTS})`);
+}
+
+function truncateOutput(text: string): string {
+  if (text.length <= MAX_OUTPUT_LENGTH) return text;
+  return `${text.slice(0, MAX_OUTPUT_LENGTH)}\n<!-- content truncated at ${MAX_OUTPUT_LENGTH} characters -->`;
 }
 
 const DESCRIPTION = `
@@ -198,24 +336,30 @@ function createAbortSignal(
 }
 
 /**
- * Extract text from HTML by removing script/style tags and extracting text content
+ * Remove script, style, and other non-content tags from HTML.
  */
-function extractTextFromHTML(html: string): string {
-  // Decode HTML entities FIRST to prevent XSS bypass via encoded tags
-  // (e.g., &lt;script&gt; surviving tag stripping then being decoded)
-  let text = decodeHTMLEntities(html);
-
-  // Remove script and style tags and their content
-  text = text
+function stripDangerousTags(html: string): string {
+  return html
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
     .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
     .replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, "")
     .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, "")
     .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, "")
     .replace(/<embed\b[^<]*(?:(?!<\/embed>)<[^<]*)*<\/embed>/gi, "");
+}
+
+/**
+ * Extract text from HTML by removing script/style tags and extracting text content.
+ * Order: strip tags first, then decode entities (output is text for AI agent, not browser).
+ */
+function extractTextFromHTML(html: string): string {
+  let text = stripDangerousTags(html);
 
   // Remove HTML tags
   text = text.replace(/<[^>]+>/g, " ");
+
+  // Decode HTML entities AFTER tag stripping
+  text = decodeHTMLEntities(text);
 
   // Collapse whitespace and trim
   text = text.replace(/\s+/g, " ").trim();
@@ -224,69 +368,70 @@ function extractTextFromHTML(html: string): string {
 }
 
 /**
- * Convert HTML to markdown
- * This is a basic implementation - for production use consider a library like turndown
+ * Convert HTML to markdown.
+ * Order: strip dangerous tags, convert structural tags, decode entities last.
+ * The output is text for an AI agent, not rendered in a browser, so XSS is not a concern.
  */
 function convertHTMLToMarkdown(html: string): string {
-  // Decode HTML entities FIRST to prevent XSS bypass via encoded tags
-  let markdown = decodeHTMLEntities(html);
+  let markdown = html;
 
   // Remove script, style, meta, link tags
-  markdown = markdown
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
-    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
-    .replace(/<meta[^>]*>/gi, "")
-    .replace(/<link[^>]*>/gi, "");
+  markdown = stripDangerousTags(markdown);
+  markdown = markdown.replace(/<meta[^>]*>/gi, "").replace(/<link[^>]*>/gi, "");
 
-  // Convert headings
+  // Convert headings (with dotall flag for multiline content)
   markdown = markdown.replace(
-    /<h1[^>]*>(.*?)<\/h1>/gi,
+    /<h1[^>]*>(.*?)<\/h1>/gis,
     (_, content) => `\n# ${content.trim()}\n`,
   );
   markdown = markdown.replace(
-    /<h2[^>]*>(.*?)<\/h2>/gi,
+    /<h2[^>]*>(.*?)<\/h2>/gis,
     (_, content) => `\n## ${content.trim()}\n`,
   );
   markdown = markdown.replace(
-    /<h3[^>]*>(.*?)<\/h3>/gi,
+    /<h3[^>]*>(.*?)<\/h3>/gis,
     (_, content) => `\n### ${content.trim()}\n`,
   );
   markdown = markdown.replace(
-    /<h4[^>]*>(.*?)<\/h4>/gi,
+    /<h4[^>]*>(.*?)<\/h4>/gis,
     (_, content) => `\n#### ${content.trim()}\n`,
   );
   markdown = markdown.replace(
-    /<h5[^>]*>(.*?)<\/h5>/gi,
+    /<h5[^>]*>(.*?)<\/h5>/gis,
     (_, content) => `\n##### ${content.trim()}\n`,
   );
   markdown = markdown.replace(
-    /<h6[^>]*>(.*?)<\/h6>/gi,
+    /<h6[^>]*>(.*?)<\/h6>/gis,
     (_, content) => `\n###### ${content.trim()}\n`,
   );
 
-  // Convert bold and italic
+  // Convert bold and italic (with dotall flag)
   markdown = markdown.replace(
-    /<(strong|b)[^>]*>(.*?)<\/\1>/gi,
+    /<(strong|b)[^>]*>(.*?)<\/\1>/gis,
     (_, __, content) => `**${content}**`,
   );
   markdown = markdown.replace(
-    /<(em|i)[^>]*>(.*?)<\/\1>/gi,
+    /<(em|i)[^>]*>(.*?)<\/\1>/gis,
     (_, __, content) => `*${content}*`,
   );
 
-  // Convert code
+  // Convert code: handle <pre><code>...</code></pre> first to avoid double-escaping
   markdown = markdown.replace(
-    /<code[^>]*>(.*?)<\/code>/gi,
-    (_, content) => `\`${content}\``,
+    /<pre[^>]*>\s*<code[^>]*>(.*?)<\/code>\s*<\/pre>/gis,
+    (_, content) => `\n\`\`\`\n${content.trim()}\n\`\`\`\n`,
   );
   markdown = markdown.replace(
     /<pre[^>]*>(.*?)<\/pre>/gis,
     (_, content) => `\n\`\`\`\n${content.trim()}\n\`\`\`\n`,
   );
-
-  // Convert links
   markdown = markdown.replace(
-    /<a[^>]*href=["']([^"']*)["'][^>]*>(.*?)<\/a>/gi,
+    /<code[^>]*>(.*?)<\/code>/gis,
+    (_, content) => `\`${content}\``,
+  );
+
+  // Convert links (with dotall flag)
+  markdown = markdown.replace(
+    /<a[^>]*href=["']([^"']*)["'][^>]*>(.*?)<\/a>/gis,
     (_, href, text) => `[${text}](${href})`,
   );
 
@@ -300,12 +445,12 @@ function convertHTMLToMarkdown(html: string): string {
     (_, src) => `![](${src})`,
   );
 
-  // Convert lists
+  // Convert lists (with dotall flag for li)
   markdown = markdown.replace(/<ul[^>]*>/gi, "\n");
   markdown = markdown.replace(/<\/ul>/gi, "\n");
   markdown = markdown.replace(/<ol[^>]*>/gi, "\n");
   markdown = markdown.replace(/<\/ol>/gi, "\n");
-  markdown = markdown.replace(/<li[^>]*>(.*?)<\/li>/gi, (_, content) => {
+  markdown = markdown.replace(/<li[^>]*>(.*?)<\/li>/gis, (_, content) => {
     return `- ${content.trim()}\n`;
   });
 
@@ -320,6 +465,9 @@ function convertHTMLToMarkdown(html: string): string {
   // Remove remaining HTML tags
   markdown = markdown.replace(/<[^>]+>/g, "");
 
+  // Decode HTML entities AFTER tag conversion
+  markdown = decodeHTMLEntities(markdown);
+
   // Clean up excessive newlines
   markdown = markdown.replace(/\n{3,}/g, "\n\n");
 
@@ -332,7 +480,18 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
   inputSchema: webFetchSchema,
   defaultConsent: "ask",
 
+  // web_fetch runs locally (no engine API) so it does not require Dyad Pro
   getConsentPreview: (args) => `Fetch URL: "${args.url}" as ${args.format}`,
+
+  buildXml: (args, isComplete) => {
+    if (!args.url) return undefined;
+
+    let xml = `<dyad-web-fetch>${escapeXmlContent(args.url)}`;
+    if (isComplete) {
+      xml += "</dyad-web-fetch>";
+    }
+    return xml;
+  },
 
   execute: async (args, ctx: AgentContext) => {
     logger.log(`Executing web fetch: ${args.url} (format: ${args.format})`);
@@ -348,6 +507,10 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
         "Access to private/internal network addresses is not allowed",
       );
     }
+
+    // Resolve DNS and validate against private IP ranges to prevent DNS rebinding
+    const parsed = new URL(args.url);
+    await resolveAndValidate(parsed.hostname);
 
     const timeout = Math.min(
       (args.timeout ?? DEFAULT_TIMEOUT / 1000) * 1000,
@@ -386,13 +549,17 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
     let response: Response;
     let arrayBuffer: ArrayBuffer;
     try {
-      const initial = await fetch(args.url, { signal, headers });
+      // Use manual redirect following with SSRF validation on each hop
+      const initial = await fetchWithRedirectValidation(args.url, {
+        signal,
+        headers,
+      });
 
       // Retry with honest UA if blocked by Cloudflare bot detection (TLS fingerprint mismatch)
       response =
         initial.status === 403 &&
         initial.headers.get("cf-mitigated") === "challenge"
-          ? await fetch(args.url, {
+          ? await fetchWithRedirectValidation(args.url, {
               signal,
               headers: { ...headers, "User-Agent": "dyad-agent" },
             })
@@ -400,9 +567,7 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
 
       if (!response.ok) {
         clearTimeout();
-        throw new Error(
-          `Request failed with status code: ${response.status} ${response.statusText}`,
-        );
+        throw new Error(formatHttpError(response.status, response.statusText));
       }
 
       // Read response body with streaming size limit.
@@ -473,7 +638,31 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
         result = content;
     }
 
+    // Truncate output to prevent flooding the conversation
+    result = truncateOutput(result);
+
     logger.log(`Web fetch completed: ${args.url}`);
     return result;
   },
 };
+
+/**
+ * Map common HTTP status codes to user-friendly error messages.
+ */
+function formatHttpError(status: number, statusText: string): string {
+  switch (status) {
+    case 401:
+      return `Access denied (401 Unauthorized). The page requires authentication.`;
+    case 403:
+      return `Access forbidden (403 Forbidden). The site may require authentication or block automated access.`;
+    case 404:
+      return `Page not found (404). Check that the URL is correct.`;
+    case 429:
+      return `Too many requests (429). Try again in a moment.`;
+    default:
+      if (status >= 500) {
+        return `Server error (${status} ${statusText}). The website may be experiencing issues.`;
+      }
+      return `Request failed with status code: ${status} ${statusText}`;
+  }
+}

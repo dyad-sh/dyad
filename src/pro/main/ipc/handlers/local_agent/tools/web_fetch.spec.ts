@@ -5,6 +5,18 @@ import type { AgentContext } from "./types";
 // Mock fetch globally
 global.fetch = vi.fn();
 
+// Mock dns.promises.lookup to avoid real DNS resolution in tests
+vi.mock("dns", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("dns")>();
+  return {
+    ...actual,
+    promises: {
+      ...actual.promises,
+      lookup: vi.fn().mockResolvedValue({ address: "93.184.216.34" }),
+    },
+  };
+});
+
 describe("web_fetch tool", () => {
   let mockContext: AgentContext;
 
@@ -52,7 +64,7 @@ describe("web_fetch tool", () => {
     (global.fetch as any).mockResolvedValue({
       ok: true,
       status: 200,
-      headers: new Map([["content-type", "text/html"]]),
+      headers: new Headers([["content-type", "text/html"]]),
       arrayBuffer: async () => new TextEncoder().encode(mockHtml).buffer,
     });
 
@@ -77,7 +89,7 @@ describe("web_fetch tool", () => {
     (global.fetch as any).mockResolvedValue({
       ok: true,
       status: 200,
-      headers: new Map([["content-type", "text/html"]]),
+      headers: new Headers([["content-type", "text/html"]]),
       arrayBuffer: async () => new TextEncoder().encode(mockHtml).buffer,
     });
 
@@ -96,7 +108,7 @@ describe("web_fetch tool", () => {
     (global.fetch as any).mockResolvedValue({
       ok: true,
       status: 200,
-      headers: new Map([["content-type", "text/html"]]),
+      headers: new Headers([["content-type", "text/html"]]),
       arrayBuffer: async () => new TextEncoder().encode(mockHtml).buffer,
     });
 
@@ -116,7 +128,7 @@ describe("web_fetch tool", () => {
     (global.fetch as any).mockResolvedValue({
       ok: true,
       status: 200,
-      headers: new Map([["content-type", "image/jpeg"]]),
+      headers: new Headers([["content-type", "image/jpeg"]]),
       arrayBuffer: async () => mockImageBuffer.buffer,
     });
 
@@ -142,7 +154,7 @@ describe("web_fetch tool", () => {
     (global.fetch as any).mockResolvedValue({
       ok: true,
       status: 200,
-      headers: new Map([["content-type", "text/plain"]]),
+      headers: new Headers([["content-type", "text/plain"]]),
       arrayBuffer: async () => new TextEncoder().encode(largeContent).buffer,
     });
 
@@ -154,11 +166,12 @@ describe("web_fetch tool", () => {
     ).rejects.toThrow("Response too large");
   });
 
-  it("should handle failed requests", async () => {
+  it("should handle failed requests with user-friendly error", async () => {
     (global.fetch as any).mockResolvedValue({
       ok: false,
       status: 404,
       statusText: "Not Found",
+      headers: new Headers(),
     });
 
     await expect(
@@ -166,7 +179,7 @@ describe("web_fetch tool", () => {
         { url: "https://example.com", format: "markdown" },
         mockContext,
       ),
-    ).rejects.toThrow("Request failed with status code: 404 Not Found");
+    ).rejects.toThrow("Page not found (404)");
   });
 
   it("should retry with different User-Agent on Cloudflare challenge", async () => {
@@ -177,13 +190,13 @@ describe("web_fetch tool", () => {
       .mockResolvedValueOnce({
         ok: false,
         status: 403,
-        headers: new Map([["cf-mitigated", "challenge"]]),
+        headers: new Headers([["cf-mitigated", "challenge"]]),
       })
       // Second call succeeds
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        headers: new Map([["content-type", "text/html"]]),
+        headers: new Headers([["content-type", "text/html"]]),
         arrayBuffer: async () => new TextEncoder().encode(mockHtml).buffer,
       });
 
@@ -209,7 +222,7 @@ describe("web_fetch tool", () => {
     (global.fetch as any).mockResolvedValue({
       ok: true,
       status: 200,
-      headers: new Map([["content-type", "text/html"]]),
+      headers: new Headers([["content-type", "text/html"]]),
       arrayBuffer: async () => new TextEncoder().encode(mockHtml).buffer,
     });
 
@@ -245,13 +258,13 @@ describe("web_fetch tool", () => {
     (global.fetch as any).mockResolvedValue({
       ok: true,
       status: 200,
-      headers: new Map([["content-type", "text/html"]]),
+      headers: new Headers([["content-type", "text/html"]]),
       body: { getReader: () => mockReader },
     });
 
-    // Request 200 seconds but max is 120
+    // Request 120 seconds (the max, since schema now enforces max(120))
     await webFetchTool.execute(
-      { url: "https://example.com", format: "markdown", timeout: 200 },
+      { url: "https://example.com", format: "markdown", timeout: 120 },
       mockContext,
     );
 
@@ -267,6 +280,7 @@ describe("web_fetch tool", () => {
     const privateUrls = [
       "http://localhost/secret",
       "http://127.0.0.1/admin",
+      "http://127.0.0.2/bypass",
       "http://0.0.0.0/",
       "http://10.0.0.1/internal",
       "http://172.16.0.1/data",
@@ -287,7 +301,10 @@ describe("web_fetch tool", () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it("should strip encoded script tags to prevent XSS bypass", async () => {
+  it("should preserve encoded HTML entities as visible text", async () => {
+    // When a page shows HTML examples using entities, the entities should be decoded
+    // to visible text, not treated as real tags. The correct order is:
+    // strip tags → decode entities (since output is for AI, not browser).
     const mockHtml =
       "<html><body>Hello &lt;script&gt;alert('xss')&lt;/script&gt; World</body></html>";
     const mockReader = {
@@ -304,7 +321,7 @@ describe("web_fetch tool", () => {
     (global.fetch as any).mockResolvedValue({
       ok: true,
       status: 200,
-      headers: new Map([["content-type", "text/html"]]),
+      headers: new Headers([["content-type", "text/html"]]),
       body: { getReader: () => mockReader },
     });
 
@@ -313,10 +330,11 @@ describe("web_fetch tool", () => {
       mockContext,
     );
 
-    expect(result).not.toContain("<script>");
-    expect(result).not.toContain("alert");
+    // Encoded entities should be decoded as visible text (not stripped as tags)
     expect(result).toContain("Hello");
     expect(result).toContain("World");
+    expect(result).toContain("<script>");
+    expect(result).toContain("alert('xss')");
   });
 
   it("should generate consent preview", () => {
@@ -326,5 +344,39 @@ describe("web_fetch tool", () => {
     });
 
     expect(preview).toBe('Fetch URL: "https://example.com" as markdown');
+  });
+
+  it("should truncate very long output", async () => {
+    const longContent = "a".repeat(20_000);
+    (global.fetch as any).mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers([["content-type", "text/plain"]]),
+      arrayBuffer: async () => new TextEncoder().encode(longContent).buffer,
+    });
+
+    const result = await webFetchTool.execute(
+      { url: "https://example.com", format: "text" },
+      mockContext,
+    );
+
+    expect(result.length).toBeLessThan(20_000);
+    expect(result).toContain("<!-- content truncated");
+  });
+
+  it("should generate buildXml output", () => {
+    const streaming = webFetchTool.buildXml?.(
+      { url: "https://example.com", format: "markdown" },
+      false,
+    );
+    expect(streaming).toContain("<dyad-web-fetch>");
+    expect(streaming).toContain("example.com");
+    expect(streaming).not.toContain("</dyad-web-fetch>");
+
+    const complete = webFetchTool.buildXml?.(
+      { url: "https://example.com", format: "markdown" },
+      true,
+    );
+    expect(complete).toContain("</dyad-web-fetch>");
   });
 });

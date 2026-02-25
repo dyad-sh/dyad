@@ -102,6 +102,55 @@ describe("webFetchTool", () => {
     expect(result).toBe(html);
   });
 
+  it("converts html to markdown for markdown format", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        '<html><body><h1>Title</h1><p>Hello <strong>bold</strong> and <em>italic</em>.</p><a href="https://example.com">link</a><ul><li>item</li></ul><pre>code block</pre></body></html>',
+        {
+          status: 200,
+          headers: {
+            "content-type": "text/html; charset=utf-8",
+          },
+        },
+      ),
+    );
+
+    const result = await webFetchTool.execute(
+      { url: "https://example.com", format: "markdown" },
+      mockContext,
+    );
+
+    expect(result).toContain("# Title");
+    expect(result).toContain("**bold**");
+    expect(result).toContain("*italic*");
+    expect(result).toContain("[link](https://example.com)");
+    expect(result).toContain("- item");
+    expect(result).toContain("```");
+  });
+
+  it("rejects private/internal network addresses", async () => {
+    await expect(
+      webFetchTool.execute(
+        { url: "http://127.0.0.1/admin", format: "text" },
+        mockContext,
+      ),
+    ).rejects.toThrow("private or internal network address");
+
+    await expect(
+      webFetchTool.execute(
+        { url: "http://localhost/admin", format: "text" },
+        mockContext,
+      ),
+    ).rejects.toThrow("private or internal network address");
+
+    await expect(
+      webFetchTool.execute(
+        { url: "http://169.254.169.254/latest/meta-data/", format: "text" },
+        mockContext,
+      ),
+    ).rejects.toThrow("private or internal network address");
+  });
+
   it("rejects responses above the 5MB content-length limit", async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response("small", {

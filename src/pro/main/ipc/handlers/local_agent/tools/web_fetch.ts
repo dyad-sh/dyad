@@ -37,6 +37,45 @@ Notes:
 - Responses larger than 5MB are rejected.
 - Binary responses (including images) are not returned as text content.`;
 
+const BLOCKED_HOSTNAMES = new Set([
+  "localhost",
+  "metadata.google.internal",
+]);
+
+function isPrivateIp(hostname: string): boolean {
+  // IPv6 loopback
+  if (hostname === "[::1]" || hostname === "::1") return true;
+
+  // Strip brackets for IPv6
+  const ip = hostname.replace(/^\[|\]$/g, "");
+
+  // IPv4 patterns
+  const parts = ip.split(".");
+  if (parts.length === 4 && parts.every((p) => /^\d{1,3}$/.test(p))) {
+    const [a, b] = parts.map(Number);
+    if (a === 127) return true; // 127.0.0.0/8 loopback
+    if (a === 10) return true; // 10.0.0.0/8
+    if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
+    if (a === 192 && b === 168) return true; // 192.168.0.0/16
+    if (a === 169 && b === 254) return true; // 169.254.0.0/16 link-local / cloud metadata
+    if (a === 0) return true; // 0.0.0.0/8
+  }
+
+  return false;
+}
+
+function redactUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.username = "";
+    parsed.password = "";
+    parsed.search = "";
+    return parsed.toString();
+  } catch {
+    return "<invalid-url>";
+  }
+}
+
 function validateHttpUrl(url: string): string {
   let parsed: URL;
   try {
@@ -47,6 +86,15 @@ function validateHttpUrl(url: string): string {
 
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new Error("URL must start with http:// or https://");
+  }
+
+  if (
+    BLOCKED_HOSTNAMES.has(parsed.hostname.toLowerCase()) ||
+    isPrivateIp(parsed.hostname)
+  ) {
+    throw new Error(
+      "URL points to a private or internal network address, which is not allowed",
+    );
   }
 
   return parsed.toString();
@@ -138,6 +186,10 @@ function convertHtmlToMarkdown(html: string): string {
       /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi,
       "[$2]($1)",
     )
+    .replace(/<(?:strong|b)\b[^>]*>([\s\S]*?)<\/(?:strong|b)>/gi, "**$1**")
+    .replace(/<(?:em|i)\b[^>]*>([\s\S]*?)<\/(?:em|i)>/gi, "*$1*")
+    .replace(/<pre\b[^>]*>([\s\S]*?)<\/pre>/gi, "\n```\n$1\n```\n")
+    .replace(/<code\b[^>]*>([\s\S]*?)<\/code>/gi, "`$1`")
     .replace(/<li\b[^>]*>([\s\S]*?)<\/li>/gi, "- $1\n")
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(
@@ -162,6 +214,8 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
   name: "web_fetch",
   description: DESCRIPTION,
   inputSchema: webFetchSchema,
+  // No isEnabled guard: unlike web_search/web_crawl which use the paid engine API,
+  // web_fetch uses native fetch and does not require Dyad Pro.
   defaultConsent: "ask",
 
   getConsentPreview: (args) => {
@@ -176,7 +230,8 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
       MAX_TIMEOUT_SECONDS,
     );
 
-    logger.log(`Fetching URL: ${normalizedUrl} (format=${args.format})`);
+    const safeUrl = redactUrl(normalizedUrl);
+    logger.log(`Fetching URL: ${safeUrl} (format=${args.format})`);
 
     const abortController = new AbortController();
     const timeoutId = setTimeout(() => {
@@ -202,7 +257,9 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
         if (error instanceof Error && error.name === "AbortError") {
           throw new Error(`Request timed out after ${timeoutSeconds}s`);
         }
-        throw error;
+        throw new Error(
+          `Failed to fetch URL: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
 
       if (!response.ok) {
@@ -246,7 +303,10 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
       if (error instanceof Error && error.name === "AbortError") {
         throw new Error(`Request timed out after ${timeoutSeconds}s`);
       }
-      throw error;
+      if (error instanceof Error) throw error;
+      throw new Error(
+        `Failed to fetch URL: ${String(error)}`,
+      );
     } finally {
       clearTimeout(timeoutId);
     }
@@ -262,7 +322,14 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
       return `Fetched binary content (${mime}, ${arrayBuffer.byteLength} bytes). This tool only returns text-like content.`;
     }
 
-    const content = new TextDecoder().decode(arrayBuffer);
+    const charsetMatch = contentType.match(/charset=([\w-]+)/i);
+    const charset = charsetMatch?.[1] ?? "utf-8";
+    let content: string;
+    try {
+      content = new TextDecoder(charset).decode(arrayBuffer);
+    } catch {
+      content = new TextDecoder().decode(arrayBuffer);
+    }
 
     let output: string;
     if (args.format === "html") {
@@ -278,7 +345,7 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
 
     const truncated = truncateOutput(output);
     logger.log(
-      `Fetched URL successfully: ${normalizedUrl} (${mime || "unknown mime"}, ${arrayBuffer.byteLength} bytes)`,
+      `Fetched URL successfully: ${safeUrl} (${mime || "unknown mime"}, ${arrayBuffer.byteLength} bytes)`,
     );
 
     return truncated;

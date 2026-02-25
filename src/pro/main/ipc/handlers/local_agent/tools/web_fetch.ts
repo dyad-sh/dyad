@@ -125,8 +125,8 @@ function isPrivateHostname(hostname: string): boolean {
     return true;
   }
 
-  // Block IPv6 link-local (fe80::/10)
-  if (ipv6.startsWith("fe80")) {
+  // Block IPv6 link-local (fe80::/10 covers fe80:: through febf::)
+  if (/^fe[89ab]/i.test(ipv6)) {
     return true;
   }
 
@@ -154,29 +154,34 @@ function isPrivateURL(urlString: string): boolean {
 }
 
 /**
- * Resolve hostname via DNS and check if it points to a private IP.
- * Prevents DNS rebinding attacks where a public domain resolves to a private IP.
+ * Resolve hostname via DNS, check if it points to a private IP, and return
+ * the validated address so callers can pin the connection to that IP
+ * (preventing DNS rebinding TOCTOU attacks).
  */
-async function resolveAndValidate(hostname: string): Promise<void> {
+async function resolveAndValidate(
+  hostname: string,
+): Promise<string | undefined> {
   // Skip DNS check for IP literals (already checked by isPrivateHostname)
   const isIPLiteral =
     /^\d+\.\d+\.\d+\.\d+$/.test(hostname) ||
     hostname.startsWith("[") ||
     hostname.includes(":");
-  if (isIPLiteral) return;
+  if (isIPLiteral) return undefined;
 
   try {
     const { address } = await dns.lookup(hostname);
-    if (isPrivateIP(address)) {
+    if (isPrivateIP(address) || isPrivateHostname(address)) {
       throw new Error(
         "Hostname resolves to a private/internal network address",
       );
     }
+    return address;
   } catch (err: unknown) {
     if (err instanceof Error && err.message.includes("private/internal")) {
       throw err;
     }
     // DNS resolution failure - let fetch handle it
+    return undefined;
   }
 }
 
@@ -237,18 +242,55 @@ async function readResponseBodyWithLimit(
 }
 
 /**
+ * Build a URL that replaces the hostname with a resolved IP address to pin
+ * the connection and prevent DNS rebinding between validation and fetch.
+ */
+function buildPinnedUrl(
+  originalUrl: string,
+  resolvedIP: string,
+): { pinnedUrl: string; hostHeader: string } {
+  const parsed = new URL(originalUrl);
+  const hostHeader = parsed.host; // includes port if present
+
+  // For IPv6 addresses, wrap in brackets for URL
+  const ipForUrl = resolvedIP.includes(":")
+    ? `[${resolvedIP}]`
+    : resolvedIP;
+
+  parsed.hostname = ipForUrl;
+  return { pinnedUrl: parsed.href, hostHeader };
+}
+
+/**
  * Follow redirects manually, validating each target against SSRF blocklist.
+ * Pins requests to validated DNS results to prevent rebinding attacks.
  */
 async function fetchWithRedirectValidation(
   url: string,
   options: RequestInit,
+  resolvedIP?: string,
 ): Promise<Response> {
   let currentUrl = url;
+  let currentResolvedIP = resolvedIP;
   let redirectCount = 0;
 
   while (redirectCount < MAX_REDIRECTS) {
-    const response = await fetch(currentUrl, {
+    let fetchUrl = currentUrl;
+    const fetchHeaders = { ...(options.headers as Record<string, string>) };
+
+    // Pin to validated IP to prevent DNS rebinding TOCTOU
+    if (currentResolvedIP) {
+      const { pinnedUrl, hostHeader } = buildPinnedUrl(
+        currentUrl,
+        currentResolvedIP,
+      );
+      fetchUrl = pinnedUrl;
+      fetchHeaders["Host"] = hostHeader;
+    }
+
+    const response = await fetch(fetchUrl, {
       ...options,
+      headers: fetchHeaders,
       redirect: "manual",
     });
 
@@ -268,9 +310,9 @@ async function fetchWithRedirectValidation(
       );
     }
 
-    // Validate DNS of redirect target
+    // Validate DNS of redirect target and get pinned IP
     const redirectParsed = new URL(redirectUrl);
-    await resolveAndValidate(redirectParsed.hostname);
+    currentResolvedIP = await resolveAndValidate(redirectParsed.hostname);
 
     currentUrl = redirectUrl;
     redirectCount++;
@@ -510,7 +552,7 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
 
     // Resolve DNS and validate against private IP ranges to prevent DNS rebinding
     const parsed = new URL(args.url);
-    await resolveAndValidate(parsed.hostname);
+    const resolvedIP = await resolveAndValidate(parsed.hostname);
 
     const timeout = Math.min(
       (args.timeout ?? DEFAULT_TIMEOUT / 1000) * 1000,
@@ -549,20 +591,23 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
     let response: Response;
     let arrayBuffer: ArrayBuffer;
     try {
-      // Use manual redirect following with SSRF validation on each hop
-      const initial = await fetchWithRedirectValidation(args.url, {
-        signal,
-        headers,
-      });
+      // Use manual redirect following with SSRF validation on each hop.
+      // Pass resolvedIP to pin connection to validated DNS result.
+      const initial = await fetchWithRedirectValidation(
+        args.url,
+        { signal, headers },
+        resolvedIP,
+      );
 
       // Retry with honest UA if blocked by Cloudflare bot detection (TLS fingerprint mismatch)
       response =
         initial.status === 403 &&
         initial.headers.get("cf-mitigated") === "challenge"
-          ? await fetchWithRedirectValidation(args.url, {
-              signal,
-              headers: { ...headers, "User-Agent": "dyad-agent" },
-            })
+          ? await fetchWithRedirectValidation(
+              args.url,
+              { signal, headers: { ...headers, "User-Agent": "dyad-agent" } },
+              resolvedIP,
+            )
           : initial;
 
       if (!response.ok) {

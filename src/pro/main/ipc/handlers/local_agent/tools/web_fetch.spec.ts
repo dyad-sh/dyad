@@ -74,11 +74,13 @@ describe("web_fetch tool", () => {
     );
 
     expect(result).toBe(mockHtml);
+    // fetch is called with pinned IP URL and Host header for DNS rebinding protection
     expect(global.fetch).toHaveBeenCalledWith(
-      "https://example.com",
+      "https://93.184.216.34/",
       expect.objectContaining({
         headers: expect.objectContaining({
           Accept: expect.stringContaining("text/html"),
+          Host: "example.com",
         }),
       }),
     );
@@ -207,10 +209,11 @@ describe("web_fetch tool", () => {
 
     expect(global.fetch).toHaveBeenCalledTimes(2);
     expect(global.fetch).toHaveBeenLastCalledWith(
-      "https://example.com",
+      "https://93.184.216.34/",
       expect.objectContaining({
         headers: expect.objectContaining({
           "User-Agent": "dyad-agent",
+          Host: "example.com",
         }),
       }),
     );
@@ -231,9 +234,9 @@ describe("web_fetch tool", () => {
       mockContext,
     );
 
-    // Verify fetch was called with a signal
+    // Verify fetch was called with a signal (URL is pinned to resolved IP)
     expect(global.fetch).toHaveBeenCalledWith(
-      "https://example.com",
+      "https://93.184.216.34/",
       expect.objectContaining({
         signal: expect.any(AbortSignal),
       }),

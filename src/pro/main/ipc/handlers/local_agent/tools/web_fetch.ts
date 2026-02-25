@@ -323,7 +323,7 @@ async function fetchWithRedirectValidation(
 
 function truncateOutput(text: string): string {
   if (text.length <= MAX_OUTPUT_LENGTH) return text;
-  return `${text.slice(0, MAX_OUTPUT_LENGTH)}\n<!-- content truncated at ${MAX_OUTPUT_LENGTH} characters -->`;
+  return `${text.slice(0, MAX_OUTPUT_LENGTH)}\n\n[Content truncated at ${MAX_OUTPUT_LENGTH} characters]`;
 }
 
 const DESCRIPTION = `
@@ -576,9 +576,6 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
         acceptHeader =
           "text/html;q=1.0, application/xhtml+xml;q=0.9, text/plain;q=0.8, text/markdown;q=0.7, */*;q=0.1";
         break;
-      default:
-        acceptHeader =
-          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8";
     }
 
     const headers = {
@@ -654,7 +651,16 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
       return "Image fetched successfully and displayed above.";
     }
 
-    const content = new TextDecoder().decode(arrayBuffer);
+    // Parse charset from Content-Type to avoid garbling non-UTF-8 responses
+    const charset =
+      contentType.match(/charset=([\w-]+)/i)?.[1] || "utf-8";
+    let content: string;
+    try {
+      content = new TextDecoder(charset).decode(arrayBuffer);
+    } catch {
+      // Fall back to UTF-8 for unrecognized charsets
+      content = new TextDecoder("utf-8").decode(arrayBuffer);
+    }
 
     // Handle content based on requested format and actual content type
     let result: string;
@@ -678,9 +684,6 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
       case "html":
         result = content;
         break;
-
-      default:
-        result = content;
     }
 
     // Truncate output to prevent flooding the conversation

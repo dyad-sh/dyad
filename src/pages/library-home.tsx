@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePrompts } from "@/hooks/usePrompts";
 import { useCustomThemes } from "@/hooks/useCustomThemes";
+import { useAppMediaFiles } from "@/hooks/useAppMediaFiles";
 import { BookOpen } from "lucide-react";
 import { CreateOrEditPromptDialog } from "@/components/CreatePromptDialog";
 import { CustomThemeDialog } from "@/components/CustomThemeDialog";
@@ -15,6 +16,7 @@ import {
   LibraryFilterTabs,
   type FilterType,
 } from "@/components/LibraryFilterTabs";
+import { DyadAppMediaFolder } from "@/components/DyadAppMediaFolder";
 // @ts-expect-error -- SVG asset import handled by bundler
 import logo from "../../assets/logo.svg";
 
@@ -120,7 +122,8 @@ export default function LibraryHomePage() {
   const [activeFilter, setActiveFilter] = useState<FilterType>(() => {
     const params = new URLSearchParams(window.location.search);
     const filter = params.get("filter");
-    if (filter === "themes" || filter === "prompts") return filter;
+    if (filter === "themes" || filter === "prompts" || filter === "media")
+      return filter;
     return "all";
   });
 
@@ -132,6 +135,7 @@ export default function LibraryHomePage() {
     deletePrompt,
   } = usePrompts();
   const { customThemes, isLoading: themesLoading } = useCustomThemes();
+  const { mediaApps, isLoading: mediaLoading } = useAppMediaFiles();
   const [createThemeDialogOpen, setCreateThemeDialogOpen] = useState(false);
 
   // Deep link support (preserved from old library.tsx)
@@ -164,9 +168,11 @@ export default function LibraryHomePage() {
     }
   };
 
-  const isLoading = promptsLoading || themesLoading;
+  const isLoading = promptsLoading || themesLoading || mediaLoading;
 
   const filteredItems = useMemo(() => {
+    if (activeFilter === "media") return [];
+
     let items: LibraryItem[] = [];
 
     if (activeFilter === "all" || activeFilter === "themes") {
@@ -211,6 +217,24 @@ export default function LibraryHomePage() {
 
     return items;
   }, [customThemes, prompts, activeFilter, searchQuery]);
+
+  const filteredMediaApps = useMemo(() => {
+    if (activeFilter === "themes" || activeFilter === "prompts") return [];
+
+    let apps = mediaApps;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      apps = apps.filter(
+        (app) =>
+          app.appName.toLowerCase().includes(q) ||
+          app.files.some((f) => f.fileName.toLowerCase().includes(q)),
+      );
+    }
+    return apps;
+  }, [mediaApps, activeFilter, searchQuery]);
+
+  const hasNoResults =
+    filteredItems.length === 0 && filteredMediaApps.length === 0;
 
   return (
     <div className="min-h-screen w-full">
@@ -265,7 +289,7 @@ export default function LibraryHomePage() {
             {/* Grid */}
             {isLoading ? (
               <div>Loading...</div>
-            ) : filteredItems.length === 0 ? (
+            ) : hasNoResults ? (
               <div className="text-muted-foreground text-center py-12">
                 {searchQuery
                   ? "No results found."
@@ -279,6 +303,15 @@ export default function LibraryHomePage() {
                     item={item}
                     onUpdatePrompt={updatePrompt}
                     onDeletePrompt={deletePrompt}
+                  />
+                ))}
+                {filteredMediaApps.map((app) => (
+                  <DyadAppMediaFolder
+                    key={`media-${app.appId}`}
+                    appId={app.appId}
+                    appName={app.appName}
+                    files={app.files}
+                    searchQuery={searchQuery}
                   />
                 ))}
               </div>

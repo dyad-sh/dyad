@@ -78,10 +78,12 @@ import {
 import { fileExists } from "../utils/file_utils";
 import { extractMentionedAppsCodebases } from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
+import { parseMediaMentions } from "@/shared/parse_media_mentions";
 import { prompts as promptsTable } from "../../db/schema";
 import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
 import { replaceSlashSkillReference } from "../utils/replaceSlashSkillReference";
+import { resolveMediaMentions } from "../utils/resolve_media_mentions";
 import { parsePlanFile, validatePlanId } from "./planUtils";
 import { ensureDyadGitignored } from "./gitignoreUtils";
 import { DYAD_MEDIA_DIR_NAME } from "../utils/media_path_utils";
@@ -391,6 +393,23 @@ export function registerChatStreamHandlers() {
         }
       } catch (e) {
         logger.error("Failed to expand slash skill references:", e);
+      }
+
+      // Resolve @media: mentions to image attachments
+      try {
+        const mediaRefs = parseMediaMentions(userPrompt);
+        if (mediaRefs.length > 0) {
+          const resolvedMedia = await resolveMediaMentions(mediaRefs);
+          for (const media of resolvedMedia) {
+            attachmentPaths.push(media.filePath);
+          }
+          // Strip @media: tags from the prompt text
+          userPrompt = userPrompt
+            .replace(/@media:[a-zA-Z0-9_-]+\/[^\s]+/g, "")
+            .trim();
+        }
+      } catch (e) {
+        logger.error("Failed to resolve media mentions:", e);
       }
 
       // Expand /implement-plan= into full implementation prompt

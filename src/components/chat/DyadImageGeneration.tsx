@@ -11,9 +11,17 @@ import {
   DyadCardContent,
 } from "./DyadCardPrimitives";
 
+interface DyadImageGenerationNode {
+  properties: {
+    prompt: string;
+    path: string;
+    state: CustomTagState;
+  };
+}
+
 interface DyadImageGenerationProps {
   children?: ReactNode;
-  node?: any;
+  node?: DyadImageGenerationNode;
 }
 
 export const DyadImageGeneration: React.FC<DyadImageGenerationProps> = ({
@@ -21,9 +29,9 @@ export const DyadImageGeneration: React.FC<DyadImageGenerationProps> = ({
   node,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const prompt = node?.properties?.prompt || "";
-  const imagePath = node?.properties?.path || "";
-  const state = node?.properties?.state as CustomTagState;
+  const prompt = node?.properties?.prompt ?? "";
+  const imagePath = node?.properties?.path ?? "";
+  const state = node?.properties?.state;
   const inProgress = state === "pending";
   const aborted = state === "aborted";
 

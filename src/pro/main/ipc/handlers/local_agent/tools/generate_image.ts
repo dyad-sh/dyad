@@ -1,6 +1,6 @@
 import { z } from "zod";
 import log from "electron-log";
-import fs from "node:fs";
+import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import {
@@ -89,7 +89,7 @@ async function saveGeneratedImage(
   appPath: string,
 ): Promise<string> {
   const mediaDir = path.join(appPath, DYAD_MEDIA_DIR_NAME);
-  fs.mkdirSync(mediaDir, { recursive: true });
+  await fs.mkdir(mediaDir, { recursive: true });
 
   const hash = crypto.randomBytes(8).toString("hex");
   const timestamp = Date.now();
@@ -99,14 +99,14 @@ async function saveGeneratedImage(
 
   if (imageData.b64_json) {
     const buffer = Buffer.from(imageData.b64_json, "base64");
-    fs.writeFileSync(filePath, buffer);
+    await fs.writeFile(filePath, buffer);
   } else if (imageData.url) {
     const response = await fetch(imageData.url);
     if (!response.ok) {
       throw new Error(`Failed to download generated image: ${response.status}`);
     }
     const arrayBuffer = await response.arrayBuffer();
-    fs.writeFileSync(filePath, Buffer.from(arrayBuffer));
+    await fs.writeFile(filePath, Buffer.from(arrayBuffer));
   } else {
     throw new Error("Image generation returned no image data");
   }
@@ -121,6 +121,7 @@ export const generateImageTool: ToolDefinition<
   description: DESCRIPTION,
   inputSchema: generateImageSchema,
   defaultConsent: "ask",
+  modifiesState: true,
 
   isEnabled: (ctx) => ctx.isDyadPro,
 
@@ -139,16 +140,23 @@ export const generateImageTool: ToolDefinition<
       `<dyad-image-generation prompt="${escapeXmlAttr(args.prompt)}">`,
     );
 
-    const imageData = await callGenerateImage(args.prompt, ctx);
+    try {
+      const imageData = await callGenerateImage(args.prompt, ctx);
 
-    const relativePath = await saveGeneratedImage(imageData, ctx.appPath);
+      const relativePath = await saveGeneratedImage(imageData, ctx.appPath);
 
-    ctx.onXmlComplete(
-      `<dyad-image-generation prompt="${escapeXmlAttr(args.prompt)}" path="${escapeXmlAttr(relativePath)}">${escapeXmlContent(relativePath)}</dyad-image-generation>`,
-    );
+      ctx.onXmlComplete(
+        `<dyad-image-generation prompt="${escapeXmlAttr(args.prompt)}" path="${escapeXmlAttr(relativePath)}">${escapeXmlContent(relativePath)}</dyad-image-generation>`,
+      );
 
-    logger.log(`Image generation completed, saved to: ${relativePath}`);
+      logger.log(`Image generation completed, saved to: ${relativePath}`);
 
-    return `Image generated and saved to: ${relativePath}\nUse the copy_file tool to copy it from "${relativePath}" to the appropriate location in the project (e.g., public/assets/), then reference the copied path in your code.`;
+      return `Image generated and saved to: ${relativePath}\nUse the copy_file tool to copy it from "${relativePath}" to the appropriate location in the project (e.g., public/assets/), then reference the copied path in your code.`;
+    } catch (error) {
+      ctx.onXmlComplete(
+        `<dyad-image-generation prompt="${escapeXmlAttr(args.prompt)}"></dyad-image-generation>`,
+      );
+      throw error;
+    }
   },
 };

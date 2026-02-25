@@ -1,6 +1,6 @@
 import type React from "react";
 import type { ReactNode } from "react";
-import { Globe } from "lucide-react";
+import { Download } from "lucide-react";
 import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
 
 interface DyadWebFetchProps {
@@ -14,7 +14,7 @@ export const DyadWebFetch: React.FC<DyadWebFetchProps> = ({
 }) => {
   return (
     <DyadCard accentColor="blue">
-      <DyadCardHeader icon={<Globe size={15} />} accentColor="blue">
+      <DyadCardHeader icon={<Download size={15} />} accentColor="blue">
         <DyadBadge color="blue">Web Fetch</DyadBadge>
       </DyadCardHeader>
       {children && (

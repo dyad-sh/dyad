@@ -345,17 +345,14 @@ Fetch API response:
 `;
 
 /**
- * Abort helper to handle timeout and manual abort
+ * Abort helper to handle timeout.
  */
-function createAbortSignal(
-  timeoutMs: number,
-  externalSignal?: AbortSignal,
-): { signal: AbortSignal; clearTimeout: () => void } {
+function createAbortSignal(timeoutMs: number): {
+  signal: AbortSignal;
+  clearTimeout: () => void;
+} {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  // Forward external abort signal if provided
-  externalSignal?.addEventListener("abort", () => controller.abort());
 
   return {
     signal: controller.signal,
@@ -463,10 +460,14 @@ function convertHTMLToMarkdown(html: string): string {
     (_, href, text) => `[${text}](${href})`,
   );
 
-  // Convert images
+  // Convert images (handle both src-before-alt and alt-before-src attribute order)
   markdown = markdown.replace(
     /<img[^>]*src=["']([^"']*)["'][^>]*alt=["']([^"']*)["'][^>]*>/gi,
     (_, src, alt) => `![${alt}](${src})`,
+  );
+  markdown = markdown.replace(
+    /<img[^>]*alt=["']([^"']*)["'][^>]*src=["']([^"']*)["'][^>]*>/gi,
+    (_, alt, src) => `![${alt}](${src})`,
   );
   markdown = markdown.replace(
     /<img[^>]*src=["']([^"']*)["'][^>]*>/gi,
@@ -536,10 +537,7 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
       );
     }
 
-    // Resolve DNS and validate against private IP ranges
-    const parsed = new URL(args.url);
-    await resolveAndValidate(parsed.hostname);
-
+    // Start timeout before DNS validation so slow DNS is covered by the timeout budget
     const timeout = Math.min(
       (args.timeout ?? DEFAULT_TIMEOUT / 1000) * 1000,
       MAX_TIMEOUT,
@@ -574,6 +572,10 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
     let response: Response;
     let arrayBuffer: ArrayBuffer;
     try {
+      // Resolve DNS and validate against private IP ranges
+      const parsed = new URL(args.url);
+      await resolveAndValidate(parsed.hostname);
+
       // Use manual redirect following with SSRF validation on each hop.
       const initial = await fetchWithRedirectValidation(args.url, {
         signal,
@@ -614,7 +616,8 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
     const contentType = response.headers.get("content-type") || "";
     const mime = contentType.split(";")[0]?.trim().toLowerCase() || "";
 
-    // Check if response is an image
+    // Check if response is an image (exclude SVG which is XML text, and
+    // vnd.fastbidsheet which is a non-renderable vendor-specific format)
     const isImage =
       mime.startsWith("image/") &&
       mime !== "image/svg+xml" &&

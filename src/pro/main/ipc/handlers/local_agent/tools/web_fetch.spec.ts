@@ -352,18 +352,14 @@ describe("webFetchTool", () => {
   });
 
   it("rejects domains that resolve to private IPs", async () => {
-    vi.mocked(lookup).mockResolvedValue([
-      { address: "127.0.0.1", family: 4 },
-    ]);
+    vi.mocked(lookup).mockResolvedValue([{ address: "127.0.0.1", family: 4 }]);
 
     await expect(
       webFetchTool.execute(
         { url: "https://evil.example.com/", format: "text" },
         mockContext,
       ),
-    ).rejects.toThrow(
-      "URL resolves to a private or internal network address",
-    );
+    ).rejects.toThrow("URL resolves to a private or internal network address");
   });
 
   it("enforces streaming body size limit", async () => {

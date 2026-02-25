@@ -95,7 +95,7 @@ function isPrivateIp(hostname: string): boolean {
 
 async function resolveAndValidateHost(hostname: string): Promise<void> {
   // Skip validation for IP literals — already checked by isPrivateIp in validateHttpUrl
-  if (/^\[/.test(hostname) || /^\d+\.\d+\.\d+\.\d+$/.test(hostname)) return;
+  if (hostname.startsWith("[") || /^\d+\.\d+\.\d+\.\d+$/.test(hostname)) return;
   // Skip blocked hostnames — already checked
   if (BLOCKED_HOSTNAMES.has(hostname.toLowerCase())) return;
 
@@ -324,9 +324,7 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
             throw new Error("Redirect response missing Location header");
           }
           if (redirectCount >= MAX_REDIRECTS) {
-            throw new Error(
-              `Too many redirects (exceeded ${MAX_REDIRECTS})`,
-            );
+            throw new Error(`Too many redirects (exceeded ${MAX_REDIRECTS})`);
           }
           const redirectUrl = new URL(location, currentUrl).toString();
           validateHttpUrl(redirectUrl);

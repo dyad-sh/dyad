@@ -104,12 +104,12 @@ function collapseWhitespace(input: string): string {
 
 function removeNonContentTags(html: string): string {
   return html
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, " ")
-    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript\s*>/gi, " ")
-    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe\s*>/gi, " ")
-    .replace(/<object\b[^>]*>[\s\S]*?<\/object\s*>/gi, " ")
-    .replace(/<embed\b[^>]*>[\s\S]*?<\/embed\s*>/gi, " ");
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script[^>]*>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style[^>]*>/gi, " ")
+    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript[^>]*>/gi, " ")
+    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe[^>]*>/gi, " ")
+    .replace(/<object\b[^>]*>[\s\S]*?<\/object[^>]*>/gi, " ")
+    .replace(/<embed\b[^>]*>[\s\S]*?<\/embed[^>]*>/gi, " ");
 }
 
 function extractTextFromHtml(html: string): string {
@@ -186,16 +186,62 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
     }, timeoutSeconds * 1000);
 
     let response: Response;
+    let arrayBuffer: ArrayBuffer;
     try {
-      response = await fetch(normalizedUrl, {
-        signal: abortController.signal,
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
-          Accept: buildAcceptHeader(args.format),
-          "Accept-Language": "en-US,en;q=0.9",
-        },
-      });
+      try {
+        response = await fetch(normalizedUrl, {
+          signal: abortController.signal,
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
+            Accept: buildAcceptHeader(args.format),
+            "Accept-Language": "en-US,en;q=0.9",
+          },
+        });
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          throw new Error(`Request timed out after ${timeoutSeconds}s`);
+        }
+        throw error;
+      }
+
+      if (!response.ok) {
+        throw new Error(`Request failed with status code: ${response.status}`);
+      }
+
+      const contentLength = response.headers.get("content-length");
+      if (contentLength && Number(contentLength) > MAX_RESPONSE_SIZE_BYTES) {
+        throw new Error("Response too large (exceeds 5MB limit)");
+      }
+
+      if (response.body) {
+        const reader = response.body.getReader();
+        const chunks: Uint8Array[] = [];
+        let totalBytes = 0;
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          totalBytes += value.byteLength;
+          if (totalBytes > MAX_RESPONSE_SIZE_BYTES) {
+            reader.cancel();
+            throw new Error("Response too large (exceeds 5MB limit)");
+          }
+          chunks.push(value);
+        }
+        const combined = new Uint8Array(totalBytes);
+        let offset = 0;
+        for (const chunk of chunks) {
+          combined.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+        arrayBuffer = combined.buffer;
+      } else {
+        arrayBuffer = await response.arrayBuffer();
+        if (arrayBuffer.byteLength > MAX_RESPONSE_SIZE_BYTES) {
+          throw new Error("Response too large (exceeds 5MB limit)");
+        }
+      }
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         throw new Error(`Request timed out after ${timeoutSeconds}s`);
@@ -203,20 +249,6 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
       throw error;
     } finally {
       clearTimeout(timeoutId);
-    }
-
-    if (!response.ok) {
-      throw new Error(`Request failed with status code: ${response.status}`);
-    }
-
-    const contentLength = response.headers.get("content-length");
-    if (contentLength && Number(contentLength) > MAX_RESPONSE_SIZE_BYTES) {
-      throw new Error("Response too large (exceeds 5MB limit)");
-    }
-
-    const arrayBuffer = await response.arrayBuffer();
-    if (arrayBuffer.byteLength > MAX_RESPONSE_SIZE_BYTES) {
-      throw new Error("Response too large (exceeds 5MB limit)");
     }
 
     const contentType = response.headers.get("content-type") ?? "";

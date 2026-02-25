@@ -23,9 +23,9 @@ const generateImageSchema = z.object({
 });
 
 const imageDataSchema = z.object({
-  url: z.string().optional(),
-  b64_json: z.string().optional(),
-  revised_prompt: z.string().optional(),
+  url: z.string().nullable().optional(),
+  b64_json: z.string().nullable().optional(),
+  revised_prompt: z.string().nullable().optional(),
 });
 
 const generateImageResponseSchema = z.object({

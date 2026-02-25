@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Layers, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { VanillaMarkdownParser } from "./DyadMarkdownParser";
 import { CustomTagState } from "./stateTypes";
+import { useSettings } from "@/hooks/useSettings";
 
 interface DyadCompactionProps {
   node: {
@@ -20,15 +21,18 @@ export const DyadCompaction: React.FC<DyadCompactionProps> = ({
   const { title = "Compacting conversation", state } = node.properties;
   const inProgress = state === "pending";
   const [isExpanded, setIsExpanded] = useState(true);
+  const { settings } = useSettings();
 
   // Auto-collapse when compaction finishes
   useEffect(() => {
     if (!inProgress && isExpanded) {
       // Small delay so the user can see the final state before collapsing
-      const timer = setTimeout(() => setIsExpanded(false), 600);
+      // In test mode, collapse immediately for faster e2e tests
+      const delay = settings?.isTestMode ? 0 : 600;
+      const timer = setTimeout(() => setIsExpanded(false), delay);
       return () => clearTimeout(timer);
     }
-  }, [inProgress]);
+  }, [inProgress, isExpanded, settings?.isTestMode]);
 
   const content = typeof children === "string" ? children : "";
 

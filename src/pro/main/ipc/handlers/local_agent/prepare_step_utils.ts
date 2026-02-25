@@ -23,14 +23,19 @@ export function hasIncompleteTodos(todos: Todo[]): boolean {
 }
 
 /**
+ * Format a list of todos as a bullet-point summary string.
+ */
+export function formatTodoSummary(todos: Todo[]): string {
+  return todos.map((t) => `- [${t.status}] ${t.content}`).join("\n");
+}
+
+/**
  * Build a reminder message for incomplete todos.
  */
 export function buildTodoReminderMessage(todos: Todo[]): string {
   const incompleteTodos = todos.filter(isIncompleteTodo);
 
-  const todoList = incompleteTodos
-    .map((t) => `- [${t.status}] ${t.content}`)
-    .join("\n");
+  const todoList = formatTodoSummary(incompleteTodos);
 
   // Note: The "incomplete todo(s)" substring is used as a detection marker by test
   // infrastructure in testing/fake-llm-server/ (chatCompletionHandler.ts and

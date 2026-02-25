@@ -21,10 +21,6 @@
       - img
   - textbox "node_modules/**/*"
   - button "Add"
-  - button "src/components/**"
-  - text: /2 files, ~\d+ tokens/
-  - button:
-    - img
   - button "exclude/exclude.ts"
   - text: /1 files, ~\d+ tokens/
   - button:
@@ -46,3 +42,4 @@
     - img
   - button "Close":
     - img
+    - text: ""

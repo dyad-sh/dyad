@@ -1,5 +1,11 @@
 - paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
-- button "file1.txt file1.txt Edit"
+- button "file1.txt file1.txt Edit":
+  - img
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
+  - img
 - paragraph: More EOM
 - button "Copy":
   - img
@@ -9,8 +15,11 @@
 - text: claude-opus-4-5
 - img
 - text: less than a minute ago
+- img
+- text: (1 files changed)
 - button "Copy Request ID":
   - img
+  - text: ""
 - paragraph: tc=local-agent/compaction-trigger
 - paragraph: I've completed the initial analysis of the codebase. Here are the findings.
 - button "Copy":
@@ -23,8 +32,10 @@
 - text: less than a minute ago
 - button "Copy Request ID":
   - img
-- button "Conversation compacted":
+  - text: ""
+- button "Conversation compacted" [expanded]:
   - img
+  - text: ""
   - img
 - heading "Key Decisions Made" [level=2]
 - list:
@@ -46,10 +57,9 @@
 - text: claude-opus-4-5
 - img
 - text: less than a minute ago
-- img
-- text: (1 files changed)
 - button "Copy Request ID":
   - img
+  - text: ""
 - paragraph: "[dump] hi"
 - paragraph: "[[dyad-dump-path=*]]"
 - button "Copy":
@@ -60,7 +70,10 @@
 - text: less than a minute ago
 - button "Copy Request ID":
   - img
+  - text: ""
 - button "Undo":
   - img
+  - text: ""
 - button "Retry":
   - img
+  - text: ""

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ToolDefinition, AgentContext, Todo } from "./types";
+import { saveTodos, deleteTodos } from "../todo_persistence";
 
 const todoSchema = z.object({
   id: z.string().describe("Unique identifier for the todo item"),
@@ -101,6 +102,7 @@ export const updateTodosTool: ToolDefinition<
   description: DESCRIPTION,
   inputSchema: updateTodosSchema,
   defaultConsent: "always",
+  modifiesState: true,
 
   getConsentPreview: (args) => {
     const count = args.todos.length;
@@ -146,6 +148,15 @@ export const updateTodosTool: ToolDefinition<
 
     // Send todos to renderer for UI display
     ctx.onUpdateTodos(ctx.todos);
+
+    // Persist todos to disk so they survive across turns
+    const allCompleted =
+      ctx.todos.length > 0 && ctx.todos.every((t) => t.status === "completed");
+    if (allCompleted || ctx.todos.length === 0) {
+      await deleteTodos(ctx.appPath, ctx.chatId);
+    } else {
+      await saveTodos(ctx.appPath, ctx.chatId, ctx.todos);
+    }
 
     const completed = ctx.todos.filter((t) => t.status === "completed").length;
     const inProgressTodos = ctx.todos.filter((t) => t.status === "in_progress");

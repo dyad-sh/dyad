@@ -9,3 +9,7 @@ The pre-commit hook runs `tsgo` (via `npm run ts`), which is stricter than `tsc 
 ## ES2020 target limitations
 
 The project's `tsconfig.app.json` targets ES2020 with `lib: ["ES2020"]`. Methods introduced in ES2021+ (like `String.prototype.replaceAll`) are not available on the `string` type. If code uses `replaceAll`, it needs an `as any` cast to avoid `TS2550: Property 'replaceAll' does not exist on type 'string'`. Do not remove these casts without updating the tsconfig target.
+
+## `response.json()` is `unknown` under strict checks
+
+In `npm run ts`/`tsgo`, `await response.json()` from `node-fetch` is often inferred as `unknown`. Accessing fields directly (e.g., `data.message`) triggers `TS18046`. Cast JSON responses to a narrow interface first (e.g., `const data = (await res.json()) as GithubApiErrorResponse`) before reading properties.

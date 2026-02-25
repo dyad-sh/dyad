@@ -279,7 +279,9 @@ describe("web_fetch tool", () => {
     for (const url of privateUrls) {
       await expect(
         webFetchTool.execute({ url, format: "text" }, mockContext),
-      ).rejects.toThrow("Access to private/internal network addresses is not allowed");
+      ).rejects.toThrow(
+        "Access to private/internal network addresses is not allowed",
+      );
     }
 
     expect(global.fetch).not.toHaveBeenCalled();

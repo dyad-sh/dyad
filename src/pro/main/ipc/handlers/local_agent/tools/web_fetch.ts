@@ -75,7 +75,10 @@ function isPrivateURL(urlString: string): boolean {
 
   // Block private IP ranges
   const parts = hostname.split(".").map(Number);
-  if (parts.length === 4 && parts.every((p) => !isNaN(p) && p >= 0 && p <= 255)) {
+  if (
+    parts.length === 4 &&
+    parts.every((p) => !isNaN(p) && p >= 0 && p <= 255)
+  ) {
     if (parts[0] === 10) return true; // 10.0.0.0/8
     if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true; // 172.16.0.0/12
     if (parts[0] === 192 && parts[1] === 168) return true; // 192.168.0.0/16
@@ -381,6 +384,7 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
     };
 
     let response: Response;
+    let arrayBuffer: ArrayBuffer;
     try {
       const initial = await fetch(args.url, { signal, headers });
 
@@ -394,6 +398,20 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
             })
           : initial;
 
+      if (!response.ok) {
+        clearTimeout();
+        throw new Error(
+          `Request failed with status code: ${response.status} ${response.statusText}`,
+        );
+      }
+
+      // Read response body with streaming size limit.
+      // Keep timeout active during body consumption to catch slow-trickle attacks.
+      arrayBuffer = await readResponseBodyWithLimit(
+        response,
+        MAX_RESPONSE_SIZE,
+      );
+
       clearTimeout();
     } catch (error) {
       clearTimeout();
@@ -402,18 +420,6 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
       }
       throw error;
     }
-
-    if (!response.ok) {
-      throw new Error(
-        `Request failed with status code: ${response.status} ${response.statusText}`,
-      );
-    }
-
-    // Read response body with streaming size limit
-    const arrayBuffer = await readResponseBodyWithLimit(
-      response,
-      MAX_RESPONSE_SIZE,
-    );
 
     const contentType = response.headers.get("content-type") || "";
     const mime = contentType.split(";")[0]?.trim().toLowerCase() || "";

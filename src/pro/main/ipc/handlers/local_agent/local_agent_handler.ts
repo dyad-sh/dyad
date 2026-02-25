@@ -60,7 +60,7 @@ import {
   type InjectedMessage,
 } from "./prepare_step_utils";
 import { loadTodos } from "./todo_persistence";
-import { ensureDyadGitignored } from "@/ipc/handlers/planUtils";
+import { ensureDyadGitignored } from "@/ipc/handlers/gitignoreUtils";
 import { TOOL_DEFINITIONS } from "./tool_definitions";
 import {
   parseAiMessagesJson,

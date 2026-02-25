@@ -171,9 +171,13 @@ function isPrivateURL(urlString: string): boolean {
 }
 
 /**
- * Resolve hostname via DNS, check if it points to a private IP, and return
- * the validated address so callers can pin the connection to that IP
- * (preventing DNS rebinding TOCTOU attacks).
+ * Resolve hostname via DNS, check ALL resolved addresses against private IP
+ * ranges, and return the first validated address so callers can pin the
+ * connection to that IP (preventing DNS rebinding TOCTOU attacks).
+ *
+ * Uses `dns.lookup({ all: true })` to retrieve every A/AAAA record.
+ * This prevents attackers from hiding a private address behind a public one
+ * in a multi-record DNS response.
  */
 async function resolveAndValidate(
   hostname: string,
@@ -186,13 +190,15 @@ async function resolveAndValidate(
   if (isIPLiteral) return undefined;
 
   try {
-    const { address } = await dns.lookup(hostname);
-    if (isPrivateIP(address) || isPrivateHostname(address)) {
-      throw new Error(
-        "Hostname resolves to a private/internal network address",
-      );
+    const addresses = await dns.lookup(hostname, { all: true });
+    for (const { address } of addresses) {
+      if (isPrivateIP(address) || isPrivateHostname(address)) {
+        throw new Error(
+          "Hostname resolves to a private/internal network address",
+        );
+      }
     }
-    return address;
+    return addresses[0]?.address;
   } catch (err: unknown) {
     if (err instanceof Error && err.message.includes("private/internal")) {
       throw err;

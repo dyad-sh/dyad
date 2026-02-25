@@ -5,14 +5,17 @@ import type { AgentContext } from "./types";
 // Mock fetch globally
 global.fetch = vi.fn();
 
-// Mock dns.promises.lookup to avoid real DNS resolution in tests
+// Mock dns.promises.lookup to avoid real DNS resolution in tests.
+// Returns an array to match the { all: true } option used by resolveAndValidate.
 vi.mock("dns", async (importOriginal) => {
   const actual = await importOriginal<typeof import("dns")>();
   return {
     ...actual,
     promises: {
       ...actual.promises,
-      lookup: vi.fn().mockResolvedValue({ address: "93.184.216.34" }),
+      lookup: vi
+        .fn()
+        .mockResolvedValue([{ address: "93.184.216.34", family: 4 }]),
     },
   };
 });
@@ -45,10 +48,10 @@ describe("web_fetch tool", () => {
     };
 
     vi.clearAllMocks();
-    // Restore DNS mock after clearAllMocks resets it
-    vi.mocked(mockDns.lookup).mockResolvedValue({
-      address: "93.184.216.34",
-    } as any);
+    // Restore DNS mock after clearAllMocks resets it (returns array for { all: true })
+    vi.mocked(mockDns.lookup).mockResolvedValue([
+      { address: "93.184.216.34", family: 4 },
+    ] as any);
   });
 
   it("should have correct name and schema", () => {
@@ -82,7 +85,7 @@ describe("web_fetch tool", () => {
 
     expect(result).toBe(mockHtml);
     expect(global.fetch).toHaveBeenCalledWith(
-      "https://example.com/",
+      "https://example.com",
       expect.objectContaining({
         headers: expect.objectContaining({
           Accept: expect.stringContaining("text/html"),
@@ -214,7 +217,7 @@ describe("web_fetch tool", () => {
 
     expect(global.fetch).toHaveBeenCalledTimes(2);
     expect(global.fetch).toHaveBeenLastCalledWith(
-      "https://example.com/",
+      "https://example.com",
       expect.objectContaining({
         headers: expect.objectContaining({
           "User-Agent": "dyad-agent",
@@ -240,7 +243,7 @@ describe("web_fetch tool", () => {
 
     // Verify fetch was called with a signal
     expect(global.fetch).toHaveBeenCalledWith(
-      "https://example.com/",
+      "https://example.com",
       expect.objectContaining({
         signal: expect.any(AbortSignal),
       }),

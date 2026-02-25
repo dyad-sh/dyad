@@ -1,10 +1,10 @@
 - paragraph: basic
 - button "file1.txt file1.txt Edit":
   - img
-  - text: ""
+  - text: /file1\.txt.*/
   - button "Edit":
     - img
-    - text: ""
+    - text: /Edit/
   - img
 - paragraph: More EOM
 - button "Copy":
@@ -16,7 +16,7 @@
 - img
 - text: less than a minute ago
 - img
-- text: wrote 1 file(s)
+- text: /wrote 1 file\(s\).*/
 - paragraph: "[[UPLOAD_IMAGE_TO_CODEBASE]]"
 - 'button "Expand image: logo.png"':
   - img "logo.png"
@@ -34,11 +34,9 @@
 - text: test-model
 - img
 - text: less than a minute ago
-- img
-- text: wrote 1 file(s) + extra files edited outside of Dyad
 - button "Undo":
   - img
-  - text: ""
+  - text: /Undo/
 - button "Retry":
   - img
-  - text: ""
+  - text: /Retry/

@@ -364,7 +364,7 @@ describe("web_fetch tool", () => {
     );
 
     expect(result.length).toBeLessThan(20_000);
-    expect(result).toContain("<!-- content truncated");
+    expect(result).toContain("[Content truncated");
   });
 
   it("should generate buildXml output", () => {

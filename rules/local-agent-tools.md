@@ -6,6 +6,7 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 
 - **`modifiesState: true`** must be set on any tool that writes to disk or modifies external state (files, database, etc.). This flag controls whether the tool is available in read-only (ask) mode and plan-only mode — see `buildAgentToolSet` in `tool_definitions.ts`.
 - Similarly, code in the `handleLocalAgentStream` handler that writes to the workspace (e.g., `ensureDyadGitignored`, injecting synthetic todo reminders) should be guarded with `if (!readOnly && !planModeOnly)` checks. Injecting instructions that reference state-changing tools into non-writable runs will confuse the model since those tools are filtered out.
+- `ensureDyadGitignored` is defined in `src/ipc/handlers/gitignoreUtils.ts` (not `planUtils.ts`). If `npm run ts` reports `TS2305` for this symbol in local-agent handlers, update the import path to `@/ipc/handlers/gitignoreUtils`.
 
 ## Async I/O
 

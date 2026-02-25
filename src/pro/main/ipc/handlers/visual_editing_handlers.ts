@@ -182,11 +182,11 @@ export function registerVisualEditingHandlers() {
               path: appPath,
               message: `Updated ${normalizedRelativePath}`,
             });
-
-            // Auto-sync to GitHub if enabled
-            await autoSyncToGithubIfEnabled(appId);
           }
         }
+
+        // Auto-sync to GitHub once after all files are processed
+        await autoSyncToGithubIfEnabled(appId);
       } catch (error) {
         // Unstage any image files that were git-added before the failure
         for (const { appPath, filepath } of stagedGitPaths) {

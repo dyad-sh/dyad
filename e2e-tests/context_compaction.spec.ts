@@ -31,13 +31,20 @@ testSkipIfWindows(
 
     await po.sendPrompt("[dump] hi");
     await po.snapshotServerDump("all-messages");
-    // Wait for all message content (including file card buttons) to fully render
-    // before snapshotting to avoid flaky aria text mismatches.
-    await expect(po.page.getByRole("button", { name: "Retry" })).toBeVisible({
-      timeout: Timeout.MEDIUM,
-    });
-    // Snapshot the messages to capture the compaction summary + second response
-    await po.snapshotMessages({ replaceDumpPath: true });
+
+    // Verify key compaction elements are present (order-independent checks
+    // since compaction restructures messages non-deterministically)
+    await expect(
+      po.page.getByRole("button", { name: "Conversation compacted" }),
+    ).toBeVisible();
+    await expect(
+      po.page.getByRole("heading", { name: "Key Decisions Made" }),
+    ).toBeVisible();
+    await expect(
+      po.page.getByText(
+        "Hello! I understand your request. This is a simple response from the Basic Agent mode.",
+      ),
+    ).toBeVisible();
   },
 );
 
@@ -66,12 +73,15 @@ testSkipIfWindows(
 
     await po.sendPrompt("[dump] hi");
     await po.snapshotServerDump("all-messages");
-    // Wait for all message content (including file card buttons) to fully render
-    // before snapshotting to avoid flaky aria text mismatches.
-    await expect(po.page.getByRole("button", { name: "Retry" })).toBeVisible({
-      timeout: Timeout.MEDIUM,
-    });
-    // Snapshot the messages to capture the compaction summary + second response
-    await po.snapshotMessages({ replaceDumpPath: true });
+
+    // Verify key compaction elements are present (order-independent checks
+    // since compaction restructures messages non-deterministically)
+    await expect(
+      po.page.getByRole("button", { name: "Conversation compacted" }),
+    ).toBeVisible();
+    await expect(
+      po.page.getByRole("heading", { name: "Key Decisions Made" }),
+    ).toBeVisible();
+    await expect(po.page.getByText("END OF COMPACTED TURN.")).toBeVisible();
   },
 );

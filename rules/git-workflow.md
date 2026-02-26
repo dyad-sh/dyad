@@ -70,6 +70,16 @@ gh api repos/dyad-sh/dyad/issues/{PR_NUMBER}/labels -f "labels[]=label-name"
 
 In CI, `claude-code-action` restricts file access to the repo working directory (e.g., `/home/runner/work/dyad/dyad`). Skills that save intermediate files (like PR diffs) must use `./filename` (current working directory), **never** `/tmp/`. Using `/tmp/` causes errors like: `cat in '/tmp/pr_*_diff.patch' was blocked. For security, Claude Code may only concatenate files from the allowed working directories`.
 
+## Push after rebase: `--force-with-lease` may fail with "stale info"
+
+After rebasing, `git push --force-with-lease` can fail with `(stale info)` when the remote tracking ref is out of date (e.g., the remote branch was force-pushed during CI). In this case, use `--force` directly with the token-authenticated URL:
+
+```bash
+git push --force "https://x-access-token:<token>@github.com/dyad-sh/dyad.git" HEAD:<branch>
+```
+
+The origin push URL (`wwwillchen-bot/dyad.git`) may return 403 in CI — use the origin **fetch** URL (`dyad-sh/dyad.git` with `ghs_` token) to push to the base repo instead.
+
 ## Rebase workflow and conflict resolution
 
 ### Handling unstaged changes during rebase

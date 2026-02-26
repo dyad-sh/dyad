@@ -584,6 +584,44 @@ async function handleListGithubRepos(): Promise<
   }
 }
 
+// --- GitHub List Organizations Handler ---
+async function handleListOrgs(): Promise<
+  { login: string; avatar_url?: string }[]
+> {
+  try {
+    // Get access token from settings
+    const settings = readSettings();
+    const accessToken = settings.githubAccessToken?.value;
+    if (!accessToken) {
+      throw new Error("Not authenticated with GitHub.");
+    }
+
+    // Fetch user's organizations
+    const response = await fetch(`${GITHUB_API_BASE}/user/orgs?per_page=100`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/vnd.github+json",
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(
+        `GitHub API error: ${errorData.message || response.statusText}`,
+      );
+    }
+
+    const orgs = await response.json();
+    return orgs.map((org: any) => ({
+      login: org.login,
+      avatar_url: org.avatar_url,
+    }));
+  } catch (err: any) {
+    logger.error("[GitHub Handler] Failed to list organizations:", err);
+    throw new Error(err.message || "Failed to list GitHub organizations.");
+  }
+}
+
 // --- GitHub Get Repo Branches Handler ---
 async function handleGetRepoBranches(
   event: IpcMainInvokeEvent,
@@ -698,7 +736,7 @@ async function handleCreateRepo(
   }
   // Create repo
   const createUrl = org
-    ? `${GITHUB_API_BASE}/orgs/${owner}/repos`
+    ? `${GITHUB_API_BASE}/orgs/${encodeURIComponent(owner)}/repos`
     : `${GITHUB_API_BASE}/user/repos`;
   const res = await fetch(createUrl, {
     method: "POST",
@@ -1331,6 +1369,10 @@ export function registerGithubHandlers() {
 
   createTypedHandler(githubContracts.listRepos, async () => {
     return handleListGithubRepos();
+  });
+
+  createTypedHandler(githubContracts.listOrgs, async () => {
+    return handleListOrgs();
   });
 
   createTypedHandler(githubContracts.getRepoBranches, async (event, params) => {

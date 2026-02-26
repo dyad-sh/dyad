@@ -84,6 +84,40 @@ test("create and sync to new repo - custom branch", async ({ po }) => {
   });
 });
 
+test("create repo in organization", async ({ po }) => {
+  await po.setUp();
+  await po.sendPrompt("tc=basic");
+
+  await po.appManagement.getTitleBarAppNameButton().click();
+  await po.githubConnector.connect();
+
+  // Select an organization
+  await po.githubConnector.selectOrg("test-org");
+
+  await po.githubConnector.fillCreateRepoName("org-test-repo");
+
+  // Wait for availability check
+  await po.page.waitForSelector("text=Repository name is available!", {
+    timeout: 5000,
+  });
+
+  // Click create repo button
+  await po.githubConnector.clickCreateRepoButton();
+
+  // Verify the connected repo shows the org/repo format
+  await expect(po.page.locator("text=test-org/org-test-repo")).toBeVisible();
+
+  // Sync to GitHub
+  await po.githubConnector.clickSyncToGithubButton();
+
+  // Verify the push was received for the org repo
+  await po.githubConnector.verifyPushEvent({
+    repo: "org-test-repo",
+    branch: "main",
+    operation: "create",
+  });
+});
+
 test("create repo with spaces in name - should normalize to hyphens", async ({
   po,
 }) => {

@@ -60,7 +60,7 @@ import {
   type InjectedMessage,
 } from "./prepare_step_utils";
 import { loadTodos } from "./todo_persistence";
-import { ensureDyadGitignored } from "@/ipc/handlers/planUtils";
+import { ensureDyadGitignored } from "@/ipc/handlers/gitignoreUtils";
 import { TOOL_DEFINITIONS } from "./tool_definitions";
 import {
   parseAiMessagesJson,
@@ -429,7 +429,7 @@ export async function handleLocalAgentStream(
     // Ensure .dyad/ is gitignored (idempotent; also done by compaction/plans)
     // Skip in read-only/plan-only mode to avoid modifying the workspace
     if (!readOnly && !planModeOnly) {
-      await ensureDyadGitignored(appPath).catch((err) =>
+      await ensureDyadGitignored(appPath).catch((err: unknown) =>
         logger.warn("Failed to ensure .dyad gitignored:", err),
       );
     }

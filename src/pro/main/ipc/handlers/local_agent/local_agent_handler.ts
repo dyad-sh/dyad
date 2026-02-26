@@ -76,6 +76,7 @@ import {
   checkAndMarkForCompaction,
 } from "@/ipc/handlers/compaction/compaction_handler";
 import { getPostCompactionMessages } from "@/ipc/handlers/compaction/compaction_utils";
+import { shouldRunExploreAgent, runExploreSubAgent } from "./explore_sub_agent";
 
 const logger = log.scope("local_agent_handler");
 const PLANNING_QUESTIONNAIRE_TOOL_NAME = "planning_questionnaire";
@@ -535,6 +536,67 @@ export async function handleLocalAgentStream(
     const maxOutputTokens = await getMaxTokens(settings.selectedModel);
     const temperature = await getTemperature(settings.selectedModel);
 
+    // Run explore sub-agent if conditions are met
+    let exploreContext = "";
+    if (
+      !messageOverride &&
+      shouldRunExploreAgent({
+        settings,
+        messageCount: chat.messages.length,
+      })
+    ) {
+      // Get the user's prompt from the last user message
+      const lastUserMessage = [...chat.messages]
+        .reverse()
+        .find((msg) => msg.role === "user");
+      const userPrompt = lastUserMessage?.content || req.prompt;
+
+      const exploreResult = await runExploreSubAgent({
+        appPath,
+        chatId: chat.id,
+        appId: chat.app.id,
+        userPrompt,
+        event,
+        abortController,
+        placeholderMessageId,
+        settings,
+        dyadRequestId,
+        onProgress: async (exploreResponse: string) => {
+          // Stream the explore output to UI within the same message
+          sendResponseChunk(
+            event,
+            req.chatId,
+            chat,
+            exploreResponse,
+            placeholderMessageId,
+          );
+          await updateResponseInDb(placeholderMessageId, exploreResponse);
+        },
+      });
+
+      if (exploreResult.xmlOutput) {
+        fullResponse += exploreResult.xmlOutput;
+        await updateResponseInDb(placeholderMessageId, fullResponse);
+        sendResponseChunk(
+          event,
+          req.chatId,
+          chat,
+          fullResponse,
+          placeholderMessageId,
+        );
+      }
+      exploreContext = exploreResult.contextSummary;
+
+      logger.log(
+        `Explore sub-agent completed. Context: ${exploreContext.length} chars`,
+      );
+    }
+
+    // Build the final system prompt, injecting explore context if available
+    const finalSystemPrompt = exploreContext
+      ? `${systemPrompt}\n\n${exploreContext}`
+      : systemPrompt;
+
     // Run one or more generation passes. If the model emits a chat message while
     // there are still incomplete todos, we append a reminder and do another pass.
     const maxTodoFollowUpLoops = 1;
@@ -605,7 +667,7 @@ export async function handleLocalAgentStream(
         maxOutputTokens,
         temperature,
         maxRetries: 2,
-        system: systemPrompt,
+        system: finalSystemPrompt,
         messages: currentMessageHistory,
         tools: allTools,
         stopWhen: [

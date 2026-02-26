@@ -58,6 +58,16 @@ Similarly for GraphQL mutations, write the full query + variables as JSON and us
 gh api graphql --input .claude/tmp/resolve_thread.json
 ```
 
+## Resolving rebase conflicts when merging settings features
+
+When rebasing branches that both add new settings (e.g., context compaction + explore sub-agent), conflicts typically occur in:
+
+- `src/lib/schemas.ts` — both features add fields to `UserSettingsSchema`
+- `src/lib/settingsSearchIndex.ts` — both features add search index entries
+- `src/pages/settings.tsx` — both features add imports and UI components
+
+Resolution strategy: Keep both features' changes by combining all additions (don't pick one side). Settings additions are non-conflicting by design — each feature owns its own field/component.
+
 ## Adding labels to PRs
 
 `gh pr edit --add-label` fails with a GraphQL "Projects (classic)" deprecation error on repos that had classic projects. Use the REST API instead:
@@ -96,6 +106,7 @@ The stashed changes will be automatically merged back after the rebase completes
 - **Preserve variable declarations used in common code**: When one side of a conflict declares a variable (e.g., `const iframe = po.previewPanel.getPreviewIframeElement()`) that is referenced in non-conflicting code between or after conflict markers, keep the declaration even when adopting the other side's verification approach — the variable is needed regardless of which style you choose
 - **React component wrapper conflicts**: When rebasing UI changes that conflict on wrapper div classes (e.g., `flex items-start space-x-2` vs `flex items-end gap-1`), keep the newer styling from the incoming commit but preserve any functional components (like dialogs or modals) that exist in HEAD but not in the incoming change
 - **Refactoring conflicts**: When incoming commits refactor code (e.g., extracting inline logic into helper functions), and HEAD has new features in the same area, integrate HEAD's features into the new structure. Example: if incoming code moves streaming logic to `runSingleStreamPass()` and HEAD adds mid-turn compaction to the inline code, add compaction support to the new function rather than keeping the old inline version
+- **Variable initialization conflicts**: When HEAD defines variables early (e.g., `const maxOutputTokens = await getMaxTokens()`) and incoming adds new logic between variable definition and usage (e.g., explore sub-agent), keep both: define variables first, then run new logic, ensuring downstream code uses updated variable names (e.g., if new logic creates `finalSystemPrompt`, update `system: systemPrompt` to `system: finalSystemPrompt` in the `streamText` call)
 
 ## Rebasing with uncommitted changes
 

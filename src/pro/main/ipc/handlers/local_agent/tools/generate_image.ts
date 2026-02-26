@@ -120,7 +120,7 @@ export const generateImageTool: ToolDefinition<
   name: "generate_image",
   description: DESCRIPTION,
   inputSchema: generateImageSchema,
-  defaultConsent: "ask",
+  defaultConsent: "always",
   modifiesState: true,
 
   isEnabled: (ctx) => ctx.isDyadPro,

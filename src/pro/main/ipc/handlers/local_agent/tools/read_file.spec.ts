@@ -151,12 +151,14 @@ line 5`;
   });
 
   describe("execute - full file read", () => {
-    it("reads entire file when no line range is specified", async () => {
+    it("reads entire file with line numbers when no line range is specified", async () => {
       const result = await readFileTool.execute(
         { path: "test.txt" },
         mockContext,
       );
-      expect(result).toBe(testFileContent);
+      expect(result).toBe(
+        "1| line 1\n2| line 2\n3| line 3\n4| line 4\n5| line 5",
+      );
     });
 
     it("returns empty string for empty files", async () => {
@@ -175,28 +177,30 @@ line 5`;
   });
 
   describe("execute - start_line_one_indexed only", () => {
-    it("reads from start line to end of file", async () => {
+    it("reads from start line to end of file with line numbers reflecting actual positions", async () => {
       const result = await readFileTool.execute(
         { path: "test.txt", start_line_one_indexed: 3 },
         mockContext,
       );
-      expect(result).toBe("line 3\nline 4\nline 5");
+      expect(result).toBe("3| line 3\n4| line 4\n5| line 5");
     });
 
-    it("reads from line 1 (same as full file)", async () => {
+    it("reads from line 1 with line numbers (same as full file)", async () => {
       const result = await readFileTool.execute(
         { path: "test.txt", start_line_one_indexed: 1 },
         mockContext,
       );
-      expect(result).toBe(testFileContent);
+      expect(result).toBe(
+        "1| line 1\n2| line 2\n3| line 3\n4| line 4\n5| line 5",
+      );
     });
 
-    it("reads last line when start equals line count", async () => {
+    it("reads last line with line numbers when start equals line count", async () => {
       const result = await readFileTool.execute(
         { path: "test.txt", start_line_one_indexed: 5 },
         mockContext,
       );
-      expect(result).toBe("line 5");
+      expect(result).toBe("5| line 5");
     });
 
     it("returns empty string when start exceeds line count", async () => {
@@ -209,28 +213,30 @@ line 5`;
   });
 
   describe("execute - end_line_one_indexed_inclusive only", () => {
-    it("reads from beginning to end line", async () => {
+    it("reads from beginning to end line with line numbers", async () => {
       const result = await readFileTool.execute(
         { path: "test.txt", end_line_one_indexed_inclusive: 3 },
         mockContext,
       );
-      expect(result).toBe("line 1\nline 2\nline 3");
+      expect(result).toBe("1| line 1\n2| line 2\n3| line 3");
     });
 
-    it("reads first line only", async () => {
+    it("reads first line only with line numbers", async () => {
       const result = await readFileTool.execute(
         { path: "test.txt", end_line_one_indexed_inclusive: 1 },
         mockContext,
       );
-      expect(result).toBe("line 1");
+      expect(result).toBe("1| line 1");
     });
 
-    it("reads entire file when end equals line count", async () => {
+    it("reads entire file with line numbers when end equals line count", async () => {
       const result = await readFileTool.execute(
         { path: "test.txt", end_line_one_indexed_inclusive: 5 },
         mockContext,
       );
-      expect(result).toBe(testFileContent);
+      expect(result).toBe(
+        "1| line 1\n2| line 2\n3| line 3\n4| line 4\n5| line 5",
+      );
     });
 
     it("clamps to file length when end exceeds line count", async () => {
@@ -238,12 +244,14 @@ line 5`;
         { path: "test.txt", end_line_one_indexed_inclusive: 100 },
         mockContext,
       );
-      expect(result).toBe(testFileContent);
+      expect(result).toBe(
+        "1| line 1\n2| line 2\n3| line 3\n4| line 4\n5| line 5",
+      );
     });
   });
 
   describe("execute - both start and end", () => {
-    it("reads a middle range", async () => {
+    it("reads a middle range with line numbers reflecting actual positions", async () => {
       const result = await readFileTool.execute(
         {
           path: "test.txt",
@@ -252,10 +260,10 @@ line 5`;
         },
         mockContext,
       );
-      expect(result).toBe("line 2\nline 3\nline 4");
+      expect(result).toBe("2| line 2\n3| line 3\n4| line 4");
     });
 
-    it("reads a single line when start equals end", async () => {
+    it("reads a single line with line numbers when start equals end", async () => {
       const result = await readFileTool.execute(
         {
           path: "test.txt",
@@ -264,7 +272,7 @@ line 5`;
         },
         mockContext,
       );
-      expect(result).toBe("line 3");
+      expect(result).toBe("3| line 3");
     });
 
     it("clamps both to valid range", async () => {
@@ -276,20 +284,20 @@ line 5`;
         },
         mockContext,
       );
-      expect(result).toBe("line 4\nline 5");
+      expect(result).toBe("4| line 4\n5| line 5");
     });
   });
 
   describe("execute - single-line file", () => {
-    it("reads full single-line file", async () => {
+    it("reads full single-line file with line numbers", async () => {
       const result = await readFileTool.execute(
         { path: "single-line.txt" },
         mockContext,
       );
-      expect(result).toBe("only one line");
+      expect(result).toBe("1| only one line");
     });
 
-    it("reads single-line file with line range", async () => {
+    it("reads single-line file with line range and line numbers", async () => {
       const result = await readFileTool.execute(
         {
           path: "single-line.txt",
@@ -298,21 +306,23 @@ line 5`;
         },
         mockContext,
       );
-      expect(result).toBe("only one line");
+      expect(result).toBe("1| only one line");
     });
   });
 
   describe("execute - trailing newline file", () => {
-    it("preserves trailing newline on full read via line range", async () => {
+    it("preserves trailing newline on full read via line range with line numbers", async () => {
       const result = await readFileTool.execute(
         {
           path: "trailing-newline.txt",
           start_line_one_indexed: 1,
-          end_line_one_indexed_inclusive: 3,
+          end_line_one_indexed_inclusive: 4,
         },
         mockContext,
       );
-      expect(result).toBe("line 1\nline 2\nline 3\n");
+      // File has 3 lines with trailing newline. Requesting line 4 clamps to line 3.
+      // Trailing newline is preserved but does not create a phantom empty numbered line.
+      expect(result).toBe("1| line 1\n2| line 2\n3| line 3\n");
     });
 
     it("does not add trailing newline for partial range", async () => {
@@ -324,7 +334,7 @@ line 5`;
         },
         mockContext,
       );
-      expect(result).toBe("line 1\nline 2");
+      expect(result).toBe("1| line 1\n2| line 2");
     });
 
     it("full file read matches line-range full read", async () => {

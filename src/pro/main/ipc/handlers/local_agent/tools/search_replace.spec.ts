@@ -397,4 +397,132 @@ describe("searchReplaceTool", () => {
       expect(preview).toBe("Edit src/test.ts");
     });
   });
+
+  describe("line number stripping", () => {
+    it("strips line number prefixes from old_string and matches", async () => {
+      const originalContent = [
+        "function greet() {",
+        "  console.log('Hello');",
+        "  return true;",
+        "}",
+      ].join("\n");
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(originalContent);
+
+      // old_string has line number prefixes (as if copied from read_file output)
+      const result = await searchReplaceTool.execute(
+        {
+          file_path: "test.ts",
+          old_string: "1| function greet() {\n2|   console.log('Hello');",
+          new_string: "function greet() {\n  console.log('Hi there');",
+        },
+        mockContext,
+      );
+
+      expect(result).toContain("Successfully");
+      expect(fs.promises.writeFile).toHaveBeenCalledWith(
+        "/test/app/test.ts",
+        expect.stringContaining("console.log('Hi there')"),
+      );
+    });
+
+    it("strips line number prefixes from both old_string and new_string", async () => {
+      const originalContent = [
+        "function test() {",
+        "  const x = 1;",
+        "  return x;",
+        "}",
+      ].join("\n");
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(originalContent);
+
+      const result = await searchReplaceTool.execute(
+        {
+          file_path: "test.ts",
+          old_string: "1| function test() {\n2|   const x = 1;",
+          new_string: "1| function test() {\n2|   const y = 2;",
+        },
+        mockContext,
+      );
+
+      expect(result).toContain("Successfully");
+      expect(fs.promises.writeFile).toHaveBeenCalledWith(
+        "/test/app/test.ts",
+        expect.stringContaining("const y = 2"),
+      );
+    });
+
+    it("handles padded line numbers (right-aligned)", async () => {
+      const originalContent = Array.from(
+        { length: 15 },
+        (_, i) => `line ${i + 1}`,
+      ).join("\n");
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(originalContent);
+
+      // Padded line numbers for a file with 15+ lines
+      const result = await searchReplaceTool.execute(
+        {
+          file_path: "test.ts",
+          old_string: "10| line 10\n11| line 11\n12| line 12",
+          new_string: "line 10 modified\nline 11 modified\nline 12 modified",
+        },
+        mockContext,
+      );
+
+      expect(result).toContain("Successfully");
+      expect(fs.promises.writeFile).toHaveBeenCalledWith(
+        "/test/app/test.ts",
+        expect.stringContaining("line 10 modified"),
+      );
+    });
+  });
+
+  describe("enhanced error messages", () => {
+    it("provides detailed error message for no-match failures", async () => {
+      const originalContent = [
+        "function greet() {",
+        "  console.log('Hello');",
+        "  return true;",
+        "}",
+      ].join("\n");
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(originalContent);
+
+      await expect(
+        searchReplaceTool.execute(
+          {
+            file_path: "test.ts",
+            old_string:
+              "function greet() {\n  console.log('Hi there');\n  return true;\n}",
+            new_string:
+              "function greet() {\n  console.log('Hello World');\n  return true;\n}",
+          },
+          mockContext,
+        ),
+      ).rejects.toThrow(/SEARCH CONTENT|BEST PARTIAL MATCH|SUGGESTION/);
+    });
+
+    it("provides detailed error message for ambiguous matches", async () => {
+      const originalContent = ["foo", "bar", "baz", "bar", "qux"].join("\n");
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue(originalContent);
+
+      await expect(
+        searchReplaceTool.execute(
+          {
+            file_path: "test.ts",
+            old_string: "bar",
+            new_string: "BAR",
+          },
+          mockContext,
+        ),
+      ).rejects.toThrow(/MATCHED LOCATIONS|SUGGESTION|context/i);
+    });
+  });
 });

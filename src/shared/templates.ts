@@ -53,4 +53,14 @@ export const localTemplatesData: Template[] = [
     isExperimental: true,
     requiresNeon: true,
   },
+  {
+    id: "dyad-chrome-extension-template",
+    title: "Chrome Extension Template",
+    description: "A template for building Chrome extensions with Dyad.",
+    imageUrl:
+      "https://github.com/tonedice/dyad-chrome-extension-template/blob/main/dyad-chrome-extension.png?raw=true",
+    githubUrl: "https://github.com/tonedice/dyad-chrome-extension-template",
+    isOfficial: false,
+    isExperimental: true,
+  },
 ];

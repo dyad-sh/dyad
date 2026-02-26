@@ -56,7 +56,7 @@ export function TokenBar({ chatId }: TokenBarProps) {
         <Tooltip>
           <TooltipTrigger className="w-full">
             <div className="w-full">
-              <div className="flex gap-3 mb-1 text-xs text-muted-foreground">
+              <div className="flex justify-between mb-1 text-xs text-muted-foreground">
                 <span>Tokens: {totalTokens.toLocaleString()}</span>
                 <span>{Math.round(percentUsed)}%</span>
                 <span>

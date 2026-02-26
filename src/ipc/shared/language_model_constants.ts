@@ -18,7 +18,7 @@ export interface ModelOption {
 }
 
 export const GPT_5_2_MODEL_NAME = "gpt-5.2";
-export const SONNET_4_5 = "claude-sonnet-4-5-20250929";
+export const SONNET_4_6 = "claude-sonnet-4-6";
 export const GEMINI_3_FLASH = "gemini-3-flash-preview";
 
 export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
@@ -123,6 +123,18 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 0,
       dollarSigns: 6,
     },
+    // https://docs.anthropic.com/en/docs/about-claude/models/overview
+    {
+      name: SONNET_4_6,
+      displayName: "Claude Sonnet 4.6",
+      description:
+        "Anthropic's fast and intelligent model (note: >200k tokens is very expensive!)",
+      // Set to 32k since context window is 1M tokens
+      maxOutputTokens: 32_000,
+      contextWindow: 1_000_000,
+      temperature: 0,
+      dollarSigns: 5,
+    },
     {
       name: "claude-opus-4-5",
       displayName: "Claude Opus 4.5",
@@ -135,7 +147,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       dollarSigns: 5,
     },
     {
-      name: SONNET_4_5,
+      name: "claude-sonnet-4-5-20250929",
       displayName: "Claude Sonnet 4.5",
       description:
         "Anthropic's best model for coding (note: >200k tokens is very expensive!)",
@@ -157,18 +169,18 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
   ],
   google: [
-    // https://ai.google.dev/gemini-api/docs/models#gemini-3-pro
+    // https://ai.google.dev/gemini-api/docs/models/gemini-3.1-pro-preview
     {
-      name: "gemini-3-pro-preview",
-      displayName: "Gemini 3 Pro (Preview)",
-      description: "Google's latest Gemini model",
+      name: "gemini-3.1-pro-preview",
+      displayName: "Gemini 3.1 Pro (Preview)",
+      description: "Google's most capable Gemini model",
       // See Flash 2.5 comment below (go 1 below just to be safe, even though it seems OK now).
       maxOutputTokens: 65_536 - 1,
       // Gemini context window = input token + output token
       contextWindow: 1_048_576,
       // Recommended by Google: https://ai.google.dev/gemini-api/docs/gemini-3?thinking=high#temperature
       temperature: 1.0,
-      dollarSigns: 4,
+      dollarSigns: 3,
     },
     // https://ai.google.dev/gemini-api/docs/models#gemini-3-pro
     {
@@ -248,6 +260,16 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       contextWindow: 256_000,
       temperature: 1.0,
       dollarSigns: 2,
+    },
+    // https://openrouter.ai/minimax/minimax-m2.5
+    {
+      name: "minimax/minimax-m2.5",
+      displayName: "MiniMax M2.5",
+      description: "Strong cost-effective model for real-world productivity",
+      maxOutputTokens: 32_000,
+      contextWindow: 196_608,
+      temperature: 0,
+      dollarSigns: 1,
     },
     {
       name: "z-ai/glm-5",

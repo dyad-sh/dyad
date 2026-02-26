@@ -138,6 +138,17 @@ git update-ref refs/remotes/origin/<branch> FETCH_HEAD
 git push --force-with-lease origin <branch>
 ```
 
+## Fork push 403 + upstream has no token: use origin's fetch URL
+
+When the fork push URL (origin push) 403s AND `upstream` has no embedded token (fails with "could not read Username"), push directly to the base repo using origin's **fetch URL** (which carries a `ghs_` token):
+
+```bash
+FETCH_URL=$(git remote get-url origin)  # e.g. https://x-access-token:ghs_...@github.com/dyad-sh/dyad.git
+git push --force "$FETCH_URL" HEAD:<branch>
+```
+
+Use `--force` (not `--force-with-lease`) because the tracking ref is stale after a rebase — `--force-with-lease` will reject with "stale info" since the ref was populated from the base repo fetch, not the fork.
+
 ## Resolving package.json engine conflicts
 
 When rebasing causes conflicts in the `engines` field of `package.json` (e.g., node version requirements), accept the incoming change from upstream/main to maintain consistency with the base branch requirements. The same resolution should be applied to the corresponding section in `package-lock.json`.

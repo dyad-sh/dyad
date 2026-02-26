@@ -26,7 +26,11 @@ import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import log from "electron-log";
 import { withLock } from "../utils/lock_utils";
-import { updateAppGithubRepo, ensureCleanWorkspace } from "./github_handlers";
+import {
+  updateAppGithubRepo,
+  ensureCleanWorkspace,
+  autoSyncToGithubIfEnabled,
+} from "./github_handlers";
 import { createTypedHandler } from "./base";
 import { githubContracts, gitContracts } from "../types/github";
 import type {
@@ -323,7 +327,7 @@ async function handleCommitChanges(
   if (!app) throw new Error("App not found");
   const appPath = getDyadAppPath(app.path);
 
-  return withLock(appId, async () => {
+  const commitHash = await withLock(appId, async () => {
     // Check for merge or rebase in progress
     if (isGitMergeInProgress({ path: appPath })) {
       throw GitStateError(
@@ -343,10 +347,13 @@ async function handleCommitChanges(
     await gitAddAll({ path: appPath });
 
     // Commit with the provided message
-    const commitHash = await gitCommit({ path: appPath, message });
-
-    return commitHash;
+    return await gitCommit({ path: appPath, message });
   });
+
+  // Auto-sync to GitHub if enabled (outside lock to avoid blocking other git operations)
+  await autoSyncToGithubIfEnabled(appId);
+
+  return commitHash;
 }
 
 // --- GitHub Pull Handler ---

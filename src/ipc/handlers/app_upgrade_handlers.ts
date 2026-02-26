@@ -10,6 +10,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { gitAddAll, gitCommit } from "../utils/git_utils";
 import { simpleSpawn } from "../utils/simpleSpawn";
+import { autoSyncToGithubIfEnabled } from "./github_handlers";
 
 export const logger = log.scope("app_upgrade_handlers");
 const handle = createLoggedHandler(logger);
@@ -93,7 +94,7 @@ function isCapacitorUpgradeNeeded(appPath: string): boolean {
   return true;
 }
 
-async function applyComponentTagger(appPath: string) {
+async function applyComponentTagger(appId: number, appPath: string) {
   const viteConfigPathJs = path.join(appPath, "vite.config.js");
   const viteConfigPathTs = path.join(appPath, "vite.config.ts");
 
@@ -187,6 +188,9 @@ async function applyComponentTagger(appPath: string) {
       message: "[dyad] add Dyad component tagger",
     });
     logger.info("Successfully committed changes");
+
+    // Auto-sync to GitHub if enabled
+    await autoSyncToGithubIfEnabled(appId);
   } catch (err) {
     logger.warn(
       `Failed to commit changes. This may happen if the project is not in a git repository, or if there are no changes to commit.`,
@@ -196,9 +200,11 @@ async function applyComponentTagger(appPath: string) {
 }
 
 async function applyCapacitor({
+  appId,
   appName,
   appPath,
 }: {
+  appId: number;
   appName: string;
   appPath: string;
 }) {
@@ -235,6 +241,10 @@ async function applyCapacitor({
       path: appPath,
       message: "[dyad] add Capacitor for mobile app support",
     });
+
+    // Auto-sync to GitHub if enabled
+    await autoSyncToGithubIfEnabled(appId);
+
     logger.info("Successfully committed Capacitor changes");
   } catch (err) {
     logger.warn(
@@ -280,9 +290,9 @@ export function registerAppUpgradeHandlers() {
       const appPath = getDyadAppPath(app.path);
 
       if (upgradeId === "component-tagger") {
-        await applyComponentTagger(appPath);
+        await applyComponentTagger(appId, appPath);
       } else if (upgradeId === "capacitor") {
-        await applyCapacitor({ appName: app.name, appPath });
+        await applyCapacitor({ appId, appName: app.name, appPath });
       } else {
         throw new Error(`Unknown upgrade id: ${upgradeId}`);
       }

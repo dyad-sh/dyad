@@ -90,6 +90,40 @@ export class GitHubConnector {
       .click();
   }
 
+  getAutoSyncToggle() {
+    return this.page.getByTestId("auto-sync-github-toggle");
+  }
+
+  async toggleAutoSync() {
+    const isCurrentlyEnabled = await this.isAutoSyncEnabled();
+    await this.getAutoSyncToggle().click();
+
+    if (isCurrentlyEnabled) {
+      // Wait for it to be disabled (attribute is absent)
+      await expect(this.getAutoSyncToggle()).not.toHaveAttribute(
+        "data-checked",
+        /.*/,
+        { timeout: 5000 },
+      );
+    } else {
+      // Wait for it to be enabled (attribute is present)
+      await expect(this.getAutoSyncToggle()).toHaveAttribute(
+        "data-checked",
+        /.*/,
+        { timeout: 5000 },
+      );
+    }
+  }
+
+  async isAutoSyncEnabled(): Promise<boolean> {
+    const toggle = this.getAutoSyncToggle();
+    // base-ui Switch uses data-checked attribute (present when checked, absent when unchecked)
+    const hasDataChecked = await toggle.evaluate((el) =>
+      el.hasAttribute("data-checked"),
+    );
+    return hasDataChecked;
+  }
+
   async clearPushEvents() {
     const response = await this.page.request.post(
       `http://localhost:${this.fakeLlmPort}/github/api/test/clear-push-events`,

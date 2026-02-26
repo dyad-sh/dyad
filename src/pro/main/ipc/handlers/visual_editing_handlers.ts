@@ -11,6 +11,7 @@ import {
   extractClassPrefixes,
 } from "../../../../utils/style-utils";
 import { gitAdd, gitCommit } from "../../../../ipc/utils/git_utils";
+import { autoSyncToGithubIfEnabled } from "../../../../ipc/handlers/github_handlers";
 import { safeJoin } from "@/ipc/utils/path_utils";
 import {
   AnalyseComponentParams,
@@ -85,6 +86,9 @@ export function registerVisualEditingHandlers() {
             });
           }
         }
+
+        // Auto-sync to GitHub once after all files are processed
+        await autoSyncToGithubIfEnabled(appId);
       } catch (error) {
         throw new Error(`Failed to apply visual editing changes: ${error}`);
       }

@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useAppMediaFiles } from "@/hooks/useAppMediaFiles";
 import { useLoadApps } from "@/hooks/useLoadApps";
-import { Image } from "lucide-react";
+import { Image, ImagePlus } from "lucide-react";
 import { DyadAppMediaFolder } from "@/components/DyadAppMediaFolder";
 import { LibrarySearchBar } from "@/components/LibrarySearchBar";
+import { Button } from "@/components/ui/button";
+import { ImageGeneratorDialog } from "@/components/ImageGeneratorDialog";
 
 export default function MediaPage() {
   const {
@@ -16,6 +18,7 @@ export default function MediaPage() {
   } = useAppMediaFiles();
   const { apps: allApps } = useLoadApps();
   const [searchQuery, setSearchQuery] = useState("");
+  const [imageGeneratorOpen, setImageGeneratorOpen] = useState(false);
 
   const filteredMediaApps = searchQuery.trim()
     ? mediaApps.filter(
@@ -35,6 +38,10 @@ export default function MediaPage() {
             <Image className="mr-2 h-7 w-7 sm:h-8 sm:w-8" />
             Media
           </h1>
+          <Button onClick={() => setImageGeneratorOpen(true)}>
+            <ImagePlus className="mr-2 h-4 w-4" />
+            Generate Image
+          </Button>
         </div>
 
         <LibrarySearchBar value={searchQuery} onChange={setSearchQuery} />
@@ -66,6 +73,11 @@ export default function MediaPage() {
           </div>
         )}
       </div>
+
+      <ImageGeneratorDialog
+        open={imageGeneratorOpen}
+        onOpenChange={setImageGeneratorOpen}
+      />
     </div>
   );
 }

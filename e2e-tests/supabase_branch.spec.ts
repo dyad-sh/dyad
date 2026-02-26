@@ -12,7 +12,10 @@ testSkipIfWindows("supabase branch selection works", async ({ po }) => {
   await po.navigation.clickBackButton();
   await po.toggleTokenBar();
   // The default branch has a small context.
-  await expect(po.page.getByTestId("token-bar")).toContainText("6% of 128K");
+  await expect(po.page.getByTestId("token-bar")).toContainText("6%");
+  await expect(po.page.getByTestId("token-bar")).toContainText(
+    "Context window: 128K",
+  );
   // We hide the token bar so we re-open it later to refresh the token count.
   await po.toggleTokenBar();
 
@@ -24,5 +27,8 @@ testSkipIfWindows("supabase branch selection works", async ({ po }) => {
   // The test branch has a large context (200k tokens) so it'll hit the 100% limit.
   // This is to make sure we're connecting to the right supabase project for the branch.
   await po.toggleTokenBar();
-  await expect(po.page.getByTestId("token-bar")).toContainText("100% of 128K");
+  await expect(po.page.getByTestId("token-bar")).toContainText("100%");
+  await expect(po.page.getByTestId("token-bar")).toContainText(
+    "Context window: 128K",
+  );
 });

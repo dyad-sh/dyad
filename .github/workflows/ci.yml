@@ -86,7 +86,7 @@ jobs:
             AUTHOR="${{ github.event.pull_request.user.login }}"
           fi
           echo "Author: $AUTHOR"
-          if [ "$AUTHOR" = "wwwillchen" ] || [ "$AUTHOR" = "wwwillchen-bot" ]; then
+          if [ "$AUTHOR" = "wwwillchen" ] || [ "$AUTHOR" = "wwwillchen-bot" ] || [ "$AUTHOR" = "azizmejri1" ]; then
             echo "is_privileged=true" >> $GITHUB_OUTPUT
           else
             echo "is_privileged=false" >> $GITHUB_OUTPUT
@@ -96,7 +96,7 @@ jobs:
       # The "image" field is a JSON-encoded array string so that fromJSON() in runs-on
       # can produce the correct label(s) for both GitHub-hosted and self-hosted runners.
       #
-      # Privileged authors (wwwillchen, wwwillchen-bot):
+      # Privileged authors (wwwillchen, wwwillchen-bot, azizmejri1):
       #   - Self-hosted macOS ARM64 runners, no Windows, no sharding.
       #
       #   build (macOS self-hosted) ──> e2e-tests (macOS self-hosted, shard 1/1)

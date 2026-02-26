@@ -9,6 +9,7 @@ import {
   Pencil,
   Trash2,
   MoveRight,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -94,6 +95,7 @@ export function DyadAppMediaFolder({
   const [isRenaming, setIsRenaming] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isStartingChat, setIsStartingChat] = useState(false);
+  const [previewFile, setPreviewFile] = useState<MediaFile | null>(null);
   const queryClient = useQueryClient();
   const { selectChat } = useSelectChat();
 
@@ -185,6 +187,7 @@ export function DyadAppMediaFolder({
             })
           }
           onDeleteImage={(file) => setDeleteTargetFile(file)}
+          onPreviewImage={(file) => setPreviewFile(file)}
           isBusy={isBusy}
           searchQuery={searchQuery}
         />
@@ -290,6 +293,36 @@ export function DyadAppMediaFolder({
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <Dialog
+          open={previewFile !== null}
+          onOpenChange={(open) => {
+            if (!open) setPreviewFile(null);
+          }}
+        >
+          <DialogContent className="max-w-3xl p-0 overflow-hidden bg-black/95 border-none">
+            <DialogHeader className="absolute top-2 right-2 z-10">
+              <DialogTitle className="sr-only">
+                {previewFile?.fileName}
+              </DialogTitle>
+              <DialogDescription className="sr-only">
+                Preview of {previewFile?.fileName}
+              </DialogDescription>
+              <button
+                onClick={() => setPreviewFile(null)}
+                className="p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </DialogHeader>
+            {previewFile && (
+              <ImagePreview
+                appId={previewFile.appId}
+                fileName={previewFile.fileName}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
       </>
     );
   }
@@ -344,6 +377,7 @@ function MediaFolderOpen({
   onRenameImage,
   onMoveImage,
   onDeleteImage,
+  onPreviewImage,
   isBusy,
   searchQuery,
 }: {
@@ -356,6 +390,7 @@ function MediaFolderOpen({
   onRenameImage: (file: MediaFile) => void;
   onMoveImage: (file: MediaFile, targetAppId: number) => Promise<void>;
   onDeleteImage: (file: MediaFile) => void;
+  onPreviewImage: (file: MediaFile) => void;
   isBusy: boolean;
   searchQuery?: string;
 }) {
@@ -399,6 +434,7 @@ function MediaFolderOpen({
               onRenameImage={onRenameImage}
               onMoveImage={onMoveImage}
               onDeleteImage={onDeleteImage}
+              onPreviewImage={onPreviewImage}
               isBusy={isBusy}
             />
           ))}
@@ -415,6 +451,7 @@ function MediaFileThumbnail({
   onRenameImage,
   onMoveImage,
   onDeleteImage,
+  onPreviewImage,
   isBusy,
 }: {
   file: MediaFile;
@@ -423,6 +460,7 @@ function MediaFileThumbnail({
   onRenameImage: (file: MediaFile) => void;
   onMoveImage: (file: MediaFile, targetAppId: number) => Promise<void>;
   onDeleteImage: (file: MediaFile) => void;
+  onPreviewImage: (file: MediaFile) => void;
   isBusy: boolean;
 }) {
   const dataUri = useMediaDataUri(file.appId, file.fileName);
@@ -433,7 +471,10 @@ function MediaFileThumbnail({
       data-media-file-name={file.fileName}
       className="w-[120px] border rounded-md overflow-hidden bg-secondary/30"
     >
-      <div className="w-[120px] h-[120px] relative">
+      <div
+        className="w-[120px] h-[120px] relative cursor-pointer"
+        onClick={() => onPreviewImage(file)}
+      >
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger
             data-testid="media-file-actions-trigger"
@@ -527,6 +568,32 @@ function MediaFileThumbnail({
         </p>
       </div>
     </div>
+  );
+}
+
+function ImagePreview({
+  appId,
+  fileName,
+}: {
+  appId: number;
+  fileName: string;
+}) {
+  const dataUri = useMediaDataUri(appId, fileName);
+
+  if (!dataUri) {
+    return (
+      <div className="flex items-center justify-center h-[60vh] text-muted-foreground">
+        <Image className="h-10 w-10 animate-pulse" />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={dataUri}
+      alt={fileName}
+      className="w-full max-h-[80vh] object-contain"
+    />
   );
 }
 

@@ -18,6 +18,7 @@ import {
   type FilterType,
 } from "@/components/LibraryFilterTabs";
 import { DyadAppMediaFolder } from "@/components/DyadAppMediaFolder";
+import { ImageGeneratorDialog } from "@/components/ImageGeneratorDialog";
 // @ts-expect-error -- SVG asset import handled by bundler
 import logo from "../../assets/logo.svg";
 
@@ -146,6 +147,7 @@ export default function LibraryHomePage() {
   } = useAppMediaFiles();
   const { apps: allApps } = useLoadApps();
   const [createThemeDialogOpen, setCreateThemeDialogOpen] = useState(false);
+  const [imageGeneratorOpen, setImageGeneratorOpen] = useState(false);
   const [maxVisibleCardHeight, setMaxVisibleCardHeight] = useState<
     number | undefined
   >(undefined);
@@ -369,6 +371,7 @@ export default function LibraryHomePage() {
               <NewLibraryItemMenu
                 onNewPrompt={() => setPromptDialogOpen(true)}
                 onNewTheme={() => setCreateThemeDialogOpen(true)}
+                onNewImage={() => setImageGeneratorOpen(true)}
               />
             </div>
 
@@ -436,6 +439,11 @@ export default function LibraryHomePage() {
           <CustomThemeDialog
             open={createThemeDialogOpen}
             onOpenChange={setCreateThemeDialogOpen}
+          />
+
+          <ImageGeneratorDialog
+            open={imageGeneratorOpen}
+            onOpenChange={setImageGeneratorOpen}
           />
         </motion.div>
       )}

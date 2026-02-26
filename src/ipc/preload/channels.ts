@@ -41,6 +41,7 @@ import { freeAgentQuotaContracts } from "../types/free_agent_quota";
 import { planEvents, planContracts } from "../types/plan";
 import { audioContracts } from "../types/audio";
 import { mediaContracts } from "../types/media";
+import { imageGenerationContracts } from "../types/image_generation";
 
 // =============================================================================
 // Invoke Channels (derived from all contracts)
@@ -97,6 +98,7 @@ export const VALID_INVOKE_CHANNELS = [
   ...getInvokeChannels(planContracts),
   ...getInvokeChannels(audioContracts),
   ...getInvokeChannels(mediaContracts),
+  ...getInvokeChannels(imageGenerationContracts),
 
   // Test-only channels
   ...TEST_INVOKE_CHANNELS,

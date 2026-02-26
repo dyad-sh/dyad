@@ -180,7 +180,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       contextWindow: 1_048_576,
       // Recommended by Google: https://ai.google.dev/gemini-api/docs/gemini-3?thinking=high#temperature
       temperature: 1.0,
-      dollarSigns: 3,
+      dollarSigns: 4,
     },
     // https://ai.google.dev/gemini-api/docs/models#gemini-3-pro
     {

@@ -16,6 +16,8 @@ testSkipIfWindows("supabase branch selection works", async ({ po }) => {
   await expect(po.page.getByTestId("token-bar")).toContainText(
     "Context window: 128K",
   );
+  // Move mouse away from the token bar to dismiss tooltip before toggling.
+  await po.page.mouse.move(0, 0);
   // We hide the token bar so we re-open it later to refresh the token count.
   await po.toggleTokenBar();
 

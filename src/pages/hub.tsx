@@ -1,30 +1,16 @@
-import React, { useState } from "react";
+import React from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ExternalLink } from "lucide-react";
 import { useRouter } from "@tanstack/react-router";
-import { useSettings } from "@/hooks/useSettings";
 import { useTemplates } from "@/hooks/useTemplates";
-import { TemplateCard } from "@/components/TemplateCard";
-import { CreateAppDialog } from "@/components/CreateAppDialog";
-import { NeonConnector } from "@/components/NeonConnector";
+import { ipc } from "@/ipc/types";
+import type { Template } from "@/shared/templates";
 
 const HubPage: React.FC = () => {
   const router = useRouter();
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const { templates, isLoading } = useTemplates();
-  const { settings, updateSettings } = useSettings();
-  const selectedTemplateId = settings?.selectedTemplateId;
 
-  const handleTemplateSelect = (templateId: string) => {
-    updateSettings({ selectedTemplateId: templateId });
-  };
-
-  const handleCreateApp = () => {
-    setIsCreateDialogOpen(true);
-  };
-  // Separate templates into official and community
-  const officialTemplates =
-    templates?.filter((template) => template.isOfficial) || [];
+  // Only show community (non-official) templates
   const communityTemplates =
     templates?.filter((template) => !template.isOfficial) || [];
 
@@ -42,80 +28,65 @@ const HubPage: React.FC = () => {
         </Button>
         <header className="mb-8 text-left">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-            Pick your default template
+            Community Templates
           </h1>
           <p className="text-md text-gray-600 dark:text-gray-400">
-            Choose a starting point for your new project.
-            {isLoading && " Loading additional templates..."}
+            Discover community-contributed templates.
+            {isLoading && " Loading templates..."}
           </p>
         </header>
 
-        {/* Official Templates Section */}
-        {officialTemplates.length > 0 && (
-          <section className="mb-12">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
-              Official templates
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {officialTemplates.map((template) => (
-                <TemplateCard
-                  key={template.id}
-                  template={template}
-                  isSelected={template.id === selectedTemplateId}
-                  onSelect={handleTemplateSelect}
-                  onCreateApp={handleCreateApp}
-                />
-              ))}
+        {communityTemplates.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {communityTemplates.map((template) => (
+              <CommunityTemplateCard key={template.id} template={template} />
+            ))}
+          </div>
+        ) : (
+          !isLoading && (
+            <div className="text-muted-foreground">
+              No community templates available yet.
             </div>
-          </section>
+          )
         )}
-
-        {/* Community Templates Section */}
-        {communityTemplates.length > 0 && (
-          <section className="mb-12">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
-              Community templates
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {communityTemplates.map((template) => (
-                <TemplateCard
-                  key={template.id}
-                  template={template}
-                  isSelected={template.id === selectedTemplateId}
-                  onSelect={handleTemplateSelect}
-                  onCreateApp={handleCreateApp}
-                />
-              ))}
-            </div>
-          </section>
-        )}
-
-        <BackendSection />
       </div>
-
-      <CreateAppDialog
-        open={isCreateDialogOpen}
-        onOpenChange={setIsCreateDialogOpen}
-        template={templates?.find((t) => t.id === settings?.selectedTemplateId)}
-      />
     </div>
   );
 };
 
-function BackendSection() {
-  return (
-    <div className="">
-      <header className="mb-4 text-left">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-          Backend Services
-        </h1>
-        <p className="text-md text-gray-600 dark:text-gray-400">
-          Connect to backend services for your projects.
-        </p>
-      </header>
+function CommunityTemplateCard({ template }: { template: Template }) {
+  const handleGithubClick = () => {
+    if (template.githubUrl) {
+      ipc.system.openExternalUrl(template.githubUrl);
+    }
+  };
 
-      <div className="grid grid-cols-1 gap-6">
-        <NeonConnector />
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
+      <div className="relative">
+        <img
+          src={template.imageUrl}
+          alt={template.title}
+          className="w-full h-52 object-cover"
+        />
+      </div>
+      <div className="p-4">
+        <div className="flex justify-between items-center mb-1.5">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+            {template.title}
+          </h2>
+        </div>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-3 h-10 overflow-y-auto">
+          {template.description}
+        </p>
+        {template.githubUrl && (
+          <a
+            className="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors duration-200 cursor-pointer"
+            onClick={handleGithubClick}
+          >
+            View on GitHub <ExternalLink className="w-4 h-4 ml-1" />
+          </a>
+        )}
       </div>
     </div>
   );

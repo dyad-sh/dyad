@@ -49,7 +49,7 @@ const items = [
   },
   {
     title: "Library",
-    to: "/themes",
+    to: "/library/templates",
     icon: BookOpen,
   },
   {
@@ -196,7 +196,12 @@ function AppIcons({
           {items.map((item) => {
             const isActive =
               (item.to === "/" && pathname === "/") ||
-              (item.to !== "/" && pathname.startsWith(item.to));
+              (item.to !== "/" &&
+                (pathname.startsWith(item.to) ||
+                  // Library icon should also be active on /themes and /library paths
+                  (item.title === "Library" &&
+                    (pathname.startsWith("/library") ||
+                      pathname.startsWith("/themes")))));
 
             return (
               <SidebarMenuItem key={item.title}>

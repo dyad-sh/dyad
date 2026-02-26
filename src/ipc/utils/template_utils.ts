@@ -4,8 +4,27 @@ import {
   localTemplatesData,
 } from "../../shared/templates";
 import log from "electron-log";
+import { db } from "@/db";
+import { customTemplates } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
 const logger = log.scope("template_utils");
+
+// Custom template ID prefix
+export const CUSTOM_TEMPLATE_PREFIX = "custom-template:";
+
+export function isCustomTemplateId(templateId: string): boolean {
+  return templateId.startsWith(CUSTOM_TEMPLATE_PREFIX);
+}
+
+export function getCustomTemplateNumericId(templateId: string): number {
+  const numericPart = templateId.slice(CUSTOM_TEMPLATE_PREFIX.length);
+  const id = Number(numericPart);
+  if (Number.isNaN(id)) {
+    throw new Error(`Invalid custom template ID: ${templateId}`);
+  }
+  return id;
+}
 
 // In-memory cache for API templates
 let apiTemplatesCache: Template[] | null = null;
@@ -71,6 +90,30 @@ export async function getAllTemplates(): Promise<Template[]> {
 export async function getTemplateOrThrow(
   templateId: string,
 ): Promise<Template> {
+  // Check if this is a custom template ID
+  if (isCustomTemplateId(templateId)) {
+    const numericId = getCustomTemplateNumericId(templateId);
+    const row = db
+      .select()
+      .from(customTemplates)
+      .where(eq(customTemplates.id, numericId))
+      .get();
+    if (!row) {
+      throw new Error(
+        `Custom template ${templateId} not found. Please select a different template.`,
+      );
+    }
+    // Convert DB row to Template interface shape
+    return {
+      id: `${CUSTOM_TEMPLATE_PREFIX}${row.id}`,
+      title: row.name,
+      description: row.description || "",
+      imageUrl: row.imageUrl || "",
+      githubUrl: row.githubUrl,
+      isOfficial: false,
+    };
+  }
+
   const allTemplates = await getAllTemplates();
   const template = allTemplates.find((template) => template.id === templateId);
   if (!template) {

@@ -14,7 +14,7 @@ const LIBRARY_SECTIONS: LibrarySection[] = [
   { id: "all", label: "All", to: "/library", icon: BookOpen },
   { id: "themes", label: "Themes", to: "/themes", icon: Palette },
   { id: "prompts", label: "Prompts", to: "/prompts", icon: FileText },
-  { id: "media", label: "Media", to: "/library?filter=media", icon: Image },
+  { id: "media", label: "Media", to: "/media", icon: Image },
 ];
 
 export function LibraryList({ show }: { show: boolean }) {

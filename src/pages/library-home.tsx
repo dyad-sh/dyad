@@ -1,8 +1,9 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePrompts } from "@/hooks/usePrompts";
 import { useCustomThemes } from "@/hooks/useCustomThemes";
 import { useAppMediaFiles } from "@/hooks/useAppMediaFiles";
+import { useLoadApps } from "@/hooks/useLoadApps";
 import { BookOpen } from "lucide-react";
 import { CreateOrEditPromptDialog } from "@/components/CreatePromptDialog";
 import { CustomThemeDialog } from "@/components/CustomThemeDialog";
@@ -135,8 +136,20 @@ export default function LibraryHomePage() {
     deletePrompt,
   } = usePrompts();
   const { customThemes, isLoading: themesLoading } = useCustomThemes();
-  const { mediaApps, isLoading: mediaLoading } = useAppMediaFiles();
+  const {
+    mediaApps,
+    isLoading: mediaLoading,
+    renameMediaFile,
+    deleteMediaFile,
+    moveMediaFile,
+    isMutatingMedia,
+  } = useAppMediaFiles();
+  const { apps: allApps } = useLoadApps();
   const [createThemeDialogOpen, setCreateThemeDialogOpen] = useState(false);
+  const [maxVisibleCardHeight, setMaxVisibleCardHeight] = useState<
+    number | undefined
+  >(undefined);
+  const libraryGridRef = useRef<HTMLDivElement | null>(null);
 
   // Deep link support (preserved from old library.tsx)
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
@@ -236,6 +249,98 @@ export default function LibraryHomePage() {
   const hasNoResults =
     filteredItems.length === 0 && filteredMediaApps.length === 0;
 
+  useEffect(() => {
+    const gridElement = libraryGridRef.current;
+    if (!gridElement || isLoading || hasNoResults) {
+      setMaxVisibleCardHeight(undefined);
+      return;
+    }
+
+    let animationFrameId: number | null = null;
+    const observedElements = new Set<HTMLElement>();
+
+    const getMeasuredItems = () =>
+      Array.from(
+        gridElement.querySelectorAll<HTMLElement>(
+          `[data-library-grid-height-item="true"]`,
+        ),
+      );
+
+    const measure = () => {
+      const items = getMeasuredItems();
+      const maxHeight = items.reduce((max, item) => {
+        const nextHeight = item.getBoundingClientRect().height;
+        return nextHeight > max ? nextHeight : max;
+      }, 0);
+      const nextHeight = maxHeight > 0 ? Math.ceil(maxHeight) : undefined;
+      setMaxVisibleCardHeight((prev) =>
+        prev === nextHeight ? prev : nextHeight,
+      );
+    };
+
+    const scheduleMeasure = () => {
+      if (animationFrameId !== null) {
+        cancelAnimationFrame(animationFrameId);
+      }
+      animationFrameId = requestAnimationFrame(() => {
+        measure();
+      });
+    };
+
+    const resizeObserver = new ResizeObserver(() => {
+      scheduleMeasure();
+    });
+
+    const syncObservedElements = () => {
+      const currentElements = new Set(getMeasuredItems());
+
+      for (const observedElement of observedElements) {
+        if (!currentElements.has(observedElement)) {
+          resizeObserver.unobserve(observedElement);
+          observedElements.delete(observedElement);
+        }
+      }
+
+      for (const element of currentElements) {
+        if (!observedElements.has(element)) {
+          resizeObserver.observe(element);
+          observedElements.add(element);
+        }
+      }
+    };
+
+    const mutationObserver = new MutationObserver(() => {
+      syncObservedElements();
+      scheduleMeasure();
+    });
+
+    syncObservedElements();
+    scheduleMeasure();
+
+    mutationObserver.observe(gridElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["data-library-grid-height-item"],
+    });
+    window.addEventListener("resize", scheduleMeasure);
+
+    return () => {
+      mutationObserver.disconnect();
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", scheduleMeasure);
+      if (animationFrameId !== null) {
+        cancelAnimationFrame(animationFrameId);
+      }
+    };
+  }, [
+    isLoading,
+    hasNoResults,
+    filteredItems.length,
+    filteredMediaApps.length,
+    activeFilter,
+  ]);
+
   return (
     <div className="min-h-screen w-full">
       <AnimatePresence mode="wait">
@@ -296,7 +401,11 @@ export default function LibraryHomePage() {
                   : "No items in your library yet."}
               </div>
             ) : (
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4">
+              <div
+                ref={libraryGridRef}
+                data-testid="library-grid"
+                className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4"
+              >
                 {filteredItems.map((item) => (
                   <LibraryCard
                     key={`${item.type}-${item.data.id}`}
@@ -311,6 +420,12 @@ export default function LibraryHomePage() {
                     appId={app.appId}
                     appName={app.appName}
                     files={app.files}
+                    allApps={allApps}
+                    onRenameMediaFile={renameMediaFile}
+                    onDeleteMediaFile={deleteMediaFile}
+                    onMoveMediaFile={moveMediaFile}
+                    isMutatingMedia={isMutatingMedia}
+                    normalizedCollapsedHeight={maxVisibleCardHeight}
                     searchQuery={searchQuery}
                   />
                 ))}

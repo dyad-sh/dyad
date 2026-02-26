@@ -101,7 +101,8 @@ export function AppSidebar() {
   const isLibraryRoute =
     routerState.location.pathname.startsWith("/library") ||
     routerState.location.pathname.startsWith("/themes") ||
-    routerState.location.pathname.startsWith("/prompts");
+    routerState.location.pathname.startsWith("/prompts") ||
+    routerState.location.pathname.startsWith("/media");
 
   let selectedItem: string | null = null;
   if (hoverState === "start-hover:app") {

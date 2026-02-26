@@ -303,6 +303,9 @@ export type {
   ListAllMediaResponse,
   ReadMediaFileParams,
   ReadMediaFileResponse,
+  RenameMediaFileParams,
+  DeleteMediaFileParams,
+  MoveMediaFileParams,
 } from "./media";
 
 // =============================================================================

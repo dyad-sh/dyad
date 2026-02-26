@@ -55,6 +55,7 @@ export function LibraryCard({
   return (
     <div
       data-testid={`library-${item.type}-card`}
+      data-library-grid-height-item="true"
       className="border rounded-lg p-4 bg-(--background-lightest) relative"
     >
       <Badge

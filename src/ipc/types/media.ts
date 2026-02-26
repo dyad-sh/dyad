@@ -41,6 +41,23 @@ export const ReadMediaFileParamsSchema = z.object({
   fileName: z.string(),
 });
 
+export const RenameMediaFileParamsSchema = z.object({
+  appId: z.number(),
+  fileName: z.string(),
+  newBaseName: z.string().min(1),
+});
+
+export const DeleteMediaFileParamsSchema = z.object({
+  appId: z.number(),
+  fileName: z.string(),
+});
+
+export const MoveMediaFileParamsSchema = z.object({
+  sourceAppId: z.number(),
+  fileName: z.string(),
+  targetAppId: z.number(),
+});
+
 export const ReadMediaFileResponseSchema = z.object({
   base64Data: z.string(),
   mimeType: z.string(),
@@ -63,6 +80,24 @@ export const mediaContracts = {
     input: ReadMediaFileParamsSchema,
     output: ReadMediaFileResponseSchema,
   }),
+
+  renameMediaFile: defineContract({
+    channel: "rename-media-file",
+    input: RenameMediaFileParamsSchema,
+    output: z.void(),
+  }),
+
+  deleteMediaFile: defineContract({
+    channel: "delete-media-file",
+    input: DeleteMediaFileParamsSchema,
+    output: z.void(),
+  }),
+
+  moveMediaFile: defineContract({
+    channel: "move-media-file",
+    input: MoveMediaFileParamsSchema,
+    output: z.void(),
+  }),
 } as const;
 
 // =============================================================================
@@ -78,3 +113,6 @@ export const mediaClient = createClient(mediaContracts);
 export type ListAllMediaResponse = z.infer<typeof ListAllMediaResponseSchema>;
 export type ReadMediaFileParams = z.infer<typeof ReadMediaFileParamsSchema>;
 export type ReadMediaFileResponse = z.infer<typeof ReadMediaFileResponseSchema>;
+export type RenameMediaFileParams = z.infer<typeof RenameMediaFileParamsSchema>;
+export type DeleteMediaFileParams = z.infer<typeof DeleteMediaFileParamsSchema>;
+export type MoveMediaFileParams = z.infer<typeof MoveMediaFileParamsSchema>;

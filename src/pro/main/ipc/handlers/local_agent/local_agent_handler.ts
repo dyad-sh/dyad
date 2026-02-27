@@ -83,6 +83,11 @@ const MAX_TERMINATED_STREAM_RETRIES = 2;
 const STREAM_RETRY_BASE_DELAY_MS = 400;
 const STREAM_CONTINUE_MESSAGE =
   "[System] Your previous response stream was interrupted by a transient network error. Continue from exactly where you left off and do not repeat text that has already been sent.";
+/**
+ * Maximum number of tool call steps before pausing.
+ * This prevents runaway loops while allowing complex multi-step tasks.
+ */
+const MAX_TOOL_CALL_STEPS = 50;
 
 // ============================================================================
 // Tool Streaming State Management
@@ -566,6 +571,8 @@ export async function handleLocalAgentStream(
     let hasInjectedPlanningQuestionnaireReflection = false;
     let currentMessageHistory = messageHistory;
     const accumulatedAiMessages: ModelMessage[] = [];
+    // Track total steps across all passes to detect step limit
+    let totalStepsExecuted = 0;
 
     // If there are persisted todos from a previous turn, inject a synthetic
     // user message so the LLM is aware of them. Inserted BEFORE the user's
@@ -661,7 +668,7 @@ export async function handleLocalAgentStream(
             messages: attemptMessages,
             tools: allTools,
             stopWhen: [
-              stepCountIs(25),
+              stepCountIs(MAX_TOOL_CALL_STEPS),
               hasToolCall(addIntegrationTool.name),
               // In plan mode, also stop after writing a plan or exiting plan mode.
               ...(planModeOnly
@@ -1062,6 +1069,9 @@ export async function handleLocalAgentStream(
         break;
       }
 
+      // Track total steps for step limit detection
+      totalStepsExecuted += steps.length;
+
       if (responseMessages.length > 0) {
         // For mid-turn compaction, slice off pre-compaction messages
         const messagesToAccumulate =
@@ -1131,6 +1141,24 @@ export async function handleLocalAgentStream(
           .where(eq(messages.id, placeholderMessageId));
       }
       return false; // Cancelled - don't consume quota
+    }
+
+    // Check if we hit the step limit and append a notice to the response
+    if (totalStepsExecuted >= MAX_TOOL_CALL_STEPS) {
+      logger.info(
+        `Chat ${req.chatId} hit step limit of ${MAX_TOOL_CALL_STEPS} steps`,
+      );
+      const stepLimitMessage = `\n\n<dyad-step-limit steps="${totalStepsExecuted}" limit="${MAX_TOOL_CALL_STEPS}">I've paused after ${totalStepsExecuted} tool calls to prevent runaway operations. To continue working on the current task, simply send a message like "continue" or "keep going".</dyad-step-limit>`;
+      fullResponse += stepLimitMessage;
+      await updateResponseInDb(placeholderMessageId, fullResponse);
+      sendResponseChunk(
+        event,
+        req.chatId,
+        chat,
+        fullResponse,
+        placeholderMessageId,
+        hiddenMessageIdsForStreaming,
+      );
     }
 
     // Save the AI SDK messages for multi-turn tool call preservation

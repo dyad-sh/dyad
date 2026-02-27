@@ -7,6 +7,8 @@ export interface RunningAppInfo {
   processId: number;
   isDocker: boolean;
   containerName?: string;
+  /** Timestamp of when this app was last viewed/selected in the preview panel */
+  lastViewedAt: number;
 }
 
 // Store running app processes
@@ -145,5 +147,121 @@ export function removeAppIfCurrentProcess(
     console.log(
       `App ${appId} process was already removed or replaced in running map. Ignoring.`,
     );
+  }
+}
+
+/**
+ * Updates the lastViewedAt timestamp for an app.
+ * This is called when a user views/selects an app in the preview panel.
+ * @param appId The app ID to update
+ */
+export function updateAppLastViewed(appId: number): void {
+  const appInfo = runningApps.get(appId);
+  if (appInfo) {
+    appInfo.lastViewedAt = Date.now();
+    console.log(`Updated lastViewedAt for app ${appId}`);
+  }
+}
+
+// Garbage collection interval in milliseconds (check every 1 minute)
+const GC_CHECK_INTERVAL_MS = 60 * 1000;
+// Time in milliseconds after which an idle app is eligible for garbage collection (10 minutes)
+const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+
+// Track the currently selected app ID to avoid garbage collecting it
+let currentlySelectedAppId: number | null = null;
+
+/**
+ * Sets the currently selected app ID. The selected app will never be garbage collected.
+ * @param appId The app ID that is currently selected, or null if none
+ */
+export function setCurrentlySelectedAppId(appId: number | null): void {
+  currentlySelectedAppId = appId;
+  if (appId !== null) {
+    updateAppLastViewed(appId);
+  }
+}
+
+/**
+ * Gets the currently selected app ID.
+ */
+export function getCurrentlySelectedAppId(): number | null {
+  return currentlySelectedAppId;
+}
+
+/**
+ * Garbage collects idle apps that haven't been viewed in the last 10 minutes
+ * and are not the currently selected app.
+ */
+export async function garbageCollectIdleApps(): Promise<void> {
+  const now = Date.now();
+  const appsToStop: number[] = [];
+
+  for (const [appId, appInfo] of runningApps.entries()) {
+    // Never garbage collect the currently selected app
+    if (appId === currentlySelectedAppId) {
+      continue;
+    }
+
+    // Check if the app has been idle for more than 10 minutes
+    const idleTime = now - appInfo.lastViewedAt;
+    if (idleTime >= IDLE_TIMEOUT_MS) {
+      console.log(
+        `App ${appId} has been idle for ${Math.round(idleTime / 1000 / 60)} minutes. Marking for garbage collection.`,
+      );
+      appsToStop.push(appId);
+    }
+  }
+
+  // Stop idle apps
+  for (const appId of appsToStop) {
+    const appInfo = runningApps.get(appId);
+    if (appInfo) {
+      console.log(`Garbage collecting idle app ${appId}`);
+      try {
+        await stopAppByInfo(appId, appInfo);
+      } catch (error) {
+        console.error(`Failed to garbage collect app ${appId}:`, error);
+      }
+    }
+  }
+
+  if (appsToStop.length > 0) {
+    console.log(
+      `Garbage collection complete. Stopped ${appsToStop.length} idle app(s). Running apps: ${runningApps.size}`,
+    );
+  }
+}
+
+// Start the garbage collection interval
+let gcIntervalId: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Starts the garbage collection interval to periodically clean up idle apps.
+ */
+export function startAppGarbageCollection(): void {
+  if (gcIntervalId !== null) {
+    console.log("App garbage collection already running");
+    return;
+  }
+
+  console.log(
+    `Starting app garbage collection (interval: ${GC_CHECK_INTERVAL_MS / 1000}s, idle timeout: ${IDLE_TIMEOUT_MS / 1000 / 60} minutes)`,
+  );
+  gcIntervalId = setInterval(() => {
+    garbageCollectIdleApps().catch((error) => {
+      console.error("Error during app garbage collection:", error);
+    });
+  }, GC_CHECK_INTERVAL_MS);
+}
+
+/**
+ * Stops the garbage collection interval.
+ */
+export function stopAppGarbageCollection(): void {
+  if (gcIntervalId !== null) {
+    clearInterval(gcIntervalId);
+    gcIntervalId = null;
+    console.log("Stopped app garbage collection");
   }
 }

@@ -261,6 +261,13 @@ export const AppSearchResultSchema = z.object({
 // App Contracts
 // =============================================================================
 
+/**
+ * Schema for running apps response.
+ */
+export const RunningAppsResponseSchema = z.object({
+  appIds: z.array(z.number()),
+});
+
 export const appContracts = {
   createApp: defineContract({
     channel: "create-app",
@@ -380,6 +387,27 @@ export const appContracts = {
     channel: "update-app-commands",
     input: UpdateAppCommandsParamsSchema,
     output: z.void(),
+  }),
+
+  /**
+   * Notifies the backend that an app has been selected/viewed in the preview panel.
+   * This updates the lastViewedAt timestamp to prevent garbage collection.
+   */
+  selectAppForPreview: defineContract({
+    channel: "select-app-for-preview",
+    input: AppIdParamsSchema.extend({
+      /** If null, no app is selected */
+    }).or(z.object({ appId: z.null() })),
+    output: z.void(),
+  }),
+
+  /**
+   * Gets the list of currently running app IDs.
+   */
+  getRunningApps: defineContract({
+    channel: "get-running-apps",
+    input: z.void(),
+    output: RunningAppsResponseSchema,
   }),
 } as const;
 

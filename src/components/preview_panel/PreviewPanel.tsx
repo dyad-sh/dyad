@@ -11,7 +11,7 @@ import { PreviewIframe } from "./PreviewIframe";
 import { Problems } from "./Problems";
 import { ConfigurePanel } from "./ConfigurePanel";
 import { ChevronDown, ChevronUp, Logs } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { PanelGroup, Panel, PanelResizeHandle } from "react-resizable-panels";
 import { Console } from "./Console";
 import { useRunApp } from "@/hooks/useRunApp";
@@ -20,6 +20,7 @@ import { SecurityPanel } from "./SecurityPanel";
 import { PlanPanel } from "./PlanPanel";
 import { useSupabase } from "@/hooks/useSupabase";
 import { useTranslation } from "react-i18next";
+import { ipc } from "@/ipc/types";
 
 interface ConsoleHeaderProps {
   isOpen: boolean;
@@ -61,9 +62,8 @@ export function PreviewPanel() {
   const [previewMode] = useAtom(previewModeAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const [isConsoleOpen, setIsConsoleOpen] = useState(false);
-  const { runApp, stopApp, loading, app } = useRunApp();
+  const { runApp, loading, app } = useRunApp();
   const { loadEdgeLogs } = useSupabase();
-  const runningAppIdRef = useRef<number | null>(null);
   const key = useAtomValue(previewPanelKeyAtom);
   const consoleEntries = useAtomValue(appConsoleEntriesAtom);
 
@@ -72,50 +72,40 @@ export function PreviewPanel() {
       ? consoleEntries[consoleEntries.length - 1]?.message
       : undefined;
 
+  // Notify backend about app selection changes (for garbage collection tracking)
+  const notifyAppSelected = useCallback(async (appId: number | null) => {
+    try {
+      await ipc.app.selectAppForPreview({ appId });
+    } catch (error) {
+      console.error("Failed to notify app selection:", error);
+    }
+  }, []);
+
   useEffect(() => {
-    const previousAppId = runningAppIdRef.current;
+    // Notify backend which app is currently selected (for GC tracking)
+    notifyAppSelected(selectedAppId);
 
-    // Check if the selected app ID has changed
-    if (selectedAppId !== previousAppId) {
-      // Stop the previously running app, if any
-      if (previousAppId !== null) {
-        console.debug("Stopping previous app", previousAppId);
-        stopApp(previousAppId);
-        // We don't necessarily nullify the ref here immediately,
-        // let the start of the next app update it or unmount handle it.
-      }
-
-      // Start the new app if an ID is selected
-      if (selectedAppId !== null) {
-        console.debug("Starting new app", selectedAppId);
-        runApp(selectedAppId); // Consider adding error handling for the promise if needed
-        runningAppIdRef.current = selectedAppId; // Update ref to the new running app ID
-      } else {
-        // If selectedAppId is null, ensure no app is marked as running
-        runningAppIdRef.current = null;
-      }
+    // Start the app if it's selected
+    // The backend will handle the case where the app is already running
+    if (selectedAppId !== null) {
+      console.debug(
+        "Running app (will start if not already running)",
+        selectedAppId,
+      );
+      runApp(selectedAppId);
     }
 
-    // Cleanup function: This runs when the component unmounts OR before the effect runs again.
-    // We only want to stop the app on actual unmount. The logic above handles stopping
-    // when the appId changes. So, we capture the running appId at the time the effect renders.
-    const appToStopOnUnmount = runningAppIdRef.current;
-    return () => {
-      if (appToStopOnUnmount !== null) {
-        const currentRunningApp = runningAppIdRef.current;
-        if (currentRunningApp !== null) {
-          console.debug(
-            "Component unmounting or selectedAppId changing, stopping app",
-            currentRunningApp,
-          );
-          stopApp(currentRunningApp);
-          runningAppIdRef.current = null; // Clear ref on stop
-        }
-      }
-    };
-    // Dependencies: run effect when selectedAppId changes.
-    // runApp/stopApp are stable due to useCallback.
-  }, [selectedAppId, runApp, stopApp]);
+    // Note: We no longer stop apps when switching. The backend garbage collector
+    // will stop apps that haven't been viewed in 10 minutes.
+    // Apps are only stopped explicitly when:
+    // 1. User manually stops them
+    // 2. App is deleted
+    // 3. Garbage collector determines they've been idle too long
+  }, [selectedAppId, runApp, notifyAppSelected]);
+
+  // Note: We no longer stop all apps on unmount. The garbage collector
+  // will handle cleanup of idle apps, and users may want apps to keep
+  // running in the background.
 
   // Load edge logs if app has Supabase project configured
   useEffect(() => {

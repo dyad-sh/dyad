@@ -22,6 +22,9 @@ import {
   removeAppIfCurrentProcess,
   stopAppByInfo,
   removeDockerVolumesForApp,
+  setCurrentlySelectedAppId,
+  updateAppLastViewed,
+  startAppGarbageCollection,
 } from "../utils/process_manager";
 import { getEnvVar } from "../utils/read_env";
 import { readSettings } from "../../main/settings";
@@ -272,6 +275,7 @@ Details: ${details || "n/a"}
     process: spawnedProcess,
     processId: currentProcessId,
     isDocker: false,
+    lastViewedAt: Date.now(),
   });
 
   listenToProcess({
@@ -577,6 +581,7 @@ ${errorOutput || "(empty)"}`,
     processId: currentProcessId,
     isDocker: true,
     containerName,
+    lastViewedAt: Date.now(),
   });
 
   listenToProcess({
@@ -2004,6 +2009,30 @@ export function registerAppHandlers() {
       }
     });
   });
+
+  // Handler for selecting an app for preview (updates lastViewedAt to prevent GC)
+  createTypedHandler(appContracts.selectAppForPreview, async (_, params) => {
+    const { appId } = params;
+    if (appId !== null) {
+      logger.debug(`App ${appId} selected for preview`);
+      setCurrentlySelectedAppId(appId);
+      // Also update lastViewedAt if the app is running
+      updateAppLastViewed(appId);
+    } else {
+      logger.debug("No app selected for preview");
+      setCurrentlySelectedAppId(null);
+    }
+  });
+
+  // Handler for getting list of running apps
+  createTypedHandler(appContracts.getRunningApps, async () => {
+    const appIds = Array.from(runningApps.keys());
+    logger.debug(`Getting running apps: ${appIds.join(", ") || "none"}`);
+    return { appIds };
+  });
+
+  // Start the garbage collection for idle apps
+  startAppGarbageCollection();
 }
 
 function getCommand({

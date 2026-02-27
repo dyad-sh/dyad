@@ -28,6 +28,11 @@ import {
   startPerformanceMonitoring,
   stopPerformanceMonitoring,
 } from "./utils/performance_monitor";
+import {
+  runningApps,
+  stopAppByInfo,
+  stopAppGarbageCollection,
+} from "./ipc/utils/process_manager";
 import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai_messages_cleanup";
 import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
@@ -610,8 +615,26 @@ app.on("window-all-closed", () => {
 });
 
 // Only set isRunning to false when the app is properly quit by the user
-app.on("will-quit", () => {
+app.on("will-quit", async () => {
   logger.info("App is quitting, setting isRunning to false");
+
+  // Stop the garbage collection timer
+  stopAppGarbageCollection();
+
+  // Stop all running apps
+  const runningAppIds = Array.from(runningApps.keys());
+  logger.info(`Stopping ${runningAppIds.length} running app(s) on quit`);
+  for (const appId of runningAppIds) {
+    const appInfo = runningApps.get(appId);
+    if (appInfo) {
+      try {
+        await stopAppByInfo(appId, appInfo);
+        logger.info(`Stopped app ${appId}`);
+      } catch (error) {
+        logger.error(`Failed to stop app ${appId}:`, error);
+      }
+    }
+  }
 
   // Stop performance monitoring and capture final metrics
   stopPerformanceMonitoring();

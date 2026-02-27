@@ -84,6 +84,22 @@ export function getDb(): BetterSQLite3Database<typeof schema> & {
   return _db as any;
 }
 
+/**
+ * Close the database connection and reset the internal state.
+ * After calling this, initializeDatabase() must be called to use the database again.
+ */
+export function closeDatabase(): void {
+  if (_db) {
+    try {
+      (_db as any).$client.close();
+      logger.log("Database connection closed");
+    } catch (error) {
+      logger.error("Error closing database connection:", error);
+    }
+    _db = null;
+  }
+}
+
 export const db = new Proxy({} as any, {
   get(target, prop) {
     const database = getDb();

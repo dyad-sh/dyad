@@ -1,5 +1,10 @@
 import { ipcMain, app, dialog } from "electron";
-import { db, getDatabasePath } from "../../db";
+import {
+  db,
+  getDatabasePath,
+  closeDatabase,
+  initializeDatabase,
+} from "../../db";
 import { apps, chats, messages } from "../../db/schema";
 import { desc, eq, like } from "drizzle-orm";
 import { createTypedHandler } from "./base";
@@ -1575,10 +1580,8 @@ export function registerAppHandlers() {
     // 1. Drop the database by deleting the SQLite file
     const dbPath = getDatabasePath();
     if (fs.existsSync(dbPath)) {
-      // Close database connections first
-      if (db.$client) {
-        db.$client.close();
-      }
+      // Close database connection properly and reset internal state
+      closeDatabase();
       await fsPromises.unlink(dbPath);
       logger.log(`Database file deleted: ${dbPath}`);
     }
@@ -1604,6 +1607,10 @@ export function registerAppHandlers() {
       await fsPromises.mkdir(dyadAppPath, { recursive: true });
     }
     logger.log("all app files removed.");
+    // 4. Reinitialize the database to ensure the app can continue functioning
+    // until the user restarts. This prevents "database connection not open" errors.
+    initializeDatabase();
+    logger.log("database reinitialized.");
     logger.log("reset all complete.");
   });
 

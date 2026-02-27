@@ -144,9 +144,12 @@ export async function refreshSupabaseToken(): Promise<void> {
       expiresIn,
     } = await response.json();
 
-    // Update settings with new tokens
+    // Re-read settings right before writing to get latest state
+    const freshSettings = readSettings();
+    // Update settings with new tokens, preserving existing fields (e.g. organizations map)
     writeSettings({
       supabase: {
+        ...freshSettings.supabase,
         accessToken: {
           value: accessToken,
         },
@@ -273,15 +276,18 @@ async function refreshSupabaseTokenForOrganization(
       expiresIn,
     } = await response.json();
 
-    // Update the specific organization in settings
-    const existingOrgs = settings.supabase?.organizations ?? {};
+    // Re-read settings right before writing to avoid stale-read race conditions.
+    // The async fetch above may take time, during which other org credentials
+    // could be written. Reading here ensures we merge into the latest state.
+    const freshSettings = readSettings();
+    const existingOrgs = freshSettings.supabase?.organizations ?? {};
     writeSettings({
       supabase: {
-        ...settings.supabase,
+        ...freshSettings.supabase,
         organizations: {
           ...existingOrgs,
           [organizationSlug]: {
-            ...org,
+            ...existingOrgs[organizationSlug],
             accessToken: {
               value: accessToken,
             },

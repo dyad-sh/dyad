@@ -27,6 +27,7 @@ import { DyadMcpToolResult } from "./DyadMcpToolResult";
 import { DyadWebSearchResult } from "./DyadWebSearchResult";
 import { DyadWebSearch } from "./DyadWebSearch";
 import { DyadWebCrawl } from "./DyadWebCrawl";
+import { DyadImageGeneration } from "./DyadImageGeneration";
 import { DyadCodeSearchResult } from "./DyadCodeSearchResult";
 import { DyadCodeSearch } from "./DyadCodeSearch";
 import { DyadRead } from "./DyadRead";
@@ -76,6 +77,7 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-status",
   "dyad-compaction",
   "dyad-copy",
+  "dyad-image-generation",
   // Plan mode tags
   "dyad-write-plan",
   "dyad-exit-plan",
@@ -725,6 +727,21 @@ function renderCustomTag(
         >
           {content}
         </DyadSupabaseProjectInfo>
+      );
+
+    case "dyad-image-generation":
+      return (
+        <DyadImageGeneration
+          node={{
+            properties: {
+              prompt: attributes.prompt || "",
+              path: attributes.path || "",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadImageGeneration>
       );
 
     case "dyad-status":

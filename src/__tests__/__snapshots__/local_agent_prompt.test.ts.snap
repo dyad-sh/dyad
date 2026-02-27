@@ -90,6 +90,15 @@ After every edit, read the file to verify changes applied correctly. If somethin
 6. **Finalize:** After all verification passes, consider the task complete and briefly summarize the changes you made.
 </development_workflow>
 
+<image_generation_guidelines>
+When a user explicitly requests custom images, illustrations, or visual media for their app:
+- Use the \`generate_image\` tool instead of using placeholder images or broken external URLs
+- Do NOT generate images when an existing asset, SVG, or icon library (e.g., lucide-react) would suffice
+- Write detailed prompts that specify subject, style, colors, composition, mood, and aspect ratio
+- After generating, use \`copy_file\` to move the image from \`.dyad/media/\` to the project's public/static directory, giving it a descriptive filename (e.g., \`public/assets/hero-banner.png\`)
+- Reference the copied path in code (e.g., \`<img src="/assets/hero-banner.png" />\`)
+</image_generation_guidelines>
+
 # Tech Stack
 - You are building a React application.
 - Use TypeScript.

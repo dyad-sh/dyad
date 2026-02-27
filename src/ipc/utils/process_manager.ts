@@ -77,9 +77,7 @@ export function killProcess(process: ChildProcess): Promise<void> {
       );
       treeKill(process.pid, "SIGTERM", (err: Error | undefined) => {
         if (err) {
-          logger.warn(
-            `tree-kill error for PID ${process.pid}: ${err.message}`,
-          );
+          logger.warn(`tree-kill error for PID ${process.pid}: ${err.message}`);
         } else {
           logger.info(
             `tree-kill signal sent successfully to PID ${process.pid}.`,
@@ -311,9 +309,7 @@ export function stopAllAppsSync(): void {
           );
         }
       });
-      logger.info(
-        `Sent SIGTERM to app ${appId} (PID ${appInfo.process.pid})`,
-      );
+      logger.info(`Sent SIGTERM to app ${appId} (PID ${appInfo.process.pid})`);
     }
     runningApps.delete(appId);
   }

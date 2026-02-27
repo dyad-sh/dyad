@@ -6,6 +6,14 @@ When pushing changes and creating PRs:
 2. If the branch hasn't been pushed before, default to pushing to `origin` (the fork `wwwillchen/dyad`), then create a PR from the fork to the upstream repo (`dyad-sh/dyad`).
 3. If you cannot push to the fork due to permissions, push directly to `upstream` (`dyad-sh/dyad`) as a last resort.
 
+## Bot fork push fallback
+
+If both `origin` and `upstream` point to `dyad-sh/dyad` and push fails with `Permission to dyad-sh/dyad.git denied`, check for a writable bot fork before stopping:
+
+- Verify access: `gh repo view wwwillchen-bot/dyad --json viewerPermission` (expect `ADMIN`/`WRITE`)
+- Add/push remote: `git remote add botfork https://github.com/wwwillchen-bot/dyad.git && git push --force-with-lease -u botfork HEAD`
+- Create the PR with explicit head: `gh pr create --head wwwillchen-bot:<branch> ...`
+
 ## `gh pr create` branch detection
 
 If `gh pr create` says `you must first push the current branch to a remote` even though `git push -u` succeeded, create the PR with an explicit head ref:

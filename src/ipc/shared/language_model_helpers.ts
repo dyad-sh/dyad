@@ -19,24 +19,6 @@ import {
 export async function getLanguageModelProviders(): Promise<
   LanguageModelProvider[]
 > {
-  // Fetch custom providers from the database
-  const customProvidersDb = await db
-    .select()
-    .from(languageModelProvidersSchema);
-
-  const customProvidersMap = new Map<string, LanguageModelProvider>();
-  for (const cp of customProvidersDb) {
-    customProvidersMap.set(cp.id, {
-      id: cp.id,
-      name: cp.name,
-      apiBaseUrl: cp.api_base_url,
-      envVarName: cp.env_var_name ?? undefined,
-      type: "custom",
-      // hasFreeTier, websiteUrl, gatewayPrefix are not in the custom DB schema
-      // They will be undefined unless overridden by hardcoded values if IDs match
-    });
-  }
-
   // Get hardcoded cloud providers
   const hardcodedProviders: LanguageModelProvider[] = [];
   for (const providerKey in CLOUD_PROVIDERS) {
@@ -74,7 +56,32 @@ export async function getLanguageModelProviders(): Promise<
     }
   }
 
-  return [...hardcodedProviders, ...customProvidersMap.values()];
+  // Fetch custom providers from the database.
+  // If DB is unavailable (e.g. during/after reset flows), keep the app usable
+  // by returning hardcoded providers only.
+  try {
+    const customProvidersDb = await db
+      .select()
+      .from(languageModelProvidersSchema);
+
+    const customProvidersMap = new Map<string, LanguageModelProvider>();
+    for (const cp of customProvidersDb) {
+      customProvidersMap.set(cp.id, {
+        id: cp.id,
+        name: cp.name,
+        apiBaseUrl: cp.api_base_url,
+        envVarName: cp.env_var_name ?? undefined,
+        type: "custom",
+        // hasFreeTier, websiteUrl, gatewayPrefix are not in the custom DB schema
+        // They will be undefined unless overridden by hardcoded values if IDs match
+      });
+    }
+
+    return [...hardcodedProviders, ...customProvidersMap.values()];
+  } catch (error) {
+    console.error("Error fetching custom providers from DB:", error);
+    return hardcodedProviders;
+  }
 }
 
 /**

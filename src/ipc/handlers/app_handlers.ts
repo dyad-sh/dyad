@@ -348,6 +348,12 @@ function listenToProcess({
       if (urlMatch) {
         proxyWorker = await startProxy(urlMatch[1], {
           onStarted: (proxyUrl) => {
+            // Store proxy URL in running app info for re-emission on app switch
+            const appInfo = runningApps.get(appId);
+            if (appInfo) {
+              appInfo.proxyUrl = proxyUrl;
+              appInfo.originalUrl = urlMatch[1];
+            }
             safeSend(event.sender, "app:output", {
               type: "stdout",
               message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${urlMatch[1]}]`,
@@ -1012,6 +1018,15 @@ export function registerAppHandlers() {
       // Check if app is already running
       if (runningApps.has(appId)) {
         logger.debug(`App ${appId} is already running.`);
+        // Re-emit the proxy URL so the frontend can restore the preview
+        const appInfo = runningApps.get(appId);
+        if (appInfo?.proxyUrl && appInfo?.originalUrl) {
+          safeSend(event.sender, "app:output", {
+            type: "stdout",
+            message: `[dyad-proxy-server]started=[${appInfo.proxyUrl}] original=[${appInfo.originalUrl}]`,
+            appId,
+          });
+        }
         return;
       }
 

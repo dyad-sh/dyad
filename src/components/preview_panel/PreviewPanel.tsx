@@ -82,19 +82,31 @@ export function PreviewPanel() {
   }, []);
 
   useEffect(() => {
-    // Notify backend which app is currently selected (for GC tracking)
-    notifyAppSelected(selectedAppId);
+    let cancelled = false;
 
-    // Start the app if it's selected
-    // The backend will handle the case where the app is already running
-    if (selectedAppId !== null) {
-      console.debug(
-        "Running app (will start if not already running)",
-        selectedAppId,
-      );
-      runApp(selectedAppId);
-    }
+    const handleAppSelection = async () => {
+      // Notify backend which app is currently selected (for GC tracking)
+      await notifyAppSelected(selectedAppId);
 
+      // If the effect was cleaned up while awaiting, don't proceed
+      if (cancelled) return;
+
+      // Start the app if it's selected
+      // The backend will handle the case where the app is already running
+      if (selectedAppId !== null) {
+        console.debug(
+          "Running app (will start if not already running)",
+          selectedAppId,
+        );
+        runApp(selectedAppId);
+      }
+    };
+
+    handleAppSelection();
+
+    return () => {
+      cancelled = true;
+    };
     // Note: We no longer stop apps when switching. The backend garbage collector
     // will stop apps that haven't been viewed in 10 minutes.
     // Apps are only stopped explicitly when:

@@ -1,5 +1,8 @@
 import { ChildProcess, spawn } from "node:child_process";
 import treeKill from "tree-kill";
+import log from "electron-log";
+
+const logger = log.scope("process_manager");
 
 // Define a type for the value stored in runningApps
 export interface RunningAppInfo {
@@ -9,6 +12,10 @@ export interface RunningAppInfo {
   containerName?: string;
   /** Timestamp of when this app was last viewed/selected in the preview panel */
   lastViewedAt: number;
+  /** Proxy URL for the running app, set when the proxy server starts */
+  proxyUrl?: string;
+  /** Original localhost URL for the running app */
+  originalUrl?: string;
 }
 
 // Store running app processes
@@ -39,7 +46,7 @@ export function killProcess(process: ChildProcess): Promise<void> {
   return new Promise<void>((resolve) => {
     // Add timeout to prevent hanging
     const timeout = setTimeout(() => {
-      console.warn(
+      logger.warn(
         `Timeout waiting for process (PID: ${process.pid}) to close. Force killing may be needed.`,
       );
       resolve();
@@ -47,7 +54,7 @@ export function killProcess(process: ChildProcess): Promise<void> {
 
     process.on("close", (code, signal) => {
       clearTimeout(timeout);
-      console.log(
+      logger.info(
         `Received 'close' event for process (PID: ${process.pid}) with code ${code}, signal ${signal}.`,
       );
       resolve();
@@ -56,7 +63,7 @@ export function killProcess(process: ChildProcess): Promise<void> {
     // Handle potential errors during kill/close sequence
     process.on("error", (err) => {
       clearTimeout(timeout);
-      console.error(
+      logger.error(
         `Error during stop sequence for process (PID: ${process.pid}): ${err.message}`,
       );
       resolve();
@@ -65,22 +72,22 @@ export function killProcess(process: ChildProcess): Promise<void> {
     // Ensure PID exists before attempting to kill
     if (process.pid) {
       // Use tree-kill to terminate the entire process tree
-      console.log(
+      logger.info(
         `Attempting to tree-kill process tree starting at PID ${process.pid}.`,
       );
       treeKill(process.pid, "SIGTERM", (err: Error | undefined) => {
         if (err) {
-          console.warn(
+          logger.warn(
             `tree-kill error for PID ${process.pid}: ${err.message}`,
           );
         } else {
-          console.log(
+          logger.info(
             `tree-kill signal sent successfully to PID ${process.pid}.`,
           );
         }
       });
     } else {
-      console.warn(`Cannot tree-kill process: PID is undefined.`);
+      logger.warn(`Cannot tree-kill process: PID is undefined.`);
     }
   });
 }
@@ -140,11 +147,11 @@ export function removeAppIfCurrentProcess(
   const currentAppInfo = runningApps.get(appId);
   if (currentAppInfo && currentAppInfo.process === process) {
     runningApps.delete(appId);
-    console.log(
+    logger.info(
       `Removed app ${appId} (processId ${currentAppInfo.processId}) from running map. Current size: ${runningApps.size}`,
     );
   } else {
-    console.log(
+    logger.info(
       `App ${appId} process was already removed or replaced in running map. Ignoring.`,
     );
   }
@@ -159,7 +166,7 @@ export function updateAppLastViewed(appId: number): void {
   const appInfo = runningApps.get(appId);
   if (appInfo) {
     appInfo.lastViewedAt = Date.now();
-    console.log(`Updated lastViewedAt for app ${appId}`);
+    logger.info(`Updated lastViewedAt for app ${appId}`);
   }
 }
 
@@ -206,7 +213,7 @@ export async function garbageCollectIdleApps(): Promise<void> {
     // Check if the app has been idle for more than 10 minutes
     const idleTime = now - appInfo.lastViewedAt;
     if (idleTime >= IDLE_TIMEOUT_MS) {
-      console.log(
+      logger.info(
         `App ${appId} has been idle for ${Math.round(idleTime / 1000 / 60)} minutes. Marking for garbage collection.`,
       );
       appsToStop.push(appId);
@@ -217,51 +224,97 @@ export async function garbageCollectIdleApps(): Promise<void> {
   for (const appId of appsToStop) {
     const appInfo = runningApps.get(appId);
     if (appInfo) {
-      console.log(`Garbage collecting idle app ${appId}`);
+      logger.info(`Garbage collecting idle app ${appId}`);
       try {
         await stopAppByInfo(appId, appInfo);
       } catch (error) {
-        console.error(`Failed to garbage collect app ${appId}:`, error);
+        logger.error(`Failed to garbage collect app ${appId}:`, error);
       }
     }
   }
 
   if (appsToStop.length > 0) {
-    console.log(
+    logger.info(
       `Garbage collection complete. Stopped ${appsToStop.length} idle app(s). Running apps: ${runningApps.size}`,
     );
   }
 }
 
-// Start the garbage collection interval
-let gcIntervalId: ReturnType<typeof setInterval> | null = null;
+// Start the garbage collection timer
+let gcTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
 /**
- * Starts the garbage collection interval to periodically clean up idle apps.
+ * Starts the garbage collection timer to periodically clean up idle apps.
+ * Uses recursive setTimeout instead of setInterval to prevent overlapping
+ * executions when garbageCollectIdleApps takes longer than the interval.
  */
 export function startAppGarbageCollection(): void {
-  if (gcIntervalId !== null) {
-    console.log("App garbage collection already running");
+  if (gcTimeoutId !== null) {
+    logger.info("App garbage collection already running");
     return;
   }
 
-  console.log(
+  logger.info(
     `Starting app garbage collection (interval: ${GC_CHECK_INTERVAL_MS / 1000}s, idle timeout: ${IDLE_TIMEOUT_MS / 1000 / 60} minutes)`,
   );
-  gcIntervalId = setInterval(() => {
-    garbageCollectIdleApps().catch((error) => {
-      console.error("Error during app garbage collection:", error);
-    });
-  }, GC_CHECK_INTERVAL_MS);
+
+  const runGarbageCollection = () => {
+    garbageCollectIdleApps()
+      .catch((error) => {
+        logger.error("Error during app garbage collection:", error);
+      })
+      .finally(() => {
+        // Only schedule next run if not stopped
+        if (gcTimeoutId !== null) {
+          gcTimeoutId = setTimeout(runGarbageCollection, GC_CHECK_INTERVAL_MS);
+        }
+      });
+  };
+
+  gcTimeoutId = setTimeout(runGarbageCollection, GC_CHECK_INTERVAL_MS);
 }
 
 /**
- * Stops the garbage collection interval.
+ * Stops the garbage collection timer.
  */
 export function stopAppGarbageCollection(): void {
-  if (gcIntervalId !== null) {
-    clearInterval(gcIntervalId);
-    gcIntervalId = null;
-    console.log("Stopped app garbage collection");
+  if (gcTimeoutId !== null) {
+    clearTimeout(gcTimeoutId);
+    gcTimeoutId = null;
+    logger.info("Stopped app garbage collection");
+  }
+}
+
+/**
+ * Synchronously sends kill signals to all running apps without awaiting completion.
+ * Used during app quit when Electron's EventEmitter does not await async handlers.
+ */
+export function stopAllAppsSync(): void {
+  const appIds = Array.from(runningApps.keys());
+  logger.info(`Synchronously stopping ${appIds.length} running app(s) on quit`);
+
+  for (const appId of appIds) {
+    const appInfo = runningApps.get(appId);
+    if (!appInfo) continue;
+
+    if (appInfo.isDocker) {
+      const containerName = appInfo.containerName || `dyad-app-${appId}`;
+      // Fire-and-forget: spawn docker stop without awaiting
+      spawn("docker", ["stop", containerName], { stdio: "ignore" });
+      logger.info(`Sent docker stop for app ${appId} (${containerName})`);
+    } else if (appInfo.process.pid) {
+      // treeKill sends SIGTERM synchronously
+      treeKill(appInfo.process.pid, "SIGTERM", (err: Error | undefined) => {
+        if (err) {
+          logger.warn(
+            `tree-kill error for app ${appId} (PID ${appInfo.process.pid}): ${err.message}`,
+          );
+        }
+      });
+      logger.info(
+        `Sent SIGTERM to app ${appId} (PID ${appInfo.process.pid})`,
+      );
+    }
+    runningApps.delete(appId);
   }
 }

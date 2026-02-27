@@ -22,6 +22,9 @@ import {
   removeAppIfCurrentProcess,
   stopAppByInfo,
   removeDockerVolumesForApp,
+  setCurrentlySelectedAppId,
+  updateAppLastViewed,
+  startAppGarbageCollection,
 } from "../utils/process_manager";
 import { getEnvVar } from "../utils/read_env";
 import { readSettings } from "../../main/settings";
@@ -272,6 +275,7 @@ Details: ${details || "n/a"}
     process: spawnedProcess,
     processId: currentProcessId,
     isDocker: false,
+    lastViewedAt: Date.now(),
   });
 
   listenToProcess({
@@ -344,6 +348,12 @@ function listenToProcess({
       if (urlMatch) {
         proxyWorker = await startProxy(urlMatch[1], {
           onStarted: (proxyUrl) => {
+            // Store proxy URL in running app info for re-emission on app switch
+            const appInfo = runningApps.get(appId);
+            if (appInfo) {
+              appInfo.proxyUrl = proxyUrl;
+              appInfo.originalUrl = urlMatch[1];
+            }
             safeSend(event.sender, "app:output", {
               type: "stdout",
               message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${urlMatch[1]}]`,
@@ -577,6 +587,7 @@ ${errorOutput || "(empty)"}`,
     processId: currentProcessId,
     isDocker: true,
     containerName,
+    lastViewedAt: Date.now(),
   });
 
   listenToProcess({
@@ -1007,6 +1018,15 @@ export function registerAppHandlers() {
       // Check if app is already running
       if (runningApps.has(appId)) {
         logger.debug(`App ${appId} is already running.`);
+        // Re-emit the proxy URL so the frontend can restore the preview
+        const appInfo = runningApps.get(appId);
+        if (appInfo?.proxyUrl && appInfo?.originalUrl) {
+          safeSend(event.sender, "app:output", {
+            type: "stdout",
+            message: `[dyad-proxy-server]started=[${appInfo.proxyUrl}] original=[${appInfo.originalUrl}]`,
+            appId,
+          });
+        }
         return;
       }
 
@@ -2004,6 +2024,30 @@ export function registerAppHandlers() {
       }
     });
   });
+
+  // Handler for selecting an app for preview (updates lastViewedAt to prevent GC)
+  createTypedHandler(appContracts.selectAppForPreview, async (_, params) => {
+    const { appId } = params;
+    if (appId !== null) {
+      logger.debug(`App ${appId} selected for preview`);
+      setCurrentlySelectedAppId(appId);
+      // Also update lastViewedAt if the app is running
+      updateAppLastViewed(appId);
+    } else {
+      logger.debug("No app selected for preview");
+      setCurrentlySelectedAppId(null);
+    }
+  });
+
+  // Handler for getting list of running apps
+  createTypedHandler(appContracts.getRunningApps, async () => {
+    const appIds = Array.from(runningApps.keys());
+    logger.debug(`Getting running apps: ${appIds.join(", ") || "none"}`);
+    return { appIds };
+  });
+
+  // Start the garbage collection for idle apps
+  startAppGarbageCollection();
 }
 
 function getCommand({

@@ -14,6 +14,7 @@ import { extractFunctionName } from "../../supabase_admin/supabase_utils";
 import { createTypedHandler } from "./base";
 import { createTestOnlyLoggedHandler } from "./safe_handle";
 import { safeSend } from "../utils/safe_sender";
+import { withLock } from "../utils/lock_utils";
 import { readSettings, writeSettings } from "../../main/settings";
 import { supabaseContracts } from "../types/supabase";
 
@@ -65,24 +66,28 @@ export function registerSupabaseHandlers() {
   createTypedHandler(
     supabaseContracts.deleteOrganization,
     async (_, params) => {
-      const { organizationSlug } = params;
-      const settings = readSettings();
-      const organizations = { ...settings.supabase?.organizations };
+      await withLock("supabase-settings", async () => {
+        const { organizationSlug } = params;
+        const settings = readSettings();
+        const organizations = { ...settings.supabase?.organizations };
 
-      if (!organizations[organizationSlug]) {
-        throw new Error(`Supabase organization ${organizationSlug} not found`);
-      }
+        if (!organizations[organizationSlug]) {
+          throw new Error(
+            `Supabase organization ${organizationSlug} not found`,
+          );
+        }
 
-      delete organizations[organizationSlug];
+        delete organizations[organizationSlug];
 
-      writeSettings({
-        supabase: {
-          ...settings.supabase,
-          organizations,
-        },
+        writeSettings({
+          supabase: {
+            ...settings.supabase,
+            organizations,
+          },
+        });
       });
 
-      logger.info(`Deleted Supabase organization ${organizationSlug}`);
+      logger.info(`Deleted Supabase organization ${params.organizationSlug}`);
     },
   );
 

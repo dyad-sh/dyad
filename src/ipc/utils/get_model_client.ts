@@ -19,7 +19,7 @@ import {
   FREE_OPENROUTER_MODEL_NAMES,
   GEMINI_3_FLASH,
   GPT_5_2_MODEL_NAME,
-  SONNET_4_5,
+  SONNET_4_6,
 } from "../shared/language_model_constants";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
 import { LanguageModelProvider } from "@/ipc/types";
@@ -42,7 +42,7 @@ const AUTO_MODELS = [
   },
   {
     provider: "anthropic",
-    name: SONNET_4_5,
+    name: SONNET_4_6,
   },
   {
     provider: "google",
@@ -214,7 +214,7 @@ function getProModelClient({
         models: [
           // openai requires no prefix.
           provider.responses(`${GPT_5_2_MODEL_NAME}`, { providerId: "openai" }),
-          provider(`anthropic/${SONNET_4_5}`, { providerId: "anthropic" }),
+          provider(`anthropic/${SONNET_4_6}`, { providerId: "anthropic" }),
           provider(`gemini/${GEMINI_3_FLASH}`, { providerId: "google" }),
         ],
       }),

@@ -56,22 +56,7 @@ export async function handleSupabaseOAuthReturn({
       logger.warn(
         "Supabase OAuth returned organizations without valid slugs; falling back to legacy token storage",
       );
-      await withLock("supabase-settings", async () => {
-        const latestSettings = readSettings();
-        writeSettings({
-          supabase: {
-            ...latestSettings.supabase,
-            accessToken: {
-              value: token,
-            },
-            refreshToken: {
-              value: refreshToken,
-            },
-            expiresIn,
-            tokenTimestamp: Math.floor(Date.now() / 1000),
-          },
-        });
-      });
+      await writeLegacyTokens(token, refreshToken, expiresIn);
       return;
     }
 
@@ -89,22 +74,29 @@ export async function handleSupabaseOAuthReturn({
       });
     });
   } else {
-    // Fallback to legacy fields
-    await withLock("supabase-settings", async () => {
-      const latestSettings = readSettings();
-      writeSettings({
-        supabase: {
-          ...latestSettings.supabase,
-          accessToken: {
-            value: token,
-          },
-          refreshToken: {
-            value: refreshToken,
-          },
-          expiresIn,
-          tokenTimestamp: Math.floor(Date.now() / 1000),
-        },
-      });
-    });
+    await writeLegacyTokens(token, refreshToken, expiresIn);
   }
+}
+
+async function writeLegacyTokens(
+  token: string,
+  refreshToken: string,
+  expiresIn: number,
+) {
+  await withLock("supabase-settings", async () => {
+    const latestSettings = readSettings();
+    writeSettings({
+      supabase: {
+        ...latestSettings.supabase,
+        accessToken: {
+          value: token,
+        },
+        refreshToken: {
+          value: refreshToken,
+        },
+        expiresIn,
+        tokenTimestamp: Math.floor(Date.now() / 1000),
+      },
+    });
+  });
 }

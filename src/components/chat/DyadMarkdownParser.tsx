@@ -40,6 +40,7 @@ import { DyadCompaction } from "./DyadCompaction";
 import { DyadWritePlan } from "./DyadWritePlan";
 import { DyadExitPlan } from "./DyadExitPlan";
 import { DyadQuestionnaire } from "./DyadQuestionnaire";
+import { DyadStepLimit } from "./DyadStepLimit";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
@@ -82,6 +83,8 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-write-plan",
   "dyad-exit-plan",
   "dyad-questionnaire",
+  // Step limit notification
+  "dyad-step-limit",
 ];
 
 interface DyadMarkdownParserProps {
@@ -801,6 +804,21 @@ function renderCustomTag(
 
     case "dyad-questionnaire":
       return <DyadQuestionnaire>{content}</DyadQuestionnaire>;
+
+    case "dyad-step-limit":
+      return (
+        <DyadStepLimit
+          node={{
+            properties: {
+              steps: attributes.steps,
+              limit: attributes.limit,
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadStepLimit>
+      );
 
     default:
       return null;

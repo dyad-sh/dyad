@@ -1,6 +1,7 @@
 import { readSettings, writeSettings } from "../main/settings";
 import { listSupabaseOrganizations } from "./supabase_management_client";
 import log from "electron-log";
+import { withLock } from "../ipc/utils/lock_utils";
 
 const logger = log.scope("supabase_return_handler");
 
@@ -12,15 +13,15 @@ export interface SupabaseOAuthReturnParams {
 
 /**
  * Handles OAuth return by storing organization credentials.
- * If exactly one organization is found, it's stored in the organizations map.
- * Otherwise, it falls back to legacy fields.
+ * When organizations are returned, credentials are stored for each organization
+ * slug so app-to-org links remain valid across multiple connected apps.
+ * If organizations cannot be fetched, it falls back to legacy fields.
  */
 export async function handleSupabaseOAuthReturn({
   token,
   refreshToken,
   expiresIn,
 }: SupabaseOAuthReturnParams) {
-  const settings = readSettings();
   let orgs: any[] = [];
   let errorOccurred = false;
 
@@ -32,20 +33,13 @@ export async function handleSupabaseOAuthReturn({
   }
 
   if (!errorOccurred && orgs.length > 0) {
-    if (orgs.length > 1) {
-      logger.warn(
-        "Multiple Supabase organizations found unexpectedly, using the first one",
-      );
-    }
-    const organizationSlug = orgs[0].slug;
-    const existingOrgs = settings.supabase?.organizations ?? {};
-
-    writeSettings({
-      supabase: {
-        ...settings.supabase,
-        organizations: {
-          ...existingOrgs,
-          [organizationSlug]: {
+    const organizationEntries = Object.fromEntries(
+      orgs
+        .map((org) => org.slug)
+        .filter((slug): slug is string => typeof slug === "string" && !!slug)
+        .map((organizationSlug) => [
+          organizationSlug,
+          {
             accessToken: {
               value: token,
             },
@@ -55,23 +49,62 @@ export async function handleSupabaseOAuthReturn({
             expiresIn,
             tokenTimestamp: Math.floor(Date.now() / 1000),
           },
+        ]),
+    );
+
+    if (Object.keys(organizationEntries).length === 0) {
+      logger.warn(
+        "Supabase OAuth returned organizations without valid slugs; falling back to legacy token storage",
+      );
+      await withLock("supabase-settings", async () => {
+        const latestSettings = readSettings();
+        writeSettings({
+          supabase: {
+            ...latestSettings.supabase,
+            accessToken: {
+              value: token,
+            },
+            refreshToken: {
+              value: refreshToken,
+            },
+            expiresIn,
+            tokenTimestamp: Math.floor(Date.now() / 1000),
+          },
+        });
+      });
+      return;
+    }
+
+    await withLock("supabase-settings", async () => {
+      const latestSettings = readSettings();
+      const latestOrgs = latestSettings.supabase?.organizations ?? {};
+      writeSettings({
+        supabase: {
+          ...latestSettings.supabase,
+          organizations: {
+            ...latestOrgs,
+            ...organizationEntries,
+          },
         },
-      },
+      });
     });
   } else {
     // Fallback to legacy fields
-    writeSettings({
-      supabase: {
-        ...settings.supabase,
-        accessToken: {
-          value: token,
+    await withLock("supabase-settings", async () => {
+      const latestSettings = readSettings();
+      writeSettings({
+        supabase: {
+          ...latestSettings.supabase,
+          accessToken: {
+            value: token,
+          },
+          refreshToken: {
+            value: refreshToken,
+          },
+          expiresIn,
+          tokenTimestamp: Math.floor(Date.now() / 1000),
         },
-        refreshToken: {
-          value: refreshToken,
-        },
-        expiresIn,
-        tokenTimestamp: Math.floor(Date.now() / 1000),
-      },
+      });
     });
   }
 }

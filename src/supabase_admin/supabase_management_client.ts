@@ -144,18 +144,22 @@ export async function refreshSupabaseToken(): Promise<void> {
       expiresIn,
     } = await response.json();
 
-    // Update settings with new tokens
-    writeSettings({
-      supabase: {
-        accessToken: {
-          value: accessToken,
+    // Update settings with new tokens while preserving any multi-org data
+    await withLock("supabase-settings", async () => {
+      const latestSettings = readSettings();
+      writeSettings({
+        supabase: {
+          ...latestSettings.supabase,
+          accessToken: {
+            value: accessToken,
+          },
+          refreshToken: {
+            value: newRefreshToken,
+          },
+          expiresIn,
+          tokenTimestamp: Math.floor(Date.now() / 1000), // Store current timestamp
         },
-        refreshToken: {
-          value: newRefreshToken,
-        },
-        expiresIn,
-        tokenTimestamp: Math.floor(Date.now() / 1000), // Store current timestamp
-      },
+      });
     });
   } catch (error) {
     logger.error("Error refreshing Supabase token:", error);
@@ -273,26 +277,31 @@ async function refreshSupabaseTokenForOrganization(
       expiresIn,
     } = await response.json();
 
-    // Update the specific organization in settings
-    const existingOrgs = settings.supabase?.organizations ?? {};
-    writeSettings({
-      supabase: {
-        ...settings.supabase,
-        organizations: {
-          ...existingOrgs,
-          [organizationSlug]: {
-            ...org,
-            accessToken: {
-              value: accessToken,
+    // Update the specific organization in settings using latest state to avoid
+    // dropping other org connections when writes interleave.
+    await withLock("supabase-settings", async () => {
+      const latestSettings = readSettings();
+      const latestOrgs = latestSettings.supabase?.organizations ?? {};
+      const latestOrg = latestOrgs[organizationSlug] ?? org;
+      writeSettings({
+        supabase: {
+          ...latestSettings.supabase,
+          organizations: {
+            ...latestOrgs,
+            [organizationSlug]: {
+              ...latestOrg,
+              accessToken: {
+                value: accessToken,
+              },
+              refreshToken: {
+                value: newRefreshToken,
+              },
+              expiresIn,
+              tokenTimestamp: Math.floor(Date.now() / 1000),
             },
-            refreshToken: {
-              value: newRefreshToken,
-            },
-            expiresIn,
-            tokenTimestamp: Math.floor(Date.now() / 1000),
           },
         },
-      },
+      });
     });
   } catch (error) {
     logger.error(

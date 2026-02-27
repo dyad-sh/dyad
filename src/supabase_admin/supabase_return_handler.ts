@@ -20,7 +20,6 @@ export async function handleSupabaseOAuthReturn({
   refreshToken,
   expiresIn,
 }: SupabaseOAuthReturnParams) {
-  const settings = readSettings();
   let orgs: any[] = [];
   let errorOccurred = false;
 
@@ -30,6 +29,12 @@ export async function handleSupabaseOAuthReturn({
     logger.error("Error listing Supabase organizations:", error);
     errorOccurred = true;
   }
+
+  // Re-read settings right before writing to avoid stale-read race conditions.
+  // The async listSupabaseOrganizations call above may take time, during which
+  // other org credentials could be written (e.g. token refreshes). Reading here
+  // ensures we merge into the latest state.
+  const settings = readSettings();
 
   if (!errorOccurred && orgs.length > 0) {
     if (orgs.length > 1) {

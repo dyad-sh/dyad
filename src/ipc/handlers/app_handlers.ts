@@ -1578,10 +1578,11 @@ export function registerAppHandlers() {
     logger.log("all running apps stopped.");
     logger.log("deleting database...");
     // 1. Drop the database by deleting the SQLite file
+    // Close database connection properly and reset internal state, regardless of file existence.
+    // This handles cases where the file is gone but the in-memory connection object remains.
+    closeDatabase();
     const dbPath = getDatabasePath();
     if (fs.existsSync(dbPath)) {
-      // Close database connection properly and reset internal state
-      closeDatabase();
       await fsPromises.unlink(dbPath);
       logger.log(`Database file deleted: ${dbPath}`);
     }

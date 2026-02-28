@@ -18,6 +18,8 @@ import { StylePopover } from "./StylePopover";
 import { ColorPicker } from "@/components/ui/ColorPicker";
 import { NumberInput } from "@/components/ui/NumberInput";
 import { rgbToHex, processNumericValue } from "@/utils/style-utils";
+import { ImageSwapPopover, type ImageUploadData } from "./ImageSwapPopover";
+import { mergePendingChange } from "@/ipc/types/visual-editing";
 
 const FONT_WEIGHT_OPTIONS = [
   { value: "", label: "Default" },
@@ -59,6 +61,9 @@ interface VisualEditingToolbarProps {
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
   isDynamic: boolean;
   hasStaticText: boolean;
+  hasImage: boolean;
+  isDynamicImage: boolean;
+  currentImageSrc: string;
 }
 
 export function VisualEditingToolbar({
@@ -66,6 +71,9 @@ export function VisualEditingToolbar({
   iframeRef,
   isDynamic,
   hasStaticText,
+  hasImage,
+  isDynamicImage,
+  currentImageSrc,
 }: VisualEditingToolbarProps) {
   const coordinates = useAtomValue(currentComponentCoordinatesAtom);
   const [currentMargin, setCurrentMargin] = useState({ x: "", y: "" });
@@ -161,14 +169,16 @@ export function VisualEditingToolbar({
         newStyles.text = { ...existing?.styles?.text, ...styles.text };
       }
 
-      updated.set(selectedComponent.id, {
-        componentId: selectedComponent.id,
-        componentName: selectedComponent.name,
-        relativePath: selectedComponent.relativePath,
-        lineNumber: selectedComponent.lineNumber,
-        styles: newStyles,
-        textContent: existing?.textContent || "",
-      });
+      updated.set(
+        selectedComponent.id,
+        mergePendingChange(existing, {
+          componentId: selectedComponent.id,
+          componentName: selectedComponent.name,
+          relativePath: selectedComponent.relativePath,
+          lineNumber: selectedComponent.lineNumber,
+          styles: newStyles,
+        }),
+      );
       return updated;
     });
   };
@@ -303,6 +313,45 @@ export function VisualEditingToolbar({
       }
 
       sendStyleModification({ text: { [property]: processedValue } });
+    }
+  };
+
+  const handleImageSwap = (newSrc: string, uploadData?: ImageUploadData) => {
+    // 1. Send preview to iframe
+    if (iframeRef.current?.contentWindow && selectedComponent) {
+      iframeRef.current.contentWindow.postMessage(
+        {
+          type: "modify-dyad-image-src",
+          data: {
+            elementId: selectedComponent.id,
+            runtimeId: selectedComponent.runtimeId,
+            src: uploadData ? uploadData.base64Data : newSrc,
+          },
+        },
+        "*",
+      );
+    }
+
+    // 2. Store in pending changes
+    if (selectedComponent) {
+      setPendingChanges((prev) => {
+        const updated = new Map(prev);
+        const existing = updated.get(selectedComponent.id);
+        updated.set(
+          selectedComponent.id,
+          mergePendingChange(existing, {
+            componentId: selectedComponent.id,
+            componentName: selectedComponent.name,
+            relativePath: selectedComponent.relativePath,
+            lineNumber: selectedComponent.lineNumber,
+            imageSrc: newSrc,
+            ...(uploadData && {
+              imageUpload: uploadData,
+            }),
+          }),
+        );
+        return updated;
+      });
     }
   };
 
@@ -520,6 +569,14 @@ export function VisualEditingToolbar({
                 </div>
               </div>
             </StylePopover>
+          )}
+
+          {hasImage && (
+            <ImageSwapPopover
+              currentSrc={currentImageSrc}
+              isDynamicImage={isDynamicImage}
+              onSwap={handleImageSwap}
+            />
           )}
         </>
       )}

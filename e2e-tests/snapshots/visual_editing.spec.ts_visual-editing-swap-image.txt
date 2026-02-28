@@ -1,0 +1,21 @@
+=== src/pages/Index.tsx ===
+import { MadeWithDyad } from "@/components/made-with-dyad";
+
+const Index = () => {
+    return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-100">
+            <div className="text-center">
+                <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
+                <img
+                    src="https://example.com/new-hero.png"
+                    alt="Hero image"
+                    className="mx-auto mb-4 w-64 h-64" />
+                <p className="text-xl text-gray-600">Start building your amazing project here!
+                            </p>
+            </div>
+            <MadeWithDyad />
+        </div>
+    );
+};
+
+export default Index;

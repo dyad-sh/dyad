@@ -16,17 +16,25 @@ import {
   AnalyseComponentParams,
   ApplyVisualEditingChangesParams,
 } from "@/ipc/types";
+import { VALID_IMAGE_MIME_TYPES } from "@/ipc/types/visual-editing";
+import { DYAD_MEDIA_DIR_NAME } from "@/ipc/utils/media_path_utils";
+import { ensureDyadGitignored } from "@/ipc/handlers/gitignoreUtils";
 import {
   transformContent,
   analyzeComponent,
 } from "../../utils/visual_editing_utils";
 import { normalizePath } from "../../../../../shared/normalizePath";
 
+// Client allows 7.5 MB raw; base64 expands by ~4/3 plus data URL prefix
+const MAX_IMAGE_SIZE = Math.ceil((7.5 * 1024 * 1024) / 3) * 4 + 100; // ~10,485,860
+
 export function registerVisualEditingHandlers() {
   ipcMain.handle(
     "apply-visual-editing-changes",
     async (_event, params: ApplyVisualEditingChangesParams) => {
       const { appId, changes } = params;
+      // Track written image files for cleanup on failure
+      const writtenImagePaths: string[] = [];
       try {
         if (changes.length === 0) return;
 
@@ -40,11 +48,91 @@ export function registerVisualEditingHandlers() {
         }
 
         const appPath = getDyadAppPath(app.path);
+
+        // Validate all image uploads upfront before making any changes
+        const imageValidationErrors: string[] = [];
+        for (const change of changes) {
+          if (change.imageUpload) {
+            const { fileName, base64Data, mimeType } = change.imageUpload;
+
+            if (
+              !(VALID_IMAGE_MIME_TYPES as readonly string[]).includes(mimeType)
+            ) {
+              imageValidationErrors.push(
+                `"${fileName}": Unsupported image type (${mimeType}). Allowed types: JPEG, PNG, GIF, WebP.`,
+              );
+            }
+
+            if (base64Data.length > MAX_IMAGE_SIZE) {
+              imageValidationErrors.push(
+                `"${fileName}": The image is too large (max 7.5 MB). Please choose a smaller file.`,
+              );
+            }
+          }
+        }
+
+        if (imageValidationErrors.length > 0) {
+          throw new Error(
+            imageValidationErrors.length === 1
+              ? imageValidationErrors[0]
+              : `Multiple image issues:\n${imageValidationErrors.join("\n")}`,
+          );
+        }
+
+        // Write validated image files to public directory
+        for (const change of changes) {
+          if (change.imageUpload) {
+            const { fileName, base64Data } = change.imageUpload;
+
+            const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+            const timestamp = Date.now();
+            const finalFileName = `${timestamp}-${sanitizedFileName}`;
+
+            const buffer = Buffer.from(
+              base64Data.replace(/^data:[^;]+;base64,/, ""),
+              "base64",
+            );
+
+            // Save to .dyad/media as a staging copy
+            const mediaDir = path.join(appPath, DYAD_MEDIA_DIR_NAME);
+            await fsPromises.mkdir(mediaDir, { recursive: true });
+            await fsPromises.writeFile(
+              path.join(mediaDir, finalFileName),
+              buffer,
+            );
+            await ensureDyadGitignored(appPath);
+
+            // Save to public/images for the app to serve
+            const publicImagesDir = path.join(appPath, "public", "images");
+            await fsPromises.mkdir(publicImagesDir, { recursive: true });
+            const destPath = path.join(publicImagesDir, finalFileName);
+            await fsPromises.writeFile(destPath, buffer);
+            writtenImagePaths.push(destPath);
+            writtenImagePaths.push(path.join(mediaDir, finalFileName));
+
+            change.imageSrc = `/images/${finalFileName}`;
+
+            if (fs.existsSync(path.join(appPath, ".git"))) {
+              await gitAdd({
+                path: appPath,
+                filepath: normalizePath(
+                  path.join("public", "images", finalFileName),
+                ),
+              });
+            }
+          }
+        }
+
         const fileChanges = new Map<
           string,
           Map<
             number,
-            { classes: string[]; prefixes: string[]; textContent?: string }
+            {
+              classes: string[];
+              prefixes: string[];
+              textContent?: string;
+              imageSrc?: string;
+            }
           >
         >();
 
@@ -61,6 +149,9 @@ export function registerVisualEditingHandlers() {
             prefixes: changePrefixes,
             ...(change.textContent !== undefined && {
               textContent: change.textContent,
+            }),
+            ...(change.imageSrc !== undefined && {
+              imageSrc: change.imageSrc,
             }),
           });
         }
@@ -86,7 +177,18 @@ export function registerVisualEditingHandlers() {
           }
         }
       } catch (error) {
-        throw new Error(`Failed to apply visual editing changes: ${error}`);
+        // Clean up any image files written before the failure
+        for (const filePath of writtenImagePaths) {
+          try {
+            await fsPromises.unlink(filePath);
+          } catch {
+            // Ignore cleanup errors
+          }
+        }
+        if (error instanceof Error) {
+          throw error;
+        }
+        throw new Error(String(error));
       }
     },
   );
@@ -100,7 +202,7 @@ export function registerVisualEditingHandlers() {
         const line = parseInt(lineStr, 10);
 
         if (!filePath || isNaN(line)) {
-          return { isDynamic: false, hasStaticText: false };
+          return { isDynamic: false, hasStaticText: false, hasImage: false };
         }
 
         // Get the app to find its path
@@ -118,7 +220,7 @@ export function registerVisualEditingHandlers() {
         return analyzeComponent(content, line);
       } catch (error) {
         console.error("Failed to analyze component:", error);
-        return { isDynamic: false, hasStaticText: false };
+        return { isDynamic: false, hasStaticText: false, hasImage: false };
       }
     },
   );

@@ -1,4 +1,9 @@
-import { SendHorizontalIcon, StopCircleIcon } from "lucide-react";
+import {
+  SendHorizontalIcon,
+  StopCircleIcon,
+  FolderOpenIcon,
+  XIcon,
+} from "lucide-react";
 import {
   Tooltip,
   TooltipTrigger,
@@ -6,8 +11,9 @@ import {
 } from "@/components/ui/tooltip";
 
 import { useSettings } from "@/hooks/useSettings";
-import { homeChatInputValueAtom } from "@/atoms/chatAtoms"; // Use a different atom for home input
+import { homeChatInputValueAtom, homeSelectedAppAtom } from "@/atoms/chatAtoms";
 import { useAtom } from "jotai";
+import { useState } from "react";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { useAttachments } from "@/hooks/useAttachments";
 import { AttachmentsList } from "./AttachmentsList";
@@ -21,6 +27,8 @@ import { useChatModeToggle } from "@/hooks/useChatModeToggle";
 import { useTypingPlaceholder } from "@/hooks/useTypingPlaceholder";
 import { AuxiliaryActionsMenu } from "./AuxiliaryActionsMenu";
 import { cn } from "@/lib/utils";
+import { useLoadApps } from "@/hooks/useLoadApps";
+import { AppSearchDialog } from "../AppSearchDialog";
 
 export function HomeChatInput({
   onSubmit,
@@ -29,18 +37,24 @@ export function HomeChatInput({
 }) {
   const posthog = usePostHog();
   const [inputValue, setInputValue] = useAtom(homeChatInputValueAtom);
+  const [selectedApp, setSelectedApp] = useAtom(homeSelectedAppAtom);
   const { settings } = useSettings();
   const { isStreaming } = useStreamChat({
     hasChatId: false,
   }); // eslint-disable-line @typescript-eslint/no-unused-vars
   useChatModeToggle();
 
+  const [appSearchOpen, setAppSearchOpen] = useState(false);
+  const { apps } = useLoadApps();
+
   const typingText = useTypingPlaceholder([
     "an ecommerce store...",
     "an information page...",
     "a landing page...",
   ]);
-  const placeholder = `Ask Dyad to build ${typingText ?? ""}`;
+  const placeholder = selectedApp
+    ? `Send a message to ${selectedApp.name}...`
+    : `Ask Dyad to build ${typingText ?? ""}`;
 
   // Use the attachments hook
   const {
@@ -58,6 +72,14 @@ export function HomeChatInput({
     cancelPendingFiles,
   } = useAttachments();
 
+  const handleSelectApp = (appId: number) => {
+    const app = apps.find((a) => a.id === appId);
+    if (app) {
+      setSelectedApp(app);
+    }
+    setAppSearchOpen(false);
+  };
+
   // Custom submit function that wraps the provided onSubmit
   const handleCustomSubmit = () => {
     if (
@@ -68,13 +90,18 @@ export function HomeChatInput({
       return;
     }
 
-    // Call the parent's onSubmit handler with attachments
-    onSubmit({ attachments });
+    // Call the parent's onSubmit handler with attachments and selected app
+    onSubmit({
+      attachments,
+      selectedApp: selectedApp ?? undefined,
+    });
 
-    // Clear attachments as part of submission process
+    // Clear attachments and selected app as part of submission process
     clearAttachments();
+    setSelectedApp(null);
     posthog.capture("chat:home_submit", {
       chatMode: settings?.selectedChatMode,
+      existingApp: !!selectedApp,
     });
   };
 
@@ -162,6 +189,53 @@ export function HomeChatInput({
           <div className="px-2 flex items-center justify-between pb-0.5 pt-0.5">
             <div className="flex items-center">
               <ChatInputControls showContextFilesPicker={false} />
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      onClick={() => setAppSearchOpen(true)}
+                      className={cn(
+                        "cursor-pointer px-2 py-1 ml-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1",
+                        selectedApp
+                          ? "bg-primary/10 text-primary hover:bg-primary/15"
+                          : "text-foreground/80 hover:text-foreground hover:bg-muted/60",
+                      )}
+                      data-testid="home-app-selector"
+                    />
+                  }
+                >
+                  <FolderOpenIcon size={14} />
+                  <span className="truncate max-w-[150px]">
+                    {selectedApp ? selectedApp.name : "No app selected"}
+                  </span>
+                  {selectedApp && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedApp(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.stopPropagation();
+                          setSelectedApp(null);
+                        }
+                      }}
+                      className="hover:bg-primary/20 rounded-sm p-0.5 transition-colors"
+                      aria-label="Deselect app"
+                      data-testid="home-app-selector-clear"
+                    >
+                      <XIcon size={12} />
+                    </span>
+                  )}
+                </TooltipTrigger>
+                <TooltipContent>
+                  {selectedApp
+                    ? "Change selected app"
+                    : "Select an existing app"}
+                </TooltipContent>
+              </Tooltip>
             </div>
 
             <AuxiliaryActionsMenu
@@ -171,6 +245,19 @@ export function HomeChatInput({
           </div>
         </div>
       </div>
+
+      <AppSearchDialog
+        open={appSearchOpen}
+        onOpenChange={setAppSearchOpen}
+        onSelectApp={handleSelectApp}
+        allApps={apps.map((a) => ({
+          id: a.id,
+          name: a.name,
+          createdAt: a.createdAt,
+          matchedChatTitle: null,
+          matchedChatMessage: null,
+        }))}
+      />
     </>
   );
 }

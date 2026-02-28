@@ -4,6 +4,7 @@ import type {
   AgentTodo,
   ComponentSelection,
 } from "@/ipc/types";
+import type { ListedApp } from "@/ipc/types/app";
 import type { Getter, Setter } from "jotai";
 import { atom } from "jotai";
 
@@ -17,6 +18,7 @@ export const selectedChatIdAtom = atom<number | null>(null);
 export const isStreamingByIdAtom = atom<Map<number, boolean>>(new Map());
 export const chatInputValueAtom = atom<string>("");
 export const homeChatInputValueAtom = atom<string>("");
+export const homeSelectedAppAtom = atom<ListedApp | null>(null);
 
 // Used for scrolling to the bottom of the chat messages (per chat)
 export const chatStreamCountByIdAtom = atom<Map<number, number>>(new Map());

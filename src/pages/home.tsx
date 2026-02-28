@@ -34,6 +34,7 @@ import { ForceCloseDialog } from "@/components/ForceCloseDialog";
 import { useSelectChat } from "@/hooks/useSelectChat";
 
 import type { FileAttachment } from "@/ipc/types";
+import type { ListedApp } from "@/ipc/types/app";
 import { NEON_TEMPLATE_IDS } from "@/shared/templates";
 import { neonTemplateHook } from "@/client_logic/template_hook";
 import {
@@ -47,6 +48,7 @@ import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 // Adding an export for attachments
 export interface HomeSubmitOptions {
   attachments?: FileAttachment[];
+  selectedApp?: ListedApp;
 }
 
 export default function HomePage() {
@@ -61,6 +63,7 @@ export default function HomePage() {
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const { selectChat } = useSelectChat();
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingMode, setLoadingMode] = useState<"new" | "existing">("new");
   const [forceCloseDialogOpen, setForceCloseDialogOpen] = useState(false);
   const [performanceData, setPerformanceData] = useState<any>(undefined);
   const { streamMessage } = useStreamChat({ hasChatId: false });
@@ -163,37 +166,52 @@ export default function HomePage() {
 
   const handleSubmit = async (options?: HomeSubmitOptions) => {
     const attachments = options?.attachments || [];
+    const selectedApp = options?.selectedApp;
 
     if (!inputValue.trim() && attachments.length === 0) return;
 
     try {
+      setLoadingMode(selectedApp ? "existing" : "new");
       setIsLoading(true);
-      // Create the chat and navigate
-      const result = await ipc.app.createApp({
-        name: generateCuteAppName(),
-      });
-      if (
-        settings?.selectedTemplateId &&
-        NEON_TEMPLATE_IDS.has(settings.selectedTemplateId)
-      ) {
-        await neonTemplateHook({
-          appId: result.app.id,
-          appName: result.app.name,
-        });
-      }
 
-      // Apply selected theme to the new app (if one is set)
-      if (settings?.selectedThemeId) {
-        await ipc.template.setAppTheme({
-          appId: result.app.id,
-          themeId: settings.selectedThemeId || null,
+      let chatId: number;
+      let appId: number;
+
+      if (selectedApp) {
+        // Existing app flow: create a new chat in the selected app
+        chatId = await ipc.chat.createChat(selectedApp.id);
+        appId = selectedApp.id;
+      } else {
+        // New app flow (default behavior)
+        const result = await ipc.app.createApp({
+          name: generateCuteAppName(),
         });
+        chatId = result.chatId;
+        appId = result.app.id;
+
+        if (
+          settings?.selectedTemplateId &&
+          NEON_TEMPLATE_IDS.has(settings.selectedTemplateId)
+        ) {
+          await neonTemplateHook({
+            appId: result.app.id,
+            appName: result.app.name,
+          });
+        }
+
+        // Apply selected theme to the new app (if one is set)
+        if (settings?.selectedThemeId) {
+          await ipc.template.setAppTheme({
+            appId: result.app.id,
+            themeId: settings.selectedThemeId || null,
+          });
+        }
       }
 
       // Stream the message with attachments
       streamMessage({
         prompt: inputValue,
-        chatId: result.chatId,
+        chatId,
         attachments,
       });
       await new Promise((resolve) =>
@@ -202,19 +220,18 @@ export default function HomePage() {
 
       setInputValue("");
       setIsPreviewOpen(false);
-      await refreshApps(); // Ensure refreshApps is awaited if it's async
-      await invalidateAppQuery(queryClient, { appId: result.app.id });
+      await refreshApps();
+      await invalidateAppQuery(queryClient, { appId });
       // Invalidate chats so ChatTabs picks up the new chat immediately.
       await queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
-      posthog.capture("home:chat-submit");
+      posthog.capture("home:chat-submit", { existingApp: !!selectedApp });
       // Select newly created first chat so it appears first in tabs.
-      selectChat({ chatId: result.chatId, appId: result.app.id });
+      selectChat({ chatId, appId });
     } catch (error) {
       console.error("Failed to create chat:", error);
       showError(t("failedCreateApp", { error: (error as any).toString() }));
-      setIsLoading(false); // Ensure loading state is reset on error
+      setIsLoading(false);
     }
-    // No finally block needed for setIsLoading(false) here if navigation happens on success
   };
 
   // Loading overlay for app creation
@@ -228,11 +245,17 @@ export default function HomePage() {
             <div className="absolute top-0 left-0 w-full h-full border-8 border-t-primary rounded-full animate-spin"></div>
           </div>
           <h2 className="text-2xl font-bold mb-2 text-gray-800 dark:text-gray-200">
-            {t("buildingApp")}
+            {loadingMode === "existing" ? t("startingChat") : t("buildingApp")}
           </h2>
           <p className="text-gray-600 dark:text-gray-400 text-center max-w-md mb-8">
-            {t("settingUp")} <br />
-            {t("mightTakeMoment")}
+            {loadingMode === "existing" ? (
+              t("creatingNewChat")
+            ) : (
+              <>
+                {t("settingUp")} <br />
+                {t("mightTakeMoment")}
+              </>
+            )}
           </p>
         </div>
       </div>

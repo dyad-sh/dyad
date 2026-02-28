@@ -19,7 +19,7 @@ interface DyadStepLimitProps {
 }
 
 export function DyadStepLimit({ node, children }: DyadStepLimitProps) {
-  const { steps = "50", limit: _limit = "50", state } = node.properties;
+  const { steps = "50", state } = node.properties;
   const isFinished = state === "finished";
   const content = typeof children === "string" ? children : "";
 

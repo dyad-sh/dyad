@@ -549,6 +549,8 @@ export async function handleLocalAgentStream(
     const accumulatedAiMessages: ModelMessage[] = [];
     // Track total steps across all passes to detect step limit
     let totalStepsExecuted = 0;
+    // Track whether any individual pass was actually stopped by the step limit
+    let hitStepLimit = false;
 
     // If there are persisted todos from a previous turn, inject a synthetic
     // user message so the LLM is aware of them. Inserted BEFORE the user's
@@ -914,6 +916,11 @@ export async function handleLocalAgentStream(
       // Track total steps for step limit detection
       totalStepsExecuted += steps.length;
 
+      // If this pass was stopped by stepCountIs(), mark step limit as hit
+      if (steps.length >= MAX_TOOL_CALL_STEPS) {
+        hitStepLimit = true;
+      }
+
       if (responseMessages.length > 0) {
         // For mid-turn compaction, slice off pre-compaction messages
         const messagesToAccumulate =
@@ -985,8 +992,11 @@ export async function handleLocalAgentStream(
       return false; // Cancelled - don't consume quota
     }
 
-    // Check if we hit the step limit and append a notice to the response
-    if (totalStepsExecuted >= MAX_TOOL_CALL_STEPS) {
+    // Check if we hit the step limit and append a notice to the response.
+    // Use hitStepLimit (set when a pass was actually stopped by stepCountIs())
+    // rather than totalStepsExecuted to avoid false positives when multiple
+    // passes complete naturally with a combined total >= MAX_TOOL_CALL_STEPS.
+    if (hitStepLimit) {
       logger.info(
         `Chat ${req.chatId} hit step limit of ${MAX_TOOL_CALL_STEPS} steps`,
       );

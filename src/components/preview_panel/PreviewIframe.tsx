@@ -565,17 +565,13 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
             const updated = new Map(prev);
             const existing = updated.get(elementId);
             if (existing?.imageSrc) {
-              if (existing.styles && Object.keys(existing.styles).length > 0) {
-                // Keep the entry but remove image data
-                updated.set(elementId, {
-                  ...existing,
-                  imageSrc: undefined,
-                  imageUpload: undefined,
-                });
-              } else if (!existing.textContent) {
+              const hasStyles =
+                existing.styles && Object.keys(existing.styles).length > 0;
+              if (!hasStyles && !existing.textContent) {
                 // No other changes, remove entirely
                 updated.delete(elementId);
               } else {
+                // Keep the entry but remove image data
                 updated.set(elementId, {
                   ...existing,
                   imageSrc: undefined,

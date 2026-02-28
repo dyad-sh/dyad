@@ -85,7 +85,7 @@ export function ImageSwapPopover({
     reader.onload = () => {
       const base64DataUrl = reader.result as string;
 
-      // The backend will generate the final unique filename.
+      // The handler will generate the final unique filename.
       // We just need a placeholder path for the pending change.
       const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       const newSrc = `/images/${sanitizedName}`;

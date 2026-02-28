@@ -17,6 +17,8 @@ import {
   ApplyVisualEditingChangesParams,
 } from "@/ipc/types";
 import { VALID_IMAGE_MIME_TYPES } from "@/ipc/types/visual-editing";
+import { DYAD_MEDIA_DIR_NAME } from "@/ipc/utils/media_path_utils";
+import { ensureDyadGitignored } from "@/ipc/handlers/gitignoreUtils";
 import {
   transformContent,
   analyzeComponent,
@@ -83,14 +85,24 @@ export function registerVisualEditingHandlers() {
             const timestamp = Date.now();
             const finalFileName = `${timestamp}-${sanitizedFileName}`;
 
-            const publicImagesDir = path.join(appPath, "public", "images");
-            await fsPromises.mkdir(publicImagesDir, { recursive: true });
-
-            const destPath = path.join(publicImagesDir, finalFileName);
             const buffer = Buffer.from(
               base64Data.replace(/^data:[^;]+;base64,/, ""),
               "base64",
             );
+
+            // Save to .dyad/media as a staging copy
+            const mediaDir = path.join(appPath, DYAD_MEDIA_DIR_NAME);
+            await fsPromises.mkdir(mediaDir, { recursive: true });
+            await fsPromises.writeFile(
+              path.join(mediaDir, finalFileName),
+              buffer,
+            );
+            await ensureDyadGitignored(appPath);
+
+            // Save to public/images for the app to serve
+            const publicImagesDir = path.join(appPath, "public", "images");
+            await fsPromises.mkdir(publicImagesDir, { recursive: true });
+            const destPath = path.join(publicImagesDir, finalFileName);
             await fsPromises.writeFile(destPath, buffer);
 
             change.imageSrc = `/images/${finalFileName}`;

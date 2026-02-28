@@ -25,13 +25,16 @@ import {
 } from "../../utils/visual_editing_utils";
 import { normalizePath } from "../../../../../shared/normalizePath";
 
-const MAX_IMAGE_SIZE = 10_000_000; // ~7.5MB decoded
+// Client allows 7.5 MB raw; base64 expands by ~4/3 plus data URL prefix
+const MAX_IMAGE_SIZE = Math.ceil((7.5 * 1024 * 1024) / 3) * 4 + 100; // ~10,485,860
 
 export function registerVisualEditingHandlers() {
   ipcMain.handle(
     "apply-visual-editing-changes",
     async (_event, params: ApplyVisualEditingChangesParams) => {
       const { appId, changes } = params;
+      // Track written image files for cleanup on failure
+      const writtenImagePaths: string[] = [];
       try {
         if (changes.length === 0) return;
 
@@ -104,6 +107,8 @@ export function registerVisualEditingHandlers() {
             await fsPromises.mkdir(publicImagesDir, { recursive: true });
             const destPath = path.join(publicImagesDir, finalFileName);
             await fsPromises.writeFile(destPath, buffer);
+            writtenImagePaths.push(destPath);
+            writtenImagePaths.push(path.join(mediaDir, finalFileName));
 
             change.imageSrc = `/images/${finalFileName}`;
 
@@ -172,6 +177,14 @@ export function registerVisualEditingHandlers() {
           }
         }
       } catch (error) {
+        // Clean up any image files written before the failure
+        for (const filePath of writtenImagePaths) {
+          try {
+            await fsPromises.unlink(filePath);
+          } catch {
+            // Ignore cleanup errors
+          }
+        }
         if (error instanceof Error) {
           throw error;
         }

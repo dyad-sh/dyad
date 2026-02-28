@@ -15,11 +15,13 @@ export interface ImageUploadData {
 
 interface ImageSwapPopoverProps {
   currentSrc: string;
+  isDynamicImage?: boolean;
   onSwap: (newSrc: string, uploadData?: ImageUploadData) => void;
 }
 
 export function ImageSwapPopover({
   currentSrc,
+  isDynamicImage,
   onSwap,
 }: ImageSwapPopoverProps) {
   const [mode, setMode] = useState<"url" | "upload">("url");
@@ -27,11 +29,13 @@ export function ImageSwapPopover({
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [urlError, setUrlError] = useState<string | null>(null);
+  const [appliedSrc, setAppliedSrc] = useState(currentSrc);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync urlValue when a different component is selected
+  // Sync state when a different component is selected
   useEffect(() => {
     setUrlValue(currentSrc);
+    setAppliedSrc(currentSrc);
     setSelectedFileName(null);
     setFileError(null);
     setUrlError(null);
@@ -55,6 +59,7 @@ export function ImageSwapPopover({
       return;
     }
     setUrlError(null);
+    setAppliedSrc(trimmed);
     onSwap(trimmed);
   };
 
@@ -85,6 +90,7 @@ export function ImageSwapPopover({
       const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       const newSrc = `/images/${sanitizedName}`;
 
+      setAppliedSrc(newSrc);
       onSwap(newSrc, {
         fileName: file.name,
         base64Data: base64DataUrl,
@@ -110,6 +116,13 @@ export function ImageSwapPopover({
       tooltip="Swap Image"
     >
       <div className="space-y-3">
+        {isDynamicImage && (
+          <p className="text-xs text-yellow-600 dark:text-yellow-400">
+            This image has a dynamic source. Swapping will replace it with a
+            static value.
+          </p>
+        )}
+
         {/* Mode toggle tabs */}
         <Tabs
           value={mode}
@@ -188,17 +201,19 @@ export function ImageSwapPopover({
                 {fileError}
               </p>
             )}
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-gray-500 dark:text-gray-400">
               Supports: JPG, PNG, GIF, WebP
             </p>
           </div>
         )}
 
         {/* Current source display */}
-        <div className="pt-2 border-t">
-          <Label className="text-xs text-gray-500">Current source</Label>
-          <p className="text-xs font-mono truncate mt-1" title={currentSrc}>
-            {currentSrc || "none"}
+        <div className="pt-2 border-t border-border">
+          <Label className="text-xs text-gray-500 dark:text-gray-400">
+            Current source
+          </Label>
+          <p className="text-xs font-mono truncate mt-1" title={appliedSrc}>
+            {appliedSrc || "none"}
           </p>
         </div>
       </div>

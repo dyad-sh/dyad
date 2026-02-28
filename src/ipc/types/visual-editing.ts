@@ -97,7 +97,34 @@ export const AnalyseComponentResultSchema = z.object({
   hasStaticText: z.boolean(),
   hasImage: z.boolean(),
   imageSrc: z.string().optional(),
+  isDynamicImage: z.boolean().optional(),
 });
+
+/**
+ * Merges a partial update into an existing pending change entry,
+ * preserving all unrelated fields (styles, textContent, imageSrc, imageUpload).
+ */
+export function mergePendingChange(
+  existing: VisualEditingChange | undefined,
+  partial: Partial<VisualEditingChange> &
+    Pick<
+      VisualEditingChange,
+      "componentId" | "componentName" | "relativePath" | "lineNumber"
+    >,
+): VisualEditingChange {
+  return {
+    componentId: partial.componentId,
+    componentName: partial.componentName,
+    relativePath: partial.relativePath,
+    lineNumber: partial.lineNumber,
+    styles: partial.styles ?? existing?.styles ?? {},
+    textContent:
+      "textContent" in partial ? partial.textContent : existing?.textContent,
+    imageSrc: "imageSrc" in partial ? partial.imageSrc : existing?.imageSrc,
+    imageUpload:
+      "imageUpload" in partial ? partial.imageUpload : existing?.imageUpload,
+  };
+}
 
 // =============================================================================
 // Visual Editing Contracts

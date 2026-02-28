@@ -258,6 +258,11 @@
     }
 
     if (imgEl) {
+      // Cancel previous listeners to prevent stale error/load events on rapid swaps
+      if (imgEl._dyadAbort) imgEl._dyadAbort.abort();
+      const controller = new AbortController();
+      imgEl._dyadAbort = controller;
+
       const sendCoordinates = () => {
         const rect = element.getBoundingClientRect();
         window.parent.postMessage(
@@ -274,7 +279,10 @@
         );
       };
 
-      imgEl.addEventListener("load", sendCoordinates, { once: true });
+      imgEl.addEventListener("load", sendCoordinates, {
+        once: true,
+        signal: controller.signal,
+      });
       imgEl.addEventListener(
         "error",
         () => {
@@ -288,7 +296,7 @@
             "*",
           );
         },
-        { once: true },
+        { once: true, signal: controller.signal },
       );
       imgEl.src = src;
     }

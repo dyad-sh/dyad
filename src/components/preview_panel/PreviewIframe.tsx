@@ -51,6 +51,7 @@ import {
 } from "@/atoms/previewAtoms";
 import { isChatPanelHiddenAtom } from "@/atoms/viewAtoms";
 import { ComponentSelection } from "@/ipc/types";
+import { mergePendingChange } from "@/ipc/types/visual-editing";
 import {
   Popover,
   PopoverContent,
@@ -239,6 +240,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [isDynamicComponent, setIsDynamicComponent] = useState(false);
   const [hasStaticText, setHasStaticText] = useState(false);
   const [hasImage, setHasImage] = useState(false);
+  const [isDynamicImage, setIsDynamicImage] = useState(false);
   const [currentImageSrc, setCurrentImageSrc] = useState("");
 
   // Device mode state
@@ -265,6 +267,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       setIsDynamicComponent(result.isDynamic);
       setHasStaticText(result.hasStaticText);
       setHasImage(result.hasImage);
+      setIsDynamicImage(result.isDynamicImage || false);
       setCurrentImageSrc(result.imageSrc || "");
 
       // Automatically enable text editing if component has static text
@@ -285,6 +288,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       setIsDynamicComponent(false);
       setHasStaticText(false);
       setHasImage(false);
+      setIsDynamicImage(false);
       setCurrentImageSrc("");
     }
   };
@@ -307,15 +311,19 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       const updated = new Map(prev);
       const existing = updated.get(componentId);
 
-      updated.set(componentId, {
-        componentId: componentId,
-        componentName:
-          existing?.componentName || visualEditingSelectedComponent?.name || "",
-        relativePath: filePath,
-        lineNumber: lineNumber,
-        styles: existing?.styles || {},
-        textContent: text,
-      });
+      updated.set(
+        componentId,
+        mergePendingChange(existing, {
+          componentId,
+          componentName:
+            existing?.componentName ||
+            visualEditingSelectedComponent?.name ||
+            "",
+          relativePath: filePath,
+          lineNumber,
+          textContent: text,
+        }),
+      );
 
       return updated;
     });
@@ -550,6 +558,34 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
       if (event.data?.type === "dyad-image-load-error") {
         showError("Image failed to load. Please check the URL and try again.");
+        // Remove the broken image from pending changes
+        const { elementId } = event.data;
+        if (elementId) {
+          setPendingChanges((prev) => {
+            const updated = new Map(prev);
+            const existing = updated.get(elementId);
+            if (existing?.imageSrc) {
+              if (existing.styles && Object.keys(existing.styles).length > 0) {
+                // Keep the entry but remove image data
+                updated.set(elementId, {
+                  ...existing,
+                  imageSrc: undefined,
+                  imageUpload: undefined,
+                });
+              } else if (!existing.textContent) {
+                // No other changes, remove entirely
+                updated.delete(elementId);
+              } else {
+                updated.set(elementId, {
+                  ...existing,
+                  imageSrc: undefined,
+                  imageUpload: undefined,
+                });
+              }
+            }
+            return updated;
+          });
+        }
         return;
       }
 
@@ -1380,6 +1416,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                       isDynamic={isDynamicComponent}
                       hasStaticText={hasStaticText}
                       hasImage={hasImage}
+                      isDynamicImage={isDynamicImage}
                       currentImageSrc={currentImageSrc}
                     />
                   )}

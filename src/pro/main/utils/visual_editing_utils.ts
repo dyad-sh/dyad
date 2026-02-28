@@ -14,6 +14,7 @@ interface ComponentAnalysis {
   hasStaticText: boolean;
   hasImage: boolean;
   imageSrc?: string;
+  isDynamicImage?: boolean;
 }
 
 /**
@@ -433,6 +434,7 @@ export function analyzeComponent(
   // Check for image elements
   let hasImage = false;
   let imageSrc: string | undefined;
+  let isDynamicImage = false;
 
   const tagName = foundElement.openingElement.name;
 
@@ -440,6 +442,13 @@ export function analyzeComponent(
   if (tagName.type === "JSXIdentifier" && tagName.name === "img") {
     hasImage = true;
     imageSrc = extractStaticSrc(foundElement.openingElement);
+    // If there's a src attribute but extractStaticSrc returned undefined, it's dynamic
+    const hasSrcAttr = foundElement.openingElement.attributes.some(
+      (attr: any) => attr.type === "JSXAttribute" && attr.name?.name === "src",
+    );
+    if (hasSrcAttr && !imageSrc) {
+      isDynamicImage = true;
+    }
   }
 
   // Recursively check descendants for <img> elements
@@ -454,6 +463,13 @@ export function analyzeComponent(
       ) {
         hasImage = true;
         imageSrc = extractStaticSrc(node.openingElement);
+        const hasSrcAttr = node.openingElement.attributes.some(
+          (attr: any) =>
+            attr.type === "JSXAttribute" && attr.name?.name === "src",
+        );
+        if (hasSrcAttr && !imageSrc) {
+          isDynamicImage = true;
+        }
         return;
       }
 
@@ -467,5 +483,11 @@ export function analyzeComponent(
     findImg(foundElement);
   }
 
-  return { isDynamic: dynamic, hasStaticText: staticText, hasImage, imageSrc };
+  return {
+    isDynamic: dynamic,
+    hasStaticText: staticText,
+    hasImage,
+    imageSrc,
+    isDynamicImage,
+  };
 }

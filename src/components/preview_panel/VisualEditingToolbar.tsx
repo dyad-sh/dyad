@@ -19,6 +19,7 @@ import { ColorPicker } from "@/components/ui/ColorPicker";
 import { NumberInput } from "@/components/ui/NumberInput";
 import { rgbToHex, processNumericValue } from "@/utils/style-utils";
 import { ImageSwapPopover, type ImageUploadData } from "./ImageSwapPopover";
+import { mergePendingChange } from "@/ipc/types/visual-editing";
 
 const FONT_WEIGHT_OPTIONS = [
   { value: "", label: "Default" },
@@ -61,6 +62,7 @@ interface VisualEditingToolbarProps {
   isDynamic: boolean;
   hasStaticText: boolean;
   hasImage: boolean;
+  isDynamicImage: boolean;
   currentImageSrc: string;
 }
 
@@ -70,6 +72,7 @@ export function VisualEditingToolbar({
   isDynamic,
   hasStaticText,
   hasImage,
+  isDynamicImage,
   currentImageSrc,
 }: VisualEditingToolbarProps) {
   const coordinates = useAtomValue(currentComponentCoordinatesAtom);
@@ -166,16 +169,16 @@ export function VisualEditingToolbar({
         newStyles.text = { ...existing?.styles?.text, ...styles.text };
       }
 
-      updated.set(selectedComponent.id, {
-        componentId: selectedComponent.id,
-        componentName: selectedComponent.name,
-        relativePath: selectedComponent.relativePath,
-        lineNumber: selectedComponent.lineNumber,
-        styles: newStyles,
-        textContent: existing?.textContent || "",
-        imageSrc: existing?.imageSrc,
-        imageUpload: existing?.imageUpload,
-      });
+      updated.set(
+        selectedComponent.id,
+        mergePendingChange(existing, {
+          componentId: selectedComponent.id,
+          componentName: selectedComponent.name,
+          relativePath: selectedComponent.relativePath,
+          lineNumber: selectedComponent.lineNumber,
+          styles: newStyles,
+        }),
+      );
       return updated;
     });
   };
@@ -334,18 +337,19 @@ export function VisualEditingToolbar({
       setPendingChanges((prev) => {
         const updated = new Map(prev);
         const existing = updated.get(selectedComponent.id);
-        updated.set(selectedComponent.id, {
-          componentId: selectedComponent.id,
-          componentName: selectedComponent.name,
-          relativePath: selectedComponent.relativePath,
-          lineNumber: selectedComponent.lineNumber,
-          styles: existing?.styles || {},
-          textContent: existing?.textContent,
-          imageSrc: newSrc,
-          ...(uploadData && {
-            imageUpload: uploadData,
+        updated.set(
+          selectedComponent.id,
+          mergePendingChange(existing, {
+            componentId: selectedComponent.id,
+            componentName: selectedComponent.name,
+            relativePath: selectedComponent.relativePath,
+            lineNumber: selectedComponent.lineNumber,
+            imageSrc: newSrc,
+            ...(uploadData && {
+              imageUpload: uploadData,
+            }),
           }),
-        });
+        );
         return updated;
       });
     }
@@ -570,6 +574,7 @@ export function VisualEditingToolbar({
           {hasImage && (
             <ImageSwapPopover
               currentSrc={currentImageSrc}
+              isDynamicImage={isDynamicImage}
               onSwap={handleImageSwap}
             />
           )}

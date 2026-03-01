@@ -4,6 +4,7 @@ import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { getDyadAppPath } from "../../paths/paths";
 import { safeJoin } from "../utils/path_utils";
+import { getMimeType } from "../utils/mime_utils";
 import { withLock } from "../utils/lock_utils";
 import fs from "node:fs";
 import path from "node:path";
@@ -22,18 +23,6 @@ const SUPPORTED_MEDIA_EXTENSIONS = [
 ];
 
 const INVALID_FILE_NAME_CHARS = /[<>:"/\\|?*\x00-\x1F]/;
-
-function getMimeType(ext: string): string {
-  const map: Record<string, string> = {
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".png": "image/png",
-    ".gif": "image/gif",
-    ".webp": "image/webp",
-    ".svg": "image/svg+xml",
-  };
-  return map[ext] || "application/octet-stream";
-}
 
 function getMediaFilesForApp(appId: number, appName: string, appPath: string) {
   const mediaDir = path.join(appPath, ".dyad", "media");

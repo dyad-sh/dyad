@@ -29,6 +29,7 @@ import {
   stopPerformanceMonitoring,
 } from "./utils/performance_monitor";
 import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai_messages_cleanup";
+import { cleanupOldMediaFiles } from "./ipc/utils/media_cleanup";
 import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
 import { getDyadAppsBaseDirectory, getDyadAppPath } from "./paths/paths";
@@ -95,6 +96,9 @@ export async function onReady() {
 
   // Cleanup old ai_messages_json entries to prevent database bloat
   cleanupOldAiMessagesJson();
+
+  // Cleanup old media files to reclaim disk space
+  cleanupOldMediaFiles();
 
   const settings = readSettings();
 

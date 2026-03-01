@@ -579,10 +579,16 @@ export interface TipProposal {
 
 export type Proposal = CodeProposal | ActionProposal | TipProposal;
 
+export interface PromptSuggestion {
+  summary: string;
+  prompt: string;
+}
+
 export interface ProposalResult {
   proposal: Proposal;
   chatId: number;
   messageId: number;
+  promptSuggestions?: PromptSuggestion[];
 }
 
 export interface SqlQuery {

@@ -29,6 +29,7 @@ import {
   selectedChatIdAtom,
   pendingAgentConsentsAtom,
   agentTodosByChatIdAtom,
+  agentPromptSuggestionsByChatIdAtom,
   needsFreshPlanChatAtom,
 } from "@/atoms/chatAtoms";
 import { atom, useAtom, useSetAtom, useAtomValue } from "jotai";
@@ -94,6 +95,7 @@ import { useChats } from "@/hooks/useChats";
 import { useRouter } from "@tanstack/react-router";
 import { showError as showErrorToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
+import { PromptSuggestionButtons } from "./PromptSuggestionButtons";
 
 const showTokenBarAtom = atom(false);
 
@@ -155,6 +157,13 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   // Get todos for this chat
   const agentTodosByChatId = useAtomValue(agentTodosByChatIdAtom);
   const chatTodos = chatId ? (agentTodosByChatId.get(chatId) ?? []) : [];
+  // Get agent prompt suggestions for this chat (local-agent mode)
+  const agentPromptSuggestionsByChatId = useAtomValue(
+    agentPromptSuggestionsByChatIdAtom,
+  );
+  const agentPromptSuggestions = chatId
+    ? (agentPromptSuggestionsByChatId.get(chatId) ?? [])
+    : [];
   const { checkProblems } = useCheckProblems(appId);
   const { refreshAppIframe } = useRunApp();
   const { navigate } = useRouter();
@@ -184,6 +193,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     refreshProposal,
   } = useProposal(chatId);
   const { proposal, messageId } = proposalResult ?? {};
+  const promptSuggestions = proposalResult?.promptSuggestions ?? [];
   useChatModeToggle();
 
   const lastMessage = (chatId ? (messagesById.get(chatId) ?? []) : []).at(-1);
@@ -706,6 +716,25 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             onConfirm={confirmPendingFiles}
             onCancel={cancelPendingFiles}
           />
+
+          {/* Prompt suggestions: from proposal (build mode) or agent tool (local-agent mode) */}
+          {chatId &&
+            settings.selectedChatMode !== "ask" &&
+            ((settings.selectedChatMode !== "local-agent" &&
+              proposalResult?.chatId === chatId &&
+              promptSuggestions.length > 0) ||
+              (settings.selectedChatMode === "local-agent" &&
+                agentPromptSuggestions.length > 0)) && (
+              <PromptSuggestionButtons
+                suggestions={
+                  settings.selectedChatMode === "local-agent"
+                    ? agentPromptSuggestions
+                    : promptSuggestions
+                }
+                onSelect={(prompt) => setInputValue(prompt)}
+                disabled={isStreaming}
+              />
+            )}
 
           <div className="flex items-end gap-1">
             <LexicalChatInput

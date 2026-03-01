@@ -490,7 +490,11 @@ function MediaFileThumbnail({
           >
             <MoreVertical className="h-4 w-4" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52">
+          <DropdownMenuContent
+            align="end"
+            className="w-52"
+            onClick={(event) => event.stopPropagation()}
+          >
             <DropdownMenuItem
               data-testid="media-start-chat-with-image"
               onClick={() => {

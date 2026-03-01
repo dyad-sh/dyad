@@ -246,18 +246,20 @@ export function HomeChatInput({
         </div>
       </div>
 
-      <AppSearchDialog
-        open={appSearchOpen}
-        onOpenChange={setAppSearchOpen}
-        onSelectApp={handleSelectApp}
-        allApps={apps.map((a) => ({
-          id: a.id,
-          name: a.name,
-          createdAt: a.createdAt,
-          matchedChatTitle: null,
-          matchedChatMessage: null,
-        }))}
-      />
+      {appSearchOpen && (
+        <AppSearchDialog
+          open={appSearchOpen}
+          onOpenChange={setAppSearchOpen}
+          onSelectApp={handleSelectApp}
+          allApps={apps.map((a) => ({
+            id: a.id,
+            name: a.name,
+            createdAt: a.createdAt,
+            matchedChatTitle: null,
+            matchedChatMessage: null,
+          }))}
+        />
+      )}
     </>
   );
 }

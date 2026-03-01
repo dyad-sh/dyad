@@ -3,6 +3,7 @@ import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import { getDyadAppPath } from "../../paths/paths";
 import { safeJoin } from "./path_utils";
+import { getMimeType } from "./mime_utils";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -11,18 +12,6 @@ export interface ResolvedMediaFile {
   fileName: string;
   filePath: string;
   mimeType: string;
-}
-
-function getMimeType(ext: string): string {
-  const map: Record<string, string> = {
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".png": "image/png",
-    ".gif": "image/gif",
-    ".webp": "image/webp",
-    ".svg": "image/svg+xml",
-  };
-  return map[ext] || "application/octet-stream";
 }
 
 export async function resolveMediaMentions(

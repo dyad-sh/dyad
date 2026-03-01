@@ -309,6 +309,7 @@ export function DyadAppMediaFolder({
                 Preview of {previewFile?.fileName}
               </DialogDescription>
               <button
+                aria-label="Close preview"
                 onClick={() => setPreviewFile(null)}
                 className="p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
               >
@@ -332,7 +333,7 @@ export function DyadAppMediaFolder({
       data-testid={`media-folder-${appId}`}
       data-library-grid-height-item="true"
       className={cn(
-        "border rounded-lg p-4 bg-(--background-lightest) relative cursor-pointer",
+        "border rounded-lg p-4 bg-[--background-lightest] relative cursor-pointer",
         "hover:border-primary/30 transition-colors",
       )}
       style={
@@ -340,7 +341,15 @@ export function DyadAppMediaFolder({
           ? { minHeight: `${normalizedCollapsedHeight}px` }
           : undefined
       }
+      role="button"
+      tabIndex={0}
       onClick={() => setIsOpen(true)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          setIsOpen(true);
+        }
+      }}
     >
       <Badge
         variant="outline"
@@ -403,11 +412,12 @@ function MediaFolderOpen({
   return (
     <div
       data-testid={`media-folder-open-${appId}`}
-      className="border rounded-lg p-4 bg-(--background-lightest) col-span-full"
+      className="border rounded-lg p-4 bg-[--background-lightest] col-span-full"
     >
       <div className="flex items-center gap-2 mb-4">
         <button
           data-testid="media-folder-back-button"
+          aria-label="Back to folders"
           onClick={onClose}
           className="p-1 rounded-md hover:bg-secondary transition-colors"
         >

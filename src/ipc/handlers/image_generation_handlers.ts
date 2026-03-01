@@ -6,6 +6,7 @@ import {
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { getDyadAppPath } from "../../paths/paths";
+import { DYAD_MEDIA_DIR_NAME } from "../utils/media_path_utils";
 import { readSettings } from "../../main/settings";
 import { eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
@@ -100,15 +101,17 @@ export function registerImageGenerationHandlers() {
 
       // Save to app's media folder
       const appPath = getDyadAppPath(app.path);
-      const mediaDir = path.join(appPath, ".dyad", "media");
+      const mediaDir = path.join(appPath, DYAD_MEDIA_DIR_NAME);
       fs.mkdirSync(mediaDir, { recursive: true });
 
       const timestamp = Date.now();
-      const sanitizedPrompt = params.prompt
-        .slice(0, 30)
-        .replace(/[^a-zA-Z0-9]/g, "_")
-        .replace(/_+/g, "_")
-        .toLowerCase();
+      const sanitizedPrompt =
+        params.prompt
+          .slice(0, 30)
+          .replace(/[^a-zA-Z0-9]/g, "_")
+          .replace(/_+/g, "_")
+          .replace(/^_|_$/g, "")
+          .toLowerCase() || "image";
       const fileName = `generated_${sanitizedPrompt}_${timestamp}.png`;
       const filePath = path.join(mediaDir, fileName);
 
@@ -116,8 +119,16 @@ export function registerImageGenerationHandlers() {
         const buffer = Buffer.from(imageData.b64_json, "base64");
         fs.writeFileSync(filePath, buffer);
       } else if (imageData.url) {
+        const imageUrl = new URL(imageData.url);
+        if (imageUrl.protocol !== "https:") {
+          throw new Error("Image URL must use HTTPS");
+        }
         const imgResponse = await fetch(imageData.url);
         const arrayBuffer = await imgResponse.arrayBuffer();
+        const MAX_IMAGE_SIZE = 50 * 1024 * 1024; // 50 MB
+        if (arrayBuffer.byteLength > MAX_IMAGE_SIZE) {
+          throw new Error("Downloaded image exceeds maximum allowed size");
+        }
         fs.writeFileSync(filePath, Buffer.from(arrayBuffer));
       } else {
         throw new Error("Unexpected image response format");

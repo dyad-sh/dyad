@@ -1,16 +1,6 @@
 import { useMediaDataUri } from "@/hooks/useMediaDataUri";
 import type { ListAllMediaResponse } from "@/ipc/types";
-
-const MEDIA_REF_REGEX = /@media:([a-zA-Z0-9_-]+\/[^\s]+)/g;
-
-function extractMediaRefs(text: string): string[] {
-  const refs: string[] = [];
-  let match;
-  while ((match = MEDIA_REF_REGEX.exec(text)) !== null) {
-    refs.push(match[1]);
-  }
-  return refs;
-}
+import { parseMediaMentions } from "@/shared/parse_media_mentions";
 
 interface MediaMentionPreviewProps {
   inputValue: string;
@@ -21,7 +11,7 @@ export function MediaMentionPreview({
   inputValue,
   mediaApps,
 }: MediaMentionPreviewProps) {
-  const mediaRefs = extractMediaRefs(inputValue);
+  const mediaRefs = parseMediaMentions(inputValue);
   if (mediaRefs.length === 0) return null;
 
   return (

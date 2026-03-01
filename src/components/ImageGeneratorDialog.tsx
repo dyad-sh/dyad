@@ -224,7 +224,6 @@ export function ImageGeneratorDialog({
   };
 
   const handleOpenChange = (nextOpen: boolean) => {
-    if (generateImage.isPending) return;
     if (!nextOpen) {
       setGeneratedResult(null);
     }

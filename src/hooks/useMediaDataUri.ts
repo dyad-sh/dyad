@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
 
 /**
@@ -7,26 +7,13 @@ import { ipc } from "@/ipc/types";
  * IPC handler to fetch the base64 content and construct a data URI.
  */
 export function useMediaDataUri(appId: number, fileName: string) {
-  const [dataUri, setDataUri] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    ipc.media
-      .readMediaFile({ appId, fileName })
-      .then((res) => {
-        if (!cancelled) {
-          setDataUri(`data:${res.mimeType};base64,${res.base64Data}`);
-        }
-      })
-      .catch(() => {
-        // File may have been deleted or is unreadable – leave as null
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [appId, fileName]);
+  const { data: dataUri = null } = useQuery({
+    queryKey: ["media-data-uri", appId, fileName],
+    queryFn: async () => {
+      const res = await ipc.media.readMediaFile({ appId, fileName });
+      return `data:${res.mimeType};base64,${res.base64Data}`;
+    },
+  });
 
   return dataUri;
 }

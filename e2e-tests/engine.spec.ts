@@ -1,7 +1,7 @@
 import { testSkipIfWindows } from "./helpers/test_helper";
 
 testSkipIfWindows("send message to engine", async ({ po }) => {
-  await po.setUpDyadPro();
+  await po.setUpConeyPro();
   await po.modelPicker.selectModel({
     provider: "Google",
     model: "Gemini 2.5 Pro",
@@ -13,7 +13,7 @@ testSkipIfWindows("send message to engine", async ({ po }) => {
 });
 
 testSkipIfWindows("send message to engine - openai gpt-5", async ({ po }) => {
-  await po.setUpDyadPro();
+  await po.setUpConeyPro();
   // By default, it's using auto which points to Flash 2.5 and doesn't
   // use engine.
   await po.modelPicker.selectModel({ provider: "OpenAI", model: "GPT 5" });
@@ -25,7 +25,7 @@ testSkipIfWindows("send message to engine - openai gpt-5", async ({ po }) => {
 testSkipIfWindows(
   "send message to engine - anthropic claude sonnet 4",
   async ({ po }) => {
-    await po.setUpDyadPro();
+    await po.setUpConeyPro();
     // By default, it's using auto which points to Flash 2.5 and doesn't
     // use engine.
     await po.modelPicker.selectModel({
@@ -41,7 +41,7 @@ testSkipIfWindows(
 testSkipIfWindows(
   "smart auto should send message to engine",
   async ({ po }) => {
-    await po.setUpDyadPro();
+    await po.setUpConeyPro();
     await po.sendPrompt("[dump] tc=turbo-edits");
 
     await po.snapshotServerDump("request");
@@ -52,7 +52,7 @@ testSkipIfWindows(
 testSkipIfWindows(
   "regular auto should send message to engine",
   async ({ po }) => {
-    await po.setUpDyadPro();
+    await po.setUpConeyPro();
     const proModesDialog = await po.openProModesDialog({
       location: "home-chat-input-container",
     });

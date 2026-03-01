@@ -3,7 +3,7 @@ import path from "node:path";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
-import { getDyadAppPath } from "../../paths/paths";
+import { getConeyAppPath } from "../../paths/paths";
 import log from "electron-log";
 import { createTypedHandler } from "./base";
 import { planContracts } from "../types/plan";
@@ -12,7 +12,7 @@ import {
   buildFrontmatter,
   validatePlanId,
   parsePlanFile,
-  ensureDyadGitignored,
+  ensureConeyGitignored,
 } from "./planUtils";
 
 const logger = log.scope("plan_handlers");
@@ -20,10 +20,10 @@ const logger = log.scope("plan_handlers");
 async function getPlanDir(appId: number): Promise<string> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) throw new Error("App not found");
-  const appPath = getDyadAppPath(app.path);
-  const planDir = path.join(appPath, ".dyad", "plans");
+  const appPath = getConeyAppPath(app.path);
+  const planDir = path.join(appPath, ".coney", "plans");
   await fs.promises.mkdir(planDir, { recursive: true });
-  await ensureDyadGitignored(appPath);
+  await ensureConeyGitignored(appPath);
   return planDir;
 }
 

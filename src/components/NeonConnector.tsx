@@ -70,7 +70,7 @@ export function NeonConnector() {
               await ipc.neon.fakeConnect();
             } else {
               await ipc.system.openExternalUrl(
-                "https://oauth.dyad.sh/api/integrations/neon/login",
+                "https://oauth.coney.sh/api/integrations/neon/login",
               );
             }
           }}

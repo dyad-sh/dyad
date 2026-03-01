@@ -1,9 +1,9 @@
 I will intentionally add multiple errors to test the Fix All Errors button
 
-<dyad-write path="src/pages/Index.tsx" description="intentionally add first error">
+<coney-write path="src/pages/Index.tsx" description="intentionally add first error">
 // Update this page (the content is just a fallback if you fail to update the page)
 
-import { MadeWithDyad } from "@/components/made-with-dyad";
+import { MadeWithConey } from "@/components/made-with-coney";
 
 const Index = () => {
 throw new Error("First error in Index");
@@ -16,40 +16,40 @@ return (
 Start building your amazing project here!
 </p>
 </div>
-<MadeWithDyad />
+<MadeWithConey />
 </div>
 );
 };
 
 export default Index;
-</dyad-write>
+</coney-write>
 
-<dyad-output type="error" message="First error in Index">
+<coney-output type="error" message="First error in Index">
 Error: First error in Index
     at Index (http://localhost:5173/src/pages/Index.tsx:6:7)
-</dyad-output>
+</coney-output>
 
-<dyad-write path="src/components/ErrorComponent.tsx" description="intentionally add second error">
+<coney-write path="src/components/ErrorComponent.tsx" description="intentionally add second error">
 const ErrorComponent = () => {
   throw new Error("Second error in ErrorComponent");
   return <div>This will never render</div>;
 };
 
 export default ErrorComponent;
-</dyad-write>
+</coney-write>
 
-<dyad-output type="error" message="Second error in ErrorComponent">
+<coney-output type="error" message="Second error in ErrorComponent">
 Error: Second error in ErrorComponent
     at ErrorComponent (http://localhost:5173/src/components/ErrorComponent.tsx:2:9)
-</dyad-output>
+</coney-output>
 
-<dyad-write path="src/utils/helper.ts" description="intentionally add third error">
+<coney-write path="src/utils/helper.ts" description="intentionally add third error">
 export const brokenHelper = () => {
   throw new Error("Third error in helper");
 };
-</dyad-write>
+</coney-write>
 
-<dyad-output type="error" message="Third error in helper">
+<coney-output type="error" message="Third error in helper">
 Error: Third error in helper
     at brokenHelper (http://localhost:5173/src/utils/helper.ts:2:9)
-</dyad-output>
+</coney-output>

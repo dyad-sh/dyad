@@ -38,7 +38,7 @@ const config: PlaywrightTestConfig = {
   ),
   timeout: process.env.CI ? 180_000 : 75_000,
   // Use a custom snapshot path template because Playwright's default
-  // is platform-specific which isn't necessary for Dyad e2e tests
+  // is platform-specific which isn't necessary for Coney e2e tests
   // which should be platform agnostic (we don't do screenshots; only textual diffs).
   snapshotPathTemplate:
     "{testDir}/{testFileDir}/snapshots/{testFileName}_{arg}{ext}",

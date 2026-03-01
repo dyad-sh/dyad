@@ -89,7 +89,7 @@ function buildTestChat(
  */
 function buildTestSettings(
   overrides: {
-    enableDyadPro?: boolean;
+    enableConeyPro?: boolean;
     hasApiKey?: boolean;
     selectedModel?: string;
     enableContextCompaction?: boolean;
@@ -100,10 +100,10 @@ function buildTestSettings(
     enableContextCompaction: overrides.enableContextCompaction ?? true,
   };
 
-  if (overrides.enableDyadPro && overrides.hasApiKey !== false) {
+  if (overrides.enableConeyPro && overrides.hasApiKey !== false) {
     return {
       ...baseSettings,
-      enableDyadPro: true,
+      enableConeyPro: true,
       providerSettings: {
         auto: {
           apiKey: { value: "test-api-key" },
@@ -212,7 +212,7 @@ vi.mock("@/main/settings", () => ({
 }));
 
 vi.mock("@/paths/paths", () => ({
-  getDyadAppPath: vi.fn((appPath: string) => `/mock/apps/${appPath}`),
+  getConeyAppPath: vi.fn((appPath: string) => `/mock/apps/${appPath}`),
 }));
 
 // Track IPC messages sent via safeSend
@@ -305,7 +305,7 @@ import { handleLocalAgentStream } from "@/pro/main/ipc/handlers/local_agent/loca
 // Tests
 // ============================================================================
 
-const dyadRequestId = "test-request-id";
+const coneyRequestId = "test-request-id";
 describe("handleLocalAgentStream", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -322,10 +322,10 @@ describe("handleLocalAgentStream", () => {
   });
 
   describe("Pro status validation", () => {
-    it("should send error when Dyad Pro is not enabled", async () => {
+    it("should send error when Coney Pro is not enabled", async () => {
       // Arrange
       const { event, getMessagesByChannel } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: false });
+      mockSettings = buildTestSettings({ enableConeyPro: false });
 
       // Act
       await handleLocalAgentStream(
@@ -335,7 +335,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          coneyRequestId,
         },
       );
 
@@ -344,7 +344,7 @@ describe("handleLocalAgentStream", () => {
       expect(errorMessages).toHaveLength(1);
       expect(errorMessages[0].args[0]).toMatchObject({
         chatId: 1,
-        error: expect.stringContaining("Agent v2 requires Dyad Pro"),
+        error: expect.stringContaining("Agent v2 requires Coney Pro"),
       });
     });
 
@@ -352,7 +352,7 @@ describe("handleLocalAgentStream", () => {
       // Arrange
       const { event, getMessagesByChannel } = createFakeEvent();
       mockSettings = buildTestSettings({
-        enableDyadPro: true,
+        enableConeyPro: true,
         hasApiKey: false,
       });
 
@@ -364,7 +364,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          coneyRequestId,
         },
       );
 
@@ -378,7 +378,7 @@ describe("handleLocalAgentStream", () => {
     it("should throw error when chat is not found", async () => {
       // Arrange
       const { event } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableConeyPro: true });
       mockChatData = null; // Chat not found
 
       // Act & Assert
@@ -390,7 +390,7 @@ describe("handleLocalAgentStream", () => {
           {
             placeholderMessageId: 10,
             systemPrompt: "You are helpful",
-            dyadRequestId,
+            coneyRequestId,
           },
         ),
       ).rejects.toThrow("Chat not found: 999");
@@ -399,7 +399,7 @@ describe("handleLocalAgentStream", () => {
     it("should throw error when chat has no associated app", async () => {
       // Arrange
       const { event } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableConeyPro: true });
       mockChatData = { ...buildTestChat(), app: null } as any;
 
       // Act & Assert
@@ -411,7 +411,7 @@ describe("handleLocalAgentStream", () => {
           {
             placeholderMessageId: 10,
             systemPrompt: "You are helpful",
-            dyadRequestId,
+            coneyRequestId,
           },
         ),
       ).rejects.toThrow("Chat not found: 1");
@@ -423,7 +423,7 @@ describe("handleLocalAgentStream", () => {
       // Arrange
       const { event } = createFakeEvent();
       mockSettings = buildTestSettings({
-        enableDyadPro: true,
+        enableConeyPro: true,
         enableContextCompaction: false,
       });
       mockChatData = buildTestChat();
@@ -438,7 +438,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          coneyRequestId,
         },
       );
 
@@ -451,7 +451,7 @@ describe("handleLocalAgentStream", () => {
     it("should compact between steps when token usage crosses threshold", async () => {
       // Arrange
       const { event, getMessagesByChannel } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableConeyPro: true });
       const t0 = new Date("2025-01-01T00:00:00Z");
       const t1 = new Date("2025-01-01T00:01:00Z");
       const t2 = new Date("2025-01-01T00:02:00Z");
@@ -487,7 +487,7 @@ describe("handleLocalAgentStream", () => {
               id: 20,
               role: "assistant",
               content:
-                '<dyad-compaction title="Conversation compacted" state="finished">mid-turn summary</dyad-compaction>',
+                '<coney-compaction title="Conversation compacted" state="finished">mid-turn summary</coney-compaction>',
               isCompactionSummary: true,
               createdAt: new Date("2025-01-01T00:03:30Z"),
             },
@@ -496,7 +496,7 @@ describe("handleLocalAgentStream", () => {
         return {
           success: true,
           summary: "mid-turn summary",
-          backupPath: ".dyad/chats/1/compaction-test.md",
+          backupPath: ".coney/chats/1/compaction-test.md",
         };
       });
 
@@ -554,7 +554,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          coneyRequestId,
         },
       );
 
@@ -565,7 +565,7 @@ describe("handleLocalAgentStream", () => {
         expect.anything(),
         1,
         "/mock/apps/test-app-path",
-        dyadRequestId,
+        coneyRequestId,
         expect.any(Function),
         { createdAtStrategy: "now" },
       );
@@ -597,7 +597,7 @@ describe("handleLocalAgentStream", () => {
       const compactionIndex = finalContent.indexOf("Conversation compacted");
       const doneIndex = finalContent.indexOf("done");
       const backupPathIndex = finalContent.indexOf(
-        ".dyad/chats/1/compaction-test.md",
+        ".coney/chats/1/compaction-test.md",
       );
 
       expect(beforeCompactionIndex).toBeGreaterThanOrEqual(0);
@@ -616,7 +616,7 @@ describe("handleLocalAgentStream", () => {
     it("should persist post-compaction response messages without reshaping", async () => {
       // Arrange
       const { event } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableConeyPro: true });
       const t0 = new Date("2025-01-01T00:00:00Z");
       const t1 = new Date("2025-01-01T00:01:00Z");
       const t2 = new Date("2025-01-01T00:02:00Z");
@@ -652,7 +652,7 @@ describe("handleLocalAgentStream", () => {
               id: 20,
               role: "assistant",
               content:
-                '<dyad-compaction title="Conversation compacted" state="finished">mid-turn summary</dyad-compaction>',
+                '<coney-compaction title="Conversation compacted" state="finished">mid-turn summary</coney-compaction>',
               isCompactionSummary: true,
               createdAt: new Date("2025-01-01T00:03:30Z"),
             },
@@ -661,7 +661,7 @@ describe("handleLocalAgentStream", () => {
         return {
           success: true,
           summary: "mid-turn summary",
-          backupPath: ".dyad/chats/1/compaction-test.md",
+          backupPath: ".coney/chats/1/compaction-test.md",
         };
       });
 
@@ -783,7 +783,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          coneyRequestId,
         },
       );
 
@@ -803,7 +803,7 @@ describe("handleLocalAgentStream", () => {
     it("should accumulate text-delta parts and update database", async () => {
       // Arrange
       const { event, getMessagesByChannel } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableConeyPro: true });
       mockChatData = buildTestChat({
         messages: [{ id: 1, role: "user", content: "Hello" }],
       });
@@ -820,7 +820,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          coneyRequestId,
         },
       );
 
@@ -852,7 +852,7 @@ describe("handleLocalAgentStream", () => {
     it("should wrap reasoning content in think tags", async () => {
       // Arrange
       const { event } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableConeyPro: true });
       mockChatData = buildTestChat();
       mockStreamResult = createFakeStream([
         { type: "reasoning-start" },
@@ -869,7 +869,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          coneyRequestId,
         },
       );
 
@@ -890,7 +890,7 @@ describe("handleLocalAgentStream", () => {
     it("should close thinking block when transitioning to text", async () => {
       // Arrange
       const { event } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableConeyPro: true });
       mockChatData = buildTestChat();
       // Simulate reasoning-delta without explicit reasoning-end before text
       mockStreamResult = createFakeStream([
@@ -906,7 +906,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          coneyRequestId,
         },
       );
 
@@ -932,7 +932,7 @@ describe("handleLocalAgentStream", () => {
     it("should stop processing stream chunks when abort signal is triggered", async () => {
       // Arrange
       const { event } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableConeyPro: true });
       mockChatData = buildTestChat();
 
       const abortController = new AbortController();
@@ -959,7 +959,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          coneyRequestId,
         },
       );
 
@@ -980,7 +980,7 @@ describe("handleLocalAgentStream", () => {
     it("should save partial response with cancellation note when aborted", async () => {
       // Arrange
       const { event } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableConeyPro: true });
       mockChatData = buildTestChat();
 
       const abortController = new AbortController();
@@ -1003,7 +1003,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          coneyRequestId,
         },
       );
 
@@ -1022,7 +1022,7 @@ describe("handleLocalAgentStream", () => {
     it("should save commit hash after successful stream", async () => {
       // Arrange
       const { event } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableConeyPro: true });
       mockChatData = buildTestChat();
       mockStreamResult = createFakeStream([
         { type: "text-delta", text: "Done" },
@@ -1036,7 +1036,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          coneyRequestId,
         },
       );
 
@@ -1051,7 +1051,7 @@ describe("handleLocalAgentStream", () => {
     it("should set approval state to approved after completion", async () => {
       // Arrange
       const { event } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableConeyPro: true });
       mockChatData = buildTestChat();
       mockStreamResult = createFakeStream([
         { type: "text-delta", text: "Done" },
@@ -1065,7 +1065,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          coneyRequestId,
         },
       );
 

@@ -3,14 +3,14 @@ import { useAtom } from "jotai";
 import { userSettingsAtom, envVarsAtom } from "@/atoms/appAtoms";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
-import { type UserSettings, hasDyadProKey } from "@/lib/schemas";
+import { type UserSettings, hasConeyProKey } from "@/lib/schemas";
 import { usePostHog } from "posthog-js/react";
 import { useAppVersion } from "./useAppVersion";
 import { queryKeys } from "@/lib/queryKeys";
 
-const TELEMETRY_CONSENT_KEY = "dyadTelemetryConsent";
-const TELEMETRY_USER_ID_KEY = "dyadTelemetryUserId";
-const DYAD_PRO_STATUS_KEY = "dyadProStatus";
+const TELEMETRY_CONSENT_KEY = "coneyTelemetryConsent";
+const TELEMETRY_USER_ID_KEY = "coneyTelemetryUserId";
+const CONEY_PRO_STATUS_KEY = "coneyProStatus";
 
 export function isTelemetryOptedIn() {
   return window.localStorage.getItem(TELEMETRY_CONSENT_KEY) === "opted_in";
@@ -20,8 +20,8 @@ export function getTelemetryUserId(): string | null {
   return window.localStorage.getItem(TELEMETRY_USER_ID_KEY);
 }
 
-export function isDyadProUser(): boolean {
-  return window.localStorage.getItem(DYAD_PRO_STATUS_KEY) === "true";
+export function isConeyProUser(): boolean {
+  return window.localStorage.getItem(CONEY_PRO_STATUS_KEY) === "true";
 }
 
 let isInitialLoad = false;
@@ -49,7 +49,7 @@ export function useSettings() {
   useEffect(() => {
     if (settingsQuery.data) {
       processSettingsForTelemetry(settingsQuery.data);
-      const isPro = hasDyadProKey(settingsQuery.data);
+      const isPro = hasConeyProKey(settingsQuery.data);
       posthog.people.set({ isPro });
       if (!isInitialLoad && appVersion) {
         posthog.capture("app:initial-load", {
@@ -77,7 +77,7 @@ export function useSettings() {
     onSuccess: (updatedSettings) => {
       queryClient.setQueryData(queryKeys.settings.user, updatedSettings);
       processSettingsForTelemetry(updatedSettings);
-      posthog.people.set({ isPro: hasDyadProKey(updatedSettings) });
+      posthog.people.set({ isPro: hasConeyProKey(updatedSettings) });
       setSettingsAtom(updatedSettings);
     },
     meta: { showErrorToast: true },
@@ -128,7 +128,7 @@ function processSettingsForTelemetry(settings: UserSettings) {
   }
   // Store Pro status for telemetry sampling
   window.localStorage.setItem(
-    DYAD_PRO_STATUS_KEY,
-    hasDyadProKey(settings) ? "true" : "false",
+    CONEY_PRO_STATUS_KEY,
+    hasConeyProKey(settings) ? "true" : "false",
   );
 }

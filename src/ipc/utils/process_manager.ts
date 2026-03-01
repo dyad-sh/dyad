@@ -100,7 +100,7 @@ export function stopDockerContainer(containerName: string): Promise<void> {
  */
 export function removeDockerVolumesForApp(appId: number): Promise<void> {
   return new Promise<void>((resolve) => {
-    const pnpmVolume = `dyad-pnpm-${appId}`;
+    const pnpmVolume = `coney-pnpm-${appId}`;
 
     const rm = spawn("docker", ["volume", "rm", "-f", pnpmVolume], {
       stdio: "pipe",
@@ -118,7 +118,7 @@ export async function stopAppByInfo(
   appInfo: RunningAppInfo,
 ): Promise<void> {
   if (appInfo.isDocker) {
-    const containerName = appInfo.containerName || `dyad-app-${appId}`;
+    const containerName = appInfo.containerName || `coney-app-${appId}`;
     await stopDockerContainer(containerName);
   } else {
     await killProcess(appInfo.process);

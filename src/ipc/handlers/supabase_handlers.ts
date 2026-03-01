@@ -186,7 +186,7 @@ export function registerSupabaseHandlers() {
     });
   });
 
-  // Set app project - links a Dyad app to a Supabase project
+  // Set app project - links a Coney app to a Supabase project
   createTypedHandler(supabaseContracts.setAppProject, async (_, params) => {
     const { projectId, appId, parentProjectId, organizationSlug } = params;
     await db
@@ -203,7 +203,7 @@ export function registerSupabaseHandlers() {
     );
   });
 
-  // Unset app project - removes the link between a Dyad app and a Supabase project
+  // Unset app project - removes the link between a Coney app and a Supabase project
   createTypedHandler(supabaseContracts.unsetAppProject, async (_, params) => {
     const { app } = params;
     await db
@@ -268,7 +268,7 @@ export function registerSupabaseHandlers() {
       // Simulate the deep link event
       safeSend(event.sender, "deep-link-received", {
         type: "supabase-oauth-return",
-        url: "https://supabase-oauth.dyad.sh/api/connect-supabase/login",
+        url: "https://supabase-oauth.coney.sh/api/connect-supabase/login",
       });
       logger.info(
         `Sent fake deep-link-received event for app ${appId} during testing.`,

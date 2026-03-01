@@ -3,8 +3,8 @@
 When pushing changes and creating PRs:
 
 1. If the branch already has an associated PR, push to whichever remote the branch is tracking.
-2. If the branch hasn't been pushed before, default to pushing to `origin` (the fork `wwwillchen/dyad`), then create a PR from the fork to the upstream repo (`dyad-sh/dyad`).
-3. If you cannot push to the fork due to permissions, push directly to `upstream` (`dyad-sh/dyad`) as a last resort.
+2. If the branch hasn't been pushed before, default to pushing to `origin` (the fork `wwwillchen/coney`), then create a PR from the fork to the upstream repo (`coney-sh/coney`).
+3. If you cannot push to the fork due to permissions, push directly to `upstream` (`coney-sh/coney`) as a last resort.
 
 ## Skipping automated review
 
@@ -38,7 +38,7 @@ When using `gh api` to post comments or replies containing backticks, `$()`, or 
 # File: .claude/tmp/reply_body.json
 # {"body": "Your comment with `backticks` and special chars"}
 
-gh api repos/dyad-sh/dyad/pulls/123/comments/456/replies --input .claude/tmp/reply_body.json
+gh api repos/coney-sh/coney/pulls/123/comments/456/replies --input .claude/tmp/reply_body.json
 ```
 
 Similarly for GraphQL mutations, write the full query + variables as JSON and use `--input`:
@@ -53,12 +53,12 @@ gh api graphql --input .claude/tmp/resolve_thread.json
 `gh pr edit --add-label` fails with a GraphQL "Projects (classic)" deprecation error on repos that had classic projects. Use the REST API instead:
 
 ```bash
-gh api repos/dyad-sh/dyad/issues/{PR_NUMBER}/labels -f "labels[]=label-name"
+gh api repos/coney-sh/coney/issues/{PR_NUMBER}/labels -f "labels[]=label-name"
 ```
 
 ## CI file access (claude-code-action)
 
-In CI, `claude-code-action` restricts file access to the repo working directory (e.g., `/home/runner/work/dyad/dyad`). Skills that save intermediate files (like PR diffs) must use `./filename` (current working directory), **never** `/tmp/`. Using `/tmp/` causes errors like: `cat in '/tmp/pr_*_diff.patch' was blocked. For security, Claude Code may only concatenate files from the allowed working directories`.
+In CI, `claude-code-action` restricts file access to the repo working directory (e.g., `/home/runner/work/coney/coney`). Skills that save intermediate files (like PR diffs) must use `./filename` (current working directory), **never** `/tmp/`. Using `/tmp/` causes errors like: `cat in '/tmp/pr_*_diff.patch' was blocked. For security, Claude Code may only concatenate files from the allowed working directories`.
 
 ## Rebase workflow and conflict resolution
 

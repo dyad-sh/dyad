@@ -1,43 +1,43 @@
 import { safeSend } from "../utils/safe_sender";
 import { cleanFullResponse } from "../utils/cleanFullResponse";
 
-// e.g. [dyad-qa=add-dep]
+// e.g. [coney-qa=add-dep]
 // Canned responses for test prompts
 const TEST_RESPONSES: Record<string, string> = {
   "ts-error": `This will get a TypeScript error.
   
-  <dyad-write path="src/bad-file.ts" description="This will get a TypeScript error.">
+  <coney-write path="src/bad-file.ts" description="This will get a TypeScript error.">
   import NonExistentClass from 'non-existent-class';
 
   const x = new Object();
   x.nonExistentMethod();
-  </dyad-write>
+  </coney-write>
   
   EOM`,
   "add-dep": `I'll add that dependency for you.
   
-  <dyad-add-dependency packages="deno"></dyad-add-dependency>
+  <coney-add-dependency packages="deno"></coney-add-dependency>
   
   EOM`,
   "add-non-existing-dep": `I'll add that dependency for you.
   
-  <dyad-add-dependency packages="@angular/does-not-exist"></dyad-add-dependency>
+  <coney-add-dependency packages="@angular/does-not-exist"></coney-add-dependency>
   
   EOM`,
   "add-multiple-deps": `I'll add that dependency for you.
   
-  <dyad-add-dependency packages="react-router-dom react-query"></dyad-add-dependency>
+  <coney-add-dependency packages="react-router-dom react-query"></coney-add-dependency>
   
   EOM`,
   write: `Hello world
-  <dyad-write path="src/hello.ts" content="Hello world">
+  <coney-write path="src/hello.ts" content="Hello world">
   console.log("Hello world");
-  </dyad-write>
+  </coney-write>
   EOM`,
   "string-literal-leak": `BEFORE TAG
-  <dyad-write path="src/pages/locations/neighborhoods/louisville/Highlands.tsx" description="Updating Highlands neighborhood page to use <a> tags.">
+  <coney-write path="src/pages/locations/neighborhoods/louisville/Highlands.tsx" description="Updating Highlands neighborhood page to use <a> tags.">
 import React from 'react';
-</dyad-write>
+</coney-write>
 AFTER TAG
 `,
 };
@@ -48,7 +48,7 @@ AFTER TAG
  * @returns The canned response if it's a test prompt, null otherwise
  */
 export function getTestResponse(prompt: string): string | null {
-  const match = prompt.match(/\[dyad-qa=([^\]]+)\]/);
+  const match = prompt.match(/\[coney-qa=([^\]]+)\]/);
   if (match) {
     const testKey = match[1];
     return TEST_RESPONSES[testKey] || null;

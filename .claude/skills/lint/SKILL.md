@@ -1,5 +1,5 @@
 ---
-name: dyad:lint
+name: coney:lint
 description: Run pre-commit checks including formatting, linting, and type-checking, and fix any errors.
 ---
 

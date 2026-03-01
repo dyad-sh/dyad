@@ -1,5 +1,5 @@
 ---
-name: dyad:pr-fix
+name: coney:pr-fix
 description: Address all outstanding issues on a GitHub Pull Request by handling both review comments and failing CI checks.
 ---
 
@@ -23,18 +23,18 @@ When making decisions about review comments, consult `rules/product-principles.m
 
 This is a meta-skill that orchestrates two sub-skills to comprehensively fix PR issues.
 
-1. **Run `/dyad:pr-fix:comments`** to handle all unresolved review comments:
+1. **Run `/coney:pr-fix:comments`** to handle all unresolved review comments:
    - Address valid code review concerns
    - Resolve invalid concerns with explanations
    - Use product principles to resolve ambiguous feedback autonomously
    - Only flag issues for human attention when product principles are insufficient to decide
 
-2. **Run `/dyad:pr-fix:actions`** to handle failing CI checks:
+2. **Run `/coney:pr-fix:actions`** to handle failing CI checks:
    - Fix failing tests (unit and E2E)
    - Update snapshots if needed
    - Ensure all checks pass
 
-3. **Run `/dyad:pr-push`** to commit and push all changes:
+3. **Run `/coney:pr-push`** to commit and push all changes:
    - This step is REQUIRED. Do NOT skip it or stop before it completes.
    - It will commit changes, run lint/tests, and push to GitHub.
    - Wait for it to finish and verify the push succeeded.
@@ -69,7 +69,7 @@ This is a meta-skill that orchestrates two sub-skills to comprehensively fix PR 
    </details>
 
    ---
-   [Workflow run](https://github.com/dyad-sh/dyad/actions/runs/12345678)
+   [Workflow run](https://github.com/coney-sh/coney/actions/runs/12345678)
    ```
 
    **Failure:**
@@ -95,7 +95,7 @@ This is a meta-skill that orchestrates two sub-skills to comprehensively fix PR 
    </details>
 
    ---
-   [Workflow run](https://github.com/dyad-sh/dyad/actions/runs/12345678)
+   [Workflow run](https://github.com/coney-sh/coney/actions/runs/12345678)
    ```
 
    Note: Include a link to the workflow run at the end. If the `GITHUB_REPOSITORY` and `GITHUB_RUN_ID` environment variables are available, use them to construct the URL: `https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID`. If these environment variables are not set, omit the workflow run link.

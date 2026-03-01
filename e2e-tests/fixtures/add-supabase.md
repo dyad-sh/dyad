@@ -1,2 +1,2 @@
 Adding supabase...
-<dyad-add-integration provider="supabase"></dyad-add-integration>
+<coney-add-integration provider="supabase"></coney-add-integration>

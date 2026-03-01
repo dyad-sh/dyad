@@ -19,7 +19,7 @@ test("manage context - default", async ({ po }) => {
 });
 
 test("manage context - smart context", async ({ po }) => {
-  await po.setUpDyadPro();
+  await po.setUpConeyPro();
   await po.modelPicker.selectModel({
     provider: "Google",
     model: "Gemini 2.5 Pro",
@@ -61,7 +61,7 @@ test("manage context - smart context", async ({ po }) => {
 });
 
 test("manage context - smart context - auto-includes only", async ({ po }) => {
-  await po.setUpDyadPro();
+  await po.setUpConeyPro();
   await po.modelPicker.selectModel({
     provider: "Google",
     model: "Gemini 2.5 Pro",
@@ -115,7 +115,7 @@ test("manage context - exclude paths", async ({ po }) => {
 });
 
 test("manage context - exclude paths with smart context", async ({ po }) => {
-  await po.setUpDyadPro();
+  await po.setUpConeyPro();
   await po.modelPicker.selectModel({
     provider: "Google",
     model: "Gemini 2.5 Pro",

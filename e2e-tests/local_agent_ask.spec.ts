@@ -6,7 +6,7 @@ import { testSkipIfWindows } from "./helpers/test_helper";
  */
 
 testSkipIfWindows("local-agent ask mode", async ({ po }) => {
-  await po.setUpDyadPro({ localAgent: true });
+  await po.setUpConeyPro({ localAgent: true });
   await po.importApp("minimal");
 
   // Select ask mode - local agent will be used in read-only mode for Pro users

@@ -14,7 +14,7 @@
       },
       {
         "role": "assistant",
-        "content": "[[dyad-dump-path=*]]"
+        "content": "[[coney-dump-path=*]]"
       },
       {
         "role": "user",
@@ -27,7 +27,7 @@
       "include_thoughts": true,
       "budget_tokens": 4000
     },
-    "dyad_options": {
+    "coney_options": {
       "files": [
         {
           "path": "src/components/ui/helper.ts",
@@ -62,6 +62,6 @@
     }
   },
   "headers": {
-    "authorization": "Bearer testdyadkey"
+    "authorization": "Bearer testconeykey"
   }
 }

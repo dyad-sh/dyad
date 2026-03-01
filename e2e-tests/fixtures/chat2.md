@@ -1,3 +1,3 @@
 chat2
 
-<dyad-chat-summary>Chat 2</dyad-chat-summary>
+<coney-chat-summary>Chat 2</coney-chat-summary>

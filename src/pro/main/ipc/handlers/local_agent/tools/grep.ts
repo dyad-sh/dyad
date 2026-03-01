@@ -217,7 +217,7 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
 
     if (!args.query) return undefined;
     const attrs = buildGrepAttributes(args);
-    return `<dyad-grep ${attrs}>Searching...</dyad-grep>`;
+    return `<coney-grep ${attrs}>Searching...</coney-grep>`;
   },
 
   execute: async (args, ctx: AgentContext) => {
@@ -243,7 +243,7 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
     const attrs = buildGrepAttributes(args, matches.length, totalCount);
 
     if (matches.length === 0) {
-      ctx.onXmlComplete(`<dyad-grep ${attrs}>No matches found.</dyad-grep>`);
+      ctx.onXmlComplete(`<coney-grep ${attrs}>No matches found.</coney-grep>`);
       return "No matches found.";
     }
 
@@ -264,7 +264,7 @@ export const grepTool: ToolDefinition<z.infer<typeof grepSchema>> = {
     }
 
     ctx.onXmlComplete(
-      `<dyad-grep ${attrs}>\n${escapeXmlContent(resultText)}\n</dyad-grep>`,
+      `<coney-grep ${attrs}>\n${escapeXmlContent(resultText)}\n</coney-grep>`,
     );
 
     return resultText;

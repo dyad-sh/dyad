@@ -1,7 +1,7 @@
 import { test } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
-test("theme selection - dyad-wide default theme is persisted", async ({
+test("theme selection - coney-wide default theme is persisted", async ({
   po,
 }) => {
   await po.setUp();

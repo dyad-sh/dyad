@@ -1,7 +1,7 @@
 import { testSkipIfWindows } from "./helpers/test_helper";
 
 testSkipIfWindows("thinking budget", async ({ po }) => {
-  await po.setUpDyadPro();
+  await po.setUpConeyPro();
   await po.modelPicker.selectModel({
     provider: "Google",
     model: "Gemini 2.5 Pro",

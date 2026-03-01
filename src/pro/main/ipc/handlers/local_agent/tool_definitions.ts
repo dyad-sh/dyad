@@ -381,7 +381,7 @@ export function buildAgentToolSet(
             error instanceof Error ? error.message : String(error);
 
           ctx.onXmlComplete(
-            `<dyad-output type="error" message="Tool '${tool.name}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorMessage)}</dyad-output>`,
+            `<coney-output type="error" message="Tool '${tool.name}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorMessage)}</coney-output>`,
           );
           throw error;
         }

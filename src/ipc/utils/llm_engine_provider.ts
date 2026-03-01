@@ -40,7 +40,7 @@ or to provide a custom fetch implementation for e.g. testing.
 */
   fetch?: FetchFunction;
 
-  dyadOptions: {
+  coneyOptions: {
     enableLazyEdits?: boolean;
     enableSmartFilesContext?: boolean;
     enableWebSearch?: boolean;
@@ -48,7 +48,7 @@ or to provide a custom fetch implementation for e.g. testing.
   settings: UserSettings;
 }
 
-export interface DyadEngineProvider {
+export interface ConeyEngineProvider {
   /**
 Creates a model for text generation.
 */
@@ -62,11 +62,11 @@ Creates a chat model for text generation.
   responses(modelId: ExampleChatModelId, chatParams: ChatParams): LanguageModel;
 }
 
-export function createDyadEngine(
+export function createConeyEngine(
   options: ExampleProviderSettings,
-): DyadEngineProvider {
+): ConeyEngineProvider {
   const baseURL = withoutTrailingSlash(options.baseURL);
-  logger.info("creating dyad engine with baseURL", baseURL);
+  logger.info("creating coney engine with baseURL", baseURL);
 
   // Track request ID attempts
   const requestIdAttempts = new Map<string, number>();
@@ -74,7 +74,7 @@ export function createDyadEngine(
   const getHeaders = () => ({
     Authorization: `Bearer ${loadApiKey({
       apiKey: options.apiKey,
-      environmentVariableName: "DYAD_PRO_API_KEY",
+      environmentVariableName: "CONEY_PRO_API_KEY",
       description: "Example API key",
     })}`,
     ...options.headers,
@@ -88,7 +88,7 @@ export function createDyadEngine(
   }
 
   const getCommonModelConfig = (): CommonModelConfig => ({
-    provider: `dyad-engine`,
+    provider: `coney-engine`,
     url: ({ path }) => {
       const url = new URL(`${baseURL}${path}`);
       if (options.queryParams) {
@@ -100,8 +100,8 @@ export function createDyadEngine(
     fetch: options.fetch,
   });
 
-  // Custom fetch implementation that adds dyad-specific options to the request
-  const createDyadFetch = ({
+  // Custom fetch implementation that adds coney-specific options to the request
+  const createConeyFetch = ({
     providerId,
   }: {
     providerId: string;
@@ -118,33 +118,33 @@ export function createDyadEngine(
           ...JSON.parse(init.body),
           ...getExtraProviderOptions(providerId, options.settings),
         };
-        const dyadVersionedFiles = parsedBody.dyadVersionedFiles;
-        if ("dyadVersionedFiles" in parsedBody) {
-          delete parsedBody.dyadVersionedFiles;
+        const coneyVersionedFiles = parsedBody.coneyVersionedFiles;
+        if ("coneyVersionedFiles" in parsedBody) {
+          delete parsedBody.coneyVersionedFiles;
         }
-        const dyadFiles = parsedBody.dyadFiles;
-        if ("dyadFiles" in parsedBody) {
-          delete parsedBody.dyadFiles;
+        const coneyFiles = parsedBody.coneyFiles;
+        if ("coneyFiles" in parsedBody) {
+          delete parsedBody.coneyFiles;
         }
-        const requestId = parsedBody.dyadRequestId;
-        if ("dyadRequestId" in parsedBody) {
-          delete parsedBody.dyadRequestId;
+        const requestId = parsedBody.coneyRequestId;
+        if ("coneyRequestId" in parsedBody) {
+          delete parsedBody.coneyRequestId;
         }
-        const dyadAppId = parsedBody.dyadAppId;
-        if ("dyadAppId" in parsedBody) {
-          delete parsedBody.dyadAppId;
+        const coneyAppId = parsedBody.coneyAppId;
+        if ("coneyAppId" in parsedBody) {
+          delete parsedBody.coneyAppId;
         }
-        const dyadDisableFiles = parsedBody.dyadDisableFiles;
-        if ("dyadDisableFiles" in parsedBody) {
-          delete parsedBody.dyadDisableFiles;
+        const coneyDisableFiles = parsedBody.coneyDisableFiles;
+        if ("coneyDisableFiles" in parsedBody) {
+          delete parsedBody.coneyDisableFiles;
         }
-        const dyadMentionedApps = parsedBody.dyadMentionedApps;
-        if ("dyadMentionedApps" in parsedBody) {
-          delete parsedBody.dyadMentionedApps;
+        const coneyMentionedApps = parsedBody.coneyMentionedApps;
+        if ("coneyMentionedApps" in parsedBody) {
+          delete parsedBody.coneyMentionedApps;
         }
-        const dyadSmartContextMode = parsedBody.dyadSmartContextMode;
-        if ("dyadSmartContextMode" in parsedBody) {
-          delete parsedBody.dyadSmartContextMode;
+        const coneySmartContextMode = parsedBody.coneySmartContextMode;
+        if ("coneySmartContextMode" in parsedBody) {
+          delete parsedBody.coneySmartContextMode;
         }
 
         // Track and modify requestId with attempt number
@@ -156,19 +156,19 @@ export function createDyadEngine(
         }
 
         // Add files to the request if they exist
-        if (!dyadDisableFiles) {
-          parsedBody.dyad_options = {
-            files: dyadFiles,
-            versioned_files: dyadVersionedFiles,
-            enable_lazy_edits: options.dyadOptions.enableLazyEdits,
+        if (!coneyDisableFiles) {
+          parsedBody.coney_options = {
+            files: coneyFiles,
+            versioned_files: coneyVersionedFiles,
+            enable_lazy_edits: options.coneyOptions.enableLazyEdits,
             enable_smart_files_context:
-              options.dyadOptions.enableSmartFilesContext,
-            smart_context_mode: dyadSmartContextMode,
-            enable_web_search: options.dyadOptions.enableWebSearch,
-            app_id: dyadAppId,
+              options.coneyOptions.enableSmartFilesContext,
+            smart_context_mode: coneySmartContextMode,
+            enable_web_search: options.coneyOptions.enableWebSearch,
+            app_id: coneyAppId,
           };
-          if (dyadMentionedApps?.length) {
-            parsedBody.dyad_options.mentioned_apps = dyadMentionedApps;
+          if (coneyMentionedApps?.length) {
+            parsedBody.coney_options.mentioned_apps = coneyMentionedApps;
           }
         }
 
@@ -178,7 +178,7 @@ export function createDyadEngine(
           headers: {
             ...init.headers,
             ...(modifiedRequestId && {
-              "X-Dyad-Request-Id": modifiedRequestId,
+              "X-Coney-Request-Id": modifiedRequestId,
             }),
           },
           body: JSON.stringify(parsedBody),
@@ -200,7 +200,7 @@ export function createDyadEngine(
   ) => {
     const config = {
       ...getCommonModelConfig(),
-      fetch: createDyadFetch({ providerId: chatParams.providerId }),
+      fetch: createConeyFetch({ providerId: chatParams.providerId }),
     };
 
     return new OpenAICompatibleChatLanguageModel(modelId, config);
@@ -212,7 +212,7 @@ export function createDyadEngine(
   ) => {
     const config = {
       ...getCommonModelConfig(),
-      fetch: createDyadFetch({ providerId: chatParams.providerId }),
+      fetch: createConeyFetch({ providerId: chatParams.providerId }),
     };
 
     return new OpenAIResponsesLanguageModel(modelId, config);

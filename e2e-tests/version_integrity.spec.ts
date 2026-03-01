@@ -34,7 +34,7 @@ const runVersionIntegrityTest = async (po: PageObject, nativeGit: boolean) => {
 
   // Open version pane
   await po.page.getByRole("button", { name: "Version 3" }).click();
-  await po.page.getByText("Init Dyad app Restore").click();
+  await po.page.getByText("Init Coney app Restore").click();
   await po.snapshotAppFiles({ name: "v1" });
 
   const restoreButton = po.page.getByRole("button", {

@@ -15,13 +15,13 @@ Snippet:
         </p>
 ```
 
-2. Component: a (file: src/components/made-with-dyad.tsx)
+2. Component: a (file: src/components/made-with-coney.tsx)
 
 Snippet:
 ```
     <div className="p-4 text-center">
       <a // <-- EDIT HERE
-        href="https://www.dyad.sh/"
+        href="https://www.coney.sh/"
         target="_blank"
         rel="noopener noreferrer"
 ```

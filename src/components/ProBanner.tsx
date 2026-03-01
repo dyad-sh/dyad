@@ -11,7 +11,7 @@ import { ArrowUpRight, KeyRound, Wallet } from "lucide-react";
 
 import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
-import { hasDyadProKey } from "@/lib/schemas";
+import { hasConeyProKey } from "@/lib/schemas";
 import { useSettings } from "@/hooks/useSettings";
 
 export function ProBanner() {
@@ -22,7 +22,7 @@ export function ProBanner() {
     return options[Math.floor(Math.random() * options.length)];
   });
 
-  if (settings && hasDyadProKey(settings)) {
+  if (settings && hasConeyProKey(settings)) {
     return null;
   }
 
@@ -39,7 +39,7 @@ export function ProBanner() {
   );
 }
 
-export function ManageDyadProButton({ className }: { className?: string }) {
+export function ManageConeyProButton({ className }: { className?: string }) {
   const { t } = useTranslation("home");
   return (
     <Button
@@ -50,17 +50,17 @@ export function ManageDyadProButton({ className }: { className?: string }) {
         className,
       )}
       onClick={() => {
-        ipc.system.openExternalUrl("https://academy.dyad.sh/subscription");
+        ipc.system.openExternalUrl("https://academy.coney.sh/subscription");
       }}
     >
       <Wallet aria-hidden="true" className="w-5 h-5" />
-      {t("proBanner.manageDyadPro")}
+      {t("proBanner.manageConeyPro")}
       <ArrowUpRight aria-hidden="true" className="w-5 h-5" />
     </Button>
   );
 }
 
-export function SetupDyadProButton() {
+export function SetupConeyProButton() {
   const { t } = useTranslation("home");
   return (
     <Button
@@ -68,7 +68,7 @@ export function SetupDyadProButton() {
       size="lg"
       className="cursor-pointer w-full bg-(--background-lighter) text-primary"
       onClick={() => {
-        ipc.system.openExternalUrl("https://academy.dyad.sh/settings");
+        ipc.system.openExternalUrl("https://academy.coney.sh/settings");
       }}
     >
       <KeyRound aria-hidden="true" />
@@ -84,7 +84,7 @@ export function AiAccessBanner() {
       className="w-full py-2 sm:py-2.5 md:py-3 rounded-lg bg-gradient-to-br from-white via-indigo-50 to-sky-100 dark:from-indigo-700 dark:via-indigo-700 dark:to-indigo-900 flex items-center justify-center relative overflow-hidden ring-1 ring-inset ring-black/5 dark:ring-white/10 shadow-sm cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-[1px]"
       onClick={() => {
         ipc.system.openExternalUrl(
-          "https://www.dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=in-app-banner-ai-access",
+          "https://www.coney.sh/pro?utm_source=coney-app&utm_medium=app&utm_campaign=in-app-banner-ai-access",
         );
       }}
     >
@@ -103,10 +103,10 @@ export function AiAccessBanner() {
           </div>
           <button
             type="button"
-            aria-label="Subscribe to Dyad Pro"
+            aria-label="Subscribe to Coney Pro"
             className="inline-flex items-center rounded-md bg-white/90 text-indigo-800 hover:bg-white shadow px-3 py-1.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-white/50"
           >
-            {t("proBanner.getDyadPro")}
+            {t("proBanner.getConeyPro")}
           </button>
         </div>
 
@@ -151,7 +151,7 @@ export function SmartContextBanner() {
       className="w-full py-2 sm:py-2.5 md:py-3 rounded-lg bg-gradient-to-br from-emerald-50 via-emerald-100 to-emerald-200 dark:from-emerald-700 dark:via-emerald-700 dark:to-emerald-900 flex items-center justify-center relative overflow-hidden ring-1 ring-inset ring-emerald-900/10 dark:ring-white/10 shadow-sm cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-[1px]"
       onClick={() => {
         ipc.system.openExternalUrl(
-          "https://www.dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=in-app-banner-smart-context",
+          "https://www.coney.sh/pro?utm_source=coney-app&utm_medium=app&utm_campaign=in-app-banner-smart-context",
         );
       }}
     >
@@ -175,10 +175,10 @@ export function SmartContextBanner() {
           </div>
           <button
             type="button"
-            aria-label="Get Dyad Pro"
+            aria-label="Get Coney Pro"
             className="inline-flex items-center rounded-md bg-white/90 text-emerald-800 hover:bg-white shadow px-3 py-1.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-white/50"
           >
-            {t("proBanner.getDyadPro")}
+            {t("proBanner.getConeyPro")}
           </button>
         </div>
       </div>
@@ -193,7 +193,7 @@ export function TurboBanner() {
       className="w-full py-2 sm:py-2.5 md:py-3 rounded-lg bg-gradient-to-br from-rose-50 via-rose-100 to-rose-200 dark:from-rose-800 dark:via-fuchsia-800 dark:to-rose-800 flex items-center justify-center relative overflow-hidden ring-1 ring-inset ring-rose-900/10 dark:ring-white/5 shadow-sm cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-[1px]"
       onClick={() => {
         ipc.system.openExternalUrl(
-          "https://www.dyad.sh/pro?utm_source=dyad-app&utm_medium=app&utm_campaign=in-app-banner-turbo",
+          "https://www.coney.sh/pro?utm_source=coney-app&utm_medium=app&utm_campaign=in-app-banner-turbo",
         );
       }}
     >
@@ -217,10 +217,10 @@ export function TurboBanner() {
           </div>
           <button
             type="button"
-            aria-label="Get Dyad Pro"
+            aria-label="Get Coney Pro"
             className="inline-flex items-center rounded-md bg-white/90 text-rose-800 hover:bg-white shadow px-3 py-1.5 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-white/50"
           >
-            {t("proBanner.getDyadPro")}
+            {t("proBanner.getConeyPro")}
           </button>
         </div>
       </div>

@@ -32,7 +32,7 @@ async function callCodeSearch(
   ctx: AgentContext,
 ): Promise<string[]> {
   // Stream initial state to UI
-  ctx.onXmlStream(`<dyad-code-search query="${escapeXmlAttr(params.query)}">`);
+  ctx.onXmlStream(`<coney-code-search query="${escapeXmlAttr(params.query)}">`);
 
   const response = await engineFetch(ctx, "/tools/code-search", {
     method: "POST",
@@ -76,15 +76,15 @@ export const codeSearchTool: ToolDefinition<z.infer<typeof codeSearchSchema>> =
     inputSchema: codeSearchSchema,
     defaultConsent: "always",
 
-    // Requires Dyad Pro engine API
-    isEnabled: (ctx) => ctx.isDyadPro,
+    // Requires Coney Pro engine API
+    isEnabled: (ctx) => ctx.isConeyPro,
 
     getConsentPreview: (args) => `Search for "${args.query}"`,
 
     buildXml: (args, isComplete) => {
       if (!args.query) return undefined;
       if (isComplete) return undefined;
-      return `<dyad-code-search query="${escapeXmlAttr(args.query)}">Searching...`;
+      return `<coney-code-search query="${escapeXmlAttr(args.query)}">Searching...`;
     },
 
     execute: async (args, ctx: AgentContext) => {
@@ -125,9 +125,9 @@ export const codeSearchTool: ToolDefinition<z.infer<typeof codeSearchSchema>> =
           ? "No relevant files found."
           : relevantFiles.map((f) => ` - ${f}`).join("\n");
 
-      // Write final result to UI and DB with dyad-code-search wrapper
+      // Write final result to UI and DB with coney-code-search wrapper
       ctx.onXmlComplete(
-        `<dyad-code-search query="${escapeXmlAttr(args.query)}">${escapeXmlContent(resultText)}</dyad-code-search>`,
+        `<coney-code-search query="${escapeXmlAttr(args.query)}">${escapeXmlContent(resultText)}</coney-code-search>`,
       );
 
       logger.log(`Code search completed for query: ${args.query}`);

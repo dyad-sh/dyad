@@ -1,6 +1,6 @@
 Creating a React app that makes network requests to test network logging.
 
-<dyad-write path="src/pages/Index.tsx" description="adding network requests">
+<coney-write path="src/pages/Index.tsx" description="adding network requests">
 import { useEffect } from 'react';
 
 function App() {
@@ -42,5 +42,5 @@ function App() {
 }
 
 export default App;
-</dyad-write>
+</coney-write>
 

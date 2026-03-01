@@ -5,7 +5,7 @@ import { testSkipIfWindows } from "./helpers/test_helper";
  * Test for security review in local-agent mode
  */
 testSkipIfWindows("local-agent - security review fix", async ({ po }) => {
-  await po.setUpDyadPro({ localAgent: true });
+  await po.setUpConeyPro({ localAgent: true });
   await po.importApp("minimal");
   await po.chatActions.selectLocalAgentMode();
 
@@ -20,7 +20,7 @@ testSkipIfWindows("local-agent - security review fix", async ({ po }) => {
  * Test for mention apps feature in local-agent mode
  */
 testSkipIfWindows("local-agent - mention apps", async ({ po }) => {
-  await po.setUpDyadPro({ localAgent: true });
+  await po.setUpConeyPro({ localAgent: true });
 
   // Import app and reference it.
   await po.importApp("minimal-with-ai-rules");
@@ -37,7 +37,7 @@ testSkipIfWindows("local-agent - mention apps", async ({ po }) => {
  * Test for MCP tool calls in local-agent mode
  */
 testSkipIfWindows("local-agent - mcp tool call", async ({ po }) => {
-  await po.setUpDyadPro({ localAgent: true });
+  await po.setUpConeyPro({ localAgent: true });
   await po.navigation.goToSettingsTab();
   await po.page.getByRole("button", { name: "Tools (MCP)" }).click();
 

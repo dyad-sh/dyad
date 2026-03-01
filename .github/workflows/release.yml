@@ -17,7 +17,7 @@ jobs:
       matrix:
         os: [
             { name: "windows", image: "windows-latest" },
-            # See https://github.com/dyad-sh/dyad/issues/96
+            # See https://github.com/coney-sh/coney/issues/96
             { name: "linux", image: "ubuntu-22.04" },
             { name: "macos-intel", image: "macos-15-intel" },
             { name: "macos", image: "macos-latest" },
@@ -88,8 +88,8 @@ jobs:
           @'
           {
             "Endpoint": "https://eus.codesigning.azure.net/",
-            "CodeSigningAccountName": "dyad",
-            "CertificateProfileName": "dyad-tech"
+            "CodeSigningAccountName": "coney",
+            "CertificateProfileName": "coney-tech"
           }
           '@ | Out-File -Encoding utf8 signing-metadata.json
 

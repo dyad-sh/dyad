@@ -77,8 +77,8 @@ export async function commitAllChanges(
       path: ctx.appPath,
     });
     const message = chatSummary
-      ? `[dyad] ${chatSummary}`
-      : `[dyad] (${uncommittedFiles.length} files changed)`;
+      ? `[coney] ${chatSummary}`
+      : `[coney] (${uncommittedFiles.length} files changed)`;
     let commitHash: string | undefined;
 
     if (uncommittedFiles.length > 0) {

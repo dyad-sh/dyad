@@ -4,7 +4,7 @@ import { desc, eq, and, gt, gte } from "drizzle-orm";
 import type { GitCommit } from "../git_types";
 import fs from "node:fs";
 import path from "node:path";
-import { getDyadAppPath } from "../../paths/paths";
+import { getConeyAppPath } from "../../paths/paths";
 import { withLock } from "../utils/lock_utils";
 import log from "electron-log";
 import { createTypedHandler } from "./base";
@@ -77,7 +77,7 @@ export function registerVersionHandlers() {
       return [];
     }
 
-    const appPath = getDyadAppPath(app.path);
+    const appPath = getConeyAppPath(app.path);
 
     // Just return an empty array if the app is not a git repo.
     if (!fs.existsSync(path.join(appPath, ".git"))) {
@@ -127,7 +127,7 @@ export function registerVersionHandlers() {
       throw new Error("App not found");
     }
 
-    const appPath = getDyadAppPath(app.path);
+    const appPath = getConeyAppPath(app.path);
 
     // Return appropriate result if the app is not a git repo
     if (!fs.existsSync(path.join(appPath, ".git"))) {
@@ -159,7 +159,7 @@ export function registerVersionHandlers() {
         throw new Error("App not found");
       }
 
-      const appPath = getDyadAppPath(app.path);
+      const appPath = getConeyAppPath(app.path);
       // Get the current commit hash before reverting
       const currentCommitHash = await getCurrentCommitHash({
         path: appPath,
@@ -437,7 +437,7 @@ export function registerVersionHandlers() {
           }
         }
       }
-      const fullAppPath = getDyadAppPath(app.path);
+      const fullAppPath = getConeyAppPath(app.path);
       await gitCheckout({
         path: fullAppPath,
         ref: gitRef,

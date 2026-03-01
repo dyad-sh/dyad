@@ -6,7 +6,7 @@
       - img
   - textbox "src/**/*.tsx"
   - button "Add"
-  - paragraph: Dyad will use Smart Context to automatically find the most relevant files to use as context.
+  - paragraph: Coney will use Smart Context to automatically find the most relevant files to use as context.
   - heading "Exclude Paths" [level=3]
   - paragraph:
     - text: These files will be excluded from the context.

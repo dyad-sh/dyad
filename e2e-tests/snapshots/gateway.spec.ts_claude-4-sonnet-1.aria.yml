@@ -1,4 +1,4 @@
 - paragraph: "[dump] tc=gateway-simple"
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[coney-dump-path=*]]"
 - button "Retry":
   - img

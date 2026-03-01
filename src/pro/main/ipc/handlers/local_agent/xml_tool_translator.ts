@@ -3,7 +3,7 @@
  *
  * Converts between AI SDK tool call format and XML strings for:
  * - Storage in database (messages.content)
- * - Rendering in UI (DyadMarkdownParser)
+ * - Rendering in UI (ConeyMarkdownParser)
  * - Feeding back to model in native tool call format
  */
 

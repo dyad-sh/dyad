@@ -25,18 +25,18 @@ vi.mock("electron-log", () => ({
 }));
 
 describe("parseFilesFromMessage", () => {
-  describe("dyad-read tags", () => {
-    it("should parse a single dyad-read tag", () => {
-      const input = '<dyad-read path="src/components/Button.tsx"></dyad-read>';
+  describe("coney-read tags", () => {
+    it("should parse a single coney-read tag", () => {
+      const input = '<coney-read path="src/components/Button.tsx"></coney-read>';
       const result = parseFilesFromMessage(input);
       expect(result).toEqual(["src/components/Button.tsx"]);
     });
 
-    it("should parse multiple dyad-read tags", () => {
+    it("should parse multiple coney-read tags", () => {
       const input = `
-        <dyad-read path="src/components/Button.tsx"></dyad-read>
-        <dyad-read path="src/utils/helpers.ts"></dyad-read>
-        <dyad-read path="src/styles/main.css"></dyad-read>
+        <coney-read path="src/components/Button.tsx"></coney-read>
+        <coney-read path="src/utils/helpers.ts"></coney-read>
+        <coney-read path="src/styles/main.css"></coney-read>
       `;
       const result = parseFilesFromMessage(input);
       expect(result).toEqual([
@@ -46,18 +46,18 @@ describe("parseFilesFromMessage", () => {
       ]);
     });
 
-    it("should trim whitespace from file paths in dyad-read tags", () => {
+    it("should trim whitespace from file paths in coney-read tags", () => {
       const input =
-        '<dyad-read path="  src/components/Button.tsx  "></dyad-read>';
+        '<coney-read path="  src/components/Button.tsx  "></coney-read>';
       const result = parseFilesFromMessage(input);
       expect(result).toEqual(["src/components/Button.tsx"]);
     });
 
     it("should skip empty path attributes", () => {
       const input = `
-        <dyad-read path="src/components/Button.tsx"></dyad-read>
-        <dyad-read path=""></dyad-read>
-        <dyad-read path="src/utils/helpers.ts"></dyad-read>
+        <coney-read path="src/components/Button.tsx"></coney-read>
+        <coney-read path=""></coney-read>
+        <coney-read path="src/utils/helpers.ts"></coney-read>
       `;
       const result = parseFilesFromMessage(input);
       expect(result).toEqual([
@@ -68,27 +68,27 @@ describe("parseFilesFromMessage", () => {
 
     it("should handle file paths with special characters", () => {
       const input =
-        '<dyad-read path="src/components/@special/Button-v2.tsx"></dyad-read>';
+        '<coney-read path="src/components/@special/Button-v2.tsx"></coney-read>';
       const result = parseFilesFromMessage(input);
       expect(result).toEqual(["src/components/@special/Button-v2.tsx"]);
     });
   });
 
-  describe("dyad-code-search-result tags", () => {
-    it("should parse a single file from dyad-code-search-result", () => {
-      const input = `<dyad-code-search-result>
+  describe("coney-code-search-result tags", () => {
+    it("should parse a single file from coney-code-search-result", () => {
+      const input = `<coney-code-search-result>
 src/components/Button.tsx
-</dyad-code-search-result>`;
+</coney-code-search-result>`;
       const result = parseFilesFromMessage(input);
       expect(result).toEqual(["src/components/Button.tsx"]);
     });
 
-    it("should parse multiple files from dyad-code-search-result", () => {
-      const input = `<dyad-code-search-result>
+    it("should parse multiple files from coney-code-search-result", () => {
+      const input = `<coney-code-search-result>
 src/components/Button.tsx
 src/components/Input.tsx
 src/utils/helpers.ts
-</dyad-code-search-result>`;
+</coney-code-search-result>`;
       const result = parseFilesFromMessage(input);
       expect(result).toEqual([
         "src/components/Button.tsx",
@@ -98,11 +98,11 @@ src/utils/helpers.ts
     });
 
     it("should trim whitespace from each line", () => {
-      const input = `<dyad-code-search-result>
+      const input = `<coney-code-search-result>
   src/components/Button.tsx  
     src/components/Input.tsx    
 src/utils/helpers.ts
-</dyad-code-search-result>`;
+</coney-code-search-result>`;
       const result = parseFilesFromMessage(input);
       expect(result).toEqual([
         "src/components/Button.tsx",
@@ -111,15 +111,15 @@ src/utils/helpers.ts
       ]);
     });
 
-    it("should skip empty lines in dyad-code-search-result", () => {
-      const input = `<dyad-code-search-result>
+    it("should skip empty lines in coney-code-search-result", () => {
+      const input = `<coney-code-search-result>
 src/components/Button.tsx
 
 src/components/Input.tsx
 
 
 src/utils/helpers.ts
-</dyad-code-search-result>`;
+</coney-code-search-result>`;
       const result = parseFilesFromMessage(input);
       expect(result).toEqual([
         "src/components/Button.tsx",
@@ -129,13 +129,13 @@ src/utils/helpers.ts
     });
 
     it("should skip lines that look like tags (starting with < or >)", () => {
-      const input = `<dyad-code-search-result>
+      const input = `<coney-code-search-result>
 src/components/Button.tsx
 <some-tag>
 src/components/Input.tsx
 >some-line
 src/utils/helpers.ts
-</dyad-code-search-result>`;
+</coney-code-search-result>`;
       const result = parseFilesFromMessage(input);
       expect(result).toEqual([
         "src/components/Button.tsx",
@@ -144,18 +144,18 @@ src/utils/helpers.ts
       ]);
     });
 
-    it("should handle multiple dyad-code-search-result tags", () => {
-      const input = `<dyad-code-search-result>
+    it("should handle multiple coney-code-search-result tags", () => {
+      const input = `<coney-code-search-result>
 src/components/Button.tsx
 src/components/Input.tsx
-</dyad-code-search-result>
+</coney-code-search-result>
 
 Some text in between
 
-<dyad-code-search-result>
+<coney-code-search-result>
 src/utils/helpers.ts
 src/styles/main.css
-</dyad-code-search-result>`;
+</coney-code-search-result>`;
       const result = parseFilesFromMessage(input);
       expect(result).toEqual([
         "src/components/Button.tsx",
@@ -167,16 +167,16 @@ src/styles/main.css
   });
 
   describe("mixed tags", () => {
-    it("should parse both dyad-read and dyad-code-search-result tags", () => {
+    it("should parse both coney-read and coney-code-search-result tags", () => {
       const input = `
-<dyad-read path="src/config/app.ts"></dyad-read>
+<coney-read path="src/config/app.ts"></coney-read>
 
-<dyad-code-search-result>
+<coney-code-search-result>
 src/components/Button.tsx
 src/components/Input.tsx
-</dyad-code-search-result>
+</coney-code-search-result>
 
-<dyad-read path="src/utils/helpers.ts"></dyad-read>
+<coney-read path="src/utils/helpers.ts"></coney-read>
 `;
       const result = parseFilesFromMessage(input);
       expect(result).toEqual([
@@ -189,13 +189,13 @@ src/components/Input.tsx
 
     it("should deduplicate file paths", () => {
       const input = `
-<dyad-read path="src/components/Button.tsx"></dyad-read>
-<dyad-read path="src/components/Button.tsx"></dyad-read>
+<coney-read path="src/components/Button.tsx"></coney-read>
+<coney-read path="src/components/Button.tsx"></coney-read>
 
-<dyad-code-search-result>
+<coney-code-search-result>
 src/components/Button.tsx
 src/utils/helpers.ts
-</dyad-code-search-result>
+</coney-code-search-result>
 `;
       const result = parseFilesFromMessage(input);
       expect(result).toEqual([
@@ -208,26 +208,26 @@ src/utils/helpers.ts
       const input = `
 Here's what I found:
 
-<dyad-read path="src/components/Header.tsx"></dyad-read>
+<coney-read path="src/components/Header.tsx"></coney-read>
 
 I also searched for related files:
 
-<dyad-code-search-result>
+<coney-code-search-result>
 src/components/Header.tsx
 src/components/Footer.tsx
 src/styles/layout.css
-</dyad-code-search-result>
+</coney-code-search-result>
 
 Let me also check the config:
 
-<dyad-read path="src/config/site.ts"></dyad-read>
+<coney-read path="src/config/site.ts"></coney-read>
 
 And finally:
 
-<dyad-code-search-result>
+<coney-code-search-result>
 src/utils/navigation.ts
 src/utils/theme.ts
-</dyad-code-search-result>
+</coney-code-search-result>
 `;
       const result = parseFilesFromMessage(input);
       expect(result).toEqual([
@@ -256,8 +256,8 @@ src/utils/theme.ts
 
     it("should handle malformed tags gracefully", () => {
       const input = `
-<dyad-read path="src/file1.ts"
-<dyad-code-search-result>
+<coney-read path="src/file1.ts"
+<coney-code-search-result>
 src/file2.ts
 `;
       const result = parseFilesFromMessage(input);
@@ -267,17 +267,17 @@ src/file2.ts
 
     it("should handle nested angle brackets in file paths", () => {
       const input =
-        '<dyad-read path="src/components/Generic<T>.tsx"></dyad-read>';
+        '<coney-read path="src/components/Generic<T>.tsx"></coney-read>';
       const result = parseFilesFromMessage(input);
       expect(result).toEqual(["src/components/Generic<T>.tsx"]);
     });
 
     it("should preserve file path case sensitivity", () => {
-      const input = `<dyad-code-search-result>
+      const input = `<coney-code-search-result>
 src/Components/Button.tsx
 src/components/button.tsx
 SRC/COMPONENTS/BUTTON.TSX
-</dyad-code-search-result>`;
+</coney-code-search-result>`;
       const result = parseFilesFromMessage(input);
       expect(result).toEqual([
         "src/Components/Button.tsx",
@@ -289,17 +289,17 @@ SRC/COMPONENTS/BUTTON.TSX
     it("should handle very long file paths", () => {
       const longPath =
         "src/very/deeply/nested/directory/structure/with/many/levels/components/Button.tsx";
-      const input = `<dyad-read path="${longPath}"></dyad-read>`;
+      const input = `<coney-read path="${longPath}"></coney-read>`;
       const result = parseFilesFromMessage(input);
       expect(result).toEqual([longPath]);
     });
 
     it("should handle file paths with dots", () => {
-      const input = `<dyad-code-search-result>
+      const input = `<coney-code-search-result>
 ./src/components/Button.tsx
 ../utils/helpers.ts
 ../../config/app.config.ts
-</dyad-code-search-result>`;
+</coney-code-search-result>`;
       const result = parseFilesFromMessage(input);
       expect(result).toEqual([
         "./src/components/Button.tsx",
@@ -309,10 +309,10 @@ SRC/COMPONENTS/BUTTON.TSX
     });
 
     it("should handle absolute paths", () => {
-      const input = `<dyad-code-search-result>
+      const input = `<coney-code-search-result>
 /absolute/path/to/file.tsx
 /another/absolute/path.ts
-</dyad-code-search-result>`;
+</coney-code-search-result>`;
       const result = parseFilesFromMessage(input);
       expect(result).toEqual([
         "/absolute/path/to/file.tsx",
@@ -407,9 +407,9 @@ describe("processChatMessagesWithVersionedFiles", () => {
         {
           role: "assistant",
           content:
-            'I found this file: <dyad-read path="src/old.ts"></dyad-read>',
+            'I found this file: <coney-read path="src/old.ts"></coney-read>',
           providerOptions: {
-            "dyad-engine": {
+            "coney-engine": {
               sourceCommitHash: "abc123",
             },
           },
@@ -454,7 +454,7 @@ describe("processChatMessagesWithVersionedFiles", () => {
           content: [
             {
               type: "text",
-              text: 'Here is the file: <dyad-read path="src/array.ts"></dyad-read>',
+              text: 'Here is the file: <coney-read path="src/array.ts"></coney-read>',
             },
             {
               type: "text",
@@ -462,7 +462,7 @@ describe("processChatMessagesWithVersionedFiles", () => {
             },
           ],
           providerOptions: {
-            "dyad-engine": {
+            "coney-engine": {
               sourceCommitHash: "def456",
             },
           },
@@ -498,7 +498,7 @@ describe("processChatMessagesWithVersionedFiles", () => {
         {
           role: "user",
           content:
-            'Check this: <dyad-read path="src/user-file.ts"></dyad-read>',
+            'Check this: <coney-read path="src/user-file.ts"></coney-read>',
         },
       ];
       const appPath = "/test/app";
@@ -522,15 +522,15 @@ describe("processChatMessagesWithVersionedFiles", () => {
       const chatMessages: ModelMessage[] = [
         {
           role: "assistant",
-          content: 'File here: <dyad-read path="src/no-commit.ts"></dyad-read>',
+          content: 'File here: <coney-read path="src/no-commit.ts"></coney-read>',
           // No providerOptions
         },
         {
           role: "assistant",
           content:
-            'Another file: <dyad-read path="src/no-commit2.ts"></dyad-read>',
+            'Another file: <coney-read path="src/no-commit2.ts"></coney-read>',
           providerOptions: {
-            // dyad-engine not set
+            // coney-engine not set
           },
         },
       ];
@@ -556,7 +556,7 @@ describe("processChatMessagesWithVersionedFiles", () => {
           role: "assistant",
           content: [],
           providerOptions: {
-            "dyad-engine": {
+            "coney-engine": {
               sourceCommitHash: "abc123",
             },
           },
@@ -576,7 +576,7 @@ describe("processChatMessagesWithVersionedFiles", () => {
   });
 
   describe("parsing multiple file paths", () => {
-    it("should process multiple files from dyad-code-search-result", async () => {
+    it("should process multiple files from coney-code-search-result", async () => {
       const { getFileAtCommit } = await import("@/ipc/utils/git_utils");
       const mockGetFileAtCommit = vi.mocked(getFileAtCommit);
 
@@ -591,12 +591,12 @@ describe("processChatMessagesWithVersionedFiles", () => {
       const chatMessages: ModelMessage[] = [
         {
           role: "assistant",
-          content: `<dyad-code-search-result>
+          content: `<coney-code-search-result>
 src/file1.ts
 src/file2.ts
-</dyad-code-search-result>`,
+</coney-code-search-result>`,
           providerOptions: {
-            "dyad-engine": {
+            "coney-engine": {
               sourceCommitHash: "commit1",
             },
           },
@@ -634,7 +634,7 @@ src/file2.ts
       });
     });
 
-    it("should process mixed dyad-read and dyad-code-search-result tags", async () => {
+    it("should process mixed coney-read and coney-code-search-result tags", async () => {
       const { getFileAtCommit } = await import("@/ipc/utils/git_utils");
       const mockGetFileAtCommit = vi.mocked(getFileAtCommit);
 
@@ -648,15 +648,15 @@ src/file2.ts
         {
           role: "assistant",
           content: `
-<dyad-read path="src/file1.ts"></dyad-read>
+<coney-read path="src/file1.ts"></coney-read>
 
-<dyad-code-search-result>
+<coney-code-search-result>
 src/file2.ts
 src/file3.ts
-</dyad-code-search-result>
+</coney-code-search-result>
 `,
           providerOptions: {
-            "dyad-engine": {
+            "coney-engine": {
               sourceCommitHash: "hash1",
             },
           },
@@ -692,9 +692,9 @@ src/file3.ts
         {
           role: "assistant",
           content:
-            'Missing file: <dyad-read path="src/missing.ts"></dyad-read>',
+            'Missing file: <coney-read path="src/missing.ts"></coney-read>',
           providerOptions: {
-            "dyad-engine": {
+            "coney-engine": {
               sourceCommitHash: "commit1",
             },
           },
@@ -726,9 +726,9 @@ src/file3.ts
       const chatMessages: ModelMessage[] = [
         {
           role: "assistant",
-          content: 'Error file: <dyad-read path="src/error.ts"></dyad-read>',
+          content: 'Error file: <coney-read path="src/error.ts"></coney-read>',
           providerOptions: {
-            "dyad-engine": {
+            "coney-engine": {
               sourceCommitHash: "commit1",
             },
           },
@@ -763,13 +763,13 @@ src/file3.ts
       const chatMessages: ModelMessage[] = [
         {
           role: "assistant",
-          content: `<dyad-code-search-result>
+          content: `<coney-code-search-result>
 src/success.ts
 src/error.ts
 src/missing.ts
-</dyad-code-search-result>`,
+</coney-code-search-result>`,
           providerOptions: {
-            "dyad-engine": {
+            "coney-engine": {
               sourceCommitHash: "commit1",
             },
           },
@@ -814,9 +814,9 @@ src/missing.ts
         },
         {
           role: "assistant",
-          content: 'Here it is: <dyad-read path="src/file1.ts"></dyad-read>',
+          content: 'Here it is: <coney-read path="src/file1.ts"></coney-read>',
           providerOptions: {
-            "dyad-engine": {
+            "coney-engine": {
               sourceCommitHash: "commit1",
             },
           },
@@ -828,9 +828,9 @@ src/missing.ts
         {
           role: "assistant",
           content:
-            'Here it is again: <dyad-read path="src/file1.ts"></dyad-read>',
+            'Here it is again: <coney-read path="src/file1.ts"></coney-read>',
           providerOptions: {
-            "dyad-engine": {
+            "coney-engine": {
               sourceCommitHash: "commit2",
             },
           },
@@ -893,9 +893,9 @@ src/missing.ts
       const chatMessages: ModelMessage[] = [
         {
           role: "assistant",
-          content: 'Old version: <dyad-read path="src/old.ts"></dyad-read>',
+          content: 'Old version: <coney-read path="src/old.ts"></coney-read>',
           providerOptions: {
-            "dyad-engine": {
+            "coney-engine": {
               sourceCommitHash: "abc123",
             },
           },
@@ -943,12 +943,12 @@ src/missing.ts
       const chatMessages: ModelMessage[] = [
         {
           role: "assistant",
-          content: `<dyad-code-search-result>
+          content: `<coney-code-search-result>
 src/file1.ts
 src/file2.ts
-</dyad-code-search-result>`,
+</coney-code-search-result>`,
           providerOptions: {
-            "dyad-engine": {
+            "coney-engine": {
               sourceCommitHash: "commit1",
             },
           },
@@ -989,7 +989,7 @@ src/file2.ts
           role: "assistant",
           content: "No commit hash here",
           providerOptions: {
-            "dyad-engine": {
+            "coney-engine": {
               sourceCommitHash: "abc123",
               commitHash: null,
             },
@@ -1024,7 +1024,7 @@ src/file2.ts
           role: "assistant",
           content: "Assistant message with commit hash",
           providerOptions: {
-            "dyad-engine": {
+            "coney-engine": {
               sourceCommitHash: "ignored-for-this-test",
               commitHash: "commit-123",
             },
@@ -1059,7 +1059,7 @@ src/file2.ts
           role: "assistant",
           content: "Assistant message with different commit hash",
           providerOptions: {
-            "dyad-engine": {
+            "coney-engine": {
               sourceCommitHash: "ignored-for-this-test",
               commitHash: "older-commit",
             },
@@ -1094,7 +1094,7 @@ src/file2.ts
           role: "assistant",
           content: "Assistant message with matching commit but dirty status",
           providerOptions: {
-            "dyad-engine": {
+            "coney-engine": {
               sourceCommitHash: "ignored-for-this-test",
               commitHash: "same-commit",
             },

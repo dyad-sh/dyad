@@ -112,9 +112,9 @@ export const readLogsTool: ToolDefinition<z.infer<typeof readLogsSchema>> = {
 
     const summary = parts.join(" | ");
 
-    return `<dyad-read-logs ${filters.join(" ")}>
+    return `<coney-read-logs ${filters.join(" ")}>
 ${summary}
-</dyad-read-logs>`;
+</coney-read-logs>`;
   },
 
   execute: async (args, ctx: AgentContext) => {
@@ -185,7 +185,7 @@ ${summary}
 
     // Output the complete results in a single tag
     ctx.onXmlComplete(
-      `<dyad-read-logs ${filters.join(" ")} count="${filtered.length}">\n${summary}\n\n${escapeXmlContent(formattedLogs)}\n</dyad-read-logs>`,
+      `<coney-read-logs ${filters.join(" ")} count="${filtered.length}">\n${summary}\n\n${escapeXmlContent(formattedLogs)}\n</coney-read-logs>`,
     );
 
     return formattedLogs;

@@ -14,7 +14,7 @@
       },
       {
         "role": "assistant",
-        "content": "\n  <dyad-write path=\"file1.txt\">\n  A file (2)\n  </dyad-write>\n  More\n  EOM"
+        "content": "\n  <coney-write path=\"file1.txt\">\n  A file (2)\n  </coney-write>\n  More\n  EOM"
       },
       {
         "role": "user",
@@ -235,7 +235,7 @@
                 "type": "boolean"
               },
               "include_hidden": {
-                "description": "Whether to include .dyad files which are git-ignored (default: false)",
+                "description": "Whether to include .coney files which are git-ignored (default: false)",
                 "type": "boolean"
               }
             },
@@ -513,6 +513,6 @@
     "stream": true
   },
   "headers": {
-    "authorization": "Bearer testdyadkey"
+    "authorization": "Bearer testconeykey"
   }
 }

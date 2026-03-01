@@ -1,6 +1,6 @@
 import { testSkipIfWindows } from "./helpers/test_helper";
 
-// https://github.com/dyad-sh/dyad/issues/269
+// https://github.com/coney-sh/coney/issues/269
 testSkipIfWindows("supabase - stale ui", async ({ po }) => {
   await po.setUp();
   await po.sendPrompt("tc=add-supabase");

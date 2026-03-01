@@ -69,7 +69,7 @@ const screenTransition = {
 // =============================================================================
 
 const GITHUB_ISSUES_BASE =
-  "https://github.com/dyad-sh/dyad/issues/new" as const;
+  "https://github.com/coney-sh/coney/issues/new" as const;
 
 function formatSettingsLines(settings: UserSettings | null): string {
   if (!settings) return "Settings not available";
@@ -77,7 +77,7 @@ function formatSettingsLines(settings: UserSettings | null): string {
     `- Selected Model: ${settings.selectedModel?.provider}:${settings.selectedModel?.name}`,
     `- Chat Mode: ${settings.selectedChatMode ?? "default"}`,
     `- Auto Approve Changes: ${settings.autoApproveChanges ?? "n/a"}`,
-    `- Dyad Pro Enabled: ${settings.enableDyadPro ?? "n/a"}`,
+    `- Coney Pro Enabled: ${settings.enableConeyPro ?? "n/a"}`,
     `- Thinking Budget: ${settings.thinkingBudget ?? "n/a"}`,
     `- Runtime Mode: ${settings.runtimeMode2 ?? "n/a"}`,
     `- Release Channel: ${settings.releaseChannel ?? "n/a"}`,
@@ -91,7 +91,7 @@ function formatSystemInfoSection(
   userBudget: UserBudgetInfo | undefined,
 ): string {
   return `## System Information
-- Dyad Version: ${debugInfo.dyadVersion}
+- Coney Version: ${debugInfo.coneyVersion}
 - Platform: ${debugInfo.platform}
 - Architecture: ${debugInfo.architecture}
 - Node Version: ${debugInfo.nodeVersion || "n/a"}
@@ -113,10 +113,10 @@ function openGitHubIssue(params: {
   title: string;
   labels: string[];
   body: string;
-  isDyadProUser: unknown;
+  isConeyProUser: unknown;
 }) {
   const labels = [...params.labels];
-  if (params.isDyadProUser) labels.push("pro");
+  if (params.isConeyProUser) labels.push("pro");
   const qs = new URLSearchParams({
     title: params.title,
     labels: labels.join(","),
@@ -259,7 +259,7 @@ export function HelpDialog({ isOpen, onClose }: HelpDialogProps) {
   const selectedChatId = useAtomValue(selectedChatIdAtom);
   const { settings } = useSettings();
   const { userBudget } = useUserBudgetInfo();
-  const isDyadProUser = settings?.providerSettings?.["auto"]?.apiKey?.value;
+  const isConeyProUser = settings?.providerSettings?.["auto"]?.apiKey?.value;
 
   // ---------------------------------------------------------------------------
   // Navigation
@@ -317,7 +317,7 @@ ${formatLogsSection(debugInfo)}
         title: "[bug] <WRITE TITLE HERE>",
         labels: ["bug"],
         body,
-        isDyadProUser,
+        isConeyProUser,
       });
     } catch (error) {
       console.error("Failed to prepare bug report:", error);
@@ -352,7 +352,7 @@ ${formatLogsSection(debugInfo)}
     setIsUploading(true);
     try {
       const response = await fetch(
-        "https://upload-logs.dyad.sh/generate-upload-url",
+        "https://upload-logs.coney.sh/generate-upload-url",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -417,7 +417,7 @@ ${formatLogsSection(debugInfo)}
         title: "[session report] <add title>",
         labels: ["support"],
         body,
-        isDyadProUser,
+        isConeyProUser,
       });
     } catch (error) {
       console.error("Failed to prepare session report:", error);
@@ -425,7 +425,7 @@ ${formatLogsSection(debugInfo)}
         title: "[session report] <add title>",
         labels: ["support"],
         body: `Session ID: ${sessionId}\nSession Schema: v2.0\nPro User ID: ${userBudget?.redactedUserId || "n/a"}`,
-        isDyadProUser,
+        isConeyProUser,
       });
     }
     handleClose();
@@ -442,27 +442,27 @@ ${formatLogsSection(debugInfo)}
       skipInitial={!hasNavigated.current}
     >
       <DialogHeader>
-        <DialogTitle>Need help with Dyad?</DialogTitle>
+        <DialogTitle>Need help with Coney?</DialogTitle>
       </DialogHeader>
       <DialogDescription>
         If you need help or want to report an issue, here are some options:
       </DialogDescription>
       <div className="flex flex-col w-full mt-4 space-y-5">
         {/* Self-service help */}
-        {isDyadProUser ? (
+        {isConeyProUser ? (
           <Button
             variant="default"
             onClick={() => setIsHelpBotOpen(true)}
             className="w-full py-6 border-primary/50 shadow-sm shadow-primary/10 transition-all hover:shadow-md hover:shadow-primary/15"
           >
-            <SparklesIcon className="mr-2 h-5 w-5" /> Chat with Dyad help bot
+            <SparklesIcon className="mr-2 h-5 w-5" /> Chat with Coney help bot
             (Pro)
           </Button>
         ) : (
           <Button
             variant="outline"
             onClick={() =>
-              ipc.system.openExternalUrl("https://www.dyad.sh/docs")
+              ipc.system.openExternalUrl("https://www.coney.sh/docs")
             }
             className="w-full py-6 bg-(--background-lightest)"
           >
@@ -486,7 +486,7 @@ ${formatLogsSection(debugInfo)}
             <div className="flex items-center gap-2">
               <MessageSquareIcon className="h-4 w-4 text-primary" />
               <span className="text-sm font-semibold">
-                AI / Dyad Pro issues
+                AI / Coney Pro issues
               </span>
             </div>
             <p className="text-sm text-muted-foreground">
@@ -517,7 +517,7 @@ ${formatLogsSection(debugInfo)}
               <span className="text-sm font-semibold">Non-AI issues</span>
             </div>
             <p className="text-sm text-muted-foreground">
-              Includes error logs to troubleshoot non-AI issues with Dyad (UI
+              Includes error logs to troubleshoot non-AI issues with Coney (UI
               bugs, crashes, setup problems, etc.).
             </p>
             <Button
@@ -584,7 +584,7 @@ ${formatLogsSection(debugInfo)}
           </ReviewDetailsSection>
 
           <ReviewDetailsSection title="System Information" mono={false}>
-            <p>Dyad Version: {debugBundle.system.dyadVersion}</p>
+            <p>Coney Version: {debugBundle.system.coneyVersion}</p>
             <p>Platform: {debugBundle.system.platform}</p>
             <p>Architecture: {debugBundle.system.architecture}</p>
             <p>

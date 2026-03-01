@@ -26,7 +26,7 @@ import {
 } from "../utils/git_utils";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
-import { getDyadAppPath } from "../../paths/paths";
+import { getConeyAppPath } from "../../paths/paths";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
@@ -135,7 +135,7 @@ export async function prepareLocalBranch({
   if (!app) {
     throw new Error("App not found");
   }
-  const appPath = getDyadAppPath(app.path);
+  const appPath = getConeyAppPath(app.path);
   const targetBranch = branch || "main";
 
   try {
@@ -845,7 +845,7 @@ async function handlePushToGithub(
   if (!app || !app.githubOrg || !app.githubRepo) {
     throw new Error("App is not linked to a GitHub repo.");
   }
-  const appPath = getDyadAppPath(app.path);
+  const appPath = getConeyAppPath(app.path);
   const branch = app.githubBranch || "main";
 
   // Set up remote URL with token
@@ -926,7 +926,7 @@ async function handleAbortRebase(
 ): Promise<void> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) throw new Error("App not found");
-  const appPath = getDyadAppPath(app.path);
+  const appPath = getConeyAppPath(app.path);
 
   await gitRebaseAbort({ path: appPath });
 }
@@ -937,7 +937,7 @@ async function handleContinueRebase(
 ): Promise<void> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) throw new Error("App not found");
-  const appPath = getDyadAppPath(app.path);
+  const appPath = getConeyAppPath(app.path);
 
   await gitRebaseContinue({ path: appPath });
 }
@@ -955,7 +955,7 @@ async function handleRebaseFromGithub(
   if (!app || !app.githubOrg || !app.githubRepo) {
     throw new Error("App is not linked to a GitHub repo.");
   }
-  const appPath = getDyadAppPath(app.path);
+  const appPath = getConeyAppPath(app.path);
   const branch = app.githubBranch || "main";
 
   // Set up remote URL with token
@@ -1007,7 +1007,7 @@ async function handleGetGitState(
 ): Promise<{ mergeInProgress: boolean; rebaseInProgress: boolean }> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) throw new Error("App not found");
-  const appPath = getDyadAppPath(app.path);
+  const appPath = getConeyAppPath(app.path);
 
   const mergeInProgress = isGitMergeInProgress({ path: appPath });
   const rebaseInProgress = isGitRebaseInProgress({ path: appPath });
@@ -1173,7 +1173,7 @@ async function handleGetMergeConflicts(
 ): Promise<string[]> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) throw new Error("App not found");
-  const appPath = getDyadAppPath(app.path);
+  const appPath = getConeyAppPath(app.path);
 
   const conflicts = await gitGetMergeConflicts({ path: appPath });
   return conflicts;
@@ -1247,7 +1247,7 @@ async function handleCloneRepoFromUrl(
       return { error: `An app named "${finalAppName}" already exists.` };
     }
 
-    const appPath = getDyadAppPath(finalAppName);
+    const appPath = getConeyAppPath(finalAppName);
     // Ensure the app directory exists if native git is disabled
     if (!settings.enableNativeGit) {
       if (!fs.existsSync(appPath)) {

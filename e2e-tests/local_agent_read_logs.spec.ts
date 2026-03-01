@@ -7,7 +7,7 @@ import { testSkipIfWindows } from "./helpers/test_helper";
  */
 
 testSkipIfWindows("local-agent - read logs with filters", async ({ po }) => {
-  await po.setUpDyadPro({ localAgent: true });
+  await po.setUpConeyPro({ localAgent: true });
   await po.importApp("minimal");
   await po.chatActions.selectLocalAgentMode();
 

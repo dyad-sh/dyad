@@ -1,9 +1,9 @@
 I will intentionally add an error
 
-<dyad-write path="src/pages/Index.tsx" description="intentionally add an error">
+<coney-write path="src/pages/Index.tsx" description="intentionally add an error">
 // Update this page (the content is just a fallback if you fail to update the page)
 
-import { MadeWithDyad } from "@/components/made-with-dyad";
+import { MadeWithConey } from "@/components/made-with-coney";
 
 const Index = () => {
 throw new Error("Line 6 error");
@@ -16,10 +16,10 @@ return (
 Start building your amazing project here!
 </p>
 </div>
-<MadeWithDyad />
+<MadeWithConey />
 </div>
 );
 };
 
 export default Index;
-</dyad-write>
+</coney-write>

@@ -60,7 +60,7 @@ export function useShortcut(
         return;
       }
 
-      if (event.data?.type === "dyad-select-component-shortcut") {
+      if (event.data?.type === "coney-select-component-shortcut") {
         if (isComponentSelectorInitialized) {
           callback();
         }

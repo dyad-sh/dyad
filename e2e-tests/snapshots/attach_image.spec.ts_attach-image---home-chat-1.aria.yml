@@ -2,6 +2,6 @@
 - paragraph: "Attachments:"
 - list:
   - listitem: logo.png (image/png)
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[coney-dump-path=*]]"
 - button "Retry":
   - img

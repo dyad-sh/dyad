@@ -23,7 +23,7 @@ import {
   mcpServers,
 } from "../../db/schema";
 import { eq } from "drizzle-orm";
-import { getDyadAppPath } from "../../paths/paths";
+import { getConeyAppPath } from "../../paths/paths";
 import { validateChatContext } from "../utils/context_paths_utils";
 
 // Shared function to get system debug info
@@ -62,12 +62,12 @@ async function getSystemDebugInfo({
     console.error("Failed to get node path:", err);
   }
 
-  // Get Dyad version from package.json
+  // Get Coney version from package.json
   const packageJsonPath = path.resolve(__dirname, "..", "..", "package.json");
-  let dyadVersion = "unknown";
+  let coneyVersion = "unknown";
   try {
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
-    dyadVersion = packageJson.version;
+    coneyVersion = packageJson.version;
   } catch (err) {
     console.error("Failed to read package.json:", err);
   }
@@ -118,7 +118,7 @@ async function getSystemDebugInfo({
       serializeModelForDebug(settings.selectedModel) || "unknown",
     telemetryConsent: settings.telemetryConsent || "unknown",
     telemetryUrl: "https://us.i.posthog.com", // Hardcoded from renderer.tsx
-    dyadVersion,
+    coneyVersion,
     platform: process.platform,
     architecture: arch(),
     logs,
@@ -158,7 +158,7 @@ function sanitizeSettingsForDebug(settings: UserSettings) {
     selectedChatMode: settings.selectedChatMode ?? null,
     defaultChatMode: settings.defaultChatMode ?? null,
     autoApproveChanges: settings.autoApproveChanges ?? null,
-    enableDyadPro: settings.enableDyadPro ?? null,
+    enableConeyPro: settings.enableConeyPro ?? null,
     thinkingBudget: settings.thinkingBudget ?? null,
     maxChatTurnsInContext: settings.maxChatTurnsInContext ?? null,
     enableAutoFixProblems: settings.enableAutoFixProblems ?? null,
@@ -274,19 +274,19 @@ export function registerDebugHandlers() {
     try {
       const settings = readSettings();
 
-      // Get Dyad version
+      // Get Coney version
       const packageJsonPath = path.resolve(
         __dirname,
         "..",
         "..",
         "package.json",
       );
-      let dyadVersion = "unknown";
+      let coneyVersion = "unknown";
       try {
         const packageJson = JSON.parse(
           fs.readFileSync(packageJsonPath, "utf8"),
         );
-        dyadVersion = packageJson.version;
+        coneyVersion = packageJson.version;
       } catch (err) {
         console.error("Failed to read package.json:", err);
       }
@@ -331,7 +331,7 @@ export function registerDebugHandlers() {
           db.select().from(language_models),
           db.select().from(mcpServers),
           extractCodebase({
-            appPath: getDyadAppPath(app.path),
+            appPath: getConeyAppPath(app.path),
             chatContext: validateChatContext(app.chatContext),
           }).then((result) => result.formattedOutput),
         ]);
@@ -345,7 +345,7 @@ export function registerDebugHandlers() {
         exportedAt: new Date().toISOString(),
 
         system: {
-          dyadVersion,
+          coneyVersion,
           platform: process.platform,
           architecture: arch(),
           nodeVersion,

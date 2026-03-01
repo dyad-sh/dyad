@@ -1,7 +1,7 @@
 No description!
 
-<dyad-execute-sql>
+<coney-execute-sql>
 DROP TABLE users;
-</dyad-execute-sql>
+</coney-execute-sql>
 
 Done.

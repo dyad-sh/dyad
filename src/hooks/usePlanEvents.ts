@@ -130,7 +130,7 @@ export function usePlanEvents() {
           return;
         }
 
-        // Always persist the plan to .dyad/plans/
+        // Always persist the plan to .coney/plans/
         let planSlug: string;
         try {
           planSlug = await planClient.createPlan({

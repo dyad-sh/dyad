@@ -26,7 +26,7 @@ jobs:
           # PERSONAL_ACCESS_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
         with:
           path-to-signatures: "signatures/version1/cla.json"
-          path-to-document: "https://github.com/dyad-sh/dyad/blob/main/CLA.md"
+          path-to-document: "https://github.com/coney-sh/coney/blob/main/CLA.md"
           # branch should not be protected
           branch: "cla"
           allowlist: claude

@@ -189,7 +189,7 @@ gh api /repos/owner/repo/commits | tail -20
 gh api /repos/owner/repo/commits | tail -n 50
 gh api /repos/owner/repo/releases | tail
 gh api graphql -f query='query { viewer { login } }' | head -5
-gh api graphql -f query='query($owner: String!, $repo: String!, $pr: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { reviewThreads(first: 100) { nodes { id isResolved isOutdated path line comments(first: 10) { nodes { id databaseId body author { login } createdAt } } } } } } }' -f owner=dyad-sh -f repo=dyad -F pr=2305 | head -100
+gh api graphql -f query='query($owner: String!, $repo: String!, $pr: Int!) { repository(owner: $owner, name: $repo) { pullRequest(number: $pr) { reviewThreads(first: 100) { nodes { id isResolved isOutdated path line comments(first: 10) { nodes { id databaseId body author { login } createdAt } } } } } } }' -f owner=coney-sh -f repo=coney -F pr=2305 | head -100
 gh pr view 123 --json comments | head -50
 gh issue list --json number,title | tail -10
 
@@ -562,7 +562,7 @@ gh api /repos/owner/repo/issues/123/comments -f body='See PR #456'
 # Add labels to issues (POST to /issues/{id}/labels)
 gh api repos/owner/repo/issues/123/labels -f "labels[]=bug"
 gh api repos/owner/repo/issues/123/labels --method POST -f "labels[]=cc:request"
-gh api repos/dyad-sh/dyad/issues/2488/labels --method POST -f "labels[]=cc:request" 2>&1
+gh api repos/coney-sh/coney/issues/2488/labels --method POST -f "labels[]=cc:request" 2>&1
 gh api /repos/owner/repo/issues/456/labels -f "labels[]=enhancement"
 gh api -X POST repos/owner/repo/issues/789/labels -f "labels[]=bug" -f "labels[]=urgent"
 
@@ -667,7 +667,7 @@ gh run list --json databaseId,status | jq '.[] | select(.status == "completed")'
 # Redirect stderr to /dev/null (suppress errors)
 gh api repos/owner/repo/pulls/123/comments 2>/dev/null
 gh api repos/owner/repo/pulls/123/comments 2>/dev/null | jq '.[]'
-gh api repos/dyad-sh/dyad/pulls/2361/comments 2>/dev/null | jq -r '.[] | "\(.path):\(.line // .original_line):\(.body | split("\n")[0])"' 2>/dev/null || echo "NO_COMMENTS"
+gh api repos/coney-sh/coney/pulls/2361/comments 2>/dev/null | jq -r '.[] | "\(.path):\(.line // .original_line):\(.body | split("\n")[0])"' 2>/dev/null || echo "NO_COMMENTS"
 
 # Stderr to stdout redirects
 gh pr view 123 2>&1
@@ -769,7 +769,7 @@ REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner) && gh api "repos/${R
 # =============================================================================
 
 # Loading GraphQL query from file into gh api graphql argument
-gh api graphql -F owner=dyad-sh -F repo=dyad -F pr=2284 -f query="$(cat /tmp/pr_threads_query.graphql)" > /tmp/all_threads.json
+gh api graphql -F owner=coney-sh -F repo=coney -F pr=2284 -f query="$(cat /tmp/pr_threads_query.graphql)" > /tmp/all_threads.json
 # Note: $(cat ...) is recognized as safe (read-only command) and neutralized before
 # shell injection checking. The > redirect doesn't match any injection pattern either
 # (only >( process substitution does). This command passes as a passthrough.
@@ -782,7 +782,7 @@ gh api graphql -F owner=dyad-sh -F repo=dyad -F pr=2284 -f query="$(cat /tmp/pr_
 # in --body content, including backticks, pipes, bold (**), etc.
 
 # Issue create with markdown formatting in body
-gh issue create --repo "dyad-sh/dyad" --title "Add deployment packaging" --label "enhancement" --body "**Customer feedback:**"
+gh issue create --repo "coney-sh/coney" --title "Add deployment packaging" --label "enhancement" --body "**Customer feedback:**"
 gh issue create --title "Bug report" --body "**Steps to reproduce:**"
 gh issue create --title "Feature request" --body "**Problem:** the current implementation is slow"
 gh issue create --title "Tracking issue" --body "## Tasks\n- [ ] Task 1\n- [ ] Task 2"
@@ -814,7 +814,7 @@ gh issue create --title "Complex" --body "## Summary\n**Bold** and `code` and *i
 
 # Issue create with --repo flag and rich body
 gh issue create --repo "owner/repo" --title "Bug" --body "**Error:** `TypeError` in `main.ts`"
-gh issue create --repo "dyad-sh/dyad" --title "Enhancement" --label "enhancement" --body "**Proposal:** Add support for `--verbose` flag"
+gh issue create --repo "coney-sh/coney" --title "Enhancement" --label "enhancement" --body "**Proposal:** Add support for `--verbose` flag"
 
 # Issue comment with markdown and special characters
 gh issue comment 123 --body "**Confirmed.** Running `npm test` reproduces this."

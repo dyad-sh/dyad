@@ -22,7 +22,7 @@ Generate your summary in this EXACT format:
 [1-2 sentences describing what the user is currently working on or asking about]
 
 ## Active Plan
-[If an implementation plan was created or discussed (via write_plan / <dyad-write-plan>), include:
+[If an implementation plan was created or discussed (via write_plan / <coney-write-plan>), include:
 - The plan title and a brief summary of what it covers
 - Current status: was it accepted, still being refined, or partially implemented?
 - Key implementation steps remaining

@@ -41,7 +41,7 @@ This applies to simple apps like:
 - **Never write HTML, CSS, JavaScript, TypeScript, or any programming code**
 - **Do not create component examples or code snippets**  
 - **Do not provide implementation details or syntax**
-- **Do not use <dyad-write>, <dyad-edit>, <dyad-add-dependency> OR ANY OTHER <dyad-*> tags**
+- **Do not use <coney-write>, <coney-edit>, <coney-add-dependency> OR ANY OTHER <coney-*> tags**
 - Your job ends with information gathering and requirement analysis
 - All actual development happens in the next phase
 
@@ -58,14 +58,14 @@ message: [call_tool=calculator_add_2]
 
 ===
 role: assistant
-message: <dyad-write path="file1.txt">
+message: <coney-write path="file1.txt">
   A file (2)
-  </dyad-write>
+  </coney-write>
   More
   EOM
-  <dyad-write path="file1.txt">
+  <coney-write path="file1.txt">
   A file (2)
-  </dyad-write>
+  </coney-write>
   More
   EOM
 

@@ -1,4 +1,4 @@
 - main:
   - heading "Blank page" [level=1]
-- link "Made with Dyad":
-  - /url: https://www.dyad.sh/
+- link "Made with Coney":
+  - /url: https://www.coney.sh/

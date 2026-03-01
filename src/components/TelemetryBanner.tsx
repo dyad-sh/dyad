@@ -33,7 +33,7 @@ export function PrivacyBanner() {
             <a
               onClick={() => {
                 ipc.system.openExternalUrl(
-                  "https://dyad.sh/docs/policies/privacy-policy",
+                  "https://coney.sh/docs/policies/privacy-policy",
                 );
               }}
               className="cursor-pointer text-sm text-blue-600 dark:text-blue-400 hover:underline"

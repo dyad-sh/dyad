@@ -4,18 +4,18 @@ message: [[SYSTEM_MESSAGE]]
 
 ===
 role: user
-message: This is my codebase. <dyad-file path="manual/baz.json">
+message: This is my codebase. <coney-file path="manual/baz.json">
 ["even json is included"]
 
-</dyad-file>
+</coney-file>
 
-<dyad-file path="manual/file.ts">
+<coney-file path="manual/file.ts">
 
-</dyad-file>
+</coney-file>
 
-<dyad-file path="manual/sub-manual/sub-manual.js">
+<coney-file path="manual/sub-manual/sub-manual.js">
 
-</dyad-file>
+</coney-file>
 
 
 
@@ -29,7 +29,7 @@ message: [dump]
 
 ===
 role: assistant
-message: [[dyad-dump-path=*]]
+message: [[coney-dump-path=*]]
 
 ===
 role: user

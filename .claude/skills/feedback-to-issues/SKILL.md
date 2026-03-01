@@ -1,5 +1,5 @@
 ---
-name: dyad:feedback-to-issues
+name: coney:feedback-to-issues
 description: Turn customer feedback (usually an email) into discrete GitHub issues. Checks for duplicates, proposes new issues for approval, creates them, and drafts a reply email.
 ---
 

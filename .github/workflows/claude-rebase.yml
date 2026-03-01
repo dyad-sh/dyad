@@ -53,7 +53,7 @@ jobs:
       - name: Configure push remote for fork PRs
         if: steps.check-author.outputs.should_continue == 'true'
         run: |
-          # claude-code-action overwrites origin's fetch URL to point to dyad-sh/dyad
+          # claude-code-action overwrites origin's fetch URL to point to coney-sh/coney
           # (using GITHUB_REPOSITORY which is always the base repo in pull_request_target events).
           # Setting pushurl separately ensures git push still targets the fork,
           # because git uses pushurl over url when both are configured.
@@ -81,16 +81,16 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
-            You are orchestrating the /dyad:pr-rebase skill. Your job is to run it end-to-end as a sub-agent with NO shortcuts.
+            You are orchestrating the /coney:pr-rebase skill. Your job is to run it end-to-end as a sub-agent with NO shortcuts.
 
             Rules:
-            1. Execute every step of /dyad:pr-rebase sequentially. Do not skip, summarize, or stop early.
-            2. The skill includes a "/dyad:pr-push" step. This step MUST be fully executed — not just mentioned or planned, but actually run to completion.
-            3. After "/dyad:pr-push" completes, verify its output to confirm success (e.g., a PR URL or push confirmation).
-            4. Do not consider the task complete until "/dyad:pr-push" has succeeded and you have confirmed its output.
+            1. Execute every step of /coney:pr-rebase sequentially. Do not skip, summarize, or stop early.
+            2. The skill includes a "/coney:pr-push" step. This step MUST be fully executed — not just mentioned or planned, but actually run to completion.
+            3. After "/coney:pr-push" completes, verify its output to confirm success (e.g., a PR URL or push confirmation).
+            4. Do not consider the task complete until "/coney:pr-push" has succeeded and you have confirmed its output.
 
             Now run the following command:          
-            /dyad:pr-rebase ${{ steps.check-author.outputs.pr_number }}
+            /coney:pr-rebase ${{ steps.check-author.outputs.pr_number }}
 
       - name: Update labels on success
         if: steps.check-author.outputs.should_continue == 'true' && success()

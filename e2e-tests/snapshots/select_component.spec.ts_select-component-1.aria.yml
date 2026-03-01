@@ -3,6 +3,6 @@
 - region "Notifications alt+T"
 - heading "Welcome to Your Blank App" [level=1]
 - paragraph: Start building your amazing project here!
-- link "Made with Dyad":
-  - /url: https://www.dyad.sh/
+- link "Made with Coney":
+  - /url: https://www.coney.sh/
 - text: h1 src/pages/Index.tsx

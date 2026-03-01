@@ -138,7 +138,7 @@ export const FileEditor = ({
     theme === "dark" ||
     (theme === "system" &&
       window.matchMedia("(prefers-color-scheme: dark)").matches);
-  const editorTheme = isDarkMode ? "dyad-dark" : "dyad-light";
+  const editorTheme = isDarkMode ? "coney-dark" : "coney-light";
 
   // Navigate to a specific line in the editor
   const navigateToLine = React.useCallback((line: number | null) => {

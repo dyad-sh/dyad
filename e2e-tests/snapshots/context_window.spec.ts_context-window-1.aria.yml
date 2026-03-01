@@ -3,10 +3,10 @@
 - paragraph: tc=2
 - paragraph: "2"
 - paragraph: "[dump] tc=3"
-- paragraph: /\[\[dyad-dump-path=\/Users\/will\/Documents\/GitHub\/dyad-zero\/testing\/fake-llm-server\/dist\/generated\/\d+\.json\]\]/
+- paragraph: /\[\[coney-dump-path=\/Users\/will\/Documents\/GitHub\/coney-zero\/testing\/fake-llm-server\/dist\/generated\/\d+\.json\]\]/
 - paragraph: "[dump] tc=4"
-- paragraph: /\[\[dyad-dump-path=\/Users\/will\/Documents\/GitHub\/dyad-zero\/testing\/fake-llm-server\/dist\/generated\/\d+\.json\]\]/
+- paragraph: /\[\[coney-dump-path=\/Users\/will\/Documents\/GitHub\/coney-zero\/testing\/fake-llm-server\/dist\/generated\/\d+\.json\]\]/
 - paragraph: "[dump] tc=5"
-- paragraph: /\[\[dyad-dump-path=\/Users\/will\/Documents\/GitHub\/dyad-zero\/testing\/fake-llm-server\/dist\/generated\/\d+\.json\]\]/
+- paragraph: /\[\[coney-dump-path=\/Users\/will\/Documents\/GitHub\/coney-zero\/testing\/fake-llm-server\/dist\/generated\/\d+\.json\]\]/
 - button "Retry":
   - img

@@ -1,5 +1,5 @@
 ---
-name: dyad:fix-issue
+name: coney:fix-issue
 description: Create a plan to fix a GitHub issue, then implement it locally.
 ---
 
@@ -75,9 +75,9 @@ Create a plan to fix a GitHub issue, then implement it locally.
    If the plan is straightforward with no ambiguities or open questions:
    - Proceed directly to implementation without asking for approval
    - Implement the plan step by step
-   - Run `/dyad:pr-push` when complete
+   - Run `/coney:pr-push` when complete
 
    If the plan has significant complexity, multiple valid approaches, or requires user input:
    - Present the plan to the user and use `ExitPlanMode` to request approval
    - After approval, implement the plan step by step
-   - Run `/dyad:pr-push` when complete
+   - Run `/coney:pr-push` when complete

@@ -18,8 +18,8 @@ Detailed rules and learnings are in the `rules/` directory. Read the relevant fi
 | [rules/typescript-strict-mode.md](rules/typescript-strict-mode.md)   | Debugging type errors from `npm run ts` (tsgo) that pass normal tsc                              |
 | [rules/openai-reasoning-models.md](rules/openai-reasoning-models.md) | Working with OpenAI reasoning model (o1/o3/o4-mini) conversation history                         |
 | [rules/adding-settings.md](rules/adding-settings.md)                 | Adding a new user-facing setting or toggle to the Settings page                                  |
-| [rules/chat-message-indicators.md](rules/chat-message-indicators.md) | Using `<dyad-status>` tags in chat messages for system indicators                                |
-| [rules/product-principles.md](rules/product-principles.md)           | Planning new features, especially via `dyad:swarm-to-plan`, to guide design trade-offs           |
+| [rules/chat-message-indicators.md](rules/chat-message-indicators.md) | Using `<coney-status>` tags in chat messages for system indicators                                |
+| [rules/product-principles.md](rules/product-principles.md)           | Planning new features, especially via `coney:swarm-to-plan`, to guide design trade-offs           |
 
 ## Project setup and lints
 
@@ -35,10 +35,10 @@ npm run init-precommit
 
 RUN THE FOLLOWING CHECKS before you do a commit.
 
-If you have access to the `/dyad:lint` skill, use it to run all pre-commit checks automatically:
+If you have access to the `/coney:lint` skill, use it to run all pre-commit checks automatically:
 
 ```
-/dyad:lint
+/coney:lint
 ```
 
 Otherwise, run the following commands directly:
@@ -114,15 +114,15 @@ Use unit testing for pure business logic and util functions.
 
 See [rules/e2e-testing.md](rules/e2e-testing.md) for full E2E testing guidance, including Playwright tips and fixture setup.
 
-**Debugging E2E test failures with screenshots:** When an E2E test fails and you can't determine the cause from the error message alone, use the `/dyad:debug-with-playwright` skill to add screenshots at key points in the test. Playwright's built-in `screenshot: "on"` does NOT work with Electron — you must use manual `page.screenshot()` calls. The skill walks you through adding debug screenshots, running the test, viewing the captured PNGs, and cleaning up afterward.
+**Debugging E2E test failures with screenshots:** When an E2E test fails and you can't determine the cause from the error message alone, use the `/coney:debug-with-playwright` skill to add screenshots at key points in the test. Playwright's built-in `screenshot: "on"` does NOT work with Electron — you must use manual `page.screenshot()` calls. The skill walks you through adding debug screenshots, running the test, viewing the captured PNGs, and cleaning up afterward.
 
 ## Git workflow
 
 When pushing changes and creating PRs:
 
 1. If the branch already has an associated PR, push to whichever remote the branch is tracking.
-2. If the branch hasn't been pushed before, default to pushing to `origin` (the fork `wwwillchen/dyad`), then create a PR from the fork to the upstream repo (`dyad-sh/dyad`).
-3. If you cannot push to the fork due to permissions, push directly to `upstream` (`dyad-sh/dyad`) as a last resort.
+2. If the branch hasn't been pushed before, default to pushing to `origin` (the fork `wwwillchen/coney`), then create a PR from the fork to the upstream repo (`coney-sh/coney`).
+3. If you cannot push to the fork due to permissions, push directly to `upstream` (`coney-sh/coney`) as a last resort.
 
 ### Skipping automated review
 

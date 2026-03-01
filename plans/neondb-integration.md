@@ -8,7 +8,7 @@ Elevate Neon from a Portal-template-only experiment to a first-class database in
 
 ## Problem Statement
 
-Today, Neon in Dyad is a second-class citizen:
+Today, Neon in Coney is a second-class citizen:
 
 - **Locked to the Portal template**: Only `portal-mini-store` has `requiresNeon: true` — users cannot use Neon with React or Next.js templates
 - **No agent tools**: The AI agent has no `execute_sql`, `get_table_schema`, or `get_project_info` equivalents for Neon
@@ -16,7 +16,7 @@ Today, Neon in Dyad is a second-class citizen:
 - **Hub-page-only connector**: `NeonConnector` lives on the hub page, not per-app like `SupabaseConnector`
 - **Only creates projects**: No way to link existing Neon projects (only `neon:create-project` exists)
 
-This violates the **Backend-Flexible** design principle — users who want serverless Postgres without a full BaaS (Supabase) have no viable path in Dyad.
+This violates the **Backend-Flexible** design principle — users who want serverless Postgres without a full BaaS (Supabase) have no viable path in Coney.
 
 ## Scope
 
@@ -31,14 +31,14 @@ This violates the **Backend-Flexible** design principle — users who want serve
 - `add_integration` tool support for `provider: "neon"`
 - System prompt covering Drizzle ORM setup, API routes, connection patterns
 - Auth guidance: recommend NextAuth.js / Clerk / Lucia (no homegrown JWT+bcrypt)
-- `<dyad-execute-sql>` tag support routed to Neon when Neon is the active provider
+- `<coney-execute-sql>` tag support routed to Neon when Neon is the active provider
 - Neon and Supabase mutually exclusive per app
 - Full stack example code in system prompt
 
 ### Out of Scope (Follow-up / v2)
 
 - Multi-account Neon support (currently single-account; multi-org like Supabase can come later)
-- Neon-specific auth integration in Dyad (e.g., a Clerk OAuth flow in the Dyad UI)
+- Neon-specific auth integration in Coney (e.g., a Clerk OAuth flow in the Coney UI)
 - Migration file writing with `enableNeonWriteSqlMigration` flag
 - Agent-driven branch creation/deletion
 - Connection URI caching (fetch on-demand for v1)
@@ -48,7 +48,7 @@ This violates the **Backend-Flexible** design principle — users who want serve
 
 1. **As a user creating a new Next.js app**, I want to connect my Neon account and have the AI agent set up my database schema, so that I get a working database-backed app without manual SQL or connection configuration.
 
-2. **As a user with an existing Neon project**, I want to link it to my Dyad app by selecting it from a dropdown, so that I don't have to create a new project or copy connection strings.
+2. **As a user with an existing Neon project**, I want to link it to my Coney app by selecting it from a dropdown, so that I don't have to create a new project or copy connection strings.
 
 3. **As a user building a CRUD app**, I want to tell the agent "add a tasks table and build a task list page" and have it execute the SQL on Neon and generate the React components, so that I get an end-to-end working feature in one step.
 
@@ -67,7 +67,7 @@ This violates the **Backend-Flexible** design principle — users who want serve
 1. User creates or opens an app (React or Next.js template)
 2. In the app-details page, user sees **"Connect Neon"** card in the integrations section (same position as SupabaseConnector)
 3. User clicks "Connect Neon" → OAuth popup opens in browser
-4. User authorizes Dyad → popup closes, tokens stored via deep link
+4. User authorizes Coney → popup closes, tokens stored via deep link
 5. Integration card updates to show **project selector dropdown** (grouped by organization)
    - Existing projects listed via `neon:list-projects`
    - "Create New Project" option at the top
@@ -81,9 +81,9 @@ This violates the **Backend-Flexible** design principle — users who want serve
 #### AI Agent Interaction Flow
 
 1. User asks "I need a database for my todo app"
-2. If Neon is NOT connected: agent renders `<dyad-add-integration provider="neon">` prompt
+2. If Neon is NOT connected: agent renders `<coney-add-integration provider="neon">` prompt
 3. If Neon IS connected: agent uses `get_neon_project_info` to check existing tables
-4. Agent generates Drizzle schema, executes SQL via `<dyad-execute-sql>` tag
+4. Agent generates Drizzle schema, executes SQL via `<coney-execute-sql>` tag
 5. Agent generates client code appropriate to template:
    - **Next.js**: DB client + API routes + React components
    - **React/Vite**: DB client + Drizzle schema + note about needing a server for production
@@ -134,7 +134,7 @@ Three-layer architecture for generated apps:
 └─────────────────────────────────────────────┘
 ```
 
-Within Dyad itself (management plane):
+Within Coney itself (management plane):
 
 ```
 ┌─────────────────────────────────────────┐
@@ -166,7 +166,7 @@ Within Dyad itself (management plane):
 | Execute Neon SQL Tool  | `src/pro/main/ipc/handlers/local_agent/tools/execute_neon_sql.ts`      | **New** — mirrors `execute_sql.ts` with `@neondatabase/serverless`                                                      |
 | Neon System Prompt     | `src/prompts/neon_prompt.ts`                                           | **New** — DB setup, API routes, auth guidance, security rules                                                           |
 | Chat Stream Handlers   | `src/ipc/handlers/chat_stream_handlers.ts`                             | Modify — inject Neon prompt when `neonProjectId` present                                                                |
-| Response Processor     | `src/ipc/processors/response_processor.ts`                             | Modify — route `<dyad-execute-sql>` to Neon executor when Neon is active                                                |
+| Response Processor     | `src/ipc/processors/response_processor.ts`                             | Modify — route `<coney-execute-sql>` to Neon executor when Neon is active                                                |
 | Neon IPC Handlers      | `src/ipc/handlers/neon_handlers.ts`                                    | Modify — add `neon:list-projects`, `neon:set-app-project`, `neon:get-connection-uri`, `neon:execute-sql`                |
 | Neon IPC Types         | `src/ipc/types/neon.ts`                                                | Modify — add new contract schemas                                                                                       |
 | App Details Page       | `src/pages/app-details.tsx`                                            | Modify — add NeonProjectSelector component                                                                              |
@@ -389,7 +389,7 @@ export function TodoList() {
 ### Environment Variables (`.env.local`)
 
 ```bash
-# Neon Database (injected by Dyad)
+# Neon Database (injected by Coney)
 DATABASE_URL=postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/dbname?sslmode=require
 
 # NextAuth
@@ -397,7 +397,7 @@ NEXTAUTH_SECRET=your-secret-here
 NEXTAUTH_URL=http://localhost:3000
 ```
 
-### Neon Client Code Generated by Agent (for Dyad context)
+### Neon Client Code Generated by Agent (for Coney context)
 
 ```typescript
 // This is what getNeonClientCode() generates for the agent's context:
@@ -439,7 +439,7 @@ NEXTAUTH_URL=http://localhost:3000
 - [ ] Create `execute_neon_sql.ts` agent tool (mirrors `execute_sql.ts`, uses serverless driver)
 - [ ] Register all 3 tools in `tool_definitions.ts`
 - [ ] Add `neon:execute-sql`, `neon:get-connection-uri`, `neon:get-table-schema` IPC contracts
-- [ ] Update `response_processor.ts` to route `<dyad-execute-sql>` to Neon executor when `neonProjectId` is set
+- [ ] Update `response_processor.ts` to route `<coney-execute-sql>` to Neon executor when `neonProjectId` is set
 - [ ] Add `neon:set-active-branch` IPC handler for branch switching
 
 ### Phase 3: System Prompt + Branch UI (Medium effort)
@@ -474,7 +474,7 @@ NEXTAUTH_URL=http://localhost:3000
 - [ ] **Unit**: `neon_context.ts` functions with mocked `@neondatabase/serverless` and `@neondatabase/api-client`
 - [ ] **Agent tools**: Mock `AgentContext` with `neonProjectId` set/unset, verify tools enable/disable correctly
 - [ ] **E2E (connect flow)**: Extend existing `neon:fake-connect` fixture for React/Next.js templates
-- [ ] **E2E (SQL execution)**: Agent generates schema, executes `<dyad-execute-sql>`, verifies result
+- [ ] **E2E (SQL execution)**: Agent generates schema, executes `<coney-execute-sql>`, verifies result
 - [ ] **E2E (schema introspection)**: After table creation, verify `get_neon_table_schema` returns correct columns
 - [ ] **System prompt**: Verify Neon instructions injected when `neonProjectId` present, NOT when Supabase connected
 - [ ] **Security**: Verify system prompt prevents client-side `DATABASE_URL` usage in generated code
@@ -511,10 +511,10 @@ NEXTAUTH_URL=http://localhost:3000
 | Recommend external auth providers only   | Neon has no auth service. Homegrown JWT+bcrypt is a security risk. NextAuth.js has a Drizzle adapter.                                                        | JWT+bcrypt (self-contained but risky); Clerk (requires additional OAuth integration) |
 | Full branch selector in v1               | Branching is Neon's key differentiator over Supabase. Color-coded badges provide clear visual hierarchy.                                                     | Default to dev only (simpler); Read-only display (compromise)                        |
 | Mutually exclusive providers per app     | Agent prompt can't cleanly handle both Supabase and Neon contexts. Avoids ambiguity in SQL execution target.                                                 | Allow both (complex, no clear user value)                                            |
-| SQL execution in Dyad (management plane) | Matches Supabase pattern. Agent needs to create tables and seed data during build. Credentials already stored.                                               | Only in generated app (limits agent capabilities)                                    |
+| SQL execution in Coney (management plane) | Matches Supabase pattern. Agent needs to create tables and seed data during build. Credentials already stored.                                               | Only in generated app (limits agent capabilities)                                    |
 | Fetch connection URI on-demand           | Consistent with existing `neon_timestamp_utils.ts` pattern. Avoids credential rotation complexity.                                                           | Cache (faster but more complex)                                                      |
 | `@neondatabase/serverless` for SQL       | Already a dependency. HTTP-based, works in Electron. Lower latency than Management API for queries.                                                          | Management API SQL endpoint (higher latency, fewer features)                         |
 
 ---
 
-_Generated by dyad:swarm-to-plan_
+_Generated by coney:swarm-to-plan_

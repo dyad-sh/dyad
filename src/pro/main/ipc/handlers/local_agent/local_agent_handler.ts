@@ -18,9 +18,9 @@ import { db } from "@/db";
 import { chats, messages } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
-import { isDyadProEnabled, isBasicAgentMode } from "@/lib/schemas";
+import { isConeyProEnabled, isBasicAgentMode } from "@/lib/schemas";
 import { readSettings } from "@/main/settings";
-import { getDyadAppPath } from "@/paths/paths";
+import { getConeyAppPath } from "@/paths/paths";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import { safeSend } from "@/ipc/utils/safe_sender";
 import { getMaxTokens, getTemperature } from "@/ipc/utils/token_utils";
@@ -211,14 +211,14 @@ export async function handleLocalAgentStream(
   {
     placeholderMessageId,
     systemPrompt,
-    dyadRequestId,
+    coneyRequestId,
     readOnly = false,
     planModeOnly = false,
     messageOverride,
   }: {
     placeholderMessageId: number;
     systemPrompt: string;
-    dyadRequestId: string;
+    coneyRequestId: string;
     /**
      * If true, the agent operates in read-only mode (e.g., ask mode).
      * State-modifying tools are disabled, and no commits/deploys are made.
@@ -252,7 +252,7 @@ export async function handleLocalAgentStream(
       summary && summary.trim().length > 0
         ? summary
         : "Conversation compacted.";
-    const inlineCompaction = `<dyad-compaction title="Conversation compacted" state="finished">\n${escapeXmlContent(summaryText)}\n</dyad-compaction>`;
+    const inlineCompaction = `<coney-compaction title="Conversation compacted" state="finished">\n${escapeXmlContent(summaryText)}\n</coney-compaction>`;
     const backupPathNote = backupPath
       ? `\nIf you need to retrieve earlier parts of the conversation history, you can read the backup file at: ${backupPath}\nNote: This file may be large. Read only the sections you need or use grep to search for specific content rather than reading the entire file.`
       : "";
@@ -268,13 +268,13 @@ export async function handleLocalAgentStream(
   if (
     !readOnly &&
     !planModeOnly &&
-    !isDyadProEnabled(settings) &&
+    !isConeyProEnabled(settings) &&
     !isBasicAgentMode(settings)
   ) {
     safeSend(event.sender, "chat:response:error", {
       chatId: req.chatId,
       error:
-        "Agent v2 requires Dyad Pro. Please enable Dyad Pro in Settings → Pro.",
+        "Agent v2 requires Coney Pro. Please enable Coney Pro in Settings → Pro.",
     });
     return false;
   }
@@ -303,7 +303,7 @@ export async function handleLocalAgentStream(
     hiddenMessageIdsForStreaming.add(id);
   }
 
-  const appPath = getDyadAppPath(chat.app.path);
+  const appPath = getConeyAppPath(chat.app.path);
 
   const maybePerformPendingCompaction = async (options?: {
     showOnTopOfCurrentResponse?: boolean;
@@ -326,11 +326,11 @@ export async function handleLocalAgentStream(
       event,
       req.chatId,
       appPath,
-      dyadRequestId,
+      coneyRequestId,
       (accumulatedSummary: string) => {
         // Stream compaction summary to the frontend in real-time.
         // During mid-turn compaction, keep already streamed content visible.
-        const compactionPreview = `<dyad-compaction title="Compacting conversation">\n${escapeXmlContent(accumulatedSummary)}\n</dyad-compaction>`;
+        const compactionPreview = `<coney-compaction title="Compacting conversation">\n${escapeXmlContent(accumulatedSummary)}\n</coney-compaction>`;
         const previewContent = options?.showOnTopOfCurrentResponse
           ? `${fullResponse}${streamingPreview ? streamingPreview : ""}\n${compactionPreview}`
           : compactionPreview;
@@ -432,9 +432,9 @@ export async function handleLocalAgentStream(
       messageId: placeholderMessageId,
       isSharedModulesChanged: false,
       todos: [],
-      dyadRequestId,
+      coneyRequestId,
       fileEditTracker,
-      isDyadPro: isDyadProEnabled(settings),
+      isConeyPro: isConeyProEnabled(settings),
       onXmlStream: (accumulatedXml: string) => {
         // Stream accumulated XML to UI without persisting
         streamingPreview = accumulatedXml;
@@ -534,9 +534,9 @@ export async function handleLocalAgentStream(
           builtinProviderId: modelClient.builtinProviderId,
         }),
         providerOptions: getProviderOptions({
-          dyadAppId: chat.app.id,
-          dyadRequestId,
-          dyadDisableFiles: true, // Local agent uses tools, not file injection
+          coneyAppId: chat.app.id,
+          coneyRequestId,
+          coneyDisableFiles: true, // Local agent uses tools, not file injection
           files: [],
           mentionedAppsCodebases: [],
           builtinProviderId: modelClient.builtinProviderId,
@@ -1088,7 +1088,7 @@ async function getMcpTools(
               const { serverName, toolName } = parseMcpToolKey(key);
               const content = JSON.stringify(args, null, 2);
               ctx.onXmlComplete(
-                `<dyad-mcp-tool-call server="${serverName}" tool="${toolName}">\n${content}\n</dyad-mcp-tool-call>`,
+                `<coney-mcp-tool-call server="${serverName}" tool="${toolName}">\n${content}\n</coney-mcp-tool-call>`,
               );
 
               const res = await mcpTool.execute(args, execCtx);
@@ -1096,7 +1096,7 @@ async function getMcpTools(
                 typeof res === "string" ? res : JSON.stringify(res);
 
               ctx.onXmlComplete(
-                `<dyad-mcp-tool-result server="${serverName}" tool="${toolName}">\n${resultStr}\n</dyad-mcp-tool-result>`,
+                `<coney-mcp-tool-result server="${serverName}" tool="${toolName}">\n${resultStr}\n</coney-mcp-tool-result>`,
               );
 
               return resultStr;
@@ -1106,7 +1106,7 @@ async function getMcpTools(
               const errorStack =
                 error instanceof Error && error.stack ? error.stack : "";
               ctx.onXmlComplete(
-                `<dyad-output type="error" message="MCP tool '${key}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorStack || errorMessage)}</dyad-output>`,
+                `<coney-output type="error" message="MCP tool '${key}' failed: ${escapeXmlAttr(errorMessage)}">${escapeXmlContent(errorStack || errorMessage)}</coney-output>`,
               );
               throw error;
             }

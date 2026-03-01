@@ -4,7 +4,7 @@ message: [[SYSTEM_MESSAGE]]
 
 ===
 role: user
-message: This is my codebase. <dyad-file path=".gitignore">
+message: This is my codebase. <coney-file path=".gitignore">
 # Logs
 logs
 *.log
@@ -30,9 +30,9 @@ dist-ssr
 *.sln
 *.sw?
 
-</dyad-file>
+</coney-file>
 
-<dyad-file path="AI_RULES.md">
+<coney-file path="AI_RULES.md">
 # Tech Stack
 
 - You are building a React application.
@@ -53,23 +53,23 @@ Available packages and libraries:
 - You have ALL the necessary Radix UI components installed.
 - Use prebuilt components from the shadcn/ui library after importing them. Note that these files shouldn't be edited, so make new components if you need to change them.
 
-</dyad-file>
+</coney-file>
 
-<dyad-file path="components.json">
+<coney-file path="components.json">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="eslint.config.js">
+<coney-file path="eslint.config.js">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="index.html">
+<coney-file path="index.html">
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>dyad-generated-app</title>
+    <title>coney-generated-app</title>
   </head>
 
   <body>
@@ -78,9 +78,9 @@ Available packages and libraries:
   </body>
 </html>
 
-</dyad-file>
+</coney-file>
 
-<dyad-file path="postcss.config.js">
+<coney-file path="postcss.config.js">
 export default {
   plugins: {
     tailwindcss: {},
@@ -88,26 +88,26 @@ export default {
   },
 };
 
-</dyad-file>
+</coney-file>
 
-<dyad-file path="public/favicon.ico">
+<coney-file path="public/favicon.ico">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="public/placeholder.svg">
+<coney-file path="public/placeholder.svg">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="public/robots.txt">
+<coney-file path="public/robots.txt">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="README.md">
-# Welcome to your Dyad app
+<coney-file path="README.md">
+# Welcome to your Coney app
 
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/App.css">
+<coney-file path="src/App.css">
 #root {
   max-width: 1280px;
   margin: 0 auto;
@@ -151,9 +151,9 @@ export default {
   color: #888;
 }
 
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/App.tsx">
+<coney-file path="src/App.tsx">
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -182,223 +182,223 @@ const App = () => (
 
 export default App;
 
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/made-with-dyad.tsx">
-export const MadeWithDyad = () => {
+<coney-file path="src/components/made-with-coney.tsx">
+export const MadeWithConey = () => {
   return (
     <div className="p-4 text-center">
       <a
-        href="https://www.dyad.sh/"
+        href="https://www.coney.sh/"
         target="_blank"
         rel="noopener noreferrer"
         className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
       >
-        Made with Dyad
+        Made with Coney
       </a>
     </div>
   );
 };
 
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/accordion.tsx">
+<coney-file path="src/components/ui/accordion.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/alert-dialog.tsx">
+<coney-file path="src/components/ui/alert-dialog.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/alert.tsx">
+<coney-file path="src/components/ui/alert.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/aspect-ratio.tsx">
+<coney-file path="src/components/ui/aspect-ratio.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/avatar.tsx">
+<coney-file path="src/components/ui/avatar.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/badge.tsx">
+<coney-file path="src/components/ui/badge.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/breadcrumb.tsx">
+<coney-file path="src/components/ui/breadcrumb.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/button.tsx">
+<coney-file path="src/components/ui/button.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/calendar.tsx">
+<coney-file path="src/components/ui/calendar.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/card.tsx">
+<coney-file path="src/components/ui/card.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/carousel.tsx">
+<coney-file path="src/components/ui/carousel.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/chart.tsx">
+<coney-file path="src/components/ui/chart.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/checkbox.tsx">
+<coney-file path="src/components/ui/checkbox.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/collapsible.tsx">
+<coney-file path="src/components/ui/collapsible.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/command.tsx">
+<coney-file path="src/components/ui/command.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/context-menu.tsx">
+<coney-file path="src/components/ui/context-menu.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/dialog.tsx">
+<coney-file path="src/components/ui/dialog.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/drawer.tsx">
+<coney-file path="src/components/ui/drawer.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/dropdown-menu.tsx">
+<coney-file path="src/components/ui/dropdown-menu.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/form.tsx">
+<coney-file path="src/components/ui/form.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/hover-card.tsx">
+<coney-file path="src/components/ui/hover-card.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/input-otp.tsx">
+<coney-file path="src/components/ui/input-otp.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/input.tsx">
+<coney-file path="src/components/ui/input.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/label.tsx">
+<coney-file path="src/components/ui/label.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/menubar.tsx">
+<coney-file path="src/components/ui/menubar.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/navigation-menu.tsx">
+<coney-file path="src/components/ui/navigation-menu.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/pagination.tsx">
+<coney-file path="src/components/ui/pagination.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/popover.tsx">
+<coney-file path="src/components/ui/popover.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/progress.tsx">
+<coney-file path="src/components/ui/progress.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/radio-group.tsx">
+<coney-file path="src/components/ui/radio-group.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/resizable.tsx">
+<coney-file path="src/components/ui/resizable.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/scroll-area.tsx">
+<coney-file path="src/components/ui/scroll-area.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/select.tsx">
+<coney-file path="src/components/ui/select.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/separator.tsx">
+<coney-file path="src/components/ui/separator.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/sheet.tsx">
+<coney-file path="src/components/ui/sheet.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/sidebar.tsx">
+<coney-file path="src/components/ui/sidebar.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/skeleton.tsx">
+<coney-file path="src/components/ui/skeleton.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/slider.tsx">
+<coney-file path="src/components/ui/slider.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/sonner.tsx">
+<coney-file path="src/components/ui/sonner.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/switch.tsx">
+<coney-file path="src/components/ui/switch.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/table.tsx">
+<coney-file path="src/components/ui/table.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/tabs.tsx">
+<coney-file path="src/components/ui/tabs.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/textarea.tsx">
+<coney-file path="src/components/ui/textarea.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/toast.tsx">
+<coney-file path="src/components/ui/toast.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/toaster.tsx">
+<coney-file path="src/components/ui/toaster.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/toggle-group.tsx">
+<coney-file path="src/components/ui/toggle-group.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/toggle.tsx">
+<coney-file path="src/components/ui/toggle.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/tooltip.tsx">
+<coney-file path="src/components/ui/tooltip.tsx">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/components/ui/use-toast.ts">
+<coney-file path="src/components/ui/use-toast.ts">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/globals.css">
+<coney-file path="src/globals.css">
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -501,9 +501,9 @@ export const MadeWithDyad = () => {
   }
 }
 
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/hooks/use-mobile.tsx">
+<coney-file path="src/hooks/use-mobile.tsx">
 import * as React from "react";
 
 const MOBILE_BREAKPOINT = 768;
@@ -526,9 +526,9 @@ export function useIsMobile() {
   return !!isMobile;
 }
 
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/hooks/use-toast.ts">
+<coney-file path="src/hooks/use-toast.ts">
 import * as React from "react";
 
 import type { ToastActionElement, ToastProps } from "@/components/ui/toast";
@@ -718,9 +718,9 @@ function useToast() {
 
 export { useToast, toast };
 
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/lib/utils.ts">
+<coney-file path="src/lib/utils.ts">
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -728,21 +728,21 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/main.tsx">
+<coney-file path="src/main.tsx">
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./globals.css";
 
 createRoot(document.getElementById("root")!).render(<App />);
 
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/pages/Index.tsx">
+<coney-file path="src/pages/Index.tsx">
 // Update this page (the content is just a fallback if you fail to update the page)
 
-import { MadeWithDyad } from "@/components/made-with-dyad";
+import { MadeWithConey } from "@/components/made-with-coney";
 
 const Index = () => {
   return (
@@ -753,16 +753,16 @@ const Index = () => {
           Start building your amazing project here!
         </p>
       </div>
-      <MadeWithDyad />
+      <MadeWithConey />
     </div>
   );
 };
 
 export default Index;
 
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/pages/NotFound.tsx">
+<coney-file path="src/pages/NotFound.tsx">
 import { useLocation } from "react-router-dom";
 import { useEffect } from "react";
 
@@ -791,9 +791,9 @@ const NotFound = () => {
 
 export default NotFound;
 
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/utils/toast.ts">
+<coney-file path="src/utils/toast.ts">
 import { toast } from "sonner";
 
 export const showSuccess = (message: string) => {
@@ -812,14 +812,14 @@ export const dismissToast = (toastId: string) => {
   toast.dismiss(toastId);
 };
 
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/vite-env.d.ts">
+<coney-file path="src/vite-env.d.ts">
 /// <reference types="vite/client" />
 
-</dyad-file>
+</coney-file>
 
-<dyad-file path="tailwind.config.ts">
+<coney-file path="tailwind.config.ts">
 import type { Config } from "tailwindcss";
 
 export default {
@@ -917,21 +917,21 @@ export default {
   plugins: [require("tailwindcss-animate")],
 } satisfies Config;
 
-</dyad-file>
+</coney-file>
 
-<dyad-file path="tsconfig.app.json">
+<coney-file path="tsconfig.app.json">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="tsconfig.json">
+<coney-file path="tsconfig.json">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="tsconfig.node.json">
+<coney-file path="tsconfig.node.json">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="vercel.json">
+<coney-file path="vercel.json">
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
@@ -942,11 +942,11 @@ export default {
   ]
 }
 
-</dyad-file>
+</coney-file>
 
-<dyad-file path="vite.config.ts">
+<coney-file path="vite.config.ts">
 import { defineConfig } from "vite";
-import dyadComponentTagger from "@dyad-sh/react-vite-component-tagger";
+import coneyComponentTagger from "@coney-sh/react-vite-component-tagger";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 
@@ -955,7 +955,7 @@ export default defineConfig(() => ({
     host: "::",
     port: 8080,
   },
-  plugins: [dyadComponentTagger(), react()],
+  plugins: [coneyComponentTagger(), react()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -963,7 +963,7 @@ export default defineConfig(() => ({
   },
 }));
 
-</dyad-file>
+</coney-file>
 
 
 
@@ -985,7 +985,7 @@ message: [dump] tc=3
 
 ===
 role: assistant
-message: [[dyad-dump-path=*]]
+message: [[coney-dump-path=*]]
 
 ===
 role: user
@@ -993,7 +993,7 @@ message: [dump] tc=4
 
 ===
 role: assistant
-message: [[dyad-dump-path=*]]
+message: [[coney-dump-path=*]]
 
 ===
 role: user

@@ -34,7 +34,7 @@ import type {
   SecurityReviewResult,
 } from "@/ipc/types/security";
 import { useState, useEffect } from "react";
-import { VanillaMarkdownParser } from "@/components/chat/DyadMarkdownParser";
+import { VanillaMarkdownParser } from "@/components/chat/ConeyMarkdownParser";
 import { showSuccess, showWarning } from "@/lib/toast";
 import { useLoadAppFile } from "@/hooks/useLoadAppFile";
 import { useQueryClient } from "@tanstack/react-query";
@@ -256,7 +256,7 @@ function SecurityHeader({
                 className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
                 onClick={() =>
                   ipc.system.openExternalUrl(
-                    "https://www.dyad.sh/docs/guides/security-review",
+                    "https://www.coney.sh/docs/guides/security-review",
                   )
                 }
               >

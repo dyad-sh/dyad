@@ -3,7 +3,7 @@
  * Environment variables are sensitive and should not be logged.
  */
 
-import { getDyadAppPath } from "@/paths/paths";
+import { getConeyAppPath } from "@/paths/paths";
 import { EnvVar } from "@/ipc/types";
 import path from "path";
 import fs from "fs";
@@ -14,7 +14,7 @@ const logger = log.scope("app_env_var_utils");
 export const ENV_FILE_NAME = ".env.local";
 
 function getEnvFilePath({ appPath }: { appPath: string }): string {
-  return path.join(getDyadAppPath(appPath), ENV_FILE_NAME);
+  return path.join(getConeyAppPath(appPath), ENV_FILE_NAME);
 }
 
 export async function updatePostgresUrlEnvVar({
@@ -60,15 +60,15 @@ export async function updateDbPushEnvVar({
       envVars = [];
     }
 
-    // Update or add DYAD_DISABLE_DB_PUSH
+    // Update or add CONEY_DISABLE_DB_PUSH
     const existingVar = envVars.find(
-      (envVar) => envVar.key === "DYAD_DISABLE_DB_PUSH",
+      (envVar) => envVar.key === "CONEY_DISABLE_DB_PUSH",
     );
     if (existingVar) {
       existingVar.value = disabled ? "true" : "false";
     } else {
       envVars.push({
-        key: "DYAD_DISABLE_DB_PUSH",
+        key: "CONEY_DISABLE_DB_PUSH",
         value: disabled ? "true" : "false",
       });
     }

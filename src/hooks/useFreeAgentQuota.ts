@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ipc, type FreeAgentQuotaStatus } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { useSettings } from "./useSettings";
-import { isDyadProEnabled } from "@/lib/schemas";
+import { isConeyProEnabled } from "@/lib/schemas";
 
 const THIRTY_MINUTES_IN_MS = 30 * 60 * 1000;
 // In test mode, use very short staleTime for faster E2E tests
@@ -19,7 +19,7 @@ const TEST_STALE_TIME_MS = 500;
 export function useFreeAgentQuota() {
   const { settings } = useSettings();
   const queryClient = useQueryClient();
-  const isPro = settings ? isDyadProEnabled(settings) : false;
+  const isPro = settings ? isConeyProEnabled(settings) : false;
   const isTestMode = settings?.isTestMode ?? false;
 
   const {

@@ -17,7 +17,7 @@
   - text: ""
   - img
   - text: ""
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[coney-dump-path=*]]"
 - button "Warning Could not apply Turbo Edits properly for some of the files; re-generating code...":
   - img
   - text: ""
@@ -30,7 +30,7 @@
     - text: ""
   - img
   - text: ""
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[coney-dump-path=*]]"
 - button "Copy":
   - img
 - img

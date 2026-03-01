@@ -189,7 +189,7 @@ function AppIcons({
   return (
     // When collapsed: only show the main menu
     <SidebarGroup className="pr-0">
-      {/* <SidebarGroupLabel>Dyad</SidebarGroupLabel> */}
+      {/* <SidebarGroupLabel>Coney</SidebarGroupLabel> */}
 
       <SidebarGroupContent>
         <SidebarMenu>

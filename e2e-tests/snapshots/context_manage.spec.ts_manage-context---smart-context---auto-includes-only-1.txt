@@ -19,7 +19,7 @@
       "include_thoughts": true,
       "budget_tokens": 4000
     },
-    "dyad_options": {
+    "coney_options": {
       "versioned_files": {
         "fileIdToContent": {
           "[[FILE_ID_0]]": "",
@@ -126,6 +126,6 @@
     }
   },
   "headers": {
-    "authorization": "Bearer testdyadkey"
+    "authorization": "Bearer testconeykey"
   }
 }

@@ -1,10 +1,10 @@
 import type { LocalAgentFixture } from "../../../../testing/fake-llm-server/localAgentTypes";
 
 export const fixture: LocalAgentFixture = {
-  description: "List files including hidden .dyad files",
+  description: "List files including hidden .coney files",
   turns: [
     {
-      text: "I'll list all files including the hidden .dyad directory for you.",
+      text: "I'll list all files including the hidden .coney directory for you.",
       toolCalls: [
         {
           name: "list_files",
@@ -16,7 +16,7 @@ export const fixture: LocalAgentFixture = {
       ],
     },
     {
-      text: "Here are all the files including the hidden .dyad files.",
+      text: "Here are all the files including the hidden .coney files.",
     },
   ],
 };

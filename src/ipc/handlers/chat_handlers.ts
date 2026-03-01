@@ -4,7 +4,7 @@ import { desc, eq, and, like } from "drizzle-orm";
 import type { ChatSearchResult, ChatSummary } from "../../lib/schemas";
 
 import log from "electron-log";
-import { getDyadAppPath } from "../../paths/paths";
+import { getConeyAppPath } from "../../paths/paths";
 import { getCurrentCommitHash } from "../utils/git_utils";
 import { createTypedHandler } from "./base";
 import { chatContracts } from "../types/chat";
@@ -29,7 +29,7 @@ export function registerChatHandlers() {
     try {
       // Get the current git revision of the currently checked-out branch
       initialCommitHash = await getCurrentCommitHash({
-        path: getDyadAppPath(app.path),
+        path: getConeyAppPath(app.path),
       });
     } catch (error) {
       logger.error("Error getting git revision:", error);

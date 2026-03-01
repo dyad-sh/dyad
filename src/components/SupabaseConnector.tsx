@@ -151,7 +151,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
       });
     } else {
       await ipc.system.openExternalUrl(
-        "https://supabase-oauth.dyad.sh/api/connect-supabase/login",
+        "https://supabase-oauth.coney.sh/api/connect-supabase/login",
       );
     }
   };

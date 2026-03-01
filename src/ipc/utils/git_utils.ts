@@ -21,7 +21,7 @@ const logger = log.scope("git_utils");
  * Filters out WSL-related PATH entries that can cause WSL interop issues.
  * On non-Windows platforms, returns undefined (use default environment).
  *
- * Issue: https://github.com/dyad-sh/dyad/issues/2194
+ * Issue: https://github.com/coney-sh/coney/issues/2194
  * When WSL is installed on Windows, the PATH can contain entries that cause
  * git commands to be intercepted by WSL's relay system, resulting in errors
  * like "execvpe(/bin/bash) failed: No such file or directory".

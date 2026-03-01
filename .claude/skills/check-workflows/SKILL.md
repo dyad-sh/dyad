@@ -1,5 +1,5 @@
 ---
-name: dyad:check-workflows
+name: coney:check-workflows
 description: Check GitHub Actions workflow runs from the past day, identify severe or consistent failures, and file an issue if actionable problems are found.
 ---
 

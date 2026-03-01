@@ -21,7 +21,7 @@
     - text: ""
   - img
   - text: ""
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[coney-dump-path=*]]"
 - button "Auto-fix 1 problems":
   - img
   - text: ""
@@ -34,7 +34,7 @@
     - text: ""
   - img
   - text: ""
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[coney-dump-path=*]]"
 - button "Copy":
   - img
 - img

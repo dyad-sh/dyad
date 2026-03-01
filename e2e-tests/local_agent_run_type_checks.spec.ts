@@ -9,7 +9,7 @@ import { expect } from "@playwright/test";
 testSkipIfWindows(
   "local-agent - run_type_checks updates problems panel",
   async ({ po }) => {
-    await po.setUpDyadPro({ localAgent: true });
+    await po.setUpConeyPro({ localAgent: true });
     await po.importApp("minimal");
     await po.chatActions.selectLocalAgentMode();
 

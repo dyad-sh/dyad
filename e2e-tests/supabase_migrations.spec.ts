@@ -70,7 +70,7 @@ testSkipIfWindows("supabase migrations", async ({ po }) => {
 // the mac test will catch this regression.
 testSkipIfWindows("supabase migrations with native git", async ({ po }) => {
   // Keep native Git on to catch this edge case:
-  // https://github.com/dyad-sh/dyad/issues/608
+  // https://github.com/coney-sh/coney/issues/608
   await po.setUp({ autoApprove: true, disableNativeGit: false });
   await po.sendPrompt("tc=add-supabase");
 

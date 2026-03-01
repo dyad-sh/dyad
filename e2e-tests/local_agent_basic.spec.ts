@@ -6,7 +6,7 @@ import { testSkipIfWindows } from "./helpers/test_helper";
  */
 
 testSkipIfWindows("local-agent - dump request", async ({ po }) => {
-  await po.setUpDyadPro({ localAgent: true });
+  await po.setUpConeyPro({ localAgent: true });
   await po.importApp("minimal");
   await po.chatActions.selectLocalAgentMode();
 
@@ -17,7 +17,7 @@ testSkipIfWindows("local-agent - dump request", async ({ po }) => {
 });
 
 testSkipIfWindows("local-agent - read then edit", async ({ po }) => {
-  await po.setUpDyadPro({ localAgent: true });
+  await po.setUpConeyPro({ localAgent: true });
   await po.importApp("minimal");
   await po.chatActions.selectLocalAgentMode();
 
@@ -30,7 +30,7 @@ testSkipIfWindows("local-agent - read then edit", async ({ po }) => {
 });
 
 testSkipIfWindows("local-agent - parallel tool calls", async ({ po }) => {
-  await po.setUpDyadPro({ localAgent: true });
+  await po.setUpConeyPro({ localAgent: true });
   await po.importApp("minimal");
   await po.chatActions.selectLocalAgentMode();
 

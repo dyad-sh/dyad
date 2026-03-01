@@ -35,7 +35,7 @@ jobs:
           github_token: ${{ secrets.DEFLAKE_E2E_PAT_GITHUB_TOKEN }}
           claude_args: --model claude-sonnet-4-5-20250929
           prompt: |
-            /dyad:check-workflows ${{ inputs.hours || '24' }}
+            /coney:check-workflows ${{ inputs.hours || '24' }}
       - name: Cleanup (self-hosted macOS)
         if: always()
         run: bash scripts/ci-cleanup-macos.sh

@@ -12,7 +12,7 @@ import { expect } from "@playwright/test";
 testSkipIfWindows(
   "local-agent - summarize to new chat works",
   async ({ po }) => {
-    await po.setUpDyadPro({ localAgent: true });
+    await po.setUpConeyPro({ localAgent: true });
     await po.importApp("minimal");
     await po.chatActions.selectLocalAgentMode();
 

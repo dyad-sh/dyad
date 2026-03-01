@@ -21,7 +21,7 @@
     - text: ""
   - img
 - paragraph: More EOM
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[coney-dump-path=*]]"
 - button "Auto-fix 5 problems":
   - img
   - text: ""
@@ -34,7 +34,7 @@
     - text: ""
   - img
 - paragraph: More EOM
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[coney-dump-path=*]]"
 - button "Copy":
   - img
 - img
@@ -69,7 +69,7 @@
     - text: ""
   - img
 - paragraph: More EOM
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[coney-dump-path=*]]"
 - button "Auto-fix 3 problems":
   - img
   - text: ""
@@ -82,7 +82,7 @@
     - text: ""
   - img
 - paragraph: More EOM
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[coney-dump-path=*]]"
 - button "Auto-fix 3 problems":
   - img
   - text: ""
@@ -95,7 +95,7 @@
     - text: ""
   - img
 - paragraph: More EOM
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[coney-dump-path=*]]"
 - button "Copy":
   - img
 - img

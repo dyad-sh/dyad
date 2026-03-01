@@ -25,7 +25,7 @@ export const SystemDebugInfoSchema = z.object({
   telemetryId: z.string(),
   telemetryConsent: z.string(),
   telemetryUrl: z.string(),
-  dyadVersion: z.string(),
+  coneyVersion: z.string(),
   platform: z.string(),
   architecture: z.string(),
   logs: z.string(),
@@ -233,8 +233,8 @@ export const systemContracts = {
   }),
 
   // Restart
-  restartDyad: defineContract({
-    channel: "restart-dyad",
+  restartConey: defineContract({
+    channel: "restart-coney",
     input: z.void(),
     output: z.void(),
   }),

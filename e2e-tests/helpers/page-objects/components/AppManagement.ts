@@ -55,7 +55,7 @@ export class AppManagement {
   }
 
   getAppPath({ appName }: { appName: string }) {
-    return path.join(this.userDataDir, "dyad-apps", appName);
+    return path.join(this.userDataDir, "coney-apps", appName);
   }
 
   async clickAppListItem({ appName }: { appName: string }) {

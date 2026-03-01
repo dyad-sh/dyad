@@ -1,5 +1,5 @@
 ---
-name: dyad:pr-fix:actions
+name: coney:pr-fix:actions
 description: Fix failing CI checks and GitHub Actions on a Pull Request.
 ---
 
@@ -55,7 +55,7 @@ Fix failing CI checks and GitHub Actions on a Pull Request.
 
 6. **For failing Playwright/E2E tests:**
    - Check if the failures are snapshot-related by examining the CI logs or PR comments
-   - If snapshots need updating, run the `/dyad:e2e-rebase` skill to fix them
+   - If snapshots need updating, run the `/coney:e2e-rebase` skill to fix them
    - If the failures are not snapshot-related:
      - **IMPORTANT:** First build the application before running E2E tests:
        ```
@@ -96,7 +96,7 @@ Fix failing CI checks and GitHub Actions on a Pull Request.
    Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
    ```
 
-   Then run `/dyad:pr-push` to push the changes.
+   Then run `/coney:pr-push` to push the changes.
 
 10. **Provide a summary to the user:**
     - List which checks were failing

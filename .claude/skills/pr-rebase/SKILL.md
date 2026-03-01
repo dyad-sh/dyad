@@ -1,5 +1,5 @@
 ---
-name: dyad:pr-rebase
+name: coney:pr-rebase
 description: Rebase the current branch on the latest upstream changes, resolve conflicts, and push.
 ---
 
@@ -57,7 +57,7 @@ Rebase the current branch on the latest upstream changes, resolve conflicts, and
 
 5. **Run lint and push:**
 
-   Run the `/dyad:pr-push` skill to run lint checks, fix any issues, and push the rebased branch.
+   Run the `/coney:pr-push` skill to run lint checks, fix any issues, and push the rebased branch.
 
 6. **Summarize the results:**
    - Report that the rebase was successful

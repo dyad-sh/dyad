@@ -1,7 +1,7 @@
 import { testSkipIfWindows } from "./helpers/test_helper";
 
 testSkipIfWindows("turbo edits v2 - search-replace dump", async ({ po }) => {
-  await po.setUpDyadPro();
+  await po.setUpConeyPro();
   const proModesDialog = await po.openProModesDialog({
     location: "home-chat-input-container",
   });
@@ -13,7 +13,7 @@ testSkipIfWindows("turbo edits v2 - search-replace dump", async ({ po }) => {
 });
 
 testSkipIfWindows("turbo edits v2 - search-replace approve", async ({ po }) => {
-  await po.setUpDyadPro();
+  await po.setUpConeyPro();
   const proModesDialog = await po.openProModesDialog({
     location: "home-chat-input-container",
   });
@@ -31,7 +31,7 @@ testSkipIfWindows("turbo edits v2 - search-replace approve", async ({ po }) => {
 testSkipIfWindows(
   "turbo edits v2 - search-replace fallback",
   async ({ po }) => {
-    await po.setUpDyadPro();
+    await po.setUpConeyPro();
     const proModesDialog = await po.openProModesDialog({
       location: "home-chat-input-container",
     });

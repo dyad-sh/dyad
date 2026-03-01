@@ -1,6 +1,6 @@
 ---
-name: Dyad Hub Issue
-about: Found an issue with dyad.sh/hub?
+name: Coney Hub Issue
+about: Found an issue with coney.sh/hub?
 title: "[hub]"
 labels: "hub"
 assignees: ""

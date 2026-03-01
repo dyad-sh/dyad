@@ -1,5 +1,5 @@
 ---
-name: dyad:deflake-e2e
+name: coney:deflake-e2e
 description: Identify and fix flaky E2E tests by running them repeatedly and investigating failures.
 ---
 

@@ -1,6 +1,6 @@
 {
   "body": {
-    "model": "dyad/auto",
+    "model": "coney/auto",
     "max_tokens": 32000,
     "temperature": 0,
     "messages": [
@@ -14,7 +14,7 @@
       }
     ],
     "stream": true,
-    "dyad_options": {
+    "coney_options": {
       "files": [
         {
           "path": ".gitignore",
@@ -38,12 +38,12 @@
         },
         {
           "path": "index.html",
-          "content": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <title>dyad-generated-app</title>\n  </head>\n\n  <body>\n    <div id=\"root\"></div>\n    <script type=\"module\" src=\"/src/main.tsx\"></script>\n  </body>\n</html>\n",
+          "content": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <title>coney-generated-app</title>\n  </head>\n\n  <body>\n    <div id=\"root\"></div>\n    <script type=\"module\" src=\"/src/main.tsx\"></script>\n  </body>\n</html>\n",
           "force": false
         },
         {
           "path": "package.json",
-          "content": "{\n  \"name\": \"vite_react_shadcn_ts\",\n  \"version\": \"0.0.0\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"dev\": \"vite\",\n    \"build\": \"vite build\",\n    \"build:dev\": \"vite build --mode development\",\n    \"lint\": \"eslint .\",\n    \"preview\": \"vite preview\"\n  },\n  \"dependencies\": {\n    \"@hookform/resolvers\": \"^3.9.0\",\n    \"@radix-ui/react-accordion\": \"^1.2.0\",\n    \"@radix-ui/react-alert-dialog\": \"^1.1.1\",\n    \"@radix-ui/react-aspect-ratio\": \"^1.1.0\",\n    \"@radix-ui/react-avatar\": \"^1.1.0\",\n    \"@radix-ui/react-checkbox\": \"^1.1.1\",\n    \"@radix-ui/react-collapsible\": \"^1.1.0\",\n    \"@radix-ui/react-context-menu\": \"^2.2.1\",\n    \"@radix-ui/react-dialog\": \"^1.1.2\",\n    \"@radix-ui/react-dropdown-menu\": \"^2.1.1\",\n    \"@radix-ui/react-hover-card\": \"^1.1.1\",\n    \"@radix-ui/react-label\": \"^2.1.0\",\n    \"@radix-ui/react-menubar\": \"^1.1.1\",\n    \"@radix-ui/react-navigation-menu\": \"^1.2.0\",\n    \"@radix-ui/react-popover\": \"^1.1.1\",\n    \"@radix-ui/react-progress\": \"^1.1.0\",\n    \"@radix-ui/react-radio-group\": \"^1.2.0\",\n    \"@radix-ui/react-scroll-area\": \"^1.1.0\",\n    \"@radix-ui/react-select\": \"^2.1.1\",\n    \"@radix-ui/react-separator\": \"^1.1.0\",\n    \"@radix-ui/react-slider\": \"^1.2.0\",\n    \"@radix-ui/react-slot\": \"^1.1.0\",\n    \"@radix-ui/react-switch\": \"^1.1.0\",\n    \"@radix-ui/react-tabs\": \"^1.1.0\",\n    \"@radix-ui/react-toast\": \"^1.2.1\",\n    \"@radix-ui/react-toggle\": \"^1.1.0\",\n    \"@radix-ui/react-toggle-group\": \"^1.1.0\",\n    \"@radix-ui/react-tooltip\": \"^1.1.4\",\n    \"@tanstack/react-query\": \"^5.56.2\",\n    \"class-variance-authority\": \"^0.7.1\",\n    \"clsx\": \"^2.1.1\",\n    \"cmdk\": \"^1.0.0\",\n    \"date-fns\": \"^3.6.0\",\n    \"embla-carousel-react\": \"^8.3.0\",\n    \"input-otp\": \"^1.2.4\",\n    \"lucide-react\": \"^0.462.0\",\n    \"next-themes\": \"^0.3.0\",\n    \"react\": \"^19.2.3\",\n    \"react-day-picker\": \"^9.13.0\",\n    \"react-dom\": \"^19.2.3\",\n    \"react-hook-form\": \"^7.53.0\",\n    \"react-resizable-panels\": \"^2.1.3\",\n    \"react-router-dom\": \"^6.26.2\",\n    \"recharts\": \"^2.12.7\",\n    \"sonner\": \"^1.5.0\",\n    \"tailwind-merge\": \"^2.5.2\",\n    \"tailwindcss-animate\": \"^1.0.7\",\n    \"vaul\": \"^0.9.3\",\n    \"zod\": \"^3.23.8\"\n  },\n  \"devDependencies\": {\n    \"@dyad-sh/react-vite-component-tagger\": \"^0.8.0\",\n    \"@eslint/js\": \"^9.9.0\",\n    \"@tailwindcss/typography\": \"^0.5.15\",\n    \"@types/node\": \"^22.5.5\",\n    \"@types/react\": \"^19.2.8\",\n    \"@types/react-dom\": \"^19.2.3\",\n    \"@vitejs/plugin-react-swc\": \"^3.9.0\",\n    \"autoprefixer\": \"^10.4.20\",\n    \"eslint\": \"^9.9.0\",\n    \"eslint-plugin-react-hooks\": \"^5.1.0-rc.0\",\n    \"eslint-plugin-react-refresh\": \"^0.4.9\",\n    \"globals\": \"^15.9.0\",\n    \"postcss\": \"^8.4.47\",\n    \"tailwindcss\": \"^3.4.11\",\n    \"typescript\": \"^5.5.3\",\n    \"typescript-eslint\": \"^8.0.1\",\n    \"vite\": \"^6.3.4\"\n  }\n}\n",
+          "content": "{\n  \"name\": \"vite_react_shadcn_ts\",\n  \"version\": \"0.0.0\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"dev\": \"vite\",\n    \"build\": \"vite build\",\n    \"build:dev\": \"vite build --mode development\",\n    \"lint\": \"eslint .\",\n    \"preview\": \"vite preview\"\n  },\n  \"dependencies\": {\n    \"@hookform/resolvers\": \"^3.9.0\",\n    \"@radix-ui/react-accordion\": \"^1.2.0\",\n    \"@radix-ui/react-alert-dialog\": \"^1.1.1\",\n    \"@radix-ui/react-aspect-ratio\": \"^1.1.0\",\n    \"@radix-ui/react-avatar\": \"^1.1.0\",\n    \"@radix-ui/react-checkbox\": \"^1.1.1\",\n    \"@radix-ui/react-collapsible\": \"^1.1.0\",\n    \"@radix-ui/react-context-menu\": \"^2.2.1\",\n    \"@radix-ui/react-dialog\": \"^1.1.2\",\n    \"@radix-ui/react-dropdown-menu\": \"^2.1.1\",\n    \"@radix-ui/react-hover-card\": \"^1.1.1\",\n    \"@radix-ui/react-label\": \"^2.1.0\",\n    \"@radix-ui/react-menubar\": \"^1.1.1\",\n    \"@radix-ui/react-navigation-menu\": \"^1.2.0\",\n    \"@radix-ui/react-popover\": \"^1.1.1\",\n    \"@radix-ui/react-progress\": \"^1.1.0\",\n    \"@radix-ui/react-radio-group\": \"^1.2.0\",\n    \"@radix-ui/react-scroll-area\": \"^1.1.0\",\n    \"@radix-ui/react-select\": \"^2.1.1\",\n    \"@radix-ui/react-separator\": \"^1.1.0\",\n    \"@radix-ui/react-slider\": \"^1.2.0\",\n    \"@radix-ui/react-slot\": \"^1.1.0\",\n    \"@radix-ui/react-switch\": \"^1.1.0\",\n    \"@radix-ui/react-tabs\": \"^1.1.0\",\n    \"@radix-ui/react-toast\": \"^1.2.1\",\n    \"@radix-ui/react-toggle\": \"^1.1.0\",\n    \"@radix-ui/react-toggle-group\": \"^1.1.0\",\n    \"@radix-ui/react-tooltip\": \"^1.1.4\",\n    \"@tanstack/react-query\": \"^5.56.2\",\n    \"class-variance-authority\": \"^0.7.1\",\n    \"clsx\": \"^2.1.1\",\n    \"cmdk\": \"^1.0.0\",\n    \"date-fns\": \"^3.6.0\",\n    \"embla-carousel-react\": \"^8.3.0\",\n    \"input-otp\": \"^1.2.4\",\n    \"lucide-react\": \"^0.462.0\",\n    \"next-themes\": \"^0.3.0\",\n    \"react\": \"^19.2.3\",\n    \"react-day-picker\": \"^9.13.0\",\n    \"react-dom\": \"^19.2.3\",\n    \"react-hook-form\": \"^7.53.0\",\n    \"react-resizable-panels\": \"^2.1.3\",\n    \"react-router-dom\": \"^6.26.2\",\n    \"recharts\": \"^2.12.7\",\n    \"sonner\": \"^1.5.0\",\n    \"tailwind-merge\": \"^2.5.2\",\n    \"tailwindcss-animate\": \"^1.0.7\",\n    \"vaul\": \"^0.9.3\",\n    \"zod\": \"^3.23.8\"\n  },\n  \"devDependencies\": {\n    \"@coney-sh/react-vite-component-tagger\": \"^0.8.0\",\n    \"@eslint/js\": \"^9.9.0\",\n    \"@tailwindcss/typography\": \"^0.5.15\",\n    \"@types/node\": \"^22.5.5\",\n    \"@types/react\": \"^19.2.8\",\n    \"@types/react-dom\": \"^19.2.3\",\n    \"@vitejs/plugin-react-swc\": \"^3.9.0\",\n    \"autoprefixer\": \"^10.4.20\",\n    \"eslint\": \"^9.9.0\",\n    \"eslint-plugin-react-hooks\": \"^5.1.0-rc.0\",\n    \"eslint-plugin-react-refresh\": \"^0.4.9\",\n    \"globals\": \"^15.9.0\",\n    \"postcss\": \"^8.4.47\",\n    \"tailwindcss\": \"^3.4.11\",\n    \"typescript\": \"^5.5.3\",\n    \"typescript-eslint\": \"^8.0.1\",\n    \"vite\": \"^6.3.4\"\n  }\n}\n",
           "force": false
         },
         {
@@ -68,7 +68,7 @@
         },
         {
           "path": "README.md",
-          "content": "# Welcome to your Dyad app\n",
+          "content": "# Welcome to your Coney app\n",
           "force": false
         },
         {
@@ -82,8 +82,8 @@
           "force": false
         },
         {
-          "path": "src/components/made-with-dyad.tsx",
-          "content": "export const MadeWithDyad = () => {\n  return (\n    <div className=\"p-4 text-center\">\n      <a\n        href=\"https://www.dyad.sh/\"\n        target=\"_blank\"\n        rel=\"noopener noreferrer\"\n        className=\"text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200\"\n      >\n        Made with Dyad\n      </a>\n    </div>\n  );\n};\n",
+          "path": "src/components/made-with-coney.tsx",
+          "content": "export const MadeWithConey = () => {\n  return (\n    <div className=\"p-4 text-center\">\n      <a\n        href=\"https://www.coney.sh/\"\n        target=\"_blank\"\n        rel=\"noopener noreferrer\"\n        className=\"text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200\"\n      >\n        Made with Coney\n      </a>\n    </div>\n  );\n};\n",
           "force": false
         },
         {
@@ -358,7 +358,7 @@
         },
         {
           "path": "src/pages/Index.tsx",
-          "content": "// Update this page (the content is just a fallback if you fail to update the page)\n\nimport { MadeWithDyad } from \"@/components/made-with-dyad\";\n\nconst Index = () => {\n  return (\n    <div className=\"min-h-screen flex items-center justify-center bg-gray-100\">\n      <div className=\"text-center\">\n        <h1 className=\"text-4xl font-bold mb-4\">Welcome to Your Blank App</h1>\n        <p className=\"text-xl text-gray-600\">\n          Start building your amazing project here!\n        </p>\n      </div>\n      <MadeWithDyad />\n    </div>\n  );\n};\n\nexport default Index;\n",
+          "content": "// Update this page (the content is just a fallback if you fail to update the page)\n\nimport { MadeWithConey } from \"@/components/made-with-coney\";\n\nconst Index = () => {\n  return (\n    <div className=\"min-h-screen flex items-center justify-center bg-gray-100\">\n      <div className=\"text-center\">\n        <h1 className=\"text-4xl font-bold mb-4\">Welcome to Your Blank App</h1>\n        <p className=\"text-xl text-gray-600\">\n          Start building your amazing project here!\n        </p>\n      </div>\n      <MadeWithConey />\n    </div>\n  );\n};\n\nexport default Index;\n",
           "force": false
         },
         {
@@ -403,7 +403,7 @@
         },
         {
           "path": "vite.config.ts",
-          "content": "import { defineConfig } from \"vite\";\nimport dyadComponentTagger from \"@dyad-sh/react-vite-component-tagger\";\nimport react from \"@vitejs/plugin-react-swc\";\nimport path from \"path\";\n\nexport default defineConfig(() => ({\n  server: {\n    host: \"::\",\n    port: 8080,\n  },\n  plugins: [dyadComponentTagger(), react()],\n  resolve: {\n    alias: {\n      \"@\": path.resolve(__dirname, \"./src\"),\n    },\n  },\n}));\n",
+          "content": "import { defineConfig } from \"vite\";\nimport coneyComponentTagger from \"@coney-sh/react-vite-component-tagger\";\nimport react from \"@vitejs/plugin-react-swc\";\nimport path from \"path\";\n\nexport default defineConfig(() => ({\n  server: {\n    host: \"::\",\n    port: 8080,\n  },\n  plugins: [coneyComponentTagger(), react()],\n  resolve: {\n    alias: {\n      \"@\": path.resolve(__dirname, \"./src\"),\n    },\n  },\n}));\n",
           "force": false
         }
       ],
@@ -427,7 +427,7 @@
             },
             {
               "path": "index.html",
-              "content": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <title>dyad-generated-app</title>\n  </head>\n\n  <body>\n    <div id=\"root\"></div>\n    <script type=\"module\" src=\"/src/main.tsx\"></script>\n  </body>\n</html>\n",
+              "content": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <title>coney-generated-app</title>\n  </head>\n\n  <body>\n    <div id=\"root\"></div>\n    <script type=\"module\" src=\"/src/main.tsx\"></script>\n  </body>\n</html>\n",
               "force": false
             },
             {
@@ -476,6 +476,6 @@
     }
   },
   "headers": {
-    "authorization": "Bearer testdyadkey"
+    "authorization": "Bearer testconeykey"
   }
 }

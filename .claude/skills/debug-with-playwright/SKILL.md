@@ -1,5 +1,5 @@
 ---
-name: dyad:debug-with-playwright
+name: coney:debug-with-playwright
 description: Debug E2E tests by taking screenshots at key points to visually inspect application state.
 ---
 
@@ -13,7 +13,7 @@ Debug E2E tests by taking screenshots at key points to visually inspect applicat
 
 ## Background
 
-Dyad uses Electron + Playwright for E2E tests. Because Playwright's built-in `screenshot: "on"` option does NOT work with Electron (see https://github.com/microsoft/playwright/issues/8208), you must take screenshots manually via `page.screenshot()`.
+Coney uses Electron + Playwright for E2E tests. Because Playwright's built-in `screenshot: "on"` option does NOT work with Electron (see https://github.com/microsoft/playwright/issues/8208), you must take screenshots manually via `page.screenshot()`.
 
 The test fixtures in `e2e-tests/helpers/fixtures.ts` already auto-capture a screenshot on test failure and attach it to the test report. But for debugging, you often need screenshots at specific points during test execution.
 

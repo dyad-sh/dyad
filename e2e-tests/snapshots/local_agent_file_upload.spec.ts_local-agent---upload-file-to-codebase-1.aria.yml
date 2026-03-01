@@ -20,7 +20,7 @@
   - text: ""
 - paragraph: tc=local-agent/upload-to-codebase
 - paragraph: "Attachments:"
-- paragraph: "File to upload to codebase: logo.png (file id: DYAD_ATTACHMENT_0)"
+- paragraph: "File to upload to codebase: logo.png (file id: CONEY_ATTACHMENT_0)"
 - paragraph: I'll upload your file to the codebase.
 - 'button "uploaded-file.png assets/uploaded-file.png Edit Summary: Upload file to codebase"':
   - img

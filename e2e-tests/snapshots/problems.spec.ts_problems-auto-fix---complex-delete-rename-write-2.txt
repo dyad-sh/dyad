@@ -4,7 +4,7 @@ message: [[SYSTEM_MESSAGE]]
 
 ===
 role: user
-message: This is my codebase. <dyad-file path=".gitignore">
+message: This is my codebase. <coney-file path=".gitignore">
 # Logs
 logs
 *.log
@@ -30,22 +30,22 @@ dist-ssr
 *.sln
 *.sw?
 
-</dyad-file>
+</coney-file>
 
-<dyad-file path="AI_RULES.md">
+<coney-file path="AI_RULES.md">
 [[beginning of AI_RULES.md]]
 There's already AI rules...
 [[end of AI_RULES.md]]
 
-</dyad-file>
+</coney-file>
 
-<dyad-file path="index.html">
+<coney-file path="index.html">
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>dyad-generated-app</title>
+    <title>coney-generated-app</title>
   </head>
 
   <body>
@@ -54,39 +54,39 @@ There's already AI rules...
   </body>
 </html>
 
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/bad-file.ts">
+<coney-file path="src/bad-file.ts">
 // Import doesn't exist
 // import NonExistentClass from 'non-existent-class';
 
 
 const x = new Object();
 x.toString(); // replaced with existing method
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/main.tsx">
+<coney-file path="src/main.tsx">
 finalMainTsxFileWithError();
-</dyad-file>
+</coney-file>
 
-<dyad-file path="src/vite-env.d.ts">
+<coney-file path="src/vite-env.d.ts">
 /// <reference types="vite/client" />
 
-</dyad-file>
+</coney-file>
 
-<dyad-file path="tsconfig.app.json">
+<coney-file path="tsconfig.app.json">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="tsconfig.json">
+<coney-file path="tsconfig.json">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="tsconfig.node.json">
+<coney-file path="tsconfig.node.json">
 // File contents excluded from context
-</dyad-file>
+</coney-file>
 
-<dyad-file path="vite.config.ts">
+<coney-file path="vite.config.ts">
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
@@ -104,7 +104,7 @@ export default defineConfig(() => ({
   },
 }));
 
-</dyad-file>
+</coney-file>
 
 
 
@@ -119,13 +119,13 @@ message: tc=create-ts-errors-complex
 ===
 role: assistant
 message: Tests delete-rename-write order
-<dyad-delete path="src/main.tsx">
-</dyad-delete>
-<dyad-rename from="src/App.tsx" to="src/main.tsx">
-</dyad-rename>
-<dyad-write path="src/main.tsx" description="final main.tsx file.">
+<coney-delete path="src/main.tsx">
+</coney-delete>
+<coney-rename from="src/App.tsx" to="src/main.tsx">
+</coney-rename>
+<coney-write path="src/main.tsx" description="final main.tsx file.">
 finalMainTsxFileWithError();
-</dyad-write>
+</coney-write>
 EOM
 
 ===
@@ -142,18 +142,18 @@ Please fix all errors in a concise way.
 
 ===
 role: assistant
-message: <dyad-write path="src/bad-file.ts" description="Fix remaining error.">
+message: <coney-write path="src/bad-file.ts" description="Fix remaining error.">
 // Import doesn't exist
 // import NonExistentClass from 'non-existent-class';
 
 
 const x = new Object();
 x.toString(); // replaced with existing method
-</dyad-write>
+</coney-write>
 
       
 
-[[dyad-dump-path=*]]
+[[coney-dump-path=*]]
 
 ===
 role: user

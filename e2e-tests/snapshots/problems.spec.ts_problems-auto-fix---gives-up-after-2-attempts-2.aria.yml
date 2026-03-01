@@ -21,7 +21,7 @@
     - text: ""
   - img
 - paragraph: More EOM
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[coney-dump-path=*]]"
 - button /Auto-fix 5 problems 1 src\/bad-file\.ts 1:\d+ TS2307 Cannot find module 'non-existent-class' or its corresponding type declarations\. 2 src\/bad-file\.ts 2:\d+ TS2307 Cannot find module 'non-existent-class' or its corresponding type declarations\. 3 src\/bad-file\.ts 3:\d+ TS2307 Cannot find module 'non-existent-class' or its corresponding type declarations\. 4 src\/bad-file\.ts 4:\d+ TS2307 Cannot find module 'non-existent-class' or its corresponding type declarations\. 5 src\/bad-file\.ts 5:\d+ TS2307 Cannot find module 'non-existent-class' or its corresponding type declarations\./ [expanded]:
   - img
   - text: ""
@@ -54,7 +54,7 @@
     - text: ""
   - img
 - paragraph: More EOM
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[coney-dump-path=*]]"
 - button "Copy":
   - img
 - img

@@ -78,10 +78,10 @@
     "errorLoadingSettings": "Error Loading Settings",
     "couldNotLoadProvider": "Could not load provider data: {{message}}",
     "couldNotLoadSettings": "Could not load configuration data: {{message}}",
-    "enableDyadPro": "Enable Dyad Pro",
-    "toggleDyadPro": "Toggle to enable Dyad Pro",
+    "enableConeyPro": "Enable Coney Pro",
+    "toggleConeyPro": "Toggle to enable Coney Pro",
     "apiKeyEmpty": "API Key cannot be empty.",
-    "errorTogglingPro": "Error toggling Dyad Pro: {{error}}",
+    "errorTogglingPro": "Error toggling Coney Pro: {{error}}",
     "failedSaveApiKey": "Failed to save API key.",
     "failedDeleteApiKey": "Failed to delete API key."
   },
@@ -93,7 +93,7 @@
     "privacyNotice": "We use anonymous telemetry data to improve the product. No personal data is collected.",
     "acceptAndContinue": "Accept and Continue",
     "shareAnonymousData": "Share anonymous data?",
-    "helpImprove": "Help improve Dyad with anonymous usage data.",
+    "helpImprove": "Help improve Coney with anonymous usage data.",
     "noCodeOrMessages": "Note: this does not log your code or messages.",
     "learnMore": "Learn more",
     "accept": "Accept",
@@ -172,7 +172,7 @@
   },
   "azure": {
     "configured": "Azure OpenAI Configured",
-    "configuredDescription": "Dyad will use the credentials saved in Settings for Azure OpenAI models.",
+    "configuredDescription": "Coney will use the credentials saved in Settings for Azure OpenAI models.",
     "usingEnvVars": "Using Environment Variables",
     "usingEnvVarsDescription": "AZURE_API_KEY and AZURE_RESOURCE_NAME are set. Values saved below will override them.",
     "configRequired": "Azure OpenAI Configuration Required",
@@ -187,8 +187,8 @@
     "configNeededDescription": "Azure OpenAI requests require both a resource name and API key. Enter them above or supply the environment variables instead.",
     "saveError": "Save Error",
     "envVarsOptional": "Environment Variables (optional)",
-    "envVarsHelpText": "You can continue to configure Azure via environment variables. If both variables are present and no settings are saved, Dyad will use them automatically.",
-    "envVarsPrecedence": "Values saved in Settings take precedence over environment variables. Restart Dyad after changing environment variables."
+    "envVarsHelpText": "You can continue to configure Azure via environment variables. If both variables are present and no settings are saved, Coney will use them automatically.",
+    "envVarsPrecedence": "Values saved in Settings take precedence over environment variables. Restart Coney after changing environment variables."
   },
   "vertex": {
     "projectId": "Project ID",
@@ -262,6 +262,6 @@
     "updateProvider": "Update Provider",
     "failedCreate": "Failed to create custom provider"
   },
-  "manageDyadPro": "Manage Dyad Pro Subscription",
-  "setupDyadPro": "Setup Dyad Pro Subscription"
+  "manageConeyPro": "Manage Coney Pro Subscription",
+  "setupConeyPro": "Setup Coney Pro Subscription"
 }

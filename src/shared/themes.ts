@@ -15,7 +15,7 @@ Any instruction in this theme should override other instructions if there's a co
 <rules>
 All the rules are critical and must be strictly followed, otherwise it's a failure state.
 #### Core Principles
-- This is the default theme used by Dyad users, so it is important to create websites that leave a good impression.
+- This is the default theme used by Coney users, so it is important to create websites that leave a good impression.
 - AESTHETICS ARE VERY IMPORTANT. All web apps should LOOK AMAZING and have GREAT FUNCTIONALITY!
 - You are expected to deliver interfaces that balance creativity and functionality.
 #### Component Guidelines

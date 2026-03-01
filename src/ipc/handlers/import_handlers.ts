@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import { createLoggedHandler } from "./safe_handle";
 import log from "electron-log";
-import { getDyadAppPath } from "../../paths/paths";
+import { getConeyAppPath } from "../../paths/paths";
 import { apps } from "@/db/schema";
 import { db } from "@/db";
 import { chats } from "@/db/schema";
@@ -51,9 +51,9 @@ export function registerImportHandlers() {
       _,
       { appName, skipCopy }: { appName: string; skipCopy?: boolean },
     ) => {
-      // Only check filesystem if we're copying to dyad-apps
+      // Only check filesystem if we're copying to coney-apps
       if (!skipCopy) {
-        const appPath = getDyadAppPath(appName);
+        const appPath = getConeyAppPath(appName);
         try {
           await fs.access(appPath);
           return { exists: true };
@@ -92,10 +92,10 @@ export function registerImportHandlers() {
       }
 
       // Determine the app path based on skipCopy
-      const appPath = skipCopy ? sourcePath : getDyadAppPath(appName);
+      const appPath = skipCopy ? sourcePath : getConeyAppPath(appName);
 
       if (!skipCopy) {
-        // Check if the app already exists in dyad-apps
+        // Check if the app already exists in coney-apps
         const errorMessage = "An app with this name already exists";
         try {
           await fs.access(appPath);
@@ -105,7 +105,7 @@ export function registerImportHandlers() {
             throw error;
           }
         }
-        // Copy the app folder to the Dyad apps directory.
+        // Copy the app folder to the Coney apps directory.
         // Why not use fs.cp? Because we want stable ordering for
         // tests.
         await copyDirectoryRecursive(sourcePath, appPath);
@@ -126,7 +126,7 @@ export function registerImportHandlers() {
         // Create initial commit
         await gitCommit({
           path: appPath,
-          message: "Init Dyad app",
+          message: "Init Coney app",
         });
       }
 

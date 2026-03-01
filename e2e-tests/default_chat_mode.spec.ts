@@ -4,7 +4,7 @@ import { test } from "./helpers/test_helper";
 test("default chat mode - pro user defaults and setting change applies to new chat", async ({
   po,
 }) => {
-  await po.setUpDyadPro({ localAgent: true, autoApprove: true });
+  await po.setUpConeyPro({ localAgent: true, autoApprove: true });
 
   // Pro users should default to local-agent mode
   await expect(

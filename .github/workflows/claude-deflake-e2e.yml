@@ -46,7 +46,7 @@ jobs:
           version: latest
 
       - name: Clone nextjs-template
-        run: git clone --depth 1 https://github.com/dyad-sh/nextjs-template.git nextjs-template
+        run: git clone --depth 1 https://github.com/coney-sh/nextjs-template.git nextjs-template
 
       - name: Install scaffold dependencies
         run: cd scaffold && pnpm install
@@ -70,7 +70,7 @@ jobs:
           github_token: ${{ secrets.DEFLAKE_E2E_PAT_GITHUB_TOKEN }}
           claude_args: --model claude-opus-4-6
           prompt: |
-            /dyad:deflake-e2e-recent-commits ${{ inputs.commit_count || '10' }}
+            /coney:deflake-e2e-recent-commits ${{ inputs.commit_count || '10' }}
       - name: Cleanup (self-hosted macOS)
         if: always()
         run: bash scripts/ci-cleanup-macos.sh

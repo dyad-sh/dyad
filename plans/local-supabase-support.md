@@ -4,18 +4,18 @@
 
 ## Summary
 
-Add support for connecting Dyad apps to a local Supabase instance (via the Supabase CLI + Docker) as an alternative to cloud Supabase. Users can easily switch between cloud and local on a per-app basis, with cloud positioned as "Recommended for production" and local as "Great for development." Dyad detects whether local Supabase is running but does not manage the lifecycle — users run `supabase start` and `supabase functions serve` themselves.
+Add support for connecting Coney apps to a local Supabase instance (via the Supabase CLI + Docker) as an alternative to cloud Supabase. Users can easily switch between cloud and local on a per-app basis, with cloud positioned as "Recommended for production" and local as "Great for development." Coney detects whether local Supabase is running but does not manage the lifecycle — users run `supabase start` and `supabase functions serve` themselves.
 
 ## Problem Statement
 
-Dyad users building apps with Supabase currently must connect to a cloud Supabase project for all development. This creates several pain points:
+Coney users building apps with Supabase currently must connect to a cloud Supabase project for all development. This creates several pain points:
 
 1. **Dev/production parity gap**: Every schema change, test row, or accidental `DROP TABLE` hits a real cloud project. There is no safe local sandbox.
-2. **Onboarding friction**: Users must create a cloud Supabase account and project before they can start experimenting with Supabase features in Dyad.
+2. **Onboarding friction**: Users must create a cloud Supabase account and project before they can start experimenting with Supabase features in Coney.
 3. **Offline development impossible**: No internet = no Supabase-backed app development.
 4. **Cost concerns**: Supabase free tier is limited (2 projects). Users iterating on multiple apps hit limits quickly.
 
-**Target user**: Dyad users building apps with auth, database, or edge functions who want a faster, safer local development loop. Secondary: users exploring Supabase integration without committing to a cloud account.
+**Target user**: Coney users building apps with auth, database, or edge functions who want a faster, safer local development loop. Secondary: users exploring Supabase integration without committing to a cloud account.
 
 ## Scope
 
@@ -36,7 +36,7 @@ Dyad users building apps with Supabase currently must connect to a cloud Supabas
 ### Out of Scope (Follow-up)
 
 - Auto-installing Docker or Supabase CLI
-- Managing `supabase start` / `supabase stop` from within Dyad (v2)
+- Managing `supabase start` / `supabase stop` from within Coney (v2)
 - Managed `supabase functions serve` process (v2)
 - Data/schema migration between local and cloud environments
 - Multi-local-instance support (one shared instance per machine for v1)
@@ -45,12 +45,12 @@ Dyad users building apps with Supabase currently must connect to a cloud Supabas
 
 ## User Stories
 
-- As a Dyad user, I want to connect my app to a local Supabase instance so that I can develop against a local database without risking my cloud data.
-- As a Dyad user, I want to switch between local and cloud Supabase per-app so that I can develop locally and point to cloud when ready.
-- As a new Dyad user, I want to try Supabase features locally without creating a cloud account so that I can evaluate the integration before committing.
-- As a Dyad user building with AI, I want the AI agent to know it's working against local Supabase so that it generates correct URLs, connection strings, and edge function invocations.
-- As a Dyad user, I want to see whether my local Supabase is running so that I know if my local backend is available.
-- As a Dyad user with edge functions, I want the AI agent to write edge function code that works locally so that I can test functions before deploying to cloud.
+- As a Coney user, I want to connect my app to a local Supabase instance so that I can develop against a local database without risking my cloud data.
+- As a Coney user, I want to switch between local and cloud Supabase per-app so that I can develop locally and point to cloud when ready.
+- As a new Coney user, I want to try Supabase features locally without creating a cloud account so that I can evaluate the integration before committing.
+- As a Coney user building with AI, I want the AI agent to know it's working against local Supabase so that it generates correct URLs, connection strings, and edge function invocations.
+- As a Coney user, I want to see whether my local Supabase is running so that I know if my local backend is available.
+- As a Coney user with edge functions, I want the AI agent to write edge function code that works locally so that I can test functions before deploying to cloud.
 
 ## UX Design
 
@@ -72,7 +72,7 @@ This preserves the current flow for the majority of users while making local dis
 
 1. User opens app details → sees SupabaseConnector
 2. Clicks "Use Local Supabase" secondary link
-3. Dyad runs prerequisite checks (Docker installed? Running? CLI installed? Version compatible?)
+3. Coney runs prerequisite checks (Docker installed? Running? CLI installed? Version compatible?)
 4. **If prerequisites fail**: Show specific, actionable guidance (e.g., "Supabase CLI not found. Install it from https://supabase.com/docs/guides/cli")
 5. **If prerequisites pass but Supabase not running**: Show instructional state: "Local Supabase is not running. Run `supabase start` in your project terminal." with copy-to-clipboard and a "Check Again" button
 6. **If running**: Auto-discover connection details from `supabase status --output json`, store them, link app to local mode
@@ -328,4 +328,4 @@ disconnectLocalSupabase: defineContract({ appId: string })
 
 ---
 
-_Generated by dyad:swarm-to-plan_
+_Generated by coney:swarm-to-plan_

@@ -14,7 +14,7 @@ const runSwitchVersionTest = async (
     await po.page.getByRole("button", { name: "Version" }).textContent(),
   ).toBe("Version 2");
   await po.page.getByRole("button", { name: "Version" }).click();
-  await po.page.getByText("Init Dyad app Restore").click();
+  await po.page.getByText("Init Coney app Restore").click();
   await po.previewPanel.snapshotPreview({ name: `v1` });
 
   await po.page

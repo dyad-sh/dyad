@@ -1,5 +1,5 @@
 ---
-name: dyad:session-debug
+name: coney:session-debug
 description: Analyze session debugging data to identify errors and issues that may have caused a user-reported problem.
 ---
 
@@ -23,8 +23,8 @@ Analyze session debugging data to identify errors and issues that may have cause
 
    **Validation:** If fewer than two arguments are provided, inform the user:
 
-   > "Usage: /dyad:session-debug <session-data-url> <issue-number-or-url>"
-   > "Example: /dyad:session-debug https://example.com/session.json 123"
+   > "Usage: /coney:session-debug <session-data-url> <issue-number-or-url>"
+   > "Example: /coney:session-debug https://example.com/session.json 123"
 
    Then stop execution.
 

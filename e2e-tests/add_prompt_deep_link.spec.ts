@@ -20,7 +20,7 @@ test("add prompt via deep link with base64-encoded data", async ({
 
   // Encode the data as base64 (matching the pattern in main.ts)
   const base64Data = Buffer.from(JSON.stringify(promptData)).toString("base64");
-  const deepLinkUrl = `dyad://add-prompt?data=${encodeURIComponent(base64Data)}`;
+  const deepLinkUrl = `coney://add-prompt?data=${encodeURIComponent(base64Data)}`;
 
   console.log("Triggering deep link:", deepLinkUrl);
 

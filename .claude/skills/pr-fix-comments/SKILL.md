@@ -1,5 +1,5 @@
 ---
-name: dyad:pr-fix:comments
+name: coney:pr-fix:comments
 description: Read all unresolved GitHub PR comments from trusted authors and address or resolve them appropriately.
 ---
 
@@ -153,7 +153,7 @@ Before categorizing review comments, read `rules/product-principles.md`. Use the
 5. **After processing all comments, verify and commit changes:**
 
    If any code changes were made:
-   - Run `/dyad:lint` to ensure code passes all checks
+   - Run `/coney:lint` to ensure code passes all checks
    - Stage and commit the changes:
 
      ```
@@ -169,7 +169,7 @@ Before categorizing review comments, read `rules/product-principles.md`. Use the
 
 6. **Push the changes:**
 
-   Run the `/dyad:pr-push` skill to lint, fix any issues, and push.
+   Run the `/coney:pr-push` skill to lint, fix any issues, and push.
 
 7. **Verify all threads are resolved:**
 

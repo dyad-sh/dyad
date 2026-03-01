@@ -1,7 +1,7 @@
 import { testSkipIfWindows } from "./helpers/test_helper";
 
 testSkipIfWindows("smart context deep - read write read", async ({ po }) => {
-  await po.setUpDyadPro({ autoApprove: true });
+  await po.setUpConeyPro({ autoApprove: true });
   const proModesDialog = await po.openProModesDialog({
     location: "home-chat-input-container",
   });
@@ -20,7 +20,7 @@ testSkipIfWindows("smart context deep - read write read", async ({ po }) => {
 testSkipIfWindows(
   "smart context deep - mention app should fallback to balanced",
   async ({ po }) => {
-    await po.setUpDyadPro();
+    await po.setUpConeyPro();
 
     // First, create an imported app.
     await po.importApp("minimal-with-ai-rules");

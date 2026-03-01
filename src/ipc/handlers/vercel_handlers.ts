@@ -10,7 +10,7 @@ import { IS_TEST_BUILD } from "../utils/test_utils";
 import * as fs from "fs";
 import * as path from "path";
 import { CreateProjectFramework } from "@vercel/sdk/models/createprojectop.js";
-import { getDyadAppPath } from "@/paths/paths";
+import { getConeyAppPath } from "@/paths/paths";
 import { createTypedHandler } from "./base";
 import {
   vercelContracts,
@@ -312,7 +312,7 @@ async function handleCreateProject(
     }
 
     // Detect the framework from the app's directory
-    const detectedFramework = await detectFramework(getDyadAppPath(app.path));
+    const detectedFramework = await detectFramework(getConeyAppPath(app.path));
 
     logger.info(
       `Detected framework: ${detectedFramework || "none detected"} for app at ${app.path}`,

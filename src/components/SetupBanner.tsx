@@ -37,7 +37,7 @@ import openrouterLogo from "../../assets/ai-logos/openrouter-logo.png";
 import { OnboardingBanner } from "./home/OnboardingBanner";
 import { showError } from "@/lib/toast";
 import { useSettings } from "@/hooks/useSettings";
-import { DyadProTrialDialog } from "./DyadProTrialDialog";
+import { ConeyProTrialDialog } from "./ConeyProTrialDialog";
 
 type NodeInstallStep =
   | "install"
@@ -71,7 +71,7 @@ export function SetupBanner() {
   }, [setNodeSystemInfo, setNodeCheckError]);
   const [showManualConfig, setShowManualConfig] = useState(false);
   const [isSelectingPath, setIsSelectingPath] = useState(false);
-  const [showDyadProTrialDialog, setShowDyadProTrialDialog] = useState(false);
+  const [showConeyProTrialDialog, setShowConeyProTrialDialog] = useState(false);
   const { updateSettings } = useSettings();
 
   // Add handler for manual path selection
@@ -121,9 +121,9 @@ export function SetupBanner() {
       params: { provider: "openrouter" },
     });
   };
-  const handleDyadProSetupClick = () => {
-    posthog.capture("setup-flow:ai-provider-setup:dyad:click");
-    setShowDyadProTrialDialog(true);
+  const handleConeyProSetupClick = () => {
+    posthog.capture("setup-flow:ai-provider-setup:coney:click");
+    setShowConeyProTrialDialog(true);
   };
 
   const handleOtherProvidersClick = () => {
@@ -183,7 +183,7 @@ export function SetupBanner() {
   return (
     <>
       <p className="text-xl font-medium text-zinc-700 dark:text-zinc-300 p-4 pt-6">
-        {t("setup.setupDyad")}
+        {t("setup.setupConey")}
       </p>
       <OnboardingBanner
         isVisible={isOnboardingVisible}
@@ -325,14 +325,14 @@ export function SetupBanner() {
               </p>
 
               <SetupProviderCard
-                variant="dyad"
-                onClick={handleDyadProSetupClick}
+                variant="coney"
+                onClick={handleConeyProSetupClick}
                 tabIndex={isNodeSetupComplete ? 0 : -1}
                 leadingIcon={
-                  <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-0.5" />
+                  <img src={logo} alt="Coney Logo" className="w-6 h-6 mr-0.5" />
                 }
-                title="Start with Dyad Pro free trial"
-                subtitle="Unlock the full power of Dyad"
+                title="Start with Coney Pro free trial"
+                subtitle="Unlock the full power of Coney"
                 chip={<>Recommended</>}
               />
               <div className="mt-2 flex gap-2">
@@ -393,9 +393,9 @@ export function SetupBanner() {
         </Accordion>
       </div>
 
-      <DyadProTrialDialog
-        isOpen={showDyadProTrialDialog}
-        onClose={() => setShowDyadProTrialDialog(false)}
+      <ConeyProTrialDialog
+        isOpen={showConeyProTrialDialog}
+        onClose={() => setShowConeyProTrialDialog(false)}
       />
     </>
   );
@@ -408,7 +408,7 @@ function NodeJsHelpCallout() {
         If you run into issues, read our{" "}
         <a
           onClick={() => {
-            ipc.system.openExternalUrl("https://www.dyad.sh/docs/help/nodejs");
+            ipc.system.openExternalUrl("https://www.coney.sh/docs/help/nodejs");
           }}
           className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
         >
@@ -460,7 +460,7 @@ function NodeInstallButton({
     case "finished-checking":
       return (
         <div className="mt-3 text-sm text-red-600 dark:text-red-400">
-          Node.js not detected. Closing and re-opening Dyad usually fixes this.
+          Node.js not detected. Closing and re-opening Coney usually fixes this.
         </div>
       );
     default:

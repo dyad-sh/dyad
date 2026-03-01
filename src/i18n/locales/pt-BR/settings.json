@@ -78,10 +78,10 @@
     "errorLoadingSettings": "Erro ao Carregar Configurações",
     "couldNotLoadProvider": "Não foi possível carregar os dados do provedor: {{message}}",
     "couldNotLoadSettings": "Não foi possível carregar os dados de configuração: {{message}}",
-    "enableDyadPro": "Ativar Dyad Pro",
-    "toggleDyadPro": "Alternar para ativar o Dyad Pro",
+    "enableConeyPro": "Ativar Coney Pro",
+    "toggleConeyPro": "Alternar para ativar o Coney Pro",
     "apiKeyEmpty": "A Chave de API não pode estar vazia.",
-    "errorTogglingPro": "Erro ao alternar Dyad Pro: {{error}}",
+    "errorTogglingPro": "Erro ao alternar Coney Pro: {{error}}",
     "failedSaveApiKey": "Falha ao salvar a chave de API.",
     "failedDeleteApiKey": "Falha ao excluir a chave de API."
   },
@@ -165,7 +165,7 @@
   },
   "azure": {
     "configured": "Azure OpenAI Configurado",
-    "configuredDescription": "O Dyad usará as credenciais salvas nas Configurações para os modelos Azure OpenAI.",
+    "configuredDescription": "O Coney usará as credenciais salvas nas Configurações para os modelos Azure OpenAI.",
     "usingEnvVars": "Usando Variáveis de Ambiente",
     "usingEnvVarsDescription": "AZURE_API_KEY e AZURE_RESOURCE_NAME estão definidas. Os valores salvos abaixo as substituirão.",
     "configRequired": "Configuração do Azure OpenAI Necessária",
@@ -180,8 +180,8 @@
     "configNeededDescription": "As requisições do Azure OpenAI exigem um nome de recurso e uma chave de API. Insira-os acima ou forneça as variáveis de ambiente.",
     "saveError": "Erro ao Salvar",
     "envVarsOptional": "Variáveis de Ambiente (opcional)",
-    "envVarsHelpText": "Você pode continuar configurando o Azure via variáveis de ambiente. Se ambas as variáveis estiverem presentes e nenhuma configuração estiver salva, o Dyad as usará automaticamente.",
-    "envVarsPrecedence": "Os valores salvos nas Configurações têm prioridade sobre as variáveis de ambiente. Reinicie o Dyad após alterar as variáveis de ambiente."
+    "envVarsHelpText": "Você pode continuar configurando o Azure via variáveis de ambiente. Se ambas as variáveis estiverem presentes e nenhuma configuração estiver salva, o Coney as usará automaticamente.",
+    "envVarsPrecedence": "Os valores salvos nas Configurações têm prioridade sobre as variáveis de ambiente. Reinicie o Coney após alterar as variáveis de ambiente."
   },
   "vertex": {
     "projectId": "ID do Projeto",
@@ -255,6 +255,6 @@
     "updateProvider": "Atualizar Provedor",
     "failedCreate": "Falha ao criar provedor personalizado"
   },
-  "manageDyadPro": "Gerenciar Assinatura Dyad Pro",
-  "setupDyadPro": "Configurar Assinatura Dyad Pro"
+  "manageConeyPro": "Gerenciar Assinatura Coney Pro",
+  "setupConeyPro": "Configurar Assinatura Coney Pro"
 }

@@ -93,9 +93,9 @@ function deepHello() {
       supabaseOrganizationSlug: null,
       messageId: 1,
       isSharedModulesChanged: false,
-      isDyadPro: false,
+      isConeyPro: false,
       todos: [],
-      dyadRequestId: "test-request",
+      coneyRequestId: "test-request",
       fileEditTracker: {},
       onXmlStream: vi.fn(),
       onXmlComplete: vi.fn(),
@@ -187,10 +187,10 @@ function deepHello() {
       await grepTool.execute({ query: "hello" }, mockContext);
 
       expect(mockContext.onXmlComplete).toHaveBeenCalledWith(
-        expect.stringContaining("<dyad-grep"),
+        expect.stringContaining("<coney-grep"),
       );
       expect(mockContext.onXmlComplete).toHaveBeenCalledWith(
-        expect.stringContaining("</dyad-grep>"),
+        expect.stringContaining("</coney-grep>"),
       );
     });
   });
@@ -426,7 +426,7 @@ function deepHello() {
 
     it("builds partial XML during streaming", () => {
       const result = grepTool.buildXml?.({ query: "hello" }, false);
-      expect(result).toContain("<dyad-grep");
+      expect(result).toContain("<coney-grep");
       expect(result).toContain('query="hello"');
       expect(result).toContain("Searching...");
     });

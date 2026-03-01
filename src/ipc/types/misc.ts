@@ -53,8 +53,8 @@ export const SESSION_DEBUG_SCHEMA_VERSION = 2;
 // -- System info --
 
 const DebugSystemInfoSchema = z.object({
-  /** Dyad application version (from package.json) */
-  dyadVersion: z.string(),
+  /** Coney application version (from package.json) */
+  coneyVersion: z.string(),
   /** OS platform: "darwin", "win32", "linux" */
   platform: z.string(),
   /** CPU architecture: "x64", "arm64" */
@@ -86,8 +86,8 @@ const DebugSettingsSchema = z.object({
   defaultChatMode: z.string().nullable(),
   /** Whether changes are auto-approved without review */
   autoApproveChanges: z.boolean().nullable(),
-  /** Whether Dyad Pro is enabled */
-  enableDyadPro: z.boolean().nullable(),
+  /** Whether Coney Pro is enabled */
+  enableConeyPro: z.boolean().nullable(),
   /** Thinking budget level: "low" | "medium" | "high" */
   thinkingBudget: z.string().nullable(),
   /** Max chat turns kept in context window */

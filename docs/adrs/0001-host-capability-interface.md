@@ -7,7 +7,7 @@
 
 ## Context
 
-Dyad currently routes privileged actions through Electron IPC (`src/preload.ts`, `src/ipc/types/*`, `src/ipc/handlers/*`). This tightly couples product logic to desktop-only primitives:
+Coney currently routes privileged actions through Electron IPC (`src/preload.ts`, `src/ipc/types/*`, `src/ipc/handlers/*`). This tightly couples product logic to desktop-only primitives:
 
 - local filesystem access
 - local process execution

@@ -14,7 +14,7 @@
       },
       {
         "role": "assistant",
-        "content": "[[dyad-dump-path=*]]"
+        "content": "[[coney-dump-path=*]]"
       },
       {
         "role": "user",
@@ -22,7 +22,7 @@
       },
       {
         "role": "assistant",
-        "content": "[[dyad-dump-path=*]]"
+        "content": "[[coney-dump-path=*]]"
       },
       {
         "role": "user",
@@ -35,7 +35,7 @@
       "include_thoughts": true,
       "budget_tokens": 4000
     },
-    "dyad_options": {
+    "coney_options": {
       "files": [
         {
           "path": ".env.foobar",
@@ -120,6 +120,6 @@
     }
   },
   "headers": {
-    "authorization": "Bearer testdyadkey"
+    "authorization": "Bearer testconeykey"
   }
 }

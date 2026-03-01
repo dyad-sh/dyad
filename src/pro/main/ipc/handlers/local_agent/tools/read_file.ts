@@ -75,7 +75,7 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
         `end_line="${escapeXmlAttr(String(args.end_line_one_indexed_inclusive))}"`,
       );
     }
-    return `<dyad-read ${attrs.join(" ")}></dyad-read>`;
+    return `<coney-read ${attrs.join(" ")}></coney-read>`;
   },
 
   execute: async (args, ctx: AgentContext) => {

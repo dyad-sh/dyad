@@ -36,7 +36,7 @@ function generateDump(req: Request): string {
       "utf-8",
     );
     console.log(`* [responses] Dumped messages to: ${dumpFilePath}`);
-    return `[[dyad-dump-path=${dumpFilePath}]]`;
+    return `[[coney-dump-path=${dumpFilePath}]]`;
   } catch (error) {
     console.error(`* [responses] Error writing dump file: ${error}`);
     return `Error: Could not write dump file: ${error}`;

@@ -41,7 +41,7 @@ export async function refreshNeonToken(): Promise<void> {
   try {
     // Make request to Neon refresh endpoint
     const response = await fetch(
-      "https://oauth.dyad.sh/api/integrations/neon/refresh",
+      "https://oauth.coney.sh/api/integrations/neon/refresh",
 
       {
         method: "POST",

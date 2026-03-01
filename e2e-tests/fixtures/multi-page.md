@@ -1,6 +1,6 @@
 Creating a multi-page app with navigation.
 
-<dyad-write path="src/pages/Index.tsx" description="Home page with navigation link">
+<coney-write path="src/pages/Index.tsx" description="Home page with navigation link">
 import { Link } from "react-router-dom";
 
 const Index = () => {
@@ -21,9 +21,9 @@ const Index = () => {
 };
 
 export default Index;
-</dyad-write>
+</coney-write>
 
-<dyad-write path="src/pages/About.tsx" description="About page with navigation link back">
+<coney-write path="src/pages/About.tsx" description="About page with navigation link back">
 import { Link } from "react-router-dom";
 
 const About = () => {
@@ -44,9 +44,9 @@ const About = () => {
 };
 
 export default About;
-</dyad-write>
+</coney-write>
 
-<dyad-write path="src/App.tsx" description="App with router">
+<coney-write path="src/App.tsx" description="App with router">
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -73,4 +73,4 @@ const App = () => (
 );
 
 export default App;
-</dyad-write>
+</coney-write>

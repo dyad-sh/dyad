@@ -130,10 +130,10 @@ This pattern provides a more reliable signal that the async operation has comple
 2. It confirms the operation finished (loading state disappeared)
 3. It avoids race conditions where the button might briefly be in the DOM but not yet updated
 
-## E2E test fixtures with .dyad directories
+## E2E test fixtures with .coney directories
 
-When adding E2E test fixtures that need a `.dyad` directory for testing:
+When adding E2E test fixtures that need a `.coney` directory for testing:
 
-- The `.dyad` directory is git-ignored by default in test fixtures
-- Use `git add -f path/to/.dyad/file` to force-add files inside `.dyad` directories
-- If `mkdir` is blocked on `.dyad` paths due to security restrictions, use the Write tool to create files directly (which auto-creates parent directories)
+- The `.coney` directory is git-ignored by default in test fixtures
+- Use `git add -f path/to/.coney/file` to force-add files inside `.coney` directories
+- If `mkdir` is blocked on `.coney` paths due to security restrictions, use the Write tool to create files directly (which auto-creates parent directories)

@@ -108,7 +108,7 @@
   - img
   - text: ""
 - paragraph: "[dump] hi"
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[coney-dump-path=*]]"
 - button "Copy":
   - img
 - img

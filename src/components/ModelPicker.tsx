@@ -1,4 +1,4 @@
-import { isDyadProEnabled, type LargeLanguageModel } from "@/lib/schemas";
+import { isConeyProEnabled, type LargeLanguageModel } from "@/lib/schemas";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -115,14 +115,14 @@ export function ModelPicker() {
       ? modelsByProviders["auto"].filter((model) => {
           if (
             settings &&
-            !isDyadProEnabled(settings) &&
+            !isConeyProEnabled(settings) &&
             ["turbo", "value"].includes(model.apiName)
           ) {
             return false;
           }
           if (
             settings &&
-            isDyadProEnabled(settings) &&
+            isConeyProEnabled(settings) &&
             model.apiName === "free"
           ) {
             return false;
@@ -154,7 +154,7 @@ export function ModelPicker() {
     const provider = providers?.find((p) => p.id === providerId);
     return !(provider && provider.secondary);
   });
-  if (settings && isDyadProEnabled(settings)) {
+  if (settings && isConeyProEnabled(settings)) {
     primaryProviders.unshift(["auto", TURBO_MODELS]);
   }
   const secondaryProviders = providerEntries.filter(([providerId, models]) => {
@@ -190,7 +190,7 @@ export function ModelPicker() {
           <>
             <div className="px-2 py-3 bg-gradient-to-r from-indigo-50 to-sky-50 dark:from-indigo-950/50 dark:to-sky-950/50">
               <p className="text-sm text-indigo-700 dark:text-indigo-300 mb-2">
-                Upgrade from Dyad Pro trial to unlock more models.
+                Upgrade from Coney Pro trial to unlock more models.
               </p>
               <Button
                 variant="outline"
@@ -198,12 +198,12 @@ export function ModelPicker() {
                 className="cursor-pointer w-full bg-indigo-600 hover:bg-indigo-700 text-white hover:text-white border-indigo-600"
                 onClick={() => {
                   ipc.system.openExternalUrl(
-                    "https://academy.dyad.sh/subscription",
+                    "https://academy.coney.sh/subscription",
                   );
                   setOpen(false);
                 }}
               >
-                Upgrade to Dyad Pro
+                Upgrade to Coney Pro
               </Button>
             </div>
             <DropdownMenuSeparator />
@@ -288,11 +288,11 @@ export function ModelPicker() {
               {/* Primary providers as submenus */}
               {primaryProviders.map(([providerId, models]) => {
                 models = models.filter((model) => {
-                  // Don't show free models if Dyad Pro is enabled because
-                  // we will use the paid models (in Dyad Pro backend) which
+                  // Don't show free models if Coney Pro is enabled because
+                  // we will use the paid models (in Coney Pro backend) which
                   // don't have the free limitations.
                   if (
-                    isDyadProEnabled(settings) &&
+                    isConeyProEnabled(settings) &&
                     model.apiName.endsWith(":free")
                   ) {
                     return false;
@@ -302,7 +302,7 @@ export function ModelPicker() {
                 const provider = providers?.find((p) => p.id === providerId);
                 const providerDisplayName =
                   provider?.id === "auto"
-                    ? "Dyad Turbo"
+                    ? "Coney Turbo"
                     : (provider?.name ?? providerId);
                 return (
                   <DropdownMenuSub key={providerId}>
@@ -312,7 +312,7 @@ export function ModelPicker() {
                           <span>{providerDisplayName}</span>
                           {provider?.type === "cloud" &&
                             !provider?.secondary &&
-                            isDyadProEnabled(settings) && (
+                            isConeyProEnabled(settings) && (
                               <span className="text-[10px] bg-gradient-to-r from-indigo-600 via-indigo-500 to-indigo-600 bg-[length:200%_100%] animate-[shimmer_5s_ease-in-out_infinite] text-white px-1.5 py-0.5 rounded-full font-medium">
                                 Pro
                               </span>

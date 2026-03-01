@@ -448,7 +448,7 @@ function ConnectedGitHubConnector({
               onClick={(e) => {
                 e.preventDefault();
                 ipc.system.openExternalUrl(
-                  "https://www.dyad.sh/docs/integrations/github#troubleshooting",
+                  "https://www.coney.sh/docs/integrations/github#troubleshooting",
                 );
               }}
               className="cursor-pointer text-blue-600 hover:underline dark:text-blue-400"

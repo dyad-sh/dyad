@@ -20,7 +20,7 @@ const listFilesSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      "Whether to include .dyad files which are git-ignored (default: false)",
+      "Whether to include .coney files which are git-ignored (default: false)",
     ),
 });
 
@@ -58,7 +58,7 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
     if (isComplete) {
       return undefined;
     }
-    return `<dyad-list-files${getXmlAttributes(args)}></dyad-list-files>`;
+    return `<coney-list-files${getXmlAttributes(args)}></coney-list-files>`;
   },
 
   execute: async (args, ctx: AgentContext) => {
@@ -98,13 +98,13 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
     // Build the list of file paths
     let allFilePaths = files.map((file) => file.path);
 
-    // If include_hidden is true, also include .dyad files
+    // If include_hidden is true, also include .coney files
     if (args.include_hidden) {
       const normalizedAppPath = ctx.appPath.replace(/\\/g, "/");
-      // Always search .dyad at the app root, regardless of directory filter
-      const dyadGlobPattern = `${normalizedAppPath}/.dyad${globSuffix}`;
+      // Always search .coney at the app root, regardless of directory filter
+      const coneyGlobPattern = `${normalizedAppPath}/.coney${globSuffix}`;
 
-      const dyadFiles = await glob(dyadGlobPattern, {
+      const coneyFiles = await glob(coneyGlobPattern, {
         nodir: true,
         absolute: true,
         ignore: [
@@ -119,13 +119,13 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
       });
 
       // Convert to relative paths and add to the list
-      const dyadRelativePaths = dyadFiles.map((file) =>
+      const coneyRelativePaths = coneyFiles.map((file) =>
         path.relative(ctx.appPath, file).split(path.sep).join("/"),
       );
 
       // Deduplicate and sort
       allFilePaths = [
-        ...new Set([...allFilePaths, ...dyadRelativePaths]),
+        ...new Set([...allFilePaths, ...coneyRelativePaths]),
       ].sort();
     }
 
@@ -146,7 +146,7 @@ export const listFilesTool: ToolDefinition<ListFilesArgs> = {
 
     // Write abbreviated list to UI
     ctx.onXmlComplete(
-      `<dyad-list-files${getXmlAttributes(args)}>${escapeXmlContent(abbreviatedList + countInfo)}</dyad-list-files>`,
+      `<coney-list-files${getXmlAttributes(args)}>${escapeXmlContent(abbreviatedList + countInfo)}</coney-list-files>`,
     );
 
     // Return full file list for LLM

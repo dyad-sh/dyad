@@ -1,7 +1,7 @@
 import { db } from "../../db";
 import { versions, apps } from "../../db/schema";
 import { eq, and } from "drizzle-orm";
-import { getDyadAppPath } from "../../paths/paths";
+import { getConeyAppPath } from "../../paths/paths";
 import { neon } from "@neondatabase/serverless";
 
 import log from "electron-log";
@@ -60,7 +60,7 @@ export async function storeDbTimestampAtCurrentVersion({
     }
 
     // 2. Get the current commit hash
-    const appPath = getDyadAppPath(app.path);
+    const appPath = getConeyAppPath(app.path);
     const currentCommitHash = await getCurrentCommitHash({ path: appPath });
 
     logger.info(`Current commit hash: ${currentCommitHash}`);

@@ -1,7 +1,7 @@
 /**
  * Shared utility for resolving file upload IDs to actual file content.
  * When users upload files with "upload-to-codebase" attachment type,
- * the LLM receives a file ID (e.g., DYAD_ATTACHMENT_0) instead of the raw content.
+ * the LLM receives a file ID (e.g., CONEY_ATTACHMENT_0) instead of the raw content.
  * This utility replaces those IDs with the actual file content when writing files.
  */
 
@@ -28,7 +28,7 @@ export interface ResolveFileUploadResult {
  * Resolves file upload IDs in content to actual file content.
  *
  * If the content (stripped of whitespace) exactly matches a file upload ID
- * (e.g., "DYAD_ATTACHMENT_0"), this function reads the actual uploaded file
+ * (e.g., "CONEY_ATTACHMENT_0"), this function reads the actual uploaded file
  * and returns its content. Otherwise, returns the original content unchanged.
  *
  * @param content - The content to check for file upload IDs

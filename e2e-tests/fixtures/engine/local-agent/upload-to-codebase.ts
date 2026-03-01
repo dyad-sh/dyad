@@ -2,7 +2,7 @@ import type { LocalAgentFixture } from "../../../../testing/fake-llm-server/loca
 
 /**
  * Test fixture for file upload to codebase in local-agent mode.
- * The AI receives a file upload ID (DYAD_ATTACHMENT_0) and uses the write_file tool
+ * The AI receives a file upload ID (CONEY_ATTACHMENT_0) and uses the write_file tool
  * to write the uploaded file to the codebase. The file_upload_utils should resolve
  * the attachment ID to the actual file content.
  */
@@ -16,7 +16,7 @@ export const fixture: LocalAgentFixture = {
           name: "write_file",
           args: {
             path: "assets/uploaded-file.png",
-            content: "DYAD_ATTACHMENT_0",
+            content: "CONEY_ATTACHMENT_0",
             description: "Upload file to codebase",
           },
         },

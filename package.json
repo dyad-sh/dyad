@@ -1,5 +1,5 @@
 {
-  "name": "dyad",
+  "name": "coney",
   "version": "0.37.0-beta.2",
   "description": "Free, local, open-source AI app builder",
   "keywords": [],
@@ -10,14 +10,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/dyad-sh/dyad.git"
+    "url": "https://github.com/coney-sh/coney.git"
   },
   "main": ".vite/build/main.js",
   "scripts": {
     "clean": "rimraf out scaffold/node_modules",
     "start": "electron-forge start",
-    "dev:engine": "cross-env DYAD_ENGINE_URL=http://localhost:8080/v1 npm start",
-    "staging:engine": "cross-env DYAD_ENGINE_URL=https://staging---dyad-llm-engine-kq7pivehnq-uc.a.run.app/v1 npm start",
+    "dev:engine": "cross-env CONEY_ENGINE_URL=http://localhost:8080/v1 npm start",
+    "staging:engine": "cross-env CONEY_ENGINE_URL=https://staging---coney-llm-engine-kq7pivehnq-uc.a.run.app/v1 npm start",
     "package": "npm run clean && electron-forge package",
     "make": "npm run clean && electron-forge make",
     "publish": "npm run clean && electron-forge publish",
@@ -60,7 +60,7 @@
     "@babel/parser": "^7.28.5",
     "@base-ui/react": "^1.2.0",
     "@biomejs/biome": "^1.9.4",
-    "@dyad-sh/supabase-management-js": "v1.0.1",
+    "@coney-sh/supabase-management-js": "v1.0.1",
     "@flakiness/playwright": "^1.0.0",
     "@lexical/react": "^0.33.1",
     "@modelcontextprotocol/sdk": "^1.17.5",
@@ -184,5 +184,5 @@
   "engines": {
     "node": ">=24"
   },
-  "productName": "dyad"
+  "productName": "coney"
 }

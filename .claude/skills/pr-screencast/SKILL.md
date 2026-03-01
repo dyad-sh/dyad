@@ -1,5 +1,5 @@
 ---
-name: dyad:pr-screencast
+name: coney:pr-screencast
 description: Record a visual demonstration of the key feature of this PR using screenshots and add it as a new comment to the PR.
 ---
 
@@ -57,7 +57,7 @@ Record a visual demonstration of the key feature of this PR using screenshots an
    This PR appears to be a non-user-facing change (refactoring, documentation, tests, or internal changes), so no screencast was recorded.
 
    ---
-   *Automated by `/dyad:pr-screencast`*
+   *Automated by `/coney:pr-screencast`*
    EOF
    )"
    ```
@@ -248,7 +248,7 @@ Record a visual demonstration of the key feature of this PR using screenshots an
    2. <Expected behavior>
 
    ---
-   *Automated by `/dyad:pr-screencast`*
+   *Automated by `/coney:pr-screencast`*
    EOF
    )"
    ```

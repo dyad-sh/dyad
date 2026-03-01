@@ -7,14 +7,14 @@ import { testSkipIfWindows } from "./helpers/test_helper";
  */
 
 testSkipIfWindows("local-agent - search_replace edit", async ({ po }) => {
-  await po.setUpDyadPro({ localAgent: true });
+  await po.setUpConeyPro({ localAgent: true });
   await po.importApp("minimal");
   await po.chatActions.selectLocalAgentMode();
 
   await po.sendPrompt("tc=local-agent/search-replace");
 
   // Verify the search_replace output is shown
-  await expect(po.page.getByTestId("dyad-search-replace")).toBeVisible();
+  await expect(po.page.getByTestId("coney-search-replace")).toBeVisible();
 
   await po.snapshotMessages();
   await po.snapshotAppFiles({

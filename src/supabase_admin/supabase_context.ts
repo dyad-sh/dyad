@@ -40,7 +40,7 @@ async function getPublishableKey({
 
   if (!publishableKey) {
     throw new Error(
-      "No publishable key found for project. Make sure you are connected to the correct Supabase account and project. See https://dyad.sh/docs/integrations/supabase#no-publishable-keys",
+      "No publishable key found for project. Make sure you are connected to the correct Supabase account and project. See https://coney.sh/docs/integrations/supabase#no-publishable-keys",
     );
   }
   return publishableKey.api_key;

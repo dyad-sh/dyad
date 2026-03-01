@@ -365,7 +365,7 @@ export function handleGitPush(req: Request, res: Response, next?: Function) {
   const mockReposRoot = fs.mkdtempSync(
     path.join(
       os.tmpdir(),
-      "dyad-git-mock-" + Math.random().toString(36).substring(2, 15),
+      "coney-git-mock-" + Math.random().toString(36).substring(2, 15),
     ),
   );
   console.error(`* Created temporary git repos directory: ${mockReposRoot}`);

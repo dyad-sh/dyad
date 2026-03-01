@@ -40,7 +40,7 @@ export function HomeChatInput({
     "an information page...",
     "a landing page...",
   ]);
-  const placeholder = `Ask Dyad to build ${typingText ?? ""}`;
+  const placeholder = `Ask Coney to build ${typingText ?? ""}`;
 
   // Use the attachments hook
   const {

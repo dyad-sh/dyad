@@ -68,7 +68,7 @@ test("should import GitHub URL", async ({ po }) => {
   // Enter URL
   await po.page
     .getByPlaceholder("https://github.com/user/repo.git")
-    .fill("https://github.com/dyad-sh/nextjs-template.git");
+    .fill("https://github.com/coney-sh/nextjs-template.git");
 
   // Click import
   await po.page.getByRole("button", { name: "Import", exact: true }).click();
@@ -113,7 +113,7 @@ test("should support advanced options with custom commands", async ({ po }) => {
   await po.page.getByRole("tab", { name: "GitHub URL" }).click();
   await po.page
     .getByPlaceholder("https://github.com/user/repo.git")
-    .fill("https://github.com/dyad-sh/nextjs-template.git");
+    .fill("https://github.com/coney-sh/nextjs-template.git");
 
   // Open advanced options
   await po.page.getByRole("button", { name: "Advanced options" }).click();
@@ -155,7 +155,7 @@ test("should allow empty commands to use defaults", async ({ po }) => {
   await po.page.getByRole("tab", { name: "GitHub URL" }).click();
   await po.page
     .getByPlaceholder("https://github.com/user/repo.git")
-    .fill("https://github.com/dyad-sh/nextjs-template.git");
+    .fill("https://github.com/coney-sh/nextjs-template.git");
 
   // Commands are empty by default, so import should be enabled
   await expect(

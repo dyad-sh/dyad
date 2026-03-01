@@ -7,7 +7,7 @@ import * as path from "path";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
-import { getDyadAppPath } from "../../paths/paths";
+import { getConeyAppPath } from "../../paths/paths";
 import {
   ENV_FILE_NAME,
   parseEnvFile,
@@ -28,7 +28,7 @@ export function registerAppEnvVarsHandlers() {
         throw new Error("App not found");
       }
 
-      const appPath = getDyadAppPath(app.path);
+      const appPath = getConeyAppPath(app.path);
       const envFilePath = path.join(appPath, ENV_FILE_NAME);
 
       // If .env.local doesn't exist, return empty array
@@ -63,7 +63,7 @@ export function registerAppEnvVarsHandlers() {
           throw new Error("App not found");
         }
 
-        const appPath = getDyadAppPath(app.path);
+        const appPath = getConeyAppPath(app.path);
         const envFilePath = path.join(appPath, ENV_FILE_NAME);
 
         // Serialize environment variables to .env.local format

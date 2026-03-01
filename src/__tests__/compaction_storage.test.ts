@@ -14,21 +14,21 @@ describe("transformToolTags", () => {
 
   it("transforms tool-call tags to shorter tool-use tags", () => {
     const content = `Let me read that file.
-<dyad-mcp-tool-call server="filesystem" tool="read_file">
+<coney-mcp-tool-call server="filesystem" tool="read_file">
 {"path": "/src/index.ts"}
-</dyad-mcp-tool-call>`;
+</coney-mcp-tool-call>`;
 
     const result = transformToolTags(content);
     expect(result).toContain('<tool-use name="read_file" server="filesystem">');
     expect(result).toContain('{"path": "/src/index.ts"}');
     expect(result).toContain("</tool-use>");
-    expect(result).not.toContain("dyad-mcp-tool-call");
+    expect(result).not.toContain("coney-mcp-tool-call");
   });
 
   it("transforms tool-result tags and includes char count", () => {
-    const content = `<dyad-mcp-tool-result server="filesystem" tool="read_file">
+    const content = `<coney-mcp-tool-result server="filesystem" tool="read_file">
 short result
-</dyad-mcp-tool-result>`;
+</coney-mcp-tool-result>`;
 
     const result = transformToolTags(content);
     expect(result).toContain(
@@ -42,9 +42,9 @@ short result
 
   it("truncates large tool results", () => {
     const longContent = "x".repeat(TOOL_RESULT_TRUNCATION_LIMIT + 100);
-    const content = `<dyad-mcp-tool-result server="filesystem" tool="read_file">
+    const content = `<coney-mcp-tool-result server="filesystem" tool="read_file">
 ${longContent}
-</dyad-mcp-tool-result>`;
+</coney-mcp-tool-result>`;
 
     const result = transformToolTags(content);
     expect(result).toContain(`chars="${longContent.length}"`);
@@ -56,9 +56,9 @@ ${longContent}
 
   it("does not truncate results at exactly the limit", () => {
     const exactContent = "y".repeat(TOOL_RESULT_TRUNCATION_LIMIT);
-    const content = `<dyad-mcp-tool-result server="fs" tool="read">
+    const content = `<coney-mcp-tool-result server="fs" tool="read">
 ${exactContent}
-</dyad-mcp-tool-result>`;
+</coney-mcp-tool-result>`;
 
     const result = transformToolTags(content);
     expect(result).not.toContain("truncated");
@@ -67,41 +67,41 @@ ${exactContent}
 
   it("handles multiple tool calls and results in one message", () => {
     const content = `I'll read both files.
-<dyad-mcp-tool-call server="fs" tool="read_file">
+<coney-mcp-tool-call server="fs" tool="read_file">
 {"path": "/a.ts"}
-</dyad-mcp-tool-call>
-<dyad-mcp-tool-result server="fs" tool="read_file">
+</coney-mcp-tool-call>
+<coney-mcp-tool-result server="fs" tool="read_file">
 contents of a
-</dyad-mcp-tool-result>
-<dyad-mcp-tool-call server="fs" tool="read_file">
+</coney-mcp-tool-result>
+<coney-mcp-tool-call server="fs" tool="read_file">
 {"path": "/b.ts"}
-</dyad-mcp-tool-call>
-<dyad-mcp-tool-result server="fs" tool="read_file">
+</coney-mcp-tool-call>
+<coney-mcp-tool-result server="fs" tool="read_file">
 contents of b
-</dyad-mcp-tool-result>`;
+</coney-mcp-tool-result>`;
 
     const result = transformToolTags(content);
     // Both tool calls transformed
     expect(result.match(/<tool-use /g)).toHaveLength(2);
     expect(result.match(/<tool-result /g)).toHaveLength(2);
-    expect(result).not.toContain("dyad-mcp");
+    expect(result).not.toContain("coney-mcp");
   });
 
   it("preserves text between tool calls", () => {
     const content = `First I'll check the file.
-<dyad-mcp-tool-call server="fs" tool="read_file">
+<coney-mcp-tool-call server="fs" tool="read_file">
 {"path": "/a.ts"}
-</dyad-mcp-tool-call>
-<dyad-mcp-tool-result server="fs" tool="read_file">
+</coney-mcp-tool-call>
+<coney-mcp-tool-result server="fs" tool="read_file">
 ok
-</dyad-mcp-tool-result>
+</coney-mcp-tool-result>
 Now let me modify it.
-<dyad-mcp-tool-call server="fs" tool="write_file">
+<coney-mcp-tool-call server="fs" tool="write_file">
 {"path": "/a.ts", "content": "new"}
-</dyad-mcp-tool-call>
-<dyad-mcp-tool-result server="fs" tool="write_file">
+</coney-mcp-tool-call>
+<coney-mcp-tool-result server="fs" tool="write_file">
 success
-</dyad-mcp-tool-result>`;
+</coney-mcp-tool-result>`;
 
     const result = transformToolTags(content);
     expect(result).toContain("First I'll check the file.");
@@ -142,7 +142,7 @@ describe("formatAsTranscript", () => {
       { role: "user", content: "Read my file" },
       {
         role: "assistant",
-        content: `Sure.\n<dyad-mcp-tool-call server="fs" tool="read_file">\n{"path": "/a.ts"}\n</dyad-mcp-tool-call>\n<dyad-mcp-tool-result server="fs" tool="read_file">\nshort\n</dyad-mcp-tool-result>`,
+        content: `Sure.\n<coney-mcp-tool-call server="fs" tool="read_file">\n{"path": "/a.ts"}\n</coney-mcp-tool-call>\n<coney-mcp-tool-result server="fs" tool="read_file">\nshort\n</coney-mcp-tool-result>`,
       },
     ];
 
@@ -174,7 +174,7 @@ describe("formatAsTranscript", () => {
       { role: "user", content: "Read the big file" },
       {
         role: "assistant",
-        content: `Here it is.\n<dyad-mcp-tool-call server="fs" tool="read_file">\n{"path": "/big.ts"}\n</dyad-mcp-tool-call>\n<dyad-mcp-tool-result server="fs" tool="read_file">\n${largeResult}\n</dyad-mcp-tool-result>\nThat's a lot of content.`,
+        content: `Here it is.\n<coney-mcp-tool-call server="fs" tool="read_file">\n{"path": "/big.ts"}\n</coney-mcp-tool-call>\n<coney-mcp-tool-result server="fs" tool="read_file">\n${largeResult}\n</coney-mcp-tool-result>\nThat's a lot of content.`,
       },
     ];
 
@@ -195,12 +195,12 @@ describe("formatAsTranscript", () => {
       { role: "user", content: "What's in index.ts?" },
       {
         role: "assistant",
-        content: `Let me check.\n<dyad-mcp-tool-call server="fs" tool="read_file">\n{"path": "/src/index.ts"}\n</dyad-mcp-tool-call>\n<dyad-mcp-tool-result server="fs" tool="read_file">\nexport default App;\n</dyad-mcp-tool-result>\nIt exports App.`,
+        content: `Let me check.\n<coney-mcp-tool-call server="fs" tool="read_file">\n{"path": "/src/index.ts"}\n</coney-mcp-tool-call>\n<coney-mcp-tool-result server="fs" tool="read_file">\nexport default App;\n</coney-mcp-tool-result>\nIt exports App.`,
       },
       { role: "user", content: "Now rename App to Main everywhere." },
       {
         role: "assistant",
-        content: `I'll update both files.\n<dyad-mcp-tool-call server="fs" tool="write_file">\n{"path": "/src/index.ts", "content": "export default Main;"}\n</dyad-mcp-tool-call>\n<dyad-mcp-tool-result server="fs" tool="write_file">\nsuccess\n</dyad-mcp-tool-result>\n<dyad-mcp-tool-call server="fs" tool="write_file">\n{"path": "/src/app.ts", "content": "const Main = () => {};"}\n</dyad-mcp-tool-call>\n<dyad-mcp-tool-result server="fs" tool="write_file">\nsuccess\n</dyad-mcp-tool-result>\nDone, renamed in both files.`,
+        content: `I'll update both files.\n<coney-mcp-tool-call server="fs" tool="write_file">\n{"path": "/src/index.ts", "content": "export default Main;"}\n</coney-mcp-tool-call>\n<coney-mcp-tool-result server="fs" tool="write_file">\nsuccess\n</coney-mcp-tool-result>\n<coney-mcp-tool-call server="fs" tool="write_file">\n{"path": "/src/app.ts", "content": "const Main = () => {};"}\n</coney-mcp-tool-call>\n<coney-mcp-tool-result server="fs" tool="write_file">\nsuccess\n</coney-mcp-tool-result>\nDone, renamed in both files.`,
       },
       { role: "user", content: "Thanks!" },
     ];
@@ -214,8 +214,8 @@ describe("formatAsTranscript", () => {
     // 3 tool-use and 3 tool-result (one in first assistant, two in second)
     expect(result.match(/<tool-use /g)).toHaveLength(3);
     expect(result.match(/<tool-result /g)).toHaveLength(3);
-    // No original dyad tags remain
-    expect(result).not.toContain("dyad-mcp");
+    // No original coney tags remain
+    expect(result).not.toContain("coney-mcp");
     // Plain-text user messages are untouched
     expect(result).toContain("What's in index.ts?");
     expect(result).toContain("Now rename App to Main everywhere.");
@@ -234,19 +234,19 @@ describe("formatAsTranscript", () => {
         role: "assistant",
         content: [
           "I'll search first.",
-          '<dyad-mcp-tool-call server="search" tool="grep">',
+          '<coney-mcp-tool-call server="search" tool="grep">',
           '{"pattern": "TODO"}',
-          "</dyad-mcp-tool-call>",
-          '<dyad-mcp-tool-result server="search" tool="grep">',
+          "</coney-mcp-tool-call>",
+          '<coney-mcp-tool-result server="search" tool="grep">',
           "src/a.ts:3: // TODO fix",
-          "</dyad-mcp-tool-result>",
+          "</coney-mcp-tool-result>",
           "Found one. Now writing the fix.",
-          '<dyad-mcp-tool-call server="filesystem" tool="write_file">',
+          '<coney-mcp-tool-call server="filesystem" tool="write_file">',
           '{"path": "/src/a.ts", "content": "fixed"}',
-          "</dyad-mcp-tool-call>",
-          '<dyad-mcp-tool-result server="filesystem" tool="write_file">',
+          "</coney-mcp-tool-call>",
+          '<coney-mcp-tool-result server="filesystem" tool="write_file">',
           "ok",
-          "</dyad-mcp-tool-result>",
+          "</coney-mcp-tool-result>",
         ].join("\n"),
       },
     ];
@@ -301,7 +301,7 @@ describe("formatAsTranscript", () => {
       { role: "user", content: "Yes, check package.json" },
       {
         role: "assistant",
-        content: `Sure.\n<dyad-mcp-tool-call server="fs" tool="read_file">\n{"path": "/package.json"}\n</dyad-mcp-tool-call>\n<dyad-mcp-tool-result server="fs" tool="read_file">\n{"dependencies":{"react":"^18"}}\n</dyad-mcp-tool-result>\nYou already have React 18!`,
+        content: `Sure.\n<coney-mcp-tool-call server="fs" tool="read_file">\n{"path": "/package.json"}\n</coney-mcp-tool-call>\n<coney-mcp-tool-result server="fs" tool="read_file">\n{"dependencies":{"react":"^18"}}\n</coney-mcp-tool-result>\nYou already have React 18!`,
       },
       { role: "user", content: "Great, that's all I needed." },
       { role: "assistant", content: "Happy to help!" },

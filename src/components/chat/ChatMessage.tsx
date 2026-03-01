@@ -1,8 +1,8 @@
 import type { Message } from "@/ipc/types";
 import {
-  DyadMarkdownParser,
+  ConeyMarkdownParser,
   VanillaMarkdownParser,
-} from "./DyadMarkdownParser";
+} from "./ConeyMarkdownParser";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { StreamingLoadingAnimation } from "./StreamingLoadingAnimation";
 import {
@@ -105,7 +105,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
             >
               {message.role === "assistant" ? (
                 <>
-                  <DyadMarkdownParser content={message.content} />
+                  <ConeyMarkdownParser content={message.content} />
                   {isLastMessage && isStreaming && (
                     <StreamingLoadingAnimation variant="streaming" />
                   )}
@@ -193,7 +193,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
                   >
                     {
                       messageVersion.message
-                        .replace(/^\[dyad\]\s*/i, "")
+                        .replace(/^\[coney\]\s*/i, "")
                         .split("\n")[0]
                     }
                   </span>

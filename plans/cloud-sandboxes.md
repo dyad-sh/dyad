@@ -4,11 +4,11 @@
 
 ## Summary
 
-Add a new "Cloud Sandbox" runtime mode to Dyad that executes user-generated apps in Vercel's cloud sandbox environment instead of on the local machine. This is a Dyad Pro feature that removes local toolchain requirements, provides instant cloud-based previews, and enables shareable preview URLs. Initially supports Vercel Sandbox SDK, with a provider-agnostic interface to support additional providers later.
+Add a new "Cloud Sandbox" runtime mode to Coney that executes user-generated apps in Vercel's cloud sandbox environment instead of on the local machine. This is a Coney Pro feature that removes local toolchain requirements, provides instant cloud-based previews, and enables shareable preview URLs. Initially supports Vercel Sandbox SDK, with a provider-agnostic interface to support additional providers later.
 
 ## Problem Statement
 
-Today, Dyad users must run generated apps on their local machine (host mode) or inside Docker containers. Both modes require local compute resources, proper toolchain setup (Node.js, pnpm, Docker Desktop), and can encounter platform-specific issues (port conflicts, PATH issues, Windows file locks). For new users, "getting the app to run" is a significant friction point before they can even evaluate whether the AI-generated code is correct. For advanced users, local execution limits collaboration -- you can't easily share a running preview with a teammate or client.
+Today, Coney users must run generated apps on their local machine (host mode) or inside Docker containers. Both modes require local compute resources, proper toolchain setup (Node.js, pnpm, Docker Desktop), and can encounter platform-specific issues (port conflicts, PATH issues, Windows file locks). For new users, "getting the app to run" is a significant friction point before they can even evaluate whether the AI-generated code is correct. For advanced users, local execution limits collaboration -- you can't easily share a running preview with a teammate or client.
 
 Cloud sandboxes solve this by offloading execution to a remote, pre-configured environment. The user's machine becomes a thin client: they send code, the cloud runs it, and the preview appears in the same iframe. This removes setup friction, improves reliability, and enables shareable preview URLs.
 
@@ -29,10 +29,10 @@ Cloud sandboxes solve this by offloading execution to a remote, pre-configured e
 - Proxy cloud sandbox URL through local server (reuse `start_proxy_server.ts`) for script injection (component selector, visual editing, console capture)
 - "Copy shareable link" button in preview toolbar exposing the direct sandbox URL
 - Cloud icon/badge in preview toolbar to indicate cloud mode
-- Dyad Engine endpoints for sandbox provisioning (authenticates Pro user, manages Vercel credentials)
+- Coney Engine endpoints for sandbox provisioning (authenticates Pro user, manages Vercel credentials)
 - Auto-hibernate sandboxes after 15 minutes of inactivity
 - Maximum 1 concurrent cloud sandbox per user (v1)
-- Stale sandbox reconciliation on Dyad launch (clean up orphans from previous sessions)
+- Stale sandbox reconciliation on Coney launch (clean up orphans from previous sessions)
 - Batch file sync: collect file changes from an AI turn and push as a batch
 - Cloud-specific error states: network/timeout, auth expiry, usage limits, proxy failure
 - Clear distinction between cloud sandbox (preview) and Vercel Deploy (production) in the UI
@@ -50,9 +50,9 @@ Cloud sandboxes solve this by offloading execution to a remote, pre-configured e
 
 ## User Stories
 
-1. **As a new Dyad user**, I want to preview my AI-generated app without installing Node.js, so that I can start building immediately after downloading Dyad.
-2. **As a Dyad user on a slow machine**, I want to offload app execution to the cloud, so that my laptop doesn't slow down while building.
-3. **As a Dyad Pro user**, I want to switch between local and cloud runtime with one click in Settings, so that I can choose the mode that works best for my situation.
+1. **As a new Coney user**, I want to preview my AI-generated app without installing Node.js, so that I can start building immediately after downloading Coney.
+2. **As a Coney user on a slow machine**, I want to offload app execution to the cloud, so that my laptop doesn't slow down while building.
+3. **As a Coney Pro user**, I want to switch between local and cloud runtime with one click in Settings, so that I can choose the mode that works best for my situation.
 4. **As a user**, I want to see clear feedback when my app is deploying to a cloud sandbox, so that I understand what's happening (Transparent Over Magical principle).
 5. **As a user**, I want to copy a shareable link to my running cloud preview, so that I can share it with teammates or clients for feedback.
 6. **As a user**, I want my cloud sandbox to update when the AI edits code, so that the preview experience is responsive.
@@ -64,10 +64,10 @@ Cloud sandboxes solve this by offloading execution to a remote, pre-configured e
 
 1. **Discovery**: User navigates to Settings > General Settings, sees the Runtime Mode selector.
 2. **Selection**: User selects "Cloud Sandbox (Pro)" from the dropdown.
-   - If **not Pro**: Inline upgrade prompt ("Cloud sandboxes are a Dyad Pro feature. [Upgrade to Pro]"). No further action possible.
+   - If **not Pro**: Inline upgrade prompt ("Cloud sandboxes are a Coney Pro feature. [Upgrade to Pro]"). No further action possible.
    - If **Pro**: Option activates immediately. No Vercel setup needed from the user.
 3. **Building**: User returns to chat, builds with AI, clicks "Run" or AI triggers execution.
-4. **Provisioning**: System creates a Vercel sandbox via Dyad Engine. Loading state: "Starting cloud sandbox..." with a simple spinner. If provisioning takes >5 seconds, show a multi-step stepper: "Creating sandbox..." -> "Installing dependencies..." -> "Starting server..."
+4. **Provisioning**: System creates a Vercel sandbox via Coney Engine. Loading state: "Starting cloud sandbox..." with a simple spinner. If provisioning takes >5 seconds, show a multi-step stepper: "Creating sandbox..." -> "Installing dependencies..." -> "Starting server..."
 5. **Preview**: PreviewIframe loads the proxied sandbox URL. All Pro features (component selector, visual editing, console capture) work normally. Cloud icon/badge appears in the toolbar.
 6. **Sharing**: User clicks "Copy shareable link" in the toolbar. Direct sandbox URL is copied to clipboard. Toast: "Link copied!"
 7. **Iteration**: AI edits files -> files sync to cloud sandbox -> preview updates.
@@ -79,7 +79,7 @@ Cloud sandboxes solve this by offloading execution to a remote, pre-configured e
 - **Loading**: "Starting cloud sandbox..." spinner. Multi-step stepper if >5s.
 - **Running**: Cloud icon/badge in toolbar. Address bar shows the sandbox path (e.g., `/dashboard`), NOT the proxy localhost URL. "Copy shareable link" and "Open in browser" buttons both use the direct sandbox URL.
 - **Error - Network/Timeout**: "Cloud sandbox is taking longer than expected. Check your network connection. [Retry]"
-- **Error - Auth/Backend**: "Dyad cloud services are temporarily unavailable. Switch to local mode to keep building. [Switch to Local]"
+- **Error - Auth/Backend**: "Coney cloud services are temporarily unavailable. Switch to local mode to keep building. [Switch to Local]"
 - **Error - Usage Limits**: "You've reached your cloud sandbox limit. Switch to local mode to keep building, or wait for your current sandbox to auto-hibernate."
 - **Error - Proxy Failure**: "Preview proxy failed. [Retry] or [Open direct link]" — escape hatch to direct sandbox URL.
 - **Error - Build/Runtime**: Same as local mode. "Fix error with AI" flow works identically.
@@ -121,7 +121,7 @@ executeApp() decision point (app_handlers.ts)
     └── "cloud"  → executeAppInCloud() [NEW]
                       |
                       v
-                Dyad Backend API
+                Coney Backend API
                       |  (authenticates Pro user, manages Vercel credentials)
                       v
                 Vercel Sandbox SDK
@@ -131,7 +131,7 @@ executeApp() decision point (app_handlers.ts)
                       |  (preview URL: https://<id>.vercel.app)
                       v
                 Local Proxy Server (start_proxy_server.ts)
-                      |  (injects Dyad scripts, serves to iframe)
+                      |  (injects Coney scripts, serves to iframe)
                       v
                 PreviewIframe (proxied URL: http://localhost:5XXXX)
 ```
@@ -159,9 +159,9 @@ This maps cleanly to the existing `appUrlAtom` which already stores both `appUrl
   }
   ```
   Use `mode` string union instead of boolean flags (`isDocker`, `isCloud`) for cleaner branching.
-- **`src/ipc/utils/start_proxy_server.ts`** — Support proxying to remote HTTPS URLs (currently targets localhost only). Handle SSL, inject Dyad scripts into response HTML.
+- **`src/ipc/utils/start_proxy_server.ts`** — Support proxying to remote HTTPS URLs (currently targets localhost only). Handle SSL, inject Coney scripts into response HTML.
 - **`src/components/RuntimeModeSelector.tsx`** — Add "Cloud Sandbox (Pro)" option. Pro gate with upgrade prompt for free users.
-- **`src/hooks/useRunApp.ts`** — Handle cloud preview URL delivery. Emit synthetic `app:output` with `[dyad-proxy-server]` format for consistency.
+- **`src/hooks/useRunApp.ts`** — Handle cloud preview URL delivery. Emit synthetic `app:output` with `[coney-proxy-server]` format for consistency.
 - **`src/components/preview_panel/PreviewIframe.tsx`** — Cloud icon/badge in toolbar. "Copy shareable link" button using `originalUrl`. "Open in browser" uses direct URL. Conditional UI based on `mode`.
 - **`src/components/preview_panel/PreviewPanel.tsx`** — Cloud-specific loading states, error messages.
 - **New: `src/ipc/utils/cloud_sandbox_provider.ts`** — Provider interface and Vercel implementation:
@@ -177,11 +177,11 @@ This maps cleanly to the existing `appUrlAtom` which already stores both `appUrl
     uploadFiles(sandboxId: string, files: FileMap): Promise<void>;
   }
   ```
-- **New: Dyad Engine endpoints** — Sandbox CRUD (create, destroy, status). Authenticates Pro subscription, manages Vercel credentials server-side.
+- **New: Coney Engine endpoints** — Sandbox CRUD (create, destroy, status). Authenticates Pro subscription, manages Vercel credentials server-side.
 
 ### Data Model Changes
 
-**MVP: No database schema changes.** Sandbox state is stored in-memory in the `runningApps` Map. Sandboxes are ephemeral and don't survive Dyad restarts. On restart, the user simply re-runs the app (creates a new sandbox).
+**MVP: No database schema changes.** Sandbox state is stored in-memory in the `runningApps` Map. Sandboxes are ephemeral and don't survive Coney restarts. On restart, the user simply re-runs the app (creates a new sandbox).
 
 **Settings:** No new settings fields needed for MVP. The existing `runtimeMode2` field gains a new enum value. Pro subscription state is already managed separately.
 
@@ -191,7 +191,7 @@ This maps cleanly to the existing `appUrlAtom` which already stores both `appUrl
 
 **No new IPC contracts needed for MVP.** The existing `runApp`/`stopApp`/`restartApp` contracts work as-is. `executeApp()` routes internally to the cloud implementation.
 
-**New Dyad Engine API endpoints:**
+**New Coney Engine API endpoints:**
 
 - `POST /api/sandboxes` — Create a sandbox (requires Pro auth)
 - `DELETE /api/sandboxes/:id` — Destroy a sandbox
@@ -211,9 +211,9 @@ This maps cleanly to the existing `appUrlAtom` which already stores both `appUrl
 - [ ] Upgrade `start_proxy_server.ts` to support proxying remote HTTPS URLs with script injection
 - [ ] Add cloud icon/badge component for the preview toolbar
 
-### Phase 2: Dyad Backend Endpoints
+### Phase 2: Coney Backend Endpoints
 
-- [ ] Determine if existing Dyad Pro backend can be extended (or if new infrastructure is needed)
+- [ ] Determine if existing Coney Pro backend can be extended (or if new infrastructure is needed)
 - [ ] Implement sandbox CRUD endpoints: create, destroy, status
 - [ ] Implement file upload endpoint
 - [ ] Implement log streaming endpoint (SSE or WebSocket)
@@ -223,7 +223,7 @@ This maps cleanly to the existing `appUrlAtom` which already stores both `appUrl
 ### Phase 3: Core Cloud Execution
 
 - [ ] Define `CloudSandboxProvider` interface in `cloud_sandbox_provider.ts`
-- [ ] Implement Vercel Sandbox SDK provider against the Dyad Engine endpoints
+- [ ] Implement Vercel Sandbox SDK provider against the Coney Engine endpoints
 - [ ] Implement `executeAppInCloud()` in `app_handlers.ts`: create sandbox, upload files, stream logs, wire preview URL
 - [ ] Add cloud branch to `stopAppByInfo()` for sandbox teardown
 - [ ] Emit preview URL via synthetic `app:output` for consistency with existing flow
@@ -239,8 +239,8 @@ This maps cleanly to the existing `appUrlAtom` which already stores both `appUrl
 
 ### Phase 5: Lifecycle Management and Error Handling
 
-- [ ] Implement graceful sandbox teardown on Dyad quit (iterate `runningApps`, destroy cloud entries)
-- [ ] Implement stale sandbox reconciliation on Dyad startup
+- [ ] Implement graceful sandbox teardown on Coney quit (iterate `runningApps`, destroy cloud entries)
+- [ ] Implement stale sandbox reconciliation on Coney startup
 - [ ] Add cloud-specific error handling: network/timeout, backend unavailable, usage limits, proxy failure
 - [ ] Add mode-switching confirmation when app is running
 - [ ] Add "Restart Cloud Sandbox" tooltip and clean restart behavior
@@ -258,8 +258,8 @@ This maps cleanly to the existing `appUrlAtom` which already stores both `appUrl
 
 | Risk                                                                          | Likelihood | Impact | Mitigation                                                                                                          |
 | ----------------------------------------------------------------------------- | ---------- | ------ | ------------------------------------------------------------------------------------------------------------------- |
-| Dyad Engine dependency — if Engine is down, cloud sandboxes are broken        | Medium     | High   | Monitoring, clear error messages ("Dyad cloud services temporarily unavailable"), fallback to local mode suggestion |
-| Orphaned sandboxes consuming Dyad's cloud resources                           | High       | High   | Auto-hibernate after 15 min, max 1 concurrent sandbox, startup reconciliation, graceful teardown on quit            |
+| Coney Engine dependency — if Engine is down, cloud sandboxes are broken        | Medium     | High   | Monitoring, clear error messages ("Coney cloud services temporarily unavailable"), fallback to local mode suggestion |
+| Orphaned sandboxes consuming Coney's cloud resources                           | High       | High   | Auto-hibernate after 15 min, max 1 concurrent sandbox, startup reconciliation, graceful teardown on quit            |
 | Proxy server complexity increases (HTTPS remote target, script injection)     | Medium     | Medium | Incremental upgrade to existing proxy, thorough testing of script injection with remote content                     |
 | User confusion between cloud sandbox (preview) and Vercel Deploy (production) | Medium     | Medium | Clear labeling in UI, note in Publish panel, distinct icons                                                         |
 | File sync failures leave preview showing stale content                        | Medium     | Medium | Surface sync failures as `app:output` stderr messages, "Fix with AI" flow still works                               |
@@ -268,7 +268,7 @@ This maps cleanly to the existing `appUrlAtom` which already stores both `appUrl
 
 ## Open Questions
 
-- **Dyad Engine integration**: Sandbox management will be implemented in Dyad Engine (the existing backend service). Specific endpoint design and Vercel SDK integration details need to be worked out.
+- **Coney Engine integration**: Sandbox management will be implemented in Coney Engine (the existing backend service). Specific endpoint design and Vercel SDK integration details need to be worked out.
 - **Vercel Sandbox SDK specifics**: What are the exact API methods, rate limits, and pricing? Detailed SDK documentation review needed before Phase 3.
 - **Environment variables**: How will apps that need `DATABASE_URL`, Supabase keys, etc. work in cloud mode? Deferred to follow-up, but needs a clear user-facing message in v1 ("Environment variables may not be available in cloud sandbox mode").
 - **`restartApp` with `removeNodeModules`**: What's the cloud equivalent? Destroy and recreate vs. re-upload to existing sandbox? Needs decision during Phase 5.
@@ -279,15 +279,15 @@ This maps cleanly to the existing `appUrlAtom` which already stores both `appUrl
 | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Vercel Sandbox SDK** as the first cloud provider | Real-time file sync and instant rebuilds. Existing Vercel relationship. SDK purpose-built for interactive development.                                                                                  |
 | **Proxy through localhost** for iframe preview     | Preserves all Pro features (component selector, visual editing, console capture) via script injection. Trade-off: proxied URL isn't directly shareable, but "Copy link" button provides the direct URL. |
-| **Dyad Pro feature** (Dyad manages infrastructure) | Simplifies UX (no Vercel account setup needed), controls costs, creates Pro upsell opportunity. Requires Dyad Engine for sandbox management.                                                            |
+| **Coney Pro feature** (Coney manages infrastructure) | Simplifies UX (no Vercel account setup needed), controls costs, creates Pro upsell opportunity. Requires Coney Engine for sandbox management.                                                            |
 | **Shareable URLs in MVP**                          | Highest-value, lowest-effort differentiator of cloud mode. "Copy link" button is ~10 lines of code.                                                                                                     |
 | **Global runtime mode for v1**                     | Consistent with existing Docker mode. Simpler data model and UI. Per-app override deferred to v2.                                                                                                       |
 | **In-memory sandbox state for MVP**                | Sandboxes are ephemeral. No DB migration needed. Revisit if sandboxes need to survive restarts.                                                                                                         |
 | **`mode` string union over boolean flags**         | `mode: "host" \| "docker" \| "cloud"` is cleaner than `isDocker` + `isCloud` boolean flags. Easier to extend.                                                                                           |
 | **Cloud mode is opt-in, not default**              | Local mode remains default for all users including Pro. Cloud mode is slower for iteration and requires internet.                                                                                       |
 | **Batch file sync per AI turn**                    | Avoids thundering herd of 5-20 individual uploads during multi-file AI responses. Reduces API calls and prevents mid-batch rebuilds.                                                                    |
-| **Auto-hibernate after 15 min**                    | Prevents orphaned sandboxes from running up Dyad's cloud costs. Balance between convenience and cost control.                                                                                           |
+| **Auto-hibernate after 15 min**                    | Prevents orphaned sandboxes from running up Coney's cloud costs. Balance between convenience and cost control.                                                                                           |
 
 ---
 
-_Generated by dyad:swarm-to-plan_
+_Generated by coney:swarm-to-plan_

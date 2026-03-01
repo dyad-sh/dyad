@@ -19,7 +19,7 @@ export class ChatActions {
 
   getChatInput() {
     return this.page.locator(
-      '[data-lexical-editor="true"][aria-placeholder^="Ask Dyad to build"]',
+      '[data-lexical-editor="true"][aria-placeholder^="Ask Coney to build"]',
     );
   }
 

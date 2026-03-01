@@ -44,7 +44,7 @@
       "Bash(pr /tmp/*)",
       "Bash(expand /tmp/*)",
       "Bash(unexpand /tmp/*)",
-      "Skill(dyad:*)",
+      "Skill(coney:*)",
 
       "Bash(npm run:*)",
       "Bash(npm test:*)",

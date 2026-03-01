@@ -8,13 +8,13 @@ message: tc=local-agent/compaction-mid-turn
 
 ===
 role: assistant
-message: <dyad-compaction title="Conversation compacted" state="finished">
+message: <coney-compaction title="Conversation compacted" state="finished">
 ## Key Decisions Made
 - Completed initial task as requested
 
 ## Current Task State
 Conversation was compacted to save context space.
-</dyad-compaction>
+</coney-compaction>
 
 If you need to retrieve earlier parts of the conversation history, you can read the backup file at: [[compaction-backup-path]]
 Note: This file may be large. Read only the sections you need or use grep to search for specific content rather than reading the entire file.

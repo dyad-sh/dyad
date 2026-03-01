@@ -4,7 +4,7 @@ import fs from "fs";
 import { testSkipIfWindows } from "./helpers/test_helper";
 import * as eph from "electron-playwright-helpers";
 
-testSkipIfWindows("import app without copying to dyad-apps", async ({ po }) => {
+testSkipIfWindows("import app without copying to coney-apps", async ({ po }) => {
   await po.setUp();
 
   // Copy fixture to temp directory to avoid modifying original fixture
@@ -14,7 +14,7 @@ testSkipIfWindows("import app without copying to dyad-apps", async ({ po }) => {
     "import-app",
     "minimal",
   );
-  const tempDir = path.join(os.tmpdir(), `dyad-import-test-${Date.now()}`);
+  const tempDir = path.join(os.tmpdir(), `coney-import-test-${Date.now()}`);
   fs.cpSync(fixtureSource, tempDir, { recursive: true });
 
   await po.page.getByRole("button", { name: "Import App" }).click();

@@ -1,6 +1,6 @@
 Creating a React app with console logging examples.
 
-<dyad-write path="src/pages/Index.tsx" description="adding console logs">
+<coney-write path="src/pages/Index.tsx" description="adding console logs">
 import { useEffect } from 'react';
 
 function App() {
@@ -20,4 +20,4 @@ function App() {
 }
 
 export default App;
-</dyad-write>
+</coney-write>

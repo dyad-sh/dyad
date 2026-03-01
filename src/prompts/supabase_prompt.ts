@@ -412,7 +412,7 @@ tell them that they need to add supabase to their app.
 
 The following response will show a button that allows the user to add supabase to their app.
 
-<dyad-add-integration provider="supabase"></dyad-add-integration>
+<coney-add-integration provider="supabase"></coney-add-integration>
 
 # Examples
 
@@ -426,7 +426,7 @@ I want to use supabase in my app.
 
 You need to first add Supabase to your app.
 
-<dyad-add-integration provider="supabase"></dyad-add-integration>
+<coney-add-integration provider="supabase"></coney-add-integration>
 
 ## Example 2: User wants to add auth to their app
 
@@ -438,5 +438,5 @@ I want to add auth to my app.
 
 You need to first add Supabase to your app and then we can add auth.
 
-<dyad-add-integration provider="supabase"></dyad-add-integration>
+<coney-add-integration provider="supabase"></coney-add-integration>
 `;

@@ -1,5 +1,5 @@
 ---
-name: dyad:fast-push
+name: coney:fast-push
 description: Commit any uncommitted changes, run lint checks, fix any issues, and push the current branch. Delegates to a haiku sub-agent for speed.
 ---
 
@@ -74,7 +74,7 @@ You MUST use the TaskCreate and TaskUpdate tools to track your progress. At the 
 
    You MUST push the branch to GitHub. Do NOT skip this step or ask for confirmation.
 
-   **CRITICAL:** You MUST NEVER run `git pull --rebase` (or any `git pull`) from the fork repo. If you need to pull/rebase, ONLY pull from the upstream repo (`dyad-sh/dyad`). Pulling from a fork can overwrite local changes or introduce unexpected commits from the fork's history.
+   **CRITICAL:** You MUST NEVER run `git pull --rebase` (or any `git pull`) from the fork repo. If you need to pull/rebase, ONLY pull from the upstream repo (`coney-sh/coney`). Pulling from a fork can overwrite local changes or introduce unexpected commits from the fork's history.
 
    First, determine the correct remote to push to:
 

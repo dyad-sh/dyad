@@ -2,7 +2,7 @@ import log from "electron-log";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
-import { getDyadAppPath } from "../../paths/paths";
+import { getConeyAppPath } from "../../paths/paths";
 import fs from "node:fs";
 import path from "node:path";
 import { simpleSpawn } from "../utils/simpleSpawn";
@@ -37,7 +37,7 @@ function isCapacitorInstalled(appPath: string): boolean {
 export function registerCapacitorHandlers() {
   createTypedHandler(capacitorContracts.isCapacitor, async (_, params) => {
     const app = await getApp(params.appId);
-    const appPath = getDyadAppPath(app.path);
+    const appPath = getConeyAppPath(app.path);
 
     // check for the required Node.js version before running any commands
     const currentNodeVersion = process.version;
@@ -57,7 +57,7 @@ export function registerCapacitorHandlers() {
 
   createTypedHandler(capacitorContracts.syncCapacitor, async (_, params) => {
     const app = await getApp(params.appId);
-    const appPath = getDyadAppPath(app.path);
+    const appPath = getConeyAppPath(app.path);
 
     if (!isCapacitorInstalled(appPath)) {
       throw new Error("Capacitor is not installed in this app");
@@ -84,7 +84,7 @@ export function registerCapacitorHandlers() {
 
   createTypedHandler(capacitorContracts.openIos, async (_, params) => {
     const app = await getApp(params.appId);
-    const appPath = getDyadAppPath(app.path);
+    const appPath = getConeyAppPath(app.path);
 
     if (!isCapacitorInstalled(appPath)) {
       throw new Error("Capacitor is not installed in this app");
@@ -106,7 +106,7 @@ export function registerCapacitorHandlers() {
 
   createTypedHandler(capacitorContracts.openAndroid, async (_, params) => {
     const app = await getApp(params.appId);
-    const appPath = getDyadAppPath(app.path);
+    const appPath = getConeyAppPath(app.path);
 
     if (!isCapacitorInstalled(appPath)) {
       throw new Error("Capacitor is not installed in this app");

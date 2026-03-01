@@ -15,7 +15,7 @@ const SERVER_TIME_TIMEOUT_MS = 5000;
 
 /**
  * Fetches the current time from a trusted server to prevent clock manipulation.
- * Uses the HTTP Date header from api.dyad.sh.
+ * Uses the HTTP Date header from api.coney.sh.
  * Falls back to local time if the server is unreachable (but logs a warning).
  */
 async function getServerTime(): Promise<number> {
@@ -31,7 +31,7 @@ async function getServerTime(): Promise<number> {
       SERVER_TIME_TIMEOUT_MS,
     );
 
-    const response = await fetch("https://api.dyad.sh/health", {
+    const response = await fetch("https://api.coney.sh/health", {
       method: "HEAD",
       signal: controller.signal,
     });

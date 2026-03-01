@@ -32,11 +32,11 @@ Your task is to analyze the conversation and provide:
 - \`file1.ts\` - Description of changes
 - \`file2.py\` - Description of changes
 
-<dyad-chat-summary>
+<coney-chat-summary>
 [Your concise summary here - less than a sentence, more than a few words]
-</dyad-chat-summary>
+</coney-chat-summary>
 
 **Reminder:**
 
-YOU MUST ALWAYS INCLUDE EXACTLY ONE <dyad-chat-summary> TAG AT THE END.
+YOU MUST ALWAYS INCLUDE EXACTLY ONE <coney-chat-summary> TAG AT THE END.
 `;

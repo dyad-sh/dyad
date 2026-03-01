@@ -221,7 +221,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
       )}
 
       {isStreaming &&
-        !settings?.enableDyadPro &&
+        !settings?.enableConeyPro &&
         !userBudget &&
         messages.length > 0 && (
           <PromoMessage

@@ -41,11 +41,11 @@ export function registerProHandlers() {
     const apiKey = settings.providerSettings?.auto?.apiKey?.value;
 
     if (!apiKey) {
-      logger.error("LLM Gateway API key (Dyad Pro) is not configured.");
+      logger.error("LLM Gateway API key (Coney Pro) is not configured.");
       return null;
     }
 
-    const url = "https://api.dyad.sh/v1/user/info";
+    const url = "https://api.coney.sh/v1/user/info";
     const headers = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,

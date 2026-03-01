@@ -20,16 +20,16 @@ Private API keys/tokens exposed in browser where they can be stolen
 
 # Output Format
 
-<dyad-security-finding title="Brief title" level="critical|high|medium|low">
+<coney-security-finding title="Brief title" level="critical|high|medium|low">
 **What**: Plain-language explanation
 **Risk**: Data exposure impact (e.g., "All customer emails could be stolen")
 **Potential Solutions**: Options ranked by how effectively they address the issue
 **Relevant Files**: Relevant file paths
-</dyad-security-finding>
+</coney-security-finding>
 
 # Example:
 
-<dyad-security-finding title="SQL Injection in User Lookup" level="critical">
+<coney-security-finding title="SQL Injection in User Lookup" level="critical">
 **What**: User input flows directly into database queries without validation, allowing attackers to execute arbitrary SQL commands
 
 **Risk**: An attacker could steal all customer data, delete your entire database, or take over admin accounts by manipulating the URL
@@ -41,7 +41,7 @@ Private API keys/tokens exposed in browser where they can be stolen
 
 **Relevant Files**: \`src/api/users.ts\`
 
-</dyad-security-finding>
+</coney-security-finding>
 
 # Severity Levels
 **critical**: Actively exploitable or trivially exploitable, leading to full system or data compromise with no mitigation in place.

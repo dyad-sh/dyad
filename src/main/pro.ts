@@ -1,6 +1,6 @@
 import { readSettings, writeSettings } from "./settings";
 
-export function handleDyadProReturn({ apiKey }: { apiKey: string }) {
+export function handleConeyProReturn({ apiKey }: { apiKey: string }) {
   const settings = readSettings();
   writeSettings({
     providerSettings: {
@@ -12,7 +12,7 @@ export function handleDyadProReturn({ apiKey }: { apiKey: string }) {
         },
       },
     },
-    enableDyadPro: true,
+    enableConeyPro: true,
     // Switch to local-agent mode and auto model for a good default experience
     selectedChatMode: "local-agent",
     selectedModel: {

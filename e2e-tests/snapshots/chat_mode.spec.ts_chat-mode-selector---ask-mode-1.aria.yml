@@ -4,6 +4,6 @@
 - img
 - text: Approved
 - paragraph: "[dump] hi"
-- paragraph: "[[dyad-dump-path=*]]"
+- paragraph: "[[coney-dump-path=*]]"
 - button "Retry":
   - img

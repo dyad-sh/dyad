@@ -7,7 +7,7 @@
 
 ## Context
 
-A multi-platform Dyad requires remote privileged execution. This introduces security requirements not present in desktop-only local mode:
+A multi-platform Coney requires remote privileged execution. This introduces security requirements not present in desktop-only local mode:
 
 - user identity across devices
 - workspace-level access control

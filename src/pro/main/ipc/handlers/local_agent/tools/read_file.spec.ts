@@ -58,9 +58,9 @@ line 5`;
       supabaseOrganizationSlug: null,
       messageId: 1,
       isSharedModulesChanged: false,
-      isDyadPro: false,
+      isConeyPro: false,
       todos: [],
-      dyadRequestId: "test-request",
+      coneyRequestId: "test-request",
       fileEditTracker: {},
       onXmlStream: vi.fn(),
       onXmlComplete: vi.fn(),
@@ -386,7 +386,7 @@ line 5`;
 
     it("builds XML with path only", () => {
       const result = readFileTool.buildXml?.({ path: "src/App.tsx" }, false);
-      expect(result).toBe('<dyad-read path="src/App.tsx"></dyad-read>');
+      expect(result).toBe('<coney-read path="src/App.tsx"></coney-read>');
     });
 
     it("includes start_line attribute when provided", () => {
@@ -395,7 +395,7 @@ line 5`;
         false,
       );
       expect(result).toBe(
-        '<dyad-read path="src/App.tsx" start_line="10"></dyad-read>',
+        '<coney-read path="src/App.tsx" start_line="10"></coney-read>',
       );
     });
 
@@ -405,7 +405,7 @@ line 5`;
         false,
       );
       expect(result).toBe(
-        '<dyad-read path="src/App.tsx" end_line="50"></dyad-read>',
+        '<coney-read path="src/App.tsx" end_line="50"></coney-read>',
       );
     });
 
@@ -419,7 +419,7 @@ line 5`;
         false,
       );
       expect(result).toBe(
-        '<dyad-read path="src/App.tsx" start_line="10" end_line="50"></dyad-read>',
+        '<coney-read path="src/App.tsx" start_line="10" end_line="50"></coney-read>',
       );
     });
 

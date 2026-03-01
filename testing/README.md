@@ -35,7 +35,7 @@ export SECRET_TOKEN=example
 testing/run-fake-stdio-mcp-server.sh
 ```
 
-### Integrating with Dyad (stdio MCP)
+### Integrating with Coney (stdio MCP)
 
 When adding a stdio MCP server in the app, use:
 
@@ -87,7 +87,7 @@ export PORT=3002
 node testing/fake-http-mcp-server.mjs
 ```
 
-### Integrating with Dyad (HTTP MCP)
+### Integrating with Coney (HTTP MCP)
 
 When adding an HTTP MCP server in the app, use:
 

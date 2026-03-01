@@ -36,12 +36,11 @@ import {
   getDyadAddDependencyTags,
   getDyadExecuteSqlTags,
   getDyadSearchReplaceTags,
+  getDyadCopyTags,
 } from "../utils/dyad_tag_parser";
 import { applySearchReplace } from "../../pro/main/ipc/processors/search_replace_processor";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
-
-import { FileUploadsState } from "../utils/file_uploads_state";
-
+import { executeCopyFile } from "../utils/copy_file_utils";
 const readFile = fs.promises.readFile;
 const logger = log.scope("response_processor");
 
@@ -110,9 +109,6 @@ export async function processFullResponseActions(
   extraFiles?: string[];
   extraFilesError?: string;
 }> {
-  const fileUploadsState = FileUploadsState.getInstance();
-  const fileUploadsMap = fileUploadsState.getFileUploadsForChat(chatId);
-  fileUploadsState.clear(chatId);
   logger.log("processFullResponseActions for chatId", chatId);
   // Get the app associated with the chat
   const chatWithApp = await db.query.chats.findFirst({
@@ -344,7 +340,11 @@ export async function processFullResponseActions(
         }
       }
       // Deploy renamed function (skip if shared modules changed - will be handled later)
-      if (isServerFunction(tag.to) && !sharedModulesChanged) {
+      if (
+        chatWithApp.app.supabaseProjectId &&
+        isServerFunction(tag.to) &&
+        !sharedModulesChanged
+      ) {
         try {
           await deploySupabaseFunction({
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
@@ -416,39 +416,48 @@ export async function processFullResponseActions(
       }
     }
 
+    // Process all file copies
+    const dyadCopyTags = getDyadCopyTags(fullResponse);
+    for (const tag of dyadCopyTags) {
+      try {
+        const result = await executeCopyFile({
+          from: tag.from,
+          to: tag.to,
+          appPath,
+          supabaseProjectId: chatWithApp.app.supabaseProjectId,
+          supabaseOrganizationSlug: chatWithApp.app.supabaseOrganizationSlug,
+          isSharedModulesChanged: sharedModulesChanged,
+        });
+
+        writtenFiles.push(tag.to);
+
+        if (result.sharedModuleChanged) {
+          sharedModulesChanged = true;
+        }
+
+        if (result.deployError) {
+          errors.push({
+            message: `Failed to deploy Supabase function after copy: ${tag.to}`,
+            error: result.deployError,
+          });
+        }
+      } catch (error) {
+        errors.push({
+          message: `Failed to copy ${tag.from} to ${tag.to}`,
+          error: error,
+        });
+      }
+    }
+
     // Process all file writes
     for (const tag of dyadWriteTags) {
       const filePath = tag.path;
-      let content: string | Buffer = tag.content;
+      const content = tag.content;
       const fullFilePath = safeJoin(appPath, filePath);
 
       // Track if this is a shared module
       if (isSharedServerModule(filePath)) {
         sharedModulesChanged = true;
-      }
-
-      // Check if content (stripped of whitespace) exactly matches a file ID and replace with actual file content
-      if (fileUploadsMap) {
-        const trimmedContent = tag.content.trim();
-        const fileInfo = fileUploadsMap.get(trimmedContent);
-        if (fileInfo) {
-          try {
-            const fileContent = await readFile(fileInfo.filePath);
-            content = fileContent;
-            logger.log(
-              `Replaced file ID ${trimmedContent} with content from ${fileInfo.originalName}`,
-            );
-          } catch (error) {
-            logger.error(
-              `Failed to read uploaded file ${fileInfo.originalName}:`,
-              error,
-            );
-            errors.push({
-              message: `Failed to read uploaded file: ${fileInfo.originalName}`,
-              error: error,
-            });
-          }
-        }
       }
 
       // Ensure directory exists
@@ -461,6 +470,7 @@ export async function processFullResponseActions(
       writtenFiles.push(filePath);
       // Deploy individual function (skip if shared modules changed - will be handled later)
       if (
+        chatWithApp.app.supabaseProjectId &&
         isServerFunction(filePath) &&
         typeof content === "string" &&
         !sharedModulesChanged

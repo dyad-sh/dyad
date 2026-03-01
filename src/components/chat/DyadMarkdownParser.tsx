@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 
 import { DyadWrite } from "./DyadWrite";
 import { DyadRename } from "./DyadRename";
+import { DyadCopy } from "./DyadCopy";
 import { DyadDelete } from "./DyadDelete";
 import { DyadAddDependency } from "./DyadAddDependency";
 import { DyadExecuteSql } from "./DyadExecuteSql";
@@ -26,6 +27,7 @@ import { DyadMcpToolResult } from "./DyadMcpToolResult";
 import { DyadWebSearchResult } from "./DyadWebSearchResult";
 import { DyadWebSearch } from "./DyadWebSearch";
 import { DyadWebCrawl } from "./DyadWebCrawl";
+import { DyadImageGeneration } from "./DyadImageGeneration";
 import { DyadCodeSearchResult } from "./DyadCodeSearchResult";
 import { DyadCodeSearch } from "./DyadCodeSearch";
 import { DyadRead } from "./DyadRead";
@@ -74,6 +76,8 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-supabase-project-info",
   "dyad-status",
   "dyad-compaction",
+  "dyad-copy",
+  "dyad-image-generation",
   // Plan mode tags
   "dyad-write-plan",
   "dyad-exit-plan",
@@ -461,6 +465,22 @@ function renderCustomTag(
         </DyadRename>
       );
 
+    case "dyad-copy":
+      return (
+        <DyadCopy
+          node={{
+            properties: {
+              from: attributes.from || "",
+              to: attributes.to || "",
+              description: attributes.description || "",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadCopy>
+      );
+
     case "dyad-delete":
       return (
         <DyadDelete
@@ -707,6 +727,21 @@ function renderCustomTag(
         >
           {content}
         </DyadSupabaseProjectInfo>
+      );
+
+    case "dyad-image-generation":
+      return (
+        <DyadImageGeneration
+          node={{
+            properties: {
+              prompt: attributes.prompt || "",
+              path: attributes.path || "",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadImageGeneration>
       );
 
     case "dyad-status":

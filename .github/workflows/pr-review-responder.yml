@@ -295,10 +295,16 @@ jobs:
         # Use always() so retry loop continues even if Claude Code fails after pushing commits
         if: steps.pr-info.outputs.should_continue == 'true' && always() && steps.retrigger.outputs.commits_pushed == 'true'
         run: |
+          MAX_RETRIES=3
           REQUEST_COUNT="${{ steps.pr-info.outputs.request_count }}"
-          NEXT_COUNT=$(( ${REQUEST_COUNT:-0} + 1 ))
-          echo "Setting cc:request:${NEXT_COUNT} to auto-re-request review (retry ${NEXT_COUNT} of 3)"
-          gh pr edit ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }} --remove-label "cc:pending" --add-label "cc:request:${NEXT_COUNT}"
+          if [ "${REQUEST_COUNT:-0}" -ge "$MAX_RETRIES" ]; then
+            echo "Max retries reached (${REQUEST_COUNT}/${MAX_RETRIES}), marking PR as failed for human review"
+            gh pr edit ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }} --remove-label "cc:pending" --add-label "cc:failed" --add-label "needs-human:review-issue"
+          else
+            NEXT_COUNT=$(( ${REQUEST_COUNT:-0} + 1 ))
+            echo "Setting cc:request:${NEXT_COUNT} to auto-re-request review (retry ${NEXT_COUNT} of ${MAX_RETRIES})"
+            gh pr edit ${{ steps.pr-info.outputs.pr_number }} --repo ${{ github.repository }} --remove-label "cc:pending" --add-label "cc:request:${NEXT_COUNT}"
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

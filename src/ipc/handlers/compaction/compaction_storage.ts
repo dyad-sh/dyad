@@ -7,7 +7,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import log from "electron-log";
-import { ensureDyadGitignored } from "@/ipc/handlers/planUtils";
+import { ensureDyadGitignored } from "@/ipc/handlers/gitignoreUtils";
 
 const logger = log.scope("compaction_storage");
 

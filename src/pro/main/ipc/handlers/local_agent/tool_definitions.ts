@@ -9,6 +9,7 @@ import { readSettings, writeSettings } from "@/main/settings";
 import { writeFileTool } from "./tools/write_file";
 import { deleteFileTool } from "./tools/delete_file";
 import { renameFileTool } from "./tools/rename_file";
+import { copyFileTool } from "./tools/copy_file";
 import { addDependencyTool } from "./tools/add_dependency";
 import { executeSqlTool } from "./tools/execute_sql";
 
@@ -23,6 +24,7 @@ import { editFileTool } from "./tools/edit_file";
 import { searchReplaceTool } from "./tools/search_replace";
 import { webSearchTool } from "./tools/web_search";
 import { webCrawlTool } from "./tools/web_crawl";
+import { generateImageTool } from "./tools/generate_image";
 import { updateTodosTool } from "./tools/update_todos";
 import { runTypeChecksTool } from "./tools/run_type_checks";
 import { grepTool } from "./tools/grep";
@@ -47,6 +49,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   writeFileTool,
   editFileTool,
   searchReplaceTool,
+  copyFileTool,
   deleteFileTool,
   renameFileTool,
   addDependencyTool,
@@ -62,6 +65,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   readLogsTool,
   webSearchTool,
   webCrawlTool,
+  generateImageTool,
   updateTodosTool,
   runTypeChecksTool,
   // Plan mode tools

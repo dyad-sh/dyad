@@ -92,10 +92,11 @@ export const createChatCompletionHandler =
 
     // Check for upload image to codebase using lastUserMessage (which already handles both string and array content)
     if (userTextContent.includes("[[UPLOAD_IMAGE_TO_CODEBASE]]")) {
+      // Extract the attachment path from the user message (format: "path: /path/to/app/.dyad/media/...")
+      const pathMatch = userTextContent.match(/\(path: ([^\s)]+)\)/);
+      const attachmentPath = pathMatch?.[1] ?? ".dyad/media/unknown.png";
       messageContent = `Uploading image to codebase
-<dyad-write path="new/image/file.png" description="Uploaded image to codebase">
-DYAD_ATTACHMENT_0
-</dyad-write>
+<dyad-copy from="${attachmentPath}" to="new/image/file.png" description="Uploaded image to codebase"></dyad-copy>
 `;
       messageContent += "\n\n" + generateDump(req);
     }

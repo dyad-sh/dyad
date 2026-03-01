@@ -1,10 +1,10 @@
 - paragraph: basic
 - button "file1.txt file1.txt Edit":
   - img
-  - text: ""
+  - text: /file1\.txt.*/
   - button "Edit":
     - img
-    - text: ""
+    - text: /Edit/
   - img
 - paragraph: More EOM
 - button "Copy":
@@ -16,19 +16,15 @@
 - img
 - text: less than a minute ago
 - img
-- text: wrote 1 file(s)
+- text: /wrote 1 file\(s\).*/
 - paragraph: "[[UPLOAD_IMAGE_TO_CODEBASE]]"
-- paragraph: "Attachments:"
-- paragraph: "File to upload to codebase: logo.png (file id: DYAD_ATTACHMENT_0)"
+- 'button "Expand image: logo.png"':
+  - img "logo.png"
 - paragraph: Uploading image to codebase
-- 'button "file.png new/image/file.png Edit Summary: Uploaded image to codebase"':
-  - img
-  - text: ""
-  - button "Edit":
-    - img
-    - text: ""
-  - img
-  - text: ""
+- img
+- text: file.png Copy
+- img
+- text: "Copied To: new/image/file.png Uploaded image to codebase"
 - paragraph: "[[dyad-dump-path=*]]"
 - button "Copy":
   - img
@@ -38,11 +34,9 @@
 - text: test-model
 - img
 - text: less than a minute ago
-- img
-- text: wrote 1 file(s)
 - button "Undo":
   - img
-  - text: ""
+  - text: /Undo/
 - button "Retry":
   - img
-  - text: ""
+  - text: /Retry/

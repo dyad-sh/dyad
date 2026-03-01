@@ -279,58 +279,6 @@
       {
         "type": "function",
         "function": {
-          "name": "update_todos",
-          "description": "\n### When to Use This Tool\n\nUse proactively for:\n1. Complex multi-step tasks (3+ distinct steps)\n2. Non-trivial tasks requiring careful planning\n3. User explicitly requests todo list\n4. User provides multiple tasks (numbered/comma-separated)\n5. After completing tasks - mark complete with merge=true and add follow-ups\n6. When starting new tasks - mark as in_progress (ideally only one at a time)\n\n### When NOT to Use\n\nSkip for:\n1. Single, straightforward tasks\n2. Trivial tasks with no organizational benefit\n3. Tasks completable in < 3 trivial steps\n4. Purely conversational/informational requests\n5. Todo items should NOT include operational actions done in service of higher-level tasks.\n\nNEVER INCLUDE THESE IN TODOS: linting; testing; searching or examining the codebase.\n\n### Examples\n\n<example>\nUser: Add dark mode toggle to settings\nAssistant:\n- *Creates todo list:*\n1. Add state management [in_progress]\n2. Implement styles\n3. Create toggle component\n4. Update components\n- [Immediately begins working on todo 1 in the same tool call batch]\n<reasoning>\nMulti-step feature with dependencies.\n</reasoning>\n</example>\n\n<example>\n// User: Implement user registration, product catalog, shopping cart, checkout flow.\nAssistant: *Creates todo list breaking down each feature into specific tasks*\n<reasoning>\nMultiple complex features provided as list requiring organized task management.\n</reasoning>\n</example>\n\n### Task States and Management\n\n1. **Task States:**\n- pending: Not yet started\n- in_progress: Currently working on\n- completed: Finished successfully\n\n2. **Task Management:**\n- Update status in real-time\n- Mark complete IMMEDIATELY after finishing\n- Only ONE task in_progress at a time\n- Complete current tasks before starting new ones\n\n3. **Task Breakdown:**\n- Create specific, actionable items\n- Break complex tasks into manageable steps\n- Use clear, descriptive names\n\n4. **Parallel Todo Writes:**\n- Prefer creating the first todo as in_progress\n- Start working on todos by using tool calls in the same tool call batch as the todo write\n- Batch todo updates with other tool calls for better latency and lower costs for the user\n",
-          "parameters": {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "type": "object",
-            "properties": {
-              "merge": {
-                "type": "boolean",
-                "description": "Whether to merge the todos with the existing todos. If true, the todos will be merged into the existing todos based on the id field. You can leave unchanged properties undefined. If false, the new todos will replace the existing todos."
-              },
-              "todos": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string",
-                      "description": "Unique identifier for the todo item"
-                    },
-                    "content": {
-                      "description": "The description/content of the todo item",
-                      "type": "string"
-                    },
-                    "status": {
-                      "description": "The current status of the todo item",
-                      "type": "string",
-                      "enum": [
-                        "pending",
-                        "in_progress",
-                        "completed"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "id"
-                  ],
-                  "additionalProperties": false
-                },
-                "description": "Array of todo items. When merge is true, only include todos that need updates. When merge is false, this is the complete list."
-              }
-            },
-            "required": [
-              "merge",
-              "todos"
-            ],
-            "additionalProperties": false
-          }
-        }
-      },
-      {
-        "type": "function",
-        "function": {
           "name": "run_type_checks",
           "description": "Run TypeScript type checks on the current workspace. You can provide paths to specific files or directories, or omit the argument to get diagnostics for all files.\n\n- If a file path is provided, returns diagnostics for that file only\n- If a directory path is provided, returns diagnostics for all files within that directory\n- If no path is provided, returns diagnostics for all files in the workspace\n- This tool can return type errors that were already present before your edits, so avoid calling it with a very wide scope of files\n- NEVER call this tool on a file unless you've edited it or are about to edit it",
           "parameters": {

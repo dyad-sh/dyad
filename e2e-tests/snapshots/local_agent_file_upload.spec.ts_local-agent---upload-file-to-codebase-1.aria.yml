@@ -19,18 +19,14 @@
   - img
   - text: ""
 - paragraph: tc=local-agent/upload-to-codebase
-- paragraph: "Attachments:"
-- paragraph: "File to upload to codebase: logo.png (file id: DYAD_ATTACHMENT_0)"
+- 'button "Expand image: logo.png"':
+  - img "logo.png"
 - paragraph: I'll upload your file to the codebase.
-- 'button "uploaded-file.png assets/uploaded-file.png Edit Summary: Upload file to codebase"':
-  - img
-  - text: ""
-  - button "Edit":
-    - img
-    - text: ""
-  - img
-  - text: ""
-- paragraph: I've successfully uploaded your file to assets/uploaded-file.png in the codebase.
+- img
+- text: uploaded-file.png Copy
+- img
+- text: "Copied To: assets/uploaded-file.png Copy uploaded file to codebase"
+- paragraph: I've successfully copied your file to assets/uploaded-file.png in the codebase.
 - button "Copy":
   - img
 - img

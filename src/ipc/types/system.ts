@@ -181,6 +181,12 @@ export const systemContracts = {
     output: z.void(),
   }),
 
+  openFilePath: defineContract({
+    channel: "open-file-path",
+    input: z.string(),
+    output: z.void(),
+  }),
+
   // Session
   clearSessionData: defineContract({
     channel: "clear-session-data",

@@ -1,0 +1,42 @@
+- paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
+- button "file1.txt file1.txt Edit":
+  - img
+  - text: ""
+  - button "Edit":
+    - img
+    - text: ""
+  - img
+- paragraph: More EOM
+- button "Copy":
+  - img
+- img
+- text: Approved
+- img
+- text: claude-opus-4-5
+- img
+- text: less than a minute ago
+- button "Copy Request ID":
+  - img
+  - text: ""
+- paragraph: tc=local-agent/generate-image
+- paragraph: I'll generate a hero image for your landing page.
+- button "Image Generation A modern, minimal hero illustration of a rocket launching from a laptop screen, flat design style, blue and purple gradient background, clean lines":
+  - img
+  - text: ""
+  - img
+- paragraph: I've generated the hero image and saved it to your project. You can find it in the .dyad/media directory.
+- button "Copy":
+  - img
+- img
+- text: claude-opus-4-5
+- img
+- text: less than a minute ago
+- button "Copy Request ID":
+  - img
+  - text: ""
+- button "Undo":
+  - img
+  - text: ""
+- button "Retry":
+  - img
+  - text: ""

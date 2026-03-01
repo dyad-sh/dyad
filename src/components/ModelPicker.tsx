@@ -19,19 +19,31 @@ import { useLanguageModelsByProviders } from "@/hooks/useLanguageModelsByProvide
 import { ipc, LocalModel } from "@/ipc/types";
 import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useSettings } from "@/hooks/useSettings";
+import { useChatSettings } from "@/hooks/useChatSettings";
 import { PriceBadge } from "@/components/PriceBadge";
 import { TURBO_MODELS } from "@/ipc/shared/language_model_constants";
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { useTrialModelRestriction } from "@/hooks/useTrialModelRestriction";
+import { useAtomValue } from "jotai";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 
 export function ModelPicker() {
   const { settings, updateSettings } = useSettings();
   const queryClient = useQueryClient();
   const { isTrial } = useTrialModelRestriction();
+  const selectedChatId = useAtomValue(selectedChatIdAtom);
+  const { effectiveModel, updateSelectedModel: updatePerChatModel } =
+    useChatSettings(selectedChatId);
+
   const onModelSelect = (model: LargeLanguageModel) => {
-    updateSettings({ selectedModel: model });
+    // If a chat is selected, update per-chat settings; otherwise update global
+    if (selectedChatId) {
+      updatePerChatModel(model);
+    } else {
+      updateSettings({ selectedModel: model });
+    }
     // Invalidate token count when model changes since different models have different context windows
     // (technically they have different tokenizers, but we don't keep track of that).
     queryClient.invalidateQueries({ queryKey: queryKeys.tokenCount.all });
@@ -140,7 +152,10 @@ export function ModelPicker() {
   if (!settings) {
     return null;
   }
-  const selectedModel = settings?.selectedModel;
+  // Use per-chat model if available, otherwise fall back to global settings
+  const selectedModel = selectedChatId
+    ? effectiveModel
+    : settings.selectedModel;
   const modelDisplayName = getModelDisplayName();
   // Split providers into primary and secondary groups (excluding auto)
   const providerEntries =

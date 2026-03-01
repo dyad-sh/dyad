@@ -2,6 +2,7 @@ import { db } from "../../db";
 import { apps, chats, messages } from "../../db/schema";
 import { desc, eq, and, like } from "drizzle-orm";
 import type { ChatSearchResult, ChatSummary } from "../../lib/schemas";
+import { migrateStoredChatMode } from "../../lib/schemas";
 
 import log from "electron-log";
 import { getDyadAppPath } from "../../paths/paths";
@@ -72,6 +73,8 @@ export function registerChatHandlers() {
     return {
       ...chat,
       title: chat.title ?? "",
+      // Migrate deprecated "agent" to "build" for chat mode
+      chatMode: chat.chatMode ? migrateStoredChatMode(chat.chatMode) : null,
       messages: chat.messages.map((m) => ({
         ...m,
         role: m.role as "user" | "assistant",
@@ -170,6 +173,43 @@ export function registerChatHandlers() {
     );
 
     return uniqueChats;
+  });
+
+  createTypedHandler(chatContracts.getChatSettings, async (_, chatId) => {
+    const chat = await db.query.chats.findFirst({
+      where: eq(chats.id, chatId),
+      columns: {
+        chatMode: true,
+        selectedModel: true,
+      },
+    });
+
+    if (!chat) {
+      throw new Error("Chat not found");
+    }
+
+    return {
+      chatMode: chat.chatMode
+        ? (migrateStoredChatMode(chat.chatMode) ?? null)
+        : null,
+      selectedModel: chat.selectedModel ?? null,
+    };
+  });
+
+  createTypedHandler(chatContracts.updateChatSettings, async (_, params) => {
+    const { chatId, chatMode, selectedModel } = params;
+
+    // Build the update object dynamically
+    const updates: Record<string, unknown> = {};
+
+    if (chatMode !== undefined) {
+      updates.chatMode = chatMode;
+    }
+    if (selectedModel !== undefined) {
+      updates.selectedModel = selectedModel;
+    }
+
+    await db.update(chats).set(updates).where(eq(chats.id, chatId));
   });
 
   logger.debug("Registered chat IPC handlers");

@@ -69,6 +69,16 @@ export const chats = sqliteTable("chats", {
     .references(() => apps.id, { onDelete: "cascade" }),
   title: text("title"),
   initialCommitHash: text("initial_commit_hash"),
+  // Per-chat settings: chat mode (build, ask, agent, local-agent, plan)
+  chatMode: text("chat_mode", {
+    enum: ["build", "ask", "agent", "local-agent", "plan"],
+  }),
+  // Per-chat settings: selected model (JSON with name, provider, customModelId)
+  selectedModel: text("selected_model", { mode: "json" }).$type<{
+    name: string;
+    provider: string;
+    customModelId?: number;
+  } | null>(),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),

@@ -4,9 +4,11 @@ import { cn } from "@/lib/utils";
 export function LibrarySearchBar({
   value,
   onChange,
+  placeholder = "Search themes and prompts...",
 }: {
   value: string;
   onChange: (v: string) => void;
+  placeholder?: string;
 }) {
   return (
     <div className="mb-6">
@@ -20,7 +22,7 @@ export function LibrarySearchBar({
         <Search className="absolute left-4 h-4 w-4 text-muted-foreground" />
         <input
           type="text"
-          placeholder="Search themes and prompts..."
+          placeholder={placeholder}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           className="w-full bg-transparent py-3 pl-11 pr-4 text-sm outline-none placeholder:text-muted-foreground"

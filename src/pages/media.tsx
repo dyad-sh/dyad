@@ -44,7 +44,11 @@ export default function MediaPage() {
           </Button>
         </div>
 
-        <LibrarySearchBar value={searchQuery} onChange={setSearchQuery} />
+        <LibrarySearchBar
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder="Search images..."
+        />
 
         {isLoading ? (
           <div>Loading...</div>

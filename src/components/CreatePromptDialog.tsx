@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/dialog";
 import { Plus, Save, Edit2 } from "lucide-react";
 
+const SLUG_REGEX = /^[a-zA-Z0-9-]*$/;
+
 interface CreateOrEditPromptDialogProps {
   mode: "create" | "edit";
   prompt?: {
@@ -20,17 +22,20 @@ interface CreateOrEditPromptDialogProps {
     title: string;
     description: string | null;
     content: string;
+    slug: string | null;
   };
   onCreatePrompt?: (prompt: {
     title: string;
     description?: string;
     content: string;
+    slug?: string | null;
   }) => Promise<any>;
   onUpdatePrompt?: (prompt: {
     id: number;
     title: string;
     description?: string;
     content: string;
+    slug?: string | null;
   }) => Promise<any>;
   trigger?: React.ReactNode;
   prefillData?: {
@@ -60,6 +65,7 @@ export function CreateOrEditPromptDialog({
     title: "",
     description: "",
     content: "",
+    slug: "",
   });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -89,15 +95,17 @@ export function CreateOrEditPromptDialog({
         title: prompt.title,
         description: prompt.description || "",
         content: prompt.content,
+        slug: prompt.slug || "",
       });
     } else if (prefillData) {
       setDraft({
         title: prefillData.title,
         description: prefillData.description,
         content: prefillData.content,
+        slug: "",
       });
     } else {
-      setDraft({ title: "", description: "", content: "" });
+      setDraft({ title: "", description: "", content: "", slug: "" });
     }
   }, [mode, prompt, prefillData, open]);
 
@@ -120,26 +128,36 @@ export function CreateOrEditPromptDialog({
         title: prompt.title,
         description: prompt.description || "",
         content: prompt.content,
+        slug: prompt.slug || "",
       });
     } else if (prefillData) {
       setDraft({
         title: prefillData.title,
         description: prefillData.description,
         content: prefillData.content,
+        slug: "",
       });
     } else {
-      setDraft({ title: "", description: "", content: "" });
+      setDraft({ title: "", description: "", content: "", slug: "" });
     }
   };
 
+  const slugTrimmed = draft.slug.trim();
+  const slugInvalid = slugTrimmed !== "" && !SLUG_REGEX.test(slugTrimmed);
+
   const onSave = async () => {
-    if (!draft.title.trim() || !draft.content.trim()) return;
+    if (!draft.title.trim() || !draft.content.trim() || slugInvalid) return;
+
+    // In edit mode, empty slug means "clear it" (null), not "don't change" (undefined).
+    const slugValue =
+      slugTrimmed === "" ? (mode === "edit" ? null : undefined) : slugTrimmed;
 
     if (mode === "create" && onCreatePrompt) {
       await onCreatePrompt({
         title: draft.title.trim(),
         description: draft.description.trim() || undefined,
         content: draft.content,
+        slug: slugValue,
       });
     } else if (mode === "edit" && onUpdatePrompt && prompt) {
       await onUpdatePrompt({
@@ -147,6 +165,7 @@ export function CreateOrEditPromptDialog({
         title: draft.title.trim(),
         description: draft.description.trim() || undefined,
         content: draft.content,
+        slug: slugValue,
       });
     }
 
@@ -199,6 +218,23 @@ export function CreateOrEditPromptDialog({
               setDraft((d) => ({ ...d, description: e.target.value }))
             }
           />
+          <div>
+            <Input
+              placeholder="Slash command (optional)"
+              value={draft.slug}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "" || SLUG_REGEX.test(v))
+                  setDraft((d) => ({ ...d, slug: v }));
+              }}
+              className="font-mono"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              {slugInvalid
+                ? "Use only letters, numbers, and hyphens."
+                : "Used as /command in chat."}
+            </p>
+          </div>
           <Textarea
             ref={textareaRef}
             placeholder="Content"
@@ -218,7 +254,9 @@ export function CreateOrEditPromptDialog({
           </Button>
           <Button
             onClick={onSave}
-            disabled={!draft.title.trim() || !draft.content.trim()}
+            disabled={
+              !draft.title.trim() || !draft.content.trim() || slugInvalid
+            }
           >
             <Save className="mr-2 h-4 w-4" /> Save
           </Button>
@@ -239,6 +277,7 @@ export function CreatePromptDialog({
     title: string;
     description?: string;
     content: string;
+    slug?: string | null;
   }) => Promise<any>;
   prefillData?: {
     title: string;

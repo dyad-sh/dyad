@@ -10,18 +10,23 @@ export type AiMessagesJsonV6 = {
   sdkVersion: typeof AI_MESSAGES_SDK_VERSION;
 };
 
-export const prompts = sqliteTable("prompts", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  title: text("title").notNull(),
-  description: text("description"),
-  content: text("content").notNull(),
-  createdAt: integer("created_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-  updatedAt: integer("updated_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-});
+export const prompts = sqliteTable(
+  "prompts",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    title: text("title").notNull(),
+    description: text("description"),
+    content: text("content").notNull(),
+    slug: text("slug"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [unique("prompts_slug_unique").on(table.slug)],
+);
 
 export const apps = sqliteTable("apps", {
   id: integer("id").primaryKey({ autoIncrement: true }),

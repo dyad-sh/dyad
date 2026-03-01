@@ -10,8 +10,9 @@ const slugSchema = z
   .optional()
   .nullable()
   .refine(
-    (s) => s === undefined || s === null || s === "" || /^[a-z0-9-]+$/.test(s),
-    "Slug must be lowercase letters, numbers, and hyphens only",
+    (s) =>
+      s === undefined || s === null || s === "" || /^[a-zA-Z0-9-]+$/.test(s),
+    "Slug must be letters, numbers, and hyphens only",
   )
   .transform((s) => (s === "" ? undefined : s));
 

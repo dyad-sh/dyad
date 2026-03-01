@@ -1,7 +1,7 @@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Palette, FileText } from "lucide-react";
+import { BookOpen, Palette, FileText, Image } from "lucide-react";
 
 type LibrarySection = {
   id: string;
@@ -11,8 +11,10 @@ type LibrarySection = {
 };
 
 const LIBRARY_SECTIONS: LibrarySection[] = [
+  { id: "all", label: "All", to: "/library", icon: BookOpen },
   { id: "themes", label: "Themes", to: "/themes", icon: Palette },
-  { id: "prompts", label: "Prompts", to: "/library", icon: FileText },
+  { id: "prompts", label: "Prompts", to: "/prompts", icon: FileText },
+  { id: "media", label: "Media", to: "/media", icon: Image },
 ];
 
 export function LibraryList({ show }: { show: boolean }) {
@@ -31,9 +33,13 @@ export function LibraryList({ show }: { show: boolean }) {
       <ScrollArea className="flex-grow">
         <div className="space-y-1 p-4 pt-0">
           {LIBRARY_SECTIONS.map((section) => {
+            const fullLocation = pathname + routerState.location.searchStr;
             const isActive =
+              section.to === fullLocation ||
               section.to === pathname ||
-              (section.to !== "/" && pathname.startsWith(section.to));
+              (section.to !== "/" &&
+                !section.to.includes("?") &&
+                pathname.startsWith(section.to));
 
             return (
               <Link

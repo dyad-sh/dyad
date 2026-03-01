@@ -50,6 +50,8 @@ export { visualEditingContracts } from "./visual-editing";
 export { securityContracts } from "./security";
 export { miscContracts, miscEvents } from "./misc";
 export { freeAgentQuotaContracts } from "./free_agent_quota";
+export { mediaContracts } from "./media";
+export { imageGenerationContracts } from "./image_generation";
 
 // =============================================================================
 // Client Exports
@@ -79,6 +81,8 @@ export { visualEditingClient } from "./visual-editing";
 export { securityClient } from "./security";
 export { miscClient, miscEventClient } from "./misc";
 export { freeAgentQuotaClient } from "./free_agent_quota";
+export { mediaClient } from "./media";
+export { imageGenerationClient } from "./image_generation";
 
 // =============================================================================
 // Type Exports
@@ -290,6 +294,24 @@ export type {
 // Free agent quota types
 export type { FreeAgentQuotaStatus } from "./free_agent_quota";
 
+// Media types
+export type {
+  MediaFile,
+  ListAllMediaResponse,
+  ReadMediaFileParams,
+  ReadMediaFileResponse,
+  RenameMediaFileParams,
+  DeleteMediaFileParams,
+  MoveMediaFileParams,
+} from "./media";
+
+// Image generation types
+export type {
+  ImageThemeMode,
+  GenerateImageParams,
+  GenerateImageResponse,
+} from "./image_generation";
+
 // =============================================================================
 // Schema Exports (for validation in handlers/components)
 // =============================================================================
@@ -346,6 +368,8 @@ import { visualEditingClient } from "./visual-editing";
 import { securityClient } from "./security";
 import { miscClient, miscEventClient } from "./misc";
 import { freeAgentQuotaClient } from "./free_agent_quota";
+import { mediaClient } from "./media";
+import { imageGenerationClient } from "./image_generation";
 
 /**
  * Unified IPC client with all domains organized by namespace.
@@ -401,6 +425,8 @@ export const ipc = {
   security: securityClient,
   misc: miscClient,
   freeAgentQuota: freeAgentQuotaClient,
+  media: mediaClient,
+  imageGeneration: imageGenerationClient,
 
   // Event clients for main->renderer pub/sub
   events: {

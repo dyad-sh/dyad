@@ -49,7 +49,7 @@ const items = [
   },
   {
     title: "Library",
-    to: "/themes",
+    to: "/library",
     icon: BookOpen,
   },
   {
@@ -100,7 +100,9 @@ export function AppSidebar() {
   const isSettingsRoute = routerState.location.pathname.startsWith("/settings");
   const isLibraryRoute =
     routerState.location.pathname.startsWith("/library") ||
-    routerState.location.pathname.startsWith("/themes");
+    routerState.location.pathname.startsWith("/themes") ||
+    routerState.location.pathname.startsWith("/prompts") ||
+    routerState.location.pathname.startsWith("/media");
 
   let selectedItem: string | null = null;
   if (hoverState === "start-hover:app") {

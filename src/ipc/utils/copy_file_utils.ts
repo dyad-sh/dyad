@@ -4,6 +4,7 @@ import log from "electron-log";
 import { safeJoin } from "./path_utils";
 import { gitAdd } from "./git_utils";
 import { isWithinDyadMediaDir } from "./media_path_utils";
+import { withLock } from "./lock_utils";
 import { deploySupabaseFunction } from "../../supabase_admin/supabase_management_client";
 import {
   isServerFunction,
@@ -43,64 +44,66 @@ export async function executeCopyFile({
   supabaseOrganizationSlug?: string | null;
   isSharedModulesChanged?: boolean;
 }): Promise<CopyFileResult> {
-  // Resolve the source path: allow both .dyad/media paths and app-relative paths
-  let fromFullPath: string;
-  if (path.isAbsolute(from)) {
-    // Security: only allow absolute paths within the app's .dyad/media directory
-    if (!isWithinDyadMediaDir(from, appPath)) {
-      throw new Error(
-        `Absolute source paths are only allowed within the .dyad/media directory`,
-      );
+  return withLock(appPath, async () => {
+    // Resolve the source path: allow both .dyad/media paths and app-relative paths
+    let fromFullPath: string;
+    if (path.isAbsolute(from)) {
+      // Security: only allow absolute paths within the app's .dyad/media directory
+      if (!isWithinDyadMediaDir(from, appPath)) {
+        throw new Error(
+          `Absolute source paths are only allowed within the .dyad/media directory`,
+        );
+      }
+      fromFullPath = path.resolve(from);
+    } else {
+      fromFullPath = safeJoin(appPath, from);
     }
-    fromFullPath = path.resolve(from);
-  } else {
-    fromFullPath = safeJoin(appPath, from);
-  }
 
-  const toFullPath = safeJoin(appPath, to);
+    const toFullPath = safeJoin(appPath, to);
 
-  if (!fs.existsSync(fromFullPath)) {
-    throw new Error(`Source file does not exist: ${from}`);
-  }
-
-  // Track if this involves shared modules
-  const sharedModuleChanged = isSharedServerModule(to);
-
-  // Ensure destination directory exists
-  const dirPath = path.dirname(toFullPath);
-  fs.mkdirSync(dirPath, { recursive: true });
-
-  // Copy the file
-  fs.copyFileSync(fromFullPath, toFullPath);
-  logger.log(`Successfully copied file: ${fromFullPath} -> ${toFullPath}`);
-
-  // Add to git
-  await gitAdd({ path: appPath, filepath: to });
-
-  // Deploy Supabase function if applicable
-  const effectiveSharedModulesChanged =
-    isSharedModulesChanged || sharedModuleChanged;
-  let deployError: unknown;
-  if (
-    supabaseProjectId &&
-    isServerFunction(to) &&
-    !effectiveSharedModulesChanged
-  ) {
-    try {
-      await deploySupabaseFunction({
-        supabaseProjectId,
-        functionName: extractFunctionNameFromPath(to),
-        appPath,
-        organizationSlug: supabaseOrganizationSlug ?? null,
-      });
-    } catch (error) {
-      logger.error("Failed to deploy Supabase function after copy:", error);
-      deployError = error;
+    if (!fs.existsSync(fromFullPath)) {
+      throw new Error(`Source file does not exist: ${from}`);
     }
-  }
 
-  return {
-    sharedModuleChanged,
-    deployError,
-  };
+    // Track if this involves shared modules
+    const sharedModuleChanged = isSharedServerModule(to);
+
+    // Ensure destination directory exists
+    const dirPath = path.dirname(toFullPath);
+    fs.mkdirSync(dirPath, { recursive: true });
+
+    // Copy the file
+    fs.copyFileSync(fromFullPath, toFullPath);
+    logger.log(`Successfully copied file: ${fromFullPath} -> ${toFullPath}`);
+
+    // Add to git
+    await gitAdd({ path: appPath, filepath: to });
+
+    // Deploy Supabase function if applicable
+    const effectiveSharedModulesChanged =
+      isSharedModulesChanged || sharedModuleChanged;
+    let deployError: unknown;
+    if (
+      supabaseProjectId &&
+      isServerFunction(to) &&
+      !effectiveSharedModulesChanged
+    ) {
+      try {
+        await deploySupabaseFunction({
+          supabaseProjectId,
+          functionName: extractFunctionNameFromPath(to),
+          appPath,
+          organizationSlug: supabaseOrganizationSlug ?? null,
+        });
+      } catch (error) {
+        logger.error("Failed to deploy Supabase function after copy:", error);
+        deployError = error;
+      }
+    }
+
+    return {
+      sharedModuleChanged,
+      deployError,
+    };
+  });
 }

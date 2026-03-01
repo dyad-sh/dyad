@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   replaceSlashSkillReference,
-  deriveSlugFromTitle,
   slugForPrompt,
 } from "@/ipc/utils/replaceSlashSkillReference";
 
@@ -65,19 +64,19 @@ describe("replaceSlashSkillReference", () => {
     const output = replaceSlashSkillReference(input, promptsBySlug);
     expect(output).toBe("Content extra");
   });
-});
 
-describe("deriveSlugFromTitle", () => {
-  it("lowercases and replaces spaces with hyphens", () => {
-    expect(deriveSlugFromTitle("Web App Testing")).toBe("web-app-testing");
+  it("matches case-sensitive slugs", () => {
+    const input = "/FOO-Bar here";
+    const promptsBySlug = { "FOO-Bar": "Matched", "foo-bar": "Wrong" };
+    const output = replaceSlashSkillReference(input, promptsBySlug);
+    expect(output).toBe("Matched here");
   });
 
-  it("strips non-alphanumeric characters", () => {
-    expect(deriveSlugFromTitle("Hello, World!")).toBe("hello-world");
-  });
-
-  it("returns empty string for title with only special chars", () => {
-    expect(deriveSlugFromTitle("!!!")).toBe("");
+  it("does not match different-cased slug", () => {
+    const input = "/foo-bar here";
+    const promptsBySlug = { "FOO-BAR": "Content" };
+    const output = replaceSlashSkillReference(input, promptsBySlug);
+    expect(output).toBe("/foo-bar here");
   });
 });
 
@@ -88,15 +87,11 @@ describe("slugForPrompt", () => {
     );
   });
 
-  it("derives slug from title when slug is null", () => {
-    expect(slugForPrompt({ title: "Web App Testing", slug: null })).toBe(
-      "web-app-testing",
-    );
+  it("returns null when slug is null", () => {
+    expect(slugForPrompt({ title: "Web App Testing", slug: null })).toBeNull();
   });
 
-  it("derives slug from title when slug is empty string", () => {
-    expect(slugForPrompt({ title: "Web App Testing", slug: "" as any })).toBe(
-      "web-app-testing",
-    );
+  it("returns null when slug is empty string", () => {
+    expect(slugForPrompt({ title: "Web App Testing", slug: "" })).toBeNull();
   });
 });

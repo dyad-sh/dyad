@@ -322,7 +322,7 @@ export function LexicalChatInput({
         type: "skill",
         id: p.id,
       }))
-      .filter((item) => item.value !== "");
+      .filter((item) => item.value != null && item.value !== "");
     result["/"] = skillItems;
 
     if (!apps) return result;

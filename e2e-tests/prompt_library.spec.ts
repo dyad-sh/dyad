@@ -81,6 +81,7 @@ test("slash menu shows skills and selecting one inserts command", async ({
     title: "E2E Test Skill",
     description: "desc",
     content: "Run the E2E test skill content.",
+    slug: "e2e-test-skill",
   });
 
   await po.navigation.goToAppsTab();
@@ -95,4 +96,27 @@ test("slash menu shows skills and selecting one inserts command", async ({
 
   await skillsMenu.getByText("e2e-test-skill").click();
   await expect(chatInput).toContainText("/e2e-test-skill");
+});
+
+test("slash command is expanded to prompt content in message", async ({
+  po,
+}) => {
+  await po.setUp();
+  await po.navigation.goToLibraryTab();
+  await po.page.getByRole("link", { name: "Prompts" }).click();
+  await po.promptLibrary.createPrompt({
+    title: "Webapp Testing Skill",
+    description: "E2E testing helper",
+    content: "Run comprehensive E2E tests for the login and signup flows.",
+    slug: "webapp-testing",
+  });
+
+  await po.navigation.goToAppsTab();
+  const chatInput = po.chatActions.getChatInput();
+  await chatInput.click();
+  await chatInput.fill("[dump] /webapp-testing for the new feature");
+  await po.page.getByRole("button", { name: "Send message" }).click();
+  await po.chatActions.waitForChatCompletion();
+
+  await po.snapshotServerDump("all-messages");
 });

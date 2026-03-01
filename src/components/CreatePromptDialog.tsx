@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Plus, Save, Edit2 } from "lucide-react";
 
-const SLUG_REGEX = /^[a-z0-9-]*$/;
+const SLUG_REGEX = /^[a-zA-Z0-9-]*$/;
 
 interface CreateOrEditPromptDialogProps {
   mode: "create" | "edit";
@@ -223,7 +223,7 @@ export function CreateOrEditPromptDialog({
               placeholder="Slash command (optional)"
               value={draft.slug}
               onChange={(e) => {
-                const v = e.target.value.toLowerCase().replace(/\s/g, "-");
+                const v = e.target.value;
                 if (v === "" || SLUG_REGEX.test(v))
                   setDraft((d) => ({ ...d, slug: v }));
               }}
@@ -231,8 +231,8 @@ export function CreateOrEditPromptDialog({
             />
             <p className="text-xs text-muted-foreground mt-1">
               {slugInvalid
-                ? "Use only lowercase letters, numbers, and hyphens."
-                : "Used as /command in chat. Leave empty to derive from title."}
+                ? "Use only letters, numbers, and hyphens."
+                : "Used as /command in chat."}
             </p>
           </div>
           <Textarea

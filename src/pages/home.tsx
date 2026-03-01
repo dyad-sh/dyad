@@ -229,7 +229,11 @@ export default function HomePage() {
       selectChat({ chatId, appId });
     } catch (error) {
       console.error("Failed to create chat:", error);
-      showError(t("failedCreateApp", { error: (error as any).toString() }));
+      showError(
+        t(selectedApp ? "failedCreateChat" : "failedCreateApp", {
+          error: (error as any).toString(),
+        }),
+      );
       setIsLoading(false);
     }
   };

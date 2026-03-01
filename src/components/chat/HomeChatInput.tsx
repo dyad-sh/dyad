@@ -209,25 +209,18 @@ export function HomeChatInput({
                     {selectedApp ? selectedApp.name : "No app selected"}
                   </span>
                   {selectedApp && (
-                    <span
-                      role="button"
-                      tabIndex={0}
+                    <button
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         setSelectedApp(null);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.stopPropagation();
-                          setSelectedApp(null);
-                        }
                       }}
                       className="hover:bg-primary/20 rounded-sm p-0.5 transition-colors"
                       aria-label="Deselect app"
                       data-testid="home-app-selector-clear"
                     >
                       <XIcon size={12} />
-                    </span>
+                    </button>
                   )}
                 </TooltipTrigger>
                 <TooltipContent>
@@ -251,6 +244,7 @@ export function HomeChatInput({
           open={appSearchOpen}
           onOpenChange={setAppSearchOpen}
           onSelectApp={handleSelectApp}
+          disableShortcut
           allApps={apps.map((a) => ({
             id: a.id,
             name: a.name,

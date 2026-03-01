@@ -15,6 +15,7 @@ type AppSearchDialogProps = {
   onOpenChange: (open: boolean) => void;
   onSelectApp: (appId: number) => void;
   allApps: AppSearchResult[];
+  disableShortcut?: boolean;
 };
 
 export function AppSearchDialog({
@@ -22,6 +23,7 @@ export function AppSearchDialog({
   onOpenChange,
   onSelectApp,
   allApps,
+  disableShortcut,
 }: AppSearchDialogProps) {
   const [searchQuery, setSearchQuery] = useState<string>("");
   function useDebouncedValue<T>(value: T, delay: number): T {
@@ -87,6 +89,7 @@ export function AppSearchDialog({
   }
 
   useEffect(() => {
+    if (disableShortcut) return;
     const down = (e: KeyboardEvent) => {
       if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
@@ -95,7 +98,7 @@ export function AppSearchDialog({
     };
     document.addEventListener("keydown", down);
     return () => document.removeEventListener("keydown", down);
-  }, [open, onOpenChange]);
+  }, [open, onOpenChange, disableShortcut]);
 
   return (
     <CommandDialog

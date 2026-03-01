@@ -226,3 +226,52 @@ export function createDyadEngine(
 
   return provider;
 }
+
+export async function transcribeWithDyadEngine(
+  audioBuffer: Buffer,
+  filename: string,
+  requestId: string,
+  options: ExampleProviderSettings,
+): Promise<string> {
+  const baseURL = withoutTrailingSlash(options.baseURL);
+  const apiKey = loadApiKey({
+    apiKey: options.apiKey,
+    environmentVariableName: "DYAD_PRO_API_KEY",
+    description: "Dyad Pro API key",
+  });
+  logger.info("transcribing with dyad engine with baseURL", baseURL);
+
+  const formData = new FormData();
+  const mimeType = filename.endsWith(".webm")
+    ? "audio/webm"
+    : filename.endsWith(".mp3")
+      ? "audio/mpeg"
+      : filename.endsWith(".wav")
+        ? "audio/wav"
+        : filename.endsWith(".m4a")
+          ? "audio/mp4"
+          : "audio/webm";
+  const blob = new Blob([new Uint8Array(audioBuffer)], { type: mimeType });
+  formData.append("file", blob, filename);
+  formData.append("model", "gpt-4o-mini-transcribe");
+
+  const fetchFn = options.fetch || fetch;
+  const response = await fetchFn(`${baseURL}/audio/transcriptions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "X-Dyad-Request-Id": requestId,
+      ...options.headers,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `Dyad Engine transcription failed: ${response.status} ${response.statusText} - ${errorText}`,
+    );
+  }
+  const data = (await response.json()) as { text: string };
+  return data.text;
+}

@@ -1,4 +1,11 @@
-import { SendHorizontalIcon, StopCircleIcon } from "lucide-react";
+import {
+  SendHorizontalIcon,
+  StopCircleIcon,
+  Mic,
+  MicOff,
+  Loader2,
+  Lock,
+} from "lucide-react";
 import {
   Tooltip,
   TooltipTrigger,
@@ -21,6 +28,11 @@ import { useChatModeToggle } from "@/hooks/useChatModeToggle";
 import { useTypingPlaceholder } from "@/hooks/useTypingPlaceholder";
 import { AuxiliaryActionsMenu } from "./AuxiliaryActionsMenu";
 import { cn } from "@/lib/utils";
+import { useVoiceToText } from "@/hooks/useVoiceToText";
+import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
+import { ipc } from "@/ipc/types";
+import { useCallback } from "react";
+import { showError } from "@/lib/toast";
 
 export function HomeChatInput({
   onSubmit,
@@ -34,6 +46,21 @@ export function HomeChatInput({
     hasChatId: false,
   }); // eslint-disable-line @typescript-eslint/no-unused-vars
   useChatModeToggle();
+  const { userBudget } = useUserBudgetInfo();
+  const isProEnabled = !!userBudget && !!settings?.enableDyadPro;
+
+  const handleTranscription = useCallback(
+    (text: string) => {
+      setInputValue((prev: string) => (prev.trim() ? prev + " " + text : text));
+    },
+    [setInputValue],
+  );
+
+  const { isRecording, isTranscribing, toggleRecording } = useVoiceToText({
+    enabled: isProEnabled,
+    onTranscription: handleTranscription,
+    onError: (message) => showError(message),
+  });
 
   const typingText = useTypingPlaceholder([
     "an ecommerce store...",
@@ -124,6 +151,66 @@ export function HomeChatInput({
               disableSendButton={false}
               messageHistory={[]}
             />
+
+            {/* Voice-to-text button */}
+            {isProEnabled ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      onClick={toggleRecording}
+                      disabled={isStreaming || isTranscribing}
+                      aria-label={
+                        isRecording
+                          ? "Stop recording"
+                          : isTranscribing
+                            ? "Transcribing..."
+                            : "Voice to text"
+                      }
+                      className={cn(
+                        "px-2 py-2 mb-0.5 text-muted-foreground rounded-lg transition-colors duration-150 cursor-pointer disabled:cursor-default disabled:opacity-30",
+                        isRecording &&
+                          "text-red-500 hover:text-red-600 animate-pulse",
+                        !isRecording && !isTranscribing && "hover:text-primary",
+                      )}
+                    />
+                  }
+                >
+                  {isTranscribing ? (
+                    <Loader2 size={20} className="animate-spin" />
+                  ) : isRecording ? (
+                    <MicOff size={20} />
+                  ) : (
+                    <Mic size={20} />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent>
+                  {isRecording
+                    ? "Stop recording"
+                    : isTranscribing
+                      ? "Transcribing..."
+                      : "Voice to text"}
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      onClick={() =>
+                        ipc.system.openExternalUrl("https://dyad.sh/pro")
+                      }
+                      aria-label="Voice to text (Pro)"
+                      className="px-2 py-2 mb-0.5 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 cursor-pointer relative"
+                    />
+                  }
+                >
+                  <Mic size={20} />
+                  <Lock size={10} className="absolute -top-0.5 -right-0.5" />
+                </TooltipTrigger>
+                <TooltipContent>Voice to text (requires Pro)</TooltipContent>
+              </Tooltip>
+            )}
 
             {isStreaming ? (
               <Tooltip>

@@ -50,6 +50,7 @@ export { visualEditingContracts } from "./visual-editing";
 export { securityContracts } from "./security";
 export { miscContracts, miscEvents } from "./misc";
 export { freeAgentQuotaContracts } from "./free_agent_quota";
+export { audioContracts } from "./audio";
 
 // =============================================================================
 // Client Exports
@@ -79,6 +80,7 @@ export { visualEditingClient } from "./visual-editing";
 export { securityClient } from "./security";
 export { miscClient, miscEventClient } from "./misc";
 export { freeAgentQuotaClient } from "./free_agent_quota";
+export { audioClient } from "./audio";
 
 // =============================================================================
 // Type Exports
@@ -290,6 +292,9 @@ export type {
 // Free agent quota types
 export type { FreeAgentQuotaStatus } from "./free_agent_quota";
 
+// Pro types
+export type { TranscribeAudioParams, TranscribeAudioResult } from "./audio";
+
 // =============================================================================
 // Schema Exports (for validation in handlers/components)
 // =============================================================================
@@ -346,6 +351,7 @@ import { visualEditingClient } from "./visual-editing";
 import { securityClient } from "./security";
 import { miscClient, miscEventClient } from "./misc";
 import { freeAgentQuotaClient } from "./free_agent_quota";
+import { audioClient } from "./audio";
 
 /**
  * Unified IPC client with all domains organized by namespace.
@@ -401,6 +407,7 @@ export const ipc = {
   security: securityClient,
   misc: miscClient,
   freeAgentQuota: freeAgentQuotaClient,
+  audio: audioClient,
 
   // Event clients for main->renderer pub/sub
   events: {

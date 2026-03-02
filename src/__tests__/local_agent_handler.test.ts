@@ -847,6 +847,87 @@ describe("handleLocalAgentStream", () => {
       expect(lastContentUpdate.data.content).toContain("Hello, ");
       expect(lastContentUpdate.data.content).toContain("world!");
     });
+
+    it("should retry and resume when a stream terminates transiently", async () => {
+      // Arrange
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+
+      const streamMessagesByAttempt: any[][] = [];
+      let attemptCount = 0;
+      mockStreamTextImpl = (options) => {
+        attemptCount += 1;
+        streamMessagesByAttempt.push(options.messages ?? []);
+
+        if (attemptCount === 1) {
+          return {
+            fullStream: (async function* () {
+              yield { type: "text-delta", text: "Partial response. " };
+              throw new TypeError("terminated");
+            })(),
+            response: Promise.resolve({ messages: [] }),
+            steps: Promise.resolve([]),
+          };
+        }
+
+        return {
+          fullStream: (async function* () {
+            yield { type: "text-delta", text: "Recovered output." };
+          })(),
+          response: Promise.resolve({
+            messages: [
+              {
+                role: "assistant",
+                content: [{ type: "text", text: "Recovered output." }],
+              },
+            ],
+          }),
+          steps: Promise.resolve([{ toolCalls: [] }]),
+        };
+      };
+
+      // Act
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      // Assert
+      expect(attemptCount).toBe(2);
+      expect(getMessagesByChannel("chat:response:error")).toHaveLength(0);
+
+      const contentUpdates = dbOperations.updates.filter(
+        (u) => u.data.content !== undefined,
+      );
+      const finalContent = contentUpdates[contentUpdates.length - 1].data
+        .content as string;
+      expect(finalContent).toContain("Partial response.");
+      expect(finalContent).toContain("Recovered output.");
+
+      const continuationInstructionFound = (
+        streamMessagesByAttempt[1] ?? []
+      ).some(
+        (message: any) =>
+          message.role === "user" &&
+          Array.isArray(message.content) &&
+          message.content.some(
+            (part: any) =>
+              part.type === "text" &&
+              typeof part.text === "string" &&
+              part.text.includes(
+                "previous response stream was interrupted by a transient network error",
+              ),
+          ),
+      );
+      expect(continuationInstructionFound).toBe(true);
+    });
   });
 
   describe("Stream processing - reasoning blocks", () => {

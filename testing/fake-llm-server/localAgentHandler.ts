@@ -418,20 +418,21 @@ export async function handleLocalAgentFixture(
     }
 
     // Check if we should simulate a connection drop for this attempt
-    if (
-      fixture.dropConnectionOnAttempts &&
-      fixture.dropConnectionOnAttempts.length > 0
-    ) {
+    const turnScopedDropAttempts =
+      fixture.dropConnectionByTurn?.find((rule) => rule.turnIndex === turnIndex)
+        ?.attempts ?? fixture.dropConnectionOnAttempts;
+
+    if (turnScopedDropAttempts && turnScopedDropAttempts.length > 0) {
       const attemptKey = `${sessionId}-${passIndex}-${turnIndex}`;
       const currentAttempt = (connectionAttempts.get(attemptKey) || 0) + 1;
       connectionAttempts.set(attemptKey, currentAttempt);
 
       console.log(
         `[local-agent] Connection attempt ${currentAttempt} for ${attemptKey}, ` +
-          `drop on: [${fixture.dropConnectionOnAttempts.join(", ")}]`,
+          `drop on: [${turnScopedDropAttempts.join(", ")}]`,
       );
 
-      if (fixture.dropConnectionOnAttempts.includes(currentAttempt)) {
+      if (turnScopedDropAttempts.includes(currentAttempt)) {
         console.log(
           `[local-agent] Simulating connection drop on attempt ${currentAttempt}`,
         );

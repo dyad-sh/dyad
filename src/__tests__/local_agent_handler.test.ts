@@ -928,6 +928,103 @@ describe("handleLocalAgentStream", () => {
       );
       expect(continuationInstructionFound).toBe(true);
     });
+
+    it("should replay emitted tool events before retrying a terminated stream", async () => {
+      // Arrange
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+
+      const streamMessagesByAttempt: any[][] = [];
+      let attemptCount = 0;
+      mockStreamTextImpl = (options) => {
+        attemptCount += 1;
+        streamMessagesByAttempt.push(options.messages ?? []);
+
+        if (attemptCount === 1) {
+          return {
+            fullStream: (async function* () {
+              yield { type: "text-delta", text: "Working with tools. " };
+              yield {
+                type: "tool-call",
+                toolCallId: "call_replay_1",
+                toolName: "read_file",
+                input: { path: "README.md" },
+              };
+              yield {
+                type: "tool-result",
+                toolCallId: "call_replay_1",
+                toolName: "read_file",
+                output: "README content",
+              };
+              throw new TypeError("terminated");
+            })(),
+            response: Promise.resolve({ messages: [] }),
+            steps: Promise.resolve([]),
+          };
+        }
+
+        return {
+          fullStream: (async function* () {
+            yield { type: "text-delta", text: "Resumed after replay." };
+          })(),
+          response: Promise.resolve({
+            messages: [
+              {
+                role: "assistant",
+                content: [{ type: "text", text: "Resumed after replay." }],
+              },
+            ],
+          }),
+          steps: Promise.resolve([{ toolCalls: [] }]),
+        };
+      };
+
+      // Act
+      await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      // Assert
+      expect(attemptCount).toBe(2);
+      expect(getMessagesByChannel("chat:response:error")).toHaveLength(0);
+
+      const secondAttemptMessages = streamMessagesByAttempt[1] ?? [];
+      const hasReplayedToolCall = secondAttemptMessages.some(
+        (message: any) =>
+          message.role === "assistant" &&
+          Array.isArray(message.content) &&
+          message.content.some(
+            (part: any) =>
+              part.type === "tool-call" &&
+              part.toolCallId === "call_replay_1" &&
+              part.toolName === "read_file",
+          ),
+      );
+      const hasReplayedToolResult = secondAttemptMessages.some(
+        (message: any) =>
+          message.role === "tool" &&
+          Array.isArray(message.content) &&
+          message.content.some(
+            (part: any) =>
+              part.type === "tool-result" &&
+              part.toolCallId === "call_replay_1" &&
+              part.toolName === "read_file" &&
+              part.output?.type === "text" &&
+              part.output?.value === "README content",
+          ),
+      );
+
+      expect(hasReplayedToolCall).toBe(true);
+      expect(hasReplayedToolResult).toBe(true);
+    });
   });
 
   describe("Stream processing - reasoning blocks", () => {

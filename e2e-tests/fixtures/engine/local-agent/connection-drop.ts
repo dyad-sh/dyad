@@ -2,12 +2,14 @@ import type { LocalAgentFixture } from "../../../../testing/fake-llm-server/loca
 
 /**
  * Tests automatic retry after connection drop (e.g., TCP terminated mid-stream).
- * The fake server will destroy the socket on the 1st attempt, and the local agent
- * handler should automatically retry and succeed on the 2nd attempt.
+ * This fixture drops the connection on the first attempt of turn 1 (the
+ * post-tool text turn), which is more realistic than dropping before any
+ * tool activity. The local agent handler should automatically retry and
+ * continue without re-running completed work.
  */
 export const fixture: LocalAgentFixture = {
   description: "Automatic retry after connection drop",
-  dropConnectionOnAttempts: [1],
+  dropConnectionByTurn: [{ turnIndex: 1, attempts: [1] }],
   turns: [
     {
       text: "I'll create a file for you.",

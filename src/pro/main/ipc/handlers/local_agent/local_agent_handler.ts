@@ -97,6 +97,20 @@ interface ToolStreamingEntry {
 }
 const toolStreamingEntries = new Map<string, ToolStreamingEntry>();
 
+type RetryReplayEvent =
+  | {
+      type: "tool-call";
+      toolCallId: string;
+      toolName: string;
+      input: unknown;
+    }
+  | {
+      type: "tool-result";
+      toolCallId: string;
+      toolName: string;
+      output: unknown;
+    };
+
 function getOrCreateStreamingEntry(
   id: string,
   toolName?: string,
@@ -601,9 +615,9 @@ export async function handleLocalAgentStream(
       let needsContinuationInstruction = false;
 
       while (!abortController.signal.aborted) {
-        let passAttemptSawToolActivity = false;
         let streamErrorFromCallback: unknown;
         const passAttemptResponseStartLength = fullResponse.length;
+        const retryReplayEvents: RetryReplayEvent[] = [];
         const attemptMessages = needsContinuationInstruction
           ? [
               ...currentMessageHistory,
@@ -715,10 +729,6 @@ export async function handleLocalAgentStream(
             return result;
           },
           onStepFinish: async (step) => {
-            if (step.toolCalls.length > 0) {
-              passAttemptSawToolActivity = true;
-            }
-
             if (!hasInjectedPlanningQuestionnaireReflection) {
               const questionnaireError =
                 getPlanningQuestionnaireErrorFromStep(step);
@@ -854,14 +864,12 @@ export async function handleLocalAgentStream(
                 break;
 
               case "tool-input-start": {
-                passAttemptSawToolActivity = true;
                 // Initialize streaming state for this tool call
                 getOrCreateStreamingEntry(part.id, part.toolName);
                 break;
               }
 
               case "tool-input-delta": {
-                passAttemptSawToolActivity = true;
                 // Accumulate args and stream XML preview
                 const entry = getOrCreateStreamingEntry(part.id);
                 if (entry) {
@@ -879,7 +887,6 @@ export async function handleLocalAgentStream(
               }
 
               case "tool-input-end": {
-                passAttemptSawToolActivity = true;
                 // Build final XML and persist
                 const entry = getOrCreateStreamingEntry(part.id);
                 if (entry) {
@@ -897,12 +904,12 @@ export async function handleLocalAgentStream(
               }
 
               case "tool-call":
-                passAttemptSawToolActivity = true;
+                maybeCaptureRetryReplayEvent(retryReplayEvents, part);
                 // Tool execution happens via execute callbacks
                 break;
 
               case "tool-result":
-                passAttemptSawToolActivity = true;
+                maybeCaptureRetryReplayEvent(retryReplayEvents, part);
                 // Tool results are already handled by the execute callback
                 break;
             }
@@ -944,14 +951,14 @@ export async function handleLocalAgentStream(
             shouldRetryTerminatedStreamError({
               error: streamError,
               retryCount: terminatedRetryCount,
-              sawToolActivity: passAttemptSawToolActivity,
               aborted: abortController.signal.aborted,
             })
           ) {
-            maybeAppendPartialResponseForRetry({
+            maybeAppendRetryReplayForRetry({
               partialResponse: fullResponse.slice(
                 passAttemptResponseStartLength,
               ),
+              retryReplayEvents,
               currentMessageHistoryRef: currentMessageHistory,
               accumulatedAiMessagesRef: accumulatedAiMessages,
               onCurrentMessageHistoryUpdate: (next) =>
@@ -979,14 +986,14 @@ export async function handleLocalAgentStream(
             shouldRetryTerminatedStreamError({
               error: err,
               retryCount: terminatedRetryCount,
-              sawToolActivity: passAttemptSawToolActivity,
               aborted: abortController.signal.aborted,
             })
           ) {
-            maybeAppendPartialResponseForRetry({
+            maybeAppendRetryReplayForRetry({
               partialResponse: fullResponse.slice(
                 passAttemptResponseStartLength,
               ),
+              retryReplayEvents,
               currentMessageHistoryRef: currentMessageHistory,
               accumulatedAiMessagesRef: accumulatedAiMessages,
               onCurrentMessageHistoryUpdate: (next) =>
@@ -1214,46 +1221,148 @@ function isTerminatedStreamError(error: unknown): boolean {
 function shouldRetryTerminatedStreamError(params: {
   error: unknown;
   retryCount: number;
-  sawToolActivity: boolean;
   aborted: boolean;
 }): boolean {
-  const { error, retryCount, sawToolActivity, aborted } = params;
+  const { error, retryCount, aborted } = params;
   return (
     !aborted &&
-    !sawToolActivity &&
     retryCount < MAX_TERMINATED_STREAM_RETRIES &&
     isTerminatedStreamError(error)
   );
 }
 
-function maybeAppendPartialResponseForRetry(params: {
+function maybeCaptureRetryReplayEvent(
+  retryReplayEvents: RetryReplayEvent[],
+  part: unknown,
+): void {
+  if (!isRecord(part) || typeof part.type !== "string") {
+    return;
+  }
+
+  if (
+    part.type === "tool-call" &&
+    typeof part.toolCallId === "string" &&
+    typeof part.toolName === "string"
+  ) {
+    // Keep one emitted tool-call event per toolCallId.
+    if (
+      retryReplayEvents.some(
+        (event) =>
+          event.type === "tool-call" && event.toolCallId === part.toolCallId,
+      )
+    ) {
+      return;
+    }
+
+    retryReplayEvents.push({
+      type: "tool-call",
+      toolCallId: part.toolCallId,
+      toolName: part.toolName,
+      input: part.input,
+    });
+    return;
+  }
+
+  if (
+    part.type === "tool-result" &&
+    typeof part.toolCallId === "string" &&
+    typeof part.toolName === "string"
+  ) {
+    // Keep one emitted tool-result event per toolCallId.
+    if (
+      retryReplayEvents.some(
+        (event) =>
+          event.type === "tool-result" && event.toolCallId === part.toolCallId,
+      )
+    ) {
+      return;
+    }
+
+    retryReplayEvents.push({
+      type: "tool-result",
+      toolCallId: part.toolCallId,
+      toolName: part.toolName,
+      output: part.output,
+    });
+  }
+}
+
+function maybeAppendRetryReplayForRetry(params: {
   partialResponse: string;
+  retryReplayEvents: RetryReplayEvent[];
   currentMessageHistoryRef: ModelMessage[];
   accumulatedAiMessagesRef: ModelMessage[];
   onCurrentMessageHistoryUpdate: (next: ModelMessage[]) => void;
 }) {
   const {
     partialResponse,
+    retryReplayEvents,
     currentMessageHistoryRef,
     accumulatedAiMessagesRef,
     onCurrentMessageHistoryUpdate,
   } = params;
-  if (!partialResponse.trim()) {
+  const replayMessages: ModelMessage[] = [];
+
+  if (partialResponse.trim()) {
+    replayMessages.push({
+      role: "assistant",
+      content: [{ type: "text", text: partialResponse }],
+    });
+  }
+
+  for (const event of retryReplayEvents) {
+    if (event.type === "tool-call") {
+      replayMessages.push({
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: event.toolCallId,
+            toolName: event.toolName,
+            input: event.input,
+          },
+        ],
+      });
+      continue;
+    }
+
+    replayMessages.push({
+      role: "tool",
+      content: [
+        {
+          type: "tool-result",
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          output: toToolResultOutput(event.output),
+        },
+      ],
+    });
+  }
+
+  if (replayMessages.length === 0) {
     return;
   }
-  const assistantContinuationMessage: ModelMessage = {
-    role: "assistant",
-    content: [{ type: "text", text: partialResponse }],
-  };
+
   onCurrentMessageHistoryUpdate([
     ...currentMessageHistoryRef,
-    assistantContinuationMessage,
+    ...replayMessages,
   ]);
-  accumulatedAiMessagesRef.push(assistantContinuationMessage);
+  accumulatedAiMessagesRef.push(...replayMessages);
 }
 
 async function delay(ms: number): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+function toToolResultOutput(value: unknown): { type: "text"; value: string } {
+  if (typeof value === "string") {
+    return { type: "text", value };
+  }
+  try {
+    return { type: "text", value: JSON.stringify(value) };
+  } catch {
+    return { type: "text", value: String(value) };
+  }
 }
 
 async function updateResponseInDb(messageId: number, content: string) {

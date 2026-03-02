@@ -54,4 +54,15 @@ export type LocalAgentFixture = {
    * E.g., [1] means drop on the 1st attempt, succeed on the 2nd.
    */
   dropConnectionOnAttempts?: number[];
+  /**
+   * Optional per-turn connection drop configuration.
+   * Useful for simulating drops after prior tool activity within the same turn.
+   * Example: [{ turnIndex: 1, attempts: [1] }] drops the first attempt of turn 1.
+   */
+  dropConnectionByTurn?: Array<{
+    /** 0-based turn index within the active pass */
+    turnIndex: number;
+    /** Attempt numbers (1-indexed) to drop for this turn */
+    attempts: number[];
+  }>;
 };

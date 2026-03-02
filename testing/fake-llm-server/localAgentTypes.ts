@@ -47,4 +47,11 @@ export type LocalAgentFixture = {
    * Use this when testing todo follow-up loop behavior.
    */
   passes?: Pass[];
+  /**
+   * For testing connection resilience: drop the connection on these attempt
+   * numbers (1-indexed) for the first turn. The fake server will stream partial
+   * data then destroy the socket, simulating a network interruption.
+   * E.g., [1] means drop on the 1st attempt, succeed on the 2nd.
+   */
+  dropConnectionOnAttempts?: number[];
 };

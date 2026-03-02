@@ -4,7 +4,12 @@ When pushing changes and creating PRs:
 
 1. If the branch already has an associated PR, push to whichever remote the branch is tracking.
 2. If the branch hasn't been pushed before, default to pushing to `origin` (the fork `wwwillchen/dyad`), then create a PR from the fork to the upstream repo (`dyad-sh/dyad`).
-3. If you cannot push to the fork due to permissions, push directly to `upstream` (`dyad-sh/dyad`) as a last resort.
+3. If you cannot push to the fork due to permissions, push directly to `upstream` (`dyad-sh/dyad`) as a last resort. Since `upstream` often has no auth credentials, use the token from `origin`'s **fetch** URL and push directly:
+   ```bash
+   git push --force "https://x-access-token:<token-from-origin-fetch-url>@github.com/dyad-sh/dyad.git" HEAD:<branch>
+   ```
+   Use `--force` (not `--force-with-lease`) here: `--force-with-lease` rejects with "stale info" when the target branch has no local tracking ref for that remote.
+4. If the PR was **closed** (not merged) before the rebase, reopen it after pushing: `gh pr reopen <number>`.
 
 ## `gh pr create` branch detection
 
@@ -83,6 +88,10 @@ git stash pop
 ```
 
 The stashed changes will be automatically merged back after the rebase completes.
+
+### Dead code after "keep HEAD" conflict resolution
+
+When rebasing with "add/add" conflicts and choosing to keep the upstream (HEAD) version for all conflicts, the rebased commit may leave orphaned functions, constants, or variables that were part of the branch's implementation but are no longer referenced. These produce `no-unused-vars` lint errors after the rebase completes. Always run `npm run lint:fix` after resolving conflicts to catch and remove this dead code before committing.
 
 ### Conflict resolution tips
 

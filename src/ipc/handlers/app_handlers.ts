@@ -42,7 +42,6 @@ import {
 import { createLoggedHandler } from "./safe_handle";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
 import { startProxy } from "../utils/start_proxy_server";
-import { Worker } from "worker_threads";
 import { createFromTemplate } from "./createFromTemplate";
 import {
   gitCommit,
@@ -153,8 +152,6 @@ async function copyDir(
   });
 }
 
-let proxyWorker: Worker | null = null;
-
 // Needed, otherwise electron in MacOS/Linux will not be able
 // to find node/pnpm.
 fixPath();
@@ -174,10 +171,6 @@ async function executeApp({
   installCommand?: string | null;
   startCommand?: string | null;
 }): Promise<void> {
-  if (proxyWorker) {
-    proxyWorker.terminate();
-    proxyWorker = null;
-  }
   const settings = readSettings();
   const runtimeMode = settings.runtimeMode2 ?? "host";
 
@@ -346,21 +339,54 @@ function listenToProcess({
 
       const urlMatch = message.match(/(https?:\/\/localhost:\d+\/?)/);
       if (urlMatch) {
-        proxyWorker = await startProxy(urlMatch[1], {
+        const originalUrl = urlMatch[1];
+        const appInfo = runningApps.get(appId);
+        if (!appInfo) {
+          return;
+        }
+
+        // Reuse the existing proxy worker for this app if it already targets this URL.
+        if (
+          appInfo.proxyWorker &&
+          appInfo.originalUrl === originalUrl &&
+          appInfo.proxyUrl
+        ) {
+          safeSend(event.sender, "app:output", {
+            type: "stdout",
+            message: `[dyad-proxy-server]started=[${appInfo.proxyUrl}] original=[${originalUrl}]`,
+            appId,
+          });
+          return;
+        }
+
+        if (appInfo.proxyWorker) {
+          await appInfo.proxyWorker.terminate();
+          appInfo.proxyWorker = undefined;
+        }
+
+        const proxyWorker = await startProxy(originalUrl, {
           onStarted: (proxyUrl) => {
             // Store proxy URL in running app info for re-emission on app switch
-            const appInfo = runningApps.get(appId);
-            if (appInfo) {
-              appInfo.proxyUrl = proxyUrl;
-              appInfo.originalUrl = urlMatch[1];
+            const latestAppInfo = runningApps.get(appId);
+            if (latestAppInfo) {
+              latestAppInfo.proxyUrl = proxyUrl;
+              latestAppInfo.originalUrl = originalUrl;
             }
             safeSend(event.sender, "app:output", {
               type: "stdout",
-              message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${urlMatch[1]}]`,
+              message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${originalUrl}]`,
               appId,
             });
           },
         });
+
+        const latestAppInfo = runningApps.get(appId);
+        if (latestAppInfo) {
+          latestAppInfo.proxyWorker = proxyWorker;
+          latestAppInfo.originalUrl = originalUrl;
+        } else {
+          await proxyWorker.terminate();
+        }
       }
     }
   });

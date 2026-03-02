@@ -1,6 +1,7 @@
 import { ChildProcess, spawn } from "node:child_process";
 import treeKill from "tree-kill";
 import log from "electron-log";
+import type { Worker } from "node:worker_threads";
 
 const logger = log.scope("process_manager");
 
@@ -16,6 +17,8 @@ export interface RunningAppInfo {
   proxyUrl?: string;
   /** Original localhost URL for the running app */
   originalUrl?: string;
+  /** Proxy worker dedicated to this running app */
+  proxyWorker?: Worker;
 }
 
 // Store running app processes
@@ -124,6 +127,11 @@ export async function stopAppByInfo(
   appId: number,
   appInfo: RunningAppInfo,
 ): Promise<void> {
+  if (appInfo.proxyWorker) {
+    await appInfo.proxyWorker.terminate();
+    appInfo.proxyWorker = undefined;
+  }
+
   if (appInfo.isDocker) {
     const containerName = appInfo.containerName || `dyad-app-${appId}`;
     await stopDockerContainer(containerName);
@@ -144,6 +152,10 @@ export function removeAppIfCurrentProcess(
 ): void {
   const currentAppInfo = runningApps.get(appId);
   if (currentAppInfo && currentAppInfo.process === process) {
+    if (currentAppInfo.proxyWorker) {
+      void currentAppInfo.proxyWorker.terminate();
+      currentAppInfo.proxyWorker = undefined;
+    }
     runningApps.delete(appId);
     logger.info(
       `Removed app ${appId} (processId ${currentAppInfo.processId}) from running map. Current size: ${runningApps.size}`,
@@ -294,6 +306,11 @@ export function stopAllAppsSync(): void {
   for (const appId of appIds) {
     const appInfo = runningApps.get(appId);
     if (!appInfo) continue;
+
+    if (appInfo.proxyWorker) {
+      void appInfo.proxyWorker.terminate();
+      appInfo.proxyWorker = undefined;
+    }
 
     if (appInfo.isDocker) {
       const containerName = appInfo.containerName || `dyad-app-${appId}`;

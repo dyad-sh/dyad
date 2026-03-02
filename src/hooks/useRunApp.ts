@@ -148,7 +148,7 @@ export function useRunApp() {
       const logEntry = {
         level: "info" as const,
         type: "server" as const,
-        message: "Trying to restart app...",
+        message: "Connecting to app...",
         appId,
         timestamp: Date.now(),
       };

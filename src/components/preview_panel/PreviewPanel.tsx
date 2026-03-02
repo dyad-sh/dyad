@@ -106,6 +106,8 @@ export function PreviewPanel() {
 
     return () => {
       cancelled = true;
+      // Notify backend that no app is being previewed so GC can reclaim idle apps
+      notifyAppSelected(null);
     };
     // Note: We no longer stop apps when switching. The backend garbage collector
     // will stop apps that haven't been viewed in 10 minutes.

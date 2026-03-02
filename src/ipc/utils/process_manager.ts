@@ -2,6 +2,7 @@ import { ChildProcess, spawn } from "node:child_process";
 import treeKill from "tree-kill";
 import log from "electron-log";
 import type { Worker } from "node:worker_threads";
+import { withLock } from "./lock_utils";
 
 const logger = log.scope("process_manager");
 
@@ -193,6 +194,11 @@ let currentlySelectedAppId: number | null = null;
  * @param appId The app ID that is currently selected, or null if none
  */
 export function setCurrentlySelectedAppId(appId: number | null): void {
+  // Update lastViewedAt for the previously selected app so the idle timer
+  // starts from when the user actually stopped viewing it
+  if (currentlySelectedAppId !== null && currentlySelectedAppId !== appId) {
+    updateAppLastViewed(currentlySelectedAppId);
+  }
   currentlySelectedAppId = appId;
   if (appId !== null) {
     updateAppLastViewed(appId);
@@ -230,16 +236,32 @@ export async function garbageCollectIdleApps(): Promise<void> {
     }
   }
 
-  // Stop idle apps
+  // Stop idle apps (acquire per-app lock to avoid racing with runApp/stopApp/restartApp)
   for (const appId of appsToStop) {
-    const appInfo = runningApps.get(appId);
-    if (appInfo) {
-      logger.info(`Garbage collecting idle app ${appId}`);
-      try {
+    try {
+      await withLock(appId, async () => {
+        // Re-check: the user may have selected this app while we were stopping others
+        if (appId === currentlySelectedAppId) {
+          logger.info(
+            `Skipping GC for app ${appId}: it became the selected app during this GC cycle`,
+          );
+          return;
+        }
+        const appInfo = runningApps.get(appId);
+        if (!appInfo) return;
+        // Re-check idle time under lock in case the app was viewed/restarted
+        const recheckIdle = Date.now() - appInfo.lastViewedAt;
+        if (recheckIdle < IDLE_TIMEOUT_MS) {
+          logger.info(
+            `Skipping GC for app ${appId}: idle time refreshed during lock wait`,
+          );
+          return;
+        }
+        logger.info(`Garbage collecting idle app ${appId}`);
         await stopAppByInfo(appId, appInfo);
-      } catch (error) {
-        logger.error(`Failed to garbage collect app ${appId}:`, error);
-      }
+      });
+    } catch (error) {
+      logger.error(`Failed to garbage collect app ${appId}:`, error);
     }
   }
 
@@ -315,7 +337,14 @@ export function stopAllAppsSync(): void {
     if (appInfo.isDocker) {
       const containerName = appInfo.containerName || `dyad-app-${appId}`;
       // Fire-and-forget: spawn docker stop without awaiting
-      spawn("docker", ["stop", containerName], { stdio: "ignore" });
+      const stop = spawn("docker", ["stop", containerName], {
+        stdio: "ignore",
+      });
+      stop.on("error", (err) => {
+        logger.warn(
+          `Failed to stop docker container for app ${appId} (${containerName}): ${err.message}`,
+        );
+      });
       logger.info(`Sent docker stop for app ${appId} (${containerName})`);
     } else if (appInfo.process.pid) {
       // treeKill sends SIGTERM synchronously

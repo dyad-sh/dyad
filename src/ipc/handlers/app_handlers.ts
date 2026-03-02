@@ -23,7 +23,6 @@ import {
   stopAppByInfo,
   removeDockerVolumesForApp,
   setCurrentlySelectedAppId,
-  updateAppLastViewed,
   startAppGarbageCollection,
 } from "../utils/process_manager";
 import { getEnvVar } from "../utils/read_env";
@@ -2057,19 +2056,10 @@ export function registerAppHandlers() {
     if (appId !== null) {
       logger.debug(`App ${appId} selected for preview`);
       setCurrentlySelectedAppId(appId);
-      // Also update lastViewedAt if the app is running
-      updateAppLastViewed(appId);
     } else {
       logger.debug("No app selected for preview");
       setCurrentlySelectedAppId(null);
     }
-  });
-
-  // Handler for getting list of running apps
-  createTypedHandler(appContracts.getRunningApps, async () => {
-    const appIds = Array.from(runningApps.keys());
-    logger.debug(`Getting running apps: ${appIds.join(", ") || "none"}`);
-    return { appIds };
   });
 
   // Start the garbage collection for idle apps

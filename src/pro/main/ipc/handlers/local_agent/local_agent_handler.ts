@@ -1148,7 +1148,7 @@ export async function handleLocalAgentStream(
       logger.info(
         `Chat ${req.chatId} hit step limit of ${MAX_TOOL_CALL_STEPS} steps`,
       );
-      const stepLimitMessage = `\n\n<dyad-step-limit steps="${totalStepsExecuted}" limit="${MAX_TOOL_CALL_STEPS}">I've paused after ${totalStepsExecuted} tool calls to prevent runaway operations. To continue working on the current task, simply send a message like "continue" or "keep going".</dyad-step-limit>`;
+      const stepLimitMessage = `\n\n<dyad-step-limit steps="${totalStepsExecuted}" limit="${MAX_TOOL_CALL_STEPS}">Automatically paused after ${totalStepsExecuted} tool calls.</dyad-step-limit>`;
       fullResponse += stepLimitMessage;
       await updateResponseInDb(placeholderMessageId, fullResponse);
       sendResponseChunk(

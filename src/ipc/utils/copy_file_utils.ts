@@ -32,6 +32,7 @@ export interface CopyFileResult {
 export async function executeCopyFile({
   from,
   to,
+  appId,
   appPath,
   supabaseProjectId,
   supabaseOrganizationSlug,
@@ -39,12 +40,13 @@ export async function executeCopyFile({
 }: {
   from: string;
   to: string;
+  appId: number;
   appPath: string;
   supabaseProjectId?: string | null;
   supabaseOrganizationSlug?: string | null;
   isSharedModulesChanged?: boolean;
 }): Promise<CopyFileResult> {
-  return withLock(appPath, async () => {
+  return withLock(appId, async () => {
     // Resolve the source path: allow both .dyad/media paths and app-relative paths
     let fromFullPath: string;
     if (path.isAbsolute(from)) {
@@ -65,6 +67,29 @@ export async function executeCopyFile({
       throw new Error(`Source file does not exist: ${from}`);
     }
 
+    // Security: resolve symlinks and re-validate that paths remain within bounds.
+    // path.resolve() does not follow symlinks, so an attacker could place a
+    // symlink inside the allowed directory that points outside it.
+    const realFromPath = fs.realpathSync(fromFullPath);
+    const resolvedAppPath = fs.realpathSync(appPath);
+    if (
+      path.isAbsolute(from) &&
+      !isWithinDyadMediaDir(realFromPath, resolvedAppPath)
+    ) {
+      throw new Error(
+        `Source path resolves to a location outside the .dyad/media directory (possible symlink traversal)`,
+      );
+    }
+    if (
+      !path.isAbsolute(from) &&
+      !realFromPath.startsWith(resolvedAppPath + path.sep) &&
+      realFromPath !== resolvedAppPath
+    ) {
+      throw new Error(
+        `Source path resolves to a location outside the app directory (possible symlink traversal)`,
+      );
+    }
+
     // Track if this involves shared modules
     const sharedModuleChanged = isSharedServerModule(to);
 
@@ -72,7 +97,7 @@ export async function executeCopyFile({
     const dirPath = path.dirname(toFullPath);
     fs.mkdirSync(dirPath, { recursive: true });
 
-    // Copy the file
+    // Copy the file (do not follow symlinks at destination)
     fs.copyFileSync(fromFullPath, toFullPath);
     logger.log(`Successfully copied file: ${fromFullPath} -> ${toFullPath}`);
 

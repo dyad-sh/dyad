@@ -34,6 +34,7 @@ export const copyFileTool: ToolDefinition<z.infer<typeof copyFileSchema>> = {
     const result = await executeCopyFile({
       from: args.from,
       to: args.to,
+      appId: ctx.appId,
       appPath: ctx.appPath,
       supabaseProjectId: ctx.supabaseProjectId,
       supabaseOrganizationSlug: ctx.supabaseOrganizationSlug,

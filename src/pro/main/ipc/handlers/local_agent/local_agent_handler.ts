@@ -1303,6 +1303,15 @@ function maybeAppendRetryReplayForRetry(params: {
     onCurrentMessageHistoryUpdate,
   } = params;
   const replayMessages: ModelMessage[] = [];
+  const pendingAssistantParts: Array<
+    | { type: "text"; text: string }
+    | {
+        type: "tool-call";
+        toolCallId: string;
+        toolName: string;
+        input: unknown;
+      }
+  > = [];
   const toolCallsWithResult = new Set<string>();
   const toolResultsWithCall = new Set<string>();
 
@@ -1322,15 +1331,23 @@ function maybeAppendRetryReplayForRetry(params: {
     ),
   );
 
+  const flushPendingAssistantMessage = () => {
+    if (pendingAssistantParts.length === 0) {
+      return;
+    }
+    replayMessages.push({
+      role: "assistant",
+      content: [...pendingAssistantParts],
+    });
+    pendingAssistantParts.length = 0;
+  };
+
   for (const event of retryReplayEvents) {
     if (event.type === "assistant-text") {
       if (!event.text.trim()) {
         continue;
       }
-      replayMessages.push({
-        role: "assistant",
-        content: [{ type: "text", text: event.text }],
-      });
+      pendingAssistantParts.push({ type: "text", text: event.text });
       continue;
     }
 
@@ -1338,16 +1355,11 @@ function maybeAppendRetryReplayForRetry(params: {
       if (!completedToolExchangeIds.has(event.toolCallId)) {
         continue;
       }
-      replayMessages.push({
-        role: "assistant",
-        content: [
-          {
-            type: "tool-call",
-            toolCallId: event.toolCallId,
-            toolName: event.toolName,
-            input: event.input,
-          },
-        ],
+      pendingAssistantParts.push({
+        type: "tool-call",
+        toolCallId: event.toolCallId,
+        toolName: event.toolName,
+        input: event.input,
       });
       continue;
     }
@@ -1355,6 +1367,7 @@ function maybeAppendRetryReplayForRetry(params: {
     if (!completedToolExchangeIds.has(event.toolCallId)) {
       continue;
     }
+    flushPendingAssistantMessage();
     replayMessages.push({
       role: "tool",
       content: [
@@ -1367,6 +1380,7 @@ function maybeAppendRetryReplayForRetry(params: {
       ],
     });
   }
+  flushPendingAssistantMessage();
 
   if (replayMessages.length === 0) {
     return;

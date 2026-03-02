@@ -9,3 +9,24 @@ export function parseMediaMentions(prompt: string): string[] {
 
   return mentions;
 }
+
+/**
+ * Strip resolved @media mentions from prompt text while preserving all other text.
+ * This only removes exact mention tokens that were successfully resolved.
+ */
+export function stripResolvedMediaMentions(
+  prompt: string,
+  resolvedMediaRefs: string[],
+): string {
+  if (resolvedMediaRefs.length === 0) {
+    return prompt.trim();
+  }
+
+  let stripped = prompt;
+  for (const mediaRef of resolvedMediaRefs) {
+    const token = `@media:${mediaRef}`;
+    stripped = stripped.split(token).join("");
+  }
+
+  return stripped.trim();
+}

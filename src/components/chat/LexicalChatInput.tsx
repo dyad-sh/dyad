@@ -435,11 +435,24 @@ export function LexicalChatInput({
           }
         }
 
-        // Transform @AppName mentions to @app:AppName format
-        // This regex matches @AppName where AppName is one of our actual app names
-
         // Short-circuit if there's no "@" symbol in the text
         if (textContent.includes("@")) {
+          // Convert media mentions first: @AppName/filename -> @media:AppName/filename
+          // This must happen before app mentions, because @AppName/filename would
+          // otherwise be partially matched by the @AppName -> @app:AppName rule.
+          for (const app of mediaApps) {
+            for (const file of app.files) {
+              const display = `${app.appName}/${file.fileName}`;
+              const escaped = display.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              const mediaRegex = new RegExp(`@(${escaped})(?![\\w-])`, "g");
+              textContent = textContent.replace(
+                mediaRegex,
+                `@media:${display}`,
+              );
+            }
+          }
+
+          // Transform @AppName mentions to @app:AppName format
           const appNames = apps?.map((app) => app.name) || [];
           for (const appName of appNames) {
             // Escape special regex characters in app name
@@ -448,7 +461,7 @@ export function LexicalChatInput({
               "\\$&",
             );
             const mentionRegex = new RegExp(
-              `@(${escapedAppName})(?![a-zA-Z0-9_-])`,
+              `@(${escapedAppName})(?![a-zA-Z0-9_/\\-])`,
               "g",
             );
             textContent = textContent.replace(mentionRegex, "@app:$1");
@@ -468,19 +481,6 @@ export function LexicalChatInput({
             );
             const fileRegex = new RegExp(`@(${escapedDisplay})(?![\\w-])`, "g");
             textContent = textContent.replace(fileRegex, `@file:${fullPath}`);
-          }
-
-          // Convert media mentions: @AppName/filename -> @media:AppName/filename
-          for (const app of mediaApps) {
-            for (const file of app.files) {
-              const display = `${app.appName}/${file.fileName}`;
-              const escaped = display.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-              const mediaRegex = new RegExp(`@(${escaped})(?![\\w-])`, "g");
-              textContent = textContent.replace(
-                mediaRegex,
-                `@media:${display}`,
-              );
-            }
           }
         }
         onChange(textContent);

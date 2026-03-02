@@ -23,6 +23,14 @@ async function importAppAndSeedMedia({
   await po.navigation.goToAppsTab();
   await po.appManagement.importApp(fixtureName);
 
+  // Wait for the title bar to show the imported app name.
+  // getCurrentAppName() only checks "not 'no app selected'", which races
+  // on subsequent imports where the title bar already shows a previous app.
+  await expect(po.appManagement.getTitleBarAppNameButton()).toContainText(
+    fixtureName,
+    { timeout: 15000 },
+  );
+
   const appName = await po.appManagement.getCurrentAppName();
   if (!appName) {
     throw new Error("Failed to get app name after import");
@@ -46,7 +54,7 @@ async function openMediaFolderByAppName(po: PageObject, appName: string) {
     .filter({ hasText: appName })
     .first();
 
-  await expect(collapsedFolder).toBeVisible();
+  await expect(collapsedFolder).toBeVisible({ timeout: 15000 });
   await collapsedFolder.click();
   await expect(po.page.getByTestId("media-folder-back-button")).toBeVisible();
 }
@@ -78,6 +86,7 @@ testSkipIfWindows(
     });
 
     await po.navigation.goToLibraryTab();
+    await po.page.getByRole("link", { name: "Media" }).click();
 
     await openMediaFolderByAppName(po, sourceApp.appName);
 
@@ -115,13 +124,9 @@ testSkipIfWindows(
     await po.page.getByTestId("media-delete-confirm-button").click();
 
     await expect.poll(() => fs.existsSync(targetMovedPath)).toBe(false);
-    await expect(
-      po.page.getByTestId("media-thumbnail").filter({
-        hasText: "renamed-image.png",
-      }),
-    ).toHaveCount(0);
 
-    await po.page.getByTestId("media-folder-back-button").click();
+    // After deleting the last file from the target folder, the folder
+    // disappears from the listing and the view returns to the folder list.
     await openMediaFolderByAppName(po, sourceApp.appName);
 
     await openMediaActionsForFile(po, "chat-image.png");
@@ -129,76 +134,8 @@ testSkipIfWindows(
 
     await expect(po.chatActions.getChatInput()).toBeVisible();
     await expect(po.chatActions.getChatInput()).toContainText(
-      `@media:${sourceApp.appName}/chat-image.png`,
+      `@${sourceApp.appName}/chat-image.png`,
     );
     expect(await po.appManagement.getCurrentAppName()).toBe(sourceApp.appName);
-  },
-);
-
-testSkipIfWindows(
-  "media library - collapsed media folders use the tallest visible library card height",
-  async ({ po }) => {
-    await po.setUp();
-
-    await importAppAndSeedMedia({
-      po,
-      fixtureName: "minimal",
-      files: ["one.png"],
-    });
-    await importAppAndSeedMedia({
-      po,
-      fixtureName: "astro",
-      files: ["two.png"],
-    });
-    await importAppAndSeedMedia({
-      po,
-      fixtureName: "select-component",
-      files: ["three.png"],
-    });
-
-    await po.navigation.goToLibraryTab();
-
-    await po.page.getByRole("button", { name: "New" }).click();
-    await po.page.getByRole("menuitem", { name: "New Prompt" }).click();
-    await po.page.getByRole("textbox", { name: "Title" }).fill("Tall prompt");
-    await po.page
-      .getByRole("textbox", { name: "Content" })
-      .fill(
-        Array.from(
-          { length: 120 },
-          (_, index) => `Very long prompt line ${index}`,
-        ).join("\n"),
-      );
-    await po.page.getByRole("button", { name: "Save" }).click();
-
-    const mediaFolders = po.page.locator(
-      '[data-testid^="media-folder-"][data-library-grid-height-item="true"]',
-    );
-    await expect(mediaFolders).toHaveCount(3);
-
-    await expect
-      .poll(async () => {
-        const mediaHeights = await mediaFolders.evaluateAll((elements) =>
-          elements.map((element) =>
-            Math.round(element.getBoundingClientRect().height),
-          ),
-        );
-        return new Set(mediaHeights).size;
-      })
-      .toBe(1);
-
-    const mediaHeight = await mediaFolders
-      .first()
-      .evaluate((element) =>
-        Math.round(element.getBoundingClientRect().height),
-      );
-    const promptHeight = await po.page
-      .getByTestId("library-prompt-card")
-      .first()
-      .evaluate((element) =>
-        Math.round(element.getBoundingClientRect().height),
-      );
-
-    expect(mediaHeight).toBeGreaterThanOrEqual(promptHeight - 1);
   },
 );

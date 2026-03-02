@@ -78,7 +78,10 @@ import {
 import { fileExists } from "../utils/file_utils";
 import { extractMentionedAppsCodebases } from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
-import { parseMediaMentions } from "@/shared/parse_media_mentions";
+import {
+  parseMediaMentions,
+  stripResolvedMediaMentions,
+} from "@/shared/parse_media_mentions";
 import { prompts as promptsTable } from "../../db/schema";
 import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
@@ -400,13 +403,30 @@ export function registerChatStreamHandlers() {
         const mediaRefs = parseMediaMentions(userPrompt);
         if (mediaRefs.length > 0) {
           const resolvedMedia = await resolveMediaMentions(mediaRefs);
+          const resolvedMediaRefs = resolvedMedia.map(
+            (media) => `${media.appName}/${media.fileName}`,
+          );
+          let mediaDisplayInfo = "";
           for (const media of resolvedMedia) {
             attachmentPaths.push(media.filePath);
+            const mediaUrl = `dyad-media://media/${encodeURIComponent(chat.app.path)}/.dyad/media/${encodeURIComponent(media.fileName)}`;
+            mediaDisplayInfo += `\n<dyad-attachment name="${escapeXmlAttr(media.fileName)}" type="${escapeXmlAttr(media.mimeType)}" url="${escapeXmlAttr(mediaUrl)}" path="${escapeXmlAttr(media.filePath)}" attachment-type="chat-context"></dyad-attachment>\n`;
           }
-          // Strip @media: tags from the prompt text
-          userPrompt = userPrompt
-            .replace(/@media:[a-zA-Z0-9_-]+\/[^\s]+/g, "")
-            .trim();
+          // Strip only resolved @media: tags from the prompt text.
+          // This preserves adjacent user text when mentions are directly followed
+          // by text without a whitespace separator.
+          userPrompt = stripResolvedMediaMentions(
+            userPrompt,
+            resolvedMediaRefs,
+          );
+          // Build display prompt with attachment tags for inline rendering.
+          if (mediaDisplayInfo) {
+            const strippedPrompt = stripResolvedMediaMentions(
+              displayUserPrompt ?? req.prompt,
+              resolvedMediaRefs,
+            );
+            displayUserPrompt = strippedPrompt + mediaDisplayInfo;
+          }
         }
       } catch (e) {
         logger.error("Failed to resolve media mentions:", e);

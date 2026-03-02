@@ -14,6 +14,9 @@ export function useAppMediaFiles() {
   const query = useQuery({
     queryKey: queryKeys.media.all,
     queryFn: () => ipc.media.listAllMedia(),
+    // Media files can be added externally (e.g., via file system), so always
+    // refetch when the component mounts to pick up new files promptly.
+    staleTime: 0,
   });
 
   const renameMutation = useMutation({

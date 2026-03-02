@@ -19,7 +19,7 @@
 import { EventEmitter } from "events";
 import log from "electron-log";
 import { vectorStoreService } from "./vector_store_service";
-import { openClawOllamaBridge } from "./openclaw_ollama_bridge";
+import { getOpenClawOllamaBridge } from "./openclaw_ollama_bridge";
 import type {
   CollectionId,
   ModelId,
@@ -243,7 +243,7 @@ export class EmbeddingPipeline extends EventEmitter {
 
     try {
       // Check if Ollama is running
-      const ollamaModels = await openClawOllamaBridge.listModels();
+      const ollamaModels = await getOpenClawOllamaBridge().listModels();
       const ollamaModelNames = ollamaModels.map((m: { name: string }) =>
         m.name.toLowerCase(),
       );
@@ -309,7 +309,7 @@ export class EmbeddingPipeline extends EventEmitter {
    */
   private async probeModelDimension(modelId: string): Promise<number> {
     try {
-      const result = await openClawOllamaBridge.embed(modelId, "test");
+      const result = await getOpenClawOllamaBridge().embed(modelId, "test");
       if (result.embeddings && result.embeddings.length > 0) {
         return result.embeddings[0].length;
       }
@@ -347,7 +347,7 @@ export class EmbeddingPipeline extends EventEmitter {
 
       const batch = texts.slice(i, i + batchSize);
       try {
-        const result = await openClawOllamaBridge.embed(
+        const result = await getOpenClawOllamaBridge().embed(
           this.activeModel.id,
           batch,
         );

@@ -21,6 +21,10 @@ try {
 // Cache loaded fixtures to avoid re-importing
 const fixtureCache = new Map<string, LocalAgentFixture>();
 
+// Track connection attempts per session+turn for connection drop simulation.
+// Key: `${sessionId}-${passIndex}-${turnIndex}`, Value: attempt count
+const connectionAttempts = new Map<string, number>();
+
 /**
  * Generate a session ID from the first user message
  * This allows us to track conversation state across requests
@@ -410,6 +414,40 @@ export async function handleLocalAgentFixture(
             ),
           })),
         };
+      }
+    }
+
+    // Check if we should simulate a connection drop for this attempt
+    if (
+      fixture.dropConnectionOnAttempts &&
+      fixture.dropConnectionOnAttempts.length > 0
+    ) {
+      const attemptKey = `${sessionId}-${passIndex}-${turnIndex}`;
+      const currentAttempt = (connectionAttempts.get(attemptKey) || 0) + 1;
+      connectionAttempts.set(attemptKey, currentAttempt);
+
+      console.log(
+        `[local-agent] Connection attempt ${currentAttempt} for ${attemptKey}, ` +
+          `drop on: [${fixture.dropConnectionOnAttempts.join(", ")}]`,
+      );
+
+      if (fixture.dropConnectionOnAttempts.includes(currentAttempt)) {
+        console.log(
+          `[local-agent] Simulating connection drop on attempt ${currentAttempt}`,
+        );
+        // Stream partial data then destroy the socket to simulate a network interruption
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        res.write(
+          createStreamChunk(
+            "Partial response before connection dr",
+            "assistant",
+          ),
+        );
+        // Destroy the underlying socket to trigger a "terminated" error on the client
+        res.socket?.destroy();
+        return;
       }
     }
 

@@ -1077,9 +1077,11 @@ export async function handleLocalAgentStream(
                     `No step data found at index ${postMidTurnCompactionStartStep - 1} for mid-turn compaction slicing; persisting all messages`,
                   );
                 }
-                return responseMessages.slice(prevStepMessages?.length ?? 0);
+                return passResponseMessages.slice(
+                  prevStepMessages?.length ?? 0,
+                );
               })()
-            : responseMessages;
+            : passResponseMessages;
         accumulatedAiMessages.push(...messagesToAccumulate);
         currentMessageHistory = [
           ...currentMessageHistory,
@@ -1090,7 +1092,8 @@ export async function handleLocalAgentStream(
       // Check if the model ended with text only (no tool calls in the final step).
       // This is more reliable than passProducedChatText which is set on any text-delta
       // during the stream (including preambles before tool calls).
-      const lastStep = steps.length > 0 ? steps[steps.length - 1] : null;
+      const lastStep =
+        passSteps.length > 0 ? passSteps[passSteps.length - 1] : null;
       const passEndedWithText =
         passProducedChatText && (!lastStep || lastStep.toolCalls.length === 0);
 

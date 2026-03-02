@@ -620,6 +620,7 @@ export async function handleLocalAgentStream(
       let terminatedRetryCount = 0;
       let needsContinuationInstruction = false;
 
+      // Retry loop: if the stream terminates with a transient error, captured text/tool events are replayed into message history, a continuation instruction is appended, and the stream is re-opened.
       while (!abortController.signal.aborted) {
         let streamErrorFromCallback: unknown;
         const retryReplayEvents: RetryReplayEvent[] = [];
@@ -630,406 +631,431 @@ export async function handleLocalAgentStream(
               buildTerminatedRetryContinuationInstruction(),
             ]
           : currentMessageHistory;
-
-        const streamResult = streamText({
-          model: modelClient.model,
-          headers: getAiHeaders({
-            builtinProviderId: modelClient.builtinProviderId,
-          }),
-          providerOptions: getProviderOptions({
-            dyadAppId: chat.app.id,
-            dyadRequestId,
-            dyadDisableFiles: true, // Local agent uses tools, not file injection
-            files: [],
-            mentionedAppsCodebases: [],
-            builtinProviderId: modelClient.builtinProviderId,
-            settings,
-          }),
-          maxOutputTokens,
-          temperature,
-          maxRetries: 2,
-          system: systemPrompt,
-          messages: attemptMessages,
-          tools: allTools,
-          stopWhen: [
-            stepCountIs(25),
-            hasToolCall(addIntegrationTool.name),
-            // In plan mode, also stop after writing a plan or exiting plan mode.
-            ...(planModeOnly
-              ? [
-                  hasToolCall(writePlanTool.name),
-                  hasToolCall(exitPlanTool.name),
-                ]
-              : []),
-          ],
-          abortSignal: abortController.signal,
-          // Inject pending user messages (e.g., images from web_crawl) between steps
-          // We must re-inject all accumulated messages each step because the AI SDK
-          // doesn't persist dynamically injected messages in its internal state.
-          // We track the insertion index so messages appear at the same position each step.
-          prepareStep: async (options) => {
-            let stepOptions = options;
-
-            if (
-              !messageOverride &&
-              compactBeforeNextStep &&
-              !compactedMidTurn &&
-              settings.enableContextCompaction !== false
-            ) {
-              compactBeforeNextStep = false;
-              const inFlightTailMessages = options.messages.slice(
-                baseMessageHistoryCount,
-              );
-              const compacted = await maybePerformPendingCompaction({
-                showOnTopOfCurrentResponse: true,
-                force: true,
-              });
-
-              if (compacted) {
-                compactedMidTurn = true;
-                // Preserve only messages generated after this compaction boundary.
-                postMidTurnCompactionStartStep = options.stepNumber;
-                // Clear stale injected messages — their insertAtIndex values are
-                // based on the pre-compaction message array which has been rebuilt
-                // with a different (typically smaller) count. Keeping them would
-                // cause injectMessagesAtPositions to splice at wrong positions.
-                allInjectedMessages.length = 0;
-                const compactedMessageHistory = buildChatMessageHistory(
-                  chat.messages,
-                  {
-                    // Keep the structured in-flight assistant/tool messages from
-                    // the current stream instead of the placeholder DB content.
-                    excludeMessageIds: new Set([placeholderMessageId]),
-                  },
-                );
-                baseMessageHistoryCount = compactedMessageHistory.length;
-                stepOptions = {
-                  ...options,
-                  // Preserve in-flight turn messages so same-turn tool loops can
-                  // continue, while later turns are compacted via persisted history.
-                  messages: [
-                    ...compactedMessageHistory,
-                    ...inFlightTailMessages,
-                  ],
-                };
-              } else {
-                // Prevent repeated compaction attempts if the first one fails.
-                compactionFailedMidTurn = true;
-              }
-            }
-
-            const preparedStep = prepareStepMessages(
-              stepOptions,
-              pendingUserMessages,
-              allInjectedMessages,
-            );
-
-            // prepareStepMessages returns undefined when it has no additional
-            // injections/cleanups to apply. If we already replaced the base
-            // message history (e.g., after mid-turn compaction), we still need
-            // to return the updated options.
-            let result =
-              preparedStep ??
-              (stepOptions === options ? undefined : stepOptions);
-
-            return result;
-          },
-          onStepFinish: async (step) => {
-            if (!hasInjectedPlanningQuestionnaireReflection) {
-              const questionnaireError =
-                getPlanningQuestionnaireErrorFromStep(step);
-              if (questionnaireError) {
-                pendingUserMessages.push([
-                  {
-                    type: "text",
-                    text: buildPlanningQuestionnaireReflectionMessage(
-                      questionnaireError,
-                      planModeOnly,
-                    ),
-                  },
-                ]);
-                hasInjectedPlanningQuestionnaireReflection = true;
-                logger.info(
-                  `Injected synthetic planning_questionnaire reflection message for chat ${req.chatId}`,
-                );
-              }
-            }
-
-            if (
-              settings.enableContextCompaction === false ||
-              compactedMidTurn ||
-              typeof step.usage.totalTokens !== "number"
-            ) {
-              return;
-            }
-
-            const shouldCompact = await checkAndMarkForCompaction(
-              req.chatId,
-              step.usage.totalTokens,
-            );
-
-            // If this step triggered tool calls, compact before the next step
-            // in this same user turn instead of waiting for the next message.
-            // Only attempt mid-turn compaction once per turn.
-            if (
-              shouldCompact &&
-              step.toolCalls.length > 0 &&
-              !compactionFailedMidTurn
-            ) {
-              compactBeforeNextStep = true;
-            }
-          },
-          onFinish: async (response) => {
-            const totalTokens = response.usage?.totalTokens;
-            const inputTokens = response.usage?.inputTokens;
-            const cachedInputTokens = response.usage?.cachedInputTokens;
-            logger.log(
-              "Total tokens used:",
-              totalTokens,
-              "Input tokens:",
-              inputTokens,
-              "Cached input tokens:",
-              cachedInputTokens,
-              "Cache hit ratio:",
-              cachedInputTokens
-                ? (cachedInputTokens ?? 0) / (inputTokens ?? 0)
-                : 0,
-            );
-            if (typeof totalTokens === "number") {
-              await db
-                .update(messages)
-                .set({ maxTokensUsed: totalTokens })
-                .where(eq(messages.id, placeholderMessageId))
-                .catch((err) =>
-                  logger.error("Failed to save token count", err),
-                );
-            }
-          },
-          onError: (error: any) => {
-            const normalizedError = unwrapStreamError(error);
-            streamErrorFromCallback = normalizedError;
-            logger.error(
-              "Local agent stream error:",
-              getErrorMessage(normalizedError),
-            );
-          },
-        });
-
-        let inThinkingBlock = false;
-        let streamErrorFromIteration: unknown;
+        const attemptToolInputIds = new Set<string>();
+        const cleanupAttemptToolStreamingEntries = () => {
+          for (const toolCallId of attemptToolInputIds) {
+            cleanupStreamingEntry(toolCallId);
+          }
+          attemptToolInputIds.clear();
+        };
 
         try {
-          for await (const part of streamResult.fullStream) {
-            if (abortController.signal.aborted) {
-              logger.log(`Stream aborted for chat ${req.chatId}`);
-              // Clean up pending consent/questionnaire requests to prevent stale UI banners
-              clearPendingConsentsForChat(req.chatId);
-              clearPendingQuestionnairesForChat(req.chatId);
-              break;
-            }
+          const streamResult = streamText({
+            model: modelClient.model,
+            headers: getAiHeaders({
+              builtinProviderId: modelClient.builtinProviderId,
+            }),
+            providerOptions: getProviderOptions({
+              dyadAppId: chat.app.id,
+              dyadRequestId,
+              dyadDisableFiles: true, // Local agent uses tools, not file injection
+              files: [],
+              mentionedAppsCodebases: [],
+              builtinProviderId: modelClient.builtinProviderId,
+              settings,
+            }),
+            maxOutputTokens,
+            temperature,
+            maxRetries: 2,
+            system: systemPrompt,
+            messages: attemptMessages,
+            tools: allTools,
+            stopWhen: [
+              stepCountIs(25),
+              hasToolCall(addIntegrationTool.name),
+              // In plan mode, also stop after writing a plan or exiting plan mode.
+              ...(planModeOnly
+                ? [
+                    hasToolCall(writePlanTool.name),
+                    hasToolCall(exitPlanTool.name),
+                  ]
+                : []),
+            ],
+            abortSignal: abortController.signal,
+            // Inject pending user messages (e.g., images from web_crawl) between steps
+            // We must re-inject all accumulated messages each step because the AI SDK
+            // doesn't persist dynamically injected messages in its internal state.
+            // We track the insertion index so messages appear at the same position each step.
+            prepareStep: async (options) => {
+              let stepOptions = options;
 
-            let chunk = "";
+              if (
+                !messageOverride &&
+                compactBeforeNextStep &&
+                !compactedMidTurn &&
+                settings.enableContextCompaction !== false
+              ) {
+                compactBeforeNextStep = false;
+                const inFlightTailMessages = options.messages.slice(
+                  baseMessageHistoryCount,
+                );
+                const compacted = await maybePerformPendingCompaction({
+                  showOnTopOfCurrentResponse: true,
+                  force: true,
+                });
 
-            // Handle thinking block transitions
-            if (
-              inThinkingBlock &&
-              !["reasoning-delta", "reasoning-end", "reasoning-start"].includes(
-                part.type,
-              )
-            ) {
-              chunk = "</think>\n";
-              inThinkingBlock = false;
-            }
-
-            switch (part.type) {
-              case "text-delta":
-                passProducedChatText = true;
-                chunk += part.text;
-                maybeCaptureRetryReplayText(activeRetryReplayEvents, part.text);
-                break;
-
-              case "reasoning-start":
-                if (!inThinkingBlock) {
-                  chunk = "<think>";
-                  inThinkingBlock = true;
+                if (compacted) {
+                  compactedMidTurn = true;
+                  // Preserve only messages generated after this compaction boundary.
+                  postMidTurnCompactionStartStep = options.stepNumber;
+                  // Clear stale injected messages — their insertAtIndex values are
+                  // based on the pre-compaction message array which has been rebuilt
+                  // with a different (typically smaller) count. Keeping them would
+                  // cause injectMessagesAtPositions to splice at wrong positions.
+                  allInjectedMessages.length = 0;
+                  const compactedMessageHistory = buildChatMessageHistory(
+                    chat.messages,
+                    {
+                      // Keep the structured in-flight assistant/tool messages from
+                      // the current stream instead of the placeholder DB content.
+                      excludeMessageIds: new Set([placeholderMessageId]),
+                    },
+                  );
+                  baseMessageHistoryCount = compactedMessageHistory.length;
+                  stepOptions = {
+                    ...options,
+                    // Preserve in-flight turn messages so same-turn tool loops can
+                    // continue, while later turns are compacted via persisted history.
+                    messages: [
+                      ...compactedMessageHistory,
+                      ...inFlightTailMessages,
+                    ],
+                  };
+                } else {
+                  // Prevent repeated compaction attempts if the first one fails.
+                  compactionFailedMidTurn = true;
                 }
-                break;
-
-              case "reasoning-delta":
-                if (!inThinkingBlock) {
-                  chunk = "<think>";
-                  inThinkingBlock = true;
-                }
-                chunk += part.text;
-                break;
-
-              case "reasoning-end":
-                if (inThinkingBlock) {
-                  chunk = "</think>\n";
-                  inThinkingBlock = false;
-                }
-                break;
-
-              case "tool-input-start": {
-                // Initialize streaming state for this tool call
-                getOrCreateStreamingEntry(part.id, part.toolName);
-                break;
               }
 
-              case "tool-input-delta": {
-                // Accumulate args and stream XML preview
-                const entry = getOrCreateStreamingEntry(part.id);
-                if (entry) {
-                  entry.argsAccumulated += part.delta;
-                  const toolDef = findToolDefinition(entry.toolName);
-                  if (toolDef?.buildXml) {
-                    const argsPartial = parsePartialJson(entry.argsAccumulated);
-                    const xml = toolDef.buildXml(argsPartial, false);
-                    if (xml) {
-                      ctx.onXmlStream(xml);
-                    }
-                  }
+              const preparedStep = prepareStepMessages(
+                stepOptions,
+                pendingUserMessages,
+                allInjectedMessages,
+              );
+
+              // prepareStepMessages returns undefined when it has no additional
+              // injections/cleanups to apply. If we already replaced the base
+              // message history (e.g., after mid-turn compaction), we still need
+              // to return the updated options.
+              let result =
+                preparedStep ??
+                (stepOptions === options ? undefined : stepOptions);
+
+              return result;
+            },
+            onStepFinish: async (step) => {
+              if (!hasInjectedPlanningQuestionnaireReflection) {
+                const questionnaireError =
+                  getPlanningQuestionnaireErrorFromStep(step);
+                if (questionnaireError) {
+                  pendingUserMessages.push([
+                    {
+                      type: "text",
+                      text: buildPlanningQuestionnaireReflectionMessage(
+                        questionnaireError,
+                        planModeOnly,
+                      ),
+                    },
+                  ]);
+                  hasInjectedPlanningQuestionnaireReflection = true;
+                  logger.info(
+                    `Injected synthetic planning_questionnaire reflection message for chat ${req.chatId}`,
+                  );
                 }
-                break;
               }
 
-              case "tool-input-end": {
-                // Build final XML and persist
-                const entry = getOrCreateStreamingEntry(part.id);
-                if (entry) {
-                  const toolDef = findToolDefinition(entry.toolName);
-                  if (toolDef?.buildXml) {
-                    const argsPartial = parsePartialJson(entry.argsAccumulated);
-                    const xml = toolDef.buildXml(argsPartial, true);
-                    if (xml) {
-                      ctx.onXmlComplete(xml);
-                    }
-                  }
-                }
-                cleanupStreamingEntry(part.id);
-                break;
+              if (
+                settings.enableContextCompaction === false ||
+                compactedMidTurn ||
+                typeof step.usage.totalTokens !== "number"
+              ) {
+                return;
               }
 
-              case "tool-call":
-                maybeCaptureRetryReplayEvent(retryReplayEvents, part);
-                // Tool execution happens via execute callbacks
-                break;
-
-              case "tool-result":
-                maybeCaptureRetryReplayEvent(retryReplayEvents, part);
-                // Tool results are already handled by the execute callback
-                break;
-            }
-
-            if (chunk) {
-              fullResponse += chunk;
-              await updateResponseInDb(placeholderMessageId, fullResponse);
-              sendResponseChunk(
-                event,
+              const shouldCompact = await checkAndMarkForCompaction(
                 req.chatId,
-                chat,
-                fullResponse,
-                placeholderMessageId,
-                hiddenMessageIdsForStreaming,
+                step.usage.totalTokens,
+              );
+
+              // If this step triggered tool calls, compact before the next step
+              // in this same user turn instead of waiting for the next message.
+              // Only attempt mid-turn compaction once per turn.
+              if (
+                shouldCompact &&
+                step.toolCalls.length > 0 &&
+                !compactionFailedMidTurn
+              ) {
+                compactBeforeNextStep = true;
+              }
+            },
+            onFinish: async (response) => {
+              const totalTokens = response.usage?.totalTokens;
+              const inputTokens = response.usage?.inputTokens;
+              const cachedInputTokens = response.usage?.cachedInputTokens;
+              logger.log(
+                "Total tokens used:",
+                totalTokens,
+                "Input tokens:",
+                inputTokens,
+                "Cached input tokens:",
+                cachedInputTokens,
+                "Cache hit ratio:",
+                cachedInputTokens
+                  ? (cachedInputTokens ?? 0) / (inputTokens ?? 0)
+                  : 0,
+              );
+              if (typeof totalTokens === "number") {
+                await db
+                  .update(messages)
+                  .set({ maxTokensUsed: totalTokens })
+                  .where(eq(messages.id, placeholderMessageId))
+                  .catch((err) =>
+                    logger.error("Failed to save token count", err),
+                  );
+              }
+            },
+            onError: (error: any) => {
+              const normalizedError = unwrapStreamError(error);
+              streamErrorFromCallback = normalizedError;
+              logger.error(
+                "Local agent stream error:",
+                getErrorMessage(normalizedError),
+              );
+            },
+          });
+
+          let inThinkingBlock = false;
+          let streamErrorFromIteration: unknown;
+
+          try {
+            for await (const part of streamResult.fullStream) {
+              if (abortController.signal.aborted) {
+                logger.log(`Stream aborted for chat ${req.chatId}`);
+                // Clean up pending consent/questionnaire requests to prevent stale UI banners
+                clearPendingConsentsForChat(req.chatId);
+                clearPendingQuestionnairesForChat(req.chatId);
+                break;
+              }
+
+              let chunk = "";
+
+              // Handle thinking block transitions
+              if (
+                inThinkingBlock &&
+                ![
+                  "reasoning-delta",
+                  "reasoning-end",
+                  "reasoning-start",
+                ].includes(part.type)
+              ) {
+                chunk = "</think>\n";
+                inThinkingBlock = false;
+              }
+
+              switch (part.type) {
+                case "text-delta":
+                  passProducedChatText = true;
+                  chunk += part.text;
+                  maybeCaptureRetryReplayText(
+                    activeRetryReplayEvents,
+                    part.text,
+                  );
+                  break;
+
+                case "reasoning-start":
+                  if (!inThinkingBlock) {
+                    chunk = "<think>";
+                    inThinkingBlock = true;
+                  }
+                  break;
+
+                case "reasoning-delta":
+                  if (!inThinkingBlock) {
+                    chunk = "<think>";
+                    inThinkingBlock = true;
+                  }
+                  chunk += part.text;
+                  break;
+
+                case "reasoning-end":
+                  if (inThinkingBlock) {
+                    chunk = "</think>\n";
+                    inThinkingBlock = false;
+                  }
+                  break;
+
+                case "tool-input-start": {
+                  // Initialize streaming state for this tool call
+                  getOrCreateStreamingEntry(part.id, part.toolName);
+                  attemptToolInputIds.add(part.id);
+                  break;
+                }
+
+                case "tool-input-delta": {
+                  // Accumulate args and stream XML preview
+                  const entry = getOrCreateStreamingEntry(part.id);
+                  if (entry) {
+                    entry.argsAccumulated += part.delta;
+                    const toolDef = findToolDefinition(entry.toolName);
+                    if (toolDef?.buildXml) {
+                      const argsPartial = parsePartialJson(
+                        entry.argsAccumulated,
+                      );
+                      const xml = toolDef.buildXml(argsPartial, false);
+                      if (xml) {
+                        ctx.onXmlStream(xml);
+                      }
+                    }
+                  }
+                  break;
+                }
+
+                case "tool-input-end": {
+                  // Build final XML and persist
+                  const entry = getOrCreateStreamingEntry(part.id);
+                  if (entry) {
+                    const toolDef = findToolDefinition(entry.toolName);
+                    if (toolDef?.buildXml) {
+                      const argsPartial = parsePartialJson(
+                        entry.argsAccumulated,
+                      );
+                      const xml = toolDef.buildXml(argsPartial, true);
+                      if (xml) {
+                        ctx.onXmlComplete(xml);
+                      }
+                    }
+                  }
+                  cleanupStreamingEntry(part.id);
+                  attemptToolInputIds.delete(part.id);
+                  break;
+                }
+
+                case "tool-call":
+                  maybeCaptureRetryReplayEvent(retryReplayEvents, part);
+                  // Tool execution happens via execute callbacks
+                  break;
+
+                case "tool-result":
+                  maybeCaptureRetryReplayEvent(retryReplayEvents, part);
+                  // Tool results are already handled by the execute callback
+                  break;
+              }
+
+              if (chunk) {
+                fullResponse += chunk;
+                await updateResponseInDb(placeholderMessageId, fullResponse);
+                sendResponseChunk(
+                  event,
+                  req.chatId,
+                  chat,
+                  fullResponse,
+                  placeholderMessageId,
+                  hiddenMessageIdsForStreaming,
+                );
+              }
+            }
+          } catch (error) {
+            if (!abortController.signal.aborted) {
+              streamErrorFromIteration = error;
+            } else {
+              logger.log(
+                `Stream interrupted after abort for chat ${req.chatId}`,
               );
             }
           }
-        } catch (error) {
-          if (!abortController.signal.aborted) {
-            streamErrorFromIteration = error;
-          } else {
-            logger.log(`Stream interrupted after abort for chat ${req.chatId}`);
+
+          // Close thinking block if still open
+          if (inThinkingBlock) {
+            const closingThinkBlock = "</think>\n";
+            fullResponse += closingThinkBlock;
+            await updateResponseInDb(placeholderMessageId, fullResponse);
           }
-        }
+          activeRetryReplayEvents = null;
 
-        // Close thinking block if still open
-        if (inThinkingBlock) {
-          const closingThinkBlock = "</think>\n";
-          fullResponse += closingThinkBlock;
-          await updateResponseInDb(placeholderMessageId, fullResponse);
-        }
-        activeRetryReplayEvents = null;
+          if (abortController.signal.aborted) {
+            break;
+          }
 
-        if (abortController.signal.aborted) {
+          const streamError =
+            streamErrorFromIteration ?? streamErrorFromCallback;
+          if (streamError) {
+            if (
+              shouldRetryTerminatedStreamError({
+                error: streamError,
+                retryCount: terminatedRetryCount,
+                aborted: abortController.signal.aborted,
+              })
+            ) {
+              maybeAppendRetryReplayForRetry({
+                retryReplayEvents,
+                currentMessageHistoryRef: currentMessageHistory,
+                accumulatedAiMessagesRef: accumulatedAiMessages,
+                onCurrentMessageHistoryUpdate: (next) =>
+                  (currentMessageHistory = next),
+              });
+              terminatedRetryCount += 1;
+              needsContinuationInstruction = true;
+              const retryDelayMs =
+                STREAM_RETRY_BASE_DELAY_MS * terminatedRetryCount;
+              sendTelemetryEvent("local_agent:terminated_stream_retry", {
+                chatId: req.chatId,
+                retryCount: terminatedRetryCount,
+                error: String(streamError),
+                phase: "stream_iteration",
+              });
+              logger.warn(
+                `Transient stream termination for chat ${req.chatId}; retrying pass (${terminatedRetryCount}/${MAX_TERMINATED_STREAM_RETRIES}) after ${retryDelayMs}ms`,
+              );
+              await delay(retryDelayMs);
+              continue;
+            }
+            throw streamError;
+          }
+
+          try {
+            const response = await streamResult.response;
+            steps = (await streamResult.steps) ?? [];
+            responseMessages = response.messages;
+          } catch (err) {
+            if (
+              shouldRetryTerminatedStreamError({
+                error: err,
+                retryCount: terminatedRetryCount,
+                aborted: abortController.signal.aborted,
+              })
+            ) {
+              maybeAppendRetryReplayForRetry({
+                retryReplayEvents,
+                currentMessageHistoryRef: currentMessageHistory,
+                accumulatedAiMessagesRef: accumulatedAiMessages,
+                onCurrentMessageHistoryUpdate: (next) =>
+                  (currentMessageHistory = next),
+              });
+              terminatedRetryCount += 1;
+              needsContinuationInstruction = true;
+              const retryDelayMs =
+                STREAM_RETRY_BASE_DELAY_MS * terminatedRetryCount;
+              sendTelemetryEvent("local_agent:terminated_stream_retry", {
+                chatId: req.chatId,
+                retryCount: terminatedRetryCount,
+                error: String(err),
+                phase: "response_finalization",
+              });
+              logger.warn(
+                `Transient stream termination while finalizing response for chat ${req.chatId}; retrying pass (${terminatedRetryCount}/${MAX_TERMINATED_STREAM_RETRIES}) after ${retryDelayMs}ms`,
+              );
+              await delay(retryDelayMs);
+              continue;
+            }
+            logger.warn("Failed to retrieve stream response messages:", err);
+            steps = [];
+            responseMessages = [];
+          }
+
           break;
+        } finally {
+          cleanupAttemptToolStreamingEntries();
         }
-
-        const streamError = streamErrorFromIteration ?? streamErrorFromCallback;
-        if (streamError) {
-          if (
-            shouldRetryTerminatedStreamError({
-              error: streamError,
-              retryCount: terminatedRetryCount,
-              aborted: abortController.signal.aborted,
-            })
-          ) {
-            maybeAppendRetryReplayForRetry({
-              retryReplayEvents,
-              currentMessageHistoryRef: currentMessageHistory,
-              accumulatedAiMessagesRef: accumulatedAiMessages,
-              onCurrentMessageHistoryUpdate: (next) =>
-                (currentMessageHistory = next),
-            });
-            terminatedRetryCount += 1;
-            needsContinuationInstruction = true;
-            const retryDelayMs =
-              STREAM_RETRY_BASE_DELAY_MS * terminatedRetryCount;
-            sendTelemetryEvent("local_agent:terminated_stream_retry", {
-              chatId: req.chatId,
-              retryCount: terminatedRetryCount,
-              error: String(streamError),
-              phase: "stream_iteration",
-            });
-            logger.warn(
-              `Transient stream termination for chat ${req.chatId}; retrying pass (${terminatedRetryCount}/${MAX_TERMINATED_STREAM_RETRIES}) after ${retryDelayMs}ms`,
-            );
-            await delay(retryDelayMs);
-            continue;
-          }
-          throw streamError;
-        }
-
-        try {
-          const response = await streamResult.response;
-          steps = (await streamResult.steps) ?? [];
-          responseMessages = response.messages;
-        } catch (err) {
-          if (
-            shouldRetryTerminatedStreamError({
-              error: err,
-              retryCount: terminatedRetryCount,
-              aborted: abortController.signal.aborted,
-            })
-          ) {
-            maybeAppendRetryReplayForRetry({
-              retryReplayEvents,
-              currentMessageHistoryRef: currentMessageHistory,
-              accumulatedAiMessagesRef: accumulatedAiMessages,
-              onCurrentMessageHistoryUpdate: (next) =>
-                (currentMessageHistory = next),
-            });
-            terminatedRetryCount += 1;
-            needsContinuationInstruction = true;
-            const retryDelayMs =
-              STREAM_RETRY_BASE_DELAY_MS * terminatedRetryCount;
-            sendTelemetryEvent("local_agent:terminated_stream_retry", {
-              chatId: req.chatId,
-              retryCount: terminatedRetryCount,
-              error: String(err),
-              phase: "response_finalization",
-            });
-            logger.warn(
-              `Transient stream termination while finalizing response for chat ${req.chatId}; retrying pass (${terminatedRetryCount}/${MAX_TERMINATED_STREAM_RETRIES}) after ${retryDelayMs}ms`,
-            );
-            await delay(retryDelayMs);
-            continue;
-          }
-          logger.warn("Failed to retrieve stream response messages:", err);
-          steps = [];
-          responseMessages = [];
-        }
-
-        break;
       }
 
       if (abortController.signal.aborted) {

@@ -99,6 +99,10 @@ const toolStreamingEntries = new Map<string, ToolStreamingEntry>();
 
 type RetryReplayEvent =
   | {
+      type: "assistant-text";
+      text: string;
+    }
+  | {
       type: "tool-call";
       toolCallId: string;
       toolName: string;
@@ -261,6 +265,7 @@ export async function handleLocalAgentStream(
   const settings = readSettings();
   let fullResponse = "";
   let streamingPreview = ""; // Temporary preview for current tool, not persisted
+  let activeRetryReplayEvents: RetryReplayEvent[] | null = null;
   // Mid-turn compaction inserts a DB summary row for LLM history, but we render
   // the user-facing compaction indicator inline in the active assistant turn.
   const hiddenMessageIdsForStreaming = new Set<number>();
@@ -488,7 +493,8 @@ export async function handleLocalAgentStream(
       },
       onXmlComplete: (finalXml: string) => {
         // Write final XML to DB and UI
-        fullResponse += finalXml + "\n";
+        const xmlChunk = `${finalXml}\n`;
+        fullResponse += xmlChunk;
         streamingPreview = ""; // Clear preview
         updateResponseInDb(placeholderMessageId, fullResponse);
         sendResponseChunk(
@@ -616,8 +622,8 @@ export async function handleLocalAgentStream(
 
       while (!abortController.signal.aborted) {
         let streamErrorFromCallback: unknown;
-        const passAttemptResponseStartLength = fullResponse.length;
         const retryReplayEvents: RetryReplayEvent[] = [];
+        activeRetryReplayEvents = retryReplayEvents;
         const attemptMessages = needsContinuationInstruction
           ? [
               ...currentMessageHistory,
@@ -839,6 +845,7 @@ export async function handleLocalAgentStream(
               case "text-delta":
                 passProducedChatText = true;
                 chunk += part.text;
+                maybeCaptureRetryReplayText(activeRetryReplayEvents, part.text);
                 break;
 
               case "reasoning-start":
@@ -937,9 +944,11 @@ export async function handleLocalAgentStream(
 
         // Close thinking block if still open
         if (inThinkingBlock) {
-          fullResponse += "</think>\n";
+          const closingThinkBlock = "</think>\n";
+          fullResponse += closingThinkBlock;
           await updateResponseInDb(placeholderMessageId, fullResponse);
         }
+        activeRetryReplayEvents = null;
 
         if (abortController.signal.aborted) {
           break;
@@ -955,9 +964,6 @@ export async function handleLocalAgentStream(
             })
           ) {
             maybeAppendRetryReplayForRetry({
-              partialResponse: fullResponse.slice(
-                passAttemptResponseStartLength,
-              ),
               retryReplayEvents,
               currentMessageHistoryRef: currentMessageHistory,
               accumulatedAiMessagesRef: accumulatedAiMessages,
@@ -990,9 +996,6 @@ export async function handleLocalAgentStream(
             })
           ) {
             maybeAppendRetryReplayForRetry({
-              partialResponse: fullResponse.slice(
-                passAttemptResponseStartLength,
-              ),
               retryReplayEvents,
               currentMessageHistoryRef: currentMessageHistory,
               accumulatedAiMessagesRef: accumulatedAiMessages,
@@ -1288,30 +1291,53 @@ function maybeCaptureRetryReplayEvent(
 }
 
 function maybeAppendRetryReplayForRetry(params: {
-  partialResponse: string;
   retryReplayEvents: RetryReplayEvent[];
   currentMessageHistoryRef: ModelMessage[];
   accumulatedAiMessagesRef: ModelMessage[];
   onCurrentMessageHistoryUpdate: (next: ModelMessage[]) => void;
 }) {
   const {
-    partialResponse,
     retryReplayEvents,
     currentMessageHistoryRef,
     accumulatedAiMessagesRef,
     onCurrentMessageHistoryUpdate,
   } = params;
   const replayMessages: ModelMessage[] = [];
-
-  if (partialResponse.trim()) {
-    replayMessages.push({
-      role: "assistant",
-      content: [{ type: "text", text: partialResponse }],
-    });
-  }
+  const toolCallsWithResult = new Set<string>();
+  const toolResultsWithCall = new Set<string>();
 
   for (const event of retryReplayEvents) {
     if (event.type === "tool-call") {
+      toolResultsWithCall.add(event.toolCallId);
+      continue;
+    }
+    if (event.type === "tool-result") {
+      toolCallsWithResult.add(event.toolCallId);
+    }
+  }
+
+  const completedToolExchangeIds = new Set(
+    [...toolCallsWithResult].filter((toolCallId) =>
+      toolResultsWithCall.has(toolCallId),
+    ),
+  );
+
+  for (const event of retryReplayEvents) {
+    if (event.type === "assistant-text") {
+      if (!event.text.trim()) {
+        continue;
+      }
+      replayMessages.push({
+        role: "assistant",
+        content: [{ type: "text", text: event.text }],
+      });
+      continue;
+    }
+
+    if (event.type === "tool-call") {
+      if (!completedToolExchangeIds.has(event.toolCallId)) {
+        continue;
+      }
       replayMessages.push({
         role: "assistant",
         content: [
@@ -1326,6 +1352,9 @@ function maybeAppendRetryReplayForRetry(params: {
       continue;
     }
 
+    if (!completedToolExchangeIds.has(event.toolCallId)) {
+      continue;
+    }
     replayMessages.push({
       role: "tool",
       content: [
@@ -1348,6 +1377,26 @@ function maybeAppendRetryReplayForRetry(params: {
     ...replayMessages,
   ]);
   accumulatedAiMessagesRef.push(...replayMessages);
+}
+
+function maybeCaptureRetryReplayText(
+  retryReplayEvents: RetryReplayEvent[] | null,
+  text: string,
+): void {
+  if (!retryReplayEvents || text.length === 0) {
+    return;
+  }
+
+  const lastEvent = retryReplayEvents[retryReplayEvents.length - 1];
+  if (lastEvent?.type === "assistant-text") {
+    lastEvent.text += text;
+    return;
+  }
+
+  retryReplayEvents.push({
+    type: "assistant-text",
+    text,
+  });
 }
 
 async function delay(ms: number): Promise<void> {

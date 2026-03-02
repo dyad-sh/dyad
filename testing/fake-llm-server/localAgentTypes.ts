@@ -65,4 +65,15 @@ export type LocalAgentFixture = {
     /** Attempt numbers (1-indexed) to drop for this turn */
     attempts: number[];
   }>;
+  /**
+   * Optional per-turn configuration to drop the connection AFTER streaming
+   * tool-call chunks for a turn (before [DONE]). This simulates termination in
+   * the window where a tool call was emitted but no tool result was captured.
+   */
+  dropConnectionAfterToolCallByTurn?: Array<{
+    /** 0-based turn index within the active pass */
+    turnIndex: number;
+    /** Attempt numbers (1-indexed) to drop for this turn */
+    attempts: number[];
+  }>;
 };

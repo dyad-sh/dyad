@@ -974,6 +974,12 @@ export async function handleLocalAgentStream(
             needsContinuationInstruction = true;
             const retryDelayMs =
               STREAM_RETRY_BASE_DELAY_MS * terminatedRetryCount;
+            sendTelemetryEvent("local_agent:terminated_stream_retry", {
+              chatId: req.chatId,
+              retryCount: terminatedRetryCount,
+              error: String(streamError),
+              phase: "stream_iteration",
+            });
             logger.warn(
               `Transient stream termination for chat ${req.chatId}; retrying pass (${terminatedRetryCount}/${MAX_TERMINATED_STREAM_RETRIES}) after ${retryDelayMs}ms`,
             );
@@ -1006,6 +1012,12 @@ export async function handleLocalAgentStream(
             needsContinuationInstruction = true;
             const retryDelayMs =
               STREAM_RETRY_BASE_DELAY_MS * terminatedRetryCount;
+            sendTelemetryEvent("local_agent:terminated_stream_retry", {
+              chatId: req.chatId,
+              retryCount: terminatedRetryCount,
+              error: String(err),
+              phase: "response_finalization",
+            });
             logger.warn(
               `Transient stream termination while finalizing response for chat ${req.chatId}; retrying pass (${terminatedRetryCount}/${MAX_TERMINATED_STREAM_RETRIES}) after ${retryDelayMs}ms`,
             );

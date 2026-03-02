@@ -12,6 +12,8 @@ dist/
 # playwright
 playwright-report/
 test-results/
+blob-report/
+flakiness-report/
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json

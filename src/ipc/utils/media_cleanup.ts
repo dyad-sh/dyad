@@ -29,39 +29,40 @@ export async function cleanupOldMediaFiles(): Promise<void> {
       return;
     }
 
-    let totalDeleted = 0;
+    const counts = await Promise.all(
+      appDirs.map(async (appDir) => {
+        const mediaDir = path.join(baseDir, appDir, DYAD_MEDIA_DIR_NAME);
 
-    for (const appDir of appDirs) {
-      const mediaDir = path.join(baseDir, appDir, DYAD_MEDIA_DIR_NAME);
-
-      let files: string[];
-      try {
-        files = await fs.readdir(mediaDir);
-      } catch {
-        continue;
-      }
-
-      const results = await Promise.all(
-        files.map(async (file) => {
-          const filePath = path.join(mediaDir, file);
-          try {
-            const stat = await fs.stat(filePath);
-            if (!stat.isFile()) {
-              return 0;
-            }
-            if (stat.mtimeMs < cutoffMs) {
-              await fs.unlink(filePath);
-              return 1;
-            }
-          } catch (err) {
-            logger.warn(`Failed to process media file ${filePath}:`, err);
-          }
+        let files: string[];
+        try {
+          files = await fs.readdir(mediaDir);
+        } catch {
           return 0;
-        }),
-      );
-      totalDeleted += results.reduce<number>((sum, n) => sum + n, 0);
-    }
+        }
 
+        const results = await Promise.all(
+          files.map(async (file) => {
+            const filePath = path.join(mediaDir, file);
+            try {
+              const stat = await fs.stat(filePath);
+              if (!stat.isFile()) {
+                return 0;
+              }
+              if (stat.mtimeMs < cutoffMs) {
+                await fs.unlink(filePath);
+                return 1;
+              }
+            } catch (err) {
+              logger.warn(`Failed to process media file ${filePath}:`, err);
+            }
+            return 0;
+          }),
+        );
+        return results.reduce<number>((sum, n) => sum + n, 0);
+      }),
+    );
+
+    const totalDeleted = counts.reduce<number>((sum, n) => sum + n, 0);
     logger.log(`Cleaned up ${totalDeleted} old media files`);
   } catch (err) {
     logger.warn("Failed to cleanup old media files:", err);

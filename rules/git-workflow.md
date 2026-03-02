@@ -120,3 +120,20 @@ When rebasing a PR branch that conflicts with upstream documentation changes (e.
 ## Resolving package.json engine conflicts
 
 When rebasing causes conflicts in the `engines` field of `package.json` (e.g., node version requirements), accept the incoming change from upstream/main to maintain consistency with the base branch requirements. The same resolution should be applied to the corresponding section in `package-lock.json`.
+
+## `--force-with-lease` "stale info" after rebase
+
+After rebasing and fetching, `git push --force-with-lease` may fail with `(stale info)` because the local tracking ref is outdated. In this case, fall back to `--force`:
+
+```bash
+git push --force https://TOKEN@github.com/dyad-sh/dyad.git HEAD:branch-name
+```
+
+## Fork 403 + upstream missing credentials
+
+If push to fork fails (403 on the `github_pat_` token) and push to `upstream` fails (no credentials), use the `ghs_*` installation token from `origin`'s **fetch** URL to push directly to the base repo:
+
+```bash
+# Extract the ghs_* token from: git remote -v (look for "origin ... (fetch)")
+git push --force https://x-access-token:GHS_TOKEN@github.com/dyad-sh/dyad.git HEAD:branch-name
+```

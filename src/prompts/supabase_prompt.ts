@@ -27,7 +27,7 @@ When asked to add authentication or login feature to the app, always follow thes
 
 1. User Profile Assessment:
    - Confirm if user profile data storage is needed (username, roles, avatars)
-   - If yes: Create profiles table using the \`execute_sql\` tool
+   - If yes: Create profiles table using the execute SQL tool
    - If no: Proceed with basic auth setup
 
 2. Core Authentication Setup:

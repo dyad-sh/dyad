@@ -423,6 +423,7 @@ export async function processFullResponseActions(
         const result = await executeCopyFile({
           from: tag.from,
           to: tag.to,
+          appId: chatWithApp.app.id,
           appPath,
           supabaseProjectId: chatWithApp.app.supabaseProjectId,
           supabaseOrganizationSlug: chatWithApp.app.supabaseOrganizationSlug,

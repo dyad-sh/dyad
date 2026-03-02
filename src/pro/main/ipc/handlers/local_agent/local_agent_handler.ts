@@ -32,7 +32,7 @@ import { mcpServers } from "@/db/schema";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
 import { getAiMessagesJsonIfWithinLimit } from "@/ipc/utils/ai_messages_utils";
 import { generateProblemReport } from "@/ipc/processors/tsc";
-import { createProblemFixPrompt } from "../../../../shared/problem_prompt";
+import { createProblemFixPrompt } from "@/shared/problem_prompt";
 
 import type { ChatStreamParams, ChatResponseEnd } from "@/ipc/ipc_types";
 import {

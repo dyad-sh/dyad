@@ -16,6 +16,21 @@ gh pr create --head <owner>:<branch> ...
 
 This can happen when remotes are configured in a non-fork layout and `gh` fails to infer the branch mapping.
 
+## Pushing when `.git/config` is locked
+
+In sandboxed sessions, git config writes can fail with:
+
+`error: could not lock config file .git/config: Operation not permitted`
+
+When this happens, avoid `git remote add` / `git branch --set-upstream-to` and push directly with an explicit URL + refspec:
+
+```bash
+branch=$(git branch --show-current)
+git push --force-with-lease https://github.com/<owner>/<repo>.git HEAD:refs/heads/$branch
+```
+
+Then create/update the PR with an explicit head ref (`--head <owner>:<branch>`).
+
 ## Skipping automated review
 
 Add `#skip-bugbot` to the PR description for trivial PRs that won't affect end-users, such as:

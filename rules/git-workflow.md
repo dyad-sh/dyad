@@ -66,6 +66,10 @@ gh api graphql --input .claude/tmp/resolve_thread.json
 gh api repos/dyad-sh/dyad/issues/{PR_NUMBER}/labels -f "labels[]=label-name"
 ```
 
+## Removing labels with special characters
+
+The security hook blocks `gh api` DELETE calls when the URL path contains colons (e.g., `needs-human:review-issue`) or URL-encoded colons (`%3A`). Both literal colons and percent-encoded forms trigger the "shell metacharacters" block. Currently there is no workaround within the sandbox — skip these label removals if they are non-critical.
+
 ## CI file access (claude-code-action)
 
 In CI, `claude-code-action` restricts file access to the repo working directory (e.g., `/home/runner/work/dyad/dyad`). Skills that save intermediate files (like PR diffs) must use `./filename` (current working directory), **never** `/tmp/`. Using `/tmp/` causes errors like: `cat in '/tmp/pr_*_diff.patch' was blocked. For security, Claude Code may only concatenate files from the allowed working directories`.

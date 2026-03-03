@@ -79,7 +79,7 @@ import { getPostCompactionMessages } from "@/ipc/handlers/compaction/compaction_
 
 const logger = log.scope("local_agent_handler");
 const PLANNING_QUESTIONNAIRE_TOOL_NAME = "planning_questionnaire";
-const MAX_TERMINATED_STREAM_RETRIES = 2;
+const MAX_TERMINATED_STREAM_RETRIES = 3;
 const STREAM_RETRY_BASE_DELAY_MS = 400;
 const STREAM_CONTINUE_MESSAGE =
   "[System] Your previous response stream was interrupted by a transient network error. Continue from exactly where you left off and do not repeat text that has already been sent.";
@@ -1006,6 +1006,7 @@ export async function handleLocalAgentStream(
                 STREAM_RETRY_BASE_DELAY_MS * terminatedRetryCount;
               sendTelemetryEvent("local_agent:terminated_stream_retry", {
                 chatId: req.chatId,
+                dyadRequestId,
                 retryCount: terminatedRetryCount,
                 error: String(streamError),
                 phase: "stream_iteration",
@@ -1016,6 +1017,16 @@ export async function handleLocalAgentStream(
               await delay(retryDelayMs);
               continue;
             }
+            sendTelemetryEvent(
+              "local_agent:terminated_stream_retries_exhausted",
+              {
+                chatId: req.chatId,
+                dyadRequestId,
+                retryCount: terminatedRetryCount,
+                error: String(streamError),
+                phase: "stream_iteration",
+              },
+            );
             throw streamError;
           }
 
@@ -1044,6 +1055,7 @@ export async function handleLocalAgentStream(
                 STREAM_RETRY_BASE_DELAY_MS * terminatedRetryCount;
               sendTelemetryEvent("local_agent:terminated_stream_retry", {
                 chatId: req.chatId,
+                dyadRequestId,
                 retryCount: terminatedRetryCount,
                 error: String(err),
                 phase: "response_finalization",
@@ -1053,6 +1065,18 @@ export async function handleLocalAgentStream(
               );
               await delay(retryDelayMs);
               continue;
+            }
+            if (isTerminatedStreamError(err)) {
+              sendTelemetryEvent(
+                "local_agent:terminated_stream_retries_exhausted",
+                {
+                  chatId: req.chatId,
+                  dyadRequestId,
+                  retryCount: terminatedRetryCount,
+                  error: String(err),
+                  phase: "response_finalization",
+                },
+              );
             }
             logger.warn("Failed to retrieve stream response messages:", err);
             steps = [];

@@ -1,11 +1,13 @@
 import path from "node:path";
 import os from "node:os";
+import fs from "node:fs";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
+import { readSettings, writeSettings } from "../main/settings";
 
 /**
- * Gets the base dyad-apps directory path (without a specific app subdirectory)
+ * Gets the default path of the base dyad-apps directory (without a specific app subdirectory)
  */
-export function getDyadAppsBaseDirectory(): string {
+function getDefaultDyadAppsDirectory(): string {
   if (IS_TEST_BUILD) {
     const electron = getElectron();
     return path.join(electron!.app.getPath("userData"), "dyad-apps");
@@ -13,13 +15,48 @@ export function getDyadAppsBaseDirectory(): string {
   return path.join(os.homedir(), "dyad-apps");
 }
 
+/**
+ * Gets the base dyad-apps directory path (without a specific app subdirectory)
+ * For convenience, also returns:
+ * - The default path of dyad-apps, and
+ * - Whether the current path differs from the default path
+ */
+export function getDyadAppsBaseDirectory(): {
+  path: string;
+  defaultPath: string;
+  isCustomPath: boolean;
+} {
+  const defaultPath = getDefaultDyadAppsDirectory();
+
+  // If the user has not set a custom base directory, use default
+  const customPath = readSettings().customDyadAppsBaseDirectory;
+  if (!customPath) {
+    return { path: defaultPath, defaultPath, isCustomPath: false };
+  }
+
+  let st;
+  try {
+    st = fs.statSync(customPath);
+  } catch {
+    // Setting up to check defaultDir's existence+type, so fall through
+  }
+
+  // If the user's chosen directory doesn't exist or is inaccessible, reset to default
+  if (!st || !st.isDirectory()) {
+    writeSettings({ customDyadAppsBaseDirectory: null });
+    return { path: defaultPath, defaultPath, isCustomPath: false };
+  }
+
+  return { path: customPath, defaultPath, isCustomPath: true };
+}
+
 export function getDyadAppPath(appPath: string): string {
   // If appPath is already absolute, use it as-is
   if (path.isAbsolute(appPath)) {
     return appPath;
   }
-  // Otherwise, use the default base path
-  return path.join(getDyadAppsBaseDirectory(), appPath);
+  // Otherwise, use the user's preferred base path
+  return path.join(getDyadAppsBaseDirectory().path, appPath);
 }
 
 export function getTypeScriptCachePath(): string {

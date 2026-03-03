@@ -104,7 +104,7 @@ export async function onReady() {
   if (settings.enableNativeGit) {
     // Don't need to await because this only needs to run before
     // the user starts interacting with Dyad app and uses a git-related feature.
-    gitAddSafeDirectory(`${getDyadAppsBaseDirectory()}/*`);
+    gitAddSafeDirectory(`${getDyadAppsBaseDirectory().path}/*`);
   }
 
   // Check if app was force-closed

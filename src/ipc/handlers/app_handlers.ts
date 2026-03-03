@@ -838,7 +838,14 @@ export function registerAppHandlers() {
       throw new Error("Original app not found.");
     }
 
-    const originalAppPath = getDyadAppPath(originalApp.path);
+    const maybeSymlinkOriginalAppPath = getDyadAppPath(originalApp.path);
+    let originalAppPath = maybeSymlinkOriginalAppPath;
+    try {
+      originalAppPath = await fsPromises.realpath(maybeSymlinkOriginalAppPath);
+    } catch {
+      // Fall through; use original path if we can't resolve symlink
+    }
+
     const newAppPath = getDyadAppPath(newAppName);
 
     // 3. Copy the app folder
@@ -1329,7 +1336,14 @@ export function registerAppHandlers() {
       }
 
       // Delete app files
-      const appPath = getDyadAppPath(app.path);
+      const maybeSymlinkAppPath = getDyadAppPath(app.path);
+      let appPath = maybeSymlinkAppPath;
+      try {
+        appPath = await fsPromises.realpath(maybeSymlinkAppPath);
+      } catch {
+        // Fall through; use original path if we can't resolve symlink
+      }
+
       try {
         await fsPromises.rm(appPath, { recursive: true, force: true });
       } catch (error: any) {
@@ -1337,6 +1351,15 @@ export function registerAppHandlers() {
         throw new Error(
           `App deleted from database, but failed to delete app files. Please delete app files from ${appPath} manually.\n\nError: ${error.message}`,
         );
+      }
+
+      // If the original path is a symlink, delete it
+      if (maybeSymlinkAppPath !== appPath) {
+        try {
+          await fsPromises.unlink(maybeSymlinkAppPath);
+        } catch (error: any) {
+          logger.warn(`Failed to delete symlink for app ${appId}:`, error);
+        }
       }
     });
   });
@@ -1888,7 +1911,33 @@ export function registerAppHandlers() {
         throw new Error("App not found");
       }
 
-      const currentResolvedPath = getDyadAppPath(app.path);
+      const maybeSymlinkPath = getDyadAppPath(app.path);
+      let currentResolvedPath = maybeSymlinkPath;
+      // If the resolved path is a symlink, we assume the user wants to move the true app directory
+      try {
+        currentResolvedPath = await fsPromises.realpath(currentResolvedPath);
+      } catch {
+        // Fall through; use original path if we can't resolve symlink
+      }
+
+      // Cleans up the symlink if it exists. We call this whenever we change an app's path
+      const cleanupSymlink = async () => {
+        let st;
+        try {
+          st = await fsPromises.lstat(maybeSymlinkPath);
+        } catch {
+          // Fall through; setting up to check existence+symlink status
+        }
+
+        if (!st || !st.isSymbolicLink()) return;
+
+        try {
+          await fsPromises.unlink(maybeSymlinkPath);
+        } catch (error: any) {
+          logger.warn(`Error deleting old symlink ${maybeSymlinkPath}:`, error);
+        }
+      };
+
       // Extract app folder name from current path (works for both absolute and relative paths)
       const appFolderName = path.basename(
         path.isAbsolute(app.path) ? app.path : currentResolvedPath,
@@ -1897,11 +1946,16 @@ export function registerAppHandlers() {
 
       if (currentResolvedPath === nextResolvedPath) {
         // Path hasn't changed, but we should update to absolute path format if needed
-        if (!path.isAbsolute(app.path)) {
+        // Or, if the original path was a symlink, update to the true path
+        if (
+          !path.isAbsolute(app.path) ||
+          maybeSymlinkPath !== nextResolvedPath
+        ) {
           await db
             .update(apps)
             .set({ path: nextResolvedPath })
             .where(eq(apps.id, appId));
+          await cleanupSymlink();
         }
         return {
           resolvedPath: nextResolvedPath,
@@ -1937,6 +1991,7 @@ export function registerAppHandlers() {
           .update(apps)
           .set({ path: nextResolvedPath })
           .where(eq(apps.id, appId));
+        await cleanupSymlink();
         return {
           resolvedPath: nextResolvedPath,
         };
@@ -1977,6 +2032,8 @@ export function registerAppHandlers() {
             error,
           );
         }
+
+        await cleanupSymlink();
 
         return {
           resolvedPath: nextResolvedPath,

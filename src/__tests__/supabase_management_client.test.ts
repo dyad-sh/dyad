@@ -73,49 +73,20 @@ describe("deploySupabaseFunction", () => {
       functionName,
     );
 
-    await fs.mkdir(path.join(functionRoot, "src", "controllers"), {
-      recursive: true,
-    });
-    await fs.mkdir(path.join(functionRoot, "src", "services"), {
-      recursive: true,
-    });
-    await fs.mkdir(path.join(functionRoot, "src", "utils"), {
-      recursive: true,
-    });
+    const functionFiles = [
+      "index.ts",
+      "src/controllers/conference.ts",
+      "src/controllers/initial.ts",
+      "src/controllers/ivr.ts",
+      "src/services/supabase.ts",
+      "src/utils/text.ts",
+    ];
 
-    await fs.writeFile(
-      path.join(functionRoot, "index.ts"),
-      [
-        "import { createSupabaseClient } from './src/services/supabase.ts';",
-        "import { handleInitial } from './src/controllers/initial.ts';",
-        "import { handleIvrMenu, handleIvrNext } from './src/controllers/ivr.ts';",
-        "void createSupabaseClient;",
-        "void handleInitial;",
-        "void handleIvrMenu;",
-        "void handleIvrNext;",
-      ].join("\n"),
-    );
-
-    await fs.writeFile(
-      path.join(functionRoot, "src", "services", "supabase.ts"),
-      "export function createSupabaseClient() { return {}; }\n",
-    );
-    await fs.writeFile(
-      path.join(functionRoot, "src", "controllers", "initial.ts"),
-      "export function handleInitial() {}\n",
-    );
-    await fs.writeFile(
-      path.join(functionRoot, "src", "controllers", "ivr.ts"),
-      "export function handleIvrMenu() {}\nexport function handleIvrNext() {}\n",
-    );
-    await fs.writeFile(
-      path.join(functionRoot, "src", "controllers", "conference.ts"),
-      "export function handleConference() {}\n",
-    );
-    await fs.writeFile(
-      path.join(functionRoot, "src", "utils", "text.ts"),
-      "export function formatText(value: string) { return value.trim(); }\n",
-    );
+    for (const file of functionFiles) {
+      const filePath = path.join(functionRoot, file);
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.writeFile(filePath, `// Dummy content for ${file}`);
+    }
 
     const mockResponse: DeployedFunctionResponse = {
       id: "function-id",
@@ -141,17 +112,11 @@ describe("deploySupabaseFunction", () => {
         .getAll("file")
         .map((entry) => (entry as File).name)
         .sort();
-      expect(uploadedPaths).toEqual(
-        [
-          `${functionName}/import_map.json`,
-          `${functionName}/index.ts`,
-          `${functionName}/src/controllers/conference.ts`,
-          `${functionName}/src/controllers/initial.ts`,
-          `${functionName}/src/controllers/ivr.ts`,
-          `${functionName}/src/services/supabase.ts`,
-          `${functionName}/src/utils/text.ts`,
-        ].sort(),
-      );
+      const expectedPaths = [
+        `${functionName}/import_map.json`,
+        ...functionFiles.map((f) => `${functionName}/${f}`),
+      ].sort();
+      expect(uploadedPaths).toEqual(expectedPaths);
 
       return new Response(JSON.stringify(mockResponse), {
         status: 201,

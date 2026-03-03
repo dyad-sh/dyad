@@ -5,6 +5,7 @@ import { apps } from "../../db/schema";
 import { getDyadAppPath } from "../../paths/paths";
 import { safeJoin } from "../utils/path_utils";
 import { getMimeType } from "../utils/mime_utils";
+import { DYAD_MEDIA_DIR_NAME } from "../utils/media_path_utils";
 import { withLock } from "../utils/lock_utils";
 import fs from "node:fs";
 import path from "node:path";
@@ -25,7 +26,7 @@ const SUPPORTED_MEDIA_EXTENSIONS = [
 const INVALID_FILE_NAME_CHARS = /[<>:"/\\|?*\x00-\x1F]/;
 
 function getMediaFilesForApp(appId: number, appName: string, appPath: string) {
-  const mediaDir = path.join(appPath, ".dyad", "media");
+  const mediaDir = path.join(appPath, DYAD_MEDIA_DIR_NAME);
   if (!fs.existsSync(mediaDir)) return [];
 
   const entries = fs.readdirSync(mediaDir, { withFileTypes: true });
@@ -124,11 +125,11 @@ function assertSupportedMediaExtension(fileName: string): string {
 function getMediaFilePath(appPath: string, fileName: string): string {
   assertSafeFileName(fileName);
   assertSupportedMediaExtension(fileName);
-  return safeJoin(appPath, ".dyad", "media", fileName);
+  return safeJoin(appPath, DYAD_MEDIA_DIR_NAME, fileName);
 }
 
 function getMediaDirectoryPath(appPath: string): string {
-  return path.join(appPath, ".dyad", "media");
+  return path.join(appPath, DYAD_MEDIA_DIR_NAME);
 }
 
 async function getAppOrThrow(appId: number) {
@@ -175,6 +176,11 @@ export function registerMediaHandlers() {
     }
 
     const ext = path.extname(params.fileName).toLowerCase();
+    const stat = fs.statSync(filePath);
+    const MAX_MEDIA_READ_SIZE = 20 * 1024 * 1024; // 20 MB
+    if (stat.size > MAX_MEDIA_READ_SIZE) {
+      throw new Error("Media file is too large to display");
+    }
     const buffer = fs.readFileSync(filePath);
 
     logger.log(`Read media file: ${filePath}`);
@@ -207,8 +213,7 @@ export function registerMediaHandlers() {
 
       const destinationPath = safeJoin(
         appPath,
-        ".dyad",
-        "media",
+        DYAD_MEDIA_DIR_NAME,
         destinationFileName,
       );
 
@@ -258,8 +263,7 @@ export function registerMediaHandlers() {
 
       const destinationPath = safeJoin(
         targetAppPath,
-        ".dyad",
-        "media",
+        DYAD_MEDIA_DIR_NAME,
         params.fileName,
       );
 
@@ -269,8 +273,17 @@ export function registerMediaHandlers() {
         );
       }
 
+      // Using copy+delete instead of rename to support cross-device moves
       fs.copyFileSync(sourcePath, destinationPath);
-      fs.unlinkSync(sourcePath);
+      try {
+        fs.unlinkSync(sourcePath);
+      } catch (e) {
+        // Clean up destination to avoid duplicates
+        try {
+          fs.unlinkSync(destinationPath);
+        } catch {}
+        throw e;
+      }
 
       logger.log(`Moved media file: ${sourcePath} -> ${destinationPath}`);
     });

@@ -244,6 +244,14 @@ export function ImageGeneratorDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
+          {/* Generation Error */}
+          {generateImage.error && (
+            <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+              {generateImage.error instanceof Error
+                ? generateImage.error.message
+                : "Image generation failed. Please try again."}
+            </div>
+          )}
           {/* Generated Image Preview */}
           {generatedResult && (
             <GeneratedImagePreview result={generatedResult} />
@@ -273,6 +281,7 @@ export function ImageGeneratorDialog({
                   <button
                     key={mode.value}
                     type="button"
+                    aria-pressed={isSelected}
                     disabled={generateImage.isPending}
                     onClick={() => setThemeMode(mode.value)}
                     className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-colors ${

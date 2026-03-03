@@ -6,6 +6,7 @@ import { DyadAppMediaFolder } from "@/components/DyadAppMediaFolder";
 import { LibrarySearchBar } from "@/components/LibrarySearchBar";
 import { Button } from "@/components/ui/button";
 import { ImageGeneratorDialog } from "@/components/ImageGeneratorDialog";
+import { filterMediaAppsByQuery } from "@/lib/mediaUtils";
 
 export default function MediaPage() {
   const {
@@ -20,15 +21,7 @@ export default function MediaPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [imageGeneratorOpen, setImageGeneratorOpen] = useState(false);
 
-  const filteredMediaApps = searchQuery.trim()
-    ? mediaApps.filter(
-        (app) =>
-          app.appName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          app.files.some((f) =>
-            f.fileName.toLowerCase().includes(searchQuery.toLowerCase()),
-          ),
-      )
-    : mediaApps;
+  const filteredMediaApps = filterMediaAppsByQuery(mediaApps, searchQuery);
 
   return (
     <div className="w-full px-4 py-6 sm:px-6 lg:px-8">

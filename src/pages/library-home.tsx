@@ -19,6 +19,7 @@ import {
 } from "@/components/LibraryFilterTabs";
 import { DyadAppMediaFolder } from "@/components/DyadAppMediaFolder";
 import { ImageGeneratorDialog } from "@/components/ImageGeneratorDialog";
+import { filterMediaAppsByQuery } from "@/lib/mediaUtils";
 // @ts-expect-error -- SVG asset import handled by bundler
 import logo from "../../assets/logo.svg";
 
@@ -236,16 +237,7 @@ export default function LibraryHomePage() {
   const filteredMediaApps = useMemo(() => {
     if (activeFilter === "themes" || activeFilter === "prompts") return [];
 
-    let apps = mediaApps;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      apps = apps.filter(
-        (app) =>
-          app.appName.toLowerCase().includes(q) ||
-          app.files.some((f) => f.fileName.toLowerCase().includes(q)),
-      );
-    }
-    return apps;
+    return filterMediaAppsByQuery(mediaApps, searchQuery);
   }, [mediaApps, activeFilter, searchQuery]);
 
   const hasNoResults =

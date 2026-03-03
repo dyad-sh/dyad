@@ -9,6 +9,7 @@ import { ipc } from "@/ipc/types";
 export function useMediaDataUri(appId: number, fileName: string) {
   const { data: dataUri = null } = useQuery({
     queryKey: ["media-data-uri", appId, fileName],
+    staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       const res = await ipc.media.readMediaFile({ appId, fileName });
       return `data:${res.mimeType};base64,${res.base64Data}`;

@@ -72,6 +72,8 @@ interface DyadAppMediaFolderProps {
   searchQuery?: string;
 }
 
+const INVALID_FILE_NAME_CHARS = /[<>:"/\\|?*\x00-\x1F]/;
+
 export function DyadAppMediaFolder({
   appName,
   appId,
@@ -105,6 +107,10 @@ export function DyadAppMediaFolder({
   );
 
   const isBusy = isMutatingMedia || isRenaming || isDeleting || isStartingChat;
+  const renameError =
+    renameBaseName.trim() && INVALID_FILE_NAME_CHARS.test(renameBaseName.trim())
+      ? 'Name contains invalid characters (<>:"/\\|?*)'
+      : null;
 
   const handleStartNewChatWithImage = async (file: MediaFile) => {
     setIsStartingChat(true);
@@ -230,6 +236,9 @@ export function DyadAppMediaFolder({
                     : ""}
                 </span>
               </div>
+              {renameError && (
+                <p className="text-sm text-destructive">{renameError}</p>
+              )}
             </div>
             <DialogFooter>
               <Button
@@ -251,6 +260,7 @@ export function DyadAppMediaFolder({
                   isBusy ||
                   !renameTargetFile ||
                   !renameBaseName.trim() ||
+                  !!renameError ||
                   renameBaseName.trim() ===
                     getFileNameWithoutExtension(renameTargetFile.fileName)
                 }
@@ -431,7 +441,9 @@ function MediaFolderOpen({
       </div>
       {filteredFiles.length === 0 ? (
         <p className="text-muted-foreground text-center py-8">
-          No media files found.
+          {searchQuery
+            ? "No files match your search."
+            : "No media files found."}
         </p>
       ) : (
         <div className="flex flex-wrap gap-3">

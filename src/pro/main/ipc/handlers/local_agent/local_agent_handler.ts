@@ -24,7 +24,11 @@ import { getDyadAppPath } from "@/paths/paths";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import { safeSend } from "@/ipc/utils/safe_sender";
 import { getMaxTokens, getTemperature } from "@/ipc/utils/token_utils";
-import { getProviderOptions, getAiHeaders } from "@/ipc/utils/provider_options";
+import {
+  getProviderOptions,
+  getAiHeaders,
+  DYAD_INTERNAL_REQUEST_ID_HEADER,
+} from "@/ipc/utils/provider_options";
 
 import {
   AgentToolName,
@@ -649,9 +653,12 @@ export async function handleLocalAgentStream(
         try {
           const streamResult = streamText({
             model: modelClient.model,
-            headers: getAiHeaders({
-              builtinProviderId: modelClient.builtinProviderId,
-            }),
+            headers: {
+              ...getAiHeaders({
+                builtinProviderId: modelClient.builtinProviderId,
+              }),
+              [DYAD_INTERNAL_REQUEST_ID_HEADER]: dyadRequestId,
+            },
             providerOptions: getProviderOptions({
               dyadAppId: chat.app.id,
               dyadRequestId,

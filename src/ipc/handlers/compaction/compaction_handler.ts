@@ -24,7 +24,11 @@ import {
   type CompactionMessage,
 } from "./compaction_storage";
 import { getPostCompactionMessages } from "./compaction_utils";
-import { getProviderOptions, getAiHeaders } from "@/ipc/utils/provider_options";
+import {
+  getProviderOptions,
+  getAiHeaders,
+  DYAD_INTERNAL_REQUEST_ID_HEADER,
+} from "@/ipc/utils/provider_options";
 import { escapeXmlContent } from "../../../../shared/xmlEscape";
 
 const logger = log.scope("compaction_handler");
@@ -174,9 +178,12 @@ export async function performCompaction(
 
     const summaryResult = streamText({
       model: modelClient.model,
-      headers: getAiHeaders({
-        builtinProviderId: modelClient.builtinProviderId,
-      }),
+      headers: {
+        ...getAiHeaders({
+          builtinProviderId: modelClient.builtinProviderId,
+        }),
+        [DYAD_INTERNAL_REQUEST_ID_HEADER]: dyadRequestId,
+      },
       providerOptions: getProviderOptions({
         dyadAppId: 0,
         dyadRequestId,

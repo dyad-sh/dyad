@@ -8,6 +8,7 @@ import {
 
 import log from "electron-log";
 import { getExtraProviderOptions } from "./thinking_utils";
+import { DYAD_INTERNAL_REQUEST_ID_HEADER } from "./provider_options";
 import type { UserSettings } from "../../lib/schemas";
 import type { LanguageModel } from "ai";
 
@@ -118,6 +119,7 @@ export function createDyadEngine(
           ...JSON.parse(init.body),
           ...getExtraProviderOptions(providerId, options.settings),
         };
+
         const dyadVersionedFiles = parsedBody.dyadVersionedFiles;
         if ("dyadVersionedFiles" in parsedBody) {
           delete parsedBody.dyadVersionedFiles;
@@ -126,7 +128,14 @@ export function createDyadEngine(
         if ("dyadFiles" in parsedBody) {
           delete parsedBody.dyadFiles;
         }
-        const requestId = parsedBody.dyadRequestId;
+        // Read from body (OpenAICompatible models spread providerOptions into
+        // the body) with a fallback to an internal header (OpenAIResponses
+        // models don't forward providerOptions, so we pass it via header).
+        const requestId =
+          parsedBody.dyadRequestId ??
+          (init.headers as Record<string, string> | undefined)?.[
+            DYAD_INTERNAL_REQUEST_ID_HEADER
+          ];
         if ("dyadRequestId" in parsedBody) {
           delete parsedBody.dyadRequestId;
         }
@@ -173,10 +182,12 @@ export function createDyadEngine(
         }
 
         // Return modified request with files included and requestId in headers
+        const { [DYAD_INTERNAL_REQUEST_ID_HEADER]: _, ...outgoingHeaders } =
+          (init.headers as Record<string, string>) ?? {};
         const modifiedInit = {
           ...init,
           headers: {
-            ...init.headers,
+            ...outgoingHeaders,
             ...(modifiedRequestId && {
               "X-Dyad-Request-Id": modifiedRequestId,
             }),

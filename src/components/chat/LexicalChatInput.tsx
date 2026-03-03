@@ -251,7 +251,7 @@ function ExternalValueSyncPlugin({
           const filePath = match[3];
           paragraph.append($createBeautifulMentionNode("@", filePath));
         } else if (match[4]) {
-          const mediaRef = match[4];
+          const mediaRef = decodeURIComponent(match[4]);
           paragraph.append($createBeautifulMentionNode("@", mediaRef));
         }
         lastIndex = start + full.length;
@@ -379,15 +379,15 @@ export function LexicalChatInput({
       type: "file",
     }));
 
-    // Build media mention items from all apps' media files
-    const mediaItems = mediaApps.flatMap((app) =>
-      app.files.map((file) => ({
-        value: `${app.appName}/${file.fileName}`,
-        type: "media",
-      })),
+    // Build media mention items from the current app's media files only
+    const currentAppMedia = mediaApps.find(
+      (app) => app.appId === selectedAppId,
     );
-
-    result["@"] = [...appMentions, ...promptItems, ...fileItems, ...mediaItems];
+    const mediaItems = (currentAppMedia?.files ?? []).map((file) => ({
+      value: file.fileName,
+      type: "media",
+    }));
+    result["@"] = [...mediaItems, ...appMentions, ...promptItems, ...fileItems];
 
     return result;
   }, [
@@ -437,17 +437,21 @@ export function LexicalChatInput({
 
         // Short-circuit if there's no "@" symbol in the text
         if (textContent.includes("@")) {
-          // Convert media mentions first: @AppName/filename -> @media:AppName/filename
-          // This must happen before app mentions, because @AppName/filename would
-          // otherwise be partially matched by the @AppName -> @app:AppName rule.
-          for (const app of mediaApps) {
-            for (const file of app.files) {
-              const display = `${app.appName}/${file.fileName}`;
-              const escaped = display.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          // Convert media mentions first: @filename -> @media:filename
+          // This must happen before app mentions to avoid partial matches.
+          const currentAppMediaFiles = mediaApps.find(
+            (app) => app.appId === selectedAppId,
+          );
+          if (currentAppMediaFiles) {
+            for (const file of currentAppMediaFiles.files) {
+              const escaped = file.fileName.replace(
+                /[.*+?^${}()|[\]\\]/g,
+                "\\$&",
+              );
               const mediaRegex = new RegExp(`@(${escaped})(?![\\w-])`, "g");
               textContent = textContent.replace(
                 mediaRegex,
-                `@media:${display}`,
+                `@media:${encodeURIComponent(file.fileName)}`,
               );
             }
           }

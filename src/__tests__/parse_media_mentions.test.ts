@@ -6,31 +6,40 @@ import {
 
 describe("parseMediaMentions", () => {
   it("parses @media mentions from prompt text", () => {
-    const prompt =
-      "Check @media:demo-app/cat.png and @media:demo-app/dog.png please";
+    const prompt = "Check @media:cat.png and @media:dog.png please";
 
-    expect(parseMediaMentions(prompt)).toEqual([
-      "demo-app/cat.png",
-      "demo-app/dog.png",
-    ]);
+    expect(parseMediaMentions(prompt)).toEqual(["cat.png", "dog.png"]);
+  });
+
+  it("parses @media mentions with URL-encoded filenames (e.g. spaces)", () => {
+    const prompt = "Check @media:my%20photo.png please";
+
+    expect(parseMediaMentions(prompt)).toEqual(["my%20photo.png"]);
   });
 });
 
 describe("stripResolvedMediaMentions", () => {
   it("keeps user text when media mention is followed by adjacent text", () => {
-    const prompt = "@media:demo-app/cat.pngdescribe this image";
+    const prompt = "@media:cat.pngdescribe this image";
 
-    expect(stripResolvedMediaMentions(prompt, ["demo-app/cat.png"])).toBe(
+    expect(stripResolvedMediaMentions(prompt, ["cat.png"])).toBe(
       "describe this image",
     );
   });
 
   it("strips only resolved mentions and preserves unresolved ones", () => {
-    const prompt =
-      "Use @media:demo-app/cat.png and @media:demo-app/missing.png now";
+    const prompt = "Use @media:cat.png and @media:missing.png now";
 
-    expect(stripResolvedMediaMentions(prompt, ["demo-app/cat.png"])).toBe(
-      "Use  and @media:demo-app/missing.png now",
+    expect(stripResolvedMediaMentions(prompt, ["cat.png"])).toBe(
+      "Use and @media:missing.png now",
+    );
+  });
+
+  it("strips URL-encoded mentions (filenames with spaces)", () => {
+    const prompt = "Check @media:my%20photo.png please";
+
+    expect(stripResolvedMediaMentions(prompt, ["my%20photo.png"])).toBe(
+      "Check please",
     );
   });
 });

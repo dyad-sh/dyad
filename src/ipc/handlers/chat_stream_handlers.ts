@@ -402,9 +402,13 @@ export function registerChatStreamHandlers() {
       try {
         const mediaRefs = parseMediaMentions(userPrompt);
         if (mediaRefs.length > 0) {
-          const resolvedMedia = await resolveMediaMentions(mediaRefs);
-          const resolvedMediaRefs = resolvedMedia.map(
-            (media) => `${media.appName}/${media.fileName}`,
+          const resolvedMedia = await resolveMediaMentions(
+            mediaRefs,
+            chat.app.path,
+            chat.app.name,
+          );
+          const resolvedMediaRefs = resolvedMedia.map((media) =>
+            encodeURIComponent(media.fileName),
           );
           let mediaDisplayInfo = "";
           for (const media of resolvedMedia) {

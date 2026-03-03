@@ -134,7 +134,7 @@ testSkipIfWindows(
 
     await expect(po.chatActions.getChatInput()).toBeVisible();
     await expect(po.chatActions.getChatInput()).toContainText(
-      `@${sourceApp.appName}/chat-image.png`,
+      `@chat-image.png`,
     );
     expect(await po.appManagement.getCurrentAppName()).toBe(sourceApp.appName);
   },

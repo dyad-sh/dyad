@@ -1,6 +1,3 @@
-import { db } from "../../db";
-import { apps } from "../../db/schema";
-import { eq } from "drizzle-orm";
 import { getDyadAppPath } from "../../paths/paths";
 import { safeJoin } from "./path_utils";
 import { getMimeType } from "./mime_utils";
@@ -16,25 +13,16 @@ export interface ResolvedMediaFile {
 
 export async function resolveMediaMentions(
   mediaRefs: string[],
+  appPath: string,
+  appName: string,
 ): Promise<ResolvedMediaFile[]> {
   const resolved: ResolvedMediaFile[] = [];
+  const resolvedAppPath = getDyadAppPath(appPath);
 
-  for (const ref of mediaRefs) {
-    const slashIndex = ref.indexOf("/");
-    if (slashIndex === -1) continue;
-
-    const appName = ref.substring(0, slashIndex);
-    const fileName = ref.substring(slashIndex + 1);
-
-    const app = await db.query.apps.findFirst({
-      where: eq(apps.name, appName),
-    });
-    if (!app) continue;
-
-    const appPath = getDyadAppPath(app.path);
-
+  for (const encodedFileName of mediaRefs) {
     try {
-      const filePath = safeJoin(appPath, ".dyad", "media", fileName);
+      const fileName = decodeURIComponent(encodedFileName);
+      const filePath = safeJoin(resolvedAppPath, ".dyad", "media", fileName);
       if (!fs.existsSync(filePath)) continue;
 
       const ext = path.extname(fileName).toLowerCase();

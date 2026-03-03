@@ -120,7 +120,7 @@ export function DyadAppMediaFolder({
       selectChat({
         chatId,
         appId: file.appId,
-        prefillInput: `@media:${appName}/${file.fileName} `,
+        prefillInput: `@media:${file.fileName} `,
       });
     } catch (error) {
       showError(error);

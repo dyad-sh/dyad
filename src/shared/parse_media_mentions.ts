@@ -1,5 +1,5 @@
 export function parseMediaMentions(prompt: string): string[] {
-  const regex = /@media:([a-zA-Z0-9_-]+\/[^\s]+)/g;
+  const regex = /@media:([^\s]+)/g;
   const mentions: string[] = [];
   let match;
 
@@ -28,5 +28,5 @@ export function stripResolvedMediaMentions(
     stripped = stripped.split(token).join("");
   }
 
-  return stripped.trim();
+  return stripped.replace(/\s{2,}/g, " ").trim();
 }

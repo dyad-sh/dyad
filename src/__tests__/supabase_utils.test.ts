@@ -11,7 +11,13 @@ import {
   listFilesWithStats,
   type FileStatEntry,
 } from "@/supabase_admin/supabase_management_client";
-import { mkdirSync, writeFileSync, rmSync, readFileSync } from "fs";
+import {
+  mkdirSync,
+  writeFileSync,
+  rmSync,
+  readFileSync,
+  mkdtempSync,
+} from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 
@@ -33,29 +39,16 @@ describe("isServerFunction", () => {
       );
     });
 
-    it("should return true for deeply nested src/utils path (customer reported structure)", () => {
-      expect(
-        isServerFunction(
-          "supabase/functions/incoming-call-router/src/utils/text.ts",
-        ),
-      ).toBe(true);
-    });
-
-    it("should return true for deeply nested src/controllers path (customer reported structure)", () => {
-      expect(
-        isServerFunction(
-          "supabase/functions/incoming-call-router/src/controllers/conference.ts",
-        ),
-      ).toBe(true);
-    });
-
-    it("should return true for deeply nested src/services path (customer reported structure)", () => {
-      expect(
-        isServerFunction(
-          "supabase/functions/incoming-call-router/src/services/supabase.ts",
-        ),
-      ).toBe(true);
-    });
+    it.each([
+      "supabase/functions/incoming-call-router/src/utils/text.ts",
+      "supabase/functions/incoming-call-router/src/controllers/conference.ts",
+      "supabase/functions/incoming-call-router/src/services/supabase.ts",
+    ])(
+      "should return true for deeply nested path '%s' (customer reported structure)",
+      (path) => {
+        expect(isServerFunction(path)).toBe(true);
+      },
+    );
   });
 
   describe("returns false for non-function paths", () => {
@@ -384,11 +377,7 @@ describe("listFilesWithStats", () => {
 
   beforeEach(() => {
     // Create a unique temp directory for each test
-    tempDir = join(
-      tmpdir(),
-      `supabase-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    );
-    mkdirSync(tempDir, { recursive: true });
+    tempDir = mkdtempSync(join(tmpdir(), "supabase-test-"));
   });
 
   afterEach(() => {
@@ -614,16 +603,21 @@ export default {}
       const result = await listFilesWithStats(functionDir, "content-test");
 
       // Verify we can read all files using the absolute paths
-      for (const entry of result) {
-        const content = readFileSync(entry.absolutePath, "utf-8");
-        expect(content.length).toBeGreaterThan(0);
-
-        if (entry.relativePath.endsWith("index.ts")) {
-          expect(content).toBe(indexContent);
-        } else if (entry.relativePath.endsWith("helper.ts")) {
-          expect(content).toBe(helperContent);
-        }
-      }
+      expect(result).toHaveLength(2);
+      const indexEntry = result.find((e) =>
+        e.relativePath.endsWith("index.ts"),
+      );
+      expect(indexEntry).toBeDefined();
+      expect(readFileSync(indexEntry!.absolutePath, "utf-8")).toBe(
+        indexContent,
+      );
+      const helperEntry = result.find((e) =>
+        e.relativePath.endsWith("helper.ts"),
+      );
+      expect(helperEntry).toBeDefined();
+      expect(readFileSync(helperEntry!.absolutePath, "utf-8")).toBe(
+        helperContent,
+      );
     });
 
     it("should preserve directory structure in relative paths matching customer example", async () => {

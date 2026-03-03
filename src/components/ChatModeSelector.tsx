@@ -13,6 +13,7 @@ import {
 import { useSettings } from "@/hooks/useSettings";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { useMcp } from "@/hooks/useMcp";
+import { useChatSettings } from "@/hooks/useChatSettings";
 import type { ChatMode } from "@/lib/schemas";
 import { isDyadProEnabled } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
@@ -21,7 +22,7 @@ import { useRouterState } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { LocalAgentNewChatToast } from "./LocalAgentNewChatToast";
 import { useAtomValue } from "jotai";
-import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
+import { chatMessagesByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { Hammer, Bot, MessageCircle, Lightbulb } from "lucide-react";
 
 function NewBadge() {
@@ -37,11 +38,18 @@ export function ChatModeSelector() {
   const routerState = useRouterState();
   const isChatRoute = routerState.location.pathname === "/chat";
   const messagesById = useAtomValue(chatMessagesByIdAtom);
+  const selectedChatId = useAtomValue(selectedChatIdAtom);
   const chatId = routerState.location.search.id as number | undefined;
   const currentChatMessages = chatId ? (messagesById.get(chatId) ?? []) : [];
 
-  // Migration happens on read, so selectedChatMode will never be "agent"
-  const selectedMode = settings?.selectedChatMode || "build";
+  // Use per-chat settings when a chat is selected
+  const { effectiveChatMode, updateChatMode: updatePerChatMode } =
+    useChatSettings(selectedChatId);
+
+  // Use per-chat mode if available, otherwise fall back to global
+  const selectedMode = selectedChatId
+    ? effectiveChatMode
+    : settings?.selectedChatMode || "build";
   const isProEnabled = settings ? isDyadProEnabled(settings) : false;
   const { messagesRemaining, isQuotaExceeded } = useFreeAgentQuota();
   const { servers } = useMcp();
@@ -49,7 +57,12 @@ export function ChatModeSelector() {
 
   const handleModeChange = (value: string) => {
     const newMode = value as ChatMode;
-    updateSettings({ selectedChatMode: newMode });
+    // If a chat is selected, update per-chat settings; otherwise update global
+    if (selectedChatId) {
+      updatePerChatMode(newMode);
+    } else {
+      updateSettings({ selectedChatMode: newMode });
+    }
 
     // We want to show a toast when user is switching to the new agent mode
     // because they might weird results mixing Build and Agent mode in the same chat.

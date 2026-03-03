@@ -109,6 +109,14 @@ If you need to rebase but have uncommitted changes (e.g., package-lock.json from
 
 This prevents rebase conflicts from uncommitted changes while preserving any work in progress.
 
+**If stash pop creates a conflict in package-lock.json:** The file will be marked as unmerged. To resolve:
+
+```bash
+git reset HEAD package-lock.json && git checkout -- package-lock.json && git stash drop
+```
+
+This resets package-lock.json to the rebased HEAD (discarding the stashed version) and drops the stash.
+
 ## Resolving documentation rebase conflicts
 
 When rebasing a PR branch that conflicts with upstream documentation changes (e.g., AGENTS.md):

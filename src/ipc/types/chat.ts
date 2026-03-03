@@ -5,6 +5,7 @@ import {
   createClient,
   createStreamClient,
 } from "../contracts/core";
+import { ChatModeSchema, LargeLanguageModelSchema } from "../../lib/schemas";
 
 // =============================================================================
 // Chat Schemas
@@ -38,9 +39,35 @@ export const ChatSchema = z.object({
   messages: z.array(MessageSchema),
   initialCommitHash: z.string().nullable().optional(),
   dbTimestamp: z.string().nullable().optional(),
+  // Per-chat settings
+  chatMode: ChatModeSchema.nullable().optional(),
+  selectedModel: LargeLanguageModelSchema.nullable().optional(),
 });
 
 export type Chat = z.infer<typeof ChatSchema>;
+
+/**
+ * Schema for updating chat settings (mode and/or model).
+ */
+export const UpdateChatSettingsParamsSchema = z.object({
+  chatId: z.number(),
+  chatMode: ChatModeSchema.optional(),
+  selectedModel: LargeLanguageModelSchema.optional(),
+});
+
+export type UpdateChatSettingsParams = z.infer<
+  typeof UpdateChatSettingsParamsSchema
+>;
+
+/**
+ * Schema for chat settings result.
+ */
+export const ChatSettingsSchema = z.object({
+  chatMode: ChatModeSchema.nullable(),
+  selectedModel: LargeLanguageModelSchema.nullable(),
+});
+
+export type ChatSettings = z.infer<typeof ChatSettingsSchema>;
 
 /**
  * Schema for component selection (used in chat context).
@@ -233,6 +260,18 @@ export const chatContracts = {
     channel: "chat:count-tokens",
     input: TokenCountParamsSchema,
     output: TokenCountResultSchema,
+  }),
+
+  getChatSettings: defineContract({
+    channel: "chat:get-settings",
+    input: z.number(), // chatId
+    output: ChatSettingsSchema,
+  }),
+
+  updateChatSettings: defineContract({
+    channel: "chat:update-settings",
+    input: UpdateChatSettingsParamsSchema,
+    output: z.void(),
   }),
 
   cancelStream: defineContract({

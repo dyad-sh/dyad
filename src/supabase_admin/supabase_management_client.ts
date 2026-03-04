@@ -19,6 +19,49 @@ const fsPromises = fs.promises;
 
 const logger = log.scope("supabase_management_client");
 
+// Default Supabase API URL
+const DEFAULT_SUPABASE_API_URL = "https://api.supabase.com";
+
+/**
+ * Gets the self-hosted Supabase configuration if both API URL and secret key are set.
+ * Returns null if self-hosted is not configured.
+ */
+function getSelfHostedConfig(): {
+  apiUrl: string;
+  secretKey: string;
+} | null {
+  const settings = readSettings();
+  const apiUrl = settings.supabase?.selfHostedSupabaseApiUrl;
+  const secretKey = settings.supabase?.selfHostedSupabaseSecretKey?.value;
+
+  // Both must be set
+  if (apiUrl && secretKey) {
+    return { apiUrl: apiUrl.replace(/\/$/, ""), secretKey };
+  }
+  return null;
+}
+
+/**
+ * Gets the appropriate base URL for Supabase API calls.
+ * Returns the self-hosted URL if configured, otherwise the default Supabase API URL.
+ */
+function getSupabaseApiBaseUrl(): string {
+  const selfHosted = getSelfHostedConfig();
+  return selfHosted?.apiUrl ?? DEFAULT_SUPABASE_API_URL;
+}
+
+/**
+ * Gets the appropriate authorization header for Supabase API calls.
+ * Uses self-hosted secret key if configured, otherwise uses the provided access token.
+ */
+function getAuthorizationHeader(accessToken: string): string {
+  const selfHosted = getSelfHostedConfig();
+  if (selfHosted) {
+    return `Bearer ${selfHosted.secretKey}`;
+  }
+  return `Bearer ${accessToken}`;
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Interfaces for file collection and caching
 // ─────────────────────────────────────────────────────────────────────
@@ -199,13 +242,17 @@ export async function getSupabaseClient({
       throw new Error("Failed to refresh Supabase access token");
     }
 
+    const selfHosted = getSelfHostedConfig();
     return new SupabaseManagementAPI({
-      accessToken: newAccessToken,
+      accessToken: selfHosted?.secretKey ?? newAccessToken,
+      baseUrl: selfHosted?.apiUrl,
     });
   }
 
+  const selfHosted = getSelfHostedConfig();
   return new SupabaseManagementAPI({
-    accessToken: supabaseAccessToken,
+    accessToken: selfHosted?.secretKey ?? supabaseAccessToken,
+    baseUrl: selfHosted?.apiUrl,
   });
 }
 
@@ -348,13 +395,17 @@ export async function getSupabaseClientForOrganization(
       );
     }
 
+    const selfHosted = getSelfHostedConfig();
     return new SupabaseManagementAPI({
-      accessToken: newAccessToken,
+      accessToken: selfHosted?.secretKey ?? newAccessToken,
+      baseUrl: selfHosted?.apiUrl,
     });
   }
 
+  const selfHosted = getSelfHostedConfig();
   return new SupabaseManagementAPI({
-    accessToken,
+    accessToken: selfHosted?.secretKey ?? accessToken,
+    baseUrl: selfHosted?.apiUrl,
   });
 }
 
@@ -364,12 +415,13 @@ export async function getSupabaseClientForOrganization(
 export async function listSupabaseOrganizations(
   accessToken: string,
 ): Promise<SupabaseOrganizationDetails[]> {
+  const baseUrl = getSupabaseApiBaseUrl();
   const response = await fetchWithRetry(
-    "https://api.supabase.com/v1/organizations",
+    `${baseUrl}/v1/organizations`,
     {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: getAuthorizationHeader(accessToken),
       },
     },
     "List Supabase organizations",
@@ -424,9 +476,10 @@ export async function getOrganizationMembers(
 
   const client = await getSupabaseClientForOrganization(organizationSlug);
   const accessToken = (client as any).options.accessToken;
+  const baseUrl = getSupabaseApiBaseUrl();
 
   const response = await fetchWithRetry(
-    `https://api.supabase.com/v1/organizations/${organizationSlug}/members`,
+    `${baseUrl}/v1/organizations/${organizationSlug}/members`,
     {
       method: "GET",
       headers: {
@@ -478,9 +531,10 @@ export async function getOrganizationDetails(
 
   const client = await getSupabaseClientForOrganization(organizationSlug);
   const accessToken = (client as any).options.accessToken;
+  const baseUrl = getSupabaseApiBaseUrl();
 
   const response = await fetchWithRetry(
-    `https://api.supabase.com/v1/organizations/${organizationSlug}`,
+    `${baseUrl}/v1/organizations/${organizationSlug}`,
     {
       method: "GET",
       headers: {
@@ -559,8 +613,9 @@ LIMIT 1000`;
 
   // Encode SQL query for URL
   const encodedSql = encodeURIComponent(sqlQuery);
+  const baseUrl = getSupabaseApiBaseUrl();
 
-  const url = `https://api.supabase.com/v1/projects/${projectId}/analytics/endpoints/logs.all?sql=${encodedSql}&iso_timestamp_start=${isoTimestampStart}&iso_timestamp_end=${isoTimestampEnd}`;
+  const url = `${baseUrl}/v1/projects/${projectId}/analytics/endpoints/logs.all?sql=${encodedSql}&iso_timestamp_start=${isoTimestampStart}&iso_timestamp_end=${isoTimestampEnd}`;
 
   logger.info(`Fetching logs from: ${url}`);
 
@@ -646,9 +701,10 @@ export async function listSupabaseFunctions({
 
   logger.info(`Listing Supabase functions for project: ${supabaseProjectId}`);
   const supabase = await getSupabaseClient({ organizationSlug });
+  const baseUrl = getSupabaseApiBaseUrl();
 
   const response = await fetchWithRetry(
-    `https://api.supabase.com/v1/projects/${supabaseProjectId}/functions`,
+    `${baseUrl}/v1/projects/${supabaseProjectId}/functions`,
     {
       method: "GET",
       headers: {
@@ -698,9 +754,10 @@ export async function listSupabaseBranches({
 
   logger.info(`Listing Supabase branches for project: ${supabaseProjectId}`);
   const supabase = await getSupabaseClient({ organizationSlug });
+  const baseUrl = getSupabaseApiBaseUrl();
 
   const response = await fetchWithRetry(
-    `https://api.supabase.com/v1/projects/${supabaseProjectId}/branches`,
+    `${baseUrl}/v1/projects/${supabaseProjectId}/branches`,
     {
       method: "GET",
       headers: {
@@ -808,7 +865,8 @@ export async function deploySupabaseFunction({
   }
 
   // 6) Perform the deploy request
-  const deployUrl = `https://api.supabase.com/v1/projects/${encodeURIComponent(
+  const baseUrl = getSupabaseApiBaseUrl();
+  const deployUrl = `${baseUrl}/v1/projects/${encodeURIComponent(
     supabaseProjectId,
   )}/functions/deploy?slug=${encodeURIComponent(functionName)}${bundleOnly ? "&bundleOnly=true" : ""}`;
 
@@ -854,9 +912,10 @@ export async function bulkUpdateFunctions({
   );
 
   const supabase = await getSupabaseClient({ organizationSlug });
+  const baseUrl = getSupabaseApiBaseUrl();
 
   const response = await fetchWithRetry(
-    `https://api.supabase.com/v1/projects/${encodeURIComponent(supabaseProjectId)}/functions`,
+    `${baseUrl}/v1/projects/${encodeURIComponent(supabaseProjectId)}/functions`,
     {
       method: "PUT",
       headers: {

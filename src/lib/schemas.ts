@@ -196,6 +196,11 @@ export const SupabaseSchema = z.object({
   refreshToken: SecretSchema.optional(),
   expiresIn: z.number().optional(),
   tokenTimestamp: z.number().optional(),
+
+  // Self-hosted Supabase settings
+  // Both must be set or both must be unset
+  selfHostedSupabaseApiUrl: z.string().optional(),
+  selfHostedSupabaseSecretKey: SecretSchema.optional(),
 });
 export type Supabase = z.infer<typeof SupabaseSchema>;
 

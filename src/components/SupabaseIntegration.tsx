@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 // We might need a Supabase icon here, but for now, let's use a generic one or text.
 // import { Supabase } from "lucide-react"; // Placeholder
 import { DatabaseZap, Trash2 } from "lucide-react"; // Using DatabaseZap as a placeholder
@@ -20,6 +21,12 @@ export function SupabaseIntegration() {
   const { t } = useTranslation(["home", "common"]);
   const { settings, updateSettings } = useSettings();
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [selfHostedApiUrl, setSelfHostedApiUrl] = useState(
+    settings?.supabase?.selfHostedSupabaseApiUrl || "",
+  );
+  const [selfHostedSecretKey, setSelfHostedSecretKey] = useState(
+    settings?.supabase?.selfHostedSupabaseSecretKey?.value || "",
+  );
 
   // Check if there are any connected organizations
   const isConnected = isSupabaseConnected(settings);
@@ -82,8 +89,96 @@ export function SupabaseIntegration() {
     }
   };
 
+  const handleSelfHostedSettingsSave = async () => {
+    // Both must be set or both must be unset
+    const hasApiUrl = selfHostedApiUrl.trim() !== "";
+    const hasSecretKey = selfHostedSecretKey.trim() !== "";
+
+    if (hasApiUrl !== hasSecretKey) {
+      showError(
+        "Both Self-hosted API URL and Secret Key must be set, or both must be empty",
+      );
+      return;
+    }
+
+    try {
+      await updateSettings({
+        supabase: {
+          ...settings?.supabase,
+          selfHostedSupabaseApiUrl: hasApiUrl
+            ? selfHostedApiUrl.trim()
+            : undefined,
+          selfHostedSupabaseSecretKey: hasSecretKey
+            ? { value: selfHostedSecretKey.trim() }
+            : undefined,
+        },
+      });
+      showSuccess("Self-hosted Supabase settings updated");
+    } catch (err: any) {
+      showError(err.message || "Failed to update self-hosted settings");
+    }
+  };
+
+  // Show self-hosted settings section even when not connected
+  // This allows users to configure self-hosted Supabase before connecting
+  const selfHostedSection = (
+    <div
+      className={
+        isConnected
+          ? "mt-6 pt-4 border-t border-gray-200 dark:border-gray-700"
+          : ""
+      }
+    >
+      <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+        Self-hosted Supabase (Optional)
+      </h4>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+        Configure these settings to use a self-hosted Supabase instance. Both
+        fields must be set together.
+      </p>
+      <div className="space-y-3">
+        <div className="space-y-1">
+          <Label htmlFor="self-hosted-api-url" className="text-xs font-medium">
+            Self-hosted API URL
+          </Label>
+          <Input
+            id="self-hosted-api-url"
+            type="url"
+            placeholder="https://your-supabase-instance.example.com"
+            value={selfHostedApiUrl}
+            onChange={(e) => setSelfHostedApiUrl(e.target.value)}
+            className="text-sm"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label
+            htmlFor="self-hosted-secret-key"
+            className="text-xs font-medium"
+          >
+            Self-hosted Secret Key
+          </Label>
+          <Input
+            id="self-hosted-secret-key"
+            type="password"
+            placeholder="Enter your secret key"
+            value={selfHostedSecretKey}
+            onChange={(e) => setSelfHostedSecretKey(e.target.value)}
+            className="text-sm"
+          />
+        </div>
+        <Button
+          onClick={handleSelfHostedSettingsSave}
+          size="sm"
+          variant="outline"
+        >
+          Save Self-hosted Settings
+        </Button>
+      </div>
+    </div>
+  );
+
   if (!isConnected) {
-    return null;
+    return selfHostedSection;
   }
 
   return (
@@ -199,6 +294,9 @@ export function SupabaseIntegration() {
           </div>
         </div>
       </div>
+
+      {/* Self-hosted Supabase settings */}
+      {selfHostedSection}
     </div>
   );
 }

@@ -9,7 +9,7 @@ test("add prompt via deep link with base64-encoded data", async ({
   await po.navigation.goToLibraryTab();
 
   // Verify library is empty initially
-  await expect(po.page.getByTestId("prompt-card")).not.toBeVisible();
+  await expect(po.page.getByTestId("library-prompt-card")).not.toBeVisible();
 
   // Create the prompt data to be encoded
   const promptData = {
@@ -48,5 +48,7 @@ test("add prompt via deep link with base64-encoded data", async ({
   // Save the prompt
   await po.page.getByRole("button", { name: "Save" }).click();
 
-  await expect(po.page.getByTestId("prompt-card")).toMatchAriaSnapshot();
+  await expect(
+    po.page.getByTestId("library-prompt-card"),
+  ).toMatchAriaSnapshot();
 });

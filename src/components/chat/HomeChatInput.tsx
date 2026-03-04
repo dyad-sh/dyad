@@ -29,10 +29,11 @@ import { useTypingPlaceholder } from "@/hooks/useTypingPlaceholder";
 import { AuxiliaryActionsMenu } from "./AuxiliaryActionsMenu";
 import { cn } from "@/lib/utils";
 import { useVoiceToText } from "@/hooks/useVoiceToText";
-import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { ipc } from "@/ipc/types";
 import { useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { showError } from "@/lib/toast";
+import { isDyadProEnabled } from "@/lib/schemas";
 
 export function HomeChatInput({
   onSubmit,
@@ -46,8 +47,8 @@ export function HomeChatInput({
     hasChatId: false,
   }); // eslint-disable-line @typescript-eslint/no-unused-vars
   useChatModeToggle();
-  const { userBudget } = useUserBudgetInfo();
-  const isProEnabled = !!userBudget && !!settings?.enableDyadPro;
+  const { t } = useTranslation();
+  const isProEnabled = settings ? isDyadProEnabled(settings) : false;
 
   const handleTranscription = useCallback(
     (text: string) => {
@@ -159,13 +160,13 @@ export function HomeChatInput({
                   render={
                     <button
                       onClick={toggleRecording}
-                      disabled={isStreaming || isTranscribing}
+                      disabled={isStreaming ? !isRecording : isTranscribing}
                       aria-label={
                         isRecording
-                          ? "Stop recording"
+                          ? t("stopRecording", "Stop recording")
                           : isTranscribing
-                            ? "Transcribing..."
-                            : "Voice to text"
+                            ? t("transcribing", "Transcribing...")
+                            : t("voiceToText", "Voice to text")
                       }
                       className={cn(
                         "px-2 py-2 mb-0.5 text-muted-foreground rounded-lg transition-colors duration-150 cursor-pointer disabled:cursor-default disabled:opacity-30",
@@ -186,10 +187,10 @@ export function HomeChatInput({
                 </TooltipTrigger>
                 <TooltipContent>
                   {isRecording
-                    ? "Stop recording"
+                    ? t("stopRecording", "Stop recording")
                     : isTranscribing
-                      ? "Transcribing..."
-                      : "Voice to text"}
+                      ? t("transcribing", "Transcribing...")
+                      : t("voiceToText", "Voice to text")}
                 </TooltipContent>
               </Tooltip>
             ) : (
@@ -200,7 +201,7 @@ export function HomeChatInput({
                       onClick={() =>
                         ipc.system.openExternalUrl("https://dyad.sh/pro")
                       }
-                      aria-label="Voice to text (Pro)"
+                      aria-label={t("voiceToTextPro", "Voice to text (Pro)")}
                       className="px-2 py-2 mb-0.5 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 cursor-pointer relative"
                     />
                   }
@@ -208,7 +209,9 @@ export function HomeChatInput({
                   <Mic size={20} />
                   <Lock size={10} className="absolute -top-0.5 -right-0.5" />
                 </TooltipTrigger>
-                <TooltipContent>Voice to text (requires Pro)</TooltipContent>
+                <TooltipContent>
+                  {t("voiceToTextRequiresPro", "Voice to text (requires Pro)")}
+                </TooltipContent>
               </Tooltip>
             )}
 

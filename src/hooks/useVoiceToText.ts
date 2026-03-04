@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { ipc } from "@/ipc/types";
 import { v4 as uuidv4 } from "uuid";
 
@@ -26,26 +26,45 @@ export function useVoiceToText({
     }
   }, []);
 
-  const toggleRecording = useCallback(async () => {
-    if (!enabled) return;
+  // Clean up on unmount to prevent microphone leak
+  useEffect(() => {
+    return () => {
+      if (mediaRecorderRef.current?.state === "recording") {
+        mediaRecorderRef.current.stop();
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
+    };
+  }, []);
 
+  const toggleRecording = useCallback(async () => {
     if (isTranscribing) return;
 
     if (isRecording) {
-      // Stop recording
+      // Stop recording - always allow stopping even if disabled
       if (mediaRecorderRef.current?.state === "recording") {
         mediaRecorderRef.current.stop();
       }
       return;
     }
 
+    // Don't allow starting a new recording if not enabled
+    if (!enabled) return;
+
     // Start recording
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : MediaRecorder.isTypeSupported("audio/mp4")
+          ? "audio/mp4"
+          : "";
       const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: "audio/webm",
+        ...(mimeType ? { mimeType } : {}),
       });
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
@@ -60,7 +79,9 @@ export function useVoiceToText({
         setIsRecording(false);
         stopMediaStream();
 
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        const recorderMimeType =
+          mediaRecorderRef.current?.mimeType || "audio/webm";
+        const blob = new Blob(chunksRef.current, { type: recorderMimeType });
         chunksRef.current = [];
 
         if (blob.size === 0) {
@@ -71,10 +92,11 @@ export function useVoiceToText({
         try {
           const arrayBuffer = await blob.arrayBuffer();
           const audioData = Array.from(new Uint8Array(arrayBuffer));
+          const ext = recorderMimeType.includes("mp4") ? "m4a" : "webm";
 
           const result = await ipc.audio.transcribeAudio({
             audioData,
-            filename: "recording.webm",
+            filename: `recording.${ext}`,
             requestId: uuidv4(),
           });
 

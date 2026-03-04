@@ -6,7 +6,7 @@ import { defineContract, createClient } from "../contracts/core";
 // =============================================================================
 
 export const TranscribeAudioParamsSchema = z.object({
-  audioData: z.array(z.number()),
+  audioData: z.array(z.number()).max(25 * 1024 * 1024),
   filename: z.string(),
   requestId: z.string(),
 });

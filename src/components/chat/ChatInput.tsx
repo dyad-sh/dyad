@@ -44,6 +44,7 @@ import {
   SuggestedAction,
   FileChange,
   SqlQuery,
+  isDyadProEnabled,
 } from "@/lib/schemas";
 
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
@@ -209,7 +210,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   }, [chatId, messagesById]);
 
   const { userBudget } = useUserBudgetInfo();
-  const isProEnabled = !!userBudget && !!settings?.enableDyadPro;
+  const isProEnabled = settings ? isDyadProEnabled(settings) : false;
 
   const handleTranscription = useCallback(
     (text: string) => {
@@ -744,7 +745,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                   render={
                     <button
                       onClick={toggleRecording}
-                      disabled={isStreaming || isTranscribing}
+                      disabled={isStreaming ? !isRecording : isTranscribing}
                       aria-label={
                         isRecording
                           ? t("stopRecording", "Stop recording")

@@ -329,6 +329,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       return;
     }
 
+    if (isRecording) {
+      await toggleRecording();
+    }
+
     // If switching to plan mode from another mode in a chat with messages,
     // create a new chat for a clean context.
     if (needsFreshPlanChat && settings?.selectedChatMode === "plan" && appId) {
@@ -744,7 +748,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                   render={
                     <button
                       onClick={toggleRecording}
-                      disabled={isStreaming || isTranscribing}
+                      disabled={isTranscribing}
                       aria-label={
                         isRecording
                           ? t("stopRecording", "Stop recording")

@@ -27,8 +27,6 @@ export function useVoiceToText({
   }, []);
 
   const toggleRecording = useCallback(async () => {
-    if (!enabled) return;
-
     if (isTranscribing) return;
 
     if (isRecording) {
@@ -38,6 +36,8 @@ export function useVoiceToText({
       }
       return;
     }
+
+    if (!enabled) return;
 
     // Start recording
     try {

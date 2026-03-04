@@ -105,13 +105,17 @@ export function HomeChatInput({
   };
 
   // Custom submit function that wraps the provided onSubmit
-  const handleCustomSubmit = () => {
+  const handleCustomSubmit = async () => {
     if (
       (!inputValue.trim() && attachments.length === 0) ||
       isStreaming ||
       pendingFiles
     ) {
       return;
+    }
+
+    if (isRecording) {
+      await toggleRecording();
     }
 
     // Call the parent's onSubmit handler with attachments and selected app
@@ -183,7 +187,7 @@ export function HomeChatInput({
                   render={
                     <button
                       onClick={toggleRecording}
-                      disabled={isStreaming || isTranscribing}
+                      disabled={isTranscribing}
                       aria-label={
                         isRecording
                           ? "Stop recording"

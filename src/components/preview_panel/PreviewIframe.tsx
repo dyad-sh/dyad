@@ -1144,10 +1144,14 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                   className="truncate flex-1 mr-2 min-w-0"
                   data-testid="preview-address-bar-path"
                 >
-                  {navigationHistory[currentHistoryPosition]
-                    ? new URL(navigationHistory[currentHistoryPosition])
-                        .pathname
-                    : "/"}
+                  {(() => {
+                    try {
+                      return new URL(navigationHistory[currentHistoryPosition])
+                        .pathname;
+                    } catch {
+                      return "/";
+                    }
+                  })()}
                 </span>
                 <ChevronDown size={14} className="flex-shrink-0" />
               </DropdownMenuTrigger>

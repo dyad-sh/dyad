@@ -254,6 +254,7 @@ vi.mock("@/ipc/utils/token_utils", () => ({
 vi.mock("@/ipc/utils/provider_options", () => ({
   getProviderOptions: vi.fn(() => ({})),
   getAiHeaders: vi.fn(() => ({})),
+  DYAD_INTERNAL_REQUEST_ID_HEADER: "x-dyad-internal-request-id",
 }));
 
 vi.mock("@/ipc/utils/mcp_manager", () => ({

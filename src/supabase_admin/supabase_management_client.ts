@@ -50,18 +50,6 @@ function getSupabaseApiBaseUrl(): string {
   return selfHosted?.apiUrl ?? DEFAULT_SUPABASE_API_URL;
 }
 
-/**
- * Gets the appropriate authorization header for Supabase API calls.
- * Uses self-hosted secret key if configured, otherwise uses the provided access token.
- */
-function getAuthorizationHeader(accessToken: string): string {
-  const selfHosted = getSelfHostedConfig();
-  if (selfHosted) {
-    return `Bearer ${selfHosted.secretKey}`;
-  }
-  return `Bearer ${accessToken}`;
-}
-
 // ─────────────────────────────────────────────────────────────────────
 // Interfaces for file collection and caching
 // ─────────────────────────────────────────────────────────────────────
@@ -213,6 +201,15 @@ export async function refreshSupabaseToken(): Promise<void> {
 export async function getSupabaseClient({
   organizationSlug,
 }: { organizationSlug?: string | null } = {}): Promise<SupabaseManagementAPI> {
+  // If self-hosted is configured, use it directly without requiring cloud auth
+  const selfHosted = getSelfHostedConfig();
+  if (selfHosted) {
+    return new SupabaseManagementAPI({
+      accessToken: selfHosted.secretKey,
+      baseUrl: selfHosted.apiUrl,
+    });
+  }
+
   // If organizationSlug provided, use organization-specific credentials
   if (organizationSlug) {
     return getSupabaseClientForOrganization(organizationSlug);
@@ -242,17 +239,13 @@ export async function getSupabaseClient({
       throw new Error("Failed to refresh Supabase access token");
     }
 
-    const selfHosted = getSelfHostedConfig();
     return new SupabaseManagementAPI({
-      accessToken: selfHosted?.secretKey ?? newAccessToken,
-      baseUrl: selfHosted?.apiUrl,
+      accessToken: newAccessToken,
     });
   }
 
-  const selfHosted = getSelfHostedConfig();
   return new SupabaseManagementAPI({
-    accessToken: selfHosted?.secretKey ?? supabaseAccessToken,
-    baseUrl: selfHosted?.apiUrl,
+    accessToken: supabaseAccessToken,
   });
 }
 
@@ -358,6 +351,7 @@ async function refreshSupabaseTokenForOrganization(
 
 /**
  * Gets a Supabase Management API client for a specific organization.
+ * Note: Self-hosted config is checked in getSupabaseClient before this is called.
  */
 export async function getSupabaseClientForOrganization(
   organizationSlug: string,
@@ -395,17 +389,13 @@ export async function getSupabaseClientForOrganization(
       );
     }
 
-    const selfHosted = getSelfHostedConfig();
     return new SupabaseManagementAPI({
-      accessToken: selfHosted?.secretKey ?? newAccessToken,
-      baseUrl: selfHosted?.apiUrl,
+      accessToken: newAccessToken,
     });
   }
 
-  const selfHosted = getSelfHostedConfig();
   return new SupabaseManagementAPI({
-    accessToken: selfHosted?.secretKey ?? accessToken,
-    baseUrl: selfHosted?.apiUrl,
+    accessToken,
   });
 }
 
@@ -421,7 +411,7 @@ export async function listSupabaseOrganizations(
     {
       method: "GET",
       headers: {
-        Authorization: getAuthorizationHeader(accessToken),
+        Authorization: `Bearer ${accessToken}`,
       },
     },
     "List Supabase organizations",

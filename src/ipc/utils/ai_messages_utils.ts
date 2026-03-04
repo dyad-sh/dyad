@@ -98,7 +98,9 @@ export function cleanMessageForOpenAI<T extends ModelMessage>(message: T): T {
     // sending empty string as input when converting OpenAI→Anthropic format)
     if (
       part.type === "tool-call" &&
-      (!part.input || typeof part.input !== "object")
+      (!part.input ||
+        typeof part.input !== "object" ||
+        Array.isArray(part.input))
     ) {
       part.input = {};
       didModify = true;

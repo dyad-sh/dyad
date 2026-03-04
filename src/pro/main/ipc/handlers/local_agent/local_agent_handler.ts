@@ -1359,7 +1359,11 @@ function maybeCaptureRetryReplayEvent(
       toolCallId: part.toolCallId,
       toolName: part.toolName,
       input:
-        typeof part.input === "object" && part.input !== null ? part.input : {},
+        typeof part.input === "object" &&
+        part.input !== null &&
+        !Array.isArray(part.input)
+          ? part.input
+          : {},
     });
     return;
   }

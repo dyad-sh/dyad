@@ -48,7 +48,7 @@ jobs:
 
           # See: https://github.com/anthropics/claude-code-action/blob/v1/docs/security.md
           github_token: ${{ secrets.GITHUB_TOKEN }} # bypass OIDC
-          allowed_non_write_users: "princeaden1" # remember, we already filter above.
+          allowed_non_write_users: "princeaden1,wwwillchen-bot" # remember, we already filter above.
 
           # Disable progress tracking (try to save tokens)
           track_progress: false

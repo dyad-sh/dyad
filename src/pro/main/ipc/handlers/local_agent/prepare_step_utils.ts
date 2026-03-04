@@ -8,6 +8,7 @@
 import { ImagePart, ModelMessage, TextPart, UserModelMessage } from "ai";
 import type { UserMessageContentPart, Todo } from "./tools/types";
 import { cleanMessageForOpenAI } from "@/ipc/utils/ai_messages_utils";
+import { validateImageDimensions } from "./tools/image_dimension_utils";
 
 /**
  * Check if a single todo is incomplete (pending or in_progress).
@@ -55,6 +56,8 @@ export interface InjectedMessage {
 
 /**
  * Transform a UserMessageContentPart to the format expected by the AI SDK.
+ * For images, validates dimensions and returns a text message if the image
+ * exceeds the maximum allowed size (8000px in any dimension).
  */
 export function transformContentPart(
   part: UserMessageContentPart,
@@ -63,6 +66,15 @@ export function transformContentPart(
     return { type: "text", text: part.text };
   }
   // part.type === "image-url"
+  // Validate image dimensions before sending to LLM
+  const validation = validateImageDimensions(part.url);
+  if (!validation.isValid && validation.errorMessage) {
+    // Return a text explanation instead of the oversized image
+    return {
+      type: "text",
+      text: `[Image omitted: ${validation.errorMessage}]`,
+    };
+  }
   return { type: "image", image: new URL(part.url) };
 }
 

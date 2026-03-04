@@ -109,6 +109,17 @@ export function readSettings(): UserSettings {
           }
         }
       }
+      // Decrypt self-hosted Supabase secret key
+      if (supabase.selfHostedSupabaseSecretKey) {
+        const encryptionType =
+          supabase.selfHostedSupabaseSecretKey.encryptionType;
+        if (encryptionType) {
+          supabase.selfHostedSupabaseSecretKey = {
+            value: decrypt(supabase.selfHostedSupabaseSecretKey),
+            encryptionType,
+          };
+        }
+      }
     }
     const neon = combinedSettings.neon;
     if (neon) {
@@ -221,6 +232,12 @@ export function writeSettings(settings: Partial<UserSettings>): void {
             org.refreshToken = encrypt(org.refreshToken.value);
           }
         }
+      }
+      // Encrypt self-hosted Supabase secret key
+      if (newSettings.supabase.selfHostedSupabaseSecretKey) {
+        newSettings.supabase.selfHostedSupabaseSecretKey = encrypt(
+          newSettings.supabase.selfHostedSupabaseSecretKey.value,
+        );
       }
     }
     if (newSettings.neon) {

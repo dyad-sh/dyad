@@ -28,7 +28,7 @@ export function getImageDimensionsFromDataUrl(
 ): ImageDimensions | null {
   try {
     // Parse the data URL
-    const match = dataUrl.match(/^data:image\/([\w+]+);base64,(.+)$/);
+    const match = dataUrl.match(/^data:image\/([^;]+);base64,(.+)$/i);
     if (!match) {
       return null;
     }
@@ -66,6 +66,35 @@ export function isImageTooLarge(
   maxDimension: number = MAX_IMAGE_DIMENSION,
 ): boolean {
   return dimensions.width > maxDimension || dimensions.height > maxDimension;
+}
+
+/**
+ * Validate an image data URL and return validation result.
+ *
+ * @param dataUrl - The image data URL to validate
+ * @returns Object with validation result and optional dimensions/error message
+ */
+export function validateImageDimensions(dataUrl: string): {
+  isValid: boolean;
+  dimensions?: ImageDimensions;
+  errorMessage?: string;
+} {
+  const dimensions = getImageDimensionsFromDataUrl(dataUrl);
+
+  if (!dimensions) {
+    // If we can't parse dimensions, let it through - the LLM provider will handle it
+    return { isValid: true };
+  }
+
+  if (isImageTooLarge(dimensions)) {
+    return {
+      isValid: false,
+      dimensions,
+      errorMessage: `Image dimensions (${dimensions.width}x${dimensions.height}) exceed the maximum allowed size of ${MAX_IMAGE_DIMENSION}px. The image has been omitted to prevent processing errors.`,
+    };
+  }
+
+  return { isValid: true, dimensions };
 }
 
 /**
@@ -134,7 +163,7 @@ function getJpegDimensions(buffer: Buffer): ImageDimensions | null {
       marker !== 0xc8 &&
       marker !== 0xcc
     ) {
-      if (offset + 9 >= buffer.length) {
+      if (offset + 9 > buffer.length) {
         return null;
       }
       // SOF structure: marker (2) + length (2) + precision (1) + height (2) + width (2)
@@ -148,6 +177,9 @@ function getJpegDimensions(buffer: Buffer): ImageDimensions | null {
       return null;
     }
     const segmentLength = buffer.readUInt16BE(offset + 2);
+    if (segmentLength < 2) {
+      return null;
+    }
     offset += 2 + segmentLength;
   }
 

@@ -35,11 +35,35 @@ Trigger a crawl ONLY if BOTH conditions are true:
    - Do not require 'http://' or 'https://'.
 `;
 
-const CLONE_INSTRUCTIONS = `
+const CLONE_INSTRUCTIONS_WITH_SCREENSHOT = `
 
 Replicate the website from the provided screenshot image and markdown.
 
 **Use the screenshot as your primary visual reference** to understand the layout, colors, typography, and overall design of the website. The screenshot shows exactly how the page should look.
+
+**IMPORTANT: Image Handling**
+- Do NOT use or reference real external image URLs.
+- Instead, create a file named "placeholder.svg" at "/public/assets/placeholder.svg".
+- The file must be included in the output as its own code block.
+- The SVG should be a simple neutral gray rectangle, like:
+  \`\`\`svg
+  <svg width="400" height="300" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100%" height="100%" fill="#e2e2e2"/>
+  </svg>
+  \`\`\`
+
+**When generating code:**
+- Replace all \`<img src="...">\` with: \`<img src="/assets/placeholder.svg" alt="placeholder" />\`
+- If using Next.js Image component: \`<Image src="/assets/placeholder.svg" alt="placeholder" width={400} height={300} />\`
+
+Always include the placeholder.svg file in your output file tree.
+`;
+
+const CLONE_INSTRUCTIONS_WITHOUT_SCREENSHOT = `
+
+Replicate the website from the provided markdown snapshot.
+
+**Use the markdown snapshot as your reference** to understand the page structure, content, and layout. The screenshot was too large to include, so rely on the markdown to infer the design.
 
 **IMPORTANT: Image Handling**
 - Do NOT use or reference real external image URLs.
@@ -129,17 +153,24 @@ export const webCrawlTool: ToolDefinition<z.infer<typeof webCrawlSchema>> = {
       );
     }
 
-    const messageContent: Parameters<typeof ctx.appendUserMessage>[0] = [
-      { type: "text", text: CLONE_INSTRUCTIONS },
-    ];
+    const messageContent: Parameters<typeof ctx.appendUserMessage>[0] = [];
 
     if (imageExceedsSizeLimit) {
-      // Add explanation instead of the image
+      // Use instructions that don't reference the screenshot
+      messageContent.push({
+        type: "text",
+        text: CLONE_INSTRUCTIONS_WITHOUT_SCREENSHOT,
+      });
       messageContent.push({
         type: "text",
         text: `[Screenshot omitted: Image dimensions (${imageDimensions.width}x${imageDimensions.height}px) exceed the maximum allowed size of ${MAX_IMAGE_DIMENSION}px. Please rely on the markdown snapshot below to understand the page structure and content.]`,
       });
     } else {
+      // Use instructions that reference the screenshot
+      messageContent.push({
+        type: "text",
+        text: CLONE_INSTRUCTIONS_WITH_SCREENSHOT,
+      });
       // Add the screenshot image
       messageContent.push({ type: "image-url", url: result.screenshot });
     }
@@ -163,7 +194,9 @@ export function formatSnippet(
   value: string,
   lang: string,
 ): string {
-  return `${label}:\n\`\`\`${lang}\n${truncateText(value)}\n\`\`\``;
+  // Sanitize: escape any triple backticks in the content to prevent code block breakout
+  const sanitized = truncateText(value).replace(/```/g, "\\`\\`\\`");
+  return `${label}:\n\`\`\`${lang}\n${sanitized}\n\`\`\``;
 }
 
 function truncateText(value: string): string {

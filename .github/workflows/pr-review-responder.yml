@@ -234,6 +234,14 @@ jobs:
         env:
           PR_CONTENTS_RW_GITHUB_TOKEN: ${{ secrets.PR_CONTENTS_RW_GITHUB_TOKEN }}
 
+      - name: Ensure Homebrew paths are available
+        if: steps.pr-info.outputs.should_continue == 'true'
+        run: |
+          # Self-hosted macOS runners often have gh installed via Homebrew, but
+          # non-interactive shells may not include Homebrew directories in PATH.
+          echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
+          echo "/usr/local/bin" >> "$GITHUB_PATH"
+
       - name: Update labels to pending
         if: steps.pr-info.outputs.should_continue == 'true'
         run: |

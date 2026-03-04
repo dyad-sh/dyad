@@ -37,9 +37,9 @@ export function sendTelemetryException(
       ? error
       : new Error(String(error ?? "Unknown error"));
   sendTelemetryEvent("$exception", {
+    ...context,
     $exception_type: err.name,
     $exception_message: err.message,
     $exception_stack_trace_raw: err.stack,
-    ...context,
   });
 }

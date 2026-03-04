@@ -24,7 +24,7 @@ export function createLoggedHandler(logger: log.LogFunctions) {
             error,
           );
           sendTelemetryException(error, { ipc_channel: channel });
-          throw new Error(`[${channel}] ${error}`);
+          throw error;
         }
       },
     );

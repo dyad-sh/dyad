@@ -1461,7 +1461,12 @@ function maybeAppendRetryReplayForRetry(params: {
         type: "tool-call",
         toolCallId: event.toolCallId,
         toolName: event.toolName,
-        input: event.input,
+        input:
+          typeof event.input === "object" &&
+          event.input !== null &&
+          !Array.isArray(event.input)
+            ? event.input
+            : {},
       });
       continue;
     }

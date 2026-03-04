@@ -94,6 +94,16 @@ export function cleanMessageForOpenAI<T extends ModelMessage>(message: T): T {
       didModify = true;
     }
 
+    // Ensure tool-call input is always a valid object (prevents LiteLLM
+    // sending empty string as input when converting OpenAI→Anthropic format)
+    if (
+      part.type === "tool-call" &&
+      (!part.input || typeof part.input !== "object")
+    ) {
+      part.input = {};
+      didModify = true;
+    }
+
     cleanedContent.push(part);
   }
 

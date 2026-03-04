@@ -6,7 +6,7 @@ import { engineFetch } from "./engine_fetch";
 const logger = log.scope("web_crawl");
 
 export const MAX_WEB_CRAWL_SCREENSHOT_DIMENSION = 8000;
-const BASE64_PAYLOAD_RE = /^[A-Za-z0-9+/=_\-\\s]+$/;
+const BASE64_PAYLOAD_RE = /^[A-Za-z0-9+/=]+$/;
 
 const webCrawlSchema = z.object({
   url: z.string().describe("URL to crawl"),
@@ -148,6 +148,9 @@ function readJpegDimensions(buffer: Buffer): ImageDimensions | null {
       marker === 0xce ||
       marker === 0xcf;
     if (isStartOfFrame) {
+      if (offset + 7 > buffer.length) {
+        return null;
+      }
       return {
         width: buffer.readUInt16BE(offset + 5),
         height: buffer.readUInt16BE(offset + 3),
@@ -161,11 +164,7 @@ function readJpegDimensions(buffer: Buffer): ImageDimensions | null {
 }
 
 function readGifDimensions(buffer: Buffer): ImageDimensions | null {
-  if (
-    buffer.length < 10 ||
-    (buffer.readUInt32BE(0) !== 0x47494638 &&
-      buffer.readUInt32BE(0) !== 0x38464947)
-  ) {
+  if (buffer.length < 10 || buffer.toString("ascii", 0, 3) !== "GIF") {
     return null;
   }
   return {
@@ -182,13 +181,31 @@ function readWebpDimensions(buffer: Buffer): ImageDimensions | null {
   ) {
     return null;
   }
-  if (buffer.toString("ascii", 12, 16) !== "VP8X") {
-    return null;
+  const chunkType = buffer.toString("ascii", 12, 16);
+  if (chunkType === "VP8X") {
+    return {
+      width: (buffer[24] | (buffer[25] << 8) | (buffer[26] << 16)) + 1,
+      height: (buffer[27] | (buffer[28] << 8) | (buffer[29] << 16)) + 1,
+    };
   }
-  return {
-    width: (buffer[24] | (buffer[25] << 8) | (buffer[26] << 16)) + 1,
-    height: (buffer[27] | (buffer[28] << 8) | (buffer[29] << 16)) + 1,
-  };
+  if (chunkType === "VP8 ") {
+    if (buffer.length < 30) return null;
+    // VP8 lossy bitstream: frame header starts at offset 20, dimensions at 26-29
+    return {
+      width: buffer.readUInt16LE(26) & 0x3fff,
+      height: buffer.readUInt16LE(28) & 0x3fff,
+    };
+  }
+  if (chunkType === "VP8L") {
+    if (buffer.length < 25) return null;
+    // VP8L lossless: signature byte at 21, then 32-bit packed dimensions
+    const bits = buffer.readUInt32LE(21);
+    return {
+      width: (bits & 0x3fff) + 1,
+      height: ((bits >> 14) & 0x3fff) + 1,
+    };
+  }
+  return null;
 }
 
 export function getWebCrawlImageDimensions(
@@ -204,13 +221,18 @@ export function getWebCrawlImageDimensions(
     return null;
   }
 
-  const buffer = Buffer.from(normalizedPayload, "base64");
-  return (
-    readPngDimensions(buffer) ||
-    readJpegDimensions(buffer) ||
-    readGifDimensions(buffer) ||
-    readWebpDimensions(buffer)
-  );
+  try {
+    const buffer = Buffer.from(normalizedPayload, "base64");
+    return (
+      readPngDimensions(buffer) ||
+      readJpegDimensions(buffer) ||
+      readGifDimensions(buffer) ||
+      readWebpDimensions(buffer)
+    );
+  } catch (e) {
+    logger.warn("Failed to decode base64 screenshot payload", e);
+    return null;
+  }
 }
 
 export function getWebCrawlScreenshotOmissionReason(

@@ -865,25 +865,16 @@ source: Live website (screenshot and content provided)`;
       const screenshotOmissionReason = getWebCrawlScreenshotOmissionReason(
         crawlResult.screenshot,
       );
-      type ScreenshotContentPart =
-        | { type: "image"; image: string; mimeType: "image/png" }
-        | { type: "text"; text: string };
-      const screenshotContent: ScreenshotContentPart[] =
-        screenshotOmissionReason
-          ? [
-              {
-                type: "text",
-                text: `Screenshot omitted from crawl result: ${screenshotOmissionReason}`,
-              },
-            ]
-          : [];
-
       // Build content parts
       const contentParts: (TextPart | ImagePart)[] = [
         { type: "text", text: userInput },
-        ...screenshotContent,
         ...(screenshotOmissionReason
-          ? []
+          ? [
+              {
+                type: "text" as const,
+                text: `Screenshot omitted from crawl result: ${screenshotOmissionReason}`,
+              },
+            ]
           : [
               {
                 type: "image",

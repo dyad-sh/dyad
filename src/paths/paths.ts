@@ -4,6 +4,13 @@ import fs from "node:fs";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
 import { readSettings, writeSettings } from "../main/settings";
 
+// Cached result of getDyadAppsBaseDirectory
+let cachedBaseDirectory: {
+  path: string;
+  defaultPath: string;
+  isCustomPath: boolean;
+} | null = null;
+
 /**
  * Gets the default path of the base dyad-apps directory (without a specific app subdirectory)
  */
@@ -13,6 +20,13 @@ function getDefaultDyadAppsDirectory(): string {
     return path.join(electron!.app.getPath("userData"), "dyad-apps");
   }
   return path.join(os.homedir(), "dyad-apps");
+}
+
+/**
+ * Clears base directory cache, so the next call to getDyadAppsBaseDirectory will re-read the settings
+ */
+export function invalidateDyadAppsBaseDirectoryCache(): void {
+  cachedBaseDirectory = null;
 }
 
 /**
@@ -26,12 +40,17 @@ export function getDyadAppsBaseDirectory(): {
   defaultPath: string;
   isCustomPath: boolean;
 } {
+  if (cachedBaseDirectory) {
+    return cachedBaseDirectory;
+  }
+
   const defaultPath = getDefaultDyadAppsDirectory();
 
   // If the user has not set a custom base directory, use default
   const customPath = readSettings().customDyadAppsBaseDirectory;
   if (!customPath) {
-    return { path: defaultPath, defaultPath, isCustomPath: false };
+    cachedBaseDirectory = { path: defaultPath, defaultPath, isCustomPath: false };
+    return cachedBaseDirectory;
   }
 
   let st;
@@ -41,13 +60,15 @@ export function getDyadAppsBaseDirectory(): {
     // Setting up to check defaultDir's existence+type, so fall through
   }
 
-  // If the user's chosen directory doesn't exist or is inaccessible, reset to default
+  // If the user's chosen directory doesn't exist or is inaccessible use the default
   if (!st || !st.isDirectory()) {
     writeSettings({ customDyadAppsBaseDirectory: null });
-    return { path: defaultPath, defaultPath, isCustomPath: false };
+    cachedBaseDirectory = { path: defaultPath, defaultPath, isCustomPath: false };
+    return cachedBaseDirectory;
   }
 
-  return { path: customPath, defaultPath, isCustomPath: true };
+  cachedBaseDirectory = { path: customPath, defaultPath, isCustomPath: true };
+  return cachedBaseDirectory;
 }
 
 export function getDyadAppPath(appPath: string): string {

@@ -7,7 +7,7 @@ import { apps } from "../../db/schema";
 import { desc } from "drizzle-orm";
 import { createTypedHandler } from "./base";
 import { systemContracts } from "../types/system";
-import { getDyadAppsBaseDirectory } from "@/paths/paths";
+import { getDyadAppsBaseDirectory, invalidateDyadAppsBaseDirectoryCache } from "@/paths/paths";
 import { writeSettings } from "@/main/settings";
 
 const logger = log.scope("dyad_apps_base_directory_handlers");
@@ -130,6 +130,7 @@ export function registerDyadAppsBaseDirectoryHandlers() {
       }
 
       writeSettings({ customDyadAppsBaseDirectory: input });
+      invalidateDyadAppsBaseDirectoryCache();
     },
   );
 }

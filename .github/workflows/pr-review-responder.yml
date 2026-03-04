@@ -22,7 +22,10 @@ jobs:
       github.event_name == 'workflow_run' ||
       (github.event_name == 'pull_request_target' && github.event.label.name == 'cc:request:now')
     environment: ai-bots
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted
+      - macOS
+      - ARM64
     permissions:
       actions: write
       contents: write

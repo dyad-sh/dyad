@@ -2,7 +2,7 @@ import path from "node:path";
 import os from "node:os";
 import fs from "node:fs";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
-import { readSettings, writeSettings } from "../main/settings";
+import { readSettings } from "../main/settings";
 
 // Cached result of getDyadAppsBaseDirectory
 let cachedBaseDirectory: {
@@ -60,9 +60,8 @@ export function getDyadAppsBaseDirectory(): {
     // Setting up to check defaultDir's existence+type, so fall through
   }
 
-  // If the user's chosen directory doesn't exist or is inaccessible use the default
+  // If the user's chosen directory doesn't exist or is inaccessible, use the default
   if (!st || !st.isDirectory()) {
-    writeSettings({ customDyadAppsBaseDirectory: null });
     cachedBaseDirectory = { path: defaultPath, defaultPath, isCustomPath: false };
     return cachedBaseDirectory;
   }

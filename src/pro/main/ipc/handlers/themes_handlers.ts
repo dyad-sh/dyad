@@ -28,6 +28,7 @@ import type {
   CleanupThemeImagesParams,
 } from "@/ipc/types";
 import { webCrawlResponseSchema } from "./local_agent/tools/web_crawl";
+import { getWebCrawlScreenshotOmissionReason } from "./local_agent/tools/web_crawl";
 
 const logger = log.scope("themes_handlers");
 const handle = createLoggedHandler(logger);
@@ -861,14 +862,35 @@ source: Live website (screenshot and content provided)`;
       // Sanitize crawled content to prevent prompt injection
       const sanitizedMarkdown = sanitizeForPrompt(truncatedMarkdown);
 
+      const screenshotOmissionReason = getWebCrawlScreenshotOmissionReason(
+        crawlResult.screenshot,
+      );
+      type ScreenshotContentPart =
+        | { type: "image"; image: string; mimeType: "image/png" }
+        | { type: "text"; text: string };
+      const screenshotContent: ScreenshotContentPart[] =
+        screenshotOmissionReason
+          ? [
+              {
+                type: "text",
+                text: `Screenshot omitted from crawl result: ${screenshotOmissionReason}`,
+              },
+            ]
+          : [];
+
       // Build content parts
       const contentParts: (TextPart | ImagePart)[] = [
         { type: "text", text: userInput },
-        {
-          type: "image",
-          image: crawlResult.screenshot,
-          mimeType: "image/png",
-        } as ImagePart,
+        ...screenshotContent,
+        ...(screenshotOmissionReason
+          ? []
+          : [
+              {
+                type: "image",
+                image: crawlResult.screenshot,
+                mimeType: "image/png",
+              } as ImagePart,
+            ]),
         {
           type: "text",
           text: `Website content (markdown):\n\`\`\`markdown\n${sanitizedMarkdown}\n\`\`\``,

@@ -5,6 +5,9 @@ import { engineFetch } from "./engine_fetch";
 
 const logger = log.scope("web_crawl");
 
+export const MAX_WEB_CRAWL_SCREENSHOT_DIMENSION = 8000;
+const BASE64_PAYLOAD_RE = /^[A-Za-z0-9+/=_\-\\s]+$/;
+
 const webCrawlSchema = z.object({
   url: z.string().describe("URL to crawl"),
 });
@@ -53,6 +56,178 @@ Replicate the website from the provided screenshot image and markdown.
 
 Always include the placeholder.svg file in your output file tree.
 `;
+
+type ImageDimensions = {
+  width: number;
+  height: number;
+};
+
+function extractBase64Payload(screenshot: string): string | null {
+  if (screenshot.startsWith("data:")) {
+    const commaIndex = screenshot.indexOf(",");
+    if (commaIndex < 0) {
+      return null;
+    }
+
+    const metadata = screenshot.slice(5, commaIndex).toLowerCase();
+    if (!metadata.includes("base64")) {
+      return null;
+    }
+
+    return screenshot.slice(commaIndex + 1);
+  }
+
+  // Some crawl responses may return raw base64 data instead of a data URL.
+  if (screenshot.includes("://")) {
+    return null;
+  }
+
+  return screenshot.trim();
+}
+
+function readPngDimensions(buffer: Buffer): ImageDimensions | null {
+  if (buffer.length < 24) return null;
+  if (
+    buffer.readUInt32BE(0) !== 0x89504e47 ||
+    buffer.readUInt32BE(4) !== 0x0d0a1a0a
+  ) {
+    return null;
+  }
+  if (buffer.readUInt32BE(12) !== 0x49484452 || buffer.readUInt32BE(8) !== 13) {
+    return null;
+  }
+  return {
+    width: buffer.readUInt32BE(16),
+    height: buffer.readUInt32BE(20),
+  };
+}
+
+function readJpegDimensions(buffer: Buffer): ImageDimensions | null {
+  if (buffer.length < 4 || buffer.readUInt16BE(0) !== 0xffd8) {
+    return null;
+  }
+
+  let offset = 2;
+  while (offset + 1 < buffer.length) {
+    if (buffer[offset] !== 0xff) {
+      return null;
+    }
+    const marker = buffer[offset + 1];
+    offset += 2;
+
+    if (offset + 2 > buffer.length) {
+      return null;
+    }
+    if (marker >= 0xd0 && marker <= 0xd7) {
+      continue;
+    }
+    if (marker === 0xd8 || marker === 0xd9 || marker === 0x01) {
+      return null;
+    }
+    if (marker === 0xda) {
+      return null;
+    }
+
+    const segmentLength = buffer.readUInt16BE(offset);
+    if (segmentLength < 2 || offset + segmentLength > buffer.length) {
+      return null;
+    }
+
+    const isStartOfFrame =
+      marker === 0xc0 ||
+      marker === 0xc1 ||
+      marker === 0xc2 ||
+      marker === 0xc3 ||
+      marker === 0xc5 ||
+      marker === 0xc6 ||
+      marker === 0xc7 ||
+      marker === 0xc9 ||
+      marker === 0xca ||
+      marker === 0xcb ||
+      marker === 0xcd ||
+      marker === 0xce ||
+      marker === 0xcf;
+    if (isStartOfFrame) {
+      return {
+        width: buffer.readUInt16BE(offset + 5),
+        height: buffer.readUInt16BE(offset + 3),
+      };
+    }
+
+    offset += segmentLength;
+  }
+
+  return null;
+}
+
+function readGifDimensions(buffer: Buffer): ImageDimensions | null {
+  if (
+    buffer.length < 10 ||
+    (buffer.readUInt32BE(0) !== 0x47494638 &&
+      buffer.readUInt32BE(0) !== 0x38464947)
+  ) {
+    return null;
+  }
+  return {
+    width: buffer.readUInt16LE(6),
+    height: buffer.readUInt16LE(8),
+  };
+}
+
+function readWebpDimensions(buffer: Buffer): ImageDimensions | null {
+  if (
+    buffer.length < 30 ||
+    buffer.toString("ascii", 0, 4) !== "RIFF" ||
+    buffer.toString("ascii", 8, 12) !== "WEBP"
+  ) {
+    return null;
+  }
+  if (buffer.toString("ascii", 12, 16) !== "VP8X") {
+    return null;
+  }
+  return {
+    width: (buffer[24] | (buffer[25] << 8) | (buffer[26] << 16)) + 1,
+    height: (buffer[27] | (buffer[28] << 8) | (buffer[29] << 16)) + 1,
+  };
+}
+
+export function getWebCrawlImageDimensions(
+  screenshot: string,
+): ImageDimensions | null {
+  const base64Payload = extractBase64Payload(screenshot);
+  if (!base64Payload) {
+    return null;
+  }
+
+  const normalizedPayload = base64Payload.replace(/\s/g, "");
+  if (!BASE64_PAYLOAD_RE.test(normalizedPayload)) {
+    return null;
+  }
+
+  const buffer = Buffer.from(normalizedPayload, "base64");
+  return (
+    readPngDimensions(buffer) ||
+    readJpegDimensions(buffer) ||
+    readGifDimensions(buffer) ||
+    readWebpDimensions(buffer)
+  );
+}
+
+export function getWebCrawlScreenshotOmissionReason(
+  screenshot: string,
+): string | null {
+  const dimensions = getWebCrawlImageDimensions(screenshot);
+  if (!dimensions) return null;
+
+  if (
+    dimensions.width > MAX_WEB_CRAWL_SCREENSHOT_DIMENSION ||
+    dimensions.height > MAX_WEB_CRAWL_SCREENSHOT_DIMENSION
+  ) {
+    return `The crawl screenshot (${dimensions.width}x${dimensions.height}) exceeds the supported vision input limit of ${MAX_WEB_CRAWL_SCREENSHOT_DIMENSION}px on at least one axis.`;
+  }
+
+  return null;
+}
 
 async function callWebCrawl(
   url: string,
@@ -111,11 +286,33 @@ export const webCrawlTool: ToolDefinition<z.infer<typeof webCrawlSchema>> = {
     if (!result.screenshot) {
       throw new Error("No screenshot available from web crawl");
     }
+
+    const screenshotOmissionReason = getWebCrawlScreenshotOmissionReason(
+      result.screenshot,
+    );
+    if (screenshotOmissionReason) {
+      logger.warn(
+        `Omitting oversize web crawl screenshot for ${args.url}: ${screenshotOmissionReason}`,
+      );
+    }
+
     logger.log(`Web crawl completed for URL: ${args.url}`);
+
+    type ScreenshotContentPart =
+      | { type: "image-url"; url: string }
+      | { type: "text"; text: string };
+    const screenshotContent: ScreenshotContentPart[] = screenshotOmissionReason
+      ? [
+          {
+            type: "text",
+            text: `Screenshot omitted from crawl result: ${screenshotOmissionReason}`,
+          },
+        ]
+      : [{ type: "image-url", url: result.screenshot }];
 
     ctx.appendUserMessage([
       { type: "text", text: CLONE_INSTRUCTIONS },
-      { type: "image-url", url: result.screenshot },
+      ...screenshotContent,
       {
         type: "text",
         text: formatSnippet("Markdown snapshot:", result.markdown, "markdown"),

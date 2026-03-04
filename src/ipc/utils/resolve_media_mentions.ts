@@ -4,7 +4,7 @@ import { getMimeType } from "./mime_utils";
 import fs from "node:fs";
 import path from "node:path";
 
-export interface ResolvedMediaFile {
+interface ResolvedMediaFile {
   appName: string;
   fileName: string;
   filePath: string;

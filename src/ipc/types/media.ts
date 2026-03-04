@@ -8,7 +8,7 @@ import { defineContract, createClient } from "../contracts/core";
 /**
  * Schema for a single media file item.
  */
-export const MediaFileSchema = z.object({
+const MediaFileSchema = z.object({
   fileName: z.string(),
   filePath: z.string(),
   appId: z.number(),
@@ -90,7 +90,6 @@ export const mediaClient = createClient(mediaContracts);
 // Type Exports
 // =============================================================================
 
-export type ListAllMediaResponse = z.infer<typeof ListAllMediaResponseSchema>;
 export type RenameMediaFileParams = z.infer<typeof RenameMediaFileParamsSchema>;
 export type DeleteMediaFileParams = z.infer<typeof DeleteMediaFileParamsSchema>;
 export type MoveMediaFileParams = z.infer<typeof MoveMediaFileParamsSchema>;

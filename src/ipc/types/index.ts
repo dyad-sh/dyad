@@ -302,7 +302,6 @@ export type { TranscribeAudioParams, TranscribeAudioResult } from "./audio";
 // Media types
 export type {
   MediaFile,
-  ListAllMediaResponse,
   RenameMediaFileParams,
   DeleteMediaFileParams,
   MoveMediaFileParams,

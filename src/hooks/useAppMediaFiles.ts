@@ -61,7 +61,6 @@ export function useAppMediaFiles() {
   return {
     mediaApps: query.data?.apps ?? [],
     isLoading: query.isLoading,
-    refetch: query.refetch,
     renameMediaFile: renameMutation.mutateAsync,
     deleteMediaFile: deleteMutation.mutateAsync,
     moveMediaFile: moveMutation.mutateAsync,

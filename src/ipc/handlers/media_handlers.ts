@@ -4,8 +4,9 @@ import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { getDyadAppPath } from "../../paths/paths";
 import { safeJoin } from "../utils/path_utils";
-import { getMimeType } from "../utils/mime_utils";
+import { getMimeType, MIME_TYPE_MAP } from "../utils/mime_utils";
 import { DYAD_MEDIA_DIR_NAME } from "../utils/media_path_utils";
+import { INVALID_FILE_NAME_CHARS } from "../../shared/media_validation";
 import { withLock } from "../utils/lock_utils";
 import fs from "node:fs";
 import path from "node:path";
@@ -14,22 +15,21 @@ import log from "electron-log";
 
 const logger = log.scope("media_handlers");
 
-const SUPPORTED_MEDIA_EXTENSIONS = [
-  ".jpg",
-  ".jpeg",
-  ".png",
-  ".gif",
-  ".webp",
-  ".svg",
-];
+const SUPPORTED_MEDIA_EXTENSIONS = Object.keys(MIME_TYPE_MAP);
 
-const INVALID_FILE_NAME_CHARS = /[<>:"/\\|?*\x00-\x1F]/;
-
-function getMediaFilesForApp(appId: number, appName: string, appPath: string) {
+async function getMediaFilesForApp(
+  appId: number,
+  appName: string,
+  appPath: string,
+) {
   const mediaDir = path.join(appPath, DYAD_MEDIA_DIR_NAME);
-  if (!fs.existsSync(mediaDir)) return [];
+  try {
+    await fs.promises.access(mediaDir);
+  } catch {
+    return [];
+  }
 
-  const entries = fs.readdirSync(mediaDir, { withFileTypes: true });
+  const entries = await fs.promises.readdir(mediaDir, { withFileTypes: true });
   const files = [];
 
   for (const entry of entries) {
@@ -38,7 +38,7 @@ function getMediaFilesForApp(appId: number, appName: string, appPath: string) {
     if (!SUPPORTED_MEDIA_EXTENSIONS.includes(ext)) continue;
 
     const fullPath = path.join(mediaDir, entry.name);
-    const stat = fs.statSync(fullPath);
+    const stat = await fs.promises.stat(fullPath);
 
     files.push({
       fileName: entry.name,
@@ -151,7 +151,7 @@ export function registerMediaHandlers() {
 
     for (const app of allApps) {
       const appPath = getDyadAppPath(app.path);
-      const files = getMediaFilesForApp(app.id, app.name, appPath);
+      const files = await getMediaFilesForApp(app.id, app.name, appPath);
       if (files.length > 0) {
         result.push({
           appId: app.id,

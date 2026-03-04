@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useAppMediaFiles } from "@/hooks/useAppMediaFiles";
 import { useLoadApps } from "@/hooks/useLoadApps";
-import { Image, ImagePlus } from "lucide-react";
+import { Image, ImagePlus, Loader2 } from "lucide-react";
 import { DyadAppMediaFolder } from "@/components/DyadAppMediaFolder";
 import { LibrarySearchBar } from "@/components/LibrarySearchBar";
 import { Button } from "@/components/ui/button";
@@ -44,7 +44,9 @@ export default function MediaPage() {
         />
 
         {isLoading ? (
-          <div>Loading...</div>
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
         ) : filteredMediaApps.length === 0 ? (
           <div className="text-muted-foreground text-center py-12">
             {searchQuery

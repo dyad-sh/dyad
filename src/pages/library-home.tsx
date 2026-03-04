@@ -4,7 +4,7 @@ import { usePrompts } from "@/hooks/usePrompts";
 import { useCustomThemes } from "@/hooks/useCustomThemes";
 import { useAppMediaFiles } from "@/hooks/useAppMediaFiles";
 import { useLoadApps } from "@/hooks/useLoadApps";
-import { BookOpen } from "lucide-react";
+import { BookOpen, Loader2 } from "lucide-react";
 import { CreateOrEditPromptDialog } from "@/components/CreatePromptDialog";
 import { CustomThemeDialog } from "@/components/CustomThemeDialog";
 import { NewLibraryItemMenu } from "@/components/NewLibraryItemMenu";
@@ -388,7 +388,9 @@ export default function LibraryHomePage() {
 
             {/* Grid */}
             {isLoading ? (
-              <div>Loading...</div>
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
             ) : hasNoResults ? (
               <div className="text-muted-foreground text-center py-12">
                 {searchQuery

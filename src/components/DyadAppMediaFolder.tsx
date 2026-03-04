@@ -72,7 +72,7 @@ interface DyadAppMediaFolderProps {
   searchQuery?: string;
 }
 
-const INVALID_FILE_NAME_CHARS = /[<>:"/\\|?*\x00-\x1F]/;
+import { INVALID_FILE_NAME_CHARS } from "@/shared/media_validation";
 
 export function DyadAppMediaFolder({
   appName,
@@ -120,7 +120,7 @@ export function DyadAppMediaFolder({
       selectChat({
         chatId,
         appId: file.appId,
-        prefillInput: `@media:${file.fileName} `,
+        prefillInput: `@media:${encodeURIComponent(file.fileName)} `,
       });
     } catch (error) {
       showError(error);
@@ -494,8 +494,16 @@ function MediaFileThumbnail({
       className="w-[120px] border rounded-md overflow-hidden bg-secondary/30"
     >
       <div
+        role="button"
+        tabIndex={0}
         className="w-[120px] h-[120px] relative cursor-pointer"
         onClick={() => onPreviewImage(file)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onPreviewImage(file);
+          }
+        }}
       >
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger

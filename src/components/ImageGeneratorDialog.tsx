@@ -138,6 +138,9 @@ function AppSearchSelect({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         disabled={disabled}
+        aria-label="Select target app"
+        aria-haspopup="listbox"
+        aria-expanded={open}
         className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs disabled:cursor-not-allowed disabled:opacity-50"
       >
         <span className={selectedApp ? "" : "text-muted-foreground"}>
@@ -226,6 +229,10 @@ export function ImageGeneratorDialog({
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
       setGeneratedResult(null);
+      setPrompt("");
+      setThemeMode("plain");
+      setTargetAppId(null);
+      generateImage.reset();
     }
     onOpenChange(nextOpen);
   };

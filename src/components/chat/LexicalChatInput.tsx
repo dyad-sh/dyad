@@ -213,7 +213,10 @@ function ExternalValueSyncPlugin({
       return title ? `@${title}` : _m;
     });
     // Strip @media: prefix for display
-    displayText = displayText.replace(/@media:([^\s]+)/g, "@$1");
+    displayText = displayText.replace(
+      /@media:([^\s]+)/g,
+      (_, ref) => `@${decodeURIComponent(ref)}`,
+    );
 
     const currentText = editor.getEditorState().read(() => {
       const root = $getRoot();
@@ -490,7 +493,7 @@ export function LexicalChatInput({
         onChange(textContent);
       });
     },
-    [onChange, apps, prompts, appFiles, mediaApps],
+    [onChange, apps, prompts, appFiles, mediaApps, selectedAppId],
   );
 
   const handleSubmit = useCallback(() => {

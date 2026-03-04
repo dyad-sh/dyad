@@ -124,6 +124,11 @@ export function registerImageGenerationHandlers() {
           throw new Error("Image URL must use HTTPS");
         }
         const imgResponse = await fetch(imageData.url);
+        if (!imgResponse.ok) {
+          throw new Error(
+            `Failed to download image: ${imgResponse.status} ${imgResponse.statusText}`,
+          );
+        }
         const arrayBuffer = await imgResponse.arrayBuffer();
         const MAX_IMAGE_SIZE = 50 * 1024 * 1024; // 50 MB
         if (arrayBuffer.byteLength > MAX_IMAGE_SIZE) {

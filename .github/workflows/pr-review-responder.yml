@@ -110,8 +110,8 @@ jobs:
               prAuthor = pr.user.login;
             }
 
-            // Only allow wwwillchen and wwwillchen-bot to use this workflow
-            if (prAuthor !== 'wwwillchen' && prAuthor !== 'wwwillchen-bot') {
+            // Only allow wwwillchen, wwwillchen-bot, and princeaden1 to use this workflow
+            if (prAuthor !== 'wwwillchen' && prAuthor !== 'wwwillchen-bot' && prAuthor !== 'princeaden1') {
               console.log(`PR #${prNumber} author ${prAuthor} is not allowed to use this workflow`);
               core.setOutput('should_continue', 'false');
               return;

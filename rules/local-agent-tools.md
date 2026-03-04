@@ -7,6 +7,11 @@ Agent tool definitions live in `src/pro/main/ipc/handlers/local_agent/tools/`. E
 - **`modifiesState: true`** must be set on any tool that writes to disk or modifies external state (files, database, etc.). This flag controls whether the tool is available in read-only (ask) mode and plan-only mode — see `buildAgentToolSet` in `tool_definitions.ts`.
 - Similarly, code in the `handleLocalAgentStream` handler that writes to the workspace (e.g., `ensureDyadGitignored`, injecting synthetic todo reminders) should be guarded with `if (!readOnly && !planModeOnly)` checks. Injecting instructions that reference state-changing tools into non-writable runs will confuse the model since those tools are filtered out.
 
+## Message sanitization
+
+- Tool-call `input` fields must always be valid objects (at minimum `{}`). The `cleanMessageForOpenAI` function in `ai_messages_utils.ts` sanitizes stored messages; `maybeCaptureRetryReplayEvent` in `local_agent_handler.ts` sanitizes stream replay events. Both guard against LiteLLM failing to parse `function.arguments` into a dict when converting OpenAI→Anthropic format (known LiteLLM issues #5063, #15322).
+- The `RetryReplayEvent` type uses `input: unknown` — always validate before pushing to `pendingAssistantParts`.
+
 ## Async I/O
 
 - Use `fs.promises` (not sync `fs` methods) in any code running on the Electron main process (e.g., `todo_persistence.ts`) to avoid blocking the event loop.

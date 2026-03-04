@@ -99,6 +99,13 @@ export const ForceCloseDetectedPayloadSchema = z.object({
     .optional(),
 });
 
+export const MemoryPressurePayloadSchema = z.object({
+  systemMemoryUsageMB: z.number(),
+  systemMemoryTotalMB: z.number(),
+  usagePercent: z.number(),
+  processMemoryMB: z.number(),
+});
+
 // =============================================================================
 // System Contracts
 // =============================================================================
@@ -259,6 +266,11 @@ export const systemEvents = {
   forceCloseDetected: defineEvent({
     channel: "force-close-detected",
     payload: ForceCloseDetectedPayloadSchema,
+  }),
+
+  memoryPressure: defineEvent({
+    channel: "memory-pressure",
+    payload: MemoryPressurePayloadSchema,
   }),
 } as const;
 

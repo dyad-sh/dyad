@@ -4,7 +4,7 @@ import { ThemeProvider } from "../contexts/ThemeContext";
 import { DeepLinkProvider } from "../contexts/DeepLinkContext";
 import { Toaster } from "sonner";
 import { TitleBar } from "./TitleBar";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRunApp, useAppOutputSubscription } from "@/hooks/useRunApp";
 import { useAtomValue, useSetAtom } from "jotai";
 import {
@@ -19,6 +19,8 @@ import { chatInputValueAtom } from "@/atoms/chatAtoms";
 import { usePlanEvents } from "@/hooks/usePlanEvents";
 import { useZoomShortcuts } from "@/hooks/useZoomShortcuts";
 import i18n from "@/i18n";
+import { ipc } from "@/ipc/types";
+import { MemoryPressureDialog } from "@/components/MemoryPressureDialog";
 import { LanguageSchema } from "@/lib/schemas";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -33,6 +35,23 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   const setChatInput = useSetAtom(chatInputValueAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
+
+  // Memory pressure warning
+  const [memoryPressureOpen, setMemoryPressureOpen] = useState(false);
+  const [memoryPressureData, setMemoryPressureData] = useState<{
+    systemMemoryUsageMB: number;
+    systemMemoryTotalMB: number;
+    usagePercent: number;
+    processMemoryMB: number;
+  }>();
+
+  useEffect(() => {
+    const unsubscribe = ipc.events.system.onMemoryPressure((data) => {
+      setMemoryPressureData(data);
+      setMemoryPressureOpen(true);
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Initialize plan events listener
   usePlanEvents();
@@ -114,6 +133,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             >
               {children}
             </div>
+            <MemoryPressureDialog
+              isOpen={memoryPressureOpen}
+              onClose={() => setMemoryPressureOpen(false)}
+              data={memoryPressureData}
+            />
             <Toaster
               richColors
               duration={settings?.isTestMode ? 500 : undefined}

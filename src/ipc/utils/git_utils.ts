@@ -26,11 +26,18 @@ const logger = log.scope("git_utils");
  * git commands to be intercepted by WSL's relay system, resulting in errors
  * like "execvpe(/bin/bash) failed: No such file or directory".
  */
+let cachedSanitizedEnv: Record<string, string | undefined> | undefined;
+let hasLoggedFilteredEntries = false;
+
 function getWindowsSanitizedEnv():
   | Record<string, string | undefined>
   | undefined {
   if (platform() !== "win32") {
     return undefined;
+  }
+
+  if (cachedSanitizedEnv) {
+    return cachedSanitizedEnv;
   }
 
   // On Windows, the PATH environment variable can be stored with different casings
@@ -43,6 +50,7 @@ function getWindowsSanitizedEnv():
   const pathSeparator = ";";
 
   // Filter out PATH entries that could trigger WSL interop
+  const filteredEntries: string[] = [];
   const sanitizedPathEntries = currentPath
     .split(pathSeparator)
     .filter((entry) => {
@@ -60,16 +68,24 @@ function getWindowsSanitizedEnv():
         lowerEntry.startsWith("/bin/") ||
         lowerEntry.startsWith("/home/")
       ) {
-        logger.debug(`Filtering WSL-related PATH entry: ${entry}`);
+        filteredEntries.push(entry);
         return false;
       }
       return true;
     });
 
-  return {
+  if (!hasLoggedFilteredEntries && filteredEntries.length > 0) {
+    logger.debug(
+      `Filtered ${filteredEntries.length} WSL-related PATH entries: ${filteredEntries.join(", ")}`,
+    );
+    hasLoggedFilteredEntries = true;
+  }
+
+  cachedSanitizedEnv = {
     ...process.env,
     [pathKey]: sanitizedPathEntries.join(pathSeparator),
   };
+  return cachedSanitizedEnv;
 }
 
 /**

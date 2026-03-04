@@ -1,4 +1,5 @@
 import log from "electron-log";
+import { BrowserWindow } from "electron";
 import { writeSettings } from "../main/settings";
 import os from "node:os";
 
@@ -7,12 +8,15 @@ const logger = log.scope("performance-monitor");
 // Constants
 const MONITOR_INTERVAL_MS = 30000; // 30 seconds
 const BYTES_PER_MB = 1024 * 1024;
+const MEMORY_PRESSURE_THRESHOLD_PERCENT = 90;
+const MEMORY_PRESSURE_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes between warnings
 
 let monitorInterval: NodeJS.Timeout | null = null;
 let lastCpuUsage: NodeJS.CpuUsage | null = null;
 let lastTimestamp: number | null = null;
 let lastSystemCpuInfo: os.CpuInfo[] | null = null;
 let lastSystemTimestamp: number | null = null;
+let lastMemoryPressureWarningTime: number | null = null;
 
 /**
  * Get current memory usage in MB
@@ -162,6 +166,29 @@ function capturePerformanceMetrics() {
         systemCpuPercent,
       },
     });
+
+    // Check for memory pressure and warn the user
+    if (systemMemory.usagePercent >= MEMORY_PRESSURE_THRESHOLD_PERCENT) {
+      const now = Date.now();
+      if (
+        lastMemoryPressureWarningTime === null ||
+        now - lastMemoryPressureWarningTime >= MEMORY_PRESSURE_COOLDOWN_MS
+      ) {
+        lastMemoryPressureWarningTime = now;
+        logger.warn(
+          `System memory pressure: ${systemMemory.usagePercent}% (${systemMemory.usedMemoryMB}/${systemMemory.totalMemoryMB} MB)`,
+        );
+        const windows = BrowserWindow.getAllWindows();
+        if (windows.length > 0) {
+          windows[0].webContents.send("memory-pressure", {
+            systemMemoryUsageMB: systemMemory.usedMemoryMB,
+            systemMemoryTotalMB: systemMemory.totalMemoryMB,
+            usagePercent: systemMemory.usagePercent,
+            processMemoryMB: memoryUsageMB,
+          });
+        }
+      }
+    }
   } catch (error) {
     logger.error("Error capturing performance metrics:", error);
   }

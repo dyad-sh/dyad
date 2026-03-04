@@ -47,6 +47,8 @@
   "createApp": "创建应用",
   "forceCloseDetected": "检测到强制关闭",
   "forceCloseDescription": "上次运行时应用未正常关闭。这可能表示崩溃或意外终止。",
+  "memoryPressureTitle": "内存使用率过高",
+  "memoryPressureDescription": "您的系统内存不足（已使用 {{usagePercent}}%）。这可能导致 Dyad 崩溃或无响应。请尝试关闭其他应用程序或开始新的聊天以释放内存。",
   "lastKnownState": "最后已知状态：",
   "processMetrics": "进程指标",
   "memory": "内存：",

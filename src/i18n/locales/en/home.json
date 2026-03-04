@@ -47,6 +47,8 @@
   "createApp": "Create App",
   "forceCloseDetected": "Force Close Detected",
   "forceCloseDescription": "The app was not closed properly the last time it was running. This could indicate a crash or unexpected termination.",
+  "memoryPressureTitle": "High Memory Usage",
+  "memoryPressureDescription": "Your system is running low on memory ({{usagePercent}}% used). This may cause Dyad to crash or become unresponsive. Try closing other applications or starting a new chat to free up memory.",
   "lastKnownState": "Last Known State:",
   "processMetrics": "Process Metrics",
   "memory": "Memory:",

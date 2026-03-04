@@ -47,6 +47,8 @@
   "createApp": "Criar App",
   "forceCloseDetected": "Fechamento Forçado Detectado",
   "forceCloseDescription": "O app não foi fechado corretamente na última vez que foi executado. Isso pode indicar uma falha ou encerramento inesperado.",
+  "memoryPressureTitle": "Uso Elevado de Memória",
+  "memoryPressureDescription": "Seu sistema está com pouca memória ({{usagePercent}}% em uso). Isso pode fazer o Dyad travar ou ficar sem resposta. Tente fechar outros aplicativos ou iniciar um novo chat para liberar memória.",
   "lastKnownState": "Último Estado Conhecido:",
   "processMetrics": "Métricas do Processo",
   "memory": "Memória:",

@@ -19,6 +19,51 @@ const fsPromises = fs.promises;
 
 const logger = log.scope("supabase_management_client");
 
+const SUPABASE_OAUTH_REFRESH_ENDPOINT =
+  "https://supabase-oauth.dyad.sh/api/connect-supabase/refresh";
+const SUPABASE_MANAGEMENT_API_DEFAULT_BASE_URL = "https://api.supabase.com/v1";
+
+interface SelfHostedSupabaseApiConfig {
+  baseUrl: string;
+  accessToken: string;
+}
+
+function getSelfHostedSupabaseApiConfig(): SelfHostedSupabaseApiConfig | null {
+  const settings = readSettings();
+  const selfHostedApiUrl = settings.supabase?.selfHostedSupabaseApiUrl?.trim();
+  const selfHostedSecretKey =
+    settings.supabase?.selfHostedSupabaseSecretKey?.value?.trim();
+
+  if (!selfHostedApiUrl || !selfHostedSecretKey) {
+    return null;
+  }
+
+  const trimmedApiUrl = selfHostedApiUrl.replace(/\/+$/, "");
+  const baseUrl = trimmedApiUrl.endsWith("/v1")
+    ? trimmedApiUrl
+    : `${trimmedApiUrl}/v1`;
+
+  return {
+    baseUrl,
+    accessToken: selfHostedSecretKey,
+  };
+}
+
+function getSelfHostedSupabaseAccessToken(
+  fallbackToken?: string,
+): string | undefined {
+  return getSelfHostedSupabaseApiConfig()?.accessToken ?? fallbackToken;
+}
+
+function getSupabaseManagementApiUrl(path: string): string {
+  const baseUrl =
+    getSelfHostedSupabaseApiConfig()?.baseUrl ??
+    SUPABASE_MANAGEMENT_API_DEFAULT_BASE_URL;
+
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${baseUrl}${normalizedPath}`;
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Interfaces for file collection and caching
 // ─────────────────────────────────────────────────────────────────────
@@ -121,16 +166,13 @@ export async function refreshSupabaseToken(): Promise<void> {
 
   try {
     // Make request to Supabase refresh endpoint
-    const response = await fetch(
-      "https://supabase-oauth.dyad.sh/api/connect-supabase/refresh",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ refreshToken }),
+    const response = await fetch(SUPABASE_OAUTH_REFRESH_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify({ refreshToken }),
+    });
 
     if (!response.ok) {
       throw new Error(
@@ -177,15 +219,24 @@ export async function getSupabaseClient({
 
   // Otherwise fall back to legacy single-account credentials
   const settings = readSettings();
+  const selfHostedConfig = getSelfHostedSupabaseApiConfig();
 
   // Check if Supabase token exists in settings
-  const supabaseAccessToken = settings.supabase?.accessToken?.value;
+  const supabaseAccessToken =
+    selfHostedConfig?.accessToken || settings.supabase?.accessToken?.value;
   const expiresIn = settings.supabase?.expiresIn;
 
   if (!supabaseAccessToken) {
     throw new Error(
       "Supabase access token not found. Please authenticate first.",
     );
+  }
+
+  if (selfHostedConfig) {
+    return new SupabaseManagementAPI({
+      accessToken: selfHostedConfig.accessToken,
+      baseUrl: selfHostedConfig.baseUrl,
+    });
   }
 
   // Check if token needs refreshing
@@ -253,16 +304,13 @@ async function refreshSupabaseTokenForOrganization(
   }
 
   try {
-    const response = await fetch(
-      "https://supabase-oauth.dyad.sh/api/connect-supabase/refresh",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ refreshToken }),
+    const response = await fetch(SUPABASE_OAUTH_REFRESH_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify({ refreshToken }),
+    });
 
     if (!response.ok) {
       throw new Error(
@@ -315,6 +363,14 @@ async function refreshSupabaseTokenForOrganization(
 export async function getSupabaseClientForOrganization(
   organizationSlug: string,
 ): Promise<SupabaseManagementAPI> {
+  const selfHostedConfig = getSelfHostedSupabaseApiConfig();
+  if (selfHostedConfig) {
+    return new SupabaseManagementAPI({
+      accessToken: selfHostedConfig.accessToken,
+      baseUrl: selfHostedConfig.baseUrl,
+    });
+  }
+
   const settings = readSettings();
   const org = settings.supabase?.organizations?.[organizationSlug];
 
@@ -358,18 +414,33 @@ export async function getSupabaseClientForOrganization(
   });
 }
 
+function getSupabaseAuthorizationToken(
+  fallbackToken: string | undefined,
+): string {
+  const overrideToken = getSelfHostedSupabaseAccessToken();
+  const token = overrideToken || fallbackToken;
+  if (!token) {
+    throw new Error(
+      "Supabase access token not found. Please authenticate first.",
+    );
+  }
+  return token;
+}
+
 /**
  * Lists organizations for a given access token.
  */
 export async function listSupabaseOrganizations(
   accessToken: string,
 ): Promise<SupabaseOrganizationDetails[]> {
+  const resolvedAccessToken = getSupabaseAuthorizationToken(accessToken);
+
   const response = await fetchWithRetry(
-    "https://api.supabase.com/v1/organizations",
+    getSupabaseManagementApiUrl("/organizations"),
     {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${resolvedAccessToken}`,
       },
     },
     "List Supabase organizations",
@@ -426,7 +497,7 @@ export async function getOrganizationMembers(
   const accessToken = (client as any).options.accessToken;
 
   const response = await fetchWithRetry(
-    `https://api.supabase.com/v1/organizations/${organizationSlug}/members`,
+    getSupabaseManagementApiUrl(`/organizations/${organizationSlug}/members`),
     {
       method: "GET",
       headers: {
@@ -480,7 +551,7 @@ export async function getOrganizationDetails(
   const accessToken = (client as any).options.accessToken;
 
   const response = await fetchWithRetry(
-    `https://api.supabase.com/v1/organizations/${organizationSlug}`,
+    getSupabaseManagementApiUrl(`/organizations/${organizationSlug}`),
     {
       method: "GET",
       headers: {
@@ -560,7 +631,9 @@ LIMIT 1000`;
   // Encode SQL query for URL
   const encodedSql = encodeURIComponent(sqlQuery);
 
-  const url = `https://api.supabase.com/v1/projects/${projectId}/analytics/endpoints/logs.all?sql=${encodedSql}&iso_timestamp_start=${isoTimestampStart}&iso_timestamp_end=${isoTimestampEnd}`;
+  const url = getSupabaseManagementApiUrl(
+    `/projects/${projectId}/analytics/endpoints/logs.all?sql=${encodedSql}&iso_timestamp_start=${isoTimestampStart}&iso_timestamp_end=${isoTimestampEnd}`,
+  );
 
   logger.info(`Fetching logs from: ${url}`);
 
@@ -648,7 +721,7 @@ export async function listSupabaseFunctions({
   const supabase = await getSupabaseClient({ organizationSlug });
 
   const response = await fetchWithRetry(
-    `https://api.supabase.com/v1/projects/${supabaseProjectId}/functions`,
+    getSupabaseManagementApiUrl(`/projects/${supabaseProjectId}/functions`),
     {
       method: "GET",
       headers: {
@@ -700,7 +773,7 @@ export async function listSupabaseBranches({
   const supabase = await getSupabaseClient({ organizationSlug });
 
   const response = await fetchWithRetry(
-    `https://api.supabase.com/v1/projects/${supabaseProjectId}/branches`,
+    getSupabaseManagementApiUrl(`/projects/${supabaseProjectId}/branches`),
     {
       method: "GET",
       headers: {
@@ -808,9 +881,9 @@ export async function deploySupabaseFunction({
   }
 
   // 6) Perform the deploy request
-  const deployUrl = `https://api.supabase.com/v1/projects/${encodeURIComponent(
-    supabaseProjectId,
-  )}/functions/deploy?slug=${encodeURIComponent(functionName)}${bundleOnly ? "&bundleOnly=true" : ""}`;
+  const deployUrl = getSupabaseManagementApiUrl(
+    `/projects/${encodeURIComponent(supabaseProjectId)}/functions/deploy?slug=${encodeURIComponent(functionName)}${bundleOnly ? "&bundleOnly=true" : ""}`,
+  );
 
   const response = await retryWithRateLimit(async () => {
     const res = await fetch(deployUrl, {
@@ -856,7 +929,9 @@ export async function bulkUpdateFunctions({
   const supabase = await getSupabaseClient({ organizationSlug });
 
   const response = await fetchWithRetry(
-    `https://api.supabase.com/v1/projects/${encodeURIComponent(supabaseProjectId)}/functions`,
+    getSupabaseManagementApiUrl(
+      `/projects/${encodeURIComponent(supabaseProjectId)}/functions`,
+    ),
     {
       method: "PUT",
       headers: {

@@ -4,6 +4,7 @@ import { getUserDataPath } from "../paths/paths";
 import {
   StoredUserSettingsSchema,
   UserSettingsSchema,
+  type Supabase,
   type UserSettings,
   Secret,
   VertexProviderSetting,
@@ -48,6 +49,33 @@ const DEFAULT_SETTINGS: UserSettings = {
 
 const SETTINGS_FILE = "user-settings.json";
 
+function normalizeSupabaseOverrideSettings(
+  supabase: Supabase | undefined,
+): void {
+  if (!supabase) {
+    return;
+  }
+
+  const normalizedApiUrl = supabase.selfHostedSupabaseApiUrl?.trim();
+  const normalizedSecretKey =
+    supabase.selfHostedSupabaseSecretKey?.value?.trim();
+  const hasApiUrl = normalizedApiUrl !== "";
+  const hasSecret = normalizedSecretKey !== "";
+
+  if (hasApiUrl) {
+    supabase.selfHostedSupabaseApiUrl = normalizedApiUrl;
+  }
+
+  if (hasSecret) {
+    supabase.selfHostedSupabaseSecretKey!.value = normalizedSecretKey!;
+  }
+
+  if (hasApiUrl !== hasSecret) {
+    delete supabase.selfHostedSupabaseApiUrl;
+    supabase.selfHostedSupabaseSecretKey = undefined;
+  }
+}
+
 export function getSettingsFilePath(): string {
   return path.join(getUserDataPath(), SETTINGS_FILE);
 }
@@ -66,6 +94,13 @@ export function readSettings(): UserSettings {
     };
     const supabase = combinedSettings.supabase;
     if (supabase) {
+      if (
+        supabase.selfHostedSupabaseApiUrl !== undefined ||
+        supabase.selfHostedSupabaseSecretKey !== undefined
+      ) {
+        normalizeSupabaseOverrideSettings(supabase);
+      }
+
       // Decrypt legacy tokens (kept but ignored)
       if (supabase.refreshToken) {
         const encryptionType = supabase.refreshToken.encryptionType;
@@ -81,6 +116,16 @@ export function readSettings(): UserSettings {
         if (encryptionType) {
           supabase.accessToken = {
             value: decrypt(supabase.accessToken),
+            encryptionType,
+          };
+        }
+      }
+      if (supabase.selfHostedSupabaseSecretKey) {
+        const encryptionType =
+          supabase.selfHostedSupabaseSecretKey.encryptionType;
+        if (encryptionType) {
+          supabase.selfHostedSupabaseSecretKey = {
+            value: decrypt(supabase.selfHostedSupabaseSecretKey),
             encryptionType,
           };
         }
@@ -188,6 +233,9 @@ export function writeSettings(settings: Partial<UserSettings>): void {
     const filePath = getSettingsFilePath();
     const currentSettings = readSettings();
     const newSettings = { ...currentSettings, ...settings };
+    if (newSettings.supabase) {
+      normalizeSupabaseOverrideSettings(newSettings.supabase);
+    }
     if (newSettings.githubAccessToken) {
       newSettings.githubAccessToken = encrypt(
         newSettings.githubAccessToken.value,
@@ -208,6 +256,11 @@ export function writeSettings(settings: Partial<UserSettings>): void {
       if (newSettings.supabase.refreshToken) {
         newSettings.supabase.refreshToken = encrypt(
           newSettings.supabase.refreshToken.value,
+        );
+      }
+      if (newSettings.supabase.selfHostedSupabaseSecretKey) {
+        newSettings.supabase.selfHostedSupabaseSecretKey = encrypt(
+          newSettings.supabase.selfHostedSupabaseSecretKey.value,
         );
       }
       // Encrypt tokens for each organization in the organizations map

@@ -918,8 +918,13 @@ export function registerAppHandlers() {
 
     let supabaseProjectName: string | null = null;
     const settings = readSettings();
+    const hasSelfHostedSupabaseCredentials = Boolean(
+      settings.supabase?.selfHostedSupabaseApiUrl?.trim() &&
+      settings.supabase?.selfHostedSupabaseSecretKey?.value?.trim(),
+    );
     // Check for multi-organization credentials or legacy single account
     const hasSupabaseCredentials =
+      hasSelfHostedSupabaseCredentials ||
       (app.supabaseOrganizationSlug &&
         settings.supabase?.organizations?.[app.supabaseOrganizationSlug]
           ?.accessToken?.value) ||

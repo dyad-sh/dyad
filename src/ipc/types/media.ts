@@ -33,14 +33,6 @@ export const ListAllMediaResponseSchema = z.object({
   ),
 });
 
-/**
- * Schema for reading a media file as base64.
- */
-export const ReadMediaFileParamsSchema = z.object({
-  appId: z.number(),
-  fileName: z.string(),
-});
-
 export const RenameMediaFileParamsSchema = z.object({
   appId: z.number(),
   fileName: z.string(),
@@ -58,12 +50,6 @@ export const MoveMediaFileParamsSchema = z.object({
   targetAppId: z.number(),
 });
 
-export const ReadMediaFileResponseSchema = z.object({
-  base64Data: z.string(),
-  mimeType: z.string(),
-  fileName: z.string(),
-});
-
 // =============================================================================
 // Media Contracts
 // =============================================================================
@@ -73,12 +59,6 @@ export const mediaContracts = {
     channel: "list-all-media",
     input: z.void(),
     output: ListAllMediaResponseSchema,
-  }),
-
-  readMediaFile: defineContract({
-    channel: "read-media-file",
-    input: ReadMediaFileParamsSchema,
-    output: ReadMediaFileResponseSchema,
   }),
 
   renameMediaFile: defineContract({
@@ -111,8 +91,6 @@ export const mediaClient = createClient(mediaContracts);
 // =============================================================================
 
 export type ListAllMediaResponse = z.infer<typeof ListAllMediaResponseSchema>;
-export type ReadMediaFileParams = z.infer<typeof ReadMediaFileParamsSchema>;
-export type ReadMediaFileResponse = z.infer<typeof ReadMediaFileResponseSchema>;
 export type RenameMediaFileParams = z.infer<typeof RenameMediaFileParamsSchema>;
 export type DeleteMediaFileParams = z.infer<typeof DeleteMediaFileParamsSchema>;
 export type MoveMediaFileParams = z.infer<typeof MoveMediaFileParamsSchema>;

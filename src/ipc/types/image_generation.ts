@@ -25,6 +25,7 @@ export type GenerateImageParams = z.infer<typeof GenerateImageParamsSchema>;
 export const GenerateImageResponseSchema = z.object({
   fileName: z.string(),
   filePath: z.string(),
+  appPath: z.string(),
   appId: z.number(),
   appName: z.string(),
 });

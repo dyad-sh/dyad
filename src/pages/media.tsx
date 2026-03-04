@@ -59,6 +59,7 @@ export default function MediaPage() {
               <DyadAppMediaFolder
                 key={`media-${app.appId}`}
                 appId={app.appId}
+                appPath={app.appPath}
                 appName={app.appName}
                 files={app.files}
                 allApps={allApps}

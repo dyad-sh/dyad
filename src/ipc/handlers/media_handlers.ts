@@ -165,33 +165,6 @@ export function registerMediaHandlers() {
     return { apps: result };
   });
 
-  createTypedHandler(mediaContracts.readMediaFile, async (_, params) => {
-    const app = await getAppOrThrow(params.appId);
-
-    const appPath = getDyadAppPath(app.path);
-    const filePath = getMediaFilePath(appPath, params.fileName);
-
-    if (!fs.existsSync(filePath)) {
-      throw new Error("Media file not found");
-    }
-
-    const ext = path.extname(params.fileName).toLowerCase();
-    const stat = fs.statSync(filePath);
-    const MAX_MEDIA_READ_SIZE = 20 * 1024 * 1024; // 20 MB
-    if (stat.size > MAX_MEDIA_READ_SIZE) {
-      throw new Error("Media file is too large to display");
-    }
-    const buffer = fs.readFileSync(filePath);
-
-    logger.log(`Read media file: ${filePath}`);
-
-    return {
-      base64Data: buffer.toString("base64"),
-      mimeType: getMimeType(ext),
-      fileName: params.fileName,
-    };
-  });
-
   createTypedHandler(mediaContracts.renameMediaFile, async (_, params) => {
     await withMediaLock([params.appId], async () => {
       const app = await getAppOrThrow(params.appId);

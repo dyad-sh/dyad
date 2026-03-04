@@ -307,8 +307,6 @@ export const queryKeys = {
   // ─────────────────────────────────────────────────────────────────────────────
   media: {
     all: ["media"] as const,
-    dataUri: ({ appId, fileName }: { appId: number; fileName: string }) =>
-      ["media", "data-uri", appId, fileName] as const,
   },
 } as const;
 

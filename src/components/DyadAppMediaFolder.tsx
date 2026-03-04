@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { useMediaDataUri } from "@/hooks/useMediaDataUri";
+import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
 import { buttonVariants, Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -62,6 +62,7 @@ interface MoveTargetApp {
 interface DyadAppMediaFolderProps {
   appName: string;
   appId: number;
+  appPath: string;
   files: MediaFile[];
   allApps: MoveTargetApp[];
   onRenameMediaFile: (params: RenameMediaFileParams) => Promise<void>;
@@ -77,6 +78,7 @@ import { INVALID_FILE_NAME_CHARS } from "@/shared/media_validation";
 export function DyadAppMediaFolder({
   appName,
   appId,
+  appPath,
   files,
   allApps,
   onRenameMediaFile,
@@ -178,6 +180,7 @@ export function DyadAppMediaFolder({
         <MediaFolderOpen
           appName={appName}
           appId={appId}
+          appPath={appPath}
           files={files}
           moveTargets={moveTargets}
           onClose={() => setIsOpen(false)}
@@ -327,10 +330,7 @@ export function DyadAppMediaFolder({
               </button>
             </DialogHeader>
             {previewFile && (
-              <ImagePreview
-                appId={previewFile.appId}
-                fileName={previewFile.fileName}
-              />
+              <ImagePreview appPath={appPath} fileName={previewFile.fileName} />
             )}
           </DialogContent>
         </Dialog>
@@ -389,6 +389,7 @@ export function DyadAppMediaFolder({
 function MediaFolderOpen({
   appName,
   appId,
+  appPath,
   files,
   moveTargets,
   onClose,
@@ -402,6 +403,7 @@ function MediaFolderOpen({
 }: {
   appName: string;
   appId: number;
+  appPath: string;
   files: MediaFile[];
   moveTargets: MoveTargetApp[];
   onClose: () => void;
@@ -451,6 +453,7 @@ function MediaFolderOpen({
             <MediaFileThumbnail
               key={file.fileName}
               file={file}
+              appPath={appPath}
               moveTargets={moveTargets}
               onStartNewChatWithImage={onStartNewChatWithImage}
               onRenameImage={onRenameImage}
@@ -468,6 +471,7 @@ function MediaFolderOpen({
 
 function MediaFileThumbnail({
   file,
+  appPath,
   moveTargets,
   onStartNewChatWithImage,
   onRenameImage,
@@ -477,6 +481,7 @@ function MediaFileThumbnail({
   isBusy,
 }: {
   file: MediaFile;
+  appPath: string;
   moveTargets: MoveTargetApp[];
   onStartNewChatWithImage: (file: MediaFile) => Promise<void>;
   onRenameImage: (file: MediaFile) => void;
@@ -485,7 +490,8 @@ function MediaFileThumbnail({
   onPreviewImage: (file: MediaFile) => void;
   isBusy: boolean;
 }) {
-  const dataUri = useMediaDataUri(file.appId, file.fileName);
+  const mediaUrl = buildDyadMediaUrl(appPath, file.fileName);
+  const [imgError, setImgError] = useState(false);
 
   return (
     <div
@@ -581,16 +587,17 @@ function MediaFileThumbnail({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {dataUri ? (
+        {imgError ? (
+          <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+            <Image className="h-6 w-6" />
+          </div>
+        ) : (
           <img
-            src={dataUri}
+            src={mediaUrl}
             alt={file.fileName}
             className="w-full h-full object-cover"
+            onError={() => setImgError(true)}
           />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-            <Image className="h-6 w-6 animate-pulse" />
-          </div>
         )}
       </div>
       <div className="p-1.5">
@@ -606,27 +613,28 @@ function MediaFileThumbnail({
 }
 
 function ImagePreview({
-  appId,
+  appPath,
   fileName,
 }: {
-  appId: number;
+  appPath: string;
   fileName: string;
 }) {
-  const dataUri = useMediaDataUri(appId, fileName);
+  const [imgError, setImgError] = useState(false);
 
-  if (!dataUri) {
+  if (imgError) {
     return (
       <div className="flex items-center justify-center h-[60vh] text-muted-foreground">
-        <Image className="h-10 w-10 animate-pulse" />
+        <Image className="h-10 w-10" />
       </div>
     );
   }
 
   return (
     <img
-      src={dataUri}
+      src={buildDyadMediaUrl(appPath, fileName)}
       alt={fileName}
       className="w-full max-h-[80vh] object-contain"
+      onError={() => setImgError(true)}
     />
   );
 }

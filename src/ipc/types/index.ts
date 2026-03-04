@@ -303,8 +303,6 @@ export type { TranscribeAudioParams, TranscribeAudioResult } from "./audio";
 export type {
   MediaFile,
   ListAllMediaResponse,
-  ReadMediaFileParams,
-  ReadMediaFileResponse,
   RenameMediaFileParams,
   DeleteMediaFileParams,
   MoveMediaFileParams,

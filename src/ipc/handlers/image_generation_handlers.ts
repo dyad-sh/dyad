@@ -144,6 +144,7 @@ export function registerImageGenerationHandlers() {
       return {
         fileName,
         filePath,
+        appPath: app.path,
         appId: app.id,
         appName: app.name,
       };

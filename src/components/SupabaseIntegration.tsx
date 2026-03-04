@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -16,17 +16,30 @@ import { useSettings } from "@/hooks/useSettings";
 import { useSupabase } from "@/hooks/useSupabase";
 import { showSuccess, showError } from "@/lib/toast";
 import { isSupabaseConnected } from "@/lib/schemas";
+import { ipc } from "@/ipc/types";
 
 export function SupabaseIntegration() {
   const { t } = useTranslation(["home", "common"]);
   const { settings, updateSettings } = useSettings();
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [selfHostedApiUrl, setSelfHostedApiUrl] = useState(
     settings?.supabase?.selfHostedSupabaseApiUrl || "",
   );
   const [selfHostedSecretKey, setSelfHostedSecretKey] = useState(
     settings?.supabase?.selfHostedSupabaseSecretKey?.value || "",
   );
+
+  // Sync local state when settings change externally (e.g., after disconnect)
+  useEffect(() => {
+    setSelfHostedApiUrl(settings?.supabase?.selfHostedSupabaseApiUrl || "");
+    setSelfHostedSecretKey(
+      settings?.supabase?.selfHostedSupabaseSecretKey?.value || "",
+    );
+  }, [
+    settings?.supabase?.selfHostedSupabaseApiUrl,
+    settings?.supabase?.selfHostedSupabaseSecretKey?.value,
+  ]);
 
   // Check if there are any connected organizations
   const isConnected = isSupabaseConnected(settings);
@@ -37,9 +50,16 @@ export function SupabaseIntegration() {
   const handleDisconnectAllFromSupabase = async () => {
     setIsDisconnecting(true);
     try {
-      // Clear the entire supabase object in settings (including all organizations)
+      // Read fresh settings to preserve self-hosted config while clearing cloud auth
+      const freshSettings = await ipc.settings.getUserSettings();
       const result = await updateSettings({
-        supabase: undefined,
+        supabase: {
+          // Preserve self-hosted settings
+          selfHostedSupabaseApiUrl:
+            freshSettings.supabase?.selfHostedSupabaseApiUrl,
+          selfHostedSupabaseSecretKey:
+            freshSettings.supabase?.selfHostedSupabaseSecretKey,
+        },
         // Also disable the migration setting on disconnect
         enableSupabaseWriteSqlMigration: false,
       });
@@ -101,10 +121,13 @@ export function SupabaseIntegration() {
       return;
     }
 
+    setIsSaving(true);
     try {
+      // Read fresh settings to avoid overwriting concurrent changes (e.g., token refreshes)
+      const freshSettings = await ipc.settings.getUserSettings();
       await updateSettings({
         supabase: {
-          ...settings?.supabase,
+          ...freshSettings.supabase,
           selfHostedSupabaseApiUrl: hasApiUrl
             ? selfHostedApiUrl.trim()
             : undefined,
@@ -116,6 +139,8 @@ export function SupabaseIntegration() {
       showSuccess("Self-hosted Supabase settings updated");
     } catch (err: any) {
       showError(err.message || "Failed to update self-hosted settings");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -170,8 +195,9 @@ export function SupabaseIntegration() {
           onClick={handleSelfHostedSettingsSave}
           size="sm"
           variant="outline"
+          disabled={isSaving}
         >
-          Save Self-hosted Settings
+          {isSaving ? "Saving..." : "Save Self-hosted Settings"}
         </Button>
       </div>
     </div>

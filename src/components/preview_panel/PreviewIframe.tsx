@@ -620,22 +620,33 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         // Also update UI state
         setConsoleEntries((prev) => [...prev, logEntry]);
       } else if (type === "pushState" || type === "replaceState") {
+        // Resolve relative URLs against the app's base URL so that all
+        // entries in navigationHistory are always absolute URLs.
+        let resolvedUrl = payload?.newUrl;
+        if (resolvedUrl) {
+          try {
+            resolvedUrl = new URL(resolvedUrl, appUrl ?? undefined).href;
+          } catch {
+            // If it can't be resolved at all, keep the raw value
+          }
+        }
+
         // Update navigation history based on the type of state change
-        if (type === "pushState" && payload?.newUrl) {
+        if (type === "pushState" && resolvedUrl) {
           // For pushState, we trim any forward history and add the new URL
           const newHistory = [
             ...navigationHistory.slice(0, currentHistoryPosition + 1),
-            payload.newUrl,
+            resolvedUrl,
           ];
           setNavigationHistory(newHistory);
           setCurrentHistoryPosition(newHistory.length - 1);
           // Update the current iframe URL ref to match the navigation
-          currentIframeUrlRef.current = payload.newUrl;
+          currentIframeUrlRef.current = resolvedUrl;
           // Preserve URL for HMR remounts - only if it's a different route from root
           // Compare origins and check if there's a meaningful path
           if (selectedAppId && appUrl) {
             try {
-              const newUrlObj = new URL(payload.newUrl);
+              const newUrlObj = new URL(resolvedUrl);
               const appUrlObj = new URL(appUrl);
               // Only preserve if there's a non-root path
               if (
@@ -643,10 +654,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 newUrlObj.pathname !== "/" &&
                 newUrlObj.pathname !== ""
               ) {
-                const urlToPreserve = payload.newUrl;
                 setPreservedUrls((prev) => ({
                   ...prev,
-                  [selectedAppId]: urlToPreserve,
+                  [selectedAppId]: resolvedUrl,
                 }));
               } else if (newUrlObj.origin === appUrlObj.origin) {
                 // Clear preserved URL when navigating back to root
@@ -660,17 +670,17 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               // Invalid URL, don't preserve
             }
           }
-        } else if (type === "replaceState" && payload?.newUrl) {
+        } else if (type === "replaceState" && resolvedUrl) {
           // For replaceState, we replace the current URL
           const newHistory = [...navigationHistory];
-          newHistory[currentHistoryPosition] = payload.newUrl;
+          newHistory[currentHistoryPosition] = resolvedUrl;
           setNavigationHistory(newHistory);
           // Update the current iframe URL ref to match the navigation
-          currentIframeUrlRef.current = payload.newUrl;
+          currentIframeUrlRef.current = resolvedUrl;
           // Preserve URL for HMR remounts - only if it's a different route from root
           if (selectedAppId && appUrl) {
             try {
-              const newUrlObj = new URL(payload.newUrl);
+              const newUrlObj = new URL(resolvedUrl);
               const appUrlObj = new URL(appUrl);
               // Only preserve if there's a non-root path
               if (
@@ -678,10 +688,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 newUrlObj.pathname !== "/" &&
                 newUrlObj.pathname !== ""
               ) {
-                const urlToPreserve = payload.newUrl;
                 setPreservedUrls((prev) => ({
                   ...prev,
-                  [selectedAppId]: urlToPreserve,
+                  [selectedAppId]: resolvedUrl,
                 }));
               } else if (newUrlObj.origin === appUrlObj.origin) {
                 // Clear preserved URL when navigating back to root

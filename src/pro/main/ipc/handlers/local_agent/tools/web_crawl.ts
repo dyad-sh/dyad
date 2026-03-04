@@ -2,6 +2,11 @@ import { z } from "zod";
 import log from "electron-log";
 import { ToolDefinition, escapeXmlContent, AgentContext } from "./types";
 import { engineFetch } from "./engine_fetch";
+import {
+  getImageDimensionsFromDataUrl,
+  isImageTooLarge,
+  MAX_IMAGE_DIMENSION,
+} from "./image_utils";
 
 const logger = log.scope("web_crawl");
 
@@ -113,14 +118,38 @@ export const webCrawlTool: ToolDefinition<z.infer<typeof webCrawlSchema>> = {
     }
     logger.log(`Web crawl completed for URL: ${args.url}`);
 
-    ctx.appendUserMessage([
+    // Check image dimensions before sending to LLM
+    const imageDimensions = getImageDimensionsFromDataUrl(result.screenshot);
+    const imageExceedsSizeLimit =
+      imageDimensions && isImageTooLarge(imageDimensions);
+
+    if (imageExceedsSizeLimit) {
+      logger.warn(
+        `Screenshot dimensions (${imageDimensions.width}x${imageDimensions.height}) exceed max allowed size (${MAX_IMAGE_DIMENSION}px). Omitting image.`,
+      );
+    }
+
+    const messageContent: Parameters<typeof ctx.appendUserMessage>[0] = [
       { type: "text", text: CLONE_INSTRUCTIONS },
-      { type: "image-url", url: result.screenshot },
-      {
+    ];
+
+    if (imageExceedsSizeLimit) {
+      // Add explanation instead of the image
+      messageContent.push({
         type: "text",
-        text: formatSnippet("Markdown snapshot:", result.markdown, "markdown"),
-      },
-    ]);
+        text: `[Screenshot omitted: Image dimensions (${imageDimensions.width}x${imageDimensions.height}px) exceed the maximum allowed size of ${MAX_IMAGE_DIMENSION}px. Please rely on the markdown snapshot below to understand the page structure and content.]`,
+      });
+    } else {
+      // Add the screenshot image
+      messageContent.push({ type: "image-url", url: result.screenshot });
+    }
+
+    messageContent.push({
+      type: "text",
+      text: formatSnippet("Markdown snapshot:", result.markdown, "markdown"),
+    });
+
+    ctx.appendUserMessage(messageContent);
 
     return "Web crawl completed.";
   },

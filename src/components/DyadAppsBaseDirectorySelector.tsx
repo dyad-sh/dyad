@@ -9,7 +9,7 @@ export function DyadAppsBaseDirectorySelector() {
   const [isSelectingPath, setIsSelectingPath] = useState(false);
   const [dyadAppsBasePath, setDyadAppsBasePath] =
     useState<string>("Loading...");
-  const [isCustomPath, setIsCustomPath] = useState(true);
+  const [isCustomPath, setIsCustomPath] = useState(false);
 
   useEffect(() => {
     // Fetch path on mount

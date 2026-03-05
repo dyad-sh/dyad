@@ -606,7 +606,9 @@ Modern dark theme with purple accents for testing.
       // Validate and map model selection
       const selectedModel = await resolveBuiltinModelAlias(params.model);
       if (!selectedModel) {
-        throw new Error("Invalid model selection");
+        throw new Error(
+          `Invalid model selection: alias "${params.model}" could not be resolved`,
+        );
       }
 
       // Use the selected model for theme generation
@@ -762,7 +764,9 @@ Modern theme extracted from website for testing.
       // Validate and map model selection
       const selectedModel = await resolveBuiltinModelAlias(params.model);
       if (!selectedModel) {
-        throw new Error("Invalid model selection");
+        throw new Error(
+          `Invalid model selection: alias "${params.model}" could not be resolved`,
+        );
       }
 
       // Get API key for Dyad Engine

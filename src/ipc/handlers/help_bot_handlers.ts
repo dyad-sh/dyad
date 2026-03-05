@@ -54,7 +54,12 @@ export function registerHelpBotHandlers() {
       );
 
       if (!helpBotModel || helpBotModel.providerId !== "openai") {
-        throw new Error("Invalid help bot model configuration");
+        // Help bot requires OpenAI provider because it uses the OpenAI
+        // responses API via a custom baseURL (helpchat.dyad.sh).
+        throw new Error(
+          `Help bot requires an OpenAI model (got provider: ${helpBotModel?.providerId ?? "none"}). ` +
+            `The 'dyad/help-bot/default' alias must resolve to an OpenAI model.`,
+        );
       }
 
       let assistantContent = "";

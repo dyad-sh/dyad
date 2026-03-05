@@ -526,7 +526,7 @@ export function AIGeneratorTab({
       {/* Model Selection */}
       <div className="space-y-3">
         <Label>Model Selection</Label>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] gap-3">
           {themeGenerationModelOptions.map((modelOption) => (
             <button
               key={modelOption.id}

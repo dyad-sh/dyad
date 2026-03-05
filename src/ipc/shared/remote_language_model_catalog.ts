@@ -5,6 +5,10 @@ import type {
   LanguageModelProvider,
 } from "@/ipc/types/language-model";
 import {
+  ThemeGenerationModelOptionSchema,
+  type ThemeGenerationModelOption,
+} from "@/ipc/types/templates";
+import {
   CLOUD_PROVIDERS,
   GPT_5_2_MODEL_NAME,
   MODEL_OPTIONS,
@@ -30,14 +34,7 @@ function getRemoteLanguageModelCatalogUrl() {
   return "https://api.dyad.sh/v1/language-model-catalog";
 }
 
-export const ThemeGenerationModelOptionSchema = z.object({
-  id: z.string(),
-  label: z.string(),
-});
-
-export type ThemeGenerationModelOption = z.infer<
-  typeof ThemeGenerationModelOptionSchema
->;
+export type { ThemeGenerationModelOption };
 
 const CatalogProviderSchema = z.object({
   id: z.string(),
@@ -122,6 +119,12 @@ type ResolvedBuiltinModel = {
 let builtinCatalogCache: BuiltinLanguageModelCatalog | null = null;
 let builtinCatalogFetchPromise: Promise<BuiltinLanguageModelCatalog> | null =
   null;
+
+const DEFAULT_THEME_GENERATION_OPTIONS: ThemeGenerationModelOption[] = [
+  { id: "dyad/theme-generator/google", label: "Google" },
+  { id: "dyad/theme-generator/anthropic", label: "Anthropic" },
+  { id: "dyad/theme-generator/openai", label: "OpenAI" },
+];
 
 function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
   const providers: LanguageModelProvider[] = Object.entries(
@@ -223,20 +226,7 @@ function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
         purpose: "help-bot",
       },
     ],
-    themeGenerationOptions: [
-      {
-        id: "dyad/theme-generator/google",
-        label: "Google",
-      },
-      {
-        id: "dyad/theme-generator/anthropic",
-        label: "Anthropic",
-      },
-      {
-        id: "dyad/theme-generator/openai",
-        label: "OpenAI",
-      },
-    ],
+    themeGenerationOptions: DEFAULT_THEME_GENERATION_OPTIONS,
     expiresAt: Date.now() + DEFAULT_CACHE_TTL_MS,
   };
 }
@@ -250,7 +240,10 @@ function convertRemoteCatalog(
       name: provider.displayName,
       hasFreeTier: provider.hasFreeTier,
       websiteUrl: provider.websiteUrl,
-      gatewayPrefix: provider.gatewayPrefix,
+      gatewayPrefix:
+        provider.gatewayPrefix ??
+        CLOUD_PROVIDERS[provider.id as keyof typeof CLOUD_PROVIDERS]
+          ?.gatewayPrefix,
       secondary: provider.secondary,
       envVarName:
         PROVIDER_TO_ENV_VAR[provider.id as keyof typeof PROVIDER_TO_ENV_VAR] ??
@@ -288,7 +281,8 @@ function convertRemoteCatalog(
     modelsByProvider,
     aliases: remoteCatalog.aliases,
     themeGenerationOptions:
-      remoteCatalog.curatedSelections?.themeGenerationOptions ?? [],
+      remoteCatalog.curatedSelections?.themeGenerationOptions ??
+      DEFAULT_THEME_GENERATION_OPTIONS,
     expiresAt:
       Number.isFinite(parsedExpiresAt) && parsedExpiresAt > Date.now()
         ? parsedExpiresAt
@@ -335,10 +329,13 @@ export async function getBuiltinLanguageModelCatalog(): Promise<BuiltinLanguageM
   }
 
   builtinCatalogFetchPromise = (async () => {
-    const remoteCatalog = await fetchRemoteCatalog();
-    builtinCatalogCache = remoteCatalog ?? buildFallbackCatalog();
-    builtinCatalogFetchPromise = null;
-    return builtinCatalogCache;
+    try {
+      const remoteCatalog = await fetchRemoteCatalog();
+      builtinCatalogCache = remoteCatalog ?? buildFallbackCatalog();
+      return builtinCatalogCache;
+    } finally {
+      builtinCatalogFetchPromise = null;
+    }
   })();
 
   return builtinCatalogFetchPromise;

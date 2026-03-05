@@ -93,7 +93,7 @@ export type DeleteCustomThemeParams = z.infer<
 export const ThemeGenerationModeSchema = z.enum(["inspired", "high-fidelity"]);
 export type ThemeGenerationMode = z.infer<typeof ThemeGenerationModeSchema>;
 
-export const ThemeGenerationModelSchema = z.string();
+export const ThemeGenerationModelSchema = z.string().min(1);
 export type ThemeGenerationModel = z.infer<typeof ThemeGenerationModelSchema>;
 
 export const ThemeGenerationModelOptionSchema = z.object({

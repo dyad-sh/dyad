@@ -182,10 +182,9 @@ export const queryKeys = {
   // ─────────────────────────────────────────────────────────────────────────────
   customThemes: {
     all: ["custom-themes"] as const,
-    themeGenerationModelOptions: [
-      "custom-themes",
-      "theme-generation-model-options",
-    ] as const,
+  },
+  themeGenerationModelOptions: {
+    all: ["theme-generation-model-options"] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

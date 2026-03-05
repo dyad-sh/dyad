@@ -107,7 +107,7 @@ export function useGenerateThemeFromUrl() {
 
 export function useThemeGenerationModelOptions() {
   const query = useQuery({
-    queryKey: queryKeys.customThemes.themeGenerationModelOptions,
+    queryKey: queryKeys.themeGenerationModelOptions.all,
     queryFn: async (): Promise<ThemeGenerationModelOption[]> => {
       return ipc.template.getThemeGenerationModelOptions();
     },

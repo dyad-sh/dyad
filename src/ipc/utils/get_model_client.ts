@@ -221,12 +221,21 @@ async function getProModelClient({
       }),
     );
 
+    const validModels = fallbackModels.filter(
+      (candidate) => candidate !== null,
+    );
+    if (validModels.length === 0) {
+      throw new Error(
+        "No auto-mode models could be resolved from the catalog",
+      );
+    }
+
     return {
       // We need to do the fallback here (and not server-side)
       // because GPT-5* models need to use responses API to get
       // full functionality (e.g. thinking summaries).
       model: createFallback({
-        models: fallbackModels.filter((candidate) => candidate !== null),
+        models: validModels,
       }),
       // Using openAI as the default provider.
       // TODO: we should remove this and rely on the provider id passed into the provider().

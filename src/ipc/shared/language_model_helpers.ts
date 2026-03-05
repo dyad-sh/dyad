@@ -5,7 +5,11 @@ import {
 } from "@/db/schema";
 import type { LanguageModelProvider, LanguageModel } from "@/ipc/types";
 import { eq } from "drizzle-orm";
-import { LOCAL_PROVIDERS } from "./language_model_constants";
+import {
+  CLOUD_PROVIDERS,
+  LOCAL_PROVIDERS,
+  PROVIDER_TO_ENV_VAR,
+} from "./language_model_constants";
 import { getBuiltinLanguageModelCatalog } from "./remote_language_model_catalog";
 /**
  * Fetches language model providers from both the database (custom) and hardcoded constants (cloud),
@@ -38,6 +42,26 @@ export async function getLanguageModelProviders(): Promise<
   const hardcodedProviders: LanguageModelProvider[] = [
     ...builtinCatalog.providers,
   ];
+
+  // Merge in any CLOUD_PROVIDERS not present in the remote catalog
+  // (e.g. auto, azure, bedrock which are not in the remote API).
+  for (const [providerId, providerDetails] of Object.entries(CLOUD_PROVIDERS)) {
+    if (!hardcodedProviders.some((p) => p.id === providerId)) {
+      hardcodedProviders.push({
+        id: providerId,
+        name: providerDetails.displayName,
+        hasFreeTier: providerDetails.hasFreeTier,
+        websiteUrl: providerDetails.websiteUrl,
+        gatewayPrefix: providerDetails.gatewayPrefix,
+        secondary: providerDetails.secondary,
+        envVarName:
+          PROVIDER_TO_ENV_VAR[
+            providerId as keyof typeof PROVIDER_TO_ENV_VAR
+          ] ?? undefined,
+        type: "cloud",
+      });
+    }
+  }
 
   for (const providerKey in LOCAL_PROVIDERS) {
     if (Object.prototype.hasOwnProperty.call(LOCAL_PROVIDERS, providerKey)) {

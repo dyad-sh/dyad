@@ -1474,15 +1474,26 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
     const appPath = getDyadAppPath(app.path);
     const branch = app.githubBranch || "main";
 
-    // Set up remote URL with token
+    // Set up remote URL (without token to avoid storing it in .git/config)
     const remoteUrl = IS_TEST_BUILD
       ? `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`
-      : `https://${accessToken}:x-oauth-basic@github.com/${app.githubOrg}/${app.githubRepo}.git`;
+      : `https://github.com/${app.githubOrg}/${app.githubRepo}.git`;
 
     await gitSetRemoteUrl({
       path: appPath,
       remoteUrl,
     });
+
+    // Skip auto-sync if a git operation is already in progress
+    if (
+      isGitMergeInProgress({ path: appPath }) ||
+      isGitRebaseInProgress({ path: appPath })
+    ) {
+      logger.debug(
+        "[Auto-sync] Merge/rebase in progress, skipping auto-sync",
+      );
+      return;
+    }
 
     // Try to pull first (to avoid conflicts), but don't fail if remote branch doesn't exist
     try {
@@ -1499,16 +1510,17 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
         (pullError?.code === "NotFoundError" &&
           (errorMessage.includes("remote ref") ||
             errorMessage.includes("remote branch"))) ||
-        errorMessage.includes("couldn't find remote ref") ||
-        errorMessage.includes("Cannot read properties of null");
+        errorMessage.includes("couldn't find remote ref");
 
       if (!isMissingRemoteBranch) {
         // If there's a conflict, abort the merge to leave repo in a clean state
         if (isGitMergeInProgress({ path: appPath })) {
           try {
             await gitMergeAbort({ path: appPath });
-          } catch {
-            // Best-effort merge abort
+          } catch (abortError: any) {
+            logger.warn(
+              `[Auto-sync] Failed to abort merge after pull conflict: ${abortError?.message}`,
+            );
           }
         }
         // Sanitize error message to avoid leaking tokens

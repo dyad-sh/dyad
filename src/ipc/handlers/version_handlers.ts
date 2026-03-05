@@ -149,7 +149,8 @@ export function registerVersionHandlers() {
 
   createTypedHandler(versionContracts.revertVersion, async (_, params) => {
     const { appId, previousVersionId, currentChatMessageId } = params;
-    return withLock(appId, async () => {
+    let shouldAutoSync = false;
+    const result = await withLock(appId, async () => {
       let successMessage = "Restored version";
       let warningMessage = "";
       const app = await db.query.apps.findFirst({
@@ -185,14 +186,14 @@ export function registerVersionHandlers() {
         targetOid: previousVersionId,
       });
       const isClean = await isGitStatusClean({ path: appPath });
+      let didCommit = false;
       if (!isClean) {
         await gitCommit({
           path: appPath,
           message: `Reverted all changes back to version ${previousVersionId}`,
         });
-
-        // Auto-sync to GitHub if enabled
-        await autoSyncToGithubIfEnabled(appId);
+        didCommit = true;
+        shouldAutoSync = true;
       }
 
       // Delete messages based on currentChatMessageId if provided, otherwise use commit hash lookup
@@ -367,6 +368,13 @@ export function registerVersionHandlers() {
       }
       return { successMessage };
     });
+
+    // Auto-sync to GitHub if enabled (outside lock to avoid blocking other git operations)
+    if (shouldAutoSync) {
+      await autoSyncToGithubIfEnabled(appId);
+    }
+
+    return result;
   });
 
   createTypedHandler(versionContracts.checkoutVersion, async (_, params) => {

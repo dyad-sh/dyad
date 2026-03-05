@@ -59,7 +59,7 @@ const CustomMenuItem = forwardRef<
           ? ""
           : isMedia
             ? "Media"
-          : "File";
+            : "File";
   const value = (item as any)?.value;
 
   // For history items, show full text without label

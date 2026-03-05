@@ -207,16 +207,23 @@ export function ImageGeneratorDialog({
 
   const { apps } = useLoadApps();
   const generateImage = useGenerateImage();
-  const { userBudget } = useUserBudgetInfo();
+  const { userBudget, isLoadingUserBudget: isBudgetLoading } =
+    useUserBudgetInfo();
+
+  // Auto-select app when there's only one option
+  const effectiveTargetAppId =
+    targetAppId ?? (apps.length === 1 ? apps[0].id : null);
+
+  const isFormDisabled = generateImage.isPending || !!generatedResult;
 
   const handleGenerate = () => {
-    if (!prompt.trim() || targetAppId === null) return;
+    if (!prompt.trim() || effectiveTargetAppId === null) return;
 
     generateImage.mutate(
       {
         prompt: prompt.trim(),
         themeMode,
-        targetAppId,
+        targetAppId: effectiveTargetAppId,
       },
       {
         onSuccess: (result) => {
@@ -257,7 +264,11 @@ export function ImageGeneratorDialog({
 
         <div className="space-y-4 py-2">
           {/* Pro-only locked state */}
-          {!userBudget ? (
+          {isBudgetLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : !userBudget ? (
             <div className="space-y-4">
               <div className="flex flex-col items-center justify-center py-8 px-4 border-2 border-dashed border-muted-foreground/25 rounded-lg bg-muted/10">
                 <Lock className="h-12 w-12 text-muted-foreground mb-4" />
@@ -292,7 +303,7 @@ export function ImageGeneratorDialog({
                   placeholder="Describe the image you want to create..."
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  disabled={generateImage.isPending}
+                  disabled={isFormDisabled}
                   className="min-h-[100px] resize-none"
                 />
               </div>
@@ -309,7 +320,7 @@ export function ImageGeneratorDialog({
                         key={mode.value}
                         type="button"
                         aria-pressed={isSelected}
-                        disabled={generateImage.isPending}
+                        disabled={isFormDisabled}
                         onClick={() => setThemeMode(mode.value)}
                         className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-colors ${
                           isSelected
@@ -341,9 +352,9 @@ export function ImageGeneratorDialog({
                 <Label>Save to App</Label>
                 <AppSearchSelect
                   apps={apps}
-                  selectedAppId={targetAppId}
+                  selectedAppId={effectiveTargetAppId}
                   onSelect={setTargetAppId}
-                  disabled={generateImage.isPending}
+                  disabled={isFormDisabled}
                 />
               </div>
 
@@ -371,27 +382,39 @@ export function ImageGeneratorDialog({
               <Button
                 variant="outline"
                 onClick={() => onOpenChange(false)}
-                disabled={generateImage.isPending}
+                disabled={isFormDisabled}
               >
                 Cancel
               </Button>
-              <Button
-                onClick={handleGenerate}
-                disabled={
-                  !prompt.trim() ||
-                  targetAppId === null ||
-                  generateImage.isPending
-                }
-              >
-                {generateImage.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  "Generate"
-                )}
-              </Button>
+              <div className="flex items-center gap-2">
+                {!generateImage.isPending &&
+                  (!prompt.trim() || effectiveTargetAppId === null) && (
+                    <p className="text-xs text-muted-foreground">
+                      {!prompt.trim() && effectiveTargetAppId === null
+                        ? "Enter a prompt and select an app"
+                        : !prompt.trim()
+                          ? "Enter a prompt to generate"
+                          : "Select an app to save to"}
+                    </p>
+                  )}
+                <Button
+                  onClick={handleGenerate}
+                  disabled={
+                    !prompt.trim() ||
+                    effectiveTargetAppId === null ||
+                    generateImage.isPending
+                  }
+                >
+                  {generateImage.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    "Generate"
+                  )}
+                </Button>
+              </div>
             </>
           )}
         </DialogFooter>

@@ -150,7 +150,12 @@ describe("handleDeleteBranch", () => {
   });
 
   it("throws generic error when branch only exists on remote for non-GitHub app", async () => {
-    const nonGithubApp = { id: 1, path: "test-app", githubOrg: null, githubRepo: null };
+    const nonGithubApp = {
+      id: 1,
+      path: "test-app",
+      githubOrg: null,
+      githubRepo: null,
+    };
     vi.mocked(db.query.apps.findFirst).mockResolvedValue(nonGithubApp as any);
     vi.mocked(gitListBranches).mockResolvedValue(["main"]);
     vi.mocked(gitListRemoteBranches).mockResolvedValue(["main", "feature"]);

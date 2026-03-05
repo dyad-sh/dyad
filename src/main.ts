@@ -40,6 +40,7 @@ import {
   DYAD_MEDIA_DIR_NAME,
   isWithinDyadMediaDir,
 } from "./ipc/utils/media_path_utils";
+import { sanitizeSvgContent } from "./ipc/utils/mime_utils";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -159,6 +160,14 @@ export async function onReady() {
     }
 
     try {
+      // Sanitize SVG files to strip potential script execution vectors
+      if (resolvedPath.toLowerCase().endsWith(".svg")) {
+        const content = await fs.promises.readFile(resolvedPath, "utf-8");
+        const sanitized = sanitizeSvgContent(content);
+        return new Response(sanitized, {
+          headers: { "Content-Type": "image/svg+xml" },
+        });
+      }
       return await net.fetch(
         require("node:url").pathToFileURL(resolvedPath).href,
       );

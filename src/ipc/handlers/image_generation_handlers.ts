@@ -7,6 +7,7 @@ import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { getDyadAppPath } from "../../paths/paths";
 import { DYAD_MEDIA_DIR_NAME } from "../utils/media_path_utils";
+import { safeJoin } from "../utils/path_utils";
 import { readSettings } from "../../main/settings";
 import { eq } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
@@ -87,22 +88,29 @@ export function registerImageGenerationHandlers() {
 
       if (!response.ok) {
         const errorText = await response.text();
+        logger.error(
+          `Image generation API error: ${response.status} - ${errorText}`,
+        );
         throw new Error(
-          `Image generation failed: ${response.status} - ${errorText}`,
+          `Image generation failed (HTTP ${response.status}). Please try again.`,
         );
       }
 
       const data = await response.json();
       const imageData = data.data?.[0];
 
-      if (!imageData) {
+      if (
+        !imageData ||
+        (typeof imageData.b64_json !== "string" &&
+          typeof imageData.url !== "string")
+      ) {
         throw new Error("No image data returned from generation service");
       }
 
       // Save to app's media folder
       const appPath = getDyadAppPath(app.path);
       const mediaDir = path.join(appPath, DYAD_MEDIA_DIR_NAME);
-      fs.mkdirSync(mediaDir, { recursive: true });
+      await fs.promises.mkdir(mediaDir, { recursive: true });
 
       const timestamp = Date.now();
       const sanitizedPrompt =
@@ -113,11 +121,11 @@ export function registerImageGenerationHandlers() {
           .replace(/^_|_$/g, "")
           .toLowerCase() || "image";
       const fileName = `generated_${sanitizedPrompt}_${timestamp}.png`;
-      const filePath = path.join(mediaDir, fileName);
+      const filePath = safeJoin(mediaDir, fileName);
 
       if (imageData.b64_json) {
         const buffer = Buffer.from(imageData.b64_json, "base64");
-        fs.writeFileSync(filePath, buffer);
+        await fs.promises.writeFile(filePath, buffer);
       } else if (imageData.url) {
         const imageUrl = new URL(imageData.url);
         if (imageUrl.protocol !== "https:") {
@@ -134,7 +142,7 @@ export function registerImageGenerationHandlers() {
         if (arrayBuffer.byteLength > MAX_IMAGE_SIZE) {
           throw new Error("Downloaded image exceeds maximum allowed size");
         }
-        fs.writeFileSync(filePath, Buffer.from(arrayBuffer));
+        await fs.promises.writeFile(filePath, Buffer.from(arrayBuffer));
       } else {
         throw new Error("Unexpected image response format");
       }

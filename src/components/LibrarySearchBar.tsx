@@ -23,6 +23,7 @@ export function LibrarySearchBar({
         <input
           type="text"
           placeholder={placeholder}
+          aria-label="Search library"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           className="w-full bg-transparent py-3 pl-11 pr-4 text-sm outline-none placeholder:text-muted-foreground"

@@ -61,9 +61,9 @@ function LibraryLandingAnimation({ onComplete }: { onComplete: () => void }) {
               y: [0, Math.sin((i * 2 * Math.PI) / 5) * 50, 0],
             }}
             transition={{
-              duration: 1.2,
+              duration: 0.7,
               ease: SPRING_EASE,
-              delay: 0.1 + i * 0.06,
+              delay: 0.05 + i * 0.04,
             }}
           />
         ))}
@@ -87,7 +87,7 @@ function LibraryLandingAnimation({ onComplete }: { onComplete: () => void }) {
               opacity: [0.3, 0.6, 0.3],
             }}
             transition={{
-              duration: 1.5,
+              duration: 0.8,
               ease: "easeInOut",
             }}
           />
@@ -100,9 +100,9 @@ function LibraryLandingAnimation({ onComplete }: { onComplete: () => void }) {
         className="text-2xl font-bold mt-6 text-foreground tracking-tight"
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.35, duration: 0.45, ease: "easeOut" }}
+        transition={{ delay: 0.2, duration: 0.3, ease: "easeOut" }}
         onAnimationComplete={() => {
-          setTimeout(onComplete, 550);
+          setTimeout(onComplete, 250);
         }}
       >
         Library
@@ -395,7 +395,13 @@ export default function LibraryHomePage() {
               <div className="text-muted-foreground text-center py-12">
                 {searchQuery
                   ? "No results found."
-                  : "No items in your library yet."}
+                  : activeFilter === "media"
+                    ? "No media files yet."
+                    : activeFilter === "themes"
+                      ? "No themes yet."
+                      : activeFilter === "prompts"
+                        ? "No prompts yet."
+                        : "No items in your library yet."}
               </div>
             ) : (
               <div

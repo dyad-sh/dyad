@@ -190,7 +190,10 @@ export function registerMediaHandlers() {
         destinationFileName,
       );
 
-      if (fs.existsSync(destinationPath)) {
+      // Allow case-only renames on case-insensitive file systems (macOS, Windows)
+      const isCaseOnlyRename =
+        destinationFileName.toLowerCase() === params.fileName.toLowerCase();
+      if (!isCaseOnlyRename && fs.existsSync(destinationPath)) {
         throw new Error("A media file with that name already exists");
       }
 

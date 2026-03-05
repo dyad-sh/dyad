@@ -22,12 +22,11 @@ export function LibraryFilterTabs({
   onChange: (f: FilterType) => void;
 }) {
   return (
-    <div className="flex gap-2 mb-6" role="tablist">
+    <div className="flex gap-2 mb-6" role="group" aria-label="Library filters">
       {FILTER_OPTIONS.map((opt) => (
         <button
           key={opt.key}
-          role="tab"
-          aria-selected={active === opt.key}
+          aria-pressed={active === opt.key}
           onClick={() => onChange(opt.key)}
           className={cn(
             "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",

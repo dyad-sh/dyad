@@ -140,6 +140,7 @@ export function DyadAppMediaFolder({
     if (!renameTargetFile) return;
     const trimmedBaseName = renameBaseName.trim();
     if (!trimmedBaseName) return;
+    if (renameError) return;
 
     setIsRenaming(true);
     try {

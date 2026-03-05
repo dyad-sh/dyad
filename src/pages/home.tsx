@@ -73,6 +73,7 @@ export default function HomePage() {
   const [releaseUrl, setReleaseUrl] = useState("");
   const { theme } = useTheme();
   const queryClient = useQueryClient();
+  const checkedReleaseNotesVersionRef = useRef<string | null>(null);
 
   // Listen for force-close events
   useEffect(() => {
@@ -85,11 +86,20 @@ export default function HomePage() {
 
   useEffect(() => {
     const updateLastVersionLaunched = async () => {
-      if (
-        appVersion &&
-        settings &&
-        settings.lastShownReleaseNotesVersion !== appVersion
-      ) {
+      if (!appVersion || !settings) {
+        return;
+      }
+
+      if (settings.lastShownReleaseNotesVersion === appVersion) {
+        return;
+      }
+
+      if (checkedReleaseNotesVersionRef.current === appVersion) {
+        return;
+      }
+      checkedReleaseNotesVersionRef.current = appVersion;
+
+      try {
         const shouldShowReleaseNotes = !!settings.lastShownReleaseNotesVersion;
         await updateSettings({
           lastShownReleaseNotesVersion: appVersion,
@@ -100,25 +110,29 @@ export default function HomePage() {
           return;
         }
 
-        try {
-          const result = await ipc.system.doesReleaseNoteExist({
-            version: appVersion,
-          });
+        const result = await ipc.system.doesReleaseNoteExist({
+          version: appVersion,
+        });
 
-          if (result.exists && result.url) {
-            setReleaseUrl(result.url + "?hideHeader=true&theme=" + theme);
-            setReleaseNotesOpen(true);
-          }
-        } catch (err) {
-          console.warn(
-            "Unable to check if release note exists for: " + appVersion,
-            err,
-          );
+        if (result.exists && result.url) {
+          setReleaseUrl(result.url + "?hideHeader=true&theme=" + theme);
+          setReleaseNotesOpen(true);
         }
+      } catch (err) {
+        checkedReleaseNotesVersionRef.current = null;
+        console.warn(
+          "Unable to check if release note exists for: " + appVersion,
+          err,
+        );
       }
     };
     updateLastVersionLaunched();
-  }, [appVersion, settings, updateSettings, theme]);
+  }, [
+    appVersion,
+    settings?.lastShownReleaseNotesVersion,
+    updateSettings,
+    theme,
+  ]);
 
   // Get the appId from search params
   const appId = search.appId ? Number(search.appId) : null;

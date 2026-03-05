@@ -22,11 +22,11 @@ vi.mock("../ipc/utils/git_utils", () => ({
   gitCommit: vi.fn(),
 }));
 
-vi.mock("../../paths/paths", () => ({
+vi.mock("../paths/paths", () => ({
   getDyadAppPath: vi.fn((p: string) => `/mock/apps/${p}`),
 }));
 
-vi.mock("../../db", () => ({
+vi.mock("../db", () => ({
   db: {
     query: {
       apps: {
@@ -36,7 +36,7 @@ vi.mock("../../db", () => ({
   },
 }));
 
-vi.mock("../../db/schema", () => ({
+vi.mock("../db/schema", () => ({
   apps: { id: "id" },
 }));
 
@@ -58,12 +58,12 @@ vi.mock("../ipc/utils/lock_utils", () => ({
   withLock: vi.fn(),
 }));
 
-vi.mock("./github_handlers", () => ({
+vi.mock("../ipc/handlers/github_handlers", () => ({
   updateAppGithubRepo: vi.fn(),
   ensureCleanWorkspace: vi.fn(),
 }));
 
-vi.mock("./base", () => ({
+vi.mock("../ipc/handlers/base", () => ({
   createTypedHandler: vi.fn(),
 }));
 
@@ -72,7 +72,7 @@ vi.mock("../ipc/types/github", () => ({
   gitContracts: {},
 }));
 
-vi.mock("../../main/settings", () => ({
+vi.mock("../main/settings", () => ({
   readSettings: vi.fn(),
 }));
 

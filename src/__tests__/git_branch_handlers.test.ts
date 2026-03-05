@@ -40,9 +40,13 @@ vi.mock("../db/schema", () => ({
   apps: { id: "id" },
 }));
 
-vi.mock("drizzle-orm", () => ({
-  eq: vi.fn(),
-}));
+vi.mock("drizzle-orm", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    eq: vi.fn(),
+  };
+});
 
 vi.mock("electron-log", () => ({
   default: {

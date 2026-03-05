@@ -11,16 +11,13 @@ interface SkippableBannerProps {
 }
 
 const colors = {
-  container:
-    "from-white via-indigo-50 to-sky-100 dark:from-indigo-700 dark:via-indigo-700 dark:to-indigo-900",
+  container: "bg-indigo-50/60 dark:bg-indigo-900/30",
   ring: "ring-black/5 dark:ring-white/10",
-  orb1: "bg-violet-200/40 dark:bg-violet-400/10",
-  orb2: "bg-sky-200/40 dark:bg-sky-400/10",
   icon: "text-indigo-600 dark:text-indigo-200 bg-indigo-100 dark:bg-white/15",
   text: "text-indigo-900 dark:text-indigo-100",
   enableBtn: "bg-white/90 hover:bg-white text-indigo-800 shadow font-semibold",
   skipBtn:
-    "text-indigo-600/70 dark:text-indigo-200/60 hover:text-indigo-800 dark:hover:text-indigo-100 hover:bg-indigo-100/50 dark:hover:bg-white/10",
+    "text-indigo-600 dark:text-indigo-200 hover:text-indigo-800 dark:hover:text-indigo-100",
 };
 
 export function SkippableBanner({
@@ -34,29 +31,20 @@ export function SkippableBanner({
   const c = colors;
 
   return (
-    <div className="px-3 flex justify-center" data-testid={testId}>
+    <div className="px-3 pt-1 flex justify-center" data-testid={testId}>
       <div
-        className={`max-w-3xl w-full my-3 rounded-xl bg-gradient-to-br ${c.container} relative overflow-hidden ring-1 ring-inset ${c.ring} shadow-sm transition-all duration-200 hover:shadow-md`}
+        className={`max-w-3xl w-full mb-2 rounded-lg ${c.container} ring-1 ring-inset ${c.ring} relative`}
       >
-        {/* Decorative gradient overlay */}
-        <div
-          className="absolute inset-0 z-0 bg-gradient-to-tr from-white/60 via-transparent to-transparent pointer-events-none dark:from-white/5"
-          aria-hidden="true"
-        />
-        {/* Decorative blur orbs */}
-        <div
-          className="absolute inset-0 z-0 pointer-events-none"
-          aria-hidden="true"
+        <button
+          type="button"
+          onClick={onSkip}
+          className={`absolute -top-2 -right-2 inline-flex items-center justify-center rounded-full p-1 transition-colors duration-150 ${c.skipBtn} cursor-pointer bg-white dark:bg-indigo-800 ring-1 ring-inset ${c.ring} shadow-sm`}
+          aria-label="Dismiss"
         >
-          <div
-            className={`absolute -top-8 -left-6 h-36 w-36 rounded-full blur-2xl ${c.orb1}`}
-          />
-          <div
-            className={`absolute -bottom-10 -right-6 h-40 w-40 rounded-full blur-3xl ${c.orb2}`}
-          />
-        </div>
+          <X className="h-3.5 w-3.5" />
+        </button>
 
-        <div className="relative z-10 flex items-center gap-3.5 p-4">
+        <div className="flex items-center gap-3 px-3 py-2 pr-8">
           {/* Icon badge */}
           <div className={`shrink-0 rounded-lg p-2 ${c.icon}`}>
             <Icon className="h-5 w-5" />
@@ -69,24 +57,14 @@ export function SkippableBanner({
             </p>
           </div>
 
-          {/* Actions */}
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={onEnable}
-              className={`inline-flex items-center rounded-lg px-4 py-1.5 text-sm font-semibold transition-all duration-150 ${c.enableBtn} cursor-pointer`}
-            >
-              {enableLabel}
-            </button>
-            <button
-              type="button"
-              onClick={onSkip}
-              className={`inline-flex items-center justify-center rounded-lg p-1.5 transition-colors duration-150 ${c.skipBtn} cursor-pointer`}
-              aria-label="Dismiss"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+          {/* Action */}
+          <button
+            type="button"
+            onClick={onEnable}
+            className={`inline-flex items-center shrink-0 rounded-lg px-4 py-1.5 text-sm font-semibold transition-all duration-150 ${c.enableBtn} cursor-pointer`}
+          >
+            {enableLabel}
+          </button>
         </div>
       </div>
     </div>

@@ -526,21 +526,40 @@ export function AIGeneratorTab({
       {/* Model Selection */}
       <div className="space-y-3">
         <Label>Model Selection</Label>
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] gap-3">
-          {themeGenerationModelOptions.map((modelOption) => (
-            <button
-              key={modelOption.id}
-              type="button"
-              onClick={() => setAiSelectedModel(modelOption.id)}
-              className={`flex flex-col items-center rounded-lg border p-3 text-center transition-colors ${
-                aiSelectedModel === modelOption.id
-                  ? "border-primary bg-primary/5"
-                  : "hover:bg-muted/50"
-              }`}
-            >
-              <span className="font-medium text-sm">{modelOption.label}</span>
-            </button>
-          ))}
+        <div
+          className="grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] gap-3"
+          role="radiogroup"
+          aria-label="Model Selection"
+        >
+          {isLoadingThemeGenerationModelOptions ? (
+            <div className="col-span-full flex items-center justify-center py-3 text-sm text-muted-foreground">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Loading models...
+            </div>
+          ) : themeGenerationModelOptions.length === 0 ? (
+            <div className="col-span-full text-center py-3 text-sm text-muted-foreground">
+              No models available
+            </div>
+          ) : (
+            themeGenerationModelOptions.map((modelOption) => (
+              <button
+                key={modelOption.id}
+                type="button"
+                role="radio"
+                aria-checked={aiSelectedModel === modelOption.id}
+                onClick={() => setAiSelectedModel(modelOption.id)}
+                className={`flex flex-col items-center rounded-lg border p-3 text-center transition-colors ${
+                  aiSelectedModel === modelOption.id
+                    ? "border-primary bg-primary/5"
+                    : "hover:bg-muted/50"
+                }`}
+              >
+                <span className="font-medium text-sm">
+                  {modelOption.label}
+                </span>
+              </button>
+            ))
+          )}
         </div>
       </div>
 

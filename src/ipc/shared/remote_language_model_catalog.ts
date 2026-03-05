@@ -332,32 +332,7 @@ async function fetchRemoteCatalog(): Promise<BuiltinLanguageModelCatalog | null>
   }
 }
 
-export async function getBuiltinLanguageModelCatalog(): Promise<BuiltinLanguageModelCatalog> {
-  if (builtinCatalogCache && builtinCatalogCache.expiresAt > Date.now()) {
-    return builtinCatalogCache;
-  }
-
-  // Serve stale data while revalidating in the background to avoid blocking
-  // callers on a network fetch (stale-while-revalidate pattern).
-  if (builtinCatalogCache) {
-    if (!builtinCatalogFetchPromise) {
-      builtinCatalogFetchPromise = (async () => {
-        try {
-          const remoteCatalog = await fetchRemoteCatalog();
-          builtinCatalogCache = remoteCatalog ?? buildFallbackCatalog();
-        } finally {
-          builtinCatalogFetchPromise = null;
-        }
-      })();
-    }
-    return builtinCatalogCache;
-  }
-
-  // On cold start (no cache at all), serve fallback data immediately and
-  // refresh from the remote catalog in the background so callers are never
-  // blocked by the network fetch / 5 s timeout.
-  builtinCatalogCache = buildFallbackCatalog();
-
+function triggerBackgroundRefresh(): void {
   if (!builtinCatalogFetchPromise) {
     builtinCatalogFetchPromise = (async () => {
       try {
@@ -368,6 +343,25 @@ export async function getBuiltinLanguageModelCatalog(): Promise<BuiltinLanguageM
       }
     })();
   }
+}
+
+export async function getBuiltinLanguageModelCatalog(): Promise<BuiltinLanguageModelCatalog> {
+  if (builtinCatalogCache && builtinCatalogCache.expiresAt > Date.now()) {
+    return builtinCatalogCache;
+  }
+
+  // Serve stale data while revalidating in the background to avoid blocking
+  // callers on a network fetch (stale-while-revalidate pattern).
+  if (builtinCatalogCache) {
+    triggerBackgroundRefresh();
+    return builtinCatalogCache;
+  }
+
+  // On cold start (no cache at all), serve fallback data immediately and
+  // refresh from the remote catalog in the background so callers are never
+  // blocked by the network fetch / 5 s timeout.
+  builtinCatalogCache = buildFallbackCatalog();
+  triggerBackgroundRefresh();
 
   return builtinCatalogCache;
 }

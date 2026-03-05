@@ -1,4 +1,5 @@
 import { ipcMain } from "electron";
+import { logger } from "../../../../utils/logger";
 import fs from "node:fs";
 import { promises as fsPromises } from "node:fs";
 import path from "path";
@@ -185,8 +186,10 @@ export function registerVisualEditingHandlers() {
           }
         }
 
-        // Auto-sync to GitHub once after all files are processed
-        await autoSyncToGithubIfEnabled(appId);
+        // Auto-sync to GitHub once after all files are processed (fire-and-forget to avoid blocking UI)
+        autoSyncToGithubIfEnabled(appId).catch((error) => {
+          logger.warn(`[Auto-sync] Failed after visual editing changes: ${error?.message}`);
+        });
       } catch (error) {
         // Unstage any image files that were git-added before the failure
         for (const { appPath, filepath } of stagedGitPaths) {

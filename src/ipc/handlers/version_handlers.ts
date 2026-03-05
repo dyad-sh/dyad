@@ -186,13 +186,11 @@ export function registerVersionHandlers() {
         targetOid: previousVersionId,
       });
       const isClean = await isGitStatusClean({ path: appPath });
-      let didCommit = false;
       if (!isClean) {
         await gitCommit({
           path: appPath,
           message: `Reverted all changes back to version ${previousVersionId}`,
         });
-        didCommit = true;
         shouldAutoSync = true;
       }
 
@@ -369,9 +367,11 @@ export function registerVersionHandlers() {
       return { successMessage };
     });
 
-    // Auto-sync to GitHub if enabled (outside lock to avoid blocking other git operations)
+    // Auto-sync to GitHub if enabled (fire-and-forget to avoid blocking UI)
     if (shouldAutoSync) {
-      await autoSyncToGithubIfEnabled(appId);
+      autoSyncToGithubIfEnabled(appId).catch((error: any) => {
+        logger.warn(`[Auto-sync] Failed after revert: ${error?.message}`);
+      });
     }
 
     return result;

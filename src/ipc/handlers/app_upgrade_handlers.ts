@@ -188,15 +188,17 @@ async function applyComponentTagger(appId: number, appPath: string) {
       message: "[dyad] add Dyad component tagger",
     });
     logger.info("Successfully committed changes");
-
-    // Auto-sync to GitHub if enabled
-    await autoSyncToGithubIfEnabled(appId);
   } catch (err) {
     logger.warn(
       `Failed to commit changes. This may happen if the project is not in a git repository, or if there are no changes to commit.`,
       err,
     );
   }
+
+  // Auto-sync to GitHub if enabled (fire-and-forget, outside try/catch to avoid masking commit success)
+  autoSyncToGithubIfEnabled(appId).catch((error: any) => {
+    logger.warn(`[Auto-sync] Failed after component tagger commit: ${error?.message}`);
+  });
 }
 
 async function applyCapacitor({
@@ -242,10 +244,12 @@ async function applyCapacitor({
       message: "[dyad] add Capacitor for mobile app support",
     });
 
-    // Auto-sync to GitHub if enabled
-    await autoSyncToGithubIfEnabled(appId);
-
     logger.info("Successfully committed Capacitor changes");
+
+    // Auto-sync to GitHub if enabled (fire-and-forget, outside commit error handling)
+    autoSyncToGithubIfEnabled(appId).catch((error: any) => {
+      logger.warn(`[Auto-sync] Failed after Capacitor commit: ${error?.message}`);
+    });
   } catch (err) {
     logger.warn(
       `Failed to commit changes. This may happen if the project is not in a git repository, or if there are no changes to commit.`,

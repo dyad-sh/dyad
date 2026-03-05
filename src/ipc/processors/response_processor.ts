@@ -599,8 +599,10 @@ export async function processFullResponseActions(
         })
         .where(eq(messages.id, messageId));
 
-      // Auto-sync to GitHub if enabled
-      await autoSyncToGithubIfEnabled(chatWithApp.app.id);
+      // Auto-sync to GitHub if enabled (fire-and-forget to avoid blocking approval feedback)
+      autoSyncToGithubIfEnabled(chatWithApp.app.id).catch((error) => {
+        logger.warn(`[Auto-sync] Failed after approval commit: ${error?.message}`);
+      });
     }
     logger.log("mark as approved: hasChanges", hasChanges);
     // Update the message to approved

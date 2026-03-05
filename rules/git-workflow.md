@@ -78,7 +78,7 @@ After rebasing, `git push --force-with-lease` may fail with `(stale info)` when 
 git push <remote-url> HEAD:<branch> --force
 ```
 
-Use the branch's configured push remote URL (from `git remote get-url origin`) rather than hardcoding a repository path.
+Use the branch's configured push remote URL (from `git remote get-url --push origin`) rather than hardcoding a repository path.
 
 Use the `ghs_*` token from `origin`'s fetch URL (not the PAT from the push URL, which may be expired/403).
 

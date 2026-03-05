@@ -122,8 +122,10 @@ export function registerPortalHandlers() {
           message: "[dyad] Generate database migration file",
         });
 
-        // Auto-sync to GitHub if enabled
-        await autoSyncToGithubIfEnabled(appId);
+        // Auto-sync to GitHub if enabled (fire-and-forget to avoid blocking UI)
+        autoSyncToGithubIfEnabled(appId).catch((error: any) => {
+          logger.warn(`[Auto-sync] Failed after migration commit: ${error?.message}`);
+        });
 
         logger.info(`Successfully committed migration changes: ${commitHash}`);
         return { output: migrationOutput };

@@ -95,8 +95,9 @@ export function registerDyadAppsBaseDirectoryHandlers() {
             try {
               await symlink(target, link, "dir");
               continue;
-            } catch {
-              // Only handle errors on second attempt; fall through
+            } catch (error: any) {
+              // if it's not a permissions error, it's not worth retrying
+              if (error.code !== "EPERM") throw error;
             }
           }
 

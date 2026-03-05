@@ -83,38 +83,44 @@ export default function HomePage() {
     return () => unsubscribe();
   }, []);
 
+  // Track whether we've already checked release notes this session
+  const hasCheckedReleaseNotes = useRef(false);
   useEffect(() => {
     const updateLastVersionLaunched = async () => {
       if (
-        appVersion &&
-        settings &&
-        settings.lastShownReleaseNotesVersion !== appVersion
+        hasCheckedReleaseNotes.current ||
+        !appVersion ||
+        !settings ||
+        settings.lastShownReleaseNotesVersion === appVersion
       ) {
-        const shouldShowReleaseNotes = !!settings.lastShownReleaseNotesVersion;
-        await updateSettings({
-          lastShownReleaseNotesVersion: appVersion,
+        return;
+      }
+      hasCheckedReleaseNotes.current = true;
+
+      const shouldShowReleaseNotes = !!settings.lastShownReleaseNotesVersion;
+      await updateSettings({
+        lastShownReleaseNotesVersion: appVersion,
+      });
+      // It feels spammy to show release notes if it's
+      // the users very first time.
+      if (!shouldShowReleaseNotes) {
+        return;
+      }
+
+      try {
+        const result = await ipc.system.doesReleaseNoteExist({
+          version: appVersion,
         });
-        // It feels spammy to show release notes if it's
-        // the users very first time.
-        if (!shouldShowReleaseNotes) {
-          return;
-        }
 
-        try {
-          const result = await ipc.system.doesReleaseNoteExist({
-            version: appVersion,
-          });
-
-          if (result.exists && result.url) {
-            setReleaseUrl(result.url + "?hideHeader=true&theme=" + theme);
-            setReleaseNotesOpen(true);
-          }
-        } catch (err) {
-          console.warn(
-            "Unable to check if release note exists for: " + appVersion,
-            err,
-          );
+        if (result.exists && result.url) {
+          setReleaseUrl(result.url + "?hideHeader=true&theme=" + theme);
+          setReleaseNotesOpen(true);
         }
+      } catch (err) {
+        console.warn(
+          "Unable to check if release note exists for: " + appVersion,
+          err,
+        );
       }
     };
     updateLastVersionLaunched();

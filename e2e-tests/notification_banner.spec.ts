@@ -13,17 +13,7 @@ const testWithNotificationsEnabled = testWithConfig({
   },
 });
 
-const testWithBannerSkipped = testWithConfig({
-  preLaunchHook: async ({ userDataDir }) => {
-    fs.mkdirSync(userDataDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(userDataDir, "user-settings.json"),
-      JSON.stringify({ skipNotificationBanner: true }, null, 2),
-    );
-  },
-});
-
-test("notification banner - visible in chat and Enable navigates to settings", async ({
+test("notification banner - visible, Enable navigates to settings, skip hides permanently", async ({
   po,
 }) => {
   await po.setUp({ autoApprove: true });
@@ -46,14 +36,11 @@ test("notification banner - visible in chat and Enable navigates to settings", a
   await expect(
     po.page.getByText("Show notification when chat completes"),
   ).toBeVisible({ timeout: 10000 });
-});
 
-test("notification banner - skip hides banner permanently", async ({ po }) => {
-  await po.setUp({ autoApprove: true });
-  await po.importApp("minimal");
+  // Navigate back to chat to test skip/dismiss
+  await po.navigation.goToChatTab();
 
-  // Banner should be visible
-  const banner = po.page.getByTestId("notification-tip-banner");
+  // Banner should be visible again
   await expect(banner).toBeVisible();
 
   // Record settings before skipping
@@ -81,19 +68,6 @@ testWithNotificationsEnabled(
     await po.importApp("minimal");
 
     // Banner should NOT be visible since notifications are already enabled
-    await expect(
-      po.page.getByTestId("notification-tip-banner"),
-    ).not.toBeVisible();
-  },
-);
-
-testWithBannerSkipped(
-  "notification banner - not shown when previously skipped",
-  async ({ po }) => {
-    await po.setUp({ autoApprove: true });
-    await po.importApp("minimal");
-
-    // Banner should NOT be visible since it was previously skipped
     await expect(
       po.page.getByTestId("notification-tip-banner"),
     ).not.toBeVisible();

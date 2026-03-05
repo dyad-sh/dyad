@@ -7,39 +7,20 @@ interface SkippableBannerProps {
   enableLabel: string;
   onEnable: () => void;
   onSkip: () => void;
-  colorScheme?: "blue" | "amber";
   "data-testid"?: string;
 }
 
-const colorMap = {
-  blue: {
-    container:
-      "from-white via-indigo-50 to-sky-100 dark:from-indigo-700 dark:via-indigo-700 dark:to-indigo-900",
-    ring: "ring-black/5 dark:ring-white/10",
-    orb1: "bg-violet-200/40 dark:bg-violet-400/10",
-    orb2: "bg-sky-200/40 dark:bg-sky-400/10",
-    icon: "text-indigo-600 dark:text-indigo-200 bg-indigo-100 dark:bg-white/15",
-    text: "text-indigo-900 dark:text-indigo-100",
-    subtext: "text-indigo-700/80 dark:text-indigo-200/80",
-    enableBtn:
-      "bg-white/90 hover:bg-white text-indigo-800 shadow font-semibold",
-    skipBtn:
-      "text-indigo-600/70 dark:text-indigo-200/60 hover:text-indigo-800 dark:hover:text-indigo-100 hover:bg-indigo-100/50 dark:hover:bg-white/10",
-  },
-  amber: {
-    container:
-      "from-white via-amber-50 to-orange-100 dark:from-amber-950/80 dark:via-amber-950/60 dark:to-orange-950/80",
-    ring: "ring-amber-200/60 dark:ring-amber-500/20",
-    orb1: "bg-amber-200/40 dark:bg-amber-500/10",
-    orb2: "bg-orange-200/40 dark:bg-orange-500/10",
-    icon: "text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-500/15",
-    text: "text-amber-900 dark:text-amber-100",
-    subtext: "text-amber-700/80 dark:text-amber-300/70",
-    enableBtn:
-      "bg-amber-600 hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-400 text-white shadow-md shadow-amber-500/20",
-    skipBtn:
-      "text-amber-600/70 dark:text-amber-400/60 hover:text-amber-800 dark:hover:text-amber-300 hover:bg-amber-100/50 dark:hover:bg-amber-500/10",
-  },
+const colors = {
+  container:
+    "from-white via-indigo-50 to-sky-100 dark:from-indigo-700 dark:via-indigo-700 dark:to-indigo-900",
+  ring: "ring-black/5 dark:ring-white/10",
+  orb1: "bg-violet-200/40 dark:bg-violet-400/10",
+  orb2: "bg-sky-200/40 dark:bg-sky-400/10",
+  icon: "text-indigo-600 dark:text-indigo-200 bg-indigo-100 dark:bg-white/15",
+  text: "text-indigo-900 dark:text-indigo-100",
+  enableBtn: "bg-white/90 hover:bg-white text-indigo-800 shadow font-semibold",
+  skipBtn:
+    "text-indigo-600/70 dark:text-indigo-200/60 hover:text-indigo-800 dark:hover:text-indigo-100 hover:bg-indigo-100/50 dark:hover:bg-white/10",
 };
 
 export function SkippableBanner({
@@ -48,10 +29,9 @@ export function SkippableBanner({
   enableLabel,
   onEnable,
   onSkip,
-  colorScheme = "blue",
   "data-testid": testId,
 }: SkippableBannerProps) {
-  const c = colorMap[colorScheme];
+  const c = colors;
 
   return (
     <div className="px-3 flex justify-center" data-testid={testId}>
@@ -92,12 +72,14 @@ export function SkippableBanner({
           {/* Actions */}
           <div className="flex items-center gap-2 shrink-0">
             <button
+              type="button"
               onClick={onEnable}
               className={`inline-flex items-center rounded-lg px-4 py-1.5 text-sm font-semibold transition-all duration-150 ${c.enableBtn} cursor-pointer`}
             >
               {enableLabel}
             </button>
             <button
+              type="button"
               onClick={onSkip}
               className={`inline-flex items-center justify-center rounded-lg p-1.5 transition-colors duration-150 ${c.skipBtn} cursor-pointer`}
               aria-label="Dismiss"

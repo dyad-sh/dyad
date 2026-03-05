@@ -50,7 +50,7 @@ jobs:
 
               // Check that the person who applied the label is a trusted actor
               const actor = context.actor;
-              const allowedActors = ['wwwillchen', 'wwwillchen-bot'];
+              const allowedActors = ['wwwillchen', 'wwwillchen-bot', 'dyadbot'];
               if (!allowedActors.includes(actor)) {
                 console.log(`Label applied by ${actor} who is not in the allowed actors list`);
                 core.setOutput('should_continue', 'false');
@@ -113,8 +113,8 @@ jobs:
               prAuthor = pr.user.login;
             }
 
-            // Only allow wwwillchen, wwwillchen-bot, and princeaden1 to use this workflow
-            if (prAuthor !== 'wwwillchen' && prAuthor !== 'wwwillchen-bot' && prAuthor !== 'princeaden1') {
+            // Only allow wwwillchen, wwwillchen-bot, dyadbot, and princeaden1 to use this workflow
+            if (prAuthor !== 'wwwillchen' && prAuthor !== 'wwwillchen-bot' && prAuthor !== 'dyadbot' && prAuthor !== 'princeaden1') {
               console.log(`PR #${prNumber} author ${prAuthor} is not allowed to use this workflow`);
               core.setOutput('should_continue', 'false');
               return;

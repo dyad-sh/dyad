@@ -19,7 +19,7 @@ jobs:
         with:
           script: |
             const pr = context.payload.pull_request;
-            const allowedUsers = ['wwwillchen', 'wwwillchen-bot', 'azizmejri1', 'princeaden1'];
+            const allowedUsers = ['wwwillchen', 'wwwillchen-bot', 'dyadbot', 'azizmejri1', 'princeaden1'];
             if (!allowedUsers.includes(pr.user.login)) {
               console.log(`PR author ${pr.user.login} is not allowed to use this workflow`);
               core.setOutput('should_continue', 'false');

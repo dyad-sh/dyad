@@ -1432,6 +1432,10 @@ export async function updateAppGithubRepo({
     .where(eq(schema.apps.id, appId));
 }
 
+function sanitizeGitError(message: string): string {
+  return message.replace(/https:\/\/[^@]+@/g, "https://***@");
+}
+
 /**
  * Auto-push to GitHub if the app has autoSyncToGithub enabled.
  * This should be called after any commit operation.
@@ -1453,13 +1457,11 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
 
     // Check if auto-sync is enabled for this app
     if (!app.autoSyncToGithub) {
-      logger.debug("[Auto-sync] Auto-sync not enabled for this app");
       return;
     }
 
     // Check if app is connected to GitHub
     if (!app.githubOrg || !app.githubRepo) {
-      logger.debug("[Auto-sync] App not connected to GitHub, skipping");
       return;
     }
 
@@ -1523,11 +1525,7 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
             );
           }
         }
-        // Sanitize error message to avoid leaking tokens
-        const sanitizedMessage = errorMessage.replace(
-          /https:\/\/[^@]+@/g,
-          "https://***@",
-        );
+        const sanitizedMessage = sanitizeGitError(errorMessage);
         logger.warn(
           `[Auto-sync] Pull failed, skipping auto-push: ${sanitizedMessage}`,
         );
@@ -1550,11 +1548,7 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
     );
   } catch (error: any) {
     // Log but don't throw - auto-sync should not break the main operation
-    // Sanitize error message to avoid leaking tokens
-    const sanitizedMessage = (error.message || "").replace(
-      /https:\/\/[^@]+@/g,
-      "https://***@",
-    );
+    const sanitizedMessage = sanitizeGitError(error.message || "");
     logger.warn(
       `[Auto-sync] Failed to auto-sync to GitHub: ${sanitizedMessage}`,
     );

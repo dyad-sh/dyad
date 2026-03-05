@@ -1282,8 +1282,10 @@ export function registerAppHandlers() {
           message: `Updated ${filePath}`,
         });
 
-        // Auto-sync to GitHub if enabled
-        await autoSyncToGithubIfEnabled(appId);
+        // Auto-sync to GitHub if enabled (fire-and-forget to avoid blocking UI)
+        autoSyncToGithubIfEnabled(appId).catch((error: any) => {
+          logger.warn(`[Auto-sync] Failed after file write: ${error?.message}`);
+        });
       }
     } catch (error: any) {
       logger.error(`Error writing file ${filePath} for app ${appId}:`, error);
@@ -2081,7 +2083,7 @@ export function registerAppHandlers() {
     }
 
     // Auto-sync only makes sense if the app is connected to GitHub
-    if (autoSyncToGithub && !app.githubRepo) {
+    if (autoSyncToGithub && (!app.githubRepo || !app.githubOrg)) {
       throw new Error(
         "Cannot enable auto-sync: app is not connected to GitHub",
       );

@@ -403,6 +403,7 @@ function ConnectedGitHubConnector({
         <Switch
           id="auto-sync-github"
           aria-label="Auto-sync to GitHub"
+          disabled={isRebaseActionPending}
           checked={app.autoSyncToGithub ?? false}
           onCheckedChange={async (checked) => {
             try {
@@ -410,6 +411,9 @@ function ConnectedGitHubConnector({
                 appId,
                 autoSyncToGithub: checked,
               });
+              showSuccess(
+                checked ? "Auto-sync enabled" : "Auto-sync disabled",
+              );
               refreshApp();
             } catch (error: any) {
               console.error("Failed to update auto-sync setting:", error);
@@ -420,7 +424,7 @@ function ConnectedGitHubConnector({
           data-testid="auto-sync-github-toggle"
         />
         <Label htmlFor="auto-sync-github" className="text-sm">
-          Auto-sync to GitHub after every commit
+          Auto-sync to GitHub after changes are applied
         </Label>
       </div>
       <div className="mt-2 flex gap-2">

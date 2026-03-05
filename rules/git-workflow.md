@@ -75,10 +75,10 @@ In CI, `claude-code-action` restricts file access to the repo working directory 
 After rebasing, `git push --force-with-lease` may fail with `(stale info)` when the local tracking ref doesn't match the remote (common when `git fetch` updated the remote tracking ref to a force-pushed commit). Use `--force` instead:
 
 ```bash
-git push https://x-access-token:<TOKEN>@github.com/<owner>/<repo>.git HEAD:<branch> --force
+git push <remote-url> HEAD:<branch> --force
 ```
 
-Use the branch's configured push remote URL rather than hardcoding a repository path.
+Use the branch's configured push remote URL (from `git remote get-url origin`) rather than hardcoding a repository path.
 
 Use the `ghs_*` token from `origin`'s fetch URL (not the PAT from the push URL, which may be expired/403).
 

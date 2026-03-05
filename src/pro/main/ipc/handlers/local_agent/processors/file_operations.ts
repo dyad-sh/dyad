@@ -89,14 +89,18 @@ export async function commitAllChanges(
           path: ctx.appPath,
           message: message,
         });
-
-        // Auto-sync to GitHub if enabled
-        await autoSyncToGithubIfEnabled(ctx.appId);
       } catch (error) {
         logger.error(
           `Failed to commit extra files: ${uncommittedFiles.join(", ")}`,
           error,
         );
+      }
+
+      // Auto-sync to GitHub if enabled (outside commit try/catch to avoid masking commit success)
+      if (commitHash) {
+        autoSyncToGithubIfEnabled(ctx.appId).catch((error) => {
+          logger.warn(`[Auto-sync] Failed after commit: ${error?.message}`);
+        });
       }
     }
 

@@ -87,8 +87,8 @@ export function registerVisualEditingHandlers() {
           }
         }
 
-        // Auto-sync to GitHub once after all files are processed
-        await autoSyncToGithubIfEnabled(appId);
+        // Auto-sync to GitHub once after all files are processed (fire-and-forget)
+        autoSyncToGithubIfEnabled(appId);
       } catch (error) {
         throw new Error(`Failed to apply visual editing changes: ${error}`);
       }

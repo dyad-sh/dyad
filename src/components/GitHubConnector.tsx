@@ -428,6 +428,10 @@ function ConnectedGitHubConnector({
           Auto-sync to GitHub after every commit
         </Label>
       </div>
+      <p className="text-xs text-muted-foreground mt-1">
+        Automatically pushes to GitHub after every commit. Sync failures are
+        logged but won't block your work.
+      </p>
       <div className="mt-2 flex gap-2">
         <Button
           onClick={() => handleSyncToGithub()}

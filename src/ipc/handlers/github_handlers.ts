@@ -1432,6 +1432,10 @@ export async function updateAppGithubRepo({
     .where(eq(schema.apps.id, appId));
 }
 
+function sanitizeGitErrorMessage(message: string): string {
+  return message.replace(/https:\/\/[^@]+@/g, "https://***@");
+}
+
 /**
  * Auto-push to GitHub if the app has autoSyncToGithub enabled.
  * This should be called after any commit operation.
@@ -1506,8 +1510,7 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
           (pullError?.code === "NotFoundError" &&
             (errorMessage.includes("remote ref") ||
               errorMessage.includes("remote branch"))) ||
-          errorMessage.includes("couldn't find remote ref") ||
-          errorMessage.includes("Cannot read properties of null");
+          errorMessage.includes("couldn't find remote ref");
 
         if (!isMissingRemoteBranch) {
           // If there's a conflict, abort the merge to leave repo in a clean state
@@ -1519,10 +1522,7 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
             }
           }
           // Sanitize error message to avoid leaking tokens
-          const sanitizedMessage = errorMessage.replace(
-            /https:\/\/[^@]+@/g,
-            "https://***@",
-          );
+          const sanitizedMessage = sanitizeGitErrorMessage(errorMessage);
           logger.warn(
             `[Auto-sync] Pull failed, skipping auto-push: ${sanitizedMessage}`,
           );
@@ -1547,10 +1547,7 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
   } catch (error: any) {
     // Log but don't throw - auto-sync should not break the main operation
     // Sanitize error message to avoid leaking tokens
-    const sanitizedMessage = (error.message || "").replace(
-      /https:\/\/[^@]+@/g,
-      "https://***@",
-    );
+    const sanitizedMessage = sanitizeGitErrorMessage(error.message || "");
     logger.warn(
       `[Auto-sync] Failed to auto-sync to GitHub: ${sanitizedMessage}`,
     );

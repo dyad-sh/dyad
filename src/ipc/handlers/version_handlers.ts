@@ -191,8 +191,8 @@ export function registerVersionHandlers() {
           message: `Reverted all changes back to version ${previousVersionId}`,
         });
 
-        // Auto-sync to GitHub if enabled
-        await autoSyncToGithubIfEnabled(appId);
+        // Auto-sync to GitHub if enabled (fire-and-forget to avoid blocking the caller)
+        autoSyncToGithubIfEnabled(appId);
       }
 
       // Delete messages based on currentChatMessageId if provided, otherwise use commit hash lookup

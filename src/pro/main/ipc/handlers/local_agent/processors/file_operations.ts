@@ -90,8 +90,8 @@ export async function commitAllChanges(
           message: message,
         });
 
-        // Auto-sync to GitHub if enabled
-        await autoSyncToGithubIfEnabled(ctx.appId);
+        // Auto-sync to GitHub if enabled (fire-and-forget to avoid blocking the caller)
+        autoSyncToGithubIfEnabled(ctx.appId);
       } catch (error) {
         logger.error(
           `Failed to commit extra files: ${uncommittedFiles.join(", ")}`,

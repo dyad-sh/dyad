@@ -1237,8 +1237,8 @@ export function registerAppHandlers() {
           message: `Updated ${filePath}`,
         });
 
-        // Auto-sync to GitHub if enabled
-        await autoSyncToGithubIfEnabled(appId);
+        // Auto-sync to GitHub if enabled (fire-and-forget to avoid blocking the caller)
+        autoSyncToGithubIfEnabled(appId);
       }
     } catch (error: any) {
       logger.error(`Error writing file ${filePath} for app ${appId}:`, error);

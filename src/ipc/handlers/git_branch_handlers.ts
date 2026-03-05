@@ -350,8 +350,8 @@ async function handleCommitChanges(
     return await gitCommit({ path: appPath, message });
   });
 
-  // Auto-sync to GitHub if enabled (outside lock to avoid blocking other git operations)
-  await autoSyncToGithubIfEnabled(appId);
+  // Auto-sync to GitHub if enabled (fire-and-forget to avoid blocking the caller)
+  autoSyncToGithubIfEnabled(appId);
 
   return commitHash;
 }

@@ -21,6 +21,7 @@ import {
   Wand2,
   Package,
   Search,
+  Brain,
 } from "lucide-react";
 
 const TAB_ICONS: Record<string, React.ReactNode> = {
@@ -29,6 +30,7 @@ const TAB_ICONS: Record<string, React.ReactNode> = {
   "Web Scraper": <Search className="w-4 h-4" />,
   Transform: <Wand2 className="w-4 h-4" />,
   "Package & Publish": <Package className="w-4 h-4" />,
+  "Memory & Learning": <Brain className="w-4 h-4" />,
 };
 
 /**

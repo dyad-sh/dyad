@@ -1801,3 +1801,9 @@ export const creatorFeedback = sqliteTable("creator_feedback", {
 
 // ── Local Vault (Sovereign Data Vault) ────────────────────────
 export * from "./vault_schema";
+
+// ── Multi-Armed Bandit Learning (Continuous Improvement Memory) ────
+export * from "./mab_schema";
+
+// ── Agent Memory (Long-Term + Short-Term) ────────────────────
+export * from "./agent_memory_schema";

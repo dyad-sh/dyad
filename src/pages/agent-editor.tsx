@@ -22,6 +22,7 @@ import {
   Code,
   FileText,
   ChevronRight,
+  Brain,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -64,6 +65,7 @@ import {
 
 import { agentBuilderClient } from "@/ipc/agent_builder_client";
 import { showError, showSuccess } from "@/lib/toast";
+import AgentMemoryTab from "@/components/agent/AgentMemoryTab";
 
 import type {
   Agent,
@@ -287,6 +289,7 @@ export default function AgentEditorPage() {
               { id: "tools", label: "Tools", icon: Wrench },
               { id: "workflows", label: "Workflows", icon: Workflow },
               { id: "knowledge", label: "Knowledge Base", icon: Database },
+              { id: "memory", label: "Memory", icon: Brain },
               { id: "ui", label: "UI Components", icon: Layout },
               { id: "deploy", label: "Deployment", icon: Rocket },
             ].map((item) => (
@@ -620,6 +623,11 @@ export default function AgentEditorPage() {
                 </div>
               )}
             </div>
+          )}
+
+          {/* Memory */}
+          {activeTab === "memory" && (
+            <AgentMemoryTab agentId={Number(agentId)} />
           )}
 
           {/* UI Components */}

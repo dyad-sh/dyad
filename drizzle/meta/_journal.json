@@ -204,6 +204,20 @@
       "when": 1771197073652,
       "tag": "0028_sticky_molten_man",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1772588985622,
+      "tag": "0029_wide_loa",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1772679247437,
+      "tag": "0030_kind_dorian_gray",
+      "breakpoints": true
     }
   ]
 }

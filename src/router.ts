@@ -33,6 +33,7 @@ import { webScraperRoute } from "./routes/local-vault-web-scraper";
 import { scrapeWizardRoute } from "./routes/local-vault-scrape-wizard";
 import { knowledgeBaseRoute } from "./routes/knowledge-base";
 import { modelDownloadRoute } from "./routes/model-download";
+import { memoryLearningRoute } from "./routes/local-vault-memory";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -70,6 +71,7 @@ const routeTree = rootRoute.addChildren([
   scrapeWizardRoute,
   knowledgeBaseRoute,
   modelDownloadRoute,
+  memoryLearningRoute,
 ]);
 
 // src/components/NotFoundRedirect.tsx

@@ -105,6 +105,8 @@ import { registerScrapingV2Handlers } from "./handlers/scraping/handler";
 import { registerVectorStoreHandlers } from "./handlers/vector_store_handlers";
 import { registerEmbeddingPipelineHandlers } from "./handlers/embedding_pipeline_handlers";
 import { registerModelDownloadManagerHandlers } from "./handlers/model_download_manager_handlers";
+import { registerMABHandlers } from "./handlers/mab_handlers";
+import { registerAgentMemoryHandlers } from "./handlers/agent_memory_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -294,4 +296,11 @@ export function registerIpcHandlers() {
 
   // Model Download Manager — GPU detection, model catalog, Ollama pull/delete
   registerModelDownloadManagerHandlers();
+
+  // Multi-Armed Bandit Learning — Thompson Sampling for continuous improvement
+  // Select → Use → Reward → Learn → Better Select
+  registerMABHandlers();
+
+  // Agent Memory — Long-Term (cross-conversation) + Short-Term (per-conversation)
+  registerAgentMemoryHandlers();
 }

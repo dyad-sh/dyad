@@ -5,11 +5,17 @@ const testWithRemoteCatalog = testWithConfig({
   preLaunchHook: async ({ fakeLlmPort }) => {
     process.env.DYAD_LANGUAGE_MODEL_CATALOG_URL = `http://localhost:${fakeLlmPort}/api/language-model-catalog`;
   },
+  postLaunchHook: async () => {
+    delete process.env.DYAD_LANGUAGE_MODEL_CATALOG_URL;
+  },
 });
 
 const testWithFallbackCatalog = testWithConfig({
   preLaunchHook: async ({ fakeLlmPort }) => {
     process.env.DYAD_LANGUAGE_MODEL_CATALOG_URL = `http://localhost:${fakeLlmPort}/missing-language-model-catalog`;
+  },
+  postLaunchHook: async () => {
+    delete process.env.DYAD_LANGUAGE_MODEL_CATALOG_URL;
   },
 });
 

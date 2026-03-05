@@ -293,8 +293,9 @@ function convertRemoteCatalog(
     modelsByProvider,
     aliases: mergedAliases,
     themeGenerationOptions:
-      remoteCatalog.curatedSelections?.themeGenerationOptions ??
-      DEFAULT_THEME_GENERATION_OPTIONS,
+      remoteCatalog.curatedSelections?.themeGenerationOptions?.length
+        ? remoteCatalog.curatedSelections.themeGenerationOptions
+        : DEFAULT_THEME_GENERATION_OPTIONS,
     expiresAt:
       Number.isFinite(parsedExpiresAt) && parsedExpiresAt > Date.now()
         ? parsedExpiresAt
@@ -352,21 +353,23 @@ export async function getBuiltinLanguageModelCatalog(): Promise<BuiltinLanguageM
     return builtinCatalogCache;
   }
 
-  if (builtinCatalogFetchPromise) {
-    return builtinCatalogFetchPromise;
+  // On cold start (no cache at all), serve fallback data immediately and
+  // refresh from the remote catalog in the background so callers are never
+  // blocked by the network fetch / 5 s timeout.
+  builtinCatalogCache = buildFallbackCatalog();
+
+  if (!builtinCatalogFetchPromise) {
+    builtinCatalogFetchPromise = (async () => {
+      try {
+        const remoteCatalog = await fetchRemoteCatalog();
+        builtinCatalogCache = remoteCatalog ?? buildFallbackCatalog();
+      } finally {
+        builtinCatalogFetchPromise = null;
+      }
+    })();
   }
 
-  builtinCatalogFetchPromise = (async () => {
-    try {
-      const remoteCatalog = await fetchRemoteCatalog();
-      builtinCatalogCache = remoteCatalog ?? buildFallbackCatalog();
-      return builtinCatalogCache;
-    } finally {
-      builtinCatalogFetchPromise = null;
-    }
-  })();
-
-  return builtinCatalogFetchPromise;
+  return builtinCatalogCache;
 }
 
 export async function getThemeGenerationModelOptions(): Promise<

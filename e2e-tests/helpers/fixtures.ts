@@ -22,6 +22,7 @@ export interface ElectronConfig {
     userDataDir: string;
     fakeLlmPort: number;
   }) => Promise<void>;
+  postLaunchHook?: () => Promise<void>;
   showSetupScreen?: boolean;
 }
 
@@ -145,6 +146,9 @@ export const test = base.extend<{
       });
 
       await use(electronApp);
+      if (electronConfig.postLaunchHook) {
+        await electronConfig.postLaunchHook();
+      }
       // Why are we doing a force kill on Windows?
       //
       // Otherwise, Playwright will just hang on the test cleanup

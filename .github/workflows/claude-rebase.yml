@@ -2,12 +2,16 @@ name: Claude Rebase
 
 on:
   pull_request_target:
-    types: [labeled]
+    types: [labeled, closed]
+
+concurrency:
+  group: claude-rebase-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   rebase:
     environment: ai-bots
-    if: github.event.label.name == 'cc:rebase'
+    if: github.event.action == 'labeled' && github.event.label.name == 'cc:rebase'
     runs-on: ubuntu-latest
     permissions:
       contents: write

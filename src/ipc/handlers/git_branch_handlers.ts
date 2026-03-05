@@ -107,7 +107,7 @@ async function handleCreateBranch(
   });
 }
 
-async function handleDeleteBranch(
+export async function handleDeleteBranch(
   event: IpcMainInvokeEvent,
   { appId, branch }: GitBranchParams,
 ): Promise<void> {
@@ -115,10 +115,50 @@ async function handleDeleteBranch(
   if (!app) throw new Error("App not found");
   const appPath = getDyadAppPath(app.path);
 
-  await gitDeleteBranch({
-    path: appPath,
-    branch,
-  });
+  // Check if branch exists locally
+  const localBranches = await gitListBranches({ path: appPath });
+  const existsLocally = localBranches.includes(branch);
+
+  if (existsLocally) {
+    // Delete local branch
+    await gitDeleteBranch({
+      path: appPath,
+      branch,
+    });
+  } else {
+    // Branch doesn't exist locally - it may only exist on remote
+    // or has already been deleted. Check if it exists remotely.
+    let remoteBranches: string[];
+    try {
+      remoteBranches = await gitListRemoteBranches({ path: appPath });
+    } catch (error) {
+      logger.warn(
+        `Failed to list remote branches while checking for branch '${branch}' to delete.`,
+        error,
+      );
+      throw new Error(
+        `Branch '${branch}' does not exist locally and remote branches could not be checked. Please try again later.`,
+      );
+    }
+
+    if (!remoteBranches.includes(branch)) {
+      // Branch doesn't exist locally or remotely - it's already been deleted
+      logger.info(
+        `Branch '${branch}' not found locally or remotely - may have already been deleted`,
+      );
+      return; // Success - nothing to delete
+    }
+
+    // Branch only exists remotely - inform user they need to delete it on GitHub
+    if (app.githubOrg && app.githubRepo) {
+      throw new Error(
+        `Branch '${branch}' only exists on the remote. To delete it, please delete the branch on GitHub directly. Visit https://github.com/${app.githubOrg}/${app.githubRepo}/branches to manage remote branches.`,
+      );
+    }
+    throw new Error(
+      `Branch '${branch}' only exists on the remote and cannot be deleted locally. Please delete it from your remote Git hosting provider.`,
+    );
+  }
 }
 
 async function handleSwitchBranch(

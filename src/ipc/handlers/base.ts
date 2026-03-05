@@ -1,6 +1,7 @@
 import { ipcMain, IpcMainInvokeEvent } from "electron";
 import { z } from "zod";
 import type { IpcContract } from "../contracts/core";
+import { sendTelemetryException } from "../utils/telemetry";
 
 /**
  * Creates a typed IPC handler from a contract.
@@ -37,7 +38,13 @@ export function createTypedHandler<
         throw new Error(`[${contract.channel}] Invalid input: ${errorMessage}`);
       }
 
-      const result = await handler(event, parsed.data);
+      let result: z.infer<TOutput>;
+      try {
+        result = await handler(event, parsed.data);
+      } catch (err) {
+        sendTelemetryException(err, { ipc_channel: contract.channel });
+        throw err;
+      }
 
       // Validate output in development mode only (catches handler bugs without prod overhead)
       if (process.env.NODE_ENV === "development") {
@@ -118,6 +125,7 @@ export function createLoggedTypedHandler(logger: {
           return result;
         } catch (err) {
           logger.error(`[${contract.channel}] Handler error`, err);
+          sendTelemetryException(err, { ipc_channel: contract.channel });
           throw err;
         }
       },

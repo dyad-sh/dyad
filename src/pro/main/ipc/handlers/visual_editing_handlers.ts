@@ -88,7 +88,10 @@ export function registerVisualEditingHandlers() {
         }
 
         // Auto-sync to GitHub once after all files are processed (fire-and-forget)
-        autoSyncToGithubIfEnabled(appId);
+        // Only sync if a git repo exists (commits were made in the loop above)
+        if (fs.existsSync(path.join(appPath, ".git"))) {
+          autoSyncToGithubIfEnabled(appId);
+        }
       } catch (error) {
         throw new Error(`Failed to apply visual editing changes: ${error}`);
       }

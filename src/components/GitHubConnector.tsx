@@ -96,6 +96,9 @@ function ConnectedGitHubConnector({
   const [rebaseInProgress, setRebaseInProgress] = useState(false);
   const [isCancellingSync, setIsCancellingSync] = useState(false);
   const [isUpdatingAutoSync, setIsUpdatingAutoSync] = useState(false);
+  const [optimisticAutoSync, setOptimisticAutoSync] = useState<
+    boolean | null
+  >(null);
   const lastAutoSyncedAppIdRef = useRef<number | null>(null);
 
   const { resolveWithAI, isResolving } = useResolveMergeConflictsWithAI({
@@ -403,11 +406,12 @@ function ConnectedGitHubConnector({
       <div className="mt-3 flex items-center space-x-2">
         <Switch
           id="auto-sync-github"
-          aria-label="Auto-sync to GitHub"
-          checked={app.autoSyncToGithub ?? false}
+          aria-describedby="auto-sync-github-description"
+          checked={optimisticAutoSync ?? app.autoSyncToGithub ?? false}
           disabled={isUpdatingAutoSync}
           onCheckedChange={async (checked) => {
             setIsUpdatingAutoSync(true);
+            setOptimisticAutoSync(checked);
             try {
               await ipc.app.updateAppAutoSync({
                 appId,
@@ -417,9 +421,11 @@ function ConnectedGitHubConnector({
             } catch (error: any) {
               console.error("Failed to update auto-sync setting:", error);
               showError(error?.message || "Failed to update auto-sync setting");
+              setOptimisticAutoSync(null);
               refreshApp();
             } finally {
               setIsUpdatingAutoSync(false);
+              setOptimisticAutoSync(null);
             }
           }}
           data-testid="auto-sync-github-toggle"
@@ -428,7 +434,10 @@ function ConnectedGitHubConnector({
           Auto-sync to GitHub after every commit
         </Label>
       </div>
-      <p className="text-xs text-muted-foreground mt-1">
+      <p
+        id="auto-sync-github-description"
+        className="text-xs text-muted-foreground mt-1"
+      >
         Automatically pushes to GitHub after every commit. Sync failures are
         logged but won't block your work.
       </p>

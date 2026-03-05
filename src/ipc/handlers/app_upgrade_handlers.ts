@@ -188,15 +188,15 @@ async function applyComponentTagger(appId: number, appPath: string) {
       message: "[dyad] add Dyad component tagger",
     });
     logger.info("Successfully committed changes");
-
-    // Auto-sync to GitHub if enabled (fire-and-forget to avoid blocking the caller)
-    autoSyncToGithubIfEnabled(appId);
   } catch (err) {
     logger.warn(
       `Failed to commit changes. This may happen if the project is not in a git repository, or if there are no changes to commit.`,
       err,
     );
   }
+
+  // Auto-sync to GitHub if enabled (fire-and-forget to avoid blocking the caller)
+  autoSyncToGithubIfEnabled(appId);
 }
 
 async function applyCapacitor({
@@ -242,9 +242,6 @@ async function applyCapacitor({
       message: "[dyad] add Capacitor for mobile app support",
     });
 
-    // Auto-sync to GitHub if enabled (fire-and-forget to avoid blocking the caller)
-    autoSyncToGithubIfEnabled(appId);
-
     logger.info("Successfully committed Capacitor changes");
   } catch (err) {
     logger.warn(
@@ -256,6 +253,9 @@ async function applyCapacitor({
         err,
     );
   }
+
+  // Auto-sync to GitHub if enabled (fire-and-forget to avoid blocking the caller)
+  autoSyncToGithubIfEnabled(appId);
 }
 
 export function registerAppUpgradeHandlers() {

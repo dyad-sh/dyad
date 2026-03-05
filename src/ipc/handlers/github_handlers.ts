@@ -1457,7 +1457,6 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
 
     // Check if auto-sync is enabled for this app
     if (!app.autoSyncToGithub) {
-      logger.debug("[Auto-sync] Auto-sync not enabled for this app");
       return;
     }
 
@@ -1480,14 +1479,30 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
     // Use withLock to serialize git operations and prevent race conditions
     // when multiple commits trigger auto-sync concurrently
     await withLock(appId, async () => {
-      // Read branch inside the lock so it reflects state at push time
+      // Re-read app state inside the lock to pick up any changes (e.g. disconnect)
+      // that occurred while waiting for the lock (TOCTOU prevention)
+      const freshApp = await db.query.apps.findFirst({
+        where: eq(apps.id, appId),
+      });
+      if (
+        !freshApp ||
+        !freshApp.autoSyncToGithub ||
+        !freshApp.githubOrg ||
+        !freshApp.githubRepo
+      ) {
+        logger.debug(
+          "[Auto-sync] App state changed before lock acquired, skipping",
+        );
+        return;
+      }
+
       const currentBranch = await gitCurrentBranch({ path: appPath });
-      const branch = currentBranch || app.githubBranch || "main";
+      const branch = currentBranch || freshApp.githubBranch || "main";
 
       // Set up remote URL with token
       const remoteUrl = IS_TEST_BUILD
-        ? `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`
-        : `https://${accessToken}:x-oauth-basic@github.com/${app.githubOrg}/${app.githubRepo}.git`;
+        ? `${GITHUB_GIT_BASE}/${freshApp.githubOrg}/${freshApp.githubRepo}.git`
+        : `https://${accessToken}:x-oauth-basic@github.com/${freshApp.githubOrg}/${freshApp.githubRepo}.git`;
 
       await gitSetRemoteUrl({
         path: appPath,
@@ -1510,7 +1525,8 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
             (errorMessage.includes("remote ref") ||
               errorMessage.includes("remote branch"))) ||
           errorMessage.includes("couldn't find remote ref") ||
-          errorMessage.includes("Cannot read properties of null");
+          (pullError?.code === "NotFoundError" &&
+            errorMessage.includes("Cannot read properties of null"));
 
         if (!isMissingRemoteBranch) {
           // If there's a conflict, abort the merge to leave repo in a clean state

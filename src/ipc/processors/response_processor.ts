@@ -600,9 +600,10 @@ export async function processFullResponseActions(
         .where(eq(messages.id, messageId));
 
       // Auto-sync to GitHub if enabled (fire-and-forget to avoid blocking approval)
-      // Skip auto-sync when an amend commit was performed, as the remote may
+      // Skip auto-sync only when the amend commit succeeded, as the remote may
       // already have the original commit, causing divergent history with force: false.
-      if (uncommittedFiles.length === 0) {
+      // If the amend failed (extraFilesError), the original commit is intact and safe to push.
+      if (uncommittedFiles.length === 0 || extraFilesError) {
         autoSyncToGithubIfEnabled(chatWithApp.app.id);
       }
     }

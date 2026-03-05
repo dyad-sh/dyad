@@ -131,8 +131,11 @@ async function handleDeleteBranch(
     let remoteBranches: string[] = [];
     try {
       remoteBranches = await gitListRemoteBranches({ path: appPath });
-    } catch {
-      // Ignore errors listing remote branches
+    } catch (error) {
+      logger.warn(
+        `Failed to list remote branches while checking for branch '${branch}' to delete.`,
+        error,
+      );
     }
 
     if (!remoteBranches.includes(branch)) {
@@ -144,8 +147,12 @@ async function handleDeleteBranch(
     }
 
     // Branch only exists remotely - inform user they need to delete it on GitHub
+    const githubUrl =
+      app.githubOrg && app.githubRepo
+        ? ` Visit https://github.com/${app.githubOrg}/${app.githubRepo}/branches to manage remote branches.`
+        : "";
     throw new Error(
-      `Branch '${branch}' only exists on the remote. To delete it, please delete the branch on GitHub directly.`,
+      `Branch '${branch}' only exists on the remote. To delete it, please delete the branch on GitHub directly.${githubUrl}`,
     );
   }
 }

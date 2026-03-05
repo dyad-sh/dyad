@@ -45,10 +45,6 @@ import {
 import { hasDyadProKey, getEffectiveDefaultChatMode } from "@/lib/schemas";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 
-// Track whether we've already checked release notes this session (module-scoped
-// so it persists across component unmount/remount cycles).
-let hasCheckedReleaseNotes = false;
-
 // Adding an export for attachments
 export interface HomeSubmitOptions {
   attachments?: FileAttachment[];
@@ -77,6 +73,7 @@ export default function HomePage() {
   const [releaseUrl, setReleaseUrl] = useState("");
   const { theme } = useTheme();
   const queryClient = useQueryClient();
+  const hasCheckedReleaseNotes = useRef(false);
 
   // Listen for force-close events
   useEffect(() => {
@@ -90,14 +87,14 @@ export default function HomePage() {
   useEffect(() => {
     const updateLastVersionLaunched = async () => {
       if (
-        hasCheckedReleaseNotes ||
+        hasCheckedReleaseNotes.current ||
         !appVersion ||
         !settings ||
         settings.lastShownReleaseNotesVersion === appVersion
       ) {
         return;
       }
-      hasCheckedReleaseNotes = true;
+      hasCheckedReleaseNotes.current = true;
 
       const shouldShowReleaseNotes = !!settings.lastShownReleaseNotesVersion;
       await updateSettings({

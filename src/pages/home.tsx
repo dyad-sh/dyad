@@ -101,12 +101,23 @@ export default function HomePage() {
 
       try {
         const shouldShowReleaseNotes = !!settings.lastShownReleaseNotesVersion;
-        await updateSettings({
-          lastShownReleaseNotesVersion: appVersion,
-        });
+
+        // It feels spammy to show release notes if it's
+        // the users very first time.
+        if (!shouldShowReleaseNotes) {
+          await updateSettings({
+            lastShownReleaseNotesVersion: appVersion,
+          });
+          return;
+        }
 
         const result = await ipc.system.doesReleaseNoteExist({
           version: appVersion,
+        });
+
+        // Only persist after successful check so retries work on transient failures
+        await updateSettings({
+          lastShownReleaseNotesVersion: appVersion,
         });
 
         if (result.exists && result.url) {
@@ -124,6 +135,7 @@ export default function HomePage() {
     updateLastVersionLaunched();
   }, [
     appVersion,
+    !!settings,
     settings?.lastShownReleaseNotesVersion,
     updateSettings,
     theme,

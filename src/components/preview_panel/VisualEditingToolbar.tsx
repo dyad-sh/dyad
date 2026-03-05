@@ -345,9 +345,7 @@ export function VisualEditingToolbar({
             relativePath: selectedComponent.relativePath,
             lineNumber: selectedComponent.lineNumber,
             imageSrc: newSrc,
-            ...(uploadData && {
-              imageUpload: uploadData,
-            }),
+            imageUpload: uploadData,
           }),
         );
         return updated;

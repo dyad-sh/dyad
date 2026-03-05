@@ -434,6 +434,27 @@ export async function gitAdd({ path, filepath }: GitFileParams): Promise<void> {
   }
 }
 
+export async function gitResetFile({
+  path,
+  filepath,
+}: GitFileParams): Promise<void> {
+  const normalizedFilepath = normalizePath(filepath);
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    await execOrThrow(
+      ["reset", "HEAD", "--", normalizedFilepath],
+      path,
+      `Failed to unstage file '${normalizedFilepath}'`,
+    );
+  } else {
+    await git.resetIndex({
+      fs,
+      dir: path,
+      filepath: normalizedFilepath,
+    });
+  }
+}
+
 export async function gitReset({ path }: GitBaseParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {

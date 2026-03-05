@@ -10,7 +10,11 @@ import {
   stylesToTailwind,
   extractClassPrefixes,
 } from "../../../../utils/style-utils";
-import { gitAdd, gitCommit } from "../../../../ipc/utils/git_utils";
+import {
+  gitAdd,
+  gitCommit,
+  gitResetFile,
+} from "../../../../ipc/utils/git_utils";
 import { safeJoin } from "@/ipc/utils/path_utils";
 import {
   AnalyseComponentParams,
@@ -33,8 +37,9 @@ export function registerVisualEditingHandlers() {
     "apply-visual-editing-changes",
     async (_event, params: ApplyVisualEditingChangesParams) => {
       const { appId, changes } = params;
-      // Track written image files for cleanup on failure
+      // Track written image files and staged git paths for cleanup on failure
       const writtenImagePaths: string[] = [];
+      const stagedGitPaths: { appPath: string; filepath: string }[] = [];
       try {
         if (changes.length === 0) return;
 
@@ -113,12 +118,14 @@ export function registerVisualEditingHandlers() {
             change.imageSrc = `/images/${finalFileName}`;
 
             if (fs.existsSync(path.join(appPath, ".git"))) {
+              const imageFilepath = normalizePath(
+                path.join("public", "images", finalFileName),
+              );
               await gitAdd({
                 path: appPath,
-                filepath: normalizePath(
-                  path.join("public", "images", finalFileName),
-                ),
+                filepath: imageFilepath,
               });
+              stagedGitPaths.push({ appPath, filepath: imageFilepath });
             }
           }
         }
@@ -177,6 +184,14 @@ export function registerVisualEditingHandlers() {
           }
         }
       } catch (error) {
+        // Unstage any image files that were git-added before the failure
+        for (const { appPath, filepath } of stagedGitPaths) {
+          try {
+            await gitResetFile({ path: appPath, filepath });
+          } catch {
+            // Ignore cleanup errors
+          }
+        }
         // Clean up any image files written before the failure
         for (const filePath of writtenImagePaths) {
           try {

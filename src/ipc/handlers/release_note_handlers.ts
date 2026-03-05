@@ -36,30 +36,33 @@ async function checkReleaseNoteExists(
   const checkPromise = (async () => {
     logger.debug(`Checking for release note at: ${releaseNoteUrl}`);
 
+    let response;
     try {
-      const response = await fetch(releaseNoteUrl, { method: "HEAD" });
-      if (response.ok) {
-        logger.debug(
-          `Release note found for version ${version} at ${releaseNoteUrl}`,
-        );
-        return { exists: true, url: releaseNoteUrl };
-      } else if (response.status === 404) {
-        logger.debug(
-          `Release note not found for version ${version} at ${releaseNoteUrl}`,
-        );
-        return { exists: false };
-      } else {
-        logger.warn(
-          `Unexpected status code ${response.status} when checking for release note: ${releaseNoteUrl}`,
-        );
-        return { exists: false };
-      }
+      response = await fetch(releaseNoteUrl, { method: "HEAD" });
     } catch (error) {
       logger.error(
         `Error fetching release note for version ${version} at ${releaseNoteUrl}:`,
         error,
       );
+      throw error;
+    }
+    if (response.ok) {
+      logger.debug(
+        `Release note found for version ${version} at ${releaseNoteUrl}`,
+      );
+      return { exists: true, url: releaseNoteUrl };
+    } else if (response.status === 404) {
+      logger.debug(
+        `Release note not found for version ${version} at ${releaseNoteUrl}`,
+      );
       return { exists: false };
+    } else {
+      logger.warn(
+        `Unexpected status code ${response.status} when checking for release note: ${releaseNoteUrl}`,
+      );
+      throw new Error(
+        `Unexpected status ${response.status} for release note: ${releaseNoteUrl}`,
+      );
     }
   })();
 

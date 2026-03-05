@@ -96,11 +96,11 @@ export default function HomePage() {
       }
 
       try {
+        checkedReleaseNotesVersion.current = appVersion;
         const shouldShowReleaseNotes = !!settings.lastShownReleaseNotesVersion;
         await updateSettings({
           lastShownReleaseNotesVersion: appVersion,
         });
-        checkedReleaseNotesVersion.current = appVersion;
         // It feels spammy to show release notes if it's
         // the users very first time.
         if (!shouldShowReleaseNotes) {
@@ -120,6 +120,8 @@ export default function HomePage() {
           "Unable to check for release notes for version: " + appVersion,
           err,
         );
+        // Allow retrying if the effect runs again
+        checkedReleaseNotesVersion.current = null;
       }
     };
     updateLastVersionLaunched();

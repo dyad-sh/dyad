@@ -96,9 +96,9 @@ function ConnectedGitHubConnector({
   const [rebaseInProgress, setRebaseInProgress] = useState(false);
   const [isCancellingSync, setIsCancellingSync] = useState(false);
   const [isUpdatingAutoSync, setIsUpdatingAutoSync] = useState(false);
-  const [optimisticAutoSync, setOptimisticAutoSync] = useState<
-    boolean | null
-  >(null);
+  const [optimisticAutoSync, setOptimisticAutoSync] = useState<boolean | null>(
+    null,
+  );
   const lastAutoSyncedAppIdRef = useRef<number | null>(null);
 
   const { resolveWithAI, isResolving } = useResolveMergeConflictsWithAI({
@@ -420,9 +420,7 @@ function ConnectedGitHubConnector({
               refreshApp();
             } catch (error: any) {
               console.error("Failed to update auto-sync setting:", error);
-              showError(
-                error?.message || "Failed to update auto-sync setting",
-              );
+              showError(error?.message || "Failed to update auto-sync setting");
               setOptimisticAutoSync(null);
               refreshApp();
             } finally {

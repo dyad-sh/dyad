@@ -117,10 +117,9 @@ async function handleDeleteBranch(
 
   const localBranches = await gitListBranches({ path: appPath });
   if (!localBranches.includes(branch)) {
-    logger.info(
-      `[GitHub Branch Handler] Branch '${branch}' not found locally for app ${appId}; nothing to delete`,
+    throw new Error(
+      `Branch '${branch}' not found locally. Only local branches can be deleted.`,
     );
-    return;
   }
 
   await gitDeleteBranch({

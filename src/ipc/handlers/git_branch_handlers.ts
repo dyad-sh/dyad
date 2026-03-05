@@ -107,7 +107,7 @@ async function handleCreateBranch(
   });
 }
 
-async function handleDeleteBranch(
+export async function handleDeleteBranch(
   event: IpcMainInvokeEvent,
   { appId, branch }: GitBranchParams,
 ): Promise<void> {
@@ -129,12 +129,20 @@ async function handleDeleteBranch(
     // Branch doesn't exist locally - it may only exist on remote
     // or has already been deleted. Check if it exists remotely.
     let remoteBranches: string[] = [];
+    let remoteListFailed = false;
     try {
       remoteBranches = await gitListRemoteBranches({ path: appPath });
     } catch (error) {
+      remoteListFailed = true;
       logger.warn(
         `Failed to list remote branches while checking for branch '${branch}' to delete.`,
         error,
+      );
+    }
+
+    if (remoteListFailed) {
+      throw new Error(
+        `Branch '${branch}' does not exist locally and remote branches could not be checked. Please try again later.`,
       );
     }
 

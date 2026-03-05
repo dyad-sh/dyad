@@ -21,6 +21,7 @@ const logger = log.scope("remote_language_model_catalog");
 
 const REMOTE_LANGUAGE_MODEL_CATALOG_TIMEOUT_MS = 5_000;
 const DEFAULT_CACHE_TTL_MS = 60 * 60 * 1000;
+const FALLBACK_CACHE_TTL_MS = 30 * 1000;
 
 function getRemoteLanguageModelCatalogUrl() {
   if (process.env.DYAD_LANGUAGE_MODEL_CATALOG_URL) {
@@ -64,7 +65,7 @@ const CatalogModelSchema = z.object({
     .optional(),
 });
 
-const BuiltinModelAliasSchema = z.enum([
+const KNOWN_BUILTIN_MODEL_ALIASES = [
   "dyad/theme-generator/google",
   "dyad/theme-generator/anthropic",
   "dyad/theme-generator/openai",
@@ -72,9 +73,9 @@ const BuiltinModelAliasSchema = z.enum([
   "dyad/auto/anthropic",
   "dyad/auto/google",
   "dyad/help-bot/default",
-]);
+] as const;
 
-export type BuiltinModelAlias = z.infer<typeof BuiltinModelAliasSchema>;
+export type BuiltinModelAlias = (typeof KNOWN_BUILTIN_MODEL_ALIASES)[number];
 
 const LanguageModelCatalogResponseSchema = z.object({
   version: z.string(),
@@ -83,7 +84,7 @@ const LanguageModelCatalogResponseSchema = z.object({
   modelsByProvider: z.record(z.string(), z.array(CatalogModelSchema)),
   aliases: z.array(
     z.object({
-      id: BuiltinModelAliasSchema,
+      id: z.string(),
       resolvedModel: z.object({
         providerId: z.string(),
         apiName: z.string(),
@@ -227,7 +228,7 @@ function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
       },
     ],
     themeGenerationOptions: DEFAULT_THEME_GENERATION_OPTIONS,
-    expiresAt: Date.now() + DEFAULT_CACHE_TTL_MS,
+    expiresAt: Date.now() + FALLBACK_CACHE_TTL_MS,
   };
 }
 

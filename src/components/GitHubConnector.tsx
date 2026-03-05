@@ -420,7 +420,9 @@ function ConnectedGitHubConnector({
               refreshApp();
             } catch (error: any) {
               console.error("Failed to update auto-sync setting:", error);
-              showError(error?.message || "Failed to update auto-sync setting");
+              showError(
+                error?.message || "Failed to update auto-sync setting",
+              );
               setOptimisticAutoSync(null);
               refreshApp();
             } finally {

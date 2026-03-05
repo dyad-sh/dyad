@@ -97,6 +97,7 @@ import { useRouter } from "@tanstack/react-router";
 import { showError as showErrorToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { useVoiceToText } from "@/hooks/useVoiceToText";
+import { isDyadProEnabled } from "@/lib/schemas";
 
 const showTokenBarAtom = atom(false);
 
@@ -209,7 +210,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   }, [chatId, messagesById]);
 
   const { userBudget } = useUserBudgetInfo();
-  const isProEnabled = !!userBudget && !!settings?.enableDyadPro;
+  const isProEnabled = settings ? isDyadProEnabled(settings) : false;
 
   const handleTranscription = useCallback(
     (text: string) => {

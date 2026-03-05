@@ -81,6 +81,8 @@ import { prompts as promptsTable } from "../../db/schema";
 import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
 import { mcpManager } from "../utils/mcp_manager";
+import { buildMemoryContext, autoExtractMemories } from "../../lib/agent_memory_engine";
+import { agents as agentsTable } from "../../db/schema";
 import z from "zod";
 import { isSupabaseConnected, isTurboEditsV2Enabled } from "@/lib/schemas";
 import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
@@ -777,6 +779,37 @@ This conversation includes one or more image attachments. When the user uploads 
           logger.warn("RAG context injection failed (non-fatal)", { error: ragError });
         }
 
+        // --- Agent Memory Context Injection ---
+        // If the chat belongs to an app that has an agent, inject long-term and
+        // short-term memory into the system prompt.
+        let chatAgentId: number | null = null;
+        try {
+          if (updatedChat.app?.id) {
+            const [agentRow] = await db
+              .select({ id: agentsTable.id })
+              .from(agentsTable)
+              .where(eq(agentsTable.appId, updatedChat.app.id))
+              .limit(1);
+            if (agentRow) {
+              chatAgentId = agentRow.id;
+              const memoryBlock = await buildMemoryContext(
+                agentRow.id,
+                String(req.chatId),
+              );
+              if (memoryBlock) {
+                systemPrompt += memoryBlock;
+                logger.log(
+                  `Injected agent memory context for agent ${agentRow.id} (${memoryBlock.length} chars)`,
+                );
+              }
+            }
+          }
+        } catch (memError) {
+          logger.warn("Agent memory context injection failed (non-fatal)", {
+            error: memError,
+          });
+        }
+
         const codebasePrefix = isEngineEnabled
           ? // No codebase prefix if engine is set, we will take of it there.
             []
@@ -1452,6 +1485,17 @@ ${problemReport.problems
           .update(messages)
           .set({ content: fullResponse })
           .where(eq(messages.id, placeholderAssistantMessage.id));
+
+        // --- Auto-extract agent memories from conversation ---
+        if (chatAgentId) {
+          autoExtractMemories(chatAgentId, req.prompt, fullResponse).catch(
+            (err) =>
+              logger.warn("Agent memory auto-extraction failed (non-fatal)", {
+                error: err,
+              }),
+          );
+        }
+
         const settings = readSettings();
         if (
           settings.autoApproveChanges &&

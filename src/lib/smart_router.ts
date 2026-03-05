@@ -22,6 +22,7 @@ import { existsSync } from "fs";
 import { app } from "electron";
 import log from "electron-log";
 import { EventEmitter } from "events";
+import { MABEngine } from "./mab_engine";
 
 const logger = log.scope("smart_router");
 
@@ -1038,6 +1039,41 @@ export class SmartRouter extends EventEmitter {
     this.stats.costSavings += Math.max(0, hypotheticalCloudCost - result.costCents);
 
     this.emit("result:recorded", result);
+
+    // Bridge to MAB learning — feed routing outcomes as rewards
+    try {
+      const mab = MABEngine.getInstance();
+      const taskType = result.decision.reason.includes("Vision")
+        ? "vision"
+        : result.decision.reason.includes("Tool")
+          ? "tools"
+          : "general";
+      const contextKey = `smart-router:${taskType}`;
+      const armName = `${result.actualProvider}/${result.actualModel}`;
+
+      // Compute a 0-1 reward signal from the routing result
+      let reward = result.success ? 0.6 : 0.0;
+      // Latency bonus: <2s = full bonus, >10s = no bonus
+      reward += Math.max(0, Math.min(0.2, 0.2 * (1 - result.latencyMs / 10000)));
+      // Cost efficiency bonus: <1c = full bonus
+      reward += Math.max(0, Math.min(0.2, 0.2 * (1 - result.costCents / 1)));
+      reward = Math.max(0, Math.min(1, reward));
+
+      // Fire-and-forget — routing should never block on MAB
+      mab.recordRewardByName("model_selection", contextKey, armName, reward, {
+        context: {
+          taskType,
+          latencyMs: result.latencyMs,
+          costCents: result.costCents,
+          inputTokens: result.inputTokens,
+          outputTokens: result.outputTokens,
+          usedFallback: result.usedFallback,
+        },
+        source: "system",
+      }).catch((err) => logger.warn("MAB reward bridge failed", err));
+    } catch (err) {
+      logger.warn("MAB reward bridge error", err);
+    }
 
     // Periodically save stats
     if (this.stats.totalRequests % 10 === 0) {

@@ -20,4 +20,5 @@ export const VAULT_TABS = [
   { label: "Web Scraper", path: "/local-vault/web-scraper" },
   { label: "Transform", path: "/local-vault/data-studio" },
   { label: "Package & Publish", path: "/local-vault/packaging" },
+  { label: "Memory & Learning", path: "/local-vault/memory" },
 ] as const;

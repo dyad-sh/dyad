@@ -8,13 +8,10 @@ export function NotificationBanner() {
   const { settings, updateSettings } = useSettings();
   const { enable, showMacGuide, setShowMacGuide } = useEnableNotifications();
 
-  if (
-    !settings ||
-    settings.enableChatCompletionNotifications === true ||
-    settings.skipNotificationBanner === true
-  ) {
-    return null;
-  }
+  const showBanner =
+    settings &&
+    settings.enableChatCompletionNotifications !== true &&
+    settings.skipNotificationBanner !== true;
 
   const handleSkip = () => {
     updateSettings({ skipNotificationBanner: true });
@@ -22,14 +19,16 @@ export function NotificationBanner() {
 
   return (
     <>
-      <SkippableBanner
-        icon={Bell}
-        message="Get notified when chat responses finish."
-        enableLabel="Enable"
-        onEnable={enable}
-        onSkip={handleSkip}
-        data-testid="notification-tip-banner"
-      />
+      {showBanner && (
+        <SkippableBanner
+          icon={Bell}
+          message="Get notified when chat responses finish."
+          enableLabel="Enable"
+          onEnable={enable}
+          onSkip={handleSkip}
+          data-testid="notification-tip-banner"
+        />
+      )}
       <MacNotificationGuideDialog
         open={showMacGuide}
         onClose={() => setShowMacGuide(false)}

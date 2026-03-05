@@ -23,8 +23,8 @@ export function MacNotificationGuideDialog({
         <DialogHeader>
           <DialogTitle>Allow Notifications on macOS</DialogTitle>
           <DialogDescription>
-            To receive notifications when chat responses complete, you need to
-            allow notifications for Dyad in macOS. Here are two ways to do it:
+            If you didn't receive a test notification, you may need to allow
+            notifications for Dyad in macOS. Here are two ways to do it:
           </DialogDescription>
         </DialogHeader>
 

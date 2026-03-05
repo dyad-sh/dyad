@@ -14,29 +14,29 @@ export function useEnableNotifications() {
   const { settings, updateSettings } = useSettings();
   const [showMacGuide, setShowMacGuide] = useState(false);
   const isEnabled = settings?.enableChatCompletionNotifications === true;
+  const isMac = detectIsMac();
+  const openMacGuide = useCallback(() => {
+    if (isMac) {
+      setShowMacGuide(true);
+    }
+  }, [isMac]);
 
   const enable = useCallback(async () => {
     if (Notification.permission === "denied") {
-      if (detectIsMac()) {
-        setShowMacGuide(true);
-      }
+      openMacGuide();
       return;
     }
     if (Notification.permission === "default") {
       const permission = await Notification.requestPermission();
       if (permission !== "granted") {
-        if (detectIsMac()) {
-          setShowMacGuide(true);
-        }
+        openMacGuide();
         return;
       }
     }
-    updateSettings({ enableChatCompletionNotifications: true });
+    await updateSettings({ enableChatCompletionNotifications: true });
     sendTestNotification();
-    if (detectIsMac()) {
-      setShowMacGuide(true);
-    }
-  }, [updateSettings]);
+    openMacGuide();
+  }, [updateSettings, openMacGuide]);
 
   const disable = useCallback(() => {
     updateSettings({ enableChatCompletionNotifications: false });

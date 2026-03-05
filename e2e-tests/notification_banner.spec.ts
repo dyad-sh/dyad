@@ -1,5 +1,6 @@
 import * as path from "path";
 import * as fs from "fs";
+import * as os from "os";
 import { expect } from "@playwright/test";
 import { test, testWithConfig } from "./helpers/test_helper";
 
@@ -13,9 +14,7 @@ const testWithNotificationsEnabled = testWithConfig({
   },
 });
 
-test("notification banner - visible, Enable enables notifications, skip hides permanently", async ({
-  po,
-}) => {
+test("notification banner - skip hides permanently", async ({ po }) => {
   await po.setUp({ autoApprove: true });
   await po.importApp("minimal");
 
@@ -26,7 +25,6 @@ test("notification banner - visible, Enable enables notifications, skip hides pe
     "Get notified when chat responses finish.",
   );
 
-  // Test skip/dismiss first
   // Record settings before skipping
   const beforeSettings = po.settings.recordSettings();
 
@@ -37,6 +35,41 @@ test("notification banner - visible, Enable enables notifications, skip hides pe
   await expect(banner).not.toBeVisible();
 
   // Verify settings were updated with skipNotificationBanner: true
+  po.settings.snapshotSettingsDelta(beforeSettings);
+
+  // Navigate away and back to verify banner stays hidden
+  await po.navigation.goToSettingsTab();
+  await po.navigation.goToChatTab();
+  await expect(banner).not.toBeVisible();
+});
+
+test("notification banner - Enable enables notifications and hides banner", async ({
+  po,
+}) => {
+  await po.setUp({ autoApprove: true });
+  await po.importApp("minimal");
+
+  const banner = po.page.getByTestId("notification-tip-banner");
+  await expect(banner).toBeVisible();
+
+  // Record settings before enabling
+  const beforeSettings = po.settings.recordSettings();
+
+  // Click the Enable button
+  await banner.getByRole("button", { name: "Enable" }).click();
+
+  // On macOS, a notification guide dialog appears — dismiss it
+  if (os.platform() === "darwin") {
+    const guideDialog = po.page.getByRole("dialog");
+    await expect(guideDialog).toBeVisible();
+    await guideDialog.getByRole("button", { name: "Got it" }).click();
+    await expect(guideDialog).not.toBeVisible();
+  }
+
+  // Banner should be hidden after enabling
+  await expect(banner).not.toBeVisible();
+
+  // Verify settings were updated with enableChatCompletionNotifications: true
   po.settings.snapshotSettingsDelta(beforeSettings);
 
   // Navigate away and back to verify banner stays hidden

@@ -115,6 +115,14 @@ async function handleDeleteBranch(
   if (!app) throw new Error("App not found");
   const appPath = getDyadAppPath(app.path);
 
+  const localBranches = await gitListBranches({ path: appPath });
+  if (!localBranches.includes(branch)) {
+    logger.info(
+      `[GitHub Branch Handler] Branch '${branch}' not found locally for app ${appId}; nothing to delete`,
+    );
+    return;
+  }
+
   await gitDeleteBranch({
     path: appPath,
     branch,

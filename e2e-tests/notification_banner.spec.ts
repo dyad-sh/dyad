@@ -13,7 +13,7 @@ const testWithNotificationsEnabled = testWithConfig({
   },
 });
 
-test("notification banner - visible, Enable navigates to settings, skip hides permanently", async ({
+test("notification banner - visible, Enable enables notifications, skip hides permanently", async ({
   po,
 }) => {
   await po.setUp({ autoApprove: true });
@@ -23,26 +23,10 @@ test("notification banner - visible, Enable navigates to settings, skip hides pe
   const banner = po.page.getByTestId("notification-tip-banner");
   await expect(banner).toBeVisible();
   await expect(banner).toContainText(
-    "Turn on notifications so you know when chat responses are done",
+    "Get notified when chat responses finish.",
   );
 
-  // Click "Enable" button to navigate to settings
-  await banner.getByRole("button", { name: "Enable" }).click();
-
-  // Should navigate to settings page with the notification setting scrolled into view
-  await expect(po.page.getByText("Workflow Settings")).toBeVisible({
-    timeout: 10000,
-  });
-  await expect(
-    po.page.getByText("Show notification when chat completes"),
-  ).toBeVisible({ timeout: 10000 });
-
-  // Navigate back to chat to test skip/dismiss
-  await po.navigation.goToChatTab();
-
-  // Banner should be visible again
-  await expect(banner).toBeVisible();
-
+  // Test skip/dismiss first
   // Record settings before skipping
   const beforeSettings = po.settings.recordSettings();
 

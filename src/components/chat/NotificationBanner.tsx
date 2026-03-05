@@ -1,5 +1,4 @@
 import { Bell } from "lucide-react";
-import { toast } from "sonner";
 import { SkippableBanner } from "./SkippableBanner";
 import { MacNotificationGuideDialog } from "../MacNotificationGuideDialog";
 import { useEnableNotifications } from "@/hooks/useEnableNotifications";
@@ -17,15 +16,6 @@ export function NotificationBanner() {
     return null;
   }
 
-  const handleEnable = async () => {
-    const success = await enable();
-    if (success) {
-      toast("Notifications enabled", {
-        description: "You can disable notifications anytime in Settings",
-      });
-    }
-  };
-
   const handleSkip = () => {
     updateSettings({ skipNotificationBanner: true });
   };
@@ -36,7 +26,7 @@ export function NotificationBanner() {
         icon={Bell}
         message="Get notified when chat responses finish."
         enableLabel="Enable"
-        onEnable={handleEnable}
+        onEnable={enable}
         onSkip={handleSkip}
         data-testid="notification-tip-banner"
       />

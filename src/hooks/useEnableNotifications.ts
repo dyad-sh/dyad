@@ -20,7 +20,7 @@ export function useEnableNotifications() {
       if (detectIsMac()) {
         setShowMacGuide(true);
       }
-      return false;
+      return;
     }
     if (Notification.permission === "default") {
       const permission = await Notification.requestPermission();
@@ -28,7 +28,7 @@ export function useEnableNotifications() {
         if (detectIsMac()) {
           setShowMacGuide(true);
         }
-        return false;
+        return;
       }
     }
     updateSettings({ enableChatCompletionNotifications: true });
@@ -36,7 +36,6 @@ export function useEnableNotifications() {
     if (detectIsMac()) {
       setShowMacGuide(true);
     }
-    return true;
   }, [updateSettings]);
 
   const disable = useCallback(() => {

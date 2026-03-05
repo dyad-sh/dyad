@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { ipc } from "@/ipc/types";
 import { v4 as uuidv4 } from "uuid";
 
@@ -18,6 +18,7 @@ export function useVoiceToText({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  const skipOnStopProcessingRef = useRef(false);
 
   const stopMediaStream = useCallback(() => {
     if (streamRef.current) {
@@ -25,6 +26,19 @@ export function useVoiceToText({
       streamRef.current = null;
     }
   }, []);
+
+  useEffect(() => {
+    return () => {
+      skipOnStopProcessingRef.current = true;
+      const mediaRecorder = mediaRecorderRef.current;
+      if (mediaRecorder && mediaRecorder.state !== "inactive") {
+        mediaRecorder.stop();
+      }
+      mediaRecorderRef.current = null;
+      stopMediaStream();
+      chunksRef.current = [];
+    };
+  }, [stopMediaStream]);
 
   const toggleRecording = useCallback(async () => {
     if (isTranscribing) return;
@@ -57,8 +71,14 @@ export function useVoiceToText({
       };
 
       mediaRecorder.onstop = async () => {
-        setIsRecording(false);
+        mediaRecorderRef.current = null;
         stopMediaStream();
+        if (skipOnStopProcessingRef.current) {
+          chunksRef.current = [];
+          return;
+        }
+
+        setIsRecording(false);
 
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         chunksRef.current = [];

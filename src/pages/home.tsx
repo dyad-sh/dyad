@@ -73,7 +73,7 @@ export default function HomePage() {
   const [releaseUrl, setReleaseUrl] = useState("");
   const { theme } = useTheme();
   const queryClient = useQueryClient();
-  const hasCheckedReleaseNotes = useRef(false);
+  const checkedReleaseNotesVersion = useRef<string | null>(null);
 
   // Listen for force-close events
   useEffect(() => {
@@ -87,26 +87,26 @@ export default function HomePage() {
   useEffect(() => {
     const updateLastVersionLaunched = async () => {
       if (
-        hasCheckedReleaseNotes.current ||
+        checkedReleaseNotesVersion.current === appVersion ||
         !appVersion ||
         !settings ||
         settings.lastShownReleaseNotesVersion === appVersion
       ) {
         return;
       }
-      hasCheckedReleaseNotes.current = true;
-
-      const shouldShowReleaseNotes = !!settings.lastShownReleaseNotesVersion;
-      await updateSettings({
-        lastShownReleaseNotesVersion: appVersion,
-      });
-      // It feels spammy to show release notes if it's
-      // the users very first time.
-      if (!shouldShowReleaseNotes) {
-        return;
-      }
 
       try {
+        const shouldShowReleaseNotes = !!settings.lastShownReleaseNotesVersion;
+        await updateSettings({
+          lastShownReleaseNotesVersion: appVersion,
+        });
+        checkedReleaseNotesVersion.current = appVersion;
+        // It feels spammy to show release notes if it's
+        // the users very first time.
+        if (!shouldShowReleaseNotes) {
+          return;
+        }
+
         const result = await ipc.system.doesReleaseNoteExist({
           version: appVersion,
         });
@@ -117,7 +117,7 @@ export default function HomePage() {
         }
       } catch (err) {
         console.warn(
-          "Unable to check if release note exists for: " + appVersion,
+          "Unable to check for release notes for version: " + appVersion,
           err,
         );
       }

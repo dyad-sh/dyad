@@ -1477,14 +1477,13 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
 
     const appPath = getDyadAppPath(app.path);
 
-    // Use the actual checked-out branch rather than the DB value,
-    // in case the user has switched branches locally
-    const currentBranch = await gitCurrentBranch({ path: appPath });
-    const branch = currentBranch || app.githubBranch || "main";
-
     // Use withLock to serialize git operations and prevent race conditions
     // when multiple commits trigger auto-sync concurrently
     await withLock(appId, async () => {
+      // Read branch inside the lock so it reflects state at push time
+      const currentBranch = await gitCurrentBranch({ path: appPath });
+      const branch = currentBranch || app.githubBranch || "main";
+
       // Set up remote URL with token
       const remoteUrl = IS_TEST_BUILD
         ? `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`

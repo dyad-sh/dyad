@@ -115,10 +115,39 @@ async function handleDeleteBranch(
   if (!app) throw new Error("App not found");
   const appPath = getDyadAppPath(app.path);
 
-  await gitDeleteBranch({
-    path: appPath,
-    branch,
-  });
+  // Check if branch exists locally
+  const localBranches = await gitListBranches({ path: appPath });
+  const existsLocally = localBranches.includes(branch);
+
+  if (existsLocally) {
+    // Delete local branch
+    await gitDeleteBranch({
+      path: appPath,
+      branch,
+    });
+  } else {
+    // Branch doesn't exist locally - it may only exist on remote
+    // or has already been deleted. Check if it exists remotely.
+    let remoteBranches: string[] = [];
+    try {
+      remoteBranches = await gitListRemoteBranches({ path: appPath });
+    } catch {
+      // Ignore errors listing remote branches
+    }
+
+    if (!remoteBranches.includes(branch)) {
+      // Branch doesn't exist locally or remotely - it's already been deleted
+      logger.info(
+        `Branch '${branch}' not found locally or remotely - may have already been deleted`,
+      );
+      return; // Success - nothing to delete
+    }
+
+    // Branch only exists remotely - inform user they need to delete it on GitHub
+    throw new Error(
+      `Branch '${branch}' only exists on the remote. To delete it, please delete the branch on GitHub directly.`,
+    );
+  }
 }
 
 async function handleSwitchBranch(

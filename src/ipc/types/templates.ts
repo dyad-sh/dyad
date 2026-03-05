@@ -93,12 +93,16 @@ export type DeleteCustomThemeParams = z.infer<
 export const ThemeGenerationModeSchema = z.enum(["inspired", "high-fidelity"]);
 export type ThemeGenerationMode = z.infer<typeof ThemeGenerationModeSchema>;
 
-export const ThemeGenerationModelSchema = z.enum([
-  "gemini-3-pro",
-  "claude-opus-4.5",
-  "gpt-5.2",
-]);
+export const ThemeGenerationModelSchema = z.string();
 export type ThemeGenerationModel = z.infer<typeof ThemeGenerationModelSchema>;
+
+export const ThemeGenerationModelOptionSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+});
+export type ThemeGenerationModelOption = z.infer<
+  typeof ThemeGenerationModelOptionSchema
+>;
 
 // Theme input source (images or URL)
 export const ThemeInputSourceSchema = z.enum(["images", "url"]);
@@ -207,6 +211,12 @@ export const templateContracts = {
     channel: "get-custom-themes",
     input: z.void(),
     output: z.array(CustomThemeSchema),
+  }),
+
+  getThemeGenerationModelOptions: defineContract({
+    channel: "get-theme-generation-model-options",
+    input: z.void(),
+    output: z.array(ThemeGenerationModelOptionSchema),
   }),
 
   createCustomTheme: defineContract({

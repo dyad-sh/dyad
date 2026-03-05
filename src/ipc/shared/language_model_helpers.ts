@@ -5,12 +5,8 @@ import {
 } from "@/db/schema";
 import type { LanguageModelProvider, LanguageModel } from "@/ipc/types";
 import { eq } from "drizzle-orm";
-import {
-  LOCAL_PROVIDERS,
-  CLOUD_PROVIDERS,
-  MODEL_OPTIONS,
-  PROVIDER_TO_ENV_VAR,
-} from "./language_model_constants";
+import { LOCAL_PROVIDERS } from "./language_model_constants";
+import { getBuiltinLanguageModelCatalog } from "./remote_language_model_catalog";
 /**
  * Fetches language model providers from both the database (custom) and hardcoded constants (cloud),
  * merging them with custom providers taking precedence.
@@ -37,29 +33,11 @@ export async function getLanguageModelProviders(): Promise<
     });
   }
 
-  // Get hardcoded cloud providers
-  const hardcodedProviders: LanguageModelProvider[] = [];
-  for (const providerKey in CLOUD_PROVIDERS) {
-    if (Object.prototype.hasOwnProperty.call(CLOUD_PROVIDERS, providerKey)) {
-      // Ensure providerKey is a key of PROVIDERS
-      const key = providerKey as keyof typeof CLOUD_PROVIDERS;
-      const providerDetails = CLOUD_PROVIDERS[key];
-      if (providerDetails) {
-        // Ensure providerDetails is not undefined
-        hardcodedProviders.push({
-          id: key,
-          name: providerDetails.displayName,
-          hasFreeTier: providerDetails.hasFreeTier,
-          websiteUrl: providerDetails.websiteUrl,
-          gatewayPrefix: providerDetails.gatewayPrefix,
-          secondary: providerDetails.secondary,
-          envVarName: PROVIDER_TO_ENV_VAR[key] ?? undefined,
-          type: "cloud",
-          // apiBaseUrl is not directly in PROVIDERS
-        });
-      }
-    }
-  }
+  const builtinCatalog = await getBuiltinLanguageModelCatalog();
+
+  const hardcodedProviders: LanguageModelProvider[] = [
+    ...builtinCatalog.providers,
+  ];
 
   for (const providerKey in LOCAL_PROVIDERS) {
     if (Object.prototype.hasOwnProperty.call(LOCAL_PROVIDERS, providerKey)) {
@@ -134,16 +112,12 @@ export async function getLanguageModels({
   // If it's a cloud provider, also get the hardcoded models
   let hardcodedModels: LanguageModel[] = [];
   if (provider.type === "cloud") {
-    if (providerId in MODEL_OPTIONS) {
-      const models = MODEL_OPTIONS[providerId] || [];
-      hardcodedModels = models.map((model) => ({
-        ...model,
-        apiName: model.name,
-        type: "cloud",
-      }));
+    const builtinCatalog = await getBuiltinLanguageModelCatalog();
+    if (providerId in builtinCatalog.modelsByProvider) {
+      hardcodedModels = builtinCatalog.modelsByProvider[providerId] || [];
     } else {
       console.warn(
-        `Provider "${providerId}" is cloud type but not found in MODEL_OPTIONS.`,
+        `Provider "${providerId}" is cloud type but not found in builtin catalog.`,
       );
     }
   }

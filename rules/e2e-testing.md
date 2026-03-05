@@ -97,6 +97,16 @@ Each parallel Playwright worker gets its own fake LLM server on port `FAKE_LLM_B
 
 When adding new test server URLs, update **both** the test fixtures (`e2e-tests/helpers/fixtures.ts`) and the Electron app source that consumes them. The app reads `process.env.FAKE_LLM_PORT` to build its `TEST_SERVER_BASE` URL — if you hardcode a port in app source, parallel workers will all hit the same server.
 
+## Sandbox-related Electron launch failures
+
+Packaged Electron E2E runs may fail inside the Codex sandbox before any test logic executes, with Playwright reporting `electron.launch: Process failed to launch!` and the Electron process exiting with `SIGABRT`.
+
+If this happens:
+
+1. Verify whether the failure reproduces on an existing known-good E2E spec.
+2. Re-run the same `npm run e2e -- e2e-tests/<spec>` command outside the sandbox before treating it as an app regression.
+3. If the test passes outside the sandbox, treat the sandbox launch failure as environmental rather than a product bug.
+
 ## Common flaky test patterns and fixes
 
 - **After `page.reload()`**: Always add `await page.waitForLoadState("domcontentloaded")` before interacting with elements. Without this, the page may not have re-rendered yet.

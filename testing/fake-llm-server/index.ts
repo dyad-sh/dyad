@@ -78,6 +78,132 @@ app.get("/health", (req, res) => {
   res.send("OK");
 });
 
+app.get("/api/language-model-catalog", (req, res) => {
+  res.json({
+    version: "e2e-test-catalog-v1",
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    providers: [
+      {
+        id: "openai",
+        displayName: "OpenAI",
+        type: "cloud",
+      },
+      {
+        id: "anthropic",
+        displayName: "Anthropic",
+        type: "cloud",
+      },
+      {
+        id: "google",
+        displayName: "Google AI Studio",
+        type: "cloud",
+        hasFreeTier: true,
+        gatewayPrefix: "gemini/",
+      },
+    ],
+    modelsByProvider: {
+      openai: [
+        {
+          apiName: "gpt-5.2",
+          displayName: "GPT 5.2 Remote",
+          description: "Remote catalog OpenAI model",
+        },
+      ],
+      anthropic: [
+        {
+          apiName: "claude-sonnet-4-6",
+          displayName: "Claude Sonnet 4.6 Remote",
+          description: "Remote catalog Anthropic model",
+        },
+      ],
+      google: [
+        {
+          apiName: "gemini-3.1-pro-preview",
+          displayName: "Gemini 3.1 Pro Remote",
+          description: "Remote catalog Google model",
+        },
+      ],
+    },
+    aliases: [
+      {
+        id: "dyad/theme-generator/google",
+        resolvedModel: {
+          providerId: "google",
+          apiName: "gemini-3.1-pro-preview",
+        },
+        displayName: "Google Remote",
+        purpose: "theme-generation",
+      },
+      {
+        id: "dyad/theme-generator/anthropic",
+        resolvedModel: {
+          providerId: "anthropic",
+          apiName: "claude-sonnet-4-6",
+        },
+        displayName: "Anthropic Remote",
+        purpose: "theme-generation",
+      },
+      {
+        id: "dyad/theme-generator/openai",
+        resolvedModel: {
+          providerId: "openai",
+          apiName: "gpt-5.2",
+        },
+        displayName: "OpenAI Remote",
+        purpose: "theme-generation",
+      },
+      {
+        id: "dyad/auto/openai",
+        resolvedModel: {
+          providerId: "openai",
+          apiName: "gpt-5.2",
+        },
+        purpose: "auto-mode",
+      },
+      {
+        id: "dyad/auto/anthropic",
+        resolvedModel: {
+          providerId: "anthropic",
+          apiName: "claude-sonnet-4-6",
+        },
+        purpose: "auto-mode",
+      },
+      {
+        id: "dyad/auto/google",
+        resolvedModel: {
+          providerId: "google",
+          apiName: "gemini-3.1-pro-preview",
+        },
+        purpose: "auto-mode",
+      },
+      {
+        id: "dyad/help-bot/default",
+        resolvedModel: {
+          providerId: "openai",
+          apiName: "gpt-5.2",
+        },
+        purpose: "help-bot",
+      },
+    ],
+    curatedSelections: {
+      themeGenerationOptions: [
+        {
+          id: "dyad/theme-generator/google",
+          label: "Google Remote",
+        },
+        {
+          id: "dyad/theme-generator/anthropic",
+          label: "Anthropic Remote",
+        },
+        {
+          id: "dyad/theme-generator/openai",
+          label: "OpenAI Remote",
+        },
+      ],
+    },
+  });
+});
+
 // Ollama-specific endpoints
 app.get("/ollama/api/tags", (req, res) => {
   const ollamaModels = {

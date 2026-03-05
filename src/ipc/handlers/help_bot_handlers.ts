@@ -10,6 +10,7 @@ import {
 } from "@ai-sdk/openai";
 import { createTypedHandler } from "./base";
 import { helpContracts } from "../types/help";
+import { resolveBuiltinModelAlias } from "../shared/remote_language_model_catalog";
 
 const logger = log.scope("help-bot");
 
@@ -48,11 +49,18 @@ export function registerHelpBotHandlers() {
         baseURL: "https://helpchat.dyad.sh/v1",
         apiKey,
       });
+      const helpBotModel = await resolveBuiltinModelAlias(
+        "dyad/help-bot/default",
+      );
+
+      if (!helpBotModel || helpBotModel.providerId !== "openai") {
+        throw new Error("Invalid help bot model configuration");
+      }
 
       let assistantContent = "";
 
       const stream = streamText({
-        model: provider.responses("gpt-5-nano"),
+        model: provider.responses(helpBotModel.apiName),
         providerOptions: {
           openai: {
             reasoningSummary: "auto",

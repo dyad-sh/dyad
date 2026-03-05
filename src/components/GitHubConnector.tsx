@@ -95,6 +95,7 @@ function ConnectedGitHubConnector({
   >(null);
   const [rebaseInProgress, setRebaseInProgress] = useState(false);
   const [isCancellingSync, setIsCancellingSync] = useState(false);
+  const [isUpdatingAutoSync, setIsUpdatingAutoSync] = useState(false);
   const lastAutoSyncedAppIdRef = useRef<number | null>(null);
 
   const { resolveWithAI, isResolving } = useResolveMergeConflictsWithAI({
@@ -404,7 +405,9 @@ function ConnectedGitHubConnector({
           id="auto-sync-github"
           aria-label="Auto-sync to GitHub"
           checked={app.autoSyncToGithub ?? false}
+          disabled={isUpdatingAutoSync}
           onCheckedChange={async (checked) => {
+            setIsUpdatingAutoSync(true);
             try {
               await ipc.app.updateAppAutoSync({
                 appId,
@@ -415,6 +418,8 @@ function ConnectedGitHubConnector({
               console.error("Failed to update auto-sync setting:", error);
               showError(error?.message || "Failed to update auto-sync setting");
               refreshApp();
+            } finally {
+              setIsUpdatingAutoSync(false);
             }
           }}
           data-testid="auto-sync-github-toggle"

@@ -2021,7 +2021,7 @@ export function registerAppHandlers() {
     }
 
     // Auto-sync only makes sense if the app is connected to GitHub
-    if (autoSyncToGithub && !app.githubRepo) {
+    if (autoSyncToGithub && (!app.githubRepo || !app.githubOrg)) {
       throw new Error(
         "Cannot enable auto-sync: app is not connected to GitHub",
       );

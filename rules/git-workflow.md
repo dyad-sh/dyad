@@ -72,13 +72,13 @@ In CI, `claude-code-action` restricts file access to the repo working directory 
 
 ## Force-pushing after rebase with split-remote origin
 
-When `origin` has separate fetch and push URLs (e.g., fetch → `dyad-sh/dyad`, push → `wwwillchen-bot/dyad`), `git push --force-with-lease` fails with **"stale info"** after a rebase because the local tracking ref was refreshed from the fetch URL but does not reflect the push URL's state. Use `git push --force origin HEAD` instead:
+When `origin` has separate fetch and push URLs (e.g., fetch → `dyad-sh/dyad`, push → `wwwillchen-bot/dyad`), `git push --force-with-lease` fails with **"stale info"** after a rebase because the local tracking ref was refreshed from the fetch URL but does not reflect the push URL's state. In this specific split-remote configuration, use `git push --force origin HEAD`:
 
 ```bash
 git push --force origin HEAD
 ```
 
-This is safe after a deliberate rebase because you intend to overwrite the remote history.
+**Note:** Plain `--force` can overwrite others' remote commits. Only use this in the split-remote scenario described above, where `--force-with-lease` cannot work. In normal setups, always prefer `--force-with-lease`.
 
 ## Rebase workflow and conflict resolution
 

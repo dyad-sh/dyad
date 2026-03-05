@@ -8,7 +8,7 @@
 import { ImagePart, ModelMessage, TextPart, UserModelMessage } from "ai";
 import type { UserMessageContentPart, Todo } from "./tools/types";
 import { cleanMessage } from "@/ipc/utils/ai_messages_utils";
-import { validateImageDimensions } from "./tools/image_dimension_utils";
+import { validateImageDimensions } from "./tools/image_utils";
 
 /**
  * Check if a single todo is incomplete (pending or in_progress).

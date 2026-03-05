@@ -1510,8 +1510,7 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
             (errorMessage.includes("remote ref") ||
               errorMessage.includes("remote branch"))) ||
           errorMessage.includes("couldn't find remote ref") ||
-          (pullError?.code === "NotFoundError" &&
-            errorMessage.includes("Cannot read properties of null"));
+          errorMessage.includes("Cannot read properties of null");
 
         if (!isMissingRemoteBranch) {
           // If there's a conflict, abort the merge to leave repo in a clean state

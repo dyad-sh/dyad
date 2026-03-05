@@ -31,12 +31,11 @@ export function MacNotificationGuideDialog({
         <div className="space-y-4 py-2">
           <div className="rounded-lg border p-3 space-y-1">
             <h4 className="text-sm font-medium">
-              Option 1: From the test notification
+              Option 1: From the Notification Permission Prompt
             </h4>
             <p className="text-sm text-muted-foreground">
-              A test notification was just sent. Click the{" "}
-              <strong>"Options"</strong> dropdown on the notification and select{" "}
-              <strong>"Allow"</strong>.
+              Click the <strong>"Options"</strong> dropdown on the notification
+              and select <strong>"Allow"</strong>.
             </p>
           </div>
 

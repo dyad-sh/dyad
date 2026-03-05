@@ -67,7 +67,9 @@ async function checkReleaseNoteExists(
   const result = await checkPromise.finally(() => {
     pendingReleaseNoteChecks.delete(version);
   });
-  releaseNoteResultCache.set(version, result);
+  if (result.exists) {
+    releaseNoteResultCache.set(version, result);
+  }
   return result;
 }
 

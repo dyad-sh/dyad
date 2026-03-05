@@ -128,19 +128,14 @@ export async function handleDeleteBranch(
   } else {
     // Branch doesn't exist locally - it may only exist on remote
     // or has already been deleted. Check if it exists remotely.
-    let remoteBranches: string[] = [];
-    let remoteListFailed = false;
+    let remoteBranches: string[];
     try {
       remoteBranches = await gitListRemoteBranches({ path: appPath });
     } catch (error) {
-      remoteListFailed = true;
       logger.warn(
         `Failed to list remote branches while checking for branch '${branch}' to delete.`,
         error,
       );
-    }
-
-    if (remoteListFailed) {
       throw new Error(
         `Branch '${branch}' does not exist locally and remote branches could not be checked. Please try again later.`,
       );
@@ -155,12 +150,13 @@ export async function handleDeleteBranch(
     }
 
     // Branch only exists remotely - inform user they need to delete it on GitHub
-    const githubUrl =
-      app.githubOrg && app.githubRepo
-        ? ` Visit https://github.com/${app.githubOrg}/${app.githubRepo}/branches to manage remote branches.`
-        : "";
+    if (app.githubOrg && app.githubRepo) {
+      throw new Error(
+        `Branch '${branch}' only exists on the remote. To delete it, please delete the branch on GitHub directly. Visit https://github.com/${app.githubOrg}/${app.githubRepo}/branches to manage remote branches.`,
+      );
+    }
     throw new Error(
-      `Branch '${branch}' only exists on the remote. To delete it, please delete the branch on GitHub directly.${githubUrl}`,
+      `Branch '${branch}' only exists on the remote and cannot be deleted locally. Please delete it from your remote Git hosting provider.`,
     );
   }
 }

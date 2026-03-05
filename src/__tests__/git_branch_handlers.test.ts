@@ -41,7 +41,7 @@ vi.mock("../db/schema", () => ({
 }));
 
 vi.mock("drizzle-orm", async (importOriginal) => {
-  const actual = await importOriginal();
+  const actual = await importOriginal<typeof import("drizzle-orm")>();
   return {
     ...actual,
     eq: vi.fn(),
@@ -146,6 +146,19 @@ describe("handleDeleteBranch", () => {
       handleDeleteBranch(mockEvent, { appId: 1, branch: "feature" }),
     ).rejects.toThrow(
       /does not exist locally and remote branches could not be checked/,
+    );
+  });
+
+  it("throws generic error when branch only exists on remote for non-GitHub app", async () => {
+    const nonGithubApp = { id: 1, path: "test-app", githubOrg: null, githubRepo: null };
+    vi.mocked(db.query.apps.findFirst).mockResolvedValue(nonGithubApp as any);
+    vi.mocked(gitListBranches).mockResolvedValue(["main"]);
+    vi.mocked(gitListRemoteBranches).mockResolvedValue(["main", "feature"]);
+
+    await expect(
+      handleDeleteBranch(mockEvent, { appId: 1, branch: "feature" }),
+    ).rejects.toThrow(
+      /only exists on the remote and cannot be deleted locally.*remote Git hosting provider/,
     );
   });
 

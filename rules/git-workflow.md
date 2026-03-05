@@ -72,6 +72,14 @@ In CI, `claude-code-action` restricts file access to the repo working directory 
 
 ## Rebase workflow and conflict resolution
 
+### `--force-with-lease` "stale info" with split-URL origin
+
+When `origin` has different fetch and push URLs (e.g., fetch from `dyad-sh/dyad`, push to `wwwillchen-bot/dyad`), `git push --force-with-lease` fails with `(stale info)` because the lease check compares the local tracking ref (fetched from `dyad-sh/dyad`) against the push target (`wwwillchen-bot/dyad`). Use `--force` instead in this case:
+
+```bash
+git push --force origin HEAD
+```
+
 ### Handling unstaged changes during rebase
 
 If `git rebase` fails with "You have unstaged changes" (common with spurious `package-lock.json` changes):

@@ -19,3 +19,4 @@ When rebasing a branch that has drizzle migrations conflicting with upstream (e.
 3. Update `drizzle/meta/_journal.json` to include all migrations with correct indices
 4. Create/update the snapshot file (`drizzle/meta/00XX_snapshot.json`) with the new index, updating `prevId` to reference the previous snapshot's `id`
 5. If the PR had subsequent commits that deleted/modified its migration files, those changes become no-ops after renaming — just accept the deletion conflicts by staging the renamed files
+6. **The new snapshot file must accumulate all prior schema**: The renumbered snapshot (e.g., `0027_snapshot.json`) must include every schema change from all previous snapshots, not just the PR's own migration. Copy the upstream snapshot for the conflicting index (e.g., `0026_snapshot.json`), then add the PR's columns/indexes on top. Update `id` to the PR's original snapshot id and `prevId` to the upstream snapshot's `id`.

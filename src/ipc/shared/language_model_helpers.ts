@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import {
   CLOUD_PROVIDERS,
   LOCAL_PROVIDERS,
+  MODEL_OPTIONS,
   PROVIDER_TO_ENV_VAR,
 } from "./language_model_constants";
 import { getBuiltinLanguageModelCatalog } from "./remote_language_model_catalog";
@@ -139,9 +140,24 @@ export async function getLanguageModels({
     const builtinCatalog = await getBuiltinLanguageModelCatalog();
     if (providerId in builtinCatalog.modelsByProvider) {
       hardcodedModels = builtinCatalog.modelsByProvider[providerId] || [];
+    } else if (providerId in MODEL_OPTIONS) {
+      // Fall back to hardcoded MODEL_OPTIONS for providers not in the remote
+      // catalog (e.g. auto, azure, bedrock).
+      hardcodedModels = MODEL_OPTIONS[providerId].map((model) => ({
+        apiName: model.name,
+        displayName: model.displayName,
+        description: model.description,
+        tag: model.tag,
+        tagColor: model.tagColor,
+        maxOutputTokens: model.maxOutputTokens,
+        contextWindow: model.contextWindow,
+        temperature: model.temperature,
+        dollarSigns: model.dollarSigns,
+        type: "cloud" as const,
+      }));
     } else {
       console.warn(
-        `Provider "${providerId}" is cloud type but not found in builtin catalog.`,
+        `Provider "${providerId}" is cloud type but not found in builtin catalog or MODEL_OPTIONS.`,
       );
     }
   }

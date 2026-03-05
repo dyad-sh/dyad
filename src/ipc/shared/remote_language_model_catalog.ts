@@ -10,8 +10,11 @@ import {
 } from "@/ipc/types/templates";
 import {
   CLOUD_PROVIDERS,
+  GEMINI_3_1_PRO_PREVIEW,
   GPT_5_2_MODEL_NAME,
+  GPT_5_NANO,
   MODEL_OPTIONS,
+  OPUS_4_6,
   PROVIDER_TO_ENV_VAR,
   SONNET_4_6,
   GEMINI_3_FLASH,
@@ -167,7 +170,7 @@ function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
         id: "dyad/theme-generator/google",
         resolvedModel: {
           providerId: "google",
-          apiName: "gemini-3.1-pro-preview",
+          apiName: GEMINI_3_1_PRO_PREVIEW,
         },
         displayName: "Google",
         purpose: "theme-generation",
@@ -176,7 +179,7 @@ function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
         id: "dyad/theme-generator/anthropic",
         resolvedModel: {
           providerId: "anthropic",
-          apiName: "claude-opus-4-6",
+          apiName: OPUS_4_6,
         },
         displayName: "Anthropic",
         purpose: "theme-generation",
@@ -221,7 +224,7 @@ function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
         id: "dyad/help-bot/default",
         resolvedModel: {
           providerId: "openai",
-          apiName: "gpt-5-nano",
+          apiName: GPT_5_NANO,
         },
         displayName: "Help Bot",
         purpose: "help-bot",
@@ -277,10 +280,18 @@ function convertRemoteCatalog(
     ? new Date(remoteCatalog.expiresAt).getTime()
     : NaN;
 
+  // Merge required builtin aliases that may be missing from the remote catalog.
+  const fallback = buildFallbackCatalog();
+  const remoteAliasIds = new Set(remoteCatalog.aliases.map((a) => a.id));
+  const mergedAliases = [
+    ...remoteCatalog.aliases,
+    ...fallback.aliases.filter((a) => !remoteAliasIds.has(a.id)),
+  ];
+
   return {
     providers,
     modelsByProvider,
-    aliases: remoteCatalog.aliases,
+    aliases: mergedAliases,
     themeGenerationOptions:
       remoteCatalog.curatedSelections?.themeGenerationOptions ??
       DEFAULT_THEME_GENERATION_OPTIONS,
@@ -322,6 +333,22 @@ async function fetchRemoteCatalog(): Promise<BuiltinLanguageModelCatalog | null>
 
 export async function getBuiltinLanguageModelCatalog(): Promise<BuiltinLanguageModelCatalog> {
   if (builtinCatalogCache && builtinCatalogCache.expiresAt > Date.now()) {
+    return builtinCatalogCache;
+  }
+
+  // Serve stale data while revalidating in the background to avoid blocking
+  // callers on a network fetch (stale-while-revalidate pattern).
+  if (builtinCatalogCache) {
+    if (!builtinCatalogFetchPromise) {
+      builtinCatalogFetchPromise = (async () => {
+        try {
+          const remoteCatalog = await fetchRemoteCatalog();
+          builtinCatalogCache = remoteCatalog ?? buildFallbackCatalog();
+        } finally {
+          builtinCatalogFetchPromise = null;
+        }
+      })();
+    }
     return builtinCatalogCache;
   }
 

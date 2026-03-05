@@ -7,6 +7,7 @@ export interface PromptItem {
   title: string;
   description: string | null;
   content: string;
+  slug: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -26,8 +27,14 @@ export function usePrompts() {
       title: string;
       description?: string;
       content: string;
+      slug?: string | null;
     }): Promise<PromptItem> => {
-      return ipc.prompt.create(params);
+      return ipc.prompt.create({
+        title: params.title,
+        description: params.description,
+        content: params.content,
+        slug: params.slug ?? undefined,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.prompts.all });
@@ -43,8 +50,15 @@ export function usePrompts() {
       title: string;
       description?: string;
       content: string;
+      slug?: string | null;
     }): Promise<void> => {
-      return ipc.prompt.update(params);
+      return ipc.prompt.update({
+        id: params.id,
+        title: params.title,
+        description: params.description,
+        content: params.content,
+        slug: params.slug ?? undefined,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.prompts.all });

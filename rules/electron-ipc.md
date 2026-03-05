@@ -51,6 +51,23 @@ ipc.chatStream.start(params, { onChunk, onEnd, onError });
 - `createStreamClient(...).start()` returns `void`, not a cleanup/unsubscribe function. You cannot capture a handle to abort or clean up an active stream from the caller side.
 - To guard against duplicate streams, use a module-level `Set` (like `pendingStreamChatIds` in `useStreamChat.ts`) or a React state/ref-based lock, not the return value.
 
+## Settings write safety (`writeSettings`)
+
+`writeSettings(partial)` does a **shallow top-level merge**: `{ ...currentSettings, ...partial }`. This means passing `{ supabase: { organizations: { ... } } }` replaces the entire `supabase` key, losing sibling fields like legacy tokens. Callers must spread the existing parent object:
+
+```ts
+// WRONG — destroys supabase.organizations and other fields
+writeSettings({ supabase: { accessToken: { value: newToken } } });
+
+// RIGHT — preserves sibling fields
+const settings = readSettings();
+writeSettings({
+  supabase: { ...settings.supabase, accessToken: { value: newToken } },
+});
+```
+
+**Stale-read race condition:** If you call `readSettings()` before an async operation (network call, file I/O), then use the snapshot to construct the write, any concurrent settings changes during the async gap will be silently overwritten. Always call `readSettings()` immediately before `writeSettings()` — never across an `await` boundary.
+
 ## Handler expectations
 
 - Handlers should `throw new Error("...")` on failure instead of returning `{ success: false }` style payloads.

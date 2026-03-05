@@ -53,11 +53,14 @@ export const createChatCompletionHandler =
     // First, check if the LAST user message is a fixture trigger
     let localAgentFixture = extractLocalAgentFixture(userTextContent);
 
-    // If last message isn't a fixture but contains a todo reminder, search earlier messages
-    // This handles the outer loop case where a reminder is injected after the original fixture trigger
-    // Note: This magic string must match the reminder text in prepare_step_utils.ts
-    // buildTodoReminderMessage(). Update both if the text changes.
-    if (!localAgentFixture && userTextContent.includes("incomplete todo(s)")) {
+    // If the last user message is synthetic (e.g., todo reminder or retry
+    // continuation instruction), search earlier user messages for the original
+    // fixture trigger.
+    if (
+      !localAgentFixture &&
+      (userTextContent.includes("incomplete todo(s)") ||
+        userTextContent.includes("previous response stream was interrupted"))
+    ) {
       for (const msg of userMessages) {
         const textContent = getTextContent(msg);
         const fixture = extractLocalAgentFixture(textContent);

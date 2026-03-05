@@ -1,10 +1,10 @@
 - paragraph: /Generate an AI_RULES\.md file for this app\. Describe the tech stack in 5-\d+ bullet points and describe clear rules about what libraries to use for what\./
 - button "file1.txt file1.txt Edit":
   - img
-  - text: ""
+  - text: file1.txt file1.txt
   - button "Edit":
     - img
-    - text: ""
+    - text: Edit
   - img
 - paragraph: More EOM
 - button "Copy":
@@ -15,18 +15,16 @@
 - text: test-model
 - img
 - text: less than a minute ago
-- img
-- text: wrote 1 file(s)
 - paragraph: tc=partial-write
 - paragraph: START OF MESSAGE
 - 'button "new-file.ts src/new-file.ts Edit Summary: this file will be partially written"':
   - img
-  - text: ""
+  - text: new-file.ts src/new-file.ts
   - button "Edit":
     - img
-    - text: ""
+    - text: Edit
   - img
-  - text: ""
+  - text: "Summary: this file will be partially written"
 - paragraph: Finished writing file.
 - paragraph: "[[dyad-dump-path=*]]"
 - button "Copy":
@@ -37,11 +35,9 @@
 - text: test-model
 - img
 - text: less than a minute ago
-- img
-- text: wrote 1 file(s)
 - button "Undo":
   - img
-  - text: ""
+  - text: Undo
 - button "Retry":
   - img
-  - text: ""
+  - text: Retry

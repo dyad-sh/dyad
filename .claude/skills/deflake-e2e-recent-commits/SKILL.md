@@ -1,11 +1,11 @@
 ---
 name: dyad:deflake-e2e-recent-commits
-description: Automatically gather flaky E2E tests from recent CI runs on the main branch and from recent PRs by wwwillchen/wwwillchen-bot, then deflake them.
+description: Automatically gather flaky E2E tests from recent CI runs on the main branch and from recent PRs by wwwillchen/wwwillchen-bot/dyadbot, then deflake them.
 ---
 
 # Deflake E2E Tests from Recent Commits
 
-Automatically gather flaky E2E tests from recent CI runs on the main branch and from recent PRs by wwwillchen/wwwillchen-bot, then deflake them.
+Automatically gather flaky E2E tests from recent CI runs on the main branch and from recent PRs by wwwillchen/wwwillchen-bot/dyadbot, then deflake them.
 
 ## Arguments
 
@@ -49,29 +49,31 @@ Automatically gather flaky E2E tests from recent CI runs on the main branch and 
 
    **Note:** Some runs may not have an html-report artifact (e.g., if they were cancelled early, the merge-reports job didn't complete, or artifacts have expired past the 3-day retention period). Skip these runs and continue to the next one.
 
-2. **Gather flaky tests from recent PRs by wwwillchen and wwwillchen-bot:**
+2. **Gather flaky tests from recent PRs by wwwillchen, wwwillchen-bot, and dyadbot:**
 
-   In addition to main branch CI runs, scan recent open PRs authored by `wwwillchen` or `wwwillchen-bot` for flaky tests reported in Playwright report comments.
+In addition to main branch CI runs, scan recent open PRs authored by `wwwillchen`, `wwwillchen-bot`, or `dyadbot` for flaky tests reported in Playwright report comments.
 
-   a. List recent open PRs by these authors:
+a. List recent open PRs by these authors:
 
-   ```
-   gh pr list --author wwwillchen --state open --limit 10 --json number,title
-   gh pr list --author wwwillchen-bot --state open --limit 10 --json number,title
-   ```
+```
+gh pr list --author wwwillchen --state open --limit 10 --json number,title
+gh pr list --author wwwillchen-bot --state open --limit 10 --json number,title
+gh pr list --author dyadbot --state open --limit 10 --json number,title
+```
 
-   b. For each PR, find the most recent Playwright Test Results comment (posted by a bot, containing "🎭 Playwright Test Results"):
+b. For each PR, find the most recent Playwright Test Results comment (posted by a bot, containing "🎭 Playwright Test Results"):
 
-   ```
-   gh api "repos/{owner}/{repo}/issues/<pr_number>/comments" --jq '[.[] | select(.user.type == "Bot" and (.body | contains("Playwright Test Results")))] | last'
-   ```
+```
+gh api "repos/{owner}/{repo}/issues/<pr_number>/comments" --jq '[.[] | select(.user.type == "Bot" and (.body | contains("Playwright Test Results")))] | last'
+```
 
-   c. Parse the comment body to extract flaky tests. The comment format includes a "⚠️ Flaky Tests" section with test names in backticks:
-   - Look for lines matching the pattern: ``- `<test_title>` (passed after N retries)``
-   - Extract the test title from within the backticks
-   - The test title format is: `<spec_file.spec.ts> > <Suite Name> > <Test Name>`
+c. Parse the comment body to extract flaky tests. The comment format includes a "⚠️ Flaky Tests" section with test names in backticks:
 
-   d. Add these flaky tests to the overall collection, noting they came from PR #N for the summary
+- Look for lines matching the pattern: ``- `<test_title>` (passed after N retries)``
+- Extract the test title from within the backticks
+- The test title format is: `<spec_file.spec.ts> > <Suite Name> > <Test Name>`
+
+d. Add these flaky tests to the overall collection, noting they came from PR #N for the summary
 
 3. **Deduplicate and rank by frequency:**
 
@@ -147,11 +149,12 @@ Automatically gather flaky E2E tests from recent CI runs on the main branch and 
 
    Report:
    - Total flaky tests found across main branch commits and PRs
-   - Sources of flaky tests (main branch CI runs vs. PR comments from wwwillchen/wwwillchen-bot)
-   - Which tests were successfully deflaked
-   - What fixes were applied to each
-   - Which tests could not be fixed (and why)
-   - Verification results
+
+- Sources of flaky tests (main branch CI runs vs. PR comments from wwwillchen/wwwillchen-bot/dyadbot)
+  - Which tests were successfully deflaked
+  - What fixes were applied to each
+  - Which tests could not be fixed (and why)
+  - Verification results
 
 8. **Create PR with fixes:**
 

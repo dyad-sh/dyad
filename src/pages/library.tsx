@@ -85,6 +85,8 @@ export default function LibraryPage() {
   );
 }
 
+import { slugForPrompt } from "@/ipc/utils/replaceSlashSkillReference";
+
 function PromptCard({
   prompt,
   onUpdate,
@@ -95,15 +97,18 @@ function PromptCard({
     title: string;
     description: string | null;
     content: string;
+    slug: string | null;
   };
   onUpdate: (p: {
     id: number;
     title: string;
     description?: string;
     content: string;
+    slug?: string | null;
   }) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
 }) {
+  const slashCommand = slugForPrompt(prompt);
   return (
     <div
       data-testid="prompt-card"
@@ -116,6 +121,11 @@ function PromptCard({
             {prompt.description && (
               <p className="text-sm text-muted-foreground">
                 {prompt.description}
+              </p>
+            )}
+            {slashCommand && (
+              <p className="text-xs text-muted-foreground mt-1 font-mono">
+                Use /{slashCommand} in chat
               </p>
             )}
           </div>

@@ -86,6 +86,11 @@ export function getProviderOptions({
   return providerOptions;
 }
 
+// Header used to pass the request ID through AI SDK models that don't forward
+// providerOptions into the request body (e.g. OpenAIResponsesLanguageModel).
+export const DYAD_INTERNAL_REQUEST_ID_HEADER =
+  "x-dyad-internal-request-id" as const;
+
 export interface GetAiHeadersParams {
   builtinProviderId: string | undefined;
 }

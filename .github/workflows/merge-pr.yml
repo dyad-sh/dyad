@@ -8,7 +8,7 @@ on:
 
 env:
   # Allowed authors for auto-merge (update in one place)
-  ALLOWED_MERGE_AUTHORS: wwwillchen,wwwillchen-bot
+  ALLOWED_MERGE_AUTHORS: wwwillchen,wwwillchen-bot,dyadbot
 
 jobs:
   merge:

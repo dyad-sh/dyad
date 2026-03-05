@@ -22,7 +22,10 @@ jobs:
       github.event_name == 'workflow_run' ||
       (github.event_name == 'pull_request_target' && github.event.label.name == 'cc:request:now')
     environment: ai-bots
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted
+      - macOS
+      - ARM64
     permissions:
       actions: write
       contents: write
@@ -47,7 +50,7 @@ jobs:
 
               // Check that the person who applied the label is a trusted actor
               const actor = context.actor;
-              const allowedActors = ['wwwillchen', 'wwwillchen-bot'];
+              const allowedActors = ['wwwillchen', 'wwwillchen-bot', 'dyadbot'];
               if (!allowedActors.includes(actor)) {
                 console.log(`Label applied by ${actor} who is not in the allowed actors list`);
                 core.setOutput('should_continue', 'false');
@@ -110,8 +113,8 @@ jobs:
               prAuthor = pr.user.login;
             }
 
-            // Only allow wwwillchen and wwwillchen-bot to use this workflow
-            if (prAuthor !== 'wwwillchen' && prAuthor !== 'wwwillchen-bot') {
+            // Only allow wwwillchen, wwwillchen-bot, dyadbot, and princeaden1 to use this workflow
+            if (prAuthor !== 'wwwillchen' && prAuthor !== 'wwwillchen-bot' && prAuthor !== 'dyadbot' && prAuthor !== 'princeaden1') {
               console.log(`PR #${prNumber} author ${prAuthor} is not allowed to use this workflow`);
               core.setOutput('should_continue', 'false');
               return;
@@ -230,6 +233,14 @@ jobs:
           echo "Configured pushurl to ${{ steps.pr-info.outputs.head_repo }}"
         env:
           PR_CONTENTS_RW_GITHUB_TOKEN: ${{ secrets.PR_CONTENTS_RW_GITHUB_TOKEN }}
+
+      - name: Ensure Homebrew paths are available
+        if: steps.pr-info.outputs.should_continue == 'true'
+        run: |
+          # Self-hosted macOS runners often have gh installed via Homebrew, but
+          # non-interactive shells may not include Homebrew directories in PATH.
+          echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
+          echo "/usr/local/bin" >> "$GITHUB_PATH"
 
       - name: Update labels to pending
         if: steps.pr-info.outputs.should_continue == 'true'

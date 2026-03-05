@@ -23,6 +23,13 @@ import {
   FileText,
   ChevronRight,
   Brain,
+  Globe,
+  ExternalLink,
+  Loader2,
+  Box,
+  Coins,
+  Shield,
+  Infinity as InfinityIcon,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -66,6 +73,12 @@ import {
 import { agentBuilderClient } from "@/ipc/agent_builder_client";
 import { showError, showSuccess } from "@/lib/toast";
 import AgentMemoryTab from "@/components/agent/AgentMemoryTab";
+import {
+  useDecentralizedPlatforms,
+  useDecentralizedDeploy,
+  useDecentralizedDeployments,
+  type DecentralizedPlatformConfig,
+} from "@/hooks/useDecentralizedDeploy";
 
 import type {
   Agent,
@@ -681,53 +694,293 @@ export default function AgentEditorPage() {
                 </p>
               </div>
 
-              <div className="grid gap-4">
-                {[
-                  {
-                    id: "local",
-                    title: "Local",
-                    description: "Run the agent locally on your machine",
-                    icon: "💻",
-                  },
-                  {
-                    id: "docker",
-                    title: "Docker",
-                    description: "Export as a Docker container",
-                    icon: "🐳",
-                  },
-                  {
-                    id: "vercel",
-                    title: "Vercel",
-                    description: "Deploy to Vercel Edge Functions",
-                    icon: "▲",
-                  },
-                  {
-                    id: "aws",
-                    title: "AWS Lambda",
-                    description: "Deploy to AWS Lambda",
-                    icon: "☁️",
-                  },
-                ].map((option) => (
-                  <Card
-                    key={option.id}
-                    className="cursor-pointer hover:shadow-md transition-shadow"
-                  >
-                    <CardHeader>
-                      <div className="flex items-center gap-4">
-                        <span className="text-2xl">{option.icon}</span>
-                        <div>
-                          <CardTitle className="text-base">{option.title}</CardTitle>
-                          <CardDescription>{option.description}</CardDescription>
+              {/* Traditional Deployment */}
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                  Traditional
+                </h3>
+                <div className="grid gap-3">
+                  {[
+                    {
+                      id: "local",
+                      title: "Local",
+                      description: "Run the agent locally on your machine",
+                      icon: "💻",
+                    },
+                    {
+                      id: "docker",
+                      title: "Docker",
+                      description: "Export as a Docker container",
+                      icon: "🐳",
+                    },
+                    {
+                      id: "vercel",
+                      title: "Vercel",
+                      description: "Deploy to Vercel Edge Functions",
+                      icon: "▲",
+                    },
+                    {
+                      id: "aws",
+                      title: "AWS Lambda",
+                      description: "Deploy to AWS Lambda",
+                      icon: "☁️",
+                    },
+                  ].map((option) => (
+                    <Card
+                      key={option.id}
+                      className="cursor-pointer hover:shadow-md transition-shadow"
+                    >
+                      <CardHeader className="py-3">
+                        <div className="flex items-center gap-4">
+                          <span className="text-2xl">{option.icon}</span>
+                          <div>
+                            <CardTitle className="text-base">{option.title}</CardTitle>
+                            <CardDescription>{option.description}</CardDescription>
+                          </div>
                         </div>
-                      </div>
-                    </CardHeader>
-                  </Card>
-                ))}
+                      </CardHeader>
+                    </Card>
+                  ))}
+                </div>
               </div>
+
+              {/* Decentralized Deploy */}
+              <AgentDecentralizedDeploy appId={agent.appId} />
             </div>
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Decentralized Deploy sub-component
+// ============================================================================
+
+const PLATFORM_ICON_MAP: Record<string, React.ReactNode> = {
+  "4everland": <Box className="h-5 w-5 text-blue-500" />,
+  fleek: <Globe className="h-5 w-5 text-yellow-500" />,
+  "ipfs-pinata": <Database className="h-5 w-5 text-purple-500" />,
+  "ipfs-infura": <Database className="h-5 w-5 text-orange-500" />,
+  "ipfs-web3storage": <Database className="h-5 w-5 text-cyan-500" />,
+  arweave: <InfinityIcon className="h-5 w-5 text-gray-400" />,
+  filecoin: <Coins className="h-5 w-5 text-green-500" />,
+  skynet: <Globe className="h-5 w-5 text-red-500" />,
+  spheron: <Shield className="h-5 w-5 text-indigo-500" />,
+  filebase: <Database className="h-5 w-5 text-pink-500" />,
+};
+
+const PERMANENCE_BADGE: Record<string, string> = {
+  permanent: "bg-purple-500/10 text-purple-500 border-purple-500/30",
+  pinned: "bg-blue-500/10 text-blue-500 border-blue-500/30",
+  temporary: "bg-yellow-500/10 text-yellow-500 border-yellow-500/30",
+};
+
+function AgentDecentralizedDeploy({ appId }: { appId?: number }) {
+  const navigate = useNavigate();
+  const { data: platforms, isLoading: platformsLoading } =
+    useDecentralizedPlatforms();
+  const { data: deployments = [] } = useDecentralizedDeployments(
+    appId ?? undefined,
+  );
+  const deployMutation = useDecentralizedDeploy();
+  const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
+  const [deployDialogOpen, setDeployDialogOpen] = useState(false);
+
+  const platformList = platforms
+    ? (Object.values(platforms) as DecentralizedPlatformConfig[])
+    : [];
+
+  const handleDeploy = () => {
+    if (!appId || !selectedPlatform) return;
+    deployMutation.mutate(
+      { appId, platform: selectedPlatform },
+      { onSuccess: () => setDeployDialogOpen(false) },
+    );
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+            Decentralized Deploy
+          </h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Deploy your app to Web3 storage platforms like IPFS, Arweave, and
+            more
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => navigate({ to: "/decentralized-deploy" })}
+        >
+          <Settings className="h-3.5 w-3.5 mr-1" />
+          Full Dashboard
+        </Button>
+      </div>
+
+      {/* Platform grid */}
+      {platformsLoading ? (
+        <div className="flex items-center justify-center py-6 text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+          Loading platforms...
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          {platformList.map((platform) => {
+            const icon = PLATFORM_ICON_MAP[platform.id] ?? (
+              <Globe className="h-5 w-5" />
+            );
+            return (
+              <Card
+                key={platform.id}
+                className="cursor-pointer hover:shadow-md transition-shadow"
+                onClick={() => {
+                  if (!appId) {
+                    showError(
+                      new Error(
+                        "Agent must be linked to an app before deploying",
+                      ),
+                    );
+                    return;
+                  }
+                  setSelectedPlatform(platform.id);
+                  setDeployDialogOpen(true);
+                }}
+              >
+                <CardHeader className="py-3 px-4">
+                  <div className="flex items-center gap-3">
+                    {icon}
+                    <div className="flex-1 min-w-0">
+                      <CardTitle className="text-sm">
+                        {platform.name}
+                      </CardTitle>
+                      <CardDescription className="text-xs line-clamp-1">
+                        {platform.description}
+                      </CardDescription>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] shrink-0 ${
+                        PERMANENCE_BADGE[platform.permanence] ?? ""
+                      }`}
+                    >
+                      {platform.permanence}
+                    </Badge>
+                  </div>
+                </CardHeader>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Recent deployments */}
+      {deployments.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-xs font-medium text-muted-foreground">
+            Recent Deployments
+          </h4>
+          <div className="space-y-1.5">
+            {deployments.slice(0, 5).map((dep) => (
+              <div
+                key={dep.id}
+                className="flex items-center gap-2 text-xs p-2 rounded-md border bg-muted/20"
+              >
+                {PLATFORM_ICON_MAP[dep.platform] ?? (
+                  <Globe className="h-3.5 w-3.5" />
+                )}
+                <span className="font-medium">{dep.platform}</span>
+                <Badge
+                  variant="outline"
+                  className={`text-[10px] ${
+                    dep.status === "live"
+                      ? "text-green-500 border-green-500/30"
+                      : dep.status === "failed"
+                        ? "text-red-500 border-red-500/30"
+                        : "text-yellow-500 border-yellow-500/30"
+                  }`}
+                >
+                  {dep.status}
+                </Badge>
+                {dep.cid && (
+                  <span className="font-mono text-muted-foreground truncate max-w-[120px]">
+                    {dep.cid}
+                  </span>
+                )}
+                <span className="ml-auto text-muted-foreground shrink-0">
+                  {new Date(dep.createdAt).toLocaleDateString()}
+                </span>
+                {dep.url && (
+                  <a
+                    href={dep.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 text-primary hover:text-primary/80"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Deploy confirmation dialog */}
+      <Dialog open={deployDialogOpen} onOpenChange={setDeployDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Deploy to{" "}
+              {platformList.find((p) => p.id === selectedPlatform)?.name ??
+                selectedPlatform}
+            </DialogTitle>
+            <DialogDescription>
+              This will build your app and deploy it to the selected Web3
+              platform. Make sure your credentials are configured in the{" "}
+              <button
+                className="underline text-primary"
+                onClick={() => {
+                  setDeployDialogOpen(false);
+                  navigate({ to: "/decentralized-deploy" });
+                }}
+              >
+                Decentralized Deploy dashboard
+              </button>
+              .
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeployDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDeploy}
+              disabled={deployMutation.isPending}
+            >
+              {deployMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Deploying...
+                </>
+              ) : (
+                <>
+                  <Rocket className="h-4 w-4 mr-2" />
+                  Deploy
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

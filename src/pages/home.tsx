@@ -45,10 +45,6 @@ import {
 import { hasDyadProKey, getEffectiveDefaultChatMode } from "@/lib/schemas";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 
-// Track whether we've already checked release notes this session (module-scoped
-// so it persists across component unmount/remount cycles).
-let hasCheckedReleaseNotes = false;
-
 // Adding an export for attachments
 export interface HomeSubmitOptions {
   attachments?: FileAttachment[];
@@ -77,6 +73,7 @@ export default function HomePage() {
   const [releaseUrl, setReleaseUrl] = useState("");
   const { theme } = useTheme();
   const queryClient = useQueryClient();
+  const checkedReleaseNotesVersionRef = useRef<string | null>(null);
 
   // Listen for force-close events
   useEffect(() => {
@@ -89,27 +86,25 @@ export default function HomePage() {
 
   useEffect(() => {
     const updateLastVersionLaunched = async () => {
-      if (
-        hasCheckedReleaseNotes ||
-        !appVersion ||
-        !settings ||
-        settings.lastShownReleaseNotesVersion === appVersion
-      ) {
+      if (!appVersion || !settings) {
         return;
       }
-      hasCheckedReleaseNotes = true;
 
-      const shouldShowReleaseNotes = !!settings.lastShownReleaseNotesVersion;
-      await updateSettings({
-        lastShownReleaseNotesVersion: appVersion,
-      });
-      // It feels spammy to show release notes if it's
-      // the users very first time.
-      if (!shouldShowReleaseNotes) {
+      if (settings.lastShownReleaseNotesVersion === appVersion) {
         return;
       }
+
+      if (checkedReleaseNotesVersionRef.current === appVersion) {
+        return;
+      }
+      checkedReleaseNotesVersionRef.current = appVersion;
 
       try {
+        const shouldShowReleaseNotes = !!settings.lastShownReleaseNotesVersion;
+        await updateSettings({
+          lastShownReleaseNotesVersion: appVersion,
+        });
+
         const result = await ipc.system.doesReleaseNoteExist({
           version: appVersion,
         });
@@ -119,6 +114,7 @@ export default function HomePage() {
           setReleaseNotesOpen(true);
         }
       } catch (err) {
+        checkedReleaseNotesVersionRef.current = null;
         console.warn(
           "Unable to check if release note exists for: " + appVersion,
           err,
@@ -126,7 +122,12 @@ export default function HomePage() {
       }
     };
     updateLastVersionLaunched();
-  }, [appVersion, settings, updateSettings, theme]);
+  }, [
+    appVersion,
+    settings?.lastShownReleaseNotesVersion,
+    updateSettings,
+    theme,
+  ]);
 
   // Get the appId from search params
   const appId = search.appId ? Number(search.appId) : null;

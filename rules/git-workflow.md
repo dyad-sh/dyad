@@ -16,6 +16,10 @@ gh pr create --head <owner>:<branch> ...
 
 This can happen when remotes are configured in a non-fork layout and `gh` fails to infer the branch mapping.
 
+## `gh pr view --repo` requires an explicit PR selector
+
+`gh pr view --repo <owner/repo>` can fail with `argument required when using the --repo flag` if you do not also pass a branch, PR number, or PR URL. Use an explicit selector such as `gh pr view <branch> --repo <owner/repo>` or `gh pr view https://github.com/<owner>/<repo>/pull/<number>` when scripting PR follow-up steps like labels or metadata reads.
+
 ## Skipping automated review
 
 Add `#skip-bugbot` to the PR description for trivial PRs that won't affect end-users, such as:

@@ -14,6 +14,7 @@
  */
 
 import { useState } from "react";
+import DOMPurify from "dompurify";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -328,7 +329,7 @@ function SearchPanel() {
                     </div>
                     <p
                       className="text-sm"
-                      dangerouslySetInnerHTML={{ __html: result.snippet }}
+                      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(result.snippet) }}
                     />
                   </div>
                 ))}

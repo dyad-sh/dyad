@@ -35,6 +35,15 @@ import { scrapeWizardRoute } from "./routes/local-vault-scrape-wizard";
 import { knowledgeBaseRoute } from "./routes/knowledge-base";
 import { modelDownloadRoute } from "./routes/model-download";
 import { memoryLearningRoute } from "./routes/local-vault-memory";
+import { offlineDocsRoute } from "./routes/offline-docs";
+import { aiLearningRoute } from "./routes/ai-learning";
+import { benchmarkRoute } from "./routes/benchmark";
+import { codingAgentRoute } from "./routes/coding-agent";
+import { designSystemRoute } from "./routes/design-system";
+import { pluginMarketplaceRoute } from "./routes/plugin-marketplace";
+import { secretsVaultRoute } from "./routes/secrets-vault";
+import { dataStudioRoute } from "./routes/data-studio";
+import { memoryRoute } from "./routes/memory";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -75,6 +84,15 @@ const routeTree = rootRoute.addChildren([
   knowledgeBaseRoute,
   modelDownloadRoute,
   memoryLearningRoute,
+  offlineDocsRoute,
+  aiLearningRoute,
+  benchmarkRoute,
+  codingAgentRoute,
+  designSystemRoute,
+  pluginMarketplaceRoute,
+  secretsVaultRoute,
+  dataStudioRoute,
+  memoryRoute,
 ]);
 
 // src/components/NotFoundRedirect.tsx

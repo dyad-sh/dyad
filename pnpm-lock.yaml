@@ -272,6 +272,9 @@ importers:
       date-fns:
         specifier: ^4.1.0
         version: 4.1.0
+      dompurify:
+        specifier: ^3.3.2
+        version: 3.3.2
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1
@@ -483,6 +486,9 @@ importers:
       '@types/better-sqlite3':
         specifier: ^7.6.13
         version: 7.6.13
+      '@types/dompurify':
+        specifier: ^3.2.0
+        version: 3.2.0
       '@types/fs-extra':
         specifier: ^11.0.4
         version: 11.0.4
@@ -6384,6 +6390,10 @@ packages:
   '@types/dns-packet@5.6.5':
     resolution: {integrity: sha512-qXOC7XLOEe43ehtWJCMnQXvgcIpv6rPmQ1jXT98Ad8A3TB1Ue50jsCbSSSyuazScEuZ/Q026vHbrOTVkmwA+7Q==}
 
+  '@types/dompurify@3.2.0':
+    resolution: {integrity: sha512-Fgg31wv9QbLDA0SpTOXO3MaxySc4DKGLi8sna4/Utjo4r3ZRPdCt4UQee8BWr+Q5z21yifghREPJGYaEOEIACg==}
+    deprecated: This is a stub types definition. dompurify provides its own type definitions, so you do not need this installed.
+
   '@types/eslint-scope@3.7.7':
     resolution: {integrity: sha512-MzMFlSLBqNF2gcHWO0G1vP/YQyfvrxZ0bF+u7mzUdZ1/xK4A4sru+nraZz5i3iEIk1l1uyicaDVTB4QbbEkAYg==}
 
@@ -6594,6 +6604,9 @@ packages:
 
   '@types/triple-beam@1.3.5':
     resolution: {integrity: sha512-6WaYesThRMCl19iryMYP7/x2OVgCtbIVflDGFpWnb9irXI3UjYE4AzmYuiUKY1AJstGijoY+MgUszMgRxIYTYw==}
+
+  '@types/trusted-types@2.0.7':
+    resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
 
   '@types/turndown@5.0.6':
     resolution: {integrity: sha512-ru00MoyeeouE5BX4gRL+6m/BsDfbRayOskWqUvh7CLGW+UXxHQItqALa38kKnOiZPqJrtzJUgAC2+F0rL1S4Pg==}
@@ -8236,6 +8249,10 @@ packages:
   domhandler@5.0.3:
     resolution: {integrity: sha512-cgwlv/1iFQiFnU96XXgROh8xTeetsnJiDsTc7TYCLFd9+/WNkIqPTxiM/8pSd8VIrhXGTf1Ny1q1hquVqDJB5w==}
     engines: {node: '>= 4'}
+
+  dompurify@3.3.2:
+    resolution: {integrity: sha512-6obghkliLdmKa56xdbLOpUZ43pAR6xFy1uOrxBaIDjT+yaRuuybLjGS9eVBoSR/UPU5fq3OXClEHLJNGvbxKpQ==}
+    engines: {node: '>=20'}
 
   domutils@2.8.0:
     resolution: {integrity: sha512-w96Cjofp72M5IIhpjgobBimYEfoPjx1Vx0BSX9P30WBdZW2WIKU0T1Bd0kz2eNZ9ikjKgHbEyKx8BB6H1L3h3A==}
@@ -18035,7 +18052,7 @@ snapshots:
 
   '@gar/promisify@1.1.3': {}
 
-  '@getzep/zep-cloud@1.0.6(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(encoding@0.1.13)(langchain@1.1.1(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(zod-to-json-schema@3.23.3(zod@3.25.76)))':
+  '@getzep/zep-cloud@1.0.6(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(encoding@0.1.13)(langchain@1.1.1(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(zod-to-json-schema@3.23.3(zod@3.25.67)))':
     dependencies:
       form-data: 4.0.0
       node-fetch: 2.7.0(encoding@0.1.13)
@@ -18871,7 +18888,7 @@ snapshots:
       - aws-crt
       - encoding
 
-  '@langchain/community@1.0.5(a33e451a7950a2078e940e67ddd150bd)':
+  '@langchain/community@1.0.5(594fddaedf0a1342a8e7499478ebb570)':
     dependencies:
       '@browserbasehq/stagehand': 1.14.0(@playwright/test@1.57.0)(deepmerge@4.3.1)(dotenv@16.6.1)(encoding@0.1.13)(openai@4.104.0(encoding@0.1.13)(ws@8.19.0)(zod@3.25.76))(zod@3.25.76)
       '@ibm-cloud/watsonx-ai': 1.7.5
@@ -18893,7 +18910,7 @@ snapshots:
       '@azure/search-documents': 12.1.0
       '@azure/storage-blob': 12.26.0
       '@browserbasehq/sdk': 2.6.0(encoding@0.1.13)
-      '@getzep/zep-cloud': 1.0.6(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(encoding@0.1.13)(langchain@1.1.1(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(zod-to-json-schema@3.23.3(zod@3.25.76)))
+      '@getzep/zep-cloud': 1.0.6(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(encoding@0.1.13)(langchain@1.1.1(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(zod-to-json-schema@3.23.3(zod@3.25.67)))
       '@getzep/zep-js': 0.9.0
       '@google-cloud/storage': 7.18.0(encoding@0.1.13)
       '@huggingface/inference': 4.0.5
@@ -20262,7 +20279,7 @@ snapshots:
       '@aws-sdk/client-sso-oidc': 3.808.0
       '@azure/identity': 4.13.0
       '@azure/search-documents': 12.1.0
-      '@getzep/zep-cloud': 1.0.6(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(encoding@0.1.13)(langchain@1.1.1(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(zod-to-json-schema@3.23.3(zod@3.25.76)))
+      '@getzep/zep-cloud': 1.0.6(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(encoding@0.1.13)(langchain@1.1.1(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(zod-to-json-schema@3.23.3(zod@3.25.67)))
       '@getzep/zep-js': 0.9.0
       '@google-cloud/resource-manager': 5.3.0(encoding@0.1.13)
       '@google/genai': 1.19.0(@modelcontextprotocol/sdk@1.24.0(@cfworker/json-schema@4.1.1)(zod@3.25.67))(encoding@0.1.13)
@@ -20272,7 +20289,7 @@ snapshots:
       '@langchain/aws': 1.0.3(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))
       '@langchain/classic': 1.0.5(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(cheerio@1.0.0)(openai@6.15.0(ws@8.17.1)(zod@3.25.67))(ws@8.17.1)
       '@langchain/cohere': 1.0.1(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))(encoding@0.1.13)
-      '@langchain/community': 1.0.5(a33e451a7950a2078e940e67ddd150bd)
+      '@langchain/community': 1.0.5(594fddaedf0a1342a8e7499478ebb570)
       '@langchain/core': 1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@4.104.0(encoding@0.1.13)(ws@8.19.0)(zod@3.25.76))
       '@langchain/google-genai': 2.0.0(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))
       '@langchain/google-vertexai': 2.0.0(@langchain/core@1.1.0(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(openai@6.15.0(ws@8.17.1)(zod@3.25.67)))
@@ -23385,6 +23402,10 @@ snapshots:
     dependencies:
       '@types/node': 22.19.3
 
+  '@types/dompurify@3.2.0':
+    dependencies:
+      dompurify: 3.3.2
+
   '@types/eslint-scope@3.7.7':
     dependencies:
       '@types/eslint': 9.6.1
@@ -23630,6 +23651,9 @@ snapshots:
   '@types/tough-cookie@4.0.5': {}
 
   '@types/triple-beam@1.3.5': {}
+
+  '@types/trusted-types@2.0.7':
+    optional: true
 
   '@types/turndown@5.0.6': {}
 
@@ -25484,6 +25508,10 @@ snapshots:
   domhandler@5.0.3:
     dependencies:
       domelementtype: 2.3.0
+
+  dompurify@3.3.2:
+    optionalDependencies:
+      '@types/trusted-types': 2.0.7
 
   domutils@2.8.0:
     dependencies:

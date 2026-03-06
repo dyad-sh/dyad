@@ -56,8 +56,9 @@ const queryClient = new QueryClient({
   }),
 });
 
-const posthogClient = posthog.init(
-  "phc_5Vxx0XT8Ug3eWROhP6mm4D6D2DgIIKT232q4AKxC2ab",
+const POSTHOG_KEY = import.meta.env.VITE_POSTHOG_KEY || "";
+const posthogClient = POSTHOG_KEY ? posthog.init(
+  POSTHOG_KEY,
   {
     api_host: "https://us.i.posthog.com",
     // @ts-ignore
@@ -72,7 +73,7 @@ const posthogClient = posthog.init(
       }
       const telemetryUserId = getTelemetryUserId();
       if (telemetryUserId) {
-        posthogClient.identify(telemetryUserId);
+        posthogClient?.identify(telemetryUserId);
       }
 
       if (event?.properties["$ip"]) {
@@ -89,7 +90,7 @@ const posthogClient = posthog.init(
     },
     persistence: "localStorage",
   },
-);
+) : undefined;
 
 function App() {
   useEffect(() => {

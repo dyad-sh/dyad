@@ -22,49 +22,49 @@ const IS_PRODUCTION = process.env.NODE_ENV === "production";
 /**
  * Main API base URL
  */
-export const API_BASE_URL = "https://api.joycreate.app/v1";
+export const API_BASE_URL = process.env.JOY_API_URL || "https://api.joycreate.app/v1";
 
 /**
  * OAuth base URL for third-party integrations
  */
-export const OAUTH_BASE_URL = "https://oauth.joymarketplace.io/api";
+export const OAUTH_BASE_URL = process.env.JOY_OAUTH_URL || "https://oauth.joymarketplace.io/api";
 
 /**
  * Supabase OAuth client ID (registered under JoyCreate/JoyMarketplace)
  */
-export const SUPABASE_CLIENT_ID = "5818fdf4-f621-4e93-bb49-d34cf4934dfe";
+export const SUPABASE_CLIENT_ID = process.env.SUPABASE_CLIENT_ID || "";
 
 /**
  * GitHub OAuth client ID (registered under JoyCreate/JoyMarketplace)
  */
-export const GITHUB_CLIENT_ID = "Ov23likR31wIwYJUzHE3";
+export const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || "";
 
 /**
  * Supabase OAuth URLs
  */
 export const SUPABASE_OAUTH_BASE_URL =
-  "https://oauth.joymarketplace.io/api/supabase";
+  process.env.JOY_SUPABASE_OAUTH_URL || "https://oauth.joymarketplace.io/api/supabase";
 
 /**
  * AI Engine base URL
  */
-export const ENGINE_BASE_URL = "https://engine.joycreate.app/v1";
+export const ENGINE_BASE_URL = process.env.JOY_ENGINE_URL || "https://engine.joycreate.app/v1";
 
 /**
  * Help/Support chat base URL
  */
-export const HELP_CHAT_BASE_URL = "https://help.joycreate.app/v1";
+export const HELP_CHAT_BASE_URL = process.env.JOY_HELP_URL || "https://help.joycreate.app/v1";
 
 /**
  * Documentation base URL
  */
-export const DOCS_BASE_URL = "https://docs.joycreate.app";
+export const DOCS_BASE_URL = process.env.JOY_DOCS_URL || "https://docs.joycreate.app";
 
 /**
  * Log upload service URL
  */
 export const LOG_UPLOAD_URL =
-  "https://upload-logs.joycreate.app/generate-upload-url";
+  process.env.JOY_LOG_UPLOAD_URL || "https://upload-logs.joycreate.app/generate-upload-url";
 
 // =============================================================================
 // SPECIFIC ENDPOINTS

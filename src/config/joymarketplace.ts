@@ -76,7 +76,7 @@ export const JOYMARKETPLACE_API = {
   webUrl: process.env.JOYMARKETPLACE_WEB_URL || "https://joymarketplace.io",
   
   // Supabase backend (for direct database operations)
-  supabaseUrl: "https://jgsbmnzhvuwiujqbaieo.supabase.co",
+  supabaseUrl: process.env.JOYMARKETPLACE_SUPABASE_URL || "https://jgsbmnzhvuwiujqbaieo.supabase.co",
   supabaseAnonKey: process.env.JOYMARKETPLACE_SUPABASE_ANON_KEY || "",
   
   // API Endpoints (Edge Functions)

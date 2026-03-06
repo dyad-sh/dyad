@@ -198,7 +198,11 @@ async function getMediaInfoFFprobe(filePath: string): Promise<MediaInfo> {
     info.width = videoStream.width;
     info.height = videoStream.height;
     info.codec = videoStream.codec_name;
-    info.frameRate = eval(videoStream.r_frame_rate); // e.g., "30/1"
+    // Safely parse frame rate string like "30/1" without eval
+    const frParts = String(videoStream.r_frame_rate).split("/");
+    info.frameRate = frParts.length === 2
+      ? Number(frParts[0]) / Number(frParts[1])
+      : Number(videoStream.r_frame_rate) || 0;
     if (videoStream.nb_frames) {
       info.totalFrames = parseInt(videoStream.nb_frames);
     }

@@ -78,9 +78,13 @@ class LibreOfficeManager {
   private static instance: LibreOfficeManager;
   private libreOfficePath: string | null = null;
   private documentsDir: string;
+  private headlessProfileDir: string;
 
   private constructor() {
     this.documentsDir = path.join(app.getPath("userData"), "documents");
+    // Separate profile directory for headless operations to avoid locking
+    // conflicts with any running LibreOffice GUI instance
+    this.headlessProfileDir = path.join(app.getPath("userData"), "libreoffice-headless-profile");
     this.initializeDirectories();
   }
 
@@ -97,9 +101,23 @@ class LibreOfficeManager {
       await fs.mkdir(path.join(this.documentsDir, "exports"), { recursive: true });
       await fs.mkdir(path.join(this.documentsDir, "templates"), { recursive: true });
       await fs.mkdir(path.join(this.documentsDir, "thumbnails"), { recursive: true });
+      await fs.mkdir(this.headlessProfileDir, { recursive: true });
     } catch (error) {
       console.error("Failed to create documents directories:", error);
     }
+  }
+
+  /**
+   * Get the -env:UserInstallation argument for headless operations.
+   * This prevents profile lock conflicts when LibreOffice GUI is running.
+   */
+  private getHeadlessProfileArg(): string {
+    // Convert Windows path to file:/// URL format with proper encoding
+    const profileUrl = this.headlessProfileDir
+      .replace(/\\/g, "/")
+      .replace(/^([A-Za-z]):/, "/$1:")
+      .replace(/ /g, "%20");
+    return `-env:UserInstallation=file://${profileUrl}`;
   }
 
   async findLibreOffice(): Promise<string | null> {
@@ -168,15 +186,16 @@ class LibreOfficeManager {
     }
 
     try {
-      // Use --headless to prevent "Press Enter to continue" prompt on Windows
-      // Also pipe from nul/dev/null to prevent stdin waiting
+      // Use --headless with a separate user profile to prevent conflicts
+      // with any running LibreOffice GUI instance (profile lock issue)
+      const profileArg = this.getHeadlessProfileArg();
       const versionCmd = process.platform === "win32" 
-        ? `"${loPath}" --headless --version < nul`
-        : `"${loPath}" --version < /dev/null`;
+        ? `"${loPath}" --headless "${profileArg}" --version < nul`
+        : `"${loPath}" --headless "${profileArg}" --version < /dev/null`;
       
       const { stdout } = await execAsync(versionCmd, { 
         windowsHide: true,
-        timeout: 10000, // 10 second timeout to prevent hanging
+        timeout: 15000, // 15 second timeout to allow profile init on first run
       });
       const versionMatch = stdout.match(/LibreOffice\s+([\d.]+)/);
       
@@ -195,7 +214,9 @@ class LibreOfficeManager {
         message: `LibreOffice ${versionMatch ? versionMatch[1] : ""} ready. All features available.`,
       };
     } catch (error) {
-      // Even if version check fails, LibreOffice exists at the path
+      // Version check failed (possibly timeout, profile lock, etc.)
+      // but LibreOffice binary exists — still report as available
+      console.warn("LibreOffice version check failed, but binary found:", error);
       return {
         installed: true,
         path: loPath,
@@ -207,7 +228,7 @@ class LibreOfficeManager {
           exportToDocx: true,
           exportToXlsx: true,
         },
-        message: "LibreOffice found. All features available.",
+        message: "LibreOffice found but headless check timed out. If exports fail, try closing any open LibreOffice windows.",
       };
     }
   }
@@ -909,12 +930,14 @@ PARAGRAPH: Conclusion text here.`;
         };
       }
 
-      // Use LibreOffice headless to convert
+      // Use LibreOffice headless to convert, with a separate user profile
+      // to avoid conflicts with any running LibreOffice GUI instance
       const filter = EXPORT_FILTERS[request.format] || "writer_pdf_Export";
       
       await new Promise<void>((resolve, reject) => {
         const args = [
           "--headless",
+          this.getHeadlessProfileArg(),
           "--convert-to",
           `${request.format}:${filter}`,
           "--outdir",
@@ -924,15 +947,25 @@ PARAGRAPH: Conclusion text here.`;
 
         const proc = spawn(loPath, args, { windowsHide: true });
         
+        // Timeout to prevent hanging if LibreOffice gets stuck
+        const timeout = setTimeout(() => {
+          proc.kill();
+          reject(new Error("LibreOffice export timed out after 60 seconds. Try closing any open LibreOffice windows and retry."));
+        }, 60000);
+
         proc.on("close", (code) => {
+          clearTimeout(timeout);
           if (code === 0) {
             resolve();
           } else {
-            reject(new Error(`LibreOffice exited with code ${code}`));
+            reject(new Error(`LibreOffice exited with code ${code}. If LibreOffice GUI is open, try closing it and retry.`));
           }
         });
 
-        proc.on("error", reject);
+        proc.on("error", (err) => {
+          clearTimeout(timeout);
+          reject(err);
+        });
       });
 
       return {

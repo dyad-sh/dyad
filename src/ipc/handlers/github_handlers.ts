@@ -1434,7 +1434,6 @@ function sanitizeGitError(message: string): string {
  * - App is not connected to GitHub
  * - No GitHub access token
  * - Push fails (logs warning but doesn't throw)
- * - Remote has diverged (skips sync to avoid silent merge commits)
  *
  * @param appId The app ID to potentially push
  */
@@ -1467,9 +1466,8 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
     const appPath = getDyadAppPath(app.path);
     const remoteBranch = app.githubBranch || "main";
 
-    // Use a dedicated lock to serialize auto-sync operations for the same app,
-    // preventing concurrent pull+push sequences from racing
-    await withLock(`auto-sync-${appId}`, async () => {
+    // Use the app-level git lock to prevent concurrent git operations
+    await withLock(appId, async () => {
       // Set up remote URL with token for native git auth
       const remoteUrl = IS_TEST_BUILD
         ? `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`
@@ -1491,7 +1489,7 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
         return;
       }
 
-      // Fetch remote to check if branches have diverged, but don't merge
+      // Fetch remote so push can detect if fast-forward is possible
       try {
         await gitFetch({
           path: appPath,
@@ -1511,11 +1509,11 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
         // Remote branch doesn't exist yet, continue with push
       }
 
-      // Push local main to the configured remote branch.
-      // Dyad apps always commit on local "main"; the remote branch may differ.
+      // Push the local branch to the configured remote branch.
+      // The local branch name matches the configured githubBranch (set by prepareLocalBranch).
       await gitPush({
         path: appPath,
-        branch: "main",
+        branch: remoteBranch,
         remoteBranch,
         accessToken,
         force: false,
@@ -1544,9 +1542,7 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
  */
 export function fireAndForgetAutoSync(
   appId: number,
-  context: string,
+  _context: string,
 ): void {
-  autoSyncToGithubIfEnabled(appId).catch((error: any) => {
-    logger.warn(`[Auto-sync] Failed after ${context}: ${error?.message}`);
-  });
+  void autoSyncToGithubIfEnabled(appId);
 }

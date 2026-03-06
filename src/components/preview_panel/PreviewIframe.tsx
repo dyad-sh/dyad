@@ -51,6 +51,7 @@ import {
 } from "@/atoms/previewAtoms";
 import { isChatPanelHiddenAtom } from "@/atoms/viewAtoms";
 import { ComponentSelection } from "@/ipc/types";
+import { mergePendingChange } from "@/ipc/types/visual-editing";
 import {
   Popover,
   PopoverContent,
@@ -238,6 +239,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // AST Analysis State
   const [isDynamicComponent, setIsDynamicComponent] = useState(false);
   const [hasStaticText, setHasStaticText] = useState(false);
+  const [hasImage, setHasImage] = useState(false);
+  const [isDynamicImage, setIsDynamicImage] = useState(false);
+  const [currentImageSrc, setCurrentImageSrc] = useState("");
 
   // Device mode state
   const deviceMode: DeviceMode = settings?.previewDeviceMode ?? "desktop";
@@ -262,6 +266,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       });
       setIsDynamicComponent(result.isDynamic);
       setHasStaticText(result.hasStaticText);
+      setHasImage(result.hasImage);
+      setIsDynamicImage(result.isDynamicImage || false);
+      setCurrentImageSrc(result.imageSrc || "");
 
       // Automatically enable text editing if component has static text
       if (result.hasStaticText && iframeRef.current?.contentWindow) {
@@ -280,6 +287,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       console.error("Failed to analyze component", err);
       setIsDynamicComponent(false);
       setHasStaticText(false);
+      setHasImage(false);
+      setIsDynamicImage(false);
+      setCurrentImageSrc("");
     }
   };
 
@@ -301,15 +311,19 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       const updated = new Map(prev);
       const existing = updated.get(componentId);
 
-      updated.set(componentId, {
-        componentId: componentId,
-        componentName:
-          existing?.componentName || visualEditingSelectedComponent?.name || "",
-        relativePath: filePath,
-        lineNumber: lineNumber,
-        styles: existing?.styles || {},
-        textContent: text,
-      });
+      updated.set(
+        componentId,
+        mergePendingChange(existing, {
+          componentId,
+          componentName:
+            existing?.componentName ||
+            visualEditingSelectedComponent?.name ||
+            "",
+          relativePath: filePath,
+          lineNumber,
+          textContent: text,
+        }),
+      );
 
       return updated;
     });
@@ -542,6 +556,35 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         return;
       }
 
+      if (event.data?.type === "dyad-image-load-error") {
+        showError("Image failed to load. Please check the URL and try again.");
+        // Remove the broken image from pending changes
+        const { elementId } = event.data;
+        if (elementId) {
+          setPendingChanges((prev) => {
+            const updated = new Map(prev);
+            const existing = updated.get(elementId);
+            if (existing?.imageSrc) {
+              const hasStyles =
+                existing.styles && Object.keys(existing.styles).length > 0;
+              if (!hasStyles && !existing.textContent) {
+                // No other changes, remove entirely
+                updated.delete(elementId);
+              } else {
+                // Keep the entry but remove image data
+                updated.set(elementId, {
+                  ...existing,
+                  imageSrc: undefined,
+                  imageUpload: undefined,
+                });
+              }
+            }
+            return updated;
+          });
+        }
+        return;
+      }
+
       if (event.data?.type === "dyad-component-coordinates-updated") {
         if (event.data.coordinates) {
           setCurrentComponentCoordinates(event.data.coordinates);
@@ -620,22 +663,33 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         // Also update UI state
         setConsoleEntries((prev) => [...prev, logEntry]);
       } else if (type === "pushState" || type === "replaceState") {
+        // Resolve relative URLs against the app's base URL so that all
+        // entries in navigationHistory are always absolute URLs.
+        let resolvedUrl = payload?.newUrl;
+        if (resolvedUrl) {
+          try {
+            resolvedUrl = new URL(resolvedUrl, appUrl ?? undefined).href;
+          } catch {
+            // If it can't be resolved at all, keep the raw value
+          }
+        }
+
         // Update navigation history based on the type of state change
-        if (type === "pushState" && payload?.newUrl) {
+        if (type === "pushState" && resolvedUrl) {
           // For pushState, we trim any forward history and add the new URL
           const newHistory = [
             ...navigationHistory.slice(0, currentHistoryPosition + 1),
-            payload.newUrl,
+            resolvedUrl,
           ];
           setNavigationHistory(newHistory);
           setCurrentHistoryPosition(newHistory.length - 1);
           // Update the current iframe URL ref to match the navigation
-          currentIframeUrlRef.current = payload.newUrl;
+          currentIframeUrlRef.current = resolvedUrl;
           // Preserve URL for HMR remounts - only if it's a different route from root
           // Compare origins and check if there's a meaningful path
           if (selectedAppId && appUrl) {
             try {
-              const newUrlObj = new URL(payload.newUrl);
+              const newUrlObj = new URL(resolvedUrl);
               const appUrlObj = new URL(appUrl);
               // Only preserve if there's a non-root path
               if (
@@ -643,10 +697,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 newUrlObj.pathname !== "/" &&
                 newUrlObj.pathname !== ""
               ) {
-                const urlToPreserve = payload.newUrl;
                 setPreservedUrls((prev) => ({
                   ...prev,
-                  [selectedAppId]: urlToPreserve,
+                  [selectedAppId]: resolvedUrl,
                 }));
               } else if (newUrlObj.origin === appUrlObj.origin) {
                 // Clear preserved URL when navigating back to root
@@ -660,17 +713,17 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
               // Invalid URL, don't preserve
             }
           }
-        } else if (type === "replaceState" && payload?.newUrl) {
+        } else if (type === "replaceState" && resolvedUrl) {
           // For replaceState, we replace the current URL
           const newHistory = [...navigationHistory];
-          newHistory[currentHistoryPosition] = payload.newUrl;
+          newHistory[currentHistoryPosition] = resolvedUrl;
           setNavigationHistory(newHistory);
           // Update the current iframe URL ref to match the navigation
-          currentIframeUrlRef.current = payload.newUrl;
+          currentIframeUrlRef.current = resolvedUrl;
           // Preserve URL for HMR remounts - only if it's a different route from root
           if (selectedAppId && appUrl) {
             try {
-              const newUrlObj = new URL(payload.newUrl);
+              const newUrlObj = new URL(resolvedUrl);
               const appUrlObj = new URL(appUrl);
               // Only preserve if there's a non-root path
               if (
@@ -678,10 +731,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 newUrlObj.pathname !== "/" &&
                 newUrlObj.pathname !== ""
               ) {
-                const urlToPreserve = payload.newUrl;
                 setPreservedUrls((prev) => ({
                   ...prev,
-                  [selectedAppId]: urlToPreserve,
+                  [selectedAppId]: resolvedUrl,
                 }));
               } else if (newUrlObj.origin === appUrlObj.origin) {
                 // Clear preserved URL when navigating back to root
@@ -1144,10 +1196,14 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                   className="truncate flex-1 mr-2 min-w-0"
                   data-testid="preview-address-bar-path"
                 >
-                  {navigationHistory[currentHistoryPosition]
-                    ? new URL(navigationHistory[currentHistoryPosition])
-                        .pathname
-                    : "/"}
+                  {(() => {
+                    try {
+                      return new URL(navigationHistory[currentHistoryPosition])
+                        .pathname;
+                    } catch {
+                      return "/";
+                    }
+                  })()}
                 </span>
                 <ChevronDown size={14} className="flex-shrink-0" />
               </DropdownMenuTrigger>
@@ -1368,6 +1424,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                       iframeRef={iframeRef}
                       isDynamic={isDynamicComponent}
                       hasStaticText={hasStaticText}
+                      hasImage={hasImage}
+                      isDynamicImage={isDynamicImage}
+                      currentImageSrc={currentImageSrc}
                     />
                   )}
               </>

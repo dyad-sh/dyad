@@ -7,6 +7,7 @@ import { showSuccess, showError } from "@/lib/toast";
 import { AutoApproveSwitch } from "@/components/AutoApproveSwitch";
 import { TelemetrySwitch } from "@/components/TelemetrySwitch";
 import { MaxChatTurnsSelector } from "@/components/MaxChatTurnsSelector";
+import { MaxToolCallStepsSelector } from "@/components/MaxToolCallStepsSelector";
 import { ThinkingBudgetSelector } from "@/components/ThinkingBudgetSelector";
 import { useSettings } from "@/hooks/useSettings";
 import { useAppVersion } from "@/hooks/useAppVersion";
@@ -412,6 +413,10 @@ export function AISettings() {
 
       <div id={SETTING_IDS.maxChatTurns} className="mt-4">
         <MaxChatTurnsSelector />
+      </div>
+
+      <div id={SETTING_IDS.maxToolCallSteps} className="mt-4">
+        <MaxToolCallStepsSelector />
       </div>
 
       <div id={SETTING_IDS.contextCompaction} className="space-y-1 mt-4">

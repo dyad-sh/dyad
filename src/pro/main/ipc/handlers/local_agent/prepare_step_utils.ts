@@ -7,7 +7,7 @@
 
 import { ImagePart, ModelMessage, TextPart, UserModelMessage } from "ai";
 import type { UserMessageContentPart, Todo } from "./tools/types";
-import { cleanMessageForOpenAI } from "@/ipc/utils/ai_messages_utils";
+import { cleanMessage } from "@/ipc/utils/ai_messages_utils";
 
 /**
  * Check if a single todo is incomplete (pending or in_progress).
@@ -158,7 +158,7 @@ export function prepareStepMessages<
   // Clean messages for OpenAI compatibility during multi-step agent flows:
   // 1. Strip itemId to prevent "Item with id not found" errors
   // 2. Filter orphaned reasoning to prevent "reasoning without following item" errors
-  const filteredMessages = messages.map(cleanMessageForOpenAI);
+  const filteredMessages = messages.map(cleanMessage);
 
   // Check if we need to return modified options
   const hasInjections = allInjectedMessages.length > 0;

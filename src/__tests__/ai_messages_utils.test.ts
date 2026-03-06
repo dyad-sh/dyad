@@ -267,6 +267,93 @@ describe("parseAiMessagesJson", () => {
       expect(part.providerOptions).toBeUndefined();
     });
 
+    it("should sanitize tool-call with empty string input to empty object", () => {
+      const msg: DbMessageForParsing = {
+        id: 30,
+        role: "assistant",
+        content: "fallback",
+        aiMessagesJson: {
+          sdkVersion: AI_MESSAGES_SDK_VERSION,
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "tool-call",
+                  toolCallId: "call-456",
+                  toolName: "execute_sql",
+                  input: "",
+                },
+              ],
+            },
+          ] as ModelMessage[],
+        },
+      };
+
+      const result = parseAiMessagesJson(msg);
+      const part = (result[0].content as any[])[0];
+      expect(part.toolCallId).toBe("call-456");
+      expect(part.input).toEqual({});
+    });
+
+    it("should sanitize tool-call with null input to empty object", () => {
+      const msg: DbMessageForParsing = {
+        id: 31,
+        role: "assistant",
+        content: "fallback",
+        aiMessagesJson: {
+          sdkVersion: AI_MESSAGES_SDK_VERSION,
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "tool-call",
+                  toolCallId: "call-789",
+                  toolName: "read_file",
+                  input: null,
+                },
+              ],
+            },
+          ] as ModelMessage[],
+        },
+      };
+
+      const result = parseAiMessagesJson(msg);
+      const part = (result[0].content as any[])[0];
+      expect(part.toolCallId).toBe("call-789");
+      expect(part.input).toEqual({});
+    });
+
+    it("should preserve valid tool-call input objects", () => {
+      const msg: DbMessageForParsing = {
+        id: 32,
+        role: "assistant",
+        content: "fallback",
+        aiMessagesJson: {
+          sdkVersion: AI_MESSAGES_SDK_VERSION,
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "tool-call",
+                  toolCallId: "call-valid",
+                  toolName: "read_file",
+                  input: { path: "/test" },
+                },
+              ],
+            },
+          ] as ModelMessage[],
+        },
+      };
+
+      const result = parseAiMessagesJson(msg);
+      const part = (result[0].content as any[])[0];
+      expect(part.toolCallId).toBe("call-valid");
+      expect(part.input).toEqual({ path: "/test" });
+    });
+
     it("should strip itemId from reasoning parts but preserve reasoningEncryptedContent when followed by output", () => {
       const msg: DbMessageForParsing = {
         id: 22,

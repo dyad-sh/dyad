@@ -51,6 +51,7 @@ function stripItemIdFromPart(part: Record<string, unknown>): boolean {
  * Clean up a message's content parts for OpenAI compatibility:
  * 1. Strip itemId from provider metadata (prevents "Item with id not found" errors)
  * 2. Filter orphaned reasoning parts (prevents "reasoning without following item" errors)
+ * 3. Ensure tool-call input is always a valid object (prevents LiteLLM sending empty string as input when converting OpenAI→Anthropic format)
  *
  * When messages contain `providerMetadata.openai.itemId` values, the AI SDK converts
  * these to `item_reference` payloads. If OpenAI has expired those items, this causes
@@ -63,7 +64,7 @@ function stripItemIdFromPart(part: Record<string, unknown>): boolean {
  *
  * Returns the original message if no changes were needed, or a new message with cleaned content.
  */
-export function cleanMessageForOpenAI<T extends ModelMessage>(message: T): T {
+export function cleanMessage<T extends ModelMessage>(message: T): T {
   if (typeof message.content === "string" || !Array.isArray(message.content)) {
     return message;
   }
@@ -94,6 +95,16 @@ export function cleanMessageForOpenAI<T extends ModelMessage>(message: T): T {
       didModify = true;
     }
 
+    // Ensure tool-call input is always a valid object (prevents LiteLLM
+    // sending empty string as input when converting OpenAI→Anthropic format)
+    if (
+      part.type === "tool-call" &&
+      (!part.input || typeof part.input !== "object")
+    ) {
+      part.input = {};
+      didModify = true;
+    }
+
     cleanedContent.push(part);
   }
 
@@ -104,11 +115,8 @@ export function cleanMessageForOpenAI<T extends ModelMessage>(message: T): T {
   return { ...message, content: cleanedContent } as T;
 }
 
-/**
- * Clean all messages in an array for OpenAI compatibility.
- */
-function cleanMessagesForOpenAI(messages: ModelMessage[]): ModelMessage[] {
-  return messages.map(cleanMessageForOpenAI);
+function cleanMessages(messages: ModelMessage[]): ModelMessage[] {
+  return messages.map(cleanMessage);
 }
 
 /** Maximum size in bytes for ai_messages_json (10MB) */
@@ -163,7 +171,7 @@ export function parseAiMessagesJson(msg: DbMessageForParsing): ModelMessage[] {
       Array.isArray(parsed) &&
       parsed.every((m) => m && typeof m.role === "string")
     ) {
-      return cleanMessagesForOpenAI(parsed);
+      return cleanMessages(parsed);
     }
 
     if (
@@ -177,7 +185,7 @@ export function parseAiMessagesJson(msg: DbMessageForParsing): ModelMessage[] {
         (m: ModelMessage) => m && typeof m.role === "string",
       )
     ) {
-      return cleanMessagesForOpenAI((parsed as AiMessagesJsonV6).messages);
+      return cleanMessages((parsed as AiMessagesJsonV6).messages);
     }
   }
 

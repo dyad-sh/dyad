@@ -81,6 +81,7 @@ import { parseAppMentions } from "@/shared/parse_mention_apps";
 import { prompts as promptsTable } from "../../db/schema";
 import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
+import { replaceSlashSkillReference } from "../utils/replaceSlashSkillReference";
 import { parsePlanFile, validatePlanId } from "./planUtils";
 import { ensureDyadGitignored } from "./gitignoreUtils";
 import { DYAD_MEDIA_DIR_NAME } from "../utils/media_path_utils";
@@ -373,6 +374,23 @@ export function registerChatStreamHandlers() {
         }
       } catch (e) {
         logger.error("Failed to inline referenced prompts:", e);
+      }
+
+      // Expand /slug skill references (e.g. /webapp-testing) to prompt content
+      try {
+        const slashSkillPattern = /(?:^|\s)\/([a-zA-Z0-9-]+)(?=\s|$)/;
+        if (slashSkillPattern.test(userPrompt)) {
+          const allPrompts = db.select().from(promptsTable).all();
+          const promptsBySlug: Record<string, string> = {};
+          for (const p of allPrompts) {
+            if (p.slug && !promptsBySlug[p.slug]) {
+              promptsBySlug[p.slug] = p.content;
+            }
+          }
+          userPrompt = replaceSlashSkillReference(userPrompt, promptsBySlug);
+        }
+      } catch (e) {
+        logger.error("Failed to expand slash skill references:", e);
       }
 
       // Expand /implement-plan= into full implementation prompt

@@ -419,6 +419,29 @@ export async function gitAddAll({ path }: GitBaseParams): Promise<void> {
 export async function gitAdd({ path, filepath }: GitFileParams): Promise<void> {
   const normalizedFilepath = normalizePath(filepath);
   const settings = readSettings();
+
+  // Check if the file is ignored by .gitignore before attempting to stage.
+  // This prevents errors when trying to stage files like .env.local.
+  // Skip the check when filepath is "." (stage-all), as "." is not a meaningful
+  // argument to git check-ignore and could incorrectly skip staging all files.
+  if (normalizedFilepath !== ".") {
+    let isIgnored = false;
+    try {
+      isIgnored = await gitIsIgnored({ path, filepath: normalizedFilepath });
+    } catch (e) {
+      logger.warn(
+        `Failed to check if file '${normalizedFilepath}' is ignored, proceeding with staging`,
+        e,
+      );
+    }
+    if (isIgnored) {
+      logger.debug(
+        `Skipping staging of ignored file '${normalizedFilepath}' (file is in .gitignore)`,
+      );
+      return;
+    }
+  }
+
   if (settings.enableNativeGit) {
     await execOrThrow(
       ["add", "--", normalizedFilepath],
@@ -427,6 +450,27 @@ export async function gitAdd({ path, filepath }: GitFileParams): Promise<void> {
     );
   } else {
     await git.add({
+      fs,
+      dir: path,
+      filepath: normalizedFilepath,
+    });
+  }
+}
+
+export async function gitResetFile({
+  path,
+  filepath,
+}: GitFileParams): Promise<void> {
+  const normalizedFilepath = normalizePath(filepath);
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    await execOrThrow(
+      ["reset", "HEAD", "--", normalizedFilepath],
+      path,
+      `Failed to unstage file '${normalizedFilepath}'`,
+    );
+  } else {
+    await git.resetIndex({
       fs,
       dir: path,
       filepath: normalizedFilepath,

@@ -1,50 +1,36 @@
 const locks = new Map<number | string, Promise<void>>();
 
 /**
- * Acquires a lock for an app operation
- * @param lockId The app ID to lock
- * @returns An object with release function and promise
- */
-export function acquireLock(lockId: number | string): {
-  release: () => void;
-  promise: Promise<void>;
-} {
-  let release: () => void = () => {};
-
-  const promise = new Promise<void>((resolve) => {
-    release = () => {
-      locks.delete(lockId);
-      resolve();
-    };
-  });
-
-  locks.set(lockId, promise);
-  return { release, promise };
-}
-
-/**
- * Executes a function with a lock on the lock ID
+ * Executes a function with a lock on the lock ID.
+ * Uses promise-chaining so that queued operations execute serially,
+ * preventing the race where multiple waiters all acquire simultaneously.
+ *
  * @param lockId The lock ID to lock
  * @param fn The function to execute with the lock
  * @returns Result of the function
  */
-export async function withLock<T>(
+export function withLock<T>(
   lockId: number | string,
   fn: () => Promise<T>,
 ): Promise<T> {
-  // Wait for any existing operation to complete
-  const existingLock = locks.get(lockId);
-  if (existingLock) {
-    await existingLock;
-  }
+  const lastOperation = locks.get(lockId) ?? Promise.resolve();
 
-  // Acquire a new lock
-  const { release } = acquireLock(lockId);
+  let resolve: () => void;
+  const newLock = new Promise<void>((r) => {
+    resolve = r;
+  });
+  locks.set(lockId, newLock);
 
-  try {
-    const result = await fn();
-    return result;
-  } finally {
-    release();
-  }
+  const result = lastOperation.then(async () => {
+    try {
+      return await fn();
+    } finally {
+      resolve();
+      if (locks.get(lockId) === newLock) {
+        locks.delete(lockId);
+      }
+    }
+  });
+
+  return result;
 }

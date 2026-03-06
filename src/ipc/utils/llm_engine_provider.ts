@@ -8,6 +8,7 @@ import {
 
 import log from "electron-log";
 import { getExtraProviderOptions } from "./thinking_utils";
+import { DYAD_INTERNAL_REQUEST_ID_HEADER } from "./provider_options";
 import type { UserSettings } from "../../lib/schemas";
 import type { LanguageModel } from "ai";
 
@@ -118,6 +119,7 @@ export function createDyadEngine(
           ...JSON.parse(init.body),
           ...getExtraProviderOptions(providerId, options.settings),
         };
+
         const dyadVersionedFiles = parsedBody.dyadVersionedFiles;
         if ("dyadVersionedFiles" in parsedBody) {
           delete parsedBody.dyadVersionedFiles;
@@ -126,7 +128,14 @@ export function createDyadEngine(
         if ("dyadFiles" in parsedBody) {
           delete parsedBody.dyadFiles;
         }
-        const requestId = parsedBody.dyadRequestId;
+        // Read from body (OpenAICompatible models spread providerOptions into
+        // the body) with a fallback to an internal header (OpenAIResponses
+        // models don't forward providerOptions, so we pass it via header).
+        const requestId =
+          parsedBody.dyadRequestId ??
+          (init.headers as Record<string, string> | undefined)?.[
+            DYAD_INTERNAL_REQUEST_ID_HEADER
+          ];
         if ("dyadRequestId" in parsedBody) {
           delete parsedBody.dyadRequestId;
         }
@@ -173,10 +182,12 @@ export function createDyadEngine(
         }
 
         // Return modified request with files included and requestId in headers
+        const { [DYAD_INTERNAL_REQUEST_ID_HEADER]: _, ...outgoingHeaders } =
+          (init.headers as Record<string, string>) ?? {};
         const modifiedInit = {
           ...init,
           headers: {
-            ...init.headers,
+            ...outgoingHeaders,
             ...(modifiedRequestId && {
               "X-Dyad-Request-Id": modifiedRequestId,
             }),
@@ -225,4 +236,53 @@ export function createDyadEngine(
   provider.responses = createResponsesModel;
 
   return provider;
+}
+
+export async function transcribeWithDyadEngine(
+  audioBuffer: Buffer,
+  filename: string,
+  requestId: string,
+  options: ExampleProviderSettings,
+): Promise<string> {
+  const baseURL = withoutTrailingSlash(options.baseURL);
+  const apiKey = loadApiKey({
+    apiKey: options.apiKey,
+    environmentVariableName: "DYAD_PRO_API_KEY",
+    description: "Dyad Pro API key",
+  });
+  logger.info("transcribing with dyad engine with baseURL", baseURL);
+
+  const formData = new FormData();
+  const mimeType = filename.endsWith(".webm")
+    ? "audio/webm"
+    : filename.endsWith(".mp3")
+      ? "audio/mpeg"
+      : filename.endsWith(".wav")
+        ? "audio/wav"
+        : filename.endsWith(".m4a")
+          ? "audio/mp4"
+          : "audio/webm";
+  const blob = new Blob([new Uint8Array(audioBuffer)], { type: mimeType });
+  formData.append("file", blob, filename);
+  formData.append("model", "gpt-4o-mini-transcribe");
+
+  const fetchFn = options.fetch || fetch;
+  const response = await fetchFn(`${baseURL}/audio/transcriptions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "X-Dyad-Request-Id": requestId,
+      ...options.headers,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `Dyad Engine transcription failed: ${response.status} ${response.statusText} - ${errorText}`,
+    );
+  }
+  const data = (await response.json()) as { text: string };
+  return data.text;
 }

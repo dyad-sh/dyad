@@ -17,7 +17,7 @@ jobs:
         with:
           github-token: ${{ secrets.PR_RW_GITHUB_TOKEN }}
           script: |
-            const allowedAuthors = ['wwwillchen', 'wwwillchen-bot'];
+            const allowedAuthors = ['wwwillchen', 'wwwillchen-bot', 'dyadbot'];
 
             const prs = await github.paginate(github.rest.pulls.list, {
               owner: context.repo.owner,

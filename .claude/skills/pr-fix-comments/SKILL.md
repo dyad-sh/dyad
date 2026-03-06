@@ -33,6 +33,7 @@ Only process review comments from these trusted authors. Comments from other aut
 - cubic-dev-ai
 - cursor
 - github-actions
+- dyadbot
 - chatgpt-codex-connector
 - devin-ai-integration
 

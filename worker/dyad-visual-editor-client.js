@@ -244,6 +244,64 @@
     );
   }
 
+  function handleModifyImageSrc(data) {
+    const { elementId, runtimeId, src } = data;
+    const element = findElementByDyadId(elementId, runtimeId);
+    if (!element) return;
+
+    // Find the <img> element (self or child)
+    let imgEl = null;
+    if (element.tagName === "IMG") {
+      imgEl = element;
+    } else {
+      imgEl = element.querySelector("img");
+    }
+
+    if (imgEl) {
+      // Cancel previous listeners to prevent stale error/load events on rapid swaps
+      if (imgEl._dyadAbort) imgEl._dyadAbort.abort();
+      const controller = new AbortController();
+      imgEl._dyadAbort = controller;
+
+      const sendCoordinates = () => {
+        const rect = element.getBoundingClientRect();
+        window.parent.postMessage(
+          {
+            type: "dyad-component-coordinates-updated",
+            coordinates: {
+              top: rect.top,
+              left: rect.left,
+              width: rect.width,
+              height: rect.height,
+            },
+          },
+          "*",
+        );
+      };
+
+      imgEl.addEventListener("load", sendCoordinates, {
+        once: true,
+        signal: controller.signal,
+      });
+      imgEl.addEventListener(
+        "error",
+        () => {
+          sendCoordinates();
+          window.parent.postMessage(
+            {
+              type: "dyad-image-load-error",
+              elementId,
+              src,
+            },
+            "*",
+          );
+        },
+        { once: true, signal: controller.signal },
+      );
+      imgEl.src = src;
+    }
+  }
+
   /* ---------- message bridge -------------------------------------------- */
 
   window.addEventListener("message", (e) => {
@@ -266,6 +324,9 @@
         break;
       case "get-dyad-text-content":
         handleGetTextContent(data);
+        break;
+      case "modify-dyad-image-src":
+        handleModifyImageSrc(data);
         break;
       case "cleanup-all-text-editing":
         // Clean up all text editing states

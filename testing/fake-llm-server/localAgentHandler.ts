@@ -21,6 +21,10 @@ try {
 // Cache loaded fixtures to avoid re-importing
 const fixtureCache = new Map<string, LocalAgentFixture>();
 
+// Track connection attempts per session+turn for connection drop simulation.
+// Key: `${sessionId}-${passIndex}-${turnIndex}`, Value: attempt count
+const connectionAttempts = new Map<string, number>();
+
 /**
  * Generate a session ID from the first user message
  * This allows us to track conversation state across requests
@@ -246,7 +250,11 @@ async function streamTextResponse(
 /**
  * Stream a turn with tool calls
  */
-async function streamToolCallResponse(res: Response, turn: Turn) {
+async function streamToolCallResponse(
+  res: Response,
+  turn: Turn,
+  options?: { dropAfterToolCalls?: boolean },
+) {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -320,6 +328,16 @@ async function streamToolCallResponse(res: Response, turn: Turn) {
     }
   }
 
+  if (options?.dropAfterToolCalls) {
+    console.log(
+      `[local-agent] Simulating connection drop after streaming tool calls`,
+    );
+    // Drop before finish_reason/[DONE] so tool calls were emitted but the
+    // provider response did not complete.
+    res.socket?.destroy();
+    return;
+  }
+
   // 4) Send finish (with optional usage data)
   const finishReason =
     turn.toolCalls && turn.toolCalls.length > 0 ? "tool_calls" : "stop";
@@ -340,6 +358,7 @@ async function streamToolCallResponse(res: Response, turn: Turn) {
     finishChunk.usage = turn.usage;
   }
   res.write(`data: ${JSON.stringify(finishChunk)}\n\n`);
+
   res.write("data: [DONE]\n\n");
   res.end();
 }
@@ -413,9 +432,64 @@ export async function handleLocalAgentFixture(
       }
     }
 
+    // Check if we should simulate a connection drop for this attempt
+    const turnScopedDropAttempts =
+      fixture.dropConnectionByTurn?.find((rule) => rule.turnIndex === turnIndex)
+        ?.attempts ?? fixture.dropConnectionOnAttempts;
+    const turnScopedDropAfterToolCallAttempts =
+      fixture.dropConnectionAfterToolCallByTurn?.find(
+        (rule) => rule.turnIndex === turnIndex,
+      )?.attempts;
+
+    if (turnScopedDropAttempts && turnScopedDropAttempts.length > 0) {
+      const attemptKey = `${sessionId}-${passIndex}-${turnIndex}`;
+      const currentAttempt = (connectionAttempts.get(attemptKey) || 0) + 1;
+      connectionAttempts.set(attemptKey, currentAttempt);
+
+      console.log(
+        `[local-agent] Connection attempt ${currentAttempt} for ${attemptKey}, ` +
+          `drop on: [${turnScopedDropAttempts.join(", ")}]`,
+      );
+
+      if (turnScopedDropAttempts.includes(currentAttempt)) {
+        console.log(
+          `[local-agent] Simulating connection drop on attempt ${currentAttempt}`,
+        );
+        // Stream partial data then destroy the socket to simulate a network interruption
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        res.write(
+          createStreamChunk(
+            "Partial response before connection dr",
+            "assistant",
+          ),
+        );
+        // Destroy the underlying socket to trigger a "terminated" error on the client
+        res.socket?.destroy();
+        return;
+      }
+    }
+
     // If this turn has tool calls, stream them
     if (turn.toolCalls && turn.toolCalls.length > 0) {
-      await streamToolCallResponse(res, turn);
+      const dropAfterToolCalls =
+        turnScopedDropAfterToolCallAttempts &&
+        turnScopedDropAfterToolCallAttempts.length > 0
+          ? (() => {
+              const attemptKey = `${sessionId}-${passIndex}-${turnIndex}-after-tool-call`;
+              const currentAttempt =
+                (connectionAttempts.get(attemptKey) || 0) + 1;
+              connectionAttempts.set(attemptKey, currentAttempt);
+              return turnScopedDropAfterToolCallAttempts.includes(
+                currentAttempt,
+              );
+            })()
+          : false;
+
+      await streamToolCallResponse(res, turn, {
+        dropAfterToolCalls,
+      });
     } else {
       // Text-only turn
       await streamTextResponse(res, turn.text || "Done.", turn.usage);

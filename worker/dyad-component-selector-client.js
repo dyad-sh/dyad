@@ -215,6 +215,56 @@
     }
   }
 
+  /**
+   * Detects if an element is a non-interactive overlay (e.g. a gradient div
+   * with absolute positioning covering its parent). When such an element is
+   * the click target it blocks selection of the meaningful content underneath.
+   * Returns the parent dyad-tagged element if the current one is an overlay,
+   * or the element itself otherwise.
+   */
+  function skipOverlayElement(el) {
+    if (!el || !el.parentElement) return el;
+
+    // Never skip content-bearing elements
+    const tag = el.tagName.toLowerCase();
+    if (
+      tag === "img" ||
+      tag === "video" ||
+      tag === "canvas" ||
+      tag === "svg" ||
+      tag === "iframe"
+    ) {
+      return el;
+    }
+
+    const style = getComputedStyle(el);
+
+    // Only consider absolutely/fixed positioned elements
+    if (style.position !== "absolute" && style.position !== "fixed") return el;
+
+    // Don't skip scrollable containers (e.g. message lists with overflow-y-auto)
+    if (style.overflowY === "auto" || style.overflowY === "scroll") return el;
+
+    // Must cover a large portion of its parent (inset-0 pattern)
+    const parentRect = el.parentElement.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+
+    if (parentRect.width === 0 || parentRect.height === 0) return el;
+
+    const widthRatio = elRect.width / parentRect.width;
+    const heightRatio = elRect.height / parentRect.height;
+
+    // 98% accounts for sub-pixel rounding from borders/box-sizing while
+    // being tight enough to only match true inset-0 overlays.
+    if (widthRatio < 0.98 || heightRatio < 0.98) return el;
+
+    // This looks like an overlay — walk up to the parent with a dyad-id
+    let parent = el.parentElement;
+    while (parent && !parent.dataset.dyadId) parent = parent.parentElement;
+
+    return parent || el;
+  }
+
   // Helper function to check if mouse is over the toolbar
   function isMouseOverToolbar(mouseX, mouseY) {
     if (!componentCoordinates) return false;
@@ -328,6 +378,7 @@
 
     let el = e.target;
     while (el && !el.dataset.dyadId) el = el.parentElement;
+    if (el) el = skipOverlayElement(el);
 
     const hoveredItem = overlays.find((item) => item.el === el);
 

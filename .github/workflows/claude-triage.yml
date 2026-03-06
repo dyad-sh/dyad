@@ -108,29 +108,32 @@ jobs:
 
             ### Surfacing Helpful Comments
 
-            If a **high-confidence** duplicate is found and there is a helpful comment from **wwwillchen@** or **wwwillchen-bot@** on the original issue, include a recommendation in your comment:
+            If a **high-confidence** duplicate is found and there is a helpful comment from **wwwillchen@**, **wwwillchen-bot@**, or **dyadbot@** on the original issue, include a recommendation in your comment:
 
             > You might want to try [summary of the suggestion] based on this earlier [comment]([direct link to the comment]).
 
             **Notes:**
 
             - Only do this for high-confidence duplicates where you're very confident the issues are the same.
-            - Only surface comments from wwwillchen@ or wwwillchen-bot@ — do not surface comments from other users.
+            - Only surface comments from wwwillchen@, wwwillchen-bot@, or dyadbot@ — do not surface comments from other users.
             - Link directly to the specific comment, not just the issue.
 
             ### If No Duplicates Found
 
             Do not comment.
 
-            ## Task 3: Update Issue Title (if necessary)
+            ## Task 3: Update Issue Title (only if truly necessary)
 
-            Review the issue title and improve it **only if** it meets one of these conditions:
+            **IMPORTANT: Be VERY conservative with title changes.** Most user-provided titles are fine and should be left alone.
 
-            | Condition | Example (Before → After) |
-            |-----------|--------------------------|
-            | Template placeholder not filled in | `[session report] <add title>` → `[session report] App freezes when saving` |
-            | Too vague or generic | `not able to deploy to vercel` → `Vercel deployment fails with authentication error` |
-            | Unclear error description | `[bug] <npm and pnpm is not recogized >` → `[bug] npm/pnpm not recognized on Windows` |
+            Only update the title if it is **essentially blank or contains no meaningful information**:
+
+            | Condition | Example |
+            |-----------|---------|
+            | Completely blank or just whitespace | `` or `   ` |
+            | Template placeholder not filled in | `<add title>` or `[session report] <add title>` |
+            | Just punctuation or symbols | `???` or `!!!` or `...` |
+            | Single unhelpful word | `help` or `bug` or `error` |
 
             ### How to Update
 
@@ -138,16 +141,18 @@ jobs:
             gh issue edit [number] --title "New descriptive title"
             ```
 
-            ### Guidelines
+            ### Guidelines (only if updating)
 
             - Keep titles **short** (under 60 characters if possible)
-            - Start with the **what**: component, action, or error
             - Preserve prefixes like `[bug]` or `[session report]` if present
-            - Be specific but not overly technical
-            - Don't change titles that are already clear and descriptive
+            - Base the title on the issue body content
 
-            ### When NOT to Update
+            ### When NOT to Update (leave these alone!)
 
-            - Title already describes the issue well (e.g., "Vercel Project Selection not always available")
-            - You'd only be making minor wording tweaks
+            - **Any title that describes the issue, even if vague** (e.g., "not able to deploy to vercel" - this is fine!)
+            - **Titles with typos or grammatical issues** - don't correct these
+            - **Titles you think could be "better"** - resist the urge to improve
+            - **Titles that mention a feature, action, or error** - even briefly
             - The issue body is too unclear to write a better title (use `issue/incomplete` label instead)
+
+            **Rule of thumb:** If you can understand what the user is roughly talking about from the title, DO NOT change it.

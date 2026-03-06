@@ -47,4 +47,33 @@ export type LocalAgentFixture = {
    * Use this when testing todo follow-up loop behavior.
    */
   passes?: Pass[];
+  /**
+   * For testing connection resilience: drop the connection on these attempt
+   * numbers (1-indexed) for the first turn. The fake server will stream partial
+   * data then destroy the socket, simulating a network interruption.
+   * E.g., [1] means drop on the 1st attempt, succeed on the 2nd.
+   */
+  dropConnectionOnAttempts?: number[];
+  /**
+   * Optional per-turn connection drop configuration.
+   * Useful for simulating drops after prior tool activity within the same turn.
+   * Example: [{ turnIndex: 1, attempts: [1] }] drops the first attempt of turn 1.
+   */
+  dropConnectionByTurn?: Array<{
+    /** 0-based turn index within the active pass */
+    turnIndex: number;
+    /** Attempt numbers (1-indexed) to drop for this turn */
+    attempts: number[];
+  }>;
+  /**
+   * Optional per-turn configuration to drop the connection AFTER streaming
+   * tool-call chunks for a turn (before [DONE]). This simulates termination in
+   * the window where a tool call was emitted but no tool result was captured.
+   */
+  dropConnectionAfterToolCallByTurn?: Array<{
+    /** 0-based turn index within the active pass */
+    turnIndex: number;
+    /** Attempt numbers (1-indexed) to drop for this turn */
+    attempts: number[];
+  }>;
 };

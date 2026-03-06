@@ -18,7 +18,12 @@ function getFunctionNameFromPath(input: string): string {
 }
 
 const deleteFileSchema = z.object({
-  path: z.string().describe("The file path to delete"),
+  path: z
+    .string()
+    .refine((value) => value.trim().length > 0, {
+      message: "Path cannot be empty",
+    })
+    .describe("The file path to delete"),
 });
 
 export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
@@ -32,11 +37,24 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
     getConsentPreview: (args) => `Delete ${args.path}`,
 
     buildXml: (args, _isComplete) => {
-      if (!args.path) return undefined;
+      if (!args.path?.trim()) return undefined;
       return `<dyad-delete path="${escapeXmlAttr(args.path)}"></dyad-delete>`;
     },
 
     execute: async (args, ctx: AgentContext) => {
+      const normalizedPath = path.posix.normalize(
+        args.path.replace(/\\/g, "/"),
+      );
+      if (
+        normalizedPath === "." ||
+        normalizedPath === "./" ||
+        normalizedPath === ""
+      ) {
+        throw new Error(
+          `Refusing to delete project root for path: "${args.path}"`,
+        );
+      }
+
       const fullFilePath = safeJoin(ctx.appPath, args.path);
 
       // Track if this is a shared module

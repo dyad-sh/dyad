@@ -28,11 +28,14 @@ import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { MENTION_REGEX, parseAppMentions } from "@/shared/parse_mention_apps";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { HistoryNavigation, HISTORY_TRIGGER } from "./HistoryNavigation";
+import { slugForPrompt } from "@/ipc/utils/replaceSlashSkillReference";
 
 // Define the theme for mentions
 const beautifulMentionsTheme: BeautifulMentionsTheme = {
   "@": "px-2 py-0.5 mx-0.5 bg-accent text-accent-foreground rounded-md",
   "@Focused": "outline-none ring-2 ring-ring",
+  "/": "px-2 py-0.5 mx-0.5 bg-accent text-accent-foreground rounded-md",
+  "/Focused": "outline-none ring-2 ring-ring",
 };
 
 // Custom menu item component
@@ -41,9 +44,18 @@ const CustomMenuItem = forwardRef<
   BeautifulMentionsMenuItemProps
 >(({ selected, item, ...props }, ref) => {
   const isPrompt = item.data?.type === "prompt";
+  const isSkill = item.data?.type === "skill";
   const isApp = item.data?.type === "app";
   const isHistory = item.data?.type === "history";
-  const label = isPrompt ? "Prompt" : isApp ? "App" : isHistory ? "" : "File";
+  const label = isSkill
+    ? "Skill"
+    : isPrompt
+      ? "Prompt"
+      : isApp
+        ? "App"
+        : isHistory
+          ? ""
+          : "File";
   const value = (item as any)?.value;
 
   // For history items, show full text without label
@@ -76,7 +88,7 @@ const CustomMenuItem = forwardRef<
       <div className="flex items-center space-x-2 min-w-0">
         <span
           className={`px-2 py-0.5 text-xs font-medium rounded-md flex-shrink-0 ${
-            isPrompt
+            isSkill || isPrompt
               ? "bg-purple-500 text-white"
               : isApp
                 ? "bg-primary text-primary-foreground"
@@ -286,7 +298,11 @@ export function LexicalChatInput({
 
   // Prepare mention items - convert apps to mention format
   const mentionItems = React.useMemo(() => {
-    const result: Record<string, any[]> = { "@": [], [HISTORY_TRIGGER]: [] };
+    const result: Record<string, any[]> = {
+      "@": [],
+      "/": [],
+      [HISTORY_TRIGGER]: [],
+    };
 
     // Add history items under the history trigger - always available regardless of app loading
     // Reverse so most recent appears at the bottom
@@ -298,6 +314,16 @@ export function LexicalChatInput({
         type: "history",
       }));
     result[HISTORY_TRIGGER] = historyItems;
+
+    // Skills (slash commands): all prompts by slug
+    const skillItems = (prompts || [])
+      .map((p) => ({
+        value: slugForPrompt(p),
+        type: "skill",
+        id: p.id,
+      }))
+      .filter((item) => item.value != null && item.value !== "");
+    result["/"] = skillItems;
 
     if (!apps) return result;
 

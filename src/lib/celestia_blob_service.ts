@@ -32,7 +32,7 @@ const CELESTIA_RPC_URL = "http://localhost:26658";
 const JOYCREATE_NAMESPACE = "AAAAAAAAAAAAAAAAAAAAAAAAAGpveTgwbXZwMTI=";
 
 /** Celestia mainnet wallet address */
-const CELESTIA_WALLET_ADDRESS = "celestia1vxssxrs2t27wtgur7lmqcep5zntz3nhjp48z7k";
+const CELESTIA_WALLET_ADDRESS = process.env.CELESTIA_WALLET_ADDRESS || "";
 
 /** Network identifier */
 const CELESTIA_NETWORK = "celestia" as const; // mainnet

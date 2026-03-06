@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from "react";
+import DOMPurify from "dompurify";
 import { toast } from "sonner";
 import {
   useOfflineDocsManager,
@@ -320,7 +321,7 @@ function DocumentViewer({ docId }: { docId: DocId }) {
         ) : doc.format === "html" ? (
           <div
             className="prose prose-sm dark:prose-invert max-w-none"
-            dangerouslySetInnerHTML={{ __html: doc.content }}
+            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(doc.content) }}
           />
         ) : (
           <pre className="whitespace-pre-wrap font-mono text-sm">{doc.content}</pre>
@@ -347,7 +348,7 @@ function MarkdownRenderer({ content }: { content: string }) {
     .map((p) => (p.startsWith("<") ? p : `<p class="my-2">${p}</p>`))
     .join("\n");
 
-  return <div dangerouslySetInnerHTML={{ __html: html }} />;
+  return <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }} />;
 }
 
 // =============================================================================
@@ -430,7 +431,7 @@ function SearchTab({
                 </div>
                 <div
                   className="text-sm"
-                  dangerouslySetInnerHTML={{ __html: result.snippet }}
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(result.snippet) }}
                 />
               </button>
             ))}

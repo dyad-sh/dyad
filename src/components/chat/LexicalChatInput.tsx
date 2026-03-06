@@ -440,8 +440,7 @@ export function LexicalChatInput({
 
         // Short-circuit if there's no "@" symbol in the text
         if (textContent.includes("@")) {
-          // Convert media mentions first: @filename -> @media:filename
-          // This must happen before app mentions to avoid partial matches.
+          // Convert media mentions : @filename -> @media:filename
           const currentAppMediaFiles = mediaApps.find(
             (app) => app.appId === selectedAppId,
           );

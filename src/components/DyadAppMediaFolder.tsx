@@ -69,7 +69,6 @@ interface DyadAppMediaFolderProps {
   onDeleteMediaFile: (params: DeleteMediaFileParams) => Promise<void>;
   onMoveMediaFile: (params: MoveMediaFileParams) => Promise<void>;
   isMutatingMedia?: boolean;
-  normalizedCollapsedHeight?: number;
   searchQuery?: string;
 }
 
@@ -85,7 +84,6 @@ export function DyadAppMediaFolder({
   onDeleteMediaFile,
   onMoveMediaFile,
   isMutatingMedia = false,
-  normalizedCollapsedHeight,
   searchQuery,
 }: DyadAppMediaFolderProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -342,16 +340,10 @@ export function DyadAppMediaFolder({
   return (
     <div
       data-testid={`media-folder-${appId}`}
-      data-library-grid-height-item="true"
       className={cn(
         "border rounded-lg p-4 bg-[--background-lightest] relative cursor-pointer",
         "hover:border-primary/30 transition-colors",
       )}
-      style={
-        normalizedCollapsedHeight
-          ? { minHeight: `${normalizedCollapsedHeight}px` }
-          : undefined
-      }
       role="button"
       tabIndex={0}
       onClick={() => setIsOpen(true)}

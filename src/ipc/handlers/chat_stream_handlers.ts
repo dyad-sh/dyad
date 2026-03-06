@@ -399,9 +399,9 @@ export function registerChatStreamHandlers() {
       }
 
       // Resolve @media: mentions to image attachments
-      try {
-        const mediaRefs = parseMediaMentions(userPrompt);
-        if (mediaRefs.length > 0) {
+      const mediaRefs = parseMediaMentions(userPrompt);
+      if (mediaRefs.length > 0) {
+        try {
           const resolvedMedia = await resolveMediaMentions(
             mediaRefs,
             chat.app.path,
@@ -431,9 +431,9 @@ export function registerChatStreamHandlers() {
             );
             displayUserPrompt = strippedPrompt + mediaDisplayInfo;
           }
+        } catch (e) {
+          logger.error("Failed to resolve media mentions:", e);
         }
-      } catch (e) {
-        logger.error("Failed to resolve media mentions:", e);
       }
 
       // Expand /implement-plan= into full implementation prompt

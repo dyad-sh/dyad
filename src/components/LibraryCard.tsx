@@ -51,11 +51,11 @@ export function LibraryCard({
   const title = item.type === "theme" ? item.data.name : item.data.title;
   const description = item.data.description;
   const content = item.type === "theme" ? item.data.prompt : item.data.content;
+  const slug = item.type === "prompt" ? item.data.slug : null;
 
   return (
     <div
       data-testid={`library-${item.type}-card`}
-      data-library-grid-height-item="true"
       className="border rounded-lg p-4 bg-(--background-lightest) relative"
     >
       <Badge
@@ -75,6 +75,11 @@ export function LibraryCard({
             {description && (
               <p className="text-sm text-muted-foreground mt-1">
                 {description}
+              </p>
+            )}
+            {slug && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Use <code className="font-mono">/{slug}</code> in chat
               </p>
             )}
           </div>

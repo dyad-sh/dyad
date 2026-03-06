@@ -236,6 +236,7 @@ export function ImageGeneratorDialog({
   const handleNewGeneration = () => {
     setGeneratedResult(null);
     setPrompt("");
+    generateImage.reset();
   };
 
   const handleOpenChange = (nextOpen: boolean) => {

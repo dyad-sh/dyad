@@ -16,7 +16,7 @@ import {
   gitCommit,
   gitResetFile,
 } from "../../../../ipc/utils/git_utils";
-import { autoSyncToGithubIfEnabled } from "../../../../ipc/handlers/github_handlers";
+import { fireAndForgetAutoSync } from "../../../../ipc/handlers/github_handlers";
 import { safeJoin } from "@/ipc/utils/path_utils";
 import {
   AnalyseComponentParams,
@@ -187,9 +187,7 @@ export function registerVisualEditingHandlers() {
         }
 
         // Auto-sync to GitHub once after all files are processed (fire-and-forget to avoid blocking UI)
-        autoSyncToGithubIfEnabled(appId).catch((error) => {
-          logger.warn(`[Auto-sync] Failed after visual editing changes: ${error?.message}`);
-        });
+        fireAndForgetAutoSync(appId, "visual editing changes");
       } catch (error) {
         // Unstage any image files that were git-added before the failure
         for (const { appPath, filepath } of stagedGitPaths) {

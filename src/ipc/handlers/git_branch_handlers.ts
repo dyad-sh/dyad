@@ -29,7 +29,7 @@ import { withLock } from "../utils/lock_utils";
 import {
   updateAppGithubRepo,
   ensureCleanWorkspace,
-  autoSyncToGithubIfEnabled,
+  fireAndForgetAutoSync,
 } from "./github_handlers";
 import { createTypedHandler } from "./base";
 import { githubContracts, gitContracts } from "../types/github";
@@ -391,9 +391,7 @@ async function handleCommitChanges(
   });
 
   // Auto-sync to GitHub if enabled (fire-and-forget to avoid blocking UI)
-  autoSyncToGithubIfEnabled(appId).catch((error: any) => {
-    logger.warn(`[Auto-sync] Failed after commit: ${error?.message}`);
-  });
+  fireAndForgetAutoSync(appId, "commit");
 
   return commitHash;
 }

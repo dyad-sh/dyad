@@ -60,7 +60,7 @@ import {
 import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { AppSearchResult } from "@/lib/schemas";
-import { autoSyncToGithubIfEnabled } from "./github_handlers";
+import { fireAndForgetAutoSync } from "./github_handlers";
 
 import { getAppPort } from "../../../shared/ports";
 import {
@@ -1283,9 +1283,7 @@ export function registerAppHandlers() {
         });
 
         // Auto-sync to GitHub if enabled (fire-and-forget to avoid blocking UI)
-        autoSyncToGithubIfEnabled(appId).catch((error: any) => {
-          logger.warn(`[Auto-sync] Failed after file write: ${error?.message}`);
-        });
+        fireAndForgetAutoSync(appId, "file write");
       }
     } catch (error: any) {
       logger.error(`Error writing file ${filePath} for app ${appId}:`, error);

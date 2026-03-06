@@ -32,7 +32,7 @@ import {
 } from "../utils/app_env_var_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { retryOnLocked } from "../utils/retryOnLocked";
-import { autoSyncToGithubIfEnabled } from "./github_handlers";
+import { fireAndForgetAutoSync } from "./github_handlers";
 
 const logger = log.scope("version_handlers");
 
@@ -369,9 +369,7 @@ export function registerVersionHandlers() {
 
     // Auto-sync to GitHub if enabled (fire-and-forget to avoid blocking UI)
     if (shouldAutoSync) {
-      autoSyncToGithubIfEnabled(appId).catch((error: any) => {
-        logger.warn(`[Auto-sync] Failed after revert: ${error?.message}`);
-      });
+      fireAndForgetAutoSync(appId, "revert");
     }
 
     return result;

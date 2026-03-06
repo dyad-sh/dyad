@@ -7,7 +7,7 @@ import { getDyadAppPath } from "../../paths/paths";
 import { spawn } from "child_process";
 import { gitCommit, gitAdd } from "../utils/git_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
-import { autoSyncToGithubIfEnabled } from "./github_handlers";
+import { fireAndForgetAutoSync } from "./github_handlers";
 
 const logger = log.scope("portal_handlers");
 const handle = createLoggedHandler(logger);
@@ -123,9 +123,7 @@ export function registerPortalHandlers() {
         });
 
         // Auto-sync to GitHub if enabled (fire-and-forget to avoid blocking UI)
-        autoSyncToGithubIfEnabled(appId).catch((error: any) => {
-          logger.warn(`[Auto-sync] Failed after migration commit: ${error?.message}`);
-        });
+        fireAndForgetAutoSync(appId, "migration commit");
 
         logger.info(`Successfully committed migration changes: ${commitHash}`);
         return { output: migrationOutput };

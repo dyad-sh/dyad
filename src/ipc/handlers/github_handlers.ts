@@ -23,7 +23,6 @@ import {
   isGitMergeInProgress,
   isGitRebaseInProgress,
   GitConflictError,
-  gitMergeAbort,
 } from "../utils/git_utils";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
@@ -1444,6 +1443,7 @@ function sanitizeGitError(message: string): string {
  * - App is not connected to GitHub
  * - No GitHub access token
  * - Push fails (logs warning but doesn't throw)
+ * - Remote has diverged (skips sync to avoid silent merge commits)
  *
  * @param appId The app ID to potentially push
  */
@@ -1476,76 +1476,69 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
     const appPath = getDyadAppPath(app.path);
     const branch = app.githubBranch || "main";
 
-    // Set up remote URL (without token to avoid storing it in .git/config)
-    const remoteUrl = IS_TEST_BUILD
-      ? `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`
-      : `https://github.com/${app.githubOrg}/${app.githubRepo}.git`;
+    // Use a dedicated lock to serialize auto-sync operations for the same app,
+    // preventing concurrent pull+push sequences from racing
+    await withLock(`auto-sync-${appId}`, async () => {
+      // Set up remote URL with token for native git auth
+      const remoteUrl = IS_TEST_BUILD
+        ? `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`
+        : `https://${accessToken}:x-oauth-basic@github.com/${app.githubOrg}/${app.githubRepo}.git`;
 
-    await gitSetRemoteUrl({
-      path: appPath,
-      remoteUrl,
-    });
-
-    // Skip auto-sync if a git operation is already in progress
-    if (
-      isGitMergeInProgress({ path: appPath }) ||
-      isGitRebaseInProgress({ path: appPath })
-    ) {
-      logger.debug(
-        "[Auto-sync] Merge/rebase in progress, skipping auto-sync",
-      );
-      return;
-    }
-
-    // Try to pull first (to avoid conflicts), but don't fail if remote branch doesn't exist
-    try {
-      await gitPull({
+      await gitSetRemoteUrl({
         path: appPath,
-        remote: "origin",
-        branch,
-        accessToken,
+        remoteUrl,
       });
-    } catch (pullError: any) {
-      const errorMessage = pullError?.message || "";
-      const isMissingRemoteBranch =
-        pullError?.code === "MissingRefError" ||
-        (pullError?.code === "NotFoundError" &&
-          (errorMessage.includes("remote ref") ||
-            errorMessage.includes("remote branch"))) ||
-        errorMessage.includes("couldn't find remote ref");
 
-      if (!isMissingRemoteBranch) {
-        // If there's a conflict, abort the merge to leave repo in a clean state
-        if (isGitMergeInProgress({ path: appPath })) {
-          try {
-            await gitMergeAbort({ path: appPath });
-          } catch (abortError: any) {
-            logger.warn(
-              `[Auto-sync] Failed to abort merge after pull conflict: ${abortError?.message}`,
-            );
-          }
-        }
-        const sanitizedMessage = sanitizeGitError(errorMessage);
-        logger.warn(
-          `[Auto-sync] Pull failed, skipping auto-push: ${sanitizedMessage}`,
+      // Skip auto-sync if a git operation is already in progress
+      if (
+        isGitMergeInProgress({ path: appPath }) ||
+        isGitRebaseInProgress({ path: appPath })
+      ) {
+        logger.debug(
+          "[Auto-sync] Merge/rebase in progress, skipping auto-sync",
         );
         return;
       }
-      // Remote branch doesn't exist yet, continue with push
-    }
 
-    // Push to GitHub
-    await gitPush({
-      path: appPath,
-      branch,
-      accessToken,
-      force: false,
-      forceWithLease: false,
+      // Fetch remote to check if branches have diverged, but don't merge
+      try {
+        await gitFetch({
+          path: appPath,
+          remote: "origin",
+          accessToken,
+        });
+      } catch (fetchError: any) {
+        const errorMessage = fetchError?.message || "";
+        const isMissingRemoteBranch =
+          fetchError?.code === "MissingRefError" ||
+          (fetchError?.code === "NotFoundError" &&
+            (errorMessage.includes("remote ref") ||
+              errorMessage.includes("remote branch"))) ||
+          errorMessage.includes("couldn't find remote ref");
+
+        if (!isMissingRemoteBranch) {
+          const sanitizedMessage = sanitizeGitError(errorMessage);
+          logger.warn(
+            `[Auto-sync] Fetch failed, skipping auto-push: ${sanitizedMessage}`,
+          );
+          return;
+        }
+        // Remote branch doesn't exist yet, continue with push
+      }
+
+      // Push to GitHub
+      await gitPush({
+        path: appPath,
+        branch,
+        accessToken,
+        force: false,
+        forceWithLease: false,
+      });
+
+      logger.info(
+        `[Auto-sync] Successfully pushed to GitHub: ${app.githubOrg}/${app.githubRepo}`,
+      );
     });
-
-    logger.info(
-      `[Auto-sync] Successfully pushed to GitHub: ${app.githubOrg}/${app.githubRepo}`,
-    );
   } catch (error: any) {
     // Log but don't throw - auto-sync should not break the main operation
     const sanitizedMessage = sanitizeGitError(error.message || "");
@@ -1553,4 +1546,20 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
       `[Auto-sync] Failed to auto-sync to GitHub: ${sanitizedMessage}`,
     );
   }
+}
+
+/**
+ * Fire-and-forget wrapper for autoSyncToGithubIfEnabled.
+ * Encapsulates the common pattern of calling auto-sync with error logging.
+ *
+ * @param appId The app ID to potentially push
+ * @param context Description of what triggered the sync (for logging)
+ */
+export function fireAndForgetAutoSync(
+  appId: number,
+  context: string,
+): void {
+  autoSyncToGithubIfEnabled(appId).catch((error: any) => {
+    logger.warn(`[Auto-sync] Failed after ${context}: ${error?.message}`);
+  });
 }

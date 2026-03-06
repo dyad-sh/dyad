@@ -11,7 +11,7 @@ import {
 import { deployAllSupabaseFunctions } from "../../../../../../supabase_admin/supabase_utils";
 import { readSettings } from "../../../../../../main/settings";
 import type { AgentContext } from "../tools/types";
-import { autoSyncToGithubIfEnabled } from "@/ipc/handlers/github_handlers";
+import { fireAndForgetAutoSync } from "@/ipc/handlers/github_handlers";
 
 const logger = log.scope("file_operations");
 
@@ -98,9 +98,7 @@ export async function commitAllChanges(
 
       // Auto-sync to GitHub if enabled (outside commit try/catch to avoid masking commit success)
       if (commitHash) {
-        autoSyncToGithubIfEnabled(ctx.appId).catch((error) => {
-          logger.warn(`[Auto-sync] Failed after commit: ${error?.message}`);
-        });
+        fireAndForgetAutoSync(ctx.appId, "commit");
       }
     }
 

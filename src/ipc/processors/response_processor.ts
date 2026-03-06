@@ -41,7 +41,7 @@ import {
 import { applySearchReplace } from "../../pro/main/ipc/processors/search_replace_processor";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { executeCopyFile } from "../utils/copy_file_utils";
-import { autoSyncToGithubIfEnabled } from "../handlers/github_handlers";
+import { fireAndForgetAutoSync } from "../handlers/github_handlers";
 const readFile = fs.promises.readFile;
 const logger = log.scope("response_processor");
 
@@ -600,9 +600,7 @@ export async function processFullResponseActions(
         .where(eq(messages.id, messageId));
 
       // Auto-sync to GitHub if enabled (fire-and-forget to avoid blocking approval feedback)
-      autoSyncToGithubIfEnabled(chatWithApp.app.id).catch((error) => {
-        logger.warn(`[Auto-sync] Failed after approval commit: ${error?.message}`);
-      });
+      fireAndForgetAutoSync(chatWithApp.app.id, "approval commit");
     }
     logger.log("mark as approved: hasChanges", hasChanges);
     // Update the message to approved

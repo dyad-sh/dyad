@@ -10,7 +10,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { gitAddAll, gitCommit } from "../utils/git_utils";
 import { simpleSpawn } from "../utils/simpleSpawn";
-import { autoSyncToGithubIfEnabled } from "./github_handlers";
+import { fireAndForgetAutoSync } from "./github_handlers";
 
 export const logger = log.scope("app_upgrade_handlers");
 const handle = createLoggedHandler(logger);
@@ -196,9 +196,7 @@ async function applyComponentTagger(appId: number, appPath: string) {
   }
 
   // Auto-sync to GitHub if enabled (fire-and-forget, outside try/catch to avoid masking commit success)
-  autoSyncToGithubIfEnabled(appId).catch((error: any) => {
-    logger.warn(`[Auto-sync] Failed after component tagger commit: ${error?.message}`);
-  });
+  fireAndForgetAutoSync(appId, "component tagger commit");
 }
 
 async function applyCapacitor({
@@ -247,9 +245,7 @@ async function applyCapacitor({
     logger.info("Successfully committed Capacitor changes");
 
     // Auto-sync to GitHub if enabled (fire-and-forget, outside commit error handling)
-    autoSyncToGithubIfEnabled(appId).catch((error: any) => {
-      logger.warn(`[Auto-sync] Failed after Capacitor commit: ${error?.message}`);
-    });
+    fireAndForgetAutoSync(appId, "Capacitor commit");
   } catch (err) {
     logger.warn(
       `Failed to commit changes. This may happen if the project is not in a git repository, or if there are no changes to commit.`,

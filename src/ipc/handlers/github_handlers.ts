@@ -1437,7 +1437,10 @@ function sanitizeGitError(message: string): string {
  *
  * @param appId The app ID to potentially push
  */
-export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
+export async function autoSyncToGithubIfEnabled(
+  appId: number,
+  context?: string,
+): Promise<void> {
   try {
     // Use the app-level git lock to prevent concurrent git operations.
     // All DB reads and guards are inside the lock to avoid stale data.
@@ -1499,9 +1502,7 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
         });
       } catch (fetchError: any) {
         if (!isMissingRemoteBranchError(fetchError)) {
-          const sanitizedMessage = sanitizeGitError(
-            fetchError?.message || "",
-          );
+          const sanitizedMessage = sanitizeGitError(fetchError?.message || "");
           logger.warn(
             `[Auto-sync] Fetch failed, skipping auto-push: ${sanitizedMessage}`,
           );
@@ -1521,15 +1522,17 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
         forceWithLease: false,
       });
 
+      const contextSuffix = context ? ` (${context})` : "";
       logger.info(
-        `[Auto-sync] Successfully pushed to GitHub: ${app.githubOrg}/${app.githubRepo}`,
+        `[Auto-sync] Successfully pushed to GitHub${contextSuffix}: ${app.githubOrg}/${app.githubRepo}`,
       );
     });
   } catch (error: any) {
     // Log but don't throw - auto-sync should not break the main operation
     const sanitizedMessage = sanitizeGitError(error.message || "");
+    const contextSuffix = context ? ` (${context})` : "";
     logger.warn(
-      `[Auto-sync] Failed to auto-sync to GitHub: ${sanitizedMessage}`,
+      `[Auto-sync] Failed to auto-sync to GitHub${contextSuffix}: ${sanitizedMessage}`,
     );
   }
 }
@@ -1541,9 +1544,6 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
  * @param appId The app ID to potentially push
  * @param context Description of what triggered the sync (for logging)
  */
-export function fireAndForgetAutoSync(
-  appId: number,
-  _context: string,
-): void {
-  void autoSyncToGithubIfEnabled(appId);
+export function fireAndForgetAutoSync(appId: number, context: string): void {
+  void autoSyncToGithubIfEnabled(appId, context);
 }

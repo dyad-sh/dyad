@@ -919,11 +919,7 @@ export async function gitPush({
 
   if (settings.enableNativeGit) {
     try {
-      const args = [
-        "push",
-        "origin",
-        `${localBranch}:${targetRemoteBranch}`,
-      ];
+      const args = ["push", "origin", `${localBranch}:${targetRemoteBranch}`];
       if (forceWithLease) {
         args.push("--force-with-lease");
       } else if (force) {
@@ -1479,6 +1475,6 @@ export function isMissingRemoteBranchError(error: any): boolean {
     errorMessage.includes("couldn't find remote ref") ||
     // isomorphic-git throws a TypeError when the remote repo is empty
     (error?.name === "TypeError" &&
-      errorMessage.includes("Cannot read properties of null (reading 'oid')"))
+      errorMessage.includes("Cannot read properties of null"))
   );
 }

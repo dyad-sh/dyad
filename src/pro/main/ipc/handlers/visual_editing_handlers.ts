@@ -1,6 +1,6 @@
 import { ipcMain } from "electron";
 import log from "electron-log";
-const logger = log.scope("visual_editing_handlers");
+
 import fs from "node:fs";
 import { promises as fsPromises } from "node:fs";
 import path from "path";

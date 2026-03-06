@@ -379,9 +379,9 @@ function ConnectedGitHubConnector({
   const showRebaseRecoveryOptions =
     rebaseInProgress || (syncError?.includes("rebase-merge") ?? false);
   const isRebaseActionPending = isSyncing || !!rebaseAction;
-  const [optimisticAutoSync, setOptimisticAutoSync] = useState<
-    boolean | null
-  >(null);
+  const [optimisticAutoSync, setOptimisticAutoSync] = useState<boolean | null>(
+    null,
+  );
 
   return (
     <div className="w-full" data-testid="github-connected-repo">
@@ -407,9 +407,7 @@ function ConnectedGitHubConnector({
               id="auto-sync-github"
               aria-label="Auto-sync to GitHub"
               disabled={isRebaseActionPending}
-              checked={
-                optimisticAutoSync ?? app.autoSyncToGithub ?? false
-              }
+              checked={optimisticAutoSync ?? app.autoSyncToGithub ?? false}
               onCheckedChange={async (checked) => {
                 setOptimisticAutoSync(checked);
                 try {
@@ -422,10 +420,7 @@ function ConnectedGitHubConnector({
                   );
                   refreshApp();
                 } catch (error: any) {
-                  console.error(
-                    "Failed to update auto-sync setting:",
-                    error,
-                  );
+                  console.error("Failed to update auto-sync setting:", error);
                   showError(
                     error?.message || "Failed to update auto-sync setting",
                   );

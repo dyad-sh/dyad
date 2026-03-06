@@ -1465,7 +1465,7 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
     }
 
     const appPath = getDyadAppPath(app.path);
-    const branch = app.githubBranch || "main";
+    const remoteBranch = app.githubBranch || "main";
 
     // Use a dedicated lock to serialize auto-sync operations for the same app,
     // preventing concurrent pull+push sequences from racing
@@ -1511,10 +1511,12 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
         // Remote branch doesn't exist yet, continue with push
       }
 
-      // Push to GitHub
+      // Push local main to the configured remote branch.
+      // Dyad apps always commit on local "main"; the remote branch may differ.
       await gitPush({
         path: appPath,
-        branch,
+        branch: "main",
+        remoteBranch,
         accessToken,
         force: false,
         forceWithLease: false,

@@ -45,6 +45,8 @@ export interface GitPushParams extends GitBaseParams {
   accessToken: string;
   force?: boolean;
   forceWithLease?: boolean;
+  /** When set, push local `branch` to this remote ref instead of `branch:branch`. */
+  remoteBranch?: string;
 }
 export interface GitFileAtCommitParams extends GitBaseParams {
   filePath: string;

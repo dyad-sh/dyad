@@ -596,6 +596,116 @@ export const agentUIComponentsRelations = relations(agentUIComponents, ({ one })
 }));
 
 // ============================================================================
+// Agent Workspace Tables (Tasks, Knowledge Sources, Executions)
+// ============================================================================
+
+/** Agent workspace tasks — persistent task definitions */
+export const agentWorkspaceTasks = sqliteTable("agent_workspace_tasks", {
+  id: text("id").primaryKey(), // UUID
+  agentId: integer("agent_id")
+    .notNull()
+    .references(() => agents.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  type: text("type").notNull(), // AgentTaskType
+  status: text("status").notNull().default("draft"), // AgentTaskStatus
+  priority: text("priority").notNull().default("medium"), // TaskPriority
+  executionMode: text("execution_mode").notNull().default("local"), // ExecutionMode
+  toolId: text("tool_id"),
+  triggerId: text("trigger_id"),
+  inputJson: text("input_json", { mode: "json" }).$type<Record<string, unknown>>().default({}),
+  outputJson: text("output_json", { mode: "json" }).$type<Record<string, unknown> | null>(),
+  error: text("error"),
+  dependenciesJson: text("dependencies_json", {
+    mode: "json",
+  }).$type<string[]>().default([]),
+  recurring: integer("recurring", { mode: "boolean" }).notNull().default(sql`0`),
+  cronExpression: text("cron_expression"),
+  executionCount: integer("execution_count").notNull().default(0),
+  lastExecutedAt: text("last_executed_at"),
+  averageDurationMs: integer("average_duration_ms"),
+  n8nNodeId: text("n8n_node_id"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+/** Agent workspace task executions — execution history */
+export const agentWorkspaceExecutions = sqliteTable("agent_workspace_executions", {
+  id: text("id").primaryKey(), // UUID
+  taskId: text("task_id")
+    .notNull()
+    .references(() => agentWorkspaceTasks.id, { onDelete: "cascade" }),
+  agentId: integer("agent_id")
+    .notNull()
+    .references(() => agents.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("running"),
+  startedAt: text("started_at").notNull(),
+  completedAt: text("completed_at"),
+  durationMs: integer("duration_ms"),
+  inputJson: text("input_json", { mode: "json" }).$type<Record<string, unknown>>().default({}),
+  outputJson: text("output_json", { mode: "json" }).$type<Record<string, unknown> | null>(),
+  error: text("error"),
+  logsJson: text("logs_json", { mode: "json" }).$type<Array<{
+    timestamp: string;
+    level: string;
+    message: string;
+    data?: unknown;
+  }>>().default([]),
+  metricsJson: text("metrics_json", { mode: "json" }).$type<Record<string, unknown>>().default({}),
+});
+
+/** Agent workspace knowledge sources — persistent knowledge connector configs */
+export const agentWorkspaceKnowledgeSources = sqliteTable("agent_workspace_knowledge_sources", {
+  id: text("id").primaryKey(), // UUID
+  agentId: integer("agent_id")
+    .notNull()
+    .references(() => agents.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  type: text("type").notNull(), // KnowledgeSourceType
+  status: text("status").notNull().default("pending"), // KnowledgeSourceStatus
+  configJson: text("config_json", { mode: "json" }).$type<Record<string, unknown>>(),
+  totalDocuments: integer("total_documents").notNull().default(0),
+  totalBytes: integer("total_bytes").notNull().default(0),
+  lastSyncAt: text("last_sync_at"),
+  syncIntervalMs: integer("sync_interval_ms"),
+  autoSync: integer("auto_sync", { mode: "boolean" }).notNull().default(sql`0`),
+  filtersJson: text("filters_json", { mode: "json" }).$type<Record<string, unknown> | null>(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+// Relations for workspace tables
+export const agentWorkspaceTasksRelations = relations(agentWorkspaceTasks, ({ one, many }) => ({
+  agent: one(agents, {
+    fields: [agentWorkspaceTasks.agentId],
+    references: [agents.id],
+  }),
+  executions: many(agentWorkspaceExecutions),
+}));
+
+export const agentWorkspaceExecutionsRelations = relations(agentWorkspaceExecutions, ({ one }) => ({
+  task: one(agentWorkspaceTasks, {
+    fields: [agentWorkspaceExecutions.taskId],
+    references: [agentWorkspaceTasks.id],
+  }),
+  agent: one(agents, {
+    fields: [agentWorkspaceExecutions.agentId],
+    references: [agents.id],
+  }),
+}));
+
+export const agentWorkspaceKnowledgeSourcesRelations = relations(
+  agentWorkspaceKnowledgeSources,
+  ({ one }) => ({
+    agent: one(agents, {
+      fields: [agentWorkspaceKnowledgeSources.agentId],
+      references: [agents.id],
+    }),
+  }),
+);
+
+// ============================================================================
 // Document Creation Tables (LibreOffice Integration)
 // ============================================================================
 

@@ -14,6 +14,8 @@ import { VersionPane } from "./chat/VersionPane";
 import { ChatError } from "./chat/ChatError";
 import { Button } from "@/components/ui/button";
 import { ArrowDown } from "lucide-react";
+import { AgentCreationWizard } from "./agent/AgentCreationWizard";
+import { useAgentCreationPipeline } from "@/hooks/useAgentCreationPipeline";
 
 interface ChatPanelProps {
   chatId?: number;
@@ -139,6 +141,14 @@ export function ChatPanel({
   const messages = chatId ? (messagesById.get(chatId) ?? []) : [];
   const isStreaming = chatId ? (isStreamingById.get(chatId) ?? false) : false;
 
+  // Agent creation pipeline — renders wizard when agent intent is detected
+  const {
+    activeBlueprint,
+    isWizardVisible,
+    dismissWizard,
+    updateBlueprint,
+  } = useAgentCreationPipeline(chatId);
+
   // Auto-scroll effect when messages change during streaming
   useEffect(() => {
     if (
@@ -189,6 +199,17 @@ export function ChatPanel({
                 </div>
               )}
             </div>
+
+            {/* Agent Creation Wizard (shown when NLP detects agent intent) */}
+            {isWizardVisible && activeBlueprint && (
+              <div className="px-3 py-2 border-t border-border/50">
+                <AgentCreationWizard
+                  blueprint={activeBlueprint}
+                  onBlueprintChange={updateBlueprint}
+                  onDismiss={dismissWizard}
+                />
+              </div>
+            )}
 
             <ChatError error={error} onDismiss={() => setError(null)} />
             <ChatInput chatId={chatId} />

@@ -1,6 +1,9 @@
 /**
  * Agent Editor Page
- * Configure and customize an AI agent
+ * Comprehensive single-screen agent configuration
+ * - No duplicated sections
+ * - AI-powered system prompt generation via local AI
+ * - All agent settings in properly separated sidebar tabs
  */
 
 import { useState, useEffect } from "react";
@@ -21,7 +24,6 @@ import {
   Plus,
   Code,
   FileText,
-  ChevronRight,
   Brain,
   Globe,
   ExternalLink,
@@ -30,6 +32,13 @@ import {
   Coins,
   Shield,
   Infinity as InfinityIcon,
+  Zap,
+  Sparkles,
+  RefreshCw,
+  WandSparkles,
+  Expand,
+  BarChart3,
+  SlidersHorizontal,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -50,16 +59,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
+import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Dialog,
   DialogContent,
@@ -69,10 +74,20 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
+import { IpcClient } from "@/ipc/ipc_client";
 import { agentBuilderClient } from "@/ipc/agent_builder_client";
 import { showError, showSuccess } from "@/lib/toast";
 import AgentMemoryTab from "@/components/agent/AgentMemoryTab";
+import AgentStackBuilder from "@/components/agent/AgentStackBuilder";
+import AgentTasksPanel from "@/components/agent/AgentTasksPanel";
+import AgentKnowledgePanel from "@/components/agent/AgentKnowledgePanel";
 import {
   useDecentralizedPlatforms,
   useDecentralizedDeploy,
@@ -81,23 +96,40 @@ import {
 } from "@/hooks/useDecentralizedDeploy";
 
 import type {
-  Agent,
   AgentTool,
-  AgentWorkflow,
-  AgentKnowledgeBase,
-  AgentUIComponent,
   UpdateAgentRequest,
   CreateAgentToolRequest,
 } from "@/types/agent_builder";
+
+// =============================================================================
+// SIDEBAR NAVIGATION ITEMS
+// =============================================================================
+
+const SIDEBAR_ITEMS = [
+  { id: "overview", label: "Overview", icon: Bot },
+  { id: "prompt", label: "System Prompt", icon: FileText },
+  { id: "model", label: "Model & Params", icon: SlidersHorizontal },
+  { id: "tasks", label: "Tasks", icon: Zap },
+  { id: "tools", label: "Tools", icon: Wrench },
+  { id: "workflows", label: "Stack Builder", icon: Workflow },
+  { id: "knowledge", label: "Knowledge", icon: Database },
+  { id: "memory", label: "Memory", icon: Brain },
+  { id: "ui", label: "UI Components", icon: Layout },
+  { id: "deploy", label: "Deployment", icon: Rocket },
+] as const;
+
+// =============================================================================
+// MAIN COMPONENT
+// =============================================================================
 
 export default function AgentEditorPage() {
   const navigate = useNavigate();
   const { agentId } = useParams({ from: "/agents/$agentId" });
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState("general");
+  const [activeTab, setActiveTab] = useState("overview");
   const [hasChanges, setHasChanges] = useState(false);
 
-  // Form state
+  // ---- Form state ----
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
@@ -105,48 +137,63 @@ export default function AgentEditorPage() {
   const [temperature, setTemperature] = useState(0.7);
   const [maxTokens, setMaxTokens] = useState(4096);
 
-  // Tool dialog state
+  // ---- Tool dialog state ----
   const [toolDialogOpen, setToolDialogOpen] = useState(false);
   const [newToolName, setNewToolName] = useState("");
   const [newToolDescription, setNewToolDescription] = useState("");
   const [newToolCode, setNewToolCode] = useState("");
 
-  // Fetch agent data
+  // ---- AI Prompt generation state ----
+  const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
+  const [isAnalyzingPrompt, setIsAnalyzingPrompt] = useState(false);
+  const [promptAnalysis, setPromptAnalysis] = useState<{
+    strengths: string[];
+    weaknesses: string[];
+    suggestions: string[];
+    clarity_score: number;
+    completeness_score: number;
+  } | null>(null);
+  const [aiUpdateInstruction, setAiUpdateInstruction] = useState("");
+  const [aiUpdateMode, setAiUpdateMode] = useState<
+    "refine" | "expand" | "regenerate" | "custom"
+  >("refine");
+  const [showAiUpdatePanel, setShowAiUpdatePanel] = useState(false);
+
+  // ===========================================================================
+  // DATA FETCHING
+  // ===========================================================================
+
   const { data: agent, isLoading: agentLoading } = useQuery({
     queryKey: ["agent", agentId],
     queryFn: () => agentBuilderClient.getAgent(Number(agentId)),
     enabled: !!agentId,
   });
 
-  // Fetch agent tools
   const { data: tools = [] } = useQuery({
     queryKey: ["agent-tools", agentId],
     queryFn: () => agentBuilderClient.getAgentTools(Number(agentId)),
     enabled: !!agentId,
   });
 
-  // Fetch agent workflows
   const { data: workflows = [] } = useQuery({
     queryKey: ["agent-workflows", agentId],
     queryFn: () => agentBuilderClient.getAgentWorkflows(Number(agentId)),
     enabled: !!agentId,
   });
 
-  // Fetch knowledge bases
   const { data: knowledgeBases = [] } = useQuery({
     queryKey: ["agent-knowledge-bases", agentId],
     queryFn: () => agentBuilderClient.getKnowledgeBases(Number(agentId)),
     enabled: !!agentId,
   });
 
-  // Fetch UI components
   const { data: uiComponents = [] } = useQuery({
     queryKey: ["agent-ui-components", agentId],
     queryFn: () => agentBuilderClient.getUIComponents(Number(agentId)),
     enabled: !!agentId,
   });
 
-  // Update form when agent loads
+  // Populate form when agent loads
   useEffect(() => {
     if (agent) {
       setName(agent.name);
@@ -158,9 +205,13 @@ export default function AgentEditorPage() {
     }
   }, [agent]);
 
-  // Update agent mutation
+  // ===========================================================================
+  // MUTATIONS
+  // ===========================================================================
+
   const updateAgentMutation = useMutation({
-    mutationFn: (request: UpdateAgentRequest) => agentBuilderClient.updateAgent(request),
+    mutationFn: (request: UpdateAgentRequest) =>
+      agentBuilderClient.updateAgent(request),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agent", agentId] });
       showSuccess("Agent saved successfully");
@@ -171,9 +222,9 @@ export default function AgentEditorPage() {
     },
   });
 
-  // Create tool mutation
   const createToolMutation = useMutation({
-    mutationFn: (request: CreateAgentToolRequest) => agentBuilderClient.createAgentTool(request),
+    mutationFn: (request: CreateAgentToolRequest) =>
+      agentBuilderClient.createAgentTool(request),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agent-tools", agentId] });
       showSuccess("Tool created successfully");
@@ -187,7 +238,6 @@ export default function AgentEditorPage() {
     },
   });
 
-  // Delete tool mutation
   const deleteToolMutation = useMutation({
     mutationFn: (toolId: number) => agentBuilderClient.deleteAgentTool(toolId),
     onSuccess: () => {
@@ -198,6 +248,10 @@ export default function AgentEditorPage() {
       showError(`Failed to delete tool: ${error.message}`);
     },
   });
+
+  // ===========================================================================
+  // HANDLERS
+  // ===========================================================================
 
   const handleSave = () => {
     updateAgentMutation.mutate({
@@ -224,18 +278,91 @@ export default function AgentEditorPage() {
     setHasChanges(true);
   };
 
+  // ---- AI system prompt handlers ----
+
+  const handleGeneratePrompt = async () => {
+    setIsGeneratingPrompt(true);
+    try {
+      const ipc = IpcClient.getInstance();
+      const result = await ipc.generateAgentSystemPrompt({
+        name,
+        description,
+        type: agent?.type || "chatbot",
+        capabilities: tools.map((t) => t.name),
+      });
+      if (result.success && result.systemPrompt) {
+        setSystemPrompt(result.systemPrompt);
+        setHasChanges(true);
+        showSuccess(
+          `System prompt generated via ${result.localProcessed ? "local AI" : result.provider}`,
+        );
+      }
+    } catch (error: any) {
+      showError(`Failed to generate prompt: ${error.message}`);
+    } finally {
+      setIsGeneratingPrompt(false);
+    }
+  };
+
+  const handleAiUpdatePrompt = async () => {
+    if (!agent || !aiUpdateInstruction.trim()) return;
+    setIsGeneratingPrompt(true);
+    try {
+      const ipc = IpcClient.getInstance();
+      const result = await ipc.updateAgentSystemPromptWithAI({
+        agentId: String(agent.id),
+        instruction: aiUpdateInstruction,
+        mode: aiUpdateMode,
+      });
+      if (result.success && result.newPrompt) {
+        setSystemPrompt(result.newPrompt);
+        setHasChanges(true);
+        setAiUpdateInstruction("");
+        setShowAiUpdatePanel(false);
+        showSuccess(
+          `Prompt ${aiUpdateMode}d via ${result.localProcessed ? "local AI" : result.provider}`,
+        );
+      }
+    } catch (error: any) {
+      showError(`Failed to update prompt: ${error.message}`);
+    } finally {
+      setIsGeneratingPrompt(false);
+    }
+  };
+
+  const handleAnalyzePrompt = async () => {
+    if (!agent) return;
+    setIsAnalyzingPrompt(true);
+    setPromptAnalysis(null);
+    try {
+      const ipc = IpcClient.getInstance();
+      const result = await ipc.analyzeAgentSystemPrompt(String(agent.id));
+      if (result.success) {
+        setPromptAnalysis(result.analysis);
+      }
+    } catch (error: any) {
+      showError(`Failed to analyze prompt: ${error.message}`);
+    } finally {
+      setIsAnalyzingPrompt(false);
+    }
+  };
+
+  // ===========================================================================
+  // LOADING / NOT FOUND
+  // ===========================================================================
+
   if (agentLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-muted-foreground">Loading agent...</div>
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
   if (!agent) {
     return (
-      <div className="flex flex-col items-center justify-center h-full">
-        <h2 className="text-lg font-medium mb-2">Agent not found</h2>
+      <div className="flex flex-col items-center justify-center h-full gap-3">
+        <h2 className="text-lg font-medium">Agent not found</h2>
         <Button variant="outline" onClick={() => navigate({ to: "/agents" })}>
           Back to Agents
         </Button>
@@ -243,13 +370,21 @@ export default function AgentEditorPage() {
     );
   }
 
+  // ===========================================================================
+  // RENDER
+  // ===========================================================================
+
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="border-b p-4">
+      {/* ===== Header ===== */}
+      <div className="border-b px-4 py-3 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate({ to: "/agents" })}>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate({ to: "/agents" })}
+            >
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div>
@@ -257,19 +392,22 @@ export default function AgentEditorPage() {
                 <Bot className="h-5 w-5" />
                 {agent.name}
               </h1>
-              <div className="flex items-center gap-2 mt-1">
+              <div className="flex items-center gap-2 mt-0.5">
                 <Badge variant="secondary">{agent.type}</Badge>
                 <Badge
                   className={`${
                     agent.status === "deployed"
                       ? "bg-green-500"
                       : agent.status === "testing"
-                      ? "bg-yellow-500"
-                      : "bg-gray-500"
+                        ? "bg-yellow-500"
+                        : "bg-gray-500"
                   } text-white`}
                 >
                   {agent.status}
                 </Badge>
+                <span className="text-xs text-muted-foreground">
+                  v{agent.version}
+                </span>
               </div>
             </div>
           </div>
@@ -277,13 +415,19 @@ export default function AgentEditorPage() {
             <Button
               variant="outline"
               onClick={() =>
-                navigate({ to: "/agents/$agentId/test", params: { agentId: String(agent.id) } })
+                navigate({
+                  to: "/agents/$agentId/test",
+                  params: { agentId: String(agent.id) },
+                })
               }
             >
               <Play className="h-4 w-4 mr-2" />
-              Test Agent
+              Test
             </Button>
-            <Button onClick={handleSave} disabled={!hasChanges || updateAgentMutation.isPending}>
+            <Button
+              onClick={handleSave}
+              disabled={!hasChanges || updateAgentMutation.isPending}
+            >
               <Save className="h-4 w-4 mr-2" />
               {updateAgentMutation.isPending ? "Saving..." : "Save"}
             </Button>
@@ -291,21 +435,12 @@ export default function AgentEditorPage() {
         </div>
       </div>
 
-      {/* Content */}
+      {/* ===== Body: Sidebar + Content ===== */}
       <div className="flex-1 overflow-hidden flex">
         {/* Sidebar */}
-        <div className="w-56 border-r bg-muted/30 p-2">
-          <nav className="space-y-1">
-            {[
-              { id: "general", label: "General", icon: Settings },
-              { id: "prompt", label: "System Prompt", icon: FileText },
-              { id: "tools", label: "Tools", icon: Wrench },
-              { id: "workflows", label: "Workflows", icon: Workflow },
-              { id: "knowledge", label: "Knowledge Base", icon: Database },
-              { id: "memory", label: "Memory", icon: Brain },
-              { id: "ui", label: "UI Components", icon: Layout },
-              { id: "deploy", label: "Deployment", icon: Rocket },
-            ].map((item) => (
+        <div className="w-52 border-r bg-muted/30 p-2 shrink-0">
+          <nav className="space-y-0.5">
+            {SIDEBAR_ITEMS.map((item) => (
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
@@ -315,7 +450,7 @@ export default function AgentEditorPage() {
                     : "hover:bg-muted"
                 }`}
               >
-                <item.icon className="h-4 w-4" />
+                <item.icon className="h-4 w-4 shrink-0" />
                 {item.label}
               </button>
             ))}
@@ -323,440 +458,808 @@ export default function AgentEditorPage() {
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 overflow-auto p-6">
-          {/* General Settings */}
-          {activeTab === "general" && (
-            <div className="max-w-2xl space-y-6">
-              <div>
-                <h2 className="text-lg font-semibold mb-4">General Settings</h2>
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="name">Name</Label>
-                    <Input
-                      id="name"
-                      value={name}
-                      onChange={(e) => {
-                        setName(e.target.value);
-                        handleFieldChange();
-                      }}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="description">Description</Label>
-                    <Textarea
-                      id="description"
-                      value={description}
-                      onChange={(e) => {
-                        setDescription(e.target.value);
-                        handleFieldChange();
-                      }}
-                      className="mt-1"
-                      rows={3}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="model">Model</Label>
-                    <Select
-                      value={modelId}
-                      onValueChange={(value) => {
-                        setModelId(value);
-                        handleFieldChange();
-                      }}
-                    >
-                      <SelectTrigger className="mt-1">
-                        <SelectValue placeholder="Select a model" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                        <SelectItem value="gpt-4o-mini">GPT-4o Mini</SelectItem>
-                        <SelectItem value="claude-3.5-sonnet">Claude 3.5 Sonnet</SelectItem>
-                        <SelectItem value="claude-3-opus">Claude 3 Opus</SelectItem>
-                        <SelectItem value="gemini-pro">Gemini Pro</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Temperature: {temperature}</Label>
-                    <Slider
-                      value={[temperature]}
-                      onValueChange={(values: number[]) => {
-                        setTemperature(values[0]);
-                        handleFieldChange();
-                      }}
-                      min={0}
-                      max={2}
-                      step={0.1}
-                      className="mt-2"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="maxTokens">Max Tokens</Label>
-                    <Input
-                      id="maxTokens"
-                      type="number"
-                      value={maxTokens}
-                      onChange={(e) => {
-                        setMaxTokens(Number(e.target.value));
-                        handleFieldChange();
-                      }}
-                      className="mt-1"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+        <ScrollArea className="flex-1">
+          <div className="p-6">
+            {/* ============================================================ */}
+            {/* OVERVIEW TAB                                                 */}
+            {/* Agent identity + stats — NO model params here               */}
+            {/* ============================================================ */}
+            {activeTab === "overview" && (
+              <div className="max-w-3xl space-y-6">
+                <h2 className="text-lg font-semibold">Overview</h2>
 
-          {/* System Prompt */}
-          {activeTab === "prompt" && (
-            <div className="max-w-4xl space-y-4">
-              <div>
-                <h2 className="text-lg font-semibold mb-2">System Prompt</h2>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Define the personality, capabilities, and behavior of your agent.
-                </p>
-              </div>
-              <Textarea
-                value={systemPrompt}
-                onChange={(e) => {
-                  setSystemPrompt(e.target.value);
-                  handleFieldChange();
-                }}
-                className="min-h-[500px] font-mono text-sm"
-                placeholder="You are a helpful AI assistant..."
-              />
-            </div>
-          )}
-
-          {/* Tools */}
-          {activeTab === "tools" && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold">Tools</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Define custom tools your agent can use
-                  </p>
+                {/* Quick Stats */}
+                <div className="grid grid-cols-4 gap-3">
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                        <Wrench className="h-3.5 w-3.5" />
+                        Tools
+                      </div>
+                      <p className="text-2xl font-bold mt-1">{tools.length}</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                        <Workflow className="h-3.5 w-3.5" />
+                        Workflows
+                      </div>
+                      <p className="text-2xl font-bold mt-1">
+                        {workflows.length}
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                        <Database className="h-3.5 w-3.5" />
+                        Knowledge Bases
+                      </div>
+                      <p className="text-2xl font-bold mt-1">
+                        {knowledgeBases.length}
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                        <Layout className="h-3.5 w-3.5" />
+                        UI Components
+                      </div>
+                      <p className="text-2xl font-bold mt-1">
+                        {uiComponents.length}
+                      </p>
+                    </CardContent>
+                  </Card>
                 </div>
-                <Dialog open={toolDialogOpen} onOpenChange={setToolDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Tool
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-2xl">
-                    <DialogHeader>
-                      <DialogTitle>Create New Tool</DialogTitle>
-                      <DialogDescription>
-                        Define a custom tool for your agent
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                      <div>
-                        <Label>Tool Name</Label>
-                        <Input
-                          value={newToolName}
-                          onChange={(e) => setNewToolName(e.target.value)}
-                          placeholder="get_weather"
-                          className="mt-1"
-                        />
+
+                {/* Name & Description */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Identity</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <Label htmlFor="name">Name</Label>
+                      <Input
+                        id="name"
+                        value={name}
+                        onChange={(e) => {
+                          setName(e.target.value);
+                          handleFieldChange();
+                        }}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="description">Description</Label>
+                      <Textarea
+                        id="description"
+                        value={description}
+                        onChange={(e) => {
+                          setDescription(e.target.value);
+                          handleFieldChange();
+                        }}
+                        className="mt-1"
+                        rows={3}
+                        placeholder="Describe what this agent does..."
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Configuration Summary (read-only overview) */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">
+                      Configuration Summary
+                    </CardTitle>
+                    <CardDescription>
+                      Edit these values in their respective tabs
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Type</span>
+                        <Badge variant="outline">{agent.type}</Badge>
                       </div>
-                      <div>
-                        <Label>Description</Label>
-                        <Textarea
-                          value={newToolDescription}
-                          onChange={(e) => setNewToolDescription(e.target.value)}
-                          placeholder="Get the current weather for a location"
-                          className="mt-1"
-                          rows={2}
-                        />
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Status</span>
+                        <Badge variant="outline">{agent.status}</Badge>
                       </div>
-                      <div>
-                        <Label>Implementation Code</Label>
-                        <Textarea
-                          value={newToolCode}
-                          onChange={(e) => setNewToolCode(e.target.value)}
-                          placeholder="// JavaScript code for the tool"
-                          className="mt-1 font-mono text-sm"
-                          rows={10}
-                        />
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Model</span>
+                        <span className="font-medium">
+                          {modelId || "Not set"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          Temperature
+                        </span>
+                        <span className="font-medium">{temperature}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          Max Tokens
+                        </span>
+                        <span className="font-medium">{maxTokens}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          System Prompt
+                        </span>
+                        <span className="font-medium">
+                          {systemPrompt
+                            ? `${systemPrompt.length} chars`
+                            : "Not set"}
+                        </span>
                       </div>
                     </div>
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => setToolDialogOpen(false)}>
-                        Cancel
-                      </Button>
-                      <Button onClick={handleCreateTool} disabled={createToolMutation.isPending}>
-                        {createToolMutation.isPending ? "Creating..." : "Create Tool"}
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              </div>
-
-              {tools.length === 0 ? (
-                <Card>
-                  <CardContent className="flex flex-col items-center justify-center py-8">
-                    <Wrench className="h-12 w-12 text-muted-foreground mb-4" />
-                    <h3 className="font-medium mb-2">No tools yet</h3>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Add tools to extend your agent's capabilities
-                    </p>
                   </CardContent>
                 </Card>
-              ) : (
-                <div className="space-y-2">
-                  {tools.map((tool) => (
-                    <Card key={tool.id}>
-                      <CardHeader className="py-3">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <CardTitle className="text-base flex items-center gap-2">
-                              <Code className="h-4 w-4" />
-                              {tool.name}
-                            </CardTitle>
-                            <CardDescription>{tool.description}</CardDescription>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Switch checked={tool.enabled} />
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-destructive"
-                              onClick={() => deleteToolMutation.mutate(tool.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      </CardHeader>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Workflows */}
-          {activeTab === "workflows" && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold">Workflows</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Create multi-step agent workflows
-                  </p>
-                </div>
-                <Button>
-                  <Plus className="h-4 w-4 mr-2" />
-                  New Workflow
-                </Button>
               </div>
+            )}
 
-              {workflows.length === 0 ? (
-                <Card>
-                  <CardContent className="flex flex-col items-center justify-center py-8">
-                    <Workflow className="h-12 w-12 text-muted-foreground mb-4" />
-                    <h3 className="font-medium mb-2">No workflows yet</h3>
+            {/* ============================================================ */}
+            {/* SYSTEM PROMPT TAB (with AI generation)                       */}
+            {/* ============================================================ */}
+            {activeTab === "prompt" && (
+              <div className="max-w-4xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold">System Prompt</h2>
                     <p className="text-sm text-muted-foreground">
-                      Create workflows for complex multi-step tasks
+                      Define the personality, capabilities, and behavior of your
+                      agent. Use AI to generate or refine the prompt.
                     </p>
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="space-y-2">
-                  {workflows.map((workflow) => (
-                    <Card key={workflow.id} className="cursor-pointer hover:shadow-md transition-shadow">
-                      <CardHeader className="py-3">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <CardTitle className="text-base">{workflow.name}</CardTitle>
-                            <CardDescription>{workflow.description}</CardDescription>
-                          </div>
-                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                        </div>
-                      </CardHeader>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Knowledge Base */}
-          {activeTab === "knowledge" && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold">Knowledge Base</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Add documents and data for RAG capabilities
-                  </p>
-                </div>
-                <Button>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Source
-                </Button>
-              </div>
-
-              {knowledgeBases.length === 0 ? (
-                <Card>
-                  <CardContent className="flex flex-col items-center justify-center py-8">
-                    <Database className="h-12 w-12 text-muted-foreground mb-4" />
-                    <h3 className="font-medium mb-2">No knowledge bases</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Add documents or data sources for your agent to reference
-                    </p>
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="grid grid-cols-2 gap-4">
-                  {knowledgeBases.map((kb) => (
-                    <Card key={kb.id}>
-                      <CardHeader>
-                        <CardTitle className="text-base">{kb.name}</CardTitle>
-                        <CardDescription>{kb.description}</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted-foreground">
-                            {kb.documentCount} documents
-                          </span>
-                          <Badge
-                            variant={kb.indexStatus === "indexed" ? "default" : "secondary"}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleAnalyzePrompt}
+                            disabled={isAnalyzingPrompt || !systemPrompt}
                           >
-                            {kb.indexStatus}
-                          </Badge>
+                            {isAnalyzingPrompt ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <BarChart3 className="h-4 w-4" />
+                            )}
+                            <span className="ml-1.5">Analyze</span>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Analyze prompt quality with local AI
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setShowAiUpdatePanel(!showAiUpdatePanel)
+                            }
+                            disabled={!systemPrompt}
+                          >
+                            <WandSparkles className="h-4 w-4" />
+                            <span className="ml-1.5">Refine with AI</span>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Use AI to refine, expand, or regenerate
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+
+                    <Button
+                      size="sm"
+                      onClick={handleGeneratePrompt}
+                      disabled={isGeneratingPrompt}
+                    >
+                      {isGeneratingPrompt ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                      ) : (
+                        <Sparkles className="h-4 w-4 mr-1.5" />
+                      )}
+                      Generate with AI
+                    </Button>
+                  </div>
+                </div>
+
+                {/* AI Analysis Results */}
+                {promptAnalysis && (
+                  <Card className="border-blue-500/30 bg-blue-500/5">
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-sm flex items-center gap-2">
+                          <BarChart3 className="h-4 w-4" />
+                          Prompt Analysis
+                        </CardTitle>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-xs"
+                          onClick={() => setPromptAnalysis(null)}
+                        >
+                          Dismiss
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3 text-sm">
+                      <div className="flex gap-4">
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">
+                            Clarity:
+                          </span>
+                          <Progress
+                            value={promptAnalysis.clarity_score * 10}
+                            className="w-20 h-2"
+                          />
+                          <span className="font-medium">
+                            {promptAnalysis.clarity_score}/10
+                          </span>
                         </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">
+                            Completeness:
+                          </span>
+                          <Progress
+                            value={promptAnalysis.completeness_score * 10}
+                            className="w-20 h-2"
+                          />
+                          <span className="font-medium">
+                            {promptAnalysis.completeness_score}/10
+                          </span>
+                        </div>
+                      </div>
 
-          {/* Memory */}
-          {activeTab === "memory" && (
-            <AgentMemoryTab agentId={Number(agentId)} />
-          )}
+                      {promptAnalysis.strengths.length > 0 && (
+                        <div>
+                          <span className="font-medium text-green-600">
+                            Strengths:
+                          </span>
+                          <ul className="mt-1 space-y-0.5 list-disc list-inside text-muted-foreground">
+                            {promptAnalysis.strengths.map((s, i) => (
+                              <li key={i}>{s}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
 
-          {/* UI Components */}
-          {activeTab === "ui" && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold">UI Components</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Design the user interface for your agent
-                  </p>
-                </div>
-                <Button>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Component
-                </Button>
-              </div>
+                      {promptAnalysis.suggestions.length > 0 && (
+                        <div>
+                          <span className="font-medium text-amber-600">
+                            Suggestions:
+                          </span>
+                          <ul className="mt-1 space-y-0.5 list-disc list-inside text-muted-foreground">
+                            {promptAnalysis.suggestions.map((s, i) => (
+                              <li key={i}>{s}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
 
-              {uiComponents.length === 0 ? (
-                <Card>
-                  <CardContent className="flex flex-col items-center justify-center py-8">
-                    <Layout className="h-12 w-12 text-muted-foreground mb-4" />
-                    <h3 className="font-medium mb-2">No UI components</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Add UI components to create your agent's interface
-                    </p>
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="grid grid-cols-2 gap-4">
-                  {uiComponents.map((component) => (
-                    <Card key={component.id}>
-                      <CardHeader>
-                        <CardTitle className="text-base">{component.name}</CardTitle>
-                        <Badge variant="secondary">{component.componentType}</Badge>
-                      </CardHeader>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+                {/* AI Update Panel */}
+                {showAiUpdatePanel && (
+                  <Card className="border-purple-500/30 bg-purple-500/5">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <WandSparkles className="h-4 w-4" />
+                        Refine Prompt with AI
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="flex gap-2">
+                        {(
+                          [
+                            {
+                              value: "refine" as const,
+                              label: "Refine",
+                              icon: RefreshCw,
+                            },
+                            {
+                              value: "expand" as const,
+                              label: "Expand",
+                              icon: Expand,
+                            },
+                            {
+                              value: "regenerate" as const,
+                              label: "Regenerate",
+                              icon: Sparkles,
+                            },
+                            {
+                              value: "custom" as const,
+                              label: "Custom",
+                              icon: Settings,
+                            },
+                          ] as const
+                        ).map((mode) => (
+                          <Button
+                            key={mode.value}
+                            variant={
+                              aiUpdateMode === mode.value
+                                ? "default"
+                                : "outline"
+                            }
+                            size="sm"
+                            onClick={() => setAiUpdateMode(mode.value)}
+                          >
+                            <mode.icon className="h-3.5 w-3.5 mr-1" />
+                            {mode.label}
+                          </Button>
+                        ))}
+                      </div>
+                      <Textarea
+                        value={aiUpdateInstruction}
+                        onChange={(e) =>
+                          setAiUpdateInstruction(e.target.value)
+                        }
+                        placeholder={
+                          aiUpdateMode === "refine"
+                            ? "What should be improved? e.g., Make it more concise..."
+                            : aiUpdateMode === "expand"
+                              ? "What should be added? e.g., Add error handling guidance..."
+                              : aiUpdateMode === "regenerate"
+                                ? "New requirements for the prompt..."
+                                : "Custom instructions for updating the prompt..."
+                        }
+                        rows={2}
+                        className="text-sm"
+                      />
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setShowAiUpdatePanel(false);
+                            setAiUpdateInstruction("");
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={handleAiUpdatePrompt}
+                          disabled={
+                            isGeneratingPrompt || !aiUpdateInstruction.trim()
+                          }
+                        >
+                          {isGeneratingPrompt ? (
+                            <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                          ) : (
+                            <WandSparkles className="h-4 w-4 mr-1.5" />
+                          )}
+                          Apply {aiUpdateMode}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
 
-          {/* Deployment */}
-          {activeTab === "deploy" && (
-            <div className="max-w-2xl space-y-6">
-              <div>
-                <h2 className="text-lg font-semibold mb-2">Deployment</h2>
-                <p className="text-sm text-muted-foreground">
-                  Deploy your agent to various platforms
+                {/* Prompt Editor */}
+                <Textarea
+                  value={systemPrompt}
+                  onChange={(e) => {
+                    setSystemPrompt(e.target.value);
+                    handleFieldChange();
+                  }}
+                  className="min-h-[500px] font-mono text-sm"
+                  placeholder="You are a helpful AI assistant..."
+                />
+                <p className="text-xs text-muted-foreground text-right">
+                  {systemPrompt.length} characters
                 </p>
               </div>
+            )}
 
-              {/* Traditional Deployment */}
-              <div className="space-y-2">
-                <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                  Traditional
-                </h3>
-                <div className="grid gap-3">
-                  {[
-                    {
-                      id: "local",
-                      title: "Local",
-                      description: "Run the agent locally on your machine",
-                      icon: "💻",
-                    },
-                    {
-                      id: "docker",
-                      title: "Docker",
-                      description: "Export as a Docker container",
-                      icon: "🐳",
-                    },
-                    {
-                      id: "vercel",
-                      title: "Vercel",
-                      description: "Deploy to Vercel Edge Functions",
-                      icon: "▲",
-                    },
-                    {
-                      id: "aws",
-                      title: "AWS Lambda",
-                      description: "Deploy to AWS Lambda",
-                      icon: "☁️",
-                    },
-                  ].map((option) => (
-                    <Card
-                      key={option.id}
-                      className="cursor-pointer hover:shadow-md transition-shadow"
-                    >
-                      <CardHeader className="py-3">
-                        <div className="flex items-center gap-4">
-                          <span className="text-2xl">{option.icon}</span>
-                          <div>
-                            <CardTitle className="text-base">{option.title}</CardTitle>
-                            <CardDescription>{option.description}</CardDescription>
-                          </div>
-                        </div>
-                      </CardHeader>
-                    </Card>
-                  ))}
-                </div>
+            {/* ============================================================ */}
+            {/* MODEL & PARAMETERS TAB                                       */}
+            {/* ============================================================ */}
+            {activeTab === "model" && (
+              <div className="max-w-2xl space-y-6">
+                <h2 className="text-lg font-semibold">Model & Parameters</h2>
+
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Language Model</CardTitle>
+                    <CardDescription>
+                      Select the AI model and tune generation parameters
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <div>
+                      <Label htmlFor="model">Model</Label>
+                      <Select
+                        value={modelId}
+                        onValueChange={(value) => {
+                          setModelId(value);
+                          handleFieldChange();
+                        }}
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue placeholder="Select a model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="gpt-4o">GPT-4o</SelectItem>
+                          <SelectItem value="gpt-4o-mini">
+                            GPT-4o Mini
+                          </SelectItem>
+                          <SelectItem value="claude-3.5-sonnet">
+                            Claude 3.5 Sonnet
+                          </SelectItem>
+                          <SelectItem value="claude-3-opus">
+                            Claude 3 Opus
+                          </SelectItem>
+                          <SelectItem value="gemini-pro">Gemini Pro</SelectItem>
+                          <SelectItem value="llama3.1:8b">
+                            Llama 3.1 8B (Local)
+                          </SelectItem>
+                          <SelectItem value="mistral:7b">
+                            Mistral 7B (Local)
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <Separator />
+
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <Label>Temperature</Label>
+                        <span className="text-sm font-mono text-muted-foreground">
+                          {temperature}
+                        </span>
+                      </div>
+                      <Slider
+                        value={[temperature]}
+                        onValueChange={(values: number[]) => {
+                          setTemperature(values[0]);
+                          handleFieldChange();
+                        }}
+                        min={0}
+                        max={2}
+                        step={0.1}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Lower = more focused and deterministic. Higher = more
+                        creative and varied.
+                      </p>
+                    </div>
+
+                    <Separator />
+
+                    <div>
+                      <Label htmlFor="maxTokens">Max Tokens</Label>
+                      <Input
+                        id="maxTokens"
+                        type="number"
+                        value={maxTokens}
+                        onChange={(e) => {
+                          setMaxTokens(Number(e.target.value));
+                          handleFieldChange();
+                        }}
+                        className="mt-1"
+                        min={256}
+                        max={128000}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Maximum number of tokens in the model's response.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
+            )}
 
-              {/* Decentralized Deploy */}
-              <AgentDecentralizedDeploy appId={agent.appId} />
-            </div>
-          )}
-        </div>
+            {/* ============================================================ */}
+            {/* TASKS TAB                                                    */}
+            {/* ============================================================ */}
+            {activeTab === "tasks" && (
+              <AgentTasksPanel
+                agentId={Number(agentId)}
+                agentType={agent?.type}
+              />
+            )}
+
+            {/* ============================================================ */}
+            {/* TOOLS TAB                                                    */}
+            {/* ============================================================ */}
+            {activeTab === "tools" && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold">Tools</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Define custom tools your agent can use
+                    </p>
+                  </div>
+                  <Dialog
+                    open={toolDialogOpen}
+                    onOpenChange={setToolDialogOpen}
+                  >
+                    <DialogTrigger asChild>
+                      <Button>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Tool
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-2xl">
+                      <DialogHeader>
+                        <DialogTitle>Create New Tool</DialogTitle>
+                        <DialogDescription>
+                          Define a custom tool for your agent
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        <div>
+                          <Label>Tool Name</Label>
+                          <Input
+                            value={newToolName}
+                            onChange={(e) => setNewToolName(e.target.value)}
+                            placeholder="get_weather"
+                            className="mt-1"
+                          />
+                        </div>
+                        <div>
+                          <Label>Description</Label>
+                          <Textarea
+                            value={newToolDescription}
+                            onChange={(e) =>
+                              setNewToolDescription(e.target.value)
+                            }
+                            placeholder="Get the current weather for a location"
+                            className="mt-1"
+                            rows={2}
+                          />
+                        </div>
+                        <div>
+                          <Label>Implementation Code</Label>
+                          <Textarea
+                            value={newToolCode}
+                            onChange={(e) => setNewToolCode(e.target.value)}
+                            placeholder="// JavaScript code for the tool"
+                            className="mt-1 font-mono text-sm"
+                            rows={10}
+                          />
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button
+                          variant="outline"
+                          onClick={() => setToolDialogOpen(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={handleCreateTool}
+                          disabled={createToolMutation.isPending}
+                        >
+                          {createToolMutation.isPending
+                            ? "Creating..."
+                            : "Create Tool"}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+
+                {tools.length === 0 ? (
+                  <Card>
+                    <CardContent className="flex flex-col items-center justify-center py-8">
+                      <Wrench className="h-12 w-12 text-muted-foreground mb-4" />
+                      <h3 className="font-medium mb-2">No tools yet</h3>
+                      <p className="text-sm text-muted-foreground mb-4">
+                        Add tools to extend your agent's capabilities
+                      </p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="space-y-2">
+                    {tools.map((tool) => (
+                      <Card key={tool.id}>
+                        <CardHeader className="py-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <CardTitle className="text-base flex items-center gap-2">
+                                <Code className="h-4 w-4" />
+                                {tool.name}
+                              </CardTitle>
+                              <CardDescription>
+                                {tool.description}
+                              </CardDescription>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Switch checked={tool.enabled} />
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-destructive"
+                                onClick={() =>
+                                  deleteToolMutation.mutate(tool.id)
+                                }
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        </CardHeader>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ============================================================ */}
+            {/* WORKFLOWS / STACK BUILDER TAB                                */}
+            {/* ============================================================ */}
+            {activeTab === "workflows" && (
+              <AgentStackBuilder
+                agentId={Number(agentId)}
+                tools={tools.map((t) => ({
+                  id: t.id,
+                  name: t.name,
+                  description: t.description,
+                  enabled: t.enabled,
+                }))}
+              />
+            )}
+
+            {/* ============================================================ */}
+            {/* KNOWLEDGE TAB                                                */}
+            {/* ============================================================ */}
+            {activeTab === "knowledge" && (
+              <AgentKnowledgePanel agentId={Number(agentId)} />
+            )}
+
+            {/* ============================================================ */}
+            {/* MEMORY TAB                                                   */}
+            {/* ============================================================ */}
+            {activeTab === "memory" && (
+              <AgentMemoryTab agentId={Number(agentId)} />
+            )}
+
+            {/* ============================================================ */}
+            {/* UI COMPONENTS TAB                                            */}
+            {/* ============================================================ */}
+            {activeTab === "ui" && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold">UI Components</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Design the user interface for your agent
+                    </p>
+                  </div>
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Component
+                  </Button>
+                </div>
+
+                {uiComponents.length === 0 ? (
+                  <Card>
+                    <CardContent className="flex flex-col items-center justify-center py-8">
+                      <Layout className="h-12 w-12 text-muted-foreground mb-4" />
+                      <h3 className="font-medium mb-2">No UI components</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Add UI components to create your agent's interface
+                      </p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="grid grid-cols-2 gap-4">
+                    {uiComponents.map((component) => (
+                      <Card key={component.id}>
+                        <CardHeader>
+                          <CardTitle className="text-base">
+                            {component.name}
+                          </CardTitle>
+                          <Badge variant="secondary">
+                            {component.componentType}
+                          </Badge>
+                        </CardHeader>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ============================================================ */}
+            {/* DEPLOYMENT TAB                                               */}
+            {/* ============================================================ */}
+            {activeTab === "deploy" && (
+              <div className="max-w-2xl space-y-6">
+                <div>
+                  <h2 className="text-lg font-semibold mb-2">Deployment</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Deploy your agent to various platforms
+                  </p>
+                </div>
+
+                {/* Traditional Deployment */}
+                <div className="space-y-2">
+                  <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                    Traditional
+                  </h3>
+                  <div className="grid gap-3">
+                    {[
+                      {
+                        id: "local",
+                        title: "Local",
+                        description:
+                          "Run the agent locally on your machine",
+                        icon: "💻",
+                      },
+                      {
+                        id: "docker",
+                        title: "Docker",
+                        description: "Export as a Docker container",
+                        icon: "🐳",
+                      },
+                      {
+                        id: "vercel",
+                        title: "Vercel",
+                        description: "Deploy to Vercel Edge Functions",
+                        icon: "▲",
+                      },
+                      {
+                        id: "aws",
+                        title: "AWS Lambda",
+                        description: "Deploy to AWS Lambda",
+                        icon: "☁️",
+                      },
+                    ].map((option) => (
+                      <Card
+                        key={option.id}
+                        className="cursor-pointer hover:shadow-md transition-shadow"
+                      >
+                        <CardHeader className="py-3">
+                          <div className="flex items-center gap-4">
+                            <span className="text-2xl">{option.icon}</span>
+                            <div>
+                              <CardTitle className="text-base">
+                                {option.title}
+                              </CardTitle>
+                              <CardDescription>
+                                {option.description}
+                              </CardDescription>
+                            </div>
+                          </div>
+                        </CardHeader>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Decentralized Deploy */}
+                <AgentDecentralizedDeploy appId={agent.appId} />
+              </div>
+            )}
+          </div>
+        </ScrollArea>
       </div>
     </div>
   );
 }
 
-// ============================================================================
+// =============================================================================
 // Decentralized Deploy sub-component
-// ============================================================================
+// =============================================================================
 
 const PLATFORM_ICON_MAP: Record<string, React.ReactNode> = {
   "4everland": <Box className="h-5 w-5 text-blue-500" />,
@@ -822,7 +1325,6 @@ function AgentDecentralizedDeploy({ appId }: { appId?: number }) {
         </Button>
       </div>
 
-      {/* Platform grid */}
       {platformsLoading ? (
         <div className="flex items-center justify-center py-6 text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -878,7 +1380,6 @@ function AgentDecentralizedDeploy({ appId }: { appId?: number }) {
         </div>
       )}
 
-      {/* Recent deployments */}
       {deployments.length > 0 && (
         <div className="space-y-2">
           <h4 className="text-xs font-medium text-muted-foreground">
@@ -931,7 +1432,6 @@ function AgentDecentralizedDeploy({ appId }: { appId?: number }) {
         </div>
       )}
 
-      {/* Deploy confirmation dialog */}
       <Dialog open={deployDialogOpen} onOpenChange={setDeployDialogOpen}>
         <DialogContent>
           <DialogHeader>

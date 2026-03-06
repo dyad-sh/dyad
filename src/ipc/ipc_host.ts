@@ -107,6 +107,11 @@ import { registerEmbeddingPipelineHandlers } from "./handlers/embedding_pipeline
 import { registerModelDownloadManagerHandlers } from "./handlers/model_download_manager_handlers";
 import { registerMABHandlers } from "./handlers/mab_handlers";
 import { registerAgentMemoryHandlers } from "./handlers/agent_memory_handlers";
+import { registerAgentStackHandlers } from "./handlers/agent_stack_handlers";
+import { registerAgentOrchestratorHandlers } from "./handlers/agent_orchestrator_handlers";
+import { registerAgentWorkspaceHandlers } from "./handlers/agent_workspace_handlers";
+import { registerAgentCreationHandlers } from "./handlers/agent_creation_handlers";
+import { registerAgentUIHandlers } from "./handlers/agent_ui_handlers";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -303,4 +308,19 @@ export function registerIpcHandlers() {
 
   // Agent Memory — Long-Term (cross-conversation) + Short-Term (per-conversation)
   registerAgentMemoryHandlers();
+
+  // Agent Stack Builder — Triggers (Gmail/Slack/Sheets), Tool Catalog, n8n Workflows
+  registerAgentStackHandlers();
+
+  // Agent Orchestrator — Autonomous meta-agent orchestration (Swarm + Autonomous + Factory + CNS + Voice)
+  registerAgentOrchestratorHandlers();
+
+  // Agent Workspace — Per-agent task management, knowledge sources, and execution engine
+  registerAgentWorkspaceHandlers();
+
+  // Agent Creation Pipeline — NLP Chat → Intent Detection → Blueprint → Auto-Setup
+  registerAgentCreationHandlers();
+
+  // Agent UI Builder — Generate agent interfaces from templates and configuration
+  registerAgentUIHandlers();
 }

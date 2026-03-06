@@ -67,6 +67,12 @@ export function registerModelDownloadManagerHandlers(): void {
   ipcMain.handle(
     "model-manager:pull-model",
     async (_event, modelId: string) => {
+      if (!modelId) {
+        throw new Error(
+          "No model ID provided. Please select a valid model to download.",
+        );
+      }
+
       const windows = BrowserWindow.getAllWindows();
       const mainWindow = windows[0];
 
@@ -77,11 +83,18 @@ export function registerModelDownloadManagerHandlers(): void {
       });
 
       try {
-        const response = await fetch("http://localhost:11434/api/pull", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: modelId, stream: true }),
-        });
+        let response: Response;
+        try {
+          response = await fetch("http://localhost:11434/api/pull", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: modelId, stream: true }),
+          });
+        } catch (fetchError: any) {
+          throw new Error(
+            `Cannot connect to Ollama at http://localhost:11434. Make sure Ollama is installed and running. (${fetchError.message})`,
+          );
+        }
 
         if (!response.ok) {
           throw new Error(`Ollama pull failed: ${response.statusText}`);
@@ -154,11 +167,18 @@ export function registerModelDownloadManagerHandlers(): void {
   ipcMain.handle(
     "model-manager:delete-model",
     async (_event, modelId: string) => {
-      const response = await fetch("http://localhost:11434/api/delete", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: modelId }),
-      });
+      let response: Response;
+      try {
+        response = await fetch("http://localhost:11434/api/delete", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: modelId }),
+        });
+      } catch (fetchError: any) {
+        throw new Error(
+          `Cannot connect to Ollama at http://localhost:11434. Make sure Ollama is installed and running. (${fetchError.message})`,
+        );
+      }
 
       if (!response.ok) {
         throw new Error(`Failed to delete model: ${response.statusText}`);

@@ -1,0 +1,61 @@
+CREATE TABLE `agent_workspace_executions` (
+	`id` text PRIMARY KEY NOT NULL,
+	`task_id` text NOT NULL,
+	`agent_id` integer NOT NULL,
+	`status` text DEFAULT 'running' NOT NULL,
+	`started_at` text NOT NULL,
+	`completed_at` text,
+	`duration_ms` integer,
+	`input_json` text DEFAULT '{}',
+	`output_json` text,
+	`error` text,
+	`logs_json` text DEFAULT '[]',
+	`metrics_json` text DEFAULT '{}',
+	FOREIGN KEY (`task_id`) REFERENCES `agent_workspace_tasks`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`agent_id`) REFERENCES `agents`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE TABLE `agent_workspace_knowledge_sources` (
+	`id` text PRIMARY KEY NOT NULL,
+	`agent_id` integer NOT NULL,
+	`name` text NOT NULL,
+	`description` text,
+	`type` text NOT NULL,
+	`status` text DEFAULT 'pending' NOT NULL,
+	`config_json` text,
+	`total_documents` integer DEFAULT 0 NOT NULL,
+	`total_bytes` integer DEFAULT 0 NOT NULL,
+	`last_sync_at` text,
+	`sync_interval_ms` integer,
+	`auto_sync` integer DEFAULT 0 NOT NULL,
+	`filters_json` text,
+	`created_at` text NOT NULL,
+	`updated_at` text NOT NULL,
+	FOREIGN KEY (`agent_id`) REFERENCES `agents`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE TABLE `agent_workspace_tasks` (
+	`id` text PRIMARY KEY NOT NULL,
+	`agent_id` integer NOT NULL,
+	`name` text NOT NULL,
+	`description` text NOT NULL,
+	`type` text NOT NULL,
+	`status` text DEFAULT 'draft' NOT NULL,
+	`priority` text DEFAULT 'medium' NOT NULL,
+	`execution_mode` text DEFAULT 'local' NOT NULL,
+	`tool_id` text,
+	`trigger_id` text,
+	`input_json` text DEFAULT '{}',
+	`output_json` text,
+	`error` text,
+	`dependencies_json` text DEFAULT '[]',
+	`recurring` integer DEFAULT 0 NOT NULL,
+	`cron_expression` text,
+	`execution_count` integer DEFAULT 0 NOT NULL,
+	`last_executed_at` text,
+	`average_duration_ms` integer,
+	`n8n_node_id` text,
+	`created_at` text NOT NULL,
+	`updated_at` text NOT NULL,
+	FOREIGN KEY (`agent_id`) REFERENCES `agents`(`id`) ON UPDATE no action ON DELETE cascade
+);

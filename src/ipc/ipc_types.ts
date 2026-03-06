@@ -130,7 +130,7 @@ export interface Version {
   dbTimestamp?: string | null;
 }
 
-export type BranchResult = { branch: string };
+export type BranchResult = { branch: string | null };
 
 export interface SandboxConfig {
   files: Record<string, string>;

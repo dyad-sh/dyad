@@ -8,7 +8,7 @@ import { appDetailsRoute } from "./routes/app-details";
 import { hubRoute } from "./routes/hub";
 import { mcpHubRoute } from "./routes/mcp-hub";
 import { libraryRoute } from "./routes/library";
-import { agentsRoute, agentEditorRoute, agentTestRoute } from "./routes/agents";
+import { agentsRoute, agentEditorRoute, agentTestRoute, agentPreviewRoute } from "./routes/agents";
 import { workflowsRoute } from "./routes/workflows";
 import { localModelsRoute } from "./routes/local-models";
 import { documentsRoute } from "./routes/documents";
@@ -23,6 +23,7 @@ import { decentralizedChatRoute } from "./routes/decentralized-chat";
 import { computeNetworkRoute } from "./routes/compute-network";
 import { agentSwarmRoute } from "./routes/agent-swarm";
 import { autonomousAgentRoute } from "./routes/autonomous-agent";
+import { agentOrchestratorRoute } from "./routes/agent-orchestrator";
 import { autonomousAgentProductionRoute } from "./routes/autonomous-agent-production";
 import { cnsRoute } from "./routes/cns";
 import { localVaultRoute } from "./routes/local-vault";
@@ -47,6 +48,7 @@ const routeTree = rootRoute.addChildren([
   agentsRoute,
   agentEditorRoute,
   agentTestRoute,
+  agentPreviewRoute,
   workflowsRoute,
   localModelsRoute,
   documentsRoute,
@@ -61,6 +63,7 @@ const routeTree = rootRoute.addChildren([
   computeNetworkRoute,
   agentSwarmRoute,
   autonomousAgentRoute,
+  agentOrchestratorRoute,
   autonomousAgentProductionRoute,
   cnsRoute,
   localVaultRoute,

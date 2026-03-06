@@ -188,15 +188,14 @@ async function applyComponentTagger(appId: number, appPath: string) {
       message: "[dyad] add Dyad component tagger",
     });
     logger.info("Successfully committed changes");
+    // Auto-sync to GitHub if enabled (only after successful commit)
+    fireAndForgetAutoSync(appId, "component tagger commit");
   } catch (err) {
     logger.warn(
       `Failed to commit changes. This may happen if the project is not in a git repository, or if there are no changes to commit.`,
       err,
     );
   }
-
-  // Auto-sync to GitHub if enabled (fire-and-forget, outside try/catch to avoid masking commit success)
-  fireAndForgetAutoSync(appId, "component tagger commit");
 }
 
 async function applyCapacitor({

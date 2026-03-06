@@ -19,6 +19,7 @@ import {
   getGitUncommittedFilesWithStatus,
   gitAddAll,
   gitCommit,
+  isMissingRemoteBranchError,
 } from "../utils/git_utils";
 import { getDyadAppPath } from "../../paths/paths";
 import { db } from "../../db";
@@ -421,24 +422,14 @@ async function handlePullFromGithub(
       accessToken,
     });
   } catch (pullError: any) {
-    // Check if it's a missing remote branch error
-    const errorMessage = pullError?.message || "";
-    const isMissingRemoteBranch =
-      pullError?.code === "MissingRefError" ||
-      (pullError?.code === "NotFoundError" &&
-        (errorMessage.includes("remote ref") ||
-          errorMessage.includes("remote branch"))) ||
-      errorMessage.includes("couldn't find remote ref") ||
-      errorMessage.includes("Cannot read properties of null");
-
     // If the remote branch doesn't exist yet, we can ignore this
     // (e.g., user hasn't pushed the branch yet)
-    if (!isMissingRemoteBranch) {
+    if (!isMissingRemoteBranchError(pullError)) {
       throw pullError;
     } else {
       logger.debug(
         "[GitHub Handler] Remote branch missing during pull, continuing",
-        errorMessage,
+        pullError?.message || "",
       );
     }
   }

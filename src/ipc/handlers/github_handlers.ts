@@ -23,6 +23,7 @@ import {
   isGitMergeInProgress,
   isGitRebaseInProgress,
   GitConflictError,
+  isMissingRemoteBranchError,
 } from "../utils/git_utils";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
@@ -900,18 +901,8 @@ async function handlePushToGithub(
         );
       }
 
-      // Check if it's a missing remote branch error
-      const isMissingRemoteBranch =
-        pullError?.code === "MissingRefError" ||
-        (pullError?.code === "NotFoundError" &&
-          (errorMessage.includes("remote ref") ||
-            errorMessage.includes("remote branch"))) ||
-        errorMessage.includes("couldn't find remote ref") ||
-        // isomorphic-git throws a TypeError when the remote repo is empty
-        errorMessage.includes("Cannot read properties of null");
-
       // If it's just that remote doesn't have the branch yet, we can ignore and push
-      if (!isMissingRemoteBranch) {
+      if (!isMissingRemoteBranchError(pullError)) {
         throw pullError;
       } else {
         logger.debug(
@@ -1508,16 +1499,10 @@ export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
           accessToken,
         });
       } catch (fetchError: any) {
-        const errorMessage = fetchError?.message || "";
-        const isMissingRemoteBranch =
-          fetchError?.code === "MissingRefError" ||
-          (fetchError?.code === "NotFoundError" &&
-            (errorMessage.includes("remote ref") ||
-              errorMessage.includes("remote branch"))) ||
-          errorMessage.includes("couldn't find remote ref");
-
-        if (!isMissingRemoteBranch) {
-          const sanitizedMessage = sanitizeGitError(errorMessage);
+        if (!isMissingRemoteBranchError(fetchError)) {
+          const sanitizedMessage = sanitizeGitError(
+            fetchError?.message || "",
+          );
           logger.warn(
             `[Auto-sync] Fetch failed, skipping auto-push: ${sanitizedMessage}`,
           );

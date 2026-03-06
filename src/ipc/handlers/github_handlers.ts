@@ -23,6 +23,7 @@ import {
   isGitMergeInProgress,
   isGitRebaseInProgress,
   GitConflictError,
+  isMissingRemoteBranchError,
 } from "../utils/git_utils";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
@@ -900,18 +901,8 @@ async function handlePushToGithub(
         );
       }
 
-      // Check if it's a missing remote branch error
-      const isMissingRemoteBranch =
-        pullError?.code === "MissingRefError" ||
-        (pullError?.code === "NotFoundError" &&
-          (errorMessage.includes("remote ref") ||
-            errorMessage.includes("remote branch"))) ||
-        errorMessage.includes("couldn't find remote ref") ||
-        // isomorphic-git throws a TypeError when the remote repo is empty
-        errorMessage.includes("Cannot read properties of null");
-
       // If it's just that remote doesn't have the branch yet, we can ignore and push
-      if (!isMissingRemoteBranch) {
+      if (!isMissingRemoteBranchError(pullError)) {
         throw pullError;
       } else {
         logger.debug(
@@ -1206,13 +1197,14 @@ async function handleDisconnectGithubRepo(
     throw new Error("App not found");
   }
 
-  // Update app in database to remove GitHub repo, org, and branch
+  // Update app in database to remove GitHub repo, org, branch, and auto-sync flag
   await db
     .update(apps)
     .set({
       githubRepo: null,
       githubOrg: null,
       githubBranch: null,
+      autoSyncToGithub: false,
     })
     .where(eq(apps.id, appId));
 }
@@ -1428,4 +1420,130 @@ export async function updateAppGithubRepo({
       githubBranch: branch || "main",
     })
     .where(eq(schema.apps.id, appId));
+}
+
+function sanitizeGitError(message: string): string {
+  return message.replace(/https:\/\/[^@]+@/g, "https://***@");
+}
+
+/**
+ * Auto-push to GitHub if the app has autoSyncToGithub enabled.
+ * This should be called after any commit operation.
+ *
+ * This function silently fails if:
+ * - App is not connected to GitHub
+ * - No GitHub access token
+ * - Push fails (logs warning but doesn't throw)
+ *
+ * @param appId The app ID to potentially push
+ */
+export async function autoSyncToGithubIfEnabled(
+  appId: number,
+  context?: string,
+): Promise<void> {
+  try {
+    // Use the app-level git lock to prevent concurrent git operations.
+    // All DB reads and guards are inside the lock to avoid stale data.
+    await withLock(appId, async () => {
+      const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+      if (!app) {
+        logger.debug("[Auto-sync] App not found, skipping auto-sync");
+        return;
+      }
+
+      // Check if auto-sync is enabled for this app
+      if (!app.autoSyncToGithub) {
+        return;
+      }
+
+      // Check if app is connected to GitHub
+      if (!app.githubOrg || !app.githubRepo) {
+        return;
+      }
+
+      // Check for GitHub access token
+      const settings = readSettings();
+      const accessToken = settings.githubAccessToken?.value;
+      if (!accessToken) {
+        logger.warn("[Auto-sync] No GitHub access token, skipping auto-sync");
+        return;
+      }
+
+      const appPath = getDyadAppPath(app.path);
+      const remoteBranch = app.githubBranch || "main";
+
+      // Set up remote URL with token for native git auth
+      const remoteUrl = IS_TEST_BUILD
+        ? `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`
+        : `https://${accessToken}:x-oauth-basic@github.com/${app.githubOrg}/${app.githubRepo}.git`;
+
+      await gitSetRemoteUrl({
+        path: appPath,
+        remoteUrl,
+      });
+
+      // Skip auto-sync if a git operation is already in progress
+      if (
+        isGitMergeInProgress({ path: appPath }) ||
+        isGitRebaseInProgress({ path: appPath })
+      ) {
+        logger.debug(
+          "[Auto-sync] Merge/rebase in progress, skipping auto-sync",
+        );
+        return;
+      }
+
+      // Fetch remote so push can detect if fast-forward is possible
+      try {
+        await gitFetch({
+          path: appPath,
+          remote: "origin",
+          accessToken,
+        });
+      } catch (fetchError: any) {
+        if (!isMissingRemoteBranchError(fetchError)) {
+          const sanitizedMessage = sanitizeGitError(fetchError?.message || "");
+          logger.warn(
+            `[Auto-sync] Fetch failed, skipping auto-push: ${sanitizedMessage}`,
+          );
+          return;
+        }
+        // Remote branch doesn't exist yet, continue with push
+      }
+
+      // Push the local branch to the configured remote branch.
+      // The local branch name matches the configured githubBranch (set by prepareLocalBranch).
+      await gitPush({
+        path: appPath,
+        branch: remoteBranch,
+        remoteBranch,
+        accessToken,
+        force: false,
+        forceWithLease: false,
+      });
+
+      const contextSuffix = context ? ` (${context})` : "";
+      logger.info(
+        `[Auto-sync] Successfully pushed to GitHub${contextSuffix}: ${app.githubOrg}/${app.githubRepo}`,
+      );
+    });
+  } catch (error: any) {
+    // Log but don't throw - auto-sync should not break the main operation
+    const sanitizedMessage = sanitizeGitError(error.message || "");
+    const contextSuffix = context ? ` (${context})` : "";
+    logger.warn(
+      `[Auto-sync] Failed to auto-sync to GitHub${contextSuffix}: ${sanitizedMessage}`,
+    );
+  }
+}
+
+/**
+ * Fire-and-forget wrapper for autoSyncToGithubIfEnabled.
+ * Encapsulates the common pattern of calling auto-sync with error logging.
+ *
+ * @param appId The app ID to potentially push
+ * @param context Description of what triggered the sync (for logging)
+ */
+export function fireAndForgetAutoSync(appId: number, context: string): void {
+  void autoSyncToGithubIfEnabled(appId, context);
 }

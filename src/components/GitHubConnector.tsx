@@ -12,6 +12,8 @@ import {
 import { ipc, type GithubSyncOptions } from "@/ipc/types";
 import { useSettings } from "@/hooks/useSettings";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -28,7 +30,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { GithubBranchManager } from "@/components/GithubBranchManager";
 import { useResolveMergeConflictsWithAI } from "@/hooks/useResolveMergeConflictsWithAI";
 import { showSuccess, showError } from "@/lib/toast";
@@ -378,6 +379,9 @@ function ConnectedGitHubConnector({
   const showRebaseRecoveryOptions =
     rebaseInProgress || (syncError?.includes("rebase-merge") ?? false);
   const isRebaseActionPending = isSyncing || !!rebaseAction;
+  const [optimisticAutoSync, setOptimisticAutoSync] = useState<boolean | null>(
+    null,
+  );
 
   return (
     <div className="w-full" data-testid="github-connected-repo">
@@ -396,7 +400,42 @@ function ConnectedGitHubConnector({
         {app.githubOrg}/{app.githubRepo}
       </a>
       {app.githubBranch && (
-        <GithubBranchManager appId={appId} onBranchChange={refreshApp} />
+        <>
+          <GithubBranchManager appId={appId} onBranchChange={refreshApp} />
+          <div className="mt-3 flex items-center space-x-2">
+            <Switch
+              id="auto-sync-github"
+              aria-label="Auto-sync to GitHub"
+              disabled={isRebaseActionPending}
+              checked={optimisticAutoSync ?? app.autoSyncToGithub ?? false}
+              onCheckedChange={async (checked) => {
+                setOptimisticAutoSync(checked);
+                try {
+                  await ipc.app.updateAppAutoSync({
+                    appId,
+                    autoSyncToGithub: checked,
+                  });
+                  showSuccess(
+                    checked ? "Auto-sync enabled" : "Auto-sync disabled",
+                  );
+                  refreshApp();
+                } catch (error: any) {
+                  console.error("Failed to update auto-sync setting:", error);
+                  showError(
+                    error?.message || "Failed to update auto-sync setting",
+                  );
+                  refreshApp();
+                } finally {
+                  setOptimisticAutoSync(null);
+                }
+              }}
+              data-testid="auto-sync-github-toggle"
+            />
+            <Label htmlFor="auto-sync-github" className="text-sm">
+              Auto-sync to GitHub after changes are applied
+            </Label>
+          </div>
+        </>
       )}
       <div className="mt-2 flex gap-2">
         <Button

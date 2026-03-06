@@ -11,6 +11,7 @@ import {
 import { deployAllSupabaseFunctions } from "../../../../../../supabase_admin/supabase_utils";
 import { readSettings } from "../../../../../../main/settings";
 import type { AgentContext } from "../tools/types";
+import { fireAndForgetAutoSync } from "@/ipc/handlers/github_handlers";
 
 const logger = log.scope("file_operations");
 
@@ -66,7 +67,7 @@ export async function deployAllFunctionsIfNeeded(
  * Commit all changes
  */
 export async function commitAllChanges(
-  ctx: Pick<AgentContext, "appPath" | "supabaseProjectId">,
+  ctx: Pick<AgentContext, "appId" | "appPath" | "supabaseProjectId">,
   chatSummary?: string,
 ): Promise<{
   commitHash?: string;
@@ -93,6 +94,11 @@ export async function commitAllChanges(
           `Failed to commit extra files: ${uncommittedFiles.join(", ")}`,
           error,
         );
+      }
+
+      // Auto-sync to GitHub if enabled (outside commit try/catch to avoid masking commit success)
+      if (commitHash) {
+        fireAndForgetAutoSync(ctx.appId, "commit");
       }
     }
 

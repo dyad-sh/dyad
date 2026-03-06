@@ -19,6 +19,7 @@ import {
   getGitUncommittedFilesWithStatus,
   gitAddAll,
   gitCommit,
+  isMissingRemoteBranchError,
 } from "../utils/git_utils";
 import { getDyadAppPath } from "../../paths/paths";
 import { db } from "../../db";
@@ -26,7 +27,11 @@ import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import log from "electron-log";
 import { withLock } from "../utils/lock_utils";
-import { updateAppGithubRepo, ensureCleanWorkspace } from "./github_handlers";
+import {
+  updateAppGithubRepo,
+  ensureCleanWorkspace,
+  fireAndForgetAutoSync,
+} from "./github_handlers";
 import { createTypedHandler } from "./base";
 import { githubContracts, gitContracts } from "../types/github";
 import type {
@@ -363,7 +368,7 @@ async function handleCommitChanges(
   if (!app) throw new Error("App not found");
   const appPath = getDyadAppPath(app.path);
 
-  return withLock(appId, async () => {
+  const commitHash = await withLock(appId, async () => {
     // Check for merge or rebase in progress
     if (isGitMergeInProgress({ path: appPath })) {
       throw GitStateError(
@@ -383,10 +388,13 @@ async function handleCommitChanges(
     await gitAddAll({ path: appPath });
 
     // Commit with the provided message
-    const commitHash = await gitCommit({ path: appPath, message });
-
-    return commitHash;
+    return await gitCommit({ path: appPath, message });
   });
+
+  // Auto-sync to GitHub if enabled (fire-and-forget to avoid blocking UI)
+  fireAndForgetAutoSync(appId, "commit");
+
+  return commitHash;
 }
 
 // --- GitHub Pull Handler ---
@@ -414,24 +422,14 @@ async function handlePullFromGithub(
       accessToken,
     });
   } catch (pullError: any) {
-    // Check if it's a missing remote branch error
-    const errorMessage = pullError?.message || "";
-    const isMissingRemoteBranch =
-      pullError?.code === "MissingRefError" ||
-      (pullError?.code === "NotFoundError" &&
-        (errorMessage.includes("remote ref") ||
-          errorMessage.includes("remote branch"))) ||
-      errorMessage.includes("couldn't find remote ref") ||
-      errorMessage.includes("Cannot read properties of null");
-
     // If the remote branch doesn't exist yet, we can ignore this
     // (e.g., user hasn't pushed the branch yet)
-    if (!isMissingRemoteBranch) {
+    if (!isMissingRemoteBranchError(pullError)) {
       throw pullError;
     } else {
       logger.debug(
         "[GitHub Handler] Remote branch missing during pull, continuing",
-        errorMessage,
+        pullError?.message || "",
       );
     }
   }

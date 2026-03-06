@@ -60,6 +60,7 @@ import {
 import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { AppSearchResult } from "@/lib/schemas";
+import { fireAndForgetAutoSync } from "./github_handlers";
 
 import { getAppPort } from "../../../shared/ports";
 import {
@@ -1280,6 +1281,9 @@ export function registerAppHandlers() {
           path: appPath,
           message: `Updated ${filePath}`,
         });
+
+        // Auto-sync to GitHub if enabled (fire-and-forget to avoid blocking UI)
+        fireAndForgetAutoSync(appId, "file write");
       }
     } catch (error: any) {
       logger.error(`Error writing file ${filePath} for app ${appId}:`, error);
@@ -2064,6 +2068,31 @@ export function registerAppHandlers() {
 
   // Start the garbage collection for idle apps
   startAppGarbageCollection();
+
+  createTypedHandler(appContracts.updateAppAutoSync, async (_, params) => {
+    const { appId, autoSyncToGithub } = params;
+
+    const app = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
+
+    if (!app) {
+      throw new Error("App not found");
+    }
+
+    // Auto-sync only makes sense if the app is connected to GitHub
+    if (autoSyncToGithub && (!app.githubRepo || !app.githubOrg)) {
+      throw new Error(
+        "Cannot enable auto-sync: app is not connected to GitHub",
+      );
+    }
+
+    await db.update(apps).set({ autoSyncToGithub }).where(eq(apps.id, appId));
+
+    logger.info(
+      `Updated auto-sync to GitHub for app ${appId}: ${autoSyncToGithub}`,
+    );
+  });
 }
 
 function getCommand({

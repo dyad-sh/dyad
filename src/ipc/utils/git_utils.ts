@@ -911,13 +911,15 @@ export async function gitPush({
   accessToken,
   force,
   forceWithLease,
+  remoteBranch,
 }: GitPushParams): Promise<void> {
   const settings = readSettings();
-  const targetBranch = branch || "main";
+  const localBranch = branch || "main";
+  const targetRemoteBranch = remoteBranch || localBranch;
 
   if (settings.enableNativeGit) {
     try {
-      const args = ["push", "origin", `${targetBranch}:${targetBranch}`];
+      const args = ["push", "origin", `${localBranch}:${targetRemoteBranch}`];
       if (forceWithLease) {
         args.push("--force-with-lease");
       } else if (force) {
@@ -951,8 +953,8 @@ export async function gitPush({
     http,
     dir: path,
     remote: "origin",
-    ref: targetBranch,
-    remoteRef: targetBranch,
+    ref: localBranch,
+    remoteRef: targetRemoteBranch,
     onAuth: accessToken
       ? () => ({
           username: accessToken,
@@ -1456,4 +1458,23 @@ export function isGitRebaseInProgress({ path }: GitBaseParams): boolean {
     return true;
   }
   return false;
+}
+
+/**
+ * Checks if a git error indicates that the remote branch doesn't exist yet.
+ * This is used in pull/fetch error handling to distinguish "branch missing"
+ * (safe to ignore and push) from real errors.
+ */
+export function isMissingRemoteBranchError(error: any): boolean {
+  const errorMessage = error?.message || "";
+  return (
+    error?.code === "MissingRefError" ||
+    (error?.code === "NotFoundError" &&
+      (errorMessage.includes("remote ref") ||
+        errorMessage.includes("remote branch"))) ||
+    errorMessage.includes("couldn't find remote ref") ||
+    // isomorphic-git throws a TypeError when the remote repo is empty
+    (error?.name === "TypeError" &&
+      errorMessage.includes("Cannot read properties of null"))
+  );
 }

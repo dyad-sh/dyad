@@ -32,6 +32,7 @@ import {
 } from "../utils/app_env_var_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { retryOnLocked } from "../utils/retryOnLocked";
+import { fireAndForgetAutoSync } from "./github_handlers";
 
 const logger = log.scope("version_handlers");
 
@@ -148,7 +149,8 @@ export function registerVersionHandlers() {
 
   createTypedHandler(versionContracts.revertVersion, async (_, params) => {
     const { appId, previousVersionId, currentChatMessageId } = params;
-    return withLock(appId, async () => {
+    let shouldAutoSync = false;
+    const result = await withLock(appId, async () => {
       let successMessage = "Restored version";
       let warningMessage = "";
       const app = await db.query.apps.findFirst({
@@ -189,6 +191,7 @@ export function registerVersionHandlers() {
           path: appPath,
           message: `Reverted all changes back to version ${previousVersionId}`,
         });
+        shouldAutoSync = true;
       }
 
       // Delete messages based on currentChatMessageId if provided, otherwise use commit hash lookup
@@ -363,6 +366,13 @@ export function registerVersionHandlers() {
       }
       return { successMessage };
     });
+
+    // Auto-sync to GitHub if enabled (fire-and-forget to avoid blocking UI)
+    if (shouldAutoSync) {
+      fireAndForgetAutoSync(appId, "revert");
+    }
+
+    return result;
   });
 
   createTypedHandler(versionContracts.checkoutVersion, async (_, params) => {

@@ -1,8 +1,10 @@
 import log from "electron-log";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { getDyadAppsBaseDirectory } from "@/paths/paths";
+import { getDyadAppPath } from "@/paths/paths";
 import { DYAD_MEDIA_DIR_NAME } from "@/ipc/utils/media_path_utils";
+import { db } from "@/db";
+import { apps } from "@/db/schema";
 
 const logger = log.scope("media_cleanup");
 
@@ -16,22 +18,14 @@ export async function cleanupOldMediaFiles(): Promise<void> {
   const cutoffMs = Date.now() - MEDIA_TTL_DAYS * 24 * 60 * 60 * 1000;
 
   try {
-    const baseDir = getDyadAppsBaseDirectory();
-
-    let appDirs: string[];
-    try {
-      const entries = await fs.readdir(baseDir, { withFileTypes: true });
-      appDirs = entries
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => entry.name);
-    } catch {
-      logger.log("No dyad-apps directory found, skipping media cleanup");
-      return;
-    }
+    const allApps = await db.select({ path: apps.path }).from(apps);
 
     const counts = await Promise.all(
-      appDirs.map(async (appDir) => {
-        const mediaDir = path.join(baseDir, appDir, DYAD_MEDIA_DIR_NAME);
+      allApps.map(async (app) => {
+        const mediaDir = path.join(
+          getDyadAppPath(app.path),
+          DYAD_MEDIA_DIR_NAME,
+        );
 
         let files: string[];
         try {

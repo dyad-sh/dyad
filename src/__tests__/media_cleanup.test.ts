@@ -15,10 +15,10 @@ const logMocks = vi.hoisted(() => {
   };
 });
 
-const pathsMocks = vi.hoisted(() => {
-  return {
-    getDyadAppsBaseDirectory: vi.fn(() => "/home/user/dyad-apps"),
-  };
+const dbMocks = vi.hoisted(() => {
+  const mockFrom = vi.fn();
+  const mockSelect = vi.fn(() => ({ from: mockFrom }));
+  return { select: mockSelect, from: mockFrom };
 });
 
 vi.mock("node:fs/promises", () => ({
@@ -32,7 +32,21 @@ vi.mock("electron-log", () => ({
   },
 }));
 
-vi.mock("@/paths/paths", () => pathsMocks);
+vi.mock("@/paths/paths", () => ({
+  getDyadAppPath: vi.fn((appPath: string) => {
+    const path = require("node:path");
+    if (path.isAbsolute(appPath)) return appPath;
+    return `/home/user/dyad-apps/${appPath}`;
+  }),
+}));
+
+vi.mock("@/db", () => ({
+  db: { select: dbMocks.select },
+}));
+
+vi.mock("@/db/schema", () => ({
+  apps: { path: "path" },
+}));
 
 vi.mock("@/ipc/utils/media_path_utils", () => ({
   DYAD_MEDIA_DIR_NAME: ".dyad/media",
@@ -50,6 +64,8 @@ describe("cleanupOldMediaFiles", () => {
     fsMocks.unlink.mockReset();
     logMocks.log.mockClear();
     logMocks.warn.mockClear();
+    dbMocks.select.mockClear();
+    dbMocks.from.mockReset();
   });
 
   afterEach(() => {
@@ -68,10 +84,9 @@ describe("cleanupOldMediaFiles", () => {
     const oldMtimeMs = now - 31 * 24 * 60 * 60 * 1000;
     const recentMtimeMs = now - 5 * 24 * 60 * 60 * 1000;
 
-    fsMocks.readdir.mockImplementation((dirPath: string, options?: any) => {
-      if (dirPath === "/home/user/dyad-apps" && options?.withFileTypes) {
-        return Promise.resolve([{ name: "my-app", isDirectory: () => true }]);
-      }
+    dbMocks.from.mockResolvedValue([{ path: "my-app" }]);
+
+    fsMocks.readdir.mockImplementation((dirPath: string) => {
       if (dirPath === "/home/user/dyad-apps/my-app/.dyad/media") {
         return Promise.resolve(["old-image.png", "recent-image.png"]);
       }
@@ -103,26 +118,19 @@ describe("cleanupOldMediaFiles", () => {
     expect(logMocks.warn).not.toHaveBeenCalled();
   });
 
-  it("should handle missing base directory gracefully", async () => {
-    fsMocks.readdir.mockRejectedValueOnce(new Error("ENOENT"));
+  it("should handle no apps in the database gracefully", async () => {
+    dbMocks.from.mockResolvedValue([]);
 
     await expect(cleanupOldMediaFiles()).resolves.toBeUndefined();
 
-    expect(logMocks.log).toHaveBeenCalledWith(
-      "No dyad-apps directory found, skipping media cleanup",
-    );
+    expect(logMocks.log).toHaveBeenCalledWith("Cleaned up 0 old media files");
     expect(logMocks.warn).not.toHaveBeenCalled();
   });
 
   it("should skip apps without .dyad/media directory", async () => {
-    fsMocks.readdir.mockImplementation((dirPath: string, options?: any) => {
-      if (dirPath === "/home/user/dyad-apps" && options?.withFileTypes) {
-        return Promise.resolve([
-          { name: "app-no-media", isDirectory: () => true },
-        ]);
-      }
-      return Promise.reject(new Error("ENOENT"));
-    });
+    dbMocks.from.mockResolvedValue([{ path: "app-no-media" }]);
+
+    fsMocks.readdir.mockRejectedValue(new Error("ENOENT"));
 
     await cleanupOldMediaFiles();
 
@@ -134,12 +142,9 @@ describe("cleanupOldMediaFiles", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2025-01-31T00:00:00.000Z"));
 
-    fsMocks.readdir.mockImplementation((dirPath: string, options?: any) => {
-      if (options?.withFileTypes) {
-        return Promise.resolve([{ name: "my-app", isDirectory: () => true }]);
-      }
-      return Promise.resolve(["broken-file.png"]);
-    });
+    dbMocks.from.mockResolvedValue([{ path: "my-app" }]);
+
+    fsMocks.readdir.mockResolvedValue(["broken-file.png"]);
 
     const statError = new Error("EPERM");
     fsMocks.stat.mockRejectedValueOnce(statError);
@@ -159,12 +164,9 @@ describe("cleanupOldMediaFiles", () => {
 
     const oldMtimeMs = Date.now() - 31 * 24 * 60 * 60 * 1000;
 
-    fsMocks.readdir.mockImplementation((dirPath: string, options?: any) => {
-      if (options?.withFileTypes) {
-        return Promise.resolve([{ name: "my-app", isDirectory: () => true }]);
-      }
-      return Promise.resolve(["some-subdir", "old-file.png"]);
-    });
+    dbMocks.from.mockResolvedValue([{ path: "my-app" }]);
+
+    fsMocks.readdir.mockResolvedValue(["some-subdir", "old-file.png"]);
 
     fsMocks.stat.mockImplementation((filePath: string) => {
       if (filePath.includes("some-subdir")) {
@@ -183,22 +185,15 @@ describe("cleanupOldMediaFiles", () => {
     );
   });
 
-  it("should iterate over multiple app directories", async () => {
+  it("should iterate over multiple apps", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2025-01-31T00:00:00.000Z"));
 
     const oldMtimeMs = Date.now() - 31 * 24 * 60 * 60 * 1000;
 
-    fsMocks.readdir.mockImplementation((dirPath: string, options?: any) => {
-      if (options?.withFileTypes) {
-        return Promise.resolve([
-          { name: "app-1", isDirectory: () => true },
-          { name: "app-2", isDirectory: () => true },
-        ]);
-      }
-      return Promise.resolve(["old.png"]);
-    });
+    dbMocks.from.mockResolvedValue([{ path: "app-1" }, { path: "app-2" }]);
 
+    fsMocks.readdir.mockResolvedValue(["old.png"]);
     fsMocks.stat.mockResolvedValue({ isFile: () => true, mtimeMs: oldMtimeMs });
     fsMocks.unlink.mockResolvedValue(undefined);
 
@@ -206,5 +201,33 @@ describe("cleanupOldMediaFiles", () => {
 
     expect(fsMocks.unlink).toHaveBeenCalledTimes(2);
     expect(logMocks.log).toHaveBeenCalledWith("Cleaned up 2 old media files");
+  });
+
+  it("should handle apps with absolute paths (skipCopy imports)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-31T00:00:00.000Z"));
+
+    const oldMtimeMs = Date.now() - 31 * 24 * 60 * 60 * 1000;
+
+    dbMocks.from.mockResolvedValue([
+      { path: "/external/projects/my-imported-app" },
+    ]);
+
+    fsMocks.readdir.mockImplementation((dirPath: string) => {
+      if (dirPath === "/external/projects/my-imported-app/.dyad/media") {
+        return Promise.resolve(["old-image.png"]);
+      }
+      return Promise.reject(new Error("ENOENT"));
+    });
+
+    fsMocks.stat.mockResolvedValue({ isFile: () => true, mtimeMs: oldMtimeMs });
+    fsMocks.unlink.mockResolvedValue(undefined);
+
+    await cleanupOldMediaFiles();
+
+    expect(fsMocks.unlink).toHaveBeenCalledTimes(1);
+    expect(fsMocks.unlink).toHaveBeenCalledWith(
+      "/external/projects/my-imported-app/.dyad/media/old-image.png",
+    );
   });
 });

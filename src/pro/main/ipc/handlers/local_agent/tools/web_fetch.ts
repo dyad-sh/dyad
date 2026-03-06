@@ -5,6 +5,20 @@ import { engineFetch } from "./engine_fetch";
 
 const logger = log.scope("web_fetch");
 
+function validateHttpUrl(url: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`Invalid URL: ${url}`);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error(
+      `Unsupported URL scheme "${parsed.protocol}" — only http and https are allowed`,
+    );
+  }
+}
+
 const MAX_CONTENT_LENGTH = 80_000;
 
 function truncateContent(value: string): string {
@@ -70,7 +84,7 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
   name: "web_fetch",
   description: DESCRIPTION,
   inputSchema: webFetchSchema,
-  defaultConsent: "ask",
+  defaultConsent: "always",
 
   // Requires Dyad Pro engine API
   isEnabled: (ctx) => ctx.isDyadPro,
@@ -79,36 +93,48 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
 
   buildXml: (args, isComplete) => {
     if (!args.url) return undefined;
-
-    let xml = `<dyad-web-fetch>${escapeXmlContent(args.url)}`;
-    if (isComplete) {
-      xml += "</dyad-web-fetch>";
-    }
-    return xml;
+    // When complete, return undefined so execute's onXmlComplete provides the final XML
+    if (isComplete) return undefined;
+    return `<dyad-web-fetch>${escapeXmlContent(args.url)}`;
   },
 
   execute: async (args, ctx) => {
     logger.log(`Executing web fetch: ${args.url}`);
 
-    const result = await callWebFetch(args.url, ctx);
+    validateHttpUrl(args.url);
 
-    if (!result) {
-      throw new Error("Web fetch returned no results");
+    ctx.onXmlStream(`<dyad-web-fetch>${escapeXmlContent(args.url)}`);
+
+    try {
+      const result = await callWebFetch(args.url, ctx);
+
+      if (!result) {
+        throw new Error("Web fetch returned no results");
+      }
+
+      // Combine markdown from all pages
+      const allContent = result.pages
+        .map((page) => `## ${page.url}\n\n${page.markdown}`)
+        .join("\n\n---\n\n");
+
+      if (!allContent) {
+        throw new Error("No content available from web fetch");
+      }
+
+      logger.log(
+        `Web fetch completed for URL: ${args.url} (${result.pages.length} pages)`,
+      );
+
+      ctx.onXmlComplete(
+        `<dyad-web-fetch>${escapeXmlContent(args.url)}</dyad-web-fetch>`,
+      );
+
+      return truncateContent(allContent);
+    } catch (error) {
+      ctx.onXmlComplete(
+        `<dyad-web-fetch>${escapeXmlContent(args.url)}</dyad-web-fetch>`,
+      );
+      throw error;
     }
-
-    // Combine markdown from all pages
-    const allContent = result.pages
-      .map((page) => `## ${page.url}\n\n${page.markdown}`)
-      .join("\n\n---\n\n");
-
-    if (!allContent) {
-      throw new Error("No content available from web fetch");
-    }
-
-    logger.log(
-      `Web fetch completed for URL: ${args.url} (${result.pages.length} pages)`,
-    );
-
-    return truncateContent(allContent);
   },
 };

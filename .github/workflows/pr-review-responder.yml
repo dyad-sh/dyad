@@ -37,6 +37,9 @@ jobs:
         with:
           app-id: ${{ vars.DYAD_GITHUB_APP_ID }}
           private-key: ${{ secrets.DYAD_GITHUB_APP_PRIVATE_KEY }}
+          permission-actions: write
+          permission-contents: write
+          permission-pull-requests: write
 
       - name: Get PR info and check labels
         id: pr-info
@@ -217,6 +220,7 @@ jobs:
           private-key: ${{ secrets.DYAD_GITHUB_APP_PRIVATE_KEY }}
           owner: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.owner.login || github.event.workflow_run.head_repository.owner.login }}
           repositories: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.name || github.event.workflow_run.head_repository.name }}
+          permission-contents: write
 
       - name: Checkout repository
         if: steps.pr-info.outputs.should_continue == 'true'

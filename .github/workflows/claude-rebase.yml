@@ -23,6 +23,8 @@ jobs:
         with:
           app-id: ${{ vars.DYAD_GITHUB_APP_ID }}
           private-key: ${{ secrets.DYAD_GITHUB_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
 
       - name: Check PR author
         id: check-author
@@ -49,6 +51,7 @@ jobs:
           private-key: ${{ secrets.DYAD_GITHUB_APP_PRIVATE_KEY }}
           owner: ${{ github.event.pull_request.head.repo.owner.login }}
           repositories: ${{ github.event.pull_request.head.repo.name }}
+          permission-contents: write
 
       - name: Checkout repository
         if: steps.check-author.outputs.should_continue == 'true'

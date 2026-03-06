@@ -16,6 +16,7 @@ jobs:
         with:
           app-id: ${{ vars.DYAD_GITHUB_APP_ID }}
           private-key: ${{ secrets.DYAD_GITHUB_APP_PRIVATE_KEY }}
+          permission-issues: write
 
       - uses: actions/checkout@v4
       - uses: anthropics/claude-code-base-action@beta

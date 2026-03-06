@@ -36,6 +36,7 @@ jobs:
         with:
           app-id: ${{ vars.DYAD_GITHUB_APP_ID }}
           private-key: ${{ secrets.DYAD_GITHUB_APP_PRIVATE_KEY }}
+          permission-pull-requests: write
 
       - name: Checkout repository
         uses: actions/checkout@v5

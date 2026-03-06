@@ -16,6 +16,8 @@ on:
     # The CI workflow is almost always the last workflow to finish, so that's why we wait for it.
     types: [completed]
 
+permissions: {}
+
 jobs:
   respond-to-pr:
     if: >-
@@ -27,8 +29,9 @@ jobs:
       - macOS
       - ARM64
     permissions:
-      actions: write
-      contents: write
+      actions: read
+      contents: read
+      issues: write
       pull-requests: write
     steps:
       - name: Get PR info and check labels
@@ -211,6 +214,7 @@ jobs:
           repository: ${{ steps.pr-info.outputs.head_repo }}
           ref: ${{ steps.pr-info.outputs.head_branch }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Record HEAD before Claude Code
         if: steps.pr-info.outputs.should_continue == 'true'
@@ -347,6 +351,7 @@ jobs:
         with:
           path: __base
           sparse-checkout: scripts/pr-status-labeler.js
+          persist-credentials: false
 
       - name: Apply needs-human status label
         # Run when PR reaches a terminal state (cc:done or cc:failed) but NOT when

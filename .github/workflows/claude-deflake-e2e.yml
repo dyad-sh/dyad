@@ -12,6 +12,8 @@ on:
         default: "10"
         type: string
 
+permissions: {}
+
 jobs:
   deflake:
     environment: ai-bots
@@ -19,12 +21,14 @@ jobs:
       - self-hosted
       - macOS
       - ARM64
-    permissions: {}
+    permissions:
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Initialize environment
         uses: actions/setup-node@v4

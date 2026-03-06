@@ -13,6 +13,8 @@ on:
     - cron: "0 13 * * 1"
   workflow_dispatch:
 
+permissions: {}
+
 jobs:
   review-rules:
     environment: ai-bots
@@ -23,9 +25,10 @@ jobs:
       issues: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 200
+          persist-credentials: false
 
       - name: Review AGENTS.md and rules/
         uses: anthropics/claude-code-action@v1

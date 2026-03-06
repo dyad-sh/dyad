@@ -4,6 +4,8 @@ on:
   pull_request_target:
     types: [labeled, closed]
 
+permissions: {}
+
 concurrency:
   group: claude-rebase-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -14,7 +16,8 @@ jobs:
     if: github.event.action == 'labeled' && github.event.label.name == 'cc:rebase'
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
+      issues: write
       pull-requests: write
     steps:
       - name: Check PR author
@@ -34,11 +37,12 @@ jobs:
 
       - name: Checkout repository
         if: steps.check-author.outputs.should_continue == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Configure git remotes for cross-repo PR
         if: steps.check-author.outputs.should_continue == 'true'

@@ -2,15 +2,16 @@ name: Issue Triage
 on:
   issues:
     types: [opened]
+
+permissions: {}
+
 jobs:
   triage:
     environment: ai-bots
     runs-on: ubuntu-latest
     permissions:
       issues: write
-      contents: read
     steps:
-      - uses: actions/checkout@v4
       - uses: anthropics/claude-code-base-action@beta
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

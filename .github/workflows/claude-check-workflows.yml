@@ -12,6 +12,8 @@ on:
         default: "24"
         type: string
 
+permissions: {}
+
 jobs:
   check-workflows:
     environment: ai-bots
@@ -20,10 +22,12 @@ jobs:
       - macOS
       - ARM64
     permissions:
-      issues: write
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - name: Check workflow health
         uses: anthropics/claude-code-action@v1

@@ -1,6 +1,7 @@
 # VERY IMPORTANT:
-# This workflow has a lot of permissions!
-# It should ONLY run on trusted maintainers code (e.g. wwwillchen)
+# This workflow has elevated permissions (contents:write, pull-requests:write).
+# It should ONLY run on trusted maintainers code (e.g. wwwillchen).
+# Author allowlists are enforced in the job steps below.
 name: PR Review Responder
 
 on:
@@ -16,6 +17,9 @@ on:
     # The CI workflow is almost always the last workflow to finish, so that's why we wait for it.
     types: [completed]
 
+# Restrict default permissions; the job below declares only what it needs.
+permissions: {}
+
 jobs:
   respond-to-pr:
     if: >-
@@ -27,9 +31,8 @@ jobs:
       - macOS
       - ARM64
     permissions:
-      actions: write
-      contents: write
-      pull-requests: write
+      contents: write # push commits to PR branches
+      pull-requests: write # edit labels, post comments
     steps:
       - name: Get PR info and check labels
         id: pr-info

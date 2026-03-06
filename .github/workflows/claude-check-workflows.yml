@@ -20,7 +20,8 @@ jobs:
       - macOS
       - ARM64
     permissions:
-      issues: write
+      contents: read # checkout repository
+      issues: write # create issues for workflow failures
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5

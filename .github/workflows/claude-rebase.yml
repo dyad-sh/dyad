@@ -4,6 +4,9 @@ on:
   pull_request_target:
     types: [labeled, closed]
 
+# Restrict default permissions; the job below declares only what it needs.
+permissions: {}
+
 concurrency:
   group: claude-rebase-${{ github.event.pull_request.number }}
   cancel-in-progress: true

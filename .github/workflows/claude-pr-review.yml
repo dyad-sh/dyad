@@ -6,6 +6,9 @@ on:
   pull_request_target:
     types: [opened, synchronize, ready_for_review, reopened]
 
+# Restrict default permissions; each job declares only what it needs.
+permissions: {}
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true

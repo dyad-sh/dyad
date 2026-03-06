@@ -3,6 +3,9 @@ on:
   issue_comment:
     types: [created]
 
+# Restrict default permissions; each job declares only what it needs.
+permissions: {}
+
 jobs:
   handle-comment:
     # Only run on closed issues (not PRs)

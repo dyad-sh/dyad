@@ -1439,35 +1439,36 @@ function sanitizeGitError(message: string): string {
  */
 export async function autoSyncToGithubIfEnabled(appId: number): Promise<void> {
   try {
-    const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
-    if (!app) {
-      logger.debug("[Auto-sync] App not found, skipping auto-sync");
-      return;
-    }
-
-    // Check if auto-sync is enabled for this app
-    if (!app.autoSyncToGithub) {
-      return;
-    }
-
-    // Check if app is connected to GitHub
-    if (!app.githubOrg || !app.githubRepo) {
-      return;
-    }
-
-    // Check for GitHub access token
-    const settings = readSettings();
-    const accessToken = settings.githubAccessToken?.value;
-    if (!accessToken) {
-      logger.warn("[Auto-sync] No GitHub access token, skipping auto-sync");
-      return;
-    }
-
-    const appPath = getDyadAppPath(app.path);
-    const remoteBranch = app.githubBranch || "main";
-
-    // Use the app-level git lock to prevent concurrent git operations
+    // Use the app-level git lock to prevent concurrent git operations.
+    // All DB reads and guards are inside the lock to avoid stale data.
     await withLock(appId, async () => {
+      const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+      if (!app) {
+        logger.debug("[Auto-sync] App not found, skipping auto-sync");
+        return;
+      }
+
+      // Check if auto-sync is enabled for this app
+      if (!app.autoSyncToGithub) {
+        return;
+      }
+
+      // Check if app is connected to GitHub
+      if (!app.githubOrg || !app.githubRepo) {
+        return;
+      }
+
+      // Check for GitHub access token
+      const settings = readSettings();
+      const accessToken = settings.githubAccessToken?.value;
+      if (!accessToken) {
+        logger.warn("[Auto-sync] No GitHub access token, skipping auto-sync");
+        return;
+      }
+
+      const appPath = getDyadAppPath(app.path);
+      const remoteBranch = app.githubBranch || "main";
+
       // Set up remote URL with token for native git auth
       const remoteUrl = IS_TEST_BUILD
         ? `${GITHUB_GIT_BASE}/${app.githubOrg}/${app.githubRepo}.git`

@@ -120,7 +120,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     removeQueuedMessage,
     reorderQueuedMessages,
     clearAllQueuedMessages,
-  } = useStreamChat({ shouldProcessQueue: true });
+  } = useStreamChat();
   const [showError, setShowError] = useState(true);
   const [isApproving, setIsApproving] = useState(false); // State for approving
   const [isRejecting, setIsRejecting] = useState(false); // State for rejecting

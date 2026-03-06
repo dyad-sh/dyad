@@ -30,6 +30,8 @@ jobs:
         uses: actions/setup-node@cdca7365b2dadb8aad0a33bc7601856ffabcc48e # v4.3.0
         with:
           node-version-file: package.json
+          # Do NOT use actions cache (e.g. `cache: 'npm'`) for release workflows.
+          # See: https://adnanthekhan.com/2024/12/21/cacheract-the-monster-in-your-build-cache/
       - name: Install npm 11.8.0
         run: npm install -g npm@11.8.0
       - run: npm ci
@@ -133,6 +135,8 @@ jobs:
         uses: actions/setup-node@cdca7365b2dadb8aad0a33bc7601856ffabcc48e # v4.3.0
         with:
           node-version-file: package.json
+          # Do NOT use actions cache (e.g. `cache: 'npm'`) for release workflows.
+          # See: https://adnanthekhan.com/2024/12/21/cacheract-the-monster-in-your-build-cache/
       - name: Install npm 11.8.0
         run: npm install -g npm@11.8.0
       - run: npm ci
@@ -166,6 +170,8 @@ jobs:
         uses: actions/setup-node@cdca7365b2dadb8aad0a33bc7601856ffabcc48e # v4.3.0
         with:
           node-version-file: package.json
+          # Do NOT use actions cache (e.g. `cache: 'npm'`) for release workflows.
+          # See: https://adnanthekhan.com/2024/12/21/cacheract-the-monster-in-your-build-cache/
       - name: Verify all release assets are uploaded
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

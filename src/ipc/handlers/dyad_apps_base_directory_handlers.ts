@@ -1,13 +1,16 @@
 import { dialog } from "electron";
-import { mkdir, stat, symlink, realpath } from "fs/promises";
+import { mkdir, stat } from "fs/promises";
 import log from "electron-log";
-import { join, isAbsolute } from "path";
+import { join, isAbsolute, normalize } from "path";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
-import { desc } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { createTypedHandler } from "./base";
 import { systemContracts } from "../types/system";
-import { getDyadAppsBaseDirectory, invalidateDyadAppsBaseDirectoryCache } from "@/paths/paths";
+import {
+  getDyadAppsBaseDirectory,
+  invalidateDyadAppsBaseDirectoryCache,
+} from "@/paths/paths";
 import { writeSettings } from "@/main/settings";
 
 const logger = log.scope("dyad_apps_base_directory_handlers");
@@ -50,8 +53,9 @@ export function registerDyadAppsBaseDirectoryHandlers() {
   createTypedHandler(
     systemContracts.setDyadAppsBaseDirectory,
     async (_, input) => {
-      const { path: prevCustomPath, defaultPath } = getDyadAppsBaseDirectory();
-      let newDyadAppsBaseDir = defaultPath; // If input is null/falsey, reset to default
+      const { path: prevPath, defaultPath } = getDyadAppsBaseDirectory();
+      let newDyadAppsBaseDir = defaultPath;
+      let updatedSettingValue = null;
 
       if (input) {
         let st;
@@ -64,73 +68,43 @@ export function registerDyadAppsBaseDirectoryHandlers() {
         if (!st || !st.isDirectory())
           throw new Error("Path is not a directory");
 
-        newDyadAppsBaseDir = input;
+        newDyadAppsBaseDir = normalize(input);
+        updatedSettingValue = newDyadAppsBaseDir;
       }
 
       await mkdir(newDyadAppsBaseDir, { recursive: true });
 
-      const allApps = await db.query.apps.findMany({
-        orderBy: [desc(apps.createdAt)],
-      });
+      logger.info("Beginning path updates");
+
+      const allApps = await db.query.apps.findMany();
 
       // We don't want to make current apps inaccessible after changing the directory.
-      // So, we add symlinks in the new directory to each of the user's apps.
-      for (const app of allApps) {
-        if (isAbsolute(app.path)) continue;
-
-        const link = join(newDyadAppsBaseDir, app.path);
-        let target = join(prevCustomPath, app.path);
-
-        // Make sure we link to original directory, not a symlink
-        try {
-          target = await realpath(target);
-        } catch {
-          // Fall through. If realpath fails, we keep the original path
-        }
-
-        try {
-          // On Windows, symlinks require more permissions than junctions.
-          // Try symlink first; if that fails, fall back to a junction
-          if (process.platform === "win32") {
-            try {
-              await symlink(target, link, "dir");
-              continue;
-            } catch (error: any) {
-              // if it's not a permissions error, it's not worth retrying
-              if (error.code !== "EPERM") throw error;
-            }
-          }
-
-          await symlink(target, link, "junction");
-        } catch (err: any) {
-          // If we already have access to the app (or one with the same name),
-          // or the app no longer exists, then we can safely skip the symlink
-          if (err.code === "EEXIST" || err.code === "ENOENT") {
-            logger.debug(
-              [
-                "Skipping symlink creation",
-                `FROM: ${link}`,
-                `TO: ${target}`,
-                `REASON: ${err.code}`,
-              ].join("\n"),
+      // So, convert all current apps to absolute paths.
+      db.transaction((tx) => {
+        for (const app of allApps) {
+          if (isAbsolute(app.path)) {
+            logger.info(
+              `${app.name} already has an absolute path; skipping path update`,
             );
             continue;
           }
 
-          // We stop the settings change if we're removing access to apps
-          logger.error(
-            [
-              "Failed to create required symlink",
-              `FROM: ${link}`,
-              `TO: ${target}`,
-              `ERROR: ${err.code ?? err.message}`,
-            ].join("\n"),
+          const newPath = join(prevPath, app.path);
+          logger.info(
+            `updating ${app.name} from relative path ${app.path} to absolute path ${newPath}`,
           );
-          throw err;
+          tx.update(apps)
+            .set({
+              path: newPath,
+            })
+            .where(eq(apps.id, app.id))
+            .run();
         }
-      }
+      });
 
-      writeSettings({ customDyadAppsBaseDirectory: input });
+      writeSettings({
+        customDyadAppsBaseDirectory: updatedSettingValue,
+      });
       invalidateDyadAppsBaseDirectoryCache();
     },
   );

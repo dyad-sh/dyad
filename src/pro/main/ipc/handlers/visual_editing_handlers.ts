@@ -1,5 +1,4 @@
 import { ipcMain } from "electron";
-import log from "electron-log";
 
 import fs from "node:fs";
 import { promises as fsPromises } from "node:fs";

@@ -22,6 +22,7 @@ import {
   XCircle,
   ChevronDown,
   ChevronRight,
+  Play,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -42,10 +43,12 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 import { agentBuilderClient } from "@/ipc/agent_builder_client";
 import { showError, showSuccess } from "@/lib/toast";
 import { cn } from "@/lib/utils";
+import { AgentTestRunner } from "@/components/agent/AgentTestRunner";
 
 import type { AgentTestMessage, AgentToolCall } from "@/types/agent_builder";
 
@@ -121,8 +124,13 @@ export default function AgentTestPage() {
     ]);
 
     try {
-      // Simulate streaming response (replace with actual agent execution)
-      const response = await simulateAgentResponse(userMessage.content, agent);
+      // Real LLM response via OpenClaw CNS
+      const response = await simulateAgentResponse(
+        userMessage.content,
+        agent,
+        messages, // pass conversation history
+        tools,    // pass agent tools
+      );
 
       // Update message with response
       setMessages((prev) =>
@@ -261,6 +269,21 @@ export default function AgentTestPage() {
       </div>
 
       {/* Chat Area */}
+      <Tabs defaultValue="interactive" className="flex-1 flex flex-col overflow-hidden">
+        <div className="border-b px-4">
+          <TabsList>
+            <TabsTrigger value="interactive">
+              <Send className="h-3.5 w-3.5 mr-1.5" />
+              Interactive Chat
+            </TabsTrigger>
+            <TabsTrigger value="automated">
+              <Play className="h-3.5 w-3.5 mr-1.5" />
+              Automated Tests
+            </TabsTrigger>
+          </TabsList>
+        </div>
+
+        <TabsContent value="interactive" className="flex-1 flex overflow-hidden mt-0">
       <div className="flex-1 flex overflow-hidden">
         {/* Messages */}
         <div className="flex-1 flex flex-col">
@@ -378,6 +401,18 @@ export default function AgentTestPage() {
           </div>
         </div>
       </div>
+        </TabsContent>
+
+        <TabsContent value="automated" className="flex-1 overflow-auto mt-0 p-4">
+          <AgentTestRunner
+            agentId={Number(agentId)}
+            agentType={agent.type}
+            agentName={agent.name}
+            agent={agent}
+            tools={tools}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
@@ -488,37 +523,91 @@ function MessageBubble({ message }: { message: Message }) {
   );
 }
 
-// Simulated agent response (replace with actual agent execution)
+// Real agent response via OpenClaw CNS LLM call
 async function simulateAgentResponse(
   userMessage: string,
-  agent: any
+  agent: any,
+  conversationHistory: Message[] = [],
+  tools: any[] = [],
 ): Promise<{ content: string; toolCalls?: AgentToolCall[] }> {
-  // Simulate network delay
-  await new Promise((resolve) => setTimeout(resolve, 1000 + Math.random() * 2000));
+  const ipcRenderer = (window as any).electron?.ipcRenderer;
 
-  // Simple mock response based on agent type
-  const responses: Record<string, string> = {
-    chatbot: `I understand you're asking about: "${userMessage}"\n\nAs a ${agent?.name || "chatbot"}, I'm here to help! This is a test response. In a real deployment, I would use my configured model and tools to provide a more relevant response.`,
-    task: `Analyzing your request: "${userMessage}"\n\nI'll break this down into steps and execute them. This is a simulated response for testing purposes.`,
-    rag: `Searching knowledge base for: "${userMessage}"\n\nBased on the available documents, here's what I found... (simulated response)`,
-    workflow: `Starting workflow for: "${userMessage}"\n\nExecuting workflow steps... (simulated response)`,
-    "multi-agent": `Coordinating agents for: "${userMessage}"\n\nDelegating to specialized agents... (simulated response)`,
-  };
+  // Build conversation context from history
+  const historyContext = conversationHistory
+    .filter((m) => m.role !== "system")
+    .slice(-10) // Last 10 messages for context
+    .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
+    .join("\n\n");
 
-  // Simulate tool call for demonstration
-  const toolCalls: AgentToolCall[] = [];
-  if (userMessage.toLowerCase().includes("weather")) {
-    toolCalls.push({
-      id: `tool-${Date.now()}`,
-      name: "get_weather",
-      input: { location: "San Francisco" },
-      output: { temperature: 68, condition: "Sunny" },
-      status: "completed",
+  // Build the system prompt with agent config
+  const systemPrompt = agent?.systemPrompt || "You are a helpful AI assistant.";
+  const agentName = agent?.name || "AI Agent";
+  const agentType = agent?.type || "chatbot";
+
+  // Build tool descriptions for the prompt
+  const toolDescriptions = tools.length > 0
+    ? `\n\nAvailable Tools:\n${tools.map((t: any) => `- ${t.name}: ${t.description}`).join("\n")}`
+    : "";
+
+  const fullSystemPrompt = `${systemPrompt}${toolDescriptions}\n\nYou are "${agentName}" (type: ${agentType}). Respond naturally and helpfully.`;
+
+  // Build the user message with conversation history
+  const fullMessage = historyContext
+    ? `Previous conversation:\n${historyContext}\n\nCurrent message: ${userMessage}`
+    : userMessage;
+
+  try {
+    // Call the CNS chat endpoint via IPC
+    const result = await ipcRenderer.invoke("cns:chat", {
+      message: fullMessage,
+      systemPrompt: fullSystemPrompt,
+      preferLocal: false,
     });
+
+    if (result?.content) {
+      // Parse any tool calls from the response (if the model mentions tool usage)
+      const toolCalls = parseToolCallsFromResponse(result.content, tools);
+      return {
+        content: result.content,
+        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      };
+    }
+
+    // Fallback if CNS fails
+    return {
+      content: `I received your message: "${userMessage}". However, I'm having trouble connecting to the AI model. Please check your model configuration in the agent settings.`,
+    };
+  } catch (error) {
+    console.error("Agent test LLM call failed:", error);
+
+    // Graceful fallback with helpful error message
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    return {
+      content: `⚠️ Could not get a response from the AI model.\n\nError: ${errorMsg}\n\nPlease ensure:\n1. An AI model is configured (check Settings → Models)\n2. The OpenClaw CNS is running\n3. Your API keys are valid\n\nYou can also try switching to a local Ollama model.`,
+    };
+  }
+}
+
+/** Parse tool calls from the AI response text */
+function parseToolCallsFromResponse(content: string, tools: any[]): AgentToolCall[] {
+  const toolCalls: AgentToolCall[] = [];
+
+  if (!tools || tools.length === 0) return toolCalls;
+
+  // Check if the response mentions any tools by name
+  for (const tool of tools) {
+    const toolName = tool.name?.toLowerCase();
+    if (toolName && content.toLowerCase().includes(toolName)) {
+      toolCalls.push({
+        id: `tool-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        name: tool.name,
+        input: {},
+        output: null,
+        status: "completed",
+      });
+    }
   }
 
-  return {
-    content: responses[agent?.type || "chatbot"] || responses.chatbot,
-    toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-  };
+  return toolCalls;
 }
+

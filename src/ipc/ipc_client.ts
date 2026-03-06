@@ -167,6 +167,7 @@ export class IpcClient {
     (data: GitHubDeviceFlowErrorData) => void
   >;
   private forceCloseHandlers: Set<(data: any) => void>;
+  private agentBlueprintHandlers: Set<(data: { chatId: number; blueprint: any; intent: any }) => void>;
   private constructor() {
     this.ipcRenderer = (window as any).electron.ipcRenderer as IpcRenderer;
     this.chatStreams = new Map();
@@ -180,6 +181,7 @@ export class IpcClient {
     this.githubFlowSuccessHandlers = new Set();
     this.githubFlowErrorHandlers = new Set();
     this.forceCloseHandlers = new Set();
+    this.agentBlueprintHandlers = new Set();
     // Set up listeners for stream events
     this.ipcRenderer.on("chat:response:chunk", (data) => {
       if (
@@ -270,6 +272,20 @@ export class IpcClient {
         }
       } else {
         console.error("[IPC] Invalid error data received:", payload);
+      }
+    });
+
+    // Agent blueprint events (NLP → Agent Creation pipeline)
+    this.ipcRenderer.on("chat:agent-blueprint", (data) => {
+      if (
+        data &&
+        typeof data === "object" &&
+        "chatId" in data &&
+        "blueprint" in data
+      ) {
+        for (const handler of this.agentBlueprintHandlers) {
+          handler(data as { chatId: number; blueprint: any; intent: any });
+        }
       }
     });
 
@@ -1036,6 +1052,114 @@ export class IpcClient {
     return () => {
       this.globalChatStreamEndHandlers.delete(handler);
     };
+  }
+
+  /**
+   * Subscribe to agent blueprint events from the NLP → Agent Creation pipeline.
+   * Fired when the chat detects agent creation intent in the user's message.
+   * @returns Unsubscribe function
+   */
+  public onAgentBlueprint(
+    handler: (data: { chatId: number; blueprint: any; intent: any }) => void,
+  ): () => void {
+    this.agentBlueprintHandlers.add(handler);
+    return () => {
+      this.agentBlueprintHandlers.delete(handler);
+    };
+  }
+
+  /**
+   * Detect agent creation intent in a message (invoke-based, not event)
+   */
+  async detectAgentIntent(message: string, useLLM = false): Promise<any> {
+    return this.ipcRenderer.invoke("agent:intent:detect", { message, useLLM });
+  }
+
+  /**
+   * Generate an agent blueprint from an intent
+   */
+  async generateAgentBlueprint(
+    intent: any,
+    originalMessage: string,
+    useLLM = false,
+  ): Promise<any> {
+    return this.ipcRenderer.invoke("agent:blueprint:generate", {
+      intent,
+      originalMessage,
+      useLLM,
+    });
+  }
+
+  /**
+   * Full pipeline: detect intent + generate blueprint in one call
+   */
+  async detectAndGenerateAgent(
+    message: string,
+    useLLM = false,
+  ): Promise<{ detected: boolean; intent: any; blueprint: any }> {
+    return this.ipcRenderer.invoke("agent:pipeline:detect-and-generate", {
+      message,
+      useLLM,
+    });
+  }
+
+  // --- Agent Builder AI System Prompt Methods ---
+
+  /**
+   * Generate a system prompt using local AI based on agent configuration
+   */
+  async generateAgentSystemPrompt(args: {
+    name: string;
+    description?: string;
+    type: string;
+    capabilities?: string[];
+    constraints?: string[];
+    personality?: string;
+    domain?: string;
+    outputFormat?: string;
+  }): Promise<{
+    success: boolean;
+    systemPrompt: string;
+    provider: string;
+    localProcessed: boolean;
+  }> {
+    return this.ipcRenderer.invoke("agent-builder:generate-system-prompt", args);
+  }
+
+  /**
+   * Update an existing agent's system prompt using local AI
+   */
+  async updateAgentSystemPromptWithAI(args: {
+    agentId: string;
+    instruction: string;
+    mode: "refine" | "expand" | "regenerate" | "custom";
+  }): Promise<{
+    success: boolean;
+    agent: any;
+    previousPrompt: string;
+    newPrompt: string;
+    provider: string;
+    localProcessed: boolean;
+  }> {
+    return this.ipcRenderer.invoke("agent-builder:update-system-prompt-with-ai", args);
+  }
+
+  /**
+   * Analyze and suggest improvements for an agent's system prompt
+   */
+  async analyzeAgentSystemPrompt(agentId: string): Promise<{
+    success: boolean;
+    analysis: {
+      strengths: string[];
+      weaknesses: string[];
+      suggestions: string[];
+      clarity_score: number;
+      completeness_score: number;
+    };
+    provider: string;
+    localProcessed: boolean;
+  }> {
+    return this.ipcRenderer.invoke("agent-builder:analyze-system-prompt", { agentId });
   }
 
   /**
@@ -2776,5 +2900,64 @@ export class IpcClient {
     this.ipcRenderer.on("model-manager:pull-complete", handler);
     return () =>
       this.ipcRenderer.removeListener("model-manager:pull-complete", handler);
+  }
+
+  // ===== Agent UI Builder =====
+
+  /** Get available UI templates for an agent type */
+  public async getAgentUITemplates(agentType?: string): Promise<any[]> {
+    return this.ipcRenderer.invoke("agent:ui:templates", agentType);
+  }
+
+  /** Get available color themes */
+  public async getAgentUIThemes(): Promise<
+    Array<{ id: string; name: string; colors: any }>
+  > {
+    return this.ipcRenderer.invoke("agent:ui:themes");
+  }
+
+  /** Get recommended UI config for an agent */
+  public async getRecommendedUIConfig(args: {
+    agentType: string;
+    hasTools: boolean;
+    hasKnowledge: boolean;
+  }): Promise<any> {
+    return this.ipcRenderer.invoke("agent:ui:recommend-config", args);
+  }
+
+  /** Generate agent UI from configuration */
+  public async generateAgentUI(request: {
+    agentId: string;
+    agentType: string;
+    templateId?: string;
+    theme?: string;
+    customConfig?: any;
+    tools?: Array<{ id: string; name: string }>;
+    knowledgeSources?: Array<{ id: string; name: string; type: string }>;
+  }): Promise<any> {
+    return this.ipcRenderer.invoke("agent:ui:generate", request);
+  }
+
+  /** Export generated UI to code */
+  public async exportAgentUI(request: {
+    generatedUI: any;
+    format: "react" | "vue" | "html";
+  }): Promise<{ code: string; format: string }> {
+    return this.ipcRenderer.invoke("agent:ui:export", request);
+  }
+
+  /** Preview a template without generating for an agent */
+  public async previewUITemplate(
+    templateId: string,
+  ): Promise<{ template: any; preview: any }> {
+    return this.ipcRenderer.invoke("agent:ui:preview-template", templateId);
+  }
+
+  /** Create config from template with custom overrides */
+  public async createUIConfigFromTemplate(args: {
+    templateId: string;
+    overrides?: any;
+  }): Promise<any> {
+    return this.ipcRenderer.invoke("agent:ui:create-config", args);
   }
 }

@@ -83,6 +83,7 @@ import { replacePromptReference } from "../utils/replacePromptReference";
 import { mcpManager } from "../utils/mcp_manager";
 import { buildMemoryContext, autoExtractMemories } from "../../lib/agent_memory_engine";
 import { agents as agentsTable } from "../../db/schema";
+import { checkAgentIntentInStream } from "./agent_creation_handlers";
 import z from "zod";
 import { isSupabaseConnected, isTurboEditsV2Enabled } from "@/lib/schemas";
 import { AI_STREAMING_ERROR_MESSAGE_PREFIX } from "@/shared/texts";
@@ -464,6 +465,20 @@ ${componentSnippet}
 
       let fullResponse = "";
       let maxTokensUsed: number | undefined;
+
+      // Check for agent creation intent before normal processing
+      try {
+        const agentIntent = await checkAgentIntentInStream(
+          event.sender,
+          req.chatId,
+          req.prompt,
+        );
+        if (agentIntent.detected) {
+          logger.info("Agent creation intent detected — blueprint sent to renderer");
+        }
+      } catch (intentErr) {
+        logger.warn("Agent intent detection error (non-fatal):", intentErr);
+      }
 
       // Check if this is a test prompt
       const testResponse = getTestResponse(req.prompt);

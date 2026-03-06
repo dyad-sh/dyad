@@ -25,3 +25,10 @@ export const agentTestRoute = createRoute({
   path: "/agents/$agentId/test",
   component: lazyRouteComponent(() => import("../pages/agent-test")),
 });
+
+// Agent preview route (UI builder)
+export const agentPreviewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/agents/$agentId/preview",
+  component: lazyRouteComponent(() => import("../pages/agent-preview")),
+});

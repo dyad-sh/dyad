@@ -17,6 +17,7 @@ import * as fs from "fs-extra";
 import * as path from "path";
 import log from "electron-log";
 import { v4 as uuidv4 } from "uuid";
+import { StudioAIService } from "@/lib/studio_ai_service";
 
 const logger = log.scope("agent_builder");
 
@@ -1178,6 +1179,250 @@ export function registerAgentBuilderSystemHandlers() {
       return { success: true, agent };
     } catch (error) {
       logger.error("Activate agent failed:", error);
+      throw error;
+    }
+  });
+
+  // ========== AI-Generated System Prompts ==========
+
+  /**
+   * Generate a system prompt using local AI based on agent configuration
+   */
+  ipcMain.handle("agent-builder:generate-system-prompt", async (_event, args: {
+    name: string;
+    description?: string;
+    type: AgentType;
+    capabilities?: string[];
+    constraints?: string[];
+    personality?: string;
+    domain?: string;
+    outputFormat?: string;
+  }) => {
+    try {
+      const studioAI = StudioAIService.getInstance();
+      
+      const prompt = `Generate a comprehensive system prompt for an AI agent with the following specifications:
+
+Agent Name: ${args.name}
+Agent Type: ${args.type}
+${args.description ? `Description: ${args.description}` : ""}
+${args.capabilities?.length ? `Capabilities: ${args.capabilities.join(", ")}` : ""}
+${args.constraints?.length ? `Constraints: ${args.constraints.join(", ")}` : ""}
+${args.personality ? `Personality: ${args.personality}` : ""}
+${args.domain ? `Domain/Expertise: ${args.domain}` : ""}
+${args.outputFormat ? `Preferred Output Format: ${args.outputFormat}` : ""}
+
+Generate a detailed system prompt that:
+1. Clearly defines the agent's role and identity
+2. Specifies what the agent can and cannot do
+3. Sets the tone and communication style
+4. Includes any domain-specific knowledge or guidelines
+5. Provides examples of expected behavior when appropriate
+
+Return ONLY the system prompt text, without any wrapper or explanation.`;
+      
+      const response = await studioAI.execute({
+        id: uuidv4(),
+        studio: "agent-swarm",
+        operation: "generate-system-prompt",
+        prompt,
+        config: {
+          preferredProvider: "auto", // Use local AI first, fallback to cloud
+          privacyMode: true, // Prefer local processing
+        },
+        timestamp: Date.now(),
+      });
+      
+      return {
+        success: true,
+        systemPrompt: response.content || "You are a helpful assistant.",
+        provider: response.provider,
+        localProcessed: response.localProcessed,
+      };
+    } catch (error) {
+      logger.error("Generate system prompt failed:", error);
+      throw error;
+    }
+  });
+
+  /**
+   * Update an existing agent's system prompt using local AI
+   * Can refine, expand, or regenerate based on instructions
+   */
+  ipcMain.handle("agent-builder:update-system-prompt-with-ai", async (_event, args: {
+    agentId: string;
+    instruction: string;
+    mode: "refine" | "expand" | "regenerate" | "custom";
+  }) => {
+    try {
+      const agent = agents.get(args.agentId);
+      if (!agent) throw new Error("Agent not found");
+      
+      const studioAI = StudioAIService.getInstance();
+      
+      let prompt: string;
+      
+      switch (args.mode) {
+        case "refine":
+          prompt = `Refine and improve the following system prompt for an AI agent.
+
+Current system prompt:
+"""${agent.prompts.system}"""
+
+Instructions for refinement:
+${args.instruction}
+
+Improve the system prompt while maintaining its core purpose. Make it more clear, specific, and effective.
+
+Return ONLY the improved system prompt text, without any wrapper or explanation.`;
+          break;
+          
+        case "expand":
+          prompt = `Expand the following system prompt for an AI agent to be more comprehensive.
+
+Current system prompt:
+"""${agent.prompts.system}"""
+
+Expansion instructions:
+${args.instruction}
+
+Add more detail, examples, edge cases, and guidelines while keeping the core identity intact.
+
+Return ONLY the expanded system prompt text, without any wrapper or explanation.`;
+          break;
+          
+        case "regenerate":
+          prompt = `Regenerate the system prompt for an AI agent based on the following context.
+
+Agent name: ${agent.name}
+Agent type: ${agent.type}
+Description: ${agent.description || "N/A"}
+Previous system prompt (for reference):
+"""${agent.prompts.system}"""
+
+New requirements:
+${args.instruction}
+
+Create a new system prompt that better suits the new requirements while honoring the agent's identity.
+
+Return ONLY the new system prompt text, without any wrapper or explanation.`;
+          break;
+          
+        case "custom":
+        default:
+          prompt = `Update the system prompt for an AI agent.
+
+Current system prompt:
+"""${agent.prompts.system}"""
+
+Agent details:
+- Name: ${agent.name}
+- Type: ${agent.type}
+- Description: ${agent.description || "N/A"}
+
+Custom update instructions:
+${args.instruction}
+
+Return ONLY the updated system prompt text, without any wrapper or explanation.`;
+          break;
+      }
+      
+      const response = await studioAI.execute({
+        id: uuidv4(),
+        studio: "agent-swarm",
+        operation: "update-system-prompt",
+        prompt,
+        config: {
+          preferredProvider: "auto",
+          privacyMode: true,
+        },
+        timestamp: Date.now(),
+      });
+      
+      const newSystemPrompt = response.content || agent.prompts.system;
+      
+      // Update the agent's system prompt
+      agent.prompts.system = newSystemPrompt;
+      agent.updatedAt = new Date();
+      await saveAgents();
+      
+      return {
+        success: true,
+        agent,
+        previousPrompt: agent.prompts.system,
+        newPrompt: newSystemPrompt,
+        provider: response.provider,
+        localProcessed: response.localProcessed,
+      };
+    } catch (error) {
+      logger.error("Update system prompt with AI failed:", error);
+      throw error;
+    }
+  });
+
+  /**
+   * Analyze and suggest improvements for an agent's system prompt
+   */
+  ipcMain.handle("agent-builder:analyze-system-prompt", async (_event, args: {
+    agentId: string;
+  }) => {
+    try {
+      const agent = agents.get(args.agentId);
+      if (!agent) throw new Error("Agent not found");
+      
+      const studioAI = StudioAIService.getInstance();
+      
+      const prompt = `Analyze the following system prompt for an AI agent and provide suggestions for improvement.
+
+Agent name: ${agent.name}
+Agent type: ${agent.type}
+Description: ${agent.description || "N/A"}
+
+Current system prompt:
+"""${agent.prompts.system}"""
+
+Provide a JSON response with:
+1. "strengths": Array of things the prompt does well
+2. "weaknesses": Array of potential issues or missing elements
+3. "suggestions": Array of specific actionable improvements
+4. "clarity_score": Number from 1-10 rating how clear the prompt is
+5. "completeness_score": Number from 1-10 rating how complete the prompt is
+
+Return ONLY valid JSON.`;
+      
+      const response = await studioAI.execute({
+        id: uuidv4(),
+        studio: "agent-swarm",
+        operation: "analyze-system-prompt",
+        prompt,
+        config: {
+          preferredProvider: "auto",
+          privacyMode: true,
+        },
+        timestamp: Date.now(),
+      });
+      
+      let analysis;
+      try {
+        analysis = JSON.parse(response.content || "{}");
+      } catch {
+        analysis = {
+          strengths: [],
+          weaknesses: [],
+          suggestions: [response.content],
+          clarity_score: 5,
+          completeness_score: 5,
+        };
+      }
+      
+      return {
+        success: true,
+        analysis,
+        provider: response.provider,
+        localProcessed: response.localProcessed,
+      };
+    } catch (error) {
+      logger.error("Analyze system prompt failed:", error);
       throw error;
     }
   });

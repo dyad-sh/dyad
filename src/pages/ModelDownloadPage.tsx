@@ -276,8 +276,8 @@ function ModelCard({
             {model.category}
           </Badge>
           {model.sizes?.map((s: any) => (
-            <Badge key={s.label} variant="outline" className="text-xs">
-              {s.label} · {s.sizeGB}GB
+            <Badge key={s.variant} variant="outline" className="text-xs">
+              {s.variant} · {s.sizeGB}GB
             </Badge>
           ))}
         </div>
@@ -328,7 +328,7 @@ function ModelCard({
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Delete "{model.ollamaId}"?</AlertDialogTitle>
+                  <AlertDialogTitle>Delete "{model.id}"?</AlertDialogTitle>
                   <AlertDialogDescription>
                     This will remove the model from your local Ollama storage.
                     You can re-download it later.
@@ -469,7 +469,7 @@ export default function ModelDownloadPage() {
     return models.filter(
       (m: any) =>
         m.name.toLowerCase().includes(q) ||
-        m.ollamaId.toLowerCase().includes(q) ||
+        m.id.toLowerCase().includes(q) ||
         m.description?.toLowerCase().includes(q) ||
         m.category?.toLowerCase().includes(q),
     );
@@ -496,8 +496,8 @@ export default function ModelDownloadPage() {
   };
 
   const isModelInstalled = (model: any) =>
-    installedIds.has(model.ollamaId) ||
-    installedIds.has(`${model.ollamaId}:latest`);
+    installedIds.has(model.id) ||
+    installedIds.has(`${model.id}:latest`);
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden">
@@ -603,13 +603,13 @@ export default function ModelDownloadPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 pt-2 pb-4">
                       {(models as any[]).map((model: any) => (
                         <ModelCard
-                          key={model.ollamaId}
+                          key={model.id}
                           model={model}
                           isInstalled={isModelInstalled(model)}
-                          isPulling={isDownloading(model.ollamaId)}
-                          pullProgress={getProgress(model.ollamaId)}
-                          onPull={() => pullModel.mutate(model.ollamaId)}
-                          onDelete={() => deleteModel.mutate(model.ollamaId)}
+                          isPulling={isDownloading(model.id)}
+                          pullProgress={getProgress(model.id)}
+                          onPull={() => pullModel.mutate(model.id)}
+                          onDelete={() => deleteModel.mutate(model.id)}
                         />
                       ))}
                     </div>

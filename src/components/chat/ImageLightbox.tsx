@@ -16,7 +16,8 @@ export async function openFile(filePath: string) {
   if (!filePath) return;
   try {
     await ipc.system.openFilePath(filePath);
-  } catch {
+  } catch (error) {
+    console.error("Failed to open file:", error);
     toast.error("Could not open file. It may have been moved or deleted.");
   }
 }
@@ -69,7 +70,10 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({
         <button
           ref={closeButtonRef}
           className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer transition-colors"
-          onClick={onClose}
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
           aria-label="Close"
         >
           <X size={20} />

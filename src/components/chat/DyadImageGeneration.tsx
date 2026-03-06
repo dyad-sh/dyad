@@ -1,5 +1,5 @@
 import type React from "react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Eye, ImageIcon } from "lucide-react";
 import { useAtomValue } from "jotai";
 import { CustomTagState } from "./stateTypes";
@@ -36,21 +36,31 @@ export const DyadImageGeneration: React.FC<DyadImageGenerationProps> = ({
   const [imageError, setImageError] = useState(false);
   const prompt = node?.properties?.prompt ?? "";
   const imagePath = node?.properties?.path ?? "";
+
+  useEffect(() => {
+    setImageError(false);
+  }, [imagePath]);
   const state = node?.properties?.state;
   const inProgress = state === "pending";
   const aborted = state === "aborted";
 
   const app = useAtomValue(currentAppAtom);
   const appPath = app?.resolvedPath ?? app?.path ?? "";
+  const normalizedImagePath = imagePath.split("\\").join("/");
+  const hasTraversal = normalizedImagePath
+    .split("/")
+    .some((seg: string) => seg === "..");
   const imageUrl =
-    appPath && imagePath
-      ? `dyad-media://media/${encodeURIComponent(appPath)}/${imagePath
+    appPath && normalizedImagePath && !hasTraversal
+      ? `dyad-media://media/${encodeURIComponent(appPath)}/${normalizedImagePath
           .split("/")
           .map(encodeURIComponent)
           .join("/")}`
       : "";
   const absolutePath =
-    appPath && imagePath ? `${appPath}/${imagePath}` : undefined;
+    appPath && normalizedImagePath && !hasTraversal
+      ? `${appPath}/${normalizedImagePath}`
+      : undefined;
   const canViewImage =
     state === "finished" && !!imagePath && !!imageUrl && !imageError;
 

@@ -38,8 +38,8 @@ export function useEnableNotifications() {
     openMacGuide();
   }, [updateSettings, openMacGuide]);
 
-  const disable = useCallback(() => {
-    updateSettings({ enableChatCompletionNotifications: false });
+  const disable = useCallback(async () => {
+    await updateSettings({ enableChatCompletionNotifications: false });
   }, [updateSettings]);
 
   return { isEnabled, enable, disable, showMacGuide, setShowMacGuide };

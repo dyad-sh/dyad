@@ -2,6 +2,17 @@ import { z } from "zod";
 import { defineContract, createClient } from "../contracts/core";
 
 // =============================================================================
+// Visual Editing Constants
+// =============================================================================
+
+export const VALID_IMAGE_MIME_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+] as const;
+
+// =============================================================================
 // Visual Editing Schemas
 // =============================================================================
 
@@ -51,6 +62,14 @@ export const VisualEditingChangeSchema = z.object({
       .optional(),
   }),
   textContent: z.string().optional(),
+  imageSrc: z.string().optional(),
+  imageUpload: z
+    .object({
+      fileName: z.string(),
+      base64Data: z.string(),
+      mimeType: z.string(),
+    })
+    .optional(),
 });
 
 export type VisualEditingChange = z.infer<typeof VisualEditingChangeSchema>;
@@ -76,7 +95,36 @@ export type AnalyseComponentParams = z.infer<
 export const AnalyseComponentResultSchema = z.object({
   isDynamic: z.boolean(),
   hasStaticText: z.boolean(),
+  hasImage: z.boolean(),
+  imageSrc: z.string().optional(),
+  isDynamicImage: z.boolean().optional(),
 });
+
+/**
+ * Merges a partial update into an existing pending change entry,
+ * preserving all unrelated fields (styles, textContent, imageSrc, imageUpload).
+ */
+export function mergePendingChange(
+  existing: VisualEditingChange | undefined,
+  partial: Partial<VisualEditingChange> &
+    Pick<
+      VisualEditingChange,
+      "componentId" | "componentName" | "relativePath" | "lineNumber"
+    >,
+): VisualEditingChange {
+  return {
+    componentId: partial.componentId,
+    componentName: partial.componentName,
+    relativePath: partial.relativePath,
+    lineNumber: partial.lineNumber,
+    styles: partial.styles ?? existing?.styles ?? {},
+    textContent:
+      "textContent" in partial ? partial.textContent : existing?.textContent,
+    imageSrc: "imageSrc" in partial ? partial.imageSrc : existing?.imageSrc,
+    imageUpload:
+      "imageUpload" in partial ? partial.imageUpload : existing?.imageUpload,
+  };
+}
 
 // =============================================================================
 // Visual Editing Contracts

@@ -6,11 +6,36 @@ interface ContentChange {
   classes: string[];
   prefixes: string[];
   textContent?: string;
+  imageSrc?: string;
 }
 
 interface ComponentAnalysis {
   isDynamic: boolean;
   hasStaticText: boolean;
+  hasImage: boolean;
+  imageSrc?: string;
+  isDynamicImage?: boolean;
+}
+
+/**
+ * Extracts the static src value from a JSX opening element's attributes.
+ * Handles both StringLiteral and JSXExpressionContainer wrapping a StringLiteral.
+ */
+function extractStaticSrc(openingElement: any): string | undefined {
+  const srcAttr = openingElement.attributes.find(
+    (attr: any) => attr.type === "JSXAttribute" && attr.name?.name === "src",
+  );
+  if (!srcAttr?.value) return undefined;
+  if (srcAttr.value.type === "StringLiteral") {
+    return srcAttr.value.value;
+  }
+  if (
+    srcAttr.value.type === "JSXExpressionContainer" &&
+    srcAttr.value.expression.type === "StringLiteral"
+  ) {
+    return srcAttr.value.expression.value;
+  }
+  return undefined;
 }
 
 /**
@@ -222,6 +247,55 @@ export function transformContent(
             ];
           }
         }
+
+        // Handle image source change
+        if (change.imageSrc !== undefined) {
+          const tagName = path.node.openingElement.name;
+
+          // Determine which element to update (self or descendant <img>)
+          let targetElement: any = null;
+          if (tagName.type === "JSXIdentifier" && tagName.name === "img") {
+            targetElement = path.node.openingElement;
+          } else {
+            // Recursively search for the first <img> descendant
+            path.traverse({
+              JSXElement(innerPath) {
+                if (
+                  innerPath.node.openingElement.name.type === "JSXIdentifier" &&
+                  innerPath.node.openingElement.name.name === "img"
+                ) {
+                  targetElement = innerPath.node.openingElement;
+                  innerPath.stop();
+                }
+              },
+            });
+          }
+
+          if (targetElement) {
+            const srcAttr = targetElement.attributes.find(
+              (attr: any) =>
+                attr.type === "JSXAttribute" && attr.name?.name === "src",
+            );
+
+            if (srcAttr) {
+              // Replace the value with a string literal
+              srcAttr.value = {
+                type: "StringLiteral",
+                value: change.imageSrc,
+              };
+            } else {
+              // Add src attribute
+              targetElement.attributes.push({
+                type: "JSXAttribute",
+                name: { type: "JSXIdentifier", name: "src" },
+                value: {
+                  type: "StringLiteral",
+                  value: change.imageSrc,
+                },
+              });
+            }
+          }
+        }
       }
     },
   });
@@ -286,7 +360,7 @@ export function analyzeComponent(
   walk(ast);
 
   if (!foundElement) {
-    return { isDynamic: false, hasStaticText: false };
+    return { isDynamic: false, hasStaticText: false, hasImage: false };
   }
 
   let dynamic = false;
@@ -357,5 +431,63 @@ export function analyzeComponent(
     staticText = true;
   }
 
-  return { isDynamic: dynamic, hasStaticText: staticText };
+  // Check for image elements
+  let hasImage = false;
+  let imageSrc: string | undefined;
+  let isDynamicImage = false;
+
+  const tagName = foundElement.openingElement.name;
+
+  // Check if the element itself is an <img>
+  if (tagName.type === "JSXIdentifier" && tagName.name === "img") {
+    hasImage = true;
+    imageSrc = extractStaticSrc(foundElement.openingElement);
+    // If there's a src attribute but extractStaticSrc returned undefined, it's dynamic
+    const hasSrcAttr = foundElement.openingElement.attributes.some(
+      (attr: any) => attr.type === "JSXAttribute" && attr.name?.name === "src",
+    );
+    if (hasSrcAttr && !imageSrc) {
+      isDynamicImage = true;
+    }
+  }
+
+  // Recursively check descendants for <img> elements
+  if (!hasImage && foundElement) {
+    const findImg = (node: any): void => {
+      if (!node || hasImage) return;
+
+      if (
+        node.type === "JSXElement" &&
+        node.openingElement.name.type === "JSXIdentifier" &&
+        node.openingElement.name.name === "img"
+      ) {
+        hasImage = true;
+        imageSrc = extractStaticSrc(node.openingElement);
+        const hasSrcAttr = node.openingElement.attributes.some(
+          (attr: any) =>
+            attr.type === "JSXAttribute" && attr.name?.name === "src",
+        );
+        if (hasSrcAttr && !imageSrc) {
+          isDynamicImage = true;
+        }
+        return;
+      }
+
+      if (Array.isArray(node.children)) {
+        for (const child of node.children) {
+          findImg(child);
+          if (hasImage) return;
+        }
+      }
+    };
+    findImg(foundElement);
+  }
+
+  return {
+    isDynamic: dynamic,
+    hasStaticText: staticText,
+    hasImage,
+    imageSrc,
+    isDynamicImage,
+  };
 }

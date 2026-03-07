@@ -381,6 +381,16 @@ export const appContracts = {
     input: UpdateAppCommandsParamsSchema,
     output: z.void(),
   }),
+
+  /**
+   * Notifies the backend that an app has been selected/viewed in the preview panel.
+   * This updates the lastViewedAt timestamp to prevent garbage collection.
+   */
+  selectAppForPreview: defineContract({
+    channel: "select-app-for-preview",
+    input: z.object({ appId: z.number().nullable() }),
+    output: z.void(),
+  }),
 } as const;
 
 // =============================================================================

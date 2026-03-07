@@ -24,3 +24,22 @@ export function sendTelemetryEvent(
     logger.warn("Error sending telemetry event:", error);
   }
 }
+
+/**
+ * Sends an exception from the main process to the renderer as a PostHog $exception event.
+ */
+export function sendTelemetryException(
+  error: unknown,
+  context?: Record<string, unknown>,
+): void {
+  const err =
+    error instanceof Error
+      ? error
+      : new Error(String(error ?? "Unknown error"));
+  sendTelemetryEvent("$exception", {
+    $exception_type: err.name,
+    $exception_message: err.message,
+    $exception_stack_trace_raw: err.stack,
+    ...context,
+  });
+}

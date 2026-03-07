@@ -87,11 +87,7 @@ const MAX_TERMINATED_STREAM_RETRIES = 3;
 const STREAM_RETRY_BASE_DELAY_MS = 400;
 const STREAM_CONTINUE_MESSAGE =
   "[System] Your previous response stream was interrupted by a transient network error. Continue from exactly where you left off and do not repeat text that has already been sent.";
-/**
- * Maximum number of tool call steps before pausing.
- * This prevents runaway loops while allowing complex multi-step tasks.
- */
-const MAX_TOOL_CALL_STEPS = 50;
+import { DEFAULT_MAX_TOOL_CALL_STEPS } from "@/constants/settings_constants";
 
 // ============================================================================
 // Tool Streaming State Management
@@ -272,6 +268,8 @@ export async function handleLocalAgentStream(
   },
 ): Promise<boolean> {
   const settings = readSettings();
+  const maxToolCallSteps =
+    settings.maxToolCallSteps ?? DEFAULT_MAX_TOOL_CALL_STEPS;
   let fullResponse = "";
   let streamingPreview = ""; // Temporary preview for current tool, not persisted
   let activeRetryReplayEvents: RetryReplayEvent[] | null = null;
@@ -675,7 +673,7 @@ export async function handleLocalAgentStream(
             messages: attemptMessages,
             tools: allTools,
             stopWhen: [
-              stepCountIs(MAX_TOOL_CALL_STEPS),
+              stepCountIs(maxToolCallSteps),
               hasToolCall(addIntegrationTool.name),
               // In plan mode, also stop after writing a plan or exiting plan mode.
               ...(planModeOnly
@@ -1175,11 +1173,11 @@ export async function handleLocalAgentStream(
     }
 
     // Check if we hit the step limit and append a notice to the response
-    if (totalStepsExecuted >= MAX_TOOL_CALL_STEPS) {
+    if (totalStepsExecuted >= maxToolCallSteps) {
       logger.info(
-        `Chat ${req.chatId} hit step limit of ${MAX_TOOL_CALL_STEPS} steps`,
+        `Chat ${req.chatId} hit step limit of ${maxToolCallSteps} steps`,
       );
-      const stepLimitMessage = `\n\n<dyad-step-limit steps="${totalStepsExecuted}" limit="${MAX_TOOL_CALL_STEPS}">Automatically paused after ${totalStepsExecuted} tool calls.</dyad-step-limit>`;
+      const stepLimitMessage = `\n\n<dyad-step-limit steps="${totalStepsExecuted}" limit="${maxToolCallSteps}">Automatically paused after ${totalStepsExecuted} tool calls.</dyad-step-limit>`;
       fullResponse += stepLimitMessage;
       await updateResponseInDb(placeholderMessageId, fullResponse);
       sendResponseChunk(

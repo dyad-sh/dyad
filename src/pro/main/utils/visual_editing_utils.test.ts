@@ -614,4 +614,162 @@ function Component(): JSX.Element {
       expect(result.hasStaticText).toBe(true);
     });
   });
+
+  describe("image detection", () => {
+    it("should detect an <img> element with static src", () => {
+      const content = `
+function Component() {
+  return <img src="/images/hero.png" alt="Hero" />;
+}`;
+
+      const result = analyzeComponent(content, 3);
+      expect(result.hasImage).toBe(true);
+      expect(result.imageSrc).toBe("/images/hero.png");
+    });
+
+    it("should detect an <img> element with src in expression container", () => {
+      const content = `
+function Component() {
+  return <img src={"https://example.com/photo.jpg"} alt="Photo" />;
+}`;
+
+      const result = analyzeComponent(content, 3);
+      expect(result.hasImage).toBe(true);
+      expect(result.imageSrc).toBe("https://example.com/photo.jpg");
+    });
+
+    it("should detect an <img> child inside a wrapper div", () => {
+      const content = `
+function Component() {
+  return <div className="image-wrapper"><img src="/images/photo.png" alt="Photo" /></div>;
+}`;
+
+      const result = analyzeComponent(content, 3);
+      expect(result.hasImage).toBe(true);
+      expect(result.imageSrc).toBe("/images/photo.png");
+    });
+
+    it("should return hasImage false for non-image elements", () => {
+      const content = `
+function Component() {
+  return <div>Hello World</div>;
+}`;
+
+      const result = analyzeComponent(content, 3);
+      expect(result.hasImage).toBe(false);
+      expect(result.imageSrc).toBeUndefined();
+    });
+
+    it("should detect an <img> with no src attribute", () => {
+      const content = `
+function Component() {
+  return <img alt="No source" />;
+}`;
+
+      const result = analyzeComponent(content, 3);
+      expect(result.hasImage).toBe(true);
+      expect(result.imageSrc).toBeUndefined();
+    });
+
+    it("should return hasImage false when element not found", () => {
+      const content = `
+function Component() {
+  return <div>Hello</div>;
+}`;
+
+      const result = analyzeComponent(content, 999);
+      expect(result.hasImage).toBe(false);
+    });
+  });
+});
+
+describe("transformContent - image src", () => {
+  it("should update src attribute on <img> element", () => {
+    const content = `
+function Component() {
+  return <img src="/images/old.png" alt="Photo" />;
+}`;
+
+    const changes = new Map([
+      [3, { classes: [], prefixes: [], imageSrc: "/images/new.png" }],
+    ]);
+
+    const result = transformContent(content, changes);
+    expect(result).not.toContain("/images/old.png");
+    expect(result).toContain("/images/new.png");
+  });
+
+  it("should add src attribute when none exists on <img>", () => {
+    const content = `
+function Component() {
+  return <img alt="Photo" />;
+}`;
+
+    const changes = new Map([
+      [3, { classes: [], prefixes: [], imageSrc: "/images/added.png" }],
+    ]);
+
+    const result = transformContent(content, changes);
+    expect(result).toContain("/images/added.png");
+  });
+
+  it("should update src on child <img> inside a wrapper", () => {
+    const content = `
+function Component() {
+  return <div><img src="/old.png" alt="Old" /></div>;
+}`;
+
+    const changes = new Map([
+      [3, { classes: [], prefixes: [], imageSrc: "/new.png" }],
+    ]);
+
+    const result = transformContent(content, changes);
+    expect(result).not.toContain("/old.png");
+    expect(result).toContain("/new.png");
+  });
+
+  it("should replace expression-based src with string literal", () => {
+    const content = `
+function Component() {
+  return <img src={"https://example.com/old.jpg"} alt="Photo" />;
+}`;
+
+    const changes = new Map([
+      [
+        3,
+        {
+          classes: [],
+          prefixes: [],
+          imageSrc: "https://cdn.example.com/new.jpg",
+        },
+      ],
+    ]);
+
+    const result = transformContent(content, changes);
+    expect(result).toContain("https://cdn.example.com/new.jpg");
+    expect(result).not.toContain("https://example.com/old.jpg");
+  });
+
+  it("should apply both image src and class changes together", () => {
+    const content = `
+function Component() {
+  return <img src="/old.png" className="w-full" alt="Photo" />;
+}`;
+
+    const changes = new Map([
+      [
+        3,
+        {
+          classes: ["rounded-lg"],
+          prefixes: ["rounded-"],
+          imageSrc: "/new.png",
+        },
+      ],
+    ]);
+
+    const result = transformContent(content, changes);
+    expect(result).toContain("/new.png");
+    expect(result).not.toContain("/old.png");
+    expect(result).toContain("rounded-lg");
+  });
 });

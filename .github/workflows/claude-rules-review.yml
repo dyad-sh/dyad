@@ -22,6 +22,14 @@ jobs:
       contents: read
       issues: write
     steps:
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.DYAD_GITHUB_APP_ID }}
+          private-key: ${{ secrets.DYAD_GITHUB_APP_PRIVATE_KEY }}
+          permission-issues: write
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -33,7 +41,7 @@ jobs:
           CLAUDE_CODE_MAX_OUTPUT_TOKENS: 48000
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ steps.app-token.outputs.token }}
           direct: true
           allowed_tools: "Read,Glob,Grep,Bash(git log:*),Bash(gh issue create:*),Bash(gh issue list:*),Bash(gh issue close:*),Bash(gh label:*)"
           claude_args: --model claude-opus-4-6

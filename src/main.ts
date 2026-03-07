@@ -28,7 +28,12 @@ import {
   startPerformanceMonitoring,
   stopPerformanceMonitoring,
 } from "./utils/performance_monitor";
+import {
+  stopAllAppsSync,
+  stopAppGarbageCollection,
+} from "./ipc/utils/process_manager";
 import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai_messages_cleanup";
+import { cleanupOldMediaFiles } from "./ipc/utils/media_cleanup";
 import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
 import { getDyadAppsBaseDirectory, getDyadAppPath } from "./paths/paths";
@@ -98,6 +103,8 @@ export async function onReady() {
   cleanupOldAiMessagesJson();
 
   hydrateOpenRouterFreeModels();
+  // Cleanup old media files to reclaim disk space
+  cleanupOldMediaFiles();
 
   const settings = readSettings();
 
@@ -612,9 +619,18 @@ app.on("window-all-closed", () => {
   }
 });
 
-// Only set isRunning to false when the app is properly quit by the user
+// Only set isRunning to false when the app is properly quit by the user.
+// IMPORTANT: This handler must be synchronous because Electron's EventEmitter
+// does not await async callbacks — the returned Promise would be silently ignored.
 app.on("will-quit", () => {
   logger.info("App is quitting, setting isRunning to false");
+
+  // Stop the garbage collection timer
+  stopAppGarbageCollection();
+
+  // Synchronously send kill signals to all running apps (fire-and-forget).
+  // We cannot use async/await here because Electron won't wait for it.
+  stopAllAppsSync();
 
   // Stop performance monitoring and capture final metrics
   stopPerformanceMonitoring();

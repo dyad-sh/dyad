@@ -22,6 +22,8 @@ import {
   removeAppIfCurrentProcess,
   stopAppByInfo,
   removeDockerVolumesForApp,
+  setCurrentlySelectedAppId,
+  startAppGarbageCollection,
 } from "../utils/process_manager";
 import { getEnvVar } from "../utils/read_env";
 import { readSettings } from "../../main/settings";
@@ -39,7 +41,6 @@ import {
 import { createLoggedHandler } from "./safe_handle";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
 import { startProxy } from "../utils/start_proxy_server";
-import { Worker } from "worker_threads";
 import { createFromTemplate } from "./createFromTemplate";
 import {
   gitCommit,
@@ -150,8 +151,6 @@ async function copyDir(
   });
 }
 
-let proxyWorker: Worker | null = null;
-
 // Needed, otherwise electron in MacOS/Linux will not be able
 // to find node/pnpm.
 fixPath();
@@ -171,10 +170,6 @@ async function executeApp({
   installCommand?: string | null;
   startCommand?: string | null;
 }): Promise<void> {
-  if (proxyWorker) {
-    proxyWorker.terminate();
-    proxyWorker = null;
-  }
   const settings = readSettings();
   const runtimeMode = settings.runtimeMode2 ?? "host";
 
@@ -272,6 +267,7 @@ Details: ${details || "n/a"}
     process: spawnedProcess,
     processId: currentProcessId,
     isDocker: false,
+    lastViewedAt: Date.now(),
   });
 
   listenToProcess({
@@ -342,15 +338,54 @@ function listenToProcess({
 
       const urlMatch = message.match(/(https?:\/\/localhost:\d+\/?)/);
       if (urlMatch) {
-        proxyWorker = await startProxy(urlMatch[1], {
+        const originalUrl = urlMatch[1];
+        const appInfo = runningApps.get(appId);
+        if (!appInfo) {
+          return;
+        }
+
+        // Reuse the existing proxy worker for this app if it already targets this URL.
+        if (
+          appInfo.proxyWorker &&
+          appInfo.originalUrl === originalUrl &&
+          appInfo.proxyUrl
+        ) {
+          safeSend(event.sender, "app:output", {
+            type: "stdout",
+            message: `[dyad-proxy-server]started=[${appInfo.proxyUrl}] original=[${originalUrl}]`,
+            appId,
+          });
+          return;
+        }
+
+        if (appInfo.proxyWorker) {
+          await appInfo.proxyWorker.terminate();
+          appInfo.proxyWorker = undefined;
+        }
+
+        const proxyWorker = await startProxy(originalUrl, {
           onStarted: (proxyUrl) => {
+            // Store proxy URL in running app info for re-emission on app switch
+            const latestAppInfo = runningApps.get(appId);
+            if (latestAppInfo) {
+              latestAppInfo.proxyUrl = proxyUrl;
+              latestAppInfo.originalUrl = originalUrl;
+            }
             safeSend(event.sender, "app:output", {
               type: "stdout",
-              message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${urlMatch[1]}]`,
+              message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${originalUrl}]`,
               appId,
             });
           },
         });
+
+        const latestAppInfo = runningApps.get(appId);
+        if (latestAppInfo) {
+          latestAppInfo.proxyWorker = proxyWorker;
+          latestAppInfo.originalUrl = originalUrl;
+        } else {
+          await proxyWorker.terminate();
+        }
       }
     }
   });
@@ -577,6 +612,7 @@ ${errorOutput || "(empty)"}`,
     processId: currentProcessId,
     isDocker: true,
     containerName,
+    lastViewedAt: Date.now(),
   });
 
   listenToProcess({
@@ -1007,6 +1043,15 @@ export function registerAppHandlers() {
       // Check if app is already running
       if (runningApps.has(appId)) {
         logger.debug(`App ${appId} is already running.`);
+        // Re-emit the proxy URL so the frontend can restore the preview
+        const appInfo = runningApps.get(appId);
+        if (appInfo?.proxyUrl && appInfo?.originalUrl) {
+          safeSend(event.sender, "app:output", {
+            type: "stdout",
+            message: `[dyad-proxy-server]started=[${appInfo.proxyUrl}] original=[${appInfo.originalUrl}]`,
+            appId,
+          });
+        }
         return;
       }
 
@@ -2004,6 +2049,21 @@ export function registerAppHandlers() {
       }
     });
   });
+
+  // Handler for selecting an app for preview (updates lastViewedAt to prevent GC)
+  createTypedHandler(appContracts.selectAppForPreview, async (_, params) => {
+    const { appId } = params;
+    if (appId !== null) {
+      logger.debug(`App ${appId} selected for preview`);
+      setCurrentlySelectedAppId(appId);
+    } else {
+      logger.debug("No app selected for preview");
+      setCurrentlySelectedAppId(null);
+    }
+  });
+
+  // Start the garbage collection for idle apps
+  startAppGarbageCollection();
 }
 
 function getCommand({

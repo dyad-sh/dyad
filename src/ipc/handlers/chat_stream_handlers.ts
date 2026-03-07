@@ -28,6 +28,7 @@ import {
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
 import { getDyadAppPath } from "../../paths/paths";
+import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
 import { readSettings } from "../../main/settings";
 import type { ChatResponseEnd, ChatStreamParams } from "@/ipc/types";
 import {
@@ -413,7 +414,7 @@ export function registerChatStreamHandlers() {
           let mediaDisplayInfo = "";
           for (const media of resolvedMedia) {
             attachmentPaths.push(media.filePath);
-            const mediaUrl = `dyad-media://media/${encodeURIComponent(chat.app.path)}/.dyad/media/${encodeURIComponent(media.fileName)}`;
+            const mediaUrl = buildDyadMediaUrl(chat.app.path, media.fileName);
             mediaDisplayInfo += `\n<dyad-attachment name="${escapeXmlAttr(media.fileName)}" type="${escapeXmlAttr(media.mimeType)}" url="${escapeXmlAttr(mediaUrl)}" path="${escapeXmlAttr(media.filePath)}" attachment-type="chat-context"></dyad-attachment>\n`;
           }
           // Strip only resolved @media: tags from the prompt text.

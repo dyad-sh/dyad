@@ -165,7 +165,10 @@ export async function onReady() {
         const content = await fs.promises.readFile(resolvedPath, "utf-8");
         const sanitized = sanitizeSvgContent(content);
         return new Response(sanitized, {
-          headers: { "Content-Type": "image/svg+xml" },
+          headers: {
+            "Content-Type": "image/svg+xml",
+            "Content-Security-Policy": "script-src 'none'",
+          },
         });
       }
       return await net.fetch(

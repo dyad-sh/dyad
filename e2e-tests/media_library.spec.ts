@@ -48,9 +48,7 @@ async function importAppAndSeedMedia({
 
 async function openMediaFolderByAppName(po: PageObject, appName: string) {
   const collapsedFolder = po.page
-    .locator(
-      '[data-testid^="media-folder-"][data-library-grid-height-item="true"]',
-    )
+    .locator('[data-testid^="media-folder-"]')
     .filter({ hasText: appName })
     .first();
 

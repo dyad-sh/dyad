@@ -197,7 +197,7 @@ export function registerMediaHandlers() {
         throw new Error("A media file with that name already exists");
       }
 
-      fs.renameSync(sourcePath, destinationPath);
+      await fs.promises.rename(sourcePath, destinationPath);
       logger.log(`Renamed media file: ${sourcePath} -> ${destinationPath}`);
     });
   });
@@ -212,7 +212,7 @@ export function registerMediaHandlers() {
         throw new Error("Media file not found");
       }
 
-      fs.unlinkSync(filePath);
+      await fs.promises.unlink(filePath);
       logger.log(`Deleted media file: ${filePath}`);
     });
   });
@@ -250,13 +250,13 @@ export function registerMediaHandlers() {
       }
 
       // Using copy+delete instead of rename to support cross-device moves
-      fs.copyFileSync(sourcePath, destinationPath);
+      await fs.promises.copyFile(sourcePath, destinationPath);
       try {
-        fs.unlinkSync(sourcePath);
+        await fs.promises.unlink(sourcePath);
       } catch (e) {
         // Clean up destination to avoid duplicates
         try {
-          fs.unlinkSync(destinationPath);
+          await fs.promises.unlink(destinationPath);
         } catch {}
         throw e;
       }

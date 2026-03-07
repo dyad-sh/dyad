@@ -53,6 +53,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { showError } from "@/lib/toast";
 import { useSelectChat } from "@/hooks/useSelectChat";
+import { INVALID_FILE_NAME_CHARS } from "@/shared/media_validation";
 
 interface MoveTargetApp {
   id: number;
@@ -71,8 +72,6 @@ interface DyadAppMediaFolderProps {
   isMutatingMedia?: boolean;
   searchQuery?: string;
 }
-
-import { INVALID_FILE_NAME_CHARS } from "@/shared/media_validation";
 
 export function DyadAppMediaFolder({
   appName,
@@ -556,9 +555,7 @@ function MediaFileThumbnail({
                       key={targetApp.id}
                       data-testid={`media-move-target-${targetApp.id}`}
                       onClick={() => {
-                        void onMoveImage(file, targetApp.id).catch(() => {
-                          // Error toast is handled in the mutation hook.
-                        });
+                        void onMoveImage(file, targetApp.id);
                       }}
                       disabled={isBusy}
                     >

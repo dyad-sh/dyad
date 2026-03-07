@@ -125,6 +125,10 @@ export function registerImageGenerationHandlers() {
 
       if (imageData.b64_json) {
         const buffer = Buffer.from(imageData.b64_json, "base64");
+        const MAX_IMAGE_SIZE = 50 * 1024 * 1024; // 50 MB
+        if (buffer.byteLength > MAX_IMAGE_SIZE) {
+          throw new Error("Decoded image exceeds maximum allowed size");
+        }
         await fs.promises.writeFile(filePath, buffer);
       } else if (imageData.url) {
         const imageUrl = new URL(imageData.url);

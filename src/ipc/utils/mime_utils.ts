@@ -31,5 +31,10 @@ export function sanitizeSvgContent(raw: string): string {
         /((?:xlink:)?href\s*=\s*(?:"|'))javascript:[^"']*("|')/gi,
         "$1#$2",
       )
+      // Remove data: URIs in href and xlink:href attributes (defense-in-depth)
+      .replace(
+        /((?:xlink:)?href\s*=\s*(?:"|'))data:[^"']*("|')/gi,
+        "$1#$2",
+      )
   );
 }

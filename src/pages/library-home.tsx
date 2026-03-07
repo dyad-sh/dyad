@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { usePrompts } from "@/hooks/usePrompts";
 import { useCustomThemes } from "@/hooks/useCustomThemes";
 import { useAppMediaFiles } from "@/hooks/useAppMediaFiles";
@@ -33,7 +33,14 @@ let hasAnimatedThisSession = false;
 const SPRING_EASE = [0.22, 1.2, 0.36, 1] as const;
 
 function LibraryLandingAnimation({ onComplete }: { onComplete: () => void }) {
+  const prefersReducedMotion = useReducedMotion();
   const orbs = [0, 1, 2, 3, 4];
+
+  // Skip animation entirely for users who prefer reduced motion
+  if (prefersReducedMotion) {
+    setTimeout(onComplete, 0);
+    return null;
+  }
 
   return (
     <motion.div

@@ -7,9 +7,13 @@ import { FolderOpen, RotateCcw } from "lucide-react";
 
 export function DyadAppsBaseDirectorySelector() {
   const [isSelectingPath, setIsSelectingPath] = useState(false);
-  const [dyadAppsBasePath, setDyadAppsBasePath] =
+  const [dyadAppsCustomPath, setDyadAppsCustomPath] =
     useState<string>("Loading...");
-  const [isCustomPath, setIsCustomPath] = useState(false);
+  const [dyadAppsDefaultPath, setDyadAppsDefaultPath] =
+    useState<string>("Loading...");
+  const [customPathStatus, setCustomPathStatus] = useState<
+    "unset" | "unavailable" | "available"
+  >("unset");
 
   useEffect(() => {
     // Fetch path on mount
@@ -50,10 +54,11 @@ export function DyadAppsBaseDirectorySelector() {
 
   const fetchDyadAppsBaseDirectory = async () => {
     try {
-      const { path, isCustomPath } =
+      const { path, defaultPath, customPathStatus } =
         await ipc.system.getDyadAppsBaseDirectory();
-      setDyadAppsBasePath(path);
-      setIsCustomPath(isCustomPath);
+      setDyadAppsCustomPath(path);
+      setDyadAppsDefaultPath(defaultPath);
+      setCustomPathStatus(customPathStatus);
     } catch (error: any) {
       showError(`Failed to fetch Dyad apps folder path: ${error.message}`);
     }
@@ -78,7 +83,7 @@ export function DyadAppsBaseDirectorySelector() {
             {isSelectingPath ? "Selecting..." : "Select A Folder"}
           </Button>
 
-          {isCustomPath && (
+          {customPathStatus !== "unset" && (
             <Button
               onClick={handleResetToDefault}
               variant="ghost"
@@ -95,11 +100,22 @@ export function DyadAppsBaseDirectorySelector() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                  {isCustomPath ? "Custom Folder:" : "Default Folder:"}
+                  {customPathStatus === "available"
+                    ? "Custom Folder:"
+                    : customPathStatus === "unavailable"
+                      ? "Currently Using:"
+                      : "Default Folder:"}
                 </span>
               </div>
+              {customPathStatus === "unavailable" && (
+                <p className="text-sm font-mono text-red-800 dark:text-red-400 break-all line-through max-h-32 overflow-y-auto">
+                  {dyadAppsCustomPath}
+                </p>
+              )}
               <p className="text-sm font-mono text-gray-700 dark:text-gray-300 break-all max-h-32 overflow-y-auto">
-                {dyadAppsBasePath}
+                {customPathStatus === "available"
+                  ? dyadAppsCustomPath
+                  : dyadAppsDefaultPath}
               </p>
             </div>
           </div>

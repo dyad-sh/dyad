@@ -9,7 +9,11 @@ import { miscContracts } from "../types/misc";
 import { systemContracts } from "../types/system";
 import fs from "node:fs";
 import path from "node:path";
-import { getDyadAppPath, getUserDataPath } from "../../paths/paths";
+import {
+  getDyadAppPath,
+  getAvailableDyadAppPath,
+  getUserDataPath,
+} from "../../paths/paths";
 import { ChildProcess, spawn } from "node:child_process";
 import { promises as fsPromises } from "node:fs";
 
@@ -764,7 +768,7 @@ export function registerAppHandlers() {
 
   createTypedHandler(appContracts.createApp, async (_, params) => {
     const appPath = params.name;
-    const fullAppPath = getDyadAppPath(appPath);
+    const { path: fullAppPath, isFallback } = getAvailableDyadAppPath(appPath);
     if (fs.existsSync(fullAppPath)) {
       throw new Error(`App already exists at: ${fullAppPath}`);
     }
@@ -773,8 +777,9 @@ export function registerAppHandlers() {
       .insert(apps)
       .values({
         name: params.name,
-        // Use the name as the path for now
-        path: appPath,
+        // Use the name as the path if we're using the user's intended apps directory;
+        // Otherwise use absolute path by default
+        path: isFallback ? fullAppPath : appPath,
       })
       .returning();
 
@@ -839,7 +844,8 @@ export function registerAppHandlers() {
     }
 
     const originalAppPath = getDyadAppPath(originalApp.path);
-    const newAppPath = getDyadAppPath(newAppName);
+    const { path: newAppPath, isFallback } =
+      getAvailableDyadAppPath(newAppName);
 
     // 3. Copy the app folder
     try {
@@ -878,7 +884,9 @@ export function registerAppHandlers() {
       .insert(apps)
       .values({
         name: newAppName,
-        path: newAppName, // Use the new name for the path
+        // Use the new name for the path only if we have access
+        // to the user's preferred directory; else use absolute path
+        path: isFallback ? newAppPath : newAppName,
         // Explicitly set these to null because we don't want to copy them over.
         // Note: we could just leave them out since they're nullable field, but this
         // is to make it explicit we intentionally don't want to copy them over.

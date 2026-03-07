@@ -8,7 +8,7 @@ import { readSettings } from "../main/settings";
 let cachedBaseDirectory: {
   path: string;
   defaultPath: string;
-  isCustomPath: boolean;
+  customPathStatus: "unset" | "unavailable" | "available";
 } | null = null;
 
 /**
@@ -32,13 +32,13 @@ export function invalidateDyadAppsBaseDirectoryCache(): void {
 /**
  * Gets the base dyad-apps directory path (without a specific app subdirectory)
  * For convenience, also returns:
- * - The default path of dyad-apps, and
- * - Whether the current path differs from the default path
+ * - The default path of dyad-apps (e.g. ~/dyad-apps), and
+ * - A "status"; whether a custom path has been set, and if that folder is accessible
  */
 export function getDyadAppsBaseDirectory(): {
   path: string;
   defaultPath: string;
-  isCustomPath: boolean;
+  customPathStatus: "unset" | "unavailable" | "available";
 } {
   if (cachedBaseDirectory) {
     return cachedBaseDirectory;
@@ -49,7 +49,11 @@ export function getDyadAppsBaseDirectory(): {
   // If the user has not set a custom base directory, use default
   const customPath = readSettings().customDyadAppsBaseDirectory;
   if (!customPath) {
-    cachedBaseDirectory = { path: defaultPath, defaultPath, isCustomPath: false };
+    cachedBaseDirectory = {
+      path: defaultPath,
+      defaultPath,
+      customPathStatus: "unset",
+    };
     return cachedBaseDirectory;
   }
 
@@ -60,13 +64,11 @@ export function getDyadAppsBaseDirectory(): {
     // Setting up to check defaultDir's existence+type, so fall through
   }
 
-  // If the user's chosen directory doesn't exist or is inaccessible, use the default
-  if (!st || !st.isDirectory()) {
-    cachedBaseDirectory = { path: defaultPath, defaultPath, isCustomPath: false };
-    return cachedBaseDirectory;
-  }
-
-  cachedBaseDirectory = { path: customPath, defaultPath, isCustomPath: true };
+  cachedBaseDirectory = {
+    path: customPath,
+    defaultPath,
+    customPathStatus: !st || !st.isDirectory() ? "unavailable" : "available",
+  };
   return cachedBaseDirectory;
 }
 
@@ -77,6 +79,29 @@ export function getDyadAppPath(appPath: string): string {
   }
   // Otherwise, use the user's preferred base path
   return path.join(getDyadAppsBaseDirectory().path, appPath);
+}
+
+export function getAvailableDyadAppPath(appPath: string): {
+  path: string;
+  isFallback: boolean;
+} {
+  // If appPath is already absolute, use it as-is
+  if (path.isAbsolute(appPath)) {
+    return { path: appPath, isFallback: false };
+  }
+
+  const {
+    path: customPath,
+    defaultPath,
+    customPathStatus,
+  } = getDyadAppsBaseDirectory();
+
+  // Return fallback path if a custom path is set but not accessible
+  if (customPathStatus === "unavailable") {
+    return { path: path.join(defaultPath, appPath), isFallback: true };
+  }
+
+  return { path: path.join(customPath, appPath), isFallback: false };
 }
 
 export function getTypeScriptCachePath(): string {

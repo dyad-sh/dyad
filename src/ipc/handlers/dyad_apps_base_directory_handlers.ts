@@ -17,12 +17,7 @@ const logger = log.scope("dyad_apps_base_directory_handlers");
 
 export function registerDyadAppsBaseDirectoryHandlers() {
   createTypedHandler(systemContracts.getDyadAppsBaseDirectory, async () => {
-    const { path, isCustomPath } = getDyadAppsBaseDirectory();
-
-    return {
-      path,
-      isCustomPath,
-    };
+    return getDyadAppsBaseDirectory();
   });
 
   createTypedHandler(systemContracts.selectDyadAppsBaseDirectory, async () => {

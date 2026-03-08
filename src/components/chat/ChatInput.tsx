@@ -197,7 +197,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     refreshProposal,
   } = useProposal(chatId);
   const { proposal, messageId } = proposalResult ?? {};
-  const promptSuggestions = proposalResult?.promptSuggestions ?? [];
   useChatModeToggle();
 
   const lastMessage = (chatId ? (messagesById.get(chatId) ?? []) : []).at(-1);
@@ -740,20 +739,12 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             onCancel={cancelPendingFiles}
           />
 
-          {/* Prompt suggestions: from proposal (build mode) or agent tool (local-agent mode) */}
+          {/* Prompt suggestions: agent tool (local-agent mode) only */}
           {chatId &&
-            settings.selectedChatMode !== "ask" &&
-            ((settings.selectedChatMode !== "local-agent" &&
-              proposalResult?.chatId === chatId &&
-              promptSuggestions.length > 0) ||
-              (settings.selectedChatMode === "local-agent" &&
-                agentPromptSuggestions.length > 0)) && (
+            settings.selectedChatMode === "local-agent" &&
+            agentPromptSuggestions.length > 0 && (
               <PromptSuggestionButtons
-                suggestions={
-                  settings.selectedChatMode === "local-agent"
-                    ? agentPromptSuggestions
-                    : promptSuggestions
-                }
+                suggestions={agentPromptSuggestions}
                 onSelect={(prompt) => setInputValue(prompt)}
                 disabled={isStreaming}
               />

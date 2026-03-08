@@ -589,7 +589,6 @@ export interface ProposalResult {
   proposal: Proposal;
   chatId: number;
   messageId: number;
-  promptSuggestions?: PromptSuggestion[];
 }
 
 export interface SqlQuery {

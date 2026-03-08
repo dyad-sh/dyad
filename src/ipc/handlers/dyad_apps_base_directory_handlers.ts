@@ -8,10 +8,12 @@ import { eq } from "drizzle-orm";
 import { createTypedHandler } from "./base";
 import { systemContracts } from "../types/system";
 import {
+  getDefaultDyadAppsDirectory,
   getDyadAppsBaseDirectory,
   invalidateDyadAppsBaseDirectoryCache,
 } from "@/paths/paths";
-import { writeSettings } from "@/main/settings";
+import { gitAddSafeDirectory } from "../utils/git_utils";
+import { readSettings, writeSettings } from "@/main/settings";
 
 const logger = log.scope("dyad_apps_base_directory_handlers");
 
@@ -97,8 +99,19 @@ export function registerDyadAppsBaseDirectoryHandlers() {
         }
       });
 
+      // Add dyad-apps directory to git safe.directory (required for Windows).
+      // The trailing /* allows access to all repositories under the named directory.
+      // See: https://git-scm.com/docs/git-config#Documentation/git-config.txt-safedirectory
+      if (readSettings().enableNativeGit) {
+        const directory = updatedSettingValue ?? getDefaultDyadAppsDirectory();
+
+        // Don't need to await because this only needs to run before
+        // the user starts interacting with Dyad app and uses a git-related feature.
+        gitAddSafeDirectory(`${directory}/*`);
+      }
+
       writeSettings({
-        customDyadAppsBaseDirectory: updatedSettingValue,
+        customAppsFolder: updatedSettingValue,
       });
       invalidateDyadAppsBaseDirectoryCache();
     },

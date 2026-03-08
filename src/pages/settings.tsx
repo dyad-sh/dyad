@@ -337,7 +337,7 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
       <div id={SETTING_IDS.nodePath} className="mt-4">
         <NodePathSelector />
       </div>
-      <div className="mt-4">
+      <div id={SETTING_IDS.customAppsFolder} className="mt-4">
         <DyadAppsBaseDirectorySelector />
       </div>
 

@@ -18,6 +18,7 @@ export const SETTING_IDS = {
   releaseChannel: "setting-release-channel",
   runtimeMode: "setting-runtime-mode",
   nodePath: "setting-node-path",
+  customAppsFolder: "setting-custom-apps-folder",
   defaultChatMode: "setting-default-chat-mode",
   autoApprove: "setting-auto-approve",
   autoFix: "setting-auto-fix",
@@ -92,6 +93,15 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     label: "Node Path",
     description: "Set a custom Node.js installation path",
     keywords: ["node", "path", "nodejs", "binary", "executable"],
+    sectionId: SECTION_IDS.general,
+    sectionLabel: "General",
+  },
+  {
+    id: SETTING_IDS.customAppsFolder,
+    label: "Customize Apps Folder",
+    description:
+      "Set the top-level folder that Dyad will store new applications in",
+    keywords: ["customize", "apps", "path", "folder", "directory", "dyad-apps"],
     sectionId: SECTION_IDS.general,
     sectionLabel: "General",
   },

@@ -14,7 +14,7 @@ let cachedBaseDirectory: {
 /**
  * Gets the default path of the base dyad-apps directory (without a specific app subdirectory)
  */
-function getDefaultDyadAppsDirectory(): string {
+export function getDefaultDyadAppsDirectory(): string {
   if (IS_TEST_BUILD) {
     const electron = getElectron();
     return path.join(electron!.app.getPath("userData"), "dyad-apps");
@@ -47,7 +47,7 @@ export function getDyadAppsBaseDirectory(): {
   const defaultPath = getDefaultDyadAppsDirectory();
 
   // If the user has not set a custom base directory, use default
-  const customPath = readSettings().customDyadAppsBaseDirectory;
+  const customPath = readSettings().customAppsFolder;
   if (!customPath) {
     cachedBaseDirectory = {
       path: defaultPath,

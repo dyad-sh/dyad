@@ -68,9 +68,7 @@ export function DyadAppsBaseDirectorySelector() {
     <div className="space-y-4">
       <div className="space-y-2">
         <div className="flex gap-2">
-          <Label className="text-sm font-medium">
-            Folder to Store Dyad Apps
-          </Label>
+          <Label className="text-sm font-medium">Customize Apps Folder</Label>
 
           <Button
             onClick={handleSelectDyadAppsBaseDirectory}

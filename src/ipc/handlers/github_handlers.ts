@@ -26,7 +26,7 @@ import {
 } from "../utils/git_utils";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
-import { getDyadAppPath } from "../../paths/paths";
+import { getDyadAppPath, getAvailableDyadAppPath } from "../../paths/paths";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
@@ -1259,7 +1259,7 @@ async function handleCloneRepoFromUrl(
       return { error: `An app named "${finalAppName}" already exists.` };
     }
 
-    const appPath = getDyadAppPath(finalAppName);
+    const { path: appPath, isFallback } = getAvailableDyadAppPath(finalAppName);
     // Ensure the app directory exists if native git is disabled
     if (!settings.enableNativeGit) {
       if (!fs.existsSync(appPath)) {
@@ -1292,7 +1292,7 @@ async function handleCloneRepoFromUrl(
       .insert(schema.apps)
       .values({
         name: finalAppName,
-        path: finalAppName,
+        path: isFallback ? appPath : finalAppName,
         createdAt: new Date(),
         updatedAt: new Date(),
         githubOrg: owner,

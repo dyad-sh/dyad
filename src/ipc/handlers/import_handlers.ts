@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import { createLoggedHandler } from "./safe_handle";
 import log from "electron-log";
-import { getDyadAppPath } from "../../paths/paths";
+import { getDyadAppPath, getAvailableDyadAppPath } from "../../paths/paths";
 import { apps } from "@/db/schema";
 import { db } from "@/db";
 import { chats } from "@/db/schema";
@@ -91,8 +91,10 @@ export function registerImportHandlers() {
         throw new Error("Source folder does not exist");
       }
 
+      const { path: copyTarget, isFallback } = getAvailableDyadAppPath(appName);
+
       // Determine the app path based on skipCopy
-      const appPath = skipCopy ? sourcePath : getDyadAppPath(appName);
+      const appPath = skipCopy ? sourcePath : copyTarget;
 
       if (!skipCopy) {
         // Check if the app already exists in dyad-apps
@@ -131,12 +133,13 @@ export function registerImportHandlers() {
       }
 
       // Create a new app
-      // Store the full absolute path when skipCopy is true, otherwise store appName
+      // Store the full absolute path when skipCopy is true,
+      // or if we're copying to a fallback apps directory. Otherwise store appName
       const [app] = await db
         .insert(apps)
         .values({
           name: appName,
-          path: skipCopy ? sourcePath : appName,
+          path: skipCopy ? sourcePath : isFallback ? copyTarget : appName,
           installCommand: installCommand ?? null,
           startCommand: startCommand ?? null,
         })

@@ -28,6 +28,7 @@ import {
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
 import { getDyadAppPath } from "../../paths/paths";
+import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
 import { readSettings } from "../../main/settings";
 import type { ChatResponseEnd, ChatStreamParams } from "@/ipc/types";
 import {
@@ -78,10 +79,15 @@ import {
 import { fileExists } from "../utils/file_utils";
 import { extractMentionedAppsCodebases } from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
+import {
+  parseMediaMentions,
+  stripResolvedMediaMentions,
+} from "@/shared/parse_media_mentions";
 import { prompts as promptsTable } from "../../db/schema";
 import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
 import { replaceSlashSkillReference } from "../utils/replaceSlashSkillReference";
+import { resolveMediaMentions } from "../utils/resolve_media_mentions";
 import { parsePlanFile, validatePlanId } from "./planUtils";
 import { ensureDyadGitignored } from "./gitignoreUtils";
 import { DYAD_MEDIA_DIR_NAME } from "../utils/media_path_utils";
@@ -391,6 +397,44 @@ export function registerChatStreamHandlers() {
         }
       } catch (e) {
         logger.error("Failed to expand slash skill references:", e);
+      }
+
+      // Resolve @media: mentions to image attachments
+      const mediaRefs = parseMediaMentions(userPrompt);
+      if (mediaRefs.length > 0) {
+        try {
+          const resolvedMedia = await resolveMediaMentions(
+            mediaRefs,
+            chat.app.path,
+            chat.app.name,
+          );
+          const resolvedMediaRefs = resolvedMedia.map((media) =>
+            encodeURIComponent(media.fileName),
+          );
+          let mediaDisplayInfo = "";
+          for (const media of resolvedMedia) {
+            attachmentPaths.push(media.filePath);
+            const mediaUrl = buildDyadMediaUrl(chat.app.path, media.fileName);
+            mediaDisplayInfo += `\n<dyad-attachment name="${escapeXmlAttr(media.fileName)}" type="${escapeXmlAttr(media.mimeType)}" url="${escapeXmlAttr(mediaUrl)}" path="${escapeXmlAttr(media.filePath)}" attachment-type="chat-context"></dyad-attachment>\n`;
+          }
+          // Strip only resolved @media: tags from the prompt text.
+          // This preserves adjacent user text when mentions are directly followed
+          // by text without a whitespace separator.
+          userPrompt = stripResolvedMediaMentions(
+            userPrompt,
+            resolvedMediaRefs,
+          );
+          // Build display prompt with attachment tags for inline rendering.
+          if (mediaDisplayInfo) {
+            const strippedPrompt = stripResolvedMediaMentions(
+              displayUserPrompt ?? req.prompt,
+              resolvedMediaRefs,
+            );
+            displayUserPrompt = strippedPrompt + mediaDisplayInfo;
+          }
+        } catch (e) {
+          logger.error("Failed to resolve media mentions:", e);
+        }
       }
 
       // Expand /implement-plan= into full implementation prompt

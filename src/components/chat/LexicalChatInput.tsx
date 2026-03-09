@@ -22,6 +22,7 @@ import {
 import { KEY_ENTER_COMMAND, COMMAND_PRIORITY_HIGH } from "lexical";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { usePrompts } from "@/hooks/usePrompts";
+import { useAppMediaFiles } from "@/hooks/useAppMediaFiles";
 import { forwardRef } from "react";
 import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -47,6 +48,7 @@ const CustomMenuItem = forwardRef<
   const isSkill = item.data?.type === "skill";
   const isApp = item.data?.type === "app";
   const isHistory = item.data?.type === "history";
+  const isMedia = item.data?.type === "media";
   const label = isSkill
     ? "Skill"
     : isPrompt
@@ -55,7 +57,9 @@ const CustomMenuItem = forwardRef<
         ? "App"
         : isHistory
           ? ""
-          : "File";
+          : isMedia
+            ? "Media"
+            : "File";
   const value = (item as any)?.value;
 
   // For history items, show full text without label
@@ -92,7 +96,9 @@ const CustomMenuItem = forwardRef<
               ? "bg-purple-500 text-white"
               : isApp
                 ? "bg-primary text-primary-foreground"
-                : "bg-blue-600 text-white"
+                : isMedia
+                  ? "bg-amber-500 text-white"
+                  : "bg-blue-600 text-white"
           }`}
         >
           {label}
@@ -206,6 +212,14 @@ function ExternalValueSyncPlugin({
       const title = promptsById[id];
       return title ? `@${title}` : _m;
     });
+    // Strip @media: prefix for display
+    displayText = displayText.replace(/@media:([^\s]+)/g, (_, ref) => {
+      try {
+        return `@${decodeURIComponent(ref)}`;
+      } catch {
+        return `@${ref}`;
+      }
+    });
 
     const currentText = editor.getEditorState().read(() => {
       const root = $getRoot();
@@ -220,10 +234,11 @@ function ExternalValueSyncPlugin({
 
       const paragraph = $createParagraphNode();
 
-      // Build nodes from internal value, turning @app:Name and @prompt:<id> into mention nodes
+      // Build nodes from internal value, turning @app:Name, @prompt:<id>, @file:<path>, and @media:<ref> into mention nodes
       let lastIndex = 0;
       let match: RegExpExecArray | null;
-      const combined = /@app:([a-zA-Z0-9_-]+)|@prompt:(\d+)|@file:([^\s]+)/g;
+      const combined =
+        /@app:([a-zA-Z0-9_-]+)|@prompt:(\d+)|@file:([^\s]+)|@media:([^\s]+)/g;
       while ((match = combined.exec(value)) !== null) {
         const start = match.index;
         const full = match[0];
@@ -241,6 +256,14 @@ function ExternalValueSyncPlugin({
         } else if (match[3]) {
           const filePath = match[3];
           paragraph.append($createBeautifulMentionNode("@", filePath));
+        } else if (match[4]) {
+          let mediaRef: string;
+          try {
+            mediaRef = decodeURIComponent(match[4]);
+          } catch {
+            mediaRef = match[4];
+          }
+          paragraph.append($createBeautifulMentionNode("@", mediaRef));
         }
         lastIndex = start + full.length;
       }
@@ -290,6 +313,7 @@ export function LexicalChatInput({
 }: LexicalChatInputProps) {
   const { apps } = useLoadApps();
   const { prompts } = usePrompts();
+  const { mediaApps } = useAppMediaFiles();
   const [shouldClear, setShouldClear] = useState(false);
   const historyTriggerActiveRef = useRef(false);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
@@ -366,7 +390,15 @@ export function LexicalChatInput({
       type: "file",
     }));
 
-    result["@"] = [...appMentions, ...promptItems, ...fileItems];
+    // Build media mention items from the current app's media files only
+    const currentAppMedia = mediaApps.find(
+      (app) => app.appId === selectedAppId,
+    );
+    const mediaItems = (currentAppMedia?.files ?? []).map((file) => ({
+      value: file.fileName,
+      type: "media",
+    }));
+    result["@"] = [...mediaItems, ...appMentions, ...promptItems, ...fileItems];
 
     return result;
   }, [
@@ -377,6 +409,7 @@ export function LexicalChatInput({
     prompts,
     appFiles,
     messageHistory,
+    mediaApps,
   ]);
 
   const initialConfig = {
@@ -413,11 +446,27 @@ export function LexicalChatInput({
           }
         }
 
-        // Transform @AppName mentions to @app:AppName format
-        // This regex matches @AppName where AppName is one of our actual app names
-
         // Short-circuit if there's no "@" symbol in the text
         if (textContent.includes("@")) {
+          // Convert media mentions : @filename -> @media:filename
+          const currentAppMediaFiles = mediaApps.find(
+            (app) => app.appId === selectedAppId,
+          );
+          if (currentAppMediaFiles) {
+            for (const file of currentAppMediaFiles.files) {
+              const escaped = file.fileName.replace(
+                /[.*+?^${}()|[\]\\]/g,
+                "\\$&",
+              );
+              const mediaRegex = new RegExp(`@(${escaped})(?![\\w-])`, "g");
+              textContent = textContent.replace(
+                mediaRegex,
+                `@media:${encodeURIComponent(file.fileName)}`,
+              );
+            }
+          }
+
+          // Transform @AppName mentions to @app:AppName format
           const appNames = apps?.map((app) => app.name) || [];
           for (const appName of appNames) {
             // Escape special regex characters in app name
@@ -426,7 +475,7 @@ export function LexicalChatInput({
               "\\$&",
             );
             const mentionRegex = new RegExp(
-              `@(${escapedAppName})(?![a-zA-Z0-9_-])`,
+              `@(${escapedAppName})(?![a-zA-Z0-9_/\\-])`,
               "g",
             );
             textContent = textContent.replace(mentionRegex, "@app:$1");
@@ -451,7 +500,7 @@ export function LexicalChatInput({
         onChange(textContent);
       });
     },
-    [onChange, apps, prompts, appFiles],
+    [onChange, apps, prompts, appFiles, mediaApps, selectedAppId],
   );
 
   const handleSubmit = useCallback(() => {

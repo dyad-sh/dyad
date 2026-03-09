@@ -121,8 +121,7 @@ type ResolvedBuiltinModel = {
 };
 
 let builtinCatalogCache: BuiltinLanguageModelCatalog | null = null;
-let builtinCatalogFetchPromise: Promise<BuiltinLanguageModelCatalog> | null =
-  null;
+let builtinCatalogFetchPromise: Promise<void> | null = null;
 
 const DEFAULT_THEME_GENERATION_OPTIONS: ThemeGenerationModelOption[] = [
   { id: "dyad/theme-generator/google", label: "Google" },
@@ -292,10 +291,10 @@ function convertRemoteCatalog(
     providers,
     modelsByProvider,
     aliases: mergedAliases,
-    themeGenerationOptions:
-      remoteCatalog.curatedSelections?.themeGenerationOptions?.length
-        ? remoteCatalog.curatedSelections.themeGenerationOptions
-        : DEFAULT_THEME_GENERATION_OPTIONS,
+    themeGenerationOptions: remoteCatalog.curatedSelections
+      ?.themeGenerationOptions?.length
+      ? remoteCatalog.curatedSelections.themeGenerationOptions
+      : DEFAULT_THEME_GENERATION_OPTIONS,
     expiresAt:
       Number.isFinite(parsedExpiresAt) && parsedExpiresAt > Date.now()
         ? parsedExpiresAt

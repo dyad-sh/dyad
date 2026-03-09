@@ -56,9 +56,8 @@ export async function getLanguageModelProviders(): Promise<
         gatewayPrefix: providerDetails.gatewayPrefix,
         secondary: providerDetails.secondary,
         envVarName:
-          PROVIDER_TO_ENV_VAR[
-            providerId as keyof typeof PROVIDER_TO_ENV_VAR
-          ] ?? undefined,
+          PROVIDER_TO_ENV_VAR[providerId as keyof typeof PROVIDER_TO_ENV_VAR] ??
+          undefined,
         type: "cloud",
       });
     }

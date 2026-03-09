@@ -554,9 +554,7 @@ export function AIGeneratorTab({
                     : "hover:bg-muted/50"
                 }`}
               >
-                <span className="font-medium text-sm">
-                  {modelOption.label}
-                </span>
+                <span className="font-medium text-sm">{modelOption.label}</span>
               </button>
             ))
           )}

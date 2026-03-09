@@ -225,9 +225,7 @@ async function getProModelClient({
       (candidate) => candidate !== null,
     );
     if (validModels.length === 0) {
-      throw new Error(
-        "No auto-mode models could be resolved from the catalog",
-      );
+      throw new Error("No auto-mode models could be resolved from the catalog");
     }
 
     return {

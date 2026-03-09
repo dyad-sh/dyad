@@ -219,7 +219,10 @@ export default function SettingsPage() {
                   servers are always enabled in Agent mode.
                 </div>
               </div>
-              <div className="space-y-1 mt-4">
+              <div
+                id={SETTING_IDS.enableSelectAppFromHomeChatInput}
+                className="space-y-1 mt-4"
+              >
                 <div className="flex items-center space-x-2">
                   <Switch
                     id="enable-select-app-from-home-chat-input"

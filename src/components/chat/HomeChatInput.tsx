@@ -36,7 +36,7 @@ import { AppSearchDialog } from "../AppSearchDialog";
 import { useVoiceToText } from "@/hooks/useVoiceToText";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { ipc } from "@/ipc/types";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { showError } from "@/lib/toast";
 
 export function HomeChatInput({
@@ -70,6 +70,13 @@ export function HomeChatInput({
 
   const [appSearchOpen, setAppSearchOpen] = useState(false);
   const { apps } = useLoadApps();
+
+  // Clear selected app when the experiment flag is disabled
+  useEffect(() => {
+    if (!settings?.enableSelectAppFromHomeChatInput) {
+      setSelectedApp(null);
+    }
+  }, [settings?.enableSelectAppFromHomeChatInput, setSelectedApp]);
 
   const typingText = useTypingPlaceholder([
     "an ecommerce store...",

@@ -40,6 +40,7 @@ jobs:
           permission-actions: write
           permission-contents: write
           permission-pull-requests: write
+          permission-workflows: write
 
       - name: Get PR info and check labels
         id: pr-info

@@ -274,6 +274,28 @@ app.post("/engine/v1/images/generations", (req, res) => {
   }
 });
 
+// Dyad Engine web-crawl endpoint for web_fetch tool
+app.post("/engine/v1/tools/web-crawl", (req, res) => {
+  const { url, markdownOnly } = req.body;
+  console.log(`* web-crawl: url="${url}", markdownOnly=${markdownOnly}`);
+
+  try {
+    res.json({
+      rootUrl: url,
+      markdown: `# Page content from ${url}`,
+      pages: [
+        {
+          url,
+          markdown: `# Page content from ${url}\n\nThis is the fetched content of the web page.\n\n- Item 1\n- Item 2\n- Item 3`,
+        },
+      ],
+    });
+  } catch (error) {
+    console.error(`* web-crawl error:`, error);
+    res.status(400).json({ error: String(error) });
+  }
+});
+
 // Start the server
 const server = createServer(app);
 server.listen(PORT, () => {

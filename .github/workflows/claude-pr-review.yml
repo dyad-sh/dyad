@@ -33,6 +33,14 @@ jobs:
       contents: read
       pull-requests: write
     steps:
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.DYAD_GITHUB_APP_ID }}
+          private-key: ${{ secrets.DYAD_GITHUB_APP_PRIVATE_KEY }}
+          permission-pull-requests: write
+
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
@@ -51,7 +59,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
           # See: https://github.com/anthropics/claude-code-action/blob/v1/docs/security.md
-          github_token: ${{ secrets.GITHUB_TOKEN }} # bypass OIDC
+          github_token: ${{ steps.app-token.outputs.token }}
           allowed_non_write_users: "princeaden1,wwwillchen-bot,dyadbot" # remember, we already filter above.
 
           # Disable progress tracking (try to save tokens)

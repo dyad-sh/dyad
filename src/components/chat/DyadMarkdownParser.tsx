@@ -27,6 +27,7 @@ import { DyadMcpToolResult } from "./DyadMcpToolResult";
 import { DyadWebSearchResult } from "./DyadWebSearchResult";
 import { DyadWebSearch } from "./DyadWebSearch";
 import { DyadWebCrawl } from "./DyadWebCrawl";
+import { DyadWebFetch } from "./DyadWebFetch";
 import { DyadImageGeneration } from "./DyadImageGeneration";
 import { DyadCodeSearchResult } from "./DyadCodeSearchResult";
 import { DyadCodeSearch } from "./DyadCodeSearch";
@@ -64,6 +65,7 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-web-search-result",
   "dyad-web-search",
   "dyad-web-crawl",
+  "dyad-web-fetch",
   "dyad-code-search-result",
   "dyad-code-search",
   "dyad-read",
@@ -391,6 +393,18 @@ function renderCustomTag(
         >
           {content}
         </DyadWebCrawl>
+      );
+    case "dyad-web-fetch":
+      return (
+        <DyadWebFetch
+          node={{
+            properties: {
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadWebFetch>
       );
     case "dyad-code-search":
       return (

@@ -279,6 +279,27 @@
       {
         "type": "function",
         "function": {
+          "name": "web_fetch",
+          "description": "Fetch and read the content of a web page as markdown given its URL.\n\n### When to Use This Tool\nUse this tool when the user's message contains a URL (or domain name) and they want to:\n- **Read** the page's content (e.g. documentation, blog post, article)\n- **Reference** information from the page (e.g. API docs, tutorials, guides)\n- **Extract** data or context from a live web page to inform their code\n- **Follow a link** someone shared to understand its contents\n\nExamples:\n- \"Use the docs at docs.example.com/api to set up the client\"\n- \"What does this page say? https://example.com/blog/post\"\n- \"Follow the guide at example.com/tutorial\"\n\n### When NOT to Use This Tool\n- The user wants to **visually clone or replicate** a website → use `web_crawl` instead\n- The user needs to **search the web** for information without a specific URL → use `web_search` instead\n",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "URL to fetch content from"
+              }
+            },
+            "required": [
+              "url"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
           "name": "run_type_checks",
           "description": "Run TypeScript type checks on the current workspace. You can provide paths to specific files or directories, or omit the argument to get diagnostics for all files.\n\n- If a file path is provided, returns diagnostics for that file only\n- If a directory path is provided, returns diagnostics for all files within that directory\n- If no path is provided, returns diagnostics for all files in the workspace\n- This tool can return type errors that were already present before your edits, so avoid calling it with a very wide scope of files\n- NEVER call this tool on a file unless you've edited it or are about to edit it",
           "parameters": {

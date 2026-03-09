@@ -222,6 +222,7 @@ jobs:
           owner: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.owner.login || github.event.workflow_run.head_repository.owner.login }}
           repositories: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.name || github.event.workflow_run.head_repository.name }}
           permission-contents: write
+          permission-workflows: write
 
       - name: Checkout repository
         if: steps.pr-info.outputs.should_continue == 'true'
@@ -289,9 +290,9 @@ jobs:
         # In case the previous step accidentally forgot to push its changes
         if: steps.pr-info.outputs.should_continue == 'true' && always()
         run: |
-          if [ "$(git rev-parse HEAD)" != "$(git rev-parse @{u} 2>/dev/null || echo '')" ]; then
-            echo "Local HEAD differs from upstream, pushing..."
-            git push
+          if [ "$(git rev-list --count @{u}..HEAD 2>/dev/null || echo '0')" -gt 0 ]; then
+            echo "Local branch is ahead of upstream, pushing..."
+            git push --force-with-lease
           else
             echo "No unpushed commits"
           fi

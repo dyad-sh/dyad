@@ -41,6 +41,7 @@ import {
   DYAD_MEDIA_DIR_NAME,
   isWithinDyadMediaDir,
 } from "./ipc/utils/media_path_utils";
+import { hydrateOpenRouterFreeModels } from "./ipc/shared/openrouter_free_models";
 
 log.errorHandler.startCatching();
 log.eventLogger.startLogging();
@@ -101,6 +102,7 @@ export async function onReady() {
   // Cleanup old ai_messages_json entries to prevent database bloat
   cleanupOldAiMessagesJson();
 
+  hydrateOpenRouterFreeModels();
   // Cleanup old media files to reclaim disk space
   cleanupOldMediaFiles();
 

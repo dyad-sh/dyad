@@ -271,10 +271,31 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 0,
       dollarSigns: 1,
     },
+    // https://openrouter.ai/qwen/qwen3-coder
+    {
+      name: "qwen/qwen3-coder:free",
+      displayName: "Qwen3 Coder",
+      description: "Use for free (data may be used for training)",
+      maxOutputTokens: 32_000,
+      contextWindow: 196_608,
+      temperature: 0,
+      dollarSigns: 1,
+    },
+    // https://openrouter.ai/z-ai/glm-5
     {
       name: "z-ai/glm-5",
       displayName: "GLM 5",
       description: "Z-AI's best coding model",
+      maxOutputTokens: 32_000,
+      contextWindow: 200_000,
+      temperature: 0.7,
+      dollarSigns: 2,
+    },
+    // https://openrouter.ai/mistralai/devstral-2512
+    {
+      name: "mistralai/devstral-2512:free",
+      displayName: "Devstral 2",
+      description: "Use for free (data may be used for training)",
       maxOutputTokens: 32_000,
       contextWindow: 200_000,
       temperature: 0.7,
@@ -321,7 +342,7 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
     },
     {
       name: "free",
-      displayName: "Free (OpenRouter)",
+      displayName: "Free",
       description: "Selects from one of the free OpenRouter models",
       tag: "Free",
       // These are below Gemini 2.5 Pro & Flash limits
@@ -505,7 +526,6 @@ export const FREE_OPENROUTER_MODEL_NAMES = MODEL_OPTIONS.openrouter
     (model) => model.name.endsWith(":free") || model.name.endsWith("/free"),
   )
   .map((model) => model.name);
-
 export const PROVIDER_TO_ENV_VAR: Record<string, string> = {
   openai: "OPENAI_API_KEY",
   anthropic: "ANTHROPIC_API_KEY",

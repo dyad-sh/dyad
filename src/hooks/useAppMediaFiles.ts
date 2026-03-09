@@ -7,16 +7,18 @@ import {
 } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { showError, showSuccess } from "@/lib/toast";
+import { useSettings } from "./useSettings";
 
 export function useAppMediaFiles() {
   const queryClient = useQueryClient();
+  const { settings } = useSettings();
 
   const query = useQuery({
     queryKey: queryKeys.media.all,
     queryFn: () => ipc.media.listAllMedia(),
     // Media files can be added externally (e.g., via file system), so keep
     // staleTime short to pick up new files promptly.
-    staleTime: 10_000,
+    staleTime: settings?.isTestMode ? 0 : 10_000,
   });
 
   const renameMutation = useMutation({

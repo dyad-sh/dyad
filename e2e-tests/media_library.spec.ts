@@ -106,7 +106,11 @@ testSkipIfWindows(
 
     await openMediaActionsForFile(po, "renamed-image.png");
     await po.page.getByTestId("media-move-to-submenu").click();
-    await po.page.getByRole("menuitem", { name: targetApp.appName }).click();
+    // The move flow uses a dialog with an AppSearchSelect popover.
+    await expect(po.page.getByTestId("media-move-dialog")).toBeVisible();
+    await po.page.getByLabel("Select target app").click();
+    await po.page.getByRole("button", { name: targetApp.appName }).click();
+    await po.page.getByTestId("media-move-confirm-button").click();
 
     const targetMovedPath = path.join(
       targetApp.mediaDirPath,

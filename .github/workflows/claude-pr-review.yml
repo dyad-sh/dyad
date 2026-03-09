@@ -61,6 +61,7 @@ jobs:
 
           # Disable progress tracking (try to save tokens)
           track_progress: false
+          display_report: true
 
           prompt: |
             /dyad:multi-pr-review ${{ github.event.pull_request.number }}

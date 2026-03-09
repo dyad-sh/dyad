@@ -43,6 +43,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ steps.app-token.outputs.token }}
           claude_args: --model claude-sonnet-4-5-20250929
+          display_report: true
           prompt: |
             /dyad:check-workflows ${{ inputs.hours || '24' }}
       - name: Cleanup (self-hosted macOS)

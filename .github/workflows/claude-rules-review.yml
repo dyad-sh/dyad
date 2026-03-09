@@ -42,6 +42,7 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ steps.app-token.outputs.token }}
+          display_report: true
           direct: true
           allowed_tools: "Read,Glob,Grep,Bash(git log:*),Bash(gh issue create:*),Bash(gh issue list:*),Bash(gh issue close:*),Bash(gh label:*)"
           claude_args: --model claude-opus-4-6

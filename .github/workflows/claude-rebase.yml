@@ -105,6 +105,7 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ steps.base-app-token.outputs.token }}
+          display_report: true
           prompt: |
             You are orchestrating the /dyad:pr-rebase skill. Your job is to run it end-to-end as a sub-agent with NO shortcuts.
 

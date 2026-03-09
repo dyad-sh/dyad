@@ -278,6 +278,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ steps.base-app-token.outputs.token }}
           claude_args: --model claude-opus-4-6
+          display_report: true
           prompt: |
             Run the following skill end-to-end. Execute every step sequentially. Do not skip, summarize, or stop early.
 
@@ -286,18 +287,13 @@ jobs:
       - name: Push any unpushed changes
         # In case the previous step accidentally forgot to push its changes
         if: steps.pr-info.outputs.should_continue == 'true' && always()
-        uses: anthropics/claude-code-action@v1
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ steps.base-app-token.outputs.token }}
-          claude_args: --model claude-opus-4-6
-          prompt: |
-            The previous step may have made local commits but
-            accidentally forgot to push them to the origin remote. Run the following skill to
-            push any unpushed changes. If there are no unpushed commits, that's fine — just
-            exit successfully.
-
-            /dyad:fast-push
+        run: |
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse @{u} 2>/dev/null || echo '')" ]; then
+            echo "Local HEAD differs from upstream, pushing..."
+            git push
+          else
+            echo "No unpushed commits"
+          fi
 
       - name: Check if commits were pushed
         # Use always() to ensure we detect commits even if Claude Code fails partway through.

@@ -15,7 +15,12 @@ import {
 import fs from "node:fs";
 import { db } from "../db";
 import { cleanFullResponse } from "../ipc/utils/cleanFullResponse";
-import { gitAdd, gitRemove, gitCommit } from "../ipc/utils/git_utils";
+import {
+  gitAdd,
+  gitRemove,
+  gitCommit,
+  hasStagedChanges,
+} from "../ipc/utils/git_utils";
 
 // Mock fs with default export
 vi.mock("node:fs", async () => {
@@ -56,6 +61,7 @@ vi.mock("../ipc/utils/git_utils", () => ({
   gitSetRemoteUrl: vi.fn(),
   gitStatus: vi.fn().mockResolvedValue([]),
   getGitUncommittedFiles: vi.fn().mockResolvedValue([]),
+  hasStagedChanges: vi.fn().mockResolvedValue(true),
 }));
 
 // Mock paths module to control getDyadAppPath

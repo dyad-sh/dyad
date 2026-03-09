@@ -32,7 +32,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useRunApp } from "@/hooks/useRunApp";
 import { showError, showSuccess } from "@/lib/toast";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
 import { useTranslation } from "react-i18next";
 
 export const TitleBar = () => {
@@ -41,6 +42,7 @@ export const TitleBar = () => {
   const { apps } = useLoadApps();
   const { navigate } = useRouter();
   const { settings, refreshSettings } = useSettings();
+  const queryClient = useQueryClient();
   const [isSuccessDialogOpen, setIsSuccessDialogOpen] = useState(false);
   const platform = useSystemPlatform();
   const showWindowControls = platform !== null && platform !== "darwin";
@@ -54,6 +56,8 @@ export const TitleBar = () => {
     const handleDeepLink = async () => {
       if (lastDeepLink?.type === "dyad-pro-return") {
         await refreshSettings();
+        // Refetch user budget when Dyad Pro key is set via deep link
+        queryClient.invalidateQueries({ queryKey: queryKeys.userBudget.info });
         showDyadProSuccessDialog();
         clearLastDeepLink();
       }

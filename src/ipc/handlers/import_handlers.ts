@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import { createLoggedHandler } from "./safe_handle";
 import log from "electron-log";
-import { getDyadAppPath, getAvailableDyadAppPath } from "../../paths/paths";
+import { getDyadAppPath, getDyadAppPathAvailability } from "../../paths/paths";
 import { apps } from "@/db/schema";
 import { db } from "@/db";
 import { chats } from "@/db/schema";
@@ -91,10 +91,17 @@ export function registerImportHandlers() {
         throw new Error("Source folder does not exist");
       }
 
-      const { path: copyTarget, isFallback } = getAvailableDyadAppPath(appName);
+      const { path: destination, isAvailable } =
+        getDyadAppPathAvailability(appName);
+
+      if (!isAvailable) {
+        throw new Error(
+          `The path ${destination} is inaccessible. Please check your custom apps folder setting.`,
+        );
+      }
 
       // Determine the app path based on skipCopy
-      const appPath = skipCopy ? sourcePath : copyTarget;
+      const appPath = skipCopy ? sourcePath : destination;
 
       if (!skipCopy) {
         // Check if the app already exists in dyad-apps
@@ -139,7 +146,7 @@ export function registerImportHandlers() {
         .insert(apps)
         .values({
           name: appName,
-          path: skipCopy ? sourcePath : isFallback ? copyTarget : appName,
+          path: skipCopy ? sourcePath : appName,
           installCommand: installCommand ?? null,
           startCommand: startCommand ?? null,
         })

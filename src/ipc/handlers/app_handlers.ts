@@ -11,7 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   getDyadAppPath,
-  getAvailableDyadAppPath,
+  getDyadAppPathAvailability,
   getUserDataPath,
 } from "../../paths/paths";
 import { ChildProcess, spawn } from "node:child_process";
@@ -768,7 +768,15 @@ export function registerAppHandlers() {
 
   createTypedHandler(appContracts.createApp, async (_, params) => {
     const appPath = params.name;
-    const { path: fullAppPath, isFallback } = getAvailableDyadAppPath(appPath);
+    const { path: fullAppPath, isAvailable } =
+      getDyadAppPathAvailability(appPath);
+
+    if (!isAvailable) {
+      throw new Error(
+        `The path ${fullAppPath} is inaccessible. Please check your custom apps folder setting.`,
+      );
+    }
+
     if (fs.existsSync(fullAppPath)) {
       throw new Error(`App already exists at: ${fullAppPath}`);
     }
@@ -777,9 +785,7 @@ export function registerAppHandlers() {
       .insert(apps)
       .values({
         name: params.name,
-        // Use the name as the path if we're using the user's intended apps directory;
-        // Otherwise use absolute path by default
-        path: isFallback ? fullAppPath : appPath,
+        path: appPath,
       })
       .returning();
 
@@ -844,8 +850,14 @@ export function registerAppHandlers() {
     }
 
     const originalAppPath = getDyadAppPath(originalApp.path);
-    const { path: newAppPath, isFallback } =
-      getAvailableDyadAppPath(newAppName);
+    const { path: newAppPath, isAvailable } =
+      getDyadAppPathAvailability(newAppName);
+
+    if (!isAvailable) {
+      throw new Error(
+        `The path ${newAppPath} is inaccessible. Please check your custom apps folder setting.`,
+      );
+    }
 
     // 3. Copy the app folder
     try {
@@ -884,9 +896,7 @@ export function registerAppHandlers() {
       .insert(apps)
       .values({
         name: newAppName,
-        // Use the new name for the path only if we have access
-        // to the user's preferred directory; else use absolute path
-        path: isFallback ? newAppPath : newAppName,
+        path: newAppName,
         // Explicitly set these to null because we don't want to copy them over.
         // Note: we could just leave them out since they're nullable field, but this
         // is to make it explicit we intentionally don't want to copy them over.

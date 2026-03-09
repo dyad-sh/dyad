@@ -45,10 +45,11 @@ export function getDyadAppsBaseDirectory(): {
   }
 
   const defaultPath = getDefaultDyadAppsDirectory();
+  const customPath = readSettings().customAppsFolder;
 
   // If the user has not set a custom base directory, use default
-  const customPath = readSettings().customAppsFolder;
   if (!customPath) {
+    fs.mkdirSync(defaultPath, { recursive: true });
     cachedBaseDirectory = {
       path: defaultPath,
       defaultPath,
@@ -81,27 +82,26 @@ export function getDyadAppPath(appPath: string): string {
   return path.join(getDyadAppsBaseDirectory().path, appPath);
 }
 
-export function getAvailableDyadAppPath(appPath: string): {
+export function getDyadAppPathAvailability(appPath: string): {
   path: string;
-  isFallback: boolean;
+  isAvailable: boolean;
 } {
   // If appPath is already absolute, use it as-is
   if (path.isAbsolute(appPath)) {
-    return { path: appPath, isFallback: false };
+    return { path: appPath, isAvailable: true };
   }
 
-  const {
-    path: customPath,
-    defaultPath,
-    customPathStatus,
-  } = getDyadAppsBaseDirectory();
+  const { path: customPath, customPathStatus } = getDyadAppsBaseDirectory();
 
   // Return fallback path if a custom path is set but not accessible
   if (customPathStatus === "unavailable") {
-    return { path: path.join(defaultPath, appPath), isFallback: true };
+    return {
+      path: path.join(getDefaultDyadAppsDirectory(), appPath),
+      isAvailable: false,
+    };
   }
 
-  return { path: path.join(customPath, appPath), isFallback: false };
+  return { path: path.join(customPath, appPath), isAvailable: true };
 }
 
 export function getTypeScriptCachePath(): string {

@@ -26,7 +26,7 @@ import {
 } from "../utils/git_utils";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
-import { getDyadAppPath, getAvailableDyadAppPath } from "../../paths/paths";
+import { getDyadAppPath, getDyadAppPathAvailability } from "../../paths/paths";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
@@ -1259,7 +1259,15 @@ async function handleCloneRepoFromUrl(
       return { error: `An app named "${finalAppName}" already exists.` };
     }
 
-    const { path: appPath, isFallback } = getAvailableDyadAppPath(finalAppName);
+    const { path: appPath, isAvailable } =
+      getDyadAppPathAvailability(finalAppName);
+
+    if (!isAvailable) {
+      throw new Error(
+        `The path ${appPath} is inaccessible. Please check your custom apps folder setting.`,
+      );
+    }
+
     // Ensure the app directory exists if native git is disabled
     if (!settings.enableNativeGit) {
       if (!fs.existsSync(appPath)) {
@@ -1292,7 +1300,7 @@ async function handleCloneRepoFromUrl(
       .insert(schema.apps)
       .values({
         name: finalAppName,
-        path: isFallback ? appPath : finalAppName,
+        path: finalAppName,
         createdAt: new Date(),
         updatedAt: new Date(),
         githubOrg: owner,

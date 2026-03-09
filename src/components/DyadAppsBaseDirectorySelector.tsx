@@ -9,8 +9,6 @@ export function DyadAppsBaseDirectorySelector() {
   const [isSelectingPath, setIsSelectingPath] = useState(false);
   const [dyadAppsCustomPath, setDyadAppsCustomPath] =
     useState<string>("Loading...");
-  const [dyadAppsDefaultPath, setDyadAppsDefaultPath] =
-    useState<string>("Loading...");
   const [customPathStatus, setCustomPathStatus] = useState<
     "unset" | "unavailable" | "available"
   >("unset");
@@ -54,10 +52,9 @@ export function DyadAppsBaseDirectorySelector() {
 
   const fetchDyadAppsBaseDirectory = async () => {
     try {
-      const { path, defaultPath, customPathStatus } =
+      const { path, customPathStatus } =
         await ipc.system.getDyadAppsBaseDirectory();
       setDyadAppsCustomPath(path);
-      setDyadAppsDefaultPath(defaultPath);
       setCustomPathStatus(customPathStatus);
     } catch (error: any) {
       showError(`Failed to fetch Dyad apps folder path: ${error.message}`);
@@ -105,15 +102,10 @@ export function DyadAppsBaseDirectorySelector() {
                       : "Default Folder:"}
                 </span>
               </div>
-              {customPathStatus === "unavailable" && (
-                <p className="text-sm font-mono text-red-800 dark:text-red-400 break-all line-through max-h-32 overflow-y-auto">
-                  {dyadAppsCustomPath}
-                </p>
-              )}
-              <p className="text-sm font-mono text-gray-700 dark:text-gray-300 break-all max-h-32 overflow-y-auto">
-                {customPathStatus === "available"
-                  ? dyadAppsCustomPath
-                  : dyadAppsDefaultPath}
+              <p
+                className={`text-sm font-mono ${customPathStatus === "unavailable" ? "text-red-800 dark:text-red-400" : "text-gray-700 dark:text-gray-300"} break-all max-h-32 overflow-y-auto`}
+              >
+                {dyadAppsCustomPath}
               </p>
             </div>
           </div>
@@ -122,8 +114,9 @@ export function DyadAppsBaseDirectorySelector() {
         {/* Help Text */}
         <div className="text-sm text-gray-500 dark:text-gray-400">
           <p>
-            This is the top-level folder that Dyad will store new applications
-            in.
+            {customPathStatus === "unavailable"
+              ? "Your apps folder is inaccessible. Make sure that the folder exists, then restart Dyad."
+              : "This is the top-level folder that Dyad will store new applications in."}
           </p>
         </div>
       </div>

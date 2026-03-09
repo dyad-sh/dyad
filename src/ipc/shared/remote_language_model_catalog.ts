@@ -113,6 +113,8 @@ type BuiltinLanguageModelCatalog = {
   aliases: LanguageModelCatalogResponse["aliases"];
   themeGenerationOptions: ThemeGenerationModelOption[];
   expiresAt: number;
+  source: "fallback" | "remote";
+  version?: string;
 };
 
 type ResolvedBuiltinModel = {
@@ -121,7 +123,8 @@ type ResolvedBuiltinModel = {
 };
 
 let builtinCatalogCache: BuiltinLanguageModelCatalog | null = null;
-let builtinCatalogFetchPromise: Promise<void> | null = null;
+let builtinCatalogFetchPromise: Promise<BuiltinLanguageModelCatalog> | null =
+  null;
 
 const DEFAULT_THEME_GENERATION_OPTIONS: ThemeGenerationModelOption[] = [
   { id: "dyad/theme-generator/google", label: "Google" },
@@ -231,6 +234,7 @@ function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
     ],
     themeGenerationOptions: DEFAULT_THEME_GENERATION_OPTIONS,
     expiresAt: Date.now() + FALLBACK_CACHE_TTL_MS,
+    source: "fallback",
   };
 }
 
@@ -299,18 +303,26 @@ function convertRemoteCatalog(
       Number.isFinite(parsedExpiresAt) && parsedExpiresAt > Date.now()
         ? parsedExpiresAt
         : Date.now() + DEFAULT_CACHE_TTL_MS,
+    source: "remote",
+    version: remoteCatalog.version,
   };
 }
 
 async function fetchRemoteCatalog(): Promise<BuiltinLanguageModelCatalog | null> {
   const controller = new AbortController();
+  const catalogUrl = getRemoteLanguageModelCatalogUrl();
   const timeoutId = setTimeout(
     () => controller.abort(),
     REMOTE_LANGUAGE_MODEL_CATALOG_TIMEOUT_MS,
   );
 
   try {
-    const response = await fetch(getRemoteLanguageModelCatalogUrl(), {
+    logger.info("Fetching remote language model catalog", {
+      catalogUrl,
+      timeoutMs: REMOTE_LANGUAGE_MODEL_CATALOG_TIMEOUT_MS,
+    });
+
+    const response = await fetch(catalogUrl, {
       signal: controller.signal,
     });
 
@@ -322,47 +334,110 @@ async function fetchRemoteCatalog(): Promise<BuiltinLanguageModelCatalog | null>
 
     const rawCatalog = await response.json();
     const remoteCatalog = LanguageModelCatalogResponseSchema.parse(rawCatalog);
-    return convertRemoteCatalog(remoteCatalog);
+    const convertedCatalog = convertRemoteCatalog(remoteCatalog);
+
+    logger.info("Loaded remote language model catalog", {
+      catalogUrl,
+      version: convertedCatalog.version,
+      providerCount: convertedCatalog.providers.length,
+      aliasCount: convertedCatalog.aliases.length,
+      themeGenerationOptionCount:
+        convertedCatalog.themeGenerationOptions.length,
+    });
+
+    return convertedCatalog;
   } catch (error) {
-    logger.warn("Failed to fetch remote language model catalog", error);
+    logger.warn("Failed to fetch remote language model catalog", {
+      catalogUrl,
+      error,
+    });
     return null;
   } finally {
     clearTimeout(timeoutId);
   }
 }
 
+function getFallbackCatalog(): BuiltinLanguageModelCatalog {
+  return buildFallbackCatalog();
+}
+
 function triggerBackgroundRefresh(): void {
   if (!builtinCatalogFetchPromise) {
+    logger.info("Starting background refresh for language model catalog", {
+      cachedSource: builtinCatalogCache?.source,
+    });
     builtinCatalogFetchPromise = (async () => {
       try {
         const remoteCatalog = await fetchRemoteCatalog();
-        builtinCatalogCache = remoteCatalog ?? buildFallbackCatalog();
+        builtinCatalogCache = remoteCatalog ?? getFallbackCatalog();
+        logger.info("Background refresh completed for language model catalog", {
+          source: builtinCatalogCache.source,
+          version: builtinCatalogCache.version,
+          providerCount: builtinCatalogCache.providers.length,
+        });
+        return builtinCatalogCache;
       } finally {
         builtinCatalogFetchPromise = null;
       }
     })();
+  } else {
+    logger.info(
+      "Skipping language model catalog refresh because one is in flight",
+    );
   }
 }
 
 export async function getBuiltinLanguageModelCatalog(): Promise<BuiltinLanguageModelCatalog> {
   if (builtinCatalogCache && builtinCatalogCache.expiresAt > Date.now()) {
+    logger.info("Returning cached language model catalog", {
+      source: builtinCatalogCache.source,
+      version: builtinCatalogCache.version,
+      expiresAt: new Date(builtinCatalogCache.expiresAt).toISOString(),
+    });
     return builtinCatalogCache;
   }
 
   // Serve stale data while revalidating in the background to avoid blocking
   // callers on a network fetch (stale-while-revalidate pattern).
   if (builtinCatalogCache) {
+    logger.info(
+      "Returning stale language model catalog and refreshing in background",
+      {
+        source: builtinCatalogCache.source,
+        version: builtinCatalogCache.version,
+      },
+    );
     triggerBackgroundRefresh();
     return builtinCatalogCache;
   }
 
-  // On cold start (no cache at all), serve fallback data immediately and
-  // refresh from the remote catalog in the background so callers are never
-  // blocked by the network fetch / 5 s timeout.
-  builtinCatalogCache = buildFallbackCatalog();
-  triggerBackgroundRefresh();
+  // On cold start, wait for the initial remote fetch so renderer queries do not
+  // cache fallback data and miss the later background refresh result.
+  if (!builtinCatalogFetchPromise) {
+    logger.info("Cold start catalog request; waiting for initial remote fetch");
+    builtinCatalogFetchPromise = (async () => {
+      try {
+        const remoteCatalog = await fetchRemoteCatalog();
+        builtinCatalogCache = remoteCatalog ?? getFallbackCatalog();
+        logger.info(
+          "Initialized language model catalog after cold start fetch",
+          {
+            source: builtinCatalogCache.source,
+            version: builtinCatalogCache.version,
+            providerCount: builtinCatalogCache.providers.length,
+            aliasCount: builtinCatalogCache.aliases.length,
+          },
+        );
+        return builtinCatalogCache;
+      } finally {
+        builtinCatalogFetchPromise = null;
+      }
+    })();
+  } else {
+    logger.info("Cold start catalog request is waiting on in-flight fetch");
+  }
 
-  return builtinCatalogCache;
+  return builtinCatalogFetchPromise;
 }
 
 export async function getThemeGenerationModelOptions(): Promise<
@@ -376,7 +451,17 @@ export async function resolveBuiltinModelAlias(
   aliasId: BuiltinModelAlias | string,
 ): Promise<ResolvedBuiltinModel | null> {
   const catalog = await getBuiltinLanguageModelCatalog();
-  return (
-    catalog.aliases.find((alias) => alias.id === aliasId)?.resolvedModel ?? null
-  );
+  const resolvedModel =
+    catalog.aliases.find((alias) => alias.id === aliasId)?.resolvedModel ??
+    null;
+
+  logger.info("Resolved builtin model alias", {
+    aliasId,
+    source: catalog.source,
+    version: catalog.version,
+    resolvedProviderId: resolvedModel?.providerId,
+    resolvedApiName: resolvedModel?.apiName,
+  });
+
+  return resolvedModel;
 }

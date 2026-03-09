@@ -352,6 +352,7 @@ const BaseUserSettingsFields = {
   hideLocalAgentNewChatToast: z.boolean().optional(),
   enableContextCompaction: z.boolean().optional(),
   skipNotificationBanner: z.boolean().optional(),
+  enableSelectAppFromHomeChatInput: z.boolean().optional(),
 };
 
 /**

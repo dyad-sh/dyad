@@ -89,11 +89,13 @@ export class PageObject {
     disableNativeGit = false,
     enableAutoFixProblems = false,
     enableBasicAgent = false,
+    enableSelectAppFromHomeChatInput = false,
   }: {
     autoApprove?: boolean;
     disableNativeGit?: boolean;
     enableAutoFixProblems?: boolean;
     enableBasicAgent?: boolean;
+    enableSelectAppFromHomeChatInput?: boolean;
   } = {}) {
     await this.baseSetup();
     await this.navigation.goToSettingsTab();
@@ -105,6 +107,9 @@ export class PageObject {
     }
     if (enableAutoFixProblems) {
       await this.settings.toggleAutoFixProblems();
+    }
+    if (enableSelectAppFromHomeChatInput) {
+      await this.settings.toggleEnableSelectAppFromHomeChatInput();
     }
     await this.settings.setUpTestProvider();
     await this.settings.setUpTestModel();

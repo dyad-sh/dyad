@@ -219,6 +219,27 @@ export default function SettingsPage() {
                   servers are always enabled in Agent mode.
                 </div>
               </div>
+              <div className="space-y-1 mt-4">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="enable-select-app-from-home-chat-input"
+                    aria-label="Enable Select App from Home Chat Input"
+                    checked={!!settings?.enableSelectAppFromHomeChatInput}
+                    onCheckedChange={(checked) => {
+                      updateSettings({
+                        enableSelectAppFromHomeChatInput: checked,
+                      });
+                    }}
+                  />
+                  <Label htmlFor="enable-select-app-from-home-chat-input">
+                    Enable Select App from Home Chat Input
+                  </Label>
+                </div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  Show an app selector in the home chat input to start a chat
+                  referencing an existing app.
+                </div>
+              </div>
             </div>
           </div>
 

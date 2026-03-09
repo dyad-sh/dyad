@@ -268,7 +268,12 @@ export async function hasStagedChanges({
   if (settings.enableNativeGit) {
     // git diff --cached --quiet exits with 1 if there are staged changes, 0 if none
     const result = await execGit(["diff", "--cached", "--quiet"], path);
-    return result.exitCode !== 0;
+    if (result.exitCode !== 0 && result.exitCode !== 1) {
+      throw new Error(
+        `Failed to check staged changes: ${result.stderr.trim() || result.stdout.trim()}`,
+      );
+    }
+    return result.exitCode === 1;
   } else {
     const statusMatrix = await git.statusMatrix({ fs, dir: path });
     // row[1] = HEAD status, row[3] = stage status

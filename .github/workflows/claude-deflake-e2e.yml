@@ -21,6 +21,17 @@ jobs:
       - ARM64
     permissions: {}
     steps:
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.DYAD_GITHUB_APP_ID }}
+          private-key: ${{ secrets.DYAD_GITHUB_APP_PRIVATE_KEY }}
+          permission-actions: write
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
@@ -38,7 +49,7 @@ jobs:
       - name: Install node modules
         run: npm ci --no-audit --no-fund --progress=false
         env:
-          GITHUB_TOKEN: ${{ secrets.DEFLAKE_E2E_PAT_GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
@@ -63,11 +74,11 @@ jobs:
       - name: Deflake E2E tests
         uses: anthropics/claude-code-action@v1
         env:
-          GH_TOKEN: ${{ secrets.DEFLAKE_E2E_PAT_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           CLAUDE_CODE_MAX_OUTPUT_TOKENS: 48000
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.DEFLAKE_E2E_PAT_GITHUB_TOKEN }}
+          github_token: ${{ steps.app-token.outputs.token }}
           claude_args: --model claude-opus-4-6
           prompt: |
             /dyad:deflake-e2e-recent-commits ${{ inputs.commit_count || '10' }}

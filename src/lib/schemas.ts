@@ -351,6 +351,7 @@ const BaseUserSettingsFields = {
     .optional(),
   hideLocalAgentNewChatToast: z.boolean().optional(),
   enableContextCompaction: z.boolean().optional(),
+  skipNotificationBanner: z.boolean().optional(),
 };
 
 /**

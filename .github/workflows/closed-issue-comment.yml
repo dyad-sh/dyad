@@ -13,10 +13,18 @@ jobs:
       issues: write
       contents: read
     steps:
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.DYAD_GITHUB_APP_ID }}
+          private-key: ${{ secrets.DYAD_GITHUB_APP_PRIVATE_KEY }}
+          permission-issues: write
+
       - uses: actions/checkout@v4
       - uses: anthropics/claude-code-action@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
           COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
@@ -24,7 +32,7 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # See: https://github.com/anthropics/claude-code-action/blob/v1/docs/security.md
-          github_token: ${{ secrets.GITHUB_TOKEN }} # bypass OIDC
+          github_token: ${{ steps.app-token.outputs.token }}
           allowed_non_write_users: "*"
           claude_args: |
             --model sonnet --allowedTools "Bash(gh issue reopen:*), Bash(gh issue comment:*)"

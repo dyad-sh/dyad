@@ -259,6 +259,24 @@ export async function isGitStatusClean({
   }
 }
 
+export async function hasStagedChanges({
+  path,
+}: {
+  path: string;
+}): Promise<boolean> {
+  const settings = readSettings();
+  if (settings.enableNativeGit) {
+    // git diff --cached --quiet exits with 1 if there are staged changes, 0 if none
+    const result = await execGit(["diff", "--cached", "--quiet"], path);
+    return result.exitCode !== 0;
+  } else {
+    const statusMatrix = await git.statusMatrix({ fs, dir: path });
+    // row[1] = HEAD status, row[3] = stage status
+    // If stage differs from HEAD, there are staged changes
+    return statusMatrix.some((row) => row[3] !== row[1]);
+  }
+}
+
 export async function gitCommit({
   path,
   message,

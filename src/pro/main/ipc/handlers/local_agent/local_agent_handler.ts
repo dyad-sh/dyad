@@ -1266,7 +1266,7 @@ export async function handleLocalAgentStream(
     logger.error("Local agent error:", error);
     safeSend(event.sender, "chat:response:error", {
       chatId: req.chatId,
-      error: `Error: ${error}`,
+      error: `Error: ${getErrorMessage(error)}`,
     });
     return false; // Error - don't consume quota
   }

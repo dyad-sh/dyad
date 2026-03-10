@@ -20,16 +20,13 @@
 - button "Copy Request ID":
   - img
   - text: ""
-- paragraph: tc=local-agent/generate-image
-- paragraph: I'll generate a hero image for your landing page.
-- button "Image Generation A modern, minimal hero illustration of a rocket launching from a laptop screen, flat design style, blue and purple gradient background, clean lines View generated image":
-  - img
-  - text: ""
-  - img
-  - button "View generated image":
-    - img "A modern, minimal hero illustration of a rocket launching from a laptop screen, flat design style, blue and purple gradient background, clean lines"
-    - img
-- paragraph: I've generated the hero image and saved it to your project. You can find it in the .dyad/media directory.
+- paragraph: tc=local-agent/web-fetch
+- paragraph: I'll fetch the content of that page for you.
+- img
+- text: Web Fetch
+- img
+- text: Done https://example.com/docs/getting-started
+- paragraph: Here's a summary of the page content. The getting started guide covers three main items. Let me know if you need more details!
 - button "Copy":
   - img
 - img

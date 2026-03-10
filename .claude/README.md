@@ -23,4 +23,5 @@ Skills are invoked with `/dyad:<skill>`. Available skills:
 | `/dyad:session-debug`              | Debug session issues                                           | -                                   |
 | `/dyad:pr-screencast`              | Record visual demo of PR feature                               | -                                   |
 | `/dyad:feedback-to-issues`         | Turn customer feedback into GitHub issues                      | -                                   |
+| `/dyad:promote-beta-to-stable`     | Promote latest pre-release to stable release                   | -                                   |
 | `/remember-learnings`              | Capture session learnings into AGENTS.md/rules                 | -                                   |

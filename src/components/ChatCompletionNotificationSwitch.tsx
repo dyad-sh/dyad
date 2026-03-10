@@ -1,36 +1,34 @@
-import { useSettings } from "@/hooks/useSettings";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { MacNotificationGuideDialog } from "./MacNotificationGuideDialog";
+import { useEnableNotifications } from "@/hooks/useEnableNotifications";
 
 export function ChatCompletionNotificationSwitch() {
-  const { settings, updateSettings } = useSettings();
-  const isEnabled = settings?.enableChatCompletionNotifications === true;
+  const { isEnabled, enable, disable, showMacGuide, setShowMacGuide } =
+    useEnableNotifications();
 
   return (
-    <div className="flex items-center space-x-2">
-      <Switch
-        id="chat-completion-notifications"
-        checked={isEnabled}
-        onCheckedChange={async (checked) => {
-          if (checked) {
-            if (Notification.permission === "denied") {
-              return;
+    <>
+      <div className="flex items-center space-x-2">
+        <Switch
+          id="chat-completion-notifications"
+          checked={isEnabled}
+          onCheckedChange={async (checked) => {
+            if (checked) {
+              await enable();
+            } else {
+              disable();
             }
-            if (Notification.permission === "default") {
-              const permission = await Notification.requestPermission();
-              if (permission !== "granted") {
-                return;
-              }
-            }
-          }
-          updateSettings({
-            enableChatCompletionNotifications: checked,
-          });
-        }}
+          }}
+        />
+        <Label htmlFor="chat-completion-notifications">
+          Show notification when chat completes
+        </Label>
+      </div>
+      <MacNotificationGuideDialog
+        open={showMacGuide}
+        onClose={() => setShowMacGuide(false)}
       />
-      <Label htmlFor="chat-completion-notifications">
-        Show notification when chat completes
-      </Label>
-    </div>
+    </>
   );
 }

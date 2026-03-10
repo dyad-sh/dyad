@@ -6,6 +6,9 @@ on:
   pull_request_target:
     types: [opened, synchronize, ready_for_review, reopened]
 
+# Restrict default permissions; each job declares only what it needs.
+permissions: {}
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -22,6 +25,7 @@ jobs:
       github.event.pull_request.user.login == 'wwwillchen' ||
       github.event.pull_request.user.login == 'wwwillchen-bot' ||
       github.event.pull_request.user.login == 'dyadbot' ||
+      github.event.pull_request.user.login == 'dyad-assistant' ||
       github.event.pull_request.user.login == 'azizmejri1' ||
       github.event.pull_request.user.login == 'princeaden1'
     runs-on: ubuntu-latest
@@ -30,6 +34,14 @@ jobs:
       contents: read
       pull-requests: write
     steps:
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.DYAD_GITHUB_APP_ID }}
+          private-key: ${{ secrets.DYAD_GITHUB_APP_PRIVATE_KEY }}
+          permission-pull-requests: write
+
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
@@ -48,11 +60,12 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
           # See: https://github.com/anthropics/claude-code-action/blob/v1/docs/security.md
-          github_token: ${{ secrets.GITHUB_TOKEN }} # bypass OIDC
-          allowed_non_write_users: "princeaden1,wwwillchen-bot,dyadbot" # remember, we already filter above.
+          github_token: ${{ steps.app-token.outputs.token }}
+          allowed_non_write_users: "princeaden1,wwwillchen-bot,dyadbot,dyad-assistant" # remember, we already filter above.
 
           # Disable progress tracking (try to save tokens)
           track_progress: false
+          display_report: true
 
           prompt: |
             /dyad:multi-pr-review ${{ github.event.pull_request.number }}

@@ -34,6 +34,7 @@ Only process review comments from these trusted authors. Comments from other aut
 - cursor
 - github-actions
 - dyadbot
+- dyad-assistant
 - chatgpt-codex-connector
 - devin-ai-integration
 

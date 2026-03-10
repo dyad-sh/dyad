@@ -6,6 +6,7 @@ import type {
 } from "@/ipc/types";
 import type { ListedApp } from "@/ipc/types/app";
 import type { Getter, Setter } from "jotai";
+import type { PromptSuggestion } from "@/lib/schemas";
 import { atom } from "jotai";
 
 // Per-chat atoms implemented with maps keyed by chatId
@@ -211,6 +212,11 @@ export const pendingAgentConsentsAtom = atom<PendingAgentConsent[]>([]);
 
 // Agent todos per chat
 export const agentTodosByChatIdAtom = atom<Map<number, AgentTodo[]>>(new Map());
+
+// Agent prompt suggestions per chat (set at end of turn, no DB needed)
+export const agentPromptSuggestionsByChatIdAtom = atom<
+  Map<number, PromptSuggestion[]>
+>(new Map());
 
 // Flag: set when user switches to plan mode from another mode in a chat with messages
 export const needsFreshPlanChatAtom = atom<boolean>(false);

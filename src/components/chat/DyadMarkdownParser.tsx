@@ -680,7 +680,6 @@ function renderCustomTag(
     case "dyad-chat-summary":
       // Don't render anything for dyad-chat-summary
       return null;
-
     case "dyad-command":
       if (attributes.type) {
         const action = {

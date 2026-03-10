@@ -31,6 +31,7 @@ import {
   selectedChatIdAtom,
   pendingAgentConsentsAtom,
   agentTodosByChatIdAtom,
+  agentPromptSuggestionsByChatIdAtom,
   needsFreshPlanChatAtom,
 } from "@/atoms/chatAtoms";
 import { atom, useAtom, useSetAtom, useAtomValue } from "jotai";
@@ -98,6 +99,7 @@ import { showError as showErrorToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { useVoiceToText } from "@/hooks/useVoiceToText";
 import { isDyadProEnabled } from "@/lib/schemas";
+import { PromptSuggestionButtons } from "./PromptSuggestionButtons";
 
 const showTokenBarAtom = atom(false);
 
@@ -159,6 +161,13 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   // Get todos for this chat
   const agentTodosByChatId = useAtomValue(agentTodosByChatIdAtom);
   const chatTodos = chatId ? (agentTodosByChatId.get(chatId) ?? []) : [];
+  // Get agent prompt suggestions for this chat (local-agent mode)
+  const agentPromptSuggestionsByChatId = useAtomValue(
+    agentPromptSuggestionsByChatIdAtom,
+  );
+  const agentPromptSuggestions = chatId
+    ? (agentPromptSuggestionsByChatId.get(chatId) ?? [])
+    : [];
   const { checkProblems } = useCheckProblems(appId);
   const { refreshAppIframe } = useRunApp();
   const { navigate } = useRouter();
@@ -729,6 +738,17 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             onConfirm={confirmPendingFiles}
             onCancel={cancelPendingFiles}
           />
+
+          {/* Prompt suggestions: agent tool (local-agent mode) only */}
+          {chatId &&
+            settings.selectedChatMode === "local-agent" &&
+            agentPromptSuggestions.length > 0 && (
+              <PromptSuggestionButtons
+                suggestions={agentPromptSuggestions}
+                onSelect={(prompt) => setInputValue(prompt)}
+                disabled={isStreaming}
+              />
+            )}
 
           <div className="flex items-end gap-1">
             <LexicalChatInput

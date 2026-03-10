@@ -6,7 +6,7 @@
 services:
   celestia-light-node:
     container_name: celestia-mainnet-node
-    image: ghcr.io/celestiaorg/celestia-node:v0.21.3
+    image: ghcr.io/celestiaorg/celestia-node:latest
     restart: unless-stopped
     ports:
       - "26658:26658"  # RPC port
@@ -22,7 +22,7 @@ services:
       - CELESTIA_NAMESPACE=AAAAAAAAAAAAAAAAAAAAAAAAAGpveTgwbXZwMTI=
     command: >
       celestia light start
-      --core.ip consensus.lunaroasis.net
+      --core.ip consensus-full.celestia-bootstrap.net
       --p2p.network celestia
       --rpc.addr 0.0.0.0
       --rpc.port 26658

@@ -39,7 +39,7 @@ Write-Host ""
 wsl bash -c "tmux kill-session -t celestia 2>/dev/null" 2>$null
 
 # Start celestia in a new tmux session
-wsl bash -c "tmux new-session -d -s celestia 'celestia light start --core.ip consensus.lunaroasis.net --p2p.network celestia --rpc.addr 0.0.0.0 --rpc.port 26658 2>&1 | tee ~/celestia-node.log'"
+wsl bash -c "tmux new-session -d -s celestia 'celestia light start --core.ip consensus-full.celestia-bootstrap.net --p2p.network celestia --rpc.addr 0.0.0.0 --rpc.port 26658 2>&1 | tee ~/celestia-node.log'"
 
 Write-Host "⏳ Waiting for node to initialize..." -ForegroundColor Yellow
 
@@ -86,5 +86,5 @@ if ($started) {
         Write-Host "No log file created. The process may have exited immediately." -ForegroundColor Red
     }
     Write-Host ""
-    Write-Host "Try running manually: wsl celestia light start --core.ip consensus.lunaroasis.net --p2p.network celestia" -ForegroundColor Yellow
+    Write-Host "Try running manually: wsl celestia light start --core.ip consensus-full.celestia-bootstrap.net --p2p.network celestia" -ForegroundColor Yellow
 }

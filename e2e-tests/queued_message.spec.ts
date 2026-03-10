@@ -109,4 +109,44 @@ test.describe("queued messages", () => {
     // "tc=second" was deleted, so it should NOT appear
     await expect(messagesList.getByText("tc=second")).not.toBeVisible();
   });
+
+  test("fires queued message while on another page", async ({ po }) => {
+    // Send a message with a medium sleep to simulate a slow response
+    await po.sendPrompt("tc=1 [sleep=medium]", {
+      skipWaitForCompletion: true,
+    });
+
+    // Wait for chat input to appear (indicates we're in chat view and streaming)
+    await expect(chatInput).toBeVisible();
+
+    // While streaming, queue a second message
+    await chatInput.fill("tc=2");
+    await chatInput.press("Enter");
+
+    // Verify the queued message indicator is visible
+    await expect(
+      po.page.getByText(/\d+ Queued.*will send after current response/),
+    ).toBeVisible();
+
+    // Navigate away from the chat page while streaming + queue are active
+    await po.sleep(1_000);
+    await po.navigation.goToAppsTab();
+
+    // Wait for the in-progress indicator to disappear, meaning both the
+    // first stream and the queued message have completed in the background
+    await expect(
+      po.page.locator('[aria-label="Chat in progress"]'),
+    ).not.toBeVisible({ timeout: 30_000 });
+
+    // Navigate back to the chat to verify both messages were sent
+    const chatTab = po.page
+      .locator("button")
+      .filter({ hasText: /Chat/ })
+      .first();
+    await chatTab.click();
+
+    const messagesList = po.page.locator('[data-testid="messages-list"]');
+    await expect(messagesList.getByText("tc=1 [sleep=medium]")).toBeVisible();
+    await expect(messagesList.getByText("tc=2")).toBeVisible();
+  });
 });

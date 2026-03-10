@@ -1909,6 +1909,112 @@ export const creatorFeedback = sqliteTable("creator_feedback", {
     .default(sql`(unixepoch())`),
 });
 
+// ── OpenClaw Kanban ──────────────────────────────────────────
+// Track what OpenClaw is working on, what's queued, completed, failed, etc.
+
+export const openclawKanbanTasks = sqliteTable("openclaw_kanban_tasks", {
+  id: text("id").primaryKey(), // UUID v4
+  title: text("title").notNull(),
+  description: text("description"),
+
+  // Board status
+  status: text("status", {
+    enum: ["backlog", "todo", "in_progress", "review", "completed", "failed", "cancelled"],
+  }).notNull().default("backlog"),
+
+  // Task classification
+  taskType: text("task_type", {
+    enum: [
+      "research", "build", "analyze", "optimize", "automate",
+      "code_generation", "refactor", "debug", "deploy",
+      "data_pipeline", "agent_task", "workflow", "custom",
+    ],
+  }).notNull().default("custom"),
+
+  priority: text("priority", {
+    enum: ["critical", "high", "medium", "low"],
+  }).notNull().default("medium"),
+
+  // OpenClaw execution context
+  provider: text("provider"), // e.g. "ollama", "anthropic", "claude-code"
+  model: text("model"), // e.g. "llama3", "claude-sonnet-4-20250514"
+  agentId: text("agent_id"), // If spawned by an agent
+  workflowId: text("workflow_id"), // n8n workflow if applicable
+  parentTaskId: text("parent_task_id"), // For sub-task trees
+
+  // Execution metrics
+  tokensUsed: integer("tokens_used").default(0),
+  iterationsRun: integer("iterations_run").default(0),
+  costEstimate: text("cost_estimate"), // stored as string for precision
+  durationMs: integer("duration_ms"),
+  localProcessed: integer("local_processed", { mode: "boolean" }).default(sql`0`),
+
+  // Result
+  resultJson: text("result_json", { mode: "json" }).$type<Record<string, unknown> | null>(),
+  errorMessage: text("error_message"),
+
+  // Artifacts produced (files created, code generated, etc.)
+  artifactsJson: text("artifacts_json", { mode: "json" }).$type<Array<{
+    id: string;
+    type: string;
+    name: string;
+    path?: string;
+    language?: string;
+  }> | null>(),
+
+  // Labels / tags for filtering
+  labels: text("labels", { mode: "json" }).$type<string[] | null>(),
+
+  // Assignee (which OpenClaw subsystem or user)
+  assignee: text("assignee"),
+
+  // Ordering within a column
+  sortOrder: integer("sort_order").default(0),
+
+  // Timestamps
+  startedAt: integer("started_at", { mode: "timestamp" }),
+  completedAt: integer("completed_at", { mode: "timestamp" }),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+export const openclawKanbanTaskRelations = relations(openclawKanbanTasks, ({ many }) => ({
+  activities: many(openclawKanbanActivity),
+}));
+
+export const openclawKanbanActivity = sqliteTable("openclaw_kanban_activity", {
+  id: text("id").primaryKey(), // UUID v4
+  taskId: text("task_id").notNull(),
+
+  action: text("action", {
+    enum: [
+      "created", "status_changed", "priority_changed", "assigned",
+      "comment", "started", "completed", "failed", "retried",
+      "label_added", "label_removed", "artifact_added",
+    ],
+  }).notNull(),
+
+  fromValue: text("from_value"),
+  toValue: text("to_value"),
+  note: text("note"),
+  actor: text("actor").default("openclaw"), // "openclaw", "user", agent name, etc.
+
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+export const openclawKanbanActivityRelations = relations(openclawKanbanActivity, ({ one }) => ({
+  task: one(openclawKanbanTasks, {
+    fields: [openclawKanbanActivity.taskId],
+    references: [openclawKanbanTasks.id],
+  }),
+}));
+
 // ── Local Vault (Sovereign Data Vault) ────────────────────────
 export * from "./vault_schema";
 

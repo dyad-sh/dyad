@@ -11,6 +11,8 @@ let cachedBaseDirectory: {
   customPathStatus: "unset" | "unavailable" | "available";
 } | null = null;
 
+let defaultDirCreated = false;
+
 /**
  * Gets the default path of the base dyad-apps directory (without a specific app subdirectory)
  */
@@ -49,7 +51,11 @@ export function getDyadAppsBaseDirectory(): {
 
   // If the user has not set a custom base directory, use default
   if (!customPath) {
-    fs.mkdirSync(defaultPath, { recursive: true });
+    // Make sure that the dyad-apps folder exists if we're accessing it for the first time
+    if (!defaultDirCreated) {
+      fs.mkdirSync(defaultPath, { recursive: true });
+      defaultDirCreated = true;
+    }
     cachedBaseDirectory = {
       path: defaultPath,
       defaultPath,

@@ -29,6 +29,7 @@ import {
   Brain,
   HardDrive,
   Download,
+  Kanban,
 } from "lucide-react";
 import { Link, useRouterState, useRouter } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -125,6 +126,15 @@ const menuCategories = [
         hoverBg: "hover:bg-orange-500/10",
         activeBg: "bg-orange-500/15",
         activeText: "text-orange-600 dark:text-orange-400",
+      },
+      {
+        title: "OpenClaw Board",
+        to: "/openclaw-kanban",
+        icon: Kanban,
+        gradient: "from-red-500 to-orange-500",
+        hoverBg: "hover:bg-red-500/10",
+        activeBg: "bg-red-500/15",
+        activeText: "text-red-600 dark:text-red-400",
       },
     ],
   },

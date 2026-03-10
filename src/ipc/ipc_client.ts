@@ -2960,4 +2960,80 @@ export class IpcClient {
   }): Promise<any> {
     return this.ipcRenderer.invoke("agent:ui:create-config", args);
   }
+
+  // =========================================================================
+  // OpenClaw Kanban
+  // =========================================================================
+
+  /** List kanban tasks with optional filters */
+  public async listKanbanTasks(filters?: {
+    status?: string | string[];
+    taskType?: string;
+    priority?: string;
+    assignee?: string;
+    label?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<any[]> {
+    return this.ipcRenderer.invoke("openclaw:kanban:tasks:list", filters);
+  }
+
+  /** Get a single kanban task */
+  public async getKanbanTask(taskId: string): Promise<any> {
+    return this.ipcRenderer.invoke("openclaw:kanban:tasks:get", taskId);
+  }
+
+  /** Create a new kanban task */
+  public async createKanbanTask(params: {
+    title: string;
+    description?: string;
+    status?: string;
+    taskType?: string;
+    priority?: string;
+    provider?: string;
+    model?: string;
+    agentId?: string;
+    workflowId?: string;
+    parentTaskId?: string;
+    labels?: string[];
+    assignee?: string;
+  }): Promise<any> {
+    return this.ipcRenderer.invoke("openclaw:kanban:tasks:create", params);
+  }
+
+  /** Update an existing kanban task */
+  public async updateKanbanTask(params: {
+    id: string;
+    [key: string]: any;
+  }): Promise<any> {
+    return this.ipcRenderer.invoke("openclaw:kanban:tasks:update", params);
+  }
+
+  /** Delete a kanban task */
+  public async deleteKanbanTask(taskId: string): Promise<{ success: boolean }> {
+    return this.ipcRenderer.invoke("openclaw:kanban:tasks:delete", taskId);
+  }
+
+  /** Move a task to a new column/status */
+  public async moveKanbanTask(params: {
+    taskId: string;
+    status: string;
+    sortOrder: number;
+  }): Promise<any> {
+    return this.ipcRenderer.invoke("openclaw:kanban:tasks:move", params);
+  }
+
+  /** List activity log entries */
+  public async listKanbanActivity(params: {
+    taskId?: string;
+    limit?: number;
+  }): Promise<any[]> {
+    return this.ipcRenderer.invoke("openclaw:kanban:activity:list", params);
+  }
+
+  /** Get kanban analytics & metrics */
+  public async getKanbanAnalytics(): Promise<any> {
+    return this.ipcRenderer.invoke("openclaw:kanban:analytics");
+  }
 }

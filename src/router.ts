@@ -44,6 +44,7 @@ import { pluginMarketplaceRoute } from "./routes/plugin-marketplace";
 import { secretsVaultRoute } from "./routes/secrets-vault";
 import { dataStudioRoute } from "./routes/data-studio";
 import { memoryRoute } from "./routes/memory";
+import { openclawKanbanRoute } from "./routes/openclaw-kanban";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -93,6 +94,7 @@ const routeTree = rootRoute.addChildren([
   secretsVaultRoute,
   dataStudioRoute,
   memoryRoute,
+  openclawKanbanRoute,
 ]);
 
 // src/components/NotFoundRedirect.tsx

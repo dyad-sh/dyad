@@ -1173,6 +1173,15 @@ const validInvokeChannels = [
   "openclaw:plugins:enable",
   "openclaw:plugins:disable",
   "openclaw:doctor",
+  // OpenClaw Kanban — Task board CRUD + analytics
+  "openclaw:kanban:tasks:list",
+  "openclaw:kanban:tasks:get",
+  "openclaw:kanban:tasks:create",
+  "openclaw:kanban:tasks:update",
+  "openclaw:kanban:tasks:delete",
+  "openclaw:kanban:tasks:move",
+  "openclaw:kanban:activity:list",
+  "openclaw:kanban:analytics",
   // 🦞 OpenClaw CNS (Central Nervous System) - Ollama & N8n Integration
   // Unified AI routing with local (Ollama) and cloud (Anthropic) backends
   "cns:initialize",

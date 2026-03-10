@@ -72,6 +72,7 @@ writeSettings({
 
 - Handlers should `throw new Error("...")` on failure instead of returning `{ success: false }` style payloads.
 - Use `createTypedHandler(contract, handler)` which validates inputs at runtime via Zod.
+- For stream error events sent to the renderer (for example `chat:response:error`), normalize nested provider/SDK errors first. Interpolating raw object-shaped errors with template strings can surface `Error: [object Object]` in the UI instead of the actual nested `error.message`.
 
 ## React Query key factory
 

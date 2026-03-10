@@ -1264,9 +1264,10 @@ export async function handleLocalAgentStream(
     }
 
     logger.error("Local agent error:", error);
+    const normalizedError = unwrapStreamError(error);
     safeSend(event.sender, "chat:response:error", {
       chatId: req.chatId,
-      error: `Error: ${error}`,
+      error: `Error: ${getErrorMessage(normalizedError)}`,
     });
     return false; // Error - don't consume quota
   }
@@ -1292,6 +1293,17 @@ function getErrorMessage(error: unknown): string {
   }
   if (typeof error === "string") {
     return error;
+  }
+  if (isRecord(error)) {
+    if (typeof error.message === "string" && error.message.length > 0) {
+      return error.message;
+    }
+    if ("error" in error) {
+      return getErrorMessage(error.error);
+    }
+    if ("cause" in error) {
+      return getErrorMessage(error.cause);
+    }
   }
   try {
     return JSON.stringify(error);

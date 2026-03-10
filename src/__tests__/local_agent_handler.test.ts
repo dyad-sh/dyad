@@ -420,6 +420,46 @@ describe("handleLocalAgentStream", () => {
     });
   });
 
+  describe("Error handling", () => {
+    it("should surface nested local agent API error messages", async () => {
+      const { event, getMessagesByChannel } = createFakeEvent();
+      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockChatData = buildTestChat();
+      mockStreamTextImpl = (options) => {
+        options.onError?.({
+          type: "error",
+          error: {
+            type: "invalid_request_error",
+            code: "unknown_error",
+            message:
+              "There was an issue with your request. Please check your inputs and try again",
+          },
+        });
+        return createFakeStream([]);
+      };
+
+      const result = await handleLocalAgentStream(
+        event,
+        { chatId: 1, prompt: "test" },
+        new AbortController(),
+        {
+          placeholderMessageId: 10,
+          systemPrompt: "You are helpful",
+          dyadRequestId,
+        },
+      );
+
+      expect(result).toBe(false);
+      const errorMessages = getMessagesByChannel("chat:response:error");
+      expect(errorMessages).toHaveLength(1);
+      expect(errorMessages[0].args[0]).toMatchObject({
+        chatId: 1,
+        error:
+          "Error: There was an issue with your request. Please check your inputs and try again",
+      });
+    });
+  });
+
   describe("Context compaction setting", () => {
     it("should not run pending compaction when context compaction is disabled", async () => {
       // Arrange

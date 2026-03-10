@@ -94,16 +94,16 @@ export function registerImportHandlers() {
       const { path: destination, isAvailable } =
         getDyadAppPathAvailability(appName);
 
-      if (!isAvailable) {
-        throw new Error(
-          `The path ${destination} is inaccessible. Please check your custom apps folder setting.`,
-        );
-      }
-
       // Determine the app path based on skipCopy
       const appPath = skipCopy ? sourcePath : destination;
 
       if (!skipCopy) {
+        if (!isAvailable) {
+          throw new Error(
+            `The path ${destination} is inaccessible. Please check your custom apps folder setting.`,
+          );
+        }
+
         // Check if the app already exists in dyad-apps
         const errorMessage = "An app with this name already exists";
         try {

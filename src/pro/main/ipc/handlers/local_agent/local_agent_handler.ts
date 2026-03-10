@@ -1293,6 +1293,17 @@ function getErrorMessage(error: unknown): string {
   if (typeof error === "string") {
     return error;
   }
+  if (isRecord(error)) {
+    if (typeof error.message === "string" && error.message.length > 0) {
+      return error.message;
+    }
+    if ("error" in error) {
+      return getErrorMessage(error.error);
+    }
+    if ("cause" in error) {
+      return getErrorMessage(error.cause);
+    }
+  }
   try {
     return JSON.stringify(error);
   } catch {

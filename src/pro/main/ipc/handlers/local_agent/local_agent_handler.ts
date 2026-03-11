@@ -473,6 +473,35 @@ export async function handleLocalAgentStream(
 
     // Build tool execute context
     const fileEditTracker: FileEditTracker = Object.create(null);
+
+    // Throttle IPC sends to the renderer to avoid overwhelming the UI.
+    // Each send triggers markdown re-parsing and React re-renders which
+    // causes significant lag during fast token streaming (e.g. code writing).
+    let lastChunkSendAt = 0;
+    let pendingChunkSend: (() => void) | null = null;
+    const CHUNK_THROTTLE_MS = 50;
+
+    const throttledSendResponseChunk = (
+      ...args: Parameters<typeof sendResponseChunk>
+    ) => {
+      const now = Date.now();
+      if (now - lastChunkSendAt < CHUNK_THROTTLE_MS) {
+        // Store as pending - will be flushed on next non-throttled call or at end
+        pendingChunkSend = () => sendResponseChunk(...args);
+        return;
+      }
+      pendingChunkSend = null;
+      lastChunkSendAt = now;
+      sendResponseChunk(...args);
+    };
+
+    const flushPendingChunkSend = () => {
+      if (pendingChunkSend) {
+        pendingChunkSend();
+        pendingChunkSend = null;
+      }
+    };
+
     const ctx: AgentContext = {
       event,
       appId: chat.app.id,
@@ -489,7 +518,7 @@ export async function handleLocalAgentStream(
       onXmlStream: (accumulatedXml: string) => {
         // Stream accumulated XML to UI without persisting
         streamingPreview = accumulatedXml;
-        sendResponseChunk(
+        throttledSendResponseChunk(
           event,
           req.chatId,
           chat,
@@ -503,6 +532,9 @@ export async function handleLocalAgentStream(
         const xmlChunk = `${finalXml}\n`;
         fullResponse += xmlChunk;
         streamingPreview = ""; // Clear preview
+        // Discard any pending throttled send since we're about to send
+        // the authoritative state with the completed XML
+        pendingChunkSend = null;
         updateResponseInDb(placeholderMessageId, fullResponse);
         sendResponseChunk(
           event,
@@ -956,7 +988,7 @@ export async function handleLocalAgentStream(
               if (chunk) {
                 fullResponse += chunk;
                 await updateResponseInDb(placeholderMessageId, fullResponse);
-                sendResponseChunk(
+                throttledSendResponseChunk(
                   event,
                   req.chatId,
                   chat,
@@ -975,6 +1007,9 @@ export async function handleLocalAgentStream(
               );
             }
           }
+
+          // Flush any pending throttled IPC send so the UI shows the final state
+          flushPendingChunkSend();
 
           // Close thinking block if still open
           if (inThinkingBlock) {

@@ -165,6 +165,7 @@ async function processStreamChunks({
   chatId: number;
   processResponseChunkUpdate: (params: {
     fullResponse: string;
+    flush?: boolean;
   }) => Promise<string>;
 }): Promise<{ fullResponse: string; incrementalResponse: string }> {
   let incrementalResponse = "";
@@ -217,6 +218,12 @@ async function processStreamChunks({
       break;
     }
   }
+
+  // Flush any pending throttled update so the UI shows the final state
+  fullResponse = await processResponseChunkUpdate({
+    fullResponse,
+    flush: true,
+  });
 
   return { fullResponse, incrementalResponse };
 }
@@ -1062,11 +1069,15 @@ This conversation includes one or more image attachments. When the user uploads 
         };
 
         let lastDbSaveAt = 0;
+        let lastIpcSendAt = 0;
+        let pendingIpcResponse: string | null = null;
 
         const processResponseChunkUpdate = async ({
           fullResponse,
+          flush,
         }: {
           fullResponse: string;
+          flush?: boolean;
         }) => {
           // Store the current partial response
           partialResponses.set(req.chatId, fullResponse);
@@ -1081,6 +1092,17 @@ This conversation includes one or more image attachments. When the user uploads 
             lastDbSaveAt = now;
           }
 
+          // Throttle IPC sends to the renderer to avoid overwhelming the UI.
+          // Each send triggers markdown re-parsing and React re-renders, so
+          // sending on every token causes significant lag.
+          if (!flush && now - lastIpcSendAt < 50) {
+            pendingIpcResponse = fullResponse;
+            return fullResponse;
+          }
+
+          pendingIpcResponse = null;
+          lastIpcSendAt = now;
+
           // Update the placeholder assistant message content in the messages array
           const currentMessages = [...updatedChat.messages];
           if (
@@ -1090,7 +1112,7 @@ This conversation includes one or more image attachments. When the user uploads 
             currentMessages[currentMessages.length - 1].content = fullResponse;
           }
 
-          // Update the assistant message in the database
+          // Send updated messages to the renderer
           safeSend(event.sender, "chat:response:chunk", {
             chatId: req.chatId,
             messages: currentMessages,

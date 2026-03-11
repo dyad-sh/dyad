@@ -95,7 +95,7 @@ app.get("/api/language-model-catalog", (req, res) => {
       },
       {
         id: "google",
-        displayName: "Google AI Studio",
+        displayName: "Google",
         type: "cloud",
         hasFreeTier: true,
         gatewayPrefix: "gemini/",
@@ -106,6 +106,12 @@ app.get("/api/language-model-catalog", (req, res) => {
         {
           apiName: "gpt-5.2",
           displayName: "GPT 5.2",
+          description: "Remote catalog OpenAI model",
+        },
+        {
+          apiName: "gpt-5",
+          temperature: 1,
+          displayName: "GPT 5",
           description: "Remote catalog OpenAI model",
         },
         {
@@ -129,11 +135,13 @@ app.get("/api/language-model-catalog", (req, res) => {
           apiName: "claude-opus-4-5",
           displayName: "Claude Opus 4.5",
           description: "Remote catalog Anthropic model",
+          maxOutputTokens: 32_000,
         },
         {
           apiName: "claude-sonnet-4-20250514",
           displayName: "Claude Sonnet 4",
           description: "Remote catalog Anthropic model",
+          maxOutputTokens: 32_000,
         },
       ],
       google: [
@@ -146,6 +154,7 @@ app.get("/api/language-model-catalog", (req, res) => {
           apiName: "gemini-2.5-pro",
           displayName: "Gemini 2.5 Pro",
           description: "Remote catalog Google model",
+          maxOutputTokens: 65_535,
         },
       ],
     },

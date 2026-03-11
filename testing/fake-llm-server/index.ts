@@ -105,21 +105,46 @@ app.get("/api/language-model-catalog", (req, res) => {
       openai: [
         {
           apiName: "gpt-5.2",
-          displayName: "GPT 5.2 Remote",
+          displayName: "GPT 5.2",
           description: "Remote catalog OpenAI model",
+        },
+        {
+          apiName: "gpt-5.2-remote-only",
+          displayName: "GPT 5.2 Remote Only",
+          description: "Remote-only catalog OpenAI model for E2E coverage",
         },
       ],
       anthropic: [
         {
+          apiName: "claude-opus-4-6",
+          displayName: "Claude Opus 4.6",
+          description: "Remote catalog Anthropic model",
+        },
+        {
           apiName: "claude-sonnet-4-6",
-          displayName: "Claude Sonnet 4.6 Remote",
+          displayName: "Claude Sonnet 4.6",
+          description: "Remote catalog Anthropic model",
+        },
+        {
+          apiName: "claude-opus-4-5",
+          displayName: "Claude Opus 4.5",
+          description: "Remote catalog Anthropic model",
+        },
+        {
+          apiName: "claude-sonnet-4-20250514",
+          displayName: "Claude Sonnet 4",
           description: "Remote catalog Anthropic model",
         },
       ],
       google: [
         {
           apiName: "gemini-3.1-pro-preview",
-          displayName: "Gemini 3.1 Pro Remote",
+          displayName: "Gemini 3.1 Pro (Preview)",
+          description: "Remote catalog Google model",
+        },
+        {
+          apiName: "gemini-2.5-pro",
+          displayName: "Gemini 2.5 Pro",
           description: "Remote catalog Google model",
         },
       ],

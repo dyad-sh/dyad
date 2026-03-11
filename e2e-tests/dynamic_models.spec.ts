@@ -26,8 +26,9 @@ testWithRemoteCatalog(
 
     await po.page.getByTestId("model-picker").click();
     await po.page.getByText("OpenAI", { exact: true }).click();
+    await expect(po.page.getByText("GPT 5.2", { exact: true })).toBeVisible();
     await expect(
-      po.page.getByText("GPT 5.2 Remote", { exact: true }),
+      po.page.getByText("GPT 5.2 Remote Only", { exact: true }),
     ).toBeVisible();
 
     await po.navigation.goToLibraryTab();
@@ -56,6 +57,9 @@ testWithFallbackCatalog(
     await po.page.getByTestId("model-picker").click();
     await po.page.getByText("OpenAI", { exact: true }).click();
     await expect(po.page.getByText("GPT 5.2", { exact: true })).toBeVisible();
+    await expect(
+      po.page.getByText("GPT 5.2 Remote Only", { exact: true }),
+    ).not.toBeVisible();
     await expect(
       po.page.getByText("GPT 5.2 Remote", { exact: true }),
     ).not.toBeVisible();

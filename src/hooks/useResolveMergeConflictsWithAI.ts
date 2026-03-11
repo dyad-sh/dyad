@@ -97,8 +97,7 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
           prompt,
         },
         {
-          onChunk: ({ messages }) => {
-            if (!messages) return;
+          onChunk: ({ messages, streamingMessageId, streamingContent }) => {
             if (!hasIncrementedStreamCount) {
               setStreamCountById((prev) => {
                 const next = new Map(prev);
@@ -107,11 +106,33 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
               });
               hasIncrementedStreamCount = true;
             }
-            setMessagesById((prev) => {
-              const next = new Map(prev);
-              next.set(newChatId, messages);
-              return next;
-            });
+
+            if (messages) {
+              // Full messages update (initial load, post-compaction, etc.)
+              setMessagesById((prev) => {
+                const next = new Map(prev);
+                next.set(newChatId, messages);
+                return next;
+              });
+            } else if (
+              streamingMessageId !== undefined &&
+              streamingContent !== undefined
+            ) {
+              // Incremental update: only update the streaming message's content
+              setMessagesById((prev) => {
+                const existingMessages = prev.get(newChatId);
+                if (!existingMessages) return prev;
+
+                const next = new Map(prev);
+                const updated = existingMessages.map((msg) =>
+                  msg.id === streamingMessageId
+                    ? { ...msg, content: streamingContent }
+                    : msg,
+                );
+                next.set(newChatId, updated);
+                return next;
+              });
+            }
           },
           onEnd: () => {
             setIsStreamingById((prev) => {

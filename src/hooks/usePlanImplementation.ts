@@ -98,14 +98,39 @@ export function usePlanImplementation() {
             selectedComponents: [],
           },
           {
-            onChunk: ({ messages: updatedMessages }) => {
-              if (!isMountedRef.current || !updatedMessages) return;
-              // Update the messages so the UI shows the streaming response
-              setMessagesById((prev) => {
-                const next = new Map(prev);
-                next.set(chatId, updatedMessages);
-                return next;
-              });
+            onChunk: ({
+              messages: updatedMessages,
+              streamingMessageId,
+              streamingContent,
+            }) => {
+              if (!isMountedRef.current) return;
+
+              if (updatedMessages) {
+                // Full messages update (initial load, post-compaction, etc.)
+                setMessagesById((prev) => {
+                  const next = new Map(prev);
+                  next.set(chatId, updatedMessages);
+                  return next;
+                });
+              } else if (
+                streamingMessageId !== undefined &&
+                streamingContent !== undefined
+              ) {
+                // Incremental update: only update the streaming message's content
+                setMessagesById((prev) => {
+                  const existingMessages = prev.get(chatId);
+                  if (!existingMessages) return prev;
+
+                  const next = new Map(prev);
+                  const updated = existingMessages.map((msg) =>
+                    msg.id === streamingMessageId
+                      ? { ...msg, content: streamingContent }
+                      : msg,
+                  );
+                  next.set(chatId, updated);
+                  return next;
+                });
+              }
             },
             onEnd: () => {
               if (!isMountedRef.current) return;

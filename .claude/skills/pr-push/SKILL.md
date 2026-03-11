@@ -88,10 +88,16 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
    git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null
    ```
 
-   If this succeeds (e.g., returns `origin/my-branch` or `someuser/my-branch`), the branch already has an upstream. Just push:
+   If this succeeds (e.g., returns `origin/my-branch` or `someuser/my-branch`), the branch already has an upstream. Push to it:
 
    ```
    git push --force-with-lease
+   ```
+
+   **Permission fallback:** If the push fails with a permission error (e.g., the branch tracks `upstream` but the current account lacks write access to `dyad-sh/dyad`), fall back to pushing to `origin` instead:
+
+   ```
+   git push --force-with-lease -u origin HEAD
    ```
 
    b. If there is NO upstream, check if a PR already exists and determine which remote it was opened from:
@@ -180,6 +186,8 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
    ```
    gh pr edit --add-label "cc:request"
    ```
+
+   **Permission fallback:** If this fails with a permission error (common for bot/fork accounts that lack label permissions on the upstream repo), skip label addition silently and note in the summary that the label could not be added. Do NOT fail the workflow over a label.
 
 9. **Remove review-issue label:**
 

@@ -98,6 +98,7 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
         },
         {
           onChunk: ({ messages }) => {
+            if (!messages) return;
             if (!hasIncrementedStreamCount) {
               setStreamCountById((prev) => {
                 const next = new Map(prev);

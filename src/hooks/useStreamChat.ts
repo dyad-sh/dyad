@@ -172,7 +172,11 @@ export function useStreamChat({
             selectedComponents: selectedComponents ?? [],
           },
           {
-            onChunk: ({ messages: updatedMessages }) => {
+            onChunk: ({
+              messages: updatedMessages,
+              streamingMessageId,
+              streamingContent,
+            }) => {
               if (!hasIncrementedStreamCount) {
                 setStreamCountById((prev) => {
                   const next = new Map(prev);
@@ -182,11 +186,32 @@ export function useStreamChat({
                 hasIncrementedStreamCount = true;
               }
 
-              setMessagesById((prev) => {
-                const next = new Map(prev);
-                next.set(chatId, updatedMessages);
-                return next;
-              });
+              if (updatedMessages) {
+                // Full messages update (initial load, post-compaction, etc.)
+                setMessagesById((prev) => {
+                  const next = new Map(prev);
+                  next.set(chatId, updatedMessages);
+                  return next;
+                });
+              } else if (
+                streamingMessageId !== undefined &&
+                streamingContent !== undefined
+              ) {
+                // Incremental update: only update the streaming message's content
+                setMessagesById((prev) => {
+                  const existingMessages = prev.get(chatId);
+                  if (!existingMessages) return prev;
+
+                  const next = new Map(prev);
+                  const updated = existingMessages.map((msg) =>
+                    msg.id === streamingMessageId
+                      ? { ...msg, content: streamingContent }
+                      : msg,
+                  );
+                  next.set(chatId, updated);
+                  return next;
+                });
+              }
             },
             onEnd: (response: ChatResponseEnd) => {
               // Remove from pending set now that stream is complete

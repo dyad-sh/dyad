@@ -99,7 +99,7 @@ export function usePlanImplementation() {
           },
           {
             onChunk: ({ messages: updatedMessages }) => {
-              if (!isMountedRef.current) return;
+              if (!isMountedRef.current || !updatedMessages) return;
               // Update the messages so the UI shows the streaming response
               setMessagesById((prev) => {
                 const next = new Map(prev);

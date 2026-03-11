@@ -92,10 +92,18 @@ export type ChatStreamParams = z.infer<typeof ChatStreamParamsSchema>;
 
 /**
  * Schema for chat response chunk event.
+ *
+ * Supports two modes:
+ * 1. Full update: `messages` is set with the complete messages array
+ * 2. Incremental update: `streamingMessageId` + `streamingContent` are set
+ *    to update only the content of a single message being streamed.
+ *    This avoids serializing the entire messages array on every text delta.
  */
 export const ChatResponseChunkSchema = z.object({
   chatId: z.number(),
-  messages: z.array(MessageSchema),
+  messages: z.array(MessageSchema).optional(),
+  streamingMessageId: z.number().optional(),
+  streamingContent: z.string().optional(),
 });
 
 /**

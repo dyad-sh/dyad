@@ -100,6 +100,17 @@ queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
 
 **Adding new keys:** Add entries to the appropriate domain in `queryKeys.ts`. Follow the existing pattern with `all` for the base key and factory functions using object parameters for parameterized keys.
 
+## Streaming chunk optimizations
+
+The `chat:response:chunk` event supports two modes:
+
+1. **Full update** — `messages` field contains the complete messages array. Used for initial message load, post-compaction refresh, and lazy-edit completions.
+2. **Incremental update** — `streamingMessageId` + `streamingContent` fields update only the actively streaming message's content. Used for high-frequency text-delta streaming to avoid serializing the full messages array on every chunk.
+
+When modifying `ChatResponseChunkSchema` or adding new `safeSend("chat:response:chunk", ...)` call sites, decide which mode is appropriate. All frontend consumers (`useStreamChat`, `usePlanImplementation`, `useResolveMergeConflictsWithAI`) must handle both modes.
+
+**Zod schema contract changes:** Making a field optional (e.g., `messages` → `messages.optional()`) causes TypeScript errors in all consumers that assume the field is always present. Search for all destructuring/usage sites and add guards before committing.
+
 ## React + IPC integration pattern
 
 When creating hooks/components that call IPC handlers:

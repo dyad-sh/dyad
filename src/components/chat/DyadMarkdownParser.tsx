@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useDeferredValue, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -146,10 +146,13 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
 }) => {
   const chatId = useAtomValue(selectedChatIdAtom);
   const isStreaming = useAtomValue(isStreamingByIdAtom).get(chatId!) ?? false;
+  const deferredContent = useDeferredValue(content);
+  const contentToParse = isStreaming ? deferredContent : content;
+
   // Extract content pieces (markdown and custom tags)
   const contentPieces = useMemo(() => {
-    return parseCustomTags(content);
-  }, [content]);
+    return parseCustomTags(contentToParse);
+  }, [contentToParse]);
 
   // Extract error messages and track positions
   const { errorMessages, lastErrorIndex, errorCount } = useMemo(() => {

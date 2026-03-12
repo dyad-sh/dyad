@@ -889,30 +889,24 @@ export function GithubBranchManager({
                             <DropdownMenuItem
                               disabled={!branch.isLocal}
                               onClick={() => {
-                                if (!branch.isLocal) return;
                                 setBranchToRename(branch.name);
                                 setRenameBranchName(branch.name);
                               }}
                               data-testid="rename-branch-menu-item"
                             >
                               <Edit2 className="mr-2 h-4 w-4" />
-                              {branch.isLocal
-                                ? "Rename"
-                                : "Rename (local only)"}
+                              Rename
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="text-red-600"
                               disabled={!branch.isLocal}
                               onClick={() => {
-                                if (!branch.isLocal) return;
                                 setBranchToDelete(branch.name);
                               }}
                               data-testid="delete-branch-menu-item"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
-                              {branch.isLocal
-                                ? "Delete"
-                                : "Delete (local only)"}
+                              Delete
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>

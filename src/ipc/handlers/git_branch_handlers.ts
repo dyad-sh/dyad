@@ -332,6 +332,9 @@ async function handleListLocalBranches(
   return { branches, current: current || null };
 }
 
+const PRUNE_THROTTLE_MS = 30_000;
+const lastPruneByApp = new Map<number, number>();
+
 async function handleListRemoteBranches(
   event: IpcMainInvokeEvent,
   { appId, remote = "origin" }: { appId: number; remote?: string },
@@ -341,14 +344,17 @@ async function handleListRemoteBranches(
   const appPath = getDyadAppPath(app.path);
   const settings = readSettings();
 
-  if (app.githubOrg && app.githubRepo && settings.githubAccessToken?.value) {
+  const now = Date.now();
+  const lastPrune = lastPruneByApp.get(appId) ?? 0;
+  if (app.githubOrg && app.githubRepo && now - lastPrune >= PRUNE_THROTTLE_MS) {
     try {
       await gitFetch({
         path: appPath,
         remote,
-        accessToken: settings.githubAccessToken.value,
+        accessToken: settings.githubAccessToken?.value,
         prune: true,
       });
+      lastPruneByApp.set(appId, now);
     } catch (error: any) {
       logger.warn(
         `Failed to refresh remote branches before listing: ${error.message}`,

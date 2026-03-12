@@ -1182,16 +1182,22 @@ export async function gitFetch({
   path,
   remote = "origin",
   accessToken,
+  prune = false,
 }: GitFetchParams): Promise<void> {
   const settings = readSettings();
   if (settings.enableNativeGit) {
-    await execOrThrow(["fetch", remote], path, "Failed to fetch from remote");
+    const args = ["fetch", remote];
+    if (prune) {
+      args.push("--prune");
+    }
+    await execOrThrow(args, path, "Failed to fetch from remote");
   } else {
     await git.fetch({
       fs,
       http,
       dir: path,
       remote,
+      prune,
       onAuth: accessToken
         ? () => ({
             username: accessToken,

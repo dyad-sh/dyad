@@ -339,6 +339,22 @@ async function handleListRemoteBranches(
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) throw new Error("App not found");
   const appPath = getDyadAppPath(app.path);
+  const settings = readSettings();
+
+  if (app.githubOrg && app.githubRepo && settings.githubAccessToken?.value) {
+    try {
+      await gitFetch({
+        path: appPath,
+        remote,
+        accessToken: settings.githubAccessToken.value,
+        prune: true,
+      });
+    } catch (error: any) {
+      logger.warn(
+        `Failed to refresh remote branches before listing: ${error.message}`,
+      );
+    }
+  }
 
   const branches = await gitListRemoteBranches({ path: appPath, remote });
   return branches;

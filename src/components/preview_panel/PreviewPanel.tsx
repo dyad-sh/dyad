@@ -141,7 +141,7 @@ export function PreviewPanel() {
     }, 5000);
 
     return () => clearInterval(intervalId);
-  }, [app?.supabaseProjectId, app?.supabaseOrganizationSlug, loadEdgeLogs]);
+  }, [app?.supabaseProjectId, app?.supabaseOrganizationSlug, app?.supabaseMode, loadEdgeLogs]);
 
   return (
     <div className="flex flex-col h-full">

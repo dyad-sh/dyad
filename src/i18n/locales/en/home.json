@@ -542,7 +542,17 @@
       "branchNotFound": "Branch not found",
       "branchSelected": "Branch selected",
       "failedSetBranch": "Failed to set branch: {{error}}",
-      "failedDisconnectProject": "Failed to disconnect project from app"
+      "failedDisconnectProject": "Failed to disconnect project from app",
+      "selfHostedTitle": "Supabase",
+      "selfHostedDescription": "Use the self-hosted Supabase instance configured in Settings for this app.",
+      "selfHostedConnected": "Connected via self-hosted Supabase",
+      "useSelfHostedProject": "Use Self-hosted Project",
+      "selfHostedProjectConnected": "Self-hosted Supabase project connected",
+      "enterProjectId": "Enter a Supabase project ID",
+      "failedConnectSelfHosted": "Failed to connect self-hosted Supabase project",
+      "noCloudOrganizations": "No cloud Supabase organizations are connected.",
+      "connectCloudDescription": "Connect a cloud Supabase account for this app, or switch back to self-hosted mode.",
+      "branchingNotAvailable": "Database branching is not available for self-hosted Supabase instances."
     },
     "neon": {
       "title": "Neon Integration",

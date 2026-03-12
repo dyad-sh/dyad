@@ -752,8 +752,9 @@ ${componentSnippet}
 
         if (
           updatedChat.app?.supabaseProjectId &&
-          (isSupabaseConnected(settings) ||
-            hasSelfHostedSupabaseConfig(settings))
+          (updatedChat.app.supabaseMode === "self-hosted"
+            ? hasSelfHostedSupabaseConfig(settings)
+            : isSupabaseConnected(settings))
         ) {
           const supabaseClientCode = await getSupabaseClientCode({
             projectId: updatedChat.app.supabaseProjectId,

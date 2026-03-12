@@ -32,6 +32,9 @@ export function SupabaseIntegration() {
   const [selfHostedPublishableKey, setSelfHostedPublishableKey] = useState(
     settings?.supabase?.selfHosted?.publishableKey || "",
   );
+  const [fieldError, setFieldError] = useState<"apiUrl" | "secretKey" | null>(
+    null,
+  );
 
   // Sync local state when settings change externally (e.g., after disconnect)
   useEffect(() => {
@@ -57,12 +60,10 @@ export function SupabaseIntegration() {
   const handleDisconnectAllFromSupabase = async () => {
     setIsDisconnecting(true);
     try {
-      // Read fresh settings to preserve self-hosted config while clearing cloud auth
-      const freshSettings = await ipc.settings.getUserSettings();
       const result = await updateSettings({
         supabase: {
-          // Preserve self-hosted settings
-          selfHosted: freshSettings.supabase?.selfHosted,
+          // Preserve self-hosted settings from current state
+          selfHosted: settings?.supabase?.selfHosted,
         },
         // Also disable the migration setting on disconnect
         enableSupabaseWriteSqlMigration: false,
@@ -119,11 +120,13 @@ export function SupabaseIntegration() {
     const hasSecretKey = selfHostedSecretKey.trim() !== "";
 
     if (hasApiUrl !== hasSecretKey) {
+      setFieldError(hasApiUrl ? "secretKey" : "apiUrl");
       showError(
         "Both Self-hosted API URL and Secret Key must be set, or both must be empty",
       );
       return;
     }
+    setFieldError(null);
 
     setIsSaving(true);
     try {
@@ -177,9 +180,18 @@ export function SupabaseIntegration() {
             type="url"
             placeholder="https://your-supabase-instance.example.com"
             value={selfHostedApiUrl}
-            onChange={(e) => setSelfHostedApiUrl(e.target.value)}
-            className="text-sm"
+            onChange={(e) => {
+              setSelfHostedApiUrl(e.target.value);
+              setFieldError(null);
+            }}
+            aria-invalid={fieldError === "apiUrl"}
+            className={`text-sm ${fieldError === "apiUrl" ? "border-destructive ring-destructive" : ""}`}
           />
+          {fieldError === "apiUrl" && (
+            <p className="text-xs text-destructive">
+              API URL is required when Secret Key is set.
+            </p>
+          )}
         </div>
         <div className="space-y-1">
           <Label
@@ -193,9 +205,18 @@ export function SupabaseIntegration() {
             type="password"
             placeholder="Enter your secret key"
             value={selfHostedSecretKey}
-            onChange={(e) => setSelfHostedSecretKey(e.target.value)}
-            className="text-sm"
+            onChange={(e) => {
+              setSelfHostedSecretKey(e.target.value);
+              setFieldError(null);
+            }}
+            aria-invalid={fieldError === "secretKey"}
+            className={`text-sm ${fieldError === "secretKey" ? "border-destructive ring-destructive" : ""}`}
           />
+          {fieldError === "secretKey" && (
+            <p className="text-xs text-destructive">
+              Secret Key is required when API URL is set.
+            </p>
+          )}
         </div>
         <div className="space-y-1">
           <Label
@@ -226,7 +247,18 @@ export function SupabaseIntegration() {
   );
 
   if (!isConnected) {
-    return selfHostedSection;
+    return (
+      <div>
+        <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          {t("integrations.supabase.title")}
+        </h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+          No cloud Supabase account connected. Configure self-hosted settings
+          below, or connect via the Supabase connector in your app settings.
+        </p>
+        {selfHostedSection}
+      </div>
+    );
   }
 
   return (

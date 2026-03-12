@@ -154,7 +154,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   const handleSelfHostedProjectSave = async () => {
     const projectId = selfHostedProjectId.trim();
     if (!projectId) {
-      toast.error("Enter a Supabase project ID");
+      toast.error(t("integrations.supabase.enterProjectId"));
       return;
     }
 
@@ -166,11 +166,12 @@ export function SupabaseConnector({ appId }: { appId: number }) {
         organizationSlug: null,
         mode: "self-hosted",
       });
-      toast.success("Self-hosted Supabase project connected");
+      toast.success(t("integrations.supabase.selfHostedProjectConnected"));
       await refreshApp();
     } catch (error) {
       toast.error(
-        `Failed to connect self-hosted Supabase project: ${String(error)}`,
+        t("integrations.supabase.failedConnectSelfHosted") +
+          `: ${String(error)}`,
       );
     }
   };
@@ -369,14 +370,13 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     );
   }
 
-  if (selectedMode === "self-hosted" && hasSelfHostedSupabase) {
+  if (selectedMode === "self-hosted" && (hasSelfHostedSupabase || (appSupabaseMode === "self-hosted" && app?.supabaseProjectId))) {
     return (
       <Card className="mt-1">
         <CardHeader>
-          <CardTitle>Supabase</CardTitle>
+          <CardTitle>{t("integrations.supabase.selfHostedTitle")}</CardTitle>
           <CardDescription>
-            Use the self-hosted Supabase instance configured in Settings for
-            this app.
+            {t("integrations.supabase.selfHostedDescription")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -399,79 +399,15 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                     {app.supabaseProjectName || app.supabaseProjectId}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    Connected via self-hosted Supabase
+                    {t("integrations.supabase.selfHostedConnected")}
                   </div>
                 </div>
                 <Badge variant="secondary">Self-hosted</Badge>
               </div>
 
-              {branchesError ? (
-                <Alert>
-                  <Info className="h-4 w-4" />
-                  <AlertDescription>
-                    {getErrorMessage(branchesError)}
-                  </AlertDescription>
-                </Alert>
-              ) : (
-                <div className="space-y-2">
-                  <Label htmlFor="self-hosted-branch-select">
-                    {t("integrations.supabase.databaseBranch")}
-                  </Label>
-                  <Select
-                    value={app.supabaseProjectId || ""}
-                    onValueChange={async (supabaseBranchProjectId) => {
-                      try {
-                        const branch = branches.find(
-                          (b) => b.projectRef === supabaseBranchProjectId,
-                        );
-                        if (!branch) {
-                          throw new Error(
-                            t("integrations.supabase.branchNotFound"),
-                          );
-                        }
-                        await setAppProject({
-                          projectId: branch.projectRef,
-                          parentProjectId: branch.parentProjectRef,
-                          appId,
-                          organizationSlug: null,
-                          mode: "self-hosted",
-                        });
-                        toast.success(
-                          t("integrations.supabase.branchSelected"),
-                        );
-                        await refreshApp();
-                      } catch (error) {
-                        toast.error(
-                          t("integrations.supabase.failedSetBranch", {
-                            error: String(error),
-                          }),
-                        );
-                      }
-                    }}
-                    disabled={isLoadingBranches || isSettingAppProject}
-                  >
-                    <SelectTrigger
-                      id="self-hosted-branch-select"
-                      data-testid="supabase-branch-select"
-                    >
-                      <SelectValue
-                        placeholder={t("integrations.supabase.selectBranch")}
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {branches.map((branch) => (
-                        <SelectItem
-                          key={branch.projectRef}
-                          value={branch.projectRef}
-                        >
-                          {branch.name}
-                          {branch.isDefault && " (Default)"}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+              <p className="text-xs text-muted-foreground">
+                {t("integrations.supabase.branchingNotAvailable")}
+              </p>
 
               <Button variant="destructive" onClick={handleUnsetProject}>
                 {t("integrations.supabase.disconnectProject")}
@@ -479,16 +415,9 @@ export function SupabaseConnector({ appId }: { appId: number }) {
             </div>
           ) : null}
 
-          <div className="flex gap-2">
-            <Button onClick={handleSelfHostedProjectSave}>
-              Use Self-hosted Project
-            </Button>
-            {appSupabaseMode === "self-hosted" && app?.supabaseProjectId ? (
-              <Button variant="outline" onClick={handleUnsetProject}>
-                {t("integrations.supabase.disconnectProject")}
-              </Button>
-            ) : null}
-          </div>
+          <Button onClick={handleSelfHostedProjectSave}>
+            {t("integrations.supabase.useSelfHostedProject")}
+          </Button>
         </CardContent>
       </Card>
     );
@@ -659,10 +588,9 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     return (
       <Card className="mt-1">
         <CardHeader>
-          <CardTitle>Supabase</CardTitle>
+          <CardTitle>{t("integrations.supabase.selfHostedTitle")}</CardTitle>
           <CardDescription>
-            Connect a cloud Supabase account for this app, or switch back to
-            self-hosted mode.
+            {t("integrations.supabase.connectCloudDescription")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -670,7 +598,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
           <div className="flex flex-col space-y-4 border rounded-md p-4">
             <div className="flex flex-col md:flex-row items-center justify-between gap-3">
               <div className="text-sm text-muted-foreground">
-                No cloud Supabase organizations are connected.
+                {t("integrations.supabase.noCloudOrganizations")}
               </div>
               <img
                 onClick={handleAddAccount}

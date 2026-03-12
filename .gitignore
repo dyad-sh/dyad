@@ -113,3 +113,7 @@ __pycache__/
 
 # Storybook
 storybook-static/
+
+# Supabase CLI local state
+supabase/.branches/
+supabase/.temp/

@@ -47,6 +47,7 @@ export const getSupabaseTableSchemaTool: ToolDefinition<
       supabaseProjectId: ctx.supabaseProjectId,
       organizationSlug: ctx.supabaseOrganizationSlug ?? null,
       tableName: args.tableName,
+      mode: ctx.supabaseMode,
     });
 
     ctx.onXmlComplete(

@@ -11,6 +11,7 @@ import {
   isSharedServerModule,
   extractFunctionNameFromPath,
 } from "../../supabase_admin/supabase_utils";
+import type { SupabaseAppMode } from "../../lib/schemas";
 
 const logger = log.scope("copy_file_utils");
 
@@ -36,6 +37,7 @@ export async function executeCopyFile({
   appPath,
   supabaseProjectId,
   supabaseOrganizationSlug,
+  supabaseMode,
   isSharedModulesChanged,
 }: {
   from: string;
@@ -44,6 +46,7 @@ export async function executeCopyFile({
   appPath: string;
   supabaseProjectId?: string | null;
   supabaseOrganizationSlug?: string | null;
+  supabaseMode?: SupabaseAppMode | null;
   isSharedModulesChanged?: boolean;
 }): Promise<CopyFileResult> {
   return withLock(appId, async () => {
@@ -119,6 +122,7 @@ export async function executeCopyFile({
           functionName: extractFunctionNameFromPath(to),
           appPath,
           organizationSlug: supabaseOrganizationSlug ?? null,
+          mode: supabaseMode,
         });
       } catch (error) {
         logger.error("Failed to deploy Supabase function after copy:", error);

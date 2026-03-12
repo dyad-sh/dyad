@@ -8,7 +8,10 @@ import {
 } from "@dyad-sh/supabase-management-js";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
-import type { SupabaseOrganizationCredentials } from "../lib/schemas";
+import type {
+  SupabaseAppMode,
+  SupabaseOrganizationCredentials,
+} from "../lib/schemas";
 import {
   fetchWithRetry,
   RateLimitError,
@@ -31,8 +34,8 @@ function getSelfHostedConfig(): {
   secretKey: string;
 } | null {
   const settings = readSettings();
-  const apiUrl = settings.supabase?.selfHostedSupabaseApiUrl;
-  const secretKey = settings.supabase?.selfHostedSupabaseSecretKey?.value;
+  const apiUrl = settings.supabase?.selfHosted?.apiUrl;
+  const secretKey = settings.supabase?.selfHosted?.secretKey?.value;
 
   // Both must be set
   if (apiUrl && secretKey) {
@@ -45,9 +48,16 @@ function getSelfHostedConfig(): {
  * Gets the appropriate base URL for Supabase API calls.
  * Returns the self-hosted URL if configured, otherwise the default Supabase API URL.
  */
-function getSupabaseApiBaseUrl(): string {
-  const selfHosted = getSelfHostedConfig();
-  return selfHosted?.apiUrl ?? DEFAULT_SUPABASE_API_URL;
+function getSupabaseApiBaseUrl(mode?: SupabaseAppMode | null): string {
+  if (mode === "self-hosted") {
+    const selfHosted = getSelfHostedConfig();
+    if (!selfHosted) {
+      throw new Error("Self-hosted Supabase is not configured in Settings.");
+    }
+    return selfHosted.apiUrl;
+  }
+
+  return DEFAULT_SUPABASE_API_URL;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -200,10 +210,16 @@ export async function refreshSupabaseToken(): Promise<void> {
 // Function to get the Supabase Management API client
 export async function getSupabaseClient({
   organizationSlug,
-}: { organizationSlug?: string | null } = {}): Promise<SupabaseManagementAPI> {
-  // If self-hosted is configured, use it directly without requiring cloud auth
-  const selfHosted = getSelfHostedConfig();
-  if (selfHosted) {
+  mode,
+}: {
+  organizationSlug?: string | null;
+  mode?: SupabaseAppMode | null;
+} = {}): Promise<SupabaseManagementAPI> {
+  if (mode === "self-hosted") {
+    const selfHosted = getSelfHostedConfig();
+    if (!selfHosted) {
+      throw new Error("Self-hosted Supabase is not configured in Settings.");
+    }
     return new SupabaseManagementAPI({
       accessToken: selfHosted.secretKey,
       baseUrl: selfHosted.apiUrl,
@@ -556,12 +572,17 @@ export async function getOrganizationDetails(
 export async function getSupabaseProjectName(
   projectId: string,
   organizationSlug?: string,
+  mode?: SupabaseAppMode | null,
 ): Promise<string> {
   if (IS_TEST_BUILD) {
     return "Fake Supabase Project";
   }
 
-  const supabase = await getSupabaseClient({ organizationSlug });
+  if (mode === "self-hosted") {
+    return projectId;
+  }
+
+  const supabase = await getSupabaseClient({ organizationSlug, mode });
   const projects = await retryWithRateLimit(
     () => supabase.getProjects(),
     `Get Supabase projects for ${projectId}`,
@@ -574,8 +595,13 @@ export async function getSupabaseProjectLogs(
   projectId: string,
   timestampStart?: number,
   organizationSlug?: string,
+  mode?: SupabaseAppMode | null,
 ): Promise<SupabaseProjectLogsResponse> {
-  const supabase = await getSupabaseClient({ organizationSlug });
+  if (mode === "self-hosted") {
+    return { result: [] };
+  }
+
+  const supabase = await getSupabaseClient({ organizationSlug, mode });
 
   // Build SQL query with optional timestamp filter
   let sqlQuery = `
@@ -603,7 +629,7 @@ LIMIT 1000`;
 
   // Encode SQL query for URL
   const encodedSql = encodeURIComponent(sqlQuery);
-  const baseUrl = getSupabaseApiBaseUrl();
+  const baseUrl = getSupabaseApiBaseUrl(mode);
 
   const url = `${baseUrl}/v1/projects/${projectId}/analytics/endpoints/logs.all?sql=${encodedSql}&iso_timestamp_start=${isoTimestampStart}&iso_timestamp_end=${isoTimestampEnd}`;
 
@@ -639,16 +665,18 @@ export async function executeSupabaseSql({
   supabaseProjectId,
   query,
   organizationSlug,
+  mode,
 }: {
   supabaseProjectId: string;
   query: string;
   organizationSlug: string | null;
+  mode?: SupabaseAppMode | null;
 }): Promise<string> {
   if (IS_TEST_BUILD) {
     return "{}";
   }
 
-  const supabase = await getSupabaseClient({ organizationSlug });
+  const supabase = await getSupabaseClient({ organizationSlug, mode });
   const result = await retryWithRateLimit(
     () => supabase.runQuery(supabaseProjectId, query),
     `Execute SQL on ${supabaseProjectId}`,
@@ -660,15 +688,17 @@ export async function deleteSupabaseFunction({
   supabaseProjectId,
   functionName,
   organizationSlug,
+  mode,
 }: {
   supabaseProjectId: string;
   functionName: string;
   organizationSlug: string | null;
+  mode?: SupabaseAppMode | null;
 }): Promise<void> {
   logger.info(
     `Deleting Supabase function: ${functionName} from project: ${supabaseProjectId}`,
   );
-  const supabase = await getSupabaseClient({ organizationSlug });
+  const supabase = await getSupabaseClient({ organizationSlug, mode });
   await retryWithRateLimit(
     () => supabase.deleteFunction(supabaseProjectId, functionName),
     `Delete function ${functionName}`,
@@ -681,17 +711,19 @@ export async function deleteSupabaseFunction({
 export async function listSupabaseFunctions({
   supabaseProjectId,
   organizationSlug,
+  mode,
 }: {
   supabaseProjectId: string;
   organizationSlug: string | null;
+  mode?: SupabaseAppMode | null;
 }): Promise<DeployedFunctionResponse[]> {
   if (IS_TEST_BUILD) {
     return [];
   }
 
   logger.info(`Listing Supabase functions for project: ${supabaseProjectId}`);
-  const supabase = await getSupabaseClient({ organizationSlug });
-  const baseUrl = getSupabaseApiBaseUrl();
+  const supabase = await getSupabaseClient({ organizationSlug, mode });
+  const baseUrl = getSupabaseApiBaseUrl(mode);
 
   const response = await fetchWithRetry(
     `${baseUrl}/v1/projects/${supabaseProjectId}/functions`,
@@ -718,9 +750,11 @@ export async function listSupabaseFunctions({
 export async function listSupabaseBranches({
   supabaseProjectId,
   organizationSlug,
+  mode,
 }: {
   supabaseProjectId: string;
   organizationSlug: string | null;
+  mode?: SupabaseAppMode | null;
 }): Promise<SupabaseProjectBranch[]> {
   if (IS_TEST_BUILD) {
     return [
@@ -742,9 +776,13 @@ export async function listSupabaseBranches({
     ];
   }
 
+  if (mode === "self-hosted") {
+    return [];
+  }
+
   logger.info(`Listing Supabase branches for project: ${supabaseProjectId}`);
-  const supabase = await getSupabaseClient({ organizationSlug });
-  const baseUrl = getSupabaseApiBaseUrl();
+  const supabase = await getSupabaseClient({ organizationSlug, mode });
+  const baseUrl = getSupabaseApiBaseUrl(mode);
 
   const response = await fetchWithRetry(
     `${baseUrl}/v1/projects/${supabaseProjectId}/branches`,
@@ -784,12 +822,14 @@ export async function deploySupabaseFunction({
   appPath,
   bundleOnly = false,
   organizationSlug,
+  mode,
 }: {
   supabaseProjectId: string;
   functionName: string;
   appPath: string;
   bundleOnly?: boolean;
   organizationSlug: string | null;
+  mode?: SupabaseAppMode | null;
 }): Promise<DeployedFunctionResponse> {
   logger.info(
     `Deploying Supabase function: ${functionName} to project: ${supabaseProjectId}`,
@@ -831,7 +871,7 @@ export async function deploySupabaseFunction({
   });
 
   // 5) Prepare multipart form-data
-  const supabase = await getSupabaseClient({ organizationSlug });
+  const supabase = await getSupabaseClient({ organizationSlug, mode });
   function buildFormData() {
     const formData = new FormData();
 
@@ -855,7 +895,7 @@ export async function deploySupabaseFunction({
   }
 
   // 6) Perform the deploy request
-  const baseUrl = getSupabaseApiBaseUrl();
+  const baseUrl = getSupabaseApiBaseUrl(mode);
   const deployUrl = `${baseUrl}/v1/projects/${encodeURIComponent(
     supabaseProjectId,
   )}/functions/deploy?slug=${encodeURIComponent(functionName)}${bundleOnly ? "&bundleOnly=true" : ""}`;
@@ -892,17 +932,19 @@ export async function bulkUpdateFunctions({
   supabaseProjectId,
   functions,
   organizationSlug,
+  mode,
 }: {
   supabaseProjectId: string;
   functions: DeployedFunctionResponse[];
   organizationSlug: string | null;
+  mode?: SupabaseAppMode | null;
 }): Promise<void> {
   logger.info(
     `Bulk updating ${functions.length} functions for project: ${supabaseProjectId}`,
   );
 
-  const supabase = await getSupabaseClient({ organizationSlug });
-  const baseUrl = getSupabaseApiBaseUrl();
+  const supabase = await getSupabaseClient({ organizationSlug, mode });
+  const baseUrl = getSupabaseApiBaseUrl(mode);
 
   const response = await fetchWithRetry(
     `${baseUrl}/v1/projects/${encodeURIComponent(supabaseProjectId)}/functions`,

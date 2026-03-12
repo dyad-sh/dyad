@@ -5,6 +5,7 @@ import {
   createClient,
   createEventClient,
 } from "../contracts/core";
+import { SupabaseAppModeSchema } from "../../lib/schemas";
 import { ConsoleEntrySchema } from "./supabase";
 import { ProblemReportSchema } from "./agent";
 
@@ -141,6 +142,7 @@ const DebugAppInfoSchema = z.object({
   githubOrg: z.string().nullable(),
   githubRepo: z.string().nullable(),
   githubBranch: z.string().nullable(),
+  supabaseMode: SupabaseAppModeSchema.nullable(),
   supabaseProjectId: z.string().nullable(),
   supabaseOrganizationSlug: z.string().nullable(),
   neonProjectId: z.string().nullable(),

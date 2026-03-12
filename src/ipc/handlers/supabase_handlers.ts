@@ -131,10 +131,11 @@ export function registerSupabaseHandlers() {
 
   // List branches for a Supabase project (database branches)
   createTypedHandler(supabaseContracts.listBranches, async (_, params) => {
-    const { projectId, organizationSlug } = params;
+    const { projectId, organizationSlug, mode } = params;
     const branches = await listSupabaseBranches({
       supabaseProjectId: projectId,
       organizationSlug: organizationSlug ?? null,
+      mode: mode ?? null,
     });
     return branches.map((branch) => ({
       id: branch.id,
@@ -147,11 +148,12 @@ export function registerSupabaseHandlers() {
 
   // Get edge function logs for a Supabase project
   createTypedHandler(supabaseContracts.getEdgeLogs, async (_, params) => {
-    const { projectId, timestampStart, appId, organizationSlug } = params;
+    const { projectId, timestampStart, appId, organizationSlug, mode } = params;
     const response = await getSupabaseProjectLogs(
       projectId,
       timestampStart,
       organizationSlug ?? undefined,
+      mode ?? null,
     );
 
     if (response.error) {
@@ -188,10 +190,12 @@ export function registerSupabaseHandlers() {
 
   // Set app project - links a Dyad app to a Supabase project
   createTypedHandler(supabaseContracts.setAppProject, async (_, params) => {
-    const { projectId, appId, parentProjectId, organizationSlug } = params;
+    const { projectId, appId, parentProjectId, organizationSlug, mode } =
+      params;
     await db
       .update(apps)
       .set({
+        supabaseMode: mode ?? null,
         supabaseProjectId: projectId,
         supabaseParentProjectId: parentProjectId,
         supabaseOrganizationSlug: organizationSlug,
@@ -209,6 +213,7 @@ export function registerSupabaseHandlers() {
     await db
       .update(apps)
       .set({
+        supabaseMode: null,
         supabaseProjectId: null,
         supabaseParentProjectId: null,
         supabaseOrganizationSlug: null,
@@ -257,6 +262,7 @@ export function registerSupabaseHandlers() {
       await db
         .update(apps)
         .set({
+          supabaseMode: "cloud",
           supabaseProjectId: fakeProjectId,
           supabaseOrganizationSlug: fakeOrgId,
         })

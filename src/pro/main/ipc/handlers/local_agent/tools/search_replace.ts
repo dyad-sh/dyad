@@ -142,6 +142,7 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
           functionName: path.basename(path.dirname(args.file_path)),
           appPath: ctx.appPath,
           organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+          mode: ctx.supabaseMode,
         });
       } catch (error) {
         return `Search-replace applied, but failed to deploy Supabase function: ${error}`;

@@ -24,21 +24,28 @@ export function SupabaseIntegration() {
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [selfHostedApiUrl, setSelfHostedApiUrl] = useState(
-    settings?.supabase?.selfHostedSupabaseApiUrl || "",
+    settings?.supabase?.selfHosted?.apiUrl || "",
   );
   const [selfHostedSecretKey, setSelfHostedSecretKey] = useState(
-    settings?.supabase?.selfHostedSupabaseSecretKey?.value || "",
+    settings?.supabase?.selfHosted?.secretKey?.value || "",
+  );
+  const [selfHostedPublishableKey, setSelfHostedPublishableKey] = useState(
+    settings?.supabase?.selfHosted?.publishableKey || "",
   );
 
   // Sync local state when settings change externally (e.g., after disconnect)
   useEffect(() => {
-    setSelfHostedApiUrl(settings?.supabase?.selfHostedSupabaseApiUrl || "");
+    setSelfHostedApiUrl(settings?.supabase?.selfHosted?.apiUrl || "");
     setSelfHostedSecretKey(
-      settings?.supabase?.selfHostedSupabaseSecretKey?.value || "",
+      settings?.supabase?.selfHosted?.secretKey?.value || "",
+    );
+    setSelfHostedPublishableKey(
+      settings?.supabase?.selfHosted?.publishableKey || "",
     );
   }, [
-    settings?.supabase?.selfHostedSupabaseApiUrl,
-    settings?.supabase?.selfHostedSupabaseSecretKey?.value,
+    settings?.supabase?.selfHosted?.apiUrl,
+    settings?.supabase?.selfHosted?.secretKey?.value,
+    settings?.supabase?.selfHosted?.publishableKey,
   ]);
 
   // Check if there are any connected organizations
@@ -55,10 +62,7 @@ export function SupabaseIntegration() {
       const result = await updateSettings({
         supabase: {
           // Preserve self-hosted settings
-          selfHostedSupabaseApiUrl:
-            freshSettings.supabase?.selfHostedSupabaseApiUrl,
-          selfHostedSupabaseSecretKey:
-            freshSettings.supabase?.selfHostedSupabaseSecretKey,
+          selfHosted: freshSettings.supabase?.selfHosted,
         },
         // Also disable the migration setting on disconnect
         enableSupabaseWriteSqlMigration: false,
@@ -128,12 +132,14 @@ export function SupabaseIntegration() {
       await updateSettings({
         supabase: {
           ...freshSettings.supabase,
-          selfHostedSupabaseApiUrl: hasApiUrl
-            ? selfHostedApiUrl.trim()
-            : undefined,
-          selfHostedSupabaseSecretKey: hasSecretKey
-            ? { value: selfHostedSecretKey.trim() }
-            : undefined,
+          selfHosted:
+            hasApiUrl && hasSecretKey
+              ? {
+                  apiUrl: selfHostedApiUrl.trim(),
+                  secretKey: { value: selfHostedSecretKey.trim() },
+                  publishableKey: selfHostedPublishableKey.trim() || undefined,
+                }
+              : undefined,
         },
       });
       showSuccess("Self-hosted Supabase settings updated");
@@ -188,6 +194,22 @@ export function SupabaseIntegration() {
             placeholder="Enter your secret key"
             value={selfHostedSecretKey}
             onChange={(e) => setSelfHostedSecretKey(e.target.value)}
+            className="text-sm"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label
+            htmlFor="self-hosted-publishable-key"
+            className="text-xs font-medium"
+          >
+            Self-hosted Publishable Key
+          </Label>
+          <Input
+            id="self-hosted-publishable-key"
+            type="text"
+            placeholder="sb_publishable_..."
+            value={selfHostedPublishableKey}
+            onChange={(e) => setSelfHostedPublishableKey(e.target.value)}
             className="text-sm"
           />
         </div>

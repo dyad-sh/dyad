@@ -43,6 +43,7 @@ describe("deleteFileTool", () => {
     appPath: "/test/app",
     chatId: 1,
     supabaseProjectId: null,
+    supabaseMode: null,
     supabaseOrganizationSlug: null,
     messageId: 1,
     isSharedModulesChanged: false,

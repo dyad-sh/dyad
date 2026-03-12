@@ -6,9 +6,14 @@ import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useAtomValue } from "jotai";
 import { showError } from "@/lib/toast";
 import { useLoadApp } from "@/hooks/useLoadApp";
+import { useSettings } from "@/hooks/useSettings";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { CheckCircle2, Plug } from "lucide-react";
 import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
+import {
+  getEffectiveAppSupabaseMode,
+  hasSelfHostedSupabaseConfig,
+} from "@/lib/schemas";
 
 interface DyadAddIntegrationProps {
   node: {
@@ -30,6 +35,15 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   const appId = useAtomValue(selectedAppIdAtom);
   const chatId = useAtomValue(selectedChatIdAtom);
   const { app } = useLoadApp(appId);
+  const { settings } = useSettings();
+  const supabaseMode = getEffectiveAppSupabaseMode(app);
+  const normalizedProvider = provider.trim().toLowerCase();
+  const isSupabaseIntegrated =
+    normalizedProvider === "supabase" &&
+    !!app?.supabaseProjectId &&
+    ((supabaseMode === "cloud" && !!app.supabaseProjectName) ||
+      (supabaseMode === "self-hosted" &&
+        hasSelfHostedSupabaseConfig(settings)));
 
   const handleKeepGoingClick = () => {
     if (chatId === null) {
@@ -50,7 +64,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     navigate({ to: "/app-details", search: { appId } });
   };
 
-  if (app?.supabaseProjectName) {
+  if (isSupabaseIntegrated) {
     return (
       <DyadCard accentColor="green" state="finished">
         <DyadCardHeader icon={<CheckCircle2 size={15} />} accentColor="green">
@@ -61,9 +75,13 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
         </DyadCardHeader>
         <div className="px-3 pb-3">
           <p className="text-sm text-muted-foreground mb-2">
-            This app is connected to Supabase project:{" "}
+            This app is connected to{" "}
+            {supabaseMode === "self-hosted"
+              ? "a self-hosted Supabase project"
+              : "Supabase project"}
+            :{" "}
             <span className="font-mono font-medium px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200">
-              {app.supabaseProjectName}
+              {app?.supabaseProjectName || app?.supabaseProjectId}
             </span>
           </p>
           <Button

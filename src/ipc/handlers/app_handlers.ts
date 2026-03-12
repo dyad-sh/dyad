@@ -60,6 +60,10 @@ import {
 import { getVercelTeamSlug } from "../utils/vercel_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { AppSearchResult } from "@/lib/schemas";
+import {
+  getEffectiveAppSupabaseMode,
+  hasSelfHostedSupabaseConfig,
+} from "@/lib/schemas";
 
 import { getAppPort } from "../../../shared/ports";
 import {
@@ -954,8 +958,11 @@ export function registerAppHandlers() {
 
     let supabaseProjectName: string | null = null;
     const settings = readSettings();
+    const supabaseMode = getEffectiveAppSupabaseMode(app);
     // Check for multi-organization credentials or legacy single account
     const hasSupabaseCredentials =
+      (supabaseMode === "self-hosted" &&
+        hasSelfHostedSupabaseConfig(settings)) ||
       (app.supabaseOrganizationSlug &&
         settings.supabase?.organizations?.[app.supabaseOrganizationSlug]
           ?.accessToken?.value) ||
@@ -964,6 +971,7 @@ export function registerAppHandlers() {
       supabaseProjectName = await getSupabaseProjectName(
         app.supabaseParentProjectId || app.supabaseProjectId,
         app.supabaseOrganizationSlug ?? undefined,
+        supabaseMode,
       );
     }
 
@@ -1298,6 +1306,7 @@ export function registerAppHandlers() {
             appPath,
             supabaseProjectId: app.supabaseProjectId,
             supabaseOrganizationSlug: app.supabaseOrganizationSlug ?? null,
+            supabaseMode: getEffectiveAppSupabaseMode(app),
             skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
           });
           if (deployErrors.length > 0) {
@@ -1323,6 +1332,7 @@ export function registerAppHandlers() {
             functionName,
             appPath,
             organizationSlug: app.supabaseOrganizationSlug ?? null,
+            mode: getEffectiveAppSupabaseMode(app),
           });
         } catch (error) {
           logger.error(`Error deploying Supabase function ${filePath}:`, error);

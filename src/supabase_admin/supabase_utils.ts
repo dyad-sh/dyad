@@ -86,11 +86,13 @@ export async function deployAllSupabaseFunctions({
   appPath,
   supabaseProjectId,
   supabaseOrganizationSlug,
+  supabaseMode,
   skipPruneEdgeFunctions,
 }: {
   appPath: string;
   supabaseProjectId: string;
   supabaseOrganizationSlug: string | null;
+  supabaseMode?: "cloud" | "self-hosted" | null;
   skipPruneEdgeFunctions: boolean;
 }): Promise<string[]> {
   const functionsDir = path.join(appPath, "supabase", "functions");
@@ -148,6 +150,7 @@ export async function deployAllSupabaseFunctions({
         const result = await deploySupabaseFunction({
           supabaseProjectId,
           organizationSlug: supabaseOrganizationSlug,
+          mode: supabaseMode,
           functionName,
           appPath,
           bundleOnly: true,
@@ -182,6 +185,7 @@ export async function deployAllSupabaseFunctions({
           supabaseProjectId,
           functions: successfulDeploys,
           organizationSlug: supabaseOrganizationSlug,
+          mode: supabaseMode,
         });
         logger.info(
           `Successfully activated ${successfulDeploys.length} functions`,
@@ -200,6 +204,7 @@ export async function deployAllSupabaseFunctions({
         const deployedFunctions = await listSupabaseFunctions({
           supabaseProjectId,
           organizationSlug: supabaseOrganizationSlug,
+          mode: supabaseMode,
         });
 
         const localFunctionNames = new Set(validFunctions);
@@ -218,6 +223,7 @@ export async function deployAllSupabaseFunctions({
                 supabaseProjectId,
                 functionName: fn.slug,
                 organizationSlug: supabaseOrganizationSlug,
+                mode: supabaseMode,
               });
               logger.info(`Pruned dangling edge function: ${fn.slug}`);
             } catch (deleteError: any) {

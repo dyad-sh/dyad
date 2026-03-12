@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineContract, createClient } from "../contracts/core";
+import { SupabaseAppModeSchema } from "../../lib/schemas";
 
 // =============================================================================
 // App Schemas
@@ -18,6 +19,7 @@ export const AppBaseSchema = z.object({
   githubOrg: z.string().nullable(),
   githubRepo: z.string().nullable(),
   githubBranch: z.string().nullable(),
+  supabaseMode: SupabaseAppModeSchema.nullable(),
   supabaseProjectId: z.string().nullable(),
   supabaseParentProjectId: z.string().nullable(),
   supabaseOrganizationSlug: z.string().nullable(),

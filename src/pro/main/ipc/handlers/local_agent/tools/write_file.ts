@@ -67,6 +67,7 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
           functionName: path.basename(path.dirname(args.path)),
           appPath: ctx.appPath,
           organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+          mode: ctx.supabaseMode,
         });
       } catch (error) {
         return `File written, but failed to deploy Supabase function: ${error}`;

@@ -17,10 +17,11 @@ import { queryKeys } from "@/lib/queryKeys";
 export interface UseSupabaseOptions {
   branchesProjectId?: string | null;
   branchesOrganizationSlug?: string | null;
+  branchesMode?: "cloud" | "self-hosted" | null;
 }
 
 export function useSupabase(options: UseSupabaseOptions = {}) {
-  const { branchesProjectId, branchesOrganizationSlug } = options;
+  const { branchesProjectId, branchesOrganizationSlug, branchesMode } = options;
   const queryClient = useQueryClient();
   const { settings } = useSettings();
   const isConnected = isSupabaseConnected(settings);
@@ -94,11 +95,13 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
     queryKey: queryKeys.supabase.branches({
       projectId: branchesProjectId ?? "",
       organizationSlug: branchesOrganizationSlug ?? null,
+      mode: branchesMode ?? null,
     }),
     queryFn: async () => {
       const list = await ipc.supabase.listBranches({
         projectId: branchesProjectId!,
         organizationSlug: branchesOrganizationSlug ?? null,
+        mode: branchesMode ?? null,
       });
       return Array.isArray(list) ? list : [];
     },
@@ -110,9 +113,13 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
   const loadEdgeLogsMutation = useMutation<
     void,
     Error,
-    { projectId: string; organizationSlug?: string }
+    {
+      projectId: string;
+      organizationSlug?: string;
+      mode?: "cloud" | "self-hosted" | null;
+    }
   >({
-    mutationFn: async ({ projectId, organizationSlug }) => {
+    mutationFn: async ({ projectId, organizationSlug, mode }) => {
       if (!selectedAppId) return;
 
       // Use last timestamp if available, otherwise fetch logs from the past 10 minutes
@@ -124,6 +131,7 @@ export function useSupabase(options: UseSupabaseOptions = {}) {
         timestampStart,
         appId: selectedAppId,
         organizationSlug: organizationSlug ?? null,
+        mode: mode ?? branchesMode ?? null,
       });
 
       if (logs.length === 0) {

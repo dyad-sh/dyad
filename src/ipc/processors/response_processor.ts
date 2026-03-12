@@ -183,6 +183,7 @@ export async function processFullResponseActions(
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
             query: query.content,
             organizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
+            mode: chatWithApp.app.supabaseMode,
           });
 
           // Only write migration file if SQL execution succeeded
@@ -284,6 +285,7 @@ export async function processFullResponseActions(
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
             functionName: extractFunctionNameFromPath(filePath),
             organizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
+            mode: chatWithApp.app.supabaseMode,
           });
         } catch (error) {
           errors.push({
@@ -332,6 +334,7 @@ export async function processFullResponseActions(
             supabaseProjectId: chatWithApp.app.supabaseProjectId!,
             functionName: extractFunctionNameFromPath(tag.from),
             organizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
+            mode: chatWithApp.app.supabaseMode,
           });
         } catch (error) {
           warnings.push({
@@ -352,6 +355,7 @@ export async function processFullResponseActions(
             functionName: extractFunctionNameFromPath(tag.to),
             appPath,
             organizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
+            mode: chatWithApp.app.supabaseMode,
           });
         } catch (error) {
           errors.push({
@@ -401,6 +405,7 @@ export async function processFullResponseActions(
               appPath,
               organizationSlug:
                 chatWithApp.app.supabaseOrganizationSlug ?? null,
+              mode: chatWithApp.app.supabaseMode,
             });
           } catch (error) {
             errors.push({
@@ -428,6 +433,7 @@ export async function processFullResponseActions(
           appPath,
           supabaseProjectId: chatWithApp.app.supabaseProjectId,
           supabaseOrganizationSlug: chatWithApp.app.supabaseOrganizationSlug,
+          supabaseMode: chatWithApp.app.supabaseMode,
           isSharedModulesChanged: sharedModulesChanged,
         });
 
@@ -483,6 +489,7 @@ export async function processFullResponseActions(
             functionName: extractFunctionNameFromPath(filePath),
             appPath,
             organizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
+            mode: chatWithApp.app.supabaseMode,
           });
         } catch (error) {
           errors.push({
@@ -505,6 +512,7 @@ export async function processFullResponseActions(
           supabaseProjectId: chatWithApp.app.supabaseProjectId,
           supabaseOrganizationSlug:
             chatWithApp.app.supabaseOrganizationSlug ?? null,
+          supabaseMode: chatWithApp.app.supabaseMode,
           skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
         });
         if (deployErrors.length > 0) {

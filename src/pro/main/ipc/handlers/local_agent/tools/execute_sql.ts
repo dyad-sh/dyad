@@ -40,6 +40,7 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
         supabaseProjectId: ctx.supabaseProjectId,
         query: args.query,
         organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+        mode: ctx.supabaseMode,
       });
 
       // Write migration file if enabled

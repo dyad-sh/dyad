@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineContract, createClient } from "../contracts/core";
+import { SupabaseAppModeSchema } from "../../lib/schemas";
 
 // =============================================================================
 // Supabase Schemas
@@ -45,6 +46,7 @@ export type DeleteSupabaseOrganizationParams = z.infer<
 export const ListSupabaseBranchesParamsSchema = z.object({
   projectId: z.string(),
   organizationSlug: z.string().nullable().optional(),
+  mode: SupabaseAppModeSchema.nullable().optional(),
 });
 
 export const GetSupabaseEdgeLogsParamsSchema = z.object({
@@ -52,6 +54,7 @@ export const GetSupabaseEdgeLogsParamsSchema = z.object({
   timestampStart: z.number().optional(),
   appId: z.number(),
   organizationSlug: z.string().nullable(),
+  mode: SupabaseAppModeSchema.nullable().optional(),
 });
 
 export const ConsoleEntrySchema = z.object({
@@ -70,6 +73,7 @@ export const SetSupabaseAppProjectParamsSchema = z.object({
   projectId: z.string().nullable().optional(),
   parentProjectId: z.string().nullable().optional(),
   organizationSlug: z.string().nullable().optional(),
+  mode: SupabaseAppModeSchema.nullable().optional(),
 });
 
 export type SetSupabaseAppProjectParams = z.infer<

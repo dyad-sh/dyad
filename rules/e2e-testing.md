@@ -74,6 +74,24 @@ await po.clearChatInput();
 await po.openChatHistoryMenu();
 ```
 
+## PageObject accessor pattern
+
+`PageObject` delegates methods to sub-objects. Always use the correct sub-object accessor:
+
+```ts
+// Correct:
+await po.appManagement.getTitleBarAppNameButton().click();
+await po.appManagement.getCurrentAppPath();
+await po.navigation.goToChatTab();
+
+// Wrong (these methods don't exist on PageObject directly):
+await po.getTitleBarAppNameButton().click();
+await po.getCurrentAppPath();
+await po.goToChatTab();
+```
+
+If `npm run ts` reports `Property 'X' does not exist on type 'PageObject'`, check `e2e-tests/helpers/page-objects/components/` for which sub-object owns that method.
+
 ## Snapshot testing
 
 **NEVER update snapshot files (e.g. `.txt`, `.yml`) by hand.** Always use `--update-snapshots` to regenerate them.

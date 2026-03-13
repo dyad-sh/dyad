@@ -53,6 +53,21 @@ const mockRepos = [
   },
 ];
 
+const mockOrgs = [
+  {
+    id: 100,
+    login: "test-org",
+    avatar_url: "https://example.com/avatars/test-org.png",
+    description: "A test organization",
+  },
+  {
+    id: 101,
+    login: "another-org",
+    avatar_url: "https://example.com/avatars/another-org.png",
+    description: "Another test organization",
+  },
+];
+
 const mockBranches = [
   { name: "main", commit: { sha: "abc123" } },
   { name: "develop", commit: { sha: "def456" } },
@@ -164,6 +179,20 @@ export function handleUserEmails(req: Request, res: Response) {
   ]);
 }
 
+// List user organizations
+export function handleUserOrgs(req: Request, res: Response) {
+  console.log("* GitHub User orgs requested");
+
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.includes(mockAccessToken)) {
+    return res.status(401).json({
+      message: "Bad credentials",
+    });
+  }
+
+  res.json(mockOrgs);
+}
+
 // List user repositories
 export function handleUserRepos(req: Request, res: Response) {
   console.log("* GitHub User repos requested");
@@ -269,7 +298,7 @@ export function handleRepoBranches(req: Request, res: Response) {
   res.json(mockBranches);
 }
 
-// Create repository for organization (not implemented in mock)
+// Create repository for organization
 export function handleOrgRepos(req: Request, res: Response) {
   console.log("* GitHub Org repos requested");
 
@@ -280,8 +309,54 @@ export function handleOrgRepos(req: Request, res: Response) {
     });
   }
 
-  // For simplicity, just redirect to user repos for mock
-  handleUserRepos(req, res);
+  const { org } = req.params;
+
+  if (req.method === "POST") {
+    // Create repo for organization
+    const { name, private: isPrivate } = req.body;
+    console.log(`* Creating repository "${name}" for organization "${org}"`);
+
+    // Check if repo already exists
+    const existingRepo = mockRepos.find(
+      (repo) => repo.full_name === `${org}/${name}`,
+    );
+    if (existingRepo) {
+      return res.status(422).json({
+        message: "Repository creation failed.",
+        errors: [
+          {
+            resource: "Repository",
+            code: "already_exists",
+            field: "name",
+          },
+        ],
+      });
+    }
+
+    // Create new repo under the organization
+    const newRepo = {
+      id: mockRepos.length + 1,
+      name,
+      full_name: `${org}/${name}`,
+      private: !!isPrivate,
+      owner: { login: org },
+      default_branch: "main",
+    };
+
+    mockRepos.push(newRepo);
+    repoCollaborators[newRepo.full_name] = [
+      {
+        login: mockUser.login,
+        avatar_url: "https://example.com/avatar.png",
+        permissions: { admin: true, push: true, pull: true },
+      },
+    ];
+
+    return res.status(201).json(newRepo);
+  }
+
+  // For GET, list org repos (not implemented, return empty)
+  res.json([]);
 }
 
 export function handleRepoCollaborators(req: Request, res: Response) {

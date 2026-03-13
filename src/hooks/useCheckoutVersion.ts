@@ -3,6 +3,8 @@ import { ipc } from "@/ipc/types";
 import { useSetAtom } from "jotai";
 import { activeCheckoutCounterAtom } from "@/store/appAtoms";
 import { queryKeys } from "@/lib/queryKeys";
+import { useRunApp } from "./useRunApp";
+import { useSettings } from "./useSettings";
 
 interface CheckoutVersionVariables {
   appId: number;
@@ -12,6 +14,8 @@ interface CheckoutVersionVariables {
 export function useCheckoutVersion() {
   const queryClient = useQueryClient();
   const setActiveCheckouts = useSetAtom(activeCheckoutCounterAtom);
+  const { restartApp } = useRunApp();
+  const { settings } = useSettings();
 
   const { isPending: isCheckingOutVersion, mutateAsync: checkoutVersion } =
     useMutation<void, Error, CheckoutVersionVariables>({
@@ -27,14 +31,17 @@ export function useCheckoutVersion() {
           setActiveCheckouts((prev) => prev - 1); // Decrement counter
         }
       },
-      onSuccess: (_, variables) => {
+      onSuccess: async (_, variables) => {
         // Invalidate queries that depend on the current version/branch
-        queryClient.invalidateQueries({
+        await queryClient.invalidateQueries({
           queryKey: queryKeys.branches.current({ appId: variables.appId }),
         });
-        queryClient.invalidateQueries({
+        await queryClient.invalidateQueries({
           queryKey: queryKeys.versions.list({ appId: variables.appId }),
         });
+        if (settings?.runtimeMode2 === "cloud") {
+          await restartApp();
+        }
       },
       meta: { showErrorToast: true },
     });

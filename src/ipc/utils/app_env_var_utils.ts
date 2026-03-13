@@ -8,6 +8,7 @@ import { EnvVar } from "@/ipc/types";
 import path from "path";
 import fs from "fs";
 import log from "electron-log";
+import { queueCloudSandboxSnapshotSync } from "./cloud_sandbox_provider";
 
 const logger = log.scope("app_env_var_utils");
 
@@ -40,6 +41,7 @@ export async function updatePostgresUrlEnvVar({
 
   const envFileContents = serializeEnvFile(envVars);
   await fs.promises.writeFile(getEnvFilePath({ appPath }), envFileContents);
+  queueCloudSandboxSnapshotSync({ appPath: getDyadAppPath(appPath) });
 }
 
 export async function updateDbPushEnvVar({
@@ -75,6 +77,7 @@ export async function updateDbPushEnvVar({
 
     const envFileContents = serializeEnvFile(envVars);
     await fs.promises.writeFile(getEnvFilePath({ appPath }), envFileContents);
+    queueCloudSandboxSnapshotSync({ appPath: getDyadAppPath(appPath) });
   } catch (error) {
     logger.error(
       `Failed to update DB push environment variable for app ${appPath}: ${error}`,

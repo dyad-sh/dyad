@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { executeCopyFile } from "@/ipc/utils/copy_file_utils";
+import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 
 const copyFileSchema = z.object({
   from: z
@@ -44,6 +45,8 @@ export const copyFileTool: ToolDefinition<z.infer<typeof copyFileSchema>> = {
     if (result.sharedModuleChanged) {
       ctx.isSharedModulesChanged = true;
     }
+
+    queueCloudSandboxSnapshotSync({ appId: ctx.appId });
 
     if (result.deployError) {
       return `File copied, but failed to deploy Supabase function: ${result.deployError}`;

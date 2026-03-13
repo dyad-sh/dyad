@@ -28,6 +28,7 @@ import {
   analyzeComponent,
 } from "../../utils/visual_editing_utils";
 import { normalizePath } from "../../../../../shared/normalizePath";
+import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 
 // Client allows 7.5 MB raw; base64 expands by ~4/3 plus data URL prefix
 const MAX_IMAGE_SIZE = Math.ceil((7.5 * 1024 * 1024) / 3) * 4 + 100; // ~10,485,860
@@ -183,6 +184,7 @@ export function registerVisualEditingHandlers() {
             });
           }
         }
+        queueCloudSandboxSnapshotSync({ appId });
       } catch (error) {
         // Unstage any image files that were git-added before the failure
         for (const { appPath, filepath } of stagedGitPaths) {

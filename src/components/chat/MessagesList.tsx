@@ -20,6 +20,7 @@ import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useSettings } from "@/hooks/useSettings";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { PromoMessage } from "./PromoMessage";
+import { useRunApp } from "@/hooks/useRunApp";
 
 interface MessagesListProps {
   messages: Message[];
@@ -47,6 +48,7 @@ interface FooterContext {
   setMessagesById: ReturnType<typeof useSetAtom<typeof chatMessagesByIdAtom>>;
   settings: ReturnType<typeof useSettings>["settings"];
   userBudget: ReturnType<typeof useUserBudgetInfo>["userBudget"];
+  restartApp: ReturnType<typeof useRunApp>["restartApp"];
   renderSetupBanner: () => React.ReactNode;
 }
 
@@ -71,6 +73,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
     setMessagesById,
     settings,
     userBudget,
+    restartApp,
     renderSetupBanner,
   } = context;
 
@@ -98,13 +101,21 @@ function FooterComponent({ context }: { context?: FooterContext }) {
                     const currentMessage = messages[messages.length - 1];
                     // The user message that triggered this assistant response
                     const userMessage = messages[messages.length - 2];
-                    if (currentMessage?.sourceCommitHash) {
+                    const previousVersionId =
+                      currentMessage?.commitHash &&
+                      versions[0]?.oid === currentMessage.commitHash
+                        ? versions[1]?.oid
+                        : undefined;
+                    const revertTargetVersionId =
+                      previousVersionId ?? currentMessage?.sourceCommitHash;
+
+                    if (revertTargetVersionId) {
                       console.debug(
-                        "Reverting to source commit hash",
-                        currentMessage.sourceCommitHash,
+                        "Reverting to previous version",
+                        revertTargetVersionId,
                       );
                       await revertVersion({
-                        versionId: currentMessage.sourceCommitHash,
+                        versionId: revertTargetVersionId,
                         currentChatMessageId: userMessage
                           ? {
                               chatId: selectedChatId,
@@ -118,6 +129,9 @@ function FooterComponent({ context }: { context?: FooterContext }) {
                         next.set(selectedChatId, chat.messages);
                         return next;
                       });
+                      if (settings?.runtimeMode2 === "cloud") {
+                        await restartApp();
+                      }
                     } else {
                       showWarning(
                         "No source commit hash found for message. Need to manually undo code changes",
@@ -258,6 +272,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
     const { streamMessage, isStreaming } = useStreamChat();
     const { isAnyProviderSetup, isProviderSetup } = useLanguageModelProviders();
     const { settings } = useSettings();
+    const { restartApp } = useRunApp();
     const setMessagesById = useSetAtom(chatMessagesByIdAtom);
     const [isUndoLoading, setIsUndoLoading] = useState(false);
     const [isRetryLoading, setIsRetryLoading] = useState(false);
@@ -336,6 +351,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         setMessagesById,
         settings,
         userBudget,
+        restartApp,
         renderSetupBanner,
       }),
       [
@@ -354,6 +370,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         setMessagesById,
         settings,
         userBudget,
+        restartApp,
         renderSetupBanner,
       ],
     );

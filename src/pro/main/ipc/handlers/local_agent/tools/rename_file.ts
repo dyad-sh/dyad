@@ -13,6 +13,7 @@ import {
   isServerFunction,
   isSharedServerModule,
 } from "../../../../../../supabase_admin/supabase_utils";
+import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 
 const logger = log.scope("rename_file");
 
@@ -99,6 +100,8 @@ export const renameFileTool: ToolDefinition<z.infer<typeof renameFileSchema>> =
       } else {
         logger.warn(`Source file for rename does not exist: ${fromFullPath}`);
       }
+
+      queueCloudSandboxSnapshotSync({ appId: ctx.appId });
 
       return `Successfully renamed ${args.from} to ${args.to}`;
     },

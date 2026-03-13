@@ -32,6 +32,7 @@ import {
 } from "../utils/app_env_var_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { retryOnLocked } from "../utils/retryOnLocked";
+import { syncCloudSandboxSnapshot } from "../utils/cloud_sandbox_provider";
 
 const logger = log.scope("version_handlers");
 
@@ -358,6 +359,7 @@ export function registerVersionHandlers() {
           // Continue with the revert operation even if function deployment fails
         }
       }
+      await syncCloudSandboxSnapshot({ appId });
       if (warningMessage) {
         return { warningMessage };
       }
@@ -442,6 +444,7 @@ export function registerVersionHandlers() {
         path: fullAppPath,
         ref: gitRef,
       });
+      await syncCloudSandboxSnapshot({ appId });
     });
   });
 }

@@ -73,6 +73,7 @@ export function DyadAppsBaseDirectorySelector() {
             variant="outline"
             size="sm"
             className="flex items-center gap-2"
+            data-testid="customize-apps-folder-button"
           >
             <FolderOpen className="w-4 h-4" />
             {isSelectingPath ? "Selecting..." : "Select A Folder"}

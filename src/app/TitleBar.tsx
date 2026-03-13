@@ -86,17 +86,26 @@ export const TitleBar = () => {
         <div className={`${showWindowControls ? "pl-2" : "pl-18"}`}></div>
 
         <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-0.5 ml-2" />
-        <Button
-          data-testid="title-bar-app-name-button"
-          variant="outline"
-          size="sm"
-          className={`hidden @2xl:block no-app-region-drag text-xs max-w-38 truncate font-medium ${
-            selectedApp ? "cursor-pointer" : ""
-          }`}
-          onClick={handleAppClick}
-        >
-          {displayText}
-        </Button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                data-testid="title-bar-app-name-button"
+                variant="outline"
+                size="sm"
+                className={`hidden @2xl:block no-app-region-drag text-xs max-w-38 truncate font-medium ${
+                  selectedApp ? "cursor-pointer" : ""
+                }`}
+                onClick={handleAppClick}
+              />
+            }
+          >
+            {displayText}
+          </TooltipTrigger>
+          <TooltipContent>
+            {selectedApp ? selectedApp.name : "No app selected"}
+          </TooltipContent>
+        </Tooltip>
         {isDyadPro && <DyadProButton isDyadProEnabled={isDyadProEnabled} />}
 
         <div className="flex-1 min-w-0 overflow-hidden no-app-region-drag">

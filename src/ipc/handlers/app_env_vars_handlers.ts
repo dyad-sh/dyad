@@ -13,6 +13,7 @@ import {
   parseEnvFile,
   serializeEnvFile,
 } from "../utils/app_env_var_utils";
+import { queueCloudSandboxSnapshotSync } from "../utils/cloud_sandbox_provider";
 import { createTypedHandler } from "./base";
 import { miscContracts } from "../types/misc";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
@@ -72,6 +73,7 @@ export function registerAppEnvVarsHandlers() {
 
         // Write to .env.local file
         await fs.promises.writeFile(envFilePath, content, "utf8");
+        queueCloudSandboxSnapshotSync({ appId });
       } catch (error) {
         console.error("Error setting app environment variables:", error);
         throw new Error(

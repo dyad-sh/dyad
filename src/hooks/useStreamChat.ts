@@ -58,7 +58,7 @@ export function useStreamChat({
 
   const setStreamCountById = useSetAtom(chatStreamCountByIdAtom);
   const { refreshVersions } = useVersions(selectedAppId);
-  const { refreshAppIframe } = useRunApp();
+  const { refreshAppIframe, restartApp } = useRunApp();
   const { refetchUserBudget } = useUserBudgetInfo();
   const { checkProblems } = useCheckProblems(selectedAppId);
   const { settings } = useSettings();
@@ -214,7 +214,7 @@ export function useStreamChat({
                 });
               }
             },
-            onEnd: (response: ChatResponseEnd) => {
+            onEnd: async (response: ChatResponseEnd) => {
               // Remove from pending set now that stream is complete
               pendingStreamChatIds.delete(chatId);
               // Only mark as successful if NOT cancelled - wasCancelled flag is set
@@ -278,7 +278,11 @@ export function useStreamChat({
                 if (settings?.autoExpandPreviewPanel) {
                   setIsPreviewOpen(true);
                 }
-                refreshAppIframe();
+                if (settings?.runtimeMode2 === "cloud") {
+                  await restartApp();
+                } else {
+                  refreshAppIframe();
+                }
                 if (settings?.enableAutoFixProblems) {
                   checkProblems();
                 }

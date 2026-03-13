@@ -55,6 +55,20 @@ export class Settings {
       .click();
   }
 
+  async changeRuntimeMode(mode: "host" | "docker" | "cloud") {
+    await this.page.getByRole("combobox", { name: "Runtime Mode" }).click();
+    await this.page
+      .getByRole("option", {
+        name:
+          mode === "host"
+            ? "Local (default)"
+            : mode === "docker"
+              ? "Docker (experimental)"
+              : "Cloud Sandbox (Pro)",
+      })
+      .click();
+  }
+
   async clickTelemetryAccept() {
     await this.page.getByTestId("telemetry-accept-button").click();
   }

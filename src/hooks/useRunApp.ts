@@ -37,14 +37,19 @@ export function useAppOutputSubscription() {
           /\[dyad-proxy-server\]started=\[(.*?)\]/,
         );
         const originalUrlMatch = output.message.match(/original=\[(.*?)\]/);
+        const modeMatch = output.message.match(/mode=\[(.*?)\]/);
 
         if (proxyUrlMatch && proxyUrlMatch[1]) {
           const proxyUrl = proxyUrlMatch[1];
           const originalUrl = originalUrlMatch && originalUrlMatch[1];
+          const mode =
+            (modeMatch?.[1] as "host" | "docker" | "cloud" | undefined) ??
+            "host";
           setAppUrlObj({
             appUrl: proxyUrl,
             appId: output.appId,
             originalUrl: originalUrl!,
+            mode,
           });
         }
       }
@@ -163,7 +168,7 @@ export function useRunApp() {
       // Clear the URL and add restart message
       setAppUrlObj((prevAppUrlObj) => {
         if (prevAppUrlObj?.appId !== appId) {
-          return { appUrl: null, appId: null, originalUrl: null };
+          return { appUrl: null, appId: null, originalUrl: null, mode: null };
         }
         return prevAppUrlObj; // No change needed
       });
@@ -241,7 +246,12 @@ export function useRunApp() {
         );
 
         // Clear the URL and add restart message
-        setAppUrlObj({ appUrl: null, appId: null, originalUrl: null });
+        setAppUrlObj({
+          appUrl: null,
+          appId: null,
+          originalUrl: null,
+          mode: null,
+        });
 
         // Clear preserved URL to prevent stale route restoration after restart
         setPreservedUrls((prev) => {

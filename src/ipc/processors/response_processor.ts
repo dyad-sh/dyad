@@ -47,6 +47,7 @@ import { applySearchReplace } from "../../pro/main/ipc/processors/search_replace
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { executeCopyFile } from "../utils/copy_file_utils";
 import { escapeXmlAttr, escapeXmlContent } from "../../../shared/xmlEscape";
+import { syncCloudSandboxSnapshot } from "../utils/cloud_sandbox_provider";
 const readFile = fs.promises.readFile;
 const logger = log.scope("response_processor");
 
@@ -646,6 +647,12 @@ export async function processFullResponseActions(
         approvalState: "approved",
       })
       .where(eq(messages.id, messageId));
+
+    if (hasChanges) {
+      await syncCloudSandboxSnapshot({
+        appId: chatWithApp.app.id,
+      });
+    }
 
     return {
       updatedFiles: hasChanges,

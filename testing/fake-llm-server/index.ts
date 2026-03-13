@@ -1,6 +1,7 @@
 import express from "express";
 import { createServer } from "http";
 import cors from "cors";
+import crypto from "node:crypto";
 import { createChatCompletionHandler } from "./chatCompletionHandler";
 import { createResponsesHandler } from "./responsesHandler";
 import {
@@ -73,6 +74,65 @@ export const CANNED_MESSAGE = `
   </dyad-write>
   More
   EOM`;
+
+type FakeCloudSandbox = {
+  id: string;
+  files: Record<string, string>;
+  createdAt: number;
+};
+
+const cloudSandboxes = new Map<string, FakeCloudSandbox>();
+
+function escapeHtml(text: string) {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function getSandboxPreviewHtml(sandbox: FakeCloudSandbox) {
+  const interestingSource =
+    sandbox.files["src/App.tsx"] ??
+    sandbox.files["src/App.jsx"] ??
+    sandbox.files["app/page.tsx"] ??
+    sandbox.files["index.html"] ??
+    "";
+
+  const fileList = Object.keys(sandbox.files)
+    .sort()
+    .slice(0, 12)
+    .map((file) => `<li>${escapeHtml(file)}</li>`)
+    .join("");
+  const snapshotDigest = crypto
+    .createHash("sha1")
+    .update(
+      JSON.stringify(
+        Object.entries(sandbox.files).sort(([leftPath], [rightPath]) =>
+          leftPath.localeCompare(rightPath),
+        ),
+      ),
+    )
+    .digest("hex")
+    .slice(0, 12);
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Cloud Sandbox Preview</title>
+  </head>
+  <body>
+    <main>
+      <h1>Cloud Sandbox Preview</h1>
+      <p data-testid="cloud-sandbox-id">Sandbox: ${escapeHtml(sandbox.id)}</p>
+      <p>Uploaded files: ${Object.keys(sandbox.files).length}</p>
+      <p data-testid="cloud-snapshot-digest">Snapshot digest: ${snapshotDigest}</p>
+      <ul>${fileList}</ul>
+      <pre>${escapeHtml(interestingSource.slice(0, 1500))}</pre>
+    </main>
+  </body>
+</html>`;
+}
 
 app.get("/health", (req, res) => {
   res.send("OK");
@@ -454,6 +514,89 @@ app.post("/engine/v1/tools/web-crawl", (req, res) => {
     console.error(`* web-crawl error:`, error);
     res.status(400).json({ error: String(error) });
   }
+});
+
+app.post("/engine/v1/sandboxes", (req, res) => {
+  const sandboxId = `sandbox-${Date.now()}-${Math.round(Math.random() * 1000)}`;
+  cloudSandboxes.set(sandboxId, {
+    id: sandboxId,
+    files: {},
+    createdAt: Date.now(),
+  });
+
+  res.json({
+    sandboxId,
+    previewUrl: `http://localhost:${PORT}/cloud-preview/${sandboxId}`,
+  });
+});
+
+app.delete("/engine/v1/sandboxes/:sandboxId", (req, res) => {
+  cloudSandboxes.delete(req.params.sandboxId);
+  res.status(204).end();
+});
+
+app.post("/engine/v1/sandboxes/:sandboxId/files", (req, res) => {
+  const sandbox = cloudSandboxes.get(req.params.sandboxId);
+  if (!sandbox) {
+    res.status(404).json({ error: "Sandbox not found" });
+    return;
+  }
+
+  console.log(
+    `[fake-cloud] upload sandbox=${sandbox.id} replaceAll=${String(req.body.replaceAll)} fileCount=${Object.keys(req.body.files ?? {}).length}`,
+  );
+
+  sandbox.files = req.body.replaceAll
+    ? { ...req.body.files }
+    : {
+        ...sandbox.files,
+        ...req.body.files,
+      };
+
+  res.json({
+    previewUrl: `http://localhost:${PORT}/cloud-preview/${sandbox.id}`,
+  });
+});
+
+app.post("/engine/v1/sandboxes/reconcile", (_req, res) => {
+  res.json({
+    reconciledSandboxIds: [],
+  });
+});
+
+app.get("/engine/v1/sandboxes/:sandboxId/logs", (req, res) => {
+  const sandbox = cloudSandboxes.get(req.params.sandboxId);
+  if (!sandbox) {
+    res.status(404).json({ error: "Sandbox not found" });
+    return;
+  }
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  const messages = [
+    "Creating sandbox...",
+    "Installing dependencies...",
+    `Starting preview for ${sandbox.id}...`,
+  ];
+
+  messages.forEach((message) => {
+    res.write(`data: ${JSON.stringify({ message })}\n\n`);
+  });
+  res.write("data: [DONE]\n\n");
+  res.end();
+});
+
+app.get("/cloud-preview/:sandboxId", (req, res) => {
+  const sandbox = cloudSandboxes.get(req.params.sandboxId);
+  if (!sandbox) {
+    res.status(404).send("Sandbox not found");
+    return;
+  }
+
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(getSandboxPreviewHtml(sandbox));
 });
 
 // Start the server

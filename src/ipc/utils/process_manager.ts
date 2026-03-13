@@ -3,15 +3,23 @@ import treeKill from "tree-kill";
 import log from "electron-log";
 import type { Worker } from "node:worker_threads";
 import { withLock } from "./lock_utils";
+import {
+  destroyCloudSandbox,
+  stopCloudSandboxFileSync,
+  unregisterRunningCloudSandbox,
+} from "./cloud_sandbox_provider";
 
 const logger = log.scope("process_manager");
 
 // Define a type for the value stored in runningApps
 export interface RunningAppInfo {
-  process: ChildProcess;
+  process: ChildProcess | null;
   processId: number;
-  isDocker: boolean;
+  mode: "host" | "docker" | "cloud";
   containerName?: string;
+  cloudSandboxId?: string;
+  cloudPreviewUrl?: string;
+  cloudLogAbortController?: AbortController;
   /** Timestamp of when this app was last viewed/selected in the preview panel */
   lastViewedAt: number;
   /** Proxy URL for the running app, set when the proxy server starts */
@@ -128,15 +136,25 @@ export async function stopAppByInfo(
   appId: number,
   appInfo: RunningAppInfo,
 ): Promise<void> {
+  stopCloudSandboxFileSync(appId);
+  unregisterRunningCloudSandbox({ appId });
+
   if (appInfo.proxyWorker) {
     await appInfo.proxyWorker.terminate();
     appInfo.proxyWorker = undefined;
   }
 
-  if (appInfo.isDocker) {
+  appInfo.cloudLogAbortController?.abort();
+  appInfo.cloudLogAbortController = undefined;
+
+  if (appInfo.mode === "cloud") {
+    if (appInfo.cloudSandboxId) {
+      await destroyCloudSandbox(appInfo.cloudSandboxId);
+    }
+  } else if (appInfo.mode === "docker") {
     const containerName = appInfo.containerName || `dyad-app-${appId}`;
     await stopDockerContainer(containerName);
-  } else {
+  } else if (appInfo.process) {
     await killProcess(appInfo.process);
   }
   runningApps.delete(appId);
@@ -157,6 +175,10 @@ export function removeAppIfCurrentProcess(
       void currentAppInfo.proxyWorker.terminate();
       currentAppInfo.proxyWorker = undefined;
     }
+    currentAppInfo.cloudLogAbortController?.abort();
+    currentAppInfo.cloudLogAbortController = undefined;
+    stopCloudSandboxFileSync(appId);
+    unregisterRunningCloudSandbox({ appId });
     runningApps.delete(appId);
     logger.info(
       `Removed app ${appId} (processId ${currentAppInfo.processId}) from running map. Current size: ${runningApps.size}`,
@@ -334,7 +356,21 @@ export function stopAllAppsSync(): void {
       appInfo.proxyWorker = undefined;
     }
 
-    if (appInfo.isDocker) {
+    if (appInfo.mode === "cloud") {
+      appInfo.cloudLogAbortController?.abort();
+      appInfo.cloudLogAbortController = undefined;
+      unregisterRunningCloudSandbox({ appId });
+      if (appInfo.cloudSandboxId) {
+        void destroyCloudSandbox(appInfo.cloudSandboxId).catch((error) => {
+          logger.warn(
+            `Failed to destroy cloud sandbox ${appInfo.cloudSandboxId} for app ${appId} during quit: ${error}`,
+          );
+        });
+      }
+      logger.info(
+        `Cloud sandbox ${appInfo.cloudSandboxId ?? "<unknown>"} for app ${appId} will be reconciled asynchronously after quit if needed.`,
+      );
+    } else if (appInfo.mode === "docker") {
       const containerName = appInfo.containerName || `dyad-app-${appId}`;
       // Fire-and-forget: spawn docker stop without awaiting
       const stop = spawn("docker", ["stop", containerName], {
@@ -346,16 +382,17 @@ export function stopAllAppsSync(): void {
         );
       });
       logger.info(`Sent docker stop for app ${appId} (${containerName})`);
-    } else if (appInfo.process.pid) {
+    } else if (appInfo.process?.pid) {
+      const pid = appInfo.process.pid;
       // treeKill sends SIGTERM synchronously
-      treeKill(appInfo.process.pid, "SIGTERM", (err: Error | undefined) => {
+      treeKill(pid, "SIGTERM", (err: Error | undefined) => {
         if (err) {
           logger.warn(
-            `tree-kill error for app ${appId} (PID ${appInfo.process.pid}): ${err.message}`,
+            `tree-kill error for app ${appId} (PID ${pid}): ${err.message}`,
           );
         }
       });
-      logger.info(`Sent SIGTERM to app ${appId} (PID ${appInfo.process.pid})`);
+      logger.info(`Sent SIGTERM to app ${appId} (PID ${pid})`);
     }
     runningApps.delete(appId);
   }

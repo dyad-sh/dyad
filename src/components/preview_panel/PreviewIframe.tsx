@@ -12,6 +12,9 @@ import {
   ArrowRight,
   RefreshCw,
   ExternalLink,
+  Cloud,
+  Copy,
+  Check,
   Loader2,
   X,
   Sparkles,
@@ -69,6 +72,7 @@ import { useShortcut } from "@/hooks/useShortcut";
 import { cn } from "@/lib/utils";
 import { normalizePath } from "../../../shared/normalizePath";
 import { showError } from "@/lib/toast";
+import { showSuccess } from "@/lib/toast";
 import type { DeviceMode } from "@/lib/schemas";
 import { AnnotatorOnlyForPro } from "./AnnotatorOnlyForPro";
 import { useAttachments } from "@/hooks/useAttachments";
@@ -175,7 +179,7 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
 // Preview iframe component
 export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const { appUrl, originalUrl } = useAtomValue(appUrlAtom);
+  const { appUrl, originalUrl, mode } = useAtomValue(appUrlAtom);
   const setConsoleEntries = useSetAtom(appConsoleEntriesAtom);
   // State to trigger iframe reload
   const [reloadKey, setReloadKey] = useState(0);
@@ -246,6 +250,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // Device mode state
   const deviceMode: DeviceMode = settings?.previewDeviceMode ?? "desktop";
   const [isDevicePopoverOpen, setIsDevicePopoverOpen] = useState(false);
+  const [isCopiedShareLink, setIsCopiedShareLink] = useState(false);
 
   // Device configurations
   const deviceWidthConfig = {
@@ -255,6 +260,26 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
   //detect if the user is using Mac
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+  const isCloudMode = mode === "cloud";
+
+  const handleCopyShareableLink = async () => {
+    if (!originalUrl) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(originalUrl);
+      setIsCopiedShareLink(true);
+      showSuccess("Link copied!");
+      setTimeout(() => setIsCopiedShareLink(false), 2000);
+    } catch (error) {
+      showError(
+        error instanceof Error
+          ? error.message
+          : "Failed to copy shareable link.",
+      );
+    }
+  };
 
   const analyzeComponent = async (componentId: string) => {
     if (!componentId || !selectedAppId) return;
@@ -1089,6 +1114,15 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
         <div className="flex items-center p-2 border-b space-x-2">
           {/* Navigation Buttons */}
           <div className="flex space-x-1">
+            {isCloudMode && (
+              <div
+                className="flex items-center gap-1 rounded-md bg-sky-100 px-2 py-1 text-xs font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
+                data-testid="preview-cloud-badge"
+              >
+                <Cloud size={14} />
+                <span>Cloud</span>
+              </div>
+            )}
             <Tooltip>
               <TooltipTrigger
                 render={
@@ -1244,8 +1278,29 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
                 <Power size={16} />
                 <span>Restart</span>
               </TooltipTrigger>
-              <TooltipContent>Restart App</TooltipContent>
+              <TooltipContent>
+                {isCloudMode ? "Restart Cloud Sandbox" : "Restart App"}
+              </TooltipContent>
             </Tooltip>
+            {isCloudMode && (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      data-testid="preview-copy-shareable-link-button"
+                      onClick={handleCopyShareableLink}
+                      className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed dark:text-gray-300"
+                      disabled={!originalUrl}
+                    />
+                  }
+                >
+                  {isCopiedShareLink ? <Check size={16} /> : <Copy size={16} />}
+                </TooltipTrigger>
+                <TooltipContent>
+                  {isCopiedShareLink ? "Copied!" : "Copy shareable link"}
+                </TooltipContent>
+              </Tooltip>
+            )}
             <button
               data-testid="preview-open-browser-button"
               onClick={() => {

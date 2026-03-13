@@ -10,6 +10,7 @@ import {
   isServerFunction,
   isSharedServerModule,
 } from "../../../../../../supabase_admin/supabase_utils";
+import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 
 const logger = log.scope("delete_file");
 
@@ -92,6 +93,8 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
       } else {
         logger.warn(`File to delete does not exist: ${fullFilePath}`);
       }
+
+      queueCloudSandboxSnapshotSync({ appId: ctx.appId });
 
       return `Successfully deleted ${args.path}`;
     },

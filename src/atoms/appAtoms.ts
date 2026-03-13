@@ -18,9 +18,19 @@ export const selectedVersionIdAtom = atom<string | null>(null);
 
 export const appConsoleEntriesAtom = atom<ConsoleEntry[]>([]);
 export const appUrlAtom = atom<
-  | { appUrl: string; appId: number; originalUrl: string }
-  | { appUrl: null; appId: null; originalUrl: null }
->({ appUrl: null, appId: null, originalUrl: null });
+  | {
+      appUrl: string;
+      appId: number;
+      originalUrl: string;
+      mode: "host" | "docker" | "cloud";
+    }
+  | {
+      appUrl: null;
+      appId: null;
+      originalUrl: null;
+      mode: null;
+    }
+>({ appUrl: null, appId: null, originalUrl: null, mode: null });
 export const userSettingsAtom = atom<UserSettings | null>(null);
 
 // Atom for storing allow-listed environment variables

@@ -10,6 +10,7 @@ import {
   isSharedServerModule,
 } from "../../../../../../supabase_admin/supabase_utils";
 import { engineFetch } from "./engine_fetch";
+import { queueCloudSandboxSnapshotSync } from "@/ipc/utils/cloud_sandbox_provider";
 
 const readFile = fs.promises.readFile;
 const logger = log.scope("edit_file");
@@ -196,6 +197,7 @@ export const editFileTool: ToolDefinition<z.infer<typeof editFileSchema>> = {
     // Write file content
     fs.writeFileSync(fullFilePath, newContent);
     logger.log(`Successfully edited file: ${fullFilePath}`);
+    queueCloudSandboxSnapshotSync({ appId: ctx.appId });
 
     // Deploy Supabase function if applicable
     if (

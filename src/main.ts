@@ -141,7 +141,7 @@ export async function onReady() {
     //   to correctly handle absolute paths (which contain encoded slashes).
     const pathSegments = url.pathname.slice(1).split("/");
     if (
-      pathSegments.length < 4 ||
+      pathSegments.length !== 4 ||
       pathSegments[1] !== ".dyad" ||
       pathSegments[2] !== "media"
     ) {
@@ -149,7 +149,16 @@ export async function onReady() {
     }
 
     const appPathRaw = decodeURIComponent(pathSegments[0]);
-    const filename = decodeURIComponent(pathSegments.slice(3).join("/"));
+    const filename = decodeURIComponent(pathSegments[3]);
+
+    // Defense-in-depth: reject filenames with path separators or traversal
+    if (
+      filename.includes("..") ||
+      filename.includes("/") ||
+      filename.includes("\\")
+    ) {
+      return new Response("Forbidden", { status: 403 });
+    }
 
     // Resolve the app directory, handling both relative names and absolute
     // paths from imported apps (skipCopy).

@@ -1,4 +1,10 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { ipc, DeepLinkData } from "../ipc/types";
 import { useScrollAndNavigateTo } from "@/hooks/useScrollAndNavigateTo";
@@ -39,11 +45,13 @@ export function DeepLinkProvider({ children }: { children: React.ReactNode }) {
     return unsubscribe;
   }, [navigate, scrollAndNavigateTo]);
 
+  const clearLastDeepLink = useCallback(() => setLastDeepLink(null), []);
+
   return (
     <DeepLinkContext.Provider
       value={{
         lastDeepLink,
-        clearLastDeepLink: () => setLastDeepLink(null),
+        clearLastDeepLink,
       }}
     >
       {children}

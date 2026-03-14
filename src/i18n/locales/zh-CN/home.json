@@ -539,7 +539,17 @@
       "branchNotFound": "未找到分支",
       "branchSelected": "已选择分支",
       "failedSetBranch": "设置分支失败：{{error}}",
-      "failedDisconnectProject": "断开应用的项目连接失败"
+      "failedDisconnectProject": "断开应用的项目连接失败",
+      "selfHostedApiUrl": "自托管 Supabase API URL",
+      "selfHostedApiUrlPlaceholder": "https://api.supabase.example.com",
+      "selfHostedSecretKey": "自托管 Supabase 密钥",
+      "selfHostedSecretKeyPlaceholder": "你的服务密钥",
+      "selfHostedOverridesDescription": "可选的自托管 Supabase 管理 API 覆盖。两个字段必须同时填写。",
+      "selfHostedOverridesPairRequired": "请同时提供 API URL 和密钥，或全部清空。",
+      "selfHostedOverridesSave": "保存覆盖设置",
+      "selfHostedOverridesClear": "清除覆盖设置",
+      "selfHostedOverridesSaved": "已保存 Supabase 覆盖设置",
+      "selfHostedOverridesCleared": "已清除 Supabase 覆盖设置"
     },
     "neon": {
       "title": "Neon 集成",

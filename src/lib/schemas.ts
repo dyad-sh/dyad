@@ -190,6 +190,8 @@ export const SupabaseSchema = z.object({
   organizations: z
     .record(z.string(), SupabaseOrganizationCredentialsSchema)
     .optional(),
+  selfHostedSupabaseApiUrl: z.string().optional(),
+  selfHostedSupabaseSecretKey: SecretSchema.optional(),
 
   // Legacy fields - kept for backwards compat
   accessToken: SecretSchema.optional(),
@@ -489,6 +491,8 @@ export function isSupabaseConnected(settings: UserSettings | null): boolean {
   }
   return Boolean(
     settings.supabase?.accessToken ||
+    (settings.supabase?.selfHostedSupabaseApiUrl &&
+      settings.supabase?.selfHostedSupabaseSecretKey?.value) ||
     (settings.supabase?.organizations &&
       Object.keys(settings.supabase.organizations).length > 0),
   );

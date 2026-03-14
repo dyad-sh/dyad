@@ -539,7 +539,17 @@
       "branchNotFound": "Branch não encontrada",
       "branchSelected": "Branch selecionada",
       "failedSetBranch": "Falha ao definir branch: {{error}}",
-      "failedDisconnectProject": "Falha ao desconectar projeto do app"
+      "failedDisconnectProject": "Falha ao desconectar projeto do app",
+      "selfHostedApiUrl": "URL da API Supabase Self-hosted",
+      "selfHostedApiUrlPlaceholder": "https://api.supabase.exemplo.com",
+      "selfHostedSecretKey": "Chave secreta Supabase Self-hosted",
+      "selfHostedSecretKeyPlaceholder": "Sua chave de serviço",
+      "selfHostedOverridesDescription": "Sobrescrição opcional da API de gerenciamento do Supabase self-hosted. Os dois campos são obrigatórios.",
+      "selfHostedOverridesPairRequired": "Informe a URL da API e a chave secreta, ou limpe ambos.",
+      "selfHostedOverridesSave": "Salvar sobrescrição",
+      "selfHostedOverridesClear": "Limpar sobrescrição",
+      "selfHostedOverridesSaved": "Sobrescrições do Supabase salvas",
+      "selfHostedOverridesCleared": "Sobrescrições do Supabase limpas"
     },
     "neon": {
       "title": "Integração com Neon",

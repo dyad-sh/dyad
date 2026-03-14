@@ -99,15 +99,10 @@ export function getDyadAppPathAvailability(appPath: string): {
 
   const { path: customPath, customPathStatus } = getDyadAppsBaseDirectory();
 
-  // Return fallback path if a custom path is set but not accessible
-  if (customPathStatus === "unavailable") {
-    return {
-      path: path.join(getDefaultDyadAppsDirectory(), appPath),
-      isAvailable: false,
-    };
-  }
-
-  return { path: path.join(customPath, appPath), isAvailable: true };
+  return {
+    path: path.join(customPath, appPath),
+    isAvailable: customPathStatus !== "unavailable",
+  };
 }
 
 export function getTypeScriptCachePath(): string {

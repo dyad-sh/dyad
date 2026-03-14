@@ -69,6 +69,7 @@ export interface GitAuthorParam {
 export interface GitFetchParams extends GitBaseParams {
   remote?: string;
   accessToken?: string;
+  prune?: boolean;
 }
 
 export interface GitPullParams extends GitBaseParams {

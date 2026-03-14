@@ -75,13 +75,36 @@ interface BranchManagerProps {
   onBranchChange?: () => void;
 }
 
+interface BranchListItem {
+  name: string;
+  isLocal: boolean;
+  isRemote: boolean;
+}
+
+export function buildBranchListItems(
+  localBranches: string[],
+  remoteBranches: string[],
+): BranchListItem[] {
+  const localBranchNames = new Set(localBranches);
+  const remoteBranchNames = new Set(remoteBranches);
+  const allBranchNames = new Set([...localBranchNames, ...remoteBranchNames]);
+
+  return Array.from(allBranchNames)
+    .sort()
+    .map((name) => ({
+      name,
+      isLocal: localBranchNames.has(name),
+      isRemote: remoteBranchNames.has(name),
+    }));
+}
+
 export function GithubBranchManager({
   appId,
   onBranchChange,
 }: BranchManagerProps) {
   const { settings } = useSettings();
   const navigate = useNavigate();
-  const [branches, setBranches] = useState<string[]>([]);
+  const [branches, setBranches] = useState<BranchListItem[]>([]);
   const [currentBranch, setCurrentBranch] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [newBranchName, setNewBranchName] = useState("");
@@ -151,10 +174,7 @@ export function GithubBranchManager({
         ipc.github.listRemoteBranches({ appId }).catch(() => []),
       ]);
 
-      // Merge local and remote branches, removing duplicates
-      const allBranches = new Set([...localResult.branches, ...remoteBranches]);
-
-      setBranches(Array.from(allBranches).sort());
+      setBranches(buildBranchListItems(localResult.branches, remoteBranches));
       setCurrentBranch(localResult.current || null);
     } catch (error: any) {
       showError(error.message || "Failed to load branches");
@@ -438,14 +458,18 @@ export function GithubBranchManager({
           </SelectTrigger>
           <SelectContent>
             {branches.map((branch) => (
-              <SelectItem key={branch} value={branch} aria-label={branch}>
+              <SelectItem
+                key={branch.name}
+                value={branch.name}
+                aria-label={branch.name}
+              >
                 <Network className="h-4 w-4 text-gray-500" />
                 <span className="font-medium text-sm">Branch:</span>
                 <span
                   data-testid="current-branch-display"
                   className="font-mono text-sm bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded"
                 >
-                  {branch}
+                  {branch.name}
                 </span>
               </SelectItem>
             ))}
@@ -532,9 +556,9 @@ export function GithubBranchManager({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="HEAD">HEAD (Current)</SelectItem>
-                    {branches.map((b) => (
-                      <SelectItem key={b} value={b}>
-                        {b}
+                    {branches.map((branch) => (
+                      <SelectItem key={branch.name} value={branch.name}>
+                        {branch.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -824,20 +848,25 @@ export function GithubBranchManager({
                 <div className="space-y-1 max-h-40 overflow-y-auto border rounded-md p-2">
                   {branches.map((branch) => (
                     <div
-                      key={branch}
+                      key={branch.name}
                       className="flex items-center justify-between text-sm py-1 px-2 hover:bg-gray-50 dark:hover:bg-gray-800 rounded"
-                      data-testid={`branch-item-${branch}`}
+                      data-testid={`branch-item-${branch.name}`}
                     >
                       <span
                         className={
-                          branch === currentBranch
+                          branch.name === currentBranch
                             ? "font-bold text-blue-600"
                             : ""
                         }
                       >
-                        {branch}
+                        {branch.name}
+                        {!branch.isLocal && branch.isRemote && (
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            remote
+                          </span>
+                        )}
                       </span>
-                      {branch !== currentBranch && (
+                      {branch.name !== currentBranch && (
                         <DropdownMenu
                           onOpenChange={(open) => {
                             if (open) setIsExpanded(true);
@@ -845,22 +874,23 @@ export function GithubBranchManager({
                         >
                           <DropdownMenuTrigger
                             className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-6 w-6"
-                            data-testid={`branch-actions-${branch}`}
+                            data-testid={`branch-actions-${branch.name}`}
                           >
                             <MoreHorizontal className="h-4 w-4" />
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
-                              onClick={() => setBranchToMerge(branch)}
+                              onClick={() => setBranchToMerge(branch.name)}
                               data-testid="merge-branch-menu-item"
                             >
                               <GitMerge className="mr-2 h-4 w-4" />
                               Merge into {currentBranch}
                             </DropdownMenuItem>
                             <DropdownMenuItem
+                              disabled={!branch.isLocal}
                               onClick={() => {
-                                setBranchToRename(branch);
-                                setRenameBranchName(branch);
+                                setBranchToRename(branch.name);
+                                setRenameBranchName(branch.name);
                               }}
                               data-testid="rename-branch-menu-item"
                             >
@@ -869,7 +899,10 @@ export function GithubBranchManager({
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="text-red-600"
-                              onClick={() => setBranchToDelete(branch)}
+                              disabled={!branch.isLocal}
+                              onClick={() => {
+                                setBranchToDelete(branch.name);
+                              }}
                               data-testid="delete-branch-menu-item"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />

@@ -66,6 +66,20 @@ export function readSettings(): UserSettings {
     };
     const supabase = combinedSettings.supabase;
     if (supabase) {
+      const legacySelfHostedSecretKey =
+        rawSettings?.supabase?.selfHostedSupabaseSecretKey;
+      const legacySelfHostedApiUrl =
+        rawSettings?.supabase?.selfHostedSupabaseApiUrl;
+      if (
+        !supabase.selfHosted &&
+        (legacySelfHostedApiUrl || legacySelfHostedSecretKey)
+      ) {
+        supabase.selfHosted = {
+          apiUrl: legacySelfHostedApiUrl,
+          secretKey: legacySelfHostedSecretKey,
+        };
+      }
+
       // Decrypt legacy tokens (kept but ignored)
       if (supabase.refreshToken) {
         const encryptionType = supabase.refreshToken.encryptionType;
@@ -107,6 +121,16 @@ export function readSettings(): UserSettings {
               };
             }
           }
+        }
+      }
+      // Decrypt self-hosted Supabase secret key
+      if (supabase.selfHosted?.secretKey) {
+        const encryptionType = supabase.selfHosted.secretKey.encryptionType;
+        if (encryptionType) {
+          supabase.selfHosted.secretKey = {
+            value: decrypt(supabase.selfHosted.secretKey),
+            encryptionType,
+          };
         }
       }
     }
@@ -221,6 +245,12 @@ export function writeSettings(settings: Partial<UserSettings>): void {
             org.refreshToken = encrypt(org.refreshToken.value);
           }
         }
+      }
+      // Encrypt self-hosted Supabase secret key
+      if (newSettings.supabase.selfHosted?.secretKey) {
+        newSettings.supabase.selfHosted.secretKey = encrypt(
+          newSettings.supabase.selfHosted.secretKey.value,
+        );
       }
     }
     if (newSettings.neon) {

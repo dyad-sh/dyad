@@ -88,6 +88,7 @@ import { DYAD_MEDIA_DIR_NAME } from "../utils/media_path_utils";
 import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
 import {
+  hasSelfHostedSupabaseConfig,
   isBasicAgentMode,
   isSupabaseConnected,
   isTurboEditsV2Enabled,
@@ -751,11 +752,14 @@ ${componentSnippet}
 
         if (
           updatedChat.app?.supabaseProjectId &&
-          isSupabaseConnected(settings)
+          (updatedChat.app.supabaseMode === "self-hosted"
+            ? hasSelfHostedSupabaseConfig(settings)
+            : isSupabaseConnected(settings))
         ) {
           const supabaseClientCode = await getSupabaseClientCode({
             projectId: updatedChat.app.supabaseProjectId,
             organizationSlug: updatedChat.app.supabaseOrganizationSlug ?? null,
+            mode: updatedChat.app.supabaseMode,
           });
           systemPrompt +=
             "\n\n" +
@@ -768,6 +772,7 @@ ${componentSnippet}
                   supabaseProjectId: updatedChat.app.supabaseProjectId,
                   organizationSlug:
                     updatedChat.app.supabaseOrganizationSlug ?? null,
+                  mode: updatedChat.app.supabaseMode,
                 }));
         } else if (
           // Neon projects don't need Supabase.

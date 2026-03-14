@@ -28,6 +28,7 @@ export async function deployAllFunctionsIfNeeded(
     AgentContext,
     | "appPath"
     | "supabaseProjectId"
+    | "supabaseMode"
     | "supabaseOrganizationSlug"
     | "isSharedModulesChanged"
   >,
@@ -43,6 +44,7 @@ export async function deployAllFunctionsIfNeeded(
       appPath: ctx.appPath,
       supabaseProjectId: ctx.supabaseProjectId,
       supabaseOrganizationSlug: ctx.supabaseOrganizationSlug ?? null,
+      supabaseMode: ctx.supabaseMode,
       skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
     });
 

@@ -84,6 +84,7 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
               supabaseProjectId: ctx.supabaseProjectId,
               functionName: getFunctionNameFromPath(args.path),
               organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+              mode: ctx.supabaseMode,
             });
           } catch (error) {
             return `File deleted, but failed to delete Supabase function: ${error}`;

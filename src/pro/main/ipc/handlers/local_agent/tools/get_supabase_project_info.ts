@@ -36,6 +36,7 @@ export const getSupabaseProjectInfoTool: ToolDefinition<
       supabaseProjectId: ctx.supabaseProjectId,
       organizationSlug: ctx.supabaseOrganizationSlug ?? null,
       includeDbFunctions: args.includeDbFunctions,
+      mode: ctx.supabaseMode,
     });
 
     ctx.onXmlComplete(

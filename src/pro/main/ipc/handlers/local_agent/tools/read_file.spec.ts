@@ -55,6 +55,7 @@ line 5`;
       appPath: testDir,
       chatId: 1,
       supabaseProjectId: null,
+      supabaseMode: null,
       supabaseOrganizationSlug: null,
       messageId: 1,
       isSharedModulesChanged: false,

@@ -5,7 +5,7 @@
 import { z } from "zod";
 import { IpcMainInvokeEvent } from "electron";
 import { jsonrepair } from "jsonrepair";
-import { AgentToolConsent } from "@/lib/schemas";
+import { AgentToolConsent, SupabaseAppMode } from "@/lib/schemas";
 import { AgentTodo } from "@/ipc/types";
 
 // ============================================================================
@@ -47,6 +47,7 @@ export interface AgentContext {
   appPath: string;
   chatId: number;
   supabaseProjectId: string | null;
+  supabaseMode: SupabaseAppMode | null;
   supabaseOrganizationSlug: string | null;
   messageId: number;
   isSharedModulesChanged: boolean;

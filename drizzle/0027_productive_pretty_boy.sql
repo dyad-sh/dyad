@@ -1,0 +1,1 @@
+ALTER TABLE `apps` ADD `supabase_mode` text;

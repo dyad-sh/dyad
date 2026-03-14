@@ -41,6 +41,9 @@ export const apps = sqliteTable("apps", {
   githubOrg: text("github_org"),
   githubRepo: text("github_repo"),
   githubBranch: text("github_branch"),
+  supabaseMode: text("supabase_mode", {
+    enum: ["cloud", "self-hosted"],
+  }),
   supabaseProjectId: text("supabase_project_id"),
   // If supabaseProjectId is a branch, then the parent project id set.
   // This is because there's no way to retrieve ALL the branches for ALL projects

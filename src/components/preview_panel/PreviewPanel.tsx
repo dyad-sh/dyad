@@ -125,22 +125,23 @@ export function PreviewPanel() {
   useEffect(() => {
     const projectId = app?.supabaseProjectId;
     const organizationSlug = app?.supabaseOrganizationSlug ?? undefined;
+    const mode = app?.supabaseMode ?? null;
     if (!projectId) return;
 
     // Load logs immediately
-    loadEdgeLogs({ projectId, organizationSlug }).catch((error) => {
+    loadEdgeLogs({ projectId, organizationSlug, mode }).catch((error) => {
       console.error("Failed to load edge logs:", error);
     });
 
     // Poll for new logs every 5 seconds
     const intervalId = setInterval(() => {
-      loadEdgeLogs({ projectId, organizationSlug }).catch((error) => {
+      loadEdgeLogs({ projectId, organizationSlug, mode }).catch((error) => {
         console.error("Failed to load edge logs:", error);
       });
     }, 5000);
 
     return () => clearInterval(intervalId);
-  }, [app?.supabaseProjectId, app?.supabaseOrganizationSlug, loadEdgeLogs]);
+  }, [app?.supabaseProjectId, app?.supabaseOrganizationSlug, app?.supabaseMode, loadEdgeLogs]);
 
   return (
     <div className="flex flex-col h-full">

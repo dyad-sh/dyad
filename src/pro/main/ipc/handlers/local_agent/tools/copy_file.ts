@@ -37,6 +37,7 @@ export const copyFileTool: ToolDefinition<z.infer<typeof copyFileSchema>> = {
       appId: ctx.appId,
       appPath: ctx.appPath,
       supabaseProjectId: ctx.supabaseProjectId,
+      supabaseMode: ctx.supabaseMode,
       supabaseOrganizationSlug: ctx.supabaseOrganizationSlug,
       isSharedModulesChanged: ctx.isSharedModulesChanged,
     });

@@ -81,12 +81,14 @@ export function registerTokenCountHandlers() {
         const supabaseClientCode = await getSupabaseClientCode({
           projectId: chat.app.supabaseProjectId,
           organizationSlug: chat.app.supabaseOrganizationSlug ?? null,
+          mode: chat.app.supabaseMode,
         });
         systemPrompt +=
           "\n\n" + getSupabaseAvailableSystemPrompt(supabaseClientCode);
         supabaseContext = await getSupabaseContext({
           supabaseProjectId: chat.app.supabaseProjectId,
           organizationSlug: chat.app.supabaseOrganizationSlug ?? null,
+          mode: chat.app.supabaseMode,
         });
       } else if (
         // Neon projects don't need Supabase.

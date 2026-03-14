@@ -209,6 +209,7 @@ export const editFileTool: ToolDefinition<z.infer<typeof editFileSchema>> = {
           functionName: path.basename(path.dirname(args.path)),
           appPath: ctx.appPath,
           organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+          mode: ctx.supabaseMode,
         });
       } catch (error) {
         return `File edited, but failed to deploy Supabase function: ${error}`;

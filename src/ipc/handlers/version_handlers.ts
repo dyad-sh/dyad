@@ -339,6 +339,7 @@ export function registerVersionHandlers() {
             appPath,
             supabaseProjectId: app.supabaseProjectId,
             supabaseOrganizationSlug: app.supabaseOrganizationSlug ?? null,
+            supabaseMode: app.supabaseMode,
             skipPruneEdgeFunctions: settings.skipPruneEdgeFunctions ?? false,
           });
 

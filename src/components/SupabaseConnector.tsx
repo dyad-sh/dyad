@@ -1,8 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 
 import { ipc, type SupabaseProject } from "@/ipc/types";
 import { toast } from "sonner";
@@ -47,7 +48,12 @@ import {
   TooltipContent,
 } from "@/components/ui/tooltip";
 import { useTheme } from "@/contexts/ThemeContext";
-import { isSupabaseConnected } from "@/lib/schemas";
+import {
+  getEffectiveAppSupabaseMode,
+  hasSelfHostedSupabaseConfig,
+  isSupabaseConnected,
+  type SupabaseAppMode,
+} from "@/lib/schemas";
 
 export function SupabaseConnector({ appId }: { appId: number }) {
   const { t } = useTranslation(["home", "common"]);
@@ -58,6 +64,14 @@ export function SupabaseConnector({ appId }: { appId: number }) {
 
   // Check if there are any connected organizations
   const isConnected = isSupabaseConnected(settings);
+  const hasSelfHostedSupabase = hasSelfHostedSupabaseConfig(settings);
+  const appSupabaseMode = getEffectiveAppSupabaseMode(app);
+  const [selectedMode, setSelectedMode] = useState<SupabaseAppMode | null>(
+    appSupabaseMode ?? (hasSelfHostedSupabase ? "self-hosted" : "cloud"),
+  );
+  const [selfHostedProjectId, setSelfHostedProjectId] = useState(
+    appSupabaseMode === "self-hosted" ? app?.supabaseProjectId || "" : "",
+  );
 
   const branchesProjectId =
     app?.supabaseParentProjectId || app?.supabaseProjectId;
@@ -80,7 +94,22 @@ export function SupabaseConnector({ appId }: { appId: number }) {
   } = useSupabase({
     branchesProjectId,
     branchesOrganizationSlug: app?.supabaseOrganizationSlug,
+    branchesMode: appSupabaseMode,
   });
+
+  useEffect(() => {
+    setSelectedMode(
+      appSupabaseMode ?? (hasSelfHostedSupabase ? "self-hosted" : "cloud"),
+    );
+    setSelfHostedProjectId(
+      appSupabaseMode === "self-hosted" ? app?.supabaseProjectId || "" : "",
+    );
+  }, [
+    app?.supabaseProjectId,
+    appSupabaseMode,
+    hasSelfHostedSupabase,
+    isConnected,
+  ]);
 
   useEffect(() => {
     const handleDeepLink = async () => {
@@ -109,6 +138,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
         projectId,
         appId,
         organizationSlug,
+        mode: "cloud",
       });
       toast.success(t("integrations.supabase.projectConnected"));
       await refreshApp();
@@ -117,6 +147,31 @@ export function SupabaseConnector({ appId }: { appId: number }) {
         t("integrations.supabase.failedConnectProject", {
           error: String(error),
         }),
+      );
+    }
+  };
+
+  const handleSelfHostedProjectSave = async () => {
+    const projectId = selfHostedProjectId.trim();
+    if (!projectId) {
+      toast.error(t("integrations.supabase.enterProjectId"));
+      return;
+    }
+
+    try {
+      await setAppProject({
+        appId,
+        projectId,
+        parentProjectId: null,
+        organizationSlug: null,
+        mode: "self-hosted",
+      });
+      toast.success(t("integrations.supabase.selfHostedProjectConnected"));
+      await refreshApp();
+    } catch (error) {
+      toast.error(
+        t("integrations.supabase.failedConnectSelfHosted") +
+          `: ${String(error)}`,
       );
     }
   };
@@ -176,8 +231,34 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     }
   };
 
+  const modeSelector =
+    isConnected || hasSelfHostedSupabase ? (
+      <div className="flex gap-2">
+        <Button
+          variant={selectedMode === "cloud" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setSelectedMode("cloud")}
+        >
+          Cloud
+        </Button>
+        {hasSelfHostedSupabase && (
+          <Button
+            variant={selectedMode === "self-hosted" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setSelectedMode("self-hosted")}
+          >
+            Self-hosted
+          </Button>
+        )}
+      </div>
+    ) : null;
+
   // Connected and has project set
-  if (isConnected && app?.supabaseProjectName) {
+  if (
+    selectedMode !== "self-hosted" &&
+    appSupabaseMode === "cloud" &&
+    app?.supabaseProjectName
+  ) {
     return (
       <Card className="mt-1">
         <CardHeader>
@@ -212,6 +293,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
+            {modeSelector}
             <div className="space-y-2">
               <Label htmlFor="supabase-branch-select">
                 {t("integrations.supabase.databaseBranch")}
@@ -242,6 +324,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
                         parentProjectId: branch.parentProjectRef,
                         appId,
                         organizationSlug: app.supabaseOrganizationSlug,
+                        mode: "cloud",
                       });
                       toast.success(t("integrations.supabase.branchSelected"));
                       await refreshApp();
@@ -287,7 +370,60 @@ export function SupabaseConnector({ appId }: { appId: number }) {
     );
   }
 
-  // Connected organizations exist, show project selector
+  if (selectedMode === "self-hosted" && (hasSelfHostedSupabase || (appSupabaseMode === "self-hosted" && app?.supabaseProjectId))) {
+    return (
+      <Card className="mt-1">
+        <CardHeader>
+          <CardTitle>{t("integrations.supabase.selfHostedTitle")}</CardTitle>
+          <CardDescription>
+            {t("integrations.supabase.selfHostedDescription")}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {modeSelector}
+          <div className="space-y-2">
+            <Label htmlFor="self-hosted-project-id">Project ID</Label>
+            <Input
+              id="self-hosted-project-id"
+              value={selfHostedProjectId}
+              onChange={(e) => setSelfHostedProjectId(e.target.value)}
+              placeholder="your-project-ref"
+            />
+          </div>
+
+          {appSupabaseMode === "self-hosted" && app?.supabaseProjectId ? (
+            <div className="rounded-md border p-3 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-sm font-medium">
+                    {app.supabaseProjectName || app.supabaseProjectId}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {t("integrations.supabase.selfHostedConnected")}
+                  </div>
+                </div>
+                <Badge variant="secondary">Self-hosted</Badge>
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                {t("integrations.supabase.branchingNotAvailable")}
+              </p>
+
+              <Button variant="destructive" onClick={handleUnsetProject}>
+                {t("integrations.supabase.disconnectProject")}
+              </Button>
+            </div>
+          ) : null}
+
+          <Button onClick={handleSelfHostedProjectSave}>
+            {t("integrations.supabase.useSelfHostedProject")}
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Connected organizations exist, show cloud project selector
   if (isConnected) {
     // Build current project value for the select
     const currentProjectValue =
@@ -336,6 +472,7 @@ export function SupabaseConnector({ appId }: { appId: number }) {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="mb-4">{modeSelector}</div>
           {isLoadingProjects || isFetchingProjects ? (
             <div className="space-y-2">
               <Skeleton className="h-4 w-full" />
@@ -441,6 +578,37 @@ export function SupabaseConnector({ appId }: { appId: number }) {
               )}
             </div>
           )}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Cloud mode selected but no accounts connected yet
+  if (selectedMode === "cloud" && !isConnected) {
+    return (
+      <Card className="mt-1">
+        <CardHeader>
+          <CardTitle>{t("integrations.supabase.selfHostedTitle")}</CardTitle>
+          <CardDescription>
+            {t("integrations.supabase.connectCloudDescription")}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {modeSelector}
+          <div className="flex flex-col space-y-4 border rounded-md p-4">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-3">
+              <div className="text-sm text-muted-foreground">
+                {t("integrations.supabase.noCloudOrganizations")}
+              </div>
+              <img
+                onClick={handleAddAccount}
+                src={isDarkMode ? connectSupabaseDark : connectSupabaseLight}
+                alt="Connect to Supabase"
+                className="w-full h-10 min-h-8 min-w-20 cursor-pointer"
+                data-testid="connect-supabase-button"
+              />
+            </div>
+          </div>
         </CardContent>
       </Card>
     );

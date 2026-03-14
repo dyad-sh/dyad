@@ -298,6 +298,7 @@ async function processArgPlaceholders<T extends Record<string, any>>(
   const supabaseClientCode = await getSupabaseClientCode({
     projectId: ctx.supabaseProjectId,
     organizationSlug: ctx.supabaseOrganizationSlug ?? null,
+    mode: ctx.supabaseMode,
   });
 
   // Process all string values in args

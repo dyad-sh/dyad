@@ -90,6 +90,7 @@ function deepHello() {
       appPath: testDir,
       chatId: 1,
       supabaseProjectId: null,
+      supabaseMode: null,
       supabaseOrganizationSlug: null,
       messageId: 1,
       isSharedModulesChanged: false,

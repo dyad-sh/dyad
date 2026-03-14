@@ -185,6 +185,19 @@ export type SupabaseOrganizationCredentials = z.infer<
   typeof SupabaseOrganizationCredentialsSchema
 >;
 
+export const SupabaseAppModeSchema = z.enum(["cloud", "self-hosted"]);
+export type SupabaseAppMode = z.infer<typeof SupabaseAppModeSchema>;
+
+export const SelfHostedSupabaseSettingsSchema = z.object({
+  // Both must be set or both must be unset
+  apiUrl: z.string().optional(),
+  secretKey: SecretSchema.optional(),
+  publishableKey: z.string().optional(),
+});
+export type SelfHostedSupabaseSettings = z.infer<
+  typeof SelfHostedSupabaseSettingsSchema
+>;
+
 export const SupabaseSchema = z.object({
   // Map keyed by organizationSlug -> organization credentials
   organizations: z
@@ -196,6 +209,8 @@ export const SupabaseSchema = z.object({
   refreshToken: SecretSchema.optional(),
   expiresIn: z.number().optional(),
   tokenTimestamp: z.number().optional(),
+
+  selfHosted: SelfHostedSupabaseSettingsSchema.optional(),
 });
 export type Supabase = z.infer<typeof SupabaseSchema>;
 
@@ -492,6 +507,31 @@ export function isSupabaseConnected(settings: UserSettings | null): boolean {
     (settings.supabase?.organizations &&
       Object.keys(settings.supabase.organizations).length > 0),
   );
+}
+
+export function hasSelfHostedSupabaseConfig(
+  settings: UserSettings | null,
+): boolean {
+  return Boolean(
+    settings?.supabase?.selfHosted?.apiUrl &&
+    settings?.supabase?.selfHosted?.secretKey?.value,
+  );
+}
+
+export function getEffectiveAppSupabaseMode(
+  app:
+    | {
+        supabaseMode?: SupabaseAppMode | null;
+        supabaseProjectId?: string | null;
+      }
+    | null
+    | undefined,
+): SupabaseAppMode | null {
+  if (!app) {
+    return null;
+  }
+
+  return app.supabaseMode ?? (app.supabaseProjectId ? "cloud" : null);
 }
 
 export function isTurboEditsV2Enabled(settings: UserSettings): boolean {

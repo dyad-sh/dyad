@@ -275,10 +275,12 @@ export const queryKeys = {
     branches: ({
       projectId,
       organizationSlug,
+      mode,
     }: {
       projectId: string;
       organizationSlug: string | null;
-    }) => ["supabase", "branches", projectId, organizationSlug] as const,
+      mode: string | null;
+    }) => ["supabase", "branches", projectId, organizationSlug, mode] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

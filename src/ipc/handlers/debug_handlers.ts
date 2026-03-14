@@ -369,6 +369,7 @@ export function registerDebugHandlers() {
           githubOrg: app.githubOrg,
           githubRepo: app.githubRepo,
           githubBranch: app.githubBranch,
+          supabaseMode: app.supabaseMode,
           supabaseProjectId: app.supabaseProjectId,
           supabaseOrganizationSlug: app.supabaseOrganizationSlug,
           neonProjectId: app.neonProjectId,

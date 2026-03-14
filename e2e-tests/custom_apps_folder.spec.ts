@@ -29,9 +29,11 @@ test("new apps are stored in the user's custom folder", async ({ po }) => {
 
   const appName = await po.appManagement.getCurrentAppName();
 
+  expect(appName).toBeTruthy();
+
   // The app should be in the custom directory, not the default
-  expect(fs.existsSync(path.join(newBasePath, appName ?? ""))).toBe(true);
-  expect(fs.existsSync(path.join(defaultBasePath, appName ?? ""))).toBe(false);
+  expect(fs.existsSync(path.join(newBasePath, appName!))).toBe(true);
+  expect(fs.existsSync(path.join(defaultBasePath, appName!))).toBe(false);
 });
 
 test("store apps in default folder after resetting path", async ({ po }) => {
@@ -58,7 +60,7 @@ test("store apps in default folder after resetting path", async ({ po }) => {
     name: /Reset to Default/i,
   });
 
-  expect(resetButton).toBeVisible();
+  await expect(resetButton).toBeVisible();
   await resetButton.click();
 
   // Create an app under the default path
@@ -67,9 +69,11 @@ test("store apps in default folder after resetting path", async ({ po }) => {
 
   const appName = await po.appManagement.getCurrentAppName();
 
+  expect(appName).toBeTruthy();
+
   // App should be located under the default path
-  expect(fs.existsSync(path.join(newBasePath, appName ?? ""))).toBe(false);
-  expect(fs.existsSync(path.join(defaultBasePath, appName ?? ""))).toBe(true);
+  expect(fs.existsSync(path.join(newBasePath, appName!))).toBe(false);
+  expect(fs.existsSync(path.join(defaultBasePath, appName!))).toBe(true);
 });
 
 test("custom folder change doesn't make apps inaccessible", async ({ po }) => {
@@ -96,6 +100,8 @@ test("custom folder change doesn't make apps inaccessible", async ({ po }) => {
   await po.sendPrompt("hello");
   const appName = await po.appManagement.getCurrentAppName();
 
+  expect(appName).toBeTruthy();
+
   // Reset directory path to default
   await po.navigation.goToSettingsTab();
   const resetButton = po.page.getByRole("button", {
@@ -104,7 +110,7 @@ test("custom folder change doesn't make apps inaccessible", async ({ po }) => {
   await resetButton.click();
 
   await po.navigation.goToAppsTab();
-  await po.appManagement.clickAppListItem({ appName: appName ?? "" });
+  await po.appManagement.clickAppListItem({ appName: appName! });
   await po.appManagement.clickOpenInChatButton();
 
   // Should be able to start up app; if we can't then we'll see an error
@@ -122,8 +128,8 @@ test("custom folder change doesn't make apps inaccessible", async ({ po }) => {
 
   expect(toast).toBe(undefined);
 
-  const appPathIfCustom = path.join(newBasePath, appName ?? "");
-  const appPathIfDefault = path.join(defaultBasePath, appName ?? "");
+  const appPathIfCustom = path.join(newBasePath, appName!);
+  const appPathIfDefault = path.join(defaultBasePath, appName!);
 
   // App should still be located in the custom directory
   expect(fs.existsSync(appPathIfCustom)).toBe(true);

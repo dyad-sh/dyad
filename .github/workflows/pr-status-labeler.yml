@@ -73,6 +73,8 @@ jobs:
       - name: Checkout repository (default branch for trusted scripts)
         if: steps.pr-info.outputs.should_continue == 'true'
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Apply status label
         if: steps.pr-info.outputs.should_continue == 'true'

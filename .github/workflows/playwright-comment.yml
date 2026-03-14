@@ -68,6 +68,7 @@ jobs:
         with:
           # base_ref is typically the target branch (e.g., main) and is safe to fetch
           ref: ${{ github.event.workflow_run.base_ref }}
+          persist-credentials: false
 
       - name: Setup Node.js
         if: ${{ steps.pr.outputs.number != '' }}

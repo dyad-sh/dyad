@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import { createLoggedHandler } from "./safe_handle";
 import log from "electron-log";
-import { getDyadAppPath } from "../../paths/paths";
+import { getDyadAppPath, isAppLocationAccessible } from "../../paths/paths";
 import { apps } from "@/db/schema";
 import { db } from "@/db";
 import { chats } from "@/db/schema";
@@ -95,6 +95,12 @@ export function registerImportHandlers() {
       const appPath = skipCopy ? sourcePath : getDyadAppPath(appName);
 
       if (!skipCopy) {
+        if (!isAppLocationAccessible(appPath)) {
+          throw new Error(
+            `The path ${appPath} is inaccessible. Please check your custom apps folder setting.`,
+          );
+        }
+
         // Check if the app already exists in dyad-apps
         const errorMessage = "An app with this name already exists";
         try {

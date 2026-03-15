@@ -49,9 +49,14 @@ export const SelectAppFolderResultSchema = z.object({
   name: z.string().nullable(),
 });
 
-export const SelectAppLocationResultSchema = z.object({
+export const SelectDyadAppsBaseDirectoryResultSchema = z.object({
   path: z.string().nullable(),
   canceled: z.boolean(),
+});
+
+export const GetDyadAppsBaseDirectoryResultSchema = z.object({
+  path: z.string(),
+  customPathStatus: z.enum(["unset", "unavailable", "available"]),
 });
 
 export const DoesReleaseNoteExistParamsSchema = z.object({
@@ -166,6 +171,25 @@ export const systemContracts = {
     channel: "select-app-folder",
     input: z.void(),
     output: SelectAppFolderResultSchema,
+  }),
+
+  // Dyad base app directory
+  getDyadAppsBaseDirectory: defineContract({
+    channel: "get-dyad-apps-base-directory",
+    input: z.void(),
+    output: GetDyadAppsBaseDirectoryResultSchema,
+  }),
+
+  selectDyadAppsBaseDirectory: defineContract({
+    channel: "select-dyad-apps-base-directory",
+    input: z.void(),
+    output: SelectDyadAppsBaseDirectoryResultSchema,
+  }),
+
+  setDyadAppsBaseDirectory: defineContract({
+    channel: "set-dyad-apps-base-directory",
+    input: z.string().nullable(),
+    output: z.void(),
   }),
 
   // External

@@ -17,7 +17,7 @@ import { useRouter } from "@tanstack/react-router";
 import { GitHubIntegration } from "@/components/GitHubIntegration";
 import { VercelIntegration } from "@/components/VercelIntegration";
 import { SupabaseIntegration } from "@/components/SupabaseIntegration";
-
+import { DyadAppsBaseDirectorySelector } from "@/components/DyadAppsBaseDirectorySelector";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { AutoFixProblemsSwitch } from "@/components/AutoFixProblemsSwitch";
@@ -361,6 +361,9 @@ export function GeneralSettings({ appVersion }: { appVersion: string | null }) {
       </div>
       <div id={SETTING_IDS.nodePath} className="mt-4">
         <NodePathSelector />
+      </div>
+      <div id={SETTING_IDS.customAppsFolder} className="mt-4">
+        <DyadAppsBaseDirectorySelector />
       </div>
 
       <div className="flex items-center text-sm text-gray-500 dark:text-gray-400 mt-4">

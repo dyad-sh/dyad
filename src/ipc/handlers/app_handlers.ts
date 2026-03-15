@@ -9,7 +9,11 @@ import { miscContracts } from "../types/misc";
 import { systemContracts } from "../types/system";
 import fs from "node:fs";
 import path from "node:path";
-import { getDyadAppPath, getUserDataPath } from "../../paths/paths";
+import {
+  getDyadAppPath,
+  isAppLocationAccessible,
+  getUserDataPath,
+} from "../../paths/paths";
 import { ChildProcess, spawn } from "node:child_process";
 import { promises as fsPromises } from "node:fs";
 
@@ -801,6 +805,13 @@ export function registerAppHandlers() {
   createTypedHandler(appContracts.createApp, async (_, params) => {
     const appPath = params.name;
     const fullAppPath = getDyadAppPath(appPath);
+
+    if (!isAppLocationAccessible(fullAppPath)) {
+      throw new Error(
+        `The path ${fullAppPath} is inaccessible. Please check your custom apps folder setting.`,
+      );
+    }
+
     if (fs.existsSync(fullAppPath)) {
       throw new Error(`App already exists at: ${fullAppPath}`);
     }
@@ -876,6 +887,12 @@ export function registerAppHandlers() {
 
     const originalAppPath = getDyadAppPath(originalApp.path);
     const newAppPath = getDyadAppPath(newAppName);
+
+    if (!isAppLocationAccessible(newAppPath)) {
+      throw new Error(
+        `The path ${newAppPath} is inaccessible. Please check your custom apps folder setting.`,
+      );
+    }
 
     // 3. Copy the app folder
     try {

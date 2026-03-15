@@ -1,11 +1,18 @@
 import path from "node:path";
 import os from "node:os";
+import fs from "node:fs";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
+import { readSettings } from "../main/settings";
+
+// Cached result of getDyadAppsBaseDirectory
+let cachedBaseDirectory: string | null = null;
+// Whether `dyad-apps` has been created
+let defaultDirCreated = false;
 
 /**
- * Gets the base dyad-apps directory path (without a specific app subdirectory)
+ * Gets the default path of the base dyad-apps directory (without a specific app subdirectory)
  */
-export function getDyadAppsBaseDirectory(): string {
+export function getDefaultDyadAppsDirectory(): string {
   if (IS_TEST_BUILD) {
     const electron = getElectron();
     return path.join(electron!.app.getPath("userData"), "dyad-apps");
@@ -13,13 +20,70 @@ export function getDyadAppsBaseDirectory(): string {
   return path.join(os.homedir(), "dyad-apps");
 }
 
+/**
+ * Gets the default path of the base dyad-apps directory (without a specific app subdirectory),
+ * but creates the directory the first time that this function is called
+ */
+function resolveDefaultDyadAppsDirectory(): string {
+  const defaultDir = getDefaultDyadAppsDirectory();
+  if (!defaultDirCreated) {
+    fs.mkdirSync(defaultDir, { recursive: true });
+    defaultDirCreated = true;
+  }
+  return defaultDir;
+}
+
+/**
+ * Clears base directory cache, so the next call to getDyadAppsBaseDirectory will re-read the settings
+ */
+export function invalidateDyadAppsBaseDirectoryCache(): void {
+  cachedBaseDirectory = null;
+}
+
+/**
+ * Gets the user's preferred apps directory path (without a specific app subdirectory)
+ */
+export function getDyadAppsBaseDirectory(): string {
+  const appsPath =
+    cachedBaseDirectory ??
+    readSettings().customAppsFolder ??
+    resolveDefaultDyadAppsDirectory();
+
+  cachedBaseDirectory = appsPath;
+  return cachedBaseDirectory;
+}
+
+/**
+ * Given a path, determines whether that path exists and is a directory.
+ * Can determine, for example, whether the output of `getDyadAppsBaseDirectory` is usable
+ */
+export function isDirectoryAccessible(directoryPath: string): boolean {
+  let st;
+  try {
+    st = fs.statSync(directoryPath);
+  } catch {
+    // Setting up to check existence+type, so fall through
+  }
+
+  return !!st && st.isDirectory();
+}
+
 export function getDyadAppPath(appPath: string): string {
   // If appPath is already absolute, use it as-is
   if (path.isAbsolute(appPath)) {
     return appPath;
   }
-  // Otherwise, use the default base path
+  // Otherwise, use the user's preferred base path
   return path.join(getDyadAppsBaseDirectory(), appPath);
+}
+
+/**
+ * Given an app path, determines whether that path is accessible within the filesystem.
+ * The input to this function is assumed to be the result of `getDyadAppPath`.
+ */
+export function isAppLocationAccessible(resolvedPath: string): boolean {
+  const containingFolder = path.dirname(resolvedPath);
+  return isDirectoryAccessible(containingFolder);
 }
 
 export function getTypeScriptCachePath(): string {

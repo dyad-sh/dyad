@@ -26,7 +26,7 @@ import {
 } from "../utils/git_utils";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
-import { getDyadAppPath } from "../../paths/paths";
+import { getDyadAppPath, isAppLocationAccessible } from "../../paths/paths";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
@@ -1260,6 +1260,13 @@ async function handleCloneRepoFromUrl(
     }
 
     const appPath = getDyadAppPath(finalAppName);
+
+    if (!isAppLocationAccessible(appPath)) {
+      throw new Error(
+        `The path ${appPath} is inaccessible. Please check your custom apps folder setting.`,
+      );
+    }
+
     // Ensure the app directory exists if native git is disabled
     if (!settings.enableNativeGit) {
       if (!fs.existsSync(appPath)) {

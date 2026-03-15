@@ -137,8 +137,7 @@ export function registerImportHandlers() {
       }
 
       // Create a new app
-      // Store the full absolute path when skipCopy is true,
-      // or if we're copying to a fallback apps directory. Otherwise store appName
+      // Store the full absolute path when skipCopy is true, otherwise store appName
       const [app] = await db
         .insert(apps)
         .values({

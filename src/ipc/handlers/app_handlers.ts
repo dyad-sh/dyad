@@ -784,6 +784,7 @@ export function registerAppHandlers() {
       .insert(apps)
       .values({
         name: params.name,
+        // Use the name as the path for now
         path: appPath,
       })
       .returning();
@@ -894,7 +895,7 @@ export function registerAppHandlers() {
       .insert(apps)
       .values({
         name: newAppName,
-        path: newAppName,
+        path: newAppName, // Use the new name for the path
         // Explicitly set these to null because we don't want to copy them over.
         // Note: we could just leave them out since they're nullable field, but this
         // is to make it explicit we intentionally don't want to copy them over.

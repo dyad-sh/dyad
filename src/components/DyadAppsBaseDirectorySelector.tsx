@@ -99,7 +99,7 @@ export function DyadAppsBaseDirectorySelector() {
                   {customPathStatus === "available"
                     ? "Custom Folder:"
                     : customPathStatus === "unavailable"
-                      ? "Currently Using:"
+                      ? "Folder is Inaccessible:"
                       : "Default Folder:"}
                 </span>
               </div>
@@ -116,7 +116,7 @@ export function DyadAppsBaseDirectorySelector() {
         <div className="text-sm text-gray-500 dark:text-gray-400">
           <p>
             {customPathStatus === "unavailable"
-              ? "Your apps folder is inaccessible. Make sure that the folder exists, then restart Dyad."
+              ? "Your apps folder cannot be found. Make sure that the folder exists, or change it."
               : "This is the top-level folder that Dyad will store new applications in."}
           </p>
         </div>

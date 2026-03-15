@@ -6,6 +6,7 @@ import { readSettings } from "../main/settings";
 
 // Cached result of getDyadAppsBaseDirectory
 let cachedBaseDirectory: string | null = null;
+let cachedCustomFolderSetting: string | null | undefined;
 // Whether `dyad-apps` has been created
 let defaultDirCreated = false;
 
@@ -41,12 +42,19 @@ export function invalidateDyadAppsBaseDirectoryCache(): void {
 }
 
 /**
+ * Returns the cached value of the custom folder path
+ */
+export function getCustomFolderCache(): string | null | undefined {
+  return cachedCustomFolderSetting;
+}
+
+/**
  * Gets the user's preferred apps directory path (without a specific app subdirectory)
  */
 export function getDyadAppsBaseDirectory(): string {
   const appsPath =
     cachedBaseDirectory ??
-    readSettings().customAppsFolder ??
+    (cachedCustomFolderSetting = readSettings().customAppsFolder) ??
     resolveDefaultDyadAppsDirectory();
 
   cachedBaseDirectory = appsPath;

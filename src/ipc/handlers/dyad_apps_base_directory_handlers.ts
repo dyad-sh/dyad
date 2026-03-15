@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import { createTypedHandler } from "./base";
 import { systemContracts } from "../types/system";
 import {
+  getCustomFolderCache,
   getDefaultDyadAppsDirectory,
   getDyadAppsBaseDirectory,
   invalidateDyadAppsBaseDirectoryCache,
@@ -24,7 +25,7 @@ export function registerDyadAppsBaseDirectoryHandlers() {
     const directory = getDyadAppsBaseDirectory();
 
     const customPathStatus: "unset" | "unavailable" | "available" =
-      directory === getDefaultDyadAppsDirectory()
+      getCustomFolderCache() == null // if null or undefined
         ? "unset"
         : isDirectoryAccessible(directory)
           ? "available"

@@ -48,7 +48,7 @@ export function registerDyadAppsBaseDirectoryHandlers() {
       return { path: null, canceled: true };
     }
 
-    if (!isDirectoryAccessible(filePaths[0])) {
+    if (!isAbsolute(filePaths[0]) || !isDirectoryAccessible(filePaths[0])) {
       return { path: null, canceled: false };
     }
 
@@ -63,7 +63,11 @@ export function registerDyadAppsBaseDirectoryHandlers() {
       let updatedSettingValue = null;
 
       if (input) {
-        // Custom directory; make sure it exists
+        // Custom path; cannot be relative
+        if (!isAbsolute(input))
+          throw new Error("Directory path is not absolute");
+
+        // Make sure it exists
         if (!isDirectoryAccessible(input))
           throw new Error("Path is not a directory");
 

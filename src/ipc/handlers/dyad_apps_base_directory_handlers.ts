@@ -1,5 +1,5 @@
 import { dialog } from "electron";
-import { mkdir, stat } from "fs/promises";
+import { mkdir } from "fs/promises";
 import log from "electron-log";
 import { join, isAbsolute, normalize } from "path";
 import { db } from "../../db";
@@ -11,6 +11,7 @@ import {
   getDefaultDyadAppsDirectory,
   getDyadAppsBaseDirectory,
   invalidateDyadAppsBaseDirectoryCache,
+  isDirectoryAccessible,
 } from "@/paths/paths";
 import { gitAddSafeDirectory } from "../utils/git_utils";
 import { readSettings, writeSettings } from "@/main/settings";
@@ -20,7 +21,19 @@ const logger = log.scope("dyad_apps_base_directory_handlers");
 export function registerDyadAppsBaseDirectoryHandlers() {
   createTypedHandler(systemContracts.getDyadAppsBaseDirectory, async () => {
     invalidateDyadAppsBaseDirectoryCache(); // ensure UI is up-to-date
-    return getDyadAppsBaseDirectory();
+    const directory = getDyadAppsBaseDirectory();
+
+    const customPathStatus: "unset" | "unavailable" | "available" =
+      directory === getDefaultDyadAppsDirectory()
+        ? "unset"
+        : isDirectoryAccessible(directory)
+          ? "available"
+          : "unavailable";
+
+    return {
+      path: directory,
+      customPathStatus,
+    };
   });
 
   createTypedHandler(systemContracts.selectDyadAppsBaseDirectory, async () => {
@@ -34,14 +47,7 @@ export function registerDyadAppsBaseDirectoryHandlers() {
       return { path: null, canceled: true };
     }
 
-    let st;
-    try {
-      st = await stat(filePaths[0]);
-    } catch {
-      // Just setting up to check directory existence, so fall through
-    }
-
-    if (!st || !st.isDirectory()) {
+    if (!isDirectoryAccessible(filePaths[0])) {
       return { path: null, canceled: false };
     }
 
@@ -51,26 +57,21 @@ export function registerDyadAppsBaseDirectoryHandlers() {
   createTypedHandler(
     systemContracts.setDyadAppsBaseDirectory,
     async (_, input) => {
-      const { path: prevPath, defaultPath } = getDyadAppsBaseDirectory();
-      let newDyadAppsBaseDir = defaultPath;
+      const prevPath = getDyadAppsBaseDirectory();
+      let newDyadAppsBaseDir = getDefaultDyadAppsDirectory();
       let updatedSettingValue = null;
 
       if (input) {
-        let st;
-        try {
-          st = await stat(input);
-        } catch {
-          // Setting up to check existence+type; fall through
-        }
-
-        if (!st || !st.isDirectory())
+        // Custom directory; make sure it exists
+        if (!isDirectoryAccessible(input))
           throw new Error("Path is not a directory");
 
         newDyadAppsBaseDir = normalize(input);
         updatedSettingValue = newDyadAppsBaseDir;
+      } else {
+        // Resetting to default
+        await mkdir(newDyadAppsBaseDir, { recursive: true });
       }
-
-      await mkdir(newDyadAppsBaseDir, { recursive: true });
 
       logger.info("Beginning path updates");
 

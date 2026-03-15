@@ -102,13 +102,9 @@ export async function onReady() {
   // The trailing /* allows access to all repositories under the named directory.
   // See: https://git-scm.com/docs/git-config#Documentation/git-config.txt-safedirectory
   if (settings.enableNativeGit) {
-    const { path: dyadAppsPath, customPathStatus } = getDyadAppsBaseDirectory();
-
     // Don't need to await because this only needs to run before
     // the user starts interacting with Dyad app and uses a git-related feature.
-    if (customPathStatus !== "unavailable") {
-      gitAddSafeDirectory(`${dyadAppsPath}/*`);
-    }
+    gitAddSafeDirectory(`${getDyadAppsBaseDirectory()}/*`);
   }
 
   // Check if app was force-closed

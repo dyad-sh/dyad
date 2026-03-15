@@ -26,7 +26,7 @@ import {
 } from "../utils/git_utils";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
-import { getDyadAppPath, getDyadAppPathAvailability } from "../../paths/paths";
+import { getDyadAppPath, isAppLocationAccessible } from "../../paths/paths";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
@@ -1259,10 +1259,9 @@ async function handleCloneRepoFromUrl(
       return { error: `An app named "${finalAppName}" already exists.` };
     }
 
-    const { path: appPath, isAvailable } =
-      getDyadAppPathAvailability(finalAppName);
+    const appPath = getDyadAppPath(finalAppName);
 
-    if (!isAvailable) {
+    if (!isAppLocationAccessible(appPath)) {
       throw new Error(
         `The path ${appPath} is inaccessible. Please check your custom apps folder setting.`,
       );

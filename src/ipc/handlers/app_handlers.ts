@@ -11,7 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   getDyadAppPath,
-  getDyadAppPathAvailability,
+  isAppLocationAccessible,
   getUserDataPath,
 } from "../../paths/paths";
 import { ChildProcess, spawn } from "node:child_process";
@@ -768,10 +768,9 @@ export function registerAppHandlers() {
 
   createTypedHandler(appContracts.createApp, async (_, params) => {
     const appPath = params.name;
-    const { path: fullAppPath, isAvailable } =
-      getDyadAppPathAvailability(appPath);
+    const fullAppPath = getDyadAppPath(appPath);
 
-    if (!isAvailable) {
+    if (!isAppLocationAccessible(fullAppPath)) {
       throw new Error(
         `The path ${fullAppPath} is inaccessible. Please check your custom apps folder setting.`,
       );
@@ -850,10 +849,9 @@ export function registerAppHandlers() {
     }
 
     const originalAppPath = getDyadAppPath(originalApp.path);
-    const { path: newAppPath, isAvailable } =
-      getDyadAppPathAvailability(newAppName);
+    const newAppPath = getDyadAppPath(newAppName);
 
-    if (!isAvailable) {
+    if (!isAppLocationAccessible(newAppPath)) {
       throw new Error(
         `The path ${newAppPath} is inaccessible. Please check your custom apps folder setting.`,
       );

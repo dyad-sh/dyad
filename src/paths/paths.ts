@@ -5,12 +5,8 @@ import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
 import { readSettings } from "../main/settings";
 
 // Cached result of getDyadAppsBaseDirectory
-let cachedBaseDirectory: {
-  path: string;
-  defaultPath: string;
-  customPathStatus: "unset" | "unavailable" | "available";
-} | null = null;
-
+let cachedBaseDirectory: string | null = null;
+// Whether `dyad-apps` has been created
 let defaultDirCreated = false;
 
 /**
@@ -25,6 +21,19 @@ export function getDefaultDyadAppsDirectory(): string {
 }
 
 /**
+ * Gets the default path of the base dyad-apps directory (without a specific app subdirectory),
+ * but creates the directory the first time that this function is called
+ */
+function resolveDefaultDyadAppsDirectory(): string {
+  const defaultDir = getDefaultDyadAppsDirectory();
+  if (!defaultDirCreated) {
+    fs.mkdirSync(defaultDir, { recursive: true });
+    defaultDirCreated = true;
+  }
+  return defaultDir;
+}
+
+/**
  * Clears base directory cache, so the next call to getDyadAppsBaseDirectory will re-read the settings
  */
 export function invalidateDyadAppsBaseDirectoryCache(): void {
@@ -32,51 +41,31 @@ export function invalidateDyadAppsBaseDirectoryCache(): void {
 }
 
 /**
- * Gets the base dyad-apps directory path (without a specific app subdirectory)
- * For convenience, also returns:
- * - The default path of dyad-apps (e.g. ~/dyad-apps), and
- * - A "status"; whether a custom path has been set, and if that folder is accessible
+ * Gets the user's preferred apps directory path (without a specific app subdirectory)
  */
-export function getDyadAppsBaseDirectory(): {
-  path: string;
-  defaultPath: string;
-  customPathStatus: "unset" | "unavailable" | "available";
-} {
-  if (cachedBaseDirectory) {
-    return cachedBaseDirectory;
-  }
+export function getDyadAppsBaseDirectory(): string {
+  const appsPath =
+    cachedBaseDirectory ??
+    readSettings().customAppsFolder ??
+    resolveDefaultDyadAppsDirectory();
 
-  const defaultPath = getDefaultDyadAppsDirectory();
-  const customPath = readSettings().customAppsFolder;
+  cachedBaseDirectory = appsPath;
+  return cachedBaseDirectory;
+}
 
-  // If the user has not set a custom base directory, use default
-  if (!customPath) {
-    // Make sure that the dyad-apps folder exists if we're accessing it for the first time
-    if (!defaultDirCreated) {
-      fs.mkdirSync(defaultPath, { recursive: true });
-      defaultDirCreated = true;
-    }
-    cachedBaseDirectory = {
-      path: defaultPath,
-      defaultPath,
-      customPathStatus: "unset",
-    };
-    return cachedBaseDirectory;
-  }
-
+/**
+ * Given a path, determines whether that path exists and is a directory.
+ * Can determine, for example, whether the output of `getDyadAppsBaseDirectory` is usable
+ */
+export function isDirectoryAccessible(directoryPath: string): boolean {
   let st;
   try {
-    st = fs.statSync(customPath);
+    st = fs.statSync(directoryPath);
   } catch {
-    // Setting up to check defaultDir's existence+type, so fall through
+    // Setting up to check existence+type, so fall through
   }
 
-  cachedBaseDirectory = {
-    path: customPath,
-    defaultPath,
-    customPathStatus: !st || !st.isDirectory() ? "unavailable" : "available",
-  };
-  return cachedBaseDirectory;
+  return !!st && st.isDirectory();
 }
 
 export function getDyadAppPath(appPath: string): string {
@@ -85,24 +74,16 @@ export function getDyadAppPath(appPath: string): string {
     return appPath;
   }
   // Otherwise, use the user's preferred base path
-  return path.join(getDyadAppsBaseDirectory().path, appPath);
+  return path.join(getDyadAppsBaseDirectory(), appPath);
 }
 
-export function getDyadAppPathAvailability(appPath: string): {
-  path: string;
-  isAvailable: boolean;
-} {
-  // If appPath is already absolute, use it as-is
-  if (path.isAbsolute(appPath)) {
-    return { path: appPath, isAvailable: true };
-  }
-
-  const { path: customPath, customPathStatus } = getDyadAppsBaseDirectory();
-
-  return {
-    path: path.join(customPath, appPath),
-    isAvailable: customPathStatus !== "unavailable",
-  };
+/**
+ * Given an app path, determines whether that path is accessible within the filesystem.
+ * The input to this function is assumed to be the result of `getDyadAppPath`.
+ */
+export function isAppLocationAccessible(resolvedPath: string): boolean {
+  const containingFolder = path.dirname(resolvedPath);
+  return isDirectoryAccessible(containingFolder);
 }
 
 export function getTypeScriptCachePath(): string {

@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import { createLoggedHandler } from "./safe_handle";
 import log from "electron-log";
-import { getDyadAppPath, getDyadAppPathAvailability } from "../../paths/paths";
+import { getDyadAppPath, isAppLocationAccessible } from "../../paths/paths";
 import { apps } from "@/db/schema";
 import { db } from "@/db";
 import { chats } from "@/db/schema";
@@ -91,16 +91,13 @@ export function registerImportHandlers() {
         throw new Error("Source folder does not exist");
       }
 
-      const { path: destination, isAvailable } =
-        getDyadAppPathAvailability(appName);
-
       // Determine the app path based on skipCopy
-      const appPath = skipCopy ? sourcePath : destination;
+      const appPath = skipCopy ? sourcePath : getDyadAppPath(appName);
 
       if (!skipCopy) {
-        if (!isAvailable) {
+        if (!isAppLocationAccessible(appPath)) {
           throw new Error(
-            `The path ${destination} is inaccessible. Please check your custom apps folder setting.`,
+            `The path ${appPath} is inaccessible. Please check your custom apps folder setting.`,
           );
         }
 

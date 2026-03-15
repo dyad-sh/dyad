@@ -28,8 +28,13 @@ export function getDefaultDyadAppsDirectory(): string {
 function resolveDefaultDyadAppsDirectory(): string {
   const defaultDir = getDefaultDyadAppsDirectory();
   if (!defaultDirCreated) {
-    fs.mkdirSync(defaultDir, { recursive: true });
-    defaultDirCreated = true;
+    try {
+      fs.mkdirSync(defaultDir, { recursive: true });
+      defaultDirCreated = true;
+    } catch {
+      // Fall through; if it fails then the user will see error toasts
+      // when they try to do anything meaningful, but we don't want Dyad to crash
+    }
   }
   return defaultDir;
 }

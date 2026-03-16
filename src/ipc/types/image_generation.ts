@@ -18,6 +18,15 @@ export const GenerateImageParamsSchema = z.object({
   prompt: z.string().min(1).max(2000),
   themeMode: ImageThemeModeSchema,
   targetAppId: z.number(),
+  requestId: z.string(),
+});
+
+export const CancelImageGenerationParamsSchema = z.object({
+  requestId: z.string(),
+});
+
+export const CancelImageGenerationResponseSchema = z.object({
+  cancelled: z.boolean(),
 });
 
 export type GenerateImageParams = z.infer<typeof GenerateImageParamsSchema>;
@@ -53,6 +62,11 @@ export const imageGenerationContracts = {
     channel: "generate-image",
     input: GenerateImageParamsSchema,
     output: GenerateImageResponseSchema,
+  }),
+  cancelImageGeneration: defineContract({
+    channel: "cancel-image-generation",
+    input: CancelImageGenerationParamsSchema,
+    output: CancelImageGenerationResponseSchema,
   }),
 } as const;
 

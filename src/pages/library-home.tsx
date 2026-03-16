@@ -1,5 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { useState, useMemo, useEffect } from "react";
 import { usePrompts } from "@/hooks/usePrompts";
 import { useCustomThemes } from "@/hooks/useCustomThemes";
 import { useAppMediaFiles } from "@/hooks/useAppMediaFiles";
@@ -19,119 +18,13 @@ import {
 } from "@/components/LibraryFilterTabs";
 import { DyadAppMediaFolder } from "@/components/DyadAppMediaFolder";
 import { ImageGeneratorDialog } from "@/components/ImageGeneratorDialog";
+import { ImageGenerationProgressButton } from "@/components/ImageGenerationProgressButton";
 import { filterMediaAppsByQuery } from "@/lib/mediaUtils";
-// @ts-expect-error -- SVG asset import handled by bundler
-import logo from "../../assets/logo.svg";
-
-const SESSION_ANIMATED_KEY = "library-landing-animated";
-
-// ---------------------------------------------------------------------------
-// Landing Animation
-// ---------------------------------------------------------------------------
-
-const SPRING_EASE = [0.22, 1.2, 0.36, 1] as const;
-
-function LibraryLandingAnimation({ onComplete }: { onComplete: () => void }) {
-  const prefersReducedMotion = useReducedMotion();
-  const orbs = [0, 1, 2, 3, 4];
-
-  // Skip animation entirely for users who prefer reduced motion
-  useEffect(() => {
-    if (prefersReducedMotion) {
-      onComplete();
-    }
-  }, [prefersReducedMotion, onComplete]);
-
-  if (prefersReducedMotion) {
-    return null;
-  }
-
-  return (
-    <motion.div
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background"
-      initial={{ opacity: 1 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.4, ease: "easeOut" }}
-    >
-      {/* Orbiting dots around the logo */}
-      <div className="relative">
-        {orbs.map((i) => (
-          <motion.div
-            key={i}
-            className="absolute h-2 w-2 rounded-full bg-primary"
-            style={{
-              boxShadow:
-                "0 0 8px color-mix(in srgb, var(--primary) 40%, transparent)",
-            }}
-            initial={{ opacity: 0, scale: 0 }}
-            animate={{
-              opacity: [0, 0.8, 0],
-              scale: [0.5, 1.2, 0.5],
-              x: [0, Math.cos((i * 2 * Math.PI) / 5) * 50, 0],
-              y: [0, Math.sin((i * 2 * Math.PI) / 5) * 50, 0],
-            }}
-            transition={{
-              duration: 0.7,
-              ease: SPRING_EASE,
-              delay: 0.05 + i * 0.04,
-            }}
-          />
-        ))}
-
-        {/* Logo with scale-in and glow */}
-        <motion.div
-          className="relative"
-          initial={{ scale: 0.4, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 0.6, ease: SPRING_EASE }}
-        >
-          {/* Glow halo */}
-          <motion.div
-            className="absolute -inset-6 rounded-full blur-xl"
-            style={{
-              background:
-                "radial-gradient(circle, color-mix(in srgb, var(--primary) 25%, transparent), transparent 70%)",
-            }}
-            animate={{
-              scale: [1, 1.4, 1],
-              opacity: [0.3, 0.6, 0.3],
-            }}
-            transition={{
-              duration: 0.8,
-              ease: "easeInOut",
-            }}
-          />
-          <img src={logo} alt="Dyad" className="relative w-16 h-16" />
-        </motion.div>
-      </div>
-
-      {/* "Library" text */}
-      <motion.h1
-        className="text-2xl font-bold mt-6 text-foreground tracking-tight"
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2, duration: 0.3, ease: "easeOut" }}
-        onAnimationComplete={() => {
-          setTimeout(onComplete, 250);
-        }}
-      >
-        Library
-      </motion.h1>
-    </motion.div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Main Library Homepage
 // ---------------------------------------------------------------------------
 
 export default function LibraryHomePage() {
-  const [showAnimation, setShowAnimation] = useState(() => {
-    if (sessionStorage.getItem(SESSION_ANIMATED_KEY)) return false;
-    sessionStorage.setItem(SESSION_ANIMATED_KEY, "1");
-    return true;
-  });
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterType>(() => {
     const params = new URLSearchParams(window.location.search);
@@ -160,11 +53,6 @@ export default function LibraryHomePage() {
   const { apps: allApps } = useLoadApps();
   const [createThemeDialogOpen, setCreateThemeDialogOpen] = useState(false);
   const [imageGeneratorOpen, setImageGeneratorOpen] = useState(false);
-
-  const handleAnimationComplete = useCallback(
-    () => setShowAnimation(false),
-    [],
-  );
 
   // Deep link support (preserved from old library.tsx)
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
@@ -257,115 +145,99 @@ export default function LibraryHomePage() {
 
   return (
     <div className="min-h-screen w-full">
-      <AnimatePresence mode="wait">
-        {showAnimation && (
-          <LibraryLandingAnimation
-            key="landing-animation"
-            onComplete={handleAnimationComplete}
-          />
-        )}
-      </AnimatePresence>
-
-      {!showAnimation && (
-        <motion.div
-          className="px-8 py-6"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease: "easeOut" }}
-        >
-          <div className="max-w-6xl mx-auto">
-            {/* Header */}
-            <div className="flex items-center justify-between mb-6">
-              <h1 className="text-3xl font-bold">
-                <BookOpen className="inline-block h-8 w-8 mr-2" />
-                Library
-              </h1>
+      <div className="px-8 py-6">
+        <div className="max-w-6xl mx-auto">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-6">
+            <h1 className="text-3xl font-bold">
+              <BookOpen className="inline-block h-8 w-8 mr-2" />
+              Library
+            </h1>
+            <div className="flex items-center gap-2">
+              <ImageGenerationProgressButton />
               <NewLibraryItemMenu
                 onNewPrompt={() => setPromptDialogOpen(true)}
                 onNewTheme={() => setCreateThemeDialogOpen(true)}
                 onNewImage={() => setImageGeneratorOpen(true)}
               />
             </div>
-
-            {/* Dialogs (controlled externally) */}
-            <CreateOrEditPromptDialog
-              mode="create"
-              onCreatePrompt={createPrompt}
-              prefillData={prefillData}
-              isOpen={promptDialogOpen}
-              onOpenChange={handlePromptDialogClose}
-              trigger={<span />}
-            />
-
-            {/* Search Bar */}
-            <LibrarySearchBar value={searchQuery} onChange={setSearchQuery} />
-
-            {/* Filter Tabs */}
-            <LibraryFilterTabs
-              active={activeFilter}
-              onChange={setActiveFilter}
-            />
-
-            {/* Grid */}
-            {isLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : hasNoResults ? (
-              <div className="text-muted-foreground text-center py-12">
-                {searchQuery
-                  ? "No results found."
-                  : activeFilter === "media"
-                    ? "No media files yet."
-                    : activeFilter === "themes"
-                      ? "No themes yet."
-                      : activeFilter === "prompts"
-                        ? "No prompts yet."
-                        : "No items in your library yet."}
-              </div>
-            ) : (
-              <div
-                data-testid="library-grid"
-                className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4"
-              >
-                {filteredItems.map((item) => (
-                  <LibraryCard
-                    key={`${item.type}-${item.data.id}`}
-                    item={item}
-                    onUpdatePrompt={updatePrompt}
-                    onDeletePrompt={deletePrompt}
-                  />
-                ))}
-                {filteredMediaApps.map((app) => (
-                  <DyadAppMediaFolder
-                    key={`media-${app.appId}`}
-                    appId={app.appId}
-                    appPath={app.appPath}
-                    appName={app.appName}
-                    files={app.files}
-                    allApps={allApps}
-                    onRenameMediaFile={renameMediaFile}
-                    onDeleteMediaFile={deleteMediaFile}
-                    onMoveMediaFile={moveMediaFile}
-                    isMutatingMedia={isMutatingMedia}
-                    searchQuery={searchQuery}
-                  />
-                ))}
-              </div>
-            )}
           </div>
 
-          <CustomThemeDialog
-            open={createThemeDialogOpen}
-            onOpenChange={setCreateThemeDialogOpen}
+          {/* Dialogs (controlled externally) */}
+          <CreateOrEditPromptDialog
+            mode="create"
+            onCreatePrompt={createPrompt}
+            prefillData={prefillData}
+            isOpen={promptDialogOpen}
+            onOpenChange={handlePromptDialogClose}
+            trigger={<span />}
           />
 
-          <ImageGeneratorDialog
-            open={imageGeneratorOpen}
-            onOpenChange={setImageGeneratorOpen}
-          />
-        </motion.div>
-      )}
+          {/* Search Bar */}
+          <LibrarySearchBar value={searchQuery} onChange={setSearchQuery} />
+
+          {/* Filter Tabs */}
+          <LibraryFilterTabs active={activeFilter} onChange={setActiveFilter} />
+
+          {/* Grid */}
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : hasNoResults ? (
+            <div className="text-muted-foreground text-center py-12">
+              {searchQuery
+                ? "No results found."
+                : activeFilter === "media"
+                  ? "No media files yet."
+                  : activeFilter === "themes"
+                    ? "No themes yet."
+                    : activeFilter === "prompts"
+                      ? "No prompts yet."
+                      : "No items in your library yet."}
+            </div>
+          ) : (
+            <div
+              data-testid="library-grid"
+              className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4"
+            >
+              {filteredItems.map((item) => (
+                <LibraryCard
+                  key={`${item.type}-${item.data.id}`}
+                  item={item}
+                  onUpdatePrompt={updatePrompt}
+                  onDeletePrompt={deletePrompt}
+                />
+              ))}
+              {filteredMediaApps.map((app) => (
+                <DyadAppMediaFolder
+                  key={`media-${app.appId}`}
+                  appId={app.appId}
+                  appPath={app.appPath}
+                  appName={app.appName}
+                  files={app.files}
+                  allApps={allApps}
+                  onRenameMediaFile={renameMediaFile}
+                  onDeleteMediaFile={deleteMediaFile}
+                  onMoveMediaFile={moveMediaFile}
+                  isMutatingMedia={isMutatingMedia}
+                  searchQuery={searchQuery}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        <CustomThemeDialog
+          open={createThemeDialogOpen}
+          onOpenChange={setCreateThemeDialogOpen}
+        />
+
+        <ImageGeneratorDialog
+          open={imageGeneratorOpen}
+          onOpenChange={setImageGeneratorOpen}
+        />
+      </div>
     </div>
   );
 }

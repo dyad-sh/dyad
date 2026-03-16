@@ -6,6 +6,7 @@ import { DyadAppMediaFolder } from "@/components/DyadAppMediaFolder";
 import { LibrarySearchBar } from "@/components/LibrarySearchBar";
 import { Button } from "@/components/ui/button";
 import { ImageGeneratorDialog } from "@/components/ImageGeneratorDialog";
+import { ImageGenerationProgressButton } from "@/components/ImageGenerationProgressButton";
 import { filterMediaAppsByQuery } from "@/lib/mediaUtils";
 
 export default function MediaPage() {
@@ -31,10 +32,13 @@ export default function MediaPage() {
             <Image className="mr-2 h-7 w-7 sm:h-8 sm:w-8" />
             Media
           </h1>
-          <Button onClick={() => setImageGeneratorOpen(true)}>
-            <ImagePlus className="mr-2 h-4 w-4" />
-            Generate Image
-          </Button>
+          <div className="flex items-center gap-2">
+            <ImageGenerationProgressButton />
+            <Button onClick={() => setImageGeneratorOpen(true)}>
+              <ImagePlus className="mr-2 h-4 w-4" />
+              Generate Image
+            </Button>
+          </div>
         </div>
 
         <LibrarySearchBar

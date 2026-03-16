@@ -12,9 +12,9 @@ type LibrarySection = {
 
 const LIBRARY_SECTIONS: LibrarySection[] = [
   { id: "all", label: "All", to: "/library", icon: BookOpen },
-  { id: "themes", label: "Themes", to: "/themes", icon: Palette },
-  { id: "prompts", label: "Prompts", to: "/prompts", icon: FileText },
-  { id: "media", label: "Media", to: "/media", icon: Image },
+  { id: "themes", label: "Themes", to: "/library/themes", icon: Palette },
+  { id: "prompts", label: "Prompts", to: "/library/prompts", icon: FileText },
+  { id: "media", label: "Media", to: "/library/media", icon: Image },
 ];
 
 export function LibraryList({ show }: { show: boolean }) {
@@ -38,6 +38,7 @@ export function LibraryList({ show }: { show: boolean }) {
               section.to === fullLocation ||
               section.to === pathname ||
               (section.to !== "/" &&
+                section.to !== "/library" &&
                 !section.to.includes("?") &&
                 pathname.startsWith(section.to));
 

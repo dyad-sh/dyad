@@ -12,12 +12,14 @@ import { safeJoin } from "../utils/path_utils";
 import { withLock } from "../utils/lock_utils";
 import { readSettings } from "../../main/settings";
 import { eq } from "drizzle-orm";
-import { v4 as uuidv4 } from "uuid";
 import fs from "node:fs";
 import path from "node:path";
 import log from "electron-log";
 
 const logger = log.scope("image_generation_handlers");
+
+// Track active generation controllers so they can be cancelled from the renderer
+const activeControllers = new Map<string, AbortController>();
 
 const DYAD_ENGINE_URL =
   process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1";
@@ -58,8 +60,9 @@ export function registerImageGenerationHandlers() {
         ? `${systemPrompt}\n\n${params.prompt}`
         : params.prompt;
 
-      const requestId = `image-gen-${uuidv4()}`;
+      const requestId = params.requestId;
       const controller = new AbortController();
+      activeControllers.set(requestId, controller);
       const timeoutId = setTimeout(
         () => controller.abort(),
         IMAGE_GENERATION_TIMEOUT_MS,
@@ -81,8 +84,9 @@ export function registerImageGenerationHandlers() {
           signal: controller.signal,
         });
       } catch (error) {
+        activeControllers.delete(requestId);
         if (error instanceof Error && error.name === "AbortError") {
-          throw new Error("Image generation timed out. Please try again.");
+          throw new Error("Image generation cancelled or timed out.");
         }
         throw new Error("Failed to connect to image generation service.");
       } finally {
@@ -181,6 +185,8 @@ export function registerImageGenerationHandlers() {
         },
       );
 
+      activeControllers.delete(requestId);
+
       return {
         fileName,
         filePath,
@@ -188,6 +194,20 @@ export function registerImageGenerationHandlers() {
         appId: app.id,
         appName: app.name,
       };
+    },
+  );
+
+  createTypedHandler(
+    imageGenerationContracts.cancelImageGeneration,
+    async (_, params) => {
+      const controller = activeControllers.get(params.requestId);
+      if (controller) {
+        controller.abort();
+        activeControllers.delete(params.requestId);
+        logger.log(`Image generation cancelled: ${params.requestId}`);
+        return { cancelled: true };
+      }
+      return { cancelled: false };
     },
   );
 }

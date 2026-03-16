@@ -1,3 +1,7 @@
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 // The @media: prefix uses a colon to distinguish from CSS @media queries,
 // which are followed by a space (e.g., "@media screen"). Mentions are always
 // created programmatically as @media:<encoded-filename>.
@@ -28,8 +32,13 @@ export function stripResolvedMediaMentions(
   let stripped = prompt;
   for (const mediaRef of resolvedMediaRefs) {
     const token = `@media:${mediaRef}`;
-    stripped = stripped.split(token).join("");
+    // Replace the token and collapse only the immediate surrounding spaces
+    // (not newlines or other whitespace) left behind by removal.
+    stripped = stripped.replace(
+      new RegExp(`[ ]*${escapeRegExp(token)}[ ]*`, "g"),
+      " ",
+    );
   }
 
-  return stripped.replace(/\s{2,}/g, " ").trim();
+  return stripped.trim();
 }

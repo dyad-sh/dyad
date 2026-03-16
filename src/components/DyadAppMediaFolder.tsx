@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Folder, Image, X } from "lucide-react";
+import { Folder, Image } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,8 @@ import {
   getFileExtension,
 } from "./media-library/media-folder-utils";
 import { MediaFolderOpen } from "./media-library/MediaFolderOpen";
-import { ImagePreview } from "./media-library/ImagePreview";
+import { ImageLightbox } from "./chat/ImageLightbox";
+import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
 import { AppSearchSelect } from "./AppSearchSelect";
 
 interface DyadAppMediaFolderProps {
@@ -348,33 +349,14 @@ export function DyadAppMediaFolder({
           </DialogContent>
         </Dialog>
 
-        <Dialog
-          open={previewFile !== null}
-          onOpenChange={(open) => {
-            if (!open) setPreviewFile(null);
-          }}
-        >
-          <DialogContent className="max-w-3xl p-0 overflow-hidden bg-black/95 border-none">
-            <DialogHeader className="absolute top-2 right-2 z-10">
-              <DialogTitle className="sr-only">
-                {previewFile?.fileName}
-              </DialogTitle>
-              <DialogDescription className="sr-only">
-                Preview of {previewFile?.fileName}
-              </DialogDescription>
-              <button
-                aria-label="Close preview"
-                onClick={() => setPreviewFile(null)}
-                className="p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </DialogHeader>
-            {previewFile && (
-              <ImagePreview appPath={appPath} fileName={previewFile.fileName} />
-            )}
-          </DialogContent>
-        </Dialog>
+        {previewFile && (
+          <ImageLightbox
+            imageUrl={buildDyadMediaUrl(appPath, previewFile.fileName)}
+            alt={previewFile.fileName}
+            filePath={`${appPath}/.dyad/media/${previewFile.fileName}`}
+            onClose={() => setPreviewFile(null)}
+          />
+        )}
       </>
     );
   }

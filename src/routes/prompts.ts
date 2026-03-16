@@ -4,6 +4,6 @@ import LibraryPage from "@/pages/library";
 
 export const promptsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/prompts",
+  path: "/library/prompts",
   component: LibraryPage,
 });

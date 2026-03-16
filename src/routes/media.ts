@@ -4,6 +4,6 @@ import MediaPage from "@/pages/media";
 
 export const mediaRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/media",
+  path: "/library/media",
   component: MediaPage,
 });

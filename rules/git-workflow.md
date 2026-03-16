@@ -24,6 +24,10 @@ gh pr create --head <owner>:<branch> ...
 
 This can happen when remotes are configured in a non-fork layout and `gh` fails to infer the branch mapping.
 
+## `gh pr create` body quoting
+
+When passing a PR body inline via `gh pr create --body "..."`, unescaped backticks are evaluated by `zsh` before `gh` runs. Avoid backticks in inline bodies, or use a body file / heredoc so literal code identifiers do not turn into `command not found` errors.
+
 ## Skipping automated review
 
 Add `#skip-bugbot` to the PR description for trivial PRs that won't affect end-users, such as:

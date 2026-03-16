@@ -411,33 +411,12 @@ export async function getBuiltinLanguageModelCatalog(): Promise<BuiltinLanguageM
     return builtinCatalogCache;
   }
 
-  // On cold start, wait for the initial remote fetch so renderer queries do not
-  // cache fallback data and miss the later background refresh result.
-  if (!builtinCatalogFetchPromise) {
-    logger.info("Cold start catalog request; waiting for initial remote fetch");
-    builtinCatalogFetchPromise = (async () => {
-      try {
-        const remoteCatalog = await fetchRemoteCatalog();
-        builtinCatalogCache = remoteCatalog ?? getFallbackCatalog();
-        logger.info(
-          "Initialized language model catalog after cold start fetch",
-          {
-            source: builtinCatalogCache.source,
-            version: builtinCatalogCache.version,
-            providerCount: builtinCatalogCache.providers.length,
-            aliasCount: builtinCatalogCache.aliases.length,
-          },
-        );
-        return builtinCatalogCache;
-      } finally {
-        builtinCatalogFetchPromise = null;
-      }
-    })();
-  } else {
-    logger.info("Cold start catalog request is waiting on in-flight fetch");
-  }
-
-  return builtinCatalogFetchPromise;
+  logger.info(
+    "Cold start catalog request; returning fallback catalog and refreshing in background",
+  );
+  builtinCatalogCache = getFallbackCatalog();
+  triggerBackgroundRefresh();
+  return builtinCatalogCache;
 }
 
 export async function getThemeGenerationModelOptions(): Promise<

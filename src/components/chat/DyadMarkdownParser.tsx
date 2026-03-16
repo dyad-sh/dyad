@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useDeferredValue, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -27,6 +27,7 @@ import { DyadMcpToolResult } from "./DyadMcpToolResult";
 import { DyadWebSearchResult } from "./DyadWebSearchResult";
 import { DyadWebSearch } from "./DyadWebSearch";
 import { DyadWebCrawl } from "./DyadWebCrawl";
+import { DyadWebFetch } from "./DyadWebFetch";
 import { DyadImageGeneration } from "./DyadImageGeneration";
 import { DyadCodeSearchResult } from "./DyadCodeSearchResult";
 import { DyadCodeSearch } from "./DyadCodeSearch";
@@ -64,6 +65,7 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-web-search-result",
   "dyad-web-search",
   "dyad-web-crawl",
+  "dyad-web-fetch",
   "dyad-code-search-result",
   "dyad-code-search",
   "dyad-read",
@@ -144,10 +146,13 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
 }) => {
   const chatId = useAtomValue(selectedChatIdAtom);
   const isStreaming = useAtomValue(isStreamingByIdAtom).get(chatId!) ?? false;
+  const deferredContent = useDeferredValue(content);
+  const contentToParse = isStreaming ? deferredContent : content;
+
   // Extract content pieces (markdown and custom tags)
   const contentPieces = useMemo(() => {
-    return parseCustomTags(content);
-  }, [content]);
+    return parseCustomTags(contentToParse);
+  }, [contentToParse]);
 
   // Extract error messages and track positions
   const { errorMessages, lastErrorIndex, errorCount } = useMemo(() => {
@@ -391,6 +396,18 @@ function renderCustomTag(
         >
           {content}
         </DyadWebCrawl>
+      );
+    case "dyad-web-fetch":
+      return (
+        <DyadWebFetch
+          node={{
+            properties: {
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadWebFetch>
       );
     case "dyad-code-search":
       return (

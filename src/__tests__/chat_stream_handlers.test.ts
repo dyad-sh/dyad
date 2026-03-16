@@ -56,6 +56,7 @@ vi.mock("../ipc/utils/git_utils", () => ({
   gitSetRemoteUrl: vi.fn(),
   gitStatus: vi.fn().mockResolvedValue([]),
   getGitUncommittedFiles: vi.fn().mockResolvedValue([]),
+  hasStagedChanges: vi.fn().mockResolvedValue(true),
 }));
 
 // Mock paths module to control getDyadAppPath

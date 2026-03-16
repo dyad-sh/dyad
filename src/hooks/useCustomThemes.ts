@@ -7,6 +7,7 @@ import type {
   GenerateThemePromptParams,
   GenerateThemePromptResult,
   GenerateThemeFromUrlParams,
+  ThemeGenerationModelOption,
 } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 
@@ -102,4 +103,21 @@ export function useGenerateThemeFromUrl() {
       return ipc.template.generateThemeFromUrl(params);
     },
   });
+}
+
+export function useThemeGenerationModelOptions() {
+  const query = useQuery({
+    queryKey: queryKeys.themeGenerationModelOptions.all,
+    queryFn: async (): Promise<ThemeGenerationModelOption[]> => {
+      return ipc.template.getThemeGenerationModelOptions();
+    },
+    meta: {
+      showErrorToast: true,
+    },
+  });
+
+  return {
+    themeGenerationModelOptions: query.data ?? [],
+    isLoadingThemeGenerationModelOptions: query.isLoading,
+  };
 }

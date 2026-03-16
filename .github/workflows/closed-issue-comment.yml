@@ -3,6 +3,9 @@ on:
   issue_comment:
     types: [created]
 
+# Restrict default permissions; each job declares only what it needs.
+permissions: {}
+
 jobs:
   handle-comment:
     # Only run on closed issues (not PRs)
@@ -33,6 +36,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # See: https://github.com/anthropics/claude-code-action/blob/v1/docs/security.md
           github_token: ${{ steps.app-token.outputs.token }}
+          # display_report left as default (false) — this workflow processes untrusted issue comments
           allowed_non_write_users: "*"
           claude_args: |
             --model sonnet --allowedTools "Bash(gh issue reopen:*), Bash(gh issue comment:*)"

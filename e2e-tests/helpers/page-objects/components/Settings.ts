@@ -36,6 +36,14 @@ export class Settings {
       .click();
   }
 
+  async toggleEnableSelectAppFromHomeChatInput() {
+    await this.page
+      .getByRole("switch", {
+        name: "Enable Select App from Home Chat Input",
+      })
+      .click();
+  }
+
   async toggleAutoUpdate() {
     await this.page.getByRole("switch", { name: "Auto-update" }).click();
   }

@@ -1125,19 +1125,12 @@ This conversation includes one or more image attachments. When the user uploads 
             lastDbSaveAt = now;
           }
 
-          // Update the placeholder assistant message content in the messages array
-          const currentMessages = [...updatedChat.messages];
-          if (
-            currentMessages.length > 0 &&
-            currentMessages[currentMessages.length - 1].role === "assistant"
-          ) {
-            currentMessages[currentMessages.length - 1].content = fullResponse;
-          }
-
-          // Update the assistant message in the database
+          // Send incremental update with only the streaming message content
+          // instead of the full messages array to reduce IPC overhead
           safeSend(event.sender, "chat:response:chunk", {
             chatId: req.chatId,
-            messages: currentMessages,
+            streamingMessageId: placeholderAssistantMessage.id,
+            streamingContent: fullResponse,
           });
           return fullResponse;
         };

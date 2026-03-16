@@ -4,6 +4,9 @@ import type {
   LanguageModelV3StreamPart,
 } from "@ai-sdk/provider";
 import type { LanguageModel } from "ai";
+import log from "electron-log";
+
+const logger = log.scope("fallback_model");
 
 // Types
 interface FallbackSettings {
@@ -55,15 +58,24 @@ const RETRYABLE_ERROR_PATTERNS = [
   "econnreset",
   "epipe",
   "etimedout",
+  "unknown_error",
 ];
 
 export function defaultShouldRetryThisError(error: any): boolean {
   if (!error) return false;
 
   try {
-    // Check status code
+    // Some API errors nest the real details inside an `error` property
+    // (e.g. { type: 'error', error: { type, code, message } }).
+    const inner = error?.error;
+
+    // Check status code on the error or its inner wrapper
     const statusCode =
-      error?.statusCode || error?.status || error?.response?.status;
+      error?.statusCode ||
+      error?.status ||
+      error?.response?.status ||
+      inner?.statusCode ||
+      inner?.status;
     if (
       statusCode &&
       (RETRYABLE_STATUS_CODES.has(statusCode) || statusCode >= 500)
@@ -71,17 +83,28 @@ export function defaultShouldRetryThisError(error: any): boolean {
       return true;
     }
 
-    // Check error message patterns
-    const errorString = (
-      error?.message ||
-      error?.code ||
-      error?.type ||
-      JSON.stringify(error)
-    ).toLowerCase();
+    // Concatenate fields from both the outer error and the inner wrapper
+    // so we don't miss nested codes/types.
+    const errorString =
+      [
+        error?.message,
+        error?.code,
+        error?.type,
+        inner?.message,
+        inner?.code,
+        inner?.type,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase() || JSON.stringify(error).toLowerCase();
 
-    return RETRYABLE_ERROR_PATTERNS.some((pattern) =>
+    const isRetryable = RETRYABLE_ERROR_PATTERNS.some((pattern) =>
       errorString.includes(pattern),
     );
+    logger.info(
+      `Error retryable=${isRetryable}, statusCode=${statusCode ?? "none"}, errorString="${errorString.slice(0, 200)}"`,
+    );
+    return isRetryable;
   } catch {
     // If we can't parse the error, don't retry
     return false;
@@ -188,15 +211,18 @@ class FallbackModel implements LanguageModelV3 {
 
           // Check if we should retry this error
           if (!defaultShouldRetryThisError(err)) {
+            logger.warn(
+              `Non-retryable error from model ${this.modelId}, not falling back`,
+            );
             throw err;
           }
 
-          // Call error handler if provided
-
           // If we've tried all models at least once and still failing, throw
           if (state.modelsAttempted.size === this.settings.models.length) {
-            // If we haven't hit max retries yet, we can try models again
             if (state.attemptNumber >= this.maxRetries) {
+              logger.error(
+                `All ${this.settings.models.length} models exhausted for ${operationName} after ${state.attemptNumber} attempts`,
+              );
               throw new Error(
                 `All ${this.settings.models.length} models failed for ${operationName}. ` +
                   `Last error: ${err.message}`,
@@ -207,6 +233,9 @@ class FallbackModel implements LanguageModelV3 {
           // Switch to next model
           this.switchToNextModel();
           state.modelsAttempted.add(this.currentModelIndex);
+          logger.info(
+            `Falling back to model ${this.modelId} (attempt ${state.attemptNumber}/${this.maxRetries})`,
+          );
         }
       }
 
@@ -320,6 +349,9 @@ class FallbackModel implements LanguageModelV3 {
                 fallbackModel.settings.models.length &&
               retryState.attemptNumber >= fallbackModel.maxRetries
             ) {
+              logger.error(
+                `All models exhausted during streaming after ${retryState.attemptNumber} attempts`,
+              );
               controller.error(
                 new Error(
                   `All models failed during streaming. Last error: ${err.message}`,
@@ -328,18 +360,22 @@ class FallbackModel implements LanguageModelV3 {
               return;
             }
 
+            logger.info(
+              `Stream error from model, falling back to ${fallbackModel.modelId} (attempt ${retryState.attemptNumber}/${fallbackModel.maxRetries})`,
+            );
+
             try {
-              // Create a new stream with the next model
               const nextResult = await fallbackModel
                 .getUnderlyingModel()
                 .doStream(options);
               await processStream(nextResult.stream);
             } catch (nextError) {
-              // If the retry also fails, propagate the error
               controller.error(nextError);
             }
           } else {
-            // Don't retry - propagate the error
+            logger.warn(
+              `Stream error not retryable (hasContent=${hasStreamedContent}, retryable=${defaultShouldRetryThisError(err)}, attempts=${retryState.attemptNumber}/${fallbackModel.maxRetries}), propagating error`,
+            );
             controller.error(err);
           }
         }

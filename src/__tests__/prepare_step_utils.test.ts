@@ -53,6 +53,31 @@ describe("prepare_step_utils", () => {
         "https://example.com/image.png?width=100&height=200",
       );
     });
+
+    it("passes through valid-sized base64 PNG images", () => {
+      // 1x1 PNG - well under the 8000px limit
+      const png1x1 =
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+      const part: UserMessageContentPart = {
+        type: "image-url",
+        url: png1x1,
+      };
+      const result = transformContentPart(part);
+
+      expect(result.type).toBe("image");
+      expect((result as { type: "image"; image: URL }).image.href).toBe(png1x1);
+    });
+
+    it("passes through non-data URLs without validation (cannot determine dimensions)", () => {
+      // For regular URLs, we can't determine dimensions, so we pass them through
+      const part: UserMessageContentPart = {
+        type: "image-url",
+        url: "https://example.com/potentially-large-image.png",
+      };
+      const result = transformContentPart(part);
+
+      expect(result.type).toBe("image");
+    });
   });
 
   describe("processPendingMessages", () => {

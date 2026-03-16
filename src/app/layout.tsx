@@ -18,6 +18,7 @@ import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
 import { chatInputValueAtom } from "@/atoms/chatAtoms";
 import { usePlanEvents } from "@/hooks/usePlanEvents";
 import { useZoomShortcuts } from "@/hooks/useZoomShortcuts";
+import { useQueueProcessor } from "@/hooks/useQueueProcessor";
 import i18n from "@/i18n";
 import { LanguageSchema } from "@/lib/schemas";
 
@@ -39,6 +40,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
   // Zoom keyboard shortcuts (Ctrl/Cmd + =/- /0)
   useZoomShortcuts();
+
+  // Process queued messages globally (even when not on chat page)
+  useQueueProcessor();
 
   useEffect(() => {
     const zoomLevel = settings?.zoomLevel ?? DEFAULT_ZOOM_LEVEL;

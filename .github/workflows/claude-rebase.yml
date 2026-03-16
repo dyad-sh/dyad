@@ -4,6 +4,9 @@ on:
   pull_request_target:
     types: [labeled, closed]
 
+# Restrict default permissions; the job below declares only what it needs.
+permissions: {}
+
 concurrency:
   group: claude-rebase-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -33,7 +36,7 @@ jobs:
           github-token: ${{ steps.base-app-token.outputs.token }}
           script: |
             const pr = context.payload.pull_request;
-            const allowedUsers = ['wwwillchen', 'wwwillchen-bot', 'dyadbot', 'azizmejri1', 'princeaden1'];
+            const allowedUsers = ['wwwillchen', 'wwwillchen-bot', 'dyadbot', 'dyad-assistant', 'azizmejri1', 'princeaden1'];
             if (!allowedUsers.includes(pr.user.login)) {
               console.log(`PR author ${pr.user.login} is not allowed to use this workflow`);
               core.setOutput('should_continue', 'false');
@@ -105,6 +108,7 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ steps.base-app-token.outputs.token }}
+          display_report: true
           prompt: |
             You are orchestrating the /dyad:pr-rebase skill. Your job is to run it end-to-end as a sub-agent with NO shortcuts.
 

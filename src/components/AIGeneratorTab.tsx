@@ -7,6 +7,7 @@ import { Loader2, Upload, X, Sparkles, Lock, Link } from "lucide-react";
 import {
   useGenerateThemePrompt,
   useGenerateThemeFromUrl,
+  useThemeGenerationModelOptions,
 } from "@/hooks/useCustomThemes";
 import { ipc } from "@/ipc/types";
 import { showError } from "@/lib/toast";
@@ -22,9 +23,6 @@ import type {
 // Image upload constants
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per image (raw file size)
 const MAX_IMAGES = 5;
-
-// Default model for AI theme generation
-const DEFAULT_THEME_GENERATION_MODEL: ThemeGenerationModel = "gemini-3-pro";
 
 // Image stored with file path (for IPC) and blob URL (for preview)
 interface ThemeImage {
@@ -59,9 +57,8 @@ export function AIGeneratorTab({
   const [aiKeywords, setAiKeywords] = useState("");
   const [aiGenerationMode, setAiGenerationMode] =
     useState<ThemeGenerationMode>("inspired");
-  const [aiSelectedModel, setAiSelectedModel] = useState<ThemeGenerationModel>(
-    DEFAULT_THEME_GENERATION_MODEL,
-  );
+  const [aiSelectedModel, setAiSelectedModel] =
+    useState<ThemeGenerationModel>("");
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Track if dialog is open to prevent orphaned uploads from adding images after close
@@ -76,6 +73,8 @@ export function AIGeneratorTab({
   const isGenerating =
     generatePromptMutation.isPending || generateFromUrlMutation.isPending;
   const { userBudget } = useUserBudgetInfo();
+  const { themeGenerationModelOptions, isLoadingThemeGenerationModelOptions } =
+    useThemeGenerationModelOptions();
 
   // Cleanup function to revoke blob URLs and delete temp files
   const cleanupImages = useCallback(
@@ -105,6 +104,20 @@ export function AIGeneratorTab({
     isDialogOpenRef.current = isDialogOpen;
   }, [isDialogOpen]);
 
+  useEffect(() => {
+    const firstModelId = themeGenerationModelOptions[0]?.id ?? "";
+    if (!firstModelId) {
+      return;
+    }
+
+    if (
+      !aiSelectedModel ||
+      !themeGenerationModelOptions.some((model) => model.id === aiSelectedModel)
+    ) {
+      setAiSelectedModel(firstModelId);
+    }
+  }, [aiSelectedModel, themeGenerationModelOptions]);
+
   // Keep a ref to current images for cleanup without causing effect re-runs
   const aiImagesRef = useRef<ThemeImage[]>([]);
   useEffect(() => {
@@ -122,11 +135,11 @@ export function AIGeneratorTab({
       }
       setAiKeywords("");
       setAiGenerationMode("inspired");
-      setAiSelectedModel(DEFAULT_THEME_GENERATION_MODEL);
+      setAiSelectedModel(themeGenerationModelOptions[0]?.id ?? "");
       setInputSource("images");
       setWebsiteUrl("");
     }
-  }, [isDialogOpen, cleanupImages]);
+  }, [isDialogOpen, cleanupImages, themeGenerationModelOptions]);
 
   const handleImageUpload = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -513,49 +526,38 @@ export function AIGeneratorTab({
       {/* Model Selection */}
       <div className="space-y-3">
         <Label>Model Selection</Label>
-        <div className="grid grid-cols-3 gap-3">
-          <button
-            type="button"
-            onClick={() => setAiSelectedModel("gemini-3-pro")}
-            className={`flex flex-col items-center rounded-lg border p-3 text-center transition-colors ${
-              aiSelectedModel === "gemini-3-pro"
-                ? "border-primary bg-primary/5"
-                : "hover:bg-muted/50"
-            }`}
-          >
-            <span className="font-medium text-sm">Gemini 3 Pro</span>
-            <span className="text-xs text-muted-foreground mt-1">
-              Most capable
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setAiSelectedModel("claude-opus-4.5")}
-            className={`flex flex-col items-center rounded-lg border p-3 text-center transition-colors ${
-              aiSelectedModel === "claude-opus-4.5"
-                ? "border-primary bg-primary/5"
-                : "hover:bg-muted/50"
-            }`}
-          >
-            <span className="font-medium text-sm">Claude Opus 4.5</span>
-            <span className="text-xs text-muted-foreground mt-1">
-              Creative & detailed
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setAiSelectedModel("gpt-5.2")}
-            className={`flex flex-col items-center rounded-lg border p-3 text-center transition-colors ${
-              aiSelectedModel === "gpt-5.2"
-                ? "border-primary bg-primary/5"
-                : "hover:bg-muted/50"
-            }`}
-          >
-            <span className="font-medium text-sm">GPT 5.2</span>
-            <span className="text-xs text-muted-foreground mt-1">
-              Latest OpenAI
-            </span>
-          </button>
+        <div
+          className="grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] gap-3"
+          role="radiogroup"
+          aria-label="Model Selection"
+        >
+          {isLoadingThemeGenerationModelOptions ? (
+            <div className="col-span-full flex items-center justify-center py-3 text-sm text-muted-foreground">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Loading models...
+            </div>
+          ) : themeGenerationModelOptions.length === 0 ? (
+            <div className="col-span-full text-center py-3 text-sm text-muted-foreground">
+              No models available
+            </div>
+          ) : (
+            themeGenerationModelOptions.map((modelOption) => (
+              <button
+                key={modelOption.id}
+                type="button"
+                role="radio"
+                aria-checked={aiSelectedModel === modelOption.id}
+                onClick={() => setAiSelectedModel(modelOption.id)}
+                className={`flex flex-col items-center rounded-lg border p-3 text-center transition-colors ${
+                  aiSelectedModel === modelOption.id
+                    ? "border-primary bg-primary/5"
+                    : "hover:bg-muted/50"
+                }`}
+              >
+                <span className="font-medium text-sm">{modelOption.label}</span>
+              </button>
+            ))
+          )}
         </div>
       </div>
 
@@ -563,6 +565,8 @@ export function AIGeneratorTab({
       <Button
         onClick={handleGenerate}
         disabled={
+          isLoadingThemeGenerationModelOptions ||
+          !aiSelectedModel ||
           isGenerating ||
           (inputSource === "images" && aiImages.length === 0) ||
           (inputSource === "url" && !websiteUrl.trim())

@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback } from "react";
 import type {
   ComponentSelection,
   FileAttachment,
@@ -44,8 +44,7 @@ const pendingStreamChatIds = new Set<number>();
 
 export function useStreamChat({
   hasChatId = true,
-  shouldProcessQueue = false,
-}: { hasChatId?: boolean; shouldProcessQueue?: boolean } = {}) {
+}: { hasChatId?: boolean } = {}) {
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
   const setIsStreamingById = useSetAtom(isStreamingByIdAtom);
@@ -66,8 +65,9 @@ export function useStreamChat({
   const [queuedMessagesById, setQueuedMessagesById] = useAtom(
     queuedMessagesByIdAtom,
   );
-  const [streamCompletedSuccessfullyById, setStreamCompletedSuccessfullyById] =
-    useAtom(streamCompletedSuccessfullyByIdAtom);
+  const setStreamCompletedSuccessfullyById = useSetAtom(
+    streamCompletedSuccessfullyByIdAtom,
+  );
 
   const posthog = usePostHog();
   const queryClient = useQueryClient();
@@ -172,7 +172,11 @@ export function useStreamChat({
             selectedComponents: selectedComponents ?? [],
           },
           {
-            onChunk: ({ messages: updatedMessages }) => {
+            onChunk: ({
+              messages: updatedMessages,
+              streamingMessageId,
+              streamingContent,
+            }) => {
               if (!hasIncrementedStreamCount) {
                 setStreamCountById((prev) => {
                   const next = new Map(prev);
@@ -182,11 +186,32 @@ export function useStreamChat({
                 hasIncrementedStreamCount = true;
               }
 
-              setMessagesById((prev) => {
-                const next = new Map(prev);
-                next.set(chatId, updatedMessages);
-                return next;
-              });
+              if (updatedMessages) {
+                // Full messages update (initial load, post-compaction, etc.)
+                setMessagesById((prev) => {
+                  const next = new Map(prev);
+                  next.set(chatId, updatedMessages);
+                  return next;
+                });
+              } else if (
+                streamingMessageId !== undefined &&
+                streamingContent !== undefined
+              ) {
+                // Incremental update: only update the streaming message's content
+                setMessagesById((prev) => {
+                  const existingMessages = prev.get(chatId);
+                  if (!existingMessages) return prev;
+
+                  const next = new Map(prev);
+                  const updated = existingMessages.map((msg) =>
+                    msg.id === streamingMessageId
+                      ? { ...msg, content: streamingContent }
+                      : msg,
+                  );
+                  next.set(chatId, updated);
+                  return next;
+                });
+              }
             },
             onEnd: (response: ChatResponseEnd) => {
               // Remove from pending set now that stream is complete
@@ -336,66 +361,6 @@ export function useStreamChat({
       queryClient,
     ],
   );
-
-  // Process first queued message when streaming ends successfully
-  useEffect(() => {
-    if (!chatId || !shouldProcessQueue) return;
-
-    const queuedMessages = queuedMessagesById.get(chatId) ?? [];
-    const completedSuccessfully =
-      streamCompletedSuccessfullyById.get(chatId) ?? false;
-
-    // Only process queue if we have confirmation that the stream completed successfully
-    // This prevents race conditions where the queue might be processed during cancellation
-    if (queuedMessages.length > 0 && completedSuccessfully) {
-      // Clear the successful completion flag first to prevent loops
-      setStreamCompletedSuccessfullyById((prev) => {
-        const next = new Map(prev);
-        next.set(chatId, false);
-        return next;
-      });
-
-      // Get and remove the first message atomically by extracting it inside the setter
-      // This prevents race conditions where the queue might be modified between
-      // reading firstMessage and updating the queue
-      let messageToSend: QueuedMessageItem | undefined;
-      setQueuedMessagesById((prev) => {
-        const next = new Map(prev);
-        const current = prev.get(chatId) ?? [];
-        const [first, ...remainingMessages] = current;
-        messageToSend = first;
-        if (remainingMessages.length > 0) {
-          next.set(chatId, remainingMessages);
-        } else {
-          next.delete(chatId);
-        }
-        return next;
-      });
-
-      if (!messageToSend) return;
-
-      posthog.capture("chat:submit", { chatMode: settings?.selectedChatMode });
-
-      // Send the first message
-      streamMessage({
-        prompt: messageToSend.prompt,
-        chatId,
-        redo: false,
-        attachments: messageToSend.attachments,
-        selectedComponents: messageToSend.selectedComponents,
-      });
-    }
-  }, [
-    chatId,
-    queuedMessagesById,
-    streamCompletedSuccessfullyById,
-    streamMessage,
-    setQueuedMessagesById,
-    setStreamCompletedSuccessfullyById,
-    posthog,
-    settings?.selectedChatMode,
-    shouldProcessQueue,
-  ]);
 
   return {
     streamMessage,

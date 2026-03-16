@@ -19,7 +19,10 @@ export interface ModelOption {
 
 export const GPT_5_2_MODEL_NAME = "gpt-5.2";
 export const SONNET_4_6 = "claude-sonnet-4-6";
+export const OPUS_4_6 = "claude-opus-4-6";
 export const GEMINI_3_FLASH = "gemini-3-flash-preview";
+export const GEMINI_3_1_PRO_PREVIEW = "gemini-3.1-pro-preview";
+export const GPT_5_NANO = "gpt-5-nano";
 
 export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
   openai: [

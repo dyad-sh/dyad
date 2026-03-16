@@ -250,6 +250,7 @@ export type {
   DeleteCustomThemeParams,
   ThemeGenerationMode,
   ThemeGenerationModel,
+  ThemeGenerationModelOption,
   ThemeInputSource,
   CrawlStatus,
   GenerateThemePromptParams,

@@ -83,13 +83,32 @@ testSetup.describe("Setup Flow", () => {
     // Simulate user having installed Node.js
     await po.setNodeMock(true);
 
-    // Click the continue button (use force to avoid accordion overlap issues)
-    await continueButton.click({ force: true });
+    // Dismiss telemetry consent if it overlaps the continue button
+    const laterButton = po.page.getByRole("button", { name: "Later" });
+    if (await laterButton.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await laterButton.click();
+    }
 
-    // Node.js should now show as installed
-    await expect(
-      po.page.getByText(/Node\.js \(v[\d.]+\) installed/),
-    ).toBeVisible();
+    // Click the continue button using dispatchEvent to reliably trigger
+    // the React onClick handler regardless of overlapping elements or
+    // accordion positioning issues.
+    await continueButton.dispatchEvent("click");
+
+    // After clicking continue, the app calls reloadEnvPath + getNodejsStatus.
+    // When Node.js is detected as installed, the accordion auto-collapses.
+    // Use toPass to handle accordion state transitions and re-expand to verify.
+    await expect(async () => {
+      const nodeTrigger = po.page.getByRole("button", {
+        name: "1. Install Node.js (App Runtime)",
+      });
+      const isExpanded = await nodeTrigger.getAttribute("aria-expanded");
+      if (isExpanded === "false") {
+        await nodeTrigger.click();
+      }
+      await expect(
+        po.page.getByText(/Node\.js \(v[\d.]+\) installed/),
+      ).toBeVisible();
+    }).toPass({ timeout: Timeout.MEDIUM });
 
     // Reset mock
     await po.setNodeMock(null);

@@ -468,6 +468,27 @@
       {
         "type": "function",
         "function": {
+          "name": "web_fetch",
+          "description": "Fetch and read the content of a web page as markdown given its URL.\n\n### When to Use This Tool\nUse this tool when the user's message contains a URL (or domain name) and they want to:\n- **Read** the page's content (e.g. documentation, blog post, article)\n- **Reference** information from the page (e.g. API docs, tutorials, guides)\n- **Extract** data or context from a live web page to inform their code\n- **Follow a link** someone shared to understand its contents\n\nExamples:\n- \"Use the docs at docs.example.com/api to set up the client\"\n- \"What does this page say? https://example.com/blog/post\"\n- \"Follow the guide at example.com/tutorial\"\n\n### When NOT to Use This Tool\n- The user wants to **visually clone or replicate** a website → use `web_crawl` instead\n- The user needs to **search the web** for information without a specific URL → use `web_search` instead\n",
+          "parameters": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "URL to fetch content from"
+              }
+            },
+            "required": [
+              "url"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
           "name": "generate_image",
           "description": "Generate an image using AI based on a text prompt. The generated image is saved to the project's .dyad/media directory.\n\n### When to Use\n- User requests a custom image, illustration, icon, or graphic for their app\n- User wants a hero image, background, banner, or visual asset\n- Creating images that are more visually relevant than placeholder rectangles\n\n### Prompt Guidelines\nWrite detailed, descriptive prompts. Be specific about:\n- **Subject**: What is in the image (objects, people, scenes)\n- **Style**: Photography, illustration, flat design, 3D render, watercolor, etc.\n- **Composition**: Layout, perspective, framing\n- **Colors**: Specific color palette or mood\n- **Mood**: Cheerful, professional, dramatic, minimal, etc.\n\n### Examples\n- \"A modern flat illustration of a team collaborating around a laptop, using a blue and purple color palette, clean minimal style with subtle gradients, white background\"\n- \"Professional product photography of a sleek smartphone on a marble surface, soft studio lighting, shallow depth of field, warm neutral tones\"\n\n### After Generation\nThe tool returns the file path in .dyad/media. Use the copy_file tool to copy it to the appropriate location in the project (e.g., public/assets/) and reference that path in your code.\n",
           "parameters": {

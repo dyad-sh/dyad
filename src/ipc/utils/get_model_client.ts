@@ -15,13 +15,9 @@ import type {
 } from "../../lib/schemas";
 import { getEnvVar } from "./read_env";
 import log from "electron-log";
-import {
-  FREE_OPENROUTER_MODEL_NAMES,
-  GEMINI_3_FLASH,
-  GPT_5_2_MODEL_NAME,
-  SONNET_4_6,
-} from "../shared/language_model_constants";
+import { FREE_OPENROUTER_MODEL_NAMES } from "../shared/language_model_constants";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
+import { resolveBuiltinModelAlias } from "../shared/remote_language_model_catalog";
 import { LanguageModelProvider } from "@/ipc/types";
 import {
   createDyadEngine,
@@ -35,24 +31,11 @@ import { createFallback } from "./fallback_ai_model";
 
 const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
 
-const AUTO_MODELS = [
-  {
-    provider: "openai",
-    name: GPT_5_2_MODEL_NAME,
-  },
-  {
-    provider: "anthropic",
-    name: SONNET_4_6,
-  },
-  {
-    provider: "google",
-    name: GEMINI_3_FLASH,
-  },
-  {
-    provider: "google",
-    name: "gemini-2.5-flash",
-  },
-];
+const AUTO_MODEL_ALIASES = [
+  "dyad/auto/openai",
+  "dyad/auto/anthropic",
+  "dyad/auto/google",
+] as const;
 
 export interface ModelClient {
   model: LanguageModel;
@@ -113,7 +96,7 @@ export async function getModelClient(
 
       // Do not use free variant (for openrouter).
       const modelName = model.name.split(":free")[0];
-      const proModelClient = getProModelClient({
+      const proModelClient = await getProModelClient({
         model,
         settings,
         provider,
@@ -158,25 +141,30 @@ export async function getModelClient(
         isEngineEnabled: false,
       };
     }
-    for (const autoModel of AUTO_MODELS) {
+    for (const autoModelAlias of AUTO_MODEL_ALIASES) {
+      const resolvedModel = await resolveBuiltinModelAlias(autoModelAlias);
+      if (!resolvedModel) {
+        continue;
+      }
+
       const providerInfo = allProviders.find(
-        (p) => p.id === autoModel.provider,
+        (p) => p.id === resolvedModel.providerId,
       );
       const envVarName = providerInfo?.envVarName;
 
       const apiKey =
-        settings.providerSettings?.[autoModel.provider]?.apiKey?.value ||
+        settings.providerSettings?.[resolvedModel.providerId]?.apiKey?.value ||
         (envVarName ? getEnvVar(envVarName) : undefined);
 
       if (apiKey) {
         logger.log(
-          `Using provider: ${autoModel.provider} model: ${autoModel.name}`,
+          `Using provider: ${resolvedModel.providerId} model: ${resolvedModel.apiName}`,
         );
         // Recursively call with the specific model found
         return await getModelClient(
           {
-            provider: autoModel.provider,
-            name: autoModel.name,
+            provider: resolvedModel.providerId,
+            name: resolvedModel.apiName,
           },
           settings,
         );
@@ -190,7 +178,7 @@ export async function getModelClient(
   return getRegularModelClient(model, settings, providerConfig);
 }
 
-function getProModelClient({
+async function getProModelClient({
   model,
   settings,
   provider,
@@ -200,23 +188,52 @@ function getProModelClient({
   settings: UserSettings;
   provider: DyadEngineProvider;
   modelId: string;
-}): ModelClient {
+}): Promise<ModelClient> {
   if (
     settings.selectedChatMode === "local-agent" &&
     model.provider === "auto" &&
     model.name === "auto"
   ) {
+    const providers = await getLanguageModelProviders();
+    const fallbackModels = await Promise.all(
+      AUTO_MODEL_ALIASES.map(async (aliasId) => {
+        const resolvedModel = await resolveBuiltinModelAlias(aliasId);
+        if (!resolvedModel) {
+          return null;
+        }
+
+        const resolvedProvider = providers.find(
+          (providerInfo) => providerInfo.id === resolvedModel.providerId,
+        );
+        const resolvedModelId = `${
+          resolvedProvider?.gatewayPrefix || ""
+        }${resolvedModel.apiName}`;
+
+        if (resolvedModel.providerId === "openai") {
+          return provider.responses(resolvedModel.apiName, {
+            providerId: resolvedModel.providerId,
+          });
+        }
+
+        return provider(resolvedModelId, {
+          providerId: resolvedModel.providerId,
+        });
+      }),
+    );
+
+    const validModels = fallbackModels.filter(
+      (candidate) => candidate !== null,
+    );
+    if (validModels.length === 0) {
+      throw new Error("No auto-mode models could be resolved from the catalog");
+    }
+
     return {
       // We need to do the fallback here (and not server-side)
       // because GPT-5* models need to use responses API to get
       // full functionality (e.g. thinking summaries).
       model: createFallback({
-        models: [
-          // openai requires no prefix.
-          provider.responses(`${GPT_5_2_MODEL_NAME}`, { providerId: "openai" }),
-          provider(`anthropic/${SONNET_4_6}`, { providerId: "anthropic" }),
-          provider(`gemini/${GEMINI_3_FLASH}`, { providerId: "google" }),
-        ],
+        models: validModels,
       }),
       // Using openAI as the default provider.
       // TODO: we should remove this and rely on the provider id passed into the provider().

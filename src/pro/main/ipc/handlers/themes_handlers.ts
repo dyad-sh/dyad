@@ -26,24 +26,16 @@ import type {
   SaveThemeImageParams,
   SaveThemeImageResult,
   CleanupThemeImagesParams,
+  ThemeGenerationModelOption,
 } from "@/ipc/types";
 import { webCrawlResponseSchema } from "./local_agent/tools/web_crawl";
+import {
+  getThemeGenerationModelOptions,
+  resolveBuiltinModelAlias,
+} from "@/ipc/shared/remote_language_model_catalog";
 
 const logger = log.scope("themes_handlers");
 const handle = createLoggedHandler(logger);
-
-// Shared model map for theme generation (used by both image and URL handlers)
-const THEME_GENERATION_MODEL_MAP: Record<
-  string,
-  { provider: string; name: string }
-> = {
-  "gemini-3-pro": { provider: "google", name: "gemini-3-pro-preview" },
-  "claude-opus-4.5": {
-    provider: "anthropic",
-    name: "claude-opus-4-5",
-  },
-  "gpt-5.2": { provider: "openai", name: "gpt-5.2" },
-};
 
 // Timeout for web crawl requests (120 seconds)
 const WEB_CRAWL_TIMEOUT_MS = 120_000;
@@ -327,6 +319,13 @@ export function registerThemesHandlers() {
     }));
   });
 
+  handle(
+    "get-theme-generation-model-options",
+    async (): Promise<ThemeGenerationModelOption[]> => {
+      return getThemeGenerationModelOptions();
+    },
+  );
+
   // Create custom theme
   handle(
     "create-custom-theme",
@@ -605,13 +604,21 @@ Modern dark theme with purple accents for testing.
       }
 
       // Validate and map model selection
-      const selectedModel = THEME_GENERATION_MODEL_MAP[params.model];
+      const selectedModel = await resolveBuiltinModelAlias(params.model);
       if (!selectedModel) {
-        throw new Error("Invalid model selection");
+        throw new Error(
+          `Invalid model selection: alias "${params.model}" could not be resolved`,
+        );
       }
 
       // Use the selected model for theme generation
-      const { modelClient } = await getModelClient(selectedModel, settings);
+      const { modelClient } = await getModelClient(
+        {
+          provider: selectedModel.providerId,
+          name: selectedModel.apiName,
+        },
+        settings,
+      );
 
       // Select system prompt based on generation mode
       const systemPrompt =
@@ -755,9 +762,11 @@ Modern theme extracted from website for testing.
       }
 
       // Validate and map model selection
-      const selectedModel = THEME_GENERATION_MODEL_MAP[params.model];
+      const selectedModel = await resolveBuiltinModelAlias(params.model);
       if (!selectedModel) {
-        throw new Error("Invalid model selection");
+        throw new Error(
+          `Invalid model selection: alias "${params.model}" could not be resolved`,
+        );
       }
 
       // Get API key for Dyad Engine
@@ -837,7 +846,13 @@ Modern theme extracted from website for testing.
       logger.log(`Website crawled successfully: ${params.url}`);
 
       // Use the selected model for theme generation
-      const { modelClient } = await getModelClient(selectedModel, settings);
+      const { modelClient } = await getModelClient(
+        {
+          provider: selectedModel.providerId,
+          name: selectedModel.apiName,
+        },
+        settings,
+      );
 
       // Select system prompt based on generation mode
       const systemPrompt =

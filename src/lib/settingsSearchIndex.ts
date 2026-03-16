@@ -34,6 +34,8 @@ export const SETTING_IDS = {
   neon: "setting-neon",
   nativeGit: "setting-native-git",
   enableMcpServersForBuildMode: "setting-enable-mcp-servers-for-build-mode",
+  enableSelectAppFromHomeChatInput:
+    "setting-enable-select-app-from-home-chat-input",
   reset: "setting-reset",
 } as const;
 
@@ -328,6 +330,15 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     label: "Enable MCP servers for Build mode",
     description: "Allow MCP servers to be used when in Build mode",
     keywords: ["mcp", "build", "agent", "tools", "experiment", "server"],
+    sectionId: SECTION_IDS.experiments,
+    sectionLabel: "Experiments",
+  },
+  {
+    id: SETTING_IDS.enableSelectAppFromHomeChatInput,
+    label: "Enable Select App from Home Chat Input",
+    description:
+      "Show an app selector in the home chat input to start a chat referencing an existing app",
+    keywords: ["app", "select", "home", "chat", "experiment", "input"],
     sectionId: SECTION_IDS.experiments,
     sectionLabel: "Experiments",
   },

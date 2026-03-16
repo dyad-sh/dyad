@@ -10,6 +10,7 @@ import {
 } from "@ai-sdk/openai";
 import { createTypedHandler } from "./base";
 import { helpContracts } from "../types/help";
+import { resolveBuiltinModelAlias } from "../shared/remote_language_model_catalog";
 
 const logger = log.scope("help-bot");
 
@@ -48,11 +49,23 @@ export function registerHelpBotHandlers() {
         baseURL: "https://helpchat.dyad.sh/v1",
         apiKey,
       });
+      const helpBotModel = await resolveBuiltinModelAlias(
+        "dyad/help-bot/default",
+      );
+
+      if (!helpBotModel || helpBotModel.providerId !== "openai") {
+        // Help bot requires OpenAI provider because it uses the OpenAI
+        // responses API via a custom baseURL (helpchat.dyad.sh).
+        throw new Error(
+          `Help bot requires an OpenAI model (got provider: ${helpBotModel?.providerId ?? "none"}). ` +
+            `The 'dyad/help-bot/default' alias must resolve to an OpenAI model.`,
+        );
+      }
 
       let assistantContent = "";
 
       const stream = streamText({
-        model: provider.responses("gpt-5-nano"),
+        model: provider.responses(helpBotModel.apiName),
         providerOptions: {
           openai: {
             reasoningSummary: "auto",

@@ -15,15 +15,20 @@
 - text: claude-opus-4-5
 - img
 - text: less than a minute ago
+- img
+- text: (1 files changed)
 - button "Copy Request ID":
   - img
   - text: ""
 - paragraph: tc=local-agent/generate-image
 - paragraph: I'll generate a hero image for your landing page.
-- button "Image Generation A modern, minimal hero illustration of a rocket launching from a laptop screen, flat design style, blue and purple gradient background, clean lines":
+- button "Image Generation A modern, minimal hero illustration of a rocket launching from a laptop screen, flat design style, blue and purple gradient background, clean lines View generated image":
   - img
   - text: ""
   - img
+  - button "View generated image":
+    - img "A modern, minimal hero illustration of a rocket launching from a laptop screen, flat design style, blue and purple gradient background, clean lines"
+    - img
 - paragraph: I've generated the hero image and saved it to your project. You can find it in the .dyad/media directory.
 - button "Copy":
   - img

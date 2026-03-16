@@ -80,6 +80,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ steps.app-token.outputs.token }}
           claude_args: --model claude-opus-4-6
+          display_report: true
           prompt: |
             /dyad:deflake-e2e-recent-commits ${{ inputs.commit_count || '10' }}
       - name: Cleanup (self-hosted macOS)

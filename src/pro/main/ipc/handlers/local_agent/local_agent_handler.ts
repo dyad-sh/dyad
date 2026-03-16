@@ -375,6 +375,7 @@ export async function handleLocalAgentStream(
           previewContent,
           placeholderMessageId,
           hiddenMessageIdsForStreaming,
+          true, // Full messages: compaction changes message list
         );
       },
       {
@@ -425,6 +426,7 @@ export async function handleLocalAgentStream(
         fullResponse + streamingPreview,
         placeholderMessageId,
         hiddenMessageIdsForStreaming,
+        true, // Full messages: post-compaction refresh
       );
     }
 
@@ -1266,7 +1268,7 @@ export async function handleLocalAgentStream(
     logger.error("Local agent error:", error);
     safeSend(event.sender, "chat:response:error", {
       chatId: req.chatId,
-      error: `Error: ${error}`,
+      error: `Error: ${getErrorMessage(error)}`,
     });
     return false; // Error - don't consume quota
   }
@@ -1292,6 +1294,17 @@ function getErrorMessage(error: unknown): string {
   }
   if (typeof error === "string") {
     return error;
+  }
+  if (isRecord(error)) {
+    if (typeof error.message === "string" && error.message.length > 0) {
+      return error.message;
+    }
+    if ("error" in error) {
+      return getErrorMessage(error.error);
+    }
+    if ("cause" in error) {
+      return getErrorMessage(error.cause);
+    }
   }
   try {
     return JSON.stringify(error);
@@ -1539,23 +1552,32 @@ function sendResponseChunk(
   fullResponse: string,
   placeholderMessageId: number,
   hiddenMessageIds?: Set<number>,
+  /** When true, sends the full messages array instead of an incremental update */
+  sendFullMessages?: boolean,
 ) {
-  const currentMessages = [...chat.messages].filter(
-    (message) => !hiddenMessageIds?.has(message.id),
-  );
-  // Find the placeholder message by ID rather than assuming it's the last
-  // assistant message. After compaction, a compaction summary message may
-  // exist after the placeholder and we must not overwrite it.
-  const placeholderMsg = currentMessages.find(
-    (m) => m.id === placeholderMessageId,
-  );
-  if (placeholderMsg) {
-    placeholderMsg.content = fullResponse;
+  if (sendFullMessages) {
+    const currentMessages = [...chat.messages].filter(
+      (message) => !hiddenMessageIds?.has(message.id),
+    );
+    const placeholderMsg = currentMessages.find(
+      (m) => m.id === placeholderMessageId,
+    );
+    if (placeholderMsg) {
+      placeholderMsg.content = fullResponse;
+    }
+    safeSend(event.sender, "chat:response:chunk", {
+      chatId,
+      messages: currentMessages,
+    });
+  } else {
+    // Send incremental update with only the streaming message content
+    // to reduce IPC overhead during high-frequency streaming
+    safeSend(event.sender, "chat:response:chunk", {
+      chatId,
+      streamingMessageId: placeholderMessageId,
+      streamingContent: fullResponse,
+    });
   }
-  safeSend(event.sender, "chat:response:chunk", {
-    chatId,
-    messages: currentMessages,
-  });
 }
 
 function getPlanningQuestionnaireErrorFromStep(step: {

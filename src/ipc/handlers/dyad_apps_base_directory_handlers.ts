@@ -24,16 +24,10 @@ export function registerDyadAppsBaseDirectoryHandlers() {
     invalidateDyadAppsBaseDirectoryCache(); // ensure UI is up-to-date
     const directory = getDyadAppsBaseDirectory();
 
-    const customPathStatus: "unset" | "unavailable" | "available" =
-      getCustomFolderCache() == null // if null or undefined
-        ? "unset"
-        : isDirectoryAccessible(directory)
-          ? "available"
-          : "unavailable";
-
     return {
       path: directory,
-      customPathStatus,
+      isPathAvailable: isDirectoryAccessible(directory),
+      isPathDefault: getCustomFolderCache() == null, // if null or undefined
     };
   });
 

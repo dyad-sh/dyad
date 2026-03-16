@@ -56,7 +56,8 @@ export const SelectDyadAppsBaseDirectoryResultSchema = z.object({
 
 export const GetDyadAppsBaseDirectoryResultSchema = z.object({
   path: z.string(),
-  customPathStatus: z.enum(["unset", "unavailable", "available"]),
+  isPathAvailable: z.boolean(),
+  isPathDefault: z.boolean(),
 });
 
 export const DoesReleaseNoteExistParamsSchema = z.object({

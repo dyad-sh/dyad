@@ -9,9 +9,8 @@ export function DyadAppsBaseDirectorySelector() {
   const [isSelectingPath, setIsSelectingPath] = useState(false);
   const [dyadAppsCustomPath, setDyadAppsCustomPath] =
     useState<string>("Loading...");
-  const [customPathStatus, setCustomPathStatus] = useState<
-    "unset" | "unavailable" | "available"
-  >("unset");
+  const [isPathAvailable, setIsPathAvailable] = useState(true);
+  const [isPathDefault, setIsPathDefault] = useState(true);
 
   useEffect(() => {
     // Fetch path on mount
@@ -52,10 +51,11 @@ export function DyadAppsBaseDirectorySelector() {
 
   const fetchDyadAppsBaseDirectory = async () => {
     try {
-      const { path, customPathStatus } =
+      const { path, isPathAvailable, isPathDefault } =
         await ipc.system.getDyadAppsBaseDirectory();
       setDyadAppsCustomPath(path);
-      setCustomPathStatus(customPathStatus);
+      setIsPathAvailable(isPathAvailable);
+      setIsPathDefault(isPathDefault);
     } catch (error: any) {
       showError(`Failed to fetch Dyad apps folder path: ${error.message}`);
     }
@@ -79,7 +79,7 @@ export function DyadAppsBaseDirectorySelector() {
             {isSelectingPath ? "Selecting..." : "Select A Folder"}
           </Button>
 
-          {customPathStatus !== "unset" && (
+          {!isPathDefault && (
             <Button
               onClick={handleResetToDefault}
               variant="ghost"
@@ -96,15 +96,11 @@ export function DyadAppsBaseDirectorySelector() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                  {customPathStatus === "available"
-                    ? "Custom Folder:"
-                    : customPathStatus === "unavailable"
-                      ? "Folder is Inaccessible:"
-                      : "Default Folder:"}
+                  {isPathDefault ? "Default Folder:" : "Custom Folder:"}
                 </span>
               </div>
               <p
-                className={`text-sm font-mono ${customPathStatus === "unavailable" ? "text-red-800 dark:text-red-400" : "text-gray-700 dark:text-gray-300"} break-all max-h-32 overflow-y-auto`}
+                className={`text-sm font-mono ${isPathAvailable ? "text-gray-700 dark:text-gray-300" : "text-red-800 dark:text-red-400"} break-all max-h-32 overflow-y-auto`}
               >
                 {dyadAppsCustomPath}
               </p>
@@ -115,9 +111,9 @@ export function DyadAppsBaseDirectorySelector() {
         {/* Help Text */}
         <div className="text-sm text-gray-500 dark:text-gray-400">
           <p>
-            {customPathStatus === "unavailable"
-              ? "Your apps folder cannot be found. Make sure that the folder exists, or change it."
-              : "This is the top-level folder that Dyad will store new applications in."}
+            {isPathAvailable
+              ? "This is the top-level folder that Dyad will store new applications in."
+              : "Your apps folder cannot be found. Make sure that the folder exists, or change it."}
           </p>
         </div>
       </div>

@@ -52,6 +52,9 @@ export function registerDyadAppsBaseDirectoryHandlers() {
   createTypedHandler(
     systemContracts.setDyadAppsBaseDirectory,
     async (_, input) => {
+      // Ensure fresh settings read
+      invalidateDyadAppsBaseDirectoryCache();
+
       const prevPath = getDyadAppsBaseDirectory();
       let newDyadAppsBaseDir = getDefaultDyadAppsDirectory();
       let updatedSettingValue = null;

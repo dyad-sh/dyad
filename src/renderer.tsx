@@ -28,6 +28,10 @@ import {
 } from "./atoms/chatAtoms";
 import { pendingQuestionnaireAtom } from "./atoms/planAtoms";
 import { queryKeys } from "./lib/queryKeys";
+import {
+  createExceptionFromTelemetry,
+  getExceptionTelemetryContext,
+} from "./lib/posthogTelemetry";
 
 // @ts-ignore
 console.log("Running in mode:", import.meta.env.MODE);
@@ -233,6 +237,14 @@ function App() {
   useEffect(() => {
     const unsubscribe = ipc.events.system.onTelemetryEvent(
       ({ eventName, properties }) => {
+        if (eventName === "$exception") {
+          posthog.captureException(
+            createExceptionFromTelemetry(properties),
+            getExceptionTelemetryContext(properties),
+          );
+          return;
+        }
+
         posthog.capture(eventName, properties);
       },
     );

@@ -107,7 +107,7 @@
     "lucide-react": "^0.487.0",
     "monaco-editor": "^0.52.2",
     "perfect-freehand": "^1.2.2",
-    "posthog-js": "^1.236.3",
+    "posthog-js": "^1.265.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-i18next": "^16.5.4",

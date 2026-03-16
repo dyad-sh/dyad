@@ -252,7 +252,7 @@ export function registerMediaHandlers() {
       }
 
       const targetMediaDirectoryPath = getMediaDirectoryPath(targetAppPath);
-      fs.mkdirSync(targetMediaDirectoryPath, { recursive: true });
+      await fs.promises.mkdir(targetMediaDirectoryPath, { recursive: true });
 
       const destinationPath = safeJoin(
         targetAppPath,

@@ -52,7 +52,10 @@ export function MediaFileThumbnail({
         className="w-[120px] h-[120px] relative cursor-pointer"
         onClick={() => onPreviewImage(file)}
         onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
+          if (
+            e.target === e.currentTarget &&
+            (e.key === "Enter" || e.key === " ")
+          ) {
             e.preventDefault();
             onPreviewImage(file);
           }

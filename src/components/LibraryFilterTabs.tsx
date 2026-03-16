@@ -26,6 +26,7 @@ export function LibraryFilterTabs({
       {FILTER_OPTIONS.map((opt) => (
         <button
           key={opt.key}
+          type="button"
           aria-pressed={active === opt.key}
           onClick={() => onChange(opt.key)}
           className={cn(

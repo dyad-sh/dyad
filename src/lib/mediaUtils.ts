@@ -1,8 +1,9 @@
 export function filterMediaAppsByQuery<
   T extends { appName: string; files: { fileName: string }[] },
 >(apps: T[], query: string): T[] {
-  if (!query.trim()) return apps;
-  const q = query.toLowerCase();
+  const trimmed = query.trim();
+  if (!trimmed) return apps;
+  const q = trimmed.toLowerCase();
   return apps.filter(
     (app) =>
       app.appName.toLowerCase().includes(q) ||

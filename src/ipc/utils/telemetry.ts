@@ -3,6 +3,9 @@ import log from "electron-log";
 import { TelemetryEventPayload } from "@/ipc/types";
 
 const logger = log.scope("telemetry");
+const FILTERED_EXCEPTION_MESSAGES = new Set([
+  "Supabase access token not found. Please authenticate first.",
+]);
 
 /**
  * Sends a telemetry event from the main process to the renderer,
@@ -36,10 +39,22 @@ export function sendTelemetryException(
     error instanceof Error
       ? error
       : new Error(String(error ?? "Unknown error"));
+
+  if (shouldFilterTelemetryException(err)) {
+    return;
+  }
+
   sendTelemetryEvent("$exception", {
     exception_name: err.name,
     exception_message: err.message,
     exception_stack_trace: err.stack,
     ...context,
   });
+}
+
+export function shouldFilterTelemetryException(error: unknown): boolean {
+  const message =
+    error instanceof Error ? error.message : String(error ?? "Unknown error");
+
+  return FILTERED_EXCEPTION_MESSAGES.has(message);
 }

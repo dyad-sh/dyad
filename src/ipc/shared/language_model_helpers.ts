@@ -5,7 +5,6 @@ import {
 } from "@/db/schema";
 import type { LanguageModelProvider, LanguageModel } from "@/ipc/types";
 import { eq } from "drizzle-orm";
-import log from "electron-log";
 import {
   CLOUD_PROVIDERS,
   LOCAL_PROVIDERS,
@@ -13,8 +12,6 @@ import {
   PROVIDER_TO_ENV_VAR,
 } from "./language_model_constants";
 import { getBuiltinLanguageModelCatalog } from "./remote_language_model_catalog";
-
-const logger = log.scope("language_model_helpers");
 /**
  * Fetches language model providers from both the database (custom) and hardcoded constants (cloud),
  * merging them with custom providers taking precedence.
@@ -42,11 +39,6 @@ export async function getLanguageModelProviders(): Promise<
   }
 
   const builtinCatalog = await getBuiltinLanguageModelCatalog();
-  logger.info("Loaded builtin catalog for provider list", {
-    source: builtinCatalog.source,
-    version: builtinCatalog.version,
-    providerCount: builtinCatalog.providers.length,
-  });
 
   const hardcodedProviders: LanguageModelProvider[] = [
     ...builtinCatalog.providers,
@@ -145,12 +137,6 @@ export async function getLanguageModels({
   let hardcodedModels: LanguageModel[] = [];
   if (provider.type === "cloud") {
     const builtinCatalog = await getBuiltinLanguageModelCatalog();
-    logger.info("Loading cloud models from builtin catalog", {
-      providerId,
-      source: builtinCatalog.source,
-      version: builtinCatalog.version,
-      hasProviderModels: providerId in builtinCatalog.modelsByProvider,
-    });
     if (providerId in builtinCatalog.modelsByProvider) {
       hardcodedModels = builtinCatalog.modelsByProvider[providerId] || [];
     } else if (providerId in MODEL_OPTIONS) {

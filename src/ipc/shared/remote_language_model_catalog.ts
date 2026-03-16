@@ -389,11 +389,6 @@ function triggerBackgroundRefresh(): void {
 
 export async function getBuiltinLanguageModelCatalog(): Promise<BuiltinLanguageModelCatalog> {
   if (builtinCatalogCache && builtinCatalogCache.expiresAt > Date.now()) {
-    logger.info("Returning cached language model catalog", {
-      source: builtinCatalogCache.source,
-      version: builtinCatalogCache.version,
-      expiresAt: new Date(builtinCatalogCache.expiresAt).toISOString(),
-    });
     return builtinCatalogCache;
   }
 

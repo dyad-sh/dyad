@@ -166,28 +166,9 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    Use the commit messages and changed files to write a good title and summary.
 
-8. **Add `cc:request` label for non-trivial PRs:**
+8. **Do NOT automatically add `cc:request`:**
 
-   After creating or updating the PR, determine if the PR is non-trivial and add the `cc:request` label to trigger a code review.
-
-   A PR is **trivial** (skip the label) if it ONLY contains:
-   - Documentation-only changes (`.md` files, comments)
-   - Snapshot/baseline updates with no test logic changes
-   - Single-line typo or formatting fixes
-
-   All other PRs are **non-trivial** (add the label), including:
-   - Any changes to source code (`.ts`, `.tsx`, `.js`, etc.)
-   - Changes to test logic (not just snapshot baselines)
-   - Configuration changes (`.yml`, `.json`, etc.)
-   - Any PR touching 3+ files
-
-   If the PR is non-trivial:
-
-   ```
-   gh pr edit --add-label "cc:request"
-   ```
-
-   **Permission fallback:** If this fails with a permission error (common for bot/fork accounts that lack label permissions on the upstream repo), skip label addition silently and note in the summary that the label could not be added. Do NOT fail the workflow over a label.
+   Do not add the `cc:request` label automatically as part of this skill. Leave review-request labeling unchanged unless the user explicitly asks for it separately.
 
 9. **Remove review-issue label:**
 

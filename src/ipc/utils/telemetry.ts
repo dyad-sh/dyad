@@ -53,6 +53,14 @@ export function sendTelemetryException(
 }
 
 export function shouldFilterTelemetryException(error: unknown): boolean {
+  if (
+    error instanceof Error &&
+    error.name === "RateLimitError" &&
+    error.message.includes("(429)")
+  ) {
+    return true;
+  }
+
   const message =
     error instanceof Error ? error.message : String(error ?? "Unknown error");
 

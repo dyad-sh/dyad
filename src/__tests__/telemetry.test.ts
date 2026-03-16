@@ -12,6 +12,20 @@ describe("shouldFilterTelemetryException", () => {
     ).toBe(true);
   });
 
+  it("filters RateLimitError 429s from retryWithRateLimit", () => {
+    const error = new Error("Rate limited (429): Too Many Requests");
+    error.name = "RateLimitError";
+
+    expect(shouldFilterTelemetryException(error)).toBe(true);
+  });
+
+  it("does not filter non-429 RateLimitError variants", () => {
+    const error = new Error("Rate limited (503): Service Unavailable");
+    error.name = "RateLimitError";
+
+    expect(shouldFilterTelemetryException(error)).toBe(false);
+  });
+
   it("does not filter different Supabase auth failures", () => {
     expect(
       shouldFilterTelemetryException(

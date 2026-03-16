@@ -42,11 +42,12 @@ export function registerDyadAppsBaseDirectoryHandlers() {
       return { path: null, canceled: true };
     }
 
-    if (!isAbsolute(filePaths[0]) || !isDirectoryAccessible(filePaths[0])) {
+    const dirPath = filePaths[0];
+    if (!dirPath || !isAbsolute(dirPath) || !isDirectoryAccessible(dirPath)) {
       return { path: null, canceled: false };
     }
 
-    return { path: filePaths[0], canceled: false };
+    return { path: dirPath, canceled: false };
   });
 
   createTypedHandler(

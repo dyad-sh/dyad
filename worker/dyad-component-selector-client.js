@@ -608,6 +608,7 @@
     if (e.data.type === "restore-dyad-component-overlays") {
       const componentIds = e.data.componentIds;
       if (Array.isArray(componentIds)) {
+        clearOverlays();
         for (const id of componentIds) {
           const el = document.querySelector(
             `[data-dyad-id="${CSS.escape(id)}"]`,

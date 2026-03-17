@@ -381,11 +381,14 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   // Restore component overlays in iframe when selectedComponents changes
   // (e.g., when editing a queued message restores saved selections)
   useEffect(() => {
-    if (
-      !iframeRef.current?.contentWindow ||
-      !isComponentSelectorInitialized ||
-      selectedComponentsPreview.length === 0
-    ) {
+    if (!iframeRef.current?.contentWindow || !isComponentSelectorInitialized) {
+      return;
+    }
+    if (selectedComponentsPreview.length === 0) {
+      iframeRef.current.contentWindow.postMessage(
+        { type: "clear-dyad-component-overlays" },
+        "*",
+      );
       return;
     }
     iframeRef.current.contentWindow.postMessage(

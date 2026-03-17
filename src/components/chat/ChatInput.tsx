@@ -319,10 +319,18 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       if (editingQueuedMessageId === id) {
         setEditingQueuedMessageId(null);
         setInputValue("");
+        clearAttachments();
+        setSelectedComponents([]);
       }
       removeQueuedMessage(id);
     },
-    [editingQueuedMessageId, removeQueuedMessage, setInputValue],
+    [
+      editingQueuedMessageId,
+      removeQueuedMessage,
+      setInputValue,
+      clearAttachments,
+      setSelectedComponents,
+    ],
   );
 
   const handleSubmit = async () => {
@@ -380,6 +388,13 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       setInputValue("");
       clearAttachments();
       setSelectedComponents([]);
+      setVisualEditingSelectedComponent(null);
+      if (previewIframeRef?.contentWindow) {
+        previewIframeRef.contentWindow.postMessage(
+          { type: "clear-dyad-component-overlays" },
+          "*",
+        );
+      }
       setEditingQueuedMessageId(null);
       return;
     }
@@ -643,6 +658,13 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                   setInputValue("");
                   clearAttachments();
                   setSelectedComponents([]);
+                  setVisualEditingSelectedComponent(null);
+                  if (previewIframeRef?.contentWindow) {
+                    previewIframeRef.contentWindow.postMessage(
+                      { type: "clear-dyad-component-overlays" },
+                      "*",
+                    );
+                  }
                 }}
                 className="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
               >

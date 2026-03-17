@@ -365,6 +365,8 @@ export const StoredUserSettingsSchema = z
     // Use StoredChatModeSchema to allow deprecated "agent" value
     selectedChatMode: StoredChatModeSchema.optional(),
     defaultChatMode: StoredChatModeSchema.optional(),
+    // Deprecated: renamed to enableChatEventNotifications
+    enableChatCompletionNotifications: z.boolean().optional(),
   })
   // Allow unknown properties to pass through (e.g. future settings
   // that should be preserved if user downgrades to an older version)
@@ -419,6 +421,9 @@ export function migrateStoredSettings(
     ...stored,
     selectedChatMode: migrateStoredChatMode(stored.selectedChatMode),
     defaultChatMode: migrateStoredChatMode(stored.defaultChatMode),
+    enableChatEventNotifications:
+      stored.enableChatEventNotifications ??
+      stored.enableChatCompletionNotifications,
   };
 }
 

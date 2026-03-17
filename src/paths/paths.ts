@@ -44,6 +44,7 @@ function resolveDefaultDyadAppsDirectory(): string {
  */
 export function invalidateDyadAppsBaseDirectoryCache(): void {
   cachedBaseDirectory = null;
+  cachedCustomFolderSetting = undefined;
 }
 
 /**

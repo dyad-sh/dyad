@@ -21,9 +21,7 @@ test("notification banner - skip hides permanently", async ({ po }) => {
   // Banner should be visible since notifications are not enabled
   const banner = po.page.getByTestId("notification-tip-banner");
   await expect(banner).toBeVisible();
-  await expect(banner).toContainText(
-    "Get notified when chat responses finish.",
-  );
+  await expect(banner).toContainText("Get notified about chat events.");
 
   // Record settings before skipping
   const beforeSettings = po.settings.recordSettings();

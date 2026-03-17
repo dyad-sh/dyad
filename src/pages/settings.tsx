@@ -414,8 +414,8 @@ export function WorkflowSettings() {
       >
         <ChatCompletionNotificationSwitch />
         <div className="text-sm text-gray-500 dark:text-gray-400">
-          Show a native notification when a chat response completes while the
-          app is not focused.
+          Show native notifications when a chat response completes or a
+          questionnaire needs your input while the app is not focused.
         </div>
       </div>
     </div>

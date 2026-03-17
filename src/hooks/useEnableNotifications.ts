@@ -5,7 +5,7 @@ import { detectIsMac } from "@/hooks/useChatModeToggle";
 function sendTestNotification() {
   if (Notification.permission === "granted") {
     new Notification("Dyad", {
-      body: "Notifications are working! You'll be notified when chat responses complete.",
+      body: "Notifications are working! You'll be notified about chat events.",
     });
   }
 }

@@ -177,6 +177,19 @@ export function usePlanEvents() {
           next.set(payload.chatId, payload);
           return next;
         });
+
+        // Show native notification if enabled and window is not focused
+        const notificationsEnabled =
+          settingsRef.current?.enableChatCompletionNotifications === true;
+        if (
+          notificationsEnabled &&
+          Notification.permission === "granted" &&
+          !document.hasFocus()
+        ) {
+          new Notification("Dyad", {
+            body: "A questionnaire needs your input",
+          });
+        }
       },
     );
 

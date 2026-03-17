@@ -22,7 +22,7 @@ export function ChatCompletionNotificationSwitch() {
           }}
         />
         <Label htmlFor="chat-completion-notifications">
-          Show notification when chat completes
+          Enable notifications
         </Label>
       </div>
       <MacNotificationGuideDialog

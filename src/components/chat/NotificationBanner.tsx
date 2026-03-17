@@ -22,7 +22,7 @@ export function NotificationBanner() {
       {showBanner && (
         <SkippableBanner
           icon={Bell}
-          message="Get notified when chat responses finish."
+          message="Get notified about chat events."
           enableLabel="Enable"
           onEnable={enable}
           onSkip={handleSkip}

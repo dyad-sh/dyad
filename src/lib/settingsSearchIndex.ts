@@ -135,10 +135,17 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
   },
   {
     id: SETTING_IDS.chatCompletionNotification,
-    label: "Chat Completion Notification",
+    label: "Notifications",
     description:
-      "Show a native notification when a chat response completes while the app is not focused",
-    keywords: ["notification", "chat", "complete", "alert", "background"],
+      "Show native notifications when a chat response completes or a questionnaire needs your input while the app is not focused",
+    keywords: [
+      "notification",
+      "chat",
+      "complete",
+      "questionnaire",
+      "alert",
+      "background",
+    ],
     sectionId: SECTION_IDS.workflow,
     sectionLabel: "Workflow",
   },

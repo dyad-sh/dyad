@@ -175,6 +175,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     handleDragLeave,
     handleDrop,
     clearAttachments,
+    replaceAttachments,
     handlePaste,
     confirmPendingFiles,
     cancelPendingFiles,
@@ -283,10 +284,13 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       if (!msg) return;
       // Load the message content into the input
       setInputValue(msg.prompt);
+      // Restore attachments and selected components from the queued message
+      replaceAttachments(msg.attachments ?? []);
+      setSelectedComponents(msg.selectedComponents ?? []);
       // Set editing mode
       setEditingQueuedMessageId(id);
     },
-    [queuedMessages, setInputValue],
+    [queuedMessages, setInputValue, replaceAttachments, setSelectedComponents],
   );
 
   const handleMoveUp = useCallback(
@@ -370,8 +374,12 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     if (editingQueuedMessageId) {
       updateQueuedMessage(editingQueuedMessageId, {
         prompt: currentInput,
+        attachments,
+        selectedComponents: componentsToSend,
       });
       setInputValue("");
+      clearAttachments();
+      setSelectedComponents([]);
       setEditingQueuedMessageId(null);
       return;
     }
@@ -633,6 +641,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                 onClick={() => {
                   setEditingQueuedMessageId(null);
                   setInputValue("");
+                  clearAttachments();
+                  setSelectedComponents([]);
                 }}
                 className="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
               >

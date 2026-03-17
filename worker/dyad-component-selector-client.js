@@ -605,6 +605,20 @@
         removeOverlayById(e.data.componentId);
       }
     }
+    if (e.data.type === "restore-dyad-component-overlays") {
+      const componentIds = e.data.componentIds;
+      if (Array.isArray(componentIds)) {
+        for (const id of componentIds) {
+          const el = document.querySelector(
+            `[data-dyad-id="${CSS.escape(id)}"]`,
+          );
+          if (el) {
+            updateOverlay(el, true);
+          }
+        }
+        requestAnimationFrame(updateAllOverlayPositions);
+      }
+    }
   });
 
   // Always listen for keyboard shortcuts

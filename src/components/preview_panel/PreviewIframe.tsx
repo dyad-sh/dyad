@@ -211,7 +211,7 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     }
     return 0;
   });
-  const setSelectedComponentsPreview = useSetAtom(
+  const [selectedComponentsPreview, setSelectedComponentsPreview] = useAtom(
     selectedComponentsPreviewAtom,
   );
   const [visualEditingSelectedComponent, setVisualEditingSelectedComponent] =
@@ -377,6 +377,25 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       );
     }
   }, [isProMode, isComponentSelectorInitialized]);
+
+  // Restore component overlays in iframe when selectedComponents changes
+  // (e.g., when editing a queued message restores saved selections)
+  useEffect(() => {
+    if (
+      !iframeRef.current?.contentWindow ||
+      !isComponentSelectorInitialized ||
+      selectedComponentsPreview.length === 0
+    ) {
+      return;
+    }
+    iframeRef.current.contentWindow.postMessage(
+      {
+        type: "restore-dyad-component-overlays",
+        componentIds: selectedComponentsPreview.map((c) => c.id),
+      },
+      "*",
+    );
+  }, [selectedComponentsPreview, isComponentSelectorInitialized]);
 
   // Add message listener for iframe errors and navigation events
   useEffect(() => {

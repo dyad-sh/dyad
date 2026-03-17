@@ -19,42 +19,6 @@ import { readSettings, writeSettings } from "@/main/settings";
 
 const logger = log.scope("custom_apps_folder_handlers");
 
-/**
- * Given a base directory, changes the paths of apps from relative to absolute.
- * This function is meant to be called multiple times, so `passNum` can be used
- * to differentiate the calls when logging.
- */
-async function convertRelativePathsToAbsolute(
-  relativeBaseDir: string,
-  passNum: number,
-) {
-  const allApps = await db.query.apps.findMany();
-
-  // We don't want to make current apps inaccessible after changing the directory.
-  // So, convert all current apps to absolute paths.
-  db.transaction((tx) => {
-    for (const app of allApps) {
-      if (isAbsolute(app.path)) {
-        logger.info(
-          `Pass ${passNum} -- ${app.name} already has an absolute path; skipping path update`,
-        );
-        continue;
-      }
-
-      const newPath = join(relativeBaseDir, app.path);
-      logger.info(
-        `Pass ${passNum} -- updating ${app.name} from relative path ${app.path} to absolute path ${newPath}`,
-      );
-      tx.update(apps)
-        .set({
-          path: newPath,
-        })
-        .where(eq(apps.id, app.id))
-        .run();
-    }
-  });
-}
-
 export function registerCustomAppsFolderHandlers() {
   createTypedHandler(systemContracts.getCustomAppsFolder, async () => {
     invalidateDyadAppsBaseDirectoryCache(); // ensure UI is up-to-date
@@ -110,7 +74,31 @@ export function registerCustomAppsFolderHandlers() {
     }
 
     logger.info("Beginning path updates");
-    await convertRelativePathsToAbsolute(prevPath, 1);
+    const allApps = await db.query.apps.findMany();
+
+    // We don't want to make current apps inaccessible after changing the directory.
+    // So, convert all current apps to absolute paths.
+    db.transaction((tx) => {
+      for (const app of allApps) {
+        if (isAbsolute(app.path)) {
+          logger.info(
+            `${app.name} already has an absolute path; skipping path update`,
+          );
+          continue;
+        }
+
+        const newPath = join(prevPath, app.path);
+        logger.info(
+          `updating ${app.name} from relative path ${app.path} to absolute path ${newPath}`,
+        );
+        tx.update(apps)
+          .set({
+            path: newPath,
+          })
+          .where(eq(apps.id, app.id))
+          .run();
+      }
+    });
 
     // Add custom apps folder to git safe.directory (required for Windows).
     // The trailing /* allows access to all repositories under the named directory.
@@ -127,12 +115,5 @@ export function registerCustomAppsFolderHandlers() {
       customAppsFolder: updatedSettingValue,
     });
     invalidateDyadAppsBaseDirectoryCache();
-
-    // We call this a second time to prevent a theoretical race condition
-    // where a new app gets created during the first path migration, thus
-    // leaving an inaccessible app with a relative path.
-    // In practice, this will almost certainly never happen anyway,
-    // but it's easy enough to guard against.
-    await convertRelativePathsToAbsolute(prevPath, 2);
   });
 }

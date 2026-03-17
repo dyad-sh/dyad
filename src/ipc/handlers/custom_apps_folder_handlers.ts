@@ -74,11 +74,11 @@ export function registerCustomAppsFolderHandlers() {
     }
 
     logger.info("Beginning path updates");
-    const allApps = await db.query.apps.findMany();
 
     // We don't want to make current apps inaccessible after changing the directory.
     // So, convert all current apps to absolute paths.
     db.transaction((tx) => {
+      const allApps = tx.select().from(apps).all();
       for (const app of allApps) {
         if (isAbsolute(app.path)) {
           logger.info(

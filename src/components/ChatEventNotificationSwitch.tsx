@@ -3,7 +3,7 @@ import { Switch } from "@/components/ui/switch";
 import { MacNotificationGuideDialog } from "./MacNotificationGuideDialog";
 import { useEnableNotifications } from "@/hooks/useEnableNotifications";
 
-export function ChatCompletionNotificationSwitch() {
+export function ChatEventNotificationSwitch() {
   const { isEnabled, enable, disable, showMacGuide, setShowMacGuide } =
     useEnableNotifications();
 
@@ -11,7 +11,7 @@ export function ChatCompletionNotificationSwitch() {
     <>
       <div className="flex items-center space-x-2">
         <Switch
-          id="chat-completion-notifications"
+          id="chat-event-notifications"
           checked={isEnabled}
           onCheckedChange={async (checked) => {
             if (checked) {
@@ -21,9 +21,7 @@ export function ChatCompletionNotificationSwitch() {
             }
           }}
         />
-        <Label htmlFor="chat-completion-notifications">
-          Enable notifications
-        </Label>
+        <Label htmlFor="chat-event-notifications">Enable notifications</Label>
       </div>
       <MacNotificationGuideDialog
         open={showMacGuide}

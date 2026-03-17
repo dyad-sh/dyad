@@ -13,7 +13,7 @@ function sendTestNotification() {
 export function useEnableNotifications() {
   const { settings, updateSettings } = useSettings();
   const [showMacGuide, setShowMacGuide] = useState(false);
-  const isEnabled = settings?.enableChatCompletionNotifications === true;
+  const isEnabled = settings?.enableChatEventNotifications === true;
   const isMac = detectIsMac();
   const openMacGuide = useCallback(() => {
     if (isMac) {
@@ -33,13 +33,13 @@ export function useEnableNotifications() {
         return;
       }
     }
-    await updateSettings({ enableChatCompletionNotifications: true });
+    await updateSettings({ enableChatEventNotifications: true });
     sendTestNotification();
     openMacGuide();
   }, [updateSettings, openMacGuide]);
 
   const disable = useCallback(async () => {
-    await updateSettings({ enableChatCompletionNotifications: false });
+    await updateSettings({ enableChatEventNotifications: false });
   }, [updateSettings]);
 
   return { isEnabled, enable, disable, showMacGuide, setShowMacGuide };

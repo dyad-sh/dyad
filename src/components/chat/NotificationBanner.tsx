@@ -10,7 +10,7 @@ export function NotificationBanner() {
 
   const showBanner =
     settings &&
-    settings.enableChatCompletionNotifications !== true &&
+    settings.enableChatEventNotifications !== true &&
     settings.skipNotificationBanner !== true;
 
   const handleSkip = () => {

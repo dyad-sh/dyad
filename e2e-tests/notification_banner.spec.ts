@@ -9,7 +9,7 @@ const testWithNotificationsEnabled = testWithConfig({
     fs.mkdirSync(userDataDir, { recursive: true });
     fs.writeFileSync(
       path.join(userDataDir, "user-settings.json"),
-      JSON.stringify({ enableChatCompletionNotifications: true }, null, 2),
+      JSON.stringify({ enableChatEventNotifications: true }, null, 2),
     );
   },
 });
@@ -67,7 +67,7 @@ test("notification banner - Enable enables notifications and hides banner", asyn
   // Banner should be hidden after enabling
   await expect(banner).not.toBeVisible();
 
-  // Verify settings were updated with enableChatCompletionNotifications: true
+  // Verify settings were updated with enableChatEventNotifications: true
   po.settings.snapshotSettingsDelta(beforeSettings);
 
   // Navigate away and back to verify banner stays hidden

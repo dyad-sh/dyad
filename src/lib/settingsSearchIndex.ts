@@ -22,7 +22,7 @@ export const SETTING_IDS = {
   autoApprove: "setting-auto-approve",
   autoFix: "setting-auto-fix",
   autoExpandPreview: "setting-auto-expand-preview",
-  chatCompletionNotification: "setting-chat-completion-notification",
+  chatEventNotification: "setting-chat-event-notification",
   thinkingBudget: "setting-thinking-budget",
   maxChatTurns: "setting-max-chat-turns",
   maxToolCallSteps: "setting-max-tool-call-steps",
@@ -134,7 +134,7 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     sectionLabel: "Workflow",
   },
   {
-    id: SETTING_IDS.chatCompletionNotification,
+    id: SETTING_IDS.chatEventNotification,
     label: "Notifications",
     description:
       "Show native notifications when a chat response completes or a questionnaire needs your input while the app is not focused",

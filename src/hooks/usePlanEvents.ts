@@ -180,7 +180,7 @@ export function usePlanEvents() {
 
         // Show native notification if enabled and window is not focused
         const notificationsEnabled =
-          settingsRef.current?.enableChatCompletionNotifications === true;
+          settingsRef.current?.enableChatEventNotifications === true;
         if (
           notificationsEnabled &&
           Notification.permission === "granted" &&

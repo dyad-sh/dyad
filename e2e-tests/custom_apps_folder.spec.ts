@@ -95,7 +95,7 @@ test("custom folder change doesn't make apps inaccessible", async ({ po }) => {
   });
   await browseButton.click();
 
-  // Create an app under the default path
+  // Create an app under the custom path
   await po.navigation.goToAppsTab();
   await po.sendPrompt("hello");
   const appName = await po.appManagement.getCurrentAppName();

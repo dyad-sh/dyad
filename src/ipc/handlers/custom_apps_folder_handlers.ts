@@ -17,7 +17,7 @@ import {
 import { gitAddSafeDirectory } from "../utils/git_utils";
 import { readSettings, writeSettings } from "@/main/settings";
 
-const logger = log.scope("dyad_apps_base_directory_handlers");
+const logger = log.scope("custom_apps_folder_handlers");
 
 /**
  * Given a base directory, changes the paths of apps from relative to absolute.
@@ -55,8 +55,8 @@ async function convertRelativePathsToAbsolute(
   });
 }
 
-export function registerDyadAppsBaseDirectoryHandlers() {
-  createTypedHandler(systemContracts.getDyadAppsBaseDirectory, async () => {
+export function registerCustomAppsFolderHandlers() {
+  createTypedHandler(systemContracts.getCustomAppsFolder, async () => {
     invalidateDyadAppsBaseDirectoryCache(); // ensure UI is up-to-date
     const directory = getDyadAppsBaseDirectory();
 
@@ -67,9 +67,9 @@ export function registerDyadAppsBaseDirectoryHandlers() {
     };
   });
 
-  createTypedHandler(systemContracts.selectDyadAppsBaseDirectory, async () => {
+  createTypedHandler(systemContracts.selectCustomAppsFolder, async () => {
     const { filePaths, canceled } = await dialog.showOpenDialog({
-      title: "Select Dyad Apps Folder",
+      title: "Select Custom Apps Folder",
       properties: ["openDirectory"],
       message: "Select the folder where Dyad apps should be stored",
     });
@@ -86,57 +86,53 @@ export function registerDyadAppsBaseDirectoryHandlers() {
     return { path: dirPath, canceled: false };
   });
 
-  createTypedHandler(
-    systemContracts.setDyadAppsBaseDirectory,
-    async (_, input) => {
-      // Ensure fresh settings read
-      invalidateDyadAppsBaseDirectoryCache();
+  createTypedHandler(systemContracts.setCustomAppsFolder, async (_, input) => {
+    // Ensure fresh settings read
+    invalidateDyadAppsBaseDirectoryCache();
 
-      const prevPath = getDyadAppsBaseDirectory();
-      let newDyadAppsBaseDir = getDefaultDyadAppsDirectory();
-      let updatedSettingValue = null;
+    const prevPath = getDyadAppsBaseDirectory();
+    let newDyadAppsBaseDir = getDefaultDyadAppsDirectory();
+    let updatedSettingValue = null;
 
-      if (input) {
-        // Custom path; cannot be relative
-        if (!isAbsolute(input))
-          throw new Error("Directory path is not absolute");
+    if (input) {
+      // Custom path; cannot be relative
+      if (!isAbsolute(input)) throw new Error("Directory path is not absolute");
 
-        // Make sure it exists
-        if (!isDirectoryAccessible(input))
-          throw new Error("Path is not a directory");
+      // Make sure it exists
+      if (!isDirectoryAccessible(input))
+        throw new Error("Path is not a directory");
 
-        newDyadAppsBaseDir = normalize(input);
-        updatedSettingValue = newDyadAppsBaseDir;
-      } else {
-        // Resetting to default
-        await mkdir(newDyadAppsBaseDir, { recursive: true });
-      }
+      newDyadAppsBaseDir = normalize(input);
+      updatedSettingValue = newDyadAppsBaseDir;
+    } else {
+      // Resetting to default
+      await mkdir(newDyadAppsBaseDir, { recursive: true });
+    }
 
-      logger.info("Beginning path updates");
-      await convertRelativePathsToAbsolute(prevPath, 1);
+    logger.info("Beginning path updates");
+    await convertRelativePathsToAbsolute(prevPath, 1);
 
-      // Add dyad-apps directory to git safe.directory (required for Windows).
-      // The trailing /* allows access to all repositories under the named directory.
-      // See: https://git-scm.com/docs/git-config#Documentation/git-config.txt-safedirectory
-      if (readSettings().enableNativeGit) {
-        const directory = updatedSettingValue ?? getDefaultDyadAppsDirectory();
+    // Add custom apps folder to git safe.directory (required for Windows).
+    // The trailing /* allows access to all repositories under the named directory.
+    // See: https://git-scm.com/docs/git-config#Documentation/git-config.txt-safedirectory
+    if (readSettings().enableNativeGit) {
+      const directory = updatedSettingValue ?? getDefaultDyadAppsDirectory();
 
-        // Don't need to await because this only needs to run before
-        // the user starts interacting with Dyad app and uses a git-related feature.
-        gitAddSafeDirectory(`${directory}/*`);
-      }
+      // Don't need to await because this only needs to run before
+      // the user starts interacting with Dyad app and uses a git-related feature.
+      gitAddSafeDirectory(`${directory}/*`);
+    }
 
-      writeSettings({
-        customAppsFolder: updatedSettingValue,
-      });
-      invalidateDyadAppsBaseDirectoryCache();
+    writeSettings({
+      customAppsFolder: updatedSettingValue,
+    });
+    invalidateDyadAppsBaseDirectoryCache();
 
-      // We call this a second time to prevent a theoretical race condition
-      // where a new app gets created during the first path migration, thus
-      // leaving an inaccessible app with a relative path.
-      // In practice, this will almost certainly never happen anyway,
-      // but it's easy enough to guard against.
-      await convertRelativePathsToAbsolute(prevPath, 2);
-    },
-  );
+    // We call this a second time to prevent a theoretical race condition
+    // where a new app gets created during the first path migration, thus
+    // leaving an inaccessible app with a relative path.
+    // In practice, this will almost certainly never happen anyway,
+    // but it's easy enough to guard against.
+    await convertRelativePathsToAbsolute(prevPath, 2);
+  });
 }

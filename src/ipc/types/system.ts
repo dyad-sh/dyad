@@ -49,12 +49,12 @@ export const SelectAppFolderResultSchema = z.object({
   name: z.string().nullable(),
 });
 
-export const SelectDyadAppsBaseDirectoryResultSchema = z.object({
+export const SelectCustomAppsFolderResultSchema = z.object({
   path: z.string().nullable(),
   canceled: z.boolean(),
 });
 
-export const GetDyadAppsBaseDirectoryResultSchema = z.object({
+export const GetCustomAppsFolderResultSchema = z.object({
   path: z.string(),
   isPathAvailable: z.boolean(),
   isPathDefault: z.boolean(),
@@ -174,21 +174,21 @@ export const systemContracts = {
     output: SelectAppFolderResultSchema,
   }),
 
-  // Dyad base app directory
-  getDyadAppsBaseDirectory: defineContract({
-    channel: "get-dyad-apps-base-directory",
+  // Custom apps folder
+  getCustomAppsFolder: defineContract({
+    channel: "get-custom-apps-folder",
     input: z.void(),
-    output: GetDyadAppsBaseDirectoryResultSchema,
+    output: GetCustomAppsFolderResultSchema,
   }),
 
-  selectDyadAppsBaseDirectory: defineContract({
-    channel: "select-dyad-apps-base-directory",
+  selectCustomAppsFolder: defineContract({
+    channel: "select-custom-apps-folder",
     input: z.void(),
-    output: SelectDyadAppsBaseDirectoryResultSchema,
+    output: SelectCustomAppsFolderResultSchema,
   }),
 
-  setDyadAppsBaseDirectory: defineContract({
-    channel: "set-dyad-apps-base-directory",
+  setCustomAppsFolder: defineContract({
+    channel: "set-custom-apps-folder",
     input: z.string().nullable(),
     output: z.void(),
   }),

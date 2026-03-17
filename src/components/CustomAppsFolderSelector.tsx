@@ -5,33 +5,33 @@ import { showError, showSuccess } from "@/lib/toast";
 import { ipc } from "@/ipc/types";
 import { FolderOpen, RotateCcw } from "lucide-react";
 
-export function DyadAppsBaseDirectorySelector() {
+export function CustomAppsFolderSelector() {
   const [isSelectingPath, setIsSelectingPath] = useState(false);
-  const [dyadAppsCustomPath, setDyadAppsCustomPath] =
+  const [customAppsFolder, setCustomAppsFolder] =
     useState<string>("Loading...");
   const [isPathAvailable, setIsPathAvailable] = useState(true);
   const [isPathDefault, setIsPathDefault] = useState(true);
 
   useEffect(() => {
     // Fetch path on mount
-    fetchDyadAppsBaseDirectory();
+    fetchCustomAppsFolder();
   }, []);
 
-  const handleSelectDyadAppsBaseDirectory = async () => {
+  const handleSelectCustomAppsFolder = async () => {
     setIsSelectingPath(true);
     try {
       // Call the IPC method to select folder
-      const result = await ipc.system.selectDyadAppsBaseDirectory();
+      const result = await ipc.system.selectCustomAppsFolder();
       if (result.path) {
         // Save the custom path to settings
-        await ipc.system.setDyadAppsBaseDirectory(result.path);
-        await fetchDyadAppsBaseDirectory();
-        showSuccess("Dyad apps folder updated successfully");
+        await ipc.system.setCustomAppsFolder(result.path);
+        await fetchCustomAppsFolder();
+        showSuccess("Custom apps folder updated successfully");
       } else if (result.path === null && result.canceled === false) {
         showError(`Could not find folder`);
       }
     } catch (error: any) {
-      showError(`Failed to set Dyad apps folder: ${error.message}`);
+      showError(`Failed to set custom apps folder: ${error.message}`);
     } finally {
       setIsSelectingPath(false);
     }
@@ -40,20 +40,20 @@ export function DyadAppsBaseDirectorySelector() {
   const handleResetToDefault = async () => {
     try {
       // Clear the custom path
-      await ipc.system.setDyadAppsBaseDirectory(null);
+      await ipc.system.setCustomAppsFolder(null);
       // Update UI to show default directory
-      await fetchDyadAppsBaseDirectory();
+      await fetchCustomAppsFolder();
       showSuccess("Dyad apps folder reset successfully");
     } catch (error: any) {
       showError(`Failed to reset Dyad Apps folder path: ${error.message}`);
     }
   };
 
-  const fetchDyadAppsBaseDirectory = async () => {
+  const fetchCustomAppsFolder = async () => {
     try {
       const { path, isPathAvailable, isPathDefault } =
-        await ipc.system.getDyadAppsBaseDirectory();
-      setDyadAppsCustomPath(path);
+        await ipc.system.getCustomAppsFolder();
+      setCustomAppsFolder(path);
       setIsPathAvailable(isPathAvailable);
       setIsPathDefault(isPathDefault);
     } catch (error: any) {
@@ -68,7 +68,7 @@ export function DyadAppsBaseDirectorySelector() {
           <Label className="text-sm font-medium">Customize Apps Folder</Label>
 
           <Button
-            onClick={handleSelectDyadAppsBaseDirectory}
+            onClick={handleSelectCustomAppsFolder}
             disabled={isSelectingPath}
             variant="outline"
             size="sm"
@@ -102,7 +102,7 @@ export function DyadAppsBaseDirectorySelector() {
               <p
                 className={`text-sm font-mono ${isPathAvailable ? "text-gray-700 dark:text-gray-300" : "text-red-800 dark:text-red-400"} break-all max-h-32 overflow-y-auto`}
               >
-                {dyadAppsCustomPath}
+                {customAppsFolder}
               </p>
             </div>
           </div>

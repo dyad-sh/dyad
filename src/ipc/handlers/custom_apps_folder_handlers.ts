@@ -105,10 +105,7 @@ export function registerCustomAppsFolderHandlers() {
     // See: https://git-scm.com/docs/git-config#Documentation/git-config.txt-safedirectory
     if (readSettings().enableNativeGit) {
       const directory = updatedSettingValue ?? getDefaultDyadAppsDirectory();
-
-      // Don't need to await because this only needs to run before
-      // the user starts interacting with Dyad app and uses a git-related feature.
-      gitAddSafeDirectory(`${directory}/*`);
+      await gitAddSafeDirectory(`${directory}/*`);
     }
 
     writeSettings({

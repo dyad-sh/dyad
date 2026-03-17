@@ -100,6 +100,18 @@ queryClient.invalidateQueries({ queryKey: queryKeys.apps.all });
 
 **Adding new keys:** Add entries to the appropriate domain in `queryKeys.ts`. Follow the existing pattern with `all` for the base key and factory functions using object parameters for parameterized keys.
 
+## High-volume event batching
+
+When an IPC event can fire at very high frequency (e.g., stdout/stderr from child processes), **batch messages and flush on a timer** instead of sending each message individually. This prevents IPC channel saturation, excessive array allocations in the renderer, and unnecessary React re-renders.
+
+**Pattern** (see `app_handlers.ts` `enqueueAppOutput`/`flushAllAppOutputs`):
+
+- Buffer outgoing events in a `Map<WebContents, Payload[]>`.
+- Start a `setTimeout` on first enqueue; flush all buffered messages as a single batch event (e.g., `app:output-batch`) when the timer fires (100ms default).
+- Flush immediately on process exit so no messages are lost.
+- Keep latency-sensitive events (e.g., `input-requested`) on an immediate, unbatched channel.
+- On the renderer side, process the entire batch array in a single state update (`setConsoleEntries(prev => [...prev, ...newEntries])`) instead of one update per message.
+
 ## Streaming chunk optimizations
 
 The `chat:response:chunk` event supports two modes:

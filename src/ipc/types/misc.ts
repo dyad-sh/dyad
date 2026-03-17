@@ -383,6 +383,11 @@ export const miscEvents = {
     payload: AppOutputSchema,
   }),
 
+  appOutputBatch: defineEvent({
+    channel: "app:output-batch",
+    payload: z.array(AppOutputSchema),
+  }),
+
   deepLinkReceived: defineEvent({
     channel: "deep-link-received",
     payload: DeepLinkDataSchema,

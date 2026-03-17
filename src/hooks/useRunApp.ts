@@ -70,12 +70,22 @@ export function useAppOutputSubscription() {
             console.error("Failed to respond to app input:", error);
           }
         });
-        return; // Don't add to regular output
+        return null; // Don't add to regular output
       }
 
-      // Add to console entries
-      // Use "server" type for stdout/stderr to match the backend log store
-      // (app_handlers.ts stores these as type: "server")
+      // Handle HMR updates
+      if (
+        output.message.includes("hmr update") &&
+        output.message.includes("[vite]")
+      ) {
+        onHotModuleReload();
+      }
+
+      // Process proxy server output
+      processProxyServerOutput(output);
+
+      // Only send client-error logs to central store
+      // Server logs (stdout/stderr) are already stored in the main process
       const logEntry = {
         level:
           output.type === "stderr" || output.type === "client-error"
@@ -87,39 +97,52 @@ export function useAppOutputSubscription() {
         timestamp: output.timestamp ?? Date.now(),
       };
 
-      // Only send client-error logs to central store
-      // Server logs (stdout/stderr) are already stored in the main process
       if (output.type === "client-error") {
         ipc.misc.addLog(logEntry);
       }
 
-      // Also update UI state
-      setConsoleEntries((prev) => [...prev, logEntry]);
-
-      // Process proxy server output
-      processProxyServerOutput(output);
+      return logEntry;
     },
-    [setConsoleEntries, processProxyServerOutput],
+    [processProxyServerOutput, onHotModuleReload],
   );
 
-  // Subscribe to app output events from main process
+  // Subscribe to immediate app output events (input-requested)
   useEffect(() => {
     const unsubscribe = ipc.events.misc.onAppOutput((output) => {
-      // Only process events for the currently selected app
       if (appId !== null && output.appId === appId) {
-        // Handle HMR updates
-        if (
-          output.message.includes("hmr update") &&
-          output.message.includes("[vite]")
-        ) {
-          onHotModuleReload();
+        const entry = processAppOutput(output);
+        if (entry) {
+          setConsoleEntries((prev) => [...prev, entry]);
         }
-        processAppOutput(output);
       }
     });
 
     return unsubscribe;
-  }, [appId, processAppOutput, onHotModuleReload]);
+  }, [appId, processAppOutput, setConsoleEntries]);
+
+  // Subscribe to batched app output events (stdout/stderr)
+  useEffect(() => {
+    const unsubscribe = ipc.events.misc.onAppOutputBatch((outputs) => {
+      const newEntries: ReturnType<typeof processAppOutput>[] = [];
+      for (const output of outputs) {
+        if (appId !== null && output.appId === appId) {
+          const entry = processAppOutput(output);
+          if (entry) {
+            newEntries.push(entry);
+          }
+        }
+      }
+
+      if (newEntries.length > 0) {
+        setConsoleEntries((prev) => [
+          ...prev,
+          ...(newEntries as NonNullable<(typeof newEntries)[number]>[]),
+        ]);
+      }
+    });
+
+    return unsubscribe;
+  }, [appId, processAppOutput, setConsoleEntries]);
 }
 
 export function useRunApp() {

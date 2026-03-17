@@ -50,6 +50,7 @@ import {
   gitRenameBranch,
 } from "../utils/git_utils";
 import { safeSend } from "../utils/safe_sender";
+import type { AppOutput } from "../types/misc";
 import { normalizePath } from "../../../shared/normalizePath";
 import {
   isServerFunction,
@@ -278,6 +279,43 @@ Details: ${details || "n/a"}
   });
 }
 
+// =============================================================================
+// App Output Batcher
+// =============================================================================
+// Batches stdout/stderr IPC messages to avoid flooding the renderer when apps
+// emit high-volume logs. Messages are buffered and flushed every 100ms.
+
+const APP_OUTPUT_FLUSH_INTERVAL_MS = 100;
+
+const pendingOutputs = new Map<Electron.WebContents, AppOutput[]>();
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+function enqueueAppOutput(
+  sender: Electron.WebContents,
+  output: AppOutput,
+): void {
+  let queue = pendingOutputs.get(sender);
+  if (!queue) {
+    queue = [];
+    pendingOutputs.set(sender, queue);
+  }
+  queue.push(output);
+
+  if (!flushTimer) {
+    flushTimer = setTimeout(flushAllAppOutputs, APP_OUTPUT_FLUSH_INTERVAL_MS);
+  }
+}
+
+function flushAllAppOutputs(): void {
+  flushTimer = null;
+  for (const [sender, outputs] of pendingOutputs) {
+    if (outputs.length > 0) {
+      safeSend(sender, "app:output-batch", outputs);
+    }
+  }
+  pendingOutputs.clear();
+}
+
 function listenToProcess({
   process: spawnedProcess,
   appId,
@@ -322,15 +360,15 @@ function listenToProcess({
     const inputRequestPattern = /\s*›\s*\([yY]\/[nN]\)\s*$/;
     const isInputRequest = inputRequestPattern.test(message);
     if (isInputRequest) {
-      // Send special input-requested event for interactive prompts
+      // Send input-requested immediately (not batched) for responsive UX
       safeSend(event.sender, "app:output", {
         type: "input-requested",
         message,
         appId,
       });
     } else {
-      // Normal stdout handling
-      safeSend(event.sender, "app:output", {
+      // Batch normal stdout for efficient IPC
+      enqueueAppOutput(event.sender, {
         type: "stdout",
         message,
         appId,
@@ -350,7 +388,7 @@ function listenToProcess({
           appInfo.originalUrl === originalUrl &&
           appInfo.proxyUrl
         ) {
-          safeSend(event.sender, "app:output", {
+          enqueueAppOutput(event.sender, {
             type: "stdout",
             message: `[dyad-proxy-server]started=[${appInfo.proxyUrl}] original=[${originalUrl}]`,
             appId,
@@ -371,7 +409,7 @@ function listenToProcess({
               latestAppInfo.proxyUrl = proxyUrl;
               latestAppInfo.originalUrl = originalUrl;
             }
-            safeSend(event.sender, "app:output", {
+            enqueueAppOutput(event.sender, {
               type: "stdout",
               message: `[dyad-proxy-server]started=[${proxyUrl}] original=[${originalUrl}]`,
               appId,
@@ -405,7 +443,7 @@ function listenToProcess({
       appId,
     });
 
-    safeSend(event.sender, "app:output", {
+    enqueueAppOutput(event.sender, {
       type: "stderr",
       message,
       appId,
@@ -417,6 +455,8 @@ function listenToProcess({
     logger.log(
       `App ${appId} (PID: ${spawnedProcess.pid}) process closed with code ${code}, signal ${signal}.`,
     );
+    // Flush any remaining batched output before signaling process exit
+    flushAllAppOutputs();
     removeAppIfCurrentProcess(appId, spawnedProcess);
   });
 

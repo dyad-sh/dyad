@@ -162,7 +162,7 @@ export function registerMediaHandlers() {
         result.push({
           appId: app.id,
           appName: app.name,
-          appPath,
+          appPath: app.path,
           files,
         });
       }

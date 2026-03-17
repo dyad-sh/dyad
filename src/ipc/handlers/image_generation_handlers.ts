@@ -181,7 +181,7 @@ export function registerImageGenerationHandlers() {
           await fs.promises.writeFile(filePath, imageBuffer);
 
           logger.log(`Generated image saved: ${filePath}`);
-          return { fileName, filePath, appPath };
+          return { fileName, filePath, appPath: app.path };
         },
       );
 

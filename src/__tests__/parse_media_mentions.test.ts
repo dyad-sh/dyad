@@ -11,6 +11,12 @@ describe("parseMediaMentions", () => {
     expect(parseMediaMentions(prompt)).toEqual(["cat.png", "dog.png"]);
   });
 
+  it("ignores trailing punctuation after mention", () => {
+    const prompt = "Look at @media:cat.png, please";
+
+    expect(parseMediaMentions(prompt)).toEqual(["cat.png"]);
+  });
+
   it("parses @media mentions with URL-encoded filenames (e.g. spaces)", () => {
     const prompt = "Check @media:my%20photo.png please";
 

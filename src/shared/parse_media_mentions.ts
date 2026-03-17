@@ -6,7 +6,9 @@ function escapeRegExp(str: string): string {
 // which are followed by a space (e.g., "@media screen"). Mentions are always
 // created programmatically as @media:<encoded-filename>.
 export function parseMediaMentions(prompt: string): string[] {
-  const regex = /@media:([^\s]+)/g;
+  // Match only characters that encodeURIComponent can produce so that
+  // trailing sentence punctuation (commas, semicolons, etc.) is excluded.
+  const regex = /@media:([\w.%\-!~*'()]+)/g;
   const mentions: string[] = [];
   let match;
 

@@ -36,7 +36,8 @@ export function LibraryList({ show }: { show: boolean }) {
             const fullLocation = pathname + routerState.location.searchStr;
             const isActive =
               section.to === fullLocation ||
-              section.to === pathname ||
+              (section.to === pathname &&
+                routerState.location.searchStr === "") ||
               (section.to !== "/" &&
                 section.to !== "/library" &&
                 !section.to.includes("?") &&

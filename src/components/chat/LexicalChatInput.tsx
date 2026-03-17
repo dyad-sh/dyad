@@ -453,7 +453,12 @@ export function LexicalChatInput({
             (app) => app.appId === selectedAppId,
           );
           if (currentAppMediaFiles) {
-            for (const file of currentAppMediaFiles.files) {
+            // Sort files by name length descending so longer names are matched
+            // first, preventing prefix collisions (e.g. "cat.png copy.png" vs "cat.png").
+            const sortedFiles = [...currentAppMediaFiles.files].sort(
+              (a, b) => b.fileName.length - a.fileName.length,
+            );
+            for (const file of sortedFiles) {
               const escaped = file.fileName.replace(
                 /[.*+?^${}()|[\]\\]/g,
                 "\\$&",

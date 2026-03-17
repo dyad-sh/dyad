@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { recentImageGenerationsAtom } from "@/atoms/imageGenerationAtoms";
+import { imageGenerationJobsAtom } from "@/atoms/imageGenerationAtoms";
 import type {
   ImageGenerationJob,
   ImageGenerationStatus,
@@ -225,7 +225,7 @@ export function ImageGenerationProgressDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const recentJobs = useAtomValue(recentImageGenerationsAtom);
+  const recentJobs = useAtomValue(imageGenerationJobsAtom);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

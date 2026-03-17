@@ -30,7 +30,13 @@ export function AppSearchSelect({
   const selectedApp = apps.find((a) => a.id === selectedAppId);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o) setSearch("");
+      }}
+    >
       <PopoverTrigger
         disabled={disabled}
         aria-label="Select target app"

@@ -8,7 +8,7 @@ function escapeRegExp(str: string): string {
 export function parseMediaMentions(prompt: string): string[] {
   // Match only characters that encodeURIComponent can produce so that
   // trailing sentence punctuation (commas, semicolons, etc.) is excluded.
-  const regex = /@media:([\w.%\-!~*'()]+)/g;
+  const regex = /@media:([\w.%\-!~*'()]*[\w%\-!~*'()])/g;
   const mentions: string[] = [];
   let match;
 

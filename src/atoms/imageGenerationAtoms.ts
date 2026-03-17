@@ -43,14 +43,6 @@ export const imageGenerationJobsAtom = atom(
   },
 );
 
-export const recentImageGenerationsAtom = atom((get) => {
-  const jobs = get(imageGenerationJobsAtom);
-  const cutoff = Date.now() - THIRTY_MINUTES_MS;
-  return jobs.filter(
-    (job) => job.startedAt > cutoff || job.status === "pending",
-  );
-});
-
 export const pendingImageGenerationsCountAtom = atom((get) => {
   const jobs = get(imageGenerationJobsAtom);
   return jobs.filter((job) => job.status === "pending").length;

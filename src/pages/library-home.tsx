@@ -1,15 +1,13 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { usePrompts } from "@/hooks/usePrompts";
 import { useCustomThemes } from "@/hooks/useCustomThemes";
 import { useAppMediaFiles } from "@/hooks/useAppMediaFiles";
 import { useLoadApps } from "@/hooks/useLoadApps";
+import { useAddPromptDeepLink } from "@/hooks/useAddPromptDeepLink";
 import { BookOpen, Loader2 } from "lucide-react";
 import { CreateOrEditPromptDialog } from "@/components/CreatePromptDialog";
 import { CustomThemeDialog } from "@/components/CustomThemeDialog";
 import { NewLibraryItemMenu } from "@/components/NewLibraryItemMenu";
-import { showInfo } from "@/lib/toast";
-import { useDeepLink } from "@/contexts/DeepLinkContext";
-import { AddPromptDeepLinkData } from "@/ipc/deep_link_data";
 import { LibraryCard, type LibraryItem } from "@/components/LibraryCard";
 import { LibrarySearchBar } from "@/components/LibrarySearchBar";
 import {
@@ -54,35 +52,13 @@ export default function LibraryHomePage() {
   const [createThemeDialogOpen, setCreateThemeDialogOpen] = useState(false);
   const [imageGeneratorOpen, setImageGeneratorOpen] = useState(false);
 
-  // Deep link support (preserved from old library.tsx)
-  const { lastDeepLink, clearLastDeepLink } = useDeepLink();
-  const [promptDialogOpen, setPromptDialogOpen] = useState(false);
-  const [prefillData, setPrefillData] = useState<
-    { title: string; description: string; content: string } | undefined
-  >(undefined);
-
-  useEffect(() => {
-    if (lastDeepLink?.type === "add-prompt") {
-      const deepLink = lastDeepLink as unknown as AddPromptDeepLinkData;
-      const payload = deepLink.payload;
-      showInfo(`Prefilled prompt: ${payload.title}`);
-      setPrefillData({
-        title: payload.title,
-        description: payload.description,
-        content: payload.content,
-      });
-      setActiveFilter("prompts");
-      setPromptDialogOpen(true);
-      clearLastDeepLink();
-    }
-  }, [lastDeepLink?.timestamp, clearLastDeepLink]);
-
-  const handlePromptDialogClose = (open: boolean) => {
-    setPromptDialogOpen(open);
-    if (!open) {
-      setPrefillData(undefined);
-    }
-  };
+  // Deep link support
+  const {
+    prefillData,
+    dialogOpen: promptDialogOpen,
+    handleDialogClose: handlePromptDialogClose,
+    setDialogOpen: setPromptDialogOpen,
+  } = useAddPromptDeepLink();
 
   const isLoading = promptsLoading || themesLoading || mediaLoading;
 

@@ -7,6 +7,7 @@ import { safeJoin } from "../utils/path_utils";
 import { getMimeType, MIME_TYPE_MAP } from "../utils/mime_utils";
 import { DYAD_MEDIA_DIR_NAME } from "../utils/media_path_utils";
 import { INVALID_FILE_NAME_CHARS } from "../../shared/media_validation";
+import { ensureDyadGitignored } from "./gitignoreUtils";
 import { withLock } from "../utils/lock_utils";
 import fs from "node:fs";
 import path from "node:path";
@@ -153,22 +154,23 @@ async function getAppOrThrow(appId: number) {
 export function registerMediaHandlers() {
   createTypedHandler(mediaContracts.listAllMedia, async () => {
     const allApps = await db.select().from(apps);
-    const result = [];
+    const appResults = await Promise.all(
+      allApps.map(async (app) => {
+        const appPath = getDyadAppPath(app.path);
+        const files = await getMediaFilesForApp(app.id, app.name, appPath);
+        if (files.length > 0) {
+          return {
+            appId: app.id,
+            appName: app.name,
+            appPath,
+            files,
+          };
+        }
+        return null;
+      }),
+    );
 
-    for (const app of allApps) {
-      const appPath = getDyadAppPath(app.path);
-      const files = await getMediaFilesForApp(app.id, app.name, appPath);
-      if (files.length > 0) {
-        result.push({
-          appId: app.id,
-          appName: app.name,
-          appPath: app.path,
-          files,
-        });
-      }
-    }
-
-    return { apps: result };
+    return { apps: appResults.filter((r) => r !== null) };
   });
 
   createTypedHandler(mediaContracts.renameMediaFile, async (_, params) => {
@@ -251,6 +253,7 @@ export function registerMediaHandlers() {
         throw new Error("Media file not found");
       }
 
+      await ensureDyadGitignored(targetAppPath);
       const targetMediaDirectoryPath = getMediaDirectoryPath(targetAppPath);
       await fs.promises.mkdir(targetMediaDirectoryPath, { recursive: true });
 

@@ -1,49 +1,12 @@
-import { useState, useEffect } from "react";
 import { usePrompts } from "@/hooks/usePrompts";
+import { useAddPromptDeepLink } from "@/hooks/useAddPromptDeepLink";
 import { CreatePromptDialog } from "@/components/CreatePromptDialog";
-import { useDeepLink } from "@/contexts/DeepLinkContext";
-import { AddPromptDeepLinkData } from "@/ipc/deep_link_data";
-import { showInfo } from "@/lib/toast";
 import { LibraryCard } from "@/components/LibraryCard";
 
 export default function LibraryPage() {
   const { prompts, isLoading, createPrompt, updatePrompt, deletePrompt } =
     usePrompts();
-  const { lastDeepLink, clearLastDeepLink } = useDeepLink();
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [prefillData, setPrefillData] = useState<
-    | {
-        title: string;
-        description: string;
-        content: string;
-      }
-    | undefined
-  >(undefined);
-
-  useEffect(() => {
-    const handleDeepLink = async () => {
-      if (lastDeepLink?.type === "add-prompt") {
-        const deepLink = lastDeepLink as unknown as AddPromptDeepLinkData;
-        const payload = deepLink.payload;
-        showInfo(`Prefilled prompt: ${payload.title}`);
-        setPrefillData({
-          title: payload.title,
-          description: payload.description,
-          content: payload.content,
-        });
-        setDialogOpen(true);
-        clearLastDeepLink();
-      }
-    };
-    handleDeepLink();
-  }, [lastDeepLink?.timestamp, clearLastDeepLink]);
-
-  const handleDialogClose = (open: boolean) => {
-    setDialogOpen(open);
-    if (!open) {
-      setPrefillData(undefined);
-    }
-  };
+  const { prefillData, dialogOpen, handleDialogClose } = useAddPromptDeepLink();
 
   return (
     <div className="w-full px-4 py-6 sm:px-6 lg:px-8">

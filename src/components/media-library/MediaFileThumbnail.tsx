@@ -6,6 +6,7 @@ import {
   Pencil,
   Trash2,
   MoveRight,
+  Expand,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
@@ -49,7 +50,7 @@ export function MediaFileThumbnail({
       <div
         role="button"
         tabIndex={0}
-        className="w-[120px] h-[120px] relative cursor-pointer"
+        className="group w-[120px] h-[120px] relative cursor-pointer"
         onClick={() => onPreviewImage(file)}
         onKeyDown={(e) => {
           if (
@@ -124,12 +125,17 @@ export function MediaFileThumbnail({
             <Image className="h-6 w-6" />
           </div>
         ) : (
-          <img
-            src={mediaUrl}
-            alt={file.fileName}
-            className="w-full h-full object-cover"
-            onError={() => setImgError(true)}
-          />
+          <>
+            <img
+              src={mediaUrl}
+              alt={file.fileName}
+              className="w-full h-full object-cover"
+              onError={() => setImgError(true)}
+            />
+            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center pointer-events-none">
+              <Expand className="h-5 w-5 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-md" />
+            </div>
+          </>
         )}
       </div>
       <div className="p-1.5">

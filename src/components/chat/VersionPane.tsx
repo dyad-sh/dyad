@@ -144,7 +144,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                       Version {versions.length - index} (
                       {version.oid.slice(0, 7)})
                     </span>
-                    {/* example format: '2025-07-25T21:52:01Z' */}
+                    {/* Neon DB timestamp badge */}
                     {version.dbTimestamp &&
                       (() => {
                         const timestampMs = new Date(
@@ -175,6 +175,20 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                           </Tooltip>
                         );
                       })()}
+                    {/* Supabase undo-SQL badge */}
+                    {!version.dbTimestamp && version.hasDbUndo && (
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <div className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded-md bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
+                            <Database size={10} />
+                            <span>DB</span>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Database schema can be rolled back for this version
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     {isCheckingOutVersion &&
@@ -231,7 +245,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                         setSelectedVersionId(null);
                         // Close the pane after revert to force a refresh on next open
                         onClose();
-                        if (version.dbTimestamp) {
+                        if (version.dbTimestamp || version.hasDbUndo) {
                           await restartApp();
                         }
                       }}

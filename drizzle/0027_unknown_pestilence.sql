@@ -1,0 +1,1 @@
+ALTER TABLE `versions` ADD `supabase_undo_sql` text;

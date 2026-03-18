@@ -10,6 +10,7 @@ export const VersionSchema = z.object({
   message: z.string(),
   timestamp: z.number(),
   dbTimestamp: z.string().nullable().optional(),
+  hasDbUndo: z.boolean().optional(),
 });
 
 export type Version = z.infer<typeof VersionSchema>;

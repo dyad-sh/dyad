@@ -42,6 +42,8 @@ import {
 import { applySearchReplace } from "../../pro/main/ipc/processors/search_replace_processor";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { executeCopyFile } from "../utils/copy_file_utils";
+import { generateUndoSql } from "../../supabase_admin/undo_sql_generator";
+import { storeUndoSqlAtCurrentVersion } from "../utils/supabase_undo_sql_utils";
 const readFile = fs.promises.readFile;
 const logger = log.scope("response_processor");
 
@@ -151,6 +153,7 @@ export async function processFullResponseActions(
 
   const warnings: Output[] = [];
   const errors: Output[] = [];
+  const undoSqlParts: string[] = [];
 
   try {
     // Extract all tags
@@ -184,6 +187,20 @@ export async function processFullResponseActions(
             query: query.content,
             organizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
           });
+
+          // Generate undo-SQL for rollback support
+          try {
+            const undoSql = generateUndoSql(query.content);
+            if (undoSql) {
+              undoSqlParts.push(undoSql);
+            } else {
+              logger.warn(
+                `Could not generate undo-SQL for query: ${query.content.slice(0, 100)}`,
+              );
+            }
+          } catch (undoError) {
+            logger.warn("Failed to generate undo-SQL:", undoError);
+          }
 
           // Only write migration file if SQL execution succeeded
           if (settings.enableSupabaseWriteSqlMigration) {
@@ -611,6 +628,22 @@ export async function processFullResponseActions(
             commitHash: commitHash,
           })
           .where(eq(messages.id, messageId));
+
+        // Store accumulated undo-SQL on the version record
+        if (chatWithApp.app.supabaseProjectId && undoSqlParts.length > 0) {
+          try {
+            await storeUndoSqlAtCurrentVersion({
+              appId: chatWithApp.app.id,
+              appPath,
+              undoSql: undoSqlParts.join("\n"),
+            });
+          } catch (undoStoreError) {
+            logger.warn(
+              "Failed to store undo-SQL on version record:",
+              undoStoreError,
+            );
+          }
+        }
       }
     }
     logger.log("mark as approved: hasChanges", hasChanges);

@@ -62,6 +62,8 @@ export interface AgentContext {
    * Engine-dependent tools require this to access the Dyad Pro API.
    */
   isDyadPro: boolean;
+  /** Accumulated undo-SQL parts for deferred storage after commit */
+  undoSqlParts: string[];
   /**
    * Streams accumulated XML to UI without persisting to DB (for live preview).
    * Call this repeatedly with the full accumulated XML so far.

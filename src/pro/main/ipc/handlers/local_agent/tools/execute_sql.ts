@@ -1,8 +1,12 @@
 import { z } from "zod";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { executeSupabaseSql } from "../../../../../../supabase_admin/supabase_management_client";
+import { generateUndoSql } from "../../../../../../supabase_admin/undo_sql_generator";
 import { writeMigrationFile } from "../../../../../../ipc/utils/file_utils";
 import { readSettings } from "../../../../../../main/settings";
+import log from "electron-log";
+
+const logger = log.scope("execute_sql_tool");
 
 const executeSqlSchema = z.object({
   query: z.string().describe("The SQL query to execute"),
@@ -41,6 +45,29 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
         query: args.query,
         organizationSlug: ctx.supabaseOrganizationSlug ?? null,
       });
+
+      // Generate undo-SQL and accumulate on context for deferred storage after commit
+      try {
+        const undoSql = generateUndoSql(args.query);
+        logger.info(
+          `[DEBUG-ROLLBACK] Forward SQL: ${args.query.slice(0, 200)}`,
+        );
+        logger.info(
+          `[DEBUG-ROLLBACK] Generated undo-SQL: ${undoSql ?? "NULL (cannot reverse)"}`,
+        );
+        if (undoSql) {
+          ctx.undoSqlParts.push(undoSql);
+          logger.info(
+            `[DEBUG-ROLLBACK] Accumulated undo-SQL (${ctx.undoSqlParts.length} parts so far)`,
+          );
+        } else {
+          logger.warn(
+            `Could not generate undo-SQL for agent query: ${args.query.slice(0, 100)}`,
+          );
+        }
+      } catch (undoError) {
+        logger.warn("Failed to generate undo-SQL in agent mode:", undoError);
+      }
 
       // Write migration file if enabled
       const settings = readSettings();

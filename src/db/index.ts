@@ -51,7 +51,6 @@ export function initializeDatabase(): BetterSQLite3Database<typeof schema> & {
   fs.mkdirSync(getDyadAppPath("."), { recursive: true });
 
   const sqlite = new Database(dbPath, { timeout: 10000 });
-  sqlite.pragma("foreign_keys = ON");
 
   _db = drizzle(sqlite, { schema });
 
@@ -61,10 +60,15 @@ export function initializeDatabase(): BetterSQLite3Database<typeof schema> & {
       logger.error("Migrations folder not found:", migrationsFolder);
     } else {
       logger.log("Running migrations from:", migrationsFolder);
+      // Disable foreign keys during migrations to avoid ALTER TABLE failures
+      sqlite.pragma("foreign_keys = OFF");
       migrate(_db, { migrationsFolder });
+      sqlite.pragma("foreign_keys = ON");
     }
   } catch (error) {
     logger.error("Migration error:", error);
+    // Ensure foreign keys are re-enabled even if migration fails
+    sqlite.pragma("foreign_keys = ON");
   }
 
   return _db as any;

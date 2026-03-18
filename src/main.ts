@@ -30,6 +30,8 @@ import {
   stopPerformanceMonitoring,
 } from "./utils/performance_monitor";
 import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai_messages_cleanup";
+import { startTaskExecutor } from "./lib/kanban_task_executor";
+import { ensureOllamaCredentialInN8n } from "./ipc/handlers/n8n_handlers";
 import fs from "fs";
 
 log.errorHandler.startCatching();
@@ -115,6 +117,36 @@ export async function onReady() {
 
   await onFirstRunMaybe(settings);
   createWindow();
+
+  // ── Auto-start autonomous services after window is created ──
+  // Delay to let external services (n8n, Ollama) finish booting
+  setTimeout(async () => {
+    const svcLogger = log.scope("services-init");
+
+    // 1. Start the autonomous task executor
+    try {
+      startTaskExecutor();
+      svcLogger.info("Task executor auto-started");
+    } catch (err) {
+      svcLogger.warn("Task executor auto-start failed:", err);
+    }
+
+    // 2. Auto-provision Ollama credential in n8n (best-effort)
+    try {
+      const result = await ensureOllamaCredentialInN8n();
+      if (result.success) {
+        svcLogger.info(
+          result.created
+            ? `Ollama credential created in n8n: ${result.credentialId}`
+            : `Ollama credential already exists: ${result.credentialId}`,
+        );
+      } else {
+        svcLogger.warn("n8n Ollama credential skipped:", result.error);
+      }
+    } catch (err) {
+      svcLogger.warn("n8n Ollama credential provision failed:", err);
+    }
+  }, 5000);
 
   logger.info("Auto-update enabled=", settings.enableAutoUpdate);
   if (settings.enableAutoUpdate) {

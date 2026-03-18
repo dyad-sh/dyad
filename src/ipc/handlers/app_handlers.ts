@@ -315,9 +315,9 @@ function listenToProcess({
     }
   });
 
-  spawnedProcess.stderr?.on("data", (data) => {
+  spawnedProcess.stderr?.on("data", async (data) => {
     const message = util.stripVTControlCharacters(data.toString());
-    logger.error(
+    logger.debug(
       `App ${appId} (PID: ${spawnedProcess.pid}) stderr: ${message}`,
     );
     safeSend(event.sender, "app:output", {
@@ -325,6 +325,20 @@ function listenToProcess({
       message,
       appId,
     });
+
+    // Vite may output the dev server URL to stderr — detect it here too
+    const urlMatch = message.match(/(https?:\/\/localhost:\d+\/?)/);
+    if (urlMatch && !proxyWorker) {
+      proxyWorker = await startProxy(urlMatch[1], {
+        onStarted: (proxyUrl) => {
+          safeSend(event.sender, "app:output", {
+            type: "stdout",
+            message: `[joy-proxy-server]started=[${proxyUrl}] original=[${urlMatch[1]}]`,
+            appId,
+          });
+        },
+      });
+    }
   });
 
   // Handle process exit/close

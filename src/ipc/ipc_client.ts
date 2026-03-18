@@ -3036,4 +3036,46 @@ export class IpcClient {
   public async getKanbanAnalytics(): Promise<any> {
     return this.ipcRenderer.invoke("openclaw:kanban:analytics");
   }
+
+  // ── Task Executor ──
+
+  public async getTaskExecutorStatus(): Promise<any> {
+    return this.ipcRenderer.invoke("task-executor:status");
+  }
+
+  public async startTaskExecutor(): Promise<any> {
+    return this.ipcRenderer.invoke("task-executor:start");
+  }
+
+  public async stopTaskExecutor(): Promise<any> {
+    return this.ipcRenderer.invoke("task-executor:stop");
+  }
+
+  // ── System Services Health ──
+
+  public async getSystemServicesHealth(): Promise<any> {
+    return this.ipcRenderer.invoke("system:services-health");
+  }
+
+  // ── n8n + Ollama ──
+
+  public async setupN8nOllama(): Promise<any> {
+    return this.ipcRenderer.invoke("n8n:setup-ollama");
+  }
+
+  public async generateN8nWorkflow(request: { prompt: string; constraints?: any }): Promise<any> {
+    return this.ipcRenderer.invoke("n8n:workflow:generate", request);
+  }
+
+  public async createN8nWorkflow(workflow: any): Promise<any> {
+    return this.ipcRenderer.invoke("n8n:workflow:create", workflow);
+  }
+
+  public async listN8nWorkflows(): Promise<any> {
+    return this.ipcRenderer.invoke("n8n:workflow:list");
+  }
+
+  public async createMetaWorkflowBuilder(): Promise<any> {
+    return this.ipcRenderer.invoke("n8n:meta-builder:create");
+  }
 }

@@ -3,9 +3,10 @@
  * Visual task board with drag-and-drop, analytics, and activity feed
  */
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { IpcClient } from "@/ipc/ipc_client";
+import type { IpldReceiptRecord } from "@/types/ipld_receipt";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -64,7 +65,20 @@ import {
   ChevronUp,
   Eye,
   Pencil,
+  FileText,
+  Shield,
+  Radio,
+  Hash,
+  ExternalLink,
+  ShieldCheck,
+  Loader2,
+  Wifi,
+  WifiOff,
+  Sparkles,
+  Workflow,
 } from "lucide-react";
+
+import { NlpAiStudioPanel } from "@/components/openclaw/NlpAiStudioPanel";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -1044,6 +1058,589 @@ function formatRelativeTime(timestamp: any): string {
   return `${Math.floor(diffMs / 86_400_000)}d ago`;
 }
 
+// ─── Inference Panel ────────────────────────────────────────────────────────
+
+function InferencePanel() {
+  const ipc = IpcClient.getInstance();
+  const [expandedCid, setExpandedCid] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState<string | null>(null);
+  const [verifyResults, setVerifyResults] = useState<
+    Record<string, { valid: boolean; computedCid: string }>
+  >({});
+
+  const { data: receipts = [], isLoading } = useQuery<IpldReceiptRecord[]>({
+    queryKey: ["ipld-receipts"],
+    queryFn: () => ipc.listIpldReceipts(),
+    refetchInterval: 15_000,
+  });
+
+  const { data: bridgeState } = useQuery({
+    queryKey: ["inference-bridge-state"],
+    queryFn: () => ipc.getInferenceBridgeState(),
+    refetchInterval: 10_000,
+  });
+
+  const handleVerify = async (cid: string) => {
+    setVerifying(cid);
+    try {
+      const result = await ipc.verifyIpldReceipt(cid);
+      setVerifyResults((prev) => ({ ...prev, [cid]: result }));
+      toast.success(result.valid ? "Receipt verified" : "Verification failed");
+    } catch (err: any) {
+      toast.error(`Verify failed: ${err.message}`);
+    } finally {
+      setVerifying(null);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-40 text-white/30">
+        <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+        Loading inference data...
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Bridge Status */}
+      {bridgeState && (
+        <Card className="bg-white/[0.02] border-white/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-white/70 flex items-center gap-2">
+              <Shield className="w-4 h-4 text-emerald-400" />
+              Privacy-Preserving Inference Bridge
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+              <div>
+                <span className="text-white/40 block">Status</span>
+                <span className={`font-medium ${bridgeState.initialized ? "text-green-400" : "text-yellow-400"}`}>
+                  {bridgeState.initialized ? "Active" : "Inactive"}
+                </span>
+              </div>
+              {bridgeState.localModelsAvailable !== undefined && (
+                <div>
+                  <span className="text-white/40 block">Local Models</span>
+                  <span className="text-white/80">{bridgeState.localModelsAvailable}</span>
+                </div>
+              )}
+              {bridgeState.totalInferences !== undefined && (
+                <div>
+                  <span className="text-white/40 block">Total Inferences</span>
+                  <span className="text-white/80">{bridgeState.totalInferences}</span>
+                </div>
+              )}
+              {bridgeState.localInferences !== undefined && (
+                <div>
+                  <span className="text-white/40 block">Local Inferences</span>
+                  <span className="text-white/80">{bridgeState.localInferences}</span>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* KPI Row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <MetricCard
+          title="Total Receipts"
+          value={receipts.length}
+          icon={<FileText className="w-4 h-4 text-blue-400" />}
+        />
+        <MetricCard
+          title="Models Used"
+          value={new Set(receipts.map((r) => r.receipt.model.id)).size}
+          icon={<Cpu className="w-4 h-4 text-purple-400" />}
+        />
+        <MetricCard
+          title="Issuers"
+          value={new Set(receipts.map((r) => r.receipt.issuer)).size}
+          icon={<Bot className="w-4 h-4 text-amber-400" />}
+        />
+        <MetricCard
+          title="Signed"
+          value={receipts.filter((r) => r.receipt.sig?.value).length}
+          icon={<ShieldCheck className="w-4 h-4 text-green-400" />}
+        />
+      </div>
+
+      {/* Receipt List */}
+      <Card className="bg-white/[0.02] border-white/5">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm text-white/70 flex items-center gap-2">
+            <Zap className="w-4 h-4 text-amber-400" />
+            Inference Receipts ({receipts.length})
+          </CardTitle>
+          <CardDescription className="text-xs text-white/30">
+            Content-addressed IPLD receipts for every inference call
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {receipts.length === 0 ? (
+            <div className="text-center py-8 text-white/20 text-sm">
+              No inference receipts yet. Receipts are created when AI inferences run.
+            </div>
+          ) : (
+            <ScrollArea className="max-h-[500px]">
+              <div className="space-y-2">
+                {receipts
+                  .sort((a, b) => b.createdAt - a.createdAt)
+                  .map((rec) => {
+                    const r = rec.receipt;
+                    const isExpanded = expandedCid === rec.cid;
+                    const verified = verifyResults[rec.cid];
+                    return (
+                      <div
+                        key={rec.cid}
+                        className="rounded-lg border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+                      >
+                        <button
+                          type="button"
+                          className="w-full text-left p-3"
+                          onClick={() => setExpandedCid(isExpanded ? null : rec.cid)}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Hash className="w-3.5 h-3.5 text-white/30 flex-shrink-0" />
+                            <span className="text-xs font-mono text-white/60 truncate flex-1">
+                              {rec.cid}
+                            </span>
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-white/10 text-white/50">
+                              {r.model.id}
+                            </Badge>
+                            {r.sig?.value && (
+                              <ShieldCheck className="w-3 h-3 text-green-400 flex-shrink-0" />
+                            )}
+                            {verified && (
+                              <Badge
+                                className={`text-[9px] px-1 py-0 ${verified.valid ? "bg-green-600" : "bg-red-600"}`}
+                              >
+                                {verified.valid ? "Verified" : "Invalid"}
+                              </Badge>
+                            )}
+                            {isExpanded ? (
+                              <ChevronUp className="w-3.5 h-3.5 text-white/30" />
+                            ) : (
+                              <ChevronDown className="w-3.5 h-3.5 text-white/30" />
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 mt-1.5 text-[10px] text-white/30">
+                            <span>Issuer: {r.issuer.slice(0, 10)}...</span>
+                            <span>Payer: {r.payer.slice(0, 10)}...</span>
+                            <span className="ml-auto">
+                              {formatRelativeTime(rec.createdAt)}
+                            </span>
+                          </div>
+                        </button>
+
+                        {isExpanded && (
+                          <div className="px-3 pb-3 space-y-2 border-t border-white/5 pt-2">
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              <div>
+                                <span className="text-white/40 block">Model</span>
+                                <span className="text-white/80 font-mono text-[11px]">{r.model.id}</span>
+                              </div>
+                              <div>
+                                <span className="text-white/40 block">Model Hash</span>
+                                <span className="text-white/60 font-mono text-[11px] truncate block">
+                                  {r.model.hash ?? "—"}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-white/40 block">Data Hash</span>
+                                <span className="text-white/60 font-mono text-[11px] truncate block">
+                                  {r.data.hash}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-white/40 block">Prompt Hash</span>
+                                <span className="text-white/60 font-mono text-[11px] truncate block">
+                                  {r.prompt.hash}
+                                </span>
+                              </div>
+                              {r.output?.hash && (
+                                <div>
+                                  <span className="text-white/40 block">Output Hash</span>
+                                  <span className="text-white/60 font-mono text-[11px] truncate block">
+                                    {r.output.hash}
+                                  </span>
+                                </div>
+                              )}
+                              <div>
+                                <span className="text-white/40 block">Payment</span>
+                                <span className="text-white/80">
+                                  {r.payment.amount ?? "0"} {r.payment.currency} ({r.payment.chain})
+                                </span>
+                              </div>
+                              {r.payment.tx && (
+                                <div>
+                                  <span className="text-white/40 block">Tx Hash</span>
+                                  <span className="text-white/60 font-mono text-[11px] truncate block">
+                                    {r.payment.tx}
+                                  </span>
+                                </div>
+                              )}
+                              {r.license?.id && (
+                                <div>
+                                  <span className="text-white/40 block">License</span>
+                                  <span className="text-white/80">
+                                    {r.license.id} {r.license.scope ? `(${r.license.scope})` : ""}
+                                  </span>
+                                </div>
+                              )}
+                              {r.sig && (
+                                <div className="col-span-2">
+                                  <span className="text-white/40 block">Signature ({r.sig.alg})</span>
+                                  <span className="text-white/60 font-mono text-[11px] truncate block">
+                                    {r.sig.value}
+                                  </span>
+                                </div>
+                              )}
+                              <div>
+                                <span className="text-white/40 block">Timestamp</span>
+                                <span className="text-white/80">
+                                  {new Date(r.ts * 1000).toLocaleString()}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-white/40 block">Issuer (full)</span>
+                                <span className="text-white/60 font-mono text-[11px] truncate block">
+                                  {r.issuer}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex gap-2 pt-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-6 text-[10px]"
+                                disabled={verifying === rec.cid}
+                                onClick={() => handleVerify(rec.cid)}
+                              >
+                                {verifying === rec.cid ? (
+                                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                ) : (
+                                  <ShieldCheck className="w-3 h-3 mr-1" />
+                                )}
+                                Verify
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
+            </ScrollArea>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ─── Audit Trail Panel ──────────────────────────────────────────────────────
+
+function AuditTrailPanel() {
+  const ipc = IpcClient.getInstance();
+  const [limit, setLimit] = useState(100);
+
+  const { data: activities = [], isLoading } = useQuery({
+    queryKey: ["kanban-audit-trail", limit],
+    queryFn: () => ipc.listKanbanActivity({ limit }),
+    refetchInterval: 5_000,
+  });
+
+  const { data: tasks = [] } = useQuery({
+    queryKey: ["kanban-tasks-audit"],
+    queryFn: () => ipc.listKanbanTasks(),
+    refetchInterval: 15_000,
+  });
+
+  // Build task title lookup
+  const taskTitleMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const t of tasks) {
+      map[t.id] = t.title;
+    }
+    return map;
+  }, [tasks]);
+
+  // Group by date
+  const groupedActivities = useMemo(() => {
+    const groups: Record<string, any[]> = {};
+    for (const activity of activities) {
+      const date =
+        typeof activity.createdAt === "number"
+          ? new Date(activity.createdAt * 1000)
+          : new Date(activity.createdAt);
+      const dayKey = date.toLocaleDateString();
+      if (!groups[dayKey]) groups[dayKey] = [];
+      groups[dayKey].push(activity);
+    }
+    return groups;
+  }, [activities]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-40 text-white/30">
+        <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+        Loading audit trail...
+      </div>
+    );
+  }
+
+  const actionIcon = (action: string) => {
+    if (action.includes("create")) return <Plus className="w-3 h-3 text-green-400" />;
+    if (action.includes("delete")) return <Trash2 className="w-3 h-3 text-red-400" />;
+    if (action.includes("move") || action.includes("status"))
+      return <ArrowRight className="w-3 h-3 text-blue-400" />;
+    if (action.includes("update") || action.includes("edit"))
+      return <Pencil className="w-3 h-3 text-amber-400" />;
+    return <Activity className="w-3 h-3 text-white/40" />;
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <MetricCard
+          title="Total Events"
+          value={activities.length}
+          icon={<Activity className="w-4 h-4 text-blue-400" />}
+        />
+        <MetricCard
+          title="Unique Actors"
+          value={new Set(activities.map((a: any) => a.actor)).size}
+          icon={<Bot className="w-4 h-4 text-purple-400" />}
+        />
+        <MetricCard
+          title="Tasks Touched"
+          value={new Set(activities.map((a: any) => a.taskId).filter(Boolean)).size}
+          icon={<Layers className="w-4 h-4 text-amber-400" />}
+        />
+        <MetricCard
+          title="Action Types"
+          value={new Set(activities.map((a: any) => a.action)).size}
+          icon={<Zap className="w-4 h-4 text-cyan-400" />}
+        />
+      </div>
+
+      {/* Timeline */}
+      <Card className="bg-white/[0.02] border-white/5">
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm text-white/70 flex items-center gap-2">
+              <Activity className="w-4 h-4 text-blue-400" />
+              Audit Timeline
+            </CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 text-[10px]"
+              onClick={() => setLimit((l) => l + 100)}
+            >
+              Load More
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {activities.length === 0 ? (
+            <div className="text-center py-8 text-white/20 text-sm">
+              No audit events recorded yet.
+            </div>
+          ) : (
+            <ScrollArea className="max-h-[600px]">
+              <div className="space-y-4">
+                {Object.entries(groupedActivities).map(([day, dayActivities]) => (
+                  <div key={day}>
+                    <div className="sticky top-0 bg-background/80 backdrop-blur-sm py-1 mb-2 z-10">
+                      <span className="text-[11px] font-medium text-white/40 px-2 py-0.5 rounded bg-white/5">
+                        {day}
+                      </span>
+                    </div>
+                    <div className="space-y-1 pl-2 border-l border-white/5">
+                      {dayActivities.map((act: any) => (
+                        <div
+                          key={act.id}
+                          className="flex items-start gap-2 text-xs text-white/50 py-1.5 pl-3 hover:bg-white/[0.02] rounded-r transition"
+                        >
+                          <div className="flex-shrink-0 mt-0.5">{actionIcon(act.action)}</div>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-white/70 font-medium">{act.actor}</span>
+                            <span className="mx-1">{act.action.replace(/_/g, " ")}</span>
+                            {act.taskId && taskTitleMap[act.taskId] && (
+                              <span className="text-white/40">
+                                on &quot;{taskTitleMap[act.taskId]}&quot;
+                              </span>
+                            )}
+                            {act.fromValue && act.toValue && (
+                              <span className="ml-1">
+                                <Badge variant="outline" className="text-[9px] px-1 py-0">
+                                  {act.fromValue}
+                                </Badge>
+                                <ArrowRight className="w-2.5 h-2.5 inline mx-0.5" />
+                                <Badge variant="outline" className="text-[9px] px-1 py-0">
+                                  {act.toValue}
+                                </Badge>
+                              </span>
+                            )}
+                            {act.details && (
+                              <span className="text-white/30 ml-1 text-[10px]">{act.details}</span>
+                            )}
+                          </div>
+                          <span className="text-white/20 text-[10px] whitespace-nowrap flex-shrink-0">
+                            {formatRelativeTime(act.createdAt)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ─── Live Feed Panel ────────────────────────────────────────────────────────
+
+function LiveFeedPanel({
+  events,
+  connected,
+}: {
+  events: LiveEvent[];
+  connected: boolean;
+}) {
+  return (
+    <div className="space-y-4">
+      {/* Status */}
+      <Card className="bg-white/[0.02] border-white/5">
+        <CardContent className="p-3">
+          <div className="flex items-center gap-3">
+            {connected ? (
+              <>
+                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                <Wifi className="w-4 h-4 text-green-400" />
+                <span className="text-sm text-green-400 font-medium">Connected to OpenClaw Gateway</span>
+              </>
+            ) : (
+              <>
+                <div className="w-2 h-2 rounded-full bg-red-500" />
+                <WifiOff className="w-4 h-4 text-red-400" />
+                <span className="text-sm text-red-400 font-medium">Disconnected</span>
+              </>
+            )}
+            <span className="ml-auto text-[10px] text-white/30">{events.length} events captured</span>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* KPI row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <MetricCard
+          title="Events"
+          value={events.length}
+          icon={<Radio className="w-4 h-4 text-blue-400" />}
+        />
+        <MetricCard
+          title="Task Updates"
+          value={events.filter((e) => e.type === "task_update" || e.type === "task_move").length}
+          icon={<ArrowRight className="w-4 h-4 text-amber-400" />}
+        />
+        <MetricCard
+          title="Inferences"
+          value={events.filter((e) => e.type === "inference").length}
+          icon={<Zap className="w-4 h-4 text-purple-400" />}
+        />
+        <MetricCard
+          title="Errors"
+          value={events.filter((e) => e.type === "error").length}
+          icon={<AlertTriangle className="w-4 h-4 text-red-400" />}
+        />
+      </div>
+
+      {/* Event Stream */}
+      <Card className="bg-white/[0.02] border-white/5">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm text-white/70 flex items-center gap-2">
+            <Radio className="w-4 h-4 text-blue-400" />
+            Live Event Stream
+          </CardTitle>
+          <CardDescription className="text-xs text-white/30">
+            Real-time events from OpenClaw gateway (ws://127.0.0.1:18789)
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {events.length === 0 ? (
+            <div className="text-center py-8 text-white/20 text-sm">
+              {connected
+                ? "Waiting for events..."
+                : "Connect to OpenClaw gateway to see live events."}
+            </div>
+          ) : (
+            <ScrollArea className="max-h-[500px]">
+              <div className="space-y-1 font-mono text-[11px]">
+                {[...events].reverse().map((event) => (
+                  <div
+                    key={event.id}
+                    className={`flex items-start gap-2 py-1.5 px-2 rounded transition ${
+                      event.type === "error"
+                        ? "bg-red-500/5 border border-red-500/10"
+                        : "hover:bg-white/[0.02]"
+                    }`}
+                  >
+                    <span className="text-white/20 flex-shrink-0 tabular-nums">
+                      {new Date(event.timestamp).toLocaleTimeString()}
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className={`text-[9px] px-1 py-0 flex-shrink-0 ${
+                        event.type === "task_update"
+                          ? "border-blue-500/30 text-blue-400"
+                          : event.type === "inference"
+                            ? "border-purple-500/30 text-purple-400"
+                            : event.type === "error"
+                              ? "border-red-500/30 text-red-400"
+                              : event.type === "task_move"
+                                ? "border-amber-500/30 text-amber-400"
+                                : "border-white/10 text-white/40"
+                      }`}
+                    >
+                      {event.type}
+                    </Badge>
+                    <span className="text-white/60 flex-1 truncate">{event.message}</span>
+                    {event.taskId && (
+                      <span className="text-white/20 flex-shrink-0">#{event.taskId.slice(0, 8)}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ─── Live Event Interface ───────────────────────────────────────────────────
+
+interface LiveEvent {
+  id: string;
+  type: string;
+  message: string;
+  timestamp: number;
+  taskId?: string;
+  data?: any;
+}
+
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
 export function OpenClawKanbanPage() {
@@ -1056,6 +1653,96 @@ export function OpenClawKanbanPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<any>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+
+  // ── WebSocket for live events ──
+  const wsRef = useRef<WebSocket | null>(null);
+  const [wsConnected, setWsConnected] = useState(false);
+  const [liveEvents, setLiveEvents] = useState<LiveEvent[]>([]);
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const connect = () => {
+      try {
+        const token = import.meta.env.VITE_OPENCLAW_GATEWAY_TOKEN || "";
+        const wsUrl = `ws://127.0.0.1:18789${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          if (!mounted) return;
+          setWsConnected(true);
+          setLiveEvents((prev) => [
+            ...prev,
+            {
+              id: `sys-${Date.now()}`,
+              type: "system",
+              message: "Connected to OpenClaw gateway",
+              timestamp: Date.now(),
+            },
+          ]);
+        };
+
+        ws.onmessage = (event) => {
+          if (!mounted) return;
+          try {
+            const data = JSON.parse(event.data);
+            const liveEvent: LiveEvent = {
+              id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              type: data.type ?? "message",
+              message: data.message ?? data.action ?? JSON.stringify(data).slice(0, 200),
+              timestamp: data.timestamp ?? Date.now(),
+              taskId: data.taskId,
+              data,
+            };
+            setLiveEvents((prev) => [...prev.slice(-499), liveEvent]);
+
+            // Auto-refresh queries on task changes
+            if (data.type === "task_update" || data.type === "task_move" || data.type === "task_create") {
+              queryClient.invalidateQueries({ queryKey: ["kanban-tasks"] });
+              queryClient.invalidateQueries({ queryKey: ["kanban-analytics"] });
+            }
+          } catch {
+            // non-JSON message
+            setLiveEvents((prev) => [
+              ...prev.slice(-499),
+              {
+                id: `raw-${Date.now()}`,
+                type: "raw",
+                message: String(event.data).slice(0, 200),
+                timestamp: Date.now(),
+              },
+            ]);
+          }
+        };
+
+        ws.onclose = () => {
+          if (!mounted) return;
+          setWsConnected(false);
+          // Reconnect after 5s
+          reconnectTimer.current = setTimeout(connect, 5000);
+        };
+
+        ws.onerror = () => {
+          ws.close();
+        };
+      } catch {
+        // Gateway not available — retry later
+        if (mounted) {
+          reconnectTimer.current = setTimeout(connect, 10000);
+        }
+      }
+    };
+
+    connect();
+
+    return () => {
+      mounted = false;
+      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+      wsRef.current?.close();
+    };
+  }, [queryClient]);
 
   // Queries
   const { data: tasks = [], isLoading: tasksLoading } = useQuery({
@@ -1176,6 +1863,11 @@ export function OpenClawKanbanPage() {
               <p className="text-[11px] text-white/40">
                 {totalCount} tasks &middot; {inProgressCount} active &middot;{" "}
                 {completedCount} done
+                {wsConnected && (
+                  <span className="ml-2 text-green-400">
+                    <Wifi className="w-3 h-3 inline" /> Live
+                  </span>
+                )}
               </p>
             </div>
           </div>
@@ -1211,6 +1903,25 @@ export function OpenClawKanbanPage() {
             <TabsTrigger value="analytics" className="text-xs">
               <BarChart3 className="w-3.5 h-3.5 mr-1.5" />
               Analytics
+            </TabsTrigger>
+            <TabsTrigger value="inference" className="text-xs">
+              <Zap className="w-3.5 h-3.5 mr-1.5" />
+              Inference
+            </TabsTrigger>
+            <TabsTrigger value="audit" className="text-xs">
+              <Shield className="w-3.5 h-3.5 mr-1.5" />
+              Audit Trail
+            </TabsTrigger>
+            <TabsTrigger value="live" className="text-xs relative">
+              <Radio className="w-3.5 h-3.5 mr-1.5" />
+              Live Feed
+              {wsConnected && (
+                <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="studio" className="text-xs">
+              <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+              AI Studio
             </TabsTrigger>
           </TabsList>
 
@@ -1285,6 +1996,26 @@ export function OpenClawKanbanPage() {
           ) : (
             <AnalyticsPanel analytics={analytics} />
           )}
+        </TabsContent>
+
+        {/* Inference Tab */}
+        <TabsContent value="inference" className="flex-1 m-0 overflow-auto p-4">
+          <InferencePanel />
+        </TabsContent>
+
+        {/* Audit Trail Tab */}
+        <TabsContent value="audit" className="flex-1 m-0 overflow-auto p-4">
+          <AuditTrailPanel />
+        </TabsContent>
+
+        {/* Live Feed Tab */}
+        <TabsContent value="live" className="flex-1 m-0 overflow-auto p-4">
+          <LiveFeedPanel events={liveEvents} connected={wsConnected} />
+        </TabsContent>
+
+        {/* AI Studio Tab */}
+        <TabsContent value="studio" className="flex-1 m-0 overflow-auto p-4">
+          <NlpAiStudioPanel />
         </TabsContent>
       </Tabs>
 

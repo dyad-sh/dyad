@@ -12,6 +12,7 @@ import { db } from "@/db";
 import { agents } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getUserDataPath } from "@/paths/paths";
+import { getOllamaApiUrl } from "@/ipc/handlers/local_model_ollama_handler";
 
 import type {
   N8nWorkflow,
@@ -58,6 +59,8 @@ let n8nDbConfig: N8nDatabaseConfig = {
 let n8nProcess: ChildProcess | null = null;
 let n8nConfig: N8nApiConfig = {
   baseUrl: "http://localhost:5678",
+  apiKey:
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjMmQ3MDA0Ny0wNmYyLTQzNmMtYTFkNC1iYmU5MDM1MjZmMWIiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiMTBjY2E0MDYtMDBjNC00MGZlLTg0YjUtNDgwZGI4MGIyY2M0IiwiaWF0IjoxNzczODEyNDAxLCJleHAiOjIwODI2NzIwMDAwMDB9.hySnkUos7AHfyOOZZ-A0XMiMW_1D4MD60loXyiXW3HM",
 };
 
 /**
@@ -238,7 +241,8 @@ export async function createWorkflow(workflow: N8nWorkflow): Promise<N8nWorkflow
     logger.warn("n8n not available, cannot create workflow");
     return null;
   }
-  return n8nApiRequest<N8nWorkflow>("POST", "/workflows", workflow);
+  const payload = { settings: {}, ...workflow };
+  return n8nApiRequest<N8nWorkflow>("POST", "/workflows", payload);
 }
 
 export async function updateWorkflow(id: string, workflow: N8nWorkflow): Promise<N8nWorkflow | null> {
@@ -378,11 +382,11 @@ Always include a trigger node as the first node.
 Generate unique IDs for each node.`;
 
   try {
-    const response = await fetch("http://localhost:11434/api/chat", {
+    const response = await fetch(`${getOllamaApiUrl()}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "llama3.2",
+        model: "llama3.2:3b",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: `Create an n8n workflow for: ${prompt}` }
@@ -429,7 +433,7 @@ Generate unique IDs for each node.`;
  */
 async function isOllamaAvailable(): Promise<boolean> {
   try {
-    const response = await fetch("http://localhost:11434/api/tags", {
+    const response = await fetch(`${getOllamaApiUrl()}/api/tags`, {
       method: "GET",
       signal: AbortSignal.timeout(2000),
     });
@@ -687,6 +691,9 @@ function validateWorkflow(workflow: N8nWorkflow): { valid: boolean; errors: stri
 // ============================================================================
 
 export function createMetaWorkflowBuilder(): N8nWorkflow {
+  // n8n runs in Docker — use host.docker.internal to reach Ollama on the host
+  const ollamaUrlInDocker = "http://host.docker.internal:11434";
+
   return {
     name: "Meta Workflow Builder",
     active: true,
@@ -727,31 +734,34 @@ return [{
       {
         id: generateNodeId(),
         name: "AI Workflow Designer",
-        type: "n8n-nodes-base.openAi",
-        typeVersion: 1,
+        type: "n8n-nodes-base.httpRequest",
+        typeVersion: 4,
         position: [650, 300],
         parameters: {
-          operation: "message",
-          model: "gpt-4",
-          messages: {
-            values: [
-              {
-                role: "system",
-                content: `You are an n8n workflow designer. Given a description, output a valid n8n workflow JSON.
-
-Available node types:
-- Triggers: webhook, scheduleTrigger, manualTrigger
-- Actions: httpRequest, code, set, if, switch, merge
-- Integrations: slack, discord, email, postgres, mongodb
-- AI: openAi, agent, chainLlm
-
-Output format: { "name": "...", "nodes": [...], "connections": {...} }`,
-              },
-              {
-                role: "user",
-                content: "={{ $json.prompt }}",
-              },
-            ],
+          method: "POST",
+          url: `${ollamaUrlInDocker}/api/chat`,
+          sendBody: true,
+          specifyBody: "json",
+          jsonBody: `={{
+            JSON.stringify({
+              model: "llama3.2:3b",
+              messages: [
+                {
+                  role: "system",
+                  content: "You are an n8n workflow designer. Given a description, output valid JSON with keys: name, nodes (array), connections (object). Available node types: webhook, scheduleTrigger, manualTrigger, httpRequest, code, set, if, switch, merge, slack, discord, email, postgres. Output ONLY valid JSON, no commentary."
+                },
+                {
+                  role: "user",
+                  content: $json.prompt
+                }
+              ],
+              stream: false,
+              format: "json",
+              options: { temperature: 0.3, num_predict: 4096 }
+            })
+          }}`,
+          options: {
+            timeout: 120000,
           },
         },
       },
@@ -763,12 +773,12 @@ Output format: { "name": "...", "nodes": [...], "connections": {...} }`,
         position: [850, 300],
         parameters: {
           language: "javaScript",
-          code: `// Parse AI response and extract workflow JSON
-const aiResponse = $input.first().json.message.content;
+          code: `// Parse Ollama response and extract workflow JSON
+const ollamaResponse = $input.first().json;
+const content = ollamaResponse.message?.content || '';
 
 try {
-  // Extract JSON from response
-  const jsonMatch = aiResponse.match(/\\{[\\s\\S]*\\}/);
+  const jsonMatch = content.match(/\\{[\\s\\S]*\\}/);
   if (jsonMatch) {
     const workflow = JSON.parse(jsonMatch[0]);
     return [{ json: { success: true, workflow } }];
@@ -1020,6 +1030,63 @@ return [{ json: result }];`,
 }
 
 // ============================================================================
+// Ollama Credential Provisioning for n8n
+// ============================================================================
+
+/**
+ * Ensure an Ollama credential exists in n8n pointing to host.docker.internal.
+ * This lets n8n AI nodes (LangChain, Agents, etc.) use local Ollama.
+ *
+ * n8n REST API credential endpoints:
+ *   POST /api/v1/credentials  — create
+ *   GET  /api/v1/credentials  — list
+ */
+export async function ensureOllamaCredentialInN8n(): Promise<{
+  success: boolean;
+  credentialId?: string;
+  created?: boolean;
+  error?: string;
+}> {
+  if (!(await checkN8nAvailable())) {
+    return { success: false, error: "n8n is not running" };
+  }
+
+  try {
+    // Check if Ollama credential already exists
+    const existing = await n8nApiRequest<{ data: Array<{ id: string; name: string; type: string }> }>(
+      "GET",
+      "/credentials",
+    );
+
+    const ollamaCred = existing.data?.find(
+      (c) => c.type === "ollamaApi" || c.name === "Ollama (JoyCreate Local)",
+    );
+
+    if (ollamaCred) {
+      logger.info(`Ollama credential already exists in n8n: ${ollamaCred.id}`);
+      return { success: true, credentialId: ollamaCred.id, created: false };
+    }
+
+    // Create the Ollama credential
+    // n8n expects: { name, type, data: { baseUrl } }
+    const credential = await n8nApiRequest<{ id: string }>("POST", "/credentials", {
+      name: "Ollama (JoyCreate Local)",
+      type: "ollamaApi",
+      data: {
+        baseUrl: "http://host.docker.internal:11434",
+      },
+    });
+
+    logger.info(`Ollama credential created in n8n: ${credential.id}`);
+    return { success: true, credentialId: credential.id, created: true };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error("Failed to provision Ollama credential in n8n:", msg);
+    return { success: false, error: msg };
+  }
+}
+
+// ============================================================================
 // IPC Handlers
 // ============================================================================
 
@@ -1049,6 +1116,9 @@ export function registerN8nHandlers(): void {
   // AI Workflow Generation
   ipcMain.handle("n8n:workflow:generate", async (_event, request: WorkflowGenerationRequest) => generateWorkflow(request));
   ipcMain.handle("n8n:meta-builder:create", async () => createMetaWorkflowBuilder());
+
+  // Ollama credential provisioning for n8n
+  ipcMain.handle("n8n:setup-ollama", async () => ensureOllamaCredentialInN8n());
   
   // Agent Communication
   ipcMain.handle("n8n:agent:send-message", async (_event, message) => sendAgentMessage(message));

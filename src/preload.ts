@@ -437,6 +437,7 @@ const validInvokeChannels = [
   "n8n:workflow:execute",
   "n8n:workflow:generate",
   "n8n:meta-builder:create",
+  "n8n:setup-ollama",
   "n8n:agent:send-message",
   "n8n:agent:get-messages",
   "n8n:agent:create-collaboration",
@@ -1182,6 +1183,12 @@ const validInvokeChannels = [
   "openclaw:kanban:tasks:move",
   "openclaw:kanban:activity:list",
   "openclaw:kanban:analytics",
+  // Task Executor — Autonomous inference loop
+  "task-executor:status",
+  "task-executor:start",
+  "task-executor:stop",
+  // System Services Health
+  "system:services-health",
   // 🦞 OpenClaw CNS (Central Nervous System) - Ollama & N8n Integration
   // Unified AI routing with local (Ollama) and cloud (Anthropic) backends
   "cns:initialize",

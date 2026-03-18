@@ -113,7 +113,7 @@ export function CustomAppsFolderSelector() {
           <p>
             {isPathAvailable
               ? "This is the top-level folder that Dyad will store new applications in."
-              : "Your apps folder cannot be found. Make sure that the folder exists, or change it."}
+              : "Your apps folder is inaccessible. Make sure that the folder exists and has write permissions, or change it."}
           </p>
         </div>
       </div>

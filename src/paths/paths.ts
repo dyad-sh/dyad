@@ -68,18 +68,18 @@ export function getDyadAppsBaseDirectory(): string {
 }
 
 /**
- * Given a path, determines whether that path exists and is a directory.
+ * Given a path, determines whether that path exists, is a directory, and is writable.
  * Can determine, for example, whether the output of `getDyadAppsBaseDirectory` is usable
  */
 export function isDirectoryAccessible(directoryPath: string): boolean {
-  let st;
   try {
-    st = fs.statSync(directoryPath);
+    const st = fs.statSync(directoryPath);
+    if (!st.isDirectory()) return false;
+    fs.accessSync(directoryPath, fs.constants.W_OK);
+    return true;
   } catch {
-    // Setting up to check existence+type, so fall through
+    return false;
   }
-
-  return !!st && st.isDirectory();
 }
 
 export function getDyadAppPath(appPath: string): string {

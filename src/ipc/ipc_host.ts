@@ -113,6 +113,10 @@ import { registerAgentWorkspaceHandlers } from "./handlers/agent_workspace_handl
 import { registerAgentCreationHandlers } from "./handlers/agent_creation_handlers";
 import { registerAgentUIHandlers } from "./handlers/agent_ui_handlers";
 import { registerOpenClawKanbanHandlers } from "./handlers/openclaw_kanban_handlers";
+import {
+  registerTaskExecutorHandlers,
+  registerSystemServicesHandlers,
+} from "@/lib/kanban_task_executor";
 
 export function registerIpcHandlers() {
   // Register all IPC handlers by category
@@ -327,4 +331,8 @@ export function registerIpcHandlers() {
 
   // OpenClaw Kanban — Visual task board & analytics for OpenClaw operations
   registerOpenClawKanbanHandlers();
+
+  // Task Executor — Autonomous inference loop & System Services Health
+  registerTaskExecutorHandlers();
+  registerSystemServicesHandlers();
 }

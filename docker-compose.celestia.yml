@@ -12,27 +12,30 @@ services:
       - "26658:26658"  # RPC port
       - "2121:2121"    # P2P port
     volumes:
-      # Mount existing wallet keys from WSL
-      - ~/.celestia-light:/root/.celestia-light
-      # Persist node data
-      - celestia-data:/root/.celestia-light-mainnet
+      # Single named volume for all node data — avoids permission conflicts
+      - celestia-data:/home/celestia
     environment:
       - NODE_TYPE=light
       - P2P_NETWORK=celestia
       - CELESTIA_NAMESPACE=AAAAAAAAAAAAAAAAAAAAAAAAAGpveTgwbXZwMTI=
-    command: >
-      celestia light start
-      --core.ip consensus-full.celestia-bootstrap.net
-      --p2p.network celestia
-      --rpc.addr 0.0.0.0
-      --rpc.port 26658
-      --node.store /root/.celestia-light
+    # Use entrypoint script to init then start with consistent paths
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo "Initializing Celestia Light Node..."
+        celestia light init --p2p.network celestia 2>/dev/null || true
+        echo "Starting Celestia Light Node..."
+        exec celestia light start \
+          --core.ip consensus-full.celestia-bootstrap.net \
+          --p2p.network celestia \
+          --rpc.addr 0.0.0.0 \
+          --rpc.port 26658
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:26658/health"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:26658/health || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 60s
+      retries: 5
+      start_period: 120s
     logging:
       driver: "json-file"
       options:

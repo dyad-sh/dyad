@@ -29,6 +29,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   experiments: {},
   enableProLazyEditsMode: true,
   enableProSmartFilesContextMode: true,
+  autoApproveChanges: true,
   selectedChatMode: "build",
   enableAutoFixProblems: false,
   enableAutoUpdate: true,

@@ -45,6 +45,7 @@ import { secretsVaultRoute } from "./routes/secrets-vault";
 import { dataStudioRoute } from "./routes/data-studio";
 import { memoryRoute } from "./routes/memory";
 import { openclawKanbanRoute } from "./routes/openclaw-kanban";
+import { systemServicesRoute } from "./routes/system-services";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -95,6 +96,7 @@ const routeTree = rootRoute.addChildren([
   dataStudioRoute,
   memoryRoute,
   openclawKanbanRoute,
+  systemServicesRoute,
 ]);
 
 // src/components/NotFoundRedirect.tsx

@@ -25,6 +25,8 @@ services:
     restart: unless-stopped
     ports:
       - "5678:5678"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - N8N_HOST=0.0.0.0
       - N8N_PORT=5678
@@ -39,6 +41,8 @@ services:
       - DB_POSTGRESDB_PASSWORD=postgres
       - N8N_DIAGNOSTICS_ENABLED=false
       - N8N_PERSONALIZATION_ENABLED=false
+      - N8N_SECURE_COOKIE=false
+      - OLLAMA_HOST=http://host.docker.internal:11434
     volumes:
       - n8n-data:/home/node/.n8n
     depends_on:

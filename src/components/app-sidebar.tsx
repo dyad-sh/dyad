@@ -30,6 +30,7 @@ import {
   HardDrive,
   Download,
   Kanban,
+  Activity,
 } from "lucide-react";
 import { Link, useRouterState, useRouter } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -135,6 +136,15 @@ const menuCategories = [
         hoverBg: "hover:bg-red-500/10",
         activeBg: "bg-red-500/15",
         activeText: "text-red-600 dark:text-red-400",
+      },
+      {
+        title: "System Services",
+        to: "/system-services",
+        icon: Activity,
+        gradient: "from-emerald-500 to-green-500",
+        hoverBg: "hover:bg-emerald-500/10",
+        activeBg: "bg-emerald-500/15",
+        activeText: "text-emerald-600 dark:text-emerald-400",
       },
     ],
   },

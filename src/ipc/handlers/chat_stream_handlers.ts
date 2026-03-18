@@ -1119,6 +1119,21 @@ This conversation includes one or more image attachments. When the user uploads 
 
         // For agent mode, skip tools for local models (they don't support function calling)
         const isLocal = isLocalModel(settings.selectedModel.provider);
+
+        // Local models in agent mode should use the local-agent handler
+        // which has XML tool emulation for models without function calling
+        if (
+          settings.selectedChatMode === "agent" &&
+          isLocal &&
+          !mentionedAppsCodebases.length
+        ) {
+          await handleLocalAgentStream(event, req, abortController, {
+            placeholderMessageId: placeholderAssistantMessage.id,
+            systemPrompt,
+          });
+          return;
+        }
+
         if (settings.selectedChatMode === "agent" && !isLocal) {
           const tools = await getMcpTools(event);
 

@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { IpcClient } from "@/ipc/ipc_client";
 import { OpenClawClient } from "@/ipc/openclaw_client";
 import type {
   OpenClawGatewayStatus,
@@ -34,6 +35,7 @@ const OPENCLAW_QUERY_KEYS = {
   providers: ["OpenClaw", "providers"],
   providerHealth: ["OpenClaw", "providers", "health"],
   dataJobs: ["OpenClaw", "data", "jobs"],
+  availableModels: ["OpenClaw", "kanban", "models"],
 };
 
 /**
@@ -1057,5 +1059,48 @@ export function useOpenClawUltimate() {
     // Combined stats
     localPercentage: system.localPercentage,
     totalOperations: system.totalOperations,
+  };
+}
+
+// =============================================================================
+// MODEL REGISTRY + TASK RATING HOOKS
+// =============================================================================
+
+/**
+ * Hook to list available models (registry + local Ollama)
+ * for the kanban model picker.
+ */
+export function useAvailableModels(filters?: { taskType?: string; source?: string }) {
+  const ipc = IpcClient.getInstance();
+
+  const { data: models, isLoading, refetch } = useQuery({
+    queryKey: [...OPENCLAW_QUERY_KEYS.availableModels, filters],
+    queryFn: () => ipc.listAvailableModels(filters),
+    refetchInterval: 30_000,
+  });
+
+  return { models: models ?? [], isLoading, refetch };
+}
+
+/**
+ * Hook for rating a completed kanban task (1-5 scale).
+ * Feeds into MAB engine and data flywheel.
+ */
+export function useTaskRating() {
+  const ipc = IpcClient.getInstance();
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: (params: { taskId: string; rating: number; feedback?: string }) =>
+      ipc.rateKanbanTask(params),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: OPENCLAW_QUERY_KEYS.availableModels });
+    },
+  });
+
+  return {
+    rateTask: mutation.mutate,
+    rateTaskAsync: mutation.mutateAsync,
+    isRating: mutation.isPending,
   };
 }

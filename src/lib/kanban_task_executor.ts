@@ -465,23 +465,18 @@ async function runPeerInference(
   agentId?: string | null,
 ): Promise<InferenceResult> {
   try {
-    const { requestPeerInference } = await import("@/lib/p2p_inference_protocol");
+    const { requestPeerInference } = await import("./p2p_inference_protocol");
     const result = await requestPeerInference(peerId, {
       model,
-      messages: [
-        {
-          role: "system",
-          content: "You are an AI agent executing tasks autonomously. Complete the task accurately and concisely.",
-        },
-        { role: "user", content: prompt },
-      ],
+      prompt,
+      systemPrompt: "You are an AI agent executing tasks autonomously. Complete the task accurately and concisely.",
     });
 
     return {
       content: result.content,
-      promptTokens: result.tokens?.prompt ?? Math.ceil(prompt.length / 4),
-      completionTokens: result.tokens?.completion ?? Math.ceil(result.content.length / 4),
-      totalTokens: result.tokens?.total ?? Math.ceil((prompt.length + result.content.length) / 4),
+      promptTokens: result.usage?.promptTokens ?? Math.ceil(prompt.length / 4),
+      completionTokens: result.usage?.completionTokens ?? Math.ceil(result.content.length / 4),
+      totalTokens: result.usage?.totalTokens ?? Math.ceil((prompt.length + result.content.length) / 4),
     };
   } catch (err) {
     logger.warn(`Peer inference failed for ${peerId}, falling back to local:`, err);

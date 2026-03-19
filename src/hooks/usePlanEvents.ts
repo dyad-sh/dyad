@@ -18,7 +18,7 @@ import {
   type PlanExitPayload,
   type PlanQuestionnairePayload,
 } from "@/ipc/types/plan";
-import { ipc } from "@/ipc/types";
+import { ipc, type App } from "@/ipc/types";
 import { showError } from "@/lib/toast";
 
 /**
@@ -186,7 +186,10 @@ export function usePlanEvents() {
           Notification.permission === "granted" &&
           !document.hasFocus()
         ) {
-          new Notification("Dyad", {
+          const app = queryClient.getQueryData<App | null>(
+            queryKeys.apps.detail({ appId: selectedAppIdRef.current! }),
+          );
+          new Notification(app?.name ?? "Dyad", {
             body: "A questionnaire needs your input",
           });
         }

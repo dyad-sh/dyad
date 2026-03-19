@@ -177,14 +177,20 @@ describe("normalizeOllamaBaseURL", () => {
     );
   });
 
-  it("strips /v1 suffix for legacy OpenAI-compatible URLs", () => {
+  it("preserves /v1 suffix for intentional proxy paths", () => {
     expect(normalizeOllamaBaseURL("https://proxy.example.com/v1")).toBe(
+      "https://proxy.example.com/v1",
+    );
+  });
+
+  it("strips /api/v1 legacy suffix", () => {
+    expect(normalizeOllamaBaseURL("https://proxy.example.com/api/v1")).toBe(
       "https://proxy.example.com",
     );
   });
 
-  it("strips trailing slash before suffix normalization", () => {
-    expect(normalizeOllamaBaseURL("https://proxy.example.com/v1/")).toBe(
+  it("strips trailing slash before legacy suffix normalization", () => {
+    expect(normalizeOllamaBaseURL("https://proxy.example.com/api/v1/")).toBe(
       "https://proxy.example.com",
     );
   });

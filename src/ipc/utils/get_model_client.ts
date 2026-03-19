@@ -430,14 +430,11 @@ function getRegularModelClient(
     }
     case "ollama": {
       const provider = createOllamaProvider({ baseURL: getOllamaApiUrl() });
-      const ollamaNumGpu = (getEnvVar("OLLAMA_NUM_GPU") ?? "").trim();
-      const ollamaSettings = ollamaNumGpu
-        ? {
-            options: {
-              num_gpu: resolveOllamaNumGpu(ollamaNumGpu),
-            },
-          }
-        : undefined;
+      const ollamaSettings = {
+        options: {
+          num_gpu: resolveOllamaNumGpu(getEnvVar("OLLAMA_NUM_GPU")),
+        },
+      };
 
       return {
         modelClient: {

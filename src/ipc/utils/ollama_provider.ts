@@ -35,9 +35,20 @@ export function createOllamaProvider(
 }
 
 // ai-sdk-ollama forwards baseURL to ollama-js as host, so it must remain root-level.
-// We also strip legacy OpenAI-compatible suffixes (/v1) to avoid path duplication.
+// We strip legacy OpenAI-compatible suffixes (/api or /api/v1) to avoid path duplication.
 export function normalizeOllamaBaseURL(baseURL?: string): string {
-  return (baseURL ?? "http://localhost:11434")
-    .replace(/\/+$/, "")
-    .replace(/\/(api|v1)$/, "");
+  const normalizedBaseURL = (baseURL ?? "http://localhost:11434").replace(
+    /\/+$/,
+    "",
+  );
+
+  if (normalizedBaseURL.endsWith("/api/v1")) {
+    return normalizedBaseURL.slice(0, -"/api/v1".length);
+  }
+
+  if (normalizedBaseURL.endsWith("/api")) {
+    return normalizedBaseURL.slice(0, -"/api".length);
+  }
+
+  return normalizedBaseURL;
 }

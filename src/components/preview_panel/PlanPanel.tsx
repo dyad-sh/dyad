@@ -1,14 +1,16 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { Button } from "@/components/ui/button";
 import { Check, FileText } from "lucide-react";
 import { VanillaMarkdownParser } from "@/components/chat/DyadMarkdownParser";
-import { planStateAtom } from "@/atoms/planAtoms";
+import { planAnnotationsAtom, planStateAtom } from "@/atoms/planAtoms";
 import { previewModeAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { usePlan } from "@/hooks/usePlan";
 import { useSettings } from "@/hooks/useSettings";
+import { SelectionCommentButton } from "./plan/SelectionCommentButton";
+import { CommentSidebar } from "./plan/CommentSidebar";
 
 export const PlanPanel: React.FC = () => {
   const chatId = useAtomValue(selectedChatIdAtom);
@@ -18,6 +20,9 @@ export const PlanPanel: React.FC = () => {
   const { streamMessage, isStreaming } = useStreamChat();
   const { savedPlan } = usePlan();
   const { settings } = useSettings();
+
+  const annotations = useAtomValue(planAnnotationsAtom);
+  const planContentRef = useRef<HTMLDivElement>(null);
 
   const planData = chatId ? planState.plansByChatId.get(chatId) : null;
   const currentPlan = planData?.content ?? null;
@@ -34,7 +39,35 @@ export const PlanPanel: React.FC = () => {
     }
   }, [currentPlan, previewMode, setPreviewMode]);
 
+  const setAnnotations = useSetAtom(planAnnotationsAtom);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSendingComments, setIsSendingComments] = useState(false);
+
+  const handleSendComments = () => {
+    if (!chatId || isSendingComments) return;
+    const chatAnnotations = annotations.get(chatId) ?? [];
+    if (chatAnnotations.length === 0) return;
+
+    const prompt = chatAnnotations
+      .map(
+        (a, i) => `**Comment ${i + 1}:**\n> ${a.selectedText}\n\n${a.comment}`,
+      )
+      .join("\n\n---\n\n");
+
+    setIsSendingComments(true);
+    streamMessage({
+      chatId,
+      prompt: `I have the following comments on the plan:\n\n${prompt}\n\nPlease update the plan based on these comments.`,
+    });
+
+    // Clear annotations after sending
+    setAnnotations((prev) => {
+      const next = new Map(prev);
+      next.delete(chatId);
+      return next;
+    });
+    setIsSendingComments(false);
+  };
 
   const handleAccept = () => {
     if (!chatId) return;
@@ -54,30 +87,45 @@ export const PlanPanel: React.FC = () => {
     return null;
   }
 
+  const chatAnnotations = chatId ? (annotations.get(chatId) ?? []) : [];
+
   return (
     <div className="h-full flex flex-col">
-      <div className="flex-1 overflow-y-auto p-4">
-        <div className="border rounded-lg bg-card">
-          <div className="px-4 py-3 border-b">
-            <div className="flex items-center gap-2">
-              <FileText className="text-blue-500" size={20} />
-              <h2 className="text-lg font-semibold">
-                {currentTitle || "Implementation Plan"}
-              </h2>
+      <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 overflow-y-auto p-4" ref={planContentRef}>
+          <div className="border rounded-lg bg-card">
+            <div className="px-4 py-3 border-b">
+              <div className="flex items-center gap-2">
+                <FileText className="text-blue-500" size={20} />
+                <h2 className="text-lg font-semibold">
+                  {currentTitle || "Implementation Plan"}
+                </h2>
+              </div>
+              {currentSummary && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  {currentSummary}
+                </p>
+              )}
             </div>
-            {currentSummary && (
-              <p className="text-sm text-muted-foreground mt-1">
-                {currentSummary}
-              </p>
-            )}
-          </div>
-          <div className="p-4">
-            <div className="prose dark:prose-invert prose-sm max-w-none">
-              <VanillaMarkdownParser content={currentPlan} />
+            <div className="p-4">
+              <div className="prose dark:prose-invert prose-sm max-w-none">
+                <VanillaMarkdownParser content={currentPlan} />
+              </div>
             </div>
           </div>
         </div>
+        {chatAnnotations.length > 0 && chatId && (
+          <CommentSidebar
+            chatId={chatId}
+            annotations={chatAnnotations}
+            onSendComments={handleSendComments}
+            isSending={isSendingComments}
+          />
+        )}
       </div>
+      {chatId && (
+        <SelectionCommentButton containerRef={planContentRef} chatId={chatId} />
+      )}
 
       <div className="border-t p-4 space-y-4 bg-background">
         {isAccepted || isSavedPlan ? (

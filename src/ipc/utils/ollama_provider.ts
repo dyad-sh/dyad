@@ -6,9 +6,9 @@ type OllamaChatModelId = string;
 
 export interface OllamaProviderOptions {
   /**
-   * Base URL for the Ollama API. For real Ollama, use e.g. http://localhost:11434/api
-   * The provider will POST to `${baseURL}/chat`.
-   * If undefined, defaults to http://localhost:11434/api
+   * Base URL for the Ollama host. For real Ollama, use e.g. http://localhost:11434
+   * The Ollama client appends API routes internally.
+   * If undefined, defaults to http://localhost:11434
    */
   baseURL?: string;
   headers?: Record<string, string>;
@@ -28,14 +28,13 @@ export interface OllamaProvider {
 export function createOllamaProvider(
   options?: OllamaProviderOptions,
 ): OllamaProvider {
-  const rawBaseURL = options?.baseURL ?? "http://localhost:11434/api";
-  const normalizedBaseURL = rawBaseURL.replace(/\/+$/, "");
-  const apiBaseURL = normalizedBaseURL.endsWith("/api")
-    ? normalizedBaseURL
-    : `${normalizedBaseURL}/api`;
+  // ai-sdk-ollama forwards baseURL to ollama-js as host, so it must remain root-level.
+  const baseURL = (options?.baseURL ?? "http://localhost:11434")
+    .replace(/\/+$/, "")
+    .replace(/\/api$/, "");
 
   const provider = createOllama({
-    baseURL: apiBaseURL,
+    baseURL,
     headers: options?.headers,
     fetch: options?.fetch,
   });

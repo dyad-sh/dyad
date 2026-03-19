@@ -28,11 +28,14 @@ export interface OllamaProvider {
 export function createOllamaProvider(
   options?: OllamaProviderOptions,
 ): OllamaProvider {
-  const rawBaseURL = options?.baseURL ?? "http://localhost:11434";
+  const rawBaseURL = options?.baseURL ?? "http://localhost:11434/api";
   const normalizedBaseURL = rawBaseURL.replace(/\/+$/, "");
+  const apiBaseURL = normalizedBaseURL.endsWith("/api")
+    ? normalizedBaseURL
+    : `${normalizedBaseURL}/api`;
 
   const provider = createOllama({
-    baseURL: normalizedBaseURL,
+    baseURL: apiBaseURL,
     headers: options?.headers,
     fetch: options?.fetch,
   });

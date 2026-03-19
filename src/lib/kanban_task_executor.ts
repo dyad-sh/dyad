@@ -20,6 +20,12 @@ import { openclawKanbanTasks, openclawKanbanActivity } from "@/db/schema";
 import { ipldReceiptService } from "@/lib/ipld_receipt_service";
 import { celestiaBlobService } from "@/lib/celestia_blob_service";
 import { getOllamaApiUrl } from "@/ipc/handlers/local_model_ollama_handler";
+import {
+  selectModelForTask,
+  recordTaskOutcome,
+  type ModelSelection,
+} from "@/lib/openclaw_registry_bridge";
+import { captureTrainingPair } from "@/lib/data_flywheel";
 
 const logger = log.scope("task_executor");
 
@@ -104,17 +110,47 @@ async function executeTask(task: any): Promise<void> {
 
     logger.info(`Executing task: ${task.title} (${taskId})`);
 
-    // ── Step 1: Run inference ──
+    // ── Step 1: Select model via registry bridge ──
     const prompt = buildPromptFromTask(task);
-    const model = task.model || "llama3.2:3b";
-    const inferenceResult = await runOllamaInference(prompt, model, task.agentId);
+    const complexity = estimateTaskComplexity(task);
+    let selection: ModelSelection;
+    try {
+      selection = await selectModelForTask(
+        task.taskType || "general",
+        complexity,
+        task.model || null,
+      );
+    } catch {
+      selection = {
+        model: task.model || "llama3.2:3b",
+        provider: "ollama",
+        registryId: null,
+        peerId: null,
+        selectionMethod: "fallback",
+        reason: "Registry bridge unavailable",
+        contentHash: null,
+      };
+    }
+    const model = selection.model;
+
+    logger.info(
+      `Model selected for ${taskId}: ${model} (${selection.selectionMethod}, ${selection.provider})`,
+    );
+
+    // ── Step 2: Run inference (local, peer, or cloud) ──
+    let inferenceResult: InferenceResult;
+    if (selection.provider === "peer" && selection.peerId) {
+      inferenceResult = await runPeerInference(prompt, model, selection.peerId, task.agentId);
+    } else {
+      inferenceResult = await runOllamaInference(prompt, model, task.agentId);
+    }
     const durationMs = Date.now() - startTime;
 
     logger.info(
       `Inference complete for ${taskId}: ${inferenceResult.content.length} chars, ${inferenceResult.totalTokens} tokens in ${durationMs}ms`,
     );
 
-    // ── Step 2: Create IPLD receipt ──
+    // ── Step 3: Create IPLD receipt ──
     let receiptCid: string | undefined;
     try {
       const promptHash = createHash("sha256").update(prompt).digest("hex");
@@ -130,6 +166,10 @@ async function executeTask(task: any): Promise<void> {
         promptHash,
         outputHash: dataHash,
         timestamp: Math.floor(Date.now() / 1000),
+        // Registry provenance metadata
+        ...(selection.contentHash ? { contentHash: selection.contentHash } : {}),
+        ...(selection.registryId ? { registryEntryId: selection.registryId } : {}),
+        ...(selection.peerId ? { executorPeerId: selection.peerId } : {}),
       });
 
       receiptCid = receipt.cid;
@@ -139,7 +179,7 @@ async function executeTask(task: any): Promise<void> {
       logger.warn(`Failed to create receipt for ${taskId}:`, err);
     }
 
-    // ── Step 3: Post receipt to Celestia (best-effort) ──
+    // ── Step 4: Post receipt to Celestia (best-effort) ──
     let celestiaHeight: number | undefined;
     let celestiaHash: string | undefined;
     try {
@@ -170,7 +210,7 @@ async function executeTask(task: any): Promise<void> {
       logger.warn(`Celestia submission failed for ${taskId}:`, err);
     }
 
-    // ── Step 4: Update task as completed ──
+    // ── Step 5: Update task as completed ──
     const completedAt = new Date();
     const resultJson: Record<string, unknown> = {
       content: inferenceResult.content,
@@ -178,6 +218,9 @@ async function executeTask(task: any): Promise<void> {
       completionTokens: inferenceResult.completionTokens,
       totalTokens: inferenceResult.totalTokens,
       model,
+      selectionMethod: selection.selectionMethod,
+      ...(selection.registryId ? { registryEntryId: selection.registryId } : {}),
+      ...(selection.peerId ? { executorPeerId: selection.peerId } : {}),
       ...(receiptCid ? { receiptCid } : {}),
       ...(celestiaHeight ? { celestiaHeight, celestiaHash } : {}),
     };
@@ -188,11 +231,11 @@ async function executeTask(task: any): Promise<void> {
         status: "completed",
         tokensUsed: inferenceResult.totalTokens,
         durationMs,
-        localProcessed: true,
+        localProcessed: selection.provider !== "cloud",
         resultJson,
         completedAt,
         updatedAt: completedAt,
-        provider: "ollama",
+        provider: selection.provider === "peer" ? "peer" : selection.provider === "cloud" ? "anthropic" : "ollama",
         model,
       })
       .where(eq(openclawKanbanTasks.id, taskId));
@@ -208,7 +251,36 @@ async function executeTask(task: any): Promise<void> {
 
     stats.totalSucceeded++;
 
-    // ── Step 5: Trigger n8n workflow (best-effort) ──
+    // ── Step 6: Record outcome for MAB + registry (best-effort) ──
+    try {
+      await recordTaskOutcome({
+        model,
+        taskId,
+        taskType: task.taskType || "general",
+        success: true,
+        latencyMs: durationMs,
+        tokensUsed: inferenceResult.totalTokens,
+        registryId: selection.registryId,
+      });
+    } catch (err) {
+      logger.warn(`Failed to record task outcome for ${taskId}:`, err);
+    }
+
+    // ── Step 7: Capture flywheel training pair (best-effort) ──
+    try {
+      await captureTrainingPair({
+        sourceType: "openclaw",
+        userInput: prompt,
+        assistantOutput: inferenceResult.content,
+        model,
+        agentId: task.agentId ? Number(task.agentId) : null,
+        rating: null, // Pending human review via kanban UI
+      });
+    } catch (err) {
+      logger.warn(`Failed to capture training pair for ${taskId}:`, err);
+    }
+
+    // ── Step 8: Trigger n8n workflow (best-effort) ──
     if (task.workflowId) {
       try {
         const { getOpenClawN8nBridge } = await import(
@@ -276,6 +348,22 @@ async function executeTask(task: any): Promise<void> {
     }
 
     stats.totalFailed++;
+
+    // Record failed outcome for MAB learning
+    try {
+      const failedModel = task.model || "llama3.2:3b";
+      await recordTaskOutcome({
+        model: failedModel,
+        taskId,
+        taskType: task.taskType || "general",
+        success: false,
+        latencyMs: durationMs,
+        tokensUsed: 0,
+        registryId: null,
+      });
+    } catch {
+      // Best-effort — don't fail the failure handler
+    }
   } finally {
     activeTasks.delete(taskId);
   }
@@ -365,6 +453,64 @@ async function runOllamaInference(
     completionTokens,
     totalTokens: promptTokens + completionTokens,
   };
+}
+
+/**
+ * Run inference on a remote peer via the P2P inference protocol.
+ */
+async function runPeerInference(
+  prompt: string,
+  model: string,
+  peerId: string,
+  agentId?: string | null,
+): Promise<InferenceResult> {
+  try {
+    const { requestPeerInference } = await import("@/lib/p2p_inference_protocol");
+    const result = await requestPeerInference(peerId, {
+      model,
+      messages: [
+        {
+          role: "system",
+          content: "You are an AI agent executing tasks autonomously. Complete the task accurately and concisely.",
+        },
+        { role: "user", content: prompt },
+      ],
+    });
+
+    return {
+      content: result.content,
+      promptTokens: result.tokens?.prompt ?? Math.ceil(prompt.length / 4),
+      completionTokens: result.tokens?.completion ?? Math.ceil(result.content.length / 4),
+      totalTokens: result.tokens?.total ?? Math.ceil((prompt.length + result.content.length) / 4),
+    };
+  } catch (err) {
+    logger.warn(`Peer inference failed for ${peerId}, falling back to local:`, err);
+    // Automatic fallback to local Ollama
+    return runOllamaInference(prompt, model, agentId);
+  }
+}
+
+/**
+ * Estimate task complexity (1-10) from task metadata.
+ */
+function estimateTaskComplexity(task: any): number {
+  let complexity = 5;
+
+  // Adjust by task type
+  const complexTypes = ["refactor", "analyze", "debug", "deploy"];
+  const simpleTypes = ["research", "data_pipeline"];
+  if (complexTypes.includes(task.taskType)) complexity += 2;
+  if (simpleTypes.includes(task.taskType)) complexity -= 1;
+
+  // Adjust by priority
+  if (task.priority === "critical") complexity += 1;
+
+  // Adjust by description length
+  const descLen = (task.description || "").length;
+  if (descLen > 2000) complexity += 1;
+  if (descLen > 5000) complexity += 1;
+
+  return Math.min(10, Math.max(1, complexity));
 }
 
 // =============================================================================

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { getWritePlanUiState } from "@/components/chat/DyadWritePlan";
+import {
+  getWritePlanUiState,
+  shouldLoadPersistedPlan,
+} from "@/components/chat/DyadWritePlan";
 
 describe("getWritePlanUiState", () => {
   it("shows generating badge when plan is in progress and no plan exists", () => {
@@ -40,5 +43,34 @@ describe("getWritePlanUiState", () => {
 
     expect(result.showViewPlanButton).toBe(true);
     expect(result.showGeneratingBadge).toBe(false);
+  });
+});
+
+describe("shouldLoadPersistedPlan", () => {
+  it("returns false for incomplete draft plans even when not streaming", () => {
+    expect(
+      shouldLoadPersistedPlan({
+        complete: "false",
+        isInProgress: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false while a plan is still in progress", () => {
+    expect(
+      shouldLoadPersistedPlan({
+        complete: "true",
+        isInProgress: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns true for completed, non-pending plans", () => {
+    expect(
+      shouldLoadPersistedPlan({
+        complete: "true",
+        isInProgress: false,
+      }),
+    ).toBe(true);
   });
 });

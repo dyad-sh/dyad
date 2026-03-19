@@ -31,6 +31,17 @@ export function getWritePlanUiState({
   };
 }
 
+export function shouldLoadPersistedPlan({
+  complete,
+  isInProgress,
+}: {
+  complete?: string;
+  isInProgress: boolean;
+}) {
+  if (complete === "false") return false;
+  return !isInProgress;
+}
+
 export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
   const { title, summary, complete, state } = node.properties;
   const [showSummary, setShowSummary] = useState(false);
@@ -42,12 +53,11 @@ export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
   const isInProgress =
     state === "pending" || (complete === "false" && isStreaming);
 
-  // Avoid loading persisted plans while the plan card is still actively generating.
-  const { savedPlan, hasPlanInMemory } = usePlan({ enabled: !isInProgress });
+  const { savedPlan, hasPlanInMemory } = usePlan({
+    enabled: shouldLoadPersistedPlan({ complete, isInProgress }),
+  });
 
   const hasPlan = hasPlanInMemory || !!savedPlan;
-  // During an active pending revision, keep showing generating state,
-  // not a stale previous plan.
   const hasPlanForUi = isInProgress ? false : hasPlan;
 
   const { showViewPlanButton, showGeneratingBadge } = getWritePlanUiState({

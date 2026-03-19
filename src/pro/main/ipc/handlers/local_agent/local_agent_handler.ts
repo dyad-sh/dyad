@@ -80,6 +80,7 @@ import {
   checkAndMarkForCompaction,
 } from "@/ipc/handlers/compaction/compaction_handler";
 import { getPostCompactionMessages } from "@/ipc/handlers/compaction/compaction_utils";
+import { DEFAULT_MAX_TOOL_CALL_STEPS } from "@/constants/settings_constants";
 
 const logger = log.scope("local_agent_handler");
 const PLANNING_QUESTIONNAIRE_TOOL_NAME = "planning_questionnaire";
@@ -87,7 +88,26 @@ const MAX_TERMINATED_STREAM_RETRIES = 3;
 const STREAM_RETRY_BASE_DELAY_MS = 400;
 const STREAM_CONTINUE_MESSAGE =
   "[System] Your previous response stream was interrupted by a transient network error. Continue from exactly where you left off and do not repeat text that has already been sent.";
-import { DEFAULT_MAX_TOOL_CALL_STEPS } from "@/constants/settings_constants";
+
+const RETRYABLE_STREAM_ERROR_STATUS_CODES = new Set([
+  408, 429, 500, 502, 503, 504,
+]);
+const RETRYABLE_STREAM_ERROR_PATTERNS = [
+  "server_error",
+  "internal server error",
+  "service unavailable",
+  "bad gateway",
+  "gateway timeout",
+  "too many requests",
+  "rate_limit",
+  "overloaded",
+  "timeout",
+  "econnrefused",
+  "enotfound",
+  "econnreset",
+  "epipe",
+  "etimedout",
+];
 
 // ============================================================================
 // Tool Streaming State Management
@@ -994,7 +1014,7 @@ export async function handleLocalAgentStream(
             streamErrorFromIteration ?? streamErrorFromCallback;
           if (streamError) {
             if (
-              shouldRetryTerminatedStreamError({
+              shouldRetryTransientStreamError({
                 error: streamError,
                 retryCount: terminatedRetryCount,
                 aborted: abortController.signal.aborted,
@@ -1043,7 +1063,7 @@ export async function handleLocalAgentStream(
             responseMessages = response.messages;
           } catch (err) {
             if (
-              shouldRetryTerminatedStreamError({
+              shouldRetryTransientStreamError({
                 error: err,
                 retryCount: terminatedRetryCount,
                 aborted: abortController.signal.aborted,
@@ -1329,7 +1349,43 @@ function isTerminatedStreamError(error: unknown): boolean {
   return false;
 }
 
-function shouldRetryTerminatedStreamError(params: {
+function isRetryableProviderStreamError(error: unknown): boolean {
+  const normalized = unwrapStreamError(error);
+  if (!isRecord(normalized)) {
+    return false;
+  }
+
+  const statusCode =
+    (typeof normalized.statusCode === "number" && normalized.statusCode) ||
+    (typeof normalized.status === "number" && normalized.status) ||
+    (isRecord(normalized.response) &&
+    typeof normalized.response.status === "number"
+      ? normalized.response.status
+      : undefined);
+
+  if (
+    typeof statusCode === "number" &&
+    (statusCode >= 500 || RETRYABLE_STREAM_ERROR_STATUS_CODES.has(statusCode))
+  ) {
+    return true;
+  }
+
+  const errorString =
+    [
+      typeof normalized.message === "string" ? normalized.message : undefined,
+      typeof normalized.code === "string" ? normalized.code : undefined,
+      typeof normalized.type === "string" ? normalized.type : undefined,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase() || getErrorMessage(normalized).toLowerCase();
+
+  return RETRYABLE_STREAM_ERROR_PATTERNS.some((pattern) =>
+    errorString.includes(pattern),
+  );
+}
+
+function shouldRetryTransientStreamError(params: {
   error: unknown;
   retryCount: number;
   aborted: boolean;
@@ -1338,7 +1394,7 @@ function shouldRetryTerminatedStreamError(params: {
   return (
     !aborted &&
     retryCount < MAX_TERMINATED_STREAM_RETRIES &&
-    isTerminatedStreamError(error)
+    (isTerminatedStreamError(error) || isRetryableProviderStreamError(error))
   );
 }
 

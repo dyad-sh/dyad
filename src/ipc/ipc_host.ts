@@ -116,6 +116,7 @@ import { registerAgentCreationHandlers } from "./handlers/agent_creation_handler
 import { registerAgentUIHandlers } from "./handlers/agent_ui_handlers";
 import { registerOpenClawKanbanHandlers } from "./handlers/openclaw_kanban_handlers";
 import { registerFlywheelHandlers } from "./handlers/flywheel_handlers";
+import { registerModelRegistryHandlers } from "./handlers/model_registry_handlers";
 import {
   registerTaskExecutorHandlers,
   registerSystemServicesHandlers,
@@ -344,6 +345,10 @@ export function registerIpcHandlers() {
   // Data Flywheel — Self-reinforcing training loop
   // Interactions → Training Pairs → Fine-Tune → Smarter Models
   registerFlywheelHandlers();
+
+  // Decentralized Model Registry — Publish, discover, rate, download models
+  // Local → IPFS → Celestia → GossipSub → Peers
+  registerModelRegistryHandlers();
 
   // Task Executor — Autonomous inference loop & System Services Health
   registerTaskExecutorHandlers();

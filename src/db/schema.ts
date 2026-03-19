@@ -2026,3 +2026,6 @@ export * from "./agent_memory_schema";
 
 // ── Data Flywheel (Self-Reinforcing Training Loop) ────────────
 export * from "./flywheel_schema";
+
+// ── Decentralized Model Registry ──────────────────────────────
+export * from "./model_registry_schema";

@@ -44,6 +44,7 @@ import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils"
 import { executeCopyFile } from "../utils/copy_file_utils";
 import { generateUndoSql } from "../../supabase_admin/undo_sql_generator";
 import { storeUndoSqlAtCurrentVersion } from "../utils/supabase_undo_sql_utils";
+import { buildStoredUndoSql } from "../utils/supabase_rollback_utils";
 const readFile = fs.promises.readFile;
 const logger = log.scope("response_processor");
 
@@ -632,11 +633,18 @@ export async function processFullResponseActions(
         // Store accumulated undo-SQL on the version record
         if (chatWithApp.app.supabaseProjectId && undoSqlParts.length > 0) {
           try {
-            await storeUndoSqlAtCurrentVersion({
-              appId: chatWithApp.app.id,
-              appPath,
-              undoSql: undoSqlParts.join("\n"),
-            });
+            const storedUndoSql = buildStoredUndoSql(undoSqlParts);
+            if (!storedUndoSql) {
+              logger.warn(
+                "No rollback SQL remained after normalization; skipping version storage",
+              );
+            } else {
+              await storeUndoSqlAtCurrentVersion({
+                appId: chatWithApp.app.id,
+                appPath,
+                undoSql: storedUndoSql,
+              });
+            }
           } catch (undoStoreError) {
             logger.warn(
               "Failed to store undo-SQL on version record:",

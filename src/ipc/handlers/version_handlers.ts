@@ -22,6 +22,7 @@ import {
   gitLog,
   isGitStatusClean,
 } from "../utils/git_utils";
+import { planSupabaseRollback } from "../utils/supabase_rollback_utils";
 
 import {
   getNeonClient,
@@ -186,6 +187,116 @@ export function registerVersionHandlers() {
         });
       }
 
+      // Execute Supabase undo-SQL for database rollback BEFORE git stage/commit.
+      // This ensures the database is already rolled back when the dev server
+      // hot-reloads after git file changes, preventing the user from seeing
+      // the reverted code with a stale database state.
+      if (app.supabaseProjectId) {
+        try {
+          // Find all versions for this app that have undo-SQL
+          const allVersions = await db.query.versions.findMany({
+            where: eq(versions.appId, appId),
+          });
+
+          logger.info(
+            `[DEBUG-ROLLBACK] Revert: appId=${appId}, target=${previousVersionId}, currentHead=${currentCommitHash}`,
+          );
+          logger.info(
+            `[DEBUG-ROLLBACK] All versions for app (${allVersions.length}): ${JSON.stringify(
+              allVersions.map((v) => ({
+                id: v.id,
+                commitHash: v.commitHash,
+                hasUndoSql: !!v.supabaseUndoSql,
+                undoSqlPreview: v.supabaseUndoSql?.slice(0, 100) ?? null,
+              })),
+            )}`,
+          );
+
+          // Build a rollback plan from the current git history. This follows
+          // prior revert commits so repeated restores don't try to undo schema
+          // changes that were already rolled back earlier.
+          const commits = await gitLog({
+            path: appPath,
+            depth: 100_000,
+          });
+
+          logger.info(
+            `[DEBUG-ROLLBACK] Recent git log: ${JSON.stringify(
+              commits.slice(0, 5).map((c: GitCommit, i: number) => ({
+                idx: i,
+                oid: c.oid.slice(0, 8),
+                msg: c.commit.message.slice(0, 50),
+              })),
+            )}`,
+          );
+
+          const rollbackPlan = planSupabaseRollback({
+            versions: allVersions.map((version) => ({
+              commitHash: version.commitHash,
+              supabaseUndoSql: version.supabaseUndoSql,
+            })),
+            commits,
+            currentHeadCommitHash: currentCommitHash,
+            targetCommitHash: previousVersionId,
+          });
+
+          logger.info(
+            `[DEBUG-ROLLBACK] rollbackPlan=${JSON.stringify({
+              status: rollbackPlan.status,
+              versionsToUndo: rollbackPlan.versionsToUndo.map((version) => ({
+                commitHash: version.commitHash.slice(0, 8),
+                hasUndoSql: !!version.supabaseUndoSql,
+              })),
+              missingUndoVersions: rollbackPlan.missingUndoVersions.map(
+                (version) => version.commitHash.slice(0, 8),
+              ),
+            })}`,
+          );
+
+          if (rollbackPlan.status === "ready") {
+            logger.info(
+              `[DEBUG-ROLLBACK] Composed undo-SQL to execute: ${rollbackPlan.composedUndoSql}`,
+            );
+
+            const result = await executeSupabaseSql({
+              supabaseProjectId: app.supabaseProjectId,
+              query: rollbackPlan.composedUndoSql!,
+              organizationSlug: app.supabaseOrganizationSlug ?? null,
+            });
+
+            logger.info(
+              `[DEBUG-ROLLBACK] executeSupabaseSql result: ${JSON.stringify(result).slice(0, 500)}`,
+            );
+
+            successMessage = `Successfully restored to version (including database — ${rollbackPlan.versionsToUndo.length} version(s) rolled back)`;
+          } else if (rollbackPlan.status === "missing_undo") {
+            logger.warn(
+              `${rollbackPlan.missingUndoVersions.length} intermediate version(s) lack undo-SQL`,
+            );
+            warningMessage +=
+              "Database rollback was skipped because one or more intermediate versions do not have undo-SQL. Your database schema may not match your code. ";
+          } else if (rollbackPlan.status === "target_not_reachable") {
+            logger.info(
+              `[DEBUG-ROLLBACK] Target commit ${previousVersionId} is not reachable from the current database state — skipping DB rollback`,
+            );
+            warningMessage +=
+              "Database rollback was skipped because Dyad could not determine a safe rollback path from the current database state. Your database schema may not match your code. ";
+          } else {
+            logger.info(
+              `[DEBUG-ROLLBACK] No database changes need to be rolled back for target ${previousVersionId}`,
+            );
+          }
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : String(error);
+          logger.error(
+            "[DEBUG-ROLLBACK] Error executing Supabase undo-SQL:",
+            errorMessage,
+          );
+          warningMessage += `Database rollback failed: ${errorMessage}. Your database schema may not match your code. `;
+        }
+      }
+
       await gitStageToRevert({
         path: appPath,
         targetOid: previousVersionId,
@@ -334,175 +445,6 @@ export function registerVersionHandlers() {
           neonDevelopmentBranchId: app.neonDevelopmentBranchId,
           appPath: app.path,
         });
-      }
-      // Execute Supabase undo-SQL for database rollback
-      if (app.supabaseProjectId) {
-        try {
-          // Find all versions for this app that have undo-SQL
-          const allVersions = await db.query.versions.findMany({
-            where: eq(versions.appId, appId),
-          });
-
-          logger.info(
-            `[DEBUG-ROLLBACK] Revert: appId=${appId}, target=${previousVersionId}, currentHead=${currentCommitHash}`,
-          );
-          logger.info(
-            `[DEBUG-ROLLBACK] All versions for app (${allVersions.length}): ${JSON.stringify(
-              allVersions.map((v) => ({
-                id: v.id,
-                commitHash: v.commitHash,
-                hasUndoSql: !!v.supabaseUndoSql,
-                undoSqlPreview: v.supabaseUndoSql?.slice(0, 100) ?? null,
-              })),
-            )}`,
-          );
-
-          // Use the pre-revert commit hash (captured before git operations) to determine
-          // which versions need to be undone. We need all versions whose commit is
-          // between the target (previousVersionId) and the pre-revert HEAD (currentCommitHash).
-          // Use git log from the pre-revert HEAD to find ordering.
-          const commits = await gitLog({
-            path: appPath,
-            depth: 100_000,
-          });
-
-          // Build commit order map (lower index = newer)
-          const commitOrderMap = new Map<string, number>();
-          commits.forEach((c: GitCommit, idx: number) => {
-            commitOrderMap.set(c.oid, idx);
-          });
-
-          const targetOrder = commitOrderMap.get(previousVersionId);
-          const currentOrder = commitOrderMap.get(currentCommitHash);
-
-          logger.info(
-            `[DEBUG-ROLLBACK] targetOrder=${targetOrder}, currentOrder=${currentOrder}`,
-          );
-          logger.info(
-            `[DEBUG-ROLLBACK] Recent git log: ${JSON.stringify(
-              commits.slice(0, 5).map((c: GitCommit, i: number) => ({
-                idx: i,
-                oid: c.oid.slice(0, 8),
-                msg: c.commit.message.slice(0, 50),
-              })),
-            )}`,
-          );
-
-          if (targetOrder !== undefined) {
-            // Collect versions that are newer than target but not newer than the
-            // pre-revert HEAD. This includes the pre-revert HEAD version itself.
-            // In git log order: lower index = newer, so we want:
-            //   order >= currentOrder (not newer than pre-revert HEAD)
-            //   order < targetOrder (newer than target)
-            const versionsToUndo = allVersions
-              .filter((v) => {
-                const order = commitOrderMap.get(v.commitHash);
-                if (order === undefined) return false;
-                // Include versions between current (inclusive) and target (exclusive)
-                return (
-                  order < targetOrder &&
-                  (currentOrder === undefined || order >= currentOrder)
-                );
-              })
-              .sort((a, b) => {
-                const orderA = commitOrderMap.get(a.commitHash) ?? 0;
-                const orderB = commitOrderMap.get(b.commitHash) ?? 0;
-                // Sort ascending by git log index (newest first) for proper undo ordering
-                return orderA - orderB;
-              });
-
-            logger.info(
-              `[DEBUG-ROLLBACK] versionsToUndo (${versionsToUndo.length}): ${JSON.stringify(
-                versionsToUndo.map((v) => ({
-                  commitHash: v.commitHash.slice(0, 8),
-                  hasUndoSql: !!v.supabaseUndoSql,
-                  order: commitOrderMap.get(v.commitHash),
-                })),
-              )}`,
-            );
-
-            // Check if all intermediate versions have undo-SQL
-            const versionsWithUndo = versionsToUndo.filter(
-              (v) => v.supabaseUndoSql,
-            );
-            const versionsWithoutUndo = versionsToUndo.filter(
-              (v) => !v.supabaseUndoSql,
-            );
-
-            logger.info(
-              `[DEBUG-ROLLBACK] versionsWithUndo=${versionsWithUndo.length}, versionsWithoutUndo=${versionsWithoutUndo.length}`,
-            );
-
-            if (versionsWithUndo.length > 0) {
-              if (versionsWithoutUndo.length > 0) {
-                logger.warn(
-                  `${versionsWithoutUndo.length} intermediate version(s) lack undo-SQL`,
-                );
-                warningMessage +=
-                  "Some intermediate versions don't have database rollback available. Database may not fully match the reverted code. ";
-              }
-
-              // Compose undo-SQL in order (newest first — already sorted)
-              const composedUndoSql = versionsWithUndo
-                .map((v) => v.supabaseUndoSql!)
-                .join("\n");
-
-              logger.info(
-                `[DEBUG-ROLLBACK] Composed undo-SQL to execute: ${composedUndoSql}`,
-              );
-
-              // Execute each undo-SQL statement individually to avoid issues with
-              // the Supabase Management API not supporting explicit BEGIN/COMMIT
-              const result = await executeSupabaseSql({
-                supabaseProjectId: app.supabaseProjectId,
-                query: composedUndoSql,
-                organizationSlug: app.supabaseOrganizationSlug ?? null,
-              });
-
-              logger.info(
-                `[DEBUG-ROLLBACK] executeSupabaseSql result: ${JSON.stringify(result).slice(0, 500)}`,
-              );
-
-              // Clear undo-SQL from rolled-back versions
-              for (const v of versionsWithUndo) {
-                await db
-                  .update(versions)
-                  .set({ supabaseUndoSql: null })
-                  .where(
-                    and(
-                      eq(versions.appId, appId),
-                      eq(versions.commitHash, v.commitHash),
-                    ),
-                  );
-              }
-
-              successMessage = `Successfully restored to version (including database — ${versionsWithUndo.length} version(s) rolled back)`;
-            } else if (versionsToUndo.length > 0) {
-              // There are versions to undo but none have undo-SQL
-              logger.info(
-                `[DEBUG-ROLLBACK] ${versionsToUndo.length} version(s) to undo but none have undo-SQL`,
-              );
-              warningMessage +=
-                "Database rollback is not available for the reverted version(s). Your database schema may not match your code. ";
-            } else {
-              logger.info(
-                `[DEBUG-ROLLBACK] No versions with undo-SQL found — skipping DB rollback`,
-              );
-            }
-          } else {
-            logger.info(
-              `[DEBUG-ROLLBACK] Target commit ${previousVersionId} not found in git log — skipping DB rollback`,
-            );
-          }
-        } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : String(error);
-          logger.error(
-            "[DEBUG-ROLLBACK] Error executing Supabase undo-SQL:",
-            errorMessage,
-          );
-          warningMessage += `Database rollback failed: ${errorMessage}. Your database schema may not match your code. `;
-        }
       }
 
       // Re-deploy all Supabase edge functions after reverting (AFTER DB rollback)

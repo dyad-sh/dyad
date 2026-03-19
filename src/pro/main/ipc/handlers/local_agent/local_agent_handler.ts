@@ -42,6 +42,7 @@ import {
   commitAllChanges,
 } from "./processors/file_operations";
 import { storeUndoSqlAtCurrentVersion } from "@/ipc/utils/supabase_undo_sql_utils";
+import { buildStoredUndoSql } from "@/ipc/utils/supabase_rollback_utils";
 import { mcpManager } from "@/ipc/utils/mcp_manager";
 import { mcpServers } from "@/db/schema";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
@@ -1227,11 +1228,18 @@ export async function handleLocalAgentStream(
       // Store accumulated undo-SQL after commit so it's associated with the correct commit hash
       if (ctx.supabaseProjectId && ctx.undoSqlParts.length > 0) {
         try {
-          await storeUndoSqlAtCurrentVersion({
-            appId: ctx.appId,
-            appPath: ctx.appPath,
-            undoSql: ctx.undoSqlParts.join("\n"),
-          });
+          const storedUndoSql = buildStoredUndoSql(ctx.undoSqlParts);
+          if (!storedUndoSql) {
+            logger.warn(
+              "No rollback SQL remained after normalization; skipping version storage",
+            );
+          } else {
+            await storeUndoSqlAtCurrentVersion({
+              appId: ctx.appId,
+              appPath: ctx.appPath,
+              undoSql: storedUndoSql,
+            });
+          }
         } catch (undoStoreError) {
           logger.warn(
             "Failed to store undo-SQL on version record:",

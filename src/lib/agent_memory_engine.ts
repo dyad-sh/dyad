@@ -22,6 +22,10 @@ import type {
   ShortTermMemory,
   ShortTermMemoryKind,
 } from "../types/agent_memory";
+import { vectorStoreService } from "./vector_store_service";
+import { getOllamaApiUrl } from "../ipc/handlers/local_model_ollama_handler";
+import { readSettings } from "../main/settings";
+import type { CollectionId } from "../types/sovereign_stack_types";
 
 const logger = log.scope("agent_memory_engine");
 
@@ -140,6 +144,11 @@ export async function createLongTermMemory(params: {
       importance: params.importance ?? 0.5,
     })
     .returning();
+
+  // Index in vector store for semantic search
+  indexMemoryInVectorStore(params.agentId, inserted as LongTermMemory).catch(
+    (err) => logger.warn("Failed to index memory in vector store:", err),
+  );
 
   return inserted as LongTermMemory;
 }
@@ -415,21 +424,43 @@ export async function clearShortTermMemory(
 export async function buildMemoryContext(
   agentId: number,
   chatId?: string,
+  userPrompt?: string,
 ): Promise<string | null> {
   const config = await getMemoryConfig(agentId);
   if (!config) return null;
 
   const sections: string[] = [];
 
-  // Long-term memories
+  // Long-term memories — importance-sorted baseline
   if (config.longTermEnabled) {
-    const memories = await getContextMemories(
+    const importanceMemories = await getContextMemories(
       agentId,
       config.longTermMaxContext,
     );
-    if (memories.length > 0) {
+
+    // Semantic search — find memories relevant to current query
+    let semanticMemories: LongTermMemory[] = [];
+    if (userPrompt) {
+      try {
+        semanticMemories = await semanticSearchMemories(agentId, userPrompt, 5);
+      } catch (err) {
+        logger.warn("Semantic memory search failed (non-fatal):", err);
+      }
+    }
+
+    // Merge & deduplicate by ID
+    const seen = new Set<number>();
+    const mergedMemories: LongTermMemory[] = [];
+    for (const mem of [...semanticMemories, ...importanceMemories]) {
+      if (!seen.has(mem.id)) {
+        seen.add(mem.id);
+        mergedMemories.push(mem);
+      }
+    }
+
+    if (mergedMemories.length > 0) {
       sections.push("## Long-Term Memory (persistent across conversations)");
-      for (const mem of memories) {
+      for (const mem of mergedMemories) {
         sections.push(`- [${mem.category}] ${mem.content}`);
       }
     }
@@ -451,6 +482,175 @@ export async function buildMemoryContext(
   if (sections.length === 0) return null;
 
   return `\n# Agent Memory\n${sections.join("\n")}\n`;
+}
+
+// =============================================================================
+// VECTOR STORE INTEGRATION — index & search memories semantically
+// =============================================================================
+
+const MEMORY_COLLECTION_PREFIX = "agent-memory-";
+
+/**
+ * Get or create the vector store collection for an agent's memories.
+ */
+async function ensureMemoryCollection(
+  agentId: number,
+): Promise<CollectionId> {
+  const collectionName = `${MEMORY_COLLECTION_PREFIX}${agentId}`;
+
+  // Check if already exists
+  const collections = vectorStoreService.listCollections();
+  const existing = collections.find((c) => c.name === collectionName);
+  if (existing) return existing.id;
+
+  const collection = await vectorStoreService.createCollection({
+    name: collectionName,
+    description: `Long-term memories for agent ${agentId}`,
+    chunkingConfig: { strategy: "sentence", chunkSize: 512, chunkOverlap: 50 },
+  });
+  return collection.id;
+}
+
+/**
+ * Index a single LTM entry in the vector store for semantic retrieval.
+ */
+async function indexMemoryInVectorStore(
+  agentId: number,
+  memory: LongTermMemory,
+): Promise<void> {
+  const collectionId = await ensureMemoryCollection(agentId);
+  await vectorStoreService.addDocuments(collectionId, [
+    {
+      content: memory.content,
+      title: memory.key ?? `memory-${memory.id}`,
+      source: `ltm:${memory.id}`,
+      metadata: {
+        memoryId: memory.id,
+        category: memory.category,
+        importance: memory.importance,
+        agentId,
+      },
+    },
+  ]);
+  logger.debug(`Indexed LTM ${memory.id} in vector store for agent ${agentId}`);
+}
+
+/**
+ * Semantic search across an agent's long-term memories.
+ * Returns LTM entries ranked by cosine similarity to the query.
+ */
+export async function semanticSearchMemories(
+  agentId: number,
+  query: string,
+  topK = 5,
+): Promise<LongTermMemory[]> {
+  const collectionName = `${MEMORY_COLLECTION_PREFIX}${agentId}`;
+  const collections = vectorStoreService.listCollections();
+  const collection = collections.find((c) => c.name === collectionName);
+  if (!collection) return [];
+
+  const results = await vectorStoreService.search({
+    collectionId: collection.id,
+    query,
+    topK,
+    minScore: 0.25,
+  });
+
+  if (results.length === 0) return [];
+
+  // Fetch full LTM entries by their IDs stored in metadata
+  const memoryIds = results
+    .map((r) => (r.metadata as any)?.memoryId as number | undefined)
+    .filter((id): id is number => id != null);
+
+  if (memoryIds.length === 0) return [];
+
+  const memories: LongTermMemory[] = [];
+  for (const id of memoryIds) {
+    const [row] = await db
+      .select()
+      .from(agentLongTermMemory)
+      .where(eq(agentLongTermMemory.id, id))
+      .limit(1);
+    if (row) memories.push(row as LongTermMemory);
+  }
+
+  return memories;
+}
+
+// =============================================================================
+// STM → LTM FLUSH — consolidate short-term memories on chat end
+// =============================================================================
+
+/**
+ * Flush short-term memories to a long-term memory entry.
+ * Called when a chat session ends. Summarizes STM entries (using Ollama if many)
+ * and stores the result as a persistent LTM entry.
+ */
+export async function flushShortTermToLongTerm(
+  agentId: number,
+  chatId: string,
+): Promise<LongTermMemory | null> {
+  const stmEntries = await getShortTermMemories(agentId, chatId);
+  if (stmEntries.length === 0) return null;
+
+  let summary: string;
+
+  if (stmEntries.length <= 5) {
+    // Few entries — just concatenate
+    summary = stmEntries.map((e) => `${e.key}: ${e.value}`).join("; ");
+  } else {
+    // Many entries — ask Ollama to summarize
+    summary = await summarizeWithOllama(stmEntries);
+  }
+
+  const ltm = await createLongTermMemory({
+    agentId,
+    category: "context",
+    content: `[Chat session summary] ${summary}`,
+    key: `chat-summary-${chatId}`,
+    importance: 0.5,
+  });
+
+  await clearShortTermMemory(agentId, chatId);
+  logger.info(
+    `Flushed ${stmEntries.length} STM entries to LTM ${ltm.id} for agent ${agentId}`,
+  );
+  return ltm;
+}
+
+async function summarizeWithOllama(
+  entries: ShortTermMemory[],
+): Promise<string> {
+  const joined = entries.map((e) => `- ${e.key}: ${e.value}`).join("\n");
+
+  try {
+    const settings = readSettings();
+    const model = settings.selectedModel?.name ?? "qwen2.5-coder:7b";
+    const resp = await fetch(`${getOllamaApiUrl()}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        stream: false,
+        messages: [
+          {
+            role: "system",
+            content:
+              "Summarize the following conversation notes into a concise paragraph capturing key facts, decisions, and preferences. Output only the summary, nothing else.",
+          },
+          { role: "user", content: joined },
+        ],
+      }),
+    });
+
+    if (!resp.ok) throw new Error(`Ollama returned ${resp.status}`);
+    const data = (await resp.json()) as { message?: { content?: string } };
+    return data.message?.content?.trim() || joined;
+  } catch (err) {
+    logger.warn("Ollama summarization failed, using raw concat:", err);
+    return joined;
+  }
 }
 
 /**
@@ -504,4 +704,48 @@ export async function autoExtractMemories(
   }
 
   return extracted;
+}
+
+// =============================================================================
+// PERIODIC CONSOLIDATION — decay old memories, remove duplicates
+// =============================================================================
+
+/**
+ * Run periodic maintenance on agent long-term memories:
+ * - Decay importance of old, rarely-accessed memories
+ * - Delete very low-importance memories to prevent unbounded growth
+ */
+export async function consolidateAgentMemories(): Promise<{
+  decayed: number;
+  deleted: number;
+}> {
+  const thirtyDaysAgo = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
+
+  // Decay importance of old, low-access memories
+  const decayResult = await db
+    .update(agentLongTermMemory)
+    .set({
+      importance: sql`MAX(0.05, ${agentLongTermMemory.importance} * 0.9)`,
+      updatedAt: sql`(unixepoch())`,
+    })
+    .where(
+      and(
+        sql`${agentLongTermMemory.lastAccessedAt} < ${thirtyDaysAgo}`,
+        sql`${agentLongTermMemory.accessCount} < 3`,
+      ),
+    );
+
+  // Delete memories with near-zero importance
+  const deleteResult = await db
+    .delete(agentLongTermMemory)
+    .where(sql`${agentLongTermMemory.importance} < 0.06`);
+
+  const decayed = (decayResult as any)?.changes ?? 0;
+  const deleted = (deleteResult as any)?.changes ?? 0;
+
+  if (decayed > 0 || deleted > 0) {
+    logger.info(`Memory consolidation: decayed=${decayed}, deleted=${deleted}`);
+  }
+
+  return { decayed, deleted };
 }

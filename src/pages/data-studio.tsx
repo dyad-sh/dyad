@@ -15,6 +15,7 @@
 
 import { useState } from "react";
 import DOMPurify from "dompurify";
+import { useExport } from "@/hooks/use-export";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1037,6 +1038,7 @@ function ExportPanel({ datasetId }: { datasetId: string | null }) {
   const { data: stats } = useDatasetTransformStats(datasetId || "");
   const exportDataset = useTransformExportDataset();
   const prepareTraining = usePrepareTraining();
+  const { exportToDocument, hasLibreOffice, isExporting } = useExport();
   
   const handleExport = () => {
     if (!datasetId || !outputDir) return;
@@ -1135,6 +1137,73 @@ function ExportPanel({ datasetId }: { datasetId: string | null }) {
                     <span className="text-sm">
                       Exported {exportDataset.data.result.totalItems} items to {exportDataset.data.result.files?.length || 0} files
                     </span>
+                  </div>
+                )}
+
+                {hasLibreOffice && (
+                  <div className="flex items-center gap-2 pt-2 border-t">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={!datasetId || isExporting}
+                      onClick={() => {
+                        if (!datasetId) return;
+                        const s = stats?.stats;
+                        const sections = [
+                          { type: "heading" as const, level: 1, content: "Dataset Report" },
+                          { type: "paragraph" as const, content: `Dataset ID: ${datasetId}` },
+                          { type: "heading" as const, level: 2, content: "Statistics" },
+                          { type: "paragraph" as const, content: `Total Items: ${s?.itemCount?.toLocaleString() ?? "N/A"}` },
+                          { type: "paragraph" as const, content: `Total Tokens: ${s?.totalTokens?.toLocaleString() ?? "N/A"}` },
+                          { type: "paragraph" as const, content: `Avg Tokens/Item: ${s ? Math.round(s.avgTokensPerItem) : "N/A"}` },
+                          { type: "paragraph" as const, content: `Min Tokens: ${s?.minTokens ?? "N/A"} | Max Tokens: ${s?.maxTokens ?? "N/A"}` },
+                          { type: "heading" as const, level: 2, content: "Export Configuration" },
+                          { type: "paragraph" as const, content: `Format: ${exportFormat}` },
+                          { type: "paragraph" as const, content: `Split Ratios: Train 80% / Val 10% / Test 10%` },
+                          { type: "paragraph" as const, content: `Generated: ${new Date().toLocaleString()}` },
+                        ];
+                        exportToDocument.mutate({
+                          name: `dataset-report-${datasetId}`,
+                          sections,
+                          format: "pdf",
+                          title: "Dataset Report",
+                        });
+                      }}
+                    >
+                      <FileText className="h-4 w-4 mr-2" />
+                      Export Report (PDF)
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={!datasetId || isExporting}
+                      onClick={() => {
+                        if (!datasetId) return;
+                        const s = stats?.stats;
+                        const sections = [
+                          { type: "heading" as const, level: 1, content: "Dataset Report" },
+                          { type: "paragraph" as const, content: `Dataset ID: ${datasetId}` },
+                          { type: "heading" as const, level: 2, content: "Statistics" },
+                          { type: "paragraph" as const, content: `Total Items: ${s?.itemCount?.toLocaleString() ?? "N/A"}` },
+                          { type: "paragraph" as const, content: `Total Tokens: ${s?.totalTokens?.toLocaleString() ?? "N/A"}` },
+                          { type: "paragraph" as const, content: `Avg Tokens/Item: ${s ? Math.round(s.avgTokensPerItem) : "N/A"}` },
+                          { type: "paragraph" as const, content: `Min Tokens: ${s?.minTokens ?? "N/A"} | Max Tokens: ${s?.maxTokens ?? "N/A"}` },
+                          { type: "heading" as const, level: 2, content: "Export Configuration" },
+                          { type: "paragraph" as const, content: `Format: ${exportFormat}` },
+                          { type: "paragraph" as const, content: `Split Ratios: Train 80% / Val 10% / Test 10%` },
+                          { type: "paragraph" as const, content: `Generated: ${new Date().toLocaleString()}` },
+                        ];
+                        exportToDocument.mutate({
+                          name: `dataset-report-${datasetId}`,
+                          sections,
+                          format: "docx",
+                          title: "Dataset Report",
+                        });
+                      }}
+                    >
+                      <FileText className="h-4 w-4 mr-2" />
+                      Export Report (DOCX)
+                    </Button>
                   </div>
                 )}
               </>

@@ -389,6 +389,11 @@ const validInvokeChannels = [
   "services:restart",
   "services:start:all",
   "services:stop:all",
+  // Tailscale VPN
+  "tailscale:status",
+  "tailscale:config:get",
+  "tailscale:config:save",
+  "tailscale:service-urls",
   // Celestia Blob DA Layer
   "celestia:blob:submit",
   "celestia:blob:submit-json",
@@ -468,6 +473,10 @@ const validInvokeChannels = [
   "receipt:list",
   "receipt:get",
   "receipt:verify",
+  // Export Service
+  "export:to-spreadsheet",
+  "export:to-document",
+  "export:capabilities",
   // LibreOffice Integration
   "libreoffice:status",
   "libreoffice:create",
@@ -1597,6 +1606,16 @@ const validInvokeChannels = [
   "version:merge",
   "version:timeline",
   "version:graph",
+  // Data Flywheel — Self-reinforcing training loop
+  "flywheel:capture-pair",
+  "flywheel:rate-message",
+  "flywheel:correct-message",
+  "flywheel:get-stats",
+  "flywheel:get-runs",
+  "flywheel:run-cycle",
+  "flywheel:run-scheduled",
+  "flywheel:register-n8n-workflow",
+  "flywheel:remove-n8n-workflow",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because

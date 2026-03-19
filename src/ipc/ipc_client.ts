@@ -3063,7 +3063,7 @@ export class IpcClient {
     return this.ipcRenderer.invoke("n8n:setup-ollama");
   }
 
-  public async generateN8nWorkflow(request: { prompt: string; constraints?: any }): Promise<any> {
+  public async generateN8nWorkflow(request: { prompt: string; model?: string; constraints?: any }): Promise<any> {
     return this.ipcRenderer.invoke("n8n:workflow:generate", request);
   }
 

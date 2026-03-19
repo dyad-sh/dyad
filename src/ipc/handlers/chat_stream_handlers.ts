@@ -81,7 +81,8 @@ import { prompts as promptsTable } from "../../db/schema";
 import { inArray } from "drizzle-orm";
 import { replacePromptReference } from "../utils/replacePromptReference";
 import { mcpManager } from "../utils/mcp_manager";
-import { buildMemoryContext, autoExtractMemories } from "../../lib/agent_memory_engine";
+import { buildMemoryContext, autoExtractMemories, flushShortTermToLongTerm, setShortTermMemory } from "../../lib/agent_memory_engine";
+import { captureTrainingPair, isAutoCaptureEnabled } from "../../lib/data_flywheel";
 import { agents as agentsTable } from "../../db/schema";
 import { checkAgentIntentInStream } from "./agent_creation_handlers";
 import z from "zod";
@@ -810,6 +811,7 @@ This conversation includes one or more image attachments. When the user uploads 
               const memoryBlock = await buildMemoryContext(
                 agentRow.id,
                 String(req.chatId),
+                req.prompt,
               );
               if (memoryBlock) {
                 systemPrompt += memoryBlock;
@@ -1119,6 +1121,27 @@ This conversation includes one or more image attachments. When the user uploads 
 
         // For agent mode, skip tools for local models (they don't support function calling)
         const isLocal = isLocalModel(settings.selectedModel.provider);
+
+        // Warn if the user is using a very small local model in agent mode
+        if (isLocal && settings.selectedChatMode === "agent") {
+          const modelName = settings.selectedModel.name.toLowerCase();
+          if (/[:\-_](1b|2b|3b|0\.5b|1\.5b)/.test(modelName)) {
+            logger.warn(
+              `Small local model detected (${settings.selectedModel.name}) in agent mode. ` +
+              `Models under 7B parameters may not reliably follow structured output instructions. ` +
+              `Consider using a >=7B model (e.g. qwen2.5-coder:7b) or switching to build mode.`,
+            );
+            safeSend(event.sender, "chat:response:chunk", {
+              chatId: req.chatId,
+              messages: [
+                {
+                  ...placeholderAssistantMessage,
+                  content: `> **Note:** \`${settings.selectedModel.name}\` is a small model that may struggle to generate code in the required format. For best results, use a model with at least 7B parameters (e.g. \`qwen2.5-coder:7b\`) or switch to **Build** mode.\n\n`,
+                },
+              ],
+            });
+          }
+        }
 
         // Local models in agent mode should use the local-agent handler
         // which has XML tool emulation for models without function calling
@@ -1524,6 +1547,48 @@ ${problemReport.problems
                 error: err,
               }),
           );
+
+          // Capture user prompt as STM note for context
+          setShortTermMemory({
+            agentId: chatAgentId,
+            chatId: String(req.chatId),
+            kind: "note",
+            key: `user-msg-${Date.now()}`,
+            value: req.prompt.slice(0, 500),
+          }).catch((err) =>
+            logger.warn("STM capture failed (non-fatal)", { error: err }),
+          );
+
+          // Flush STM → LTM (consolidate session knowledge)
+          flushShortTermToLongTerm(chatAgentId, String(req.chatId)).catch(
+            (err) =>
+              logger.warn("STM→LTM flush failed (non-fatal)", { error: err }),
+          );
+
+          // --- Data Flywheel: auto-capture training pair ---
+          isAutoCaptureEnabled(chatAgentId)
+            .then((enabled) => {
+              if (enabled) {
+                captureTrainingPair({
+                  agentId: chatAgentId,
+                  appId: updatedChat.app?.id,
+                  sourceType: "chat",
+                  userInput: req.prompt,
+                  assistantOutput: fullResponse,
+                  messageId: placeholderAssistantMessage.id,
+                  model: settings.selectedModel?.name ?? null,
+                }).catch((err) =>
+                  logger.warn("Flywheel auto-capture failed (non-fatal)", {
+                    error: err,
+                  }),
+                );
+              }
+            })
+            .catch((err) =>
+              logger.warn("Flywheel config check failed (non-fatal)", {
+                error: err,
+              }),
+            );
         }
 
         const settings = readSettings();

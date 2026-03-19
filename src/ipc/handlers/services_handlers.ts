@@ -778,4 +778,14 @@ export function registerServicesHandlers(): void {
   logger.info("External services handlers registered");
 }
 
+/** Start all backend services (n8n, Celestia, Ollama). Best-effort, non-throwing. */
+export async function startAllServices(): Promise<ServiceStatus[]> {
+  logger.info("Auto-starting all backend services...");
+  return Promise.all([
+    startN8nService().catch((e) => ({ id: "n8n" as const, name: "n8n", running: false, error: String(e) })),
+    startCelestiaService().catch((e) => ({ id: "celestia" as const, name: "Celestia", running: false, error: String(e) })),
+    startOllamaService().catch((e) => ({ id: "ollama" as const, name: "Ollama", running: false, error: String(e) })),
+  ]);
+}
+
 export default registerServicesHandlers;

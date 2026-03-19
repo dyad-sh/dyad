@@ -13,6 +13,8 @@ import {
   Database,
   Workflow,
   Radio,
+  ExternalLink,
+  FileText,
 } from "lucide-react";
 
 interface ServiceHealth {
@@ -54,6 +56,7 @@ const serviceIcons: Record<string, React.ReactNode> = {
   "OpenClaw Gateway": <Network className="w-5 h-5" />,
   "Inference Bridge": <Server className="w-5 h-5" />,
   "Task Executor": <Activity className="w-5 h-5" />,
+  LibreOffice: <FileText className="w-5 h-5" />,
 };
 
 export function SystemServicesPage() {
@@ -238,12 +241,42 @@ export function SystemServicesPage() {
             </div>
           )}
         </div>
+
+        {/* Quick Launch */}
+        <div>
+          <h2 className="text-lg font-semibold mb-4">Quick Launch</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <QuickLaunchCard
+              name="n8n Dashboard"
+              description="Visual workflow automation & AI agent builder"
+              icon={<Workflow className="w-5 h-5" />}
+              url="http://localhost:5678"
+              status={services.find((s) => s.name === "n8n")?.status}
+            />
+            <QuickLaunchCard
+              name="OpenClaw Gateway"
+              description="AI gateway with multi-provider routing"
+              icon={<Network className="w-5 h-5" />}
+              url="http://localhost:18789/status"
+              status={services.find((s) => s.name === "OpenClaw Gateway")?.status}
+            />
+            <QuickLaunchCard
+              name="Ollama API"
+              description="Local LLM inference server"
+              icon={<Brain className="w-5 h-5" />}
+              url="http://localhost:11434"
+              status={services.find((s) => s.name === "Ollama")?.status}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
 function ServiceCard({ service }: { service: ServiceHealth }) {
+  const dashboardUrl = SERVICE_DASHBOARD_URLS[service.name];
+
   return (
     <div className={`border rounded-lg p-4 ${statusBg[service.status]}`}>
       <div className="flex items-center justify-between mb-2">
@@ -268,7 +301,75 @@ function ServiceCard({ service }: { service: ServiceHealth }) {
       {service.details && (
         <p className="text-xs text-muted-foreground mt-1">{service.details}</p>
       )}
+      {dashboardUrl && service.status === "healthy" && (
+        <button
+          type="button"
+          onClick={() => IpcClient.getInstance().openExternalUrl(dashboardUrl)}
+          className="mt-3 flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-400 transition-colors"
+        >
+          <ExternalLink className="w-3 h-3" />
+          Open Dashboard
+        </button>
+      )}
     </div>
+  );
+}
+
+// Map service names to their dashboard URLs
+const SERVICE_DASHBOARD_URLS: Record<string, string> = {
+  n8n: "http://localhost:5678",
+  Ollama: "http://localhost:11434",
+  "OpenClaw Gateway": "http://localhost:18789/status",
+};
+
+function QuickLaunchCard({
+  name,
+  description,
+  icon,
+  url,
+  status,
+}: {
+  name: string;
+  description: string;
+  icon: React.ReactNode;
+  url: string;
+  status?: string;
+}) {
+  const isHealthy = status === "healthy";
+
+  return (
+    <button
+      type="button"
+      onClick={() => IpcClient.getInstance().openExternalUrl(url)}
+      className={`border rounded-lg p-4 text-left transition-all ${
+        isHealthy
+          ? "hover:bg-accent/50 hover:border-blue-500/30 cursor-pointer"
+          : "opacity-60 cursor-not-allowed"
+      }`}
+      disabled={!isHealthy}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <div className="text-blue-500">{icon}</div>
+          <span className="font-medium">{name}</span>
+        </div>
+        <ExternalLink className="w-4 h-4 text-muted-foreground" />
+      </div>
+      <p className="text-xs text-muted-foreground">{description}</p>
+      <div className="flex items-center gap-1.5 mt-2">
+        <Circle
+          className={`w-2 h-2 fill-current ${
+            isHealthy ? "text-green-500" : "text-red-500"
+          }`}
+        />
+        <span className="text-[10px] text-muted-foreground">
+          {isHealthy ? "Running" : status ?? "Offline"}
+        </span>
+        <span className="text-[10px] text-muted-foreground ml-auto font-mono">
+          {url.replace("http://", "")}
+        </span>
+      </div>
+    </button>
   );
 }
 

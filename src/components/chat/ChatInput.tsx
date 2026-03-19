@@ -708,7 +708,9 @@ function ActionProposalActions({ proposal }: { proposal: ActionProposal }) {
   return (
     <div className="border-b border-border p-2 pb-0 flex items-center justify-between">
       <div className="flex items-center space-x-2 overflow-x-auto pb-2">
-        {proposal.actions.map((action) => mapActionToButton(action))}
+        {proposal.actions.map((action) => (
+          <div key={action.id}>{mapActionToButton(action)}</div>
+        ))}
       </div>
     </div>
   );

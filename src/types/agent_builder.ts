@@ -28,6 +28,19 @@ export interface Agent {
   updatedAt: Date;
 }
 
+export interface FlywheelConfig {
+  enabled: boolean;
+  modes: {
+    autoCapture: boolean;
+    thumbsFeedback: boolean;
+    corrections: boolean;
+  };
+  schedule: "daily" | "weekly" | "manual";
+  minSamplesBeforeTraining: number;
+  baseModel: string;
+  trainingMethod: "lora" | "qlora" | "full";
+}
+
 export interface AgentConfig {
   // Memory settings
   memory?: {
@@ -49,6 +62,8 @@ export interface AgentConfig {
     customTools: string[];
     mcpServers: string[];
   };
+  // Data Flywheel — per-agent self-reinforcing training loop
+  flywheel?: FlywheelConfig;
   // Custom settings
   custom?: Record<string, unknown>;
 }

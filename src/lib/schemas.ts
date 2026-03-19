@@ -303,6 +303,23 @@ export const UserSettingsSchema = z.object({
   collectionContract: z.string().optional(),
 
   ////////////////////////////////
+  // TAILSCALE VPN
+  ////////////////////////////////
+  tailscale: z
+    .object({
+      enabled: z.boolean(),
+      exposeServices: z.boolean(),
+      manualIp: z.string().optional(),
+      exposedServices: z.object({
+        ollama: z.boolean(),
+        n8n: z.boolean(),
+        celestia: z.boolean(),
+        openclaw: z.boolean(),
+      }),
+    })
+    .optional(),
+
+  ////////////////////////////////
   // E2E TESTING ONLY.
   ////////////////////////////////
   isTestMode: z.boolean().optional(),

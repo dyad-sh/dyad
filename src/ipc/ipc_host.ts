@@ -98,6 +98,8 @@ import { registerOpenClawIPCHandlers } from "./handlers/openclaw_ipc_handlers";
 import { registerOpenClawCNSHandlers } from "./handlers/openclaw_cns_handlers";
 import { registerStudioAIHandlers } from "./handlers/studio_ai_handlers";
 import { registerServicesHandlers } from "./handlers/services_handlers";
+import { registerTailscaleHandlers } from "./handlers/tailscale_handlers";
+import { registerExportHandlers } from "./handlers/export_handlers";
 import { registerCelestiaBlobHandlers } from "./handlers/celestia_blob_handlers";
 import { registerLifecycleHandlers } from "./handlers/lifecycle_handlers";
 import { registerLocalVaultHandlers } from "./handlers/local_vault_handlers";
@@ -113,6 +115,7 @@ import { registerAgentWorkspaceHandlers } from "./handlers/agent_workspace_handl
 import { registerAgentCreationHandlers } from "./handlers/agent_creation_handlers";
 import { registerAgentUIHandlers } from "./handlers/agent_ui_handlers";
 import { registerOpenClawKanbanHandlers } from "./handlers/openclaw_kanban_handlers";
+import { registerFlywheelHandlers } from "./handlers/flywheel_handlers";
 import {
   registerTaskExecutorHandlers,
   registerSystemServicesHandlers,
@@ -284,6 +287,12 @@ export function registerIpcHandlers() {
   // Start/stop background services from the UI
   registerServicesHandlers();
 
+  // Export Service - Reusable document export (XLSX, PDF, DOCX, CSV)
+  registerExportHandlers();
+
+  // Tailscale VPN - Access services over tailnet
+  registerTailscaleHandlers();
+
   // Celestia Blob DA Layer - Hash-first data availability
   // Large data → SHA-256 hash → encrypted blob → Celestia namespace
   registerCelestiaBlobHandlers();
@@ -331,6 +340,10 @@ export function registerIpcHandlers() {
 
   // OpenClaw Kanban — Visual task board & analytics for OpenClaw operations
   registerOpenClawKanbanHandlers();
+
+  // Data Flywheel — Self-reinforcing training loop
+  // Interactions → Training Pairs → Fine-Tune → Smarter Models
+  registerFlywheelHandlers();
 
   // Task Executor — Autonomous inference loop & System Services Health
   registerTaskExecutorHandlers();

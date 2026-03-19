@@ -99,6 +99,61 @@ class ServicesClient {
   async stopAllServices(): Promise<ServiceStatus[]> {
     return this.ipcRenderer.invoke("services:stop:all");
   }
+
+  // ===========================================================================
+  // TAILSCALE VPN
+  // ===========================================================================
+
+  /**
+   * Get Tailscale VPN status
+   */
+  async getTailscaleStatus(forceRefresh?: boolean): Promise<TailscaleStatus> {
+    return this.ipcRenderer.invoke("tailscale:status", forceRefresh);
+  }
+
+  /**
+   * Get Tailscale configuration
+   */
+  async getTailscaleConfig(): Promise<TailscaleConfig> {
+    return this.ipcRenderer.invoke("tailscale:config:get");
+  }
+
+  /**
+   * Save Tailscale configuration
+   */
+  async saveTailscaleConfig(config: TailscaleConfig): Promise<TailscaleConfig> {
+    return this.ipcRenderer.invoke("tailscale:config:save", config);
+  }
+
+  /**
+   * Get all service URLs (local + tailnet)
+   */
+  async getServiceUrls(): Promise<
+    Record<string, { local: string; tailnet: string | null }>
+  > {
+    return this.ipcRenderer.invoke("tailscale:service-urls");
+  }
+}
+
+export interface TailscaleStatus {
+  installed: boolean;
+  running: boolean;
+  tailnetIp: string | null;
+  hostname: string | null;
+  tailnetName: string | null;
+  version: string | null;
+}
+
+export interface TailscaleConfig {
+  enabled: boolean;
+  exposeServices: boolean;
+  manualIp?: string;
+  exposedServices: {
+    ollama: boolean;
+    n8n: boolean;
+    celestia: boolean;
+    openclaw: boolean;
+  };
 }
 
 export const servicesClient = ServicesClient.getInstance();

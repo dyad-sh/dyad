@@ -49,6 +49,14 @@ import { agentBuilderClient } from "@/ipc/agent_builder_client";
 import { showError, showSuccess } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { AgentTestRunner } from "@/components/agent/AgentTestRunner";
+import { useExport } from "@/hooks/use-export";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { FileText, FileSpreadsheet } from "lucide-react";
 
 import type { AgentTestMessage, AgentToolCall } from "@/types/agent_builder";
 
@@ -197,6 +205,30 @@ export default function AgentTestPage() {
     URL.revokeObjectURL(url);
   };
 
+  const { exportToDocument, hasLibreOffice, isExporting } = useExport();
+
+  const handleExportChatDocument = (format: "docx" | "pdf") => {
+    if (!agent || messages.length === 0) return;
+    const sections = messages.flatMap((msg) => [
+      {
+        type: "heading" as const,
+        level: 2,
+        content: `${msg.role === "user" ? "You" : agent.name} — ${msg.timestamp.toLocaleString()}`,
+      },
+      {
+        type: "paragraph" as const,
+        content: msg.content,
+      },
+    ]);
+    exportToDocument.mutate({
+      name: `chat-${agent.name}-${Date.now()}`,
+      sections,
+      format,
+      title: `Chat with ${agent.name}`,
+      subtitle: `Exported ${new Date().toLocaleString()}`,
+    });
+  };
+
   if (agentLoading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -246,10 +278,32 @@ export default function AgentTestPage() {
               <Copy className="h-4 w-4 mr-2" />
               Copy
             </Button>
-            <Button variant="outline" size="sm" onClick={handleExportChat}>
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" disabled={isExporting}>
+                  <Download className="h-4 w-4 mr-2" />
+                  Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={handleExportChat}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  Export JSON
+                </DropdownMenuItem>
+                {hasLibreOffice && (
+                  <>
+                    <DropdownMenuItem onClick={() => handleExportChatDocument("docx")}>
+                      <FileText className="h-4 w-4 mr-2" />
+                      Export DOCX
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleExportChatDocument("pdf")}>
+                      <FileSpreadsheet className="h-4 w-4 mr-2" />
+                      Export PDF
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button variant="outline" size="sm" onClick={handleClearChat}>
               <RotateCcw className="h-4 w-4 mr-2" />
               Clear

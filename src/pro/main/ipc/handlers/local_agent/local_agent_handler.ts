@@ -33,6 +33,9 @@ import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
 import { getAiMessagesJsonIfWithinLimit } from "@/ipc/utils/ai_messages_utils";
 import { generateProblemReport } from "@/ipc/processors/tsc";
 import { createProblemFixPrompt } from "@/shared/problem_prompt";
+import { convertMarkdownCodeBlocksToJoyWrite } from "@/ipc/utils/markdown_to_joy_write";
+import { processFullResponseActions } from "@/ipc/processors/response_processor";
+import { getGitUncommittedFiles } from "@/ipc/utils/git_utils";
 
 import type { ChatStreamParams, ChatResponseEnd } from "@/ipc/ipc_types";
 import {
@@ -527,6 +530,30 @@ export async function handleLocalAgentStream(
     }
 
     // ===================================================================
+    // Fallback: if the model produced no tool calls but output markdown
+    // code blocks or joy-write tags, apply them via the standard processor.
+    // This catches weak local models that ignore XML tool instructions.
+    // ===================================================================
+    if (!abortController.signal.aborted) {
+      const uncommittedBefore = await getGitUncommittedFiles({ path: appPath }).catch(() => []);
+      if (uncommittedBefore.length === 0) {
+        const converted = convertMarkdownCodeBlocksToJoyWrite(fullResponse);
+        const hasJoyWriteTags = /<(?:joy|dyad)-write\s/i.test(converted);
+        if (hasJoyWriteTags) {
+          logger.info("No files written by agent tools — applying joy-write fallback");
+          const chatSummaryMatch = converted.match(/<joy-chat-summary>(.*?)<\/joy-chat-summary>/);
+          await processFullResponseActions(converted, req.chatId, {
+            chatSummary: chatSummaryMatch?.[1],
+            messageId: placeholderMessageId,
+          });
+          fullResponse = converted;
+          await updateResponseInDb(placeholderMessageId, fullResponse);
+          sendResponseChunk(event, req.chatId, chat, fullResponse);
+        }
+      }
+    }
+
+    // ===================================================================
     // Post-agent verification: check for TypeScript errors and auto-fix
     // ===================================================================
     if (!abortController.signal.aborted) {
@@ -650,6 +677,8 @@ ${problemReport.problems.map((p) => `<problem file="${p.file}" line="${p.line}" 
     // Commit all changes
     const commitResult = await commitAllChanges(ctx, ctx.chatSummary);
 
+    const hasCommit = !!commitResult.commitHash;
+
     if (commitResult.commitHash) {
       await db
         .update(messages)
@@ -663,10 +692,18 @@ ${problemReport.problems.map((p) => `<problem file="${p.file}" line="${p.line}" 
       .set({ approvalState: "approved" })
       .where(eq(messages.id, placeholderMessageId));
 
+    // Detect if no files were actually written despite the model responding
+    if (!hasCommit && fullResponse.length > 100) {
+      logger.warn(
+        "Agent completed but no files were modified. The model may not be capable enough " +
+        "for structured code generation. Consider using a larger model (>=7B) or Build mode.",
+      );
+    }
+
     // Send completion
     safeSend(event.sender, "chat:response:end", {
       chatId: req.chatId,
-      updatedFiles: true,
+      updatedFiles: hasCommit,
     } satisfies ChatResponseEnd);
 
     return;

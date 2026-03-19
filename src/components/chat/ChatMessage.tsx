@@ -14,6 +14,11 @@ import {
   Check,
   Info,
   Bot,
+  ThumbsUp,
+  ThumbsDown,
+  Pencil,
+  Send,
+  X,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { useVersions } from "@/hooks/useVersions";
@@ -21,6 +26,7 @@ import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
+import { useRateMessage, useCorrectMessage } from "@/hooks/use-flywheel";
 import {
   Tooltip,
   TooltipContent,
@@ -42,6 +48,12 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
   const handleCopyFormatted = async () => {
     await copyMessageContent(message.content);
   };
+
+  // Flywheel feedback
+  const rateMutation = useRateMessage();
+  const correctMutation = useCorrectMessage();
+  const [showCorrection, setShowCorrection] = useState(false);
+  const [correctionText, setCorrectionText] = useState("");
   // Find the version that was active when this message was sent
   const messageVersion = useMemo(() => {
     if (
@@ -167,44 +179,95 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
               {message.role === "assistant" &&
                 message.content &&
                 !isStreaming && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          data-testid="copy-message-button"
-                          onClick={handleCopyFormatted}
-                          className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
-                        >
-                          {copied ? (
-                            <Check className="h-4 w-4 text-green-500" />
-                          ) : (
-                            <Copy className="h-4 w-4" />
-                          )}
-                          <span className="hidden sm:inline"></span>
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        {copied ? "Copied!" : "Copy"}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
-              <div className="flex flex-wrap gap-2">
-                {message.approvalState && (
-                  <div className="flex items-center space-x-1">
-                    {message.approvalState === "approved" ? (
-                      <>
-                        <CheckCircle className="h-4 w-4 text-green-500" />
-                        <span>Approved</span>
-                      </>
-                    ) : message.approvalState === "rejected" ? (
-                      <>
-                        <XCircle className="h-4 w-4 text-red-500" />
-                        <span>Rejected</span>
-                      </>
-                    ) : null}
+                  <div className="flex items-center gap-1">
+                    {/* Copy */}
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            data-testid="copy-message-button"
+                            onClick={handleCopyFormatted}
+                            className="flex items-center space-x-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
+                          >
+                            {copied ? (
+                              <Check className="h-4 w-4 text-green-500" />
+                            ) : (
+                              <Copy className="h-4 w-4" />
+                            )}
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {copied ? "Copied!" : "Copy"}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    {/* Thumbs Up */}
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            onClick={() =>
+                              message.id &&
+                              rateMutation.mutate({
+                                messageId: message.id,
+                                rating: "positive",
+                              })
+                            }
+                            disabled={rateMutation.isPending}
+                            className={`px-2 py-1 rounded transition-colors duration-200 cursor-pointer ${
+                              message.approvalState === "approved"
+                                ? "text-green-500"
+                                : "text-gray-500 hover:text-green-600 dark:text-gray-400 dark:hover:text-green-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+                            }`}
+                          >
+                            <ThumbsUp className="h-4 w-4" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>Good response</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    {/* Thumbs Down */}
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            onClick={() =>
+                              message.id &&
+                              rateMutation.mutate({
+                                messageId: message.id,
+                                rating: "negative",
+                              })
+                            }
+                            disabled={rateMutation.isPending}
+                            className={`px-2 py-1 rounded transition-colors duration-200 cursor-pointer ${
+                              message.approvalState === "rejected"
+                                ? "text-red-500"
+                                : "text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+                            }`}
+                          >
+                            <ThumbsDown className="h-4 w-4" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>Bad response</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    {/* Correct */}
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            onClick={() => setShowCorrection(!showCorrection)}
+                            className="px-2 py-1 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors duration-200 cursor-pointer"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>Correct this response</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </div>
                 )}
+              <div className="flex flex-wrap gap-2">
                 {message.role === "assistant" && message.model && (
                   <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400 w-full sm:w-auto">
                     <Bot className="h-4 w-4 flex-shrink-0" />
@@ -214,6 +277,44 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
               </div>
             </div>
           ) : null}
+          {/* Correction input */}
+          {showCorrection && (
+            <div className="mt-2 flex gap-2">
+              <textarea
+                value={correctionText}
+                onChange={(e) => setCorrectionText(e.target.value)}
+                placeholder="Provide the corrected response..."
+                className="flex-1 min-h-[60px] p-2 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 resize-y"
+              />
+              <div className="flex flex-col gap-1">
+                <button
+                  onClick={() => {
+                    if (message.id && correctionText.trim()) {
+                      correctMutation.mutate({
+                        messageId: message.id,
+                        correctedOutput: correctionText.trim(),
+                      });
+                      setShowCorrection(false);
+                      setCorrectionText("");
+                    }
+                  }}
+                  disabled={correctMutation.isPending || !correctionText.trim()}
+                  className="p-2 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded cursor-pointer disabled:opacity-50"
+                >
+                  <Send className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => {
+                    setShowCorrection(false);
+                    setCorrectionText("");
+                  }}
+                  className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
         {/* Timestamp and commit info for assistant messages - only visible on hover */}
         {message.role === "assistant" && message.createdAt && (

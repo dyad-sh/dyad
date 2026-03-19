@@ -619,6 +619,27 @@ export async function getSystemServicesHealth(): Promise<
     lastCheck: now,
   });
 
+  // 7. LibreOffice (headless document conversion)
+  try {
+    const { LibreOfficeManager } = require("@/ipc/handlers/libreoffice_handlers");
+    const loStatus = await LibreOfficeManager.getInstance().getStatus();
+    services.push({
+      name: "LibreOffice",
+      status: loStatus.installed ? "healthy" : "offline",
+      details: loStatus.installed
+        ? `v${loStatus.version || "unknown"} — headless export ready`
+        : "Not installed. Install for PDF/DOCX/XLSX export.",
+      lastCheck: now,
+    });
+  } catch {
+    services.push({
+      name: "LibreOffice",
+      status: "offline",
+      details: "Status check failed",
+      lastCheck: now,
+    });
+  }
+
   return services;
 }
 

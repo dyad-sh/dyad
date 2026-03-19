@@ -160,6 +160,7 @@
     "@typescript-eslint/parser": "^5.62.0",
     "@typescript/native-preview": "^7.0.0-dev.20260107.1",
     "@vitest/ui": "^3.1.1",
+    "ai-sdk-ollama": "^3.8.1",
     "babel-plugin-react-compiler": "^1.0.0",
     "cross-env": "^7.0.3",
     "drizzle-kit": "^0.30.6",

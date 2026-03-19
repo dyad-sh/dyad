@@ -1,8 +1,5 @@
 import { parseOllamaHost } from "@/ipc/handlers/local_model_ollama_handler";
-import {
-  getProviderOptions,
-  resolveOllamaNumGpu,
-} from "@/ipc/utils/provider_options";
+import { resolveOllamaNumGpu } from "@/ipc/utils/provider_options";
 import { describe, it, expect } from "vitest";
 
 describe("parseOllamaHost", () => {
@@ -165,45 +162,5 @@ describe("resolveOllamaNumGpu", () => {
 
   it("falls back to -1 for invalid values", () => {
     expect(resolveOllamaNumGpu("not-a-number")).toBe(-1);
-  });
-});
-
-describe("getProviderOptions ollama GPU preference", () => {
-  it("adds ollama num_gpu preference for ollama provider", () => {
-    const options = getProviderOptions({
-      dyadAppId: 1,
-      files: [],
-      mentionedAppsCodebases: [],
-      builtinProviderId: "ollama",
-      settings: {
-        selectedModel: {
-          name: "llama3.2",
-          provider: "ollama",
-        },
-      } as any,
-    } as any);
-
-    expect(options.ollama).toEqual({
-      options: {
-        num_gpu: -1,
-      },
-    });
-  });
-
-  it("does not add ollama options for non-ollama provider", () => {
-    const options = getProviderOptions({
-      dyadAppId: 1,
-      files: [],
-      mentionedAppsCodebases: [],
-      builtinProviderId: "openai",
-      settings: {
-        selectedModel: {
-          name: "gpt-4.1",
-          provider: "openai",
-        },
-      } as any,
-    } as any);
-
-    expect(options.ollama).toBeUndefined();
   });
 });

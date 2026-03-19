@@ -1,6 +1,5 @@
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { createOllama } from "ai-sdk-ollama";
 import type { FetchFunction } from "@ai-sdk/provider-utils";
-import { withoutTrailingSlash } from "@ai-sdk/provider-utils";
 import type { LanguageModel } from "ai";
 
 type OllamaChatModelId = string;
@@ -16,7 +15,11 @@ export interface OllamaProviderOptions {
   fetch?: FetchFunction;
 }
 
-export interface OllamaChatSettings {}
+export interface OllamaChatSettings {
+  options?: {
+    num_gpu?: number;
+  };
+}
 
 export interface OllamaProvider {
   (modelId: OllamaChatModelId, settings?: OllamaChatSettings): LanguageModel;
@@ -25,14 +28,15 @@ export interface OllamaProvider {
 export function createOllamaProvider(
   options?: OllamaProviderOptions,
 ): OllamaProvider {
-  const base = withoutTrailingSlash(
-    options?.baseURL ?? "http://localhost:11434",
-  )!;
-  const v1Base = (base.endsWith("/v1") ? base : `${base}/v1`) as string;
-  const provider = createOpenAICompatible({
-    name: "ollama",
-    baseURL: v1Base,
+  const rawBaseURL = options?.baseURL ?? "http://localhost:11434";
+  const normalizedBaseURL = rawBaseURL.replace(/\/+$/, "");
+
+  const provider = createOllama({
+    baseURL: normalizedBaseURL,
     headers: options?.headers,
+    fetch: options?.fetch,
   });
-  return (modelId: OllamaChatModelId) => provider(modelId);
+
+  return (modelId: OllamaChatModelId, settings?: OllamaChatSettings) =>
+    provider(modelId, settings);
 }

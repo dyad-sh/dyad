@@ -28,6 +28,7 @@ import { LM_STUDIO_BASE_URL } from "./lm_studio_utils";
 import { createOllamaProvider } from "./ollama_provider";
 import { getOllamaApiUrl } from "../handlers/local_model_ollama_handler";
 import { createFallback } from "./fallback_ai_model";
+import { resolveOllamaNumGpu } from "./provider_options";
 
 const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
 
@@ -431,7 +432,11 @@ function getRegularModelClient(
       const provider = createOllamaProvider({ baseURL: getOllamaApiUrl() });
       return {
         modelClient: {
-          model: provider(model.name),
+          model: provider(model.name, {
+            options: {
+              num_gpu: resolveOllamaNumGpu(getEnvVar("OLLAMA_NUM_GPU")),
+            },
+          }),
           builtinProviderId: providerId,
         },
         backupModelClients: [],

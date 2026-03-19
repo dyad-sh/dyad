@@ -1,10 +1,7 @@
 import type { SmartContextMode, UserSettings } from "../../lib/schemas";
 import type { CodebaseFile } from "../../utils/codebase";
 import type { VersionedFiles } from "./versioned_codebase_context";
-import { GoogleGenerativeAIProviderOptions } from "@ai-sdk/google";
-import { OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
 import { getExtraProviderOptions } from "./thinking_utils";
-import { getEnvVar } from "./read_env";
 
 export interface MentionedAppCodebase {
   appName: string;
@@ -68,7 +65,7 @@ export function getProviderOptions({
     "dyad-gateway": getExtraProviderOptions(builtinProviderId, settings),
     openai: {
       reasoningSummary: "auto",
-    } satisfies OpenAIResponsesProviderOptions,
+    },
   };
 
   // Conditionally include Google thinking config only for supported models
@@ -86,7 +83,7 @@ export function getProviderOptions({
       thinkingConfig: {
         includeThoughts: true,
       },
-    } satisfies GoogleGenerativeAIProviderOptions;
+    };
   }
 
   // Vertex-specific fix: only enable thinking on supported Gemini models
@@ -94,15 +91,6 @@ export function getProviderOptions({
     providerOptions.google = {
       thinkingConfig: {
         includeThoughts: true,
-      },
-    } satisfies GoogleGenerativeAIProviderOptions;
-  }
-
-  // Prefer GPU execution in Ollama when available.
-  if (providerId === "ollama") {
-    providerOptions.ollama = {
-      options: {
-        num_gpu: resolveOllamaNumGpu(getEnvVar("OLLAMA_NUM_GPU")),
       },
     };
   }

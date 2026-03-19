@@ -229,7 +229,7 @@ export function useStreamChat({
               // Show native notification if enabled and window is not focused
               // Fire-and-forget to avoid blocking UI updates
               const notificationsEnabled =
-                settings?.enableChatCompletionNotifications === true;
+                settings?.enableChatEventNotifications === true;
               if (
                 notificationsEnabled &&
                 Notification.permission === "granted" &&

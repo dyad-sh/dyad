@@ -22,7 +22,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { AutoFixProblemsSwitch } from "@/components/AutoFixProblemsSwitch";
 import { AutoExpandPreviewSwitch } from "@/components/AutoExpandPreviewSwitch";
-import { ChatCompletionNotificationSwitch } from "@/components/ChatCompletionNotificationSwitch";
+import { ChatEventNotificationSwitch } from "@/components/ChatEventNotificationSwitch";
 import { AutoUpdateSwitch } from "@/components/AutoUpdateSwitch";
 import { ReleaseChannelSelector } from "@/components/ReleaseChannelSelector";
 import { NeonIntegration } from "@/components/NeonIntegration";
@@ -408,14 +408,11 @@ export function WorkflowSettings() {
         </div>
       </div>
 
-      <div
-        id={SETTING_IDS.chatCompletionNotification}
-        className="space-y-1 mt-4"
-      >
-        <ChatCompletionNotificationSwitch />
+      <div id={SETTING_IDS.chatEventNotification} className="space-y-1 mt-4">
+        <ChatEventNotificationSwitch />
         <div className="text-sm text-gray-500 dark:text-gray-400">
-          Show a native notification when a chat response completes while the
-          app is not focused.
+          Show native notifications when a chat response completes or a
+          questionnaire needs your input while the app is not focused.
         </div>
       </div>
     </div>

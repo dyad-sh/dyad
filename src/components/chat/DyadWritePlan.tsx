@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { FileText, Eye, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
-import { useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { previewModeAtom } from "@/atoms/appAtoms";
+import { isStreamingByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { CustomTagState } from "./stateTypes";
 import { usePlan } from "@/hooks/usePlan";
 
@@ -31,21 +32,23 @@ export function getWritePlanUiState({
 }
 
 export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
-  const { title, summary, state } = node.properties;
+  const { title, summary, complete, state } = node.properties;
   const [showSummary, setShowSummary] = useState(false);
   const setPreviewMode = useSetAtom(previewModeAtom);
+  const chatId = useAtomValue(selectedChatIdAtom);
+  const isStreaming = useAtomValue(isStreamingByIdAtom).get(chatId!) ?? false;
 
-  // Only the parser-derived pending state is reliable for active generation.
-  const isPending = state === "pending";
-  const isInProgress = isPending;
+  // complete="false" is useful only while the message is actively streaming.
+  const isInProgress =
+    state === "pending" || (complete === "false" && isStreaming);
 
-  // Keep loading persisted plans unless the tag is actively streaming.
-  const { savedPlan, hasPlanInMemory } = usePlan({ enabled: !isPending });
+  // Avoid loading persisted plans while the plan card is still actively generating.
+  const { savedPlan, hasPlanInMemory } = usePlan({ enabled: !isInProgress });
 
   const hasPlan = hasPlanInMemory || !!savedPlan;
   // During an active pending revision, keep showing generating state,
   // not a stale previous plan.
-  const hasPlanForUi = isPending ? false : hasPlan;
+  const hasPlanForUi = isInProgress ? false : hasPlan;
 
   const { showViewPlanButton, showGeneratingBadge } = getWritePlanUiState({
     isInProgress,

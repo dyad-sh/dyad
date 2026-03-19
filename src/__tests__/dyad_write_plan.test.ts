@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getWritePlanUiState } from "@/components/chat/DyadWritePlan";
 
 describe("getWritePlanUiState", () => {
-  it("shows generating badge when plan is still in progress and no plan data exists", () => {
+  it("shows generating badge when plan is in progress and no plan exists", () => {
     const result = getWritePlanUiState({
       isInProgress: true,
       hasPlan: false,
@@ -12,7 +12,7 @@ describe("getWritePlanUiState", () => {
     expect(result.showGeneratingBadge).toBe(true);
   });
 
-  it("shows View Plan when plan data exists even if complete=false", () => {
+  it("shows View Plan when plan is not in progress and plan exists", () => {
     const result = getWritePlanUiState({
       isInProgress: false,
       hasPlan: true,
@@ -22,17 +22,7 @@ describe("getWritePlanUiState", () => {
     expect(result.showGeneratingBadge).toBe(false);
   });
 
-  it("shows View Plan when plan is finished and plan data exists", () => {
-    const result = getWritePlanUiState({
-      isInProgress: false,
-      hasPlan: true,
-    });
-
-    expect(result.showViewPlanButton).toBe(true);
-    expect(result.showGeneratingBadge).toBe(false);
-  });
-
-  it("shows neither badge nor button when finished without plan data", () => {
+  it("shows neither badge nor button when plan is not in progress and no plan exists", () => {
     const result = getWritePlanUiState({
       isInProgress: false,
       hasPlan: false,
@@ -42,13 +32,13 @@ describe("getWritePlanUiState", () => {
     expect(result.showGeneratingBadge).toBe(false);
   });
 
-  it("keeps generating state while in progress even if previous plan exists", () => {
+  it("returns helper-consistent values when both flags are true", () => {
     const result = getWritePlanUiState({
       isInProgress: true,
-      hasPlan: false,
+      hasPlan: true,
     });
 
-    expect(result.showViewPlanButton).toBe(false);
-    expect(result.showGeneratingBadge).toBe(true);
+    expect(result.showViewPlanButton).toBe(true);
+    expect(result.showGeneratingBadge).toBe(false);
   });
 });

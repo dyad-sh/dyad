@@ -91,7 +91,9 @@ export function registerPlanHandlers() {
     planContracts.getPlanForChat,
     async (_, { appId, chatId }) => {
       const planDir = await getPlanDir(appId, { create: false });
-      if (!fs.existsSync(planDir)) {
+      try {
+        await fs.promises.access(planDir);
+      } catch {
         return null;
       }
 

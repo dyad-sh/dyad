@@ -91,6 +91,7 @@ const DYAD_CUSTOM_TAGS = [
 
 interface DyadMarkdownParserProps {
   content: string;
+  isStreamingMessage?: boolean;
 }
 
 type CustomTagInfo = {
@@ -143,11 +144,14 @@ export const VanillaMarkdownParser = ({ content }: { content: string }) => {
  */
 export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
   content,
+  isStreamingMessage,
 }) => {
   const chatId = useAtomValue(selectedChatIdAtom);
-  const isStreaming = useAtomValue(isStreamingByIdAtom).get(chatId!) ?? false;
+  const isChatStreaming =
+    useAtomValue(isStreamingByIdAtom).get(chatId!) ?? false;
+  const isCurrentMessageStreaming = isStreamingMessage ?? isChatStreaming;
   const deferredContent = useDeferredValue(content);
-  const contentToParse = isStreaming ? deferredContent : content;
+  const contentToParse = isCurrentMessageStreaming ? deferredContent : content;
 
   // Extract content pieces (markdown and custom tags)
   const contentPieces = useMemo(() => {
@@ -198,10 +202,12 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
                   {piece.content}
                 </ReactMarkdown>
               )
-            : renderCustomTag(piece.tagInfo, { isStreaming })}
+            : renderCustomTag(piece.tagInfo, {
+                isStreaming: isCurrentMessageStreaming,
+              })}
           {index === lastErrorIndex &&
             errorCount > 1 &&
-            !isStreaming &&
+            !isChatStreaming &&
             chatId && (
               <div className="mt-3 w-full flex">
                 <FixAllErrorsButton
@@ -348,6 +354,22 @@ function getState({
     return "finished";
   }
   return isStreaming ? "pending" : "aborted";
+}
+
+export function getWritePlanTagState({
+  complete,
+  isStreaming,
+  inProgress,
+}: {
+  complete?: string;
+  isStreaming: boolean;
+  inProgress?: boolean;
+}): CustomTagState {
+  if (complete === "false" && isStreaming) {
+    return "pending";
+  }
+
+  return getState({ isStreaming, inProgress });
 }
 
 /**
@@ -800,7 +822,11 @@ function renderCustomTag(
               title: attributes.title || "Implementation Plan",
               summary: attributes.summary,
               complete: attributes.complete,
-              state: getState({ isStreaming, inProgress }),
+              state: getWritePlanTagState({
+                complete: attributes.complete,
+                isStreaming,
+                inProgress,
+              }),
             },
           }}
         >

@@ -161,7 +161,10 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
               >
                 {message.role === "assistant" ? (
                   <>
-                    <DyadMarkdownParser content={message.content} />
+                    <DyadMarkdownParser
+                      content={message.content}
+                      isStreamingMessage={isLastMessage && isStreaming}
+                    />
                     {isLastMessage && isStreaming && (
                       <StreamingLoadingAnimation variant="streaming" />
                     )}

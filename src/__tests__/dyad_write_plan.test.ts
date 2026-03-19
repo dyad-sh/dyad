@@ -58,7 +58,19 @@ describe("shouldLoadPersistedPlan", () => {
   it("returns false while a plan is still in progress", () => {
     expect(
       shouldLoadPersistedPlan({
+        complete: "true",
+        state: "pending",
         isInProgress: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false for aborted incomplete plan cards", () => {
+    expect(
+      shouldLoadPersistedPlan({
+        complete: "false",
+        state: "aborted",
+        isInProgress: false,
       }),
     ).toBe(false);
   });

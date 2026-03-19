@@ -369,6 +369,10 @@ export function getWritePlanTagState({
     return "pending";
   }
 
+  if (complete === "false") {
+    return "aborted";
+  }
+
   return getState({ isStreaming, inProgress });
 }
 

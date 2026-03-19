@@ -11,13 +11,13 @@ describe("getWritePlanTagState", () => {
     ).toBe("pending");
   });
 
-  it("returns finished for complete=false once that message is no longer streaming", () => {
+  it("returns aborted for complete=false once that message is no longer streaming", () => {
     expect(
       getWritePlanTagState({
         complete: "false",
         isStreaming: false,
       }),
-    ).toBe("finished");
+    ).toBe("aborted");
   });
 
   it("returns pending for parser-detected in-progress tags while streaming", () => {

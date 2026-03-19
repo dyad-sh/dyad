@@ -31,27 +31,36 @@ export function getWritePlanUiState({
 }
 
 export function shouldLoadPersistedPlan({
+  complete,
+  state,
   isInProgress,
 }: {
+  complete?: string;
+  state?: CustomTagState;
   isInProgress: boolean;
 }) {
+  if (complete === "false" && state === "aborted") {
+    return false;
+  }
+
   return !isInProgress;
 }
 
 export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
-  const { title, summary, state } = node.properties;
+  const { title, summary, complete, state } = node.properties;
   const [showSummary, setShowSummary] = useState(false);
   const setPreviewMode = useSetAtom(previewModeAtom);
 
   // Use parser-provided per-tag state so old plan cards don't react to later chat streams.
   const isInProgress = state === "pending";
+  const isAbortedIncomplete = complete === "false" && state === "aborted";
 
   const { savedPlan, hasPlanInMemory } = usePlan({
-    enabled: shouldLoadPersistedPlan({ isInProgress }),
+    enabled: shouldLoadPersistedPlan({ complete, state, isInProgress }),
   });
 
   const hasPlan = hasPlanInMemory || !!savedPlan;
-  const hasPlanForUi = isInProgress ? false : hasPlan;
+  const hasPlanForUi = isInProgress || isAbortedIncomplete ? false : hasPlan;
 
   const { showViewPlanButton, showGeneratingBadge } = getWritePlanUiState({
     isInProgress,

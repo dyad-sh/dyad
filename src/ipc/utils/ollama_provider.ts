@@ -22,10 +22,7 @@ export interface DyadOllamaProviderOptions {
 export function createOllamaProvider(
   options?: DyadOllamaProviderOptions,
 ): OllamaProvider {
-  // ai-sdk-ollama forwards baseURL to ollama-js as host, so it must remain root-level.
-  const baseURL = (options?.baseURL ?? "http://localhost:11434")
-    .replace(/\/+$/, "")
-    .replace(/\/api$/, "");
+  const baseURL = normalizeOllamaBaseURL(options?.baseURL);
 
   const provider = createOllama({
     baseURL,
@@ -35,4 +32,12 @@ export function createOllamaProvider(
 
   return (modelId: OllamaChatModelId, settings?: OllamaChatSettings) =>
     provider(modelId, settings);
+}
+
+// ai-sdk-ollama forwards baseURL to ollama-js as host, so it must remain root-level.
+// We also strip legacy OpenAI-compatible suffixes (/v1) to avoid path duplication.
+export function normalizeOllamaBaseURL(baseURL?: string): string {
+  return (baseURL ?? "http://localhost:11434")
+    .replace(/\/+$/, "")
+    .replace(/\/(api|v1)$/, "");
 }

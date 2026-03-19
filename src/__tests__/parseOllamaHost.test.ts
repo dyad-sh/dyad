@@ -1,4 +1,5 @@
 import { parseOllamaHost } from "@/ipc/handlers/local_model_ollama_handler";
+import { normalizeOllamaBaseURL } from "@/ipc/utils/ollama_provider";
 import { resolveOllamaNumGpu } from "@/ipc/utils/provider_options";
 import { describe, it, expect } from "vitest";
 
@@ -162,5 +163,29 @@ describe("resolveOllamaNumGpu", () => {
 
   it("falls back to -1 for invalid values", () => {
     expect(resolveOllamaNumGpu("not-a-number")).toBe(-1);
+  });
+});
+
+describe("normalizeOllamaBaseURL", () => {
+  it("defaults to local Ollama host when undefined", () => {
+    expect(normalizeOllamaBaseURL(undefined)).toBe("http://localhost:11434");
+  });
+
+  it("strips /api suffix", () => {
+    expect(normalizeOllamaBaseURL("http://localhost:11434/api")).toBe(
+      "http://localhost:11434",
+    );
+  });
+
+  it("strips /v1 suffix for legacy OpenAI-compatible URLs", () => {
+    expect(normalizeOllamaBaseURL("https://proxy.example.com/v1")).toBe(
+      "https://proxy.example.com",
+    );
+  });
+
+  it("strips trailing slash before suffix normalization", () => {
+    expect(normalizeOllamaBaseURL("https://proxy.example.com/v1/")).toBe(
+      "https://proxy.example.com",
+    );
   });
 });

@@ -47,30 +47,19 @@ describe("getWritePlanUiState", () => {
 });
 
 describe("shouldLoadPersistedPlan", () => {
-  it("returns false for incomplete draft plans even when not streaming", () => {
+  it("returns true when plan is no longer in progress", () => {
     expect(
       shouldLoadPersistedPlan({
-        complete: "false",
         isInProgress: false,
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("returns false while a plan is still in progress", () => {
     expect(
       shouldLoadPersistedPlan({
-        complete: "true",
         isInProgress: true,
       }),
     ).toBe(false);
-  });
-
-  it("returns true for completed, non-pending plans", () => {
-    expect(
-      shouldLoadPersistedPlan({
-        complete: "true",
-        isInProgress: false,
-      }),
-    ).toBe(true);
   });
 });

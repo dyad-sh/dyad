@@ -18,13 +18,20 @@ import { ensureDyadGitignored } from "./gitignoreUtils";
 
 const logger = log.scope("plan_handlers");
 
-async function getPlanDir(appId: number): Promise<string> {
+async function getPlanDir(
+  appId: number,
+  { create = true }: { create?: boolean } = {},
+): Promise<string> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) throw new Error("App not found");
   const appPath = getDyadAppPath(app.path);
   const planDir = path.join(appPath, ".dyad", "plans");
-  await fs.promises.mkdir(planDir, { recursive: true });
-  await ensureDyadGitignored(appPath);
+
+  if (create) {
+    await fs.promises.mkdir(planDir, { recursive: true });
+    await ensureDyadGitignored(appPath);
+  }
+
   return planDir;
 }
 
@@ -55,7 +62,7 @@ export function registerPlanHandlers() {
 
   createTypedHandler(planContracts.getPlan, async (_, { appId, planId }) => {
     validatePlanId(planId);
-    const planDir = await getPlanDir(appId);
+    const planDir = await getPlanDir(appId, { create: false });
     const filePath = path.join(planDir, `${planId}.md`);
     let raw: string;
     try {
@@ -83,7 +90,11 @@ export function registerPlanHandlers() {
   createTypedHandler(
     planContracts.getPlanForChat,
     async (_, { appId, chatId }) => {
-      const planDir = await getPlanDir(appId);
+      const planDir = await getPlanDir(appId, { create: false });
+      if (!fs.existsSync(planDir)) {
+        return null;
+      }
+
       let files: string[];
       try {
         files = await fs.promises.readdir(planDir);

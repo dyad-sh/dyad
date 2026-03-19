@@ -1,8 +1,7 @@
 import React, { useState } from "react";
 import { FileText, Eye, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useSetAtom } from "jotai";
 import { previewModeAtom } from "@/atoms/appAtoms";
-import { isStreamingByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { CustomTagState } from "./stateTypes";
 import { usePlan } from "@/hooks/usePlan";
 
@@ -32,29 +31,23 @@ export function getWritePlanUiState({
 }
 
 export function shouldLoadPersistedPlan({
-  complete,
   isInProgress,
 }: {
-  complete?: string;
   isInProgress: boolean;
 }) {
-  if (complete === "false") return false;
   return !isInProgress;
 }
 
 export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
-  const { title, summary, complete, state } = node.properties;
+  const { title, summary, state } = node.properties;
   const [showSummary, setShowSummary] = useState(false);
   const setPreviewMode = useSetAtom(previewModeAtom);
-  const chatId = useAtomValue(selectedChatIdAtom);
-  const isStreaming = useAtomValue(isStreamingByIdAtom).get(chatId!) ?? false;
 
-  // complete="false" is useful only while the message is actively streaming.
-  const isInProgress =
-    state === "pending" || (complete === "false" && isStreaming);
+  // Use parser-provided per-tag state so old plan cards don't react to later chat streams.
+  const isInProgress = state === "pending";
 
   const { savedPlan, hasPlanInMemory } = usePlan({
-    enabled: shouldLoadPersistedPlan({ complete, isInProgress }),
+    enabled: shouldLoadPersistedPlan({ isInProgress }),
   });
 
   const hasPlan = hasPlanInMemory || !!savedPlan;

@@ -55,6 +55,52 @@ testSkipIfWindows(
   },
 );
 
+testSkipIfWindows(
+  "plan mode - View Plan remains visible after switching chats",
+  async ({ po }) => {
+    await po.setUpDyadPro({ localAgent: true });
+    await po.importApp("minimal");
+    await po.chatActions.selectChatMode("plan");
+
+    // Trigger write_plan fixture
+    await po.sendPrompt("tc=local-agent/accept-plan");
+
+    const viewPlanButton = po.page.getByRole("button", { name: "View Plan" });
+    await expect(viewPlanButton).toBeVisible({ timeout: Timeout.MEDIUM });
+
+    // Capture initial chat ID so we can return to this chat
+    const initialUrl = po.page.url();
+    const initialChatIdMatch = initialUrl.match(/[?&]id=(\d+)/);
+    expect(initialChatIdMatch).not.toBeNull();
+    const initialChatId = initialChatIdMatch![1];
+
+    // Switch to a different chat
+    await po.chatActions.clickNewChat();
+    await expect(async () => {
+      const currentUrl = po.page.url();
+      const match = currentUrl.match(/[?&]id=(\d+)/);
+      expect(match).not.toBeNull();
+      expect(match![1]).not.toEqual(initialChatId);
+    }).toPass({ timeout: Timeout.MEDIUM });
+
+    // Navigate back to the original chat via tabs
+    const inactiveTab = po.page
+      .locator("div[draggable]")
+      .filter({ hasNot: po.page.locator('button[aria-current="page"]') });
+    await inactiveTab.locator("button").first().click();
+
+    await expect(async () => {
+      const currentUrl = po.page.url();
+      const match = currentUrl.match(/[?&]id=(\d+)/);
+      expect(match).not.toBeNull();
+      expect(match![1]).toEqual(initialChatId);
+    }).toPass({ timeout: Timeout.MEDIUM });
+
+    // Regression assertion: plan should still be openable after chat switch
+    await expect(viewPlanButton).toBeVisible({ timeout: Timeout.MEDIUM });
+  },
+);
+
 testSkipIfWindows("plan mode - questionnaire flow", async ({ po }) => {
   await po.setUpDyadPro({ localAgent: true });
   await po.importApp("minimal");

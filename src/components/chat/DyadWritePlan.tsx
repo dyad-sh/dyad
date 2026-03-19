@@ -17,6 +17,23 @@ interface DyadWritePlanProps {
   children?: React.ReactNode;
 }
 
+export function getWritePlanUiState({
+  state,
+  complete,
+  hasPlan,
+}: {
+  state?: CustomTagState;
+  complete?: string;
+  hasPlan: boolean;
+}) {
+  const isInProgress = state === "pending" || complete === "false";
+
+  return {
+    showViewPlanButton: hasPlan,
+    showGeneratingBadge: isInProgress && !hasPlan,
+  };
+}
+
 export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
   const { title, summary, complete, state } = node.properties;
   const [showSummary, setShowSummary] = useState(false);
@@ -28,6 +45,11 @@ export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
   const { savedPlan, hasPlanInMemory } = usePlan({ enabled: !isInProgress });
 
   const hasPlan = hasPlanInMemory || !!savedPlan;
+  const { showViewPlanButton, showGeneratingBadge } = getWritePlanUiState({
+    state,
+    complete,
+    hasPlan,
+  });
 
   return (
     <div
@@ -60,7 +82,7 @@ export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
           </div>
         </div>
         <div className="flex items-center">
-          {!isInProgress && hasPlan && (
+          {showViewPlanButton && (
             <button
               type="button"
               onClick={() => setPreviewMode("plan")}
@@ -70,7 +92,7 @@ export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
               View Plan
             </button>
           )}
-          {isInProgress && (
+          {showGeneratingBadge && (
             <span className="flex items-center gap-1.5 text-xs text-primary px-3 py-1 bg-primary/20 rounded-md font-medium">
               <Loader2 size={12} className="animate-spin" />
               Generating plan...

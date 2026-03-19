@@ -51,6 +51,8 @@ export { securityContracts } from "./security";
 export { miscContracts, miscEvents } from "./misc";
 export { freeAgentQuotaContracts } from "./free_agent_quota";
 export { audioContracts } from "./audio";
+export { mediaContracts } from "./media";
+export { imageGenerationContracts } from "./image_generation";
 
 // =============================================================================
 // Client Exports
@@ -81,6 +83,8 @@ export { securityClient } from "./security";
 export { miscClient, miscEventClient } from "./misc";
 export { freeAgentQuotaClient } from "./free_agent_quota";
 export { audioClient } from "./audio";
+export { mediaClient } from "./media";
+export { imageGenerationClient } from "./image_generation";
 
 // =============================================================================
 // Type Exports
@@ -296,6 +300,21 @@ export type { FreeAgentQuotaStatus } from "./free_agent_quota";
 // Pro types
 export type { TranscribeAudioParams, TranscribeAudioResult } from "./audio";
 
+// Media types
+export type {
+  MediaFile,
+  RenameMediaFileParams,
+  DeleteMediaFileParams,
+  MoveMediaFileParams,
+} from "./media";
+
+// Image generation types
+export type {
+  ImageThemeMode,
+  GenerateImageParams,
+  GenerateImageResponse,
+} from "./image_generation";
+
 // =============================================================================
 // Schema Exports (for validation in handlers/components)
 // =============================================================================
@@ -353,6 +372,8 @@ import { securityClient } from "./security";
 import { miscClient, miscEventClient } from "./misc";
 import { freeAgentQuotaClient } from "./free_agent_quota";
 import { audioClient } from "./audio";
+import { mediaClient } from "./media";
+import { imageGenerationClient } from "./image_generation";
 
 /**
  * Unified IPC client with all domains organized by namespace.
@@ -409,6 +430,8 @@ export const ipc = {
   misc: miscClient,
   freeAgentQuota: freeAgentQuotaClient,
   audio: audioClient,
+  media: mediaClient,
+  imageGeneration: imageGenerationClient,
 
   // Event clients for main->renderer pub/sub
   events: {

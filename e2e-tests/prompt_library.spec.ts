@@ -12,7 +12,7 @@ test("create and edit prompt", async ({ po }) => {
   });
 
   // Wait for prompt card to be fully rendered
-  const promptCard = po.page.getByTestId("prompt-card");
+  const promptCard = po.page.getByTestId("library-prompt-card");
   await expect(promptCard).toBeVisible();
   await expect(
     promptCard.getByRole("heading", { name: "title1" }),
@@ -48,7 +48,7 @@ test("delete prompt", async ({ po }) => {
   await po.page.getByTestId("delete-prompt-button").click();
   await po.page.getByRole("button", { name: "Delete" }).click();
 
-  await expect(po.page.getByTestId("prompt-card")).not.toBeVisible();
+  await expect(po.page.getByTestId("library-prompt-card")).not.toBeVisible();
 });
 
 test("use prompt", async ({ po }) => {

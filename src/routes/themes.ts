@@ -4,6 +4,6 @@ import ThemesPage from "@/pages/themes";
 
 export const themesRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/themes",
+  path: "/library/themes",
   component: ThemesPage,
 });

@@ -239,6 +239,13 @@
       "when": 1773891488477,
       "tag": "0033_thankful_ink",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1773896841400,
+      "tag": "0034_daily_dakota_north",
+      "breakpoints": true
     }
   ]
 }

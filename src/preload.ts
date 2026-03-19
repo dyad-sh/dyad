@@ -1616,6 +1616,25 @@ const validInvokeChannels = [
   "flywheel:run-scheduled",
   "flywheel:register-n8n-workflow",
   "flywheel:remove-n8n-workflow",
+  // Decentralized Model Registry
+  "model-registry:register",
+  "model-registry:register-adapter",
+  "model-registry:get",
+  "model-registry:search",
+  "model-registry:list-local",
+  "model-registry:publish",
+  "model-registry:rate",
+  "model-registry:mab-signal",
+  "model-registry:record-usage",
+  "model-registry:update",
+  "model-registry:delete",
+  "model-registry:delist",
+  "model-registry:stats",
+  "model-registry:get-ratings",
+  "model-registry:list-peers",
+  "model-registry:download",
+  "model-registry:download-status",
+  "model-registry:list-downloads",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because

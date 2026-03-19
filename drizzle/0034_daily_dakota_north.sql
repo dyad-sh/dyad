@@ -1,0 +1,97 @@
+CREATE TABLE `model_registry_downloads` (
+	`id` text PRIMARY KEY NOT NULL,
+	`model_entry_id` text NOT NULL,
+	`status` text DEFAULT 'queued' NOT NULL,
+	`bytes_downloaded` integer DEFAULT 0 NOT NULL,
+	`total_bytes` integer NOT NULL,
+	`chunks_completed` integer DEFAULT 0 NOT NULL,
+	`total_chunks` integer DEFAULT 1 NOT NULL,
+	`progress` integer DEFAULT 0 NOT NULL,
+	`source_peer_id` text,
+	`source_url` text,
+	`hash_verified` integer,
+	`merkle_verified` integer,
+	`local_path` text,
+	`error_message` text,
+	`retry_count` integer DEFAULT 0 NOT NULL,
+	`started_at` integer,
+	`completed_at` integer,
+	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
+	FOREIGN KEY (`model_entry_id`) REFERENCES `model_registry_entries`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE TABLE `model_registry_entries` (
+	`id` text PRIMARY KEY NOT NULL,
+	`name` text NOT NULL,
+	`description` text,
+	`version` text NOT NULL,
+	`family` text NOT NULL,
+	`author` text NOT NULL,
+	`model_type` text NOT NULL,
+	`base_model_id` text,
+	`adapter_type` text,
+	`adapter_rank` integer,
+	`adapter_alpha` integer,
+	`bundle_cid` text,
+	`manifest_cid` text,
+	`manifest_hash` text,
+	`merkle_root` text,
+	`content_hash` text NOT NULL,
+	`celestia_height` integer,
+	`celestia_commitment` text,
+	`parameters` integer,
+	`context_length` integer,
+	`quantization` text,
+	`file_size_bytes` integer,
+	`format` text,
+	`capabilities_json` text,
+	`runtime_json` text,
+	`provenance_json` text,
+	`license` text DEFAULT 'Apache-2.0' NOT NULL,
+	`license_url` text,
+	`publish_state` text DEFAULT 'local' NOT NULL,
+	`source` text DEFAULT 'local' NOT NULL,
+	`source_peer_id` text,
+	`discovered_at` integer,
+	`marketplace_asset_id` text,
+	`nft_token_id` text,
+	`nft_contract` text,
+	`avg_rating` integer,
+	`total_ratings` integer DEFAULT 0 NOT NULL,
+	`download_count` integer DEFAULT 0 NOT NULL,
+	`usage_count` integer DEFAULT 0 NOT NULL,
+	`tags` text,
+	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch()) NOT NULL
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `model_registry_name_version` ON `model_registry_entries` (`name`,`version`);--> statement-breakpoint
+CREATE TABLE `model_registry_peers` (
+	`id` text PRIMARY KEY NOT NULL,
+	`display_name` text,
+	`wallet` text,
+	`multiaddrs` text,
+	`last_seen_at` integer,
+	`latency_ms` integer,
+	`is_online` integer DEFAULT false NOT NULL,
+	`trust_score` integer DEFAULT 50 NOT NULL,
+	`models_shared` integer DEFAULT 0 NOT NULL,
+	`successful_transfers` integer DEFAULT 0 NOT NULL,
+	`failed_transfers` integer DEFAULT 0 NOT NULL,
+	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
+	`updated_at` integer DEFAULT (unixepoch()) NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE `model_registry_ratings` (
+	`id` text PRIMARY KEY NOT NULL,
+	`model_entry_id` text NOT NULL,
+	`rater_id` text NOT NULL,
+	`rater_type` text NOT NULL,
+	`score` integer NOT NULL,
+	`dimension` text DEFAULT 'overall' NOT NULL,
+	`evidence_json` text,
+	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
+	FOREIGN KEY (`model_entry_id`) REFERENCES `model_registry_entries`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `rating_model_rater_dimension` ON `model_registry_ratings` (`model_entry_id`,`rater_id`,`dimension`);

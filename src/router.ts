@@ -46,6 +46,7 @@ import { dataStudioRoute } from "./routes/data-studio";
 import { memoryRoute } from "./routes/memory";
 import { openclawKanbanRoute } from "./routes/openclaw-kanban";
 import { systemServicesRoute } from "./routes/system-services";
+import { modelRegistryRoute } from "./routes/model-registry";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -97,6 +98,7 @@ const routeTree = rootRoute.addChildren([
   memoryRoute,
   openclawKanbanRoute,
   systemServicesRoute,
+  modelRegistryRoute,
 ]);
 
 // src/components/NotFoundRedirect.tsx

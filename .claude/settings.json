@@ -8,7 +8,6 @@
       "Write(/tmp/)",
       "Write(/tmp/**)",
       "Bash(mkdir)",
-
       "Bash(cat /tmp/*)",
       "Bash(head /tmp/*)",
       "Bash(tail /tmp/*)",
@@ -45,7 +44,6 @@
       "Bash(expand /tmp/*)",
       "Bash(unexpand /tmp/*)",
       "Skill(dyad:*)",
-
       "Bash(npm run:*)",
       "Bash(npm test:*)",
       "Bash(npm install:*)",
@@ -72,9 +70,7 @@
       "Bash(rm -f e2e-tests/screencast-demo.spec.ts)",
       "Bash(rm -rf e2e-tests/screencast-screenshots)",
       "Bash(rm -rf test-results/screencast-demo*)",
-
       "Bash(git:*)",
-
       "Bash(gh api:*)",
       "Bash(gh pr view:*)",
       "Bash(gh pr list:*)",
@@ -100,16 +96,13 @@
       "Bash(gh repo view:*)",
       "Bash(gh run view:*)",
       "Bash(gh run list:*)",
-
       "Bash(ps:*)",
       "Bash(lsof:*)",
       "Bash(pkill:*)",
       "Bash(jq:*)",
-
       "Bash(which:*)",
       "Bash(echo:*)",
       "Bash(pwd:*)",
-
       "Bash(ls:*)",
       "Bash(find:*)",
       "Bash(tree:*)",
@@ -123,7 +116,6 @@
       "Bash(less:*)",
       "Bash(file:*)",
       "Bash(stat:*)",
-
       "Bash(grep:*)",
       "Bash(rg:*)",
       "Bash(ag:*)",
@@ -133,9 +125,7 @@
       "Bash(uniq:*)",
       "Bash(cut:*)",
       "Bash(diff:*)",
-
       "Bash(chmod:*)",
-
       "Bash(pytest:*)",
       "Bash(python -m pytest:*)"
     ]
@@ -145,6 +135,11 @@
       {
         "matcher": "Bash",
         "hooks": [
+          {
+            "type": "command",
+            "command": "npx block-no-verify@1.1.2",
+            "timeout": 5000
+          },
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gh-permission-hook.py",

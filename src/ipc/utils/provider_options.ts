@@ -4,6 +4,7 @@ import type { VersionedFiles } from "./versioned_codebase_context";
 import { GoogleGenerativeAIProviderOptions } from "@ai-sdk/google";
 import { OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
 import { getExtraProviderOptions } from "./thinking_utils";
+import { getEnvVar } from "./read_env";
 
 export interface MentionedAppCodebase {
   appName: string;
@@ -20,6 +21,20 @@ export interface GetProviderOptionsParams {
   mentionedAppsCodebases: MentionedAppCodebase[];
   builtinProviderId: string | undefined;
   settings: UserSettings;
+}
+
+const DEFAULT_OLLAMA_NUM_GPU = -1;
+
+export function resolveOllamaNumGpu(rawValue: string | undefined): number {
+  const trimmedValue = rawValue?.trim();
+  if (!trimmedValue) {
+    return DEFAULT_OLLAMA_NUM_GPU;
+  }
+
+  const parsedValue = Number(trimmedValue);
+  return Number.isInteger(parsedValue)
+    ? parsedValue
+    : DEFAULT_OLLAMA_NUM_GPU;
 }
 
 /**
@@ -81,6 +96,15 @@ export function getProviderOptions({
         includeThoughts: true,
       },
     } satisfies GoogleGenerativeAIProviderOptions;
+  }
+
+  // Prefer GPU execution in Ollama when available.
+  if (providerId === "ollama") {
+    providerOptions.ollama = {
+      options: {
+        num_gpu: resolveOllamaNumGpu(getEnvVar("OLLAMA_NUM_GPU")),
+      },
+    };
   }
 
   return providerOptions;

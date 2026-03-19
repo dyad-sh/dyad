@@ -1,4 +1,8 @@
 import { parseOllamaHost } from "@/ipc/handlers/local_model_ollama_handler";
+import {
+  getProviderOptions,
+  resolveOllamaNumGpu,
+} from "@/ipc/utils/provider_options";
 import { describe, it, expect } from "vitest";
 
 describe("parseOllamaHost", () => {
@@ -143,5 +147,63 @@ describe("parseOllamaHost", () => {
       const result = parseOllamaHost(input);
       expect(result).toBe("http://example.com:443");
     });
+  });
+});
+
+describe("resolveOllamaNumGpu", () => {
+  it("defaults to -1 when undefined", () => {
+    expect(resolveOllamaNumGpu(undefined)).toBe(-1);
+  });
+
+  it("defaults to -1 when empty", () => {
+    expect(resolveOllamaNumGpu("")).toBe(-1);
+  });
+
+  it("parses integer values", () => {
+    expect(resolveOllamaNumGpu("2")).toBe(2);
+  });
+
+  it("falls back to -1 for invalid values", () => {
+    expect(resolveOllamaNumGpu("not-a-number")).toBe(-1);
+  });
+});
+
+describe("getProviderOptions ollama GPU preference", () => {
+  it("adds ollama num_gpu preference for ollama provider", () => {
+    const options = getProviderOptions({
+      dyadAppId: 1,
+      files: [],
+      mentionedAppsCodebases: [],
+      builtinProviderId: "ollama",
+      settings: {
+        selectedModel: {
+          name: "llama3.2",
+          provider: "ollama",
+        },
+      } as any,
+    } as any);
+
+    expect(options.ollama).toEqual({
+      options: {
+        num_gpu: -1,
+      },
+    });
+  });
+
+  it("does not add ollama options for non-ollama provider", () => {
+    const options = getProviderOptions({
+      dyadAppId: 1,
+      files: [],
+      mentionedAppsCodebases: [],
+      builtinProviderId: "openai",
+      settings: {
+        selectedModel: {
+          name: "gpt-4.1",
+          provider: "openai",
+        },
+      } as any,
+    } as any);
+
+    expect(options.ollama).toBeUndefined();
   });
 });

@@ -1,4 +1,4 @@
-import { test } from "./helpers/test_helper";
+import { test, testSkipIfWindows, Timeout } from "./helpers/test_helper";
 import { expect, Locator } from "@playwright/test";
 
 test.describe("queued messages", () => {
@@ -150,3 +150,141 @@ test.describe("queued messages", () => {
     await expect(messagesList.getByText("tc=2")).toBeVisible();
   });
 });
+
+testSkipIfWindows(
+  "editing queued message restores attachments and selected components",
+  async ({ po }) => {
+    await po.setUp();
+    const chatInput = po.chatActions.getChatInput();
+
+    // Build an app so we have a preview with selectable components
+    await po.sendPrompt("tc=basic");
+    await po.previewPanel.clickTogglePreviewPanel();
+
+    // Start a slow streaming response so subsequent messages get queued
+    await po.sendPrompt("tc=1 [sleep=medium]", {
+      skipWaitForCompletion: true,
+    });
+    await expect(chatInput).toBeVisible();
+
+    // While streaming, select a component
+    await po.previewPanel.clickPreviewPickElement();
+    await po.previewPanel
+      .getPreviewIframeElement()
+      .contentFrame()
+      .getByRole("heading", { name: "Welcome to Your Blank App" })
+      .click();
+    await expect(po.previewPanel.getSelectedComponentsDisplay()).toBeVisible({
+      timeout: Timeout.SHORT,
+    });
+
+    // Attach a file
+    await po.chatActions
+      .getChatInputContainer()
+      .getByTestId("auxiliary-actions-menu")
+      .click();
+    await po.page.getByRole("menuitem", { name: "Attach files" }).click();
+    const chatContextItem = po.page.getByText("Attach file as chat context");
+    await expect(chatContextItem).toBeVisible();
+    const fileChooserPromise = po.page.waitForEvent("filechooser");
+    await chatContextItem.click();
+    const fileChooser = await fileChooserPromise;
+    await fileChooser.setFiles("e2e-tests/fixtures/images/logo.png");
+    await expect(po.page.getByText("logo.png")).toBeVisible();
+
+    // Queue a message with both attachment and selected component
+    await chatInput.fill("queued with extras");
+    await chatInput.press("Enter");
+
+    // After queuing, both should be cleared
+    await expect(
+      po.previewPanel.getSelectedComponentsDisplay(),
+    ).not.toBeVisible();
+    await expect(po.page.getByText("logo.png")).not.toBeVisible();
+    await expect(po.page.getByText(/\d+ Queued/)).toBeVisible();
+
+    // Edit the queued message
+    const queuedRow = po.page.locator("li", {
+      hasText: "queued with extras",
+    });
+    await queuedRow.hover();
+    await queuedRow.getByTitle("Edit").click();
+
+    // The input should contain the queued message text
+    await expect(chatInput).toContainText("queued with extras");
+
+    // Both attachment and selected components should be restored
+    await expect(po.page.getByText("logo.png")).toBeVisible();
+    await expect(po.previewPanel.getSelectedComponentsDisplay()).toBeVisible({
+      timeout: Timeout.SHORT,
+    });
+
+    // Submit the edit — both should clear again
+    await chatInput.press("Enter");
+    await expect(po.page.getByText("logo.png")).not.toBeVisible();
+    await expect(
+      po.previewPanel.getSelectedComponentsDisplay(),
+    ).not.toBeVisible();
+
+    // Wait for all messages to complete
+    await po.chatActions.waitForChatCompletion();
+    await po.chatActions.waitForChatCompletion();
+
+    // Verify both messages were sent
+    const messagesList = po.page.locator('[data-testid="messages-list"]');
+    await expect(messagesList.getByText("tc=1 [sleep=medium]")).toBeVisible();
+    await expect(messagesList.getByText("queued with extras")).toBeVisible();
+  },
+);
+
+testSkipIfWindows(
+  "canceling queued message edit clears restored components",
+  async ({ po }) => {
+    await po.setUp();
+    const chatInput = po.chatActions.getChatInput();
+
+    // Build an app so we have a preview with selectable components
+    await po.sendPrompt("tc=basic");
+    await po.previewPanel.clickTogglePreviewPanel();
+
+    // Start a slow streaming response so subsequent messages get queued
+    await po.sendPrompt("tc=1 [sleep=medium]", {
+      skipWaitForCompletion: true,
+    });
+    await expect(chatInput).toBeVisible();
+
+    // While streaming, select a component and queue a message with it
+    await po.previewPanel.clickPreviewPickElement();
+    await po.previewPanel
+      .getPreviewIframeElement()
+      .contentFrame()
+      .getByRole("heading", { name: "Welcome to Your Blank App" })
+      .click();
+    await expect(po.previewPanel.getSelectedComponentsDisplay()).toBeVisible({
+      timeout: Timeout.SHORT,
+    });
+
+    await chatInput.fill("queued with component");
+    await chatInput.press("Enter");
+    await expect(po.page.getByText(/\d+ Queued/)).toBeVisible();
+
+    // Edit the queued message — components should be restored
+    const queuedRow = po.page.locator("li", {
+      hasText: "queued with component",
+    });
+    await queuedRow.hover();
+    await queuedRow.getByTitle("Edit").click();
+    await expect(po.previewPanel.getSelectedComponentsDisplay()).toBeVisible({
+      timeout: Timeout.SHORT,
+    });
+
+    // Cancel the edit — components should be cleared
+    await po.page.getByText("Cancel", { exact: true }).click();
+    await expect(
+      po.previewPanel.getSelectedComponentsDisplay(),
+    ).not.toBeVisible();
+
+    // Input should be empty after cancel
+    await expect(chatInput).toBeEmpty();
+  },
+);

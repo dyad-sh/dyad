@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, Menu } from "electron";
+import { app, BrowserWindow, dialog, Menu, session } from "electron";
 import * as path from "node:path";
 import { registerIpcHandlers } from "./ipc/ipc_host";
 import dotenv from "dotenv";
@@ -32,6 +32,14 @@ import {
 import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai_messages_cleanup";
 import { startTaskExecutor } from "./lib/kanban_task_executor";
 import { ensureOllamaCredentialInN8n } from "./ipc/handlers/n8n_handlers";
+import { getOpenClawGateway } from "./lib/openclaw_gateway_service";
+import { startAllServices } from "./ipc/handlers/services_handlers";
+import { consolidateAgentMemories } from "./lib/agent_memory_engine";
+import {
+  startFlywheelScheduler,
+  stopFlywheelScheduler,
+} from "./lib/data_flywheel";
+import { getTailscaleConfig, getTailscaleStatus } from "./lib/tailscale_service";
 import fs from "fs";
 
 log.errorHandler.startCatching();
@@ -123,7 +131,17 @@ export async function onReady() {
   setTimeout(async () => {
     const svcLogger = log.scope("services-init");
 
-    // 1. Start the autonomous task executor
+    // 1. Start all backend services (n8n, Celestia, Ollama)
+    try {
+      const results = await startAllServices();
+      for (const svc of results) {
+        svcLogger.info(`${svc.name}: ${svc.running ? "running" : svc.error || "not started"}`);
+      }
+    } catch (err) {
+      svcLogger.warn("Backend services auto-start failed:", err);
+    }
+
+    // 2. Start the autonomous task executor
     try {
       startTaskExecutor();
       svcLogger.info("Task executor auto-started");
@@ -131,7 +149,15 @@ export async function onReady() {
       svcLogger.warn("Task executor auto-start failed:", err);
     }
 
-    // 2. Auto-provision Ollama credential in n8n (best-effort)
+    // 3. Initialize OpenClaw gateway (best-effort)
+    try {
+      await getOpenClawGateway().initialize();
+      svcLogger.info("OpenClaw gateway auto-initialized");
+    } catch (err) {
+      svcLogger.warn("OpenClaw gateway auto-init failed:", err);
+    }
+
+    // 3. Auto-provision Ollama credential in n8n (best-effort)
     try {
       const result = await ensureOllamaCredentialInN8n();
       if (result.success) {
@@ -146,6 +172,22 @@ export async function onReady() {
     } catch (err) {
       svcLogger.warn("n8n Ollama credential provision failed:", err);
     }
+
+    // 4. Start periodic memory consolidation (every 30 minutes)
+    const memoryConsolidationInterval = setInterval(() => {
+      consolidateAgentMemories().catch((err) =>
+        svcLogger.warn("Memory consolidation failed:", err),
+      );
+    }, 30 * 60 * 1000);
+
+    app.on("will-quit", () => {
+      clearInterval(memoryConsolidationInterval);
+      stopFlywheelScheduler();
+    });
+    svcLogger.info("Memory consolidation scheduler started (30 min interval)");
+
+    // 5. Start flywheel training scheduler (checks every 6 hours)
+    startFlywheelScheduler();
   }, 5000);
 
   logger.info("Auto-update enabled=", settings.enableAutoUpdate);
@@ -248,6 +290,9 @@ const createWindow = () => {
       path.join(__dirname, "../renderer/main_window/index.html"),
     );
   }
+
+  // Dynamically extend CSP to allow Tailscale IP if configured
+  setupTailscaleCsp();
   if (process.env.NODE_ENV === "development") {
     // Open the DevTools.
     mainWindow.webContents.openDevTools();
@@ -323,6 +368,55 @@ const createWindow = () => {
     menu.popup({ window: mainWindow! });
   });
 };
+
+/**
+ * Dynamically extend Content-Security-Policy to include the Tailscale IP.
+ * This intercepts HTTP responses and patches the CSP header so the renderer
+ * can reach services on the tailnet without editing the static meta tag.
+ */
+function setupTailscaleCsp(): void {
+  const tsConfig = getTailscaleConfig();
+  if (!tsConfig.enabled || !tsConfig.exposeServices) return;
+
+  getTailscaleStatus()
+    .then((status) => {
+      const ip = tsConfig.manualIp || status.tailnetIp;
+      if (!ip) return;
+
+      session.defaultSession.webRequest.onHeadersReceived(
+        (details, callback) => {
+          const csp =
+            details.responseHeaders?.["Content-Security-Policy"]?.[0] ||
+            details.responseHeaders?.["content-security-policy"]?.[0];
+
+          if (csp && !csp.includes(ip)) {
+            const tailscaleDirective = `http://${ip}:* ws://${ip}:*`;
+            const patched = csp.replace(
+              /connect-src\s+/,
+              `connect-src ${tailscaleDirective} `,
+            );
+            const headerKey = details.responseHeaders?.[
+              "Content-Security-Policy"
+            ]
+              ? "Content-Security-Policy"
+              : "content-security-policy";
+            callback({
+              responseHeaders: {
+                ...details.responseHeaders,
+                [headerKey]: [patched],
+              },
+            });
+          } else {
+            callback({ cancel: false });
+          }
+        },
+      );
+      log.scope("tailscale").info(`CSP extended for Tailscale IP ${ip}`);
+    })
+    .catch(() => {
+      // Tailscale not available — no-op
+    });
+}
 
 const gotTheLock = app.requestSingleInstanceLock();
 

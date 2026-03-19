@@ -253,6 +253,7 @@ export interface MetaWorkflowConfig {
 
 export interface WorkflowGenerationRequest {
   prompt: string;
+  model?: string;
   context?: {
     availableCredentials: string[];
     existingWorkflows: string[];

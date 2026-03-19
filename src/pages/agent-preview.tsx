@@ -56,6 +56,8 @@ import { agentBuilderClient } from "@/ipc/agent_builder_client";
 import { IpcClient } from "@/ipc/ipc_client";
 import { showError, showSuccess } from "@/lib/toast";
 import { cn } from "@/lib/utils";
+import { useExport } from "@/hooks/use-export";
+import { FileText } from "lucide-react";
 
 import type { AgentUIConfig, AgentUILayout, GenerateAgentUIResult } from "@/types/agent_ui_types";
 import { exportAgentUI } from "@/lib/agent_ui_generator";
@@ -96,6 +98,37 @@ export default function AgentPreviewPage() {
     queryFn: () => agentBuilderClient.getAgent(Number(agentId)),
     enabled: !!agentId,
   });
+
+  const { exportToDocument, hasLibreOffice } = useExport();
+
+  const handleExportAgentDoc = (format: "docx" | "pdf") => {
+    if (!agent) return;
+    const sections = [
+      { type: "heading" as const, level: 1, content: agent.name },
+      { type: "paragraph" as const, content: agent.description || "No description." },
+      { type: "heading" as const, level: 2, content: "Configuration" },
+      { type: "paragraph" as const, content: `Type: ${agent.type || "chatbot"}` },
+      { type: "paragraph" as const, content: `Status: ${agent.status || "draft"}` },
+      { type: "paragraph" as const, content: `Model: ${agent.modelId || "default"}` },
+      { type: "paragraph" as const, content: `Temperature: ${agent.temperature ?? "N/A"}` },
+      { type: "paragraph" as const, content: `Max Tokens: ${agent.maxTokens ?? "N/A"}` },
+      ...(agent.systemPrompt
+        ? [
+            { type: "heading" as const, level: 2, content: "System Prompt" },
+            { type: "paragraph" as const, content: agent.systemPrompt },
+          ]
+        : []),
+      { type: "heading" as const, level: 2, content: "Export Info" },
+      { type: "paragraph" as const, content: `Generated: ${new Date().toLocaleString()}` },
+    ];
+    exportToDocument.mutate({
+      name: `agent-${agent.name}-docs`,
+      sections,
+      format,
+      title: `Agent: ${agent.name}`,
+      subtitle: agent.description || undefined,
+    });
+  };
 
   // Fetch generated UI for the agent
   const { data: generatedUI, isLoading: uiLoading, refetch: refetchUI } = useQuery({
@@ -292,6 +325,19 @@ export default function AgentPreviewPage() {
                 <FileCode className="h-4 w-4 mr-2" />
                 Export as HTML
               </DropdownMenuItem>
+              {hasLibreOffice && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => handleExportAgentDoc("docx")}>
+                    <FileText className="h-4 w-4 mr-2" />
+                    Export Documentation (DOCX)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleExportAgentDoc("pdf")}>
+                    <FileText className="h-4 w-4 mr-2" />
+                    Export Documentation (PDF)
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

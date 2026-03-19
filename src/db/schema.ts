@@ -2023,3 +2023,6 @@ export * from "./mab_schema";
 
 // ── Agent Memory (Long-Term + Short-Term) ────────────────────
 export * from "./agent_memory_schema";
+
+// ── Data Flywheel (Self-Reinforcing Training Loop) ────────────
+export * from "./flywheel_schema";

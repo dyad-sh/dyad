@@ -88,6 +88,7 @@ import AgentMemoryTab from "@/components/agent/AgentMemoryTab";
 import AgentStackBuilder from "@/components/agent/AgentStackBuilder";
 import AgentTasksPanel from "@/components/agent/AgentTasksPanel";
 import AgentKnowledgePanel from "@/components/agent/AgentKnowledgePanel";
+import { AgentFlywheelTab } from "@/components/agent/AgentFlywheelTab";
 import {
   useDecentralizedPlatforms,
   useDecentralizedDeploy,
@@ -114,6 +115,7 @@ const SIDEBAR_ITEMS = [
   { id: "workflows", label: "Stack Builder", icon: Workflow },
   { id: "knowledge", label: "Knowledge", icon: Database },
   { id: "memory", label: "Memory", icon: Brain },
+  { id: "flywheel", label: "Data Flywheel", icon: RefreshCw },
   { id: "ui", label: "UI Components", icon: Layout },
   { id: "deploy", label: "Deployment", icon: Rocket },
 ] as const;
@@ -1130,6 +1132,13 @@ export default function AgentEditorPage() {
             {/* ============================================================ */}
             {activeTab === "memory" && (
               <AgentMemoryTab agentId={Number(agentId)} />
+            )}
+
+            {/* ============================================================ */}
+            {/* FLYWHEEL TAB                                                 */}
+            {/* ============================================================ */}
+            {activeTab === "flywheel" && (
+              <AgentFlywheelTab agentId={Number(agentId)} />
             )}
 
             {/* ============================================================ */}

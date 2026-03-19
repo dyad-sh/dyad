@@ -4,6 +4,7 @@ $DesktopPath = [Environment]::GetFolderPath("Desktop")
 $Shortcut = $WshShell.CreateShortcut("$DesktopPath\JoyCreate.lnk")
 $Shortcut.TargetPath = "$PSScriptRoot\start-joycreate.bat"
 $Shortcut.WorkingDirectory = $PSScriptRoot
+$Shortcut.IconLocation = "$PSScriptRoot\assets\icon\logo.ico,0"
 $Shortcut.Description = "Start JoyCreate AI Agent Builder"
 $Shortcut.WindowStyle = 7  # Minimized
 $Shortcut.Save()

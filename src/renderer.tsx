@@ -173,8 +173,12 @@ function App() {
 
 createRoot(document.getElementById("root")!).render(
   <QueryClientProvider client={queryClient}>
-    <PostHogProvider client={posthogClient}>
+    {posthogClient ? (
+      <PostHogProvider client={posthogClient}>
+        <App />
+      </PostHogProvider>
+    ) : (
       <App />
-    </PostHogProvider>
+    )}
   </QueryClientProvider>,
 );

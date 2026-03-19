@@ -45,9 +45,13 @@ import {
   RefreshCw,
   ChevronDown,
   ChevronUp,
+  Globe,
+  Cpu,
+  Brain,
 } from "lucide-react";
 
 type Mode = "workflow" | "agent" | "both";
+type RoutingMode = "auto" | "local" | "api";
 
 interface GeneratedWorkflow {
   name: string;
@@ -89,6 +93,41 @@ export function NlpAiStudioPanel() {
   const [deployedItems, setDeployedItems] = useState<DeployedItem[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [maxNodes, setMaxNodes] = useState(10);
+  const [selectedModel, setSelectedModel] = useState<string>("");
+  const [routingMode, setRoutingMode] = useState<RoutingMode>("auto");
+
+  // ── Fetch available local models ──
+  const { data: ollamaModels } = useQuery({
+    queryKey: ["ollama-models"],
+    queryFn: () => ipc.listLocalOllamaModels(),
+    refetchInterval: 30_000,
+  });
+
+  const { data: lmStudioModels } = useQuery({
+    queryKey: ["lmstudio-models"],
+    queryFn: () => ipc.listLocalLMStudioModels(),
+    refetchInterval: 30_000,
+  });
+
+  const allLocalModels = [
+    ...(ollamaModels || []),
+    ...(lmStudioModels || []),
+  ];
+
+  const apiModels = [
+    { provider: "anthropic" as const, modelName: "claude-sonnet-4-20250514", displayName: "Claude Sonnet 4 (Anthropic)" },
+    { provider: "anthropic" as const, modelName: "claude-3-5-sonnet-20241022", displayName: "Claude 3.5 Sonnet (Anthropic)" },
+    { provider: "openai" as const, modelName: "gpt-4o", displayName: "GPT-4o (OpenAI)" },
+    { provider: "openai" as const, modelName: "gpt-4o-mini", displayName: "GPT-4o Mini (OpenAI)" },
+  ];
+
+  // Determine which model to use based on routing mode
+  const getEffectiveModel = useCallback((): string | undefined => {
+    if (selectedModel) return selectedModel;
+    if (routingMode === "local") return allLocalModels[0]?.modelName;
+    if (routingMode === "api") return apiModels[0]?.modelName;
+    return undefined; // auto — let backend decide
+  }, [selectedModel, routingMode, allLocalModels]);
 
   // ── Fetch existing n8n workflows ──
   const { data: existingWorkflows } = useQuery({
@@ -116,7 +155,7 @@ export function NlpAiStudioPanel() {
 
   // ── Generate workflow from NLP ──
   const generateMutation = useMutation({
-    mutationFn: async (input: { prompt: string; constraints?: any }) => {
+    mutationFn: async (input: { prompt: string; model?: string; constraints?: any }) => {
       return ipc.generateN8nWorkflow(input) as Promise<GenerationResult>;
     },
     onSuccess: (result) => {
@@ -169,10 +208,12 @@ export function NlpAiStudioPanel() {
     mutationFn: async (input: {
       prompt: string;
       name: string;
+      model?: string;
     }) => {
       // Step 1: Generate the workflow
       const wfResult = (await ipc.generateN8nWorkflow({
         prompt: `Create an AI agent workflow: ${input.prompt}. The agent should be named "${input.name}". Include a webhook trigger for receiving tasks, an HTTP Request node to call Ollama at http://host.docker.internal:11434/api/chat for AI processing, and a respond node to return results.`,
+        model: input.model,
         constraints: { maxNodes: maxNodes },
       })) as GenerationResult;
 
@@ -251,18 +292,21 @@ export function NlpAiStudioPanel() {
       return;
     }
 
+    const model = getEffectiveModel();
+
     if (mode === "agent" || mode === "both") {
       const name = agentName.trim() || "Custom Agent";
-      generateAgentMutation.mutate({ prompt: prompt.trim(), name });
+      generateAgentMutation.mutate({ prompt: prompt.trim(), name, model });
     }
 
     if (mode === "workflow" || mode === "both") {
       generateMutation.mutate({
         prompt: prompt.trim(),
+        model,
         constraints: showAdvanced ? { maxNodes } : undefined,
       });
     }
-  }, [prompt, mode, agentName, maxNodes, showAdvanced]);
+  }, [prompt, mode, agentName, maxNodes, showAdvanced, getEffectiveModel]);
 
   const isLoading =
     generateMutation.isPending ||
@@ -360,6 +404,88 @@ export function NlpAiStudioPanel() {
                   />
                 </div>
               )}
+
+              {/* Model routing */}
+              <div className="flex gap-2 items-end">
+                <div className="flex-1">
+                  <Label className="text-xs">Routing</Label>
+                  <div className="flex gap-1 mt-1">
+                    <Button
+                      variant={routingMode === "auto" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => { setRoutingMode("auto"); setSelectedModel(""); }}
+                      className="text-xs h-7 px-2"
+                    >
+                      <Brain className="w-3 h-3 mr-1" />
+                      Auto
+                    </Button>
+                    <Button
+                      variant={routingMode === "local" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => { setRoutingMode("local"); setSelectedModel(""); }}
+                      className="text-xs h-7 px-2"
+                    >
+                      <Cpu className="w-3 h-3 mr-1" />
+                      Local
+                    </Button>
+                    <Button
+                      variant={routingMode === "api" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => { setRoutingMode("api"); setSelectedModel(""); }}
+                      className="text-xs h-7 px-2"
+                    >
+                      <Globe className="w-3 h-3 mr-1" />
+                      API
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <Label className="text-xs">Model</Label>
+                  <Select value={selectedModel} onValueChange={setSelectedModel}>
+                    <SelectTrigger className="h-7 text-xs mt-1">
+                      <SelectValue placeholder={routingMode === "auto" ? "Auto-select" : "Choose model"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(routingMode !== "api") && allLocalModels.length > 0 && (
+                        <>
+                          <SelectItem value="__local_header" disabled className="text-[10px] font-semibold text-muted-foreground">
+                            Local Models
+                          </SelectItem>
+                          {allLocalModels.map((m) => (
+                            <SelectItem key={`${m.provider}:${m.modelName}`} value={m.modelName} className="text-xs">
+                              <span className="flex items-center gap-1.5">
+                                <Cpu className="w-3 h-3 text-green-500" />
+                                {m.displayName || m.modelName}
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </>
+                      )}
+                      {(routingMode !== "local") && (
+                        <>
+                          <SelectItem value="__api_header" disabled className="text-[10px] font-semibold text-muted-foreground">
+                            API Models
+                          </SelectItem>
+                          {apiModels.map((m) => (
+                            <SelectItem key={m.modelName} value={m.modelName} className="text-xs">
+                              <span className="flex items-center gap-1.5">
+                                <Globe className="w-3 h-3 text-blue-500" />
+                                {m.displayName}
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <p className="text-[10px] text-muted-foreground">
+                {routingMode === "auto" && "Auto: local models for simple/long tasks, API for complex generation"}
+                {routingMode === "local" && "Local: all inference runs on your machine (Ollama / LM Studio)"}
+                {routingMode === "api" && "API: uses cloud models for higher quality (requires API key in settings)"}
+              </p>
 
               {/* NLP prompt */}
               <Textarea

@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { scraperClient } from "@/ipc/scraper_client";
 import { getDatasetStudioClient } from "@/ipc/dataset_studio_client";
+import { useExport } from "@/hooks/use-export";
 import type {
   ScrapingConfig,
   ScrapingJob,
@@ -287,6 +288,26 @@ export default function DatasetPage() {
       toast.success(`Dataset exported to ${filePath}`);
     },
   });
+
+  // LibreOffice-powered export (XLSX, PDF)
+  const { exportToSpreadsheet, hasLibreOffice } = useExport();
+
+  const handleRichExport = async (dataset: Dataset, format: "xlsx" | "pdf") => {
+    try {
+      const preview = await scraperClient.previewDataset(dataset.id, 10000);
+      const rows = preview.rows.map((row) =>
+        preview.columns.map((col) => String(row[col] ?? ""))
+      );
+      exportToSpreadsheet.mutate({
+        name: dataset.name,
+        headers: preview.columns,
+        rows,
+        format,
+      });
+    } catch {
+      toast.error("Failed to load dataset for export");
+    }
+  };
 
   // Preview dataset
   const handlePreview = async (dataset: Dataset) => {
@@ -1328,6 +1349,24 @@ export default function DatasetPage() {
                                   <FileSpreadsheet className="w-4 h-4 mr-2" />
                                   Export CSV
                                 </DropdownMenuItem>
+                                {hasLibreOffice && (
+                                  <>
+                                    <DropdownMenuItem
+                                      onClick={() => handleRichExport(dataset, "xlsx")}
+                                      disabled={exportToSpreadsheet.isPending}
+                                    >
+                                      <FileSpreadsheet className="w-4 h-4 mr-2" />
+                                      Export XLSX
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => handleRichExport(dataset, "pdf")}
+                                      disabled={exportToSpreadsheet.isPending}
+                                    >
+                                      <FileText className="w-4 h-4 mr-2" />
+                                      Export PDF
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   className="text-red-500"

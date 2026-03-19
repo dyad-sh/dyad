@@ -13,6 +13,7 @@ import { agents } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getUserDataPath } from "@/paths/paths";
 import { getOllamaApiUrl } from "@/ipc/handlers/local_model_ollama_handler";
+import { readSettings } from "@/main/settings";
 
 import type {
   N8nWorkflow,
@@ -308,7 +309,7 @@ export async function executeWorkflow(id: string, data?: Record<string, unknown>
 /**
  * Call Ollama to generate workflow JSON from natural language
  */
-async function callOllamaForWorkflow(prompt: string): Promise<{ workflow: N8nWorkflow; explanation: string } | null> {
+async function callOllamaForWorkflow(prompt: string, model?: string): Promise<{ workflow: N8nWorkflow; explanation: string } | null> {
   const systemPrompt = `You are an expert n8n workflow designer. Given a natural language description, generate a valid n8n workflow JSON.
 
 Available n8n node types:
@@ -386,7 +387,7 @@ Generate unique IDs for each node.`;
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "llama3.2:3b",
+        model: model || readSettings().selectedModel?.name || "qwen2.5-coder:7b",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: `Create an n8n workflow for: ${prompt}` }
@@ -450,7 +451,7 @@ export async function generateWorkflow(
     // Try AI-powered generation first if Ollama is available
     if (await isOllamaAvailable()) {
       logger.info("Using AI-powered workflow generation");
-      const aiResult = await callOllamaForWorkflow(request.prompt);
+      const aiResult = await callOllamaForWorkflow(request.prompt, request.model);
       
       if (aiResult) {
         // Validate the AI-generated workflow

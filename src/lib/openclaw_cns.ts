@@ -32,6 +32,11 @@ import { v4 as uuidv4 } from "uuid";
 import { getOpenClawOllamaBridge, type OpenClawOllamaConfig } from "./openclaw_ollama_bridge";
 import { getOpenClawN8nBridge, type OpenClawN8nConfig, type OpenClawN8nEvent } from "./openclaw_n8n_bridge";
 import { getOpenClawGateway } from "./openclaw_gateway_service";
+import {
+  selectModelForTask,
+  recordTaskOutcome,
+  type ModelSelection,
+} from "./openclaw_registry_bridge";
 
 const logger = log.scope("openclaw_cns");
 
@@ -75,6 +80,7 @@ export interface CNSStatus {
     totalRequests: number;
     localRequests: number;
     cloudRequests: number;
+    peerRequests: number;
     workflowsTriggered: number;
     errors: number;
   };
@@ -142,6 +148,7 @@ export class OpenClawCNS extends EventEmitter {
     totalRequests: 0,
     localRequests: 0,
     cloudRequests: 0,
+    peerRequests: 0,
     workflowsTriggered: 0,
     errors: 0,
   };
@@ -332,12 +339,15 @@ export class OpenClawCNS extends EventEmitter {
     this.emit("request:start", request);
     
     try {
-      // Determine routing
-      const route = this.determineRoute(request);
+      // Determine routing (registry-aware)
+      const route = await this.determineRoute(request);
       
       let response: AIResponse;
       
-      if (route.useLocal) {
+      if (route.provider === "peer" && route.peerId) {
+        response = await this.processPeer(request, route.model, route.peerId);
+        this.stats.peerRequests++;
+      } else if (route.useLocal) {
         response = await this.processLocal(request, route.model);
         this.stats.localRequests++;
       } else {
@@ -368,22 +378,65 @@ export class OpenClawCNS extends EventEmitter {
     }
   }
   
-  private determineRoute(request: AIRequest): { useLocal: boolean; model: string } {
+  private async determineRoute(request: AIRequest): Promise<{
+    useLocal: boolean;
+    model: string;
+    provider?: "ollama" | "cloud" | "peer";
+    peerId?: string | null;
+  }> {
     const ollamaBridge = getOpenClawOllamaBridge();
+    
+    // ── Try registry-aware MAB selection first ──
+    try {
+      const taskType = request.type === "chat" ? "chat"
+        : request.type === "vision" ? "vision"
+        : request.type === "embedding" ? "embedding"
+        : request.type === "agent" ? "agent"
+        : "general";
+      
+      const complexity = this.estimateComplexity(request);
+      const selection = await selectModelForTask(
+        taskType,
+        complexity,
+        request.options?.model || null,
+      );
+
+      // User requested local preference — override peer routing
+      if (request.options?.preferLocal && selection.provider === "peer") {
+        return {
+          useLocal: true,
+          model: ollamaBridge.isOllamaAvailable()
+            ? this.getLocalModel(request)
+            : selection.model,
+          provider: "ollama",
+        };
+      }
+
+      return {
+        useLocal: selection.provider === "ollama",
+        model: selection.model,
+        provider: selection.provider,
+        peerId: selection.peerId,
+      };
+    } catch (err) {
+      logger.debug("Registry bridge unavailable, using legacy routing:", err);
+    }
+
+    // ── Legacy routing fallback ──
     
     // Check if local is available
     if (!ollamaBridge.isOllamaAvailable()) {
-      return { useLocal: false, model: "claude-sonnet-4-20250514" };
+      return { useLocal: false, model: "claude-sonnet-4-20250514", provider: "cloud" };
     }
     
     // Check channel routing
     if (request.options?.channel) {
       const channelRoute = this.config.channelRouting[request.options.channel];
       if (channelRoute === "ollama") {
-        return { useLocal: true, model: this.getLocalModel(request) };
+        return { useLocal: true, model: this.getLocalModel(request), provider: "ollama" };
       }
       if (channelRoute === "cloud") {
-        return { useLocal: false, model: "claude-sonnet-4-20250514" };
+        return { useLocal: false, model: "claude-sonnet-4-20250514", provider: "cloud" };
       }
     }
     
@@ -394,6 +447,7 @@ export class OpenClawCNS extends EventEmitter {
         model: request.options.preferLocal
           ? this.getLocalModel(request)
           : "claude-sonnet-4-20250514",
+        provider: request.options.preferLocal ? "ollama" : "cloud",
       };
     }
     
@@ -413,6 +467,7 @@ export class OpenClawCNS extends EventEmitter {
       return {
         useLocal: recommendation.isLocal,
         model: recommendation.model,
+        provider: recommendation.isLocal ? "ollama" : "cloud",
       };
     }
     
@@ -420,6 +475,7 @@ export class OpenClawCNS extends EventEmitter {
     return {
       useLocal: true,
       model: this.getLocalModel(request),
+      provider: "ollama",
     };
   }
   
@@ -540,6 +596,42 @@ export class OpenClawCNS extends EventEmitter {
         promptTokens: result.usage.promptTokens,
         completionTokens: result.usage.completionTokens,
         totalTokens: result.usage.totalTokens,
+      },
+    };
+  }
+  
+  private async processPeer(request: AIRequest, model: string, peerId: string): Promise<AIResponse> {
+    const { requestPeerInference } = await import("./p2p_inference_protocol");
+
+    const prompt = typeof request.input === "string"
+      ? request.input
+      : request.input.map(m => `${m.role}: ${m.content}`).join("\n");
+
+    const startTime = Date.now();
+    const result = await requestPeerInference(peerId, {
+      model,
+      prompt,
+      systemPrompt: request.options?.systemPrompt,
+      temperature: request.options?.temperature,
+      maxTokens: request.options?.maxTokens,
+    });
+
+    return {
+      id: uuidv4(),
+      requestId: request.id,
+      content: result.content,
+      model: `${model}@${peerId.slice(0, 8)}`,
+      isLocal: false,
+      usage: {
+        promptTokens: result.usage?.promptTokens ?? 0,
+        completionTokens: result.usage?.completionTokens ?? 0,
+        totalTokens: result.usage?.totalTokens ?? 0,
+      },
+      timing: {
+        totalMs: Date.now() - startTime,
+        tokensPerSecond: result.usage?.totalTokens
+          ? (result.usage.totalTokens / ((Date.now() - startTime) / 1000))
+          : undefined,
       },
     };
   }

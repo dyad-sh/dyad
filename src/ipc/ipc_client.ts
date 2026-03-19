@@ -3037,6 +3037,23 @@ export class IpcClient {
     return this.ipcRenderer.invoke("openclaw:kanban:analytics");
   }
 
+  /** List available models from registry + local Ollama */
+  public async listAvailableModels(filters?: {
+    taskType?: string;
+    source?: string;
+  }): Promise<any[]> {
+    return this.ipcRenderer.invoke("openclaw:kanban:models:list", filters);
+  }
+
+  /** Rate a completed kanban task (1-5 scale, feeds MAB + flywheel) */
+  public async rateKanbanTask(params: {
+    taskId: string;
+    rating: number;
+    feedback?: string;
+  }): Promise<{ success: boolean; rating: number }> {
+    return this.ipcRenderer.invoke("openclaw:kanban:tasks:rate", params);
+  }
+
   // ── Task Executor ──
 
   public async getTaskExecutorStatus(): Promise<any> {

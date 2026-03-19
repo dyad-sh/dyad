@@ -1192,6 +1192,8 @@ const validInvokeChannels = [
   "openclaw:kanban:tasks:move",
   "openclaw:kanban:activity:list",
   "openclaw:kanban:analytics",
+  "openclaw:kanban:models:list",
+  "openclaw:kanban:tasks:rate",
   // Task Executor — Autonomous inference loop
   "task-executor:status",
   "task-executor:start",

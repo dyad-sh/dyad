@@ -98,6 +98,34 @@ export async function captureTrainingPair(
   return row.id;
 }
 
+/**
+ * Update the rating on the most recent training pair matching a source and model.
+ * Used by kanban task rating to attach human feedback to the flywheel.
+ */
+export async function updateTrainingPairRating(
+  sourceType: "chat" | "openclaw" | "agent_test" | "correction",
+  model: string,
+  rating: "positive" | "negative",
+): Promise<boolean> {
+  const rows = await db
+    .update(flywheelTrainingPairs)
+    .set({ rating })
+    .where(
+      and(
+        eq(flywheelTrainingPairs.sourceType, sourceType),
+        eq(flywheelTrainingPairs.model, model),
+        isNull(flywheelTrainingPairs.rating),
+      ),
+    )
+    .returning({ id: flywheelTrainingPairs.id });
+
+  if (rows.length > 0) {
+    logger.info("Updated training pair rating", { id: rows[0].id, rating });
+    return true;
+  }
+  return false;
+}
+
 // =============================================================================
 // RATING & CORRECTIONS
 // =============================================================================

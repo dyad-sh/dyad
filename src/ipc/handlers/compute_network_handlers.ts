@@ -503,6 +503,14 @@ async function initializeNetwork(
   state.libp2p.services.pubsub.subscribe("/joycreate/compute/heartbeats/1.0.0");
   state.libp2p.services.pubsub.subscribe("/joycreate/compute/validation/1.0.0");
 
+  // Register P2P inference protocol handler
+  try {
+    const { registerInferenceHandler } = await import("@/lib/p2p_inference_protocol");
+    registerInferenceHandler(state.libp2p);
+  } catch (err) {
+    logger.warn("Could not register inference protocol handler:", err);
+  }
+
   // Start heartbeat
   startHeartbeat();
 
@@ -1935,10 +1943,16 @@ export function registerComputeNetworkHandlers(): void {
   logger.info("Compute network IPC handlers registered");
 }
 
+/** Return the live libp2p node (or null if not started). */
+function getLibp2pNode(): any | null {
+  return state.libp2p;
+}
+
 export {
   initializeNetwork,
   shutdownNetwork,
   getNetworkStatus,
+  getLibp2pNode,
   fetchContent,
   pinContent,
   unpinContent,

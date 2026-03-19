@@ -229,7 +229,7 @@ function toWebReader(source: AsyncIterable<Uint8Array>): ReadableStreamDefaultRe
       const { value, done } = await iter.next();
       if (done) return { value: undefined as any, done: true };
       // value might be a Uint8ArrayList – convert to Uint8Array
-      const bytes = value instanceof Uint8Array ? value : new Uint8Array(value.slice?.() ?? value);
+      const bytes = value instanceof Uint8Array ? value : new Uint8Array(value as any);
       return { value: bytes, done: false };
     },
     cancel: async () => {

@@ -76,9 +76,12 @@ import {
   WifiOff,
   Sparkles,
   Workflow,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
 
 import { NlpAiStudioPanel } from "@/components/openclaw/NlpAiStudioPanel";
+import { useAvailableModels, useTaskRating } from "@/hooks/useOpenClaw";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -419,6 +422,9 @@ function CreateTaskDialog({
   const [status, setStatus] = useState<string>("backlog");
   const [assignee, setAssignee] = useState("openclaw");
   const [labelsText, setLabelsText] = useState("");
+  const [selectedModel, setSelectedModel] = useState("auto");
+
+  const { models } = useAvailableModels({ taskType: taskType !== "custom" ? taskType : undefined });
 
   const handleSubmit = () => {
     if (!title.trim()) {
@@ -438,6 +444,7 @@ function CreateTaskDialog({
       status,
       assignee: assignee || "openclaw",
       labels: labels.length > 0 ? labels : undefined,
+      model: selectedModel !== "auto" ? selectedModel : undefined,
     });
 
     // Reset
@@ -448,6 +455,7 @@ function CreateTaskDialog({
     setStatus("backlog");
     setAssignee("openclaw");
     setLabelsText("");
+    setSelectedModel("auto");
     onOpenChange(false);
   };
 
@@ -546,6 +554,22 @@ function CreateTaskDialog({
               />
             </div>
           </div>
+          <div>
+            <Label>Model</Label>
+            <Select value={selectedModel} onValueChange={setSelectedModel}>
+              <SelectTrigger>
+                <SelectValue placeholder="Auto (MAB selects best)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">Auto (MAB selects best)</SelectItem>
+                {models.map((m: any) => (
+                  <SelectItem key={m.name} value={m.name}>
+                    {m.name}{m.source === "peer" ? " (peer)" : m.source === "registry" ? " (registry)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -581,6 +605,9 @@ function TaskDetailDialog({
     queryFn: () => ipc.listKanbanActivity({ taskId: task?.id, limit: 50 }),
     enabled: !!task?.id && open,
   });
+
+  const { rateTask, isRating } = useTaskRating();
+  const [userRating, setUserRating] = useState<number | null>(null);
 
   if (!task) return null;
 
@@ -734,6 +761,47 @@ function TaskDetailDialog({
                   </span>
                 </div>
               )}
+            </div>
+          </>
+        )}
+
+        {/* Rating (for completed tasks with a result) */}
+        {(task.status === "completed" || task.status === "failed") && task.model && (
+          <>
+            <Separator />
+            <div>
+              <span className="text-white/40 text-xs block mb-2">Rate Result</span>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant={userRating === 5 ? "default" : "outline"}
+                  className={userRating === 5 ? "bg-green-600 hover:bg-green-700" : ""}
+                  disabled={isRating}
+                  onClick={() => {
+                    setUserRating(5);
+                    rateTask({ taskId: task.id, rating: 5, feedback: "Good result" });
+                    toast.success("Rated positive — MAB updated");
+                  }}
+                >
+                  <ThumbsUp className="w-3.5 h-3.5 mr-1" /> Good
+                </Button>
+                <Button
+                  size="sm"
+                  variant={userRating === 1 ? "default" : "outline"}
+                  className={userRating === 1 ? "bg-red-600 hover:bg-red-700" : ""}
+                  disabled={isRating}
+                  onClick={() => {
+                    setUserRating(1);
+                    rateTask({ taskId: task.id, rating: 1, feedback: "Poor result" });
+                    toast.success("Rated negative — MAB updated");
+                  }}
+                >
+                  <ThumbsDown className="w-3.5 h-3.5 mr-1" /> Poor
+                </Button>
+                {userRating && (
+                  <span className="text-xs text-white/30 ml-2">Feedback recorded</span>
+                )}
+              </div>
             </div>
           </>
         )}

@@ -539,5 +539,88 @@ export function registerOpenClawKanbanHandlers(): void {
     };
   });
 
+  // =========================================================================
+  // MODEL REGISTRY (available models for task creation)
+  // =========================================================================
+
+  ipcMain.handle(
+    "openclaw:kanban:models:list",
+    async (_event: IpcMainInvokeEvent, filters?: { taskType?: string; source?: string }) => {
+      try {
+        const { getAvailableModels } = await import("@/lib/openclaw_registry_bridge");
+        return await getAvailableModels(filters);
+      } catch (err) {
+        logger.error("Failed to list models:", err);
+        throw new Error("Could not retrieve available models");
+      }
+    },
+  );
+
+  // =========================================================================
+  // TASK RATING (human feedback for MAB + flywheel)
+  // =========================================================================
+
+  ipcMain.handle(
+    "openclaw:kanban:tasks:rate",
+    async (
+      _event: IpcMainInvokeEvent,
+      params: { taskId: string; rating: number; feedback?: string },
+    ) => {
+      if (!params.taskId || typeof params.rating !== "number") {
+        throw new Error("taskId and numeric rating are required");
+      }
+      if (params.rating < 1 || params.rating > 5) {
+        throw new Error("rating must be between 1 and 5");
+      }
+
+      const db = getDb();
+
+      // Fetch the task to get model/taskType info
+      const [task] = await db
+        .select()
+        .from(openclawKanbanTasks)
+        .where(eq(openclawKanbanTasks.id, params.taskId))
+        .limit(1);
+
+      if (!task) throw new Error("Task not found");
+
+      // Record MAB outcome via registry bridge
+      try {
+        const { recordTaskOutcome } = await import("@/lib/openclaw_registry_bridge");
+        await recordTaskOutcome({
+          taskType: task.taskType ?? "custom",
+          model: task.model ?? "unknown",
+          success: params.rating >= 3,
+          qualityScore: params.rating / 5,
+          feedback: params.feedback,
+        });
+      } catch (err) {
+        logger.warn("Could not record MAB outcome for rating:", err);
+      }
+
+      // Update flywheel training pair rating if applicable
+      try {
+        const { updateTrainingPairRating } = await import("@/lib/data_flywheel");
+        const flywheelRating = params.rating >= 3 ? "positive" as const : "negative" as const;
+        await updateTrainingPairRating("openclaw", task.model ?? "unknown", flywheelRating);
+      } catch (err) {
+        logger.debug("No flywheel pair to update for task:", params.taskId);
+      }
+
+      // Log activity
+      await db.insert(openclawKanbanActivity).values({
+        id: uuidv4(),
+        taskId: params.taskId,
+        action: "rated",
+        actor: "user",
+        toValue: String(params.rating),
+        details: params.feedback ?? null,
+        createdAt: Math.floor(Date.now() / 1000),
+      });
+
+      return { success: true, rating: params.rating };
+    },
+  );
+
   logger.info("OpenClaw Kanban handlers registered");
 }

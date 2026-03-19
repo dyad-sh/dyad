@@ -93,7 +93,7 @@ export interface ModelFilter {
   /** Filter by task type to match capabilities */
   taskType?: string;
   /** Filter by source */
-  source?: "local" | "peer" | "cloud" | "all";
+  source?: "local" | "peer" | "marketplace" | "all";
   /** Only models with this capability */
   capability?: "chat" | "codeGeneration" | "vision" | "embedding";
   /** Minimum rating (0-100) */
@@ -126,13 +126,13 @@ export async function getAvailableModels(
   // ── Registry models ──
   try {
     const registryResult = await searchModels({
-      source: filter?.source === "all" ? undefined : filter?.source,
+      source: filter?.source === "all" ? undefined : (filter?.source as "local" | "peer" | "marketplace" | undefined),
       family: filter?.family,
       minRating: filter?.minRating,
       limit: 200,
     });
 
-    for (const entry of registryResult.models) {
+    for (const entry of registryResult.entries) {
       const caps = (entry.capabilities as Record<string, boolean>) ?? {};
 
       // Apply capability filter
@@ -395,8 +395,8 @@ export async function getModelCapabilities(
   // Check registry first
   try {
     const result = await searchModels({ query: modelName, limit: 1 });
-    if (result.models.length > 0 && result.models[0].capabilities) {
-      return result.models[0].capabilities as Record<string, boolean>;
+    if (result.entries.length > 0 && result.entries[0].capabilities) {
+      return result.entries[0].capabilities as Record<string, boolean>;
     }
   } catch {
     // fall through
@@ -462,8 +462,8 @@ async function resolveModelEndpoint(modelName: string): Promise<{
   // Check registry by name
   try {
     const result = await searchModels({ query: modelName, limit: 1 });
-    const match = result.models.find(
-      (m) => m.name.toLowerCase() === modelName.toLowerCase(),
+    const match = result.entries.find(
+      (m: any) => m.name.toLowerCase() === modelName.toLowerCase(),
     );
     if (match) {
       return {

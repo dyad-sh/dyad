@@ -18,16 +18,12 @@ interface DyadWritePlanProps {
 }
 
 export function getWritePlanUiState({
-  state,
-  complete,
+  isInProgress,
   hasPlan,
 }: {
-  state?: CustomTagState;
-  complete?: string;
+  isInProgress: boolean;
   hasPlan: boolean;
 }) {
-  const isInProgress = state === "pending" || complete === "false";
-
   return {
     showViewPlanButton: hasPlan,
     showGeneratingBadge: isInProgress && !hasPlan,
@@ -35,20 +31,25 @@ export function getWritePlanUiState({
 }
 
 export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
-  const { title, summary, complete, state } = node.properties;
+  const { title, summary, state } = node.properties;
   const [showSummary, setShowSummary] = useState(false);
   const setPreviewMode = useSetAtom(previewModeAtom);
 
-  // Consider in progress if state is pending OR complete is explicitly "false"
-  const isInProgress = state === "pending" || complete === "false";
+  // Only the parser-derived pending state is reliable for active generation.
+  const isPending = state === "pending";
+  const isInProgress = isPending;
 
-  const { savedPlan, hasPlanInMemory } = usePlan({ enabled: !isInProgress });
+  // Keep loading persisted plans unless the tag is actively streaming.
+  const { savedPlan, hasPlanInMemory } = usePlan({ enabled: !isPending });
 
   const hasPlan = hasPlanInMemory || !!savedPlan;
+  // During an active pending revision, keep showing generating state,
+  // not a stale previous plan.
+  const hasPlanForUi = isPending ? false : hasPlan;
+
   const { showViewPlanButton, showGeneratingBadge } = getWritePlanUiState({
-    state,
-    complete,
-    hasPlan,
+    isInProgress,
+    hasPlan: hasPlanForUi,
   });
 
   return (

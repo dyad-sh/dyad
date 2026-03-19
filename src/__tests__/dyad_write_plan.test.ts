@@ -4,8 +4,7 @@ import { getWritePlanUiState } from "@/components/chat/DyadWritePlan";
 describe("getWritePlanUiState", () => {
   it("shows generating badge when plan is still in progress and no plan data exists", () => {
     const result = getWritePlanUiState({
-      state: "pending",
-      complete: "false",
+      isInProgress: true,
       hasPlan: false,
     });
 
@@ -15,8 +14,7 @@ describe("getWritePlanUiState", () => {
 
   it("shows View Plan when plan data exists even if complete=false", () => {
     const result = getWritePlanUiState({
-      state: "finished",
-      complete: "false",
+      isInProgress: false,
       hasPlan: true,
     });
 
@@ -26,8 +24,7 @@ describe("getWritePlanUiState", () => {
 
   it("shows View Plan when plan is finished and plan data exists", () => {
     const result = getWritePlanUiState({
-      state: "finished",
-      complete: "true",
+      isInProgress: false,
       hasPlan: true,
     });
 
@@ -37,12 +34,21 @@ describe("getWritePlanUiState", () => {
 
   it("shows neither badge nor button when finished without plan data", () => {
     const result = getWritePlanUiState({
-      state: "finished",
-      complete: "true",
+      isInProgress: false,
       hasPlan: false,
     });
 
     expect(result.showViewPlanButton).toBe(false);
     expect(result.showGeneratingBadge).toBe(false);
+  });
+
+  it("keeps generating state while in progress even if previous plan exists", () => {
+    const result = getWritePlanUiState({
+      isInProgress: true,
+      hasPlan: false,
+    });
+
+    expect(result.showViewPlanButton).toBe(false);
+    expect(result.showGeneratingBadge).toBe(true);
   });
 });

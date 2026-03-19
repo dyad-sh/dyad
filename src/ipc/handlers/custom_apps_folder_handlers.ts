@@ -73,39 +73,43 @@ export function registerCustomAppsFolderHandlers() {
       await mkdir(newDyadAppsBaseDir, { recursive: true });
     }
 
-    logger.info("Beginning path updates");
+    // Only convert paths and make git config changes if the user selected
+    // a directory different from the one they're currently using
+    if (newDyadAppsBaseDir !== prevPath) {
+      logger.info("Beginning path updates");
 
-    // We don't want to make current apps inaccessible after changing the directory.
-    // So, convert all current apps to absolute paths.
-    db.transaction((tx) => {
-      const allApps = tx.select().from(apps).all();
-      for (const app of allApps) {
-        if (isAbsolute(app.path)) {
+      // We don't want to make current apps inaccessible after changing the directory.
+      // So, convert all current apps to absolute paths.
+      db.transaction((tx) => {
+        const allApps = tx.select().from(apps).all();
+        for (const app of allApps) {
+          if (isAbsolute(app.path)) {
+            logger.info(
+              `${app.name} already has an absolute path; skipping path update`,
+            );
+            continue;
+          }
+
+          const newPath = join(prevPath, app.path);
           logger.info(
-            `${app.name} already has an absolute path; skipping path update`,
+            `updating ${app.name} from relative path ${app.path} to absolute path ${newPath}`,
           );
-          continue;
+          tx.update(apps)
+            .set({
+              path: newPath,
+            })
+            .where(eq(apps.id, app.id))
+            .run();
         }
+      });
 
-        const newPath = join(prevPath, app.path);
-        logger.info(
-          `updating ${app.name} from relative path ${app.path} to absolute path ${newPath}`,
-        );
-        tx.update(apps)
-          .set({
-            path: newPath,
-          })
-          .where(eq(apps.id, app.id))
-          .run();
+      // Add custom apps folder to git safe.directory (required for Windows).
+      // The trailing /* allows access to all repositories under the named directory.
+      // See: https://git-scm.com/docs/git-config#Documentation/git-config.txt-safedirectory
+      if (readSettings().enableNativeGit) {
+        const directory = updatedSettingValue ?? getDefaultDyadAppsDirectory();
+        await gitAddSafeDirectory(`${directory}/*`);
       }
-    });
-
-    // Add custom apps folder to git safe.directory (required for Windows).
-    // The trailing /* allows access to all repositories under the named directory.
-    // See: https://git-scm.com/docs/git-config#Documentation/git-config.txt-safedirectory
-    if (readSettings().enableNativeGit) {
-      const directory = updatedSettingValue ?? getDefaultDyadAppsDirectory();
-      await gitAddSafeDirectory(`${directory}/*`);
     }
 
     writeSettings({

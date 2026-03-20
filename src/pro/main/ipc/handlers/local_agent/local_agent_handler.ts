@@ -101,7 +101,6 @@ const RETRYABLE_STREAM_ERROR_PATTERNS = [
   "too many requests",
   "rate_limit",
   "overloaded",
-  "timeout",
   "econnrefused",
   "enotfound",
   "econnreset",

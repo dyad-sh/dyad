@@ -1201,6 +1201,9 @@ const validInvokeChannels = [
   "task-executor:stop",
   // System Services Health
   "system:services-health",
+  "system:celestia:start",
+  "system:celestia:stop",
+  "system:celestia:status",
   // 🦞 OpenClaw CNS (Central Nervous System) - Ollama & N8n Integration
   // Unified AI routing with local (Ollama) and cloud (Anthropic) backends
   "cns:initialize",

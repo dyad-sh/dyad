@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { IpcClient } from "@/ipc/ipc_client";
+import { toast } from "sonner";
 import {
   Activity,
   Circle,
@@ -97,6 +98,33 @@ export function SystemServicesPage() {
       queryClient.invalidateQueries({ queryKey: ["task-executor-status"] });
       queryClient.invalidateQueries({ queryKey: ["system-services-health"] });
     },
+  });
+
+  // Celestia node management
+  const startCelestiaMutation = useMutation({
+    mutationFn: () => ipc.startCelestiaNode(),
+    onSuccess: (result) => {
+      if (result.success) {
+        toast.success(result.message);
+      } else {
+        toast.error(result.message);
+      }
+      queryClient.invalidateQueries({ queryKey: ["system-services-health"] });
+    },
+    onError: (err: any) => toast.error(`Failed: ${err.message}`),
+  });
+
+  const stopCelestiaMutation = useMutation({
+    mutationFn: () => ipc.stopCelestiaNode(),
+    onSuccess: (result) => {
+      if (result.success) {
+        toast.success(result.message);
+      } else {
+        toast.error(result.message);
+      }
+      queryClient.invalidateQueries({ queryKey: ["system-services-health"] });
+    },
+    onError: (err: any) => toast.error(`Failed: ${err.message}`),
   });
 
   const handleRefresh = useCallback(() => {
@@ -236,7 +264,13 @@ export function SystemServicesPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {services.map((service) => (
-                <ServiceCard key={service.name} service={service} />
+                <ServiceCard
+                  key={service.name}
+                  service={service}
+                  onStartCelestia={() => startCelestiaMutation.mutate()}
+                  onStopCelestia={() => stopCelestiaMutation.mutate()}
+                  celestiaLoading={startCelestiaMutation.isPending || stopCelestiaMutation.isPending}
+                />
               ))}
             </div>
           )}
@@ -274,8 +308,19 @@ export function SystemServicesPage() {
   );
 }
 
-function ServiceCard({ service }: { service: ServiceHealth }) {
+function ServiceCard({
+  service,
+  onStartCelestia,
+  onStopCelestia,
+  celestiaLoading,
+}: {
+  service: ServiceHealth;
+  onStartCelestia: () => void;
+  onStopCelestia: () => void;
+  celestiaLoading: boolean;
+}) {
   const dashboardUrl = SERVICE_DASHBOARD_URLS[service.name];
+  const isCelestia = service.name === "Celestia";
 
   return (
     <div className={`border rounded-lg p-4 ${statusBg[service.status]}`}>
@@ -301,16 +346,41 @@ function ServiceCard({ service }: { service: ServiceHealth }) {
       {service.details && (
         <p className="text-xs text-muted-foreground mt-1">{service.details}</p>
       )}
-      {dashboardUrl && service.status === "healthy" && (
-        <button
-          type="button"
-          onClick={() => IpcClient.getInstance().openExternalUrl(dashboardUrl)}
-          className="mt-3 flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-400 transition-colors"
-        >
-          <ExternalLink className="w-3 h-3" />
-          Open Dashboard
-        </button>
-      )}
+      <div className="flex items-center gap-2 mt-3">
+        {isCelestia && (
+          service.status === "healthy" ? (
+            <button
+              type="button"
+              onClick={onStopCelestia}
+              disabled={celestiaLoading}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-red-500/10 text-red-500 border border-red-500/30 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+            >
+              {celestiaLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Square className="w-3 h-3" />}
+              Stop
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onStartCelestia}
+              disabled={celestiaLoading}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-green-500/10 text-green-500 border border-green-500/30 hover:bg-green-500/20 transition-colors disabled:opacity-50"
+            >
+              {celestiaLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+              Start Node
+            </button>
+          )
+        )}
+        {dashboardUrl && service.status === "healthy" && (
+          <button
+            type="button"
+            onClick={() => IpcClient.getInstance().openExternalUrl(dashboardUrl)}
+            className="flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-400 transition-colors"
+          >
+            <ExternalLink className="w-3 h-3" />
+            Open Dashboard
+          </button>
+        )}
+      </div>
     </div>
   );
 }

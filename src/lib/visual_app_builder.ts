@@ -982,7 +982,7 @@ ${project.pages.map((p) => `import ${this.pageComponentName(p)} from './pages/${
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
 ${project.pages.map((p) => `        <Route path="${p.path}" element={<${this.pageComponentName(p)} />} />`).join("\n")}
       </Routes>

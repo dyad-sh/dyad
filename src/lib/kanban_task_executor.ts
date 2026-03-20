@@ -26,6 +26,8 @@ import {
   type ModelSelection,
 } from "@/lib/openclaw_registry_bridge";
 import { captureTrainingPair } from "@/lib/data_flywheel";
+import { exec } from "child_process";
+import { promisify } from "util";
 
 const logger = log.scope("task_executor");
 
@@ -688,16 +690,36 @@ export async function getSystemServicesHealth(): Promise<
     });
   }
 
-  // 3. Celestia
+  // 3. Celestia – use process-based check first, then try RPC for details
   try {
-    const available = await celestiaBlobService.isAvailable();
-    if (available) {
-      const syncState = await celestiaBlobService.getSyncState();
+    const processStatus = await getCelestiaNodeStatus();
+    if (processStatus.running) {
+      // Process is running – try RPC for sync details (may fail without auth token)
+      let details = "Running";
+      try {
+        const available = await celestiaBlobService.isAvailable();
+        if (available) {
+          const syncState = await celestiaBlobService.getSyncState();
+          details = `Synced to height ${syncState?.height ?? "unknown"}`;
+        } else {
+          details = "Running (RPC not yet ready)";
+        }
+      } catch {
+        details = "Running (RPC auth token not configured)";
+      }
       services.push({
         name: "Celestia",
         status: "healthy",
         port: 26658,
-        details: `Synced to height ${syncState?.height ?? "unknown"}`,
+        details,
+        lastCheck: now,
+      });
+    } else if (!processStatus.wslAvailable) {
+      services.push({
+        name: "Celestia",
+        status: "offline",
+        port: 26658,
+        details: "WSL not available",
         lastCheck: now,
       });
     } else {
@@ -705,7 +727,7 @@ export async function getSystemServicesHealth(): Promise<
         name: "Celestia",
         status: "offline",
         port: 26658,
-        details: "Light node not reachable",
+        details: "Node stopped",
         lastCheck: now,
       });
     }
@@ -714,7 +736,7 @@ export async function getSystemServicesHealth(): Promise<
       name: "Celestia",
       status: "offline",
       port: 26658,
-      details: "Not running",
+      details: "Status check failed",
       lastCheck: now,
     });
   }
@@ -724,11 +746,12 @@ export async function getSystemServicesHealth(): Promise<
     const res = await fetch("http://127.0.0.1:18789/", {
       signal: AbortSignal.timeout(3000),
     });
+    // Any HTTP response means the gateway is reachable
     services.push({
       name: "OpenClaw Gateway",
-      status: res.ok || res.status === 426 ? "healthy" : "degraded",
+      status: "healthy",
       port: 18789,
-      details: "Gateway running",
+      details: `Gateway running (HTTP ${res.status})`,
       lastCheck: now,
     });
   } catch {
@@ -762,8 +785,8 @@ export async function getSystemServicesHealth(): Promise<
 
   // 7. LibreOffice (headless document conversion)
   try {
-    const { LibreOfficeManager } = require("@/ipc/handlers/libreoffice_handlers");
-    const loStatus = await LibreOfficeManager.getInstance().getStatus();
+    const loHandlers = await import("@/ipc/handlers/libreoffice_handlers");
+    const loStatus = await loHandlers.LibreOfficeManager.getInstance().getStatus();
     services.push({
       name: "LibreOffice",
       status: loStatus.installed ? "healthy" : "offline",
@@ -772,7 +795,8 @@ export async function getSystemServicesHealth(): Promise<
         : "Not installed. Install for PDF/DOCX/XLSX export.",
       lastCheck: now,
     });
-  } catch {
+  } catch (err) {
+    logger.warn("LibreOffice status check failed:", err);
     services.push({
       name: "LibreOffice",
       status: "offline",
@@ -788,4 +812,149 @@ export function registerSystemServicesHandlers(): void {
   ipcMain.handle("system:services-health", async () => {
     return getSystemServicesHealth();
   });
+
+  ipcMain.handle("system:celestia:start", async () => {
+    return startCelestiaNode();
+  });
+
+  ipcMain.handle("system:celestia:stop", async () => {
+    return stopCelestiaNode();
+  });
+
+  ipcMain.handle("system:celestia:status", async () => {
+    return getCelestiaNodeStatus();
+  });
+}
+
+// ─── Celestia Node Management ───────────────────────────────────────────────
+
+const execAsync = promisify(exec);
+
+async function isWslAvailable(): Promise<boolean> {
+  try {
+    await execAsync("wsl --status", { timeout: 5000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function isCelestiaRunning(): Promise<boolean> {
+  try {
+    const { stdout } = await execAsync('wsl pgrep -f "celestia light"', {
+      timeout: 5000,
+    });
+    return stdout.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function getCelestiaNodeStatus(): Promise<{
+  running: boolean;
+  wslAvailable: boolean;
+  details: string;
+}> {
+  const wslAvailable = await isWslAvailable();
+  if (!wslAvailable) {
+    return { running: false, wslAvailable: false, details: "WSL not available" };
+  }
+  const running = await isCelestiaRunning();
+  return {
+    running,
+    wslAvailable: true,
+    details: running ? "Celestia light node running" : "Node stopped",
+  };
+}
+
+async function startCelestiaNode(): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  const wslAvailable = await isWslAvailable();
+  if (!wslAvailable) {
+    return { success: false, message: "WSL is not installed or not available." };
+  }
+
+  // Check if already running
+  if (await isCelestiaRunning()) {
+    return { success: true, message: "Celestia node is already running." };
+  }
+
+  // Check celestia binary exists
+  try {
+    await execAsync("wsl which celestia", { timeout: 5000 });
+  } catch {
+    return {
+      success: false,
+      message:
+        "Celestia binary not found in WSL. Install it with: wsl bash -c 'go install github.com/celestiaorg/celestia-node/cmd/celestia@latest'",
+    };
+  }
+
+  try {
+    // Remove stale lock file
+    await execAsync('wsl bash -c "rm -f ~/.celestia-light/.lock"', {
+      timeout: 5000,
+    }).catch(() => {});
+
+    // Kill any existing tmux session
+    await execAsync(
+      'wsl bash -c "tmux kill-session -t celestia 2>/dev/null"',
+      { timeout: 5000 }
+    ).catch(() => {});
+
+    // Start in tmux session
+    await execAsync(
+      'wsl bash -c "tmux new-session -d -s celestia \'celestia light start --core.ip consensus-full.celestia-bootstrap.net --p2p.network celestia --rpc.addr 0.0.0.0 --rpc.port 26658 2>&1 | tee ~/celestia-node.log\'"',
+      { timeout: 10000 }
+    );
+
+    // Wait for process to appear (up to 10 seconds)
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      if (await isCelestiaRunning()) {
+        return {
+          success: true,
+          message: "Celestia light node started successfully.",
+        };
+      }
+    }
+
+    return {
+      success: false,
+      message:
+        "Node process did not start within 10 seconds. Check WSL logs: wsl tail -f ~/celestia-node.log",
+    };
+  } catch (err: any) {
+    logger.error("Failed to start Celestia node:", err);
+    return {
+      success: false,
+      message: `Failed to start: ${err.message}`,
+    };
+  }
+}
+
+async function stopCelestiaNode(): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  try {
+    if (!(await isCelestiaRunning())) {
+      return { success: true, message: "Celestia node is not running." };
+    }
+
+    await execAsync('wsl pkill -f "celestia light"', { timeout: 5000 });
+
+    // Kill tmux session
+    await execAsync(
+      'wsl bash -c "tmux kill-session -t celestia 2>/dev/null"',
+      { timeout: 5000 }
+    ).catch(() => {});
+
+    return { success: true, message: "Celestia node stopped." };
+  } catch (err: any) {
+    logger.error("Failed to stop Celestia node:", err);
+    return { success: false, message: `Failed to stop: ${err.message}` };
+  }
 }

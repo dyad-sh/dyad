@@ -23,6 +23,12 @@ import {
   MoreHorizontal,
   FileDown,
   Wand2,
+  BookOpen,
+  BarChart3,
+  Users,
+  Receipt,
+  TrendingUp,
+  Layout,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -71,6 +77,7 @@ import type {
   CreateDocumentRequest,
   ExportFormat,
   AIGenerationOptions,
+  DocumentTemplate,
 } from "@/types/libreoffice_types";
 
 const DOCUMENT_TYPE_ICONS: Record<DocumentType, React.ReactNode> = {
@@ -96,6 +103,79 @@ const EXPORT_FORMATS: Record<DocumentType, ExportFormat[]> = {
   spreadsheet: ["pdf", "xlsx", "ods", "csv", "json", "xml"],
   presentation: ["pdf", "pptx", "odp", "xml"],
 };
+
+// JoyCreate quick-start templates
+const JOYCREATE_TEMPLATES: {
+  id: string;
+  name: string;
+  type: DocumentType;
+  description: string;
+  icon: React.ReactNode;
+  gradient: string;
+  prompt: string;
+  tone: "formal" | "casual" | "professional" | "creative";
+}[] = [
+  {
+    id: "business-report",
+    name: "Business Report",
+    type: "document",
+    description: "Professional quarterly or annual business report with executive summary, KPIs, and strategic analysis",
+    icon: <BookOpen className="h-5 w-5" />,
+    gradient: "from-blue-600 to-indigo-600",
+    prompt: "Create a professional business report with an executive summary, key performance indicators section, financial overview, market analysis, and strategic recommendations. Include realistic sample data and charts.",
+    tone: "professional",
+  },
+  {
+    id: "sales-dashboard",
+    name: "Sales Dashboard",
+    type: "spreadsheet",
+    description: "Revenue tracking spreadsheet with product lines, regions, monthly targets vs actuals",
+    icon: <BarChart3 className="h-5 w-5" />,
+    gradient: "from-emerald-600 to-green-600",
+    prompt: "Create a sales dashboard spreadsheet with columns for Month, Product Line, Region, Target Revenue, Actual Revenue, Difference, and % Achieved. Include 12 months of realistic sample data across 3 product lines and 4 regions. Add a summary row with totals.",
+    tone: "professional",
+  },
+  {
+    id: "team-pitch",
+    name: "Team Pitch Deck",
+    type: "presentation",
+    description: "Startup-style pitch presentation with problem, solution, market, traction, and team slides",
+    icon: <Users className="h-5 w-5" />,
+    gradient: "from-violet-600 to-purple-600",
+    prompt: "Create a pitch deck presentation with slides for: Title & tagline, Problem Statement, Our Solution, Market Opportunity (with TAM/SAM/SOM), Product Demo highlights, Traction & Metrics, Business Model, Team, and Call to Action. Make it compelling and concise.",
+    tone: "creative",
+  },
+  {
+    id: "project-proposal",
+    name: "Project Proposal",
+    type: "document",
+    description: "Structured project proposal with objectives, timeline, budget breakdown, and risk assessment",
+    icon: <Layout className="h-5 w-5" />,
+    gradient: "from-cyan-600 to-blue-600",
+    prompt: "Create a detailed project proposal document with sections for Project Overview, Objectives & Goals, Scope of Work, Timeline & Milestones, Resource Requirements, Budget Breakdown, Risk Assessment & Mitigation, and Success Criteria. Include realistic sample content.",
+    tone: "formal",
+  },
+  {
+    id: "expense-tracker",
+    name: "Expense Tracker",
+    type: "spreadsheet",
+    description: "Monthly expense tracking with categories, payment methods, and budget comparison",
+    icon: <Receipt className="h-5 w-5" />,
+    gradient: "from-amber-600 to-orange-600",
+    prompt: "Create an expense tracking spreadsheet with columns for Date, Category (Food, Transport, Utilities, Entertainment, Office, Other), Description, Amount, Payment Method, and Budget Limit. Include 20 sample expense entries across a month. Add category subtotals and a total row.",
+    tone: "professional",
+  },
+  {
+    id: "growth-strategy",
+    name: "Growth Strategy",
+    type: "presentation",
+    description: "Strategic growth plan with market analysis, competitive landscape, and roadmap slides",
+    icon: <TrendingUp className="h-5 w-5" />,
+    gradient: "from-rose-600 to-pink-600",
+    prompt: "Create a growth strategy presentation with slides for: Current State Assessment, Market Analysis & Trends, Competitive Landscape, Growth Pillars (Acquisition, Retention, Expansion), Q1-Q4 Roadmap, Resource Investment Plan, KPI Targets, and Next Steps. Include compelling data points.",
+    tone: "professional",
+  },
+];
 
 export default function DocumentsPage() {
   const queryClient = useQueryClient();
@@ -255,6 +335,17 @@ export default function DocumentsPage() {
     setAiDialogOpen(false);
     setAiPrompt("");
     setAiDocName("");
+  };
+
+  const handleTemplateCreate = (template: (typeof JOYCREATE_TEMPLATES)[number]) => {
+    createDocMutation.mutate({
+      name: template.name,
+      type: template.type,
+      aiGenerate: {
+        prompt: template.prompt,
+        tone: template.tone,
+      },
+    });
   };
 
   // Filter documents based on search
@@ -711,21 +802,67 @@ export default function DocumentsPage() {
             </div>
           </div>
         ) : filteredDocs.length === 0 ? (
-          <div className="text-center py-16">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500/10 via-cyan-500/10 to-teal-500/10 border border-blue-500/20 mb-4">
-              <FolderOpen className="h-8 w-8 text-blue-500/60" />
+          <div className="space-y-8">
+            {/* Quick Start Templates */}
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <Sparkles className="h-5 w-5 text-violet-500" />
+                <h2 className="text-lg font-semibold">Quick Start with JoyCreate</h2>
+                <span className="text-xs text-muted-foreground">— pick a template, AI does the rest</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {JOYCREATE_TEMPLATES.map((template) => (
+                  <button
+                    key={template.id}
+                    disabled={createDocMutation.isPending}
+                    onClick={() => handleTemplateCreate(template)}
+                    className="group text-left p-4 rounded-xl border border-border/50 bg-background/50 backdrop-blur-sm
+                      hover:border-violet-500/30 hover:shadow-lg hover:shadow-violet-500/5 hover:scale-[1.02]
+                      transition-all duration-300 disabled:opacity-50 disabled:cursor-wait"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`p-2.5 rounded-lg bg-gradient-to-br ${template.gradient} text-white shrink-0`}>
+                        {template.icon}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-semibold text-sm truncate">{template.name}</h3>
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-background/80 border border-border/50 shrink-0">
+                            {template.type}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground line-clamp-2">{template.description}</p>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
-            <h3 className="text-lg font-semibold mb-2">No documents yet</h3>
-            <p className="text-muted-foreground mb-4">
-              Create your first document to get started
-            </p>
-            <Button
-              onClick={() => setCreateDialogOpen(true)}
-              className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 border-0"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Create Document
-            </Button>
+
+            {/* Or create from scratch */}
+            <div className="text-center py-8 border-t border-border/30">
+              <p className="text-sm text-muted-foreground mb-3">
+                Or start from scratch
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => setCreateDialogOpen(true)}
+                  className="border-border/50"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Blank Document
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setAiDialogOpen(true)}
+                  className="border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-violet-600"
+                >
+                  <Wand2 className="h-4 w-4 mr-2" />
+                  Custom AI Prompt
+                </Button>
+              </div>
+            </div>
           </div>
         ) : (
           <div

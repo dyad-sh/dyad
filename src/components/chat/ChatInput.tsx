@@ -72,6 +72,7 @@ import {
   visualEditingSelectedComponentAtom,
   currentComponentCoordinatesAtom,
   pendingVisualChangesAtom,
+  isRestoringQueuedSelectionAtom,
 } from "@/atoms/previewAtoms";
 import { SelectedComponentsDisplay } from "./SelectedComponentDisplay";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
@@ -147,6 +148,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     currentComponentCoordinatesAtom,
   );
   const setPendingVisualChanges = useSetAtom(pendingVisualChangesAtom);
+  const setIsRestoringQueuedSelection = useSetAtom(
+    isRestoringQueuedSelectionAtom,
+  );
   const [pendingAgentConsents, setPendingAgentConsents] = useAtom(
     pendingAgentConsentsAtom,
   );
@@ -277,20 +281,95 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     });
   }, [chatId, setMessagesById]);
 
+  // Shared cleanup for exiting queued message editing state
+  const resetEditingState = useCallback(() => {
+    setEditingQueuedMessageId(null);
+    setInputValue("");
+    clearAttachments();
+    setSelectedComponents([]);
+    setVisualEditingSelectedComponent(null);
+    if (previewIframeRef?.contentWindow) {
+      previewIframeRef.contentWindow.postMessage(
+        { type: "clear-dyad-component-overlays" },
+        "*",
+      );
+    }
+  }, [
+    setInputValue,
+    clearAttachments,
+    setSelectedComponents,
+    setVisualEditingSelectedComponent,
+    previewIframeRef,
+  ]);
+
+  // Clear editing state if the edited queued message is auto-dequeued
+  useEffect(() => {
+    if (!editingQueuedMessageId) return;
+    const stillInQueue = queuedMessages.some(
+      (m) => m.id === editingQueuedMessageId,
+    );
+    if (!stillInQueue) {
+      resetEditingState();
+    }
+  }, [editingQueuedMessageId, queuedMessages, resetEditingState]);
+
+  // Track editing state in a ref for unmount cleanup
+  const editingQueuedMessageIdRef = useRef(editingQueuedMessageId);
+  editingQueuedMessageIdRef.current = editingQueuedMessageId;
+
+  // Clear editing extras on unmount to avoid leaking state across navigations
+  useEffect(() => {
+    return () => {
+      if (editingQueuedMessageIdRef.current) {
+        clearAttachments();
+        setSelectedComponents([]);
+        setVisualEditingSelectedComponent(null);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Queue management handlers
   const handleEditQueuedMessage = useCallback(
     (id: string) => {
       const msg = queuedMessages.find((m) => m.id === id);
       if (!msg) return;
+      // Auto-save current edits if switching between queued messages
+      if (editingQueuedMessageId && editingQueuedMessageId !== id) {
+        const componentsToSave =
+          selectedComponents && selectedComponents.length > 0
+            ? selectedComponents
+            : [];
+        updateQueuedMessage(editingQueuedMessageId, {
+          prompt: inputValue,
+          attachments,
+          selectedComponents: componentsToSave,
+        });
+      }
       // Load the message content into the input
       setInputValue(msg.prompt);
       // Restore attachments and selected components from the queued message
       replaceAttachments(msg.attachments ?? []);
+      setIsRestoringQueuedSelection(true);
       setSelectedComponents(msg.selectedComponents ?? []);
+      // Reset visual editing target to avoid stale toolbar state
+      setVisualEditingSelectedComponent(null);
       // Set editing mode
       setEditingQueuedMessageId(id);
     },
-    [queuedMessages, setInputValue, replaceAttachments, setSelectedComponents],
+    [
+      queuedMessages,
+      editingQueuedMessageId,
+      inputValue,
+      attachments,
+      selectedComponents,
+      setInputValue,
+      replaceAttachments,
+      setSelectedComponents,
+      setVisualEditingSelectedComponent,
+      setIsRestoringQueuedSelection,
+      updateQueuedMessage,
+    ],
   );
 
   const handleMoveUp = useCallback(
@@ -317,20 +396,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     (id: string) => {
       // Clear editing state if deleting the message being edited
       if (editingQueuedMessageId === id) {
-        setEditingQueuedMessageId(null);
-        setInputValue("");
-        clearAttachments();
-        setSelectedComponents([]);
+        resetEditingState();
       }
       removeQueuedMessage(id);
     },
-    [
-      editingQueuedMessageId,
-      removeQueuedMessage,
-      setInputValue,
-      clearAttachments,
-      setSelectedComponents,
-    ],
+    [editingQueuedMessageId, removeQueuedMessage, resetEditingState],
   );
 
   const handleSubmit = async () => {
@@ -385,17 +455,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         attachments,
         selectedComponents: componentsToSend,
       });
-      setInputValue("");
-      clearAttachments();
-      setSelectedComponents([]);
-      setVisualEditingSelectedComponent(null);
-      if (previewIframeRef?.contentWindow) {
-        previewIframeRef.contentWindow.postMessage(
-          { type: "clear-dyad-component-overlays" },
-          "*",
-        );
-      }
-      setEditingQueuedMessageId(null);
+      resetEditingState();
       return;
     }
 
@@ -456,9 +516,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     // could potentially run if the backend responds before queue clearing.
     clearAllQueuedMessages();
     // Reset editing state so the "Editing queued message" banner is dismissed
+    // and restored attachments/components are cleared
     if (editingQueuedMessageId) {
-      setEditingQueuedMessageId(null);
-      setInputValue("");
+      resetEditingState();
     }
     if (chatId) {
       ipc.chat.cancelStream(chatId);
@@ -653,19 +713,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               </span>
               <button
                 type="button"
-                onClick={() => {
-                  setEditingQueuedMessageId(null);
-                  setInputValue("");
-                  clearAttachments();
-                  setSelectedComponents([]);
-                  setVisualEditingSelectedComponent(null);
-                  if (previewIframeRef?.contentWindow) {
-                    previewIframeRef.contentWindow.postMessage(
-                      { type: "clear-dyad-component-overlays" },
-                      "*",
-                    );
-                  }
-                }}
+                onClick={() => resetEditingState()}
                 className="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
               >
                 Cancel

@@ -48,6 +48,7 @@ import {
   annotatorModeAtom,
   screenshotDataUrlAtom,
   pendingVisualChangesAtom,
+  isRestoringQueuedSelectionAtom,
 } from "@/atoms/previewAtoms";
 import { isChatPanelHiddenAtom } from "@/atoms/viewAtoms";
 import { ComponentSelection } from "@/ipc/types";
@@ -214,6 +215,9 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
   const [selectedComponentsPreview, setSelectedComponentsPreview] = useAtom(
     selectedComponentsPreviewAtom,
   );
+  const [isRestoringQueuedSelection, setIsRestoringQueuedSelection] = useAtom(
+    isRestoringQueuedSelectionAtom,
+  );
   const [visualEditingSelectedComponent, setVisualEditingSelectedComponent] =
     useAtom(visualEditingSelectedComponentAtom);
   const setCurrentComponentCoordinates = useSetAtom(
@@ -378,12 +382,16 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     }
   }, [isProMode, isComponentSelectorInitialized]);
 
-  // Restore component overlays in iframe when selectedComponents changes
-  // (e.g., when editing a queued message restores saved selections)
+  // Restore component overlays in iframe only during queued-message edit restoration.
+  // Normal interactive selections are already handled by the iframe's own click handler,
+  // so we guard this effect to avoid redundant clear-and-restore round-trips.
   useEffect(() => {
+    if (!isRestoringQueuedSelection) return;
     if (!iframeRef.current?.contentWindow || !isComponentSelectorInitialized) {
       return;
     }
+    // Clear the flag before sending so it doesn't re-trigger
+    setIsRestoringQueuedSelection(false);
     if (selectedComponentsPreview.length === 0) {
       iframeRef.current.contentWindow.postMessage(
         { type: "clear-dyad-component-overlays" },
@@ -398,7 +406,12 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
       },
       "*",
     );
-  }, [selectedComponentsPreview, isComponentSelectorInitialized]);
+  }, [
+    isRestoringQueuedSelection,
+    selectedComponentsPreview,
+    isComponentSelectorInitialized,
+    setIsRestoringQueuedSelection,
+  ]);
 
   // Add message listener for iframe errors and navigation events
   useEffect(() => {

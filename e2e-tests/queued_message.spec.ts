@@ -286,5 +286,8 @@ testSkipIfWindows(
 
     // Input should be empty after cancel
     await expect(chatInput).toBeEmpty();
+
+    // Wait for the in-flight chat to finish before ending the test
+    await po.chatActions.waitForChatCompletion();
   },
 );

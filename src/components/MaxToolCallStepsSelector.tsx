@@ -26,20 +26,20 @@ const options: OptionInfo[] = [
       "Limits tool calls to 25. Good for simple tasks that don't need many steps.",
   },
   {
+    value: "50",
+    label: "Medium (50)",
+    description: "Moderate limit for straightforward tasks.",
+  },
+  {
     value: defaultValue,
     label: `Default (${DEFAULT_MAX_TOOL_CALL_STEPS})`,
     description: "Balanced limit for most tasks.",
   },
   {
-    value: "100",
-    label: "High (100)",
-    description: "Extended limit for complex multi-step tasks.",
-  },
-  {
     value: "200",
-    label: "Very High (200)",
+    label: "High (200)",
     description:
-      "Maximum tool calls for very complex tasks (may increase cost and time).",
+      "Extended limit for complex multi-step tasks (may increase cost and time).",
   },
 ];
 

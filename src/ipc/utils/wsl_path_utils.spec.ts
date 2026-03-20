@@ -114,9 +114,10 @@ describe("wsl_path_utils", () => {
       expect(fs.readFileSync(permDest, "utf-8")).toBe("test");
     });
 
-    it("should use streaming copy for actual WSL paths", async () => {
-      // This test verifies streaming is used for paths matching WSL pattern
-      // by checking that isWslPath correctly identifies them
+    it("should correctly identify WSL paths for routing to streaming copy", () => {
+      // copyFileHandlingWsl routes to streaming based on isWslPath detection.
+      // This test verifies the detection logic works correctly.
+      // Actual streaming behavior is validated by permission preservation tests above.
       expect(isWslPath("\\\\wsl.localhost\\Ubuntu\\home\\user\\file.txt")).toBe(
         true,
       );

@@ -190,20 +190,38 @@ export class OpenClawGatewayService extends EventEmitter {
       
       const { host, port } = this.config.gateway;
       
-      // Create HTTP server for health checks
+      // Create HTTP server for dashboard + API
       this.httpServer = http.createServer((req, res) => {
         if (req.url === "/health") {
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify(this.getGatewayState()));
+        } else if (req.url === "/api/status") {
+          res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+          res.end(JSON.stringify({
+            status: this.state.status,
+            connectedAt: this.state.connectedAt,
+            lastHeartbeat: this.state.lastHeartbeat,
+            connectedClients: this.state.connectedClients,
+            version: this.state.version,
+            providers: this.getProviderStatus(),
+            config: {
+              routing: this.config.routing,
+              security: { allowRemoteConnections: this.config.security.allowRemoteConnections },
+            },
+          }));
         } else if (req.url === "/status") {
+          // Keep legacy endpoint
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({
             status: this.state.status,
             providers: this.getProviderStatus(),
           }));
+        } else if (req.url === "/" || req.url === "/dashboard") {
+          res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+          res.end(this.getDashboardHtml());
         } else {
-          res.writeHead(404);
-          res.end();
+          res.writeHead(404, { "Content-Type": "text/plain" });
+          res.end("Not Found");
         }
       });
       
@@ -845,10 +863,10 @@ Think through this step by step and provide a structured response with your reas
   private async selectProvider(requiredCapabilities?: OpenClawCapability[]): Promise<OpenClawAIProvider | null> {
     const { mode, preferLocal, useCloudForComplex } = this.config.routing;
     
-    // Get enabled providers sorted by priority
-    const providers = Object.values(this.config.aiProviders)
-      .filter((p) => p.enabled)
-      .sort((a, b) => a.priority - b.priority);
+    // Get enabled providers sorted by priority, keeping their dictionary keys
+    const providers = Object.entries(this.config.aiProviders)
+      .filter(([, p]) => p.enabled)
+      .sort(([, a], [, b]) => a.priority - b.priority);
     
     if (providers.length === 0) {
       return null;
@@ -857,7 +875,7 @@ Think through this step by step and provide a structured response with your reas
     // Filter by required capabilities
     let candidates = providers;
     if (requiredCapabilities?.length) {
-      candidates = providers.filter((p) =>
+      candidates = providers.filter(([, p]) =>
         requiredCapabilities.every((cap) => p.capabilities.includes(cap))
       );
     }
@@ -876,33 +894,33 @@ Think through this step by step and provide a structured response with your reas
       
       if (needsCloud && useCloudForComplex) {
         // Prefer cloud providers
-        const cloud = candidates.find((p) => !p.capabilities.includes("local-only"));
-        if (cloud) return cloud;
+        const cloud = candidates.find(([, p]) => !p.capabilities.includes("local-only"));
+        if (cloud) return cloud[1];
       }
       
       if (preferLocal) {
         // Prefer local providers
-        const local = candidates.find((p) =>
+        const local = candidates.find(([, p]) =>
           p.type === "ollama" || p.type === "lmstudio"
         );
-        if (local && await this.isProviderHealthy(local)) {
-          return local;
+        if (local && await this.isProviderHealthy(local[0], local[1])) {
+          return local[1];
         }
       }
     }
     
     // Return first healthy candidate
-    for (const provider of candidates) {
-      if (await this.isProviderHealthy(provider)) {
+    for (const [key, provider] of candidates) {
+      if (await this.isProviderHealthy(key, provider)) {
         return provider;
       }
     }
     
-    return candidates[0]; // Last resort
+    return candidates[0]?.[1] ?? null; // Last resort
   }
   
-  private async isProviderHealthy(provider: OpenClawAIProvider): Promise<boolean> {
-    const cached = this.providerHealthCache.get(provider.name);
+  private async isProviderHealthy(key: string, provider: OpenClawAIProvider): Promise<boolean> {
+    const cached = this.providerHealthCache.get(key);
     if (cached && Date.now() - cached.lastCheck < 30000) {
       return cached.healthy;
     }
@@ -912,17 +930,20 @@ Think through this step by step and provide a structured response with your reas
       
       switch (provider.type) {
         case "ollama": {
-          const response = await fetch(`${provider.baseURL || "http://localhost:11434"}/api/tags`, {
+          const url = `${provider.baseURL || "http://localhost:11434"}/api/tags`;
+          logger.debug(`Checking Ollama health at ${url}`);
+          const response = await fetch(url, {
             method: "GET",
-            signal: AbortSignal.timeout(2000),
+            signal: AbortSignal.timeout(5000),
           });
           healthy = response.ok;
+          logger.debug(`Ollama health check: ${response.status} → ${healthy}`);
           break;
         }
         case "lmstudio": {
           const response = await fetch(`${provider.baseURL || "http://localhost:1234"}/v1/models`, {
             method: "GET",
-            signal: AbortSignal.timeout(2000),
+            signal: AbortSignal.timeout(5000),
           });
           healthy = response.ok;
           break;
@@ -935,10 +956,11 @@ Think through this step by step and provide a structured response with your reas
           healthy = true;
       }
       
-      this.providerHealthCache.set(provider.name, { healthy, lastCheck: Date.now() });
+      this.providerHealthCache.set(key, { healthy, lastCheck: Date.now() });
       return healthy;
-    } catch {
-      this.providerHealthCache.set(provider.name, { healthy: false, lastCheck: Date.now() });
+    } catch (err: any) {
+      logger.warn(`Provider health check failed for ${key}: ${err.message}`);
+      this.providerHealthCache.set(key, { healthy: false, lastCheck: Date.now() });
       return false;
     }
   }
@@ -948,7 +970,7 @@ Think through this step by step and provide a structured response with your reas
     
     for (const [name, provider] of Object.entries(this.config.aiProviders)) {
       if (provider.enabled) {
-        health[name] = await this.isProviderHealthy(provider);
+        health[name] = await this.isProviderHealthy(name, provider);
       }
     }
     
@@ -962,6 +984,142 @@ Think through this step by step and provide a structured response with your reas
       healthy: this.providerHealthCache.get(name)?.healthy ?? false,
       type: p.type,
     }));
+  }
+
+  private getDashboardHtml(): string {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>OpenClaw Dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a0a0f;color:#e2e8f0;min-height:100vh}
+.header{background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);border-bottom:1px solid #2d3748;padding:20px 32px;display:flex;align-items:center;gap:16px}
+.logo{width:40px;height:40px;background:linear-gradient(135deg,#7c3aed,#2563eb);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px}
+.header h1{font-size:22px;font-weight:700;background:linear-gradient(135deg,#a78bfa,#60a5fa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header .version{font-size:12px;color:#64748b;margin-left:auto}
+.container{max-width:1200px;margin:0 auto;padding:24px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px;margin-bottom:24px}
+.card{background:#111827;border:1px solid #1f2937;border-radius:12px;padding:20px;transition:border-color .2s}
+.card:hover{border-color:#374151}
+.card h2{font-size:14px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.card h2 .icon{font-size:16px}
+.status-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #1f2937}
+.status-row:last-child{border-bottom:none}
+.status-label{font-size:14px;color:#cbd5e1}
+.status-value{font-size:14px;font-weight:600}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600}
+.badge-green{background:#064e3b;color:#34d399;border:1px solid #065f46}
+.badge-red{background:#450a0a;color:#f87171;border:1px solid #7f1d1d}
+.badge-yellow{background:#422006;color:#fbbf24;border:1px solid #713f12}
+.badge-gray{background:#1f2937;color:#9ca3af;border:1px solid #374151}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.dot-green{background:#34d399;box-shadow:0 0 8px #34d39966}
+.dot-red{background:#f87171;box-shadow:0 0 8px #f8717166}
+.dot-yellow{background:#fbbf24}
+.provider-card{background:#0d1117;border:1px solid #1f2937;border-radius:10px;padding:16px;margin-bottom:10px}
+.provider-card:last-child{margin-bottom:0}
+.provider-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.provider-name{font-size:15px;font-weight:600;color:#e2e8f0}
+.provider-type{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.8px;margin-top:4px}
+.stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.stat{text-align:center;padding:16px 8px;background:#0d1117;border-radius:10px;border:1px solid #1f2937}
+.stat-value{font-size:28px;font-weight:700;background:linear-gradient(135deg,#a78bfa,#60a5fa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.stat-label{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.8px;margin-top:4px}
+.log-area{background:#0d1117;border:1px solid #1f2937;border-radius:8px;padding:12px;max-height:200px;overflow-y:auto;font-family:'Fira Code',monospace;font-size:12px;line-height:1.6}
+.log-entry{color:#64748b}.log-entry .time{color:#4b5563}.log-entry.info{color:#60a5fa}.log-entry.ok{color:#34d399}.log-entry.warn{color:#fbbf24}
+.refresh-note{text-align:center;color:#4b5563;font-size:12px;margin-top:16px}
+.endpoints{margin-top:16px}
+.endpoint{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#0d1117;border:1px solid #1f2937;border-radius:8px;margin-bottom:6px;font-family:'Fira Code',monospace;font-size:13px;color:#94a3b8}
+.endpoint .method{color:#34d399;font-weight:600;min-width:36px}
+.endpoint a{color:#60a5fa;text-decoration:none}
+.endpoint a:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="logo">\u{1F9E0}</div>
+  <div>
+    <h1>OpenClaw Gateway</h1>
+    <div style="font-size:12px;color:#64748b;margin-top:2px">AI Provider Gateway &bull; JoyCreate</div>
+  </div>
+  <span class="version" id="ver"></span>
+</div>
+<div class="container">
+  <div class="stats-grid" style="margin-bottom:24px">
+    <div class="stat"><div class="stat-value" id="s-status">--</div><div class="stat-label">Gateway Status</div></div>
+    <div class="stat"><div class="stat-value" id="s-providers">--</div><div class="stat-label">Healthy Providers</div></div>
+    <div class="stat"><div class="stat-value" id="s-clients">--</div><div class="stat-label">Connected Clients</div></div>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <h2><span class="icon">\u{26A1}</span> AI Providers</h2>
+      <div id="providers">Loading...</div>
+    </div>
+    <div class="card">
+      <h2><span class="icon">\u{2699}\uFE0F</span> Gateway Info</h2>
+      <div id="gateway-info">Loading...</div>
+    </div>
+  </div>
+  <div class="card">
+    <h2><span class="icon">\u{1F4E1}</span> API Endpoints</h2>
+    <div class="endpoints">
+      <div class="endpoint"><span class="method">GET</span><a href="/dashboard">/</a> &mdash; This dashboard</div>
+      <div class="endpoint"><span class="method">GET</span><a href="/health">/health</a> &mdash; Gateway health (JSON)</div>
+      <div class="endpoint"><span class="method">GET</span><a href="/status">/status</a> &mdash; Legacy status (JSON)</div>
+      <div class="endpoint"><span class="method">GET</span><a href="/api/status">/api/status</a> &mdash; Full status (JSON)</div>
+      <div class="endpoint"><span class="method">WS</span><span style="color:#a78bfa">ws://localhost:18789</span> &mdash; WebSocket gateway</div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:20px">
+    <h2><span class="icon">\u{1F4CB}</span> Activity Log</h2>
+    <div class="log-area" id="log"></div>
+  </div>
+  <p class="refresh-note">Auto-refreshes every 5 seconds</p>
+</div>
+<script>
+const logEl=document.getElementById('log');
+function addLog(msg,cls='info'){const d=document.createElement('div');d.className='log-entry '+cls;const t=new Date().toLocaleTimeString();d.innerHTML='<span class="time">'+t+'</span> '+msg;logEl.prepend(d);if(logEl.children.length>50)logEl.lastChild.remove()}
+function providerIcon(type){return{ollama:'\u{1F999}',lmstudio:'\u{1F4BB}',anthropic:'\u{1F916}','claude-code':'\u{1F527}'}[type]||'\u{2728}'}
+async function refresh(){
+  try{
+    const r=await fetch('/api/status');
+    const d=await r.json();
+    document.getElementById('ver').textContent='v'+(d.version||'1.0.0');
+    const se=document.getElementById('s-status');
+    se.textContent=d.status==='connected'?'\u{2705}':'\u{274C}';
+    se.style.fontSize='22px';
+    const healthy=d.providers.filter(p=>p.healthy).length;
+    document.getElementById('s-providers').textContent=healthy+'/'+d.providers.length;
+    document.getElementById('s-clients').textContent=d.connectedClients||0;
+    const pe=document.getElementById('providers');
+    pe.innerHTML=d.providers.map(p=>{
+      const badge=!p.enabled?'badge-gray':p.healthy?'badge-green':'badge-red';
+      const label=!p.enabled?'Disabled':p.healthy?'Healthy':'Unhealthy';
+      const dot=!p.enabled?'dot-yellow':p.healthy?'dot-green':'dot-red';
+      return '<div class="provider-card"><div class="provider-header"><div><div class="provider-name">'+providerIcon(p.type)+' '+p.name+'</div><div class="provider-type">'+p.type+'</div></div><span class="badge '+badge+'"><span class="dot '+dot+'"></span>'+label+'</span></div></div>';
+    }).join('');
+    const ge=document.getElementById('gateway-info');
+    const up=d.connectedAt?Math.floor((Date.now()-d.connectedAt)/1000):0;
+    const hb=d.lastHeartbeat?Math.floor((Date.now()-d.lastHeartbeat)/1000):'-';
+    ge.innerHTML=[
+      ['Status',d.status==='connected'?'<span class="badge badge-green"><span class="dot dot-green"></span>Connected</span>':'<span class="badge badge-red"><span class="dot dot-red"></span>Disconnected</span>'],
+      ['Uptime',formatUptime(up)],
+      ['Last Heartbeat',hb+'s ago'],
+      ['Routing Mode',d.config?.routing?.mode||'-'],
+      ['Prefer Local',d.config?.routing?.preferLocal?'Yes':'No'],
+    ].map(([l,v])=>'<div class="status-row"><span class="status-label">'+l+'</span><span class="status-value">'+v+'</span></div>').join('');
+  }catch(e){addLog('Fetch failed: '+e.message,'warn')}
+}
+function formatUptime(s){if(s<60)return s+'s';if(s<3600)return Math.floor(s/60)+'m '+s%60+'s';const h=Math.floor(s/3600);return h+'h '+Math.floor((s%3600)/60)+'m'}
+addLog('Dashboard loaded','ok');
+refresh();
+setInterval(refresh,5000);
+</script>
+</body>
+</html>`;
   }
   
   async configureProvider(name: string, updates: Partial<OpenClawAIProvider>): Promise<void> {
@@ -985,7 +1143,7 @@ Think through this step by step and provide a structured response with your reas
     await this.saveConfig();
     
     // Re-check health
-    await this.isProviderHealthy(this.config.aiProviders[name]);
+    await this.isProviderHealthy(name, this.config.aiProviders[name]);
   }
   
   async removeProvider(name: string): Promise<void> {

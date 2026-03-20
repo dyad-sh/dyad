@@ -118,10 +118,10 @@ export function registerImportHandlers() {
         await copyDirectoryRecursive(sourcePath, appPath);
       }
 
-      const isGitRepo = await fs
-        .access(path.join(appPath, ".git"))
-        .then(() => true)
-        .catch(() => false);
+      // Use WSL-aware check for git repo detection
+      const isGitRepo = await pathExistsHandlingWslAsync(
+        path.join(appPath, ".git"),
+      );
       if (!isGitRepo) {
         // Initialize git repo and create first commit
         await gitInit({ path: appPath, ref: "main" });

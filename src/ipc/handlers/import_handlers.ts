@@ -13,6 +13,7 @@ import { ImportAppParams, ImportAppResult } from "@/ipc/types";
 import { copyDirectoryRecursive } from "../utils/file_utils";
 import { gitCommit, gitAdd, gitInit } from "../utils/git_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { pathExistsHandlingWsl } from "../utils/wsl_path_utils";
 
 const logger = log.scope("import-handlers");
 const handle = createLoggedHandler(logger);
@@ -86,9 +87,7 @@ export function registerImportHandlers() {
       }: ImportAppParams,
     ): Promise<ImportAppResult> => {
       // Validate the source path exists
-      try {
-        await fs.access(sourcePath);
-      } catch {
+      if (!pathExistsHandlingWsl(sourcePath)) {
         throw new DyadError(
           "Source folder does not exist",
           DyadErrorKind.NotFound,
@@ -115,8 +114,6 @@ export function registerImportHandlers() {
             throw error;
           }
         }
-        // Copy the app folder to the Dyad apps directory.
-        // Why not use fs.cp? Because we want stable ordering for
         // tests.
         await copyDirectoryRecursive(sourcePath, appPath);
       }

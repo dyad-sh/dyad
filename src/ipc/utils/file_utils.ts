@@ -4,6 +4,7 @@ import path from "node:path";
 import fsExtra from "fs-extra";
 import { generateCuteAppName } from "../../lib/utils";
 import { normalizePath } from "../../../shared/normalizePath";
+import { copyFileHandlingWsl, isWslPath } from "./wsl_path_utils";
 
 // Directories to exclude when scanning files
 const EXCLUDED_DIRS = ["node_modules", ".git", ".next"];
@@ -43,6 +44,12 @@ export async function copyDirectoryRecursive(
   source: string,
   destination: string,
 ) {
+  if (isWslPath(source)) {
+    console.debug(
+      `[copyDirectoryRecursive] Detected WSL path: ${source}, using WSL-aware copy`,
+    );
+  }
+
   await fsPromises.mkdir(destination, { recursive: true });
   const entries = await fsPromises.readdir(source, { withFileTypes: true });
   // Why do we sort? This ensures stable ordering of files across platforms
@@ -59,7 +66,8 @@ export async function copyDirectoryRecursive(
         await copyDirectoryRecursive(srcPath, destPath);
       }
     } else {
-      await fsPromises.copyFile(srcPath, destPath);
+      // Use WSL-aware copy for files
+      await copyFileHandlingWsl(srcPath, destPath);
     }
   }
 }

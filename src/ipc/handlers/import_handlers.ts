@@ -12,6 +12,7 @@ import { eq } from "drizzle-orm";
 import { ImportAppParams, ImportAppResult } from "@/ipc/types";
 import { copyDirectoryRecursive } from "../utils/file_utils";
 import { gitCommit, gitAdd, gitInit } from "../utils/git_utils";
+import { pathExistsHandlingWsl } from "../utils/wsl_path_utils";
 
 const logger = log.scope("import-handlers");
 const handle = createLoggedHandler(logger);
@@ -84,10 +85,8 @@ export function registerImportHandlers() {
         skipCopy,
       }: ImportAppParams,
     ): Promise<ImportAppResult> => {
-      // Validate the source path exists
-      try {
-        await fs.access(sourcePath);
-      } catch {
+      
+      if (!pathExistsHandlingWsl(sourcePath)) {
         throw new Error("Source folder does not exist");
       }
 
@@ -105,8 +104,6 @@ export function registerImportHandlers() {
             throw error;
           }
         }
-        // Copy the app folder to the Dyad apps directory.
-        // Why not use fs.cp? Because we want stable ordering for
         // tests.
         await copyDirectoryRecursive(sourcePath, appPath);
       }

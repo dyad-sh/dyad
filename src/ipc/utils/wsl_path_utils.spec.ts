@@ -7,6 +7,7 @@ import {
   copyFileHandlingWsl,
   copyFileSyncHandlingWsl,
   pathExistsHandlingWsl,
+  pathExistsHandlingWslAsync,
 } from "./wsl_path_utils";
 
 describe("wsl_path_utils", () => {
@@ -95,6 +96,20 @@ describe("wsl_path_utils", () => {
       const destContent = fs.readFileSync(largeDest);
       expect(destContent.length).toBe(largeContent.length);
     });
+
+    it("should preserve file permissions after copy", async () => {
+      // Set specific permissions on source
+      const permFile = path.join(tempDir, "perm-test.txt");
+      fs.writeFileSync(permFile, "test");
+      fs.chmodSync(permFile, 0o755); // rwxr-xr-x
+
+      const permDest = path.join(tempDir, "perm-dest.txt");
+      await copyFileHandlingWsl(permFile, permDest);
+
+      const srcStats = fs.statSync(permFile);
+      const destStats = fs.statSync(permDest);
+      expect(destStats.mode).toBe(srcStats.mode);
+    });
   });
 
   describe("copyFileSyncHandlingWsl", () => {
@@ -126,6 +141,29 @@ describe("wsl_path_utils", () => {
 
     it("should return true for existing directories", () => {
       expect(pathExistsHandlingWsl(tempDir)).toBe(true);
+    });
+  });
+
+  describe("pathExistsHandlingWslAsync", () => {
+    it("should return true for existing files", async () => {
+      expect(await pathExistsHandlingWslAsync(sourceFile)).toBe(true);
+    });
+
+    it("should return false for non-existing files", async () => {
+      const nonExistentFile = path.join(tempDir, "nonexistent.txt");
+      expect(await pathExistsHandlingWslAsync(nonExistentFile)).toBe(false);
+    });
+
+    it("should return true for existing directories", async () => {
+      expect(await pathExistsHandlingWslAsync(tempDir)).toBe(true);
+    });
+
+    it("should handle file stat errors gracefully", async () => {
+      // Test with undefined behavior - should not throw
+      const result = await pathExistsHandlingWslAsync(
+        path.join(tempDir, "definitely-does-not-exist-12345.txt"),
+      );
+      expect(result).toBe(false);
     });
   });
 });

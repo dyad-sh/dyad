@@ -116,8 +116,6 @@ describe("wsl_path_utils", () => {
 
     it("should correctly identify WSL paths for routing to streaming copy", () => {
       // copyFileHandlingWsl routes to streaming based on isWslPath detection.
-      // This test verifies the detection logic works correctly.
-      // Actual streaming behavior is validated by permission preservation tests above.
       expect(isWslPath("\\\\wsl.localhost\\Ubuntu\\home\\user\\file.txt")).toBe(
         true,
       );
@@ -125,14 +123,15 @@ describe("wsl_path_utils", () => {
       expect(isWslPath("C:\\Users\\test\\file.txt")).toBe(false);
     });
 
-    it("should handle WSL destination paths", async () => {
-      // Even when source is regular, should use streaming if destination is WSL path
-      // This test verifies the function checks both source and destination
+    it("should attempt streaming copy when destination is a WSL path", async () => {
+      const wslDestPath = "\\\\wsl.localhost\\Ubuntu\\home\\user\\dest.txt";
       expect(isWslPath(sourceFile)).toBe(false); // Regular temp path
-      expect(isWslPath("\\\\wsl.localhost\\Ubuntu\\home\\user\\dest.txt")).toBe(
-        true,
-      );
-      // The routing decision now checks: isWslPath(sourcePath) || isWslPath(destPath)
+      expect(isWslPath(wslDestPath)).toBe(true); // WSL destination
+
+      // Function should attempts streaming copy when routing based on destination.
+      await expect(
+        copyFileHandlingWsl(sourceFile, wslDestPath),
+      ).rejects.toThrow();
     });
   });
 

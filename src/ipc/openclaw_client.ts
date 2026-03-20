@@ -34,8 +34,8 @@ import type {
   OpenClawDataResponse,
 } from "@/types/openclaw_types";
 
-class OpenClawClient {
-  private static instance: OpenClawClient;
+class OpenClawClientImpl {
+  private static instance: OpenClawClientImpl;
   private ipcRenderer: IpcRenderer;
   private eventListeners: Map<string, Set<(event: OpenClawEvent) => void>> = new Map();
   private subscribed = false;
@@ -62,11 +62,11 @@ class OpenClawClient {
     }
   }
 
-  static getInstance(): OpenClawClient {
-    if (!OpenClawClient.instance) {
-      OpenClawClient.instance = new OpenClawClient();
+  static getInstance(): OpenClawClientImpl {
+    if (!OpenClawClientImpl.instance) {
+      OpenClawClientImpl.instance = new OpenClawClientImpl();
     }
-    return OpenClawClient.instance;
+    return OpenClawClientImpl.instance;
   }
 
   // ===========================================================================
@@ -915,4 +915,4 @@ class OpenClawClient {
   }
 }
 
-export const OpenClawClient = OpenClawClient.getInstance();
+export const OpenClawClient = OpenClawClientImpl.getInstance();

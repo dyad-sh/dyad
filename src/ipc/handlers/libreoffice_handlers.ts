@@ -20,8 +20,11 @@ import type {
   ExportFormat,
   CreateDocumentRequest,
   DocumentContent,
+  DocumentSection,
   SpreadsheetContent,
+  SpreadsheetCell,
   PresentationContent,
+  PresentationSlide,
   ExportDocumentRequest,
   DocumentListQuery,
   LibreOfficeStatus,
@@ -113,11 +116,24 @@ class LibreOfficeManager {
    */
   private getHeadlessProfileArg(): string {
     // Convert Windows path to file:/// URL format with proper encoding
-    const profileUrl = this.headlessProfileDir
-      .replace(/\\/g, "/")
-      .replace(/^([A-Za-z]):/, "/$1:")
-      .replace(/ /g, "%20");
-    return `-env:UserInstallation=file://${profileUrl}`;
+    let profileUrl = this.headlessProfileDir
+      .replace(/\\/g, "/");
+    
+    // Extract drive letter prefix on Windows (e.g., "C:")
+    let drivePrefix = "";
+    const driveMatch = profileUrl.match(/^([A-Za-z]:)/);
+    if (driveMatch) {
+      drivePrefix = `/${driveMatch[1]}`;
+      profileUrl = profileUrl.slice(driveMatch[0].length);
+    }
+    
+    // Encode each path segment to handle spaces and special characters
+    const encodedPath = profileUrl
+      .split("/")
+      .map((segment) => encodeURIComponent(segment))
+      .join("/");
+    
+    return `-env:UserInstallation=file://${drivePrefix}${encodedPath}`;
   }
 
   async findLibreOffice(): Promise<string | null> {
@@ -141,7 +157,7 @@ class LibreOfficeManager {
       if (platform === "win32") {
         const { stdout } = await execAsync("where soffice.exe 2>nul", { windowsHide: true });
         if (stdout.trim()) {
-          this.libreOfficePath = stdout.trim().split("\n")[0];
+          this.libreOfficePath = stdout.trim().split("\n")[0].trim();
           return this.libreOfficePath;
         }
       } else {
@@ -155,7 +171,39 @@ class LibreOfficeManager {
       // Command not found
     }
 
+    // Windows: Try to find via Registry
+    if (platform === "win32") {
+      try {
+        const regCmd = 'reg query "HKLM\\SOFTWARE\\LibreOffice\\UNO\\InstallPath" /ve 2>nul';
+        const { stdout } = await execAsync(regCmd, { windowsHide: true });
+        const match = stdout.match(/REG_SZ\s+(.+)/i);
+        if (match) {
+          const regPath = match[1].trim();
+          for (const exe of ["soffice.com", "soffice.exe"]) {
+            const candidate = path.join(regPath, exe);
+            try {
+              await fs.access(candidate);
+              this.libreOfficePath = candidate;
+              return candidate;
+            } catch {
+              continue;
+            }
+          }
+        }
+      } catch {
+        // Registry key not found
+      }
+    }
+
     return null;
+  }
+
+  /**
+   * Force re-detection of LibreOffice (clears cached path).
+   * Useful when user installs LibreOffice while the app is running.
+   */
+  resetDetection(): void {
+    this.libreOfficePath = null;
   }
 
   async getStatus(): Promise<LibreOfficeStatus> {
@@ -189,13 +237,15 @@ class LibreOfficeManager {
       // Use --headless with a separate user profile to prevent conflicts
       // with any running LibreOffice GUI instance (profile lock issue)
       const profileArg = this.getHeadlessProfileArg();
+      // On Windows, avoid quoting the -env: argument — cmd.exe quote
+      // handling can interfere with LibreOffice's argument parsing.
       const versionCmd = process.platform === "win32" 
-        ? `"${loPath}" --headless "${profileArg}" --version < nul`
-        : `"${loPath}" --headless "${profileArg}" --version < /dev/null`;
+        ? `"${loPath}" --headless ${profileArg} --version < nul`
+        : `"${loPath}" --headless ${profileArg} --version < /dev/null`;
       
       const { stdout } = await execAsync(versionCmd, { 
         windowsHide: true,
-        timeout: 15000, // 15 second timeout to allow profile init on first run
+        timeout: 30000, // 30 second timeout to allow profile init on first run
       });
       const versionMatch = stdout.match(/LibreOffice\s+([\d.]+)/);
       
@@ -248,7 +298,7 @@ class LibreOfficeManager {
       const filePath = path.join(this.documentsDir, fileName);
 
       // Generate content with AI if requested
-      let documentContent = request.content;
+      let documentContent: DocumentContent | SpreadsheetContent | PresentationContent | undefined = request.content;
       let aiPromptUsed: string | undefined;
       let aiModelUsed: string | undefined;
       
@@ -267,7 +317,7 @@ class LibreOfficeManager {
       let content: string;
       
       if (request.type === "document") {
-        content = this.generateDocumentXML(documentContent);
+        content = this.generateDocumentXML(documentContent as DocumentContent);
       } else if (request.type === "spreadsheet") {
         content = this.generateSpreadsheetXML(documentContent as SpreadsheetContent);
       } else {
@@ -323,7 +373,7 @@ class LibreOfficeManager {
     type: DocumentType,
     name: string,
     options: AIGenerationOptions
-  ): Promise<{ content: DocumentContent; model: string }> {
+  ): Promise<{ content: DocumentContent | SpreadsheetContent | PresentationContent; model: string }> {
     const settings = readSettings();
     const selectedModel = settings.selectedModel;
     
@@ -348,7 +398,36 @@ class LibreOfficeManager {
       };
     } catch (error) {
       console.error("AI document generation failed:", error);
-      // Return basic content structure if AI fails
+      // Return basic content structure if AI fails — type-specific fallbacks
+      if (type === "spreadsheet") {
+        return {
+          content: {
+            sheets: [{
+              name: "Sheet1",
+              cells: [
+                { row: 1, col: "A", value: "Item" },
+                { row: 1, col: "B", value: "Value" },
+                { row: 2, col: "A", value: name },
+                { row: 2, col: "B", value: options.prompt || "" },
+              ],
+            }],
+          } as SpreadsheetContent,
+          model: "fallback",
+        };
+      }
+      if (type === "presentation") {
+        return {
+          content: {
+            slides: [
+              { layout: "title" as const, title: name, subtitle: options.prompt },
+              { layout: "content" as const, title: "Overview", content: [
+                { type: "paragraph" as const, content: options.prompt || "Content goes here." },
+              ]},
+            ],
+          } as PresentationContent,
+          model: "fallback",
+        };
+      }
       return {
         content: {
           title: name,
@@ -365,8 +444,60 @@ class LibreOfficeManager {
   private getDocumentGenerationSystemPrompt(type: DocumentType, options: AIGenerationOptions): string {
     const tone = options.tone || "professional";
     const length = options.length || "medium";
-    
-    const basePrompt = `You are an expert document creator. Generate content in a structured format.
+
+    if (type === "spreadsheet") {
+      return `You are an expert spreadsheet creator. Generate tabular data.
+Tone: ${tone}
+Length: ${length}
+
+IMPORTANT: Output your response as a markdown table. The first row is the header row.
+Use standard markdown table syntax with | separators.
+Include at least 5-10 data rows with realistic data. More rows for "long" or "detailed" length.
+
+Example:
+| Name | Department | Salary | Start Date |
+|------|-----------|--------|------------|
+| Alice Johnson | Engineering | 95000 | 2023-01-15 |
+| Bob Smith | Marketing | 72000 | 2022-06-01 |
+| Carol Davis | Sales | 68000 | 2024-03-10 |
+
+Output ONLY the markdown table. No other text, explanations, or formatting.`;
+    }
+
+    if (type === "presentation") {
+      return `You are an expert presentation creator. Generate slide content.
+Tone: ${tone}
+Length: ${length}
+
+IMPORTANT: Output your response in this exact format. Each slide starts with "## SLIDE:" followed by the slide title.
+Under each slide, add bullet points with "- " prefix for content.
+Optionally add "NOTES:" at the end of a slide for speaker notes.
+
+Generate 5-8 slides for a complete presentation.
+
+Example:
+## SLIDE: Introduction
+- Welcome to this presentation
+- Overview of key topics
+- Goals and objectives
+NOTES: Greet the audience and set expectations.
+
+## SLIDE: Key Findings
+- Revenue increased by 25%
+- Customer satisfaction at 92%
+- Market share grew 5 points
+NOTES: Emphasize the revenue growth.
+
+## SLIDE: Conclusion
+- Summary of achievements
+- Next steps and action items
+- Questions and discussion
+
+Output ONLY the slides in this format. No other text.`;
+    }
+
+    // Default: document
+    return `You are an expert document creator. Generate content in a structured format.
 Tone: ${tone}
 Length: ${length}
 
@@ -386,29 +517,218 @@ PARAGRAPH: This is the introduction paragraph with detailed content.
 1. LIST: Numbered item one
 2. LIST: Numbered item two
 
-PARAGRAPH: Conclusion text here.`;
+PARAGRAPH: Conclusion text here.
 
-    if (type === "document") {
-      return `${basePrompt}\n\nYou are creating a text document. Include headings, paragraphs, and lists as appropriate.`;
-    } else if (type === "spreadsheet") {
-      return `${basePrompt}\n\nYou are creating a spreadsheet. Structure data in rows and columns. Use "| COL_A | COL_B | COL_C |" format for table data.`;
-    } else {
-      return `${basePrompt}\n\nYou are creating a presentation. Each "## SLIDE:" marks a new slide. Include a title and bullet points for each slide.`;
-    }
+You are creating a text document. Include headings, paragraphs, and lists as appropriate.`;
   }
 
-  private parseAIResponseToContent(type: DocumentType, text: string, options: AIGenerationOptions): DocumentContent {
+  /**
+   * Parse AI response into the correct content structure based on document type.
+   */
+  private parseAIResponseToContent(type: DocumentType, text: string, options: AIGenerationOptions): DocumentContent | SpreadsheetContent | PresentationContent {
+    if (type === "spreadsheet") {
+      return this.parseSpreadsheetResponse(text, options);
+    }
+    if (type === "presentation") {
+      return this.parsePresentationResponse(text, options);
+    }
+    return this.parseDocumentResponse(text, options);
+  }
+
+  /**
+   * Parse AI response into SpreadsheetContent with actual cell data.
+   */
+  private parseSpreadsheetResponse(text: string, options: AIGenerationOptions): SpreadsheetContent {
+    const cells: SpreadsheetCell[] = [];
+    const lines = text.split("\n");
+    
+    // Find markdown table rows (lines containing |)
+    const tableLines = lines.filter(l => l.trim().startsWith("|") && l.trim().endsWith("|"));
+    
+    // Filter out separator rows (|---|---|)
+    const dataLines = tableLines.filter(l => !l.match(/^\|[\s-:|]+\|$/));
+    
+    if (dataLines.length === 0) {
+      // Fallback: try to extract any structured data from the text
+      // Split by lines and treat as CSV-like data
+      const fallbackLines = lines.filter(l => l.trim() && !l.trim().startsWith("#") && !l.trim().startsWith("```"));
+      let row = 1;
+      for (const line of fallbackLines) {
+        // Try comma or tab separated
+        const parts = line.includes("\t") ? line.split("\t") : line.split(",");
+        if (parts.length >= 2) {
+          const colLetters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+          parts.forEach((val, i) => {
+            if (i < 26) {
+              const trimVal = val.trim();
+              if (trimVal) {
+                const numVal = Number(trimVal);
+                cells.push({
+                  row,
+                  col: colLetters[i],
+                  value: !isNaN(numVal) && trimVal !== "" ? numVal : trimVal,
+                });
+              }
+            }
+          });
+          row++;
+        }
+      }
+      
+      // If still nothing, create a basic spreadsheet from the prompt
+      if (cells.length === 0) {
+        cells.push({ row: 1, col: "A", value: "Data" });
+        cells.push({ row: 1, col: "B", value: "Value" });
+        cells.push({ row: 2, col: "A", value: options.prompt?.slice(0, 30) || "Item 1" });
+        cells.push({ row: 2, col: "B", value: "" });
+      }
+      
+      return { sheets: [{ name: "Sheet1", cells }] };
+    }
+    
+    // Parse markdown table rows
+    const colLetters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    let row = 1;
+    for (const line of dataLines) {
+      // Split by | and extract cell values
+      const rawCells = line.split("|").slice(1, -1); // Remove first/last empty from leading/trailing |
+      rawCells.forEach((val, i) => {
+        if (i < 26) {
+          const trimVal = val.trim();
+          if (trimVal) {
+            // Try to parse as number
+            const cleaned = trimVal.replace(/[$,]/g, "").trim();
+            const numVal = Number(cleaned);
+            cells.push({
+              row,
+              col: colLetters[i],
+              value: !isNaN(numVal) && cleaned !== "" && !/^\d{4}-\d{2}/.test(trimVal) ? numVal : trimVal,
+            });
+          }
+        }
+      });
+      row++;
+    }
+
+    return { sheets: [{ name: "Sheet1", cells }] };
+  }
+
+  /**
+   * Parse AI response into PresentationContent with actual slides.
+   */
+  private parsePresentationResponse(text: string, options: AIGenerationOptions): PresentationContent {
+    const slides: PresentationSlide[] = [];
+    const lines = text.split("\n");
+    
+    let currentSlide: PresentationSlide | null = null;
+    let currentContent: DocumentSection[] = [];
+    let currentNotes = "";
+    let collectingNotes = false;
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      
+      // New slide marker
+      if (trimmed.match(/^##\s*(SLIDE:?|Slide:?)\s*/)) {
+        // Save previous slide
+        if (currentSlide) {
+          currentSlide.content = currentContent;
+          currentSlide.notes = currentNotes || undefined;
+          slides.push(currentSlide);
+        }
+        
+        const title = trimmed.replace(/^##\s*(SLIDE:?|Slide:?)\s*/, "").trim();
+        currentSlide = {
+          layout: slides.length === 0 ? "title" : "content",
+          title: title,
+        };
+        currentContent = [];
+        currentNotes = "";
+        collectingNotes = false;
+      } else if (trimmed.match(/^NOTES?:/i)) {
+        collectingNotes = true;
+        const noteText = trimmed.replace(/^NOTES?:\s*/i, "");
+        if (noteText) currentNotes = noteText;
+      } else if (collectingNotes && trimmed && !trimmed.startsWith("##")) {
+        currentNotes += (currentNotes ? " " : "") + trimmed;
+      } else if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+        collectingNotes = false;
+        const bulletText = trimmed.replace(/^[-*]\s*/, "");
+        if (bulletText) {
+          currentContent.push({
+            type: "paragraph",
+            content: bulletText,
+          });
+        }
+      } else if (trimmed.match(/^\d+\.\s/)) {
+        collectingNotes = false;
+        const itemText = trimmed.replace(/^\d+\.\s*/, "");
+        if (itemText) {
+          currentContent.push({
+            type: "paragraph",
+            content: itemText,
+          });
+        }
+      } else if (trimmed && !trimmed.startsWith("#") && !trimmed.startsWith("```") && trimmed.length > 3) {
+        if (!collectingNotes && currentSlide) {
+          currentContent.push({
+            type: "paragraph",
+            content: trimmed,
+          });
+        }
+      }
+    }
+    
+    // Save last slide
+    if (currentSlide) {
+      currentSlide.content = currentContent;
+      currentSlide.notes = currentNotes || undefined;
+      slides.push(currentSlide);
+    }
+    
+    // Fallback: if no slides parsed, create slides from paragraphs
+    if (slides.length === 0) {
+      const fallbackLines = text.split("\n").filter(l => l.trim());
+      const titleLine = fallbackLines[0] || options.prompt || "Presentation";
+      slides.push({
+        layout: "title",
+        title: titleLine.replace(/^#+ */, ""),
+        subtitle: options.prompt,
+      });
+      
+      // Group remaining content into slides of ~4 bullets each
+      const contentLines = fallbackLines.slice(1).filter(l => !l.startsWith("#") && l.trim().length > 5);
+      for (let i = 0; i < contentLines.length; i += 4) {
+        const chunk = contentLines.slice(i, i + 4);
+        slides.push({
+          layout: "content",
+          title: `Section ${Math.floor(i / 4) + 1}`,
+          content: chunk.map(c => ({
+            type: "paragraph" as const,
+            content: c.replace(/^[-*]\s*/, "").replace(/^\d+\.\s*/, ""),
+          })),
+        });
+      }
+    }
+
+    return { slides };
+  }
+
+  /**
+   * Parse AI response into DocumentContent (for text documents).
+   */
+  private parseDocumentResponse(text: string, options: AIGenerationOptions): DocumentContent {
     const sections: DocumentContent["sections"] = [];
     const lines = text.split("\n").filter(l => l.trim());
 
     for (const line of lines) {
       const trimmed = line.trim();
       
-      if (trimmed.startsWith("## HEADING:") || trimmed.startsWith("## SLIDE:")) {
+      if (trimmed.startsWith("## HEADING:")) {
         sections.push({
           type: "heading",
           level: 1,
-          content: trimmed.replace(/^## (HEADING|SLIDE):\s*/, ""),
+          content: trimmed.replace(/^## HEADING:\s*/, ""),
         });
       } else if (trimmed.startsWith("### ")) {
         sections.push({
@@ -422,7 +742,6 @@ PARAGRAPH: Conclusion text here.`;
           content: trimmed.replace(/^PARAGRAPH:\s*/, ""),
         });
       } else if (trimmed.match(/^[-*]\s*LIST:/)) {
-        // Collect consecutive list items
         sections.push({
           type: "paragraph",
           content: "• " + trimmed.replace(/^[-*]\s*LIST:\s*/, ""),
@@ -433,7 +752,6 @@ PARAGRAPH: Conclusion text here.`;
           content: trimmed.replace(/LIST:\s*/, ""),
         });
       } else if (trimmed && !trimmed.startsWith("#") && trimmed.length > 10) {
-        // Regular text paragraph
         sections.push({
           type: "paragraph",
           content: trimmed,
@@ -441,7 +759,6 @@ PARAGRAPH: Conclusion text here.`;
       }
     }
 
-    // Ensure we have at least some content
     if (sections.length === 0) {
       sections.push({
         type: "paragraph",
@@ -510,20 +827,34 @@ PARAGRAPH: Conclusion text here.`;
       
       // Build rows from cells
       const rowMap = new Map<number, Map<string, any>>();
+      const usedCols = new Set<string>();
       for (const cell of sheet.cells) {
         if (!rowMap.has(cell.row)) {
           rowMap.set(cell.row, new Map());
         }
         rowMap.get(cell.row)!.set(cell.col, cell);
+        usedCols.add(cell.col);
       }
 
-      const maxRow = Math.max(...Array.from(rowMap.keys()), 1);
+      // Determine column range (A through max used column)
+      const allCols = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+      let maxColIndex = 0;
+      for (const col of usedCols) {
+        const idx = allCols.indexOf(col);
+        if (idx > maxColIndex) maxColIndex = idx;
+      }
+      const colRange = allCols.slice(0, maxColIndex + 1);
+      
+      // Add column definitions
+      for (const col of colRange) {
+        sheetContent += `  <table:table-column/>\n`;
+      }
+
+      const maxRow = rowMap.size > 0 ? Math.max(...Array.from(rowMap.keys())) : 0;
       for (let r = 1; r <= maxRow; r++) {
         sheetContent += `  <table:table-row>\n`;
         const rowCells = rowMap.get(r) || new Map();
-        // Simplified: just output cells A-Z for now
-        const cols = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-        for (const col of cols) {
+        for (const col of colRange) {
           const cell = rowCells.get(col);
           if (cell) {
             const valueType = typeof cell.value === "number" ? "float" : "string";
@@ -562,33 +893,51 @@ PARAGRAPH: Conclusion text here.`;
     for (const slide of slides) {
       slideContent += `<draw:page draw:style-name="dp1" draw:master-page-name="Default">\n`;
       
+      // Title frame
       if (slide.title) {
-        slideContent += `  <draw:frame draw:style-name="gr1" draw:layer="layout" svg:width="25.4cm" svg:height="3.506cm" svg:x="1.4cm" svg:y="0.962cm">
+        const titleY = slide.layout === "title" ? "6cm" : "0.962cm";
+        const titleH = slide.layout === "title" ? "4cm" : "3.506cm";
+        slideContent += `  <draw:frame draw:style-name="gr1" draw:layer="layout" svg:width="25.4cm" svg:height="${titleH}" svg:x="1.4cm" svg:y="${titleY}">
     <draw:text-box>
       <text:p text:style-name="Title">${this.escapeXML(slide.title)}</text:p>
     </draw:text-box>
   </draw:frame>\n`;
       }
       
+      // Subtitle frame
       if (slide.subtitle) {
-        slideContent += `  <draw:frame draw:style-name="gr2" draw:layer="layout" svg:width="25.4cm" svg:height="1.8cm" svg:x="1.4cm" svg:y="5cm">
+        const subY = slide.layout === "title" ? "10.5cm" : "5cm";
+        slideContent += `  <draw:frame draw:style-name="gr2" draw:layer="layout" svg:width="25.4cm" svg:height="1.8cm" svg:x="1.4cm" svg:y="${subY}">
     <draw:text-box>
       <text:p text:style-name="Subtitle">${this.escapeXML(slide.subtitle)}</text:p>
     </draw:text-box>
   </draw:frame>\n`;
       }
 
-      // Add content sections
-      if (slide.content) {
-        let yPos = slide.subtitle ? 7 : 5;
+      // Content body — all bullet points in one text box
+      if (slide.content && slide.content.length > 0) {
+        const contentY = slide.subtitle ? "7cm" : "5cm";
+        const contentH = slide.subtitle ? "11cm" : "13cm";
+        let bulletParagraphs = "";
         for (const section of slide.content) {
-          slideContent += `  <draw:frame draw:style-name="gr3" draw:layer="layout" svg:width="25.4cm" svg:height="2cm" svg:x="1.4cm" svg:y="${yPos}cm">
-    <draw:text-box>
-      <text:p>${this.escapeXML(section.content as string)}</text:p>
-    </draw:text-box>
-  </draw:frame>\n`;
-          yPos += 2.5;
+          const text = section.content as string;
+          bulletParagraphs += `      <text:p text:style-name="Text_20_body">\u2022 ${this.escapeXML(text)}</text:p>\n`;
         }
+        slideContent += `  <draw:frame draw:style-name="gr3" draw:layer="layout" svg:width="25.4cm" svg:height="${contentH}" svg:x="1.4cm" svg:y="${contentY}">
+    <draw:text-box>
+${bulletParagraphs}    </draw:text-box>
+  </draw:frame>\n`;
+      }
+
+      // Speaker notes
+      if (slide.notes) {
+        slideContent += `  <presentation:notes>\n`;
+        slideContent += `    <draw:frame draw:style-name="gr4" draw:layer="layout" svg:width="17.271cm" svg:height="12.572cm" svg:x="2.159cm" svg:y="13cm">\n`;
+        slideContent += `      <draw:text-box>\n`;
+        slideContent += `        <text:p>${this.escapeXML(slide.notes)}</text:p>\n`;
+        slideContent += `      </draw:text-box>\n`;
+        slideContent += `    </draw:frame>\n`;
+        slideContent += `  </presentation:notes>\n`;
       }
 
       slideContent += `</draw:page>\n`;
@@ -597,9 +946,27 @@ PARAGRAPH: Conclusion text here.`;
     return `<?xml version="1.0" encoding="UTF-8"?>
 <office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
   xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
+  xmlns:presentation="urn:oasis:names:tc:opendocument:xmlns:presentation:1.0"
   xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+  xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+  xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
   xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"
   office:version="1.2">
+  <office:automatic-styles>
+    <style:style style:name="dp1" style:family="drawing-page"/>
+    <style:style style:name="gr1" style:family="graphic">
+      <style:graphic-properties draw:stroke="none" draw:fill="none"/>
+    </style:style>
+    <style:style style:name="gr2" style:family="graphic">
+      <style:graphic-properties draw:stroke="none" draw:fill="none"/>
+    </style:style>
+    <style:style style:name="gr3" style:family="graphic">
+      <style:graphic-properties draw:stroke="none" draw:fill="none"/>
+    </style:style>
+    <style:style style:name="gr4" style:family="graphic">
+      <style:graphic-properties draw:stroke="none" draw:fill="none"/>
+    </style:style>
+  </office:automatic-styles>
   <office:body>
     <office:presentation>
       ${slideContent}
@@ -1238,6 +1605,12 @@ export function registerLibreOfficeHandlers() {
 
   // Status
   ipcMain.handle("libreoffice:status", async () => {
+    return manager.getStatus();
+  });
+
+  // Force re-detect LibreOffice (clears cached path)
+  ipcMain.handle("libreoffice:refresh-status", async () => {
+    manager.resetDetection();
     return manager.getStatus();
   });
 

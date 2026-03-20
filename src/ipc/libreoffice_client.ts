@@ -43,6 +43,14 @@ class LibreOfficeClient {
     return this.ipcRenderer.invoke("libreoffice:status");
   }
 
+  /**
+   * Force re-detection of LibreOffice (clears cached path and re-scans).
+   * Useful after user installs LibreOffice while the app is running.
+   */
+  async refreshStatus(): Promise<LibreOfficeStatus> {
+    return this.ipcRenderer.invoke("libreoffice:refresh-status");
+  }
+
   // ============================================================================
   // Document CRUD Operations
   // ============================================================================

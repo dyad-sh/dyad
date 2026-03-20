@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import * as wslUtils from "./wsl_path_utils";
 import {
   isWslPath,
   copyFileHandlingWsl,
@@ -104,11 +105,23 @@ describe("wsl_path_utils", () => {
       fs.chmodSync(permFile, 0o755); // rwxr-xr-x
 
       const permDest = path.join(tempDir, "perm-dest.txt");
-      await copyFileHandlingWsl(permFile, permDest);
 
-      const srcStats = fs.statSync(permFile);
-      const destStats = fs.statSync(permDest);
-      expect(destStats.mode).toBe(srcStats.mode);
+      // Mock isWslPath to return true for this file to test WSL streaming path
+      const originalIsWslPath = vi.spyOn(wslUtils, "isWslPath");
+      originalIsWslPath.mockReturnValue(true);
+
+      try {
+        await copyFileHandlingWsl(permFile, permDest);
+
+        const srcStats = fs.statSync(permFile);
+        const destStats = fs.statSync(permDest);
+        // Verify permissions were preserved
+        expect(destStats.mode).toBe(srcStats.mode);
+        // Verify file content was copied
+        expect(fs.readFileSync(permDest, "utf-8")).toBe("test");
+      } finally {
+        originalIsWslPath.mockRestore();
+      }
     });
   });
 
@@ -126,6 +139,32 @@ describe("wsl_path_utils", () => {
       expect(() =>
         copyFileSyncHandlingWsl(nonExistentFile, destFile),
       ).toThrow();
+    });
+
+    it("should preserve file permissions in WSL sync path", () => {
+      // Set specific permissions on source
+      const permFile = path.join(tempDir, "perm-test-sync.txt");
+      fs.writeFileSync(permFile, "test sync");
+      fs.chmodSync(permFile, 0o755); // rwxr-xr-x
+
+      const permDest = path.join(tempDir, "perm-dest-sync.txt");
+
+      // Mock isWslPath to return true for this file to test WSL sync path
+      const originalIsWslPath = vi.spyOn(wslUtils, "isWslPath");
+      originalIsWslPath.mockReturnValue(true);
+
+      try {
+        copyFileSyncHandlingWsl(permFile, permDest);
+
+        const srcStats = fs.statSync(permFile);
+        const destStats = fs.statSync(permDest);
+        // Verify permissions were preserved
+        expect(destStats.mode).toBe(srcStats.mode);
+        // Verify file content was copied
+        expect(fs.readFileSync(permDest, "utf-8")).toBe("test sync");
+      } finally {
+        originalIsWslPath.mockRestore();
+      }
     });
   });
 

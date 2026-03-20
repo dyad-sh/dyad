@@ -39,8 +39,10 @@ export async function copyFileHandlingWsl(
   destPath: string,
 ): Promise<void> {
   try {
-    if (isWslPath(sourcePath)) {
-      logger.debug(`Detected WSL path, using streaming copy: ${sourcePath}`);
+    if (isWslPath(sourcePath) || isWslPath(destPath)) {
+      logger.debug(
+        `Detected WSL path, using streaming copy: ${sourcePath} -> ${destPath}`,
+      );
       // Use streaming for WSL paths to avoid memory issues with large files
       // pipeline() handles stream cleanup automatically (destroy on error, cleanup on finish)
       const readable = fs.createReadStream(sourcePath);
@@ -71,9 +73,9 @@ export function copyFileSyncHandlingWsl(
   destPath: string,
 ): void {
   try {
-    if (isWslPath(sourcePath)) {
+    if (isWslPath(sourcePath) || isWslPath(destPath)) {
       logger.debug(
-        `Detected WSL path (sync), using buffer copy: ${sourcePath}`,
+        `Detected WSL path (sync), using buffer copy: ${sourcePath} -> ${destPath}`,
       );
       // Sync version must use buffer (no streaming for sync)
       const fileBuffer = fs.readFileSync(sourcePath);

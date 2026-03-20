@@ -585,7 +585,7 @@
         );
         console.debug("Joy component selector initialized");
       } else {
-        console.warn(
+        console.debug(
           "Joy component selector not initialized because no DOM elements were tagged",
         );
       }

@@ -3074,6 +3074,20 @@ export class IpcClient {
     return this.ipcRenderer.invoke("system:services-health");
   }
 
+  // ── Celestia Node Management ──
+
+  public async startCelestiaNode(): Promise<{ success: boolean; message: string }> {
+    return this.ipcRenderer.invoke("system:celestia:start");
+  }
+
+  public async stopCelestiaNode(): Promise<{ success: boolean; message: string }> {
+    return this.ipcRenderer.invoke("system:celestia:stop");
+  }
+
+  public async getCelestiaNodeStatus(): Promise<{ running: boolean; wslAvailable: boolean; details: string }> {
+    return this.ipcRenderer.invoke("system:celestia:status");
+  }
+
   // ── n8n + Ollama ──
 
   public async setupN8nOllama(): Promise<any> {

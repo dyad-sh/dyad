@@ -209,7 +209,7 @@ function TaskCard({
 
   return (
     <div
-      className="group relative rounded-lg border border-white/10 bg-white/5 p-3 hover:bg-white/8 hover:border-white/20 transition-all cursor-pointer"
+      className="group relative rounded-lg border border-border/80 bg-muted/40 p-3 hover:bg-muted/50 hover:border-border transition-all cursor-pointer"
       onClick={() => onSelect(task)}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
@@ -221,8 +221,8 @@ function TaskCard({
     >
       {/* Header */}
       <div className="flex items-start gap-2 mb-2">
-        <GripVertical className="w-3.5 h-3.5 text-white/20 mt-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
-        <span className="text-sm font-medium text-white/90 leading-tight flex-1 line-clamp-2">
+        <GripVertical className="w-3.5 h-3.5 text-muted-foreground/50 mt-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+        <span className="text-sm font-medium text-foreground leading-tight flex-1 line-clamp-2">
           {task.title}
         </span>
         <Badge
@@ -243,7 +243,7 @@ function TaskCard({
         {task.provider && (
           <Badge
             variant="outline"
-            className="text-[10px] px-1.5 py-0 border-white/10 text-white/50"
+            className="text-[10px] px-1.5 py-0 border-border/80 text-muted-foreground/80"
           >
             {task.provider}
           </Badge>
@@ -255,7 +255,7 @@ function TaskCard({
 
       {/* Metrics row */}
       {(task.tokensUsed > 0 || task.durationMs > 0) && (
-        <div className="flex items-center gap-2 text-[10px] text-white/40">
+        <div className="flex items-center gap-2 text-[10px] text-muted-foreground/70">
           {task.tokensUsed > 0 && (
             <span className="flex items-center gap-0.5">
               <Zap className="w-2.5 h-2.5" />
@@ -277,13 +277,13 @@ function TaskCard({
           {task.labels.slice(0, 3).map((label: string) => (
             <span
               key={label}
-              className="text-[9px] px-1.5 py-0 rounded-full bg-white/10 text-white/50"
+              className="text-[9px] px-1.5 py-0 rounded-full bg-muted/60 text-muted-foreground/80"
             >
               {label}
             </span>
           ))}
           {task.labels.length > 3 && (
-            <span className="text-[9px] text-white/30">+{task.labels.length - 3}</span>
+            <span className="text-[9px] text-muted-foreground/60">+{task.labels.length - 3}</span>
           )}
         </div>
       )}
@@ -298,10 +298,10 @@ function TaskCard({
                 const nextCol = COLUMNS[currentColIdx + 1];
                 if (nextCol) onMove(task.id, nextCol.id);
               }}
-              className="p-1 rounded bg-white/10 hover:bg-white/20 transition"
+              className="p-1 rounded bg-muted/60 hover:bg-accent transition"
               title="Move to next column"
             >
-              <ArrowRight className="w-3 h-3 text-white/70" />
+              <ArrowRight className="w-3 h-3 text-foreground/80" />
             </button>
           )}
           <button
@@ -319,7 +319,7 @@ function TaskCard({
 
       {/* Assignee */}
       {task.assignee && (
-        <div className="mt-2 flex items-center gap-1 text-[10px] text-white/30">
+        <div className="mt-2 flex items-center gap-1 text-[10px] text-muted-foreground/60">
           <Bot className="w-2.5 h-2.5" />
           {task.assignee}
         </div>
@@ -350,8 +350,8 @@ function KanbanColumn({
     <div
       className={`flex flex-col min-w-[280px] max-w-[320px] rounded-xl border transition-all ${
         isDragOver
-          ? `${column.borderColor} bg-white/5`
-          : "border-white/5 bg-white/[0.02]"
+          ? `${column.borderColor} bg-muted/40`
+          : "border-border/50 bg-muted/30"
       }`}
       onDragOver={(e) => {
         e.preventDefault();
@@ -372,10 +372,10 @@ function KanbanColumn({
       <div className="flex items-center gap-2 p-3 pb-2">
         <div className={`w-2 h-2 rounded-full ${column.color}`} />
         <Icon className={`w-4 h-4 ${column.textColor}`} />
-        <span className="text-sm font-medium text-white/80">{column.label}</span>
+        <span className="text-sm font-medium text-foreground/90">{column.label}</span>
         <Badge
           variant="outline"
-          className="ml-auto text-[10px] px-1.5 py-0 border-white/10 text-white/40"
+          className="ml-auto text-[10px] px-1.5 py-0 border-border/80 text-muted-foreground/70"
         >
           {tasks.length}
         </Badge>
@@ -394,7 +394,7 @@ function KanbanColumn({
             />
           ))}
           {tasks.length === 0 && (
-            <div className="flex items-center justify-center py-8 text-white/20 text-xs">
+            <div className="flex items-center justify-center py-8 text-muted-foreground/50 text-xs">
               No tasks
             </div>
           )}
@@ -673,7 +673,7 @@ function TaskDetailDialog({
                     setEditing(true);
                   }}
                 >
-                  <Pencil className="w-3.5 h-3.5 text-white/30 hover:text-white/60" />
+                  <Pencil className="w-3.5 h-3.5 text-muted-foreground/60 hover:text-muted-foreground" />
                 </button>
               </DialogTitle>
               {task.description && (
@@ -686,7 +686,7 @@ function TaskDetailDialog({
         {/* Metadata */}
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div className="space-y-1">
-            <span className="text-white/40 text-xs">Status</span>
+            <span className="text-muted-foreground/70 text-xs">Status</span>
             <Select
               value={task.status}
               onValueChange={(val) => onUpdate({ id: task.id, status: val })}
@@ -704,7 +704,7 @@ function TaskDetailDialog({
             </Select>
           </div>
           <div className="space-y-1">
-            <span className="text-white/40 text-xs">Priority</span>
+            <span className="text-muted-foreground/70 text-xs">Priority</span>
             <Select
               value={task.priority}
               onValueChange={(val) => onUpdate({ id: task.id, priority: val })}
@@ -730,8 +730,8 @@ function TaskDetailDialog({
             <div className="grid grid-cols-2 gap-3 text-sm">
               {task.provider && (
                 <div>
-                  <span className="text-white/40 text-xs block">Provider</span>
-                  <span className="text-white/80">
+                  <span className="text-muted-foreground/70 text-xs block">Provider</span>
+                  <span className="text-foreground/90">
                     {task.provider}
                     {task.model ? ` / ${task.model}` : ""}
                   </span>
@@ -739,23 +739,23 @@ function TaskDetailDialog({
               )}
               {task.tokensUsed > 0 && (
                 <div>
-                  <span className="text-white/40 text-xs block">Tokens</span>
-                  <span className="text-white/80">
+                  <span className="text-muted-foreground/70 text-xs block">Tokens</span>
+                  <span className="text-foreground/90">
                     {task.tokensUsed.toLocaleString()}
                   </span>
                 </div>
               )}
               {task.durationMs > 0 && (
                 <div>
-                  <span className="text-white/40 text-xs block">Duration</span>
-                  <span className="text-white/80">
+                  <span className="text-muted-foreground/70 text-xs block">Duration</span>
+                  <span className="text-foreground/90">
                     {formatDuration(task.durationMs)}
                   </span>
                 </div>
               )}
               {task.localProcessed && (
                 <div>
-                  <span className="text-white/40 text-xs block">Processing</span>
+                  <span className="text-muted-foreground/70 text-xs block">Processing</span>
                   <span className="text-green-400 flex items-center gap-1">
                     <Cpu className="w-3 h-3" /> Local
                   </span>
@@ -770,7 +770,7 @@ function TaskDetailDialog({
           <>
             <Separator />
             <div>
-              <span className="text-white/40 text-xs block mb-2">Rate Result</span>
+              <span className="text-muted-foreground/70 text-xs block mb-2">Rate Result</span>
               <div className="flex items-center gap-2">
                 <Button
                   size="sm"
@@ -799,7 +799,7 @@ function TaskDetailDialog({
                   <ThumbsDown className="w-3.5 h-3.5 mr-1" /> Poor
                 </Button>
                 {userRating && (
-                  <span className="text-xs text-white/30 ml-2">Feedback recorded</span>
+                  <span className="text-xs text-muted-foreground/60 ml-2">Feedback recorded</span>
                 )}
               </div>
             </div>
@@ -822,16 +822,16 @@ function TaskDetailDialog({
           <>
             <Separator />
             <div>
-              <h4 className="text-xs font-medium text-white/50 mb-2 flex items-center gap-1">
+              <h4 className="text-xs font-medium text-muted-foreground/80 mb-2 flex items-center gap-1">
                 <Activity className="w-3 h-3" /> Activity
               </h4>
               <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
                 {activities.map((act: any) => (
                   <div
                     key={act.id}
-                    className="flex items-center gap-2 text-[11px] text-white/40"
+                    className="flex items-center gap-2 text-[11px] text-muted-foreground/70"
                   >
-                    <span className="text-white/60">{act.actor}</span>
+                    <span className="text-muted-foreground">{act.actor}</span>
                     <span>{act.action.replace("_", " ")}</span>
                     {act.fromValue && act.toValue && (
                       <>
@@ -850,7 +850,7 @@ function TaskDetailDialog({
                         </Badge>
                       </>
                     )}
-                    <span className="ml-auto text-white/20">
+                    <span className="ml-auto text-muted-foreground/50">
                       {formatRelativeTime(act.createdAt)}
                     </span>
                   </div>
@@ -937,9 +937,9 @@ function AnalyticsPanel({ analytics }: { analytics: any }) {
 
       {/* Completions over time */}
       {completionsOverTime && completionsOverTime.length > 0 && (
-        <Card className="bg-white/[0.02] border-white/5">
+        <Card className="bg-muted/30 border-border/50">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-white/70">
+            <CardTitle className="text-sm text-foreground/80">
               Completions (Last 30 Days)
             </CardTitle>
           </CardHeader>
@@ -964,7 +964,7 @@ function AnalyticsPanel({ analytics }: { analytics: any }) {
                 );
               })}
             </div>
-            <div className="flex justify-between text-[9px] text-white/20 mt-1">
+            <div className="flex justify-between text-[9px] text-muted-foreground/50 mt-1">
               <span>
                 {completionsOverTime[0]?.day ?? ""}
               </span>
@@ -978,9 +978,9 @@ function AnalyticsPanel({ analytics }: { analytics: any }) {
 
       {/* Recent Activity */}
       {analytics.recentActivity && analytics.recentActivity.length > 0 && (
-        <Card className="bg-white/[0.02] border-white/5">
+        <Card className="bg-muted/30 border-border/50">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-white/70 flex items-center gap-2">
+            <CardTitle className="text-sm text-foreground/80 flex items-center gap-2">
               <Activity className="w-4 h-4" /> Recent Activity
             </CardTitle>
           </CardHeader>
@@ -990,9 +990,9 @@ function AnalyticsPanel({ analytics }: { analytics: any }) {
                 {analytics.recentActivity.map((act: any) => (
                   <div
                     key={act.id}
-                    className="flex items-center gap-2 text-xs text-white/40 py-1"
+                    className="flex items-center gap-2 text-xs text-muted-foreground/70 py-1"
                   >
-                    <span className="text-white/60 font-medium min-w-[60px]">
+                    <span className="text-muted-foreground font-medium min-w-[60px]">
                       {act.actor}
                     </span>
                     <span>{act.action.replace("_", " ")}</span>
@@ -1013,7 +1013,7 @@ function AnalyticsPanel({ analytics }: { analytics: any }) {
                         </Badge>
                       </>
                     )}
-                    <span className="ml-auto text-white/20 text-[10px] whitespace-nowrap">
+                    <span className="ml-auto text-muted-foreground/50 text-[10px] whitespace-nowrap">
                       {formatRelativeTime(act.createdAt)}
                     </span>
                   </div>
@@ -1041,15 +1041,15 @@ function MetricCard({
   progressColor?: string;
 }) {
   return (
-    <Card className="bg-white/[0.02] border-white/5">
+    <Card className="bg-muted/30 border-border/50">
       <CardContent className="p-3">
         <div className="flex items-center justify-between mb-1">
-          <span className="text-[11px] text-white/40">{title}</span>
+          <span className="text-[11px] text-muted-foreground/70">{title}</span>
           {icon}
         </div>
-        <div className="text-lg font-bold text-white/90">{value}</div>
+        <div className="text-lg font-bold text-foreground">{value}</div>
         {progressValue !== undefined && (
-          <div className="mt-1.5 h-1 rounded-full bg-white/5 overflow-hidden">
+          <div className="mt-1.5 h-1 rounded-full bg-muted/40 overflow-hidden">
             <div
               className={`h-full rounded-full ${progressColor ?? "bg-blue-500"}`}
               style={{ width: `${Math.min(progressValue, 100)}%` }}
@@ -1072,18 +1072,18 @@ function BreakdownCard({
   const total = entries.reduce((sum, [, v]) => sum + v, 0);
 
   return (
-    <Card className="bg-white/[0.02] border-white/5">
+    <Card className="bg-muted/30 border-border/50">
       <CardHeader className="pb-2">
-        <CardTitle className="text-xs text-white/50">{title}</CardTitle>
+        <CardTitle className="text-xs text-muted-foreground/80">{title}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-1.5">
         {entries.map(([key, val]) => (
           <div key={key} className="flex items-center gap-2 text-xs">
-            <span className="text-white/60 flex-1 truncate">
+            <span className="text-muted-foreground flex-1 truncate">
               {key.replace("_", " ")}
             </span>
-            <span className="text-white/40 tabular-nums">{val}</span>
-            <div className="w-16 h-1.5 rounded-full bg-white/5 overflow-hidden">
+            <span className="text-muted-foreground/70 tabular-nums">{val}</span>
+            <div className="w-16 h-1.5 rounded-full bg-muted/40 overflow-hidden">
               <div
                 className="h-full rounded-full bg-blue-500/60"
                 style={{
@@ -1094,7 +1094,7 @@ function BreakdownCard({
           </div>
         ))}
         {entries.length === 0 && (
-          <span className="text-[10px] text-white/20">No data</span>
+          <span className="text-[10px] text-muted-foreground/50">No data</span>
         )}
       </CardContent>
     </Card>
@@ -1163,7 +1163,7 @@ function InferencePanel() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-40 text-white/30">
+      <div className="flex items-center justify-center h-40 text-muted-foreground/60">
         <RefreshCw className="w-5 h-5 animate-spin mr-2" />
         Loading inference data...
       </div>
@@ -1174,9 +1174,9 @@ function InferencePanel() {
     <div className="space-y-4">
       {/* Bridge Status */}
       {bridgeState && (
-        <Card className="bg-white/[0.02] border-white/5">
+        <Card className="bg-muted/30 border-border/50">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-white/70 flex items-center gap-2">
+            <CardTitle className="text-sm text-foreground/80 flex items-center gap-2">
               <Shield className="w-4 h-4 text-emerald-400" />
               Privacy-Preserving Inference Bridge
             </CardTitle>
@@ -1184,27 +1184,27 @@ function InferencePanel() {
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
               <div>
-                <span className="text-white/40 block">Status</span>
+                <span className="text-muted-foreground/70 block">Status</span>
                 <span className={`font-medium ${bridgeState.initialized ? "text-green-400" : "text-yellow-400"}`}>
                   {bridgeState.initialized ? "Active" : "Inactive"}
                 </span>
               </div>
               {bridgeState.localModelsAvailable !== undefined && (
                 <div>
-                  <span className="text-white/40 block">Local Models</span>
-                  <span className="text-white/80">{bridgeState.localModelsAvailable}</span>
+                  <span className="text-muted-foreground/70 block">Local Models</span>
+                  <span className="text-foreground/90">{bridgeState.localModelsAvailable}</span>
                 </div>
               )}
               {bridgeState.totalInferences !== undefined && (
                 <div>
-                  <span className="text-white/40 block">Total Inferences</span>
-                  <span className="text-white/80">{bridgeState.totalInferences}</span>
+                  <span className="text-muted-foreground/70 block">Total Inferences</span>
+                  <span className="text-foreground/90">{bridgeState.totalInferences}</span>
                 </div>
               )}
               {bridgeState.localInferences !== undefined && (
                 <div>
-                  <span className="text-white/40 block">Local Inferences</span>
-                  <span className="text-white/80">{bridgeState.localInferences}</span>
+                  <span className="text-muted-foreground/70 block">Local Inferences</span>
+                  <span className="text-foreground/90">{bridgeState.localInferences}</span>
                 </div>
               )}
             </div>
@@ -1237,19 +1237,19 @@ function InferencePanel() {
       </div>
 
       {/* Receipt List */}
-      <Card className="bg-white/[0.02] border-white/5">
+      <Card className="bg-muted/30 border-border/50">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm text-white/70 flex items-center gap-2">
+          <CardTitle className="text-sm text-foreground/80 flex items-center gap-2">
             <Zap className="w-4 h-4 text-amber-400" />
             Inference Receipts ({receipts.length})
           </CardTitle>
-          <CardDescription className="text-xs text-white/30">
+          <CardDescription className="text-xs text-muted-foreground/60">
             Content-addressed IPLD receipts for every inference call
           </CardDescription>
         </CardHeader>
         <CardContent>
           {receipts.length === 0 ? (
-            <div className="text-center py-8 text-white/20 text-sm">
+            <div className="text-center py-8 text-muted-foreground/50 text-sm">
               No inference receipts yet. Receipts are created when AI inferences run.
             </div>
           ) : (
@@ -1264,7 +1264,7 @@ function InferencePanel() {
                     return (
                       <div
                         key={rec.cid}
-                        className="rounded-lg border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+                        className="rounded-lg border border-border/50 bg-muted/30 hover:bg-muted/50 transition-colors"
                       >
                         <button
                           type="button"
@@ -1272,11 +1272,11 @@ function InferencePanel() {
                           onClick={() => setExpandedCid(isExpanded ? null : rec.cid)}
                         >
                           <div className="flex items-center gap-2">
-                            <Hash className="w-3.5 h-3.5 text-white/30 flex-shrink-0" />
-                            <span className="text-xs font-mono text-white/60 truncate flex-1">
+                            <Hash className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0" />
+                            <span className="text-xs font-mono text-muted-foreground truncate flex-1">
                               {rec.cid}
                             </span>
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-white/10 text-white/50">
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-border/80 text-muted-foreground/80">
                               {r.model.id}
                             </Badge>
                             {r.sig?.value && (
@@ -1290,12 +1290,12 @@ function InferencePanel() {
                               </Badge>
                             )}
                             {isExpanded ? (
-                              <ChevronUp className="w-3.5 h-3.5 text-white/30" />
+                              <ChevronUp className="w-3.5 h-3.5 text-muted-foreground/60" />
                             ) : (
-                              <ChevronDown className="w-3.5 h-3.5 text-white/30" />
+                              <ChevronDown className="w-3.5 h-3.5 text-muted-foreground/60" />
                             )}
                           </div>
-                          <div className="flex items-center gap-3 mt-1.5 text-[10px] text-white/30">
+                          <div className="flex items-center gap-3 mt-1.5 text-[10px] text-muted-foreground/60">
                             <span>Issuer: {r.issuer.slice(0, 10)}...</span>
                             <span>Payer: {r.payer.slice(0, 10)}...</span>
                             <span className="ml-auto">
@@ -1305,77 +1305,77 @@ function InferencePanel() {
                         </button>
 
                         {isExpanded && (
-                          <div className="px-3 pb-3 space-y-2 border-t border-white/5 pt-2">
+                          <div className="px-3 pb-3 space-y-2 border-t border-border/50 pt-2">
                             <div className="grid grid-cols-2 gap-2 text-xs">
                               <div>
-                                <span className="text-white/40 block">Model</span>
-                                <span className="text-white/80 font-mono text-[11px]">{r.model.id}</span>
+                                <span className="text-muted-foreground/70 block">Model</span>
+                                <span className="text-foreground/90 font-mono text-[11px]">{r.model.id}</span>
                               </div>
                               <div>
-                                <span className="text-white/40 block">Model Hash</span>
-                                <span className="text-white/60 font-mono text-[11px] truncate block">
+                                <span className="text-muted-foreground/70 block">Model Hash</span>
+                                <span className="text-muted-foreground font-mono text-[11px] truncate block">
                                   {r.model.hash ?? "—"}
                                 </span>
                               </div>
                               <div>
-                                <span className="text-white/40 block">Data Hash</span>
-                                <span className="text-white/60 font-mono text-[11px] truncate block">
+                                <span className="text-muted-foreground/70 block">Data Hash</span>
+                                <span className="text-muted-foreground font-mono text-[11px] truncate block">
                                   {r.data.hash}
                                 </span>
                               </div>
                               <div>
-                                <span className="text-white/40 block">Prompt Hash</span>
-                                <span className="text-white/60 font-mono text-[11px] truncate block">
+                                <span className="text-muted-foreground/70 block">Prompt Hash</span>
+                                <span className="text-muted-foreground font-mono text-[11px] truncate block">
                                   {r.prompt.hash}
                                 </span>
                               </div>
                               {r.output?.hash && (
                                 <div>
-                                  <span className="text-white/40 block">Output Hash</span>
-                                  <span className="text-white/60 font-mono text-[11px] truncate block">
+                                  <span className="text-muted-foreground/70 block">Output Hash</span>
+                                  <span className="text-muted-foreground font-mono text-[11px] truncate block">
                                     {r.output.hash}
                                   </span>
                                 </div>
                               )}
                               <div>
-                                <span className="text-white/40 block">Payment</span>
-                                <span className="text-white/80">
+                                <span className="text-muted-foreground/70 block">Payment</span>
+                                <span className="text-foreground/90">
                                   {r.payment.amount ?? "0"} {r.payment.currency} ({r.payment.chain})
                                 </span>
                               </div>
                               {r.payment.tx && (
                                 <div>
-                                  <span className="text-white/40 block">Tx Hash</span>
-                                  <span className="text-white/60 font-mono text-[11px] truncate block">
+                                  <span className="text-muted-foreground/70 block">Tx Hash</span>
+                                  <span className="text-muted-foreground font-mono text-[11px] truncate block">
                                     {r.payment.tx}
                                   </span>
                                 </div>
                               )}
                               {r.license?.id && (
                                 <div>
-                                  <span className="text-white/40 block">License</span>
-                                  <span className="text-white/80">
+                                  <span className="text-muted-foreground/70 block">License</span>
+                                  <span className="text-foreground/90">
                                     {r.license.id} {r.license.scope ? `(${r.license.scope})` : ""}
                                   </span>
                                 </div>
                               )}
                               {r.sig && (
                                 <div className="col-span-2">
-                                  <span className="text-white/40 block">Signature ({r.sig.alg})</span>
-                                  <span className="text-white/60 font-mono text-[11px] truncate block">
+                                  <span className="text-muted-foreground/70 block">Signature ({r.sig.alg})</span>
+                                  <span className="text-muted-foreground font-mono text-[11px] truncate block">
                                     {r.sig.value}
                                   </span>
                                 </div>
                               )}
                               <div>
-                                <span className="text-white/40 block">Timestamp</span>
-                                <span className="text-white/80">
+                                <span className="text-muted-foreground/70 block">Timestamp</span>
+                                <span className="text-foreground/90">
                                   {new Date(r.ts * 1000).toLocaleString()}
                                 </span>
                               </div>
                               <div>
-                                <span className="text-white/40 block">Issuer (full)</span>
-                                <span className="text-white/60 font-mono text-[11px] truncate block">
+                                <span className="text-muted-foreground/70 block">Issuer (full)</span>
+                                <span className="text-muted-foreground font-mono text-[11px] truncate block">
                                   {r.issuer}
                                 </span>
                               </div>
@@ -1454,7 +1454,7 @@ function AuditTrailPanel() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-40 text-white/30">
+      <div className="flex items-center justify-center h-40 text-muted-foreground/60">
         <RefreshCw className="w-5 h-5 animate-spin mr-2" />
         Loading audit trail...
       </div>
@@ -1468,7 +1468,7 @@ function AuditTrailPanel() {
       return <ArrowRight className="w-3 h-3 text-blue-400" />;
     if (action.includes("update") || action.includes("edit"))
       return <Pencil className="w-3 h-3 text-amber-400" />;
-    return <Activity className="w-3 h-3 text-white/40" />;
+    return <Activity className="w-3 h-3 text-muted-foreground/70" />;
   };
 
   return (
@@ -1498,10 +1498,10 @@ function AuditTrailPanel() {
       </div>
 
       {/* Timeline */}
-      <Card className="bg-white/[0.02] border-white/5">
+      <Card className="bg-muted/30 border-border/50">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-sm text-white/70 flex items-center gap-2">
+            <CardTitle className="text-sm text-foreground/80 flex items-center gap-2">
               <Activity className="w-4 h-4 text-blue-400" />
               Audit Timeline
             </CardTitle>
@@ -1517,7 +1517,7 @@ function AuditTrailPanel() {
         </CardHeader>
         <CardContent>
           {activities.length === 0 ? (
-            <div className="text-center py-8 text-white/20 text-sm">
+            <div className="text-center py-8 text-muted-foreground/50 text-sm">
               No audit events recorded yet.
             </div>
           ) : (
@@ -1526,22 +1526,22 @@ function AuditTrailPanel() {
                 {Object.entries(groupedActivities).map(([day, dayActivities]) => (
                   <div key={day}>
                     <div className="sticky top-0 bg-background/80 backdrop-blur-sm py-1 mb-2 z-10">
-                      <span className="text-[11px] font-medium text-white/40 px-2 py-0.5 rounded bg-white/5">
+                      <span className="text-[11px] font-medium text-muted-foreground/70 px-2 py-0.5 rounded bg-muted/40">
                         {day}
                       </span>
                     </div>
-                    <div className="space-y-1 pl-2 border-l border-white/5">
+                    <div className="space-y-1 pl-2 border-l border-border/50">
                       {dayActivities.map((act: any) => (
                         <div
                           key={act.id}
-                          className="flex items-start gap-2 text-xs text-white/50 py-1.5 pl-3 hover:bg-white/[0.02] rounded-r transition"
+                          className="flex items-start gap-2 text-xs text-muted-foreground/80 py-1.5 pl-3 hover:bg-muted/30 rounded-r transition"
                         >
                           <div className="flex-shrink-0 mt-0.5">{actionIcon(act.action)}</div>
                           <div className="flex-1 min-w-0">
-                            <span className="text-white/70 font-medium">{act.actor}</span>
+                            <span className="text-foreground/80 font-medium">{act.actor}</span>
                             <span className="mx-1">{act.action.replace(/_/g, " ")}</span>
                             {act.taskId && taskTitleMap[act.taskId] && (
-                              <span className="text-white/40">
+                              <span className="text-muted-foreground/70">
                                 on &quot;{taskTitleMap[act.taskId]}&quot;
                               </span>
                             )}
@@ -1557,10 +1557,10 @@ function AuditTrailPanel() {
                               </span>
                             )}
                             {act.details && (
-                              <span className="text-white/30 ml-1 text-[10px]">{act.details}</span>
+                              <span className="text-muted-foreground/60 ml-1 text-[10px]">{act.details}</span>
                             )}
                           </div>
-                          <span className="text-white/20 text-[10px] whitespace-nowrap flex-shrink-0">
+                          <span className="text-muted-foreground/50 text-[10px] whitespace-nowrap flex-shrink-0">
                             {formatRelativeTime(act.createdAt)}
                           </span>
                         </div>
@@ -1589,7 +1589,7 @@ function LiveFeedPanel({
   return (
     <div className="space-y-4">
       {/* Status */}
-      <Card className="bg-white/[0.02] border-white/5">
+      <Card className="bg-muted/30 border-border/50">
         <CardContent className="p-3">
           <div className="flex items-center gap-3">
             {connected ? (
@@ -1605,7 +1605,7 @@ function LiveFeedPanel({
                 <span className="text-sm text-red-400 font-medium">Disconnected</span>
               </>
             )}
-            <span className="ml-auto text-[10px] text-white/30">{events.length} events captured</span>
+            <span className="ml-auto text-[10px] text-muted-foreground/60">{events.length} events captured</span>
           </div>
         </CardContent>
       </Card>
@@ -1635,19 +1635,19 @@ function LiveFeedPanel({
       </div>
 
       {/* Event Stream */}
-      <Card className="bg-white/[0.02] border-white/5">
+      <Card className="bg-muted/30 border-border/50">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm text-white/70 flex items-center gap-2">
+          <CardTitle className="text-sm text-foreground/80 flex items-center gap-2">
             <Radio className="w-4 h-4 text-blue-400" />
             Live Event Stream
           </CardTitle>
-          <CardDescription className="text-xs text-white/30">
+          <CardDescription className="text-xs text-muted-foreground/60">
             Real-time events from OpenClaw gateway (ws://127.0.0.1:18789)
           </CardDescription>
         </CardHeader>
         <CardContent>
           {events.length === 0 ? (
-            <div className="text-center py-8 text-white/20 text-sm">
+            <div className="text-center py-8 text-muted-foreground/50 text-sm">
               {connected
                 ? "Waiting for events..."
                 : "Connect to OpenClaw gateway to see live events."}
@@ -1661,10 +1661,10 @@ function LiveFeedPanel({
                     className={`flex items-start gap-2 py-1.5 px-2 rounded transition ${
                       event.type === "error"
                         ? "bg-red-500/5 border border-red-500/10"
-                        : "hover:bg-white/[0.02]"
+                        : "hover:bg-muted/30"
                     }`}
                   >
-                    <span className="text-white/20 flex-shrink-0 tabular-nums">
+                    <span className="text-muted-foreground/50 flex-shrink-0 tabular-nums">
                       {new Date(event.timestamp).toLocaleTimeString()}
                     </span>
                     <Badge
@@ -1678,14 +1678,14 @@ function LiveFeedPanel({
                               ? "border-red-500/30 text-red-400"
                               : event.type === "task_move"
                                 ? "border-amber-500/30 text-amber-400"
-                                : "border-white/10 text-white/40"
+                                : "border-border/80 text-muted-foreground/70"
                       }`}
                     >
                       {event.type}
                     </Badge>
-                    <span className="text-white/60 flex-1 truncate">{event.message}</span>
+                    <span className="text-muted-foreground flex-1 truncate">{event.message}</span>
                     {event.taskId && (
-                      <span className="text-white/20 flex-shrink-0">#{event.taskId.slice(0, 8)}</span>
+                      <span className="text-muted-foreground/50 flex-shrink-0">#{event.taskId.slice(0, 8)}</span>
                     )}
                   </div>
                 ))}
@@ -1920,15 +1920,15 @@ export function OpenClawKanbanPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex-shrink-0 flex items-center justify-between gap-4 p-4 border-b border-white/5">
+      <div className="flex-shrink-0 flex items-center justify-between gap-4 p-4 border-b border-border/50">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center">
               <Bot className="w-4 h-4 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-white/90">OpenClaw Kanban</h1>
-              <p className="text-[11px] text-white/40">
+              <h1 className="text-lg font-bold text-foreground">OpenClaw Kanban</h1>
+              <p className="text-[11px] text-muted-foreground/70">
                 {totalCount} tasks &middot; {inProgressCount} active &middot;{" "}
                 {completedCount} done
                 {wsConnected && (
@@ -1962,7 +1962,7 @@ export function OpenClawKanbanPage() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-        <div className="flex-shrink-0 px-4 pt-2 border-b border-white/5 flex items-center gap-4">
+        <div className="flex-shrink-0 px-4 pt-2 border-b border-border/50 flex items-center gap-4">
           <TabsList className="bg-transparent">
             <TabsTrigger value="board" className="text-xs">
               <Layers className="w-3.5 h-3.5 mr-1.5" />
@@ -1997,7 +1997,7 @@ export function OpenClawKanbanPage() {
           {activeTab === "board" && (
             <div className="flex items-center gap-2 ml-auto">
               <div className="relative">
-                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/60" />
                 <Input
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
@@ -2057,7 +2057,7 @@ export function OpenClawKanbanPage() {
         {/* Analytics Tab */}
         <TabsContent value="analytics" className="flex-1 m-0 overflow-auto p-4">
           {analyticsLoading ? (
-            <div className="flex items-center justify-center h-40 text-white/30">
+            <div className="flex items-center justify-center h-40 text-muted-foreground/60">
               <RefreshCw className="w-5 h-5 animate-spin mr-2" />
               Loading analytics...
             </div>

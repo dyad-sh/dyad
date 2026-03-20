@@ -38,6 +38,6 @@ testSkipIfWindows("max tool call steps setting", async ({ po }) => {
   await po.page
     .getByRole("combobox", { name: "Max Tool Calls (Agent)" })
     .click();
-  await po.page.getByRole("option", { name: "Default (50)" }).click();
+  await po.page.getByRole("option", { name: "Default (100)" }).click();
   po.settings.snapshotSettingsDelta(beforeSettings3);
 });

@@ -116,9 +116,12 @@ export default function DocumentsPage() {
   const [aiTone, setAiTone] = useState<"formal" | "casual" | "professional" | "creative">("professional");
 
   // Query LibreOffice status
-  const { data: loStatus, isLoading: isStatusLoading } = useQuery({
+  const { data: loStatus, isLoading: isStatusLoading, refetch: refetchStatus } = useQuery({
     queryKey: ["libreoffice-status"],
     queryFn: () => libreOfficeClient.getStatus(),
+    refetchInterval: 60000, // Re-check every 60s in case user installs while app is open
+    retry: 3,
+    retryDelay: 2000,
   });
 
   // Query documents
@@ -297,11 +300,9 @@ export default function DocumentsPage() {
             <DropdownMenuContent align="end" className="border-border/50 bg-background/95 backdrop-blur-sm">
               <DropdownMenuItem 
                 onClick={() => openDocMutation.mutate(doc.id)}
-                disabled={!loStatus?.installed}
-                className={!loStatus?.installed ? "text-muted-foreground" : ""}
               >
                 <ExternalLink className="h-4 w-4 mr-2" />
-                {loStatus?.installed ? "Open in LibreOffice" : "Open (LibreOffice required)"}
+                {loStatus?.installed ? "Open in LibreOffice" : "Open Document"}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => downloadDocMutation.mutate(doc.id)}>
                 <Download className="h-4 w-4 mr-2" />
@@ -419,7 +420,15 @@ export default function DocumentsPage() {
 
           <div className="flex items-center gap-3">
             {/* LibreOffice Status Badge */}
-            {loStatus?.installed ? (
+            {isStatusLoading ? (
+              <Badge
+                variant="secondary"
+                className="bg-muted/30 text-muted-foreground border-muted/30"
+              >
+                <RefreshCw className="w-3 h-3 mr-2 animate-spin" />
+                Detecting LibreOffice...
+              </Badge>
+            ) : loStatus?.installed ? (
               <Badge
                 variant="secondary"
                 className="bg-emerald-500/20 text-emerald-600 border-emerald-500/30"
@@ -428,15 +437,36 @@ export default function DocumentsPage() {
                 LibreOffice {loStatus?.version}
               </Badge>
             ) : (
-              <Badge
-                variant="secondary"
-                className="bg-amber-500/20 text-amber-600 border-amber-500/30 cursor-pointer hover:bg-amber-500/30"
-                onClick={() => window.open("https://www.libreoffice.org/download/", "_blank")}
-                title="Click to download LibreOffice for PDF, DOCX, and XLSX export"
-              >
-                <AlertCircle className="w-3 h-3 mr-2" />
-                Basic Mode (Install LibreOffice for full features)
-              </Badge>
+              <div className="flex items-center gap-1">
+                <Badge
+                  variant="secondary"
+                  className="bg-amber-500/20 text-amber-600 border-amber-500/30 cursor-pointer hover:bg-amber-500/30"
+                  onClick={() => window.open("https://www.libreoffice.org/download/", "_blank")}
+                  title="Click to download LibreOffice for PDF, DOCX, and XLSX export"
+                >
+                  <AlertCircle className="w-3 h-3 mr-2" />
+                  Basic Mode (Install LibreOffice for full features)
+                </Badge>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-amber-600 hover:bg-amber-500/20"
+                  title="Re-detect LibreOffice (click after installing)"
+                  onClick={async () => {
+                    try {
+                      const status = await libreOfficeClient.refreshStatus();
+                      if (status.installed) {
+                        showSuccess("LibreOffice detected! All features are now available.");
+                      }
+                    } catch {
+                      // ignore
+                    }
+                    refetchStatus();
+                  }}
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </Button>
+              </div>
             )}
 
             {/* AI Generate Button */}

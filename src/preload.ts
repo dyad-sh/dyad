@@ -479,6 +479,7 @@ const validInvokeChannels = [
   "export:capabilities",
   // LibreOffice Integration
   "libreoffice:status",
+  "libreoffice:refresh-status",
   "libreoffice:create",
   "libreoffice:list",
   "libreoffice:get",

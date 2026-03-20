@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { promises as fsPromises } from "node:fs";
+import { pipeline } from "node:stream/promises";
 import log from "electron-log";
 
 const logger = log.scope("wsl_path_utils");
@@ -9,15 +10,18 @@ const logger = log.scope("wsl_path_utils");
  * Matches patterns like:
  * - \\wsl.localhost\Ubuntu\home\user\project
  * - \\wsl$\Ubuntu\home\user\project
+ *
+ * Uses startsWith to avoid false positives from directories named wsl.localhost or wsl$
+ * in regular paths like C:\Users\bob\wsl.localhost\project
  */
 export function isWslPath(filePath: string): boolean {
   if (!filePath || typeof filePath !== "string") {
     return false;
   }
-  const normalized = filePath.replace(/\//g, "\\");
+  const normalized = filePath.replace(/\//g, "\\").toLowerCase();
   return (
-    normalized.toLowerCase().includes("\\wsl.localhost\\") ||
-    normalized.toLowerCase().includes("\\wsl$\\")
+    normalized.startsWith("\\\\wsl.localhost\\") ||
+    normalized.startsWith("\\\\wsl$\\")
   );
 }
 
@@ -38,30 +42,16 @@ export async function copyFileHandlingWsl(
     if (isWslPath(sourcePath)) {
       logger.debug(`Detected WSL path, using streaming copy: ${sourcePath}`);
       // Use streaming for WSL paths to avoid memory issues with large files
-      // Also preserves file permissions via chmod after write
-      await new Promise<void>((resolve, reject) => {
-        const readable = fs.createReadStream(sourcePath);
-        const writable = fs.createWriteStream(destPath);
-
-        readable.on("error", reject);
-        writable.on("error", reject);
-
-        readable.pipe(writable);
-
-        writable.on("finish", async () => {
-          try {
-            // Preserve file permissions from source
-            const stats = await fsPromises.stat(sourcePath);
-            await fsPromises.chmod(destPath, stats.mode);
-            logger.debug(
-              `Successfully copied WSL file with mode: ${sourcePath} -> ${destPath}`,
-            );
-            resolve();
-          } catch (error) {
-            reject(error);
-          }
-        });
-      });
+      // pipeline() handles stream cleanup automatically (destroy on error, cleanup on finish)
+      const readable = fs.createReadStream(sourcePath);
+      const writable = fs.createWriteStream(destPath);
+      await pipeline(readable, writable);
+      // Preserve file permissions from source
+      const stats = await fsPromises.stat(sourcePath);
+      await fsPromises.chmod(destPath, stats.mode);
+      logger.debug(
+        `Successfully copied WSL file with mode: ${sourcePath} -> ${destPath}`,
+      );
     } else {
       // For regular paths, use copyFile which is more efficient
       await fsPromises.copyFile(sourcePath, destPath);

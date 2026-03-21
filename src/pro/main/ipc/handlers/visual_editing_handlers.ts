@@ -2,6 +2,7 @@ import { ipcMain } from "electron";
 import fs from "node:fs";
 import { promises as fsPromises } from "node:fs";
 import path from "path";
+import log from "electron-log";
 import { db } from "../../../../db";
 import { apps } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
@@ -29,6 +30,8 @@ import {
   analyzeComponent,
 } from "../../utils/visual_editing_utils";
 import { normalizePath } from "../../../../../shared/normalizePath";
+
+const logger = log.scope("visual_editing_handlers");
 
 // Client allows 7.5 MB raw; base64 expands by ~4/3 plus data URL prefix
 const MAX_IMAGE_SIZE = Math.ceil((7.5 * 1024 * 1024) / 3) * 4 + 100; // ~10,485,860
@@ -111,6 +114,7 @@ export function registerVisualEditingHandlers() {
             await ensureDyadGitignored(appPath);
 
             // Save to public/images for the app to serve
+            // Save to public/images for the app to serve
             const publicImagesDir = path.join(appPath, "public", "images");
             await fsPromises.mkdir(publicImagesDir, { recursive: true });
             const destPath = path.join(publicImagesDir, finalFileName);
@@ -120,7 +124,10 @@ export function registerVisualEditingHandlers() {
 
             change.imageSrc = `/images/${finalFileName}`;
 
-            if (fs.existsSync(path.join(appPath, ".git")) && enableGitAutoCommit) {
+            // Always stage image if git repo exists (even if auto-commit is disabled).
+            // This keeps working tree clean for version restores, which require clean state.
+            // Only skip committing if auto-commit is disabled (so user can review first).
+            if (fs.existsSync(path.join(appPath, ".git"))) {
               const imageFilepath = normalizePath(
                 path.join("public", "images", finalFileName),
               );
@@ -129,6 +136,16 @@ export function registerVisualEditingHandlers() {
                 filepath: imageFilepath,
               });
               stagedGitPaths.push({ appPath, filepath: imageFilepath });
+              
+              if (enableGitAutoCommit) {
+                // Image will be committed as part of overall response commit
+                logger.log(`Image staged for commit: ${imageFilepath}`);
+              } else {
+                // Image is staged but not committed; user can review before finalizing.
+                logger.log(
+                  `Image staged but not committed (auto-commit disabled): ${imageFilepath}`,
+                );
+              }
             }
           }
         }
@@ -173,17 +190,27 @@ export function registerVisualEditingHandlers() {
           const content = await fsPromises.readFile(filePath, "utf-8");
           const transformedContent = transformContent(content, lineChanges);
           await fsPromises.writeFile(filePath, transformedContent, "utf-8");
-          // Check if git repository exists and commit the change (if auto-commit is enabled)
-          if (fs.existsSync(path.join(appPath, ".git")) && enableGitAutoCommit) {
+          // Always stage visual edits if git repo exists (even if auto-commit is disabled)
+          // This keeps the working tree clean for version restores, which require a clean state.
+          // Only skip committing if auto-commit is disabled (so user can review first)
+          if (fs.existsSync(path.join(appPath, ".git"))) {
             await gitAdd({
               path: appPath,
               filepath: normalizedRelativePath,
             });
 
-            await gitCommit({
-              path: appPath,
-              message: `Updated ${normalizedRelativePath}`,
-            });
+            if (enableGitAutoCommit) {
+              await gitCommit({
+                path: appPath,
+                message: `Updated ${normalizedRelativePath}`,
+              });
+            } else {
+              // File is staged but not committed; user can review before finalizing.
+              // This keeps working tree clean so version restores can work.
+              logger.log(
+                `Visual edit staged but not committed (auto-commit disabled): ${normalizedRelativePath}`,
+              );
+            }
           }
         }
       } catch (error) {

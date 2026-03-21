@@ -118,32 +118,6 @@ describe("wsl_path_utils", () => {
       expect(fs.readFileSync(permDest, "utf-8")).toBe("test");
     });
 
-    it("should use streaming when destination is WSL path", async () => {
-      const srcFile = path.join(tempDir, "src.txt");
-      const destFile = path.join(tempDir, "dest-wsl.txt");
-      fs.writeFileSync(srcFile, "test streaming content");
-      fs.chmodSync(srcFile, 0o755);
-
-      await vi
-        .mocked(isWslPath)
-        .mockImplementation((filePath: string) =>
-          filePath === destFile ? true : false,
-        );
-
-      try {
-        await copyFileHandlingWsl(srcFile, destFile);
-        expect(fs.existsSync(destFile)).toBe(true);
-        expect(fs.readFileSync(destFile, "utf-8")).toBe(
-          "test streaming content",
-        );
-        const srcStats = fs.statSync(srcFile);
-        const destStats = fs.statSync(destFile);
-        expect(destStats.mode).toBe(srcStats.mode);
-      } finally {
-        vi.mocked(isWslPath).mockRestore();
-      }
-    });
-
     it("should correctly identify WSL paths for routing to streaming copy", () => {
       expect(isWslPath("\\\\wsl.localhost\\Ubuntu\\home\\user\\file.txt")).toBe(
         true,

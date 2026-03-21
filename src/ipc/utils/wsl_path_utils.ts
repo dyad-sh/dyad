@@ -39,7 +39,12 @@ export async function copyFileHandlingWsl(
         await fsPromises.unlink(destPath).catch(() => {});
         throw err;
       }
-      await fsPromises.chmod(destPath, stats.mode);
+      try {
+        await fsPromises.chmod(destPath, stats.mode);
+      } catch (err) {
+        await fsPromises.unlink(destPath).catch(() => {});
+        throw err;
+      }
     } else {
       await fsPromises.copyFile(sourcePath, destPath);
     }

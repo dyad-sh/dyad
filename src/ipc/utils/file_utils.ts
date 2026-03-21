@@ -16,28 +16,24 @@ const EXCLUDED_DIRS = ["node_modules", ".git", ".next"];
  * @returns Array of file paths relative to the base directory
  */
 export function getFilesRecursively(dir: string, baseDir: string): string[] {
-  try {
-    if (!fs.existsSync(dir)) {
-      return [];
-    }
-    const dirents = fs.readdirSync(dir, { withFileTypes: true });
-    const files: string[] = [];
-
-    for (const dirent of dirents) {
-      const res = path.join(dir, dirent.name);
-      if (dirent.isDirectory()) {
-        if (!EXCLUDED_DIRS.includes(dirent.name)) {
-          files.push(...getFilesRecursively(res, baseDir));
-        }
-      } else {
-        files.push(path.relative(baseDir, res));
-      }
-    }
-
-    return files;
-  } catch {
+  if (!fs.existsSync(dir)) {
     return [];
   }
+  const dirents = fs.readdirSync(dir, { withFileTypes: true });
+  const files: string[] = [];
+
+  for (const dirent of dirents) {
+    const res = path.join(dir, dirent.name);
+    if (dirent.isDirectory()) {
+      if (!EXCLUDED_DIRS.includes(dirent.name)) {
+        files.push(...getFilesRecursively(res, baseDir));
+      }
+    } else {
+      files.push(path.relative(baseDir, res));
+    }
+  }
+
+  return files;
 }
 
 export async function copyDirectoryRecursive(

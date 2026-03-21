@@ -22,8 +22,12 @@ export function getFilesRecursively(dir: string, baseDir: string): string[] {
   let dirents: fs.Dirent[];
   try {
     dirents = fs.readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return [];
+  } catch (error) {
+    const errno = error as NodeJS.ErrnoException;
+    if (errno.code === "ENOENT") {
+      return [];
+    }
+    throw error;
   }
   const files: string[] = [];
 

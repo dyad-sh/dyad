@@ -22,8 +22,14 @@ import { promises as fsPromises } from "node:fs";
 
 // Import our utility modules
 import { withLock } from "../utils/lock_utils";
-import { getFilesRecursively } from "../utils/file_utils";
-import { pathExistsHandlingWslAsync } from "../utils/wsl_path_utils";
+import {
+  getFilesRecursively,
+  copyDirectoryRecursive,
+} from "../utils/file_utils";
+import {
+  pathExistsHandlingWslAsync,
+  pathExistsHandlingWsl,
+} from "../utils/wsl_path_utils";
 import {
   runningApps,
   processCounter,
@@ -2113,7 +2119,7 @@ export function registerAppHandlers() {
         );
       }
 
-      if (fs.existsSync(nextResolvedPath)) {
+      if (pathExistsHandlingWsl(nextResolvedPath)) {
         throw new Error(
           `Destination path '${nextResolvedPath}' already exists. Please choose an empty folder.`,
         );
@@ -2151,10 +2157,7 @@ export function registerAppHandlers() {
       await fsPromises.mkdir(normalizedParentDir, { recursive: true });
 
       try {
-        // Copy the directory without node_modules
-        await copyDir(currentResolvedPath, nextResolvedPath, undefined, {
-          excludeNodeModules: true,
-        });
+        await copyDirectoryRecursive(currentResolvedPath, nextResolvedPath);
 
         // Update path to absolute path
         await db

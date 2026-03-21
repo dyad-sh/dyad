@@ -54,9 +54,6 @@ export async function copyFileHandlingWsl(
   }
 }
 
-/**
- * Async check if a path exists.
- */
 export async function pathExistsHandlingWslAsync(
   filePath: string,
 ): Promise<boolean> {
@@ -68,9 +65,6 @@ export async function pathExistsHandlingWslAsync(
   }
 }
 
-/**
- * Sync check if a path exists.
- */
 export function pathExistsHandlingWsl(filePath: string): boolean {
   try {
     if (isWslPath(filePath)) {
@@ -84,9 +78,6 @@ export function pathExistsHandlingWsl(filePath: string): boolean {
   }
 }
 
-/**
- * Async get file stats.
- */
 export async function getFileStatsHandlingWslAsync(
   filePath: string,
 ): Promise<fs.Stats | undefined> {

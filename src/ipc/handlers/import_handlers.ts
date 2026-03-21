@@ -98,7 +98,6 @@ export function registerImportHandlers() {
         );
       }
 
-      // Determine the app path based on skipCopy
       const appPath = skipCopy ? sourcePath : getDyadAppPath(appName);
 
       if (skipCopy && isWslPath(sourcePath)) {
@@ -122,6 +121,9 @@ export function registerImportHandlers() {
             throw error;
           }
         }
+        // Copy the app folder to the Dyad apps directory.
+        // Why not use fs.cp? Because we want stable ordering for
+        // tests.
         await copyDirectoryRecursive(sourcePath, appPath);
       }
 

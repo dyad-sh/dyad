@@ -5,6 +5,10 @@ import log from "electron-log";
 
 const logger = log.scope("wsl_path_utils");
 
+/**
+ * Detects if a path is a WSL2 network UNC path.
+ * Matches patterns like \\wsl.localhost\Ubuntu\home\user\project and \\wsl$\Ubuntu\home\user\project.
+ */
 export function isWslPath(filePath: string): boolean {
   if (!filePath || typeof filePath !== "string") {
     return false;
@@ -16,16 +20,25 @@ export function isWslPath(filePath: string): boolean {
   );
 }
 
+/**
+ * Copies a file with WSL2 path support using streaming for UNC paths.
+ * Ensures file permissions are preserved and cleans up partial files on error.
+ */
 export async function copyFileHandlingWsl(
   sourcePath: string,
   destPath: string,
 ): Promise<void> {
   try {
     if (isWslPath(sourcePath) || isWslPath(destPath)) {
+      const stats = await fsPromises.stat(sourcePath);
       const readable = fs.createReadStream(sourcePath);
       const writable = fs.createWriteStream(destPath);
-      await pipeline(readable, writable);
-      const stats = await fsPromises.stat(sourcePath);
+      try {
+        await pipeline(readable, writable);
+      } catch (err) {
+        await fsPromises.unlink(destPath).catch(() => {});
+        throw err;
+      }
       await fsPromises.chmod(destPath, stats.mode);
     } else {
       await fsPromises.copyFile(sourcePath, destPath);
@@ -36,15 +49,25 @@ export async function copyFileHandlingWsl(
   }
 }
 
+/**
+ * Synchronous version of copyFileHandlingWsl.
+ */
 export function copyFileSyncHandlingWsl(
   sourcePath: string,
   destPath: string,
 ): void {
   try {
     if (isWslPath(sourcePath) || isWslPath(destPath)) {
-      const fileBuffer = fs.readFileSync(sourcePath);
-      fs.writeFileSync(destPath, fileBuffer);
       const stats = fs.statSync(sourcePath);
+      const fileBuffer = fs.readFileSync(sourcePath);
+      try {
+        fs.writeFileSync(destPath, fileBuffer);
+      } catch (err) {
+        try {
+          fs.unlinkSync(destPath);
+        } catch {}
+        throw err;
+      }
       fs.chmodSync(destPath, stats.mode);
     } else {
       fs.copyFileSync(sourcePath, destPath);
@@ -58,6 +81,9 @@ export function copyFileSyncHandlingWsl(
   }
 }
 
+/**
+ * Async check if a path exists.
+ */
 export async function pathExistsHandlingWslAsync(
   filePath: string,
 ): Promise<boolean> {
@@ -69,6 +95,9 @@ export async function pathExistsHandlingWslAsync(
   }
 }
 
+/**
+ * Sync check if a path exists.
+ */
 export function pathExistsHandlingWsl(filePath: string): boolean {
   try {
     if (isWslPath(filePath)) {
@@ -82,6 +111,9 @@ export function pathExistsHandlingWsl(filePath: string): boolean {
   }
 }
 
+/**
+ * Async get file stats.
+ */
 export async function getFileStatsHandlingWslAsync(
   filePath: string,
 ): Promise<fs.Stats | undefined> {

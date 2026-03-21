@@ -611,7 +611,7 @@ export async function processFullResponseActions(
           // Unstage only the files that Dyad staged during this response
           // This preserves any unrelated files the user may have already staged
           try {
-            for (const filepath of changes) {
+            for (const filepath of writtenFiles) {
               await gitResetFile({ path: appPath, filepath });
             }
           } catch (error) {

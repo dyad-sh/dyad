@@ -25,6 +25,7 @@ import {
   gitAdd,
   gitRemove,
   gitAddAll,
+  gitReset,
   getGitUncommittedFiles,
   hasStagedChanges,
 } from "../utils/git_utils";
@@ -607,6 +608,12 @@ export async function processFullResponseActions(
           logger.log(
             "Git auto-commit is disabled. Changes applied but NOT committed.",
           );
+          // Unstage files that were staged earlier when auto-commit is disabled
+          try {
+            await gitReset({ path: appPath });
+          } catch (error) {
+            logger.warn("Failed to unstage files when auto-commit is disabled:", error);
+          }
           // Do NOT report our own staged files as uncommittedFiles when auto-commit is off
           // This prevents false "extra files" warnings in the UI
           uncommittedFiles = [];

@@ -120,7 +120,7 @@ export function registerVisualEditingHandlers() {
 
             change.imageSrc = `/images/${finalFileName}`;
 
-            if (fs.existsSync(path.join(appPath, ".git"))) {
+            if (fs.existsSync(path.join(appPath, ".git")) && enableGitAutoCommit) {
               const imageFilepath = normalizePath(
                 path.join("public", "images", finalFileName),
               );

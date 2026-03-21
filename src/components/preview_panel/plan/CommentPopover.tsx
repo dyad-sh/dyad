@@ -1,9 +1,17 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { CommentCard } from "./CommentCard";
 import type { PlanAnnotation } from "@/atoms/planAtoms";
 
 interface PopoverState {
   annotationId: string;
+  anchorX: number;
+  anchorY: number;
   x: number;
   y: number;
 }
@@ -22,9 +30,39 @@ export const CommentPopover: React.FC<CommentPopoverProps> = ({
   annotations,
 }) => {
   const [popover, setPopover] = useState<PopoverState | null>(null);
-  const popoverRef = React.useRef<HTMLDivElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
 
-  const dismiss = useCallback(() => setPopover(null), []);
+  const dismiss = useCallback(
+    ({ restoreFocus = false }: { restoreFocus?: boolean } = {}) => {
+      setPopover(null);
+
+      if (restoreFocus) {
+        const trigger = triggerRef.current;
+        if (trigger?.isConnected) {
+          requestAnimationFrame(() => {
+            trigger.focus();
+          });
+        }
+      }
+    },
+    [],
+  );
+
+  const openPopoverForMark = useCallback((mark: HTMLElement) => {
+    const annotationId = mark.getAttribute("data-annotation-id");
+    if (!annotationId) return;
+
+    const rect = mark.getBoundingClientRect();
+    triggerRef.current = mark;
+    setPopover({
+      annotationId,
+      anchorX: rect.right + 8,
+      anchorY: rect.top,
+      x: rect.right + 8,
+      y: rect.top,
+    });
+  }, []);
 
   // Listen for clicks on highlighted marks
   useEffect(() => {
@@ -32,24 +70,33 @@ export const CommentPopover: React.FC<CommentPopoverProps> = ({
     if (!container) return;
 
     const handleClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      const mark = target.closest("mark[data-annotation-id]") as HTMLElement;
+      const target = e.target instanceof HTMLElement ? e.target : null;
+      const mark = target?.closest("mark[data-annotation-id]") as HTMLElement;
       if (!mark) return;
 
-      const annotationId = mark.getAttribute("data-annotation-id");
-      if (!annotationId) return;
+      openPopoverForMark(mark);
+    };
 
-      const rect = mark.getBoundingClientRect();
-      setPopover({
-        annotationId,
-        x: rect.right + 8,
-        y: rect.top,
-      });
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Enter" && e.key !== " ") {
+        return;
+      }
+
+      const target = e.target instanceof HTMLElement ? e.target : null;
+      const mark = target?.closest("mark[data-annotation-id]") as HTMLElement;
+      if (!mark) return;
+
+      e.preventDefault();
+      openPopoverForMark(mark);
     };
 
     container.addEventListener("click", handleClick);
-    return () => container.removeEventListener("click", handleClick);
-  }, [containerRef]);
+    container.addEventListener("keydown", handleKeyDown);
+    return () => {
+      container.removeEventListener("click", handleClick);
+      container.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [containerRef, openPopoverForMark]);
 
   // Dismiss on click outside or Escape
   useEffect(() => {
@@ -65,7 +112,7 @@ export const CommentPopover: React.FC<CommentPopoverProps> = ({
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") dismiss();
+      if (e.key === "Escape") dismiss({ restoreFocus: true });
     };
 
     document.addEventListener("mousedown", handleMouseDown);
@@ -93,24 +140,63 @@ export const CommentPopover: React.FC<CommentPopoverProps> = ({
     }
   }, [annotations, popover, dismiss]);
 
+  useLayoutEffect(() => {
+    if (!popover || !popoverRef.current) return;
+
+    const updatePosition = () => {
+      const popoverElement = popoverRef.current;
+      if (!popoverElement) return;
+
+      const rect = popoverElement.getBoundingClientRect();
+      const margin = 8;
+      const maxX = Math.max(margin, window.innerWidth - rect.width - margin);
+      const maxY = Math.max(margin, window.innerHeight - rect.height - margin);
+      const nextX = Math.max(margin, Math.min(popover.anchorX, maxX));
+      const nextY = Math.max(margin, Math.min(popover.anchorY, maxY));
+
+      setPopover((current) => {
+        if (!current || current.annotationId !== popover.annotationId) {
+          return current;
+        }
+
+        if (current.x === nextX && current.y === nextY) {
+          return current;
+        }
+
+        return { ...current, x: nextX, y: nextY };
+      });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    return () => window.removeEventListener("resize", updatePosition);
+  }, [popover?.annotationId, popover?.anchorX, popover?.anchorY]);
+
+  useEffect(() => {
+    if (!popover || !popoverRef.current) return;
+
+    const firstFocusable = popoverRef.current.querySelector<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    );
+
+    (firstFocusable ?? popoverRef.current).focus();
+  }, [popover]);
+
   if (!popover) return null;
 
   const annotation = annotations.find((a) => a.id === popover.annotationId);
   if (!annotation) return null;
 
-  // Clamp position to stay within viewport
-  const maxX = window.innerWidth - 320;
-  const maxY = window.innerHeight - 200;
-  const x = Math.min(popover.x, maxX);
-  const y = Math.min(popover.y, maxY);
-
   return (
     <div
       ref={popoverRef}
+      role="dialog"
+      aria-label="Comment on selected text"
+      tabIndex={-1}
       style={{
         position: "fixed",
-        left: x,
-        top: y,
+        left: popover.x,
+        top: popover.y,
         zIndex: 50,
       }}
       className="w-72 rounded-lg border bg-popover shadow-lg"

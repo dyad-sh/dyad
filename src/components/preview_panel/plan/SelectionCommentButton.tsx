@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -36,10 +42,18 @@ export const SelectionCommentButton: React.FC<SelectionCommentButtonProps> = ({
   const [commentText, setCommentText] = useState("");
   const buttonRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLDivElement>(null);
-  const chatAnnotations = annotations.get(chatId) ?? [];
+  const chatAnnotations = useMemo(
+    () => annotations.get(chatId) ?? [],
+    [annotations, chatId],
+  );
 
   const clearState = useCallback(() => {
     setFloatingButton(null);
+    setShowForm(false);
+    setCommentText("");
+  }, []);
+
+  const handleCancel = useCallback(() => {
     setShowForm(false);
     setCommentText("");
   }, []);
@@ -115,7 +129,9 @@ export const SelectionCommentButton: React.FC<SelectionCommentButtonProps> = ({
     if (!scrollEl || !floatingButton) return;
 
     const handleScroll = () => {
-      clearState();
+      if (!showForm) {
+        clearState();
+      }
     };
 
     scrollEl.addEventListener("scroll", handleScroll);
@@ -228,13 +244,18 @@ export const SelectionCommentButton: React.FC<SelectionCommentButtonProps> = ({
               {navigator.platform.includes("Mac") ? "\u2318" : "Ctrl"}+\u21B5 to
               submit
             </span>
-            <Button
-              size="sm"
-              onClick={handleSubmit}
-              disabled={!commentText.trim()}
-            >
-              Add Comment
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="sm" onClick={handleCancel}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSubmit}
+                disabled={!commentText.trim()}
+              >
+                Add Comment
+              </Button>
+            </div>
           </div>
         </div>
       )}

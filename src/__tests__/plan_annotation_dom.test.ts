@@ -66,6 +66,12 @@ describe("planAnnotationDom", () => {
 
     expect(marks).toHaveLength(2);
     expect(marks.map((mark) => mark.textContent).join("")).toBe("bold world");
+    expect(marks[0]?.getAttribute("role")).toBe("button");
+    expect(marks[0]?.getAttribute("tabindex")).toBe("0");
+    expect(marks[0]?.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(marks[0]?.getAttribute("aria-label")).toBe(
+      "View comment for bold world",
+    );
 
     clearPlanAnnotationHighlights(container);
     expect(container.querySelectorAll("mark[data-annotation-id]")).toHaveLength(

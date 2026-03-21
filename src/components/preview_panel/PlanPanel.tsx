@@ -65,21 +65,36 @@ export const PlanPanel: React.FC = () => {
     const container = planContentRef.current;
     if (!container) return;
 
+    if (chatAnnotations.length === 0) {
+      clearPlanAnnotationHighlights(container);
+      return;
+    }
+
     let frameId: number | null = null;
+    let isApplyingHighlights = false;
 
     const observer = new MutationObserver(() => {
+      if (isApplyingHighlights) {
+        return;
+      }
       scheduleHighlightRefresh();
     });
 
     const refreshHighlights = () => {
       observer.disconnect();
-      clearPlanAnnotationHighlights(container);
-      applyPlanAnnotationHighlights(container, chatAnnotations);
-      observer.observe(container, {
-        childList: true,
-        subtree: true,
-        characterData: true,
-      });
+      isApplyingHighlights = true;
+
+      try {
+        clearPlanAnnotationHighlights(container);
+        applyPlanAnnotationHighlights(container, chatAnnotations);
+      } finally {
+        isApplyingHighlights = false;
+        observer.observe(container, {
+          childList: true,
+          subtree: true,
+          characterData: true,
+        });
+      }
     };
 
     const scheduleHighlightRefresh = () => {

@@ -130,6 +130,7 @@ function highlightAtOffset(
   startOffset: number,
   selectionLength: number,
   annotationId: string,
+  selectedText: string,
 ) {
   if (selectionLength <= 0) {
     return;
@@ -159,7 +160,17 @@ function highlightAtOffset(
     highlightNode.splitText(charsToHighlight);
 
     const mark = document.createElement("mark");
+    const normalizedSelectedText = selectedText.replace(/\s+/g, " ").trim();
     mark.setAttribute("data-annotation-id", annotationId);
+    mark.setAttribute("role", "button");
+    mark.setAttribute("tabindex", "0");
+    mark.setAttribute("aria-haspopup", "dialog");
+    mark.setAttribute(
+      "aria-label",
+      normalizedSelectedText.length === 0
+        ? "View comment"
+        : `View comment for ${normalizedSelectedText}`,
+    );
     mark.className =
       "bg-yellow-400/25 text-inherit cursor-pointer rounded-sm px-0.5 border-b border-yellow-400/50";
     mark.textContent = highlightNode.textContent;
@@ -317,6 +328,7 @@ export function applyPlanAnnotationHighlights(
       annotation.startOffset,
       annotation.selectionLength,
       annotation.id,
+      annotation.selectedText,
     );
   }
 }

@@ -23,6 +23,7 @@ import { promises as fsPromises } from "node:fs";
 // Import our utility modules
 import { withLock } from "../utils/lock_utils";
 import { getFilesRecursively } from "../utils/file_utils";
+import { pathExistsHandlingWslAsync } from "../utils/wsl_path_utils";
 import {
   runningApps,
   processCounter,
@@ -1352,7 +1353,7 @@ export function registerAppHandlers() {
       await fsPromises.writeFile(fullPath, content, "utf-8");
 
       // Check if git repository exists and commit the change
-      if (fs.existsSync(path.join(appPath, ".git"))) {
+      if (await pathExistsHandlingWslAsync(path.join(appPath, ".git"))) {
         await gitAdd({ path: appPath, filepath: filePath });
 
         await gitCommit({

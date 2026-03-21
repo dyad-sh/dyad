@@ -50,38 +50,6 @@ export async function copyFileHandlingWsl(
 }
 
 /**
- * Synchronous version of copyFileHandlingWsl.
- */
-export function copyFileSyncHandlingWsl(
-  sourcePath: string,
-  destPath: string,
-): void {
-  try {
-    if (isWslPath(sourcePath) || isWslPath(destPath)) {
-      const stats = fs.statSync(sourcePath);
-      const fileBuffer = fs.readFileSync(sourcePath);
-      try {
-        fs.writeFileSync(destPath, fileBuffer);
-      } catch (err) {
-        try {
-          fs.unlinkSync(destPath);
-        } catch {}
-        throw err;
-      }
-      fs.chmodSync(destPath, stats.mode);
-    } else {
-      fs.copyFileSync(sourcePath, destPath);
-    }
-  } catch (error) {
-    logger.error(
-      `Failed to copy file (sync): ${sourcePath} -> ${destPath}`,
-      error,
-    );
-    throw error;
-  }
-}
-
-/**
  * Async check if a path exists.
  */
 export async function pathExistsHandlingWslAsync(

@@ -100,6 +100,8 @@ export function registerImportHandlers() {
 
       const appPath = skipCopy ? sourcePath : getDyadAppPath(appName);
 
+      // For skip-copy WSL imports, register the UNC path as safe before
+      // running git operations. Must run before gitInit below.
       if (skipCopy && isWslPath(sourcePath)) {
         await gitAddSafeDirectory(sourcePath);
       }

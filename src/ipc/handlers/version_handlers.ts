@@ -2,7 +2,6 @@ import { db } from "../../db";
 import { apps, messages, versions } from "../../db/schema";
 import { desc, eq, and, gt, gte } from "drizzle-orm";
 import type { GitCommit } from "../git_types";
-import fs from "node:fs";
 import path from "node:path";
 import { getDyadAppPath } from "../../paths/paths";
 import { withLock } from "../utils/lock_utils";
@@ -21,6 +20,7 @@ import {
   gitLog,
   isGitStatusClean,
 } from "../utils/git_utils";
+import { pathExistsHandlingWslAsync } from "../utils/wsl_path_utils";
 
 import {
   getNeonClient,
@@ -81,7 +81,7 @@ export function registerVersionHandlers() {
     const appPath = getDyadAppPath(app.path);
 
     // Just return an empty array if the app is not a git repo.
-    if (!fs.existsSync(path.join(appPath, ".git"))) {
+    if (!(await pathExistsHandlingWslAsync(path.join(appPath, ".git")))) {
       return [];
     }
 
@@ -131,7 +131,7 @@ export function registerVersionHandlers() {
     const appPath = getDyadAppPath(app.path);
 
     // Return appropriate result if the app is not a git repo
-    if (!fs.existsSync(path.join(appPath, ".git"))) {
+    if (!(await pathExistsHandlingWslAsync(path.join(appPath, ".git")))) {
       throw new DyadError("Not a git repository", DyadErrorKind.External);
     }
 

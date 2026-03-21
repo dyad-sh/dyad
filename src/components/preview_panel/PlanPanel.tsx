@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { Button } from "@/components/ui/button";
 import { Check, FileText } from "lucide-react";
@@ -10,7 +10,12 @@ import { useStreamChat } from "@/hooks/useStreamChat";
 import { usePlan } from "@/hooks/usePlan";
 import { useSettings } from "@/hooks/useSettings";
 import { SelectionCommentButton } from "./plan/SelectionCommentButton";
-import { CommentSidebar } from "./plan/CommentSidebar";
+import { CommentsFloatingButton } from "./plan/CommentsFloatingButton";
+import { CommentPopover } from "./plan/CommentPopover";
+import {
+  applyPlanAnnotationHighlights,
+  clearPlanAnnotationHighlights,
+} from "./plan/planAnnotationDom";
 
 export const PlanPanel: React.FC = () => {
   const chatId = useAtomValue(selectedChatIdAtom);
@@ -23,6 +28,7 @@ export const PlanPanel: React.FC = () => {
 
   const annotations = useAtomValue(planAnnotationsAtom);
   const planContentRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const planData = chatId ? planState.plansByChatId.get(chatId) : null;
   const currentPlan = planData?.content ?? null;
@@ -43,12 +49,63 @@ export const PlanPanel: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSendingComments, setIsSendingComments] = useState(false);
 
-  const handleSendComments = () => {
-    if (!chatId || isSendingComments) return;
-    const chatAnnotations = annotations.get(chatId) ?? [];
-    if (chatAnnotations.length === 0) return;
+  const chatAnnotations = chatId ? (annotations.get(chatId) ?? []) : [];
 
-    const prompt = chatAnnotations
+  // Highlight annotated text in the plan content
+  useEffect(() => {
+    const container = planContentRef.current;
+    if (!container) return;
+
+    let frameId: number | null = null;
+
+    const observer = new MutationObserver(() => {
+      scheduleHighlightRefresh();
+    });
+
+    const refreshHighlights = () => {
+      observer.disconnect();
+      clearPlanAnnotationHighlights(container);
+      applyPlanAnnotationHighlights(container, chatAnnotations);
+      observer.observe(container, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+    };
+
+    const scheduleHighlightRefresh = () => {
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
+      }
+
+      frameId = requestAnimationFrame(() => {
+        frameId = null;
+        refreshHighlights();
+      });
+    };
+
+    scheduleHighlightRefresh();
+    observer.observe(container, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+
+    return () => {
+      observer.disconnect();
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
+      }
+      clearPlanAnnotationHighlights(container);
+    };
+  }, [chatAnnotations, currentPlan]);
+
+  const handleSendComments = useCallback(() => {
+    if (!chatId || isSendingComments) return;
+    const currentAnnotations = annotations.get(chatId) ?? [];
+    if (currentAnnotations.length === 0) return;
+
+    const prompt = currentAnnotations
       .map(
         (a, i) => `**Comment ${i + 1}:**\n> ${a.selectedText}\n\n${a.comment}`,
       )
@@ -67,7 +124,7 @@ export const PlanPanel: React.FC = () => {
       return next;
     });
     setIsSendingComments(false);
-  };
+  }, [chatId, isSendingComments, annotations, streamMessage, setAnnotations]);
 
   const handleAccept = () => {
     if (!chatId) return;
@@ -87,12 +144,21 @@ export const PlanPanel: React.FC = () => {
     return null;
   }
 
-  const chatAnnotations = chatId ? (annotations.get(chatId) ?? []) : [];
-
   return (
     <div className="h-full flex flex-col">
-      <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 overflow-y-auto p-4" ref={planContentRef}>
+      <div className="flex-1 overflow-hidden">
+        <div
+          className="relative h-full overflow-y-auto p-4"
+          ref={scrollContainerRef}
+        >
+          {chatId && (
+            <CommentsFloatingButton
+              chatId={chatId}
+              annotations={chatAnnotations}
+              onSendComments={handleSendComments}
+              isSending={isSendingComments}
+            />
+          )}
           <div className="border rounded-lg bg-card">
             <div className="px-4 py-3 border-b">
               <div className="flex items-center gap-2">
@@ -108,23 +174,29 @@ export const PlanPanel: React.FC = () => {
               )}
             </div>
             <div className="p-4">
-              <div className="prose dark:prose-invert prose-sm max-w-none">
+              <div
+                ref={planContentRef}
+                className="prose dark:prose-invert prose-sm max-w-none"
+              >
                 <VanillaMarkdownParser content={currentPlan} />
               </div>
             </div>
           </div>
         </div>
-        {chatAnnotations.length > 0 && chatId && (
-          <CommentSidebar
-            chatId={chatId}
-            annotations={chatAnnotations}
-            onSendComments={handleSendComments}
-            isSending={isSendingComments}
-          />
-        )}
       </div>
       {chatId && (
-        <SelectionCommentButton containerRef={planContentRef} chatId={chatId} />
+        <>
+          <SelectionCommentButton
+            containerRef={planContentRef}
+            scrollRef={scrollContainerRef}
+            chatId={chatId}
+          />
+          <CommentPopover
+            containerRef={planContentRef}
+            chatId={chatId}
+            annotations={chatAnnotations}
+          />
+        </>
       )}
 
       <div className="border-t p-4 space-y-4 bg-background">

@@ -102,7 +102,10 @@ export const CodeHighlight = memo(
       [&_pre]:rounded-lg [&_pre]:px-6 [&_pre]:py-7"
       >
         {code && (
-          <div className="absolute top-2 left-0 right-0 px-6 text-xs z-10 flex items-center justify-between">
+          <div
+            data-plan-annotation-ignore
+            className="absolute top-2 left-0 right-0 px-6 text-xs z-10 flex items-center justify-between"
+          >
             {language && (
               <span className="tracking-tighter text-muted-foreground/85 truncate min-w-0">
                 {language}

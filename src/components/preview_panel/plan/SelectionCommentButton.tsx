@@ -1,24 +1,33 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useSetAtom } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { planAnnotationsAtom } from "@/atoms/planAtoms";
+import {
+  getPlanSelectionSnapshot,
+  hasOverlappingPlanAnnotation,
+} from "./planAnnotationDom";
 
 interface FloatingButtonState {
   x: number;
   y: number;
   selectedText: string;
+  startOffset: number;
+  selectionLength: number;
 }
 
 interface SelectionCommentButtonProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
   chatId: number;
 }
 
 export const SelectionCommentButton: React.FC<SelectionCommentButtonProps> = ({
   containerRef,
+  scrollRef,
   chatId,
 }) => {
+  const annotations = useAtomValue(planAnnotationsAtom);
   const setAnnotations = useSetAtom(planAnnotationsAtom);
   const [floatingButton, setFloatingButton] =
     useState<FloatingButtonState | null>(null);
@@ -26,6 +35,7 @@ export const SelectionCommentButton: React.FC<SelectionCommentButtonProps> = ({
   const [commentText, setCommentText] = useState("");
   const buttonRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLDivElement>(null);
+  const chatAnnotations = annotations.get(chatId) ?? [];
 
   const clearState = useCallback(() => {
     setFloatingButton(null);
@@ -38,21 +48,53 @@ export const SelectionCommentButton: React.FC<SelectionCommentButtonProps> = ({
     const container = containerRef.current;
     if (!container) return;
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (e: MouseEvent) => {
+      // Ignore clicks on highlighted annotations (handled by CommentPopover)
+      const target = e.target instanceof HTMLElement ? e.target : null;
+      if (target?.closest("mark[data-annotation-id]")) return;
+
       // Small delay to let the selection finalize
       requestAnimationFrame(() => {
         const selection = window.getSelection();
-        if (!selection || selection.toString().trim().length === 0) return;
+        if (
+          !selection ||
+          selection.rangeCount === 0 ||
+          selection.toString().trim().length === 0
+        ) {
+          clearState();
+          return;
+        }
 
         // Ensure the selection is within the plan container
         const range = selection.getRangeAt(0);
-        if (!container.contains(range.commonAncestorContainer)) return;
+        if (!container.contains(range.commonAncestorContainer)) {
+          clearState();
+          return;
+        }
+        const snapshot = getPlanSelectionSnapshot(container, range);
+        if (!snapshot) {
+          clearState();
+          return;
+        }
+
+        if (
+          hasOverlappingPlanAnnotation(
+            chatAnnotations,
+            snapshot.startOffset,
+            snapshot.selectionLength,
+          )
+        ) {
+          clearState();
+          return;
+        }
 
         const rect = range.getBoundingClientRect();
         setFloatingButton({
           x: rect.right + 4,
           y: rect.top - 4,
-          selectedText: selection.toString().trim(),
+          selectedText: snapshot.selectedText,
+          startOffset: snapshot.startOffset,
+          selectionLength: snapshot.selectionLength,
         });
         setShowForm(false);
         setCommentText("");
@@ -61,20 +103,20 @@ export const SelectionCommentButton: React.FC<SelectionCommentButtonProps> = ({
 
     container.addEventListener("mouseup", handleMouseUp);
     return () => container.removeEventListener("mouseup", handleMouseUp);
-  }, [containerRef]);
+  }, [chatAnnotations, clearState, containerRef]);
 
   // Hide on scroll
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container || !floatingButton) return;
+    const scrollEl = scrollRef.current;
+    if (!scrollEl || !floatingButton) return;
 
     const handleScroll = () => {
       if (!showForm) clearState();
     };
 
-    container.addEventListener("scroll", handleScroll);
-    return () => container.removeEventListener("scroll", handleScroll);
-  }, [containerRef, floatingButton, showForm, clearState]);
+    scrollEl.addEventListener("scroll", handleScroll);
+    return () => scrollEl.removeEventListener("scroll", handleScroll);
+  }, [scrollRef, floatingButton, showForm, clearState]);
 
   // Dismiss on click outside or Escape
   useEffect(() => {
@@ -112,6 +154,8 @@ export const SelectionCommentButton: React.FC<SelectionCommentButtonProps> = ({
       selectedText: floatingButton.selectedText,
       comment: commentText.trim(),
       createdAt: Date.now(),
+      startOffset: floatingButton.startOffset,
+      selectionLength: floatingButton.selectionLength,
     };
 
     setAnnotations((prev) => {

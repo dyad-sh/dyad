@@ -38,6 +38,10 @@ export interface PlanAnnotation {
   selectedText: string;
   comment: string;
   createdAt: number;
+  /** Character offset from the rendered plan text, excluding annotation UI chrome */
+  startOffset: number;
+  /** Length of the selected text in characters */
+  selectionLength: number;
 }
 
 export const planAnnotationsAtom = atom<Map<number, PlanAnnotation[]>>(

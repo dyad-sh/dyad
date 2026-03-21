@@ -26,10 +26,7 @@ import {
   getFilesRecursively,
   copyDirectoryRecursive,
 } from "../utils/file_utils";
-import {
-  isWslPath,
-  pathExistsHandlingWslAsync,
-} from "../utils/wsl_path_utils";
+import { isWslPath, pathExistsHandlingWslAsync } from "../utils/wsl_path_utils";
 import {
   runningApps,
   processCounter,
@@ -62,7 +59,6 @@ import {
   gitInit,
   gitListBranches,
   gitRenameBranch,
-  gitAddSafeDirectory,
 } from "../utils/git_utils";
 import { safeSend } from "../utils/safe_sender";
 import type { AppOutput } from "../types/misc";
@@ -2120,16 +2116,16 @@ export function registerAppHandlers() {
         );
       }
 
-      if (await pathExistsHandlingWslAsync(nextResolvedPath)) {
-        throw new Error(
-          `Destination path '${nextResolvedPath}' already exists. Please choose an empty folder.`,
-        );
-      }
-
       // Prevent relocation to WSL UNC paths (spawn cannot use UNC working directories)
       if (isWslPath(nextResolvedPath)) {
         throw new Error(
           "Cannot relocate apps to WSL paths. Please choose a Windows directory.",
+        );
+      }
+
+      if (await pathExistsHandlingWslAsync(nextResolvedPath)) {
+        throw new Error(
+          `Destination path '${nextResolvedPath}' already exists. Please choose an empty folder.`,
         );
       }
 
@@ -2165,9 +2161,6 @@ export function registerAppHandlers() {
 
       try {
         await copyDirectoryRecursive(currentResolvedPath, nextResolvedPath);
-        if (isWslPath(currentResolvedPath)) {
-          await gitAddSafeDirectory(currentResolvedPath);
-        }
 
         // Update path to absolute path
         await db

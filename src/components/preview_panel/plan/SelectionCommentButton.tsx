@@ -216,6 +216,8 @@ export const SelectionCommentButton: React.FC<SelectionCommentButtonProps> = ({
       {showForm && (
         <div
           ref={formRef}
+          role="dialog"
+          aria-label="Add comment on selected text"
           style={{
             position: "fixed",
             left: floatingButton.x,
@@ -233,17 +235,8 @@ export const SelectionCommentButton: React.FC<SelectionCommentButtonProps> = ({
             onChange={(e) => setCommentText(e.target.value)}
             placeholder="Add your comment..."
             className="w-full text-sm min-h-[60px] rounded-md border bg-background px-2 py-1.5 resize-none focus:outline-none focus:ring-1 focus:ring-ring"
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                handleSubmit();
-              }
-            }}
           />
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] text-muted-foreground">
-              {navigator.platform.includes("Mac") ? "\u2318" : "Ctrl"}+\u21B5 to
-              submit
-            </span>
+          <div className="flex items-center justify-end">
             <div className="flex items-center gap-1">
               <Button variant="ghost" size="sm" onClick={handleCancel}>
                 Cancel

@@ -142,6 +142,8 @@ function highlightAtOffset(
       segmentStart < endOffset && segmentEnd > startOffset,
   );
 
+  // Iterate in reverse so that splitText mutations don't shift offsets
+  // of earlier (not-yet-processed) segments.
   for (let index = overlappingSegments.length - 1; index >= 0; index--) {
     const segment = overlappingSegments[index];
     const { node: textNode } = segment;
@@ -160,17 +162,25 @@ function highlightAtOffset(
     highlightNode.splitText(charsToHighlight);
 
     const mark = document.createElement("mark");
-    const normalizedSelectedText = selectedText.replace(/\s+/g, " ").trim();
+    const isFirstFragment = index === 0;
     mark.setAttribute("data-annotation-id", annotationId);
-    mark.setAttribute("role", "button");
-    mark.setAttribute("tabindex", "0");
-    mark.setAttribute("aria-haspopup", "dialog");
-    mark.setAttribute(
-      "aria-label",
-      normalizedSelectedText.length === 0
-        ? "View comment"
-        : `View comment for ${normalizedSelectedText}`,
-    );
+
+    if (isFirstFragment) {
+      const normalizedSelectedText = selectedText.replace(/\s+/g, " ").trim();
+      mark.setAttribute("role", "button");
+      mark.setAttribute("tabindex", "0");
+      mark.setAttribute("aria-haspopup", "dialog");
+      mark.setAttribute(
+        "aria-label",
+        normalizedSelectedText.length === 0
+          ? "View comment"
+          : `View comment for ${normalizedSelectedText}`,
+      );
+    } else {
+      mark.setAttribute("tabindex", "-1");
+      mark.setAttribute("aria-hidden", "true");
+    }
+
     mark.className =
       "bg-yellow-400/25 text-inherit cursor-pointer rounded-sm px-0.5 border-b border-yellow-400/50";
     mark.textContent = highlightNode.textContent;
@@ -321,6 +331,8 @@ export function applyPlanAnnotationHighlights(
     previousEndOffset = annotation.startOffset + annotation.selectionLength;
   }
 
+  // Iterate in reverse so that DOM mutations from highlightAtOffset don't
+  // invalidate offsets of earlier (not-yet-processed) annotations.
   for (let index = nonOverlappingAnnotations.length - 1; index >= 0; index--) {
     const annotation = nonOverlappingAnnotations[index];
     highlightAtOffset(

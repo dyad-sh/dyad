@@ -6,6 +6,7 @@ import ShikiHighlighter, {
 } from "react-shiki/core";
 import type { Element as HastElement } from "hast";
 import { useTheme } from "../../contexts/ThemeContext";
+import { PLAN_ANNOTATION_IGNORE_ATTRIBUTE } from "../preview_panel/plan/planAnnotationDom";
 import { Copy, Check } from "lucide-react";
 import github from "@shikijs/themes/github-light-default";
 import githubDark from "@shikijs/themes/github-dark-default";
@@ -103,7 +104,7 @@ export const CodeHighlight = memo(
       >
         {code && (
           <div
-            data-plan-annotation-ignore
+            {...{ [PLAN_ANNOTATION_IGNORE_ATTRIBUTE]: true }}
             className="absolute top-2 left-0 right-0 px-6 text-xs z-10 flex items-center justify-between"
           >
             {language && (

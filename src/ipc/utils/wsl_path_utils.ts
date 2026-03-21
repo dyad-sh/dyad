@@ -36,13 +36,13 @@ export async function copyFileHandlingWsl(
       try {
         await pipeline(readable, writable);
       } catch (err) {
-        await fsPromises.unlink(destPath).catch(() => {});
+        await fsPromises.unlink(destPath).catch(() => { });
         throw err;
       }
       try {
         await fsPromises.chmod(destPath, stats.mode);
       } catch (err) {
-        await fsPromises.unlink(destPath).catch(() => {});
+        await fsPromises.unlink(destPath).catch(() => { });
         throw err;
       }
     } else {

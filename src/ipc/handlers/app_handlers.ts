@@ -27,8 +27,8 @@ import {
   copyDirectoryRecursive,
 } from "../utils/file_utils";
 import {
+  isWslPath,
   pathExistsHandlingWslAsync,
-  pathExistsHandlingWsl,
 } from "../utils/wsl_path_utils";
 import {
   runningApps,
@@ -62,6 +62,7 @@ import {
   gitInit,
   gitListBranches,
   gitRenameBranch,
+  gitAddSafeDirectory,
 } from "../utils/git_utils";
 import { safeSend } from "../utils/safe_sender";
 import type { AppOutput } from "../types/misc";
@@ -2119,13 +2120,19 @@ export function registerAppHandlers() {
         );
       }
 
-      if (pathExistsHandlingWsl(nextResolvedPath)) {
+      if (await pathExistsHandlingWslAsync(nextResolvedPath)) {
         throw new Error(
           `Destination path '${nextResolvedPath}' already exists. Please choose an empty folder.`,
         );
       }
 
-      // Check if source path exists - if not, just update the DB path without copying
+      // Prevent relocation to WSL UNC paths (spawn cannot use UNC working directories)
+      if (isWslPath(nextResolvedPath)) {
+        throw new Error(
+          "Cannot relocate apps to WSL paths. Please choose a Windows directory.",
+        );
+      }
+
       const sourceExists =
         await pathExistsHandlingWslAsync(currentResolvedPath);
       if (!sourceExists) {
@@ -2158,6 +2165,9 @@ export function registerAppHandlers() {
 
       try {
         await copyDirectoryRecursive(currentResolvedPath, nextResolvedPath);
+        if (isWslPath(currentResolvedPath)) {
+          await gitAddSafeDirectory(currentResolvedPath);
+        }
 
         // Update path to absolute path
         await db
@@ -2181,8 +2191,7 @@ export function registerAppHandlers() {
           resolvedPath: nextResolvedPath,
         };
       } catch (error: any) {
-        // Attempt cleanup if destination exists (partial copy may have occurred)
-        if (fs.existsSync(nextResolvedPath)) {
+        if (await pathExistsHandlingWslAsync(nextResolvedPath)) {
           try {
             await fsPromises.rm(nextResolvedPath, {
               recursive: true,

@@ -3,7 +3,7 @@
  * Visual task board with drag-and-drop, analytics, and activity feed
  */
 
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef, type DragEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { IpcClient } from "@/ipc/ipc_client";
 import type { IpldReceiptRecord } from "@/types/ipld_receipt";
@@ -78,6 +78,9 @@ import {
   Workflow,
   ThumbsUp,
   ThumbsDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeftRight,
 } from "lucide-react";
 
 import { NlpAiStudioPanel } from "@/components/openclaw/NlpAiStudioPanel";
@@ -185,6 +188,15 @@ const TYPE_COLORS: Record<string, string> = {
   custom: "bg-gray-500/20 text-gray-400 border-gray-500/30",
 };
 
+const PRIORITY_BORDER: Record<string, string> = {
+  critical: "border-l-red-500",
+  high: "border-l-orange-500",
+  medium: "border-l-blue-500",
+  low: "border-l-gray-400",
+};
+
+const WIP_LIMIT = 8;
+
 // ─── Task Card ──────────────────────────────────────────────────────────────
 
 function TaskCard({
@@ -199,6 +211,7 @@ function TaskCard({
   onSelect: (task: any) => void;
 }) {
   const [showActions, setShowActions] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const currentColIdx = COLUMNS.findIndex((c) => c.id === task.status);
   const canMoveRight =
@@ -207,21 +220,28 @@ function TaskCard({
     task.status !== "failed" &&
     task.status !== "cancelled";
 
+  const borderClass = PRIORITY_BORDER[task.priority] ?? "border-l-gray-400";
+
   return (
     <div
-      className="group relative rounded-lg border border-border/80 bg-muted/40 p-3 hover:bg-muted/50 hover:border-border transition-all cursor-pointer"
+      className={`group relative rounded-lg border border-border/80 border-l-[3px] ${borderClass} bg-card p-3 hover:bg-accent/50 hover:border-border hover:shadow-md transition-all cursor-pointer ${
+        isDragging ? "opacity-40 scale-95 ring-2 ring-primary/30" : ""
+      }`}
       onClick={() => onSelect(task)}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
       draggable
-      onDragStart={(e) => {
+      onDragStart={(e: DragEvent<HTMLDivElement>) => {
         e.dataTransfer.setData("taskId", task.id);
         e.dataTransfer.setData("fromStatus", task.status);
+        e.dataTransfer.effectAllowed = "move";
+        setIsDragging(true);
       }}
+      onDragEnd={() => setIsDragging(false)}
     >
       {/* Header */}
-      <div className="flex items-start gap-2 mb-2">
-        <GripVertical className="w-3.5 h-3.5 text-muted-foreground/50 mt-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+      <div className="flex items-start gap-2 mb-1.5">
+        <GripVertical className="w-3.5 h-3.5 text-muted-foreground/40 mt-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
         <span className="text-sm font-medium text-foreground leading-tight flex-1 line-clamp-2">
           {task.title}
         </span>
@@ -232,13 +252,13 @@ function TaskCard({
         </Badge>
       </div>
 
-      {/* Type Badge */}
-      <div className="flex items-center gap-1.5 mb-2">
+      {/* Type + Provider badges */}
+      <div className="flex items-center gap-1.5 mb-1.5 ml-5">
         <Badge
           variant="outline"
           className={`text-[10px] px-1.5 py-0 border ${TYPE_COLORS[task.taskType] ?? TYPE_COLORS.custom}`}
         >
-          {task.taskType?.replace("_", " ")}
+          {task.taskType?.replace(/_/g, " ")}
         </Badge>
         {task.provider && (
           <Badge
@@ -248,14 +268,31 @@ function TaskCard({
             {task.provider}
           </Badge>
         )}
+        {task.model && (
+          <span className="text-[9px] text-muted-foreground/60 truncate max-w-[80px]" title={task.model}>
+            {task.model}
+          </span>
+        )}
         {task.localProcessed && (
-          <Cpu className="w-3 h-3 text-green-400" />
+          <Cpu className="w-3 h-3 text-green-400 flex-shrink-0" title="Processed locally" />
         )}
       </div>
 
+      {/* Progress bar for in_progress tasks */}
+      {task.status === "in_progress" && (
+        <div className="ml-5 mb-1.5">
+          <div className="h-1 rounded-full bg-muted overflow-hidden">
+            <div
+              className="h-full rounded-full bg-amber-500 transition-all duration-500"
+              style={{ width: task.iterationsRun > 0 ? `${Math.min(100, task.iterationsRun * 20)}%` : "15%" }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Metrics row */}
       {(task.tokensUsed > 0 || task.durationMs > 0) && (
-        <div className="flex items-center gap-2 text-[10px] text-muted-foreground/70">
+        <div className="flex items-center gap-2 text-[10px] text-muted-foreground/70 ml-5">
           {task.tokensUsed > 0 && (
             <span className="flex items-center gap-0.5">
               <Zap className="w-2.5 h-2.5" />
@@ -273,11 +310,11 @@ function TaskCard({
 
       {/* Labels */}
       {task.labels && task.labels.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-2">
+        <div className="flex flex-wrap gap-1 mt-1.5 ml-5">
           {task.labels.slice(0, 3).map((label: string) => (
             <span
               key={label}
-              className="text-[9px] px-1.5 py-0 rounded-full bg-muted/60 text-muted-foreground/80"
+              className="text-[9px] px-1.5 py-0 rounded-full bg-primary/10 text-primary/80 border border-primary/20"
             >
               {label}
             </span>
@@ -298,7 +335,7 @@ function TaskCard({
                 const nextCol = COLUMNS[currentColIdx + 1];
                 if (nextCol) onMove(task.id, nextCol.id);
               }}
-              className="p-1 rounded bg-muted/60 hover:bg-accent transition"
+              className="p-1 rounded bg-muted hover:bg-accent transition shadow-sm"
               title="Move to next column"
             >
               <ArrowRight className="w-3 h-3 text-foreground/80" />
@@ -309,7 +346,7 @@ function TaskCard({
               e.stopPropagation();
               onDelete(task.id);
             }}
-            className="p-1 rounded bg-red-500/20 hover:bg-red-500/40 transition"
+            className="p-1 rounded bg-red-500/20 hover:bg-red-500/40 transition shadow-sm"
             title="Delete task"
           >
             <Trash2 className="w-3 h-3 text-red-400" />
@@ -319,7 +356,7 @@ function TaskCard({
 
       {/* Assignee */}
       {task.assignee && (
-        <div className="mt-2 flex items-center gap-1 text-[10px] text-muted-foreground/60">
+        <div className="mt-1.5 flex items-center gap-1 text-[10px] text-muted-foreground/60 ml-5">
           <Bot className="w-2.5 h-2.5" />
           {task.assignee}
         </div>
@@ -336,53 +373,128 @@ function KanbanColumn({
   onMove,
   onDelete,
   onSelect,
+  collapsed,
+  onToggleCollapse,
 }: {
   column: (typeof COLUMNS)[number];
   tasks: any[];
   onMove: (taskId: string, status: string) => void;
   onDelete: (taskId: string) => void;
   onSelect: (task: any) => void;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
 }) {
   const [isDragOver, setIsDragOver] = useState(false);
+  const [dragCount, setDragCount] = useState(0);
   const Icon = column.icon;
+  const isOverWip = column.id === "in_progress" && tasks.length >= WIP_LIMIT;
 
-  return (
-    <div
-      className={`flex flex-col min-w-[280px] max-w-[320px] rounded-xl border transition-all ${
-        isDragOver
-          ? `${column.borderColor} bg-muted/40`
-          : "border-border/50 bg-muted/30"
-      }`}
-      onDragOver={(e) => {
-        e.preventDefault();
-        setIsDragOver(true);
-      }}
-      onDragLeave={() => setIsDragOver(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setIsDragOver(false);
-        const taskId = e.dataTransfer.getData("taskId");
-        const fromStatus = e.dataTransfer.getData("fromStatus");
-        if (taskId && fromStatus !== column.id) {
-          onMove(taskId, column.id);
-        }
-      }}
-    >
-      {/* Column header */}
-      <div className="flex items-center gap-2 p-3 pb-2">
-        <div className={`w-2 h-2 rounded-full ${column.color}`} />
-        <Icon className={`w-4 h-4 ${column.textColor}`} />
-        <span className="text-sm font-medium text-foreground/90">{column.label}</span>
+  const handleDragEnter = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragCount((c) => c + 1);
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setDragCount((c) => {
+      const next = c - 1;
+      if (next <= 0) setIsDragOver(false);
+      return Math.max(0, next);
+    });
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      setIsDragOver(false);
+      setDragCount(0);
+      const taskId = e.dataTransfer.getData("taskId");
+      const fromStatus = e.dataTransfer.getData("fromStatus");
+      if (taskId && fromStatus !== column.id) {
+        onMove(taskId, column.id);
+      }
+    },
+    [column.id, onMove],
+  );
+
+  // Collapsed state — show as a thin vertical strip
+  if (collapsed) {
+    return (
+      <div
+        data-column-id={column.id}
+        className={`flex flex-col items-center w-10 flex-shrink-0 rounded-xl border transition-all cursor-pointer hover:w-12 ${
+          isDragOver
+            ? `${column.borderColor} bg-muted/50 w-14`
+            : "border-border/50 bg-muted/20"
+        }`}
+        onClick={onToggleCollapse}
+        onDragOver={(e) => e.preventDefault()}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        <div className={`w-full h-1 rounded-t-xl ${column.color}`} />
+        <div className="py-3">
+          <Icon className={`w-4 h-4 ${column.textColor}`} />
+        </div>
+        <span className="text-[10px] font-medium text-muted-foreground writing-mode-vertical [writing-mode:vertical-rl] rotate-180 flex-1">
+          {column.label}
+        </span>
         <Badge
           variant="outline"
-          className="ml-auto text-[10px] px-1.5 py-0 border-border/80 text-muted-foreground/70"
+          className={`mb-2 text-[10px] px-1 py-0 ${isOverWip ? "border-amber-500 text-amber-500" : "border-border/80 text-muted-foreground/70"}`}
         >
           {tasks.length}
         </Badge>
       </div>
+    );
+  }
 
-      {/* Tasks */}
-      <ScrollArea className="flex-1 px-2 pb-2" style={{ maxHeight: "calc(100vh - 280px)" }}>
+  return (
+    <div
+      data-column-id={column.id}
+      className={`flex flex-col w-[300px] flex-shrink-0 rounded-xl border transition-all ${
+        isDragOver
+          ? `${column.borderColor} bg-muted/40 shadow-lg shadow-primary/5 scale-[1.01]`
+          : "border-border/50 bg-muted/20"
+      }`}
+      onDragOver={(e) => e.preventDefault()}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Color strip */}
+      <div className={`w-full h-1 rounded-t-xl ${column.color}`} />
+
+      {/* Column header */}
+      <div className="flex items-center gap-2 px-3 py-2">
+        <Icon className={`w-4 h-4 ${column.textColor} flex-shrink-0`} />
+        <span className="text-sm font-semibold text-foreground/90">{column.label}</span>
+        <Badge
+          variant="outline"
+          className={`ml-auto text-[10px] px-1.5 py-0 ${isOverWip ? "border-amber-500 text-amber-500 bg-amber-500/10" : "border-border/80 text-muted-foreground/70"}`}
+        >
+          {tasks.length}
+          {isOverWip && ` / ${WIP_LIMIT}`}
+        </Badge>
+        <button
+          onClick={onToggleCollapse}
+          className="p-0.5 rounded hover:bg-muted transition flex-shrink-0"
+          title="Collapse column"
+        >
+          <ChevronLeft className="w-3.5 h-3.5 text-muted-foreground/60" />
+        </button>
+      </div>
+
+      {isOverWip && (
+        <div className="mx-3 mb-1 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-[10px] text-amber-500 flex items-center gap-1">
+          <AlertTriangle className="w-3 h-3" />
+          WIP limit reached ({WIP_LIMIT})
+        </div>
+      )}
+
+      {/* Tasks — fills remaining space, scrolls vertically */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-2">
         <div className="flex flex-col gap-2 p-1">
           {tasks.map((task) => (
             <TaskCard
@@ -393,13 +505,31 @@ function KanbanColumn({
               onSelect={onSelect}
             />
           ))}
+
+          {/* Drop zone / empty state */}
           {tasks.length === 0 && (
-            <div className="flex items-center justify-center py-8 text-muted-foreground/50 text-xs">
-              No tasks
+            <div
+              className={`flex flex-col items-center justify-center py-10 rounded-lg border-2 border-dashed transition-all ${
+                isDragOver
+                  ? `${column.borderColor} bg-muted/40`
+                  : "border-border/30 bg-transparent"
+              }`}
+            >
+              <Icon className={`w-6 h-6 ${column.textColor} opacity-40 mb-2`} />
+              <span className="text-xs text-muted-foreground/50">
+                {isDragOver ? "Release to drop" : "Drop tasks here"}
+              </span>
+            </div>
+          )}
+
+          {/* Drop indicator when column has tasks */}
+          {tasks.length > 0 && isDragOver && (
+            <div className={`rounded-lg border-2 border-dashed ${column.borderColor} bg-muted/20 py-3 flex items-center justify-center`}>
+              <span className="text-[10px] text-muted-foreground/60">Drop here</span>
             </div>
           )}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }
@@ -1721,6 +1851,50 @@ export function OpenClawKanbanPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<any>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [collapsedColumns, setCollapsedColumns] = useState<Set<string>>(new Set());
+
+  // ── Board scroll state ──
+  const boardScrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const updateScrollShadows = useCallback(() => {
+    const el = boardScrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 8);
+    setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 8);
+  }, []);
+
+  useEffect(() => {
+    const el = boardScrollRef.current;
+    if (!el) return;
+    updateScrollShadows();
+    el.addEventListener("scroll", updateScrollShadows, { passive: true });
+    const ro = new ResizeObserver(updateScrollShadows);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", updateScrollShadows);
+      ro.disconnect();
+    };
+  }, [updateScrollShadows]);
+
+  const scrollToColumn = useCallback((colId: string) => {
+    const el = boardScrollRef.current;
+    if (!el) return;
+    const colEl = el.querySelector(`[data-column-id="${colId}"]`);
+    if (colEl) {
+      colEl.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+    }
+  }, []);
+
+  const toggleColumnCollapse = useCallback((colId: string) => {
+    setCollapsedColumns((prev) => {
+      const next = new Set(prev);
+      if (next.has(colId)) next.delete(colId);
+      else next.add(colId);
+      return next;
+    });
+  }, []);
 
   // ── WebSocket for live events ──
   const wsRef = useRef<WebSocket | null>(null);
@@ -1894,9 +2068,29 @@ export function OpenClawKanbanPage() {
     (taskId: string, status: string) => {
       const targetTasks = tasksByColumn[status] ?? [];
       const sortOrder = targetTasks.length;
-      moveMutation.mutate({ taskId, status, sortOrder });
+
+      // Optimistic update — move the task in the cache immediately
+      queryClient.setQueryData(
+        ["kanban-tasks", searchQuery, filterType, filterPriority],
+        (old: any[] | undefined) => {
+          if (!old) return old;
+          return old.map((t) =>
+            t.id === taskId ? { ...t, status, sortOrder } : t
+          );
+        },
+      );
+
+      moveMutation.mutate(
+        { taskId, status, sortOrder },
+        {
+          onError: () => {
+            // Revert on failure
+            queryClient.invalidateQueries({ queryKey: ["kanban-tasks"] });
+          },
+        },
+      );
     },
-    [tasksByColumn, moveMutation]
+    [tasksByColumn, moveMutation, queryClient, searchQuery, filterType, filterPriority]
   );
 
   const handleDelete = useCallback(
@@ -2037,21 +2231,77 @@ export function OpenClawKanbanPage() {
         </div>
 
         {/* Board Tab */}
-        <TabsContent value="board" className="flex-1 m-0 overflow-hidden">
-          <ScrollArea className="h-full">
-            <div className="flex gap-3 p-4 min-w-max">
-              {COLUMNS.map((col) => (
-                <KanbanColumn
+        <TabsContent value="board" className="flex-1 m-0 overflow-hidden flex flex-col">
+          {/* Column quick-nav pills */}
+          <div className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 border-b border-border/30 overflow-x-auto">
+            {COLUMNS.map((col) => {
+              const count = (tasksByColumn[col.id] ?? []).length;
+              const Icon = col.icon;
+              return (
+                <button
                   key={col.id}
-                  column={col}
-                  tasks={tasksByColumn[col.id] ?? []}
-                  onMove={handleMove}
-                  onDelete={handleDelete}
-                  onSelect={handleSelectTask}
-                />
-              ))}
+                  onClick={() => scrollToColumn(col.id)}
+                  className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium hover:bg-muted transition-colors whitespace-nowrap"
+                >
+                  <div className={`w-1.5 h-1.5 rounded-full ${col.color}`} />
+                  {col.label}
+                  {count > 0 && (
+                    <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 min-w-[18px] justify-center border-border/60">
+                      {count}
+                    </Badge>
+                  )}
+                </button>
+              );
+            })}
+            <div className="ml-auto flex items-center gap-1 flex-shrink-0">
+              <button
+                onClick={() => {
+                  if (collapsedColumns.size === COLUMNS.length) {
+                    setCollapsedColumns(new Set());
+                  } else {
+                    setCollapsedColumns(new Set(COLUMNS.map((c) => c.id)));
+                  }
+                }}
+                className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-muted-foreground hover:bg-muted transition-colors"
+                title={collapsedColumns.size === COLUMNS.length ? "Expand all" : "Collapse all"}
+              >
+                <ChevronsLeftRight className="w-3 h-3" />
+                {collapsedColumns.size === COLUMNS.length ? "Expand" : "Collapse"}
+              </button>
             </div>
-          </ScrollArea>
+          </div>
+
+          {/* Board with horizontal scroll + shadows */}
+          <div className="flex-1 min-h-0 relative">
+            {/* Left scroll shadow */}
+            {canScrollLeft && (
+              <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-background to-transparent z-10 pointer-events-none" />
+            )}
+            {/* Right scroll shadow */}
+            {canScrollRight && (
+              <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent z-10 pointer-events-none" />
+            )}
+
+            <div
+              ref={boardScrollRef}
+              className="h-full overflow-x-auto overflow-y-hidden"
+            >
+              <div className="flex gap-3 p-4 h-full min-w-max">
+                {COLUMNS.map((col) => (
+                  <KanbanColumn
+                    key={col.id}
+                    column={col}
+                    tasks={tasksByColumn[col.id] ?? []}
+                    onMove={handleMove}
+                    onDelete={handleDelete}
+                    onSelect={handleSelectTask}
+                    collapsed={collapsedColumns.has(col.id)}
+                    onToggleCollapse={() => toggleColumnCollapse(col.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
         </TabsContent>
 
         {/* Analytics Tab */}

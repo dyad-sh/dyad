@@ -5,7 +5,7 @@ echo   JoyCreate Backend Services Launcher
 echo ========================================
 echo.
 
-echo [1/3] Starting Docker services (n8n + PostgreSQL + Celestia)...
+echo [1/3] Starting Docker services (n8n + PostgreSQL + Celestia + Collabora)...
 docker compose -f docker-compose.n8n.yml up -d
 docker compose -f docker-compose.celestia.yml up -d
 
@@ -25,6 +25,7 @@ echo ========================================
 echo.
 echo   n8n Workflows:      http://localhost:5678
 echo   OpenClaw Control:   http://localhost:18789
+echo   Collabora Office:   http://localhost:9980
 echo   PostgreSQL:         localhost:5433
 echo   Celestia Light Node: localhost:26658
 echo.

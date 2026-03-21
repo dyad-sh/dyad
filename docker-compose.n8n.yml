@@ -55,6 +55,29 @@ services:
       retries: 3
       start_period: 30s
 
+  collabora:
+    container_name: joycreate-collabora
+    image: collabora/code:latest
+    restart: unless-stopped
+    ports:
+      - "9980:9980"
+    environment:
+      - aliasgroup1=http://host.docker.internal:5173
+      - username=admin
+      - password=admin
+      - extra_params=--o:ssl.enable=false --o:ssl.termination=false --o:net.frame_ancestors=localhost:*
+      - DONT_GEN_SSL_CERT=1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    cap_add:
+      - MKNOD
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9980/hosting/discovery || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+
 volumes:
   postgres-data:
   n8n-data:

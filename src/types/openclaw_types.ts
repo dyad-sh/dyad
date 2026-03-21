@@ -378,7 +378,7 @@ export interface OpenClawEvent {
 export const DEFAULT_OPENCLAW_CONFIG: OpenClawConfig = {
   gateway: {
     host: "127.0.0.1",
-    port: 18789,
+    port: 18790,
     protocol: "ws",
     reconnectInterval: 5000,
     maxReconnectAttempts: 10,
@@ -390,7 +390,7 @@ export const DEFAULT_OPENCLAW_CONFIG: OpenClawConfig = {
       name: "Ollama (Local)",
       type: "ollama",
       baseURL: "http://localhost:11434",
-      model: "llama3.1:8b",
+      model: "llama3.2:3b",
       enabled: true,
       priority: 1, // Highest priority - prefer local
       capabilities: ["chat", "code", "reasoning", "local-only"],

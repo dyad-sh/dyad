@@ -1092,10 +1092,19 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
 
         {!appUrl ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center space-y-4 bg-gray-50 dark:bg-gray-950">
-            <Loader2 className="w-8 h-8 animate-spin text-gray-400 dark:text-gray-500" />
-            <p className="text-gray-600 dark:text-gray-300">
-              Starting your app server...
-            </p>
+            {errorMessage ? (
+              <p className="text-gray-500 dark:text-gray-400 text-sm mt-16">
+                App server is not running. Check the error above or try
+                restarting.
+              </p>
+            ) : (
+              <>
+                <Loader2 className="w-8 h-8 animate-spin text-gray-400 dark:text-gray-500" />
+                <p className="text-gray-600 dark:text-gray-300">
+                  Starting your app server...
+                </p>
+              </>
+            )}
           </div>
         ) : (
           <div

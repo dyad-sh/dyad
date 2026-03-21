@@ -51,11 +51,6 @@ import {
 
 const integrationClient = OpenClawIntegrationClient.getInstance();
 
-const OPENCLAW_GATEWAY_TOKEN = import.meta.env.VITE_OPENCLAW_GATEWAY_TOKEN || "";
-const OPENCLAW_PORTAL_URL = OPENCLAW_GATEWAY_TOKEN
-  ? `http://127.0.0.1:18789/?token=${encodeURIComponent(OPENCLAW_GATEWAY_TOKEN)}`
-  : "http://127.0.0.1:18789";
-
 // =============================================================================
 // MAIN PAGE
 // =============================================================================
@@ -68,6 +63,16 @@ export function OpenClawControlPage() {
   // ---------------------------------------------------------------------------
   // Queries
   // ---------------------------------------------------------------------------
+
+  const { data: gatewayToken = "" } = useQuery({
+    queryKey: ["openclaw-gateway-token"],
+    queryFn: () => openclawClient.getGatewayToken(),
+    staleTime: Infinity,
+  });
+
+  const portalUrl = gatewayToken
+    ? `http://127.0.0.1:18789/?token=${encodeURIComponent(gatewayToken)}`
+    : "http://127.0.0.1:18789";
 
   const { data: gatewayStatus, isLoading: isStatusLoading } = useQuery({
     queryKey: ["openclaw-gateway-status"],
@@ -215,7 +220,7 @@ export function OpenClawControlPage() {
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => window.open(OPENCLAW_PORTAL_URL, "_blank")}
+            onClick={() => window.open(portalUrl, "_blank")}
             title="Open in browser"
           >
             <ExternalLink className="h-4 w-4" />
@@ -283,7 +288,7 @@ export function OpenClawControlPage() {
             </div>
             {isConnected ? (
               <iframe
-                src={OPENCLAW_PORTAL_URL}
+                src={portalUrl}
                 className="flex-1 w-full border-0"
                 title="OpenClaw Portal"
                 sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"

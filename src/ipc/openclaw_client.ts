@@ -105,6 +105,10 @@ class OpenClawClientImpl {
     return this.ipcRenderer.invoke("openclaw:config:get");
   }
 
+  async getGatewayToken(): Promise<string> {
+    return this.ipcRenderer.invoke("openclaw:gateway-token");
+  }
+
   async updateConfig(updates: Partial<OpenClawConfig>): Promise<{ success: boolean }> {
     return this.ipcRenderer.invoke("openclaw:config:update", updates);
   }

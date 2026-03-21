@@ -3,7 +3,7 @@ import type { ProblemReport, Problem } from "../../shared/tsc_types";
 export type { ProblemReport, Problem };
 
 export interface AppOutput {
-  type: "stdout" | "stderr" | "info" | "client-error" | "input-requested";
+  type: "stdout" | "stderr" | "info" | "client-error" | "input-requested" | "process-exited";
   message: string;
   timestamp: number;
   appId: number;

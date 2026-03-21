@@ -88,6 +88,10 @@ export function registerOpenClawHandlers(): void {
     return gateway.getConfig();
   });
 
+  ipcMain.handle("openclaw:gateway-token", async () => {
+    return process.env.OPENCLAW_GATEWAY_TOKEN ?? "";
+  });
+
   ipcMain.handle(
     "openclaw:config:update",
     async (_event: IpcMainInvokeEvent, updates: Partial<OpenClawConfig>) => {

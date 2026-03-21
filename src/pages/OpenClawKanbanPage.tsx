@@ -6,6 +6,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef, type DragEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { IpcClient } from "@/ipc/ipc_client";
+import { OpenClawClient as openclawClient } from "@/ipc/openclaw_client";
 import type { IpldReceiptRecord } from "@/types/ipld_receipt";
 import { Button } from "@/components/ui/button";
 import {
@@ -1902,13 +1903,18 @@ export function OpenClawKanbanPage() {
   const [liveEvents, setLiveEvents] = useState<LiveEvent[]>([]);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const { data: gatewayToken = "" } = useQuery({
+    queryKey: ["openclaw-gateway-token"],
+    queryFn: () => openclawClient.getGatewayToken(),
+    staleTime: Infinity,
+  });
+
   useEffect(() => {
     let mounted = true;
 
     const connect = () => {
       try {
-        const token = import.meta.env.VITE_OPENCLAW_GATEWAY_TOKEN || "";
-        const wsUrl = `ws://127.0.0.1:18789${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+        const wsUrl = `ws://127.0.0.1:18789${gatewayToken ? `?token=${encodeURIComponent(gatewayToken)}` : ""}`;
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 
@@ -1984,7 +1990,7 @@ export function OpenClawKanbanPage() {
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
       wsRef.current?.close();
     };
-  }, [queryClient]);
+  }, [queryClient, gatewayToken]);
 
   // Queries
   const { data: tasks = [], isLoading: tasksLoading } = useQuery({

@@ -108,7 +108,6 @@ export function registerImportHandlers() {
         await copyDirectoryRecursive(sourcePath, appPath);
       }
 
-      // Use WSL-aware check for git repo detection
       const isGitRepo = await pathExistsHandlingWslAsync(
         path.join(appPath, ".git"),
       );

@@ -2,7 +2,12 @@ import React, { useEffect, useState } from "react";
 import { useSetAtom } from "jotai";
 import { Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { planAnnotationsAtom, type PlanAnnotation } from "@/atoms/planAtoms";
+import {
+  planAnnotationsAtom,
+  removePlanAnnotation,
+  updatePlanAnnotation,
+  type PlanAnnotation,
+} from "@/atoms/planAtoms";
 
 interface CommentCardProps {
   annotation: PlanAnnotation;
@@ -24,27 +29,14 @@ export const CommentCard: React.FC<CommentCardProps> = ({
   }, [annotation.comment, isEditing]);
 
   const handleDelete = () => {
-    setAnnotations((prev) => {
-      const next = new Map(prev);
-      const list = next.get(chatId) ?? [];
-      next.set(
-        chatId,
-        list.filter((a) => a.id !== annotation.id),
-      );
-      return next;
-    });
+    setAnnotations((prev) => removePlanAnnotation(prev, chatId, annotation.id));
   };
 
   const handleSave = () => {
     if (!editedText.trim()) return;
-    setAnnotations((prev) => {
-      const next = new Map(prev);
-      const list = (next.get(chatId) ?? []).map((a) =>
-        a.id === annotation.id ? { ...a, comment: editedText.trim() } : a,
-      );
-      next.set(chatId, list);
-      return next;
-    });
+    setAnnotations((prev) =>
+      updatePlanAnnotation(prev, chatId, annotation.id, editedText.trim()),
+    );
     setIsEditing(false);
   };
 
@@ -61,6 +53,7 @@ export const CommentCard: React.FC<CommentCardProps> = ({
         </blockquote>
         <div className="flex gap-1 ml-2 shrink-0">
           <button
+            type="button"
             onClick={() => setIsEditing(true)}
             aria-label="Edit comment"
             className="p-1 rounded hover:bg-muted"
@@ -68,6 +61,7 @@ export const CommentCard: React.FC<CommentCardProps> = ({
             <Pencil size={12} className="text-muted-foreground" />
           </button>
           <button
+            type="button"
             onClick={handleDelete}
             aria-label="Delete comment"
             className="p-1 rounded hover:bg-muted"
@@ -92,7 +86,11 @@ export const CommentCard: React.FC<CommentCardProps> = ({
             <Button variant="ghost" size="sm" onClick={handleCancel}>
               Cancel
             </Button>
-            <Button size="sm" onClick={handleSave}>
+            <Button
+              size="sm"
+              onClick={handleSave}
+              disabled={!editedText.trim()}
+            >
               Save
             </Button>
           </div>

@@ -9,7 +9,11 @@ import { useAtomValue, useSetAtom } from "jotai";
 import { Button } from "@/components/ui/button";
 import { Check, FileText } from "lucide-react";
 import { VanillaMarkdownParser } from "@/components/chat/DyadMarkdownParser";
-import { planAnnotationsAtom, planStateAtom } from "@/atoms/planAtoms";
+import {
+  clearPlanAnnotations,
+  planAnnotationsAtom,
+  planStateAtom,
+} from "@/atoms/planAtoms";
 import { previewModeAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
@@ -124,7 +128,7 @@ export const PlanPanel: React.FC = () => {
     };
   }, [chatAnnotations, currentPlan]);
 
-  const handleSendComments = useCallback(async () => {
+  const handleSendComments = useCallback(() => {
     if (!chatId || isSendingComments) return;
     const currentAnnotations = annotations.get(chatId) ?? [];
     if (currentAnnotations.length === 0) return;
@@ -136,20 +140,14 @@ export const PlanPanel: React.FC = () => {
       .join("\n\n---\n\n");
 
     setIsSendingComments(true);
-    try {
-      await streamMessage({
-        chatId,
-        prompt: `I have the following comments on the plan:\n\n${prompt}\n\nPlease update the plan based on these comments.`,
-      });
-      // Clear annotations only after successful send
-      setAnnotations((prev) => {
-        const next = new Map(prev);
-        next.delete(chatId);
-        return next;
-      });
-    } finally {
-      setIsSendingComments(false);
-    }
+    streamMessage({
+      chatId,
+      prompt: `I have the following comments on the plan:\n\n${prompt}\n\nPlease update the plan based on these comments.`,
+      onSettled: () => {
+        setAnnotations((prev) => clearPlanAnnotations(prev, chatId));
+        setIsSendingComments(false);
+      },
+    });
   }, [chatId, isSendingComments, annotations, streamMessage, setAnnotations]);
 
   const handleAccept = () => {
@@ -217,6 +215,7 @@ export const PlanPanel: React.FC = () => {
             containerRef={planContentRef}
             scrollRef={scrollContainerRef}
             chatId={chatId}
+            chatAnnotations={chatAnnotations}
           />
           <CommentPopover
             containerRef={planContentRef}

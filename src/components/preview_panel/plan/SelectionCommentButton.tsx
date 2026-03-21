@@ -1,14 +1,12 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { useAtomValue, useSetAtom } from "jotai";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useSetAtom } from "jotai";
 import { MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { planAnnotationsAtom } from "@/atoms/planAtoms";
+import {
+  addPlanAnnotation,
+  planAnnotationsAtom,
+  type PlanAnnotation,
+} from "@/atoms/planAtoms";
 import {
   getPlanSelectionSnapshot,
   hasOverlappingPlanAnnotation,
@@ -27,14 +25,15 @@ interface SelectionCommentButtonProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
   scrollRef: React.RefObject<HTMLDivElement | null>;
   chatId: number;
+  chatAnnotations: PlanAnnotation[];
 }
 
 export const SelectionCommentButton: React.FC<SelectionCommentButtonProps> = ({
   containerRef,
   scrollRef,
   chatId,
+  chatAnnotations,
 }) => {
-  const annotations = useAtomValue(planAnnotationsAtom);
   const setAnnotations = useSetAtom(planAnnotationsAtom);
   const [floatingButton, setFloatingButton] =
     useState<FloatingButtonState | null>(null);
@@ -42,10 +41,6 @@ export const SelectionCommentButton: React.FC<SelectionCommentButtonProps> = ({
   const [commentText, setCommentText] = useState("");
   const buttonRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLDivElement>(null);
-  const chatAnnotations = useMemo(
-    () => annotations.get(chatId) ?? [],
-    [annotations, chatId],
-  );
 
   const clearState = useCallback(() => {
     setFloatingButton(null);
@@ -105,7 +100,10 @@ export const SelectionCommentButton: React.FC<SelectionCommentButtonProps> = ({
 
         const rect = getSelectionCommentAnchorRect(range);
         const formWidth = 288; // w-72
-        const x = Math.min(rect.right + 4, window.innerWidth - formWidth - 8);
+        const x = Math.max(
+          8,
+          Math.min(rect.right + 4, window.innerWidth - formWidth - 8),
+        );
         const y = Math.max(rect.top - 4, 8);
         setShowForm(false);
         setCommentText("");
@@ -178,12 +176,7 @@ export const SelectionCommentButton: React.FC<SelectionCommentButtonProps> = ({
       selectionLength: floatingButton.selectionLength,
     };
 
-    setAnnotations((prev) => {
-      const next = new Map(prev);
-      const list = next.get(chatId) ?? [];
-      next.set(chatId, [...list, annotation]);
-      return next;
-    });
+    setAnnotations((prev) => addPlanAnnotation(prev, chatId, annotation));
 
     clearState();
     window.getSelection()?.removeAllRanges();

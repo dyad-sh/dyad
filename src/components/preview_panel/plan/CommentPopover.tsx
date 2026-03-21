@@ -12,8 +12,6 @@ interface PopoverState {
   annotationId: string;
   anchorX: number;
   anchorY: number;
-  x: number;
-  y: number;
 }
 
 interface CommentPopoverProps {
@@ -59,8 +57,6 @@ export const CommentPopover: React.FC<CommentPopoverProps> = ({
       annotationId,
       anchorX: rect.right + 8,
       anchorY: rect.top,
-      x: rect.right + 8,
-      y: rect.top,
     });
   }, []);
 
@@ -123,15 +119,43 @@ export const CommentPopover: React.FC<CommentPopoverProps> = ({
     };
   }, [popover, dismiss]);
 
-  // Dismiss on scroll
+  // Reposition on scroll; dismiss if anchor mark leaves viewport
   useEffect(() => {
     const scrollEl = scrollRef?.current;
     if (!scrollEl || !popover) return;
 
-    const handleScroll = () => dismiss();
+    const handleScroll = () => {
+      const mark = containerRef.current?.querySelector<HTMLElement>(
+        `mark[data-annotation-id="${popover.annotationId}"]`,
+      );
+      if (!mark) {
+        dismiss();
+        return;
+      }
+
+      const rect = mark.getBoundingClientRect();
+      const scrollRect = scrollEl.getBoundingClientRect();
+
+      // Dismiss if the mark has scrolled completely out of the visible area
+      if (rect.bottom < scrollRect.top || rect.top > scrollRect.bottom) {
+        dismiss();
+        return;
+      }
+
+      setPopover((current) => {
+        if (!current || current.annotationId !== popover.annotationId)
+          return current;
+        return {
+          ...current,
+          anchorX: rect.right + 8,
+          anchorY: rect.top,
+        };
+      });
+    };
+
     scrollEl.addEventListener("scroll", handleScroll);
     return () => scrollEl.removeEventListener("scroll", handleScroll);
-  }, [scrollRef, popover, dismiss]);
+  }, [scrollRef, containerRef, popover?.annotationId, dismiss]);
 
   // Dismiss when annotations change (e.g., deleted)
   useEffect(() => {
@@ -143,7 +167,7 @@ export const CommentPopover: React.FC<CommentPopoverProps> = ({
   useLayoutEffect(() => {
     if (!popover || !popoverRef.current) return;
 
-    const updatePosition = () => {
+    const clampPosition = () => {
       const popoverElement = popoverRef.current;
       if (!popoverElement) return;
 
@@ -151,25 +175,16 @@ export const CommentPopover: React.FC<CommentPopoverProps> = ({
       const margin = 8;
       const maxX = Math.max(margin, window.innerWidth - rect.width - margin);
       const maxY = Math.max(margin, window.innerHeight - rect.height - margin);
-      const nextX = Math.max(margin, Math.min(popover.anchorX, maxX));
-      const nextY = Math.max(margin, Math.min(popover.anchorY, maxY));
+      const clampedX = Math.max(margin, Math.min(popover.anchorX, maxX));
+      const clampedY = Math.max(margin, Math.min(popover.anchorY, maxY));
 
-      setPopover((current) => {
-        if (!current || current.annotationId !== popover.annotationId) {
-          return current;
-        }
-
-        if (current.x === nextX && current.y === nextY) {
-          return current;
-        }
-
-        return { ...current, x: nextX, y: nextY };
-      });
+      popoverElement.style.left = `${clampedX}px`;
+      popoverElement.style.top = `${clampedY}px`;
     };
 
-    updatePosition();
-    window.addEventListener("resize", updatePosition);
-    return () => window.removeEventListener("resize", updatePosition);
+    clampPosition();
+    window.addEventListener("resize", clampPosition);
+    return () => window.removeEventListener("resize", clampPosition);
   }, [popover?.annotationId, popover?.anchorX, popover?.anchorY]);
 
   useEffect(() => {
@@ -180,7 +195,7 @@ export const CommentPopover: React.FC<CommentPopoverProps> = ({
     );
 
     (firstFocusable ?? popoverRef.current).focus();
-  }, [popover]);
+  }, [popover?.annotationId]);
 
   if (!popover) return null;
 
@@ -195,8 +210,8 @@ export const CommentPopover: React.FC<CommentPopoverProps> = ({
       tabIndex={-1}
       style={{
         position: "fixed",
-        left: popover.x,
-        top: popover.y,
+        left: popover.anchorX,
+        top: popover.anchorY,
         zIndex: 50,
       }}
       className="w-72 rounded-lg border bg-popover shadow-lg"

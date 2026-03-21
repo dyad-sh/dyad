@@ -52,6 +52,16 @@ function collectPlanTextSegments(container: HTMLElement): PlanTextSegment[] {
   return segments;
 }
 
+/**
+ * Maps a DOM selection boundary (node + offset) to a flat character offset
+ * within the plan's concatenated text content.
+ *
+ * Creates a temporary Range from the container start to the boundary point,
+ * then walks the pre-collected text segments to find which segment contains
+ * the boundary. This Range-based approach correctly handles boundaries that
+ * land inside element nodes (not just text nodes) and accounts for ignored
+ * regions (e.g. annotation marks) that are excluded from the segment list.
+ */
 function getBoundaryTextOffset(
   container: HTMLElement,
   boundaryNode: Node,

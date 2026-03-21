@@ -85,7 +85,6 @@ export function registerImportHandlers() {
         skipCopy,
       }: ImportAppParams,
     ): Promise<ImportAppResult> => {
-      // Validate the source path exists using async check (non-blocking for WSL UNC paths)
       if (!(await pathExistsHandlingWslAsync(sourcePath))) {
         throw new Error("Source folder does not exist");
       }

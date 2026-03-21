@@ -1081,17 +1081,16 @@ export function registerAppHandlers() {
     const appPath = getDyadAppPath(app.path);
     const fullPath = path.join(appPath, filePath);
 
-    // Check if the path is within the app directory (security check)
     if (!fullPath.startsWith(appPath)) {
       throw new DyadError("Invalid file path", DyadErrorKind.Validation);
     }
 
-    if (!fs.existsSync(fullPath)) {
+    if (!(await pathExistsHandlingWslAsync(fullPath))) {
       throw new DyadError("File not found", DyadErrorKind.NotFound);
     }
 
     try {
-      const contents = fs.readFileSync(fullPath, "utf-8");
+      const contents = await fsPromises.readFile(fullPath, "utf-8");
       return contents;
     } catch (error) {
       logger.error(`Error reading file ${filePath} for app ${appId}:`, error);
@@ -2121,7 +2120,8 @@ export function registerAppHandlers() {
       }
 
       // Check if source path exists - if not, just update the DB path without copying
-      const sourceExists = fs.existsSync(currentResolvedPath);
+      const sourceExists =
+        await pathExistsHandlingWslAsync(currentResolvedPath);
       if (!sourceExists) {
         logger.warn(
           `Source path ${currentResolvedPath} does not exist. Updating database path only.`,

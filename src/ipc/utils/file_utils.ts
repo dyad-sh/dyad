@@ -19,7 +19,12 @@ export function getFilesRecursively(dir: string, baseDir: string): string[] {
   if (!fs.existsSync(dir)) {
     return [];
   }
-  const dirents = fs.readdirSync(dir, { withFileTypes: true });
+  let dirents: fs.Dirent[];
+  try {
+    dirents = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
   const files: string[] = [];
 
   for (const dirent of dirents) {

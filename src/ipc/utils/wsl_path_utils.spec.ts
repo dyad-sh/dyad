@@ -9,6 +9,14 @@ import {
   pathExistsHandlingWslAsync,
 } from "./wsl_path_utils";
 
+vi.mock("./wsl_path_utils", async (importActual) => {
+  const actual = await importActual<typeof import("./wsl_path_utils")>();
+  return {
+    ...actual,
+    isWslPath: vi.fn(actual.isWslPath),
+  };
+});
+
 describe("wsl_path_utils", () => {
   let tempDir: string;
   let sourceFile: string;
@@ -112,14 +120,28 @@ describe("wsl_path_utils", () => {
 
     it("should use streaming when destination is WSL path", async () => {
       const srcFile = path.join(tempDir, "src.txt");
-      // Use actual WSL path format to trigger streaming route
-      const destFile = "\\\\wsl.localhost\\Ubuntu\\home\\test\\dest.txt";
-      fs.writeFileSync(srcFile, "test streaming");
+      const destFile = path.join(tempDir, "dest-wsl.txt");
+      fs.writeFileSync(srcFile, "test streaming content");
       fs.chmodSync(srcFile, 0o755);
 
-      // Note: This test verifies the detection logic triggers streaming.
-      // The actual stream operations are tested on real paths above.
-      expect(isWslPath(destFile)).toBe(true);
+      await vi
+        .mocked(isWslPath)
+        .mockImplementation((filePath: string) =>
+          filePath === destFile ? true : false,
+        );
+
+      try {
+        await copyFileHandlingWsl(srcFile, destFile);
+        expect(fs.existsSync(destFile)).toBe(true);
+        expect(fs.readFileSync(destFile, "utf-8")).toBe(
+          "test streaming content",
+        );
+        const srcStats = fs.statSync(srcFile);
+        const destStats = fs.statSync(destFile);
+        expect(destStats.mode).toBe(srcStats.mode);
+      } finally {
+        vi.mocked(isWslPath).mockRestore();
+      }
     });
 
     it("should correctly identify WSL paths for routing to streaming copy", () => {
@@ -130,8 +152,6 @@ describe("wsl_path_utils", () => {
       expect(isWslPath("C:\\Users\\test\\file.txt")).toBe(false);
     });
   });
-
-
 
   describe("pathExistsHandlingWsl", () => {
     it("should return true for existing files", () => {

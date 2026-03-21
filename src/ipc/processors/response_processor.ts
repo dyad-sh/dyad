@@ -145,6 +145,7 @@ export async function processFullResponseActions(
   const appPath = getDyadAppPath(chatWithApp.app.path);
   const writtenFiles: string[] = [];
   const renamedFiles: string[] = [];
+  const renamedFileSources: string[] = []; 
   const deletedFiles: string[] = [];
   let hasChanges = false;
   // Track if any shared modules were modified
@@ -314,6 +315,7 @@ export async function processFullResponseActions(
         fs.renameSync(fromPath, toPath);
         logger.log(`Successfully renamed file: ${fromPath} -> ${toPath}`);
         renamedFiles.push(tag.to);
+        renamedFileSources.push(tag.from); // Track this source for unstaging if auto-commit disabled
 
         // Add the new file and remove the old one from git
         await gitAdd({ path: appPath, filepath: tag.to });
@@ -612,7 +614,8 @@ export async function processFullResponseActions(
           // - writtenFiles: staged via gitAdd
           // - deletedFiles: staged via gitRemove
           // - renamedFiles (destinations): staged via gitAdd
-          // - dyadRenameTags.from (sources): staged via gitRemove
+          // - renamedFileSources: sources that were ACTUALLY processed in this run (staged via gitRemove)
+          // Only unstage sources that Dyad actually processed to avoid unstaging user pre-staged files.
           // Note: This leaves edited files in the working tree, so version restores
           // (Undo, Retry, Version pane) will not work until files are committed.
           // This is an acceptable tradeoff for the review-before-commit workflow.
@@ -620,7 +623,7 @@ export async function processFullResponseActions(
             ...writtenFiles,
             ...deletedFiles,
             ...renamedFiles,
-            ...dyadRenameTags.map((tag) => tag.from),
+            ...renamedFileSources,
           ]);
           for (const filepath of stagedByDyad) {
             try {

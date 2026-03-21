@@ -125,10 +125,11 @@ export function registerVisualEditingHandlers() {
             change.imageSrc = `/images/${finalFileName}`;
 
             // Only stage and commit images if auto-commit is enabled.
-            // This prevents accumulated staged images when toggle is off.
-            // Note: version restores won't work when auto-commit is disabled
-            // (requires clean working tree), but that's an acceptable tradeoff
-            // for preserving the ability to review/selectively commit changes.
+            // LIMITATION: If auto-commit is disabled and user later edits the component
+            // with auto-commit enabled, the component will be committed but the image
+            // will remain untracked, breaking the image reference.
+            // Workaround: Keep auto-commit enabled for visual edits that include images,
+            // or manually stage the image before committing component changes.
             if (fs.existsSync(path.join(appPath, ".git")) && enableGitAutoCommit) {
               const imageFilepath = normalizePath(
                 path.join("public", "images", finalFileName),

@@ -567,19 +567,17 @@ export async function processFullResponseActions(
             message,
           });
           logger.log(`Successfully committed changes: ${changes.join(", ")}`);
-          // Store DB snapshot AFTER the actual commit is made
+          // Store DB snapshot AFTER the actual commit is made.
+          // For Neon-backed apps, this is critical: missing DB timestamps mean version
+          // restores won't work. If this fails, we must fail the entire response.
           if (
             chatWithApp.app.neonProjectId &&
             chatWithApp.app.neonDevelopmentBranchId &&
             commitHash
           ) {
-            try {
-              await storeDbTimestampAtCurrentVersion({
-                appId: chatWithApp.app.id,
-              });
-            } catch (error) {
-              logger.error("Error storing Neon timestamp after commit:", error);
-            }
+            await storeDbTimestampAtCurrentVersion({
+              appId: chatWithApp.app.id,
+            });
           }
           
           // Check for any uncommitted changes after the commit (files changed outside Dyad)
@@ -601,16 +599,9 @@ export async function processFullResponseActions(
                 chatWithApp.app.neonProjectId &&
                 chatWithApp.app.neonDevelopmentBranchId
               ) {
-                try {
-                  await storeDbTimestampAtCurrentVersion({
-                    appId: chatWithApp.app.id,
-                  });
-                } catch (error) {
-                  logger.error(
-                    "Error storing Neon timestamp for amended commit:",
-                    error,
-                  );
-                }
+                await storeDbTimestampAtCurrentVersion({
+                  appId: chatWithApp.app.id,
+                });
               }
             } catch (error) {
               logger.error(

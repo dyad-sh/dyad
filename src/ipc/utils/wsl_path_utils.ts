@@ -5,15 +5,6 @@ import log from "electron-log";
 
 const logger = log.scope("wsl_path_utils");
 
-/**
- * Detects if a path is a WSL2 network UNC path.
- * Matches patterns like:
- * - \\wsl.localhost\Ubuntu\home\user\project
- * - \\wsl$\Ubuntu\home\user\project
- *
- * Uses startsWith to avoid false positives from directories named wsl.localhost or wsl$
- * in regular paths like C:\Users\bob\wsl.localhost\project
- */
 export function isWslPath(filePath: string): boolean {
   if (!filePath || typeof filePath !== "string") {
     return false;
@@ -25,37 +16,18 @@ export function isWslPath(filePath: string): boolean {
   );
 }
 
-/**
- * Copies a file with special handling for WSL2 paths using streaming.
- * Uses streams instead of buffering to avoid memory issues with large files.
- * Also preserves file permissions/mode.
- *
- * @param sourcePath Source file path (may be a WSL2 UNC path)
- * @param destPath Destination file path
- * @throws Error if the source doesn't exist or copy fails
- */
 export async function copyFileHandlingWsl(
   sourcePath: string,
   destPath: string,
 ): Promise<void> {
   try {
     if (isWslPath(sourcePath) || isWslPath(destPath)) {
-      logger.debug(
-        `Detected WSL path, using streaming copy: ${sourcePath} -> ${destPath}`,
-      );
-      // Use streaming for WSL paths to avoid memory issues with large files
-      // pipeline() handles stream cleanup automatically (destroy on error, cleanup on finish)
       const readable = fs.createReadStream(sourcePath);
       const writable = fs.createWriteStream(destPath);
       await pipeline(readable, writable);
-      // Preserve file permissions from source
       const stats = await fsPromises.stat(sourcePath);
       await fsPromises.chmod(destPath, stats.mode);
-      logger.debug(
-        `Successfully copied WSL file with mode: ${sourcePath} -> ${destPath}`,
-      );
     } else {
-      // For regular paths, use copyFile which is more efficient
       await fsPromises.copyFile(sourcePath, destPath);
     }
   } catch (error) {
@@ -64,28 +36,16 @@ export async function copyFileHandlingWsl(
   }
 }
 
-/**
- * Synchronous version of copyFileHandlingWsl.
- * Use sparingly - synchronous I/O can block the main thread.
- */
 export function copyFileSyncHandlingWsl(
   sourcePath: string,
   destPath: string,
 ): void {
   try {
     if (isWslPath(sourcePath) || isWslPath(destPath)) {
-      logger.debug(
-        `Detected WSL path (sync), using buffer copy: ${sourcePath} -> ${destPath}`,
-      );
-      // Sync version must use buffer (no streaming for sync)
       const fileBuffer = fs.readFileSync(sourcePath);
       fs.writeFileSync(destPath, fileBuffer);
-      // Preserve file permissions
       const stats = fs.statSync(sourcePath);
       fs.chmodSync(destPath, stats.mode);
-      logger.debug(
-        `Successfully copied WSL file (sync): ${sourcePath} -> ${destPath}`,
-      );
     } else {
       fs.copyFileSync(sourcePath, destPath);
     }
@@ -98,11 +58,6 @@ export function copyFileSyncHandlingWsl(
   }
 }
 
-/**
- * ASYNC version: Checks if a path exists with WSL support.
- * Non-blocking, safe for Electron main process.
- * Prefer this over the sync version in async contexts.
- */
 export async function pathExistsHandlingWslAsync(
   filePath: string,
 ): Promise<boolean> {
@@ -114,11 +69,6 @@ export async function pathExistsHandlingWslAsync(
   }
 }
 
-/**
- * DEPRECATED: Use pathExistsHandlingWslAsync instead.
- * This synchronous variant blocks the event loop and should be avoided
- * in async handlers (like IPC endpoints).
- */
 export function pathExistsHandlingWsl(filePath: string): boolean {
   try {
     if (isWslPath(filePath)) {
@@ -132,9 +82,6 @@ export function pathExistsHandlingWsl(filePath: string): boolean {
   }
 }
 
-/**
- * Gets file stats, with special handling for WSL paths.
- */
 export function getFileStatsHandlingWsl(
   filePath: string,
 ): fs.Stats | undefined {

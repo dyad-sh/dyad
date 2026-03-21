@@ -66,7 +66,6 @@ export async function copyDirectoryRecursive(
         await copyDirectoryRecursive(srcPath, destPath);
       }
     } else {
-      // Use WSL-aware copy for files
       await copyFileHandlingWsl(srcPath, destPath);
     }
   }

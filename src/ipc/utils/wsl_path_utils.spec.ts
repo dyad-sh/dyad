@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -9,6 +9,7 @@ import {
   pathExistsHandlingWsl,
   pathExistsHandlingWslAsync,
 } from "./wsl_path_utils";
+import * as wslPathUtils from "./wsl_path_utils";
 
 describe("wsl_path_utils", () => {
   let tempDir: string;
@@ -86,7 +87,7 @@ describe("wsl_path_utils", () => {
 
     it("should handle large files", async () => {
       const largeFile = path.join(tempDir, "large.bin");
-      const largeContent = Buffer.alloc(10 * 1024 * 1024, "x"); // 10MB
+      const largeContent = Buffer.alloc(10 * 1024 * 1024, "x");
       fs.writeFileSync(largeFile, largeContent);
 
       const largeDest = path.join(tempDir, "large-dest.bin");
@@ -98,24 +99,40 @@ describe("wsl_path_utils", () => {
     });
 
     it("should preserve file permissions after copy", async () => {
-      // Set specific permissions on source
       const permFile = path.join(tempDir, "perm-test.txt");
       fs.writeFileSync(permFile, "test");
-      fs.chmodSync(permFile, 0o755); // rwxr-xr-x
+      fs.chmodSync(permFile, 0o755);
 
       const permDest = path.join(tempDir, "perm-dest.txt");
       await copyFileHandlingWsl(permFile, permDest);
 
       const srcStats = fs.statSync(permFile);
       const destStats = fs.statSync(permDest);
-      // Verify permissions were preserved
       expect(destStats.mode).toBe(srcStats.mode);
-      // Verify file content was copied
       expect(fs.readFileSync(permDest, "utf-8")).toBe("test");
     });
 
+    it("should use streaming when destination is WSL path", async () => {
+      const srcFile = path.join(tempDir, "src.txt");
+      const destFile = path.join(tempDir, "dest.txt");
+      fs.writeFileSync(srcFile, "test");
+      fs.chmodSync(srcFile, 0o755);
+      const spy = vi.spyOn(wslPathUtils, "isWslPath");
+      spy.mockImplementation((filePath: string) =>
+        filePath === destFile ? true : false,
+      );
+
+      try {
+        await copyFileHandlingWsl(srcFile, destFile);
+        const srcStats = fs.statSync(srcFile);
+        const destStats = fs.statSync(destFile);
+        expect(destStats.mode).toBe(srcStats.mode);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
     it("should correctly identify WSL paths for routing to streaming copy", () => {
-      // Routing verified via isWslPath unit tests + permission preservation test validates streaming
       expect(isWslPath("\\\\wsl.localhost\\Ubuntu\\home\\user\\file.txt")).toBe(
         true,
       );
@@ -141,19 +158,16 @@ describe("wsl_path_utils", () => {
     });
 
     it("should preserve file permissions on sync copy", () => {
-      // Set specific permissions on source
       const permFile = path.join(tempDir, "perm-test-sync.txt");
       fs.writeFileSync(permFile, "test sync");
-      fs.chmodSync(permFile, 0o755); // rwxr-xr-x
+      fs.chmodSync(permFile, 0o755);
 
       const permDest = path.join(tempDir, "perm-dest-sync.txt");
       copyFileSyncHandlingWsl(permFile, permDest);
 
       const srcStats = fs.statSync(permFile);
       const destStats = fs.statSync(permDest);
-      // Verify permissions were preserved
       expect(destStats.mode).toBe(srcStats.mode);
-      // Verify file content was copied
       expect(fs.readFileSync(permDest, "utf-8")).toBe("test sync");
     });
   });
@@ -188,7 +202,6 @@ describe("wsl_path_utils", () => {
     });
 
     it("should handle file stat errors gracefully", async () => {
-      // Test with undefined behavior - should not throw
       const result = await pathExistsHandlingWslAsync(
         path.join(tempDir, "definitely-does-not-exist-12345.txt"),
       );

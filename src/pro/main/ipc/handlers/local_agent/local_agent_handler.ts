@@ -1234,6 +1234,11 @@ export async function handleLocalAgentStream(
       // Commit all changes if enabled
       const enableGitAutoCommit = settings.enableGitAutoCommit ?? true;
       if (enableGitAutoCommit) {
+        // NOTE: If auto-commit was previously disabled, commitAllChanges() will include
+        // any deferred changes from earlier turns via gitAddAll(). This means the user's
+        // review-before-commit workflow will not be preserved across multiple turns if
+        // the toggle is switched mid-session. To properly support this, we would need to
+        // track which files were deferred in previous turns and exclude them here.
         const commitResult = await commitAllChanges(ctx, ctx.chatSummary);
 
         if (commitResult.commitHash) {

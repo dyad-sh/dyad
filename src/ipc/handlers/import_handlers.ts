@@ -11,9 +11,14 @@ import { eq } from "drizzle-orm";
 
 import { ImportAppParams, ImportAppResult } from "@/ipc/types";
 import { copyDirectoryRecursive } from "../utils/file_utils";
-import { gitCommit, gitAdd, gitInit } from "../utils/git_utils";
+import {
+  gitCommit,
+  gitAdd,
+  gitInit,
+  gitAddSafeDirectory,
+} from "../utils/git_utils";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { pathExistsHandlingWslAsync } from "../utils/wsl_path_utils";
+import { pathExistsHandlingWslAsync, isWslPath } from "../utils/wsl_path_utils";
 
 const logger = log.scope("import-handlers");
 const handle = createLoggedHandler(logger);
@@ -95,6 +100,10 @@ export function registerImportHandlers() {
 
       // Determine the app path based on skipCopy
       const appPath = skipCopy ? sourcePath : getDyadAppPath(appName);
+
+      if (skipCopy && isWslPath(sourcePath)) {
+        await gitAddSafeDirectory(sourcePath);
+      }
 
       if (!skipCopy) {
         if (!isAppLocationAccessible(appPath)) {

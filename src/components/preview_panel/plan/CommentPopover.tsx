@@ -10,12 +10,14 @@ interface PopoverState {
 
 interface CommentPopoverProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
+  scrollRef?: React.RefObject<HTMLDivElement | null>;
   chatId: number;
   annotations: PlanAnnotation[];
 }
 
 export const CommentPopover: React.FC<CommentPopoverProps> = ({
   containerRef,
+  scrollRef,
   chatId,
   annotations,
 }) => {
@@ -73,6 +75,16 @@ export const CommentPopover: React.FC<CommentPopoverProps> = ({
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [popover, dismiss]);
+
+  // Dismiss on scroll
+  useEffect(() => {
+    const scrollEl = scrollRef?.current;
+    if (!scrollEl || !popover) return;
+
+    const handleScroll = () => dismiss();
+    scrollEl.addEventListener("scroll", handleScroll);
+    return () => scrollEl.removeEventListener("scroll", handleScroll);
+  }, [scrollRef, popover, dismiss]);
 
   // Dismiss when annotations change (e.g., deleted)
   useEffect(() => {

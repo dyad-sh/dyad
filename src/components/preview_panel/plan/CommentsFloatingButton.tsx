@@ -27,13 +27,14 @@ export const CommentsFloatingButton: React.FC<CommentsFloatingButtonProps> = ({
   return (
     <div className="sticky top-3 float-right z-10 mr-1">
       <Popover>
-        <PopoverTrigger>
-          <div className="relative rounded-full w-9 h-9 flex items-center justify-center bg-muted/80 text-muted-foreground border shadow-sm hover:bg-muted transition-colors cursor-pointer">
-            <MessageSquare size={16} />
-            <span className="absolute -top-1.5 -right-1.5 bg-primary text-primary-foreground text-[10px] rounded-full min-w-4 h-4 flex items-center justify-center font-medium px-1">
-              {annotations.length}
-            </span>
-          </div>
+        <PopoverTrigger
+          aria-label="View comments"
+          className="relative rounded-full w-9 h-9 flex items-center justify-center bg-muted/80 text-muted-foreground border shadow-sm hover:bg-muted transition-colors cursor-pointer"
+        >
+          <MessageSquare size={16} />
+          <span className="absolute -top-1.5 -right-1.5 bg-primary text-primary-foreground text-[10px] rounded-full min-w-4 h-4 flex items-center justify-center font-medium px-1">
+            {annotations.length}
+          </span>
         </PopoverTrigger>
         <PopoverContent
           side="bottom"
@@ -65,7 +66,7 @@ export const CommentsFloatingButton: React.FC<CommentsFloatingButtonProps> = ({
                 size="sm"
               >
                 <Send size={14} className="mr-2" />
-                Send Comments
+                {isSending ? "Sending\u2026" : "Send Comments"}
               </Button>
             </div>
           </div>

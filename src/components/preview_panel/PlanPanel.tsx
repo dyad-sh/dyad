@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { Button } from "@/components/ui/button";
 import { Check, FileText } from "lucide-react";
@@ -49,7 +55,10 @@ export const PlanPanel: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSendingComments, setIsSendingComments] = useState(false);
 
-  const chatAnnotations = chatId ? (annotations.get(chatId) ?? []) : [];
+  const chatAnnotations = useMemo(
+    () => (chatId ? (annotations.get(chatId) ?? []) : []),
+    [chatId, annotations],
+  );
 
   // Highlight annotated text in the plan content
   useEffect(() => {
@@ -100,7 +109,7 @@ export const PlanPanel: React.FC = () => {
     };
   }, [chatAnnotations, currentPlan]);
 
-  const handleSendComments = useCallback(() => {
+  const handleSendComments = useCallback(async () => {
     if (!chatId || isSendingComments) return;
     const currentAnnotations = annotations.get(chatId) ?? [];
     if (currentAnnotations.length === 0) return;
@@ -112,18 +121,20 @@ export const PlanPanel: React.FC = () => {
       .join("\n\n---\n\n");
 
     setIsSendingComments(true);
-    streamMessage({
-      chatId,
-      prompt: `I have the following comments on the plan:\n\n${prompt}\n\nPlease update the plan based on these comments.`,
-    });
-
-    // Clear annotations after sending
-    setAnnotations((prev) => {
-      const next = new Map(prev);
-      next.delete(chatId);
-      return next;
-    });
-    setIsSendingComments(false);
+    try {
+      await streamMessage({
+        chatId,
+        prompt: `I have the following comments on the plan:\n\n${prompt}\n\nPlease update the plan based on these comments.`,
+      });
+      // Clear annotations only after successful send
+      setAnnotations((prev) => {
+        const next = new Map(prev);
+        next.delete(chatId);
+        return next;
+      });
+    } finally {
+      setIsSendingComments(false);
+    }
   }, [chatId, isSendingComments, annotations, streamMessage, setAnnotations]);
 
   const handleAccept = () => {
@@ -193,6 +204,7 @@ export const PlanPanel: React.FC = () => {
           />
           <CommentPopover
             containerRef={planContentRef}
+            scrollRef={scrollContainerRef}
             chatId={chatId}
             annotations={chatAnnotations}
           />

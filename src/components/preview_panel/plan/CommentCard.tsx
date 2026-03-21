@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useSetAtom } from "jotai";
 import { Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,12 @@ export const CommentCard: React.FC<CommentCardProps> = ({
   const setAnnotations = useSetAtom(planAnnotationsAtom);
   const [isEditing, setIsEditing] = useState(false);
   const [editedText, setEditedText] = useState(annotation.comment);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setEditedText(annotation.comment);
+    }
+  }, [annotation.comment, isEditing]);
 
   const handleDelete = () => {
     setAnnotations((prev) => {
@@ -56,11 +62,16 @@ export const CommentCard: React.FC<CommentCardProps> = ({
         <div className="flex gap-1 ml-2 shrink-0">
           <button
             onClick={() => setIsEditing(true)}
+            aria-label="Edit comment"
             className="p-1 rounded hover:bg-muted"
           >
             <Pencil size={12} className="text-muted-foreground" />
           </button>
-          <button onClick={handleDelete} className="p-1 rounded hover:bg-muted">
+          <button
+            onClick={handleDelete}
+            aria-label="Delete comment"
+            className="p-1 rounded hover:bg-muted"
+          >
             <Trash2 size={12} className="text-muted-foreground" />
           </button>
         </div>
@@ -68,8 +79,13 @@ export const CommentCard: React.FC<CommentCardProps> = ({
       {isEditing ? (
         <div className="space-y-2">
           <textarea
+            autoFocus
             value={editedText}
             onChange={(e) => setEditedText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSave();
+              if (e.key === "Escape") handleCancel();
+            }}
             className="w-full text-sm min-h-[60px] rounded-md border bg-background px-2 py-1.5 resize-none focus:outline-none focus:ring-1 focus:ring-ring"
           />
           <div className="flex gap-1 justify-end">

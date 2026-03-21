@@ -89,15 +89,18 @@ export const SelectionCommentButton: React.FC<SelectionCommentButtonProps> = ({
         }
 
         const rect = range.getBoundingClientRect();
+        const formWidth = 288; // w-72
+        const x = Math.min(rect.right + 4, window.innerWidth - formWidth - 8);
+        const y = Math.max(rect.top - 4, 8);
+        setShowForm(false);
+        setCommentText("");
         setFloatingButton({
-          x: rect.right + 4,
-          y: rect.top - 4,
+          x,
+          y,
           selectedText: snapshot.selectedText,
           startOffset: snapshot.startOffset,
           selectionLength: snapshot.selectionLength,
         });
-        setShowForm(false);
-        setCommentText("");
       });
     };
 
@@ -111,7 +114,7 @@ export const SelectionCommentButton: React.FC<SelectionCommentButtonProps> = ({
     if (!scrollEl || !floatingButton) return;
 
     const handleScroll = () => {
-      if (!showForm) clearState();
+      clearState();
     };
 
     scrollEl.addEventListener("scroll", handleScroll);
@@ -185,6 +188,7 @@ export const SelectionCommentButton: React.FC<SelectionCommentButtonProps> = ({
         >
           <button
             onClick={handleCommentClick}
+            aria-label="Add comment"
             className="p-1.5 rounded-md bg-primary text-primary-foreground shadow-md hover:bg-primary/90 transition-colors"
           >
             <MessageSquare size={14} />
@@ -218,7 +222,11 @@ export const SelectionCommentButton: React.FC<SelectionCommentButtonProps> = ({
               }
             }}
           />
-          <div className="flex justify-end">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-muted-foreground">
+              {navigator.platform.includes("Mac") ? "\u2318" : "Ctrl"}+\u21B5 to
+              submit
+            </span>
             <Button
               size="sm"
               onClick={handleSubmit}

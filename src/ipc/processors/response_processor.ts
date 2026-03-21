@@ -608,14 +608,15 @@ export async function processFullResponseActions(
           logger.log(
             "Git auto-commit is disabled. Changes applied but NOT committed.",
           );
-          // Unstage all files that Dyad staged during this response (written, deleted, renamed).
+          // Unstage files that Dyad staged during this response (written, deleted, renamed).
+          // Only unstage files that were actually staged (don't unstage rename 'from' paths
+          // since they no longer exist after the rename and weren't staged by gitAdd).
           // This preserves any unrelated files the user may have already staged.
           // Use per-file try/catch so one failure doesn't prevent unstaging others.
           const stagedByDyad = new Set([
             ...writtenFiles,
             ...deletedFiles,
             ...renamedFiles,
-            ...dyadRenameTags.map((tag) => tag.from),
           ]);
           for (const filepath of stagedByDyad) {
             try {

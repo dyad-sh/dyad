@@ -21,9 +21,7 @@ export function GitAutoCommitSwitch({
             enableGitAutoCommit: checked,
           });
           if (!checked && showToast) {
-            showInfo(
-              "Auto-commit disabled. You can re-enable it in Settings.",
-            );
+            showInfo("Auto-commit disabled. You can re-enable it in Settings.");
           }
         }}
       />

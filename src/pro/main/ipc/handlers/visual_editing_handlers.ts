@@ -124,10 +124,12 @@ export function registerVisualEditingHandlers() {
 
             change.imageSrc = `/images/${finalFileName}`;
 
-            // Always stage image if git repo exists (even if auto-commit is disabled).
-            // This keeps working tree clean for version restores, which require clean state.
-            // Only skip committing if auto-commit is disabled (so user can review first).
-            if (fs.existsSync(path.join(appPath, ".git"))) {
+            // Only stage and commit images if auto-commit is enabled.
+            // This prevents accumulated staged images when toggle is off.
+            // Note: version restores won't work when auto-commit is disabled
+            // (requires clean working tree), but that's an acceptable tradeoff
+            // for preserving the ability to review/selectively commit changes.
+            if (fs.existsSync(path.join(appPath, ".git")) && enableGitAutoCommit) {
               const imageFilepath = normalizePath(
                 path.join("public", "images", finalFileName),
               );
@@ -136,16 +138,6 @@ export function registerVisualEditingHandlers() {
                 filepath: imageFilepath,
               });
               stagedGitPaths.push({ appPath, filepath: imageFilepath });
-              
-              if (enableGitAutoCommit) {
-                // Image will be committed as part of overall response commit
-                logger.log(`Image staged for commit: ${imageFilepath}`);
-              } else {
-                // Image is staged but not committed; user can review before finalizing.
-                logger.log(
-                  `Image staged but not committed (auto-commit disabled): ${imageFilepath}`,
-                );
-              }
             }
           }
         }
@@ -190,27 +182,28 @@ export function registerVisualEditingHandlers() {
           const content = await fsPromises.readFile(filePath, "utf-8");
           const transformedContent = transformContent(content, lineChanges);
           await fsPromises.writeFile(filePath, transformedContent, "utf-8");
-          // Always stage visual edits if git repo exists (even if auto-commit is disabled)
-          // This keeps the working tree clean for version restores, which require a clean state.
-          // Only skip committing if auto-commit is disabled (so user can review first)
-          if (fs.existsSync(path.join(appPath, ".git"))) {
+          // Only stage and commit text edits if auto-commit is enabled.
+          // This prevents accumulated staged changes when toggle is off.
+          // Note: version restores won't work when auto-commit is disabled
+          // (requires clean working tree), but that's an acceptable tradeoff.
+          if (
+            fs.existsSync(path.join(appPath, ".git")) &&
+            enableGitAutoCommit
+          ) {
             await gitAdd({
               path: appPath,
               filepath: normalizedRelativePath,
             });
 
-            if (enableGitAutoCommit) {
-              await gitCommit({
-                path: appPath,
-                message: `Updated ${normalizedRelativePath}`,
-              });
-            } else {
-              // File is staged but not committed; user can review before finalizing.
-              // This keeps working tree clean so version restores can work.
-              logger.log(
-                `Visual edit staged but not committed (auto-commit disabled): ${normalizedRelativePath}`,
-              );
-            }
+            await gitCommit({
+              path: appPath,
+              message: `Updated ${normalizedRelativePath}`,
+            });
+          } else if (fs.existsSync(path.join(appPath, ".git"))) {
+            // Auto-commit is disabled; file written but not staged or committed.
+            logger.log(
+              `Text edit applied but not staged (auto-commit disabled): ${normalizedRelativePath}`,
+            );
           }
         }
       } catch (error) {

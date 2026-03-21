@@ -25,7 +25,7 @@ import {
   gitAdd,
   gitRemove,
   gitAddAll,
-  gitReset,
+  gitResetFile,
   getGitUncommittedFiles,
   hasStagedChanges,
 } from "../utils/git_utils";
@@ -608,9 +608,12 @@ export async function processFullResponseActions(
           logger.log(
             "Git auto-commit is disabled. Changes applied but NOT committed.",
           );
-          // Unstage files that were staged earlier when auto-commit is disabled
+          // Unstage only the files that Dyad staged during this response
+          // This preserves any unrelated files the user may have already staged
           try {
-            await gitReset({ path: appPath });
+            for (const filepath of changes) {
+              await gitResetFile({ path: appPath, filepath });
+            }
           } catch (error) {
             logger.warn("Failed to unstage files when auto-commit is disabled:", error);
           }

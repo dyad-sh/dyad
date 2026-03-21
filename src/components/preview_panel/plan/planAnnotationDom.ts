@@ -161,7 +161,7 @@ function highlightAtOffset(
     const mark = document.createElement("mark");
     mark.setAttribute("data-annotation-id", annotationId);
     mark.className =
-      "bg-yellow-200/40 dark:bg-yellow-500/20 cursor-pointer rounded-sm px-0.5";
+      "bg-yellow-400/25 text-inherit cursor-pointer rounded-sm px-0.5 border-b border-yellow-400/50";
     mark.textContent = highlightNode.textContent;
 
     const parent = highlightNode.parentNode;

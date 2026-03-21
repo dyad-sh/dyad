@@ -88,3 +88,57 @@ testSkipIfWindows("plan mode - questionnaire flow", async ({ po }) => {
   // Snapshot the messages
   await po.snapshotMessages();
 });
+
+testSkipIfWindows(
+  "plan mode - add and review plan annotations",
+  async ({ po }) => {
+    await po.setUpDyadPro({ localAgent: true });
+    await po.importApp("minimal");
+    await po.chatActions.selectChatMode("plan");
+
+    await po.sendPrompt("tc=local-agent/accept-plan");
+
+    await expect(
+      po.page.getByRole("button", { name: "Accept Plan" }),
+    ).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+
+    await po.previewPanel.selectTextInPlan("Step two");
+
+    const addCommentButton = po.previewPanel.getPlanSelectionCommentButton();
+    await expect(addCommentButton).toBeVisible({ timeout: Timeout.MEDIUM });
+    await addCommentButton.click();
+
+    await po.page
+      .getByPlaceholder("Add your comment...")
+      .fill("Add more detail for step two.");
+    await po.page.getByRole("button", { name: "Add Comment" }).click();
+
+    const commentsButton = po.previewPanel.getPlanCommentsButton();
+    await expect(commentsButton).toBeVisible({ timeout: Timeout.MEDIUM });
+    await expect(po.previewPanel.getPlanAnnotationMarks()).toHaveCount(1);
+    await expect(
+      po.previewPanel.getPlanAnnotationMarks().first(),
+    ).toContainText("Step two");
+
+    await commentsButton.click();
+    await expect(po.page.getByText("Comments (1)")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+    await expect(
+      po.page.getByText("Add more detail for step two."),
+    ).toBeVisible();
+
+    await commentsButton.click();
+    await expect(po.page.getByText("Comments (1)")).toBeHidden();
+
+    await po.previewPanel.getPlanAnnotationMarks().first().click();
+    await expect(
+      po.page.getByRole("button", { name: "Edit comment" }),
+    ).toBeVisible({ timeout: Timeout.MEDIUM });
+    await expect(
+      po.page.getByText("Add more detail for step two."),
+    ).toBeVisible();
+  },
+);

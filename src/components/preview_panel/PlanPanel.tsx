@@ -187,6 +187,7 @@ export const PlanPanel: React.FC = () => {
             <div className="p-4">
               <div
                 ref={planContentRef}
+                data-testid="plan-content"
                 className="prose dark:prose-invert prose-sm max-w-none"
               >
                 <VanillaMarkdownParser content={currentPlan} />

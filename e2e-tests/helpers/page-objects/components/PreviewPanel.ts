@@ -9,6 +9,63 @@ import { Timeout } from "../../constants";
 export class PreviewPanel {
   constructor(public page: Page) {}
 
+  getPlanContent() {
+    return this.page.getByTestId("plan-content");
+  }
+
+  getPlanSelectionCommentButton() {
+    return this.page.getByRole("button", { name: "Add comment" });
+  }
+
+  getPlanCommentsButton() {
+    return this.page.getByRole("button", { name: "View comments" });
+  }
+
+  getPlanAnnotationMarks() {
+    return this.page.locator("mark[data-annotation-id]");
+  }
+
+  async selectTextInPlan(selectedText: string) {
+    const planContent = this.getPlanContent();
+    await expect(planContent).toBeVisible({ timeout: Timeout.MEDIUM });
+
+    await planContent.evaluate((container, text) => {
+      const walker = document.createTreeWalker(
+        container,
+        NodeFilter.SHOW_TEXT,
+        {
+          acceptNode: (node) =>
+            (node.textContent ?? "").trim().length > 0
+              ? NodeFilter.FILTER_ACCEPT
+              : NodeFilter.FILTER_REJECT,
+        },
+      );
+
+      let currentNode: Text | null;
+      while ((currentNode = walker.nextNode() as Text | null)) {
+        const startOffset = currentNode.textContent?.indexOf(text) ?? -1;
+        if (startOffset === -1) {
+          continue;
+        }
+
+        const range = document.createRange();
+        range.setStart(currentNode, startOffset);
+        range.setEnd(currentNode, startOffset + text.length);
+
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+
+        (currentNode.parentElement ?? container).dispatchEvent(
+          new MouseEvent("mouseup", { bubbles: true }),
+        );
+        return;
+      }
+
+      throw new Error(`Could not find "${text}" in plan content`);
+    }, selectedText);
+  }
+
   async selectPreviewMode(
     mode:
       | "code"

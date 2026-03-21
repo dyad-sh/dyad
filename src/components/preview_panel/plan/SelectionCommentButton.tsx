@@ -7,6 +7,7 @@ import {
   getPlanSelectionSnapshot,
   hasOverlappingPlanAnnotation,
 } from "./planAnnotationDom";
+import { getSelectionCommentAnchorRect } from "./selectionCommentButtonPosition";
 
 interface FloatingButtonState {
   x: number;
@@ -88,7 +89,7 @@ export const SelectionCommentButton: React.FC<SelectionCommentButtonProps> = ({
           return;
         }
 
-        const rect = range.getBoundingClientRect();
+        const rect = getSelectionCommentAnchorRect(range);
         const formWidth = 288; // w-72
         const x = Math.min(rect.right + 4, window.innerWidth - formWidth - 8);
         const y = Math.max(rect.top - 4, 8);

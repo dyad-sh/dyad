@@ -1070,7 +1070,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
       <div class="endpoint"><span class="method">GET</span><a href="/health">/health</a> &mdash; Gateway health (JSON)</div>
       <div class="endpoint"><span class="method">GET</span><a href="/status">/status</a> &mdash; Legacy status (JSON)</div>
       <div class="endpoint"><span class="method">GET</span><a href="/api/status">/api/status</a> &mdash; Full status (JSON)</div>
-      <div class="endpoint"><span class="method">WS</span><span style="color:#a78bfa">ws://localhost:18789</span> &mdash; WebSocket gateway</div>
+      <div class="endpoint"><span class="method">WS</span><span style="color:#a78bfa">ws://localhost:18790</span> &mdash; WebSocket gateway</div>
     </div>
   </div>
   <div class="card" style="margin-top:20px">

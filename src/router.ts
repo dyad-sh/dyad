@@ -45,6 +45,7 @@ import { secretsVaultRoute } from "./routes/secrets-vault";
 import { dataStudioRoute } from "./routes/data-studio";
 import { memoryRoute } from "./routes/memory";
 import { openclawKanbanRoute } from "./routes/openclaw-kanban";
+import { openclawControlRoute } from "./routes/openclaw-control";
 import { systemServicesRoute } from "./routes/system-services";
 import { modelRegistryRoute } from "./routes/model-registry";
 
@@ -97,6 +98,7 @@ const routeTree = rootRoute.addChildren([
   dataStudioRoute,
   memoryRoute,
   openclawKanbanRoute,
+  openclawControlRoute,
   systemServicesRoute,
   modelRegistryRoute,
 ]);

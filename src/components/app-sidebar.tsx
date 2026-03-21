@@ -129,6 +129,15 @@ const menuCategories = [
         activeText: "text-orange-600 dark:text-orange-400",
       },
       {
+        title: "OpenClaw Control",
+        to: "/openclaw-control",
+        icon: Radio,
+        gradient: "from-rose-500 to-orange-500",
+        hoverBg: "hover:bg-rose-500/10",
+        activeBg: "bg-rose-500/15",
+        activeText: "text-rose-600 dark:text-rose-400",
+      },
+      {
         title: "OpenClaw Board",
         to: "/openclaw-kanban",
         icon: Kanban,

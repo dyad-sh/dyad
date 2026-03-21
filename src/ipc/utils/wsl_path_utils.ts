@@ -82,11 +82,11 @@ export function pathExistsHandlingWsl(filePath: string): boolean {
   }
 }
 
-export function getFileStatsHandlingWsl(
+export async function getFileStatsHandlingWslAsync(
   filePath: string,
-): fs.Stats | undefined {
+): Promise<fs.Stats | undefined> {
   try {
-    return fs.statSync(filePath);
+    return await fsPromises.stat(filePath);
   } catch {
     return undefined;
   }

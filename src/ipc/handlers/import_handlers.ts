@@ -122,7 +122,6 @@ export function registerImportHandlers() {
             throw error;
           }
         }
-        // tests.
         await copyDirectoryRecursive(sourcePath, appPath);
       }
 

@@ -3,6 +3,9 @@ import { test } from "./helpers/test_helper";
 test("Git Auto-Commit Setting Controls Auto-Commit Behavior", async ({
   po,
 }) => {
+  // Navigate to settings page
+  await po.navigation.goToSettingsTab();
+
   const beforeSettings = po.settings.recordSettings();
 
   // Toggle auto-commit off

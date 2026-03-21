@@ -581,6 +581,8 @@ export async function processFullResponseActions(
             message,
           });
           logger.log(`Successfully committed changes: ${changes.join(", ")}`);
+          
+          // Check for any uncommitted changes after the commit (files changed outside Dyad)
           uncommittedFiles = await getGitUncommittedFiles({ path: appPath });
 
           if (uncommittedFiles.length > 0) {
@@ -605,7 +607,9 @@ export async function processFullResponseActions(
           logger.log(
             "Git auto-commit is disabled. Changes applied but NOT committed.",
           );
-          uncommittedFiles = await getGitUncommittedFiles({ path: appPath });
+          // Do NOT report our own staged files as uncommittedFiles when auto-commit is off
+          // This prevents false "extra files" warnings in the UI
+          uncommittedFiles = [];
         }
 
         // Save the commit hash to the message

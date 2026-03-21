@@ -395,7 +395,7 @@ export function WorkflowSettings() {
         </div>
       </div>
 
-      <div className="space-y-1 mt-4">
+      <div id={SETTING_IDS.gitAutoCommit} className="space-y-1 mt-4">
         <GitAutoCommitSwitch showToast={false} />
         <div className="text-sm text-gray-500 dark:text-gray-400">
           Automatically commit changes to git after each approved response.

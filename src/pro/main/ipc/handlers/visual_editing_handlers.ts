@@ -6,6 +6,7 @@ import { db } from "../../../../db";
 import { apps } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
 import { getDyadAppPath } from "../../../../paths/paths";
+import { readSettings } from "@/main/settings";
 import {
   stylesToTailwind,
   extractClassPrefixes,
@@ -37,6 +38,8 @@ export function registerVisualEditingHandlers() {
     "apply-visual-editing-changes",
     async (_event, params: ApplyVisualEditingChangesParams) => {
       const { appId, changes } = params;
+      const settings = readSettings();
+      const enableGitAutoCommit = settings.enableGitAutoCommit ?? true;
       // Track written image files and staged git paths for cleanup on failure
       const writtenImagePaths: string[] = [];
       const stagedGitPaths: { appPath: string; filepath: string }[] = [];
@@ -170,8 +173,8 @@ export function registerVisualEditingHandlers() {
           const content = await fsPromises.readFile(filePath, "utf-8");
           const transformedContent = transformContent(content, lineChanges);
           await fsPromises.writeFile(filePath, transformedContent, "utf-8");
-          // Check if git repository exists and commit the change
-          if (fs.existsSync(path.join(appPath, ".git"))) {
+          // Check if git repository exists and commit the change (if auto-commit is enabled)
+          if (fs.existsSync(path.join(appPath, ".git")) && enableGitAutoCommit) {
             await gitAdd({
               path: appPath,
               filepath: normalizedRelativePath,

@@ -1231,14 +1231,17 @@ export async function handleLocalAgentStream(
       // Deploy all Supabase functions if shared modules changed
       await deployAllFunctionsIfNeeded(ctx);
 
-      // Commit all changes
-      const commitResult = await commitAllChanges(ctx, ctx.chatSummary);
+      // Commit all changes if enabled
+      const enableGitAutoCommit = settings.enableGitAutoCommit ?? true;
+      if (enableGitAutoCommit) {
+        const commitResult = await commitAllChanges(ctx, ctx.chatSummary);
 
-      if (commitResult.commitHash) {
-        await db
-          .update(messages)
-          .set({ commitHash: commitResult.commitHash })
-          .where(eq(messages.id, placeholderMessageId));
+        if (commitResult.commitHash) {
+          await db
+            .update(messages)
+            .set({ commitHash: commitResult.commitHash })
+            .where(eq(messages.id, placeholderMessageId));
+        }
       }
     }
 

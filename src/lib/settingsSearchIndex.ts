@@ -33,6 +33,7 @@ export const SETTING_IDS = {
   supabase: "setting-supabase",
   neon: "setting-neon",
   nativeGit: "setting-native-git",
+  gitAutoCommit: "setting-git-auto-commit",
   enableMcpServersForBuildMode: "setting-enable-mcp-servers-for-build-mode",
   enableSelectAppFromHomeChatInput:
     "setting-enable-select-app-from-home-chat-input",
@@ -121,6 +122,14 @@ export const SETTINGS_SEARCH_INDEX: SearchableSettingItem[] = [
     label: "Auto Fix Problems",
     description: "Automatically fix TypeScript errors",
     keywords: ["fix", "typescript", "errors", "automatic", "problems", "auto"],
+    sectionId: SECTION_IDS.workflow,
+    sectionLabel: "Workflow",
+  },
+  {
+    id: SETTING_IDS.gitAutoCommit,
+    label: "Git Auto-Commit",
+    description: "Automatically commit changes to git after each approved response",
+    keywords: ["git", "commit", "automatic", "version control", "auto"],
     sectionId: SECTION_IDS.workflow,
     sectionLabel: "Workflow",
   },

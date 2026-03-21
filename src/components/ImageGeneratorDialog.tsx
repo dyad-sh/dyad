@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   ImageIcon,
   Box,
@@ -61,9 +61,13 @@ const THEME_MODES: {
 export function ImageGeneratorDialog({
   open,
   onOpenChange,
+  defaultAppId,
+  source,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  defaultAppId?: number;
+  source?: "chat" | "media-library";
 }) {
   const [prompt, setPrompt] = useState("");
   const [themeMode, setThemeMode] = useState<ImageThemeMode>("plain");
@@ -73,6 +77,13 @@ export function ImageGeneratorDialog({
   const generateImage = useGenerateImage();
   const { userBudget, isLoadingUserBudget: isBudgetLoading } =
     useUserBudgetInfo();
+
+  // Sync defaultAppId when dialog opens
+  useEffect(() => {
+    if (open && defaultAppId != null) {
+      setTargetAppId(defaultAppId);
+    }
+  }, [open, defaultAppId]);
 
   const effectiveTargetAppId =
     targetAppId ?? (apps.length === 1 ? apps[0].id : null);
@@ -89,6 +100,7 @@ export function ImageGeneratorDialog({
       themeMode,
       targetAppId: effectiveTargetAppId,
       targetAppName: targetApp.name,
+      source,
     });
 
     // Auto-close dialog immediately after starting generation

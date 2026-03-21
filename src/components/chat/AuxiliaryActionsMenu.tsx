@@ -9,6 +9,7 @@ import {
   Brush,
   PlusCircle,
   MoreHorizontal,
+  ImageIcon,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -46,6 +47,7 @@ interface AuxiliaryActionsMenuProps {
   toggleShowTokenBar?: () => void;
   hideContextFilesPicker?: boolean;
   appId?: number;
+  onGenerateImage?: () => void;
 }
 
 export function AuxiliaryActionsMenu({
@@ -54,6 +56,7 @@ export function AuxiliaryActionsMenu({
   toggleShowTokenBar,
   hideContextFilesPicker,
   appId,
+  onGenerateImage,
 }: AuxiliaryActionsMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [customThemeDialogOpen, setCustomThemeDialogOpen] = useState(false);
@@ -157,6 +160,21 @@ export function AuxiliaryActionsMenu({
               />
             </DropdownMenuSubContent>
           </DropdownMenuSub>
+
+          {/* Generate Image */}
+          {onGenerateImage && (
+            <DropdownMenuItem
+              onClick={() => {
+                setIsOpen(false);
+                onGenerateImage();
+              }}
+              className="py-2 px-3"
+              data-testid="generate-image-menu-item"
+            >
+              <ImageIcon size={16} className="mr-2" />
+              Generate Image
+            </DropdownMenuItem>
+          )}
 
           {/* Themes Submenu */}
           <DropdownMenuSub>

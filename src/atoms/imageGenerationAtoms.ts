@@ -17,6 +17,7 @@ export interface ImageGenerationJob {
   startedAt: number;
   result?: GenerateImageResponse;
   error?: string;
+  source?: "chat" | "media-library";
 }
 
 const THIRTY_MINUTES_MS = 30 * 60 * 1000;
@@ -46,4 +47,9 @@ export const imageGenerationJobsAtom = atom(
 export const pendingImageGenerationsCountAtom = atom((get) => {
   const jobs = get(imageGenerationJobsAtom);
   return jobs.filter((job) => job.status === "pending").length;
+});
+
+export const chatImageGenerationJobsAtom = atom((get) => {
+  const jobs = get(imageGenerationJobsAtom);
+  return jobs.filter((job) => job.source === "chat");
 });

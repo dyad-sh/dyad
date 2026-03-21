@@ -306,6 +306,7 @@ const BaseUserSettingsFields = {
   supabase: SupabaseSchema.optional(),
   neon: NeonSchema.optional(),
   autoApproveChanges: z.boolean().optional(),
+  enableGitAutoCommit: z.boolean().optional(),
   telemetryConsent: z.enum(["opted_in", "opted_out", "unset"]).optional(),
   telemetryUserId: z.string().optional(),
   hasRunBefore: z.boolean().optional(),

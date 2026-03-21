@@ -48,6 +48,12 @@ export class Settings {
     await this.page.getByRole("switch", { name: "Auto-update" }).click();
   }
 
+  async toggleGitAutoCommit() {
+    await this.page
+      .getByRole("switch", { name: "Git Auto-Commit" })
+      .click();
+  }
+
   async changeReleaseChannel(channel: "stable" | "beta") {
     await this.page.getByRole("combobox", { name: "Release Channel" }).click();
     await this.page

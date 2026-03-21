@@ -572,36 +572,40 @@ export async function processFullResponseActions(
         );
         hasChanges = false;
       } else {
-        // Use chat summary, if provided, or default for commit message
-        let commitHash = await gitCommit({
-          path: appPath,
-          message,
-        });
-        logger.log(`Successfully committed changes: ${changes.join(", ")}`);
+        const enableGitAutoCommit = settings.enableGitAutoCommit ?? true;
+        let commitHash: string | null = null;
 
-        // Check for any uncommitted changes after the commit
-        uncommittedFiles = await getGitUncommittedFiles({ path: appPath });
+        if (enableGitAutoCommit) {
+          commitHash = await gitCommit({
+            path: appPath,
+            message,
+          });
+          logger.log(`Successfully committed changes: ${changes.join(", ")}`);
+          uncommittedFiles = await getGitUncommittedFiles({ path: appPath });
 
-        if (uncommittedFiles.length > 0) {
-          // Stage all changes
-          await gitAddAll({ path: appPath });
-          try {
-            commitHash = await gitCommit({
-              path: appPath,
-              message: message + " + extra files edited outside of Dyad",
-              amend: true,
-            });
-            logger.log(
-              `Amend commit with changes outside of dyad: ${uncommittedFiles.join(", ")}`,
-            );
-          } catch (error) {
-            // Just log, but don't throw an error because the user can still
-            // commit these changes outside of Dyad if needed.
-            logger.error(
-              `Failed to commit changes outside of dyad: ${uncommittedFiles.join(", ")}`,
-            );
-            extraFilesError = (error as any).toString();
+          if (uncommittedFiles.length > 0) {
+            await gitAddAll({ path: appPath });
+            try {
+              commitHash = await gitCommit({
+                path: appPath,
+                message: message + " + extra files edited outside of Dyad",
+                amend: true,
+              });
+              logger.log(
+                `Amend commit with changes outside of dyad: ${uncommittedFiles.join(", ")}`,
+              );
+            } catch (error) {
+              logger.error(
+                `Failed to commit changes outside of dyad: ${uncommittedFiles.join(", ")}`,
+              );
+              extraFilesError = (error as any).toString();
+            }
           }
+        } else {
+          logger.log(
+            "Git auto-commit is disabled. Changes applied but NOT committed.",
+          );
+          uncommittedFiles = await getGitUncommittedFiles({ path: appPath });
         }
 
         // Save the commit hash to the message

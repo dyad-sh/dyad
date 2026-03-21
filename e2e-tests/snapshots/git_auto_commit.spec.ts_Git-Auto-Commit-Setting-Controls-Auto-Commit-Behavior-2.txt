@@ -1,0 +1,2 @@
+- "enableGitAutoCommit": false
++ "enableGitAutoCommit": true

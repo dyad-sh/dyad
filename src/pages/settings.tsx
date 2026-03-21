@@ -5,6 +5,7 @@ import ConfirmationDialog from "@/components/ConfirmationDialog";
 import { ipc } from "@/ipc/types";
 import { showSuccess, showError } from "@/lib/toast";
 import { AutoApproveSwitch } from "@/components/AutoApproveSwitch";
+import { GitAutoCommitSwitch } from "@/components/GitAutoCommitSwitch";
 import { TelemetrySwitch } from "@/components/TelemetrySwitch";
 import { MaxChatTurnsSelector } from "@/components/MaxChatTurnsSelector";
 import { MaxToolCallStepsSelector } from "@/components/MaxToolCallStepsSelector";
@@ -391,6 +392,13 @@ export function WorkflowSettings() {
         <AutoApproveSwitch showToast={false} />
         <div className="text-sm text-gray-500 dark:text-gray-400">
           This will automatically approve code changes and run them.
+        </div>
+      </div>
+
+      <div className="space-y-1 mt-4">
+        <GitAutoCommitSwitch showToast={false} />
+        <div className="text-sm text-gray-500 dark:text-gray-400">
+          Automatically commit changes to git after each approved response.
         </div>
       </div>
 

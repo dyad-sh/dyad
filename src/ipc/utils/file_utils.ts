@@ -4,13 +4,11 @@ import path from "node:path";
 import fsExtra from "fs-extra";
 import { generateCuteAppName } from "../../lib/utils";
 import { normalizePath } from "../../../shared/normalizePath";
-import { copyFileHandlingWsl, isWslPath } from "./wsl_path_utils";
+import { copyFileHandlingWsl } from "./wsl_path_utils";
 
 // Directories to exclude when scanning files
 const EXCLUDED_DIRS = ["node_modules", ".git", ".next"];
 
-
- // Recursively gets all files in a directory, excluding node_modules and .git
 export function getFilesRecursively(dir: string, baseDir: string): string[] {
   if (!fs.existsSync(dir)) {
     return [];
@@ -37,12 +35,6 @@ export async function copyDirectoryRecursive(
   source: string,
   destination: string,
 ) {
-  if (isWslPath(source)) {
-    console.debug(
-      `[copyDirectoryRecursive] Detected WSL path: ${source}, using WSL-aware copy`,
-    );
-  }
-
   await fsPromises.mkdir(destination, { recursive: true });
   const entries = await fsPromises.readdir(source, { withFileTypes: true });
   entries.sort();

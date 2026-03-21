@@ -65,6 +65,25 @@ export function useRunApp() {
         return; // Don't add to regular output
       }
 
+      // Handle process exit — show error so the spinner stops
+      if (output.type === "process-exited") {
+        setPreviewErrorMessage({
+          message: output.message,
+          source: "joy-app",
+        });
+        setConsoleEntries((prev) => [
+          ...prev,
+          {
+            level: "error",
+            type: "build-time",
+            message: output.message,
+            timestamp: output.timestamp,
+            appId: output.appId,
+          },
+        ]);
+        return;
+      }
+
       // Add to console entries
       const level =
         output.type === "stderr" || output.type === "client-error"
@@ -84,7 +103,7 @@ export function useRunApp() {
       // Process proxy server output
       processProxyServerOutput(output);
     },
-    [setConsoleEntries],
+    [setConsoleEntries, setPreviewErrorMessage],
   );
   const runApp = useCallback(
     async (appId: number) => {
@@ -93,13 +112,8 @@ export function useRunApp() {
         const ipcClient = IpcClient.getInstance();
         console.debug("Running app", appId);
 
-        // Clear the URL and add restart message
-        setAppUrlObj((prevAppUrlObj) => {
-          if (prevAppUrlObj?.appId !== appId) {
-            return { appUrl: null, appId: null, originalUrl: null };
-          }
-          return prevAppUrlObj; // No change needed
-        });
+        // Clear the URL so the preview shows the spinner while restarting
+        setAppUrlObj({ appUrl: null, appId: null, originalUrl: null });
 
         setConsoleEntries((prev) => [
           ...prev,

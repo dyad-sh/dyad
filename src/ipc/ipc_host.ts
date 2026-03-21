@@ -117,6 +117,7 @@ import { registerAgentUIHandlers } from "./handlers/agent_ui_handlers";
 import { registerOpenClawKanbanHandlers } from "./handlers/openclaw_kanban_handlers";
 import { registerFlywheelHandlers } from "./handlers/flywheel_handlers";
 import { registerModelRegistryHandlers } from "./handlers/model_registry_handlers";
+import { registerSsiHandlers } from "./handlers/ssi_handlers";
 import {
   registerTaskExecutorHandlers,
   registerSystemServicesHandlers,
@@ -349,6 +350,9 @@ export function registerIpcHandlers() {
   // Decentralized Model Registry — Publish, discover, rate, download models
   // Local → IPFS → Celestia → GossipSub → Peers
   registerModelRegistryHandlers();
+
+  // Self-Sovereign Identity — W3C DIDs, Verifiable Credentials, Celestia anchoring
+  registerSsiHandlers();
 
   // Task Executor — Autonomous inference loop & System Services Health
   registerTaskExecutorHandlers();

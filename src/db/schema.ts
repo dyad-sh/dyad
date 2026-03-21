@@ -2029,3 +2029,6 @@ export * from "./flywheel_schema";
 
 // ── Decentralized Model Registry ──────────────────────────────
 export * from "./model_registry_schema";
+
+// ── Self-Sovereign Identity (SSI) ─────────────────────────────
+export * from "./ssi_schema";

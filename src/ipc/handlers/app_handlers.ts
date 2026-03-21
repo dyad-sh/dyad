@@ -262,6 +262,26 @@ function listenToProcess({
   isNeon: boolean;
   event: Electron.IpcMainInvokeEvent;
 }) {
+  let urlDetected = false;
+
+  // Timeout: if no dev server URL is detected within 120 seconds, notify the renderer
+  const startupTimeout = setTimeout(() => {
+    if (!urlDetected && spawnedProcess.exitCode === null) {
+      logger.warn(
+        `App ${appId} (PID: ${spawnedProcess.pid}) did not produce a dev server URL within 120s.`,
+      );
+      safeSend(event.sender, "app:output", {
+        type: "process-exited",
+        message:
+          "App server did not start within 120 seconds. Check the system messages for errors, or try restarting the app.",
+        appId,
+      });
+    }
+  }, 120_000);
+
+  // Clear timeout when process exits
+  spawnedProcess.on("exit", () => clearTimeout(startupTimeout));
+
   // Log output
   spawnedProcess.stdout?.on("data", async (data) => {
     const message = util.stripVTControlCharacters(data.toString());
@@ -302,6 +322,8 @@ function listenToProcess({
 
       const urlMatch = message.match(/(https?:\/\/localhost:\d+\/?)/);
       if (urlMatch) {
+        urlDetected = true;
+        clearTimeout(startupTimeout);
         proxyWorker = await startProxy(urlMatch[1], {
           onStarted: (proxyUrl) => {
             safeSend(event.sender, "app:output", {
@@ -329,6 +351,8 @@ function listenToProcess({
     // Vite may output the dev server URL to stderr — detect it here too
     const urlMatch = message.match(/(https?:\/\/localhost:\d+\/?)/);
     if (urlMatch && !proxyWorker) {
+      urlDetected = true;
+      clearTimeout(startupTimeout);
       proxyWorker = await startProxy(urlMatch[1], {
         onStarted: (proxyUrl) => {
           safeSend(event.sender, "app:output", {
@@ -347,6 +371,21 @@ function listenToProcess({
       `App ${appId} (PID: ${spawnedProcess.pid}) process closed with code ${code}, signal ${signal}.`,
     );
     removeAppIfCurrentProcess(appId, spawnedProcess);
+
+    // Notify the renderer so the UI can stop the spinner and show an error
+    if (code !== 0 && code !== null) {
+      safeSend(event.sender, "app:output", {
+        type: "process-exited",
+        message: `App server exited with code ${code}. Check the system messages for details.`,
+        appId,
+      });
+    } else if (signal) {
+      safeSend(event.sender, "app:output", {
+        type: "process-exited",
+        message: `App server was terminated (signal ${signal}).`,
+        appId,
+      });
+    }
   });
 
   // Handle errors during process lifecycle (e.g., command not found)
@@ -355,8 +394,13 @@ function listenToProcess({
       `Error in app ${appId} (PID: ${spawnedProcess.pid}) process: ${err.message}`,
     );
     removeAppIfCurrentProcess(appId, spawnedProcess);
-    // Note: We don't throw here as the error is asynchronous. The caller got a success response already.
-    // Consider adding ipcRenderer event emission to notify UI of the error.
+
+    // Notify renderer of the spawn/process error
+    safeSend(event.sender, "app:output", {
+      type: "process-exited",
+      message: `App server error: ${err.message}`,
+      appId,
+    });
   });
 }
 

@@ -48,7 +48,14 @@ export function getFilesRecursively(dir: string, baseDir: string): string[] {
 export async function copyDirectoryRecursive(
   source: string,
   destination: string,
+  options?: {
+    filter?: (source: string) => boolean;
+    excludeNodeModules?: boolean;
+  },
 ) {
+  const excludeNodeModules = options?.excludeNodeModules !== false;
+  const filter = options?.filter;
+
   await fsPromises.mkdir(destination, { recursive: true });
   const entries = await fsPromises.readdir(source, { withFileTypes: true });
   // Why do we sort? This ensures stable ordering of files across platforms
@@ -59,11 +66,21 @@ export async function copyDirectoryRecursive(
     const srcPath = path.join(source, entry.name);
     const destPath = path.join(destination, entry.name);
 
-    if (entry.isDirectory()) {
-      // Exclude node_modules directories
-      if (entry.name !== "node_modules") {
-        await copyDirectoryRecursive(srcPath, destPath);
+    // Check filter if provided
+    if (filter && !filter(srcPath)) {
+      continue;
+    }
+
+    if (entry.isSymbolicLink()) {
+      // Preserve symlinks as-is (copy symlink itself, not the target)
+      const linkTarget = await fsPromises.readlink(srcPath);
+      await fsPromises.symlink(linkTarget, destPath);
+    } else if (entry.isDirectory()) {
+      // Exclude node_modules directories if option is set
+      if (excludeNodeModules && entry.name === "node_modules") {
+        continue;
       }
+      await copyDirectoryRecursive(srcPath, destPath, options);
     } else {
       await copyFileHandlingWsl(srcPath, destPath);
     }

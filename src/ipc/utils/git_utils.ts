@@ -13,6 +13,7 @@ import { platform } from "node:os";
 import { readSettings } from "../../main/settings";
 import log from "electron-log";
 import { normalizePath } from "../../../shared/normalizePath";
+import { pathExistsHandlingWslAsync } from "./wsl_path_utils";
 import type { UncommittedFile, UncommittedFileStatus } from "@/ipc/types";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 const logger = log.scope("git_utils");
@@ -428,7 +429,7 @@ export async function gitStageToRevert({
       }
       // If file doesn't exist in HEAD but exists in working directory, delete it
       else if (headStatus === 0 && workdirStatus !== 0) {
-        if (fs.existsSync(fullPath)) {
+        if (await pathExistsHandlingWslAsync(fullPath)) {
           await fsPromises.unlink(fullPath);
           await git.remove({
             fs,

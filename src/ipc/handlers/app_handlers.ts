@@ -953,17 +953,15 @@ export function registerAppHandlers() {
 
     // 3. Copy the app folder
     try {
-      await copyDir(
-        originalAppPath,
-        newAppPath,
-        (source: string) => {
+      await copyDirectoryRecursive(originalAppPath, newAppPath, {
+        filter: (source: string) => {
           if (!withHistory && path.basename(source) === ".git") {
             return false;
           }
           return true;
         },
-        { excludeNodeModules: true },
-      );
+        excludeNodeModules: true,
+      });
     } catch (error) {
       logger.error("Failed to copy app directory:", error);
       throw new DyadError(
@@ -1628,7 +1626,7 @@ export function registerAppHandlers() {
           });
 
           // Copy the directory without node_modules
-          await copyDir(oldAppPath, newAppPath, undefined, {
+          await copyDirectoryRecursive(oldAppPath, newAppPath, {
             excludeNodeModules: true,
           });
         } catch (error: any) {
@@ -1688,7 +1686,7 @@ export function registerAppHandlers() {
         if (newAppPath !== oldAppPath) {
           try {
             // Copy back from new to old
-            await copyDir(newAppPath, oldAppPath, undefined, {
+            await copyDirectoryRecursive(newAppPath, oldAppPath, {
               excludeNodeModules: true,
             });
             // Delete the new directory

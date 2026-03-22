@@ -164,9 +164,16 @@ export async function processFullResponseActions(
       chatWithApp.app.neonProjectId &&
       chatWithApp.app.neonDevelopmentBranchId
     ) {
-      await storeDbTimestampAtCurrentVersion({
-        appId: chatWithApp.app.id,
-      });
+      try {
+        await storeDbTimestampAtCurrentVersion({
+          appId: chatWithApp.app.id,
+        });
+      } catch (error) {
+        logger.warn(
+          "Warning: Could not snapshot source commit state for Neon version history:",
+          error,
+        );
+      }
     }
 
     // Handle SQL execution tags
@@ -572,46 +579,11 @@ export async function processFullResponseActions(
         let commitHash: string | null = null;
 
         if (enableGitAutoCommit) {
-          // For Neon-backed apps, snapshot the current commit state BEFORE we advance HEAD.
-          // This ensures version restores have the DB state for the previous commit.
-          if (
-            chatWithApp.app.neonProjectId &&
-            chatWithApp.app.neonDevelopmentBranchId
-          ) {
-            try {
-              await storeDbTimestampAtCurrentVersion({
-                appId: chatWithApp.app.id,
-              });
-            } catch (error) {
-              logger.warn(
-                "Warning: Could not snapshot current commit state for Neon version history:",
-                error,
-              );
-            }
-          }
-
           commitHash = await gitCommit({
             path: appPath,
             message,
           });
           logger.log(`Successfully committed changes: ${changes.join(", ")}`);
-          if (
-            chatWithApp.app.neonProjectId &&
-            chatWithApp.app.neonDevelopmentBranchId &&
-            commitHash
-          ) {
-            try {
-              await storeDbTimestampAtCurrentVersion({
-                appId: chatWithApp.app.id,
-              });
-            } catch (error) {
-              logger.error(
-                "Failed to store Neon timestamp after commit:",
-                error,
-              );
-              throw error;
-            }
-          }
           
           // Check for any uncommitted changes after the commit (files changed outside Dyad)
           uncommittedFiles = await getGitUncommittedFiles({ path: appPath });
@@ -632,26 +604,6 @@ export async function processFullResponseActions(
                 `Failed to commit changes outside of dyad: ${uncommittedFiles.join(", ")}`,
               );
               extraFilesError = (error as any).toString();
-            }
-            
-            // Store DB snapshot AFTER the amended commit is made.
-            // Separate from commit try-catch so Neon errors don't get attributed to commit failures.
-            if (
-              !extraFilesError &&
-              chatWithApp.app.neonProjectId &&
-              chatWithApp.app.neonDevelopmentBranchId
-            ) {
-              try {
-                await storeDbTimestampAtCurrentVersion({
-                  appId: chatWithApp.app.id,
-                });
-              } catch (error) {
-                logger.error(
-                  "Failed to store Neon timestamp for amended commit:",
-                  error,
-                );
-                throw error;
-              }
             }
           }
         } else {

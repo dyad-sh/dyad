@@ -127,6 +127,27 @@ export async function onReady() {
   await onFirstRunMaybe(settings);
   createWindow();
 
+  // ── Start OpenClaw gateway immediately (no delay needed) ──
+  const openClawLogger = log.scope("openclaw-init");
+  const ensureOpenClaw = async () => {
+    const gw = getOpenClawGateway();
+    const state = gw.getGatewayState();
+    if (state.status === "connected") return;
+    try {
+      await gw.initialize();
+      openClawLogger.info("OpenClaw gateway initialized");
+    } catch (err) {
+      openClawLogger.warn("OpenClaw gateway init failed, watchdog will retry:", err);
+    }
+  };
+  ensureOpenClaw();
+
+  // Watchdog: check every 30s and re-init if not connected
+  const openClawWatchdog = setInterval(() => {
+    ensureOpenClaw().catch(() => {});
+  }, 30_000);
+  app.on("will-quit", () => clearInterval(openClawWatchdog));
+
   // ── Auto-start autonomous services after window is created ──
   // Delay to let external services (n8n, Ollama) finish booting
   setTimeout(async () => {
@@ -149,26 +170,6 @@ export async function onReady() {
     } catch (err) {
       svcLogger.warn("Task executor auto-start failed:", err);
     }
-
-    // 3. Initialize OpenClaw gateway with persistent watchdog
-    const ensureOpenClaw = async () => {
-      const gw = getOpenClawGateway();
-      const state = gw.getGatewayState();
-      if (state.status === "connected") return;
-      try {
-        await gw.initialize();
-        svcLogger.info("OpenClaw gateway initialized");
-      } catch (err) {
-        svcLogger.warn("OpenClaw gateway init failed, watchdog will retry:", err);
-      }
-    };
-    await ensureOpenClaw();
-
-    // Watchdog: check every 30s and re-init if not connected
-    const openClawWatchdog = setInterval(() => {
-      ensureOpenClaw().catch(() => {});
-    }, 30_000);
-    app.on("will-quit", () => clearInterval(openClawWatchdog));
 
     // 3. Auto-provision Ollama credential in n8n (best-effort)
     try {

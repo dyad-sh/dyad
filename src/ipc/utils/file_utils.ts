@@ -72,9 +72,41 @@ export async function copyDirectoryRecursive(
     }
 
     if (entry.isSymbolicLink()) {
+      // Skip node_modules symlinks if excludeNodeModules is set
+      if (excludeNodeModules && entry.name === "node_modules") {
+        continue;
+      }
+
       // Preserve symlinks as-is (copy symlink itself, not the target)
       const linkTarget = await fsPromises.readlink(srcPath);
-      await fsPromises.symlink(linkTarget, destPath);
+      // Determine if symlink target is a directory (needed for Windows symlink creation)
+      let symlinkType: "file" | "dir" = "file";
+      try {
+        const stats = await fsPromises.stat(srcPath);
+        if (stats.isDirectory()) {
+          symlinkType = "dir";
+        }
+      } catch {
+        // If stat fails (broken symlink, etc), default to 'file'
+      }
+
+      try {
+        await fsPromises.symlink(linkTarget, destPath, symlinkType);
+      } catch (error: any) {
+        // On Windows without Developer Mode, symlink creation can fail with EPERM.
+        // Fall back to copying the symlink target as a regular file/directory.
+        if (error.code === "EPERM") {
+          if (symlinkType === "dir") {
+            // Recursively copy symlinked directory
+            await copyDirectoryRecursive(srcPath, destPath, options);
+          } else {
+            // Copy symlinked file
+            await copyFileHandlingWsl(srcPath, destPath);
+          }
+        } else {
+          throw error;
+        }
+      }
     } else if (entry.isDirectory()) {
       // Exclude node_modules directories if option is set
       if (excludeNodeModules && entry.name === "node_modules") {

@@ -127,7 +127,14 @@ export class OpenClawGatewayService extends EventEmitter {
       const configPath = this.getConfigPath();
       if (await fs.pathExists(configPath)) {
         const saved = await fs.readJson(configPath);
-        this.config = { ...DEFAULT_OPENCLAW_CONFIG, ...saved };
+        // Deep merge to preserve nested defaults (e.g. gateway.host when only gateway.port is saved)
+        for (const key of Object.keys(saved)) {
+          if (typeof saved[key] === "object" && saved[key] !== null && !Array.isArray(saved[key]) && key in this.config) {
+            (this.config as any)[key] = { ...(this.config as any)[key], ...saved[key] };
+          } else {
+            (this.config as any)[key] = saved[key];
+          }
+        }
       }
       
       const claudeCodePath = this.getClaudeCodeConfigPath();
@@ -192,10 +199,13 @@ export class OpenClawGatewayService extends EventEmitter {
       
       // Create HTTP server for dashboard + API
       this.httpServer = http.createServer((req, res) => {
-        if (req.url === "/health") {
+        const parsedUrl = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+        const pathname = parsedUrl.pathname;
+
+        if (pathname === "/health") {
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify(this.getGatewayState()));
-        } else if (req.url === "/api/status") {
+        } else if (pathname === "/api/status") {
           res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
           res.end(JSON.stringify({
             status: this.state.status,
@@ -209,14 +219,14 @@ export class OpenClawGatewayService extends EventEmitter {
               security: { allowRemoteConnections: this.config.security.allowRemoteConnections },
             },
           }));
-        } else if (req.url === "/status") {
+        } else if (pathname === "/status") {
           // Keep legacy endpoint
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({
             status: this.state.status,
             providers: this.getProviderStatus(),
           }));
-        } else if (req.url === "/" || req.url === "/dashboard") {
+        } else if (pathname === "/" || pathname === "/dashboard") {
           res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
           res.end(this.getDashboardHtml());
         } else {

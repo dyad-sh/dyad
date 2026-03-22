@@ -378,7 +378,7 @@ export interface OpenClawEvent {
 export const DEFAULT_OPENCLAW_CONFIG: OpenClawConfig = {
   gateway: {
     host: "127.0.0.1",
-    port: 18790,
+    port: 18789,
     protocol: "ws",
     reconnectInterval: 5000,
     maxReconnectAttempts: 10,

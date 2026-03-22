@@ -160,6 +160,15 @@ export async function processFullResponseActions(
       return {};
     }
 
+    if (
+      chatWithApp.app.neonProjectId &&
+      chatWithApp.app.neonDevelopmentBranchId
+    ) {
+      await storeDbTimestampAtCurrentVersion({
+        appId: chatWithApp.app.id,
+      });
+    }
+
     // Handle SQL execution tags
     if (dyadExecuteSqlQueries.length > 0) {
       for (const query of dyadExecuteSqlQueries) {
@@ -558,7 +567,8 @@ export async function processFullResponseActions(
         );
         hasChanges = false;
       } else {
-        const enableGitAutoCommit = settings.enableGitAutoCommit ?? true;
+        const freshSettings = readSettings();
+        const enableGitAutoCommit = freshSettings.enableGitAutoCommit ?? true;
         let commitHash: string | null = null;
 
         if (enableGitAutoCommit) {
@@ -585,16 +595,22 @@ export async function processFullResponseActions(
             message,
           });
           logger.log(`Successfully committed changes: ${changes.join(", ")}`);
-          // Store DB snapshot AFTER the actual commit is made.
-          // This captures the state of the new commit we just created.
           if (
             chatWithApp.app.neonProjectId &&
             chatWithApp.app.neonDevelopmentBranchId &&
             commitHash
           ) {
-            await storeDbTimestampAtCurrentVersion({
-              appId: chatWithApp.app.id,
-            });
+            try {
+              await storeDbTimestampAtCurrentVersion({
+                appId: chatWithApp.app.id,
+              });
+            } catch (error) {
+              logger.error(
+                "Failed to store Neon timestamp after commit:",
+                error,
+              );
+              throw error;
+            }
           }
           
           // Check for any uncommitted changes after the commit (files changed outside Dyad)
@@ -621,7 +637,7 @@ export async function processFullResponseActions(
             // Store DB snapshot AFTER the amended commit is made.
             // Separate from commit try-catch so Neon errors don't get attributed to commit failures.
             if (
-              commitHash &&
+              !extraFilesError &&
               chatWithApp.app.neonProjectId &&
               chatWithApp.app.neonDevelopmentBranchId
             ) {
@@ -631,9 +647,10 @@ export async function processFullResponseActions(
                 });
               } catch (error) {
                 logger.error(
-                  "Error storing Neon timestamp for amended commit:",
+                  "Failed to store Neon timestamp for amended commit:",
                   error,
                 );
+                throw error;
               }
             }
           }

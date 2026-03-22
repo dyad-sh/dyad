@@ -562,14 +562,31 @@ export async function processFullResponseActions(
         let commitHash: string | null = null;
 
         if (enableGitAutoCommit) {
+          // For Neon-backed apps, snapshot the current commit state BEFORE we advance HEAD.
+          // This ensures version restores have the DB state for the previous commit.
+          if (
+            chatWithApp.app.neonProjectId &&
+            chatWithApp.app.neonDevelopmentBranchId
+          ) {
+            try {
+              await storeDbTimestampAtCurrentVersion({
+                appId: chatWithApp.app.id,
+              });
+            } catch (error) {
+              logger.warn(
+                "Warning: Could not snapshot current commit state for Neon version history:",
+                error,
+              );
+            }
+          }
+
           commitHash = await gitCommit({
             path: appPath,
             message,
           });
           logger.log(`Successfully committed changes: ${changes.join(", ")}`);
           // Store DB snapshot AFTER the actual commit is made.
-          // For Neon-backed apps, this is critical: missing DB timestamps mean version
-          // restores won't work. If this fails, we must fail the entire response.
+          // This captures the state of the new commit we just created.
           if (
             chatWithApp.app.neonProjectId &&
             chatWithApp.app.neonDevelopmentBranchId &&
@@ -594,20 +611,30 @@ export async function processFullResponseActions(
               logger.log(
                 `Amend commit with changes outside of dyad: ${uncommittedFiles.join(", ")}`,
               );
-              // Store DB snapshot AFTER the actual commit is made
-              if (
-                chatWithApp.app.neonProjectId &&
-                chatWithApp.app.neonDevelopmentBranchId
-              ) {
-                await storeDbTimestampAtCurrentVersion({
-                  appId: chatWithApp.app.id,
-                });
-              }
             } catch (error) {
               logger.error(
                 `Failed to commit changes outside of dyad: ${uncommittedFiles.join(", ")}`,
               );
               extraFilesError = (error as any).toString();
+            }
+            
+            // Store DB snapshot AFTER the amended commit is made.
+            // Separate from commit try-catch so Neon errors don't get attributed to commit failures.
+            if (
+              commitHash &&
+              chatWithApp.app.neonProjectId &&
+              chatWithApp.app.neonDevelopmentBranchId
+            ) {
+              try {
+                await storeDbTimestampAtCurrentVersion({
+                  appId: chatWithApp.app.id,
+                });
+              } catch (error) {
+                logger.error(
+                  "Error storing Neon timestamp for amended commit:",
+                  error,
+                );
+              }
             }
           }
         } else {

@@ -1231,8 +1231,11 @@ export async function handleLocalAgentStream(
       // Deploy all Supabase functions if shared modules changed
       await deployAllFunctionsIfNeeded(ctx);
 
-      // Commit all changes if enabled
-      const enableGitAutoCommit = settings.enableGitAutoCommit ?? true;
+      // Commit all changes if enabled.
+      // Note: Re-read settings here instead of using the value from handler start,
+      // so if the user toggled Git Auto-Commit during this (long-running) turn,
+      // we respect the latest value.
+      const enableGitAutoCommit = (readSettings()).enableGitAutoCommit ?? true;
       if (enableGitAutoCommit) {
         // NOTE: If auto-commit was previously disabled, commitAllChanges() will include
         // any deferred changes from earlier turns via gitAddAll(). This means the user's

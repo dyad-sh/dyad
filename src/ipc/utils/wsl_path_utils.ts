@@ -36,13 +36,13 @@ export async function copyFileHandlingWsl(
       try {
         await pipeline(readable, writable);
       } catch (err) {
-        await fsPromises.unlink(destPath).catch(() => { });
+        await fsPromises.unlink(destPath).catch(() => {});
         throw err;
       }
       try {
         await fsPromises.chmod(destPath, stats.mode);
       } catch (err) {
-        await fsPromises.unlink(destPath).catch(() => { });
+        await fsPromises.unlink(destPath).catch(() => {});
         throw err;
       }
     } else {
@@ -75,15 +75,5 @@ export function pathExistsHandlingWsl(filePath: string): boolean {
     }
   } catch {
     return false;
-  }
-}
-
-export async function getFileStatsHandlingWslAsync(
-  filePath: string,
-): Promise<fs.Stats | undefined> {
-  try {
-    return await fsPromises.stat(filePath);
-  } catch {
-    return undefined;
   }
 }

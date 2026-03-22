@@ -53,14 +53,14 @@ export async function copyDirectoryRecursive(
     excludeNodeModules?: boolean;
   },
 ) {
-  // Initialize cycle detection and boundary tracking for the top-level call
-  const visitedInodes = new Set<string>();
+  // Track the current recursion path to detect cycles (not global visited set)
+  const visitingPaths = new Set<string>();
   const sourceRoot = path.resolve(source);
   return copyDirectoryRecursiveInternal(
     source,
     destination,
     options,
-    visitedInodes,
+    visitingPaths,
     sourceRoot,
   );
 }
@@ -74,7 +74,7 @@ async function copyDirectoryRecursiveInternal(
         excludeNodeModules?: boolean;
       }
     | undefined,
-  visitedInodes: Set<string>,
+  visitingPaths: Set<string>,
   sourceRoot: string,
 ) {
   const excludeNodeModules = options?.excludeNodeModules !== false;
@@ -122,7 +122,7 @@ async function copyDirectoryRecursiveInternal(
         // but with cycle and boundary detection to prevent infinite recursion and out-of-tree copying.
         if (error.code === "EPERM") {
           if (symlinkType === "dir") {
-            // Check for cycles using inode tracking
+            // Resolve symlink target to detect cycles and boundaries
             let realPath: string;
             try {
               realPath = await fsPromises.realpath(srcPath);
@@ -131,16 +131,9 @@ async function copyDirectoryRecursiveInternal(
               continue;
             }
 
-            // Check if this inode has been visited (cycle detection)
-            const stat = await fsPromises.stat(srcPath);
-            const inoKey = `${stat.dev}-${stat.ino}`;
-            if (visitedInodes.has(inoKey)) {
-              // Avoid infinite recursion from circular symlinks
-              continue;
-            }
+            const resolvedPath = path.resolve(realPath);
 
             // Check if realPath is within the source tree boundary
-            const resolvedPath = path.resolve(realPath);
             if (
               !resolvedPath.startsWith(sourceRoot + path.sep) &&
               resolvedPath !== sourceRoot
@@ -149,18 +142,48 @@ async function copyDirectoryRecursiveInternal(
               continue;
             }
 
-            visitedInodes.add(inoKey);
-            // Recursively copy symlinked directory with cycle protection
-            await copyDirectoryRecursiveInternal(
-              realPath,
-              destPath,
-              options,
-              visitedInodes,
-              sourceRoot,
-            );
+            // Check if this path is currently being visited (cycle detection)
+            if (visitingPaths.has(resolvedPath)) {
+              // Avoid infinite recursion from circular symlinks
+              continue;
+            }
+
+            // Add to current recursion path
+            visitingPaths.add(resolvedPath);
+            try {
+              // Recursively copy symlinked directory with cycle protection
+              await copyDirectoryRecursiveInternal(
+                realPath,
+                destPath,
+                options,
+                visitingPaths,
+                sourceRoot,
+              );
+            } finally {
+              // Remove from current recursion path when backtracking
+              visitingPaths.delete(resolvedPath);
+            }
           } else {
-            // Copy symlinked file
-            await copyFileHandlingWsl(srcPath, destPath);
+            // Copy symlinked file, but only if target is within source tree boundary
+            let realPath: string;
+            try {
+              realPath = await fsPromises.realpath(srcPath);
+            } catch {
+              // If realpath fails (broken symlink), skip
+              continue;
+            }
+
+            const resolvedPath = path.resolve(realPath);
+
+            // Check if realPath is within the source tree boundary
+            if (
+              resolvedPath.startsWith(sourceRoot + path.sep) ||
+              resolvedPath === sourceRoot
+            ) {
+              // Target is within source tree, safe to copy
+              await copyFileHandlingWsl(srcPath, destPath);
+            }
+            // Otherwise skip symlink to prevent out-of-tree copying
           }
         } else {
           throw error;
@@ -171,13 +194,27 @@ async function copyDirectoryRecursiveInternal(
       if (excludeNodeModules && entry.name === "node_modules") {
         continue;
       }
-      await copyDirectoryRecursiveInternal(
-        srcPath,
-        destPath,
-        options,
-        visitedInodes,
-        sourceRoot,
-      );
+
+      // Add current directory to recursion path for cycle detection
+      const resolvedSource = path.resolve(srcPath);
+      if (visitingPaths.has(resolvedSource)) {
+        // Skip if already in current recursion chain (cycle)
+        continue;
+      }
+
+      visitingPaths.add(resolvedSource);
+      try {
+        await copyDirectoryRecursiveInternal(
+          srcPath,
+          destPath,
+          options,
+          visitingPaths,
+          sourceRoot,
+        );
+      } finally {
+        // Remove from current recursion path when backtracking
+        visitingPaths.delete(resolvedSource);
+      }
     } else {
       await copyFileHandlingWsl(srcPath, destPath);
     }

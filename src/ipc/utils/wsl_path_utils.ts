@@ -42,8 +42,13 @@ export async function copyFileHandlingWsl(
       try {
         await fsPromises.chmod(destPath, stats.mode);
       } catch (err) {
-        await fsPromises.unlink(destPath).catch(() => {});
-        throw err;
+        // Chmod failure on filesystems without POSIX mode support (FAT/exFAT,
+        // SMB shares) should not abort the copy since the file was successfully streamed.
+        // Log as warning but continue - the file contents are intact.
+        logger.warn(
+          `Failed to preserve file mode for ${destPath}, but file copy succeeded:`,
+          err,
+        );
       }
     } else {
       await fsPromises.copyFile(sourcePath, destPath);

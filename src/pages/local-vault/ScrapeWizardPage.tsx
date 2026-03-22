@@ -194,7 +194,7 @@ export default function ScrapeWizardPage() {
 
       {/* Body */}
       <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-5xl mx-auto">
           {currentStep === "describe" && (
             <DescribeStep
               nlpQuery={nlpQuery}

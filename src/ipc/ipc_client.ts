@@ -284,7 +284,7 @@ export class IpcClient {
         "blueprint" in data
       ) {
         for (const handler of this.agentBlueprintHandlers) {
-          handler(data as { chatId: number; blueprint: any; intent: any });
+          handler(data as unknown as { chatId: number; blueprint: any; intent: any });
         }
       }
     });
@@ -368,7 +368,7 @@ export class IpcClient {
     this.ipcRenderer.on("github:flow-error", (data) => {
       console.log("github:flow-error", data);
       for (const handler of this.githubFlowErrorHandlers) {
-        handler(data as GitHubDeviceFlowErrorData);
+        handler(data as unknown as GitHubDeviceFlowErrorData);
       }
     });
 
@@ -2582,6 +2582,147 @@ export class IpcClient {
   /** Parse a sitemap */
   public async scrapingParseSitemap(url: string): Promise<any> {
     return this.ipcRenderer.invoke("scraping:parse-sitemap", url);
+  }
+
+  // ─── Scraping V3 (Orchestrator-backed) ────────────────────────────────
+
+  /** Quick scrape a single URL with auto engine selection */
+  public async scrapingV3QuickScrape(args: { url: string; engine?: string }): Promise<any> {
+    return this.ipcRenderer.invoke("scraping:v3:quick-scrape", args);
+  }
+
+  /** Probe a URL to determine best engine */
+  public async scrapingV3ProbeUrl(url: string): Promise<any> {
+    return this.ipcRenderer.invoke("scraping:v3:probe-url", url);
+  }
+
+  /** Create a persistent scraping job */
+  public async scrapingV3CreateJob(args: {
+    name: string;
+    config: any;
+    engine?: string;
+    templateId?: string;
+    datasetId?: string;
+  }): Promise<{ jobId: string }> {
+    return this.ipcRenderer.invoke("scraping:v3:create-job", args);
+  }
+
+  /** Run a queued/paused job */
+  public async scrapingV3RunJob(jobId: string): Promise<{ jobId: string; status: string }> {
+    return this.ipcRenderer.invoke("scraping:v3:run-job", jobId);
+  }
+
+  /** Pause a running job */
+  public async scrapingV3PauseJob(jobId: string): Promise<{ ok: boolean }> {
+    return this.ipcRenderer.invoke("scraping:v3:pause-job", jobId);
+  }
+
+  /** Cancel a job */
+  public async scrapingV3CancelJob(jobId: string): Promise<{ ok: boolean }> {
+    return this.ipcRenderer.invoke("scraping:v3:cancel-job", jobId);
+  }
+
+  /** Resume a paused job */
+  public async scrapingV3ResumeJob(jobId: string): Promise<{ ok: boolean }> {
+    return this.ipcRenderer.invoke("scraping:v3:resume-job", jobId);
+  }
+
+  /** Delete a job and its results */
+  public async scrapingV3DeleteJob(jobId: string): Promise<{ ok: boolean }> {
+    return this.ipcRenderer.invoke("scraping:v3:delete-job", jobId);
+  }
+
+  /** Get a job by ID */
+  public async scrapingV3GetJob(jobId: string): Promise<any> {
+    return this.ipcRenderer.invoke("scraping:v3:get-job", jobId);
+  }
+
+  /** List all jobs, optionally filtered by status */
+  public async scrapingV3ListJobs(args?: { status?: string }): Promise<any[]> {
+    return this.ipcRenderer.invoke("scraping:v3:list-jobs", args);
+  }
+
+  /** Get extraction results for a job */
+  public async scrapingV3GetResults(jobId: string): Promise<any[]> {
+    return this.ipcRenderer.invoke("scraping:v3:get-results", jobId);
+  }
+
+  /** Export job results to file */
+  public async scrapingV3Export(args: { jobId: string; format: string; stripPii?: boolean }): Promise<any> {
+    return this.ipcRenderer.invoke("scraping:v3:export", args);
+  }
+
+  /** Detect PII in job results */
+  public async scrapingV3DetectPii(jobId: string): Promise<any> {
+    return this.ipcRenderer.invoke("scraping:v3:detect-pii", jobId);
+  }
+
+  /** Create a scheduled scraping job */
+  public async scrapingV3CreateSchedule(args: {
+    name: string;
+    jobConfig: any;
+    cronExpression: string;
+  }): Promise<{ id: string }> {
+    return this.ipcRenderer.invoke("scraping:v3:create-schedule", args);
+  }
+
+  /** List all schedules */
+  public async scrapingV3ListSchedules(): Promise<any[]> {
+    return this.ipcRenderer.invoke("scraping:v3:list-schedules");
+  }
+
+  /** Toggle a schedule on/off */
+  public async scrapingV3ToggleSchedule(args: { id: string; enabled: boolean }): Promise<{ ok: boolean }> {
+    return this.ipcRenderer.invoke("scraping:v3:toggle-schedule", args);
+  }
+
+  /** Delete a schedule */
+  public async scrapingV3DeleteSchedule(id: string): Promise<{ ok: boolean }> {
+    return this.ipcRenderer.invoke("scraping:v3:delete-schedule", id);
+  }
+
+  /** Save a user template */
+  public async scrapingV3CreateTemplate(args: {
+    name: string;
+    description: string;
+    category: string;
+    config: any;
+  }): Promise<{ id: string }> {
+    return this.ipcRenderer.invoke("scraping:v3:create-template", args);
+  }
+
+  /** List user templates */
+  public async scrapingV3ListTemplates(): Promise<any[]> {
+    return this.ipcRenderer.invoke("scraping:v3:list-templates");
+  }
+
+  /** Get a template by ID */
+  public async scrapingV3GetTemplate(id: string): Promise<any> {
+    return this.ipcRenderer.invoke("scraping:v3:get-template", id);
+  }
+
+  /** Delete a user template */
+  public async scrapingV3DeleteTemplate(id: string): Promise<{ ok: boolean }> {
+    return this.ipcRenderer.invoke("scraping:v3:delete-template", id);
+  }
+
+  /** List auth sessions */
+  public async scrapingV3ListSessions(): Promise<any[]> {
+    return this.ipcRenderer.invoke("scraping:v3:list-sessions");
+  }
+
+  /** Delete an auth session */
+  public async scrapingV3DeleteSession(id: string): Promise<{ ok: boolean }> {
+    return this.ipcRenderer.invoke("scraping:v3:delete-session", id);
+  }
+
+  /** Import cookies as a session */
+  public async scrapingV3ImportCookies(args: {
+    name: string;
+    domain: string;
+    cookieFileContent: string;
+  }): Promise<any> {
+    return this.ipcRenderer.invoke("scraping:v3:import-cookies", args);
   }
 
   /** Import scraped dataset items into the local vault */

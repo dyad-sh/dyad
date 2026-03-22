@@ -246,6 +246,20 @@
       "when": 1773896841400,
       "tag": "0034_daily_dakota_north",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "6",
+      "when": 1774069749670,
+      "tag": "0035_useful_steve_rogers",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1774139240281,
+      "tag": "0036_majestic_wild_child",
+      "breakpoints": true
     }
   ]
 }

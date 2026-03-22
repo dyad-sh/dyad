@@ -1,5 +1,6 @@
 import { useAtom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { isDevToolbarVisibleAtom } from "@/atoms/viewAtoms";
 import { useLocation } from "@tanstack/react-router";
 import { useSettings } from "@/hooks/useSettings";
 // @ts-ignore
@@ -10,7 +11,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { IpcClient } from "@/ipc/ipc_client";
 import { useSidebar } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { PanelLeft, PanelLeftClose } from "lucide-react";
+import { PanelLeft, PanelLeftClose, PanelBottomOpen, PanelBottomClose } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -25,6 +26,7 @@ export const TitleBar = () => {
   const [showWindowControls, setShowWindowControls] = useState(false);
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
+  const [isDevToolbarVisible, setIsDevToolbarVisible] = useAtom(isDevToolbarVisibleAtom);
 
   useEffect(() => {
     // Check if we're running on Windows
@@ -90,11 +92,34 @@ export const TitleBar = () => {
           </TooltipContent>
         </Tooltip>
 
-        {/* Preview Header */}
+        {/* Dev Toolbar Toggle + Preview Header */}
         {location.pathname === "/chat" && (
-          <div className="flex-1 flex justify-end">
-            <ActionHeader />
-          </div>
+          <>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setIsDevToolbarVisible(!isDevToolbarVisible)}
+                  className="h-7 w-7 rounded-md hover:bg-primary/10 hover:text-primary transition-all no-app-region-drag border border-transparent hover:border-primary/20"
+                >
+                  {isDevToolbarVisible ? (
+                    <PanelBottomClose className="h-3.5 w-3.5 text-muted-foreground" />
+                  ) : (
+                    <PanelBottomOpen className="h-3.5 w-3.5 text-muted-foreground" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {isDevToolbarVisible ? "Hide dev toolbar" : "Show dev toolbar"}
+              </TooltipContent>
+            </Tooltip>
+            {isDevToolbarVisible && (
+              <div className="flex-1 flex justify-end">
+                <ActionHeader />
+              </div>
+            )}
+          </>
         )}
 
         {showWindowControls && <WindowsControls />}

@@ -411,7 +411,7 @@ export default function DataSovereigntyPage() {
 
   return (
     <div className="h-full overflow-auto">
-      <div className="container max-w-7xl mx-auto py-6 px-4">
+      <div className="py-6 px-4">
         {renderHeader()}
         {renderValueProposition()}
         {renderQuickActions()}

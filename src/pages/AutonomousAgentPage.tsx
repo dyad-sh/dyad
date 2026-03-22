@@ -980,7 +980,7 @@ function ArtifactsTab({ artifacts }: { artifacts: any[] }) {
 function ConfigTab({ config }: { config: any }) {
   return (
     <ScrollArea className="h-full">
-      <div className="max-w-2xl space-y-6 p-6">
+      <div className="max-w-5xl space-y-6 p-6">
         <div className="space-y-4">
           <h4 className="font-medium">AI Model</h4>
           <div className="grid grid-cols-2 gap-4">

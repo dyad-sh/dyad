@@ -17,7 +17,7 @@ export default function CNSPage() {
 
   return (
     <div className="min-h-screen px-8 py-6">
-      <div className="max-w-6xl mx-auto">
+      <div className="mx-auto">
         <Button
           onClick={() => router.history.back()}
           variant="outline"

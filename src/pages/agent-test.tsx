@@ -342,7 +342,7 @@ export default function AgentTestPage() {
         {/* Messages */}
         <div className="flex-1 flex flex-col">
           <ScrollArea className="flex-1 p-4">
-            <div className="max-w-3xl mx-auto space-y-4">
+            <div className="max-w-5xl mx-auto space-y-4">
               {messages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-64 text-center">
                   <Bot className="h-12 w-12 text-muted-foreground mb-4" />
@@ -363,7 +363,7 @@ export default function AgentTestPage() {
 
           {/* Input Area */}
           <div className="border-t p-4">
-            <div className="max-w-3xl mx-auto">
+            <div className="max-w-5xl mx-auto">
               <div className="relative">
                 <Textarea
                   ref={inputRef}

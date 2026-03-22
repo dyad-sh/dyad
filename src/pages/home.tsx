@@ -181,7 +181,7 @@ export default function HomePage() {
   // Loading overlay for app creation
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center max-w-3xl m-auto p-8">
+      <div className="flex flex-col items-center justify-center max-w-7xl m-auto p-8">
         <div className="w-full flex flex-col items-center">
           {/* Loading Spinner with gradient */}
           <div className="relative w-28 h-28 mb-8">
@@ -206,7 +206,7 @@ export default function HomePage() {
 
   // Main Home Page Content
   return (
-    <div className="flex flex-col items-center justify-center max-w-3xl w-full m-auto p-8">
+    <div className="flex flex-col items-center justify-center max-w-7xl w-full m-auto p-8">
       <ForceCloseDialog
         isOpen={forceCloseDialogOpen}
         onClose={() => setForceCloseDialogOpen(false)}

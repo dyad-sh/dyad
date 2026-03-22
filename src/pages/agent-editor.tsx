@@ -467,7 +467,7 @@ export default function AgentEditorPage() {
             {/* Agent identity + stats — NO model params here               */}
             {/* ============================================================ */}
             {activeTab === "overview" && (
-              <div className="max-w-3xl space-y-6">
+              <div className="space-y-6">
                 <h2 className="text-lg font-semibold">Overview</h2>
 
                 {/* Quick Stats */}
@@ -609,7 +609,7 @@ export default function AgentEditorPage() {
             {/* SYSTEM PROMPT TAB (with AI generation)                       */}
             {/* ============================================================ */}
             {activeTab === "prompt" && (
-              <div className="max-w-4xl space-y-4">
+              <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <h2 className="text-lg font-semibold">System Prompt</h2>
@@ -871,7 +871,7 @@ export default function AgentEditorPage() {
             {/* MODEL & PARAMETERS TAB                                       */}
             {/* ============================================================ */}
             {activeTab === "model" && (
-              <div className="max-w-2xl space-y-6">
+              <div className="max-w-5xl space-y-6">
                 <h2 className="text-lg font-semibold">Model & Parameters</h2>
 
                 <Card>
@@ -1192,7 +1192,7 @@ export default function AgentEditorPage() {
             {/* DEPLOYMENT TAB                                               */}
             {/* ============================================================ */}
             {activeTab === "deploy" && (
-              <div className="max-w-2xl space-y-6">
+              <div className="max-w-5xl space-y-6">
                 <div>
                   <h2 className="text-lg font-semibold mb-2">Deployment</h2>
                   <p className="text-sm text-muted-foreground">

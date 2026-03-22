@@ -156,6 +156,7 @@ const NETWORK_CONFIG: Record<
   { label: string; icon: React.ComponentType<{ className?: string }>; color: string }
 > = {
   local: { label: "Local", icon: HardDrive, color: "text-green-500" },
+  celestia: { label: "Celestia", icon: Database, color: "text-pink-500" },
   ipfs: { label: "IPFS", icon: Globe, color: "text-blue-500" },
   arweave: { label: "Arweave", icon: Database, color: "text-yellow-500" },
   filecoin: { label: "Filecoin", icon: Cloud, color: "text-purple-500" },

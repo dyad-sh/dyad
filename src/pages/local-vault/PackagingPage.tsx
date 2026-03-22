@@ -192,7 +192,7 @@ export default function PackagingPage() {
       </div>
 
       {/* Step Content */}
-      <div className="max-w-2xl">
+      <div className="max-w-5xl">
         {step === "select" && (
           <div className="space-y-4">
             <div className="space-y-2">

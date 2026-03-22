@@ -89,7 +89,25 @@ export function registerOpenClawHandlers(): void {
   });
 
   ipcMain.handle("openclaw:gateway-token", async () => {
-    return process.env.OPENCLAW_GATEWAY_TOKEN ?? "";
+    // Try from environment first (loaded by dotenv)
+    if (process.env.OPENCLAW_GATEWAY_TOKEN) {
+      return process.env.OPENCLAW_GATEWAY_TOKEN;
+    }
+    // Fallback: read from .env file directly
+    try {
+      const { app } = await import("electron");
+      const envPath = require("node:path").join(app.getAppPath(), ".env");
+      const content = require("node:fs").readFileSync(envPath, "utf8");
+      const match = content.match(/^OPENCLAW_GATEWAY_TOKEN=(.+)$/m);
+      if (match?.[1]) {
+        const token = match[1].trim();
+        process.env.OPENCLAW_GATEWAY_TOKEN = token; // cache for next call
+        return token;
+      }
+    } catch {
+      // .env file not found or unreadable
+    }
+    return "";
   });
 
   ipcMain.handle(

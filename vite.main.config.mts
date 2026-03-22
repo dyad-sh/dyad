@@ -23,6 +23,17 @@ export default defineConfig({
         // WebSocket optional native modules (ws package)
         "bufferutil",
         "utf-8-validate",
+        // Heavy Node.js packages — externalize to avoid heap OOM during bundling
+        "googleapis",
+        "google-auth-library",
+        "playwright-core",
+        "ethers",
+        "imapflow",
+        "nodemailer",
+        "mailparser",
+        "@microsoft/microsoft-graph-client",
+        "@azure/identity",
+        "node-ical",
       ],
     },
   },

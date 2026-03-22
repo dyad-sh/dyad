@@ -484,6 +484,9 @@ ${componentSnippet}
       // Check if this is a test prompt
       const testResponse = getTestResponse(req.prompt);
 
+      // Declared here so it's accessible in post-stream processing (memory extraction, flywheel, etc.)
+      let chatAgentId: number | null = null;
+
       if (testResponse) {
         // For test prompts, use the dedicated function
         fullResponse = await streamTestResponse(
@@ -798,7 +801,6 @@ This conversation includes one or more image attachments. When the user uploads 
         // --- Agent Memory Context Injection ---
         // If the chat belongs to an app that has an agent, inject long-term and
         // short-term memory into the system prompt.
-        let chatAgentId: number | null = null;
         try {
           if (updatedChat.app?.id) {
             const [agentRow] = await db

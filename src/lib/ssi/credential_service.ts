@@ -88,7 +88,7 @@ class CredentialService {
 
     // Sign the credential
     const proof = this.createProof(
-      credential,
+      credential as unknown as Record<string, unknown>,
       privateKeyHex,
       verificationMethodId as string,
     );
@@ -148,7 +148,7 @@ class CredentialService {
 
     // Verify proof
     if (credential.proof) {
-      const proofValid = this.verifyProof(credential);
+      const proofValid = this.verifyProof(credential as unknown as Record<string, unknown>);
       if (!proofValid) {
         errors.push("Invalid proof signature");
       }
@@ -351,7 +351,7 @@ class CredentialService {
 
     if (verificationMethodId) {
       presentation.proof = this.createProof(
-        presentation,
+        presentation as unknown as Record<string, unknown>,
         privateKeyHex,
         verificationMethodId as string,
       );
@@ -391,7 +391,7 @@ class CredentialService {
 
     // Verify presentation proof
     if (presentation.proof) {
-      const proofValid = this.verifyProof(presentation);
+      const proofValid = this.verifyProof(presentation as unknown as Record<string, unknown>);
       if (!proofValid) {
         errors.push("Invalid presentation proof");
       }

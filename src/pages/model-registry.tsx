@@ -457,7 +457,7 @@ export default function ModelRegistryPage() {
       </div>
 
       <ScrollArea className="flex-1">
-        <div className="p-6 space-y-6 max-w-7xl mx-auto">
+        <div className="p-6 space-y-6">
           {/* Stats */}
           <StatsDashboard />
 

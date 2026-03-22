@@ -243,7 +243,7 @@ function ScrapeTab() {
   const selectedTemplate = templates.find((t) => t.id === templateId);
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-6 mx-auto">
       {/* NLP Bar — "Just tell it what you want" */}
       <div className="p-4 rounded-xl border-2 border-dashed border-primary/30 bg-gradient-to-r from-primary/5 to-violet-500/5">
         <div className="flex items-center gap-2 mb-2">
@@ -610,7 +610,7 @@ function JobsTab() {
   }
 
   return (
-    <div className="space-y-3 max-w-4xl mx-auto">
+    <div className="space-y-3 mx-auto">
       {jobs.map((job) => (
         <div key={job.id} className="border rounded-lg p-4">
           <div className="flex items-center justify-between mb-2">
@@ -719,7 +719,7 @@ function TemplatesTab() {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-6 mx-auto">
       <p className="text-sm text-muted-foreground">
         {templates.length} built-in templates for common scraping scenarios. Select a template when creating a scrape to auto-configure selectors and field extraction.
       </p>

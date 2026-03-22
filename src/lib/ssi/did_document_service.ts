@@ -150,12 +150,9 @@ class DIDDocumentService {
     params: SSIIdentityCreateParams,
   ): Promise<{ identity: SSIIdentity; privateKeyHex: string }> {
     const algorithm = params.keyAlgorithm ?? "ed25519";
-    const { publicKey, privateKey } = crypto.generateKeyPairSync(
-      algorithm === "ed25519" ? "ed25519" : "ec",
-      algorithm === "ed25519"
-        ? undefined
-        : { namedCurve: "secp256k1" },
-    );
+    const { publicKey, privateKey } = algorithm === "ed25519"
+      ? crypto.generateKeyPairSync("ed25519")
+      : crypto.generateKeyPairSync("ec", { namedCurve: "secp256k1" });
 
     const publicKeyDer = publicKey.export({ type: "spki", format: "der" });
     const privateKeyDer = privateKey.export({ type: "pkcs8", format: "der" });

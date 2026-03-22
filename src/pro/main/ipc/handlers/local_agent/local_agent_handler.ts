@@ -228,7 +228,7 @@ export async function handleLocalAgentStream(
       providerOptions: getProviderOptions({
         joyAppId: chat.app.id,
         joyDisableFiles: true, // Local agent uses tools, not file injection
-        files: [],
+        joyFiles: [],
         mentionedAppsCodebases: [],
         builtinProviderId: modelClient.builtinProviderId,
         settings,
@@ -486,7 +486,7 @@ export async function handleLocalAgentStream(
           providerOptions: getProviderOptions({
             joyAppId: chat.app.id,
             joyDisableFiles: true,
-            files: [],
+            joyFiles: [],
             mentionedAppsCodebases: [],
             builtinProviderId: modelClient.builtinProviderId,
             settings,
@@ -601,7 +601,7 @@ ${problemReport.problems.map((p) => `<problem file="${p.file}" line="${p.line}" 
             providerOptions: getProviderOptions({
               joyAppId: chat.app.id,
               joyDisableFiles: true,
-              files: [],
+              joyFiles: [],
               mentionedAppsCodebases: [],
               builtinProviderId: fixModelClient.builtinProviderId,
               settings,

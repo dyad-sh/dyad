@@ -472,7 +472,7 @@ function IngestPanel({ collectionId }: { collectionId: string }) {
 
   return (
     <ScrollArea className="h-full">
-      <div className="space-y-6 max-w-2xl">
+      <div className="space-y-6">
         {/* Mode Selector */}
         <div className="flex gap-2">
           {(
@@ -655,7 +655,7 @@ function SearchPanel({ collectionId }: { collectionId: string }) {
 
   return (
     <ScrollArea className="h-full">
-      <div className="space-y-4 max-w-2xl">
+      <div className="space-y-4">
         <div className="flex gap-2">
           <Input
             placeholder="Search your knowledge base..."
@@ -779,7 +779,7 @@ function StatsPanel({ collectionId }: { collectionId: string }) {
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 max-w-2xl">
+    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
       {statItems.map((item) => (
         <Card key={item.label}>
           <CardContent className="flex items-center gap-3 p-4">
@@ -808,7 +808,7 @@ function SettingsPanel() {
 
   return (
     <ScrollArea className="h-full">
-      <div className="space-y-6 max-w-2xl">
+      <div className="space-y-6">
         {/* Embedding Model */}
         <Card>
           <CardHeader>

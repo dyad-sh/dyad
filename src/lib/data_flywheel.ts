@@ -438,7 +438,7 @@ export async function runFlywheelCycle(
     // 4. Create training job
     const job = await ft.createTrainingJob({
       name: `flywheel-${agentLabel}-${timestamp}`,
-      baseModel: baseModel as keyof typeof import("@/lib/local_fine_tuning")["SUPPORTED_BASE_MODELS"],
+      baseModel: baseModel as any,
       baseModelPath: "", // Will be resolved by LocalFineTuning
       datasetId: dataset.id,
       method: trainingMethod,

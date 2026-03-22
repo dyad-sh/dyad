@@ -258,7 +258,7 @@ export type TrainingMethodConfig =
   | FullFineTuningConfig;
 
 export interface LoRAConfig {
-  method: "lora";
+  method: "lora" | "qlora" | "dora" | "adalora";
   
   // LoRA parameters
   rank: number;              // r: typically 8-64, lower = less memory

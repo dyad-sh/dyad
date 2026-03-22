@@ -1928,7 +1928,7 @@ export function OpenClawKanbanPage() {
             params: {
               client: {
                 id: "openclaw-control-ui",
-                displayName: "JoyCreate Kanban",
+                displayName: "Create Kanban",
                 mode: "webchat",
                 version: "dev",
                 platform: "electron",

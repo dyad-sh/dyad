@@ -217,12 +217,6 @@ export default function HomePage() {
       <div className="w-full">
         {/* Hero Section */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-violet-500/10 via-purple-500/10 to-pink-500/10 border border-violet-500/20 mb-4">
-            <Sparkles className="w-4 h-4 text-violet-500" />
-            <span className="text-sm font-medium bg-gradient-to-r from-violet-600 to-purple-600 bg-clip-text text-transparent">
-              AI-Powered App Builder
-            </span>
-          </div>
           <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-foreground via-foreground/90 to-foreground/70 bg-clip-text text-transparent">
             What would you like to build?
           </h1>

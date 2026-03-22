@@ -807,7 +807,7 @@ export default function DocumentsPage() {
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <Sparkles className="h-5 w-5 text-violet-500" />
-                <h2 className="text-lg font-semibold">Quick Start with JoyCreate</h2>
+                <h2 className="text-lg font-semibold">Quick Start with Create</h2>
                 <span className="text-xs text-muted-foreground">— pick a template, AI does the rest</span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

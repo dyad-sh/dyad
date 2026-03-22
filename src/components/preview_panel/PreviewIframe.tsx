@@ -108,7 +108,7 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
       {/* Add a little chip that says "Internal error" if source is "joy-app" */}
       {error.source === "joy-app" && (
         <div className="absolute top-1 right-1 p-1 bg-red-100 dark:bg-red-900 rounded-md text-xs font-medium text-red-700 dark:text-red-300">
-          Internal JoyCreate error
+          Internal Create error
         </div>
       )}
 
@@ -144,7 +144,7 @@ const ErrorBanner = ({ error, onDismiss, onAIFix }: ErrorBannerProps) => {
             {isDockerError
               ? "Make sure Docker Desktop is running and try restarting the app."
               : error.source === "joy-app"
-                ? "Try restarting the JoyCreate app or restarting your computer to see if that fixes the error."
+                ? "Try restarting the Create app or restarting your computer to see if that fixes the error."
                 : "Check if restarting the app fixes the error."}
           </span>
         </div>

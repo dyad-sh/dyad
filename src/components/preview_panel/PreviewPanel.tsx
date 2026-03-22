@@ -17,6 +17,8 @@ import { Console } from "./Console";
 import { useRunApp } from "@/hooks/useRunApp";
 import { PublishPanel } from "./PublishPanel";
 import { SecurityPanel } from "./SecurityPanel";
+import { VersionsPanel } from "./VersionsPanel";
+import { ActionHeader } from "./ActionHeader";
 import { useSupabase } from "@/hooks/useSupabase";
 
 interface ConsoleHeaderProps {
@@ -133,6 +135,7 @@ export function PreviewPanel() {
 
   return (
     <div className="flex flex-col h-full">
+      <ActionHeader />
       <div className="flex-1 overflow-hidden">
         <PanelGroup direction="vertical">
           <Panel id="content" minSize={30}>
@@ -147,6 +150,8 @@ export function PreviewPanel() {
                 <PublishPanel />
               ) : previewMode === "security" ? (
                 <SecurityPanel />
+              ) : previewMode === "versions" ? (
+                <VersionsPanel />
               ) : (
                 <Problems />
               )}

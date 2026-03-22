@@ -30,7 +30,7 @@ export function JoyProSuccessDialog({
         </DialogHeader>
         <div className="py-4">
           <p className="mb-4 text-base">
-            All JoyCreate features are now ready to use!
+            All Create features are now ready to use!
           </p>
           <div className="flex items-center gap-2 mb-3">
             <Sparkles className="h-5 w-5 text-indigo-500" />

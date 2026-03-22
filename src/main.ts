@@ -150,13 +150,25 @@ export async function onReady() {
       svcLogger.warn("Task executor auto-start failed:", err);
     }
 
-    // 3. Initialize OpenClaw gateway (best-effort)
-    try {
-      await getOpenClawGateway().initialize();
-      svcLogger.info("OpenClaw gateway auto-initialized");
-    } catch (err) {
-      svcLogger.warn("OpenClaw gateway auto-init failed:", err);
-    }
+    // 3. Initialize OpenClaw gateway with persistent watchdog
+    const ensureOpenClaw = async () => {
+      const gw = getOpenClawGateway();
+      const state = gw.getGatewayState();
+      if (state.status === "connected") return;
+      try {
+        await gw.initialize();
+        svcLogger.info("OpenClaw gateway initialized");
+      } catch (err) {
+        svcLogger.warn("OpenClaw gateway init failed, watchdog will retry:", err);
+      }
+    };
+    await ensureOpenClaw();
+
+    // Watchdog: check every 30s and re-init if not connected
+    const openClawWatchdog = setInterval(() => {
+      ensureOpenClaw().catch(() => {});
+    }, 30_000);
+    app.on("will-quit", () => clearInterval(openClawWatchdog));
 
     // 3. Auto-provision Ollama credential in n8n (best-effort)
     try {
@@ -189,7 +201,7 @@ export async function onReady() {
 
     // 5. Start flywheel training scheduler (checks every 6 hours)
     startFlywheelScheduler();
-  }, 5000);
+  }, 8000);
 
   logger.info("Auto-update enabled=", settings.enableAutoUpdate);
   if (settings.enableAutoUpdate) {
@@ -294,10 +306,6 @@ const createWindow = () => {
 
   // Dynamically extend CSP to allow Tailscale IP if configured
   setupTailscaleCsp();
-  if (process.env.NODE_ENV === "development") {
-    // Open the DevTools.
-    mainWindow.webContents.openDevTools();
-  }
 
   // Send force-close event if it was detected
   if (pendingForceCloseData) {

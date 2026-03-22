@@ -274,7 +274,7 @@ export function AIPowerSettings() {
             AI Power Settings
           </h2>
           <p className="text-muted-foreground">
-            Configure your AI setup - all features FREE in JoyCreate! 🎉
+            Configure your AI setup - all features FREE in Create! 🎉
           </p>
         </div>
         <Button onClick={saveSettings}>
@@ -416,7 +416,7 @@ export function AIPowerSettings() {
                 Intelligent Request Routing
               </CardTitle>
               <CardDescription>
-                JoyCreate automatically routes requests to the best available model.
+                Create automatically routes requests to the best available model.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -545,7 +545,7 @@ export function AIPowerSettings() {
                 Multi-Model Orchestration
               </CardTitle>
               <CardDescription>
-                Use multiple AI models together for superior results - FREE in JoyCreate!
+                Use multiple AI models together for superior results - FREE in Create!
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -694,7 +694,7 @@ export function AIPowerSettings() {
             <div>
               <h4 className="font-semibold">All Features Included - FREE!</h4>
               <p className="text-sm text-muted-foreground">
-                Features that cost $20-50/month elsewhere are completely free in JoyCreate. 
+                Features that cost $20-50/month elsewhere are completely free in Create. 
                 Local AI, multi-model, smart routing, unlimited context - all yours! 🎉
               </p>
             </div>

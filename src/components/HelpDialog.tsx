@@ -98,7 +98,7 @@ Issues that do not meet these requirements will be closed and may need to be res
 <!-- Screenshot of the bug -->
 
 ## System Information
-- JoyCreate Version: ${debugInfo.joyVersion}
+- Create Version: ${debugInfo.joyVersion}
 - Platform: ${debugInfo.platform}
 - Architecture: ${debugInfo.architecture}
 - Node Version: ${debugInfo.nodeVersion || "n/a"}
@@ -348,7 +348,7 @@ Pro User ID: ${userBudget?.redactedUserId || "n/a"}
             <div className="border rounded-md p-3">
               <h3 className="font-medium mb-2">System Information</h3>
               <div className="text-sm bg-slate-50 dark:bg-slate-900 rounded p-2 max-h-32 overflow-y-auto">
-                <p>JoyCreate Version: {chatLogsData.debugInfo.joyVersion}</p>
+                <p>Create Version: {chatLogsData.debugInfo.joyVersion}</p>
                 <p>Platform: {chatLogsData.debugInfo.platform}</p>
                 <p>Architecture: {chatLogsData.debugInfo.architecture}</p>
                 <p>
@@ -390,7 +390,7 @@ Pro User ID: ${userBudget?.redactedUserId || "n/a"}
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Need help with JoyCreate?</DialogTitle>
+          <DialogTitle>Need help with Create?</DialogTitle>
         </DialogHeader>
         <DialogDescription className="">
           If you need help or want to report an issue, here are some options:

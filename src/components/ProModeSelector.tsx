@@ -68,7 +68,7 @@ export function ProModeSelector() {
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent>Configure JoyCreate features</TooltipContent>
+        <TooltipContent>Configure Create features</TooltipContent>
       </Tooltip>
       <PopoverContent className="w-80 border-primary/20">
         <div className="space-y-4">
@@ -84,7 +84,7 @@ export function ProModeSelector() {
             <SelectorRow
               id="web-search"
               label="Web Access"
-              tooltip="Allows JoyCreate to access the web (e.g. search for information)"
+              tooltip="Allows Create to access the web (e.g. search for information)"
               isTogglable={isTogglable}
               settingEnabled={Boolean(settings?.enableProWebSearch)}
               toggle={toggleWebSearch}

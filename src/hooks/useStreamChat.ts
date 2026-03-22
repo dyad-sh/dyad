@@ -17,7 +17,7 @@ import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import type { ChatResponseEnd } from "@/ipc/ipc_types";
 import { useChats } from "./useChats";
 import { useLoadApp } from "./useLoadApp";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { selectedAppIdAtom, appUrlAtom } from "@/atoms/appAtoms";
 import { useVersions } from "./useVersions";
 import { showExtraFilesToast } from "@/lib/toast";
 import { useSearch } from "@tanstack/react-router";
@@ -48,7 +48,8 @@ export function useStreamChat({
 
   const setStreamCountById = useSetAtom(chatStreamCountByIdAtom);
   const { refreshVersions } = useVersions(selectedAppId);
-  const { refreshAppIframe } = useRunApp();
+  const { refreshAppIframe, restartApp } = useRunApp();
+  const appUrlObj = useAtomValue(appUrlAtom);
   const { refetchUserBudget } = useUserBudgetInfo();
   const { checkProblems } = useCheckProblems(selectedAppId);
   const { settings } = useSettings();
@@ -129,7 +130,12 @@ export function useStreamChat({
           onEnd: (response: ChatResponseEnd) => {
             if (response.updatedFiles) {
               setIsPreviewOpen(true);
-              refreshAppIframe();
+              // If the dev server isn't running yet, start it; otherwise just refresh the iframe
+              if (!appUrlObj.appUrl) {
+                restartApp();
+              } else {
+                refreshAppIframe();
+              }
               if (settings?.enableAutoFixProblems) {
                 checkProblems();
               }

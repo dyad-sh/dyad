@@ -593,7 +593,7 @@ function ChannelsPanel({
         <h2 className="text-lg font-semibold mb-1">Connected Channels</h2>
         <p className="text-sm text-muted-foreground mb-3">
           Channels OpenClaw can send/receive messages through — Telegram,
-          WhatsApp, JoyCreate chat, and more.
+          WhatsApp, Create chat, and more.
         </p>
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {(Array.isArray(channels) ? channels : []).map((ch: any, i: number) => (

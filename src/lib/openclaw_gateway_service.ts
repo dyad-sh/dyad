@@ -90,7 +90,7 @@ export class OpenClawGatewayService extends EventEmitter {
     
     await this.loadConfig();
     
-    if (this.config.gateway.enabled) {
+    if (this.config.gateway.enabled && !this.server) {
       await this.startGateway();
     }
     
@@ -1043,7 +1043,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   <div class="logo">\u{1F9E0}</div>
   <div>
     <h1>OpenClaw Gateway</h1>
-    <div style="font-size:12px;color:#64748b;margin-top:2px">AI Provider Gateway &bull; JoyCreate</div>
+    <div style="font-size:12px;color:#64748b;margin-top:2px">AI Provider Gateway &bull; Create</div>
   </div>
   <span class="version" id="ver"></span>
 </div>

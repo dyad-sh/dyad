@@ -91,7 +91,7 @@ export const REDDIT_TIP: MessageConfig = {
     },
     {
       type: "link",
-      content: "JoyCreate community",
+      content: "Create community",
       url: "https://community.joycreate.app/",
     },
   ],
@@ -125,7 +125,7 @@ export const BUILD_A_BIBLE_APP_TIP: MessageConfig = {
     },
     {
       type: "text",
-      content: " the creator of JoyCreate build a Bible app step-by-step",
+      content: " the creator of Create build a Bible app step-by-step",
     },
   ],
 };
@@ -188,7 +188,7 @@ export const GITHUB_TIP: MessageConfig = {
   spans: [
     {
       type: "text",
-      content: "Like JoyCreate? Star it on ",
+      content: "Like Create? Star it on ",
     },
     {
       type: "link",

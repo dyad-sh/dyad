@@ -141,28 +141,6 @@ function getDefaultCommand(appId: number): string {
   const port = getAppPort(appId);
   return `(pnpm install && pnpm run dev --port ${port}) || (npm install --legacy-peer-deps && npm run dev -- --port ${port})`;
 }
-async function copyDir(
-  source: string,
-  destination: string,
-  filter?: (source: string) => boolean,
-  options?: { excludeNodeModules?: boolean },
-) {
-  await fsPromises.cp(source, destination, {
-    recursive: true,
-    filter: (src: string) => {
-      if (
-        options?.excludeNodeModules &&
-        path.basename(src) === "node_modules"
-      ) {
-        return false;
-      }
-      if (filter) {
-        return filter(src);
-      }
-      return true;
-    },
-  });
-}
 
 // Needed, otherwise electron in MacOS/Linux will not be able
 // to find node/pnpm.

@@ -100,9 +100,19 @@ export function registerImportHandlers() {
 
       const appPath = skipCopy ? sourcePath : getDyadAppPath(appName);
 
-      // For skip-copy WSL imports, register the UNC path as safe before
-      // running git operations. Must run before gitInit below.
+      // Prevent skip-copy imports for WSL paths: the app would remain on a UNC
+      // path, but chat edit operations (response_processor.ts, copy_file_utils.ts)
+      // still use sync fs calls that fail on UNC paths. Copy-based imports work
+      // because files are copied to non-WSL storage.
       if (skipCopy && isWslPath(sourcePath)) {
+        throw new Error(
+          "Skip-copy import not supported for WSL paths. Please choose 'Copy to Dyad' instead.",
+        );
+      }
+
+      // For regular (non-skip-copy) WSL imports, register the source UNC path
+      // as safe before running git operations if needed for version tracking.
+      if (!skipCopy && isWslPath(sourcePath)) {
         await gitAddSafeDirectory(sourcePath);
       }
 

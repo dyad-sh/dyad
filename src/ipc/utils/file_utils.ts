@@ -53,6 +53,30 @@ export async function copyDirectoryRecursive(
     excludeNodeModules?: boolean;
   },
 ) {
+  // Initialize cycle detection and boundary tracking for the top-level call
+  const visitedInodes = new Set<string>();
+  const sourceRoot = path.resolve(source);
+  return copyDirectoryRecursiveInternal(
+    source,
+    destination,
+    options,
+    visitedInodes,
+    sourceRoot,
+  );
+}
+
+async function copyDirectoryRecursiveInternal(
+  source: string,
+  destination: string,
+  options:
+    | {
+        filter?: (source: string) => boolean;
+        excludeNodeModules?: boolean;
+      }
+    | undefined,
+  visitedInodes: Set<string>,
+  sourceRoot: string,
+) {
   const excludeNodeModules = options?.excludeNodeModules !== false;
   const filter = options?.filter;
 
@@ -94,11 +118,46 @@ export async function copyDirectoryRecursive(
         await fsPromises.symlink(linkTarget, destPath, symlinkType);
       } catch (error: any) {
         // On Windows without Developer Mode, symlink creation can fail with EPERM.
-        // Fall back to copying the symlink target as a regular file/directory.
+        // Fall back to copying the symlink target as a regular file/directory,
+        // but with cycle and boundary detection to prevent infinite recursion and out-of-tree copying.
         if (error.code === "EPERM") {
           if (symlinkType === "dir") {
-            // Recursively copy symlinked directory
-            await copyDirectoryRecursive(srcPath, destPath, options);
+            // Check for cycles using inode tracking
+            let realPath: string;
+            try {
+              realPath = await fsPromises.realpath(srcPath);
+            } catch {
+              // If realpath fails (broken symlink), skip the symlink
+              continue;
+            }
+
+            // Check if this inode has been visited (cycle detection)
+            const stat = await fsPromises.stat(srcPath);
+            const inoKey = `${stat.dev}-${stat.ino}`;
+            if (visitedInodes.has(inoKey)) {
+              // Avoid infinite recursion from circular symlinks
+              continue;
+            }
+
+            // Check if realPath is within the source tree boundary
+            const resolvedPath = path.resolve(realPath);
+            if (
+              !resolvedPath.startsWith(sourceRoot + path.sep) &&
+              resolvedPath !== sourceRoot
+            ) {
+              // Symlink target is outside source tree, skip to prevent unintended copying
+              continue;
+            }
+
+            visitedInodes.add(inoKey);
+            // Recursively copy symlinked directory with cycle protection
+            await copyDirectoryRecursiveInternal(
+              realPath,
+              destPath,
+              options,
+              visitedInodes,
+              sourceRoot,
+            );
           } else {
             // Copy symlinked file
             await copyFileHandlingWsl(srcPath, destPath);
@@ -112,7 +171,13 @@ export async function copyDirectoryRecursive(
       if (excludeNodeModules && entry.name === "node_modules") {
         continue;
       }
-      await copyDirectoryRecursive(srcPath, destPath, options);
+      await copyDirectoryRecursiveInternal(
+        srcPath,
+        destPath,
+        options,
+        visitedInodes,
+        sourceRoot,
+      );
     } else {
       await copyFileHandlingWsl(srcPath, destPath);
     }

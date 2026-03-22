@@ -222,7 +222,7 @@ export function SetupBanner() {
     <>
       <div className="flex items-center justify-between p-4">
         <p className="text-xl font-medium text-zinc-700 dark:text-zinc-300">
-          Setup JoyCreate
+          Setup Create
         </p>
         <button
           onClick={handleDismissSetup}
@@ -404,7 +404,7 @@ export function SetupBanner() {
                 onClick={handleLocalAISetupClick}
                 tabIndex={isNodeSetupComplete ? 0 : -1}
                 leadingIcon={
-                  <img src={logo} alt="JoyCreate Logo" className="w-6 h-6 mr-0.5" />
+                  <img src={logo} alt="Create Logo" className="w-6 h-6 mr-0.5" />
                 }
                 title="Setup Local AI (Ollama/LM Studio)"
                 subtitle="Run AI models locally, 100% private"
@@ -503,7 +503,7 @@ function NodeInstallButton({
     case "finished-checking":
       return (
         <div className="mt-3 text-sm text-red-600 dark:text-red-400">
-          Node.js not detected. Closing and re-opening JoyCreate usually fixes this.
+          Node.js not detected. Closing and re-opening Create usually fixes this.
         </div>
       );
     default:

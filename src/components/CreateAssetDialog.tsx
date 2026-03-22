@@ -179,7 +179,7 @@ export function CreateAssetDialog({
           <DialogDescription>
             {template
               ? `Create a new ${selectedType} using the ${template.title} template.`
-              : `Build AI-powered ${selectedType}s with JoyCreate.`}
+              : `Build AI-powered ${selectedType}s with Create.`}
           </DialogDescription>
         </DialogHeader>
 

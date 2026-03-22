@@ -148,8 +148,8 @@ export const DOCS_LINKS = {
 // =============================================================================
 
 export const BRANDING = {
-  appName: "JoyCreate",
-  appNameLowercase: "joycreate",
+  appName: "Create",
+  appNameLowercase: "create",
   tagPrefix: "joy",
   domain: "joycreate.app",
 };

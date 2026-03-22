@@ -101,7 +101,7 @@ export function AzureConfiguration({
         variant: "default" as const,
         title: "Azure OpenAI Configured",
         description:
-          "JoyCreate will use the credentials saved in Settings for Azure OpenAI models.",
+          "Create will use the credentials saved in Settings for Azure OpenAI models.",
         icon: KeyRound,
         titleClassName: "",
         descriptionClassName: "",
@@ -264,7 +264,7 @@ export function AzureConfiguration({
               </p>
               <p>
                 Values saved in Settings take precedence over environment
-                variables. restart JoyCreate after changing environment variables.
+                variables. restart Create after changing environment variables.
               </p>
             </div>
           </AccordionContent>

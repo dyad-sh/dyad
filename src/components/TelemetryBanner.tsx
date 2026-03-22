@@ -26,7 +26,7 @@ export function PrivacyBanner() {
             Share anonymous data?
           </h4>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-            Help improve JoyCreate with anonymous usage data.
+            Help improve Create with anonymous usage data.
             <em className="block italic mt-0.5">
               Note: this does not log your code or messages.
             </em>

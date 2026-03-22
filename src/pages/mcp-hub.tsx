@@ -208,7 +208,7 @@ const McpHubPage: React.FC = () => {
                   MCP Hub
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  Install powerful MCP servers to extend JoyCreate's capabilities
+                  Install powerful MCP servers to extend Create's capabilities
                 </p>
               </div>
             </div>
@@ -382,7 +382,7 @@ const McpHubPage: React.FC = () => {
           {!installDialog.server?.envVars?.length && (
             <div className="py-4">
               <p className="text-sm text-muted-foreground">
-                This server doesn't require any configuration. Click install to add it to JoyCreate.
+                This server doesn't require any configuration. Click install to add it to Create.
               </p>
             </div>
           )}
@@ -484,7 +484,7 @@ const ServerCard: React.FC<ServerCardProps> = ({
         ) : (
           <Button onClick={onInstall} className="flex-1">
             <Plus className="h-4 w-4 mr-2" />
-            Add to JoyCreate
+            Add to Create
           </Button>
         )}
         <div className="flex gap-1">

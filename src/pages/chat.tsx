@@ -13,6 +13,7 @@ import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import { useChats } from "@/hooks/useChats";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import { IpcClient } from "@/ipc/ipc_client";
 
 export default function ChatPage() {
   let { id: chatId } = useSearch({ from: "/chat" });
@@ -22,6 +23,21 @@ export default function ChatPage() {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const { chats, loading } = useChats(selectedAppId);
+
+  // When navigating to /chat?id=X (e.g. on restart), sync selectedAppId from the chat
+  useEffect(() => {
+    if (!chatId || selectedAppId !== null) return;
+    // Fetch all chats (unfiltered) to find this chat's appId
+    IpcClient.getInstance()
+      .getChats()
+      .then((allChats) => {
+        const target = allChats.find((c) => c.id === chatId);
+        if (target) {
+          setSelectedAppId(target.appId);
+        }
+      })
+      .catch(() => {});
+  }, [chatId, selectedAppId]);
 
   useEffect(() => {
     if (!chatId && chats.length && !loading) {
@@ -77,14 +93,6 @@ export default function ChatPage() {
           <PreviewPanel />
         </Panel>
       </>
-    </PanelGroup>
-            className="group flex items-center justify-center w-6 h-24 rounded-l-lg border border-r-0 border-border/40 bg-muted/50 hover:bg-primary/10 hover:border-primary/30 transition-all cursor-pointer"
-            title="Open preview panel"
-          >
-            <PanelRightOpen className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-          </button>
-        </div>
-      )}
     </PanelGroup>
   );
 }

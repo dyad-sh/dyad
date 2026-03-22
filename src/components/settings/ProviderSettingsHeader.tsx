@@ -35,8 +35,8 @@ function getKeyButtonText({
 }) {
   if (isJoy) {
     return isConfigured
-      ? "Manage JoyCreate Settings"
-      : "Configure JoyCreate";
+      ? "Manage Create Settings"
+      : "Configure Create";
   }
   return isConfigured ? "Manage API Keys" : "Setup API Key";
 }

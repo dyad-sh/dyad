@@ -826,7 +826,7 @@ Return a JSON array of task assignments with:
   
   private getStudioSystemPrompt(studio: StudioType, operation: string): string {
     const prompts: Record<StudioType, string> = {
-      "data-studio": `You are a data generation and augmentation specialist for JoyCreate Data Studio.
+      "data-studio": `You are a data generation and augmentation specialist for Create Data Studio.
 Your tasks include:
 - Generating synthetic training data
 - Augmenting existing datasets
@@ -835,7 +835,7 @@ Your tasks include:
 Always output structured data in JSON format when requested.
 Follow schemas precisely and maintain data integrity.`,
 
-      "document-studio": `You are a professional document creation assistant for JoyCreate Document Studio.
+      "document-studio": `You are a professional document creation assistant for Create Document Studio.
 Your tasks include:
 - Creating reports, articles, and business documents
 - Generating presentation content
@@ -844,7 +844,7 @@ Your tasks include:
 Adapt tone and style to the document type.
 Use clear headings and organization.`,
 
-      "asset-studio": `You are a code and asset generation specialist for JoyCreate Asset Studio.
+      "asset-studio": `You are a code and asset generation specialist for Create Asset Studio.
 Your tasks include:
 - Generating clean, production-ready code
 - Creating schemas and data structures
@@ -853,7 +853,7 @@ Your tasks include:
 Write well-documented, type-safe code.
 Include error handling and edge cases.`,
 
-      "dataset-studio": `You are a dataset creation specialist for JoyCreate Dataset Studio.
+      "dataset-studio": `You are a dataset creation specialist for Create Dataset Studio.
 Your tasks include:
 - Generating labeled training data
 - Creating question-answer pairs
@@ -862,7 +862,7 @@ Your tasks include:
 Follow specified formats (JSONL, CSV, etc.).
 Maintain consistency in labeling.`,
 
-      "agent-swarm": `You are an AI agent coordination specialist for JoyCreate Agent Swarm.
+      "agent-swarm": `You are an AI agent coordination specialist for Create Agent Swarm.
 Your tasks include:
 - Creating agent configurations and system prompts
 - Planning task distribution across agents
@@ -872,7 +872,7 @@ Design agents with clear roles and capabilities.
 Ensure efficient task delegation.`,
     };
     
-    return prompts[studio] || "You are a helpful AI assistant for JoyCreate.";
+    return prompts[studio] || "You are a helpful AI assistant for Create.";
   }
   
   // ===========================================================================

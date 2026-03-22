@@ -20,9 +20,9 @@ export function AutoUpdateSwitch() {
           updateSettings({ enableAutoUpdate: checked });
           toast("Auto-update settings changed", {
             description:
-              "You will need to restart JoyCreate for your settings to take effect.",
+              "You will need to restart Create for your settings to take effect.",
             action: {
-              label: "restart JoyCreate",
+              label: "restart Create",
               onClick: () => {
                 IpcClient.getInstance().restartJoy();
               },

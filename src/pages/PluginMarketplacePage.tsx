@@ -397,7 +397,7 @@ export default function PluginMarketplacePage() {
         <Puzzle className="h-16 w-16 text-muted-foreground" />
         <h1 className="text-2xl font-bold">Plugin Marketplace</h1>
         <p className="text-muted-foreground text-center max-w-md">
-          Extend JoyCreate with plugins for new AI models, tools, themes, and integrations.
+          Extend Create with plugins for new AI models, tools, themes, and integrations.
         </p>
         <Button onClick={initialize} disabled={isInitializing} size="lg">
           {isInitializing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

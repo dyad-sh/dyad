@@ -920,7 +920,7 @@ function InferenceRecordsList() {
               </div>
               <div className="p-3 bg-muted/50 rounded-lg">
                 <div className="text-xs text-muted-foreground mb-1">Timestamp</div>
-                <div className="font-medium text-sm">{new Date(selectedRecord.proof.timestamp).toLocaleString()}</div>
+                <div className="font-medium text-sm">{new Date(selectedRecord.proof.timestamps.completed).toLocaleString()}</div>
               </div>
               <div className="p-3 bg-muted/50 rounded-lg">
                 <div className="text-xs text-muted-foreground mb-1">Record ID</div>
@@ -949,7 +949,7 @@ function InferenceRecordsList() {
                   createdAt: selectedRecord.createdAt,
                   model: selectedRecord.proof.model,
                   version: selectedRecord.proof.version,
-                  timestamp: selectedRecord.proof.timestamp,
+                  timestamp: selectedRecord.proof.timestamps.completed,
                   response: {
                     tokenCount: selectedRecord.proof.response.tokenCount,
                     generationTimeMs: selectedRecord.proof.response.generationTimeMs,
@@ -1163,7 +1163,7 @@ export default function LocalModelsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-emerald-500/5">
-      <div className="container mx-auto p-6 max-w-7xl">
+      <div className="p-6">
         {/* Hero Header */}
         <div className="mb-8 relative">
           <div className="absolute inset-0 -z-10 bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-transparent rounded-3xl blur-3xl" />

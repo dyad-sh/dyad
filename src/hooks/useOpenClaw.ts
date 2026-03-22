@@ -936,7 +936,7 @@ export function useOpenClawLocalHub() {
     combinedStats,
     isStatsLoading,
     localStats: combinedStats?.local,
-    OpenClawStats: combinedStats?.OpenClaw,
+    OpenClawStats: combinedStats?.openclaw,
 
     // Local hub chat (with OpenClaw routing)
     chat: localHubChatMutation.mutate,

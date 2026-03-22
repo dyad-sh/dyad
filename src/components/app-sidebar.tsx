@@ -31,6 +31,7 @@ import {
   Download,
   Kanban,
   Activity,
+  Mail,
 } from "lucide-react";
 import { Link, useRouterState, useRouter } from "@tanstack/react-router";
 import { useSidebar } from "@/components/ui/sidebar";
@@ -188,6 +189,15 @@ const menuCategories = [
         activeText: "text-emerald-600 dark:text-emerald-400",
       },
       {
+        title: "Web Scraping",
+        to: "/scraping",
+        icon: Globe,
+        gradient: "from-rose-500 to-orange-500",
+        hoverBg: "hover:bg-rose-500/10",
+        activeBg: "bg-rose-500/15",
+        activeText: "text-rose-600 dark:text-rose-400",
+      },
+      {
         title: "Asset Studio",
         to: "/asset-studio",
         icon: Package,
@@ -322,6 +332,15 @@ const menuCategories = [
         hoverBg: "hover:bg-indigo-500/10",
         activeBg: "bg-indigo-500/15",
         activeText: "text-indigo-600 dark:text-indigo-400",
+      },
+      {
+        title: "Email Hub",
+        to: "/email-hub",
+        icon: Mail,
+        gradient: "from-emerald-500 to-teal-500",
+        hoverBg: "hover:bg-emerald-500/10",
+        activeBg: "bg-emerald-500/15",
+        activeText: "text-emerald-600 dark:text-emerald-400",
       },
     ],
   },

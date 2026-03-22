@@ -200,7 +200,7 @@ export function createJoyEngine(
       },
     };
 
-    return new OpenAICompatibleChatLanguageModel(modelId, config);
+    return new OpenAICompatibleChatLanguageModel(modelId, config as any);
   };
 
   const provider = (modelId: ExampleChatModelId) => createChatModel(modelId);

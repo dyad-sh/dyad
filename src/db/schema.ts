@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
+import { integer, real, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
 import type { ModelMessage } from "ai";
 
@@ -2015,6 +2015,109 @@ export const openclawKanbanActivityRelations = relations(openclawKanbanActivity,
   }),
 }));
 
+// ── Web Scraping System ──────────────────────────────────────
+
+/**
+ * Scraping Jobs — Persistent job state replacing JSON file storage.
+ * Tracks lifecycle: queued → running → paused → done/failed/cancelled.
+ */
+export const scrapingJobs = sqliteTable("scraping_jobs", {
+  id: text("id").primaryKey(), // UUID v4
+  name: text("name").notNull(),
+  status: text("status", {
+    enum: ["queued", "running", "paused", "done", "failed", "cancelled"],
+  }).notNull().default("queued"),
+  config: text("config", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+  engine: text("engine").notNull().default("auto"),
+  pagesTotal: integer("pages_total").notNull().default(0),
+  pagesDone: integer("pages_done").notNull().default(0),
+  recordsExtracted: integer("records_extracted").notNull().default(0),
+  errorCount: integer("error_count").notNull().default(0),
+  lastError: text("last_error"),
+  resumeToken: text("resume_token", { mode: "json" }).$type<Record<string, unknown> | null>(),
+  datasetId: text("dataset_id").references(() => studioDatasets.id, { onDelete: "set null" }),
+  templateId: text("template_id"),
+  scheduleId: text("schedule_id"),
+  n8nWorkflowId: text("n8n_workflow_id"),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  startedAt: integer("started_at", { mode: "timestamp" }),
+  completedAt: integer("completed_at", { mode: "timestamp" }),
+});
+
+/**
+ * Scraping Results — Per-URL extraction results tied to a job.
+ */
+export const scrapingResults = sqliteTable("scraping_results", {
+  id: text("id").primaryKey(), // UUID v4
+  jobId: text("job_id").notNull().references(() => scrapingJobs.id, { onDelete: "cascade" }),
+  url: text("url").notNull(),
+  statusCode: integer("status_code"),
+  data: text("data", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+  rawHtmlStored: integer("raw_html_stored", { mode: "boolean" }).notNull().default(sql`0`),
+  rawHtmlPath: text("raw_html_path"),
+  screenshotPath: text("screenshot_path"),
+  extractionEngine: text("extraction_engine"),
+  confidence: real("confidence"),
+  scrapedAt: integer("scraped_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+/**
+ * Scraping Schedules — Cron-based recurring scrape jobs.
+ */
+export const scrapingSchedules = sqliteTable("scraping_schedules", {
+  id: text("id").primaryKey(), // UUID v4
+  name: text("name").notNull(),
+  jobConfig: text("job_config", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+  cronExpression: text("cron_expression").notNull(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(sql`1`),
+  lastRunAt: integer("last_run_at", { mode: "timestamp" }),
+  nextRunAt: integer("next_run_at", { mode: "timestamp" }),
+  n8nWorkflowId: text("n8n_workflow_id"),
+  notifyOnComplete: integer("notify_on_complete", { mode: "boolean" }).notNull().default(sql`0`),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+/**
+ * Scraping Templates — User-saved and marketplace-published templates.
+ * Built-in templates are stored in code; this table is for user-created ones.
+ */
+export const scrapingTemplates = sqliteTable("scraping_templates", {
+  id: text("id").primaryKey(), // UUID v4
+  name: text("name").notNull(),
+  description: text("description"),
+  category: text("category"),
+  config: text("config", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+  isPublic: integer("is_public", { mode: "boolean" }).notNull().default(sql`0`),
+  marketplaceId: text("marketplace_id"),
+  usageCount: integer("usage_count").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+// ── Scraping Relations ──────────────────────────────────────
+
+export const scrapingJobsRelations = relations(scrapingJobs, ({ one, many }) => ({
+  dataset: one(studioDatasets, {
+    fields: [scrapingJobs.datasetId],
+    references: [studioDatasets.id],
+  }),
+  results: many(scrapingResults),
+}));
+
+export const scrapingResultsRelations = relations(scrapingResults, ({ one }) => ({
+  job: one(scrapingJobs, {
+    fields: [scrapingResults.jobId],
+    references: [scrapingJobs.id],
+  }),
+}));
+
 // ── Local Vault (Sovereign Data Vault) ────────────────────────
 export * from "./vault_schema";
 
@@ -2032,3 +2135,6 @@ export * from "./model_registry_schema";
 
 // ── Self-Sovereign Identity (SSI) ─────────────────────────────
 export * from "./ssi_schema";
+
+// ── AI Email Agent ────────────────────────────────────────────
+export * from "./email_schema";

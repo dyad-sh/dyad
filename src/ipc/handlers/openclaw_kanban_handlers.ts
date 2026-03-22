@@ -548,7 +548,7 @@ export function registerOpenClawKanbanHandlers(): void {
     async (_event: IpcMainInvokeEvent, filters?: { taskType?: string; source?: string }) => {
       try {
         const { getAvailableModels } = await import("@/lib/openclaw_registry_bridge");
-        return await getAvailableModels(filters);
+        return await getAvailableModels(filters as Parameters<typeof getAvailableModels>[0]);
       } catch (err) {
         logger.error("Failed to list models:", err);
         throw new Error("Could not retrieve available models");
@@ -588,11 +588,13 @@ export function registerOpenClawKanbanHandlers(): void {
       try {
         const { recordTaskOutcome } = await import("@/lib/openclaw_registry_bridge");
         await recordTaskOutcome({
+          taskId: params.taskId,
           taskType: task.taskType ?? "custom",
           model: task.model ?? "unknown",
           success: params.rating >= 3,
-          qualityScore: params.rating / 5,
-          feedback: params.feedback,
+          latencyMs: 0,
+          tokensUsed: 0,
+          registryId: null,
         });
       } catch (err) {
         logger.warn("Could not record MAB outcome for rating:", err);
@@ -611,11 +613,11 @@ export function registerOpenClawKanbanHandlers(): void {
       await db.insert(openclawKanbanActivity).values({
         id: uuidv4(),
         taskId: params.taskId,
-        action: "rated",
+        action: "comment",
         actor: "user",
         toValue: String(params.rating),
-        details: params.feedback ?? null,
-        createdAt: Math.floor(Date.now() / 1000),
+        note: params.feedback ?? null,
+        createdAt: new Date(),
       });
 
       return { success: true, rating: params.rating };

@@ -48,8 +48,9 @@ log.scope.labelPadding = false;
 
 const logger = log.scope("main");
 
-// Load environment variables from .env file
-dotenv.config();
+// Load environment variables from .env file (explicit path for Electron CWD robustness)
+dotenv.config({ path: path.join(__dirname, "..", ".env") });
+dotenv.config(); // also try CWD-based .env as secondary source
 
 // Register IPC handlers before app is ready
 registerIpcHandlers();

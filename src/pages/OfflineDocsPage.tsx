@@ -507,7 +507,7 @@ function AddDocsTab({
 
   return (
     <div className="h-full overflow-y-auto p-6">
-      <div className="max-w-2xl mx-auto space-y-8">
+      <div className="mx-auto space-y-8">
         {/* Bundled Docs */}
         <section>
           <h2 className="text-xl font-bold mb-4">📦 Pre-bundled Documentation</h2>

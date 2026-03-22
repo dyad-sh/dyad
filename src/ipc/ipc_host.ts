@@ -104,6 +104,7 @@ import { registerCelestiaBlobHandlers } from "./handlers/celestia_blob_handlers"
 import { registerLifecycleHandlers } from "./handlers/lifecycle_handlers";
 import { registerLocalVaultHandlers } from "./handlers/local_vault_handlers";
 import { registerScrapingV2Handlers } from "./handlers/scraping/handler";
+import { registerScrapingV3Handlers } from "./handlers/scraping/v3_handler";
 import { registerVectorStoreHandlers } from "./handlers/vector_store_handlers";
 import { registerEmbeddingPipelineHandlers } from "./handlers/embedding_pipeline_handlers";
 import { registerModelDownloadManagerHandlers } from "./handlers/model_download_manager_handlers";
@@ -118,6 +119,7 @@ import { registerOpenClawKanbanHandlers } from "./handlers/openclaw_kanban_handl
 import { registerFlywheelHandlers } from "./handlers/flywheel_handlers";
 import { registerModelRegistryHandlers } from "./handlers/model_registry_handlers";
 import { registerSsiHandlers } from "./handlers/ssi_handlers";
+import { registerEmailHandlers } from "./handlers/email_handlers";
 import {
   registerTaskExecutorHandlers,
   registerSystemServicesHandlers,
@@ -309,6 +311,9 @@ export function registerIpcHandlers() {
   // Scraping Engine v2 — Best-in-class web scraping with cheerio, Playwright, AI extraction, auto-tagging
   registerScrapingV2Handlers();
 
+  // Scraping Engine v3 — Orchestrator-backed multi-engine scraping with persistence
+  registerScrapingV3Handlers();
+
   // Vector Store — sqlite-vec powered local vector search & RAG
   registerVectorStoreHandlers();
 
@@ -353,6 +358,9 @@ export function registerIpcHandlers() {
 
   // Self-Sovereign Identity — W3C DIDs, Verifiable Credentials, Celestia anchoring
   registerSsiHandlers();
+
+  // AI Email Agent System — multi-account email with AI triage, compose, summarize
+  registerEmailHandlers();
 
   // Task Executor — Autonomous inference loop & System Services Health
   registerTaskExecutorHandlers();

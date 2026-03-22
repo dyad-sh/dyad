@@ -74,9 +74,9 @@ export function useTrainingJob(jobId: string | null) {
       return ipc.getTrainingJob(jobId);
     },
     enabled: !!jobId,
-    refetchInterval: (data) => {
+    refetchInterval: (query) => {
       // Refetch frequently while training
-      if (data?.status === "training" || data?.status === "initializing") {
+      if (query.state.data?.status === "training" || query.state.data?.status === "initializing") {
         return 2000;
       }
       return false;

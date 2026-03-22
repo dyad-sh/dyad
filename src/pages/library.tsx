@@ -52,7 +52,7 @@ export default function LibraryPage() {
 
   return (
     <div className="min-h-screen px-8 py-6">
-      <div className="max-w-6xl mx-auto">
+      <div className="mx-auto">
         {/* Enhanced Header */}
         <div className="flex items-center justify-between mb-8 p-6 rounded-2xl bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-rose-500/10 border border-amber-500/20">
           <div className="flex items-center gap-4">

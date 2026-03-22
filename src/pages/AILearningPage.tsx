@@ -1300,7 +1300,7 @@ function StyleGuideTab({ manager }: { manager: ReturnType<typeof useAILearningMa
 
   return (
     <ScrollArea className="h-full">
-      <div className="p-6 space-y-6 max-w-2xl">
+      <div className="p-6 space-y-6 max-w-5xl">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold">Code Style Guide</h2>
@@ -1581,7 +1581,7 @@ function PreferencesTab({ manager }: { manager: ReturnType<typeof useAILearningM
 
   return (
     <ScrollArea className="h-full">
-      <div className="p-6 space-y-6 max-w-2xl">
+      <div className="p-6 space-y-6 max-w-5xl">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold">Communication Preferences</h2>

@@ -48,6 +48,8 @@ import { openclawKanbanRoute } from "./routes/openclaw-kanban";
 import { openclawControlRoute } from "./routes/openclaw-control";
 import { systemServicesRoute } from "./routes/system-services";
 import { modelRegistryRoute } from "./routes/model-registry";
+import { emailHubRoute } from "./routes/email-hub";
+import { scrapingRoute } from "./routes/scraping";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -101,6 +103,8 @@ const routeTree = rootRoute.addChildren([
   openclawControlRoute,
   systemServicesRoute,
   modelRegistryRoute,
+  emailHubRoute,
+  scrapingRoute,
 ]);
 
 // src/components/NotFoundRedirect.tsx

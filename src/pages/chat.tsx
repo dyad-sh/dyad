@@ -78,5 +78,13 @@ export default function ChatPage() {
         </Panel>
       </>
     </PanelGroup>
+            className="group flex items-center justify-center w-6 h-24 rounded-l-lg border border-r-0 border-border/40 bg-muted/50 hover:bg-primary/10 hover:border-primary/30 transition-all cursor-pointer"
+            title="Open preview panel"
+          >
+            <PanelRightOpen className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+          </button>
+        </div>
+      )}
+    </PanelGroup>
   );
 }

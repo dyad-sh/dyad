@@ -336,7 +336,7 @@ class LibreOfficeManager {
           format: format,
           status: "ready",
           filePath: filePath,
-          description: documentContent?.metadata?.description || request.aiGenerate?.prompt || null,
+          description: (documentContent && 'metadata' in documentContent ? (documentContent as { metadata?: Record<string, string> }).metadata?.description : undefined) || request.aiGenerate?.prompt || null,
           aiPrompt: aiPromptUsed,
           aiModel: aiModelUsed,
         })

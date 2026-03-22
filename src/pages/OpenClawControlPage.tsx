@@ -686,7 +686,7 @@ function SettingsPanel({ config }: { config?: any }) {
   const security = config?.security;
 
   return (
-    <div className="space-y-4 max-w-2xl">
+    <div className="space-y-4 max-w-5xl">
       {/* Gateway */}
       <Card>
         <CardHeader className="pb-2">

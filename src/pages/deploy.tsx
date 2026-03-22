@@ -331,7 +331,7 @@ export default function DeployPage() {
       <div className="flex-1 overflow-auto p-6">
         {!status?.connected ? (
           // Not connected state
-          <div className="max-w-2xl mx-auto">
+          <div className="max-w-5xl mx-auto">
             <Card className="border-2 border-dashed">
               <CardContent className="p-12 text-center">
                 <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 flex items-center justify-center mb-6">

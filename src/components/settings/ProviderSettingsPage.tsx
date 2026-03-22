@@ -180,7 +180,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   if (providersLoading) {
     return (
       <div className="min-h-screen px-8 py-4">
-        <div className="max-w-4xl mx-auto">
+        <div className="mx-auto">
           <Skeleton className="h-8 w-24 mb-4" />
           <Skeleton className="h-10 w-1/2 mb-6" />
           <Skeleton className="h-10 w-48 mb-4" />
@@ -196,7 +196,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   if (providersError) {
     return (
       <div className="min-h-screen px-8 py-4">
-        <div className="max-w-4xl mx-auto">
+        <div className="mx-auto">
           <Button
             onClick={() => router.history.back()}
             variant="outline"
@@ -225,7 +225,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
   if (!providerData && !isJoy) {
     return (
       <div className="min-h-screen px-8 py-4">
-        <div className="max-w-4xl mx-auto">
+        <div className="mx-auto">
           <Button
             onClick={() => router.history.back()}
             variant="outline"
@@ -252,7 +252,7 @@ export function ProviderSettingsPage({ provider }: ProviderSettingsPageProps) {
 
   return (
     <div className="min-h-screen px-8 py-4">
-      <div className="max-w-4xl mx-auto">
+      <div className="mx-auto">
         <ProviderSettingsHeader
           providerDisplayName={providerDisplayName}
           isConfigured={isConfigured}

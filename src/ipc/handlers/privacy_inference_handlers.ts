@@ -694,7 +694,7 @@ export function registerPrivacyInferenceHandlers(): void {
           name: m.displayName,
           path: m.modelName,
           loaded: false,
-          sizeBytes: 0,
+          size: 0,
           quantization: "unknown",
           capabilities: ["chat", "completion"],
         }));

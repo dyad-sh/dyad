@@ -275,7 +275,7 @@ function TaskCard({
           </span>
         )}
         {task.localProcessed && (
-          <Cpu className="w-3 h-3 text-green-400 flex-shrink-0" title="Processed locally" />
+          <Cpu className="w-3 h-3 text-green-400 flex-shrink-0" />
         )}
       </div>
 
@@ -1320,22 +1320,22 @@ function InferencePanel() {
                   {bridgeState.initialized ? "Active" : "Inactive"}
                 </span>
               </div>
-              {bridgeState.localModelsAvailable !== undefined && (
+              {bridgeState.localModels.length > 0 && (
                 <div>
                   <span className="text-muted-foreground/70 block">Local Models</span>
-                  <span className="text-foreground/90">{bridgeState.localModelsAvailable}</span>
+                  <span className="text-foreground/90">{bridgeState.localModels.length}</span>
                 </div>
               )}
-              {bridgeState.totalInferences !== undefined && (
+              {bridgeState.stats.totalRequests > 0 && (
                 <div>
                   <span className="text-muted-foreground/70 block">Total Inferences</span>
-                  <span className="text-foreground/90">{bridgeState.totalInferences}</span>
+                  <span className="text-foreground/90">{bridgeState.stats.totalRequests}</span>
                 </div>
               )}
-              {bridgeState.localInferences !== undefined && (
+              {bridgeState.stats.localRequests > 0 && (
                 <div>
                   <span className="text-muted-foreground/70 block">Local Inferences</span>
-                  <span className="text-foreground/90">{bridgeState.localInferences}</span>
+                  <span className="text-foreground/90">{bridgeState.stats.localRequests}</span>
                 </div>
               )}
             </div>
@@ -1913,13 +1913,34 @@ export function OpenClawKanbanPage() {
     let mounted = true;
 
     const connect = () => {
+      if (!gatewayToken) return; // wait for token to load
       try {
-        const wsUrl = `ws://127.0.0.1:18789${gatewayToken ? `?token=${encodeURIComponent(gatewayToken)}` : ""}`;
-        const ws = new WebSocket(wsUrl);
+        const ws = new WebSocket("ws://127.0.0.1:18789");
         wsRef.current = ws;
 
         ws.onopen = () => {
           if (!mounted) return;
+          // Send the OpenClaw protocol connect frame with auth token
+          const connectFrame = {
+            type: "req",
+            method: "connect",
+            id: crypto.randomUUID(),
+            params: {
+              client: {
+                id: "openclaw-control-ui",
+                displayName: "JoyCreate Kanban",
+                mode: "webchat",
+                version: "dev",
+                platform: "electron",
+              },
+              auth: { token: gatewayToken },
+              minProtocol: 3,
+              maxProtocol: 3,
+              role: "operator",
+              scopes: ["operator.admin"],
+            },
+          };
+          ws.send(JSON.stringify(connectFrame));
           setWsConnected(true);
           setLiveEvents((prev) => [
             ...prev,

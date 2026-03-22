@@ -191,7 +191,7 @@ const McpHubPage: React.FC = () => {
     <div className="min-h-screen">
       {/* Header */}
       <div className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="max-w-7xl mx-auto px-6 py-4">
+        <div className="mx-auto px-6 py-4">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <Button
@@ -227,7 +227,7 @@ const McpHubPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-6">
+      <div className="mx-auto px-6 py-6">
         {/* Featured Section (only when not searching) */}
         {!searchQuery.trim() && selectedCategory === "featured" && (
           <section className="mb-8">

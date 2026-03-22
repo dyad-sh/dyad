@@ -160,9 +160,9 @@ export function useAgentTrainingStatus(agentId: string | null) {
       return ipc.getAgentTrainingStatus(agentId);
     },
     enabled: !!agentId,
-    refetchInterval: (data) => {
+    refetchInterval: (query) => {
       // Refetch frequently while training
-      if (data?.status === "training" || data?.status === "queued") {
+      if (query.state.data?.status === "training" || query.state.data?.status === "queued") {
         return 2000;
       }
       return false;

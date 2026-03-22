@@ -1183,7 +1183,7 @@ export function AutonomousAgentProductionDashboard() {
 
   if (!isReady) {
     return (
-      <div className="container mx-auto py-6">
+      <div className="py-6 px-6">
         <div className="flex h-[60vh] items-center justify-center">
           <div className="flex flex-col items-center gap-4">
             {initError ? (
@@ -1217,7 +1217,7 @@ export function AutonomousAgentProductionDashboard() {
   }
 
   return (
-    <div className="container mx-auto py-6">
+    <div className="py-6 px-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Production Dashboard</h1>

@@ -56,13 +56,19 @@ export async function copyDirectoryRecursive(
   // Track the current recursion path to detect cycles (not global visited set)
   const visitingPaths = new Set<string>();
   const sourceRoot = path.resolve(source);
-  return copyDirectoryRecursiveInternal(
-    source,
-    destination,
-    options,
-    visitingPaths,
-    sourceRoot,
-  );
+  // Seed with sourceRoot to prevent top-level symlinks (e.g., link -> ..) from bypassing cycle detection
+  visitingPaths.add(sourceRoot);
+  try {
+    return await copyDirectoryRecursiveInternal(
+      source,
+      destination,
+      options,
+      visitingPaths,
+      sourceRoot,
+    );
+  } finally {
+    visitingPaths.delete(sourceRoot);
+  }
 }
 
 async function copyDirectoryRecursiveInternal(
@@ -103,6 +109,16 @@ async function copyDirectoryRecursiveInternal(
 
       // Preserve symlinks as-is (copy symlink itself, not the target)
       const linkTarget = await fsPromises.readlink(srcPath);
+      // Skip absolute symlinks that would break in the copied tree
+      // (they point to WSL filesystem paths that won't exist on Windows)
+      const isAbsolute =
+        path.isAbsolute(linkTarget) ||
+        linkTarget.startsWith("\\\\") ||
+        linkTarget.startsWith("/");
+      if (isAbsolute) {
+        // For absolute symlinks, skip to avoid dangling links in destination
+        continue;
+      }
       // Determine if symlink target is a directory (needed for Windows symlink creation)
       let symlinkType: "file" | "dir" = "file";
       try {

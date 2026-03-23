@@ -32,6 +32,7 @@ import {
 } from "../utils/app_env_var_utils";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { retryOnLocked } from "../utils/retryOnLocked";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("version_handlers");
 
@@ -124,14 +125,14 @@ export function registerVersionHandlers() {
     });
 
     if (!app) {
-      throw new Error("App not found");
+      throw new DyadError("App not found", DyadErrorKind.NotFound);
     }
 
     const appPath = getDyadAppPath(app.path);
 
     // Return appropriate result if the app is not a git repo
     if (!fs.existsSync(path.join(appPath, ".git"))) {
-      throw new Error("Not a git repository");
+      throw new DyadError("Not a git repository", DyadErrorKind.External);
     }
 
     try {
@@ -142,7 +143,10 @@ export function registerVersionHandlers() {
       };
     } catch (error: any) {
       logger.error(`Error getting current branch for app ${appId}:`, error);
-      throw new Error(`Failed to get current branch: ${error.message}`);
+      throw new DyadError(
+        `Failed to get current branch: ${error.message}`,
+        DyadErrorKind.External,
+      );
     }
   });
 
@@ -156,7 +160,7 @@ export function registerVersionHandlers() {
       });
 
       if (!app) {
-        throw new Error("App not found");
+        throw new DyadError("App not found", DyadErrorKind.NotFound);
       }
 
       const appPath = getDyadAppPath(app.path);
@@ -290,7 +294,10 @@ export function registerVersionHandlers() {
 
             const preserveBranchId = response.data.branch.parent_id;
             if (!preserveBranchId) {
-              throw new Error("Preserve branch ID not found");
+              throw new DyadError(
+                "Preserve branch ID not found",
+                DyadErrorKind.NotFound,
+              );
             }
             logger.info(
               `Deleting preserve branch ${preserveBranchId} for app ${appId}`,
@@ -373,7 +380,7 @@ export function registerVersionHandlers() {
       });
 
       if (!app) {
-        throw new Error("App not found");
+        throw new DyadError("App not found", DyadErrorKind.NotFound);
       }
 
       if (

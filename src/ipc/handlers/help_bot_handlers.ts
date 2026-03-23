@@ -11,6 +11,7 @@ import {
 import { createTypedHandler } from "./base";
 import { helpContracts } from "../types/help";
 import { resolveBuiltinModelAlias } from "../shared/remote_language_model_catalog";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("help-bot");
 
@@ -24,7 +25,10 @@ export function registerHelpBotHandlers() {
     const { sessionId, message } = params;
     try {
       if (!sessionId || !message?.trim()) {
-        throw new Error("Missing sessionId or message");
+        throw new DyadError(
+          "Missing sessionId or message",
+          DyadErrorKind.External,
+        );
       }
 
       // Clear any existing active streams (only one session at a time)

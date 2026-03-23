@@ -10,6 +10,7 @@ import {
   isSharedServerModule,
 } from "../../../../../../supabase_admin/supabase_utils";
 import { engineFetch } from "./engine_fetch";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const readFile = fs.promises.readFile;
 const logger = log.scope("edit_file");
@@ -167,7 +168,10 @@ export const editFileTool: ToolDefinition<z.infer<typeof editFileSchema>> = {
 
     // Read original file content
     if (!fs.existsSync(fullFilePath)) {
-      throw new Error(`File does not exist: ${args.path}`);
+      throw new DyadError(
+        `File does not exist: ${args.path}`,
+        DyadErrorKind.NotFound,
+      );
     }
 
     const originalContent = await readFile(fullFilePath, "utf8");

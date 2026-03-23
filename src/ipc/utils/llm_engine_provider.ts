@@ -7,6 +7,7 @@ import {
 } from "@ai-sdk/provider-utils";
 
 import log from "electron-log";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getExtraProviderOptions } from "./thinking_utils";
 import { DYAD_INTERNAL_REQUEST_ID_HEADER } from "./provider_options";
 import type { UserSettings } from "../../lib/schemas";
@@ -279,8 +280,9 @@ export async function transcribeWithDyadEngine(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(
+    throw new DyadError(
       `Dyad Engine transcription failed: ${response.status} ${response.statusText} - ${errorText}`,
+      DyadErrorKind.External,
     );
   }
   const data = (await response.json()) as { text: string };

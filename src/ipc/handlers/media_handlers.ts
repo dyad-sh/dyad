@@ -13,6 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { eq } from "drizzle-orm";
 import log from "electron-log";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("media_handlers");
 
@@ -81,11 +82,11 @@ async function withMediaLock<T>(
 
 function assertSafeFileName(fileName: string): void {
   if (!fileName || fileName.trim().length === 0) {
-    throw new Error("File name is required");
+    throw new DyadError("File name is required", DyadErrorKind.Validation);
   }
 
   if (fileName !== path.basename(fileName)) {
-    throw new Error("Invalid file name");
+    throw new DyadError("Invalid file name", DyadErrorKind.Validation);
   }
 
   if (
@@ -95,7 +96,7 @@ function assertSafeFileName(fileName: string): void {
     fileName === ".." ||
     INVALID_FILE_NAME_CHARS.test(fileName)
   ) {
-    throw new Error("Invalid file name");
+    throw new DyadError("Invalid file name", DyadErrorKind.Validation);
   }
 }
 
@@ -103,7 +104,7 @@ function assertSafeBaseName(baseName: string): string {
   const trimmed = baseName.trim();
 
   if (!trimmed) {
-    throw new Error("New image name is required");
+    throw new DyadError("New image name is required", DyadErrorKind.Validation);
   }
 
   if (
@@ -113,7 +114,7 @@ function assertSafeBaseName(baseName: string): string {
     trimmed === ".." ||
     INVALID_FILE_NAME_CHARS.test(trimmed)
   ) {
-    throw new Error("Invalid image name");
+    throw new DyadError("Invalid image name", DyadErrorKind.Validation);
   }
 
   return trimmed;
@@ -123,7 +124,10 @@ function assertSupportedMediaExtension(fileName: string): string {
   const extension = path.extname(fileName).toLowerCase();
 
   if (!SUPPORTED_MEDIA_EXTENSIONS.includes(extension)) {
-    throw new Error("Unsupported media file extension");
+    throw new DyadError(
+      "Unsupported media file extension",
+      DyadErrorKind.Validation,
+    );
   }
 
   return extension;
@@ -145,7 +149,7 @@ async function getAppOrThrow(appId: number) {
   });
 
   if (!app) {
-    throw new Error("App not found");
+    throw new DyadError("App not found", DyadErrorKind.NotFound);
   }
 
   return app;
@@ -186,7 +190,10 @@ export function registerMediaHandlers() {
       assertSafeFileName(destinationFileName);
 
       if (destinationFileName === params.fileName) {
-        throw new Error("New image name must be different from current name");
+        throw new DyadError(
+          "New image name must be different from current name",
+          DyadErrorKind.Validation,
+        );
       }
 
       const destinationPath = safeJoin(
@@ -199,7 +206,10 @@ export function registerMediaHandlers() {
       const isCaseOnlyRename =
         destinationFileName.toLowerCase() === params.fileName.toLowerCase();
       if (!isCaseOnlyRename && fs.existsSync(destinationPath)) {
-        throw new Error("A media file with that name already exists");
+        throw new DyadError(
+          "A media file with that name already exists",
+          DyadErrorKind.Conflict,
+        );
       }
 
       try {
@@ -238,7 +248,10 @@ export function registerMediaHandlers() {
 
   createTypedHandler(mediaContracts.moveMediaFile, async (_, params) => {
     if (params.sourceAppId === params.targetAppId) {
-      throw new Error("Source and target apps must be different");
+      throw new DyadError(
+        "Source and target apps must be different",
+        DyadErrorKind.Validation,
+      );
     }
 
     await withMediaLock([params.sourceAppId, params.targetAppId], async () => {
@@ -250,7 +263,7 @@ export function registerMediaHandlers() {
 
       const sourcePath = getMediaFilePath(sourceAppPath, params.fileName);
       if (!fs.existsSync(sourcePath)) {
-        throw new Error("Media file not found");
+        throw new DyadError("Media file not found", DyadErrorKind.NotFound);
       }
 
       await ensureDyadGitignored(targetAppPath);

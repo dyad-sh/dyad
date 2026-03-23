@@ -14,6 +14,7 @@ import {
   RateLimitError,
   retryWithRateLimit,
 } from "../ipc/utils/retryWithRateLimit";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const fsPromises = fs.promises;
 
@@ -114,8 +115,9 @@ export async function refreshSupabaseToken(): Promise<void> {
   }
 
   if (!refreshToken) {
-    throw new Error(
+    throw new DyadError(
       "Supabase refresh token not found. Please authenticate first.",
+      DyadErrorKind.Auth,
     );
   }
 
@@ -133,8 +135,9 @@ export async function refreshSupabaseToken(): Promise<void> {
     );
 
     if (!response.ok) {
-      throw new Error(
+      throw new DyadError(
         `Supabase token refresh failed. Try going to Settings to disconnect Supabase and then reconnect to Supabase. Error status: ${response.statusText}`,
+        DyadErrorKind.External,
       );
     }
 
@@ -183,8 +186,9 @@ export async function getSupabaseClient({
   const expiresIn = settings.supabase?.expiresIn;
 
   if (!supabaseAccessToken) {
-    throw new Error(
+    throw new DyadError(
       "Supabase access token not found. Please authenticate first.",
+      DyadErrorKind.Auth,
     );
   }
 
@@ -196,7 +200,10 @@ export async function getSupabaseClient({
     const newAccessToken = updatedSettings.supabase?.accessToken?.value;
 
     if (!newAccessToken) {
-      throw new Error("Failed to refresh Supabase access token");
+      throw new DyadError(
+        "Failed to refresh Supabase access token",
+        DyadErrorKind.Auth,
+      );
     }
 
     return new SupabaseManagementAPI({
@@ -236,8 +243,9 @@ async function refreshSupabaseTokenForOrganization(
   const org = settings.supabase?.organizations?.[organizationSlug];
 
   if (!org) {
-    throw new Error(
+    throw new DyadError(
       `Supabase organization ${organizationSlug} not found. Please authenticate first.`,
+      DyadErrorKind.Auth,
     );
   }
 
@@ -247,8 +255,9 @@ async function refreshSupabaseTokenForOrganization(
 
   const refreshToken = org.refreshToken?.value;
   if (!refreshToken) {
-    throw new Error(
+    throw new DyadError(
       "Supabase refresh token not found. Please authenticate first.",
+      DyadErrorKind.Auth,
     );
   }
 
@@ -265,8 +274,9 @@ async function refreshSupabaseTokenForOrganization(
     );
 
     if (!response.ok) {
-      throw new Error(
+      throw new DyadError(
         `Supabase token refresh failed. Try going to Settings to disconnect Supabase and then reconnect. Error status: ${response.statusText}`,
+        DyadErrorKind.External,
       );
     }
 
@@ -319,15 +329,17 @@ export async function getSupabaseClientForOrganization(
   const org = settings.supabase?.organizations?.[organizationSlug];
 
   if (!org) {
-    throw new Error(
+    throw new DyadError(
       `Supabase organization ${organizationSlug} not found. Please authenticate first.`,
+      DyadErrorKind.Auth,
     );
   }
 
   const accessToken = org.accessToken?.value;
   if (!accessToken) {
-    throw new Error(
+    throw new DyadError(
       `Supabase access token not found for organization ${organizationSlug}. Please authenticate first.`,
+      DyadErrorKind.Auth,
     );
   }
 
@@ -343,8 +355,9 @@ export async function getSupabaseClientForOrganization(
     const newAccessToken = updatedOrg?.accessToken?.value;
 
     if (!newAccessToken) {
-      throw new Error(
+      throw new DyadError(
         `Failed to refresh Supabase access token for organization ${organizationSlug}`,
+        DyadErrorKind.Auth,
       );
     }
 
@@ -715,7 +728,10 @@ export async function listSupabaseBranches({
     logger.info(
       `Branches not available for project ${supabaseProjectId} (403 Forbidden - likely free tier)`,
     );
-    throw new Error("Branches are only supported for Supabase paid customers");
+    throw new DyadError(
+      "Branches are only supported for Supabase paid customers",
+      DyadErrorKind.Precondition,
+    );
   }
 
   if (response.status !== 200) {
@@ -898,8 +914,9 @@ async function collectFunctionFiles({
   }
 
   if (!functionDirectory) {
-    throw new Error(
+    throw new DyadError(
       `Unable to locate directory for Supabase function ${functionName}`,
+      DyadErrorKind.NotFound,
     );
   }
 
@@ -908,8 +925,9 @@ async function collectFunctionFiles({
   try {
     await fsPromises.access(indexPath);
   } catch {
-    throw new Error(
+    throw new DyadError(
       `Supabase function ${functionName} is missing an index.ts entrypoint`,
+      DyadErrorKind.Validation,
     );
   }
 

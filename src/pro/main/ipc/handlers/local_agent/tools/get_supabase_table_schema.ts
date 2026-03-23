@@ -6,6 +6,7 @@ import {
   escapeXmlContent,
 } from "./types";
 import { getSupabaseTableSchema } from "../../../../../../supabase_admin/supabase_context";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const getSupabaseTableSchemaSchema = z.object({
   tableName: z
@@ -33,7 +34,10 @@ export const getSupabaseTableSchemaTool: ToolDefinition<
 
   execute: async (args, ctx: AgentContext) => {
     if (!ctx.supabaseProjectId) {
-      throw new Error("Supabase is not connected to this app");
+      throw new DyadError(
+        "Supabase is not connected to this app",
+        DyadErrorKind.Precondition,
+      );
     }
 
     const tableAttr = args.tableName

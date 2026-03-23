@@ -4,6 +4,7 @@ import path from "node:path";
 import { createLoggedHandler } from "./safe_handle";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import { isFileWithinAnyDyadMediaDir } from "../utils/media_path_utils";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("shell_handlers");
 const handle = createLoggedHandler(logger);
@@ -36,7 +37,7 @@ const ALLOWED_MEDIA_EXTENSIONS = new Set([
 export function registerShellHandlers() {
   handle("open-external-url", async (_event, url: string) => {
     if (!url) {
-      throw new Error("No URL provided.");
+      throw new DyadError("No URL provided.", DyadErrorKind.External);
     }
     if (!url.startsWith("http://") && !url.startsWith("https://")) {
       throw new Error("Attempted to open invalid or non-http URL: " + url);
@@ -53,7 +54,7 @@ export function registerShellHandlers() {
   handle("show-item-in-folder", async (_event, fullPath: string) => {
     // Validate that a path was provided
     if (!fullPath) {
-      throw new Error("No file path provided.");
+      throw new DyadError("No file path provided.", DyadErrorKind.External);
     }
 
     shell.showItemInFolder(fullPath);
@@ -62,7 +63,7 @@ export function registerShellHandlers() {
 
   handle("open-file-path", async (_event, fullPath: string) => {
     if (!fullPath) {
-      throw new Error("No file path provided.");
+      throw new DyadError("No file path provided.", DyadErrorKind.External);
     }
 
     // Security: only allow opening files within .dyad/media subdirectories.
@@ -71,7 +72,10 @@ export function registerShellHandlers() {
     // App paths may be under the default dyad-apps base directory (normal) or
     // at an external location (imported with skipCopy).
     if (!isFileWithinAnyDyadMediaDir(fullPath)) {
-      throw new Error("Can only open files within .dyad/media directories.");
+      throw new DyadError(
+        "Can only open files within .dyad/media directories.",
+        DyadErrorKind.External,
+      );
     }
     const resolvedPath = path.resolve(fullPath);
 
@@ -86,7 +90,10 @@ export function registerShellHandlers() {
     const result = await shell.openPath(resolvedPath);
     if (result) {
       // shell.openPath returns an error string if it fails, empty string on success
-      throw new Error(`Failed to open file: ${result}`);
+      throw new DyadError(
+        `Failed to open file: ${result}`,
+        DyadErrorKind.External,
+      );
     }
     logger.debug("Opened file:", resolvedPath);
   });

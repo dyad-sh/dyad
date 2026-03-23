@@ -31,6 +31,7 @@ import { getDyadAppPath } from "../../paths/paths";
 import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
 import { readSettings } from "../../main/settings";
 import type { ChatResponseEnd, ChatStreamParams } from "@/ipc/types";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import {
   CodebaseFile,
   extractCodebase,
@@ -251,7 +252,10 @@ export function registerChatStreamHandlers() {
       });
 
       if (!chat) {
-        throw new Error(`Chat not found: ${req.chatId}`);
+        throw new DyadError(
+          `Chat not found: ${req.chatId}`,
+          DyadErrorKind.NotFound,
+        );
       }
 
       // Handle redo option: remove the most recent messages if needed
@@ -561,7 +565,10 @@ ${componentSnippet}
       });
 
       if (!updatedChat) {
-        throw new Error(`Chat not found: ${req.chatId}`);
+        throw new DyadError(
+          `Chat not found: ${req.chatId}`,
+          DyadErrorKind.NotFound,
+        );
       }
 
       // Send the messages right away so that the loading state is shown for the message.
@@ -1975,7 +1982,11 @@ async function getMcpTools(event: IpcMainInvokeEvent): Promise<ToolSet> {
               inputPreview,
             });
 
-            if (!ok) throw new Error(`User declined running tool ${key}`);
+            if (!ok)
+              throw new DyadError(
+                `User declined running tool ${key}`,
+                DyadErrorKind.UserCancelled,
+              );
             const res = await mcpTool.execute(args, execCtx);
 
             return typeof res === "string" ? res : JSON.stringify(res);

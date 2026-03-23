@@ -7,6 +7,7 @@ import {
   isImageTooLarge,
   MAX_IMAGE_DIMENSION,
 } from "./image_utils";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("web_crawl");
 
@@ -130,15 +131,24 @@ export const webCrawlTool: ToolDefinition<z.infer<typeof webCrawlSchema>> = {
     const result = await callWebCrawl(args.url, ctx);
 
     if (!result) {
-      throw new Error("Web crawl returned no results");
+      throw new DyadError(
+        "Web crawl returned no results",
+        DyadErrorKind.NotFound,
+      );
     }
 
     if (!result.markdown) {
-      throw new Error("No content available from web crawl");
+      throw new DyadError(
+        "No content available from web crawl",
+        DyadErrorKind.NotFound,
+      );
     }
 
     if (!result.screenshot) {
-      throw new Error("No screenshot available from web crawl");
+      throw new DyadError(
+        "No screenshot available from web crawl",
+        DyadErrorKind.NotFound,
+      );
     }
     logger.log(`Web crawl completed for URL: ${args.url}`);
 

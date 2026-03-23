@@ -33,6 +33,7 @@ import {
   getThemeGenerationModelOptions,
   resolveBuiltinModelAlias,
 } from "@/ipc/shared/remote_language_model_catalog";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("themes_handlers");
 const handle = createLoggedHandler(logger);
@@ -337,23 +338,35 @@ export function registerThemesHandlers() {
 
       // Validate name
       if (!trimmedName) {
-        throw new Error("Theme name is required");
+        throw new DyadError("Theme name is required", DyadErrorKind.Validation);
       }
       if (trimmedName.length > 100) {
-        throw new Error("Theme name must be less than 100 characters");
+        throw new DyadError(
+          "Theme name must be less than 100 characters",
+          DyadErrorKind.Validation,
+        );
       }
 
       // Validate description
       if (trimmedDescription && trimmedDescription.length > 500) {
-        throw new Error("Theme description must be less than 500 characters");
+        throw new DyadError(
+          "Theme description must be less than 500 characters",
+          DyadErrorKind.Validation,
+        );
       }
 
       // Validate prompt
       if (!trimmedPrompt) {
-        throw new Error("Theme prompt is required");
+        throw new DyadError(
+          "Theme prompt is required",
+          DyadErrorKind.Validation,
+        );
       }
       if (trimmedPrompt.length > 50000) {
-        throw new Error("Theme prompt must be less than 50,000 characters");
+        throw new DyadError(
+          "Theme prompt must be less than 50,000 characters",
+          DyadErrorKind.Validation,
+        );
       }
 
       // Check for duplicate theme name (case-insensitive)
@@ -407,17 +420,23 @@ export function registerThemesHandlers() {
       });
 
       if (!currentTheme) {
-        throw new Error("Theme not found");
+        throw new DyadError("Theme not found", DyadErrorKind.NotFound);
       }
 
       // Validate and sanitize name if provided
       if (params.name !== undefined) {
         const trimmedName = params.name.trim();
         if (!trimmedName) {
-          throw new Error("Theme name is required");
+          throw new DyadError(
+            "Theme name is required",
+            DyadErrorKind.Validation,
+          );
         }
         if (trimmedName.length > 100) {
-          throw new Error("Theme name must be less than 100 characters");
+          throw new DyadError(
+            "Theme name must be less than 100 characters",
+            DyadErrorKind.Validation,
+          );
         }
 
         // Check for duplicate theme name (case-insensitive), excluding current theme
@@ -438,7 +457,10 @@ export function registerThemesHandlers() {
       if (params.description !== undefined) {
         const trimmedDescription = params.description.trim();
         if (trimmedDescription.length > 500) {
-          throw new Error("Theme description must be less than 500 characters");
+          throw new DyadError(
+            "Theme description must be less than 500 characters",
+            DyadErrorKind.Validation,
+          );
         }
         updateData.description = trimmedDescription || null;
       }
@@ -447,10 +469,16 @@ export function registerThemesHandlers() {
       if (params.prompt !== undefined) {
         const trimmedPrompt = params.prompt.trim();
         if (!trimmedPrompt) {
-          throw new Error("Theme prompt is required");
+          throw new DyadError(
+            "Theme prompt is required",
+            DyadErrorKind.Validation,
+          );
         }
         if (trimmedPrompt.length > 50000) {
-          throw new Error("Theme prompt must be less than 50,000 characters");
+          throw new DyadError(
+            "Theme prompt must be less than 50,000 characters",
+            DyadErrorKind.Validation,
+          );
         }
         updateData.prompt = trimmedPrompt;
       }
@@ -463,7 +491,7 @@ export function registerThemesHandlers() {
 
       const theme = result[0];
       if (!theme) {
-        throw new Error("Theme not found");
+        throw new DyadError("Theme not found", DyadErrorKind.NotFound);
       }
 
       return {
@@ -493,7 +521,7 @@ export function registerThemesHandlers() {
 
       // Validate base64 data
       if (!data || typeof data !== "string") {
-        throw new Error("Invalid image data");
+        throw new DyadError("Invalid image data", DyadErrorKind.Validation);
       }
 
       // Validate and extract extension
@@ -512,7 +540,10 @@ export function registerThemesHandlers() {
       // Validate size (base64 to bytes approximation)
       const sizeInBytes = (data.length * 3) / 4;
       if (sizeInBytes > 10 * 1024 * 1024) {
-        throw new Error("Image size exceeds 10MB limit");
+        throw new DyadError(
+          "Image size exceeds 10MB limit",
+          DyadErrorKind.Validation,
+        );
       }
 
       // Ensure temp directory exists
@@ -550,7 +581,10 @@ export function registerThemesHandlers() {
           // File might already be deleted (ENOENT), that's okay
           // But other errors (permissions, etc.) should be reported
           if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-            throw new Error("Failed to cleanup temporary image file");
+            throw new DyadError(
+              "Failed to cleanup temporary image file",
+              DyadErrorKind.External,
+            );
           }
         }
       }
@@ -586,21 +620,30 @@ Modern dark theme with purple accents for testing.
 
       // Validate inputs - image paths are required
       if (params.imagePaths.length === 0) {
-        throw new Error("Please upload at least one image to generate a theme");
+        throw new DyadError(
+          "Please upload at least one image to generate a theme",
+          DyadErrorKind.External,
+        );
       }
 
       if (params.imagePaths.length > 5) {
-        throw new Error("Maximum 5 images allowed");
+        throw new DyadError("Maximum 5 images allowed", DyadErrorKind.External);
       }
 
       // Validate keywords length
       if (params.keywords.length > 500) {
-        throw new Error("Keywords must be less than 500 characters");
+        throw new DyadError(
+          "Keywords must be less than 500 characters",
+          DyadErrorKind.Validation,
+        );
       }
 
       // Validate generation mode
       if (!["inspired", "high-fidelity"].includes(params.generationMode)) {
-        throw new Error("Invalid generation mode");
+        throw new DyadError(
+          "Invalid generation mode",
+          DyadErrorKind.Validation,
+        );
       }
 
       // Validate and map model selection
@@ -725,7 +768,10 @@ Modern theme extracted from website for testing.
       try {
         parsedUrl = new URL(params.url);
       } catch {
-        throw new Error("Invalid URL format. Please enter a valid URL.");
+        throw new DyadError(
+          "Invalid URL format. Please enter a valid URL.",
+          DyadErrorKind.Validation,
+        );
       }
 
       // Only allow HTTP/HTTPS protocols (security: prevent file://, javascript://, etc.)
@@ -748,17 +794,26 @@ Modern theme extracted from website for testing.
         /\.local$/i,
       ];
       if (blockedPatterns.some((p) => p.test(hostname))) {
-        throw new Error("Cannot crawl internal network addresses.");
+        throw new DyadError(
+          "Cannot crawl internal network addresses.",
+          DyadErrorKind.External,
+        );
       }
 
       // Validate keywords length
       if (params.keywords.length > 500) {
-        throw new Error("Keywords must be less than 500 characters");
+        throw new DyadError(
+          "Keywords must be less than 500 characters",
+          DyadErrorKind.Validation,
+        );
       }
 
       // Validate generation mode
       if (!["inspired", "high-fidelity"].includes(params.generationMode)) {
-        throw new Error("Invalid generation mode");
+        throw new DyadError(
+          "Invalid generation mode",
+          DyadErrorKind.Validation,
+        );
       }
 
       // Validate and map model selection
@@ -772,7 +827,7 @@ Modern theme extracted from website for testing.
       // Get API key for Dyad Engine
       const apiKey = settings.providerSettings?.auto?.apiKey?.value;
       if (!apiKey) {
-        throw new Error("Dyad Pro API key is required");
+        throw new DyadError("Dyad Pro API key is required", DyadErrorKind.Auth);
       }
 
       // Crawl the website

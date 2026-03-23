@@ -16,6 +16,7 @@ import fs from "node:fs";
 import { db } from "../db";
 import { cleanFullResponse } from "../ipc/utils/cleanFullResponse";
 import { gitAdd, gitRemove, gitCommit } from "../ipc/utils/git_utils";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 // Mock fs with default export
 vi.mock("node:fs", async () => {
@@ -723,7 +724,7 @@ describe("processFullResponse", () => {
   it("should handle file system errors gracefully", async () => {
     // Set up the mock to throw an error on mkdirSync
     vi.mocked(fs.mkdirSync).mockImplementationOnce(() => {
-      throw new Error("Mock filesystem error");
+      throw new DyadError("Mock filesystem error", DyadErrorKind.Internal);
     });
 
     const response = `<dyad-write path="src/error-file.js">This will fail</dyad-write>`;

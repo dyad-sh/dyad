@@ -8,6 +8,7 @@ import {
   listSupabaseFunctions,
   type DeployedFunctionResponse,
 } from "./supabase_management_client";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("supabase_utils");
 
@@ -57,8 +58,9 @@ export function extractFunctionNameFromPath(filePath: string): string {
   const match = normalized.match(/^supabase\/functions\/([^/]+)/);
 
   if (!match) {
-    throw new Error(
+    throw new DyadError(
       `Invalid Supabase function path: ${filePath}. Expected format: supabase/functions/{functionName}/...`,
+      DyadErrorKind.Validation,
     );
   }
 
@@ -66,8 +68,9 @@ export function extractFunctionNameFromPath(filePath: string): string {
 
   // Exclude _shared and other special directories
   if (functionName.startsWith("_")) {
-    throw new Error(
+    throw new DyadError(
       `Invalid Supabase function path: ${filePath}. Function names starting with "_" are reserved for special directories.`,
+      DyadErrorKind.Validation,
     );
   }
 

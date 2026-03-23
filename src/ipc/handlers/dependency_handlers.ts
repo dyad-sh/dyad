@@ -5,6 +5,7 @@ import { getDyadAppPath } from "../../paths/paths";
 import { executeAddDependency } from "../processors/executeAddDependency";
 import { createLoggedHandler } from "./safe_handle";
 import log from "electron-log";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("dependency_handlers");
 const handle = createLoggedHandler(logger);
@@ -27,7 +28,7 @@ export function registerDependencyHandlers() {
       });
 
       if (!chat) {
-        throw new Error(`Chat ${chatId} not found`);
+        throw new DyadError(`Chat ${chatId} not found`, DyadErrorKind.NotFound);
       }
 
       // Get the app using the appId from the chat
@@ -36,7 +37,10 @@ export function registerDependencyHandlers() {
       });
 
       if (!app) {
-        throw new Error(`App for chat ${chatId} not found`);
+        throw new DyadError(
+          `App for chat ${chatId} not found`,
+          DyadErrorKind.NotFound,
+        );
       }
 
       const message = [...foundMessages]

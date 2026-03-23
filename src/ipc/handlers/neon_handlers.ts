@@ -14,6 +14,7 @@ import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import { EndpointType } from "@neondatabase/api-client";
 import { retryOnLocked } from "../utils/retryOnLocked";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 export const logger = log.scope("neon_handlers");
 
@@ -44,7 +45,10 @@ export function registerNeonHandlers() {
       );
 
       if (!response.data.project) {
-        throw new Error("Failed to create project: No project data returned.");
+        throw new DyadError(
+          "Failed to create project: No project data returned.",
+          DyadErrorKind.External,
+        );
       }
 
       const project = response.data.project;
@@ -113,12 +117,18 @@ export function registerNeonHandlers() {
         .limit(1);
 
       if (app.length === 0) {
-        throw new Error(`App with ID ${appId} not found`);
+        throw new DyadError(
+          `App with ID ${appId} not found`,
+          DyadErrorKind.NotFound,
+        );
       }
 
       const appData = app[0];
       if (!appData.neonProjectId) {
-        throw new Error(`No Neon project found for app ${appId}`);
+        throw new DyadError(
+          `No Neon project found for app ${appId}`,
+          DyadErrorKind.External,
+        );
       }
 
       const neonClient = await getNeonClient();
@@ -130,7 +140,10 @@ export function registerNeonHandlers() {
       );
 
       if (!projectResponse.data.project) {
-        throw new Error("Failed to get project: No project data returned.");
+        throw new DyadError(
+          "Failed to get project: No project data returned.",
+          DyadErrorKind.External,
+        );
       }
 
       const project = projectResponse.data.project;
@@ -141,7 +154,10 @@ export function registerNeonHandlers() {
       });
 
       if (!branchesResponse.data.branches) {
-        throw new Error("Failed to get branches: No branch data returned.");
+        throw new DyadError(
+          "Failed to get branches: No branch data returned.",
+          DyadErrorKind.External,
+        );
       }
 
       // Map branches to our format

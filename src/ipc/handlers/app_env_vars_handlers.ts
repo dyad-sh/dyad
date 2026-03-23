@@ -15,6 +15,7 @@ import {
 } from "../utils/app_env_var_utils";
 import { createTypedHandler } from "./base";
 import { miscContracts } from "../types/misc";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 export function registerAppEnvVarsHandlers() {
   // Handler to get app environment variables
@@ -25,7 +26,7 @@ export function registerAppEnvVarsHandlers() {
       });
 
       if (!app) {
-        throw new Error("App not found");
+        throw new DyadError("App not found", DyadErrorKind.NotFound);
       }
 
       const appPath = getDyadAppPath(app.path);
@@ -60,7 +61,7 @@ export function registerAppEnvVarsHandlers() {
         });
 
         if (!app) {
-          throw new Error("App not found");
+          throw new DyadError("App not found", DyadErrorKind.NotFound);
         }
 
         const appPath = getDyadAppPath(app.path);

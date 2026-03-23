@@ -28,6 +28,7 @@ import {
   analyzeComponent,
 } from "../../utils/visual_editing_utils";
 import { normalizePath } from "../../../../../shared/normalizePath";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 // Client allows 7.5 MB raw; base64 expands by ~4/3 plus data URL prefix
 const MAX_IMAGE_SIZE = Math.ceil((7.5 * 1024 * 1024) / 3) * 4 + 100; // ~10,485,860
@@ -49,7 +50,10 @@ export function registerVisualEditingHandlers() {
         });
 
         if (!app) {
-          throw new Error(`App not found: ${appId}`);
+          throw new DyadError(
+            `App not found: ${appId}`,
+            DyadErrorKind.NotFound,
+          );
         }
 
         const appPath = getDyadAppPath(app.path);
@@ -226,7 +230,10 @@ export function registerVisualEditingHandlers() {
         });
 
         if (!app) {
-          throw new Error(`App not found: ${appId}`);
+          throw new DyadError(
+            `App not found: ${appId}`,
+            DyadErrorKind.NotFound,
+          );
         }
 
         const appPath = getDyadAppPath(app.path);

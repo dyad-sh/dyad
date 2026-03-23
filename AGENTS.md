@@ -11,6 +11,7 @@ Detailed rules and learnings are in the `rules/` directory. Read the relevant fi
 | File                                                                 | Read when...                                                                                     |
 | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | [rules/electron-ipc.md](rules/electron-ipc.md)                       | Adding/modifying IPC endpoints, handlers, React Query hooks, or renderer-to-main communication   |
+| [rules/dyad-errors.md](rules/dyad-errors.md)                         | Classifying IPC/main errors with `DyadError` / `DyadErrorKind` and PostHog exception filtering   |
 | [rules/local-agent-tools.md](rules/local-agent-tools.md)             | Adding/modifying local agent tools, tool flags (`modifiesState`), or read-only/plan-only guards  |
 | [rules/e2e-testing.md](rules/e2e-testing.md)                         | Writing or debugging E2E tests (Playwright, Base UI radio clicks, Lexical editor, test fixtures) |
 | [rules/git-workflow.md](rules/git-workflow.md)                       | Pushing branches, creating PRs, or dealing with fork/upstream remotes                            |
@@ -87,6 +88,7 @@ This is the only supported way to type-check the project. It uses the correct co
 - This is an Electron application with a secure IPC boundary.
 - Frontend is a React app that uses TanStack Router (not Next.js or React Router).
 - Data fetching/mutations should be handled with TanStack Query when touching IPC-backed endpoints.
+- Main-process IPC errors that are **not bugs** (validation, missing entities, auth, user refusal, etc.) should be thrown as **`DyadError`** with a **`DyadErrorKind`** so they can be excluded from PostHog exception telemetry. See [rules/dyad-errors.md](rules/dyad-errors.md).
 
 ## Verifying your changes
 

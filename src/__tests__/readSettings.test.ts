@@ -10,6 +10,7 @@ import {
 } from "@/main/settings";
 import { getUserDataPath } from "@/paths/paths";
 import { UserSettings } from "@/lib/schemas";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 // Mock dependencies
 vi.mock("node:fs");
@@ -442,7 +443,7 @@ describe("readSettings", () => {
     it("should return default settings when file read fails", () => {
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readFileSync.mockImplementation(() => {
-        throw new Error("File read error");
+        throw new DyadError("File read error", DyadErrorKind.External);
       });
 
       const result = readSettings();
@@ -524,7 +525,7 @@ describe("readSettings", () => {
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readFileSync.mockReturnValue(JSON.stringify(mockFileContent));
       mockSafeStorage.decryptString.mockImplementation(() => {
-        throw new Error("Decryption failed");
+        throw new DyadError("Decryption failed", DyadErrorKind.External);
       });
 
       const result = readSettings();

@@ -3,6 +3,7 @@ import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { executeSupabaseSql } from "../../../../../../supabase_admin/supabase_management_client";
 import { writeMigrationFile } from "../../../../../../ipc/utils/file_utils";
 import { readSettings } from "../../../../../../main/settings";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const executeSqlSchema = z.object({
   query: z.string().describe("The SQL query to execute"),
@@ -33,7 +34,10 @@ export const executeSqlTool: ToolDefinition<z.infer<typeof executeSqlSchema>> =
 
     execute: async (args, ctx: AgentContext) => {
       if (!ctx.supabaseProjectId) {
-        throw new Error("Supabase is not connected to this app");
+        throw new DyadError(
+          "Supabase is not connected to this app",
+          DyadErrorKind.Precondition,
+        );
       }
 
       const sqlResult = await executeSupabaseSql({

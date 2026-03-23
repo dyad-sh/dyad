@@ -12,6 +12,7 @@ import {
 import { engineFetch } from "./engine_fetch";
 import { DYAD_MEDIA_DIR_NAME } from "@/ipc/utils/media_path_utils";
 import { ImageGenerationApiResponseSchema } from "@/ipc/types/image_generation";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("generate_image");
 
@@ -68,7 +69,10 @@ async function callGenerateImage(
   const data = ImageGenerationApiResponseSchema.parse(await response.json());
 
   if (!data.data || data.data.length === 0) {
-    throw new Error("Image generation returned no results");
+    throw new DyadError(
+      "Image generation returned no results",
+      DyadErrorKind.NotFound,
+    );
   }
 
   return data.data[0];
@@ -93,12 +97,18 @@ async function saveGeneratedImage(
   } else if (imageData.url) {
     const response = await fetch(imageData.url);
     if (!response.ok) {
-      throw new Error(`Failed to download generated image: ${response.status}`);
+      throw new DyadError(
+        `Failed to download generated image: ${response.status}`,
+        DyadErrorKind.External,
+      );
     }
     const arrayBuffer = await response.arrayBuffer();
     await fs.writeFile(filePath, Buffer.from(arrayBuffer));
   } else {
-    throw new Error("Image generation returned no image data");
+    throw new DyadError(
+      "Image generation returned no image data",
+      DyadErrorKind.NotFound,
+    );
   }
 
   return relativePath;

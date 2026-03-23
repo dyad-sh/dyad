@@ -26,6 +26,7 @@ import { readSettings } from "@/main/settings";
 import { extractMentionedAppsCodebases } from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
 import { isTurboEditsV2Enabled } from "@/lib/schemas";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("token_count_handlers");
 
@@ -46,7 +47,10 @@ export function registerTokenCountHandlers() {
       });
 
       if (!chat) {
-        throw new Error(`Chat not found: ${req.chatId}`);
+        throw new DyadError(
+          `Chat not found: ${req.chatId}`,
+          DyadErrorKind.NotFound,
+        );
       }
 
       // Prepare message history for token counting

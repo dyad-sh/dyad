@@ -25,6 +25,7 @@ import {
 import { eq } from "drizzle-orm";
 import { getDyadAppPath } from "../../paths/paths";
 import { validateChatContext } from "../utils/context_paths_utils";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 // Shared function to get system debug info
 async function getSystemDebugInfo({
@@ -312,7 +313,10 @@ export function registerDebugHandlers() {
       });
 
       if (!chatRecord) {
-        throw new Error(`Chat with ID ${chatId} not found`);
+        throw new DyadError(
+          `Chat with ID ${chatId} not found`,
+          DyadErrorKind.NotFound,
+        );
       }
 
       // Get app data from database
@@ -321,7 +325,10 @@ export function registerDebugHandlers() {
       });
 
       if (!app) {
-        throw new Error(`App with ID ${chatRecord.appId} not found`);
+        throw new DyadError(
+          `App with ID ${chatRecord.appId} not found`,
+          DyadErrorKind.NotFound,
+        );
       }
 
       // Query custom providers, custom models, and MCP servers in parallel
@@ -455,7 +462,10 @@ export function registerDebugHandlers() {
     const image = await win.capturePage();
     // Validate image
     if (!image || image.isEmpty()) {
-      throw new Error("Failed to capture screenshot");
+      throw new DyadError(
+        "Failed to capture screenshot",
+        DyadErrorKind.External,
+      );
     }
     // Write the image to the clipboard
     clipboard.writeImage(image);

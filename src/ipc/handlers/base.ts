@@ -1,5 +1,6 @@
 import { ipcMain, IpcMainInvokeEvent } from "electron";
 import { z } from "zod";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import type { IpcContract } from "../contracts/core";
 import { sendTelemetryException } from "../utils/telemetry";
 
@@ -35,7 +36,10 @@ export function createTypedHandler<
         const errorMessage = parsed.error.issues
           .map((e) => `${e.path.join(".")}: ${e.message}`)
           .join("; ");
-        throw new Error(`[${contract.channel}] Invalid input: ${errorMessage}`);
+        throw new DyadError(
+          `[${contract.channel}] Invalid input: ${errorMessage}`,
+          DyadErrorKind.Validation,
+        );
       }
 
       let result: z.infer<TOutput>;
@@ -98,8 +102,9 @@ export function createLoggedTypedHandler(logger: {
           const errorMessage = parsed.error.issues
             .map((e) => `${e.path.join(".")}: ${e.message}`)
             .join("; ");
-          const error = new Error(
+          const error = new DyadError(
             `[${contract.channel}] Invalid input: ${errorMessage}`,
+            DyadErrorKind.Validation,
           );
           logger.error(`[${contract.channel}] Invalid input`, error);
           throw error;

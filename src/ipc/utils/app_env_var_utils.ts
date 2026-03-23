@@ -8,6 +8,7 @@ import { EnvVar } from "@/ipc/types";
 import path from "path";
 import fs from "fs";
 import log from "electron-log";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("app_env_var_utils");
 
@@ -94,7 +95,10 @@ export async function readPostgresUrlFromEnvFile({
     (envVar) => envVar.key === "POSTGRES_URL",
   )?.value;
   if (!postgresUrl) {
-    throw new Error("POSTGRES_URL not found in .env.local");
+    throw new DyadError(
+      "POSTGRES_URL not found in .env.local",
+      DyadErrorKind.NotFound,
+    );
   }
   return postgresUrl;
 }

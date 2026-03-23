@@ -4,6 +4,7 @@ import { desc, eq, and, like } from "drizzle-orm";
 import type { ChatSearchResult, ChatSummary } from "../../lib/schemas";
 
 import log from "electron-log";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { getDyadAppPath } from "../../paths/paths";
 import { getCurrentCommitHash } from "../utils/git_utils";
 import { createTypedHandler } from "./base";
@@ -22,7 +23,7 @@ export function registerChatHandlers() {
     });
 
     if (!app) {
-      throw new Error("App not found");
+      throw new DyadError("App not found", DyadErrorKind.NotFound);
     }
 
     let initialCommitHash = null;
@@ -66,7 +67,7 @@ export function registerChatHandlers() {
     });
 
     if (!chat) {
-      throw new Error("Chat not found");
+      throw new DyadError("Chat not found", DyadErrorKind.NotFound);
     }
 
     return {

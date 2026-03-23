@@ -302,6 +302,7 @@ vi.mock("@/ipc/handlers/compaction/compaction_handler", () => ({
 // ============================================================================
 
 import { handleLocalAgentStream } from "@/pro/main/ipc/handlers/local_agent/local_agent_handler";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 // ============================================================================
 // Tests
@@ -1378,7 +1379,7 @@ describe("handleLocalAgentStream", () => {
           yield { type: "text-delta", text: "Partial response" };
           abortController.abort();
           // This will not be processed due to abort
-          throw new Error("Simulated abort error");
+          throw new DyadError("Simulated abort error", DyadErrorKind.Internal);
         })(),
         response: Promise.resolve({ messages: [] }),
       };

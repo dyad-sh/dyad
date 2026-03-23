@@ -4,6 +4,7 @@ import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { db } from "../../../../../../db";
 import { messages } from "../../../../../../db/schema";
 import { executeAddDependency } from "@/ipc/processors/executeAddDependency";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const addDependencySchema = z.object({
   packages: z.array(z.string()).describe("Array of package names to install"),
@@ -33,7 +34,10 @@ export const addDependencyTool: ToolDefinition<
       : undefined;
 
     if (!message) {
-      throw new Error("Message not found for adding dependencies");
+      throw new DyadError(
+        "Message not found for adding dependencies",
+        DyadErrorKind.NotFound,
+      );
     }
 
     await executeAddDependency({

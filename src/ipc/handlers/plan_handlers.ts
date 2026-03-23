@@ -15,6 +15,7 @@ import {
   parsePlanFile,
 } from "./planUtils";
 import { ensureDyadGitignored } from "./gitignoreUtils";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("plan_handlers");
 
@@ -62,7 +63,10 @@ export function registerPlanHandlers() {
       raw = await fs.promises.readFile(filePath, "utf-8");
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        throw new Error(`Plan not found: ${planId}`);
+        throw new DyadError(
+          `Plan not found: ${planId}`,
+          DyadErrorKind.NotFound,
+        );
       }
       throw err;
     }
@@ -145,7 +149,10 @@ export function registerPlanHandlers() {
       await fs.promises.unlink(filePath);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        throw new Error(`Plan not found: ${planId}`);
+        throw new DyadError(
+          `Plan not found: ${planId}`,
+          DyadErrorKind.NotFound,
+        );
       }
       throw err;
     }

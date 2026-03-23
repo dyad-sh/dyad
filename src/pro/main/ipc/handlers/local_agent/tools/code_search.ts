@@ -8,6 +8,7 @@ import {
 } from "./types";
 import { extractCodebase } from "../../../../../../utils/codebase";
 import { engineFetch } from "./engine_fetch";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("code_search");
 
@@ -44,8 +45,9 @@ async function callCodeSearch(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(
+    throw new DyadError(
       `Code search failed: ${response.status} ${response.statusText} - ${errorText}`,
+      DyadErrorKind.External,
     );
   }
 

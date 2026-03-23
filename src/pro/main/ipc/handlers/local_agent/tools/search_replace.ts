@@ -17,6 +17,7 @@ import {
   isSharedServerModule,
 } from "@/supabase_admin/supabase_utils";
 import { sendTelemetryEvent } from "@/ipc/utils/telemetry";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("search_replace");
 
@@ -91,7 +92,10 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
   execute: async (args, ctx: AgentContext) => {
     // Validate old_string !== new_string
     if (args.old_string === args.new_string) {
-      throw new Error("old_string and new_string must be different");
+      throw new DyadError(
+        "old_string and new_string must be different",
+        DyadErrorKind.Validation,
+      );
     }
 
     const fullFilePath = safeJoin(ctx.appPath, args.file_path);
@@ -102,7 +106,10 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
     }
 
     if (!fs.existsSync(fullFilePath)) {
-      throw new Error(`File does not exist: ${args.file_path}`);
+      throw new DyadError(
+        `File does not exist: ${args.file_path}`,
+        DyadErrorKind.NotFound,
+      );
     }
 
     const original = await fs.promises.readFile(fullFilePath, "utf8");

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { normalizePath } from "../../../shared/normalizePath";
 
 /**
@@ -18,26 +19,30 @@ export function safeJoin(basePath: string, ...paths: string[]): string {
   // Check if any of the path segments are absolute paths (which would be unsafe)
   for (const pathSegment of normalizedPaths) {
     if (path.isAbsolute(pathSegment)) {
-      throw new Error(
+      throw new DyadError(
         `Unsafe path: joining "${paths.join(", ")}" with base "${basePath}" would escape the base directory`,
+        DyadErrorKind.Validation,
       );
     }
     // Also check for home directory shortcuts which are effectively absolute
     if (pathSegment.startsWith("~/")) {
-      throw new Error(
+      throw new DyadError(
         `Unsafe path: joining "${paths.join(", ")}" with base "${basePath}" would escape the base directory`,
+        DyadErrorKind.Validation,
       );
     }
     // Check for Windows-style absolute paths (C:\, D:\, etc.)
     if (/^[A-Za-z]:[/\\]/.test(pathSegment)) {
-      throw new Error(
+      throw new DyadError(
         `Unsafe path: joining "${paths.join(", ")}" with base "${basePath}" would escape the base directory`,
+        DyadErrorKind.Validation,
       );
     }
     // Check for UNC paths (\\server\share)
     if (pathSegment.startsWith("\\\\")) {
-      throw new Error(
+      throw new DyadError(
         `Unsafe path: joining "${paths.join(", ")}" with base "${basePath}" would escape the base directory`,
+        DyadErrorKind.Validation,
       );
     }
   }
@@ -55,8 +60,9 @@ export function safeJoin(basePath: string, ...paths: string[]): string {
 
   // If relativePath starts with ".." or is absolute, then resolvedJoinedPath is outside basePath
   if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
-    throw new Error(
+    throw new DyadError(
       `Unsafe path: joining "${paths.join(", ")}" with base "${basePath}" would escape the base directory`,
+      DyadErrorKind.Validation,
     );
   }
 

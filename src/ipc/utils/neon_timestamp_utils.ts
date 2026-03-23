@@ -7,6 +7,7 @@ import { neon } from "@neondatabase/serverless";
 import log from "electron-log";
 import { getNeonClient } from "@/neon_admin/neon_management_client";
 import { getCurrentCommitHash } from "./git_utils";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("neon_timestamp_utils");
 
@@ -28,7 +29,10 @@ async function getLastUpdatedTimestampFromNeon({
     return current_timestamp;
   } catch (error) {
     logger.error("Error retrieving timestamp from Neon:", error);
-    throw new Error(`Failed to retrieve timestamp from Neon: ${error}`);
+    throw new DyadError(
+      `Failed to retrieve timestamp from Neon: ${error}`,
+      DyadErrorKind.External,
+    );
   }
 }
 
@@ -52,11 +56,17 @@ export async function storeDbTimestampAtCurrentVersion({
     });
 
     if (!app) {
-      throw new Error(`App with ID ${appId} not found`);
+      throw new DyadError(
+        `App with ID ${appId} not found`,
+        DyadErrorKind.NotFound,
+      );
     }
 
     if (!app.neonProjectId || !app.neonDevelopmentBranchId) {
-      throw new Error(`App with ID ${appId} has no Neon project or branch`);
+      throw new DyadError(
+        `App with ID ${appId} has no Neon project or branch`,
+        DyadErrorKind.External,
+      );
     }
 
     // 2. Get the current commit hash

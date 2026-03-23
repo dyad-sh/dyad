@@ -10,6 +10,7 @@ import {
   isServerFunction,
   isSharedServerModule,
 } from "../../../../../../supabase_admin/supabase_utils";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("delete_file");
 
@@ -50,8 +51,9 @@ export const deleteFileTool: ToolDefinition<z.infer<typeof deleteFileSchema>> =
         normalizedPath === "./" ||
         normalizedPath === ""
       ) {
-        throw new Error(
+        throw new DyadError(
           `Refusing to delete project root for path: "${args.path}"`,
+          DyadErrorKind.Validation,
         );
       }
 

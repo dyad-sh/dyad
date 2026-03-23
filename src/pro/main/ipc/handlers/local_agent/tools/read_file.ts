@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { z } from "zod";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { safeJoin } from "@/ipc/utils/path_utils";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const readFile = fs.promises.readFile;
 
@@ -82,7 +83,10 @@ export const readFileTool: ToolDefinition<z.infer<typeof readFileSchema>> = {
     const fullFilePath = safeJoin(ctx.appPath, args.path);
 
     if (!fs.existsSync(fullFilePath)) {
-      throw new Error(`File does not exist: ${args.path}`);
+      throw new DyadError(
+        `File does not exist: ${args.path}`,
+        DyadErrorKind.NotFound,
+      );
     }
 
     const content = await readFile(fullFilePath, "utf8");

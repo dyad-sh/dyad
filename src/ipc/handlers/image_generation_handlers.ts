@@ -15,6 +15,7 @@ import { eq } from "drizzle-orm";
 import fs from "node:fs";
 import path from "node:path";
 import log from "electron-log";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("image_generation_handlers");
 
@@ -45,14 +46,17 @@ export function registerImageGenerationHandlers() {
       const apiKey = settings.providerSettings?.auto?.apiKey?.value;
 
       if (!apiKey) {
-        throw new Error("Dyad Pro API key is required for image generation");
+        throw new DyadError(
+          "Dyad Pro API key is required for image generation",
+          DyadErrorKind.Auth,
+        );
       }
 
       const app = await db.query.apps.findFirst({
         where: eq(apps.id, params.targetAppId),
       });
       if (!app) {
-        throw new Error("Target app not found");
+        throw new DyadError("Target app not found", DyadErrorKind.NotFound);
       }
 
       const systemPrompt = THEME_SYSTEM_PROMPTS[params.themeMode];
@@ -86,9 +90,15 @@ export function registerImageGenerationHandlers() {
       } catch (error) {
         activeControllers.delete(requestId);
         if (error instanceof Error && error.name === "AbortError") {
-          throw new Error("Image generation cancelled or timed out.");
+          throw new DyadError(
+            "Image generation cancelled or timed out.",
+            DyadErrorKind.UserCancelled,
+          );
         }
-        throw new Error("Failed to connect to image generation service.");
+        throw new DyadError(
+          "Failed to connect to image generation service.",
+          DyadErrorKind.External,
+        );
       } finally {
         clearTimeout(timeoutId);
       }
@@ -108,12 +118,18 @@ export function registerImageGenerationHandlers() {
       const parsed = ImageGenerationApiResponseSchema.safeParse(rawData);
       if (!parsed.success) {
         logger.error("Invalid image generation response:", parsed.error);
-        throw new Error("Invalid response from image generation service");
+        throw new DyadError(
+          "Invalid response from image generation service",
+          DyadErrorKind.Validation,
+        );
       }
 
       const imageData = parsed.data.data[0];
       if (!imageData?.b64_json && !imageData?.url) {
-        throw new Error("No image data returned from generation service");
+        throw new DyadError(
+          "No image data returned from generation service",
+          DyadErrorKind.NotFound,
+        );
       }
 
       // Prepare image data before acquiring lock (network I/O outside lock)
@@ -121,12 +137,18 @@ export function registerImageGenerationHandlers() {
       if (imageData.b64_json) {
         imageBuffer = Buffer.from(imageData.b64_json, "base64");
         if (imageBuffer.byteLength > MAX_IMAGE_SIZE) {
-          throw new Error("Decoded image exceeds maximum allowed size");
+          throw new DyadError(
+            "Decoded image exceeds maximum allowed size",
+            DyadErrorKind.Validation,
+          );
         }
       } else if (imageData.url) {
         const imageUrl = new URL(imageData.url);
         if (imageUrl.protocol !== "https:") {
-          throw new Error("Image URL must use HTTPS");
+          throw new DyadError(
+            "Image URL must use HTTPS",
+            DyadErrorKind.External,
+          );
         }
         const dlController = new AbortController();
         const dlTimeout = setTimeout(
@@ -144,19 +166,28 @@ export function registerImageGenerationHandlers() {
           }
           const arrayBuffer = await imgResponse.arrayBuffer();
           if (arrayBuffer.byteLength > MAX_IMAGE_SIZE) {
-            throw new Error("Downloaded image exceeds maximum allowed size");
+            throw new DyadError(
+              "Downloaded image exceeds maximum allowed size",
+              DyadErrorKind.Validation,
+            );
           }
           imageBuffer = Buffer.from(arrayBuffer);
         } catch (dlError) {
           if (dlError instanceof Error && dlError.name === "AbortError") {
-            throw new Error("Image download timed out. Please try again.");
+            throw new DyadError(
+              "Image download timed out. Please try again.",
+              DyadErrorKind.External,
+            );
           }
           throw dlError;
         } finally {
           clearTimeout(dlTimeout);
         }
       } else {
-        throw new Error("Unexpected image response format");
+        throw new DyadError(
+          "Unexpected image response format",
+          DyadErrorKind.External,
+        );
       }
 
       // Save to app's media folder under lock (consistent with media CRUD handlers)

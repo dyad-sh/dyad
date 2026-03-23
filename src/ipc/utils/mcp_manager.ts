@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 class McpManager {
   private static _instance: McpManager;
@@ -43,7 +44,10 @@ class McpManager {
         },
       });
     } else {
-      throw new Error(`Unsupported MCP transport: ${s.transport}`);
+      throw new DyadError(
+        `Unsupported MCP transport: ${s.transport}`,
+        DyadErrorKind.Validation,
+      );
     }
     const client = await createMCPClient({
       transport,

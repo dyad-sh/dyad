@@ -81,6 +81,7 @@ import {
 } from "@/ipc/handlers/compaction/compaction_handler";
 import { getPostCompactionMessages } from "@/ipc/handlers/compaction/compaction_utils";
 import { DEFAULT_MAX_TOOL_CALL_STEPS } from "@/constants/settings_constants";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("local_agent_handler");
 const PLANNING_QUESTIONNAIRE_TOOL_NAME = "planning_questionnaire";
@@ -347,7 +348,10 @@ export async function handleLocalAgentStream(
   const initialChat = await loadChat();
 
   if (!initialChat || !initialChat.app) {
-    throw new Error(`Chat not found: ${req.chatId}`);
+    throw new DyadError(
+      `Chat not found: ${req.chatId}`,
+      DyadErrorKind.NotFound,
+    );
   }
 
   let chat = initialChat;

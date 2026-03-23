@@ -7,6 +7,7 @@ import { chatMessagesByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { toast } from "sonner";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 export function useVersions(appId: number | null) {
   const [, setVersionsAtom] = useAtom(versionsListAtom);
@@ -55,7 +56,7 @@ export function useVersions(appId: number | null) {
     }) => {
       const currentAppId = appId;
       if (currentAppId === null) {
-        throw new Error("App ID is null");
+        throw new DyadError("App ID is null", DyadErrorKind.External);
       }
       return ipc.version.revertVersion({
         appId: currentAppId,

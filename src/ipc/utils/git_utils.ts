@@ -14,6 +14,7 @@ import { readSettings } from "../../main/settings";
 import log from "electron-log";
 import { normalizePath } from "../../../shared/normalizePath";
 import type { UncommittedFile, UncommittedFileStatus } from "@/ipc/types";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 const logger = log.scope("git_utils");
 
 /**
@@ -141,7 +142,7 @@ async function execOrThrow(
     const error = errorMessage
       ? `${errorMessage}. ${errorDetails}`
       : `Git command failed: ${args.join(" ")}. ${errorDetails}`;
-    throw new Error(error);
+    throw new DyadError(error, DyadErrorKind.Conflict);
   }
 }
 
@@ -221,8 +222,9 @@ export async function getCurrentCommitHash({
   if (settings.enableNativeGit) {
     const result = await execGit(["rev-parse", ref], path);
     if (result.exitCode !== 0) {
-      throw new Error(
+      throw new DyadError(
         `Failed to resolve ref '${ref}': ${result.stderr.trim() || result.stdout.trim()}`,
+        DyadErrorKind.Conflict,
       );
     }
     return result.stdout.trim();
@@ -245,7 +247,10 @@ export async function isGitStatusClean({
     const result = await execGit(["status", "--porcelain"], path);
 
     if (result.exitCode !== 0) {
-      throw new Error(`Failed to get status: ${result.stderr}`);
+      throw new DyadError(
+        `Failed to get status: ${result.stderr}`,
+        DyadErrorKind.Conflict,
+      );
     }
 
     // If output is empty, working directory is clean (no changes)
@@ -269,8 +274,9 @@ export async function hasStagedChanges({
     // git diff --cached --quiet exits with 1 if there are staged changes, 0 if none
     const result = await execGit(["diff", "--cached", "--quiet"], path);
     if (result.exitCode !== 0 && result.exitCode !== 1) {
-      throw new Error(
+      throw new DyadError(
         `Failed to check staged changes: ${result.stderr.trim() || result.stdout.trim()}`,
+        DyadErrorKind.Conflict,
       );
     }
     return result.exitCode === 1;
@@ -299,8 +305,9 @@ export async function gitCommit({
     // Get the new commit hash
     const result = await execGit(["rev-parse", "HEAD"], path);
     if (result.exitCode !== 0) {
-      throw new Error(
+      throw new DyadError(
         `Failed to get commit hash: ${result.stderr.trim() || result.stdout.trim()}`,
+        DyadErrorKind.Conflict,
       );
     }
     return result.stdout.trim();
@@ -341,8 +348,9 @@ export async function gitStageToRevert({
     // Get the current HEAD commit hash
     const currentHeadResult = await execGit(["rev-parse", "HEAD"], path);
     if (currentHeadResult.exitCode !== 0) {
-      throw new Error(
+      throw new DyadError(
         `Failed to get current commit: ${currentHeadResult.stderr.trim() || currentHeadResult.stdout.trim()}`,
+        DyadErrorKind.Conflict,
       );
     }
 
@@ -356,12 +364,16 @@ export async function gitStageToRevert({
     // Safety: refuse to run if the work-tree isn't clean.
     const statusResult = await execGit(["status", "--porcelain"], path);
     if (statusResult.exitCode !== 0) {
-      throw new Error(
+      throw new DyadError(
         `Failed to get status: ${statusResult.stderr.trim() || statusResult.stdout.trim()}`,
+        DyadErrorKind.Conflict,
       );
     }
     if (statusResult.stdout.trim() !== "") {
-      throw new Error("Cannot revert: working tree has uncommitted changes.");
+      throw new DyadError(
+        "Cannot revert: working tree has uncommitted changes.",
+        DyadErrorKind.Conflict,
+      );
     }
 
     // Reset the working directory and index to match the target commit state
@@ -510,9 +522,10 @@ export async function gitReset({ path }: GitBaseParams): Promise<void> {
     // For isomorphic-git, resetting the index is complex and not directly supported
     // This is a fallback - in practice, this should rarely be needed when native git is disabled
     // If needed, users can manually reset via command line or enable native git
-    throw new Error(
+    throw new DyadError(
       "gitReset: Resetting the staging area is not fully supported when native git is disabled. " +
         "Please enable native git or manually unstage files using 'git reset HEAD'.",
+      DyadErrorKind.Precondition,
     );
   }
 }
@@ -564,8 +577,9 @@ export async function getGitUncommittedFiles({
   if (settings.enableNativeGit) {
     const result = await execGit(["status", "--porcelain"], path);
     if (result.exitCode !== 0) {
-      throw new Error(
+      throw new DyadError(
         `Failed to get uncommitted files: ${result.stderr.trim() || result.stdout.trim()}`,
+        DyadErrorKind.Conflict,
       );
     }
     return result.stdout
@@ -592,8 +606,9 @@ export async function getGitUncommittedFilesWithStatus({
   if (settings.enableNativeGit) {
     const result = await execGit(["status", "--porcelain"], path);
     if (result.exitCode !== 0) {
-      throw new Error(
+      throw new DyadError(
         `Failed to get uncommitted files: ${result.stderr.trim() || result.stdout.trim()}`,
+        DyadErrorKind.Conflict,
       );
     }
     return result.stdout
@@ -711,7 +726,7 @@ export async function gitListBranches({
     const result = await execGit(["branch", "--list"], path);
 
     if (result.exitCode !== 0) {
-      throw new Error(result.stderr.toString());
+      throw new DyadError(result.stderr.toString(), DyadErrorKind.Conflict);
     }
     // Parse output:
     // e.g. "* main\n  feature/login"
@@ -738,7 +753,7 @@ export async function gitListRemoteBranches({
     const result = await execGit(["branch", "-r", "--list"], path);
 
     if (result.exitCode !== 0) {
-      throw new Error(result.stderr.toString());
+      throw new DyadError(result.stderr.toString(), DyadErrorKind.Conflict);
     }
     // Parse output:
     // e.g. "  origin/main\n  origin/feature/login\n  upstream/develop"
@@ -778,7 +793,7 @@ export async function gitRenameBranch({
     // git branch -m oldBranch newBranch
     const result = await execGit(["branch", "-m", oldBranch, newBranch], path);
     if (result.exitCode !== 0) {
-      throw new Error(result.stderr.toString());
+      throw new DyadError(result.stderr.toString(), DyadErrorKind.Conflict);
     }
   } else {
     // isomorphic-git does not have a renameBranch function.
@@ -847,7 +862,7 @@ export async function gitClone({
     const result = await execGit(args, ".");
 
     if (result.exitCode !== 0) {
-      throw new Error(result.stderr.toString());
+      throw new DyadError(result.stderr.toString(), DyadErrorKind.Conflict);
     }
   } else {
     // isomorphic-git version
@@ -879,7 +894,7 @@ export async function gitSetRemoteUrl({
   // Validate remoteUrl to prevent argument injection attacks
   // URLs starting with "-" could be interpreted as command-line options
   if (remoteUrl.startsWith("-")) {
-    throw new Error("Invalid remote URL");
+    throw new DyadError("Invalid remote URL", DyadErrorKind.Validation);
   }
 
   if (settings.enableNativeGit) {
@@ -899,11 +914,17 @@ export async function gitSetRemoteUrl({
         );
 
         if (updateResult.exitCode !== 0) {
-          throw new Error(`Failed to update remote: ${updateResult.stderr}`);
+          throw new DyadError(
+            `Failed to update remote: ${updateResult.stderr}`,
+            DyadErrorKind.Conflict,
+          );
         }
       } else if (result.exitCode !== 0) {
         // Handle other errors
-        throw new Error(`Failed to add remote: ${result.stderr}`);
+        throw new DyadError(
+          `Failed to add remote: ${result.stderr}`,
+          DyadErrorKind.Conflict,
+        );
       }
     } catch (error: any) {
       logger.error("Error setting up remote:", error);
@@ -949,12 +970,18 @@ export async function gitPush({
       const result = await execGit(args, path);
       if (result.exitCode !== 0) {
         const errorMsg = result.stderr.toString() || result.stdout.toString();
-        throw new Error(`Git push failed: ${errorMsg}`);
+        throw new DyadError(
+          `Git push failed: ${errorMsg}`,
+          DyadErrorKind.Conflict,
+        );
       }
       return;
     } catch (error: any) {
       logger.error("Error during git push:", error);
-      throw new Error(`Git push failed: ${error.message}`);
+      throw new DyadError(
+        `Git push failed: ${error.message}`,
+        DyadErrorKind.Conflict,
+      );
     }
   }
 
@@ -964,9 +991,10 @@ export async function gitPush({
       "gitPush: 'forceWithLease' requested but not supported when native git is disabled. " +
         "Rejecting push to prevent unsafe force operation.",
     );
-    throw new Error(
+    throw new DyadError(
       "gitPush: 'forceWithLease' is not supported when native git is disabled. " +
         "Falling back to plain force could overwrite remote commits. Enable native git.",
+      DyadErrorKind.Precondition,
     );
   }
   await git.push({
@@ -989,8 +1017,9 @@ export async function gitPush({
 export async function gitRebaseAbort({ path }: GitBaseParams): Promise<void> {
   const settings = readSettings();
   if (!settings.enableNativeGit) {
-    throw new Error(
+    throw new DyadError(
       "Rebase controls require native Git. Enable native Git in settings.",
+      DyadErrorKind.Precondition,
     );
   }
 
@@ -1002,8 +1031,9 @@ export async function gitRebaseContinue({
 }: GitBaseParams): Promise<void> {
   const settings = readSettings();
   if (!settings.enableNativeGit) {
-    throw new Error(
+    throw new DyadError(
       "Rebase controls require native Git. Enable native Git in settings.",
+      DyadErrorKind.Precondition,
     );
   }
 
@@ -1026,8 +1056,9 @@ export async function gitRebase({
 }): Promise<void> {
   const settings = readSettings();
   if (!settings.enableNativeGit) {
-    throw new Error(
+    throw new DyadError(
       "Rebase requires native Git. Enable native Git in settings.",
+      DyadErrorKind.Precondition,
     );
   }
 
@@ -1044,8 +1075,9 @@ export async function gitRebase({
 export async function gitMergeAbort({ path }: GitBaseParams): Promise<void> {
   const settings = readSettings();
   if (!settings.enableNativeGit) {
-    throw new Error(
+    throw new DyadError(
       "Merge abort requires native Git. Enable native Git in settings.",
+      DyadErrorKind.Precondition,
     );
   }
 
@@ -1060,8 +1092,9 @@ export async function gitCurrentBranch({
     // Dugite version
     const result = await execGit(["branch", "--show-current"], path);
     if (result.exitCode !== 0) {
-      throw new Error(
+      throw new DyadError(
         `Failed to get current branch: ${result.stderr.trim() || result.stdout.trim()}`,
+        DyadErrorKind.Conflict,
       );
     }
     const branch = result.stdout.trim() || null;
@@ -1113,7 +1146,7 @@ export async function gitIsIgnored({
     if (result.exitCode === 1) return false;
 
     // Other exit codes are actual errors
-    throw new Error(result.stderr.toString());
+    throw new DyadError(result.stderr.toString(), DyadErrorKind.Conflict);
   } else {
     // isomorphic-git version
     return await git.isIgnored({
@@ -1142,7 +1175,7 @@ export async function gitLogNative(
   const logResult = await execGit(logArgs, path);
 
   if (logResult.exitCode !== 0) {
-    throw new Error(logResult.stderr.toString());
+    throw new DyadError(logResult.stderr.toString(), DyadErrorKind.Conflict);
   }
 
   const output = logResult.stdout.toString().trim();
@@ -1202,19 +1235,30 @@ export async function gitFetch({
   }
 }
 
-// Custom error function for git conflicts
-export function GitConflictError(message: string): Error {
-  const error = new Error(message);
-  error.name = "GitConflictError";
-  return error;
+/** Merge/pull conflicts — `name` kept for UI checks (e.g. GitHubConnector). */
+class GitConflictErrorImpl extends DyadError {
+  constructor(message: string) {
+    super(message, DyadErrorKind.Conflict);
+    this.name = "GitConflictError";
+  }
 }
 
-// Custom error function for git operations with structured error codes
+export function GitConflictError(message: string): Error {
+  return new GitConflictErrorImpl(message);
+}
+
+/** Blocked git operation due to repo state (merge/rebase in progress, etc.). */
+class GitStateErrorImpl extends DyadError {
+  readonly code: string;
+  constructor(message: string, code: string) {
+    super(message, DyadErrorKind.Precondition);
+    this.name = "GitStateError";
+    this.code = code;
+  }
+}
+
 export function GitStateError(message: string, code: string): Error {
-  const error = new Error(message);
-  error.name = "GitStateError";
-  (error as any).code = code;
-  return error;
+  return new GitStateErrorImpl(message, code);
 }
 
 // Error codes for git state errors
@@ -1357,9 +1401,10 @@ export async function gitCreateBranch({
   // isomorphic-git: branch creation uses the current HEAD; it does not honor "from"
   // in the same way as native `git branch <name> <from>`.
   if (from !== "HEAD") {
-    throw new Error(
+    throw new DyadError(
       `gitCreateBranch: 'from' is not supported when native git is disabled (from=${from}). ` +
         `Branches would be created from HEAD instead.`,
+      DyadErrorKind.Precondition,
     );
   }
   await git.branch({
@@ -1405,7 +1450,10 @@ export async function gitGetMergeConflicts({
       exitCode: number;
     };
     if (result.exitCode !== 0) {
-      throw new Error(`Failed to get merge conflicts: ${result.stderr}`);
+      throw new DyadError(
+        `Failed to get merge conflicts: ${result.stderr}`,
+        DyadErrorKind.Conflict,
+      );
     }
     return result.stdout
       .toString()
@@ -1414,8 +1462,9 @@ export async function gitGetMergeConflicts({
       .filter((s) => s.length > 0);
   }
   //throw error("gitGetMergeConflicts requires native Git. Enable native Git in settings.");
-  throw new Error(
+  throw new DyadError(
     "Git conflict detection requires native Git. Enable native Git in settings.",
+    DyadErrorKind.Precondition,
   );
 }
 

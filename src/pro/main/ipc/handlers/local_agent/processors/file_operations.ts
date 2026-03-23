@@ -11,6 +11,7 @@ import {
 import { deployAllSupabaseFunctions } from "../../../../../../supabase_admin/supabase_utils";
 import { readSettings } from "../../../../../../main/settings";
 import type { AgentContext } from "../tools/types";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("file_operations");
 
@@ -101,6 +102,9 @@ export async function commitAllChanges(
     };
   } catch (error) {
     logger.error(`Failed to commit changes: ${error}`);
-    throw new Error(`Failed to commit changes: ${error}`);
+    throw new DyadError(
+      `Failed to commit changes: ${error}`,
+      DyadErrorKind.External,
+    );
   }
 }

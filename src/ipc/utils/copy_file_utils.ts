@@ -11,6 +11,7 @@ import {
   isSharedServerModule,
   extractFunctionNameFromPath,
 } from "../../supabase_admin/supabase_utils";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("copy_file_utils");
 
@@ -64,7 +65,10 @@ export async function executeCopyFile({
     const toFullPath = safeJoin(appPath, to);
 
     if (!fs.existsSync(fromFullPath)) {
-      throw new Error(`Source file does not exist: ${from}`);
+      throw new DyadError(
+        `Source file does not exist: ${from}`,
+        DyadErrorKind.NotFound,
+      );
     }
 
     // Security: resolve symlinks and re-validate that paths remain within bounds.

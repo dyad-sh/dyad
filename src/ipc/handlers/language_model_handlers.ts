@@ -20,6 +20,7 @@ import {
 } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { IpcMainInvokeEvent } from "electron";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("language_model_handlers");
 const handle = createLoggedHandler(logger);
@@ -42,15 +43,24 @@ export function registerLanguageModelHandlers() {
 
       // Validation
       if (!id) {
-        throw new Error("Provider ID is required");
+        throw new DyadError(
+          "Provider ID is required",
+          DyadErrorKind.Validation,
+        );
       }
 
       if (!name) {
-        throw new Error("Provider name is required");
+        throw new DyadError(
+          "Provider name is required",
+          DyadErrorKind.Validation,
+        );
       }
 
       if (!apiBaseUrl) {
-        throw new Error("API base URL is required");
+        throw new DyadError(
+          "API base URL is required",
+          DyadErrorKind.Validation,
+        );
       }
 
       // Check if a provider with this ID already exists
@@ -61,7 +71,10 @@ export function registerLanguageModelHandlers() {
         .get();
 
       if (existingProvider) {
-        throw new Error(`A provider with ID "${id}" already exists`);
+        throw new DyadError(
+          `A provider with ID "${id}" already exists`,
+          DyadErrorKind.Conflict,
+        );
       }
 
       // Insert the new provider
@@ -101,20 +114,32 @@ export function registerLanguageModelHandlers() {
 
       // Validation
       if (!apiName) {
-        throw new Error("Model API name is required");
+        throw new DyadError(
+          "Model API name is required",
+          DyadErrorKind.Validation,
+        );
       }
       if (!displayName) {
-        throw new Error("Model display name is required");
+        throw new DyadError(
+          "Model display name is required",
+          DyadErrorKind.Validation,
+        );
       }
       if (!providerId) {
-        throw new Error("Provider ID is required");
+        throw new DyadError(
+          "Provider ID is required",
+          DyadErrorKind.Validation,
+        );
       }
 
       // Check if provider exists
       const providers = await getLanguageModelProviders();
       const provider = providers.find((p) => p.id === providerId);
       if (!provider) {
-        throw new Error(`Provider with ID "${providerId}" not found`);
+        throw new DyadError(
+          `Provider with ID "${providerId}" not found`,
+          DyadErrorKind.NotFound,
+        );
       }
 
       // Insert the new model
@@ -138,13 +163,22 @@ export function registerLanguageModelHandlers() {
       const { id, name, apiBaseUrl, envVarName } = params;
 
       if (!id) {
-        throw new Error("Provider ID is required");
+        throw new DyadError(
+          "Provider ID is required",
+          DyadErrorKind.Validation,
+        );
       }
       if (!name) {
-        throw new Error("Provider name is required");
+        throw new DyadError(
+          "Provider name is required",
+          DyadErrorKind.Validation,
+        );
       }
       if (!apiBaseUrl) {
-        throw new Error("API base URL is required");
+        throw new DyadError(
+          "API base URL is required",
+          DyadErrorKind.Validation,
+        );
       }
 
       // Check if the provider being edited exists
@@ -155,7 +189,10 @@ export function registerLanguageModelHandlers() {
         .get();
 
       if (!existingProvider) {
-        throw new Error(`Provider with ID "${id}" not found`);
+        throw new DyadError(
+          `Provider with ID "${id}" not found`,
+          DyadErrorKind.NotFound,
+        );
       }
 
       // Use transaction to ensure atomicity when updating provider and potentially its models
@@ -175,7 +212,10 @@ export function registerLanguageModelHandlers() {
           .run();
 
         if (updateResult.changes === 0) {
-          throw new Error(`Failed to update provider with ID "${id}"`);
+          throw new DyadError(
+            `Failed to update provider with ID "${id}"`,
+            DyadErrorKind.External,
+          );
         }
 
         return {
@@ -201,7 +241,10 @@ export function registerLanguageModelHandlers() {
 
       // Validation
       if (!apiName) {
-        throw new Error("Model API name (modelId) is required");
+        throw new DyadError(
+          "Model API name (modelId) is required",
+          DyadErrorKind.Validation,
+        );
       }
 
       logger.info(
@@ -237,7 +280,10 @@ export function registerLanguageModelHandlers() {
         `Handling delete-custom-model for ${providerId} / ${modelApiName}`,
       );
       if (!providerId || !modelApiName) {
-        throw new Error("Provider ID and Model API Name are required.");
+        throw new DyadError(
+          "Provider ID and Model API Name are required.",
+          DyadErrorKind.External,
+        );
       }
       logger.info(
         `Attempting to delete custom model ${modelApiName} for provider ${providerId}`,
@@ -246,10 +292,16 @@ export function registerLanguageModelHandlers() {
       const providers = await getLanguageModelProviders();
       const provider = providers.find((p) => p.id === providerId);
       if (!provider) {
-        throw new Error(`Provider with ID "${providerId}" not found`);
+        throw new DyadError(
+          `Provider with ID "${providerId}" not found`,
+          DyadErrorKind.NotFound,
+        );
       }
       if (provider.type === "local") {
-        throw new Error("Local models cannot be deleted");
+        throw new DyadError(
+          "Local models cannot be deleted",
+          DyadErrorKind.External,
+        );
       }
       const result = db
         .delete(language_models)
@@ -286,7 +338,10 @@ export function registerLanguageModelHandlers() {
 
       // Validation
       if (!providerId) {
-        throw new Error("Provider ID is required");
+        throw new DyadError(
+          "Provider ID is required",
+          DyadErrorKind.Validation,
+        );
       }
 
       logger.info(
@@ -349,15 +404,24 @@ export function registerLanguageModelHandlers() {
       params: { providerId: string },
     ): Promise<LanguageModel[]> => {
       if (!params || typeof params.providerId !== "string") {
-        throw new Error("Invalid parameters: providerId (string) is required.");
+        throw new DyadError(
+          "Invalid parameters: providerId (string) is required.",
+          DyadErrorKind.Validation,
+        );
       }
       const providers = await getLanguageModelProviders();
       const provider = providers.find((p) => p.id === params.providerId);
       if (!provider) {
-        throw new Error(`Provider with ID "${params.providerId}" not found`);
+        throw new DyadError(
+          `Provider with ID "${params.providerId}" not found`,
+          DyadErrorKind.NotFound,
+        );
       }
       if (provider.type === "local") {
-        throw new Error("Local models cannot be fetched");
+        throw new DyadError(
+          "Local models cannot be fetched",
+          DyadErrorKind.External,
+        );
       }
       return getLanguageModels({ providerId: params.providerId });
     },

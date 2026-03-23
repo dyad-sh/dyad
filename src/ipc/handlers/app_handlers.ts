@@ -67,6 +67,7 @@ import {
   MAX_FILE_SEARCH_SIZE,
   RIPGREP_EXCLUDED_GLOBS,
 } from "../utils/ripgrep_utils";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("app_handlers");
 const handle = createLoggedHandler(logger);
@@ -503,7 +504,10 @@ RUN npm install -g pnpm
       await fsPromises.writeFile(dockerfilePath, dockerfileContent, "utf-8");
     } catch (error) {
       logger.error(`Failed to create Dockerfile for app ${appId}:`, error);
-      throw new Error(`Failed to create Dockerfile: ${error}`);
+      throw new DyadError(
+        `Failed to create Dockerfile: ${error}`,
+        DyadErrorKind.External,
+      );
     }
   }
 
@@ -802,7 +806,10 @@ export function registerAppHandlers() {
     const appPath = params.name;
     const fullAppPath = getDyadAppPath(appPath);
     if (fs.existsSync(fullAppPath)) {
-      throw new Error(`App already exists at: ${fullAppPath}`);
+      throw new DyadError(
+        `App already exists at: ${fullAppPath}`,
+        DyadErrorKind.Conflict,
+      );
     }
     // Create a new app
     const [app] = await db
@@ -862,7 +869,10 @@ export function registerAppHandlers() {
     });
 
     if (existingApp) {
-      throw new Error(`An app named "${newAppName}" already exists.`);
+      throw new DyadError(
+        `An app named "${newAppName}" already exists.`,
+        DyadErrorKind.Conflict,
+      );
     }
 
     // 2. Find the original app
@@ -871,7 +881,7 @@ export function registerAppHandlers() {
     });
 
     if (!originalApp) {
-      throw new Error("Original app not found.");
+      throw new DyadError("Original app not found.", DyadErrorKind.NotFound);
     }
 
     const originalAppPath = getDyadAppPath(originalApp.path);
@@ -892,7 +902,10 @@ export function registerAppHandlers() {
       );
     } catch (error) {
       logger.error("Failed to copy app directory:", error);
-      throw new Error("Failed to copy app directory.");
+      throw new DyadError(
+        "Failed to copy app directory.",
+        DyadErrorKind.External,
+      );
     }
 
     if (!withHistory) {
@@ -935,7 +948,7 @@ export function registerAppHandlers() {
     });
 
     if (!app) {
-      throw new Error("App not found");
+      throw new DyadError("App not found", DyadErrorKind.NotFound);
     }
 
     // Get app files
@@ -1001,7 +1014,7 @@ export function registerAppHandlers() {
     });
 
     if (!app) {
-      throw new Error("App not found");
+      throw new DyadError("App not found", DyadErrorKind.NotFound);
     }
 
     const appPath = getDyadAppPath(app.path);
@@ -1009,11 +1022,11 @@ export function registerAppHandlers() {
 
     // Check if the path is within the app directory (security check)
     if (!fullPath.startsWith(appPath)) {
-      throw new Error("Invalid file path");
+      throw new DyadError("Invalid file path", DyadErrorKind.Validation);
     }
 
     if (!fs.existsSync(fullPath)) {
-      throw new Error("File not found");
+      throw new DyadError("File not found", DyadErrorKind.NotFound);
     }
 
     try {
@@ -1021,7 +1034,7 @@ export function registerAppHandlers() {
       return contents;
     } catch (error) {
       logger.error(`Error reading file ${filePath} for app ${appId}:`, error);
-      throw new Error("Failed to read file");
+      throw new DyadError("Failed to read file", DyadErrorKind.External);
     }
   });
 
@@ -1060,7 +1073,7 @@ export function registerAppHandlers() {
       });
 
       if (!app) {
-        throw new Error("App not found");
+        throw new DyadError("App not found", DyadErrorKind.NotFound);
       }
 
       logger.debug(`Starting app ${appId} in path ${app.path}`);
@@ -1088,7 +1101,10 @@ export function registerAppHandlers() {
         ) {
           runningApps.delete(appId);
         }
-        throw new Error(`Failed to run app ${appId}: ${error.message}`);
+        throw new DyadError(
+          `Failed to run app ${appId}: ${error.message}`,
+          DyadErrorKind.External,
+        );
       }
     });
   });
@@ -1136,7 +1152,10 @@ export function registerAppHandlers() {
         );
         // Attempt cleanup even if an error occurred during the stop process
         removeAppIfCurrentProcess(appId, process);
-        throw new Error(`Failed to stop app ${appId}: ${error.message}`);
+        throw new DyadError(
+          `Failed to stop app ${appId}: ${error.message}`,
+          DyadErrorKind.External,
+        );
       }
     });
   });
@@ -1167,7 +1186,7 @@ export function registerAppHandlers() {
         });
 
         if (!app) {
-          throw new Error("App not found");
+          throw new DyadError("App not found", DyadErrorKind.NotFound);
         }
 
         const appPath = getDyadAppPath(app.path);
@@ -1240,7 +1259,7 @@ export function registerAppHandlers() {
     });
 
     if (!app) {
-      throw new Error("App not found");
+      throw new DyadError("App not found", DyadErrorKind.NotFound);
     }
 
     const appPath = getDyadAppPath(app.path);
@@ -1248,7 +1267,7 @@ export function registerAppHandlers() {
 
     // Check if the path is within the app directory (security check)
     if (!fullPath.startsWith(appPath)) {
-      throw new Error("Invalid file path");
+      throw new DyadError("Invalid file path", DyadErrorKind.Validation);
     }
 
     if (app.neonProjectId && app.neonDevelopmentBranchId) {
@@ -1283,7 +1302,10 @@ export function registerAppHandlers() {
       }
     } catch (error: any) {
       logger.error(`Error writing file ${filePath} for app ${appId}:`, error);
-      throw new Error(`Failed to write file: ${error.message}`);
+      throw new DyadError(
+        `Failed to write file: ${error.message}`,
+        DyadErrorKind.External,
+      );
     }
 
     if (app.supabaseProjectId) {
@@ -1346,7 +1368,7 @@ export function registerAppHandlers() {
       });
 
       if (!app) {
-        throw new Error("App not found");
+        throw new DyadError("App not found", DyadErrorKind.NotFound);
       }
 
       // Stop the app if it's running
@@ -1370,7 +1392,10 @@ export function registerAppHandlers() {
         // Note: Associated chats will cascade delete
       } catch (error: any) {
         logger.error(`Error deleting app ${appId} from database:`, error);
-        throw new Error(`Failed to delete app from database: ${error.message}`);
+        throw new DyadError(
+          `Failed to delete app from database: ${error.message}`,
+          DyadErrorKind.External,
+        );
       }
 
       // Delete app files
@@ -1398,7 +1423,10 @@ export function registerAppHandlers() {
           .limit(1);
 
         if (result.length === 0) {
-          throw new Error(`App with ID ${appId} not found.`);
+          throw new DyadError(
+            `App with ID ${appId} not found.`,
+            DyadErrorKind.NotFound,
+          );
         }
 
         const currentIsFavorite = result[0].isFavorite;
@@ -1423,7 +1451,10 @@ export function registerAppHandlers() {
           `Error in add-to-favorite handler for app ID ${appId}:`,
           error,
         );
-        throw new Error(`Failed to toggle favorite status: ${error.message}`);
+        throw new DyadError(
+          `Failed to toggle favorite status: ${error.message}`,
+          DyadErrorKind.External,
+        );
       }
     });
   });
@@ -1438,7 +1469,7 @@ export function registerAppHandlers() {
       });
 
       if (!app) {
-        throw new Error("App not found");
+        throw new DyadError("App not found", DyadErrorKind.NotFound);
       }
 
       const pathChanged = appPath !== app.path;
@@ -1471,7 +1502,10 @@ export function registerAppHandlers() {
       });
 
       if (nameConflict && nameConflict.id !== appId) {
-        throw new Error(`An app with the name '${appName}' already exists`);
+        throw new DyadError(
+          `An app with the name '${appName}' already exists`,
+          DyadErrorKind.Conflict,
+        );
       }
 
       // If the current path is absolute, preserve the directory and only change the folder name
@@ -1493,7 +1527,10 @@ export function registerAppHandlers() {
       }
 
       if (hasPathConflict) {
-        throw new Error(`An app with the path '${newAppPath}' already exists`);
+        throw new DyadError(
+          `An app with the path '${newAppPath}' already exists`,
+          DyadErrorKind.Conflict,
+        );
       }
 
       // Stop the app if it's running
@@ -1516,7 +1553,10 @@ export function registerAppHandlers() {
         try {
           // Check if destination directory already exists
           if (fs.existsSync(newAppPath)) {
-            throw new Error(`Destination path '${newAppPath}' already exists`);
+            throw new DyadError(
+              `Destination path '${newAppPath}' already exists`,
+              DyadErrorKind.Conflict,
+            );
           }
 
           // Create parent directory if it doesn't exist
@@ -1547,7 +1587,10 @@ export function registerAppHandlers() {
               );
             }
           }
-          throw new Error(`Failed to move app files: ${error.message}`);
+          throw new DyadError(
+            `Failed to move app files: ${error.message}`,
+            DyadErrorKind.External,
+          );
         }
 
         try {
@@ -1596,7 +1639,10 @@ export function registerAppHandlers() {
         }
 
         logger.error(`Error updating app ${appId} in database:`, error);
-        throw new Error(`Failed to update app in database: ${error.message}`);
+        throw new DyadError(
+          `Failed to update app in database: ${error.message}`,
+          DyadErrorKind.External,
+        );
       }
     });
   });
@@ -1666,7 +1712,7 @@ export function registerAppHandlers() {
     });
 
     if (!app) {
-      throw new Error("App not found");
+      throw new DyadError("App not found", DyadErrorKind.NotFound);
     }
 
     const appPath = getDyadAppPath(app.path);
@@ -1676,7 +1722,10 @@ export function registerAppHandlers() {
         // Check if the old branch exists
         const branches = await gitListBranches({ path: appPath });
         if (!branches.includes(oldBranchName)) {
-          throw new Error(`Branch '${oldBranchName}' not found.`);
+          throw new DyadError(
+            `Branch '${oldBranchName}' not found.`,
+            DyadErrorKind.NotFound,
+          );
         }
 
         // Check if the new branch name already exists
@@ -1712,18 +1761,27 @@ export function registerAppHandlers() {
   createTypedHandler(appContracts.respondToAppInput, async (_, params) => {
     const { appId, response } = params;
     if (response !== "y" && response !== "n") {
-      throw new Error(`Invalid response: ${response}`);
+      throw new DyadError(
+        `Invalid response: ${response}`,
+        DyadErrorKind.Validation,
+      );
     }
     const appInfo = runningApps.get(appId);
 
     if (!appInfo) {
-      throw new Error(`App ${appId} is not running`);
+      throw new DyadError(
+        `App ${appId} is not running`,
+        DyadErrorKind.External,
+      );
     }
 
     const { process } = appInfo;
 
     if (!process.stdin) {
-      throw new Error(`App ${appId} process has no stdin available`);
+      throw new DyadError(
+        `App ${appId} process has no stdin available`,
+        DyadErrorKind.External,
+      );
     }
 
     try {
@@ -1732,7 +1790,10 @@ export function registerAppHandlers() {
       logger.debug(`Sent response '${response}' to app ${appId} stdin`);
     } catch (error: any) {
       logger.error(`Error sending response to app ${appId}:`, error);
-      throw new Error(`Failed to send response to app: ${error.message}`);
+      throw new DyadError(
+        `Failed to send response to app: ${error.message}`,
+        DyadErrorKind.External,
+      );
     }
   });
 
@@ -1748,7 +1809,7 @@ export function registerAppHandlers() {
     });
 
     if (!appRecord) {
-      throw new Error("App not found");
+      throw new DyadError("App not found", DyadErrorKind.NotFound);
     }
 
     const appPath = getDyadAppPath(appRecord.path);
@@ -1887,7 +1948,7 @@ export function registerAppHandlers() {
     });
 
     if (!app) {
-      throw new Error("App not found");
+      throw new DyadError("App not found", DyadErrorKind.NotFound);
     }
 
     const trimmedInstall = installCommand?.trim() || null;
@@ -1915,11 +1976,17 @@ export function registerAppHandlers() {
     const { appId, parentDirectory } = params;
 
     if (!parentDirectory) {
-      throw new Error("No destination folder provided.");
+      throw new DyadError(
+        "No destination folder provided.",
+        DyadErrorKind.External,
+      );
     }
 
     if (!path.isAbsolute(parentDirectory)) {
-      throw new Error("Please select an absolute destination folder.");
+      throw new DyadError(
+        "Please select an absolute destination folder.",
+        DyadErrorKind.External,
+      );
     }
 
     const normalizedParentDir = path.normalize(parentDirectory);
@@ -1930,7 +1997,7 @@ export function registerAppHandlers() {
       });
 
       if (!app) {
-        throw new Error("App not found");
+        throw new DyadError("App not found", DyadErrorKind.NotFound);
       }
 
       const currentResolvedPath = getDyadAppPath(app.path);
@@ -1993,7 +2060,10 @@ export function registerAppHandlers() {
           await stopAppByInfo(appId, appInfo);
         } catch (error: any) {
           logger.error(`Error stopping app ${appId} before moving:`, error);
-          throw new Error(`Failed to stop app before moving: ${error.message}`);
+          throw new DyadError(
+            `Failed to stop app before moving: ${error.message}`,
+            DyadErrorKind.External,
+          );
         }
       }
 
@@ -2045,7 +2115,10 @@ export function registerAppHandlers() {
           `Error moving app files from ${currentResolvedPath} to ${nextResolvedPath}:`,
           error,
         );
-        throw new Error(`Failed to move app files: ${error.message}`);
+        throw new DyadError(
+          `Failed to move app files: ${error.message}`,
+          DyadErrorKind.External,
+        );
       }
     });
   });

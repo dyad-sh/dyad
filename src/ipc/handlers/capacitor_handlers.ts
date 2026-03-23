@@ -9,6 +9,7 @@ import { simpleSpawn } from "../utils/simpleSpawn";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import { createTypedHandler } from "./base";
 import { capacitorContracts } from "../types/capacitor";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("capacitor_handlers");
 
@@ -17,7 +18,10 @@ async function getApp(appId: number) {
     where: eq(apps.id, appId),
   });
   if (!app) {
-    throw new Error(`App with id ${appId} not found`);
+    throw new DyadError(
+      `App with id ${appId} not found`,
+      DyadErrorKind.NotFound,
+    );
   }
   return app;
 }
@@ -60,7 +64,10 @@ export function registerCapacitorHandlers() {
     const appPath = getDyadAppPath(app.path);
 
     if (!isCapacitorInstalled(appPath)) {
-      throw new Error("Capacitor is not installed in this app");
+      throw new DyadError(
+        "Capacitor is not installed in this app",
+        DyadErrorKind.Precondition,
+      );
     }
 
     await simpleSpawn({
@@ -87,7 +94,10 @@ export function registerCapacitorHandlers() {
     const appPath = getDyadAppPath(app.path);
 
     if (!isCapacitorInstalled(appPath)) {
-      throw new Error("Capacitor is not installed in this app");
+      throw new DyadError(
+        "Capacitor is not installed in this app",
+        DyadErrorKind.Precondition,
+      );
     }
 
     if (IS_TEST_BUILD) {
@@ -109,7 +119,10 @@ export function registerCapacitorHandlers() {
     const appPath = getDyadAppPath(app.path);
 
     if (!isCapacitorInstalled(appPath)) {
-      throw new Error("Capacitor is not installed in this app");
+      throw new DyadError(
+        "Capacitor is not installed in this app",
+        DyadErrorKind.Precondition,
+      );
     }
 
     if (IS_TEST_BUILD) {

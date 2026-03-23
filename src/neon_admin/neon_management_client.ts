@@ -3,6 +3,7 @@ import { readSettings, writeSettings } from "../main/settings";
 import { Api, createApiClient } from "@neondatabase/api-client";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("neon_management_client");
 
@@ -35,7 +36,10 @@ export async function refreshNeonToken(): Promise<void> {
   }
 
   if (!refreshToken) {
-    throw new Error("Neon refresh token not found. Please authenticate first.");
+    throw new DyadError(
+      "Neon refresh token not found. Please authenticate first.",
+      DyadErrorKind.Auth,
+    );
   }
 
   try {
@@ -53,7 +57,10 @@ export async function refreshNeonToken(): Promise<void> {
     );
 
     if (!response.ok) {
-      throw new Error(`Token refresh failed: ${response.statusText}`);
+      throw new DyadError(
+        `Token refresh failed: ${response.statusText}`,
+        DyadErrorKind.External,
+      );
     }
 
     const {
@@ -182,7 +189,10 @@ export async function getNeonClient(): Promise<Api<unknown>> {
   const expiresIn = settings.neon?.expiresIn;
 
   if (!neonAccessToken) {
-    throw new Error("Neon access token not found. Please authenticate first.");
+    throw new DyadError(
+      "Neon access token not found. Please authenticate first.",
+      DyadErrorKind.Auth,
+    );
   }
 
   // Check if token needs refreshing
@@ -193,7 +203,10 @@ export async function getNeonClient(): Promise<Api<unknown>> {
     const newAccessToken = updatedSettings.neon?.accessToken?.value;
 
     if (!newAccessToken) {
-      throw new Error("Failed to refresh Neon access token");
+      throw new DyadError(
+        "Failed to refresh Neon access token",
+        DyadErrorKind.Auth,
+      );
     }
 
     return createApiClient({
@@ -223,14 +236,20 @@ export async function getNeonOrganizationId(): Promise<string> {
       !response.data?.organizations ||
       response.data.organizations.length === 0
     ) {
-      throw new Error("No organizations found for this Neon account");
+      throw new DyadError(
+        "No organizations found for this Neon account",
+        DyadErrorKind.NotFound,
+      );
     }
 
     // Return the first organization ID
     return response.data.organizations[0].id;
   } catch (error) {
     logger.error("Error fetching Neon organizations:", error);
-    throw new Error("Failed to fetch Neon organizations");
+    throw new DyadError(
+      "Failed to fetch Neon organizations",
+      DyadErrorKind.External,
+    );
   }
 }
 

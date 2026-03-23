@@ -12,6 +12,7 @@ import { eq } from "drizzle-orm";
 import { ImportAppParams, ImportAppResult } from "@/ipc/types";
 import { copyDirectoryRecursive } from "../utils/file_utils";
 import { gitCommit, gitAdd, gitInit } from "../utils/git_utils";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("import-handlers");
 const handle = createLoggedHandler(logger);
@@ -88,7 +89,10 @@ export function registerImportHandlers() {
       try {
         await fs.access(sourcePath);
       } catch {
-        throw new Error("Source folder does not exist");
+        throw new DyadError(
+          "Source folder does not exist",
+          DyadErrorKind.NotFound,
+        );
       }
 
       // Determine the app path based on skipCopy

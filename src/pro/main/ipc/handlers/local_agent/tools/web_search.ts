@@ -7,6 +7,7 @@ import {
   escapeXmlContent,
 } from "./types";
 import { engineFetch } from "./engine_fetch";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("web_search");
 
@@ -71,7 +72,10 @@ function parseSSEEvents(
       if (json.error) {
         const errorMessage =
           json.error.message || json.error.type || "Unknown SSE error";
-        throw new Error(`Web search SSE error: ${errorMessage}`);
+        throw new DyadError(
+          `Web search SSE error: ${errorMessage}`,
+          DyadErrorKind.External,
+        );
       }
 
       // OpenAI-style SSE format: { choices: [{ delta: { content: "..." } }] }
@@ -117,7 +121,10 @@ async function callWebSearchSSE(
   }
 
   if (!response.body) {
-    throw new Error("Web search response has no body");
+    throw new DyadError(
+      "Web search response has no body",
+      DyadErrorKind.NotFound,
+    );
   }
 
   const reader = response.body.getReader();
@@ -172,7 +179,10 @@ export const webSearchTool: ToolDefinition<z.infer<typeof webSearchSchema>> = {
     const result = await callWebSearchSSE(args.query, ctx);
 
     if (!result) {
-      throw new Error("Web search returned no results");
+      throw new DyadError(
+        "Web search returned no results",
+        DyadErrorKind.NotFound,
+      );
     }
 
     // Write final result to UI and DB with dyad-web-search wrapper

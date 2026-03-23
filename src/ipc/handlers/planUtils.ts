@@ -1,3 +1,4 @@
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 export function slugify(text: string): string {
   const result = text
     .toLowerCase()
@@ -17,7 +18,7 @@ export function buildFrontmatter(meta: Record<string, string>): string {
 
 export function validatePlanId(planId: string): void {
   if (!/^[a-z0-9-]+$/.test(planId)) {
-    throw new Error("Invalid plan ID");
+    throw new DyadError("Invalid plan ID", DyadErrorKind.Validation);
   }
 }
 

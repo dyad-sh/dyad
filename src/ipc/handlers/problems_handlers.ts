@@ -6,6 +6,7 @@ import { getDyadAppPath } from "@/paths/paths";
 import log from "electron-log";
 import { createTypedHandler } from "./base";
 import { miscContracts } from "../types/misc";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("problems_handlers");
 
@@ -18,7 +19,10 @@ export function registerProblemsHandlers() {
       });
 
       if (!app) {
-        throw new Error(`App not found: ${params.appId}`);
+        throw new DyadError(
+          `App not found: ${params.appId}`,
+          DyadErrorKind.NotFound,
+        );
       }
 
       const appPath = getDyadAppPath(app.path);

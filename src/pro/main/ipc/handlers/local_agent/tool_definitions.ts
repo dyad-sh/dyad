@@ -45,6 +45,7 @@ import {
 } from "./tools/types";
 import { AgentToolConsent } from "@/lib/schemas";
 import { getSupabaseClientCode } from "@/supabase_admin/supabase_context";
+import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 // Combined tool definitions array
 export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   writeFileTool,
@@ -251,7 +252,10 @@ export async function requireAgentToolConsent(
 
   if (current === "always") return true;
   if (current === "never")
-    throw new Error("Should not ask for consent for a tool marked as 'never'");
+    throw new DyadError(
+      "Should not ask for consent for a tool marked as 'never'",
+      DyadErrorKind.Internal,
+    );
 
   // Ask renderer for a decision via event bridge
   const requestId = `agent:${params.toolName}:${crypto.randomUUID()}`;
@@ -330,7 +334,10 @@ function convertToolResultForAiSdk(
   if (typeof result === "string") {
     return { type: "text", value: result };
   }
-  throw new Error(`Unsupported tool result type: ${typeof result}`);
+  throw new DyadError(
+    `Unsupported tool result type: ${typeof result}`,
+    DyadErrorKind.Internal,
+  );
 }
 
 export interface BuildAgentToolSetOptions {
@@ -456,7 +463,10 @@ export function buildAgentToolSet(
             inputPreview: tool.getConsentPreview?.(processedArgs) ?? null,
           });
           if (!allowed) {
-            throw new Error(`User denied permission for ${tool.name}`);
+            throw new DyadError(
+              `User denied permission for ${tool.name}`,
+              DyadErrorKind.UserCancelled,
+            );
           }
 
           // Track file edit tool usage before execution to capture all attempts

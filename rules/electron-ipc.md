@@ -71,6 +71,7 @@ writeSettings({
 ## Handler expectations
 
 - Handlers should `throw new Error("...")` on failure instead of returning `{ success: false }` style payloads.
+- For **non-bug** failures (validation, not found, auth, user refusal, etc.), prefer `DyadError` with the right `DyadErrorKind` so PostHog does not flood with `$exception` events — see [rules/dyad-errors.md](dyad-errors.md).
 - Use `createTypedHandler(contract, handler)` which validates inputs at runtime via Zod.
 
 ## React Query key factory

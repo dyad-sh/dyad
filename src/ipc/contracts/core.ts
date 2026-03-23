@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 // =============================================================================
 // Contract Type Definitions
@@ -163,9 +162,8 @@ export function createClient<
     (client as any)[methodName] = async (input: unknown) => {
       const ipcRenderer = getIpcRenderer();
       if (!ipcRenderer) {
-        throw new DyadError(
+        throw new Error(
           `[${contract.channel}] IPC renderer not available. Make sure this is called from the renderer process.`,
-          DyadErrorKind.Precondition,
         );
       }
       return ipcRenderer.invoke(contract.channel, input);

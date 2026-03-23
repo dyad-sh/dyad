@@ -16,7 +16,7 @@ testSkipIfWindows("local-agent - step limit pause", async ({ po }) => {
 
   // Verify the step limit card is visible
   await expect(
-    po.page.getByText("Paused after 50 tool calls", { exact: true }),
+    po.page.getByText("Paused after 100 tool calls", { exact: true }),
   ).toBeVisible({
     timeout: Timeout.EXTRA_LONG,
   });

@@ -57,11 +57,17 @@ export const MaxToolCallStepsSelector: React.FC = () => {
   };
 
   // Determine the current value
-  const currentValue = settings?.maxToolCallSteps?.toString() || defaultValue;
+  const rawValue = settings?.maxToolCallSteps;
+  const currentValue =
+    rawValue == null || rawValue === DEFAULT_MAX_TOOL_CALL_STEPS
+      ? defaultValue
+      : rawValue.toString();
 
   // Find the current option to display its description
   const currentOption =
-    options.find((opt) => opt.value === currentValue) || options[1];
+    options.find((opt) => opt.value === currentValue) ||
+    options.find((opt) => opt.value === defaultValue) ||
+    options[0];
 
   return (
     <div className="space-y-1">

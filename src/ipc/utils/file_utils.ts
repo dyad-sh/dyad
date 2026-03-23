@@ -107,18 +107,28 @@ async function copyDirectoryRecursiveInternal(
         continue;
       }
 
-      // Preserve symlinks as-is (copy symlink itself, not the target)
+      // Handle symlinks by resolving their target and checking boundaries
       const linkTarget = await fsPromises.readlink(srcPath);
-      // Skip absolute symlinks that would break in the copied tree
-      // (they point to WSL filesystem paths that won't exist on Windows)
-      const isAbsolute =
-        path.isAbsolute(linkTarget) ||
-        linkTarget.startsWith("\\\\") ||
-        linkTarget.startsWith("/");
-      if (isAbsolute) {
-        // For absolute symlinks, skip to avoid dangling links in destination
+
+      // Resolve symlink target to absolute path for boundary checking
+      let resolvedTarget: string;
+      try {
+        // For absolute paths, use as-is; for relative, resolve relative to symlink's directory
+        if (path.isAbsolute(linkTarget)) {
+          resolvedTarget = path.resolve(linkTarget);
+        } else {
+          resolvedTarget = path.resolve(path.dirname(srcPath), linkTarget);
+        }
+      } catch {
+        // If resolution fails, skip this symlink
         continue;
       }
+
+      // Check if symlink target stays within source tree boundary
+      const isWithinSourceTree =
+        resolvedTarget.startsWith(sourceRoot + path.sep) ||
+        resolvedTarget === sourceRoot;
+
       // Determine if symlink target is a directory (needed for Windows symlink creation)
       let symlinkType: "file" | "dir" = "file";
       try {
@@ -130,79 +140,123 @@ async function copyDirectoryRecursiveInternal(
         // If stat fails (broken symlink, etc), default to 'file'
       }
 
-      try {
-        await fsPromises.symlink(linkTarget, destPath, symlinkType);
-      } catch (error: any) {
-        // On Windows without Developer Mode, symlink creation can fail with EPERM.
-        // Fall back to copying the symlink target as a regular file/directory,
-        // but with cycle and boundary detection to prevent infinite recursion and out-of-tree copying.
-        if (error.code === "EPERM") {
-          if (symlinkType === "dir") {
-            // Resolve symlink target to detect cycles and boundaries
-            let realPath: string;
-            try {
-              realPath = await fsPromises.realpath(srcPath);
-            } catch {
-              // If realpath fails (broken symlink), skip the symlink
-              continue;
-            }
+      if (isWithinSourceTree) {
+        // Target is within source tree - safe to preserve as symlink
+        try {
+          await fsPromises.symlink(linkTarget, destPath, symlinkType);
+        } catch (error: any) {
+          // On Windows without Developer Mode, symlink creation can fail with EPERM.
+          // Fall back to copying the symlink target contents instead.
+          if (error.code === "EPERM") {
+            // Dereference the symlink by copying its contents
+            if (symlinkType === "dir") {
+              let realPath: string;
+              try {
+                realPath = await fsPromises.realpath(srcPath);
+              } catch {
+                // If realpath fails (broken symlink), skip
+                continue;
+              }
 
-            const resolvedPath = path.resolve(realPath);
+              const resolvedPath = path.resolve(realPath);
 
-            // Check if realPath is within the source tree boundary
-            if (
-              !resolvedPath.startsWith(sourceRoot + path.sep) &&
-              resolvedPath !== sourceRoot
-            ) {
-              // Symlink target is outside source tree, skip to prevent unintended copying
-              continue;
-            }
+              // Double-check boundary before copying (should be true already)
+              if (
+                !resolvedPath.startsWith(sourceRoot + path.sep) &&
+                resolvedPath !== sourceRoot
+              ) {
+                continue;
+              }
 
-            // Check if this path is currently being visited (cycle detection)
-            if (visitingPaths.has(resolvedPath)) {
-              // Avoid infinite recursion from circular symlinks
-              continue;
-            }
+              // Check if this path is currently being visited (cycle detection)
+              if (visitingPaths.has(resolvedPath)) {
+                // Avoid infinite recursion from circular symlinks
+                continue;
+              }
 
-            // Add to current recursion path
-            visitingPaths.add(resolvedPath);
-            try {
-              // Recursively copy symlinked directory with cycle protection
-              await copyDirectoryRecursiveInternal(
-                realPath,
-                destPath,
-                options,
-                visitingPaths,
-                sourceRoot,
-              );
-            } finally {
-              // Remove from current recursion path when backtracking
-              visitingPaths.delete(resolvedPath);
-            }
-          } else {
-            // Copy symlinked file, but only if target is within source tree boundary
-            let realPath: string;
-            try {
-              realPath = await fsPromises.realpath(srcPath);
-            } catch {
-              // If realpath fails (broken symlink), skip
-              continue;
-            }
+              // Add to current recursion path
+              visitingPaths.add(resolvedPath);
+              try {
+                // Recursively copy symlinked directory with cycle protection
+                await copyDirectoryRecursiveInternal(
+                  realPath,
+                  destPath,
+                  options,
+                  visitingPaths,
+                  sourceRoot,
+                );
+              } finally {
+                // Remove from current recursion path when backtracking
+                visitingPaths.delete(resolvedPath);
+              }
+            } else {
+              // Copy symlinked file by dereferencing
+              try {
+                await fsPromises.realpath(srcPath);
+              } catch {
+                // If realpath fails (broken symlink), skip
+                continue;
+              }
 
-            const resolvedPath = path.resolve(realPath);
-
-            // Check if realPath is within the source tree boundary
-            if (
-              resolvedPath.startsWith(sourceRoot + path.sep) ||
-              resolvedPath === sourceRoot
-            ) {
-              // Target is within source tree, safe to copy
               await copyFileHandlingWsl(srcPath, destPath);
             }
-            // Otherwise skip symlink to prevent out-of-tree copying
+          } else {
+            throw error;
+          }
+        }
+      } else {
+        // Target escapes source tree boundary - dereference by copying contents
+        if (symlinkType === "dir") {
+          let realPath: string;
+          try {
+            realPath = await fsPromises.realpath(srcPath);
+          } catch {
+            // If realpath fails (broken symlink), skip
+            continue;
+          }
+
+          const resolvedPath = path.resolve(realPath);
+
+          // Verify resolved path is within boundary (sanity check)
+          if (
+            !resolvedPath.startsWith(sourceRoot + path.sep) &&
+            resolvedPath !== sourceRoot
+          ) {
+            // Symlink target is truly outside tree, skip to prevent unintended copying
+            continue;
+          }
+
+          // Check if this path is currently being visited (cycle detection)
+          if (visitingPaths.has(resolvedPath)) {
+            // Avoid infinite recursion from circular symlinks
+            continue;
+          }
+
+          // Add to current recursion path
+          visitingPaths.add(resolvedPath);
+          try {
+            // Recursively copy symlinked directory with cycle protection
+            await copyDirectoryRecursiveInternal(
+              realPath,
+              destPath,
+              options,
+              visitingPaths,
+              sourceRoot,
+            );
+          } finally {
+            // Remove from current recursion path when backtracking
+            visitingPaths.delete(resolvedPath);
           }
         } else {
-          throw error;
+          // Copy symlinked file that escapes tree by dereferencing
+          try {
+            await fsPromises.realpath(srcPath);
+          } catch {
+            // If realpath fails (broken symlink), skip
+            continue;
+          }
+
+          await copyFileHandlingWsl(srcPath, destPath);
         }
       }
     } else if (entry.isDirectory()) {

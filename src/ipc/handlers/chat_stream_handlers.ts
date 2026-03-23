@@ -1457,8 +1457,13 @@ ${formattedSearchReplaceIssues}`,
                 chatMessages: [
                   ...chatMessages,
                   {
+                    role: "assistant",
+                    content: fullResponse,
+                  },
+                  {
                     role: "user",
-                    content: `Your previous response was cut off. Here is what you generated so far:\n\n${fullResponse}\n\nContinue exactly where you left off. Do not repeat any content that was already generated. Only output the remaining content.`,
+                    content:
+                      "Your previous response did not finish completely. Continue exactly where you left off without any preamble.",
                   },
                 ],
                 modelClient,

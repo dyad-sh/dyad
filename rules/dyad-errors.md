@@ -38,3 +38,8 @@ Most IPC/main paths and shared utilities (`git_utils`, Supabase admin, local age
 **Do not** import `DyadError` inside preload (`src/preload.ts`) without verifying the preload bundle; preload continues to use plain `Error` for invalid channels.
 
 **Legacy:** `FILTERED_EXCEPTION_MESSAGES` and `RateLimitError` (429) handling in `telemetry.ts` remain for any plain `Error` paths not yet migrated.
+
+## Automation pitfalls
+
+- When auto-inserting `import { DyadError, DyadErrorKind } from "@/errors/dyad_error"`, **never** place it inside another `import { ... }` block — it must be its own import statement or TypeScript fails with “Identifier expected” at the next line.
+- Automated line-based migrations must **not** match strings inside **test fixtures** (e.g. template literals that embed sample source code); that can inject imports into fake file content.

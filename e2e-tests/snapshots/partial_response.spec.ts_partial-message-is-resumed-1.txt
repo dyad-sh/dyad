@@ -128,7 +128,12 @@ role: user
 message: tc=partial-write
 
 ===
-role: assistant
-message: START OF MESSAGE
+role: user
+message: Your previous response was cut off. Here is what you generated so far:
+
+START OF MESSAGE
 <dyad-write path="src/new-file.ts" description="this file will be partially written">
 const a = "[[STRING_TO_BE_FINISHED]]
+
+
+Continue exactly where you left off. Do not repeat any content that was already generated. Only output the remaining content.

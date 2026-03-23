@@ -334,11 +334,12 @@ export default Index;
       }
     }
 
+    // Continuation requests embed the partial assistant output inside a user message
+    // ("Your previous response was cut off...") so the marker is not at the end of
+    // lastMessage — use includes(), not endsWith(). See chat_stream_handlers continuation prompt.
     if (
       lastMessage &&
-      lastMessage.content &&
-      typeof lastMessage.content === "string" &&
-      lastMessage.content.trim().endsWith("[[STRING_TO_BE_FINISHED]]")
+      getTextContent(lastMessage).includes("[[STRING_TO_BE_FINISHED]]")
     ) {
       messageContent = `[[STRING_IS_FINISHED]]";</dyad-write>\nFinished writing file.`;
       messageContent += "\n\n" + generateDump(req);

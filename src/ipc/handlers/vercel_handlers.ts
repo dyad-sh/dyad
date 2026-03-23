@@ -254,6 +254,7 @@ async function handleListVercelProjects(): Promise<VercelProject[]> {
       framework: project.framework || null,
     }));
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error("[Vercel Handler] Failed to list projects:", err);
     throw new Error(err.message || "Failed to list Vercel projects.");
   }
@@ -396,6 +397,7 @@ async function handleCreateProject(
       // Don't throw here - project creation was successful, deployment failure is non-critical
     }
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error("[Vercel Handler] Failed to create project:", err);
     throw new Error(err.message || "Failed to create Vercel project.");
   }
@@ -446,6 +448,7 @@ async function handleConnectToExistingProject(
 
     logger.info(`Successfully connected to Vercel project: ${projectData.id}`);
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error(
       "[Vercel Handler] Failed to connect to existing project:",
       err,
@@ -522,6 +525,7 @@ async function handleGetVercelDeployments(
       readyState: deployment.readyState || "unknown",
     }));
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error("[Vercel Handler] Failed to get deployments:", err);
     throw new Error(err.message || "Failed to get Vercel deployments.");
   }

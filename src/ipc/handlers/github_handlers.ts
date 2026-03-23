@@ -583,6 +583,7 @@ async function handleListGithubRepos(): Promise<
       private: repo.private,
     }));
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error("[GitHub Handler] Failed to list repos:", err);
     throw new Error(err.message || "Failed to list GitHub repositories.");
   }
@@ -625,6 +626,7 @@ async function handleGetRepoBranches(
       commit: { sha: branch.commit.sha },
     }));
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error("[GitHub Handler] Failed to get repo branches:", err);
     throw new Error(err.message || "Failed to get repository branches.");
   }
@@ -831,6 +833,7 @@ async function handleConnectToExistingRepo(
     // Store org, repo, and branch in the app's DB row
     await updateAppGithubRepo({ appId, org: owner, repo, branch });
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error("[GitHub Handler] Failed to connect to existing repo:", err);
     throw new Error(err.message || "Failed to connect to existing repository.");
   }
@@ -1079,6 +1082,7 @@ async function handleListCollaborators(
       permissions: c.permissions,
     }));
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error("[GitHub Handler] Failed to list collaborators:", err);
     throw new Error(err.message || "Failed to list collaborators.");
   }
@@ -1153,6 +1157,7 @@ async function handleInviteCollaborator(
       );
     }
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error("[GitHub Handler] Failed to invite collaborator:", err);
     throw new Error(err.message || "Failed to invite collaborator.");
   }
@@ -1196,6 +1201,7 @@ async function handleRemoveCollaborator(
       );
     }
   } catch (err: any) {
+    if (err instanceof DyadError) throw err;
     logger.error("[GitHub Handler] Failed to remove collaborator:", err);
     throw new Error(err.message || "Failed to remove collaborator.");
   }

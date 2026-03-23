@@ -129,12 +129,18 @@ import type {
 } from "../git_types";
 
 /**
- * Helper function that wraps exec and throws an error if the exit code is non-zero
+ * Helper function that wraps exec and throws an error if the exit code is non-zero.
+ *
+ * Defaults to {@link DyadErrorKind.External} so unexpected failures (network, permissions,
+ * corrupted repos) surface in telemetry. Use {@link DyadErrorKind.Conflict} only when the
+ * dominant failure mode is genuinely merge/working-tree conflict (callers that detect
+ * conflict state often rethrow {@link GitConflictError} instead).
  */
 async function execOrThrow(
   args: string[],
   path: string,
   errorMessage?: string,
+  kind: DyadErrorKind = DyadErrorKind.External,
 ): Promise<void> {
   const result = await execGit(args, path);
   if (result.exitCode !== 0) {
@@ -142,7 +148,7 @@ async function execOrThrow(
     const error = errorMessage
       ? `${errorMessage}. ${errorDetails}`
       : `Git command failed: ${args.join(" ")}. ${errorDetails}`;
-    throw new DyadError(error, DyadErrorKind.Conflict);
+    throw new DyadError(error, kind);
   }
 }
 

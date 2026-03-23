@@ -160,7 +160,7 @@ class FallbackModel implements LanguageModelV3 {
     if (!model) {
       throw new DyadError(
         `Model at index ${this.currentModelIndex} not found`,
-        DyadErrorKind.NotFound,
+        DyadErrorKind.Internal,
       );
     }
     // The model is either a string (GatewayModelId) or LanguageModelV2/V3

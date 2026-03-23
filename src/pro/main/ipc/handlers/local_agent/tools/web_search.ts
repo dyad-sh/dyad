@@ -123,7 +123,7 @@ async function callWebSearchSSE(
   if (!response.body) {
     throw new DyadError(
       "Web search response has no body",
-      DyadErrorKind.NotFound,
+      DyadErrorKind.External,
     );
   }
 
@@ -181,7 +181,7 @@ export const webSearchTool: ToolDefinition<z.infer<typeof webSearchSchema>> = {
     if (!result) {
       throw new DyadError(
         "Web search returned no results",
-        DyadErrorKind.NotFound,
+        DyadErrorKind.External,
       );
     }
 

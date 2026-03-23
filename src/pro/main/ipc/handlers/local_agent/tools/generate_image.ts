@@ -71,7 +71,7 @@ async function callGenerateImage(
   if (!data.data || data.data.length === 0) {
     throw new DyadError(
       "Image generation returned no results",
-      DyadErrorKind.NotFound,
+      DyadErrorKind.External,
     );
   }
 
@@ -107,7 +107,7 @@ async function saveGeneratedImage(
   } else {
     throw new DyadError(
       "Image generation returned no image data",
-      DyadErrorKind.NotFound,
+      DyadErrorKind.External,
     );
   }
 

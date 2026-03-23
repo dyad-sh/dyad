@@ -133,21 +133,21 @@ export const webCrawlTool: ToolDefinition<z.infer<typeof webCrawlSchema>> = {
     if (!result) {
       throw new DyadError(
         "Web crawl returned no results",
-        DyadErrorKind.NotFound,
+        DyadErrorKind.External,
       );
     }
 
     if (!result.markdown) {
       throw new DyadError(
         "No content available from web crawl",
-        DyadErrorKind.NotFound,
+        DyadErrorKind.External,
       );
     }
 
     if (!result.screenshot) {
       throw new DyadError(
         "No screenshot available from web crawl",
-        DyadErrorKind.NotFound,
+        DyadErrorKind.External,
       );
     }
     logger.log(`Web crawl completed for URL: ${args.url}`);

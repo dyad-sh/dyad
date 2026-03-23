@@ -25,7 +25,7 @@ export function createLoggedHandler(logger: log.LogFunctions) {
             error,
           );
           sendTelemetryException(error, { ipc_channel: channel });
-          // Preserve DyadError so renderer/instanceof and telemetry classification stay consistent.
+          // Preserve DyadError so telemetry classification stay consistent.
           if (error instanceof DyadError) {
             throw error;
           }

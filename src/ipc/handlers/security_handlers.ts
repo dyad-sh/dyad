@@ -37,7 +37,7 @@ export function registerSecurityHandlers() {
       if (result.length === 0) {
         throw new DyadError(
           "No security review found for this app",
-          DyadErrorKind.External,
+          DyadErrorKind.NotFound,
         );
       }
 
@@ -47,7 +47,7 @@ export function registerSecurityHandlers() {
       if (findings.length === 0) {
         throw new DyadError(
           "No security review found for this app",
-          DyadErrorKind.External,
+          DyadErrorKind.NotFound,
         );
       }
 

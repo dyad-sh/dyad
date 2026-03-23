@@ -120,7 +120,7 @@ export function registerImageGenerationHandlers() {
         logger.error("Invalid image generation response:", parsed.error);
         throw new DyadError(
           "Invalid response from image generation service",
-          DyadErrorKind.Validation,
+          DyadErrorKind.External,
         );
       }
 
@@ -128,7 +128,7 @@ export function registerImageGenerationHandlers() {
       if (!imageData?.b64_json && !imageData?.url) {
         throw new DyadError(
           "No image data returned from generation service",
-          DyadErrorKind.NotFound,
+          DyadErrorKind.External,
         );
       }
 

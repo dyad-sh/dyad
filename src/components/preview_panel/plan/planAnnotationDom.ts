@@ -1,6 +1,8 @@
 import type { PlanAnnotation } from "@/atoms/planAtoms";
 
 export const PLAN_ANNOTATION_IGNORE_ATTRIBUTE = "data-plan-annotation-ignore";
+export const ANNOTATION_ID_ATTRIBUTE = "data-annotation-id";
+export const ANNOTATION_MARK_SELECTOR = `mark[${ANNOTATION_ID_ATTRIBUTE}]`;
 
 const PLAN_ANNOTATION_IGNORE_SELECTOR = `[${PLAN_ANNOTATION_IGNORE_ATTRIBUTE}]`;
 
@@ -173,7 +175,7 @@ function highlightAtOffset(
 
     const mark = document.createElement("mark");
     const isFirstFragment = index === 0;
-    mark.setAttribute("data-annotation-id", annotationId);
+    mark.setAttribute(ANNOTATION_ID_ATTRIBUTE, annotationId);
 
     if (isFirstFragment) {
       const normalizedSelectedText = selectedText.replace(/\s+/g, " ").trim();
@@ -280,7 +282,7 @@ export function hasOverlappingPlanAnnotation(
 }
 
 export function clearPlanAnnotationHighlights(container: HTMLElement) {
-  container.querySelectorAll("mark[data-annotation-id]").forEach((mark) => {
+  container.querySelectorAll(ANNOTATION_MARK_SELECTOR).forEach((mark) => {
     const parent = mark.parentNode;
     if (!parent) {
       return;

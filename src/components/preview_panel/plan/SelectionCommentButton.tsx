@@ -8,6 +8,7 @@ import {
   type PlanAnnotation,
 } from "@/atoms/planAtoms";
 import {
+  ANNOTATION_MARK_SELECTOR,
   getPlanSelectionSnapshot,
   hasOverlappingPlanAnnotation,
 } from "./planAnnotationDom";
@@ -53,72 +54,123 @@ export const SelectionCommentButton: React.FC<SelectionCommentButtonProps> = ({
     setCommentText("");
   }, []);
 
-  // Listen for text selection
+  // Listen for text selection via mouseup and selectionchange
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
+    let rafId: number | null = null;
+
+    const processSelection = () => {
+      const selection = window.getSelection();
+      if (
+        !selection ||
+        selection.rangeCount === 0 ||
+        selection.toString().trim().length === 0
+      ) {
+        clearState();
+        return;
+      }
+
+      // Ensure the selection is within the plan container
+      const range = selection.getRangeAt(0);
+      if (!container.contains(range.commonAncestorContainer)) {
+        clearState();
+        return;
+      }
+      const snapshot = getPlanSelectionSnapshot(container, range);
+      if (!snapshot) {
+        clearState();
+        return;
+      }
+
+      if (
+        hasOverlappingPlanAnnotation(
+          chatAnnotations,
+          snapshot.startOffset,
+          snapshot.selectionLength,
+        )
+      ) {
+        clearState();
+        return;
+      }
+
+      const rect = getSelectionCommentAnchorRect(range);
+      const formWidth = 288; // w-72
+      const estimatedFormHeight = 150;
+      const x = Math.max(
+        8,
+        Math.min(rect.right + 4, window.innerWidth - formWidth - 8),
+      );
+      const y = Math.max(
+        8,
+        Math.min(rect.top - 4, window.innerHeight - estimatedFormHeight - 8),
+      );
+      setShowForm(false);
+      setCommentText("");
+      setFloatingButton({
+        x,
+        y,
+        selectedText: snapshot.selectedText,
+        startOffset: snapshot.startOffset,
+        selectionLength: snapshot.selectionLength,
+      });
+    };
+
+    const scheduleProcessSelection = () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        processSelection();
+      });
+    };
+
     const handleMouseUp = (e: MouseEvent) => {
       // Ignore clicks on highlighted annotations (handled by CommentPopover)
       const target = e.target instanceof HTMLElement ? e.target : null;
-      if (target?.closest("mark[data-annotation-id]")) return;
+      if (target?.closest(ANNOTATION_MARK_SELECTOR)) return;
 
       // Small delay to let the selection finalize
-      requestAnimationFrame(() => {
+      scheduleProcessSelection();
+    };
+
+    let selectionChangeTimer: ReturnType<typeof setTimeout> | null = null;
+    const handleSelectionChange = () => {
+      if (selectionChangeTimer !== null) {
+        clearTimeout(selectionChangeTimer);
+      }
+      selectionChangeTimer = setTimeout(() => {
+        selectionChangeTimer = null;
         const selection = window.getSelection();
         if (
           !selection ||
           selection.rangeCount === 0 ||
           selection.toString().trim().length === 0
         ) {
-          clearState();
           return;
         }
-
-        // Ensure the selection is within the plan container
         const range = selection.getRangeAt(0);
         if (!container.contains(range.commonAncestorContainer)) {
-          clearState();
           return;
         }
-        const snapshot = getPlanSelectionSnapshot(container, range);
-        if (!snapshot) {
-          clearState();
-          return;
-        }
-
-        if (
-          hasOverlappingPlanAnnotation(
-            chatAnnotations,
-            snapshot.startOffset,
-            snapshot.selectionLength,
-          )
-        ) {
-          clearState();
-          return;
-        }
-
-        const rect = getSelectionCommentAnchorRect(range);
-        const formWidth = 288; // w-72
-        const x = Math.max(
-          8,
-          Math.min(rect.right + 4, window.innerWidth - formWidth - 8),
-        );
-        const y = Math.max(rect.top - 4, 8);
-        setShowForm(false);
-        setCommentText("");
-        setFloatingButton({
-          x,
-          y,
-          selectedText: snapshot.selectedText,
-          startOffset: snapshot.startOffset,
-          selectionLength: snapshot.selectionLength,
-        });
-      });
+        scheduleProcessSelection();
+      }, 200);
     };
 
     container.addEventListener("mouseup", handleMouseUp);
-    return () => container.removeEventListener("mouseup", handleMouseUp);
+    document.addEventListener("selectionchange", handleSelectionChange);
+    return () => {
+      container.removeEventListener("mouseup", handleMouseUp);
+      document.removeEventListener("selectionchange", handleSelectionChange);
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      if (selectionChangeTimer !== null) {
+        clearTimeout(selectionChangeTimer);
+      }
+    };
   }, [chatAnnotations, clearState, containerRef]);
 
   // Hide on scroll

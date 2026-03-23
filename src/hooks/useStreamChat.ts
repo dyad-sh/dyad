@@ -93,7 +93,7 @@ export function useStreamChat({
       redo?: boolean;
       attachments?: FileAttachment[];
       selectedComponents?: ComponentSelection[];
-      onSettled?: () => void;
+      onSettled?: (result: { success: boolean }) => void;
     }) => {
       if (
         (!prompt.trim() && (!attachments || attachments.length === 0)) ||
@@ -108,7 +108,7 @@ export function useStreamChat({
           `[CHAT] Ignoring duplicate stream request for chat ${chatId} - stream already in progress`,
         );
         // Call onSettled to allow callers to clean up their local loading state
-        onSettled?.();
+        onSettled?.({ success: false });
         return;
       }
 
@@ -294,7 +294,7 @@ export function useStreamChat({
               refreshApp();
               refreshVersions();
               invalidateTokenCount();
-              onSettled?.();
+              onSettled?.({ success: true });
             },
             onError: ({ error: errorMessage }) => {
               // Remove from pending set now that stream ended with error
@@ -323,7 +323,7 @@ export function useStreamChat({
               refreshApp();
               refreshVersions();
               invalidateTokenCount();
-              onSettled?.();
+              onSettled?.({ success: false });
             },
           },
         );
@@ -346,7 +346,7 @@ export function useStreamChat({
             );
           return next;
         });
-        onSettled?.();
+        onSettled?.({ success: false });
       }
     },
     [

@@ -143,8 +143,10 @@ export const PlanPanel: React.FC = () => {
     streamMessage({
       chatId,
       prompt: `I have the following comments on the plan:\n\n${prompt}\n\nPlease update the plan based on these comments.`,
-      onSettled: () => {
-        setAnnotations((prev) => clearPlanAnnotations(prev, chatId));
+      onSettled: ({ success }) => {
+        if (success) {
+          setAnnotations((prev) => clearPlanAnnotations(prev, chatId));
+        }
         setIsSendingComments(false);
       },
     });
@@ -212,6 +214,7 @@ export const PlanPanel: React.FC = () => {
       {chatId && (
         <>
           <SelectionCommentButton
+            key={chatId}
             containerRef={planContentRef}
             scrollRef={scrollContainerRef}
             chatId={chatId}

@@ -7,6 +7,10 @@ import React, {
 } from "react";
 import { CommentCard } from "./CommentCard";
 import type { PlanAnnotation } from "@/atoms/planAtoms";
+import {
+  ANNOTATION_ID_ATTRIBUTE,
+  ANNOTATION_MARK_SELECTOR,
+} from "./planAnnotationDom";
 
 interface PopoverState {
   annotationId: string;
@@ -48,7 +52,7 @@ export const CommentPopover: React.FC<CommentPopoverProps> = ({
   );
 
   const openPopoverForMark = useCallback((mark: HTMLElement) => {
-    const annotationId = mark.getAttribute("data-annotation-id");
+    const annotationId = mark.getAttribute(ANNOTATION_ID_ATTRIBUTE);
     if (!annotationId) return;
 
     const rect = mark.getBoundingClientRect();
@@ -67,7 +71,7 @@ export const CommentPopover: React.FC<CommentPopoverProps> = ({
 
     const handleClick = (e: MouseEvent) => {
       const target = e.target instanceof HTMLElement ? e.target : null;
-      const mark = target?.closest("mark[data-annotation-id]") as HTMLElement;
+      const mark = target?.closest(ANNOTATION_MARK_SELECTOR) as HTMLElement;
       if (!mark) return;
 
       openPopoverForMark(mark);
@@ -79,7 +83,7 @@ export const CommentPopover: React.FC<CommentPopoverProps> = ({
       }
 
       const target = e.target instanceof HTMLElement ? e.target : null;
-      const mark = target?.closest("mark[data-annotation-id]") as HTMLElement;
+      const mark = target?.closest(ANNOTATION_MARK_SELECTOR) as HTMLElement;
       if (!mark) return;
 
       e.preventDefault();
@@ -103,7 +107,7 @@ export const CommentPopover: React.FC<CommentPopoverProps> = ({
       if (popoverRef.current?.contains(target)) return;
       // Don't dismiss if clicking another mark (the click handler above will update)
       const el = e.target as HTMLElement;
-      if (el.closest?.("mark[data-annotation-id]")) return;
+      if (el.closest?.(ANNOTATION_MARK_SELECTOR)) return;
       dismiss();
     };
 
@@ -126,7 +130,7 @@ export const CommentPopover: React.FC<CommentPopoverProps> = ({
 
     const handleScroll = () => {
       const mark = containerRef.current?.querySelector<HTMLElement>(
-        `mark[data-annotation-id="${popover.annotationId}"]`,
+        `mark[${ANNOTATION_ID_ATTRIBUTE}="${popover.annotationId}"]`,
       );
       if (!mark) {
         dismiss();

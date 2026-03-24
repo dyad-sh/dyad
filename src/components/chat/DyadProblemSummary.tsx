@@ -2,16 +2,16 @@ import React, { useState } from "react";
 import { AlertTriangle, FileText } from "lucide-react";
 import type { Problem } from "@/ipc/types";
 import {
-  DyadCard,
-  DyadCardHeader,
-  DyadBadge,
-  DyadExpandIcon,
-  DyadCardContent,
-} from "./DyadCardPrimitives";
+  ProteaAICard,
+  ProteaAICardHeader,
+  ProteaAIBadge,
+  ProteaAIExpandIcon,
+  ProteaAICardContent,
+} from "./ProteaAICardPrimitives";
 
 type ProblemWithoutSnippet = Omit<Problem, "snippet">;
 
-interface DyadProblemSummaryProps {
+interface ProteaAIProblemSummaryProps {
   summary?: string;
   children?: React.ReactNode;
 }
@@ -50,7 +50,7 @@ const ProblemItem: React.FC<ProblemItemProps> = ({ problem, index }) => {
   );
 };
 
-export const DyadProblemSummary: React.FC<DyadProblemSummaryProps> = ({
+export const ProteaAIProblemSummary: React.FC<ProteaAIProblemSummaryProps> = ({
   summary,
   children,
 }) => {
@@ -95,24 +95,24 @@ export const DyadProblemSummary: React.FC<DyadProblemSummaryProps> = ({
     summary || `${totalProblems} problems found (TypeScript errors)`;
 
   return (
-    <DyadCard
+    <ProteaAICard
       accentColor="amber"
       isExpanded={isContentVisible}
       onClick={() => setIsContentVisible(!isContentVisible)}
       data-testid="problem-summary"
     >
-      <DyadCardHeader icon={<AlertTriangle size={15} />} accentColor="amber">
-        <DyadBadge color="amber">Auto-fix</DyadBadge>
+      <ProteaAICardHeader icon={<AlertTriangle size={15} />} accentColor="amber">
+        <ProteaAIBadge color="amber">Auto-fix</ProteaAIBadge>
         <span className="font-medium text-sm text-foreground truncate">
           {displaySummary}
         </span>
         <div className="ml-auto">
-          <DyadExpandIcon isExpanded={isContentVisible} />
+          <ProteaAIExpandIcon isExpanded={isContentVisible} />
         </div>
-      </DyadCardHeader>
+      </ProteaAICardHeader>
 
       {/* Content area - show individual problems */}
-      <DyadCardContent isExpanded={isContentVisible}>
+      <ProteaAICardContent isExpanded={isContentVisible}>
         {totalProblems > 0 ? (
           <div className="bg-muted/20 rounded-lg border border-border/40 overflow-hidden">
             {problems.map((problem, index) => (
@@ -130,7 +130,7 @@ export const DyadProblemSummary: React.FC<DyadProblemSummaryProps> = ({
             </pre>
           )
         )}
-      </DyadCardContent>
-    </DyadCard>
+      </ProteaAICardContent>
+    </ProteaAICard>
   );
 };

@@ -23,7 +23,7 @@ import {
   mcpServers,
 } from "../../db/schema";
 import { eq } from "drizzle-orm";
-import { getDyadAppPath } from "../../paths/paths";
+import { getProteaAIAppPath } from "../../paths/paths";
 import { validateChatContext } from "../utils/context_paths_utils";
 
 // Shared function to get system debug info
@@ -62,7 +62,7 @@ async function getSystemDebugInfo({
     console.error("Failed to get node path:", err);
   }
 
-  // Get Dyad version from package.json
+  // Get ProteaAI version from package.json
   const packageJsonPath = path.resolve(__dirname, "..", "..", "package.json");
   let dyadVersion = "unknown";
   try {
@@ -158,7 +158,7 @@ function sanitizeSettingsForDebug(settings: UserSettings) {
     selectedChatMode: settings.selectedChatMode ?? null,
     defaultChatMode: settings.defaultChatMode ?? null,
     autoApproveChanges: settings.autoApproveChanges ?? null,
-    enableDyadPro: settings.enableDyadPro ?? null,
+    enableProteaAIPro: settings.enableProteaAIPro ?? null,
     thinkingBudget: settings.thinkingBudget ?? null,
     maxChatTurnsInContext: settings.maxChatTurnsInContext ?? null,
     enableAutoFixProblems: settings.enableAutoFixProblems ?? null,
@@ -274,7 +274,7 @@ export function registerDebugHandlers() {
     try {
       const settings = readSettings();
 
-      // Get Dyad version
+      // Get ProteaAI version
       const packageJsonPath = path.resolve(
         __dirname,
         "..",
@@ -331,7 +331,7 @@ export function registerDebugHandlers() {
           db.select().from(language_models),
           db.select().from(mcpServers),
           extractCodebase({
-            appPath: getDyadAppPath(app.path),
+            appPath: getProteaAIAppPath(app.path),
             chatContext: validateChatContext(app.chatContext),
           }).then((result) => result.formattedOutput),
         ]);

@@ -1,7 +1,7 @@
-import { getDyadAppPath } from "../../paths/paths";
+import { getProteaAIAppPath } from "../../paths/paths";
 import { safeJoin } from "./path_utils";
 import { getMimeType } from "./mime_utils";
-import { DYAD_MEDIA_DIR_NAME } from "./media_path_utils";
+import { PROTEAAI_MEDIA_DIR_NAME } from "./media_path_utils";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -18,12 +18,12 @@ export async function resolveMediaMentions(
   appName: string,
 ): Promise<ResolvedMediaFile[]> {
   const resolved: ResolvedMediaFile[] = [];
-  const resolvedAppPath = getDyadAppPath(appPath);
+  const resolvedAppPath = getProteaAIAppPath(appPath);
 
   for (const encodedFileName of mediaRefs) {
     try {
       const fileName = decodeURIComponent(encodedFileName);
-      const filePath = safeJoin(resolvedAppPath, DYAD_MEDIA_DIR_NAME, fileName);
+      const filePath = safeJoin(resolvedAppPath, PROTEAAI_MEDIA_DIR_NAME, fileName);
       if (!fs.existsSync(filePath)) continue;
 
       const ext = path.extname(fileName).toLowerCase();

@@ -68,7 +68,7 @@ test("should import GitHub URL", async ({ po }) => {
   // Enter URL
   await po.page
     .getByPlaceholder("https://github.com/user/repo.git")
-    .fill("https://github.com/dyad-sh/nextjs-template.git");
+    .fill("https://github.com/proteaai/nextjs-template.git");
 
   // Click import (scoped to GitHub URL tab panel to avoid strict mode violation)
   await po.page
@@ -116,7 +116,7 @@ test("should support advanced options with custom commands", async ({ po }) => {
   await po.page.getByRole("tab", { name: "GitHub URL" }).click();
   await po.page
     .getByPlaceholder("https://github.com/user/repo.git")
-    .fill("https://github.com/dyad-sh/nextjs-template.git");
+    .fill("https://github.com/proteaai/nextjs-template.git");
 
   // Open advanced options
   await po.page.getByRole("button", { name: "Advanced options" }).click();
@@ -161,7 +161,7 @@ test("should allow empty commands to use defaults", async ({ po }) => {
   await po.page.getByRole("tab", { name: "GitHub URL" }).click();
   await po.page
     .getByPlaceholder("https://github.com/user/repo.git")
-    .fill("https://github.com/dyad-sh/nextjs-template.git");
+    .fill("https://github.com/proteaai/nextjs-template.git");
 
   // Commands are empty by default, so import should be enabled
   const githubUrlPanel = po.page.getByLabel("GitHub URL");

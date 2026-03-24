@@ -166,10 +166,10 @@ export function useRunApp() {
       console.error(`Error running app ${appId}:`, error);
       setPreviewErrorMessage(
         error instanceof Error
-          ? { message: error.message, source: "dyad-app" }
+          ? { message: error.message, source: "proteaai-app" }
           : {
               message: error?.toString() || "Unknown error",
-              source: "dyad-app",
+              source: "proteaai-app",
             },
       );
     } finally {
@@ -191,10 +191,10 @@ export function useRunApp() {
       console.error(`Error stopping app ${appId}:`, error);
       setPreviewErrorMessage(
         error instanceof Error
-          ? { message: error.message, source: "dyad-app" }
+          ? { message: error.message, source: "proteaai-app" }
           : {
               message: error?.toString() || "Unknown error",
-              source: "dyad-app",
+              source: "proteaai-app",
             },
       );
     } finally {
@@ -252,10 +252,10 @@ export function useRunApp() {
         console.error(`Error restarting app ${appId}:`, error);
         setPreviewErrorMessage(
           error instanceof Error
-            ? { message: error.message, source: "dyad-app" }
+            ? { message: error.message, source: "proteaai-app" }
             : {
                 message: error?.toString() || "Unknown error",
-                source: "dyad-app",
+                source: "proteaai-app",
               },
         );
       } finally {

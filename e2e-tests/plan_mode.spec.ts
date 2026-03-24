@@ -6,7 +6,7 @@ import { Timeout, testSkipIfWindows } from "./helpers/test_helper";
 testSkipIfWindows(
   "plan mode - accept plan redirects to new chat and saves to disk",
   async ({ po }) => {
-    await po.setUpDyadPro({ localAgent: true });
+    await po.setUpProteaAIPro({ localAgent: true });
     await po.importApp("minimal");
     await po.chatActions.selectChatMode("plan");
 
@@ -56,7 +56,7 @@ testSkipIfWindows(
 );
 
 testSkipIfWindows("plan mode - questionnaire flow", async ({ po }) => {
-  await po.setUpDyadPro({ localAgent: true });
+  await po.setUpProteaAIPro({ localAgent: true });
   await po.importApp("minimal");
   await po.chatActions.selectChatMode("plan");
 

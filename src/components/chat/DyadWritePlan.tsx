@@ -5,7 +5,7 @@ import { previewModeAtom } from "@/atoms/appAtoms";
 import { CustomTagState } from "./stateTypes";
 import { usePlan } from "@/hooks/usePlan";
 
-interface DyadWritePlanProps {
+interface ProteaAIWritePlanProps {
   node: {
     properties: {
       title: string;
@@ -17,7 +17,7 @@ interface DyadWritePlanProps {
   children?: React.ReactNode;
 }
 
-export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
+export const ProteaAIWritePlan: React.FC<ProteaAIWritePlanProps> = ({ node }) => {
   const { title, summary, complete, state } = node.properties;
   const [showSummary, setShowSummary] = useState(false);
   const setPreviewMode = useSetAtom(previewModeAtom);

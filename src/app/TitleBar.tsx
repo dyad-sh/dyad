@@ -10,7 +10,7 @@ import { providerSettingsRoute } from "@/routes/settings/providers/$provider";
 import { cn } from "@/lib/utils";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
 import { useCallback, useEffect, useState } from "react";
-import { DyadProSuccessDialog } from "@/components/DyadProSuccessDialog";
+import { ProteaAIProSuccessDialog } from "@/components/ProteaAIProSuccessDialog";
 import { useTheme } from "@/contexts/ThemeContext";
 import { ipc } from "@/ipc/types";
 import { useSystemPlatform } from "@/hooks/useSystemPlatform";
@@ -47,18 +47,18 @@ export const TitleBar = () => {
   const platform = useSystemPlatform();
   const showWindowControls = platform !== null && platform !== "darwin";
 
-  const showDyadProSuccessDialog = () => {
+  const showProteaAIProSuccessDialog = () => {
     setIsSuccessDialogOpen(true);
   };
 
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
   useEffect(() => {
     const handleDeepLink = async () => {
-      if (lastDeepLink?.type === "dyad-pro-return") {
+      if (lastDeepLink?.type === "proteaai-pro-return") {
         await refreshSettings();
-        // Refetch user budget when Dyad Pro key is set via deep link
+        // Refetch user budget when ProteaAI Pro key is set via deep link
         queryClient.invalidateQueries({ queryKey: queryKeys.userBudget.info });
-        showDyadProSuccessDialog();
+        showProteaAIProSuccessDialog();
         clearLastDeepLink();
       }
     };
@@ -77,15 +77,15 @@ export const TitleBar = () => {
     }
   };
 
-  const isDyadPro = !!settings?.providerSettings?.auto?.apiKey?.value;
-  const isDyadProEnabled = Boolean(settings?.enableDyadPro);
+  const isProteaAIPro = !!settings?.providerSettings?.auto?.apiKey?.value;
+  const isProteaAIProEnabled = Boolean(settings?.enableProteaAIPro);
 
   return (
     <>
       <div className="@container z-11 w-full h-11 pt-3 bg-(--sidebar) absolute top-0 left-0 app-region-drag flex items-center">
         <div className={`${showWindowControls ? "pl-2" : "pl-18"}`}></div>
 
-        <img src={logo} alt="Dyad Logo" className="w-6 h-6 mr-0.5 ml-2" />
+        <img src={logo} alt="ProteaAI Logo" className="w-6 h-6 mr-0.5 ml-2" />
         <Button
           data-testid="title-bar-app-name-button"
           variant="outline"
@@ -97,7 +97,7 @@ export const TitleBar = () => {
         >
           {displayText}
         </Button>
-        {isDyadPro && <DyadProButton isDyadProEnabled={isDyadProEnabled} />}
+        {isProteaAIPro && <ProteaAIProButton isProteaAIProEnabled={isProteaAIProEnabled} />}
 
         <div className="flex-1 min-w-0 overflow-hidden no-app-region-drag">
           <ChatTabs selectedChatId={selectedChatId} />
@@ -108,7 +108,7 @@ export const TitleBar = () => {
         {showWindowControls && <WindowsControls />}
       </div>
 
-      <DyadProSuccessDialog
+      <ProteaAIProSuccessDialog
         isOpen={isSuccessDialogOpen}
         onClose={() => setIsSuccessDialogOpen(false)}
       />
@@ -263,10 +263,10 @@ function TitleBarActions() {
   );
 }
 
-export function DyadProButton({
-  isDyadProEnabled,
+export function ProteaAIProButton({
+  isProteaAIProEnabled,
 }: {
-  isDyadProEnabled: boolean;
+  isProteaAIProEnabled: boolean;
 }) {
   const { navigate } = useRouter();
   const { userBudget } = useUserBudgetInfo();
@@ -282,16 +282,16 @@ export function DyadProButton({
       variant="outline"
       className={cn(
         "hidden @2xl:block ml-1 no-app-region-drag h-7 bg-indigo-600 text-white dark:bg-indigo-600 dark:text-white text-xs px-2 pt-1 pb-1",
-        !isDyadProEnabled && "bg-zinc-600 dark:bg-zinc-600",
+        !isProteaAIProEnabled && "bg-zinc-600 dark:bg-zinc-600",
       )}
       size="sm"
     >
-      {isDyadProEnabled
+      {isProteaAIProEnabled
         ? userBudget?.isTrial
           ? "Pro Trial"
           : "Pro"
         : "Pro (off)"}
-      {userBudget && isDyadProEnabled && (
+      {userBudget && isProteaAIProEnabled && (
         <AICreditStatus userBudget={userBudget} />
       )}
     </Button>

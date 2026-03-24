@@ -4,7 +4,7 @@ import { CheckCircle, ArrowRight } from "lucide-react";
 import { planStateAtom } from "@/atoms/planAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 
-interface DyadExitPlanProps {
+interface ProteaAIExitPlanProps {
   node: {
     properties: {
       notes?: string;
@@ -12,7 +12,7 @@ interface DyadExitPlanProps {
   };
 }
 
-export const DyadExitPlan: React.FC<DyadExitPlanProps> = ({ node }) => {
+export const ProteaAIExitPlan: React.FC<ProteaAIExitPlanProps> = ({ node }) => {
   const { notes } = node.properties;
   const chatId = useAtomValue(selectedChatIdAtom);
   const planState = useAtomValue(planStateAtom);

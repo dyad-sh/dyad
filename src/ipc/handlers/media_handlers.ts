@@ -2,12 +2,12 @@ import { createTypedHandler } from "./base";
 import { mediaContracts } from "../types/media";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
-import { getDyadAppPath } from "../../paths/paths";
+import { getProteaAIAppPath } from "../../paths/paths";
 import { safeJoin } from "../utils/path_utils";
 import { getMimeType, MIME_TYPE_MAP } from "../utils/mime_utils";
-import { DYAD_MEDIA_DIR_NAME } from "../utils/media_path_utils";
+import { PROTEAAI_MEDIA_DIR_NAME } from "../utils/media_path_utils";
 import { INVALID_FILE_NAME_CHARS } from "../../shared/media_validation";
-import { ensureDyadGitignored } from "./gitignoreUtils";
+import { ensureProteaAIGitignored } from "./gitignoreUtils";
 import { withLock } from "../utils/lock_utils";
 import fs from "node:fs";
 import path from "node:path";
@@ -23,7 +23,7 @@ async function getMediaFilesForApp(
   appName: string,
   appPath: string,
 ) {
-  const mediaDir = path.join(appPath, DYAD_MEDIA_DIR_NAME);
+  const mediaDir = path.join(appPath, PROTEAAI_MEDIA_DIR_NAME);
   try {
     await fs.promises.access(mediaDir);
   } catch {
@@ -132,11 +132,11 @@ function assertSupportedMediaExtension(fileName: string): string {
 function getMediaFilePath(appPath: string, fileName: string): string {
   assertSafeFileName(fileName);
   assertSupportedMediaExtension(fileName);
-  return safeJoin(appPath, DYAD_MEDIA_DIR_NAME, fileName);
+  return safeJoin(appPath, PROTEAAI_MEDIA_DIR_NAME, fileName);
 }
 
 function getMediaDirectoryPath(appPath: string): string {
-  return path.join(appPath, DYAD_MEDIA_DIR_NAME);
+  return path.join(appPath, PROTEAAI_MEDIA_DIR_NAME);
 }
 
 async function getAppOrThrow(appId: number) {
@@ -156,7 +156,7 @@ export function registerMediaHandlers() {
     const allApps = await db.select().from(apps);
     const appResults = await Promise.all(
       allApps.map(async (app) => {
-        const appPath = getDyadAppPath(app.path);
+        const appPath = getProteaAIAppPath(app.path);
         const files = await getMediaFilesForApp(app.id, app.name, appPath);
         if (files.length > 0) {
           return {
@@ -176,7 +176,7 @@ export function registerMediaHandlers() {
   createTypedHandler(mediaContracts.renameMediaFile, async (_, params) => {
     await withMediaLock([params.appId], async () => {
       const app = await getAppOrThrow(params.appId);
-      const appPath = getDyadAppPath(app.path);
+      const appPath = getProteaAIAppPath(app.path);
 
       const sourcePath = getMediaFilePath(appPath, params.fileName);
 
@@ -191,7 +191,7 @@ export function registerMediaHandlers() {
 
       const destinationPath = safeJoin(
         appPath,
-        DYAD_MEDIA_DIR_NAME,
+        PROTEAAI_MEDIA_DIR_NAME,
         destinationFileName,
       );
 
@@ -219,7 +219,7 @@ export function registerMediaHandlers() {
   createTypedHandler(mediaContracts.deleteMediaFile, async (_, params) => {
     await withMediaLock([params.appId], async () => {
       const app = await getAppOrThrow(params.appId);
-      const appPath = getDyadAppPath(app.path);
+      const appPath = getProteaAIAppPath(app.path);
       const filePath = getMediaFilePath(appPath, params.fileName);
 
       try {
@@ -245,21 +245,21 @@ export function registerMediaHandlers() {
       const sourceApp = await getAppOrThrow(params.sourceAppId);
       const targetApp = await getAppOrThrow(params.targetAppId);
 
-      const sourceAppPath = getDyadAppPath(sourceApp.path);
-      const targetAppPath = getDyadAppPath(targetApp.path);
+      const sourceAppPath = getProteaAIAppPath(sourceApp.path);
+      const targetAppPath = getProteaAIAppPath(targetApp.path);
 
       const sourcePath = getMediaFilePath(sourceAppPath, params.fileName);
       if (!fs.existsSync(sourcePath)) {
         throw new Error("Media file not found");
       }
 
-      await ensureDyadGitignored(targetAppPath);
+      await ensureProteaAIGitignored(targetAppPath);
       const targetMediaDirectoryPath = getMediaDirectoryPath(targetAppPath);
       await fs.promises.mkdir(targetMediaDirectoryPath, { recursive: true });
 
       const destinationPath = safeJoin(
         targetAppPath,
-        DYAD_MEDIA_DIR_NAME,
+        PROTEAAI_MEDIA_DIR_NAME,
         params.fileName,
       );
 

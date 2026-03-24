@@ -2,15 +2,15 @@ import React, { useState, useEffect } from "react";
 import { Code2, FileText } from "lucide-react";
 import { CustomTagState } from "./stateTypes";
 import {
-  DyadCard,
-  DyadCardHeader,
-  DyadBadge,
-  DyadExpandIcon,
-  DyadStateIndicator,
-  DyadCardContent,
-} from "./DyadCardPrimitives";
+  ProteaAICard,
+  ProteaAICardHeader,
+  ProteaAIBadge,
+  ProteaAIExpandIcon,
+  ProteaAIStateIndicator,
+  ProteaAICardContent,
+} from "./ProteaAICardPrimitives";
 
-interface DyadCodebaseContextProps {
+interface ProteaAICodebaseContextProps {
   children: React.ReactNode;
   node?: {
     properties?: {
@@ -20,7 +20,7 @@ interface DyadCodebaseContextProps {
   };
 }
 
-export const DyadCodebaseContext: React.FC<DyadCodebaseContextProps> = ({
+export const ProteaAICodebaseContext: React.FC<ProteaAICodebaseContextProps> = ({
   node,
 }) => {
   const state = node?.properties?.state as CustomTagState;
@@ -35,25 +35,25 @@ export const DyadCodebaseContext: React.FC<DyadCodebaseContextProps> = ({
   }, [inProgress]);
 
   return (
-    <DyadCard
+    <ProteaAICard
       state={state}
       accentColor="blue"
       onClick={() => setIsExpanded(!isExpanded)}
       isExpanded={isExpanded}
     >
-      <DyadCardHeader icon={<Code2 size={15} />} accentColor="blue">
-        <DyadBadge color="blue">Codebase Context</DyadBadge>
+      <ProteaAICardHeader icon={<Code2 size={15} />} accentColor="blue">
+        <ProteaAIBadge color="blue">Codebase Context</ProteaAIBadge>
         {files.length > 0 && (
           <span className="text-xs text-muted-foreground">
             Using {files.length} file{files.length !== 1 ? "s" : ""}
           </span>
         )}
-        {inProgress && <DyadStateIndicator state="pending" />}
+        {inProgress && <ProteaAIStateIndicator state="pending" />}
         <div className="ml-auto">
-          <DyadExpandIcon isExpanded={isExpanded} />
+          <ProteaAIExpandIcon isExpanded={isExpanded} />
         </div>
-      </DyadCardHeader>
-      <DyadCardContent isExpanded={isExpanded}>
+      </ProteaAICardHeader>
+      <ProteaAICardContent isExpanded={isExpanded}>
         {files.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {files.map((file, index) => {
@@ -83,7 +83,7 @@ export const DyadCodebaseContext: React.FC<DyadCodebaseContextProps> = ({
             })}
           </div>
         )}
-      </DyadCardContent>
-    </DyadCard>
+      </ProteaAICardContent>
+    </ProteaAICard>
   );
 };

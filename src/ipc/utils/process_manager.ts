@@ -134,7 +134,7 @@ export async function stopAppByInfo(
   }
 
   if (appInfo.isDocker) {
-    const containerName = appInfo.containerName || `dyad-app-${appId}`;
+    const containerName = appInfo.containerName || `proteaai-app-${appId}`;
     await stopDockerContainer(containerName);
   } else {
     await killProcess(appInfo.process);
@@ -335,7 +335,7 @@ export function stopAllAppsSync(): void {
     }
 
     if (appInfo.isDocker) {
-      const containerName = appInfo.containerName || `dyad-app-${appId}`;
+      const containerName = appInfo.containerName || `proteaai-app-${appId}`;
       // Fire-and-forget: spawn docker stop without awaiting
       const stop = spawn("docker", ["stop", containerName], {
         stdio: "ignore",

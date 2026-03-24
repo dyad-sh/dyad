@@ -1,5 +1,5 @@
 {
-  "name": "@dyad-sh/react-vite-component-tagger",
+  "name": "@proteaai/react-vite-component-tagger",
   "version": "0.8.0",
   "description": "A Vite plugin that automatically adds data attributes to your React components.",
   "keywords": [
@@ -9,7 +9,7 @@
     "vite-plugin"
   ],
   "license": "Apache-2.0",
-  "author": "Dyad",
+  "author": "ProteaAI",
   "files": [
     "dist"
   ],

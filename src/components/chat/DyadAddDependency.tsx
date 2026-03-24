@@ -7,20 +7,20 @@ import { ipc } from "@/ipc/types";
 import { Package } from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
 import {
-  DyadCard,
-  DyadCardHeader,
-  DyadBadge,
-  DyadExpandIcon,
-  DyadCardContent,
-} from "./DyadCardPrimitives";
+  ProteaAICard,
+  ProteaAICardHeader,
+  ProteaAIBadge,
+  ProteaAIExpandIcon,
+  ProteaAICardContent,
+} from "./ProteaAICardPrimitives";
 
-interface DyadAddDependencyProps {
+interface ProteaAIAddDependencyProps {
   children?: ReactNode;
   node?: any;
   packages?: string;
 }
 
-export const DyadAddDependency: React.FC<DyadAddDependencyProps> = ({
+export const ProteaAIAddDependency: React.FC<ProteaAIAddDependencyProps> = ({
   children,
   node,
 }) => {
@@ -31,21 +31,21 @@ export const DyadAddDependency: React.FC<DyadAddDependencyProps> = ({
   const hasChildren = !!children;
 
   return (
-    <DyadCard
+    <ProteaAICard
       accentColor="blue"
       isExpanded={isContentVisible}
       onClick={
         hasChildren ? () => setIsContentVisible(!isContentVisible) : undefined
       }
     >
-      <DyadCardHeader icon={<Package size={15} />} accentColor="blue">
-        <DyadBadge color="blue">Add Packages</DyadBadge>
+      <ProteaAICardHeader icon={<Package size={15} />} accentColor="blue">
+        <ProteaAIBadge color="blue">Add Packages</ProteaAIBadge>
         {hasChildren && (
           <div className="ml-auto">
-            <DyadExpandIcon isExpanded={isContentVisible} />
+            <ProteaAIExpandIcon isExpanded={isContentVisible} />
           </div>
         )}
-      </DyadCardHeader>
+      </ProteaAICardHeader>
       {packages.length > 0 && (
         <div className="px-3 pb-2">
           <div className="text-sm text-foreground mb-1">
@@ -72,13 +72,13 @@ export const DyadAddDependency: React.FC<DyadAddDependencyProps> = ({
           </div>
         </div>
       )}
-      <DyadCardContent isExpanded={isContentVisible}>
+      <ProteaAICardContent isExpanded={isContentVisible}>
         {hasChildren && (
           <div className="text-xs">
             <CodeHighlight className="language-shell">{children}</CodeHighlight>
           </div>
         )}
-      </DyadCardContent>
-    </DyadCard>
+      </ProteaAICardContent>
+    </ProteaAICard>
   );
 };

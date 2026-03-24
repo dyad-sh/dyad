@@ -2,22 +2,22 @@ import type React from "react";
 import type { ReactNode } from "react";
 import { FileEdit } from "lucide-react";
 import {
-  DyadCard,
-  DyadCardHeader,
-  DyadBadge,
-  DyadFilePath,
-  DyadDescription,
-} from "./DyadCardPrimitives";
+  ProteaAICard,
+  ProteaAICardHeader,
+  ProteaAIBadge,
+  ProteaAIFilePath,
+  ProteaAIDescription,
+} from "./ProteaAICardPrimitives";
 import { CustomTagState } from "./stateTypes";
 
-interface DyadRenameProps {
+interface ProteaAIRenameProps {
   children?: ReactNode;
   node?: any;
   from?: string;
   to?: string;
 }
 
-export const DyadRename: React.FC<DyadRenameProps> = ({
+export const ProteaAIRename: React.FC<ProteaAIRenameProps> = ({
   children,
   node,
   from: fromProp,
@@ -36,18 +36,18 @@ export const DyadRename: React.FC<DyadRenameProps> = ({
       : fromFileName || toFileName || "";
 
   return (
-    <DyadCard accentColor="amber" state={state}>
-      <DyadCardHeader icon={<FileEdit size={15} />} accentColor="amber">
+    <ProteaAICard accentColor="amber" state={state}>
+      <ProteaAICardHeader icon={<FileEdit size={15} />} accentColor="amber">
         {displayTitle && (
           <span className="font-medium text-sm text-foreground truncate">
             {displayTitle}
           </span>
         )}
-        <DyadBadge color="amber">Rename</DyadBadge>
-      </DyadCardHeader>
-      {from && <DyadFilePath path={`From: ${from}`} />}
-      {to && <DyadFilePath path={`To: ${to}`} />}
-      {children && <DyadDescription>{children}</DyadDescription>}
-    </DyadCard>
+        <ProteaAIBadge color="amber">Rename</ProteaAIBadge>
+      </ProteaAICardHeader>
+      {from && <ProteaAIFilePath path={`From: ${from}`} />}
+      {to && <ProteaAIFilePath path={`To: ${to}`} />}
+      {children && <ProteaAIDescription>{children}</ProteaAIDescription>}
+    </ProteaAICard>
   );
 };

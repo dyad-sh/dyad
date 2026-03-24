@@ -1,6 +1,6 @@
 ---
-name: Dyad Hub Issue
-about: Found an issue with dyad.sh/hub?
+name: ProteaAI Hub Issue
+about: Found an issue with proteaai.com/hub?
 title: "[hub]"
 labels: "hub"
 assignees: ""

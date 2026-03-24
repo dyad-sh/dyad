@@ -5,7 +5,7 @@ import { readSettings, writeSettings } from "../main/settings";
 import {
   SupabaseManagementAPI,
   SupabaseManagementAPIError,
-} from "@dyad-sh/supabase-management-js";
+} from "@proteaai/supabase-management-js";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
 import type { SupabaseOrganizationCredentials } from "../lib/schemas";
@@ -122,7 +122,7 @@ export async function refreshSupabaseToken(): Promise<void> {
   try {
     // Make request to Supabase refresh endpoint
     const response = await fetch(
-      "https://supabase-oauth.dyad.sh/api/connect-supabase/refresh",
+      "https://supabase-oauth.proteaai.com/api/connect-supabase/refresh",
       {
         method: "POST",
         headers: {
@@ -254,7 +254,7 @@ async function refreshSupabaseTokenForOrganization(
 
   try {
     const response = await fetch(
-      "https://supabase-oauth.dyad.sh/api/connect-supabase/refresh",
+      "https://supabase-oauth.proteaai.com/api/connect-supabase/refresh",
       {
         method: "POST",
         headers: {

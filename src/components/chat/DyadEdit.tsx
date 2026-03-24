@@ -5,23 +5,23 @@ import { Zap } from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
 import { CustomTagState } from "./stateTypes";
 import {
-  DyadCard,
-  DyadCardHeader,
-  DyadBadge,
-  DyadExpandIcon,
-  DyadStateIndicator,
-  DyadDescription,
-  DyadCardContent,
-} from "./DyadCardPrimitives";
+  ProteaAICard,
+  ProteaAICardHeader,
+  ProteaAIBadge,
+  ProteaAIExpandIcon,
+  ProteaAIStateIndicator,
+  ProteaAIDescription,
+  ProteaAICardContent,
+} from "./ProteaAICardPrimitives";
 
-interface DyadEditProps {
+interface ProteaAIEditProps {
   children?: ReactNode;
   node?: any;
   path?: string;
   description?: string;
 }
 
-export const DyadEdit: React.FC<DyadEditProps> = ({
+export const ProteaAIEdit: React.FC<ProteaAIEditProps> = ({
   children,
   node,
   path: pathProp,
@@ -38,13 +38,13 @@ export const DyadEdit: React.FC<DyadEditProps> = ({
   const fileName = path ? path.split("/").pop() : "";
 
   return (
-    <DyadCard
+    <ProteaAICard
       state={state}
       accentColor="sky"
       onClick={() => setIsContentVisible(!isContentVisible)}
       isExpanded={isContentVisible}
     >
-      <DyadCardHeader icon={<Zap size={15} />} accentColor="sky">
+      <ProteaAICardHeader icon={<Zap size={15} />} accentColor="sky">
         <div className="min-w-0 truncate">
           {fileName && (
             <span className="font-medium text-sm text-foreground truncate block">
@@ -58,25 +58,25 @@ export const DyadEdit: React.FC<DyadEditProps> = ({
           )}
         </div>
         {inProgress && (
-          <DyadStateIndicator state="pending" pendingLabel="Editing..." />
+          <ProteaAIStateIndicator state="pending" pendingLabel="Editing..." />
         )}
         {aborted && (
-          <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
+          <ProteaAIStateIndicator state="aborted" abortedLabel="Did not finish" />
         )}
         <div className="ml-auto flex items-center gap-1">
-          <DyadBadge color="sky">Turbo Edit</DyadBadge>
-          <DyadExpandIcon isExpanded={isContentVisible} />
+          <ProteaAIBadge color="sky">Turbo Edit</ProteaAIBadge>
+          <ProteaAIExpandIcon isExpanded={isContentVisible} />
         </div>
-      </DyadCardHeader>
+      </ProteaAICardHeader>
       {description && (
-        <DyadDescription>
+        <ProteaAIDescription>
           <span className={!isContentVisible ? "line-clamp-2" : undefined}>
             <span className="font-medium">Summary: </span>
             {description}
           </span>
-        </DyadDescription>
+        </ProteaAIDescription>
       )}
-      <DyadCardContent isExpanded={isContentVisible}>
+      <ProteaAICardContent isExpanded={isContentVisible}>
         <div
           className="text-xs cursor-text"
           onClick={(e) => e.stopPropagation()}
@@ -85,7 +85,7 @@ export const DyadEdit: React.FC<DyadEditProps> = ({
             {children}
           </CodeHighlight>
         </div>
-      </DyadCardContent>
-    </DyadCard>
+      </ProteaAICardContent>
+    </ProteaAICard>
   );
 };

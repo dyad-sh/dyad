@@ -21,7 +21,7 @@ test("edit code", async ({ po }) => {
   // Monaco editor intercepts pointer events, so we need to use force: true
   await editorContent.click({ force: true });
   await po.page.keyboard.press("ControlOrMeta+a");
-  await po.page.keyboard.type("export const MadeWithDyad = ;");
+  await po.page.keyboard.type("export const MadeWithProteaAI = ;");
 
   // Save the file
   await po.page.getByTestId("save-file-button").click();
@@ -35,7 +35,7 @@ test("edit code", async ({ po }) => {
     path.join(appPath, editedFilePath),
     "utf8",
   );
-  expect(editedFile).toContain("export const MadeWithDyad = ;");
+  expect(editedFile).toContain("export const MadeWithProteaAI = ;");
 });
 
 test("edit code edits the right file", async ({ po }) => {
@@ -61,7 +61,7 @@ test("edit code edits the right file", async ({ po }) => {
   // Monaco editor intercepts pointer events, so we need to use force: true
   await editorContent.click({ force: true });
   await po.page.keyboard.press("ControlOrMeta+a");
-  await po.page.keyboard.type("export const MadeWithDyad = ;");
+  await po.page.keyboard.type("export const MadeWithProteaAI = ;");
 
   // Save the file by switching files
   await po.page.getByText("robots.txt").click();
@@ -75,7 +75,7 @@ test("edit code edits the right file", async ({ po }) => {
     path.join(appPath, editedFilePath),
     "utf8",
   );
-  expect(editedFile).toContain("export const MadeWithDyad = ;");
+  expect(editedFile).toContain("export const MadeWithProteaAI = ;");
 
   // Make sure the robots.txt file is not edited
   const editedRobotsFile = fs.readFileSync(

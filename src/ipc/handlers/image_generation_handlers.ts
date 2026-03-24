@@ -6,8 +6,8 @@ import {
 } from "../types/image_generation";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
-import { getDyadAppPath } from "../../paths/paths";
-import { DYAD_MEDIA_DIR_NAME } from "../utils/media_path_utils";
+import { getProteaAIAppPath } from "../../paths/paths";
+import { PROTEAAI_MEDIA_DIR_NAME } from "../utils/media_path_utils";
 import { safeJoin } from "../utils/path_utils";
 import { withLock } from "../utils/lock_utils";
 import { readSettings } from "../../main/settings";
@@ -21,8 +21,8 @@ const logger = log.scope("image_generation_handlers");
 // Track active generation controllers so they can be cancelled from the renderer
 const activeControllers = new Map<string, AbortController>();
 
-const DYAD_ENGINE_URL =
-  process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1";
+const PROTEAAI_ENGINE_URL =
+  process.env.PROTEAAI_ENGINE_URL ?? "https://engine.proteaai.com/v1";
 
 const IMAGE_GENERATION_TIMEOUT_MS = 120_000;
 const MAX_IMAGE_SIZE = 50 * 1024 * 1024; // 50 MB
@@ -45,7 +45,7 @@ export function registerImageGenerationHandlers() {
       const apiKey = settings.providerSettings?.auto?.apiKey?.value;
 
       if (!apiKey) {
-        throw new Error("Dyad Pro API key is required for image generation");
+        throw new Error("ProteaAI Pro API key is required for image generation");
       }
 
       const app = await db.query.apps.findFirst({
@@ -70,12 +70,12 @@ export function registerImageGenerationHandlers() {
 
       let response: Response;
       try {
-        response = await fetch(`${DYAD_ENGINE_URL}/images/generations`, {
+        response = await fetch(`${PROTEAAI_ENGINE_URL}/images/generations`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${apiKey}`,
-            "X-Dyad-Request-Id": requestId,
+            "X-ProteaAI-Request-Id": requestId,
           },
           body: JSON.stringify({
             prompt: fullPrompt,
@@ -163,8 +163,8 @@ export function registerImageGenerationHandlers() {
       const { fileName, filePath, appPath } = await withLock(
         `media:${params.targetAppId}`,
         async () => {
-          const appPath = getDyadAppPath(app.path);
-          const mediaDir = path.join(appPath, DYAD_MEDIA_DIR_NAME);
+          const appPath = getProteaAIAppPath(app.path);
+          const mediaDir = path.join(appPath, PROTEAAI_MEDIA_DIR_NAME);
           await fs.promises.mkdir(mediaDir, { recursive: true });
 
           const timestamp = Date.now();

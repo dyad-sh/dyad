@@ -138,7 +138,7 @@ export const FileEditor = ({
     theme === "dark" ||
     (theme === "system" &&
       window.matchMedia("(prefers-color-scheme: dark)").matches);
-  const editorTheme = isDarkMode ? "dyad-dark" : "dyad-light";
+  const editorTheme = isDarkMode ? "proteaai-dark" : "proteaai-light";
   const modelPath = React.useMemo(() => {
     const normalizedPath = filePath.replace(/^\/+/, "");
     return `file:///app-${appId ?? "unknown"}/${encodeURI(normalizedPath)}`;

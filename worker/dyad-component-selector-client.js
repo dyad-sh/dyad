@@ -637,7 +637,7 @@
   function initializeComponentSelector() {
     if (!document.body) {
       console.error(
-        "Dyad component selector initialization failed: document.body not found.",
+        "ProteaAI component selector initialization failed: document.body not found.",
       );
       return;
     }
@@ -646,7 +646,7 @@
     // supabase auth loading), it can take a while and thus we use a timeout/observer
     // to wait for tagged elements to appear.
     //
-    // see: https://github.com/dyad-sh/dyad/issues/2231
+    // see: https://github.com/proteaai/dyad/issues/2231
     const INIT_TIMEOUT_MS = 60_000; // Wait up to 60 seconds for tagged elements
     let observer = null;
     let timeoutId = null;
@@ -669,7 +669,7 @@
           },
           "*",
         );
-        console.debug("Dyad component selector initialized");
+        console.debug("ProteaAI component selector initialized");
         return true;
       }
       return false;
@@ -683,7 +683,7 @@
 
       // If not found, set up MutationObserver to watch for tagged elements
       console.debug(
-        "Dyad component selector waiting for tagged elements to appear...",
+        "ProteaAI component selector waiting for tagged elements to appear...",
       );
 
       observer = new MutationObserver((mutations) => {
@@ -730,7 +730,7 @@
         // Only warn if we never found tagged elements
         if (!document.body.querySelector("[data-dyad-id]")) {
           console.warn(
-            "Dyad component selector not initialized because no DOM elements were tagged",
+            "ProteaAI component selector not initialized because no DOM elements were tagged",
           );
         }
       }, INIT_TIMEOUT_MS);

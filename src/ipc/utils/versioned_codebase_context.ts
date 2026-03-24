@@ -19,7 +19,7 @@ export interface VersionedFiles {
   hasExternalChanges: boolean;
 }
 
-interface DyadEngineProviderOptions {
+interface ProteaAIEngineProviderOptions {
   sourceCommitHash: string | null;
   commitHash: string | null;
 }
@@ -139,8 +139,8 @@ export async function processChatMessagesWithVersionedFiles({
 
     // Extract sourceCommitHash from providerOptions
     const engineOptions = message.providerOptions?.[
-      "dyad-engine"
-    ] as unknown as DyadEngineProviderOptions;
+      "proteaai-engine"
+    ] as unknown as ProteaAIEngineProviderOptions;
     const sourceCommitHash = engineOptions?.sourceCommitHash;
 
     // Skip messages without sourceCommitHash
@@ -225,8 +225,8 @@ export async function processChatMessagesWithVersionedFiles({
     const message = chatMessages[i];
     if (message.role === "assistant") {
       const engineOptions = message.providerOptions?.[
-        "dyad-engine"
-      ] as unknown as DyadEngineProviderOptions;
+        "proteaai-engine"
+      ] as unknown as ProteaAIEngineProviderOptions;
       if (engineOptions?.commitHash) {
         latestCommitHash = engineOptions.commitHash;
         break;

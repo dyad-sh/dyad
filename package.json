@@ -1,24 +1,24 @@
 {
-  "name": "dyad",
-  "version": "0.40.0",
-  "description": "Free, local, open-source AI app builder",
-  "keywords": [],
-  "license": "MIT",
+  "name": "proteaai",
+  "version": "1.0.0",
+  "description": "AI-native builder platform for intelligent enterprise systems",
+  "keywords": ["ai", "enterprise", "system-builder", "governance", "ai-native"],
+  "license": "Apache-2.0",
   "author": {
-    "name": "Will Chen",
-    "email": "willchen90@gmail.com"
+    "name": "ProteaAI Team",
+    "email": "hello@proteaai.com"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/dyad-sh/dyad.git"
+    "url": "https://github.com/khayaai/proteaai.git"
   },
   "main": ".vite/build/main.js",
   "scripts": {
     "bump": "node scripts/bump-version.mjs",
     "clean": "rimraf out scaffold/node_modules",
     "start": "electron-forge start",
-    "dev:engine": "cross-env DYAD_ENGINE_URL=http://localhost:8080/v1 npm start",
-    "staging:engine": "cross-env DYAD_ENGINE_URL=https://staging---dyad-llm-engine-kq7pivehnq-uc.a.run.app/v1 npm start",
+    "dev:engine": "cross-env PROTEAAI_ENGINE_URL=http://localhost:8080/v1 npm start",
+    "staging:engine": "cross-env PROTEAAI_ENGINE_URL=https://staging---dyad-llm-engine-kq7pivehnq-uc.a.run.app/v1 npm start",
     "package": "npm run clean && electron-forge package",
     "make": "npm run clean && electron-forge make",
     "publish": "npm run clean && electron-forge publish",
@@ -45,9 +45,20 @@
     "e2e:p3": "PLAYWRIGHT_RETRIES=1 PLAYWRIGHT_PARALLELISM=3 playwright test",
     "e2e:shard": "playwright test --shard",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "dev:web": "concurrently \"npm run dev:web-server\" \"npm run dev:web-client\"",
+    "dev:web-server": "tsx watch server/index.ts",
+    "dev:web-client": "vite --config vite.web.config.mts",
+    "build:web": "npm run build:web-client && npm run build:web-server",
+    "build:web-client": "vite build --config vite.web.config.mts",
+    "build:web-server": "tsc -p tsconfig.server.json"
   },
   "dependencies": {
+    "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "ws": "^8.18.0",
+    "concurrently": "^9.1.0",
+    "tsx": "^4.19.2",
     "@ai-sdk/amazon-bedrock": "^4.0.46",
     "@ai-sdk/anthropic": "^3.0.35",
     "@ai-sdk/azure": "^3.0.26",
@@ -61,7 +72,7 @@
     "@babel/parser": "^7.28.5",
     "@base-ui/react": "^1.2.0",
     "@biomejs/biome": "^1.9.4",
-    "@dyad-sh/supabase-management-js": "v1.0.1",
+    "@proteaai/supabase-management-js": "v1.0.1",
     "@flakiness/playwright": "^1.0.0",
     "@lexical/react": "^0.33.1",
     "@modelcontextprotocol/sdk": "^1.17.5",
@@ -131,6 +142,9 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17",
+    "@types/ws": "^8.5.12",
     "@electron-forge/cli": "^7.11.1",
     "@electron-forge/maker-deb": "^7.11.1",
     "@electron-forge/maker-rpm": "^7.11.1",
@@ -185,5 +199,5 @@
   "engines": {
     "node": ">=24"
   },
-  "productName": "dyad"
+  "productName": "ProteaAI"
 }

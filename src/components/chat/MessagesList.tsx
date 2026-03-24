@@ -238,7 +238,7 @@ function FooterComponent({ context }: { context?: FooterContext }) {
         </div>
       )}
       {isStreaming &&
-        !settings?.enableDyadPro &&
+        !settings?.enableProteaAIPro &&
         !userBudget &&
         messages.length > 0 && (
           <PromoMessage

@@ -11,9 +11,9 @@ export interface MentionedAppCodebase {
 }
 
 export interface GetProviderOptionsParams {
-  dyadAppId: number;
-  dyadRequestId?: string;
-  dyadDisableFiles?: boolean;
+  proteaaiAppId: number;
+  proteaaiRequestId?: string;
+  proteaaiDisableFiles?: boolean;
   smartContextMode?: SmartContextMode;
   files: CodebaseFile[];
   versionedFiles?: VersionedFiles;
@@ -27,9 +27,9 @@ export interface GetProviderOptionsParams {
  * Handles provider-specific configuration including thinking configs for Google/Vertex.
  */
 export function getProviderOptions({
-  dyadAppId,
-  dyadRequestId,
-  dyadDisableFiles,
+  proteaaiAppId,
+  proteaaiRequestId,
+  proteaaiDisableFiles,
   smartContextMode,
   files,
   versionedFiles,
@@ -38,19 +38,19 @@ export function getProviderOptions({
   settings,
 }: GetProviderOptionsParams): Record<string, any> {
   const providerOptions: Record<string, any> = {
-    "dyad-engine": {
-      dyadAppId,
-      dyadRequestId,
-      dyadDisableFiles,
-      dyadSmartContextMode: smartContextMode,
-      dyadFiles: versionedFiles ? undefined : files,
-      dyadVersionedFiles: versionedFiles,
-      dyadMentionedApps: mentionedAppsCodebases.map(({ files, appName }) => ({
+    "proteaai-engine": {
+      proteaaiAppId,
+      proteaaiRequestId,
+      proteaaiDisableFiles,
+      proteaaiSmartContextMode: smartContextMode,
+      proteaaiFiles: versionedFiles ? undefined : files,
+      proteaaiVersionedFiles: versionedFiles,
+      proteaaiMentionedApps: mentionedAppsCodebases.map(({ files, appName }) => ({
         appName,
         files,
       })),
     },
-    "dyad-gateway": getExtraProviderOptions(builtinProviderId, settings),
+    "proteaai-gateway": getExtraProviderOptions(builtinProviderId, settings),
     openai: {
       reasoningSummary: "auto",
     } satisfies OpenAIResponsesProviderOptions,
@@ -88,7 +88,7 @@ export function getProviderOptions({
 
 // Header used to pass the request ID through AI SDK models that don't forward
 // providerOptions into the request body (e.g. OpenAIResponsesLanguageModel).
-export const DYAD_INTERNAL_REQUEST_ID_HEADER =
+export const PROTEAAI_INTERNAL_REQUEST_ID_HEADER =
   "x-dyad-internal-request-id" as const;
 
 export interface GetAiHeadersParams {

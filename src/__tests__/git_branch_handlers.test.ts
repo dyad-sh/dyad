@@ -23,7 +23,7 @@ vi.mock("../ipc/utils/git_utils", () => ({
 }));
 
 vi.mock("../paths/paths", () => ({
-  getDyadAppPath: vi.fn((p: string) => `/mock/apps/${p}`),
+  getProteaAIAppPath: vi.fn((p: string) => `/mock/apps/${p}`),
 }));
 
 vi.mock("../db", () => ({

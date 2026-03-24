@@ -8,14 +8,14 @@ Add a new `web_fetch` tool to the local agent that fetches and reads website con
 
 ## Problem Statement
 
-When users paste a URL into the Dyad chat (e.g., "Help me integrate this API: https://docs.stripe.com/api"), the agent cannot access the content behind that URL. Users must manually copy-paste page content, breaking their flow. This is especially painful for developers building with APIs, following tutorials, or referencing documentation — the most common use cases for Dyad's target audience. The existing `web_crawl` tool only activates for "clone/copy/replicate" intent and requires Dyad Pro, leaving a gap for the broader "read this page for context" use case.
+When users paste a URL into the ProteaAI chat (e.g., "Help me integrate this API: https://docs.stripe.com/api"), the agent cannot access the content behind that URL. Users must manually copy-paste page content, breaking their flow. This is especially painful for developers building with APIs, following tutorials, or referencing documentation — the most common use cases for ProteaAI's target audience. The existing `web_crawl` tool only activates for "clone/copy/replicate" intent and requires ProteaAI Pro, leaving a gap for the broader "read this page for context" use case.
 
 ## Scope
 
 ### In Scope (MVP)
 
 - New `web_fetch` tool that fetches a URL and returns content as markdown
-- Available to **all users** (free + Pro) — no `isDyadPro` gate
+- Available to **all users** (free + Pro) — no `isProteaAIPro` gate
 - LLM-triggered via standard tool call mechanism (not auto-detected)
 - HTML-to-markdown conversion using `turndown` + `@mozilla/readability` for content extraction
 - Content-Type detection: HTML → markdown, JSON → code block, text → as-is, PDF/images → "not supported" message
@@ -60,7 +60,7 @@ When users paste a URL into the Dyad chat (e.g., "Help me integrate this API: ht
 
 ### Key States
 
-- **Loading**: Card with URL, spinner, "Fetching..." label (use existing `DyadStateIndicator` pattern)
+- **Loading**: Card with URL, spinner, "Fetching..." label (use existing `ProteaAIStateIndicator` pattern)
 - **Completed (HTML)**: Card with page title (extracted by Readability) + URL in muted text, expandable to show markdown preview
 - **Completed (JSON)**: Card with `application/json` badge + URL, expandable content as code block
 - **Completed (text)**: Card with `text/plain` badge + URL, content displayed as-is
@@ -81,7 +81,7 @@ When users paste a URL into the Dyad chat (e.g., "Help me integrate this API: ht
 ### Accessibility
 
 - Consent dialog: keyboard-navigable via standard button focus (existing pattern)
-- Expandable cards: Enter/Space to toggle (existing `DyadCard` pattern)
+- Expandable cards: Enter/Space to toggle (existing `ProteaAICard` pattern)
 - Screen reader: announce "Web Fetch completed: [page title]" or "Web Fetch failed: [error]"
 
 ## Technical Design
@@ -99,7 +99,7 @@ New tool following the established `ToolDefinition<T>` pattern. Performs a direc
 - **New file:** `src/pro/main/ipc/handlers/local_agent/tools/web_fetch.ts` — Tool implementation
 - **Modified:** `src/pro/main/ipc/handlers/local_agent/tool_definitions.ts` — Import and register `webFetchTool` in `TOOL_DEFINITIONS` array
 - **Modified:** `package.json` — Add `turndown`, `@types/turndown`, `linkedom`, `@mozilla/readability` (or `defuddle`)
-- **New file (renderer):** `DyadWebFetch` component for rendering the `<dyad-web-fetch>` XML tag in chat
+- **New file (renderer):** `ProteaAIWebFetch` component for rendering the `<dyad-web-fetch>` XML tag in chat
 - **No changes to:** `web_crawl.ts`, `engine_fetch.ts`, `local_agent_handler.ts`, `types.ts`
 
 ### Data Model Changes
@@ -210,7 +210,7 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
 
 ### Phase 2: Renderer Component
 
-- [ ] Create `DyadWebFetch` component to render `<dyad-web-fetch>` XML tags
+- [ ] Create `ProteaAIWebFetch` component to render `<dyad-web-fetch>` XML tags
 - [ ] Implement loading state (URL + spinner)
 - [ ] Implement completed state (page title + URL, expandable markdown preview)
 - [ ] Implement error states
@@ -263,7 +263,7 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
 | New tool (`web_fetch`) rather than extending `web_crawl` | Use cases are fundamentally different (read vs. clone). Separate tools = cleaner code, clearer LLM descriptions, independent consent settings. All 3 roles agreed independently. |
 | Available to all users (free + Pro)                      | Local fetch has zero infrastructure cost. Differentiates free tier. Natural upsell to Pro for enhanced crawl+screenshot.                                                         |
 | LLM-triggered, not auto-detected                         | Consistent with existing tool architecture. Auto-detection would require new handler-layer logic and might fetch URLs users didn't intend.                                       |
-| Allow private/localhost IPs                              | Dyad runs locally; SSRF is a server-side threat model. Fetching localhost:3000 or internal docs is a legitimate use case. Consent dialog provides sufficient protection.         |
+| Allow private/localhost IPs                              | ProteaAI runs locally; SSRF is a server-side threat model. Fetching localhost:3000 or internal docs is a legitimate use case. Consent dialog provides sufficient protection.         |
 | Include @mozilla/readability in v1                       | Dramatically better content extraction (strips nav, footer, ads). Small marginal cost (one extra dependency). All roles agreed.                                                  |
 | Handle Content-Type gracefully                           | ~15 lines of code prevents confusing failures for JSON, text, PDF URLs. Better UX for minimal effort.                                                                            |
 | Consent default: "ask"                                   | Consistent with web_crawl and web_search. Network requests to arbitrary external URLs warrant explicit approval.                                                                 |

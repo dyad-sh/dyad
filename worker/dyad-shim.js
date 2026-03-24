@@ -1,5 +1,5 @@
 (function () {
-  console.debug("dyad-shim.js loaded via proxy v0.6.0");
+  console.debug("proteaaiim.js loaded via proxy v0.6.0");
   const isInsideIframe = window.parent !== window;
   if (!isInsideIframe) return;
 
@@ -104,15 +104,15 @@
             window.location.replace(parsedUrl.href);
           } else {
             console.warn(
-              "[dyad-shim] Blocked navigation to unsafe URL protocol:",
+              "[proteaaiim] Blocked navigation to unsafe URL protocol:",
               parsedUrl.protocol,
             );
           }
         } catch (e) {
-          console.error("[dyad-shim] Invalid navigation URL:", e);
+          console.error("[proteaaiim] Invalid navigation URL:", e);
         }
       } else if (url) {
-        console.warn("[dyad-shim] Invalid URL type:", typeof url);
+        console.warn("[proteaaiim] Invalid URL type:", typeof url);
       } else {
         // Fallback to history API if no URL provided
         if (direction === "forward") {

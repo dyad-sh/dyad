@@ -2,7 +2,7 @@
 
 ## Goal
 
-Replace the baked-in builtin language model catalog in `src/ipc/shared/language_model_constants.ts` with an API-first catalog fetched from `api.dyad.sh`, while preserving `language_model_constants.ts` as a local fallback when the API is unavailable or invalid.
+Replace the baked-in builtin language model catalog in `src/ipc/shared/language_model_constants.ts` with an API-first catalog fetched from `api.proteaai.com`, while preserving `language_model_constants.ts` as a local fallback when the API is unavailable or invalid.
 
 Also remove product-facing hardcoded model IDs where we currently encode specific model names in feature code, and instead derive those choices from API-provided aliases and ordered selections.
 
@@ -14,7 +14,7 @@ Also remove product-facing hardcoded model IDs where we currently encode specifi
 
 ## Design principles
 
-- API-first: builtin provider/model metadata should come from `api.dyad.sh`.
+- API-first: builtin provider/model metadata should come from `api.proteaai.com`.
 - Fallback-safe: the app must still work offline or during API outages.
 - IPC-stable: existing renderer IPC consumers should continue to read providers/models through the current IPC surface.
 - Product-intent driven: feature code should reference stable aliases, not concrete vendor model IDs.
@@ -67,7 +67,7 @@ Add a main-process fetch utility for the language model catalog, similar in spir
 
 Behavior:
 
-- fetch from `https://api.dyad.sh/v1/language-model-catalog`
+- fetch from `https://api.proteaai.com/v1/language-model-catalog`
 - validate with Zod
 - cache in memory
 - de-duplicate in-flight fetches
@@ -114,7 +114,7 @@ For theme generation, the UI will use the first option returned by the API as th
 
 Endpoint:
 
-`GET https://api.dyad.sh/v1/language-model-catalog`
+`GET https://api.proteaai.com/v1/language-model-catalog`
 
 Suggested response shape:
 
@@ -358,7 +358,7 @@ File:
 Current issues:
 
 - `AUTO_MODELS` hardcodes exact provider/model pairs
-- the Dyad Pro local-agent fallback also hardcodes exact concrete models
+- the ProteaAI Pro local-agent fallback also hardcodes exact concrete models
 
 Planned change:
 
@@ -464,7 +464,7 @@ Mitigation:
 
 ## Success criteria
 
-- Builtin cloud providers/models are fetched from `api.dyad.sh` when available.
+- Builtin cloud providers/models are fetched from `api.proteaai.com` when available.
 - The app falls back to `language_model_constants.ts` when the API fails or returns invalid data.
 - Existing IPC provider/model queries continue to work.
 - Theme generator no longer hardcodes specific builtin model IDs.

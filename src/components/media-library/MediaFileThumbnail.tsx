@@ -9,7 +9,7 @@ import {
   Expand,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
+import { buildProteaAIMediaUrl } from "@/lib/dyadMediaUrl";
 import { buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -38,7 +38,7 @@ export function MediaFileThumbnail({
   onPreviewImage: (file: MediaFile) => void;
   isBusy: boolean;
 }) {
-  const mediaUrl = buildDyadMediaUrl(appPath, file.fileName);
+  const mediaUrl = buildProteaAIMediaUrl(appPath, file.fileName);
   const [imgError, setImgError] = useState(false);
 
   return (

@@ -1,7 +1,7 @@
 OK, I'm going to write an app with an image now...
 
 <dyad-write path="src/pages/Index.tsx" description="write-description">
-import { MadeWithDyad } from "@/components/made-with-dyad";
+import { MadeWithProteaAI } from "@/components/made-with-dyad";
 
 const Index = () => {
   return (
@@ -13,7 +13,7 @@ const Index = () => {
           Start building your amazing project here!
         </p>
       </div>
-      <MadeWithDyad />
+      <MadeWithProteaAI />
     </div>
   );
 };

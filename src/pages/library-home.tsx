@@ -14,7 +14,7 @@ import {
   LibraryFilterTabs,
   type FilterType,
 } from "@/components/LibraryFilterTabs";
-import { DyadAppMediaFolder } from "@/components/DyadAppMediaFolder";
+import { ProteaAIAppMediaFolder } from "@/components/ProteaAIAppMediaFolder";
 import { ImageGeneratorDialog } from "@/components/ImageGeneratorDialog";
 import { ImageGenerationProgressButton } from "@/components/ImageGenerationProgressButton";
 import { filterMediaAppsByQuery } from "@/lib/mediaUtils";
@@ -186,7 +186,7 @@ export default function LibraryHomePage() {
                 />
               ))}
               {filteredMediaApps.map((app) => (
-                <DyadAppMediaFolder
+                <ProteaAIAppMediaFolder
                   key={`media-${app.appId}`}
                   appId={app.appId}
                   appPath={app.appPath}

@@ -1,19 +1,44 @@
-import { ipcMain, IpcMainInvokeEvent } from "electron";
 import { z } from "zod";
 import type { IpcContract } from "../contracts/core";
 import { sendTelemetryException } from "../utils/telemetry";
 
+// ---------------------------------------------------------------------------
+// Dual-mode support: Electron IPC (default) or Express HTTP (web mode)
+// ---------------------------------------------------------------------------
+
+type WebHandler = (input: unknown) => Promise<unknown>;
+
+/** Registry used in web mode instead of ipcMain */
+export const webHandlerRegistry = new Map<string, WebHandler>();
+
+/** Call this before importing any handlers to enable web/Express mode */
+let _webMode = false;
+export function enableWebMode(): void {
+  _webMode = true;
+}
+export function isWebMode(): boolean {
+  return _webMode;
+}
+
+// Lazily load Electron ipcMain only when available
+function getIpcMain(): typeof import("electron").ipcMain | undefined {
+  try {
+    if (process.versions?.electron) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      return require("electron").ipcMain;
+    }
+  } catch {
+    // Not in Electron
+  }
+  return undefined;
+}
+
+type AnyEvent = Record<string, unknown>;
+
 /**
  * Creates a typed IPC handler from a contract.
- * Provides runtime validation of inputs and type-safe handler implementation.
- *
- * @example
- * createTypedHandler(appContracts.createApp, async (_event, params) => {
- *   // params is typed as z.infer<CreateAppParamsSchema>
- *   // return type is enforced as z.infer<CreateAppResultSchema>
- *   const [app] = await db.insert(apps).values({ name: params.name }).returning();
- *   return { app, chatId: chat.id };
- * });
+ * In Electron mode: registers via ipcMain.handle().
+ * In web mode: registers into webHandlerRegistry (consumed by Express server).
  */
 export function createTypedHandler<
   TChannel extends string,
@@ -22,61 +47,69 @@ export function createTypedHandler<
 >(
   contract: IpcContract<TChannel, TInput, TOutput>,
   handler: (
-    event: IpcMainInvokeEvent,
+    event: AnyEvent,
     input: z.infer<TInput>,
   ) => Promise<z.infer<TOutput>>,
 ): void {
-  ipcMain.handle(
-    contract.channel,
-    async (event: IpcMainInvokeEvent, rawInput: unknown) => {
-      // Runtime validation of input
-      const parsed = contract.input.safeParse(rawInput);
-      if (!parsed.success) {
-        const errorMessage = parsed.error.issues
+  const wrappedHandler = async (rawInput: unknown): Promise<z.infer<TOutput>> => {
+    const parsed = contract.input.safeParse(rawInput);
+    if (!parsed.success) {
+      const errorMessage = parsed.error.issues
+        .map((e) => `${e.path.join(".")}: ${e.message}`)
+        .join("; ");
+      throw new Error(`[${contract.channel}] Invalid input: ${errorMessage}`);
+    }
+
+    let result: z.infer<TOutput>;
+    try {
+      result = await handler({}, parsed.data);
+    } catch (err) {
+      sendTelemetryException(err, { ipc_channel: contract.channel });
+      throw err;
+    }
+
+    if (process.env.NODE_ENV === "development") {
+      const outputParsed = contract.output.safeParse(result);
+      if (!outputParsed.success) {
+        const errorMessage = outputParsed.error.issues
           .map((e) => `${e.path.join(".")}: ${e.message}`)
           .join("; ");
-        throw new Error(`[${contract.channel}] Invalid input: ${errorMessage}`);
+        console.error(
+          `[${contract.channel}] Output validation warning: ${errorMessage}`,
+        );
       }
+    }
 
-      let result: z.infer<TOutput>;
-      try {
-        result = await handler(event, parsed.data);
-      } catch (err) {
-        sendTelemetryException(err, { ipc_channel: contract.channel });
-        throw err;
-      }
+    return result;
+  };
 
-      // Validate output in development mode only (catches handler bugs without prod overhead)
-      if (process.env.NODE_ENV === "development") {
-        const outputParsed = contract.output.safeParse(result);
-        if (!outputParsed.success) {
-          const errorMessage = outputParsed.error.issues
-            .map((e) => `${e.path.join(".")}: ${e.message}`)
-            .join("; ");
-          console.error(
-            `[${contract.channel}] Output validation warning: ${errorMessage}`,
-          );
-        }
-      }
+  if (_webMode) {
+    webHandlerRegistry.set(contract.channel, wrappedHandler);
+    return;
+  }
 
-      return result;
+  const ipcMain = getIpcMain();
+  if (!ipcMain) {
+    console.warn(
+      `[${contract.channel}] Neither web mode nor Electron ipcMain available — handler not registered.`,
+    );
+    return;
+  }
+
+  ipcMain.handle(
+    contract.channel,
+    async (_event: AnyEvent, rawInput: unknown) => {
+      return wrappedHandler(rawInput);
     },
   );
 }
 
 /**
  * Creates a typed IPC handler with logging support.
- * Combines typed handling with the existing logging infrastructure.
- *
- * @example
- * const handle = createLoggedTypedHandler(logger);
- * handle(appContracts.createApp, async (_event, params) => {
- *   return { app, chatId: chat.id };
- * });
  */
 export function createLoggedTypedHandler(logger: {
   info: (msg: string) => void;
-  error: (msg: string, err?: any) => void;
+  error: (msg: string, err?: unknown) => void;
 }) {
   return function <
     TChannel extends string,
@@ -85,49 +118,66 @@ export function createLoggedTypedHandler(logger: {
   >(
     contract: IpcContract<TChannel, TInput, TOutput>,
     handler: (
-      event: IpcMainInvokeEvent,
+      event: AnyEvent,
       input: z.infer<TInput>,
     ) => Promise<z.infer<TOutput>>,
   ): void {
+    const wrappedHandler = async (
+      rawInput: unknown,
+    ): Promise<z.infer<TOutput>> => {
+      const parsed = contract.input.safeParse(rawInput);
+      if (!parsed.success) {
+        const errorMessage = parsed.error.issues
+          .map((e) => `${e.path.join(".")}: ${e.message}`)
+          .join("; ");
+        const error = new Error(
+          `[${contract.channel}] Invalid input: ${errorMessage}`,
+        );
+        logger.error(`[${contract.channel}] Invalid input`, error);
+        throw error;
+      }
+
+      try {
+        logger.info(`[${contract.channel}] Handling request`);
+        const result = await handler({}, parsed.data);
+
+        if (process.env.NODE_ENV === "development") {
+          const outputParsed = contract.output.safeParse(result);
+          if (!outputParsed.success) {
+            const errorMessage = outputParsed.error.issues
+              .map((e) => `${e.path.join(".")}: ${e.message}`)
+              .join("; ");
+            console.error(
+              `[${contract.channel}] Output validation warning: ${errorMessage}`,
+            );
+          }
+        }
+
+        return result;
+      } catch (err) {
+        logger.error(`[${contract.channel}] Handler error`, err);
+        sendTelemetryException(err, { ipc_channel: contract.channel });
+        throw err;
+      }
+    };
+
+    if (_webMode) {
+      webHandlerRegistry.set(contract.channel, wrappedHandler);
+      return;
+    }
+
+    const ipcMain = getIpcMain();
+    if (!ipcMain) {
+      console.warn(
+        `[${contract.channel}] Neither web mode nor Electron ipcMain available — handler not registered.`,
+      );
+      return;
+    }
+
     ipcMain.handle(
       contract.channel,
-      async (event: IpcMainInvokeEvent, rawInput: unknown) => {
-        // Runtime validation of input
-        const parsed = contract.input.safeParse(rawInput);
-        if (!parsed.success) {
-          const errorMessage = parsed.error.issues
-            .map((e) => `${e.path.join(".")}: ${e.message}`)
-            .join("; ");
-          const error = new Error(
-            `[${contract.channel}] Invalid input: ${errorMessage}`,
-          );
-          logger.error(`[${contract.channel}] Invalid input`, error);
-          throw error;
-        }
-
-        try {
-          logger.info(`[${contract.channel}] Handling request`);
-          const result = await handler(event, parsed.data);
-
-          // Validate output in development mode only
-          if (process.env.NODE_ENV === "development") {
-            const outputParsed = contract.output.safeParse(result);
-            if (!outputParsed.success) {
-              const errorMessage = outputParsed.error.issues
-                .map((e) => `${e.path.join(".")}: ${e.message}`)
-                .join("; ");
-              console.error(
-                `[${contract.channel}] Output validation warning: ${errorMessage}`,
-              );
-            }
-          }
-
-          return result;
-        } catch (err) {
-          logger.error(`[${contract.channel}] Handler error`, err);
-          sendTelemetryException(err, { ipc_channel: contract.channel });
-          throw err;
-        }
+      async (_event: AnyEvent, rawInput: unknown) => {
+        return wrappedHandler(rawInput);
       },
     );
   };
@@ -135,19 +185,13 @@ export function createLoggedTypedHandler(logger: {
 
 /**
  * Helper to register multiple typed handlers at once.
- *
- * @example
- * registerTypedHandlers({
- *   [appContracts.createApp]: async (_event, params) => { ... },
- *   [appContracts.deleteApp]: async (_event, params) => { ... },
- * });
  */
 export function registerTypedHandlers<
   T extends Record<string, IpcContract<string, z.ZodType, z.ZodType>>,
 >(
   handlers: {
     [K in keyof T]: (
-      event: IpcMainInvokeEvent,
+      event: AnyEvent,
       input: z.infer<T[K]["input"]>,
     ) => Promise<z.infer<T[K]["output"]>>;
   },

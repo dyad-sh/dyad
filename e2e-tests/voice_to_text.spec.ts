@@ -3,7 +3,7 @@ import { expect } from "@playwright/test";
 import { Timeout } from "./helpers/constants";
 
 test("voice-to-text button visible for pro users", async ({ po }) => {
-  await po.setUpDyadPro();
+  await po.setUpProteaAIPro();
 
   // Navigate to an app to get the ChatInput
   await po.importApp("minimal");
@@ -42,7 +42,7 @@ test("voice-to-text button shows lock on home page for non-pro users", async ({
 test("voice-to-text button visible on home page for pro users", async ({
   po,
 }) => {
-  await po.setUpDyadPro();
+  await po.setUpProteaAIPro();
 
   // On the home page, the mic button should be visible
   const micButton = po.chatActions
@@ -53,7 +53,7 @@ test("voice-to-text button visible on home page for pro users", async ({
 });
 
 test("voice-to-text button changes state when recording", async ({ po }) => {
-  await po.setUpDyadPro();
+  await po.setUpProteaAIPro();
   await po.importApp("minimal");
 
   const micButton = po.page.getByRole("button", { name: "Voice to text" });

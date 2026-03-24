@@ -5,20 +5,20 @@ import { FileText } from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
 import { CustomTagState } from "./stateTypes";
 import {
-  DyadCard,
-  DyadCardHeader,
-  DyadBadge,
-  DyadExpandIcon,
-  DyadStateIndicator,
-  DyadCardContent,
-} from "./DyadCardPrimitives";
+  ProteaAICard,
+  ProteaAICardHeader,
+  ProteaAIBadge,
+  ProteaAIExpandIcon,
+  ProteaAIStateIndicator,
+  ProteaAICardContent,
+} from "./ProteaAICardPrimitives";
 
-interface DyadLogsProps {
+interface ProteaAILogsProps {
   children?: ReactNode;
   node?: any;
 }
 
-export const DyadLogs: React.FC<DyadLogsProps> = ({ children, node }) => {
+export const ProteaAILogs: React.FC<ProteaAILogsProps> = ({ children, node }) => {
   const [isContentVisible, setIsContentVisible] = useState(false);
 
   const state = node?.properties?.state as CustomTagState;
@@ -38,32 +38,32 @@ export const DyadLogs: React.FC<DyadLogsProps> = ({ children, node }) => {
   const displayText = `Reading ${hasResults ? `${logCount} ` : ""}logs${filterDesc}`;
 
   return (
-    <DyadCard
+    <ProteaAICard
       state={state}
       accentColor="slate"
       isExpanded={isContentVisible}
       onClick={() => setIsContentVisible(!isContentVisible)}
     >
-      <DyadCardHeader icon={<FileText size={15} />} accentColor="slate">
-        <DyadBadge color="slate">LOGS</DyadBadge>
+      <ProteaAICardHeader icon={<FileText size={15} />} accentColor="slate">
+        <ProteaAIBadge color="slate">LOGS</ProteaAIBadge>
         <span className="font-medium text-sm text-foreground truncate">
           {displayText}
         </span>
         {inProgress && (
-          <DyadStateIndicator state="pending" pendingLabel="Reading..." />
+          <ProteaAIStateIndicator state="pending" pendingLabel="Reading..." />
         )}
         {aborted && (
-          <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
+          <ProteaAIStateIndicator state="aborted" abortedLabel="Did not finish" />
         )}
         <div className="ml-auto">
-          <DyadExpandIcon isExpanded={isContentVisible} />
+          <ProteaAIExpandIcon isExpanded={isContentVisible} />
         </div>
-      </DyadCardHeader>
-      <DyadCardContent isExpanded={isContentVisible}>
+      </ProteaAICardHeader>
+      <ProteaAICardContent isExpanded={isContentVisible}>
         <div className="text-xs">
           <CodeHighlight className="language-log">{children}</CodeHighlight>
         </div>
-      </DyadCardContent>
-    </DyadCard>
+      </ProteaAICardContent>
+    </ProteaAICard>
   );
 };

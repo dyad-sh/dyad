@@ -78,7 +78,7 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
 
    You MUST push the branch to GitHub. Do NOT skip this step or ask for confirmation.
 
-   **CRITICAL:** You MUST NEVER run `git pull --rebase` (or any `git pull`) from the fork repo. If you need to pull/rebase, ONLY pull from the upstream repo (`dyad-sh/dyad`). Pulling from a fork can overwrite local changes or introduce unexpected commits from the fork's history.
+   **CRITICAL:** You MUST NEVER run `git pull --rebase` (or any `git pull`) from the fork repo. If you need to pull/rebase, ONLY pull from the upstream repo (`proteaai/dyad`). Pulling from a fork can overwrite local changes or introduce unexpected commits from the fork's history.
 
    First, determine the correct remote to push to:
 
@@ -94,7 +94,7 @@ Commit any uncommitted changes, run lint checks, fix any issues, and push the cu
    git push --force-with-lease
    ```
 
-   **Permission fallback:** If the push fails with a permission error (e.g., the branch tracks `upstream` but the current account lacks write access to `dyad-sh/dyad`), fall back to pushing to `origin` instead:
+   **Permission fallback:** If the push fails with a permission error (e.g., the branch tracks `upstream` but the current account lacks write access to `proteaai/dyad`), fall back to pushing to `origin` instead:
 
    ```
    git push --force-with-lease -u origin HEAD

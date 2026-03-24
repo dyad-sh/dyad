@@ -27,8 +27,8 @@ import {
   getSupabaseAvailableSystemPrompt,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
-import { getDyadAppPath } from "../../paths/paths";
-import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
+import { getProteaAIAppPath } from "../../paths/paths";
+import { buildProteaAIMediaUrl } from "../../lib/dyadMediaUrl";
 import { readSettings } from "../../main/settings";
 import type { ChatResponseEnd, ChatStreamParams } from "@/ipc/types";
 import {
@@ -71,10 +71,10 @@ import { createProblemFixPrompt } from "@/shared/problem_prompt";
 import { AsyncVirtualFileSystem } from "../../../shared/VirtualFilesystem";
 import { escapeXmlAttr, escapeXmlContent } from "../../../shared/xmlEscape";
 import {
-  getDyadAddDependencyTags,
-  getDyadWriteTags,
-  getDyadDeleteTags,
-  getDyadRenameTags,
+  getProteaAIAddDependencyTags,
+  getProteaAIWriteTags,
+  getProteaAIDeleteTags,
+  getProteaAIRenameTags,
 } from "../utils/dyad_tag_parser";
 import { fileExists } from "../utils/file_utils";
 import { extractMentionedAppsCodebases } from "../utils/mention_apps";
@@ -89,8 +89,8 @@ import { replacePromptReference } from "../utils/replacePromptReference";
 import { replaceSlashSkillReference } from "../utils/replaceSlashSkillReference";
 import { resolveMediaMentions } from "../utils/resolve_media_mentions";
 import { parsePlanFile, validatePlanId } from "./planUtils";
-import { ensureDyadGitignored } from "./gitignoreUtils";
-import { DYAD_MEDIA_DIR_NAME } from "../utils/media_path_utils";
+import { ensureProteaAIGitignored } from "./gitignoreUtils";
+import { PROTEAAI_MEDIA_DIR_NAME } from "../utils/media_path_utils";
 import { mcpManager } from "../utils/mcp_manager";
 import z from "zod";
 import {
@@ -195,14 +195,14 @@ async function processStreamChunks({
         inThinkingBlock = true;
       }
 
-      chunk += escapeDyadTags(part.text);
+      chunk += escapeProteaAITags(part.text);
     } else if (part.type === "tool-call") {
       const { serverName, toolName } = parseMcpToolKey(part.toolName);
-      const content = escapeDyadTags(JSON.stringify(part.input));
+      const content = escapeProteaAITags(JSON.stringify(part.input));
       chunk = `<dyad-mcp-tool-call server="${serverName}" tool="${toolName}">\n${content}\n</dyad-mcp-tool-call>\n`;
     } else if (part.type === "tool-result") {
       const { serverName, toolName } = parseMcpToolKey(part.toolName);
-      const content = escapeDyadTags(part.output);
+      const content = escapeProteaAITags(part.output);
       chunk = `<dyad-mcp-tool-result server="${serverName}" tool="${toolName}">\n${content}\n</dyad-mcp-tool-result>\n`;
     }
 
@@ -231,7 +231,7 @@ export function registerChatStreamHandlers() {
   ipcMain.handle("chat:stream", async (event, req: ChatStreamParams) => {
     let attachmentPaths: string[] = [];
     try {
-      let dyadRequestId: string | undefined;
+      let proteaaiRequestId: string | undefined;
       // Create an AbortController for this stream
       const abortController = new AbortController();
       activeStreams.set(req.chatId, abortController);
@@ -296,13 +296,13 @@ export function registerChatStreamHandlers() {
       if (req.attachments && req.attachments.length > 0) {
         attachmentInfo = "\n\nAttachments:\n";
 
-        // Create persistent .dyad/media directory for this app
-        const appPath = getDyadAppPath(chat.app.path);
-        const mediaDir = path.join(appPath, DYAD_MEDIA_DIR_NAME);
+        // Create persistent .proteaai/media directory for this app
+        const appPath = getProteaAIAppPath(chat.app.path);
+        const mediaDir = path.join(appPath, PROTEAAI_MEDIA_DIR_NAME);
         if (!fs.existsSync(mediaDir)) {
           fs.mkdirSync(mediaDir, { recursive: true });
         }
-        await ensureDyadGitignored(appPath);
+        await ensureProteaAIGitignored(appPath);
 
         for (let i = 0; i < req.attachments.length; i++) {
           const attachment = req.attachments[i];
@@ -319,22 +319,22 @@ export function registerChatStreamHandlers() {
           const base64Data = attachment.data.split(";base64,").pop() || "";
           const fileBuffer = Buffer.from(base64Data, "base64");
 
-          // Save to .dyad/media dir
+          // Save to .proteaai/media dir
           const persistentPath = path.join(mediaDir, filename);
           await writeFile(persistentPath, fileBuffer);
           attachmentPaths.push(persistentPath);
 
-          // Build dyad-media:// URL for display
+          // Build proteaai-media:// URL for display
           // Use a fixed hostname to avoid URL hostname normalization (lowercasing)
           // Encode path segments so special characters (spaces, #, ?, %) don't
           // break URL parsing. The protocol handler already decodeURIComponent's.
-          const mediaUrl = `dyad-media://media/${encodeURIComponent(chat.app.path)}/.dyad/media/${encodeURIComponent(filename)}`;
+          const mediaUrl = `proteaai-media://media/${encodeURIComponent(chat.app.path)}/.proteaai/media/${encodeURIComponent(filename)}`;
 
           // Build display tag for inline rendering (escape attribute values)
           displayAttachmentInfo += `\n<dyad-attachment name="${escapeXmlAttr(attachment.name)}" type="${escapeXmlAttr(attachment.type)}" url="${escapeXmlAttr(mediaUrl)}" path="${escapeXmlAttr(persistentPath)}" attachment-type="${escapeXmlAttr(attachment.attachmentType)}"></dyad-attachment>\n`;
 
           if (attachment.attachmentType === "upload-to-codebase") {
-            // Provide the .dyad/media path so the AI can copy it into the codebase
+            // Provide the .proteaai/media path so the AI can copy it into the codebase
             attachmentInfo += `\n\nFile to upload to codebase: "${attachment.name}" (path: ${persistentPath})\nUse the copy_file tool (or <dyad-copy> tag) to copy this file into the codebase at the appropriate location.\n`;
           } else {
             // For chat-context, provide file info for reference (no path to avoid auto-copying)
@@ -353,7 +353,7 @@ export function registerChatStreamHandlers() {
         }
       }
 
-      // Build the full AI prompt (with .dyad/media paths and copy_file instructions)
+      // Build the full AI prompt (with .proteaai/media paths and copy_file instructions)
       let userPrompt = req.prompt + (attachmentInfo ? attachmentInfo : "");
       // Build the display prompt (with <dyad-attachment> tags for inline rendering)
       // This separates what the user sees from what the AI receives.
@@ -414,7 +414,7 @@ export function registerChatStreamHandlers() {
           let mediaDisplayInfo = "";
           for (const media of resolvedMedia) {
             attachmentPaths.push(media.filePath);
-            const mediaUrl = buildDyadMediaUrl(chat.app.path, media.fileName);
+            const mediaUrl = buildProteaAIMediaUrl(chat.app.path, media.fileName);
             mediaDisplayInfo += `\n<dyad-attachment name="${escapeXmlAttr(media.fileName)}" type="${escapeXmlAttr(media.mimeType)}" url="${escapeXmlAttr(mediaUrl)}" path="${escapeXmlAttr(media.filePath)}" attachment-type="chat-context"></dyad-attachment>\n`;
           }
           // Strip only resolved @media: tags from the prompt text.
@@ -447,17 +447,17 @@ export function registerChatStreamHandlers() {
           implementPlanDisplayPrompt = userPrompt;
           const planSlug = implementPlanMatch[1];
           validatePlanId(planSlug);
-          const appPath = getDyadAppPath(chat.app.path);
+          const appPath = getProteaAIAppPath(chat.app.path);
           const planFilePath = path.join(
             appPath,
-            ".dyad",
+            ".proteaai",
             "plans",
             `${planSlug}.md`,
           );
           const raw = await fs.promises.readFile(planFilePath, "utf-8");
           const { meta, content } = parsePlanFile(raw);
 
-          const planPath = `.dyad/plans/${planSlug}.md`;
+          const planPath = `.proteaai/plans/${planSlug}.md`;
 
           userPrompt = `Please implement the following plan:
 
@@ -482,7 +482,7 @@ You may update the plan at \`${planPath}\` to mark your progress.`;
           let componentSnippet = "[component snippet not available]";
           try {
             const componentFileContent = await readFile(
-              path.join(getDyadAppPath(chat.app.path), component.relativePath),
+              path.join(getProteaAIAppPath(chat.app.path), component.relativePath),
               "utf8",
             );
             const lines = componentFileContent.split(/\r?\n/);
@@ -528,10 +528,10 @@ ${componentSnippet}
         .returning({ id: messages.id });
       const userMessageId = insertedUserMessage.id;
       const settings = readSettings();
-      // Only Dyad Pro requests have request ids.
-      if (settings.enableDyadPro) {
+      // Only ProteaAI Pro requests have request ids.
+      if (settings.enableProteaAIPro) {
         // Generate requestId early so it can be saved with the message
-        dyadRequestId = uuidv4();
+        proteaaiRequestId = uuidv4();
       }
 
       // Add a placeholder assistant message immediately
@@ -541,10 +541,10 @@ ${componentSnippet}
           chatId: req.chatId,
           role: "assistant",
           content: "", // Start with empty content
-          requestId: dyadRequestId,
+          requestId: proteaaiRequestId,
           model: settings.selectedModel.name,
           sourceCommitHash: await getCurrentCommitHash({
-            path: getDyadAppPath(chat.app.path),
+            path: getProteaAIAppPath(chat.app.path),
           }),
         })
         .returning();
@@ -590,7 +590,7 @@ ${componentSnippet}
         const { modelClient, isEngineEnabled, isSmartContextEnabled } =
           await getModelClient(settings.selectedModel, settings);
 
-        const appPath = getDyadAppPath(updatedChat.app.path);
+        const appPath = getProteaAIAppPath(updatedChat.app.path);
         // When we don't have smart context enabled, we
         // only include the selected components' files for codebase context.
         //
@@ -701,7 +701,7 @@ ${componentSnippet}
           }
         }
 
-        // For Dyad Pro + Deep Context, we set to 200 chat turns (+1)
+        // For ProteaAI Pro + Deep Context, we set to 200 chat turns (+1)
         // this is to enable more cache hits. Practically, users should
         // rarely go over this limit because they will hit the model's
         // context window limit.
@@ -745,7 +745,7 @@ ${componentSnippet}
           );
         }
 
-        const aiRules = await readAiRules(getDyadAppPath(updatedChat.app.path));
+        const aiRules = await readAiRules(getProteaAIAppPath(updatedChat.app.path));
 
         // Get theme prompt for the app (null themeId means "no theme")
         const themePrompt = await getThemePromptById(updatedChat.app.themeId);
@@ -776,7 +776,7 @@ ${componentSnippet}
         if (isSecurityReviewIntent) {
           systemPrompt = SECURITY_REVIEW_SYSTEM_PROMPT;
           try {
-            const appPath = getDyadAppPath(updatedChat.app.path);
+            const appPath = getProteaAIAppPath(updatedChat.app.path);
             const rulesPath = path.join(appPath, "SECURITY_RULES.md");
             let securityRules = "";
 
@@ -856,7 +856,7 @@ When files are attached for upload to the codebase, use the \`copy_file\` tool t
 
 Example:
 \`\`\`
-copy_file(from=".dyad/media/abc123.png", to="src/assets/logo.png", description="Copy uploaded image into project")
+copy_file(from=".proteaai/media/abc123.png", to="src/assets/logo.png", description="Copy uploaded image into project")
 \`\`\`
 
 The file paths are provided in the attachment information above.
@@ -866,7 +866,7 @@ The file paths are provided in the attachment information above.
 
 When files are attached for upload to the codebase, copy them into the project using this format:
 
-<dyad-copy from=".dyad/media/abc123.png" to="src/assets/logo.png" description="Copy uploaded file"></dyad-copy>
+<dyad-copy from=".proteaai/media/abc123.png" to="src/assets/logo.png" description="Copy uploaded file"></dyad-copy>
 
 The file paths are provided in the attachment information above.
 `;
@@ -921,10 +921,10 @@ This conversation includes one or more image attachments. When the user uploads 
           // and eats up extra tokens.
           content:
             settings.selectedChatMode === "ask"
-              ? removeDyadTags(removeNonEssentialTags(msg.content))
+              ? removeProteaAITags(removeNonEssentialTags(msg.content))
               : removeNonEssentialTags(msg.content),
           providerOptions: {
-            "dyad-engine": {
+            "proteaai-engine": {
               sourceCommitHash: msg.sourceCommitHash,
               commitHash: msg.commitHash,
             },
@@ -995,7 +995,7 @@ This conversation includes one or more image attachments. When the user uploads 
           modelClient,
           tools,
           systemPromptOverride = systemPrompt,
-          dyadDisableFiles = false,
+          proteaaiDisableFiles = false,
           files,
         }: {
           chatMessages: ModelMessage[];
@@ -1003,12 +1003,12 @@ This conversation includes one or more image attachments. When the user uploads 
           files: CodebaseFile[];
           tools?: ToolSet;
           systemPromptOverride?: string;
-          dyadDisableFiles?: boolean;
+          proteaaiDisableFiles?: boolean;
         }) => {
           if (isEngineEnabled) {
             logger.log(
               "sending AI request to engine with request id:",
-              dyadRequestId,
+              proteaaiRequestId,
             );
           } else {
             logger.log("sending AI request");
@@ -1025,9 +1025,9 @@ This conversation includes one or more image attachments. When the user uploads 
             ? "deep"
             : "balanced";
           const providerOptions = getProviderOptions({
-            dyadAppId: updatedChat.app.id,
-            dyadRequestId,
-            dyadDisableFiles,
+            proteaaiAppId: updatedChat.app.id,
+            proteaaiRequestId,
+            proteaaiDisableFiles,
             smartContextMode,
             files,
             versionedFiles,
@@ -1084,7 +1084,7 @@ This conversation includes one or more image attachments. When the user uploads 
               }
               const message = errorMessage || JSON.stringify(error);
               const requestIdPrefix = isEngineEnabled
-                ? `[Request ID: ${dyadRequestId}] `
+                ? `[Request ID: ${proteaaiRequestId}] `
                 : "";
               logger.error(
                 `AI stream text error for request: ${requestIdPrefix} errorMessage=${errorMessage} error=`,
@@ -1167,7 +1167,7 @@ This conversation includes one or more image attachments. When the user uploads 
               // This is OK because those intents should always happen in a new chat
               // and new chats will default to non-ask modes.
               systemPrompt: readOnlySystemPrompt,
-              dyadRequestId: dyadRequestId ?? "[no-request-id]",
+              proteaaiRequestId: proteaaiRequestId ?? "[no-request-id]",
               readOnly: true,
               messageOverride: isSummarizeIntent ? chatMessages : undefined,
             },
@@ -1197,7 +1197,7 @@ This conversation includes one or more image attachments. When the user uploads 
           await handleLocalAgentStream(event, req, abortController, {
             placeholderMessageId: placeholderAssistantMessage.id,
             systemPrompt: planModeSystemPrompt,
-            dyadRequestId: dyadRequestId ?? "[no-request-id]",
+            proteaaiRequestId: proteaaiRequestId ?? "[no-request-id]",
             planModeOnly: true,
             messageOverride: isSummarizeIntent ? chatMessages : undefined,
           });
@@ -1243,7 +1243,7 @@ This conversation includes one or more image attachments. When the user uploads 
               {
                 placeholderMessageId: placeholderAssistantMessage.id,
                 systemPrompt,
-                dyadRequestId: dyadRequestId ?? "[no-request-id]",
+                proteaaiRequestId: proteaaiRequestId ?? "[no-request-id]",
                 messageOverride: isSummarizeIntent ? chatMessages : undefined,
               },
             );
@@ -1283,13 +1283,13 @@ This conversation includes one or more image attachments. When the user uploads 
               },
               systemPromptOverride: constructSystemPrompt({
                 aiRules: await readAiRules(
-                  getDyadAppPath(updatedChat.app.path),
+                  getProteaAIAppPath(updatedChat.app.path),
                 ),
                 chatMode: "build",
                 enableTurboEditsV2: false,
               }),
               files: files,
-              dyadDisableFiles: true,
+              proteaaiDisableFiles: true,
             });
 
             const result = await processStreamChunks({
@@ -1335,7 +1335,7 @@ This conversation includes one or more image attachments. When the user uploads 
           ) {
             let issues = await dryRunSearchReplace({
               fullResponse,
-              appPath: getDyadAppPath(updatedChat.app.path),
+              appPath: getProteaAIAppPath(updatedChat.app.path),
             });
             sendTelemetryEvent("search_replace:fix", {
               attemptNumber: 0,
@@ -1414,7 +1414,7 @@ ${formattedSearchReplaceIssues}`,
               // Re-check for issues after the fix attempt
               issues = await dryRunSearchReplace({
                 fullResponse: result.incrementalResponse,
-                appPath: getDyadAppPath(updatedChat.app.path),
+                appPath: getProteaAIAppPath(updatedChat.app.path),
               });
 
               sendTelemetryEvent("search_replace:fix", {
@@ -1432,11 +1432,11 @@ ${formattedSearchReplaceIssues}`,
           if (
             !abortController.signal.aborted &&
             settings.selectedChatMode !== "ask" &&
-            hasUnclosedDyadWrite(fullResponse)
+            hasUnclosedProteaAIWrite(fullResponse)
           ) {
             let continuationAttempts = 0;
             while (
-              hasUnclosedDyadWrite(fullResponse) &&
+              hasUnclosedProteaAIWrite(fullResponse) &&
               continuationAttempts < 2 &&
               !abortController.signal.aborted
             ) {
@@ -1469,7 +1469,7 @@ ${formattedSearchReplaceIssues}`,
               }
             }
           }
-          const addDependencies = getDyadAddDependencyTags(fullResponse);
+          const addDependencies = getProteaAIAddDependencyTags(fullResponse);
           if (
             !abortController.signal.aborted &&
             // If there are dependencies, we don't want to auto-fix problems
@@ -1483,7 +1483,7 @@ ${formattedSearchReplaceIssues}`,
               // IF auto-fix is enabled
               let problemReport = await generateProblemReport({
                 fullResponse,
-                appPath: getDyadAppPath(updatedChat.app.path),
+                appPath: getProteaAIAppPath(updatedChat.app.path),
               });
 
               let autoFixAttempts = 0;
@@ -1510,15 +1510,15 @@ ${problemReport.problems
                 const problemFixPrompt = createProblemFixPrompt(problemReport);
 
                 const virtualFileSystem = new AsyncVirtualFileSystem(
-                  getDyadAppPath(updatedChat.app.path),
+                  getProteaAIAppPath(updatedChat.app.path),
                   {
                     fileExists: (fileName: string) => fileExists(fileName),
                     readFile: (fileName: string) => readFileWithCache(fileName),
                   },
                 );
-                const writeTags = getDyadWriteTags(fullResponse);
-                const renameTags = getDyadRenameTags(fullResponse);
-                const deletePaths = getDyadDeleteTags(fullResponse);
+                const writeTags = getProteaAIWriteTags(fullResponse);
+                const renameTags = getProteaAIRenameTags(fullResponse);
+                const deletePaths = getProteaAIDeleteTags(fullResponse);
                 virtualFileSystem.applyResponseChanges({
                   deletePaths,
                   renameTags,
@@ -1581,7 +1581,7 @@ ${problemReport.problems
 
                 problemReport = await generateProblemReport({
                   fullResponse,
-                  appPath: getDyadAppPath(updatedChat.app.path),
+                  appPath: getProteaAIAppPath(updatedChat.app.path),
                 });
               }
             } catch (error) {
@@ -1893,12 +1893,12 @@ export function removeProblemReportTags(text: string): string {
   return text.replace(problemReportRegex, "").trim();
 }
 
-export function removeDyadTags(text: string): string {
+export function removeProteaAITags(text: string): string {
   const dyadRegex = /<dyad-[^>]*>[\s\S]*?<\/dyad-[^>]*>/g;
   return text.replace(dyadRegex, "").trim();
 }
 
-export function hasUnclosedDyadWrite(text: string): boolean {
+export function hasUnclosedProteaAIWrite(text: string): boolean {
   // Find the last opening dyad-write tag
   const openRegex = /<dyad-write[^>]*>/g;
   let lastOpenIndex = -1;
@@ -1920,7 +1920,7 @@ export function hasUnclosedDyadWrite(text: string): boolean {
   return !hasClosingTag;
 }
 
-function escapeDyadTags(text: string): string {
+function escapeProteaAITags(text: string): string {
   // Escape dyad tags in reasoning content
   // We are replacing the opening tag with a look-alike character
   // to avoid issues where thinking content includes dyad tags

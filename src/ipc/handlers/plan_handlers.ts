@@ -3,7 +3,7 @@ import path from "node:path";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
-import { getDyadAppPath } from "../../paths/paths";
+import { getProteaAIAppPath } from "../../paths/paths";
 import log from "electron-log";
 import { createTypedHandler } from "./base";
 import { planContracts } from "../types/plan";
@@ -14,17 +14,17 @@ import {
   validatePlanId,
   parsePlanFile,
 } from "./planUtils";
-import { ensureDyadGitignored } from "./gitignoreUtils";
+import { ensureProteaAIGitignored } from "./gitignoreUtils";
 
 const logger = log.scope("plan_handlers");
 
 async function getPlanDir(appId: number): Promise<string> {
   const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
   if (!app) throw new Error("App not found");
-  const appPath = getDyadAppPath(app.path);
-  const planDir = path.join(appPath, ".dyad", "plans");
+  const appPath = getProteaAIAppPath(app.path);
+  const planDir = path.join(appPath, ".proteaai", "plans");
   await fs.promises.mkdir(planDir, { recursive: true });
-  await ensureDyadGitignored(appPath);
+  await ensureProteaAIGitignored(appPath);
   return planDir;
 }
 

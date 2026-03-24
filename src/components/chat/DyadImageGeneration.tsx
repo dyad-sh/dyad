@@ -4,17 +4,17 @@ import { Eye, ImageIcon } from "lucide-react";
 import { useAtomValue } from "jotai";
 import { CustomTagState } from "./stateTypes";
 import {
-  DyadCard,
-  DyadCardHeader,
-  DyadBadge,
-  DyadExpandIcon,
-  DyadStateIndicator,
-  DyadCardContent,
-} from "./DyadCardPrimitives";
+  ProteaAICard,
+  ProteaAICardHeader,
+  ProteaAIBadge,
+  ProteaAIExpandIcon,
+  ProteaAIStateIndicator,
+  ProteaAICardContent,
+} from "./ProteaAICardPrimitives";
 import { ImageLightbox } from "./ImageLightbox";
 import { currentAppAtom } from "@/atoms/appAtoms";
 
-interface DyadImageGenerationNode {
+interface ProteaAIImageGenerationNode {
   properties: {
     prompt: string;
     path: string;
@@ -22,12 +22,12 @@ interface DyadImageGenerationNode {
   };
 }
 
-interface DyadImageGenerationProps {
+interface ProteaAIImageGenerationProps {
   children?: ReactNode;
-  node?: DyadImageGenerationNode;
+  node?: ProteaAIImageGenerationNode;
 }
 
-export const DyadImageGeneration: React.FC<DyadImageGenerationProps> = ({
+export const ProteaAIImageGeneration: React.FC<ProteaAIImageGenerationProps> = ({
   children,
   node,
 }) => {
@@ -52,7 +52,7 @@ export const DyadImageGeneration: React.FC<DyadImageGenerationProps> = ({
     .some((seg: string) => seg === "..");
   const imageUrl =
     appPath && normalizedImagePath && !hasTraversal
-      ? `dyad-media://media/${encodeURIComponent(appPath)}/${normalizedImagePath
+      ? `proteaai-media://media/${encodeURIComponent(appPath)}/${normalizedImagePath
           .split("/")
           .map(encodeURIComponent)
           .join("/")}`
@@ -66,7 +66,7 @@ export const DyadImageGeneration: React.FC<DyadImageGenerationProps> = ({
 
   return (
     <>
-      <DyadCard
+      <ProteaAICard
         state={state}
         accentColor="violet"
         isExpanded={isExpanded}
@@ -74,30 +74,30 @@ export const DyadImageGeneration: React.FC<DyadImageGenerationProps> = ({
       >
         <div className="flex items-start">
           <div className="flex-1 min-w-0">
-            <DyadCardHeader icon={<ImageIcon size={15} />} accentColor="violet">
-              <DyadBadge color="violet">Image Generation</DyadBadge>
+            <ProteaAICardHeader icon={<ImageIcon size={15} />} accentColor="violet">
+              <ProteaAIBadge color="violet">Image Generation</ProteaAIBadge>
               {!isExpanded && prompt && (
                 <span className="text-sm text-muted-foreground italic truncate">
                   {prompt}
                 </span>
               )}
               {inProgress && (
-                <DyadStateIndicator
+                <ProteaAIStateIndicator
                   state="pending"
                   pendingLabel="Generating..."
                 />
               )}
               {aborted && (
-                <DyadStateIndicator
+                <ProteaAIStateIndicator
                   state="aborted"
                   abortedLabel="Did not finish"
                 />
               )}
               <div className="ml-auto flex items-center gap-1">
-                <DyadExpandIcon isExpanded={isExpanded} />
+                <ProteaAIExpandIcon isExpanded={isExpanded} />
               </div>
-            </DyadCardHeader>
-            <DyadCardContent isExpanded={isExpanded}>
+            </ProteaAICardHeader>
+            <ProteaAICardContent isExpanded={isExpanded}>
               <div className="text-sm text-muted-foreground space-y-2">
                 {prompt && (
                   <div>
@@ -123,7 +123,7 @@ export const DyadImageGeneration: React.FC<DyadImageGenerationProps> = ({
                   <div className="mt-0.5 text-foreground">{children}</div>
                 )}
               </div>
-            </DyadCardContent>
+            </ProteaAICardContent>
           </div>
           {canViewImage && (
             <button
@@ -150,7 +150,7 @@ export const DyadImageGeneration: React.FC<DyadImageGenerationProps> = ({
             </button>
           )}
         </div>
-      </DyadCard>
+      </ProteaAICard>
       {isLightboxOpen && imageUrl && (
         <ImageLightbox
           imageUrl={imageUrl}

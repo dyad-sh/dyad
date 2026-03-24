@@ -80,12 +80,12 @@ try {
 }
 
 try {
-  const dyadShimPath = path.join(__dirname, "dyad-shim.js");
+  const dyadShimPath = path.join(__dirname, "proteaaiim.js");
   dyadShimContent = fs.readFileSync(dyadShimPath, "utf-8");
-  parentPort?.postMessage("[proxy-worker] dyad-shim.js loaded.");
+  parentPort?.postMessage("[proxy-worker] proteaaiim.js loaded.");
 } catch (error) {
   parentPort?.postMessage(
-    `[proxy-worker] Failed to read dyad-shim.js: ${error.message}`,
+    `[proxy-worker] Failed to read proteaaiim.js: ${error.message}`,
   );
 }
 

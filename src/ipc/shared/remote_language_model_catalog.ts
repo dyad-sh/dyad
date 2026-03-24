@@ -27,15 +27,15 @@ const DEFAULT_CACHE_TTL_MS = 60 * 60 * 1000;
 const FALLBACK_CACHE_TTL_MS = 30 * 1000;
 
 function getRemoteLanguageModelCatalogUrl() {
-  if (process.env.DYAD_LANGUAGE_MODEL_CATALOG_URL) {
-    return process.env.DYAD_LANGUAGE_MODEL_CATALOG_URL;
+  if (process.env.PROTEAAI_LANGUAGE_MODEL_CATALOG_URL) {
+    return process.env.PROTEAAI_LANGUAGE_MODEL_CATALOG_URL;
   }
 
   if (process.env.E2E_TEST_BUILD === "true" && process.env.FAKE_LLM_PORT) {
     return `http://localhost:${process.env.FAKE_LLM_PORT}/api/language-model-catalog`;
   }
 
-  return "https://api.dyad.sh/v1/language-model-catalog";
+  return "https://api.proteaai.com/v1/language-model-catalog";
 }
 
 export type { ThemeGenerationModelOption };
@@ -69,13 +69,13 @@ const CatalogModelSchema = z.object({
 });
 
 const KNOWN_BUILTIN_MODEL_ALIASES = [
-  "dyad/theme-generator/google",
-  "dyad/theme-generator/anthropic",
-  "dyad/theme-generator/openai",
-  "dyad/auto/openai",
-  "dyad/auto/anthropic",
-  "dyad/auto/google",
-  "dyad/help-bot/default",
+  "proteaai/theme-generator/google",
+  "proteaai/theme-generator/anthropic",
+  "proteaai/theme-generator/openai",
+  "proteaai/auto/openai",
+  "proteaai/auto/anthropic",
+  "proteaai/auto/google",
+  "proteaai/help-bot/default",
 ] as const;
 
 export type BuiltinModelAlias = (typeof KNOWN_BUILTIN_MODEL_ALIASES)[number];
@@ -127,9 +127,9 @@ let builtinCatalogFetchPromise: Promise<BuiltinLanguageModelCatalog> | null =
   null;
 
 const DEFAULT_THEME_GENERATION_OPTIONS: ThemeGenerationModelOption[] = [
-  { id: "dyad/theme-generator/google", label: "Google" },
-  { id: "dyad/theme-generator/anthropic", label: "Anthropic" },
-  { id: "dyad/theme-generator/openai", label: "OpenAI" },
+  { id: "proteaai/theme-generator/google", label: "Google" },
+  { id: "proteaai/theme-generator/anthropic", label: "Anthropic" },
+  { id: "proteaai/theme-generator/openai", label: "OpenAI" },
 ];
 
 function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
@@ -169,7 +169,7 @@ function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
     modelsByProvider,
     aliases: [
       {
-        id: "dyad/theme-generator/google",
+        id: "proteaai/theme-generator/google",
         resolvedModel: {
           providerId: "google",
           apiName: GEMINI_3_1_PRO_PREVIEW,
@@ -178,7 +178,7 @@ function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
         purpose: "theme-generation",
       },
       {
-        id: "dyad/theme-generator/anthropic",
+        id: "proteaai/theme-generator/anthropic",
         resolvedModel: {
           providerId: "anthropic",
           apiName: OPUS_4_6,
@@ -187,7 +187,7 @@ function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
         purpose: "theme-generation",
       },
       {
-        id: "dyad/theme-generator/openai",
+        id: "proteaai/theme-generator/openai",
         resolvedModel: {
           providerId: "openai",
           apiName: GPT_5_2_MODEL_NAME,
@@ -196,7 +196,7 @@ function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
         purpose: "theme-generation",
       },
       {
-        id: "dyad/auto/openai",
+        id: "proteaai/auto/openai",
         resolvedModel: {
           providerId: "openai",
           apiName: GPT_5_2_MODEL_NAME,
@@ -205,7 +205,7 @@ function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
         purpose: "auto-mode",
       },
       {
-        id: "dyad/auto/anthropic",
+        id: "proteaai/auto/anthropic",
         resolvedModel: {
           providerId: "anthropic",
           apiName: SONNET_4_6,
@@ -214,7 +214,7 @@ function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
         purpose: "auto-mode",
       },
       {
-        id: "dyad/auto/google",
+        id: "proteaai/auto/google",
         resolvedModel: {
           providerId: "google",
           apiName: GEMINI_3_FLASH,
@@ -223,7 +223,7 @@ function buildFallbackCatalog(): BuiltinLanguageModelCatalog {
         purpose: "auto-mode",
       },
       {
-        id: "dyad/help-bot/default",
+        id: "proteaai/help-bot/default",
         resolvedModel: {
           providerId: "openai",
           apiName: GPT_5_NANO,

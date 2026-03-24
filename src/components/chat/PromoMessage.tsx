@@ -56,7 +56,7 @@ export function Message({ spans }: MessageConfig) {
 export const TURBO_EDITS_PROMO_MESSAGE: MessageConfig = {
   spans: [
     { type: "text", content: "Tired of waiting on AI?" },
-    { type: "link", content: " Get Dyad Pro", url: "https://dyad.sh/pro#ai" },
+    { type: "link", content: " Get ProteaAI Pro", url: "https://proteaai.com/pro#ai" },
     { type: "text", content: " for faster edits with Turbo Edits." },
   ],
 };
@@ -66,8 +66,8 @@ export const SMART_CONTEXT_PROMO_MESSAGE: MessageConfig = {
     { type: "text", content: "Save up to 3x on AI costs with " },
     {
       type: "link",
-      content: "Dyad Pro's Smart Context",
-      url: "https://dyad.sh/pro#ai",
+      content: "ProteaAI Pro's Smart Context",
+      url: "https://proteaai.com/pro#ai",
     },
   ],
 };
@@ -90,7 +90,7 @@ export const REDDIT_TIP: MessageConfig = {
     },
     {
       type: "link",
-      content: "Dyad subreddit",
+      content: "ProteaAI subreddit",
       url: "https://www.reddit.com/r/dyadbuilders/",
     },
   ],
@@ -124,7 +124,7 @@ export const BUILD_A_BIBLE_APP_TIP: MessageConfig = {
     },
     {
       type: "text",
-      content: " the creator of Dyad build a Bible app step-by-step",
+      content: " the creator of ProteaAI build a Bible app step-by-step",
     },
   ],
 };
@@ -138,12 +138,12 @@ export const DEBUGGING_TIPS_TIP: MessageConfig = {
     {
       type: "link",
       content: "debugging tips",
-      url: "https://www.dyad.sh/docs/guides/debugging",
+      url: "https://www.proteaai.com/docs/guides/debugging",
     },
   ],
 };
 
-// Advanced tip: Customize your AI rules https://www.dyad.sh/docs/guides/ai-rules
+// Advanced tip: Customize your AI rules https://www.proteaai.com/docs/guides/ai-rules
 export const AI_RULES_TIP: MessageConfig = {
   spans: [
     {
@@ -153,7 +153,7 @@ export const AI_RULES_TIP: MessageConfig = {
     {
       type: "link",
       content: "AI rules",
-      url: "https://www.dyad.sh/docs/guides/ai-rules",
+      url: "https://www.proteaai.com/docs/guides/ai-rules",
     },
   ],
 };
@@ -167,7 +167,7 @@ export const NEW_CHAT_TIP: MessageConfig = {
   ],
 };
 
-// Want to know what's next? Checkout our roadmap https://www.dyad.sh/docs/roadmap
+// Want to know what's next? Checkout our roadmap https://www.proteaai.com/docs/roadmap
 export const ROADMAP_TIP: MessageConfig = {
   spans: [
     {
@@ -177,22 +177,22 @@ export const ROADMAP_TIP: MessageConfig = {
     {
       type: "link",
       content: "roadmap",
-      url: "https://www.dyad.sh/docs/roadmap",
+      url: "https://www.proteaai.com/docs/roadmap",
     },
   ],
 };
 
-// Like Dyad? Star it on GitHub https://github.com/dyad-sh/dyad/
+// Like ProteaAI? Star it on GitHub https://github.com/proteaai/dyad/
 export const GITHUB_TIP: MessageConfig = {
   spans: [
     {
       type: "text",
-      content: "Like Dyad? Star it on ",
+      content: "Like ProteaAI? Star it on ",
     },
     {
       type: "link",
       content: "GitHub",
-      url: "https://github.com/dyad-sh/dyad",
+      url: "https://github.com/proteaai/dyad",
     },
   ],
 };

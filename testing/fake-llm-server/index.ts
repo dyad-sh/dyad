@@ -372,7 +372,7 @@ app.post("/github/api/test/clear-push-events", handleClearPushEvents);
 // GitHub Git endpoints - intercept all paths with /github/git prefix
 app.all("/github/git/*", handleGitPush);
 
-// Dyad Engine turbo-file-edit endpoint for edit_file tool
+// ProteaAI Engine turbo-file-edit endpoint for edit_file tool
 app.post("/engine/v1/tools/turbo-file-edit", (req, res) => {
   const { path: filePath, description } = req.body;
   console.log(
@@ -387,7 +387,7 @@ app.post("/engine/v1/tools/turbo-file-edit", (req, res) => {
   }
 });
 
-// Dyad Engine code-search endpoint for code_search tool
+// ProteaAI Engine code-search endpoint for code_search tool
 app.post("/engine/v1/tools/code-search", (req, res) => {
   const { query, filesContext } = req.body;
   console.log(
@@ -408,7 +408,7 @@ app.post("/engine/v1/tools/code-search", (req, res) => {
   }
 });
 
-// Dyad Engine image generation endpoint for generate_image tool
+// ProteaAI Engine image generation endpoint for generate_image tool
 app.post("/engine/v1/images/generations", (req, res) => {
   const { prompt, model } = req.body;
   console.log(
@@ -434,7 +434,7 @@ app.post("/engine/v1/images/generations", (req, res) => {
   }
 });
 
-// Dyad Engine web-crawl endpoint for web_fetch tool
+// ProteaAI Engine web-crawl endpoint for web_fetch tool
 app.post("/engine/v1/tools/web-crawl", (req, res) => {
   const { url, markdownOnly } = req.body;
   console.log(`* web-crawl: url="${url}", markdownOnly=${markdownOnly}`);

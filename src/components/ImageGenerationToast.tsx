@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Loader2, CheckCircle2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ImageLightbox } from "@/components/chat/ImageLightbox";
-import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
+import { buildProteaAIMediaUrl } from "@/lib/dyadMediaUrl";
 import type { GenerateImageResponse } from "@/ipc/types";
 import { getDefaultStore } from "jotai";
 import { imageGenerationJobsAtom } from "@/atoms/imageGenerationAtoms";
@@ -76,7 +76,7 @@ export function ImageSuccessToast({
   toastId: string | number;
 }) {
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
-  const imageUrl = buildDyadMediaUrl(result.appPath, result.fileName);
+  const imageUrl = buildProteaAIMediaUrl(result.appPath, result.fileName);
 
   return (
     <>

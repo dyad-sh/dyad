@@ -2,15 +2,15 @@ import React, { useState } from "react";
 import { CustomTagState } from "./stateTypes";
 import { FolderOpen } from "lucide-react";
 import {
-  DyadCard,
-  DyadCardHeader,
-  DyadBadge,
-  DyadExpandIcon,
-  DyadStateIndicator,
-  DyadCardContent,
-} from "./DyadCardPrimitives";
+  ProteaAICard,
+  ProteaAICardHeader,
+  ProteaAIBadge,
+  ProteaAIExpandIcon,
+  ProteaAIStateIndicator,
+  ProteaAICardContent,
+} from "./ProteaAICardPrimitives";
 
-interface DyadListFilesProps {
+interface ProteaAIListFilesProps {
   node: {
     properties: {
       directory?: string;
@@ -22,7 +22,7 @@ interface DyadListFilesProps {
   children: React.ReactNode;
 }
 
-export function DyadListFiles({ node, children }: DyadListFilesProps) {
+export function ProteaAIListFiles({ node, children }: ProteaAIListFilesProps) {
   const { directory, recursive, include_hidden, state } = node.properties;
   const isLoading = state === "pending";
   const isRecursive = recursive === "true";
@@ -33,33 +33,33 @@ export function DyadListFiles({ node, children }: DyadListFilesProps) {
   const title = directory ? directory : "List Files";
 
   return (
-    <DyadCard
+    <ProteaAICard
       state={state}
       accentColor="slate"
       isExpanded={isExpanded}
       onClick={() => setIsExpanded(!isExpanded)}
-      data-testid="dyad-list-files"
+      data-testid="proteaai-list-files"
     >
-      <DyadCardHeader icon={<FolderOpen size={15} />} accentColor="slate">
+      <ProteaAICardHeader icon={<FolderOpen size={15} />} accentColor="slate">
         <span className="font-medium text-sm text-foreground truncate">
           {title}
         </span>
-        {isRecursive && <DyadBadge color="slate">recursive</DyadBadge>}
-        {isIncludeHidden && <DyadBadge color="slate">include hidden</DyadBadge>}
+        {isRecursive && <ProteaAIBadge color="slate">recursive</ProteaAIBadge>}
+        {isIncludeHidden && <ProteaAIBadge color="slate">include hidden</ProteaAIBadge>}
         {isLoading && (
-          <DyadStateIndicator state="pending" pendingLabel="Listing..." />
+          <ProteaAIStateIndicator state="pending" pendingLabel="Listing..." />
         )}
         <div className="ml-auto">
-          <DyadExpandIcon isExpanded={isExpanded} />
+          <ProteaAIExpandIcon isExpanded={isExpanded} />
         </div>
-      </DyadCardHeader>
-      <DyadCardContent isExpanded={isExpanded}>
+      </ProteaAICardHeader>
+      <ProteaAICardContent isExpanded={isExpanded}>
         {content && (
           <div className="p-3 text-xs font-mono whitespace-pre-wrap max-h-60 overflow-y-auto bg-muted/20 rounded-lg">
             {content}
           </div>
         )}
-      </DyadCardContent>
-    </DyadCard>
+      </ProteaAICardContent>
+    </ProteaAICard>
   );
 }

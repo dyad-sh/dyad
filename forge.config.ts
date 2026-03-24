@@ -70,7 +70,7 @@ const config: ForgeConfig = {
     windowsSign: isWindowsSigningEnabled ? windowsSign : undefined,
     protocols: [
       {
-        name: "Dyad",
+        name: "ProteaAI",
         schemes: ["dyad"],
       },
     ],
@@ -110,12 +110,12 @@ const config: ForgeConfig = {
         ? {
             windowsSign,
             iconUrl:
-              "https://raw.githubusercontent.com/dyad-sh/dyad/main/assets/icon/logo.ico",
+              "https://raw.githubusercontent.com/proteaai/dyad/main/assets/icon/logo.ico",
             setupIcon: "./assets/icon/logo.ico",
           }
         : {
             iconUrl:
-              "https://raw.githubusercontent.com/dyad-sh/dyad/main/assets/icon/logo.ico",
+              "https://raw.githubusercontent.com/proteaai/dyad/main/assets/icon/logo.ico",
             setupIcon: "./assets/icon/logo.ico",
           },
     ),
@@ -140,7 +140,7 @@ const config: ForgeConfig = {
       name: "@electron-forge/publisher-github",
       config: {
         repository: {
-          owner: "dyad-sh",
+          owner: "proteaai",
           name: "dyad",
         },
         draft: true,

@@ -85,7 +85,7 @@ Always include the placeholder.svg file in your output file tree.
 
 async function callWebCrawl(
   url: string,
-  ctx: Pick<AgentContext, "dyadRequestId">,
+  ctx: Pick<AgentContext, "proteaaiRequestId">,
 ): Promise<z.infer<typeof webCrawlResponseSchema>> {
   const response = await engineFetch(ctx, "/tools/web-crawl", {
     method: "POST",
@@ -109,8 +109,8 @@ export const webCrawlTool: ToolDefinition<z.infer<typeof webCrawlSchema>> = {
   inputSchema: webCrawlSchema,
   defaultConsent: "ask",
 
-  // Requires Dyad Pro engine API
-  isEnabled: (ctx) => ctx.isDyadPro,
+  // Requires ProteaAI Pro engine API
+  isEnabled: (ctx) => ctx.isProteaAIPro,
 
   getConsentPreview: (args) => `Crawl URL: "${args.url}"`,
 

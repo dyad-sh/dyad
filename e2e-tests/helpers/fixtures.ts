@@ -89,8 +89,8 @@ export const test = base.extend<{
       process.env.FAKE_LLM_PORT = String(fakeLlmPort);
       process.env.OLLAMA_HOST = `http://localhost:${fakeLlmPort}/ollama`;
       process.env.LM_STUDIO_BASE_URL_FOR_TESTING = `http://localhost:${fakeLlmPort}/lmstudio`;
-      process.env.DYAD_ENGINE_URL = `http://localhost:${fakeLlmPort}/engine/v1`;
-      process.env.DYAD_GATEWAY_URL = `http://localhost:${fakeLlmPort}/gateway/v1`;
+      process.env.PROTEAAI_ENGINE_URL = `http://localhost:${fakeLlmPort}/engine/v1`;
+      process.env.PROTEAAI_GATEWAY_URL = `http://localhost:${fakeLlmPort}/gateway/v1`;
       process.env.E2E_TEST_BUILD = "true";
       if (!electronConfig.showSetupScreen) {
         // This is just a hack to avoid the AI setup screen.

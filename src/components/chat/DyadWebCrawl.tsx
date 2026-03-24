@@ -1,27 +1,27 @@
 import type React from "react";
 import type { ReactNode } from "react";
 import { ScanQrCode } from "lucide-react";
-import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
+import { ProteaAICard, ProteaAICardHeader, ProteaAIBadge } from "./ProteaAICardPrimitives";
 
-interface DyadWebCrawlProps {
+interface ProteaAIWebCrawlProps {
   children?: ReactNode;
   node?: any;
 }
 
-export const DyadWebCrawl: React.FC<DyadWebCrawlProps> = ({
+export const ProteaAIWebCrawl: React.FC<ProteaAIWebCrawlProps> = ({
   children,
   node: _node,
 }) => {
   return (
-    <DyadCard accentColor="blue">
-      <DyadCardHeader icon={<ScanQrCode size={15} />} accentColor="blue">
-        <DyadBadge color="blue">Web Crawl</DyadBadge>
-      </DyadCardHeader>
+    <ProteaAICard accentColor="blue">
+      <ProteaAICardHeader icon={<ScanQrCode size={15} />} accentColor="blue">
+        <ProteaAIBadge color="blue">Web Crawl</ProteaAIBadge>
+      </ProteaAICardHeader>
       {children && (
         <div className="px-3 pb-2 text-sm italic text-muted-foreground">
           {children}
         </div>
       )}
-    </DyadCard>
+    </ProteaAICard>
   );
 };

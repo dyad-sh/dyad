@@ -2,19 +2,19 @@ import React, { useMemo, useState } from "react";
 import { Wrench } from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
 import {
-  DyadCard,
-  DyadCardHeader,
-  DyadBadge,
-  DyadExpandIcon,
-  DyadCardContent,
-} from "./DyadCardPrimitives";
+  ProteaAICard,
+  ProteaAICardHeader,
+  ProteaAIBadge,
+  ProteaAIExpandIcon,
+  ProteaAICardContent,
+} from "./ProteaAICardPrimitives";
 
-interface DyadMcpToolCallProps {
+interface ProteaAIMcpToolCallProps {
   node?: any;
   children?: React.ReactNode;
 }
 
-export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
+export const ProteaAIMcpToolCall: React.FC<ProteaAIMcpToolCallProps> = ({
   node,
   children,
 }) => {
@@ -36,13 +36,13 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
   }, [expanded, raw]);
 
   return (
-    <DyadCard
+    <ProteaAICard
       accentColor="blue"
       isExpanded={expanded}
       onClick={() => setExpanded((v) => !v)}
     >
-      <DyadCardHeader icon={<Wrench size={15} />} accentColor="blue">
-        <DyadBadge color="blue">Tool Call</DyadBadge>
+      <ProteaAICardHeader icon={<Wrench size={15} />} accentColor="blue">
+        <ProteaAIBadge color="blue">Tool Call</ProteaAIBadge>
         {serverName && (
           <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 ring-1 ring-inset ring-blue-200 dark:ring-blue-800">
             {serverName}
@@ -54,12 +54,12 @@ export const DyadMcpToolCall: React.FC<DyadMcpToolCallProps> = ({
           </span>
         )}
         <div className="ml-auto">
-          <DyadExpandIcon isExpanded={expanded} />
+          <ProteaAIExpandIcon isExpanded={expanded} />
         </div>
-      </DyadCardHeader>
-      <DyadCardContent isExpanded={expanded}>
+      </ProteaAICardHeader>
+      <ProteaAICardContent isExpanded={expanded}>
         <CodeHighlight className="language-json">{prettyJson}</CodeHighlight>
-      </DyadCardContent>
-    </DyadCard>
+      </ProteaAICardContent>
+    </ProteaAICard>
   );
 };

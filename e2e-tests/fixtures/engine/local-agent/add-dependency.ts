@@ -9,7 +9,7 @@ export const fixture: LocalAgentFixture = {
         {
           name: "add_dependency",
           args: {
-            packages: ["@dyad-sh/supabase-management-js"],
+            packages: ["@proteaai/supabase-management-js"],
           },
         },
       ],

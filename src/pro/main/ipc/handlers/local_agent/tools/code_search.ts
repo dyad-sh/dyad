@@ -76,8 +76,8 @@ export const codeSearchTool: ToolDefinition<z.infer<typeof codeSearchSchema>> =
     inputSchema: codeSearchSchema,
     defaultConsent: "always",
 
-    // Requires Dyad Pro engine API
-    isEnabled: (ctx) => ctx.isDyadPro,
+    // Requires ProteaAI Pro engine API
+    isEnabled: (ctx) => ctx.isProteaAIPro,
 
     getConsentPreview: (args) => `Search for "${args.query}"`,
 

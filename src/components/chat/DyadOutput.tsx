@@ -5,20 +5,20 @@ import { selectedChatIdAtom, isStreamingByIdAtom } from "@/atoms/chatAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { CopyErrorMessage } from "@/components/CopyErrorMessage";
 import {
-  DyadCard,
-  DyadCardHeader,
-  DyadBadge,
-  DyadExpandIcon,
-  DyadCardContent,
-} from "./DyadCardPrimitives";
+  ProteaAICard,
+  ProteaAICardHeader,
+  ProteaAIBadge,
+  ProteaAIExpandIcon,
+  ProteaAICardContent,
+} from "./ProteaAICardPrimitives";
 
-interface DyadOutputProps {
+interface ProteaAIOutputProps {
   type: "error" | "warning";
   message?: string;
   children?: React.ReactNode;
 }
 
-export const DyadOutput: React.FC<DyadOutputProps> = ({
+export const ProteaAIOutput: React.FC<ProteaAIOutputProps> = ({
   type,
   message,
   children,
@@ -48,14 +48,14 @@ export const DyadOutput: React.FC<DyadOutputProps> = ({
   };
 
   return (
-    <DyadCard
+    <ProteaAICard
       showAccent
       accentColor={accentColor}
       onClick={() => setIsContentVisible(!isContentVisible)}
       isExpanded={isContentVisible}
     >
-      <DyadCardHeader icon={icon} accentColor={accentColor}>
-        <DyadBadge color={accentColor}>{label}</DyadBadge>
+      <ProteaAICardHeader icon={icon} accentColor={accentColor}>
+        <ProteaAIBadge color={accentColor}>{label}</ProteaAIBadge>
         {message && (
           <span className="text-sm text-foreground truncate">
             {message.slice(0, isContentVisible ? undefined : 100) +
@@ -63,16 +63,16 @@ export const DyadOutput: React.FC<DyadOutputProps> = ({
           </span>
         )}
         <div className="ml-auto">
-          <DyadExpandIcon isExpanded={isContentVisible} />
+          <ProteaAIExpandIcon isExpanded={isContentVisible} />
         </div>
-      </DyadCardHeader>
+      </ProteaAICardHeader>
 
       {/* Content area */}
-      <DyadCardContent isExpanded={isContentVisible}>
+      <ProteaAICardContent isExpanded={isContentVisible}>
         {children && (
           <div className="text-sm text-muted-foreground mb-3">{children}</div>
         )}
-      </DyadCardContent>
+      </ProteaAICardContent>
 
       {/* Action buttons at the bottom - always visible for errors */}
       {isError && message && (
@@ -91,6 +91,6 @@ export const DyadOutput: React.FC<DyadOutputProps> = ({
           )}
         </div>
       )}
-    </DyadCard>
+    </ProteaAICard>
   );
 };

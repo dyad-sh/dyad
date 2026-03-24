@@ -46,16 +46,16 @@ export function registerHelpBotHandlers() {
       const settings = await readSettings();
       const apiKey = settings.providerSettings?.["auto"]?.apiKey?.value;
       const provider = createOpenAI({
-        baseURL: "https://helpchat.dyad.sh/v1",
+        baseURL: "https://helpchat.proteaai.com/v1",
         apiKey,
       });
       const helpBotModel = await resolveBuiltinModelAlias(
-        "dyad/help-bot/default",
+        "proteaai/help-bot/default",
       );
 
       if (!helpBotModel || helpBotModel.providerId !== "openai") {
         // Help bot requires OpenAI provider because it uses the OpenAI
-        // responses API via a custom baseURL (helpchat.dyad.sh).
+        // responses API via a custom baseURL (helpchat.proteaai.com).
         throw new Error(
           `Help bot requires an OpenAI model (got provider: ${helpBotModel?.providerId ?? "none"}). ` +
             `The 'dyad/help-bot/default' alias must resolve to an OpenAI model.`,

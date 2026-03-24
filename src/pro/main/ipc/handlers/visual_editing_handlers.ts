@@ -5,7 +5,7 @@ import path from "path";
 import { db } from "../../../../db";
 import { apps } from "../../../../db/schema";
 import { eq } from "drizzle-orm";
-import { getDyadAppPath } from "../../../../paths/paths";
+import { getProteaAIAppPath } from "../../../../paths/paths";
 import {
   stylesToTailwind,
   extractClassPrefixes,
@@ -21,8 +21,8 @@ import {
   ApplyVisualEditingChangesParams,
 } from "@/ipc/types";
 import { VALID_IMAGE_MIME_TYPES } from "@/ipc/types/visual-editing";
-import { DYAD_MEDIA_DIR_NAME } from "@/ipc/utils/media_path_utils";
-import { ensureDyadGitignored } from "@/ipc/handlers/gitignoreUtils";
+import { PROTEAAI_MEDIA_DIR_NAME } from "@/ipc/utils/media_path_utils";
+import { ensureProteaAIGitignored } from "@/ipc/handlers/gitignoreUtils";
 import {
   transformContent,
   analyzeComponent,
@@ -52,7 +52,7 @@ export function registerVisualEditingHandlers() {
           throw new Error(`App not found: ${appId}`);
         }
 
-        const appPath = getDyadAppPath(app.path);
+        const appPath = getProteaAIAppPath(app.path);
 
         // Validate all image uploads upfront before making any changes
         const imageValidationErrors: string[] = [];
@@ -98,14 +98,14 @@ export function registerVisualEditingHandlers() {
               "base64",
             );
 
-            // Save to .dyad/media as a staging copy
-            const mediaDir = path.join(appPath, DYAD_MEDIA_DIR_NAME);
+            // Save to .proteaai/media as a staging copy
+            const mediaDir = path.join(appPath, PROTEAAI_MEDIA_DIR_NAME);
             await fsPromises.mkdir(mediaDir, { recursive: true });
             await fsPromises.writeFile(
               path.join(mediaDir, finalFileName),
               buffer,
             );
-            await ensureDyadGitignored(appPath);
+            await ensureProteaAIGitignored(appPath);
 
             // Save to public/images for the app to serve
             const publicImagesDir = path.join(appPath, "public", "images");
@@ -229,7 +229,7 @@ export function registerVisualEditingHandlers() {
           throw new Error(`App not found: ${appId}`);
         }
 
-        const appPath = getDyadAppPath(app.path);
+        const appPath = getProteaAIAppPath(app.path);
         const fullPath = safeJoin(appPath, filePath);
         const content = await fsPromises.readFile(fullPath, "utf-8");
         return analyzeComponent(content, line);

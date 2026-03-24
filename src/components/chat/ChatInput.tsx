@@ -98,7 +98,7 @@ import { useRouter } from "@tanstack/react-router";
 import { showError as showErrorToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { useVoiceToText } from "@/hooks/useVoiceToText";
-import { isDyadProEnabled } from "@/lib/schemas";
+import { isProteaAIProEnabled } from "@/lib/schemas";
 
 const showTokenBarAtom = atom(false);
 
@@ -215,7 +215,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   }, [chatId, messagesById]);
 
   const { userBudget } = useUserBudgetInfo();
-  const isProEnabled = settings ? isDyadProEnabled(settings) : false;
+  const isProEnabled = settings ? isProteaAIProEnabled(settings) : false;
 
   const handleTranscription = useCallback(
     (text: string) => {
@@ -623,7 +623,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         <ChatErrorBox
           onDismiss={dismissError}
           error={error}
-          isDyadProEnabled={settings.enableDyadPro ?? false}
+          isProteaAIProEnabled={settings.enableProteaAIPro ?? false}
           onStartNewChat={handleNewChat}
         />
       )}
@@ -775,7 +775,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                     render={
                       <button
                         onClick={() => {
-                          ipc.system.openExternalUrl("https://dyad.sh/pro");
+                          ipc.system.openExternalUrl("https://proteaai.com/pro");
                         }}
                         className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors cursor-pointer"
                       />
@@ -816,7 +816,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               onChange={setInputValue}
               onSubmit={handleSubmit}
               onPaste={handlePaste}
-              placeholder={t("askDyadToBuild")}
+              placeholder={t("askProteaAIToBuild")}
               excludeCurrentApp={true}
               disableSendButton={disableSendButton}
               messageHistory={userMessageHistory}
@@ -868,7 +868,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                   render={
                     <button
                       onClick={() =>
-                        ipc.system.openExternalUrl("https://dyad.sh/pro")
+                        ipc.system.openExternalUrl("https://proteaai.com/pro")
                       }
                       aria-label={t("voiceToTextPro", "Voice to text (Pro)")}
                       className="px-2 py-2 mb-0.5 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 cursor-pointer relative"

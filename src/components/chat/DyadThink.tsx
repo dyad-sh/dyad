@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from "react";
 import { ChevronRight } from "lucide-react";
-import { VanillaMarkdownParser } from "./DyadMarkdownParser";
+import { VanillaMarkdownParser } from "./ProteaAIMarkdownParser";
 import { CustomTagState } from "./stateTypes";
-import { DyadTokenSavings } from "./DyadTokenSavings";
+import { ProteaAITokenSavings } from "./ProteaAITokenSavings";
 
-interface DyadThinkProps {
+interface ProteaAIThinkProps {
   node?: any;
   children?: React.ReactNode;
 }
 
-export const DyadThink: React.FC<DyadThinkProps> = ({ children, node }) => {
+export const ProteaAIThink: React.FC<ProteaAIThinkProps> = ({ children, node }) => {
   const state = node?.properties?.state as CustomTagState;
   const inProgress = state === "pending";
   const [isExpanded, setIsExpanded] = useState(inProgress);
@@ -36,12 +36,12 @@ export const DyadThink: React.FC<DyadThinkProps> = ({ children, node }) => {
     }
   }, [inProgress]);
 
-  // If it's token savings format, render DyadTokenSavings component
+  // If it's token savings format, render ProteaAITokenSavings component
   if (tokenSavingsMatch) {
     const originalTokens = parseFloat(tokenSavingsMatch[1]);
     const smartContextTokens = parseFloat(tokenSavingsMatch[2]);
     return (
-      <DyadTokenSavings
+      <ProteaAITokenSavings
         originalTokens={originalTokens}
         smartContextTokens={smartContextTokens}
       />

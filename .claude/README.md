@@ -1,6 +1,6 @@
 # Claude Code Configuration
 
-This directory contains Claude Code configuration for the Dyad project.
+This directory contains Claude Code configuration for the ProteaAI project.
 
 ## Skills
 

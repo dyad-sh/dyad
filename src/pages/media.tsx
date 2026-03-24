@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAppMediaFiles } from "@/hooks/useAppMediaFiles";
 import { useLoadApps } from "@/hooks/useLoadApps";
 import { Image, ImagePlus, Loader2 } from "lucide-react";
-import { DyadAppMediaFolder } from "@/components/DyadAppMediaFolder";
+import { ProteaAIAppMediaFolder } from "@/components/ProteaAIAppMediaFolder";
 import { LibrarySearchBar } from "@/components/LibrarySearchBar";
 import { Button } from "@/components/ui/button";
 import { ImageGeneratorDialog } from "@/components/ImageGeneratorDialog";
@@ -60,7 +60,7 @@ export default function MediaPage() {
         ) : (
           <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-4">
             {filteredMediaApps.map((app) => (
-              <DyadAppMediaFolder
+              <ProteaAIAppMediaFolder
                 key={`media-${app.appId}`}
                 appId={app.appId}
                 appPath={app.appPath}

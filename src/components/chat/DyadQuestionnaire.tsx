@@ -16,7 +16,7 @@ interface QAEntry {
   answer: string;
 }
 
-interface DyadQuestionnaireProps {
+interface ProteaAIQuestionnaireProps {
   children?: React.ReactNode;
 }
 
@@ -49,7 +49,7 @@ const TYPE_META: Record<string, { icon: React.ReactNode; label: string }> = {
   },
 };
 
-export function DyadQuestionnaire({ children }: DyadQuestionnaireProps) {
+export function ProteaAIQuestionnaire({ children }: ProteaAIQuestionnaireProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
 
   const entries = useMemo(

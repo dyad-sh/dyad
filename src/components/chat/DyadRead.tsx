@@ -2,7 +2,7 @@ import type React from "react";
 import type { ReactNode } from "react";
 import { FileText } from "lucide-react";
 
-interface DyadReadProps {
+interface ProteaAIReadProps {
   children?: ReactNode;
   node?: any;
   path?: string;
@@ -10,7 +10,7 @@ interface DyadReadProps {
   endLine?: string;
 }
 
-export const DyadRead: React.FC<DyadReadProps> = ({
+export const ProteaAIRead: React.FC<ProteaAIReadProps> = ({
   children,
   node,
   path: pathProp,

@@ -2,15 +2,15 @@ import React, { useState } from "react";
 import { CustomTagState } from "./stateTypes";
 import { Database } from "lucide-react";
 import {
-  DyadCard,
-  DyadCardHeader,
-  DyadBadge,
-  DyadExpandIcon,
-  DyadStateIndicator,
-  DyadCardContent,
-} from "./DyadCardPrimitives";
+  ProteaAICard,
+  ProteaAICardHeader,
+  ProteaAIBadge,
+  ProteaAIExpandIcon,
+  ProteaAIStateIndicator,
+  ProteaAICardContent,
+} from "./ProteaAICardPrimitives";
 
-interface DyadSupabaseProjectInfoProps {
+interface ProteaAISupabaseProjectInfoProps {
   node: {
     properties: {
       state?: CustomTagState;
@@ -19,10 +19,10 @@ interface DyadSupabaseProjectInfoProps {
   children: React.ReactNode;
 }
 
-export function DyadSupabaseProjectInfo({
+export function ProteaAISupabaseProjectInfo({
   node,
   children,
-}: DyadSupabaseProjectInfoProps) {
+}: ProteaAISupabaseProjectInfoProps) {
   const [isContentVisible, setIsContentVisible] = useState(false);
   const { state } = node.properties;
   const isLoading = state === "pending";
@@ -30,31 +30,31 @@ export function DyadSupabaseProjectInfo({
   const content = typeof children === "string" ? children : "";
 
   return (
-    <DyadCard
+    <ProteaAICard
       state={state}
       accentColor="teal"
       isExpanded={isContentVisible}
       onClick={() => setIsContentVisible(!isContentVisible)}
     >
-      <DyadCardHeader icon={<Database size={15} />} accentColor="teal">
-        <DyadBadge color="teal">Supabase Project Info</DyadBadge>
+      <ProteaAICardHeader icon={<Database size={15} />} accentColor="teal">
+        <ProteaAIBadge color="teal">Supabase Project Info</ProteaAIBadge>
         {isLoading && (
-          <DyadStateIndicator state="pending" pendingLabel="Fetching..." />
+          <ProteaAIStateIndicator state="pending" pendingLabel="Fetching..." />
         )}
         {isAborted && (
-          <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
+          <ProteaAIStateIndicator state="aborted" abortedLabel="Did not finish" />
         )}
         <div className="ml-auto">
-          <DyadExpandIcon isExpanded={isContentVisible} />
+          <ProteaAIExpandIcon isExpanded={isContentVisible} />
         </div>
-      </DyadCardHeader>
-      <DyadCardContent isExpanded={isContentVisible}>
+      </ProteaAICardHeader>
+      <ProteaAICardContent isExpanded={isContentVisible}>
         {content && (
           <div className="p-3 text-xs font-mono whitespace-pre-wrap max-h-80 overflow-y-auto bg-muted/20 rounded-lg">
             {content}
           </div>
         )}
-      </DyadCardContent>
-    </DyadCard>
+      </ProteaAICardContent>
+    </ProteaAICard>
   );
 }

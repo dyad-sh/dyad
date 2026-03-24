@@ -8,7 +8,7 @@ import { IS_TEST_BUILD } from "../utils/test_utils";
 import { z } from "zod";
 import { audioContracts } from "../types/audio";
 import type { TranscribeAudioParams } from "../types/audio";
-import { transcribeWithDyadEngine } from "../utils/llm_engine_provider";
+import { transcribeWithProteaAIEngine } from "../utils/llm_engine_provider";
 
 export const UserInfoResponseSchema = z.object({
   usedCredits: z.number(),
@@ -23,7 +23,7 @@ const logger = log.scope("pro_handlers");
 const handle = createLoggedHandler(logger);
 const typedHandle = createLoggedTypedHandler(logger);
 
-const dyadEngineUrl = process.env.DYAD_ENGINE_URL;
+const dyadEngineUrl = process.env.PROTEAAI_ENGINE_URL;
 
 export function registerProHandlers() {
   // This method should try to avoid throwing errors because this is auxiliary
@@ -48,11 +48,11 @@ export function registerProHandlers() {
     const apiKey = settings.providerSettings?.auto?.apiKey?.value;
 
     if (!apiKey) {
-      logger.error("LLM Gateway API key (Dyad Pro) is not configured.");
+      logger.error("LLM Gateway API key (ProteaAI Pro) is not configured.");
       return null;
     }
 
-    const url = "https://api.dyad.sh/v1/user/info";
+    const url = "https://api.proteaai.com/v1/user/info";
     const headers = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
@@ -108,21 +108,21 @@ export function registerProHandlers() {
       const settings = readSettings();
       const apiKey = settings.providerSettings?.auto?.apiKey?.value;
 
-      if (!apiKey || !settings.enableDyadPro) {
+      if (!apiKey || !settings.enableProteaAIPro) {
         throw new Error(
-          "Dyad Pro is not enabled. Voice-to-text requires a Pro subscription.",
+          "ProteaAI Pro is not enabled. Voice-to-text requires a Pro subscription.",
         );
       }
 
       const audioBuffer = Buffer.from(input.audioData);
 
-      const text = await transcribeWithDyadEngine(
+      const text = await transcribeWithProteaAIEngine(
         audioBuffer,
         input.filename,
         input.requestId,
         {
           apiKey,
-          baseURL: dyadEngineUrl ?? "https://engine.dyad.sh/v1",
+          baseURL: dyadEngineUrl ?? "https://engine.proteaai.com/v1",
           dyadOptions: {},
           settings,
         },

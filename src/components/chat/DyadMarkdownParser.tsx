@@ -2,94 +2,94 @@ import React, { useDeferredValue, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { DyadWrite } from "./DyadWrite";
-import { DyadRename } from "./DyadRename";
-import { DyadCopy } from "./DyadCopy";
-import { DyadDelete } from "./DyadDelete";
-import { DyadAddDependency } from "./DyadAddDependency";
-import { DyadExecuteSql } from "./DyadExecuteSql";
-import { DyadLogs } from "./DyadLogs";
-import { DyadGrep } from "./DyadGrep";
-import { DyadAddIntegration } from "./DyadAddIntegration";
-import { DyadEdit } from "./DyadEdit";
-import { DyadSearchReplace } from "./DyadSearchReplace";
-import { DyadCodebaseContext } from "./DyadCodebaseContext";
-import { DyadThink } from "./DyadThink";
+import { ProteaAIWrite } from "./ProteaAIWrite";
+import { ProteaAIRename } from "./ProteaAIRename";
+import { ProteaAICopy } from "./ProteaAICopy";
+import { ProteaAIDelete } from "./ProteaAIDelete";
+import { ProteaAIAddDependency } from "./ProteaAIAddDependency";
+import { ProteaAIExecuteSql } from "./ProteaAIExecuteSql";
+import { ProteaAILogs } from "./ProteaAILogs";
+import { ProteaAIGrep } from "./ProteaAIGrep";
+import { ProteaAIAddIntegration } from "./ProteaAIAddIntegration";
+import { ProteaAIEdit } from "./ProteaAIEdit";
+import { ProteaAISearchReplace } from "./ProteaAISearchReplace";
+import { ProteaAICodebaseContext } from "./ProteaAICodebaseContext";
+import { ProteaAIThink } from "./ProteaAIThink";
 import { CodeHighlight } from "./CodeHighlight";
 import { useAtomValue } from "jotai";
 import { isStreamingByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { CustomTagState } from "./stateTypes";
-import { DyadOutput } from "./DyadOutput";
-import { DyadProblemSummary } from "./DyadProblemSummary";
+import { ProteaAIOutput } from "./ProteaAIOutput";
+import { ProteaAIProblemSummary } from "./ProteaAIProblemSummary";
 import { ipc } from "@/ipc/types";
-import { DyadMcpToolCall } from "./DyadMcpToolCall";
-import { DyadMcpToolResult } from "./DyadMcpToolResult";
-import { DyadWebSearchResult } from "./DyadWebSearchResult";
-import { DyadWebSearch } from "./DyadWebSearch";
-import { DyadWebCrawl } from "./DyadWebCrawl";
-import { DyadWebFetch } from "./DyadWebFetch";
-import { DyadImageGeneration } from "./DyadImageGeneration";
-import { DyadCodeSearchResult } from "./DyadCodeSearchResult";
-import { DyadCodeSearch } from "./DyadCodeSearch";
-import { DyadRead } from "./DyadRead";
-import { DyadListFiles } from "./DyadListFiles";
-import { DyadDatabaseSchema } from "./DyadDatabaseSchema";
-import { DyadSupabaseTableSchema } from "./DyadSupabaseTableSchema";
-import { DyadSupabaseProjectInfo } from "./DyadSupabaseProjectInfo";
-import { DyadStatus } from "./DyadStatus";
-import { DyadCompaction } from "./DyadCompaction";
-import { DyadWritePlan } from "./DyadWritePlan";
-import { DyadExitPlan } from "./DyadExitPlan";
-import { DyadQuestionnaire } from "./DyadQuestionnaire";
-import { DyadStepLimit } from "./DyadStepLimit";
+import { ProteaAIMcpToolCall } from "./ProteaAIMcpToolCall";
+import { ProteaAIMcpToolResult } from "./ProteaAIMcpToolResult";
+import { ProteaAIWebSearchResult } from "./ProteaAIWebSearchResult";
+import { ProteaAIWebSearch } from "./ProteaAIWebSearch";
+import { ProteaAIWebCrawl } from "./ProteaAIWebCrawl";
+import { ProteaAIWebFetch } from "./ProteaAIWebFetch";
+import { ProteaAIImageGeneration } from "./ProteaAIImageGeneration";
+import { ProteaAICodeSearchResult } from "./ProteaAICodeSearchResult";
+import { ProteaAICodeSearch } from "./ProteaAICodeSearch";
+import { ProteaAIRead } from "./ProteaAIRead";
+import { ProteaAIListFiles } from "./ProteaAIListFiles";
+import { ProteaAIDatabaseSchema } from "./ProteaAIDatabaseSchema";
+import { ProteaAISupabaseTableSchema } from "./ProteaAISupabaseTableSchema";
+import { ProteaAISupabaseProjectInfo } from "./ProteaAISupabaseProjectInfo";
+import { ProteaAIStatus } from "./ProteaAIStatus";
+import { ProteaAICompaction } from "./ProteaAICompaction";
+import { ProteaAIWritePlan } from "./ProteaAIWritePlan";
+import { ProteaAIExitPlan } from "./ProteaAIExitPlan";
+import { ProteaAIQuestionnaire } from "./ProteaAIQuestionnaire";
+import { ProteaAIStepLimit } from "./ProteaAIStepLimit";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
 import { unescapeXmlAttr, unescapeXmlContent } from "../../../shared/xmlEscape";
 
-const DYAD_CUSTOM_TAGS = [
-  "dyad-write",
-  "dyad-rename",
-  "dyad-delete",
-  "dyad-add-dependency",
-  "dyad-execute-sql",
-  "dyad-read-logs",
-  "dyad-add-integration",
-  "dyad-output",
-  "dyad-problem-report",
-  "dyad-chat-summary",
-  "dyad-edit",
-  "dyad-grep",
-  "dyad-search-replace",
-  "dyad-codebase-context",
-  "dyad-web-search-result",
-  "dyad-web-search",
-  "dyad-web-crawl",
-  "dyad-web-fetch",
-  "dyad-code-search-result",
-  "dyad-code-search",
-  "dyad-read",
+const PROTEAAI_CUSTOM_TAGS = [
+  "proteaai-write",
+  "proteaai-rename",
+  "proteaai-delete",
+  "proteaai-add-dependency",
+  "proteaai-execute-sql",
+  "proteaai-read-logs",
+  "proteaai-add-integration",
+  "proteaai-output",
+  "proteaai-problem-report",
+  "proteaai-chat-summary",
+  "proteaai-edit",
+  "proteaai-grep",
+  "proteaai-search-replace",
+  "proteaai-codebase-context",
+  "proteaai-web-search-result",
+  "proteaai-web-search",
+  "proteaai-web-crawl",
+  "proteaai-web-fetch",
+  "proteaai-code-search-result",
+  "proteaai-code-search",
+  "proteaai-read",
   "think",
-  "dyad-command",
-  "dyad-mcp-tool-call",
-  "dyad-mcp-tool-result",
-  "dyad-list-files",
-  "dyad-database-schema",
-  "dyad-supabase-table-schema",
-  "dyad-supabase-project-info",
-  "dyad-status",
-  "dyad-compaction",
-  "dyad-copy",
-  "dyad-image-generation",
+  "proteaai-command",
+  "proteaai-mcp-tool-call",
+  "proteaai-mcp-tool-result",
+  "proteaai-list-files",
+  "proteaai-database-schema",
+  "proteaai-supabase-table-schema",
+  "proteaai-supabase-project-info",
+  "proteaai-status",
+  "proteaai-compaction",
+  "proteaai-copy",
+  "proteaai-image-generation",
   // Plan mode tags
-  "dyad-write-plan",
-  "dyad-exit-plan",
-  "dyad-questionnaire",
+  "proteaai-write-plan",
+  "proteaai-exit-plan",
+  "proteaai-questionnaire",
   // Step limit notification
-  "dyad-step-limit",
+  "proteaai-step-limit",
 ];
 
-interface DyadMarkdownParserProps {
+interface ProteaAIMarkdownParserProps {
   content: string;
 }
 
@@ -139,9 +139,9 @@ export const VanillaMarkdownParser = ({ content }: { content: string }) => {
 };
 
 /**
- * Custom component to parse markdown content with Dyad-specific tags
+ * Custom component to parse markdown content with ProteaAI-specific tags
  */
-export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
+export const ProteaAIMarkdownParser: React.FC<ProteaAIMarkdownParserProps> = ({
   content,
 }) => {
   const chatId = useAtomValue(selectedChatIdAtom);
@@ -163,7 +163,7 @@ export const DyadMarkdownParser: React.FC<DyadMarkdownParserProps> = ({
     contentPieces.forEach((piece, index) => {
       if (
         piece.type === "custom-tag" &&
-        piece.tagInfo.tag === "dyad-output" &&
+        piece.tagInfo.tag === "proteaai-output" &&
         piece.tagInfo.attributes.type === "error"
       ) {
         const errorMessage = piece.tagInfo.attributes.message;
@@ -231,7 +231,7 @@ function preprocessUnclosedTags(content: string): {
   const inProgressTags = new Map<string, Set<number>>();
 
   // For each tag type, check if there are unclosed tags
-  for (const tagName of DYAD_CUSTOM_TAGS) {
+  for (const tagName of PROTEAAI_CUSTOM_TAGS) {
     // Count opening and closing tags
     const openTagPattern = new RegExp(`<${tagName}(?:\\s[^>]*)?>`, "g");
     const closeTagPattern = new RegExp(`</${tagName}>`, "g");
@@ -278,7 +278,7 @@ function parseCustomTags(content: string): ContentPiece[] {
   const { processedContent, inProgressTags } = preprocessUnclosedTags(content);
 
   const tagPattern = new RegExp(
-    `<(${DYAD_CUSTOM_TAGS.join("|")})\\s*([^>]*)>(.*?)<\\/\\1>`,
+    `<(${PROTEAAI_CUSTOM_TAGS.join("|")})\\s*([^>]*)>(.*?)<\\/\\1>`,
     "gs",
   );
 
@@ -360,9 +360,9 @@ function renderCustomTag(
   const { tag, attributes, content, inProgress } = tagInfo;
 
   switch (tag) {
-    case "dyad-read":
+    case "proteaai-read":
       return (
-        <DyadRead
+        <ProteaAIRead
           node={{
             properties: {
               path: attributes.path || "",
@@ -372,11 +372,11 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadRead>
+        </ProteaAIRead>
       );
-    case "dyad-web-search":
+    case "proteaai-web-search":
       return (
-        <DyadWebSearch
+        <ProteaAIWebSearch
           node={{
             properties: {
               query: attributes.query || "",
@@ -385,21 +385,21 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadWebSearch>
+        </ProteaAIWebSearch>
       );
-    case "dyad-web-crawl":
+    case "proteaai-web-crawl":
       return (
-        <DyadWebCrawl
+        <ProteaAIWebCrawl
           node={{
             properties: {},
           }}
         >
           {content}
-        </DyadWebCrawl>
+        </ProteaAIWebCrawl>
       );
-    case "dyad-web-fetch":
+    case "proteaai-web-fetch":
       return (
-        <DyadWebFetch
+        <ProteaAIWebFetch
           node={{
             properties: {
               state: getState({ isStreaming, inProgress }),
@@ -407,11 +407,11 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadWebFetch>
+        </ProteaAIWebFetch>
       );
-    case "dyad-code-search":
+    case "proteaai-code-search":
       return (
-        <DyadCodeSearch
+        <ProteaAICodeSearch
           node={{
             properties: {
               query: attributes.query || "",
@@ -420,21 +420,21 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadCodeSearch>
+        </ProteaAICodeSearch>
       );
-    case "dyad-code-search-result":
+    case "proteaai-code-search-result":
       return (
-        <DyadCodeSearchResult
+        <ProteaAICodeSearchResult
           node={{
             properties: {},
           }}
         >
           {content}
-        </DyadCodeSearchResult>
+        </ProteaAICodeSearchResult>
       );
-    case "dyad-web-search-result":
+    case "proteaai-web-search-result":
       return (
-        <DyadWebSearchResult
+        <ProteaAIWebSearchResult
           node={{
             properties: {
               state: getState({ isStreaming, inProgress }),
@@ -442,11 +442,11 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadWebSearchResult>
+        </ProteaAIWebSearchResult>
       );
     case "think":
       return (
-        <DyadThink
+        <ProteaAIThink
           node={{
             properties: {
               state: getState({ isStreaming, inProgress }),
@@ -454,11 +454,11 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadThink>
+        </ProteaAIThink>
       );
-    case "dyad-write":
+    case "proteaai-write":
       return (
-        <DyadWrite
+        <ProteaAIWrite
           node={{
             properties: {
               path: attributes.path || "",
@@ -468,12 +468,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadWrite>
+        </ProteaAIWrite>
       );
 
-    case "dyad-rename":
+    case "proteaai-rename":
       return (
-        <DyadRename
+        <ProteaAIRename
           node={{
             properties: {
               from: attributes.from || "",
@@ -482,12 +482,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadRename>
+        </ProteaAIRename>
       );
 
-    case "dyad-copy":
+    case "proteaai-copy":
       return (
-        <DyadCopy
+        <ProteaAICopy
           node={{
             properties: {
               from: attributes.from || "",
@@ -498,12 +498,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadCopy>
+        </ProteaAICopy>
       );
 
-    case "dyad-delete":
+    case "proteaai-delete":
       return (
-        <DyadDelete
+        <ProteaAIDelete
           node={{
             properties: {
               path: attributes.path || "",
@@ -511,12 +511,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadDelete>
+        </ProteaAIDelete>
       );
 
-    case "dyad-add-dependency":
+    case "proteaai-add-dependency":
       return (
-        <DyadAddDependency
+        <ProteaAIAddDependency
           node={{
             properties: {
               packages: attributes.packages || "",
@@ -524,12 +524,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadAddDependency>
+        </ProteaAIAddDependency>
       );
 
-    case "dyad-execute-sql":
+    case "proteaai-execute-sql":
       return (
-        <DyadExecuteSql
+        <ProteaAIExecuteSql
           node={{
             properties: {
               state: getState({ isStreaming, inProgress }),
@@ -538,12 +538,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadExecuteSql>
+        </ProteaAIExecuteSql>
       );
 
-    case "dyad-read-logs":
+    case "proteaai-read-logs":
       return (
-        <DyadLogs
+        <ProteaAILogs
           node={{
             properties: {
               state: getState({ isStreaming, inProgress }),
@@ -555,12 +555,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadLogs>
+        </ProteaAILogs>
       );
 
-    case "dyad-grep":
+    case "proteaai-grep":
       return (
-        <DyadGrep
+        <ProteaAIGrep
           node={{
             properties: {
               state: getState({ isStreaming, inProgress }),
@@ -575,12 +575,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadGrep>
+        </ProteaAIGrep>
       );
 
-    case "dyad-add-integration":
+    case "proteaai-add-integration":
       return (
-        <DyadAddIntegration
+        <ProteaAIAddIntegration
           node={{
             properties: {
               provider: attributes.provider || "",
@@ -588,12 +588,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadAddIntegration>
+        </ProteaAIAddIntegration>
       );
 
-    case "dyad-edit":
+    case "proteaai-edit":
       return (
-        <DyadEdit
+        <ProteaAIEdit
           node={{
             properties: {
               path: attributes.path || "",
@@ -603,12 +603,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadEdit>
+        </ProteaAIEdit>
       );
 
-    case "dyad-search-replace":
+    case "proteaai-search-replace":
       return (
-        <DyadSearchReplace
+        <ProteaAISearchReplace
           node={{
             properties: {
               path: attributes.path || "",
@@ -618,12 +618,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadSearchReplace>
+        </ProteaAISearchReplace>
       );
 
-    case "dyad-codebase-context":
+    case "proteaai-codebase-context":
       return (
-        <DyadCodebaseContext
+        <ProteaAICodebaseContext
           node={{
             properties: {
               files: attributes.files || "",
@@ -632,12 +632,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadCodebaseContext>
+        </ProteaAICodebaseContext>
       );
 
-    case "dyad-mcp-tool-call":
+    case "proteaai-mcp-tool-call":
       return (
-        <DyadMcpToolCall
+        <ProteaAIMcpToolCall
           node={{
             properties: {
               serverName: attributes.server || "",
@@ -646,12 +646,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadMcpToolCall>
+        </ProteaAIMcpToolCall>
       );
 
-    case "dyad-mcp-tool-result":
+    case "proteaai-mcp-tool-result":
       return (
-        <DyadMcpToolResult
+        <ProteaAIMcpToolResult
           node={{
             properties: {
               serverName: attributes.server || "",
@@ -660,31 +660,31 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadMcpToolResult>
+        </ProteaAIMcpToolResult>
       );
 
-    case "dyad-output":
+    case "proteaai-output":
       return (
-        <DyadOutput
+        <ProteaAIOutput
           type={attributes.type as "warning" | "error"}
           message={attributes.message}
         >
           {content}
-        </DyadOutput>
+        </ProteaAIOutput>
       );
 
-    case "dyad-problem-report":
+    case "proteaai-problem-report":
       return (
-        <DyadProblemSummary summary={attributes.summary}>
+        <ProteaAIProblemSummary summary={attributes.summary}>
           {content}
-        </DyadProblemSummary>
+        </ProteaAIProblemSummary>
       );
 
-    case "dyad-chat-summary":
+    case "proteaai-chat-summary":
       // Don't render anything for dyad-chat-summary
       return null;
 
-    case "dyad-command":
+    case "proteaai-command":
       if (attributes.type) {
         const action = {
           id: attributes.type,
@@ -693,9 +693,9 @@ function renderCustomTag(
       }
       return null;
 
-    case "dyad-list-files":
+    case "proteaai-list-files":
       return (
-        <DyadListFiles
+        <ProteaAIListFiles
           node={{
             properties: {
               directory: attributes.directory || "",
@@ -706,12 +706,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadListFiles>
+        </ProteaAIListFiles>
       );
 
-    case "dyad-database-schema":
+    case "proteaai-database-schema":
       return (
-        <DyadDatabaseSchema
+        <ProteaAIDatabaseSchema
           node={{
             properties: {
               state: getState({ isStreaming, inProgress }),
@@ -719,12 +719,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadDatabaseSchema>
+        </ProteaAIDatabaseSchema>
       );
 
-    case "dyad-supabase-table-schema":
+    case "proteaai-supabase-table-schema":
       return (
-        <DyadSupabaseTableSchema
+        <ProteaAISupabaseTableSchema
           node={{
             properties: {
               table: attributes.table || "",
@@ -733,12 +733,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadSupabaseTableSchema>
+        </ProteaAISupabaseTableSchema>
       );
 
-    case "dyad-supabase-project-info":
+    case "proteaai-supabase-project-info":
       return (
-        <DyadSupabaseProjectInfo
+        <ProteaAISupabaseProjectInfo
           node={{
             properties: {
               state: getState({ isStreaming, inProgress }),
@@ -746,12 +746,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadSupabaseProjectInfo>
+        </ProteaAISupabaseProjectInfo>
       );
 
-    case "dyad-image-generation":
+    case "proteaai-image-generation":
       return (
-        <DyadImageGeneration
+        <ProteaAIImageGeneration
           node={{
             properties: {
               prompt: attributes.prompt || "",
@@ -761,12 +761,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadImageGeneration>
+        </ProteaAIImageGeneration>
       );
 
-    case "dyad-status":
+    case "proteaai-status":
       return (
-        <DyadStatus
+        <ProteaAIStatus
           node={{
             properties: {
               title: attributes.title || "Processing...",
@@ -775,12 +775,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadStatus>
+        </ProteaAIStatus>
       );
 
-    case "dyad-compaction":
+    case "proteaai-compaction":
       return (
-        <DyadCompaction
+        <ProteaAICompaction
           node={{
             properties: {
               title: attributes.title || "Compacting conversation",
@@ -789,12 +789,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadCompaction>
+        </ProteaAICompaction>
       );
 
-    case "dyad-write-plan":
+    case "proteaai-write-plan":
       return (
-        <DyadWritePlan
+        <ProteaAIWritePlan
           node={{
             properties: {
               title: attributes.title || "Implementation Plan",
@@ -805,12 +805,12 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadWritePlan>
+        </ProteaAIWritePlan>
       );
 
-    case "dyad-exit-plan":
+    case "proteaai-exit-plan":
       return (
-        <DyadExitPlan
+        <ProteaAIExitPlan
           node={{
             properties: {
               notes: attributes.notes,
@@ -819,12 +819,12 @@ function renderCustomTag(
         />
       );
 
-    case "dyad-questionnaire":
-      return <DyadQuestionnaire>{content}</DyadQuestionnaire>;
+    case "proteaai-questionnaire":
+      return <ProteaAIQuestionnaire>{content}</ProteaAIQuestionnaire>;
 
-    case "dyad-step-limit":
+    case "proteaai-step-limit":
       return (
-        <DyadStepLimit
+        <ProteaAIStepLimit
           node={{
             properties: {
               steps: attributes.steps,
@@ -834,7 +834,7 @@ function renderCustomTag(
           }}
         >
           {content}
-        </DyadStepLimit>
+        </ProteaAIStepLimit>
       );
 
     default:

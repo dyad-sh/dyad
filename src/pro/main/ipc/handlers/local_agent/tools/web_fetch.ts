@@ -62,7 +62,7 @@ Examples:
 
 async function callWebFetch(
   url: string,
-  ctx: Pick<AgentContext, "dyadRequestId">,
+  ctx: Pick<AgentContext, "proteaaiRequestId">,
 ): Promise<z.infer<typeof webFetchResponseSchema>> {
   const response = await engineFetch(ctx, "/tools/web-crawl", {
     method: "POST",
@@ -86,8 +86,8 @@ export const webFetchTool: ToolDefinition<z.infer<typeof webFetchSchema>> = {
   inputSchema: webFetchSchema,
   defaultConsent: "always",
 
-  // Requires Dyad Pro engine API
-  isEnabled: (ctx) => ctx.isDyadPro,
+  // Requires ProteaAI Pro engine API
+  isEnabled: (ctx) => ctx.isProteaAIPro,
 
   getConsentPreview: (args) => `Fetch URL: "${args.url}"`,
 

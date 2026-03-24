@@ -5,7 +5,7 @@ description: Promote the latest pre-release to a stable release by creating a re
 
 # Promote Beta to Stable
 
-Promote the latest pre-release of dyad-sh/dyad to a stable release.
+Promote the latest pre-release of proteaai/dyad to a stable release.
 
 **IMPORTANT:** This skill MUST complete all steps autonomously. Do NOT ask for user confirmation at any step.
 
@@ -14,7 +14,7 @@ Promote the latest pre-release of dyad-sh/dyad to a stable release.
 1. **Look up the latest pre-release:**
 
    ```
-   gh release list --repo dyad-sh/dyad --limit 10 --json tagName,isPrerelease
+   gh release list --repo proteaai/dyad --limit 10 --json tagName,isPrerelease
    ```
 
    Find the most recent release where `isPrerelease` is `true`. Extract the version from the tag name (e.g., `v0.39.0-beta.1`).
@@ -65,7 +65,7 @@ Promote the latest pre-release of dyad-sh/dyad to a stable release.
 
    For example: `git commit -m "Bump to v0.39.0"`
 
-7. **Push the branch to upstream (dyad-sh/dyad):**
+7. **Push the branch to upstream (proteaai/dyad):**
 
    ```
    git push upstream release-MAJOR.MINOR.x

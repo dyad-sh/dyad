@@ -10,7 +10,7 @@ import { expect } from "@playwright/test";
 testSkipIfWindows(
   "local-agent - context compaction triggers and shows summary",
   async ({ po }) => {
-    await po.setUpDyadPro({ localAgent: true });
+    await po.setUpProteaAIPro({ localAgent: true });
     await po.importApp("minimal");
     await po.chatActions.selectLocalAgentMode();
 
@@ -51,7 +51,7 @@ testSkipIfWindows(
 testSkipIfWindows(
   "local-agent - context compaction can run mid-turn",
   async ({ po }) => {
-    await po.setUpDyadPro({ localAgent: true });
+    await po.setUpProteaAIPro({ localAgent: true });
     await po.importApp("minimal");
     await po.chatActions.selectLocalAgentMode();
 

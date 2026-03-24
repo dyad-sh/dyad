@@ -188,15 +188,15 @@ export class Settings {
     await expect(this.page.getByText("test-api-key-12345")).toBeVisible();
   }
 
-  async setUpDyadProvider() {
+  async setUpProteaAIProvider() {
     await this.page
       .locator("div")
-      .filter({ hasText: /^DyadNeeds Setup$/ })
+      .filter({ hasText: /^ProteaAINeeds Setup$/ })
       .nth(1)
       .click();
-    await this.page.getByRole("textbox", { name: "Set Dyad API Key" }).click();
+    await this.page.getByRole("textbox", { name: "Set ProteaAI API Key" }).click();
     await this.page
-      .getByRole("textbox", { name: "Set Dyad API Key" })
+      .getByRole("textbox", { name: "Set ProteaAI API Key" })
       .fill("testdyadkey");
     await this.page.getByRole("button", { name: "Save Key" }).click();
   }

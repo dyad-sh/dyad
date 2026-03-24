@@ -4,7 +4,7 @@
   // Track text editing state globally
   let textEditingState = new Map(); // componentId -> { originalText, currentText, cleanup }
 
-  function findElementByDyadId(dyadId, runtimeId) {
+  function findElementByProteaAIId(dyadId, runtimeId) {
     // If runtimeId is provided, try to find element by runtime ID first
     if (runtimeId) {
       const elementByRuntimeId = document.querySelector(
@@ -24,7 +24,7 @@
     if (!element || !styles) return;
 
     console.debug(
-      `[Dyad Visual Editor] Applying styles:`,
+      `[ProteaAI Visual Editor] Applying styles:`,
       styles,
       "to element:",
       element,
@@ -77,7 +77,7 @@
 
   function handleGetStyles(data) {
     const { elementId, runtimeId } = data;
-    const element = findElementByDyadId(elementId, runtimeId);
+    const element = findElementByProteaAIId(elementId, runtimeId);
     if (element) {
       const computedStyle = window.getComputedStyle(element);
       const styles = {
@@ -119,7 +119,7 @@
 
   function handleModifyStyles(data) {
     const { elementId, runtimeId, styles } = data;
-    const element = findElementByDyadId(elementId, runtimeId);
+    const element = findElementByProteaAIId(elementId, runtimeId);
     if (element) {
       applyStyles(element, styles);
 
@@ -151,7 +151,7 @@
       }
     });
 
-    const element = findElementByDyadId(componentId, runtimeId);
+    const element = findElementByProteaAIId(componentId, runtimeId);
     if (element) {
       const originalText = element.innerText;
 
@@ -230,7 +230,7 @@
 
   function handleGetTextContent(data) {
     const { componentId, runtimeId } = data;
-    const element = findElementByDyadId(componentId, runtimeId);
+    const element = findElementByProteaAIId(componentId, runtimeId);
     const state = textEditingState.get(componentId);
 
     window.parent.postMessage(
@@ -246,7 +246,7 @@
 
   function handleModifyImageSrc(data) {
     const { elementId, runtimeId, src } = data;
-    const element = findElementByDyadId(elementId, runtimeId);
+    const element = findElementByProteaAIId(elementId, runtimeId);
     if (!element) return;
 
     // Find the <img> element (self or child)

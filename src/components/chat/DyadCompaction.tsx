@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { Layers, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
-import { VanillaMarkdownParser } from "./DyadMarkdownParser";
+import { VanillaMarkdownParser } from "./ProteaAIMarkdownParser";
 import { CustomTagState } from "./stateTypes";
 
-interface DyadCompactionProps {
+interface ProteaAICompactionProps {
   node: {
     properties: {
       title?: string;
@@ -13,7 +13,7 @@ interface DyadCompactionProps {
   children?: React.ReactNode;
 }
 
-export const DyadCompaction: React.FC<DyadCompactionProps> = ({
+export const ProteaAICompaction: React.FC<ProteaAICompactionProps> = ({
   children,
   node,
 }) => {

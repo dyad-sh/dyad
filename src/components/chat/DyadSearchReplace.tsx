@@ -6,24 +6,24 @@ import { CodeHighlight } from "./CodeHighlight";
 import { CustomTagState } from "./stateTypes";
 import { parseSearchReplaceBlocks } from "@/pro/shared/search_replace_parser";
 import {
-  DyadCard,
-  DyadCardHeader,
-  DyadBadge,
-  DyadExpandIcon,
-  DyadStateIndicator,
-  DyadFilePath,
-  DyadDescription,
-  DyadCardContent,
-} from "./DyadCardPrimitives";
+  ProteaAICard,
+  ProteaAICardHeader,
+  ProteaAIBadge,
+  ProteaAIExpandIcon,
+  ProteaAIStateIndicator,
+  ProteaAIFilePath,
+  ProteaAIDescription,
+  ProteaAICardContent,
+} from "./ProteaAICardPrimitives";
 
-interface DyadSearchReplaceProps {
+interface ProteaAISearchReplaceProps {
   children?: ReactNode;
   node?: any;
   path?: string;
   description?: string;
 }
 
-export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
+export const ProteaAISearchReplace: React.FC<ProteaAISearchReplaceProps> = ({
   children,
   node,
   path: pathProp,
@@ -45,41 +45,41 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
   const fileName = path ? path.split("/").pop() : "";
 
   return (
-    <DyadCard
+    <ProteaAICard
       state={state}
       accentColor="violet"
       isExpanded={isContentVisible}
       onClick={() => setIsContentVisible(!isContentVisible)}
-      data-testid="dyad-search-replace"
+      data-testid="proteaai-search-replace"
     >
-      <DyadCardHeader icon={<Search size={15} />} accentColor="violet">
-        <DyadBadge color="violet">Search & Replace</DyadBadge>
+      <ProteaAICardHeader icon={<Search size={15} />} accentColor="violet">
+        <ProteaAIBadge color="violet">Search & Replace</ProteaAIBadge>
         {fileName && (
           <span className="font-medium text-sm text-foreground truncate">
             {fileName}
           </span>
         )}
         {inProgress && (
-          <DyadStateIndicator
+          <ProteaAIStateIndicator
             state="pending"
             pendingLabel="Applying changes..."
           />
         )}
         {aborted && (
-          <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
+          <ProteaAIStateIndicator state="aborted" abortedLabel="Did not finish" />
         )}
         <div className="ml-auto">
-          <DyadExpandIcon isExpanded={isContentVisible} />
+          <ProteaAIExpandIcon isExpanded={isContentVisible} />
         </div>
-      </DyadCardHeader>
-      <DyadFilePath path={path} />
+      </ProteaAICardHeader>
+      <ProteaAIFilePath path={path} />
       {description && (
-        <DyadDescription>
+        <ProteaAIDescription>
           <span className="font-medium">Summary: </span>
           {description}
-        </DyadDescription>
+        </ProteaAIDescription>
       )}
-      <DyadCardContent isExpanded={isContentVisible}>
+      <ProteaAICardContent isExpanded={isContentVisible}>
         <div
           className="text-xs cursor-text"
           onClick={(e) => e.stopPropagation()}
@@ -127,7 +127,7 @@ export const DyadSearchReplace: React.FC<DyadSearchReplaceProps> = ({
             </div>
           )}
         </div>
-      </DyadCardContent>
-    </DyadCard>
+      </ProteaAICardContent>
+    </ProteaAICard>
   );
 };

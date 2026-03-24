@@ -7,7 +7,7 @@ import posthog from "posthog-js";
 import {
   getTelemetryUserId,
   isTelemetryOptedIn,
-  isDyadProUser,
+  isProteaAIProUser,
 } from "./hooks/useSettings";
 
 // Initialize i18next before any rendering
@@ -97,7 +97,7 @@ const posthogClient = posthog.init(
       }
 
       // For non-Pro users, only send 10% of events (but always send errors)
-      if (!isDyadProUser()) {
+      if (!isProteaAIProUser()) {
         const isErrorEvent =
           event?.event === "$exception" ||
           event?.event?.toLowerCase().includes("error") ||

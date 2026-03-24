@@ -1,15 +1,15 @@
 import React, { useState } from "react";
 import { CustomTagState } from "./stateTypes";
 import {
-  DyadCard,
-  DyadCardHeader,
-  DyadExpandIcon,
-  DyadFinishedIcon,
-  DyadCardContent,
-} from "./DyadCardPrimitives";
+  ProteaAICard,
+  ProteaAICardHeader,
+  ProteaAIExpandIcon,
+  ProteaAIFinishedIcon,
+  ProteaAICardContent,
+} from "./ProteaAICardPrimitives";
 import { CircleX, Loader2 } from "lucide-react";
 
-interface DyadStatusProps {
+interface ProteaAIStatusProps {
   node: {
     properties: {
       title?: string;
@@ -19,7 +19,7 @@ interface DyadStatusProps {
   children?: React.ReactNode;
 }
 
-export function DyadStatus({ node, children }: DyadStatusProps) {
+export function ProteaAIStatus({ node, children }: ProteaAIStatusProps) {
   const { title = "Processing...", state } = node.properties;
   const isInProgress = state === "pending";
   const isAborted = state === "aborted";
@@ -36,17 +36,17 @@ export function DyadStatus({ node, children }: DyadStatusProps) {
   ) : isAborted ? (
     <CircleX size={15} />
   ) : (
-    <DyadFinishedIcon />
+    <ProteaAIFinishedIcon />
   );
 
   return (
-    <DyadCard
+    <ProteaAICard
       state={state}
       accentColor={accentColor}
       isExpanded={isContentVisible}
       onClick={() => setIsContentVisible(!isContentVisible)}
     >
-      <DyadCardHeader icon={icon} accentColor={accentColor}>
+      <ProteaAICardHeader icon={icon} accentColor={accentColor}>
         <span
           className={`font-medium text-sm ${
             isInProgress
@@ -59,10 +59,10 @@ export function DyadStatus({ node, children }: DyadStatusProps) {
           {title}
         </span>
         <div className="ml-auto">
-          <DyadExpandIcon isExpanded={isContentVisible} />
+          <ProteaAIExpandIcon isExpanded={isContentVisible} />
         </div>
-      </DyadCardHeader>
-      <DyadCardContent isExpanded={isContentVisible}>
+      </ProteaAICardHeader>
+      <ProteaAICardContent isExpanded={isContentVisible}>
         {content && (
           <div
             className="p-3 text-xs font-mono whitespace-pre-wrap max-h-60 overflow-y-auto bg-muted/20 rounded-lg cursor-text"
@@ -71,7 +71,7 @@ export function DyadStatus({ node, children }: DyadStatusProps) {
             {content}
           </div>
         )}
-      </DyadCardContent>
-    </DyadCard>
+      </ProteaAICardContent>
+    </ProteaAICard>
   );
 }

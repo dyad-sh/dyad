@@ -9,7 +9,7 @@ import { miscContracts } from "../types/misc";
 import { systemContracts } from "../types/system";
 import fs from "node:fs";
 import path from "node:path";
-import { getDyadAppPath, getUserDataPath } from "../../paths/paths";
+import { getProteaAIAppPath, getUserDataPath } from "../../paths/paths";
 import { ChildProcess, spawn } from "node:child_process";
 import { promises as fsPromises } from "node:fs";
 
@@ -308,7 +308,7 @@ function listenToProcess({
     // This is a hacky heuristic to pick up when drizzle is asking for user
     // to select from one of a few choices. We automatically pick the first
     // option because it's usually a good default choice. We guard this with
-    // isNeon because: 1) only Neon apps (for the official Dyad templates) should
+    // isNeon because: 1) only Neon apps (for the official ProteaAI templates) should
     // get this template and 2) it's safer to do this with Neon apps because
     // their databases have point in time restore built-in.
     if (isNeon && message.includes("created or renamed from another")) {
@@ -446,7 +446,7 @@ async function executeAppInDocker({
   installCommand?: string | null;
   startCommand?: string | null;
 }): Promise<void> {
-  const containerName = `dyad-app-${appId}`;
+  const containerName = `proteaai-app-${appId}`;
 
   // First, check if Docker is available
   try {
@@ -491,7 +491,7 @@ async function executeAppInDocker({
   }
 
   // Create a Dockerfile in the app directory if it doesn't exist
-  const dockerfilePath = path.join(appPath, "Dockerfile.dyad");
+  const dockerfilePath = path.join(appPath, "Dockerfile.proteaai");
   if (!fs.existsSync(dockerfilePath)) {
     const dockerfileContent = `FROM node:22-alpine
 
@@ -510,7 +510,7 @@ RUN npm install -g pnpm
   // Build the Docker image
   const buildProcess = spawn(
     "docker",
-    ["build", "-f", "Dockerfile.dyad", "-t", `dyad-app-${appId}`, "."],
+    ["build", "-f", "Dockerfile.proteaai", "-t", `proteaai-app-${appId}`, "."],
     {
       cwd: appPath,
       stdio: "pipe",
@@ -554,7 +554,7 @@ RUN npm install -g pnpm
       "PNPM_STORE_PATH=/app/.pnpm-store",
       "-w",
       "/app",
-      `dyad-app-${appId}`,
+      `proteaai-app-${appId}`,
       "sh",
       "-c",
       getCommand({ appId, installCommand, startCommand }),
@@ -793,14 +793,14 @@ async function searchAppFilesWithRipgrep({
 }
 
 export function registerAppHandlers() {
-  createTypedHandler(systemContracts.restartDyad, async () => {
+  createTypedHandler(systemContracts.restartProteaAI, async () => {
     app.relaunch();
     app.quit();
   });
 
   createTypedHandler(appContracts.createApp, async (_, params) => {
     const appPath = params.name;
-    const fullAppPath = getDyadAppPath(appPath);
+    const fullAppPath = getProteaAIAppPath(appPath);
     if (fs.existsSync(fullAppPath)) {
       throw new Error(`App already exists at: ${fullAppPath}`);
     }
@@ -836,7 +836,7 @@ export function registerAppHandlers() {
     // Create initial commit
     const commitHash = await gitCommit({
       path: fullAppPath,
-      message: "Init Dyad app",
+      message: "Init ProteaAI app",
     });
 
     // Update chat with initial commit hash
@@ -874,8 +874,8 @@ export function registerAppHandlers() {
       throw new Error("Original app not found.");
     }
 
-    const originalAppPath = getDyadAppPath(originalApp.path);
-    const newAppPath = getDyadAppPath(newAppName);
+    const originalAppPath = getProteaAIAppPath(originalApp.path);
+    const newAppPath = getProteaAIAppPath(newAppName);
 
     // 3. Copy the app folder
     try {
@@ -905,7 +905,7 @@ export function registerAppHandlers() {
       // Create initial commit
       await gitCommit({
         path: newAppPath,
-        message: "Init Dyad app",
+        message: "Init ProteaAI app",
       });
     }
 
@@ -939,7 +939,7 @@ export function registerAppHandlers() {
     }
 
     // Get app files
-    const appPath = getDyadAppPath(app.path);
+    const appPath = getProteaAIAppPath(app.path);
     let files: string[] = [];
 
     try {
@@ -987,7 +987,7 @@ export function registerAppHandlers() {
     });
     const appsWithResolvedPath = allApps.map((app) => ({
       ...app,
-      resolvedPath: getDyadAppPath(app.path),
+      resolvedPath: getProteaAIAppPath(app.path),
     }));
     return {
       apps: appsWithResolvedPath,
@@ -1004,7 +1004,7 @@ export function registerAppHandlers() {
       throw new Error("App not found");
     }
 
-    const appPath = getDyadAppPath(app.path);
+    const appPath = getProteaAIAppPath(app.path);
     const fullPath = path.join(appPath, filePath);
 
     // Check if the path is within the app directory (security check)
@@ -1065,7 +1065,7 @@ export function registerAppHandlers() {
 
       logger.debug(`Starting app ${appId} in path ${app.path}`);
 
-      const appPath = getDyadAppPath(app.path);
+      const appPath = getProteaAIAppPath(app.path);
       try {
         // There may have been a previous run that left a process on this port.
         await cleanUpPort(getAppPort(appId));
@@ -1170,7 +1170,7 @@ export function registerAppHandlers() {
           throw new Error("App not found");
         }
 
-        const appPath = getDyadAppPath(app.path);
+        const appPath = getProteaAIAppPath(app.path);
 
         // Remove node_modules if requested
         if (removeNodeModules) {
@@ -1243,7 +1243,7 @@ export function registerAppHandlers() {
       throw new Error("App not found");
     }
 
-    const appPath = getDyadAppPath(app.path);
+    const appPath = getProteaAIAppPath(app.path);
     const fullPath = path.join(appPath, filePath);
 
     // Check if the path is within the app directory (security check)
@@ -1374,7 +1374,7 @@ export function registerAppHandlers() {
       }
 
       // Delete app files
-      const appPath = getDyadAppPath(app.path);
+      const appPath = getProteaAIAppPath(app.path);
       try {
         await fsPromises.rm(appPath, { recursive: true, force: true });
       } catch (error: any) {
@@ -1476,10 +1476,10 @@ export function registerAppHandlers() {
 
       // If the current path is absolute, preserve the directory and only change the folder name
       // Otherwise, resolve the new path using the default base path
-      const currentResolvedPath = getDyadAppPath(app.path);
+      const currentResolvedPath = getProteaAIAppPath(app.path);
       const newAppPath = path.isAbsolute(app.path)
         ? path.join(path.dirname(app.path), appPath)
-        : getDyadAppPath(appPath);
+        : getProteaAIAppPath(appPath);
 
       let hasPathConflict = false;
       if (pathChanged) {
@@ -1488,7 +1488,7 @@ export function registerAppHandlers() {
           if (existingApp.id === appId) {
             return false;
           }
-          return getDyadAppPath(existingApp.path) === newAppPath;
+          return getProteaAIAppPath(existingApp.path) === newAppPath;
         });
       }
 
@@ -1642,7 +1642,7 @@ export function registerAppHandlers() {
     // Doing this last because it's the most time-consuming and the least important
     // in terms of resetting the app state.
     logger.log("removing all app files...");
-    const dyadAppPath = getDyadAppPath(".");
+    const dyadAppPath = getProteaAIAppPath(".");
     if (fs.existsSync(dyadAppPath)) {
       await fsPromises.rm(dyadAppPath, { recursive: true, force: true });
       // Recreate the base directory
@@ -1669,7 +1669,7 @@ export function registerAppHandlers() {
       throw new Error("App not found");
     }
 
-    const appPath = getDyadAppPath(app.path);
+    const appPath = getProteaAIAppPath(app.path);
 
     return withLock(appId, async () => {
       try {
@@ -1751,7 +1751,7 @@ export function registerAppHandlers() {
       throw new Error("App not found");
     }
 
-    const appPath = getDyadAppPath(appRecord.path);
+    const appPath = getProteaAIAppPath(appRecord.path);
 
     // Search file contents with ripgrep
     const contentMatches = await searchAppFilesWithRipgrep({
@@ -1933,7 +1933,7 @@ export function registerAppHandlers() {
         throw new Error("App not found");
       }
 
-      const currentResolvedPath = getDyadAppPath(app.path);
+      const currentResolvedPath = getProteaAIAppPath(app.path);
       // Extract app folder name from current path (works for both absolute and relative paths)
       const appFolderName = path.basename(
         path.isAbsolute(app.path) ? app.path : currentResolvedPath,
@@ -1957,7 +1957,7 @@ export function registerAppHandlers() {
       const conflict = allApps.some(
         (existingApp) =>
           existingApp.id !== appId &&
-          getDyadAppPath(existingApp.path) === nextResolvedPath,
+          getProteaAIAppPath(existingApp.path) === nextResolvedPath,
       );
 
       if (conflict) {

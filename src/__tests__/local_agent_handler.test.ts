@@ -89,7 +89,7 @@ function buildTestChat(
  */
 function buildTestSettings(
   overrides: {
-    enableDyadPro?: boolean;
+    enableProteaAIPro?: boolean;
     hasApiKey?: boolean;
     selectedModel?: string;
     enableContextCompaction?: boolean;
@@ -100,10 +100,10 @@ function buildTestSettings(
     enableContextCompaction: overrides.enableContextCompaction ?? true,
   };
 
-  if (overrides.enableDyadPro && overrides.hasApiKey !== false) {
+  if (overrides.enableProteaAIPro && overrides.hasApiKey !== false) {
     return {
       ...baseSettings,
-      enableDyadPro: true,
+      enableProteaAIPro: true,
       providerSettings: {
         auto: {
           apiKey: { value: "test-api-key" },
@@ -212,7 +212,7 @@ vi.mock("@/main/settings", () => ({
 }));
 
 vi.mock("@/paths/paths", () => ({
-  getDyadAppPath: vi.fn((appPath: string) => `/mock/apps/${appPath}`),
+  getProteaAIAppPath: vi.fn((appPath: string) => `/mock/apps/${appPath}`),
 }));
 
 // Track IPC messages sent via safeSend
@@ -254,7 +254,7 @@ vi.mock("@/ipc/utils/token_utils", () => ({
 vi.mock("@/ipc/utils/provider_options", () => ({
   getProviderOptions: vi.fn(() => ({})),
   getAiHeaders: vi.fn(() => ({})),
-  DYAD_INTERNAL_REQUEST_ID_HEADER: "x-dyad-internal-request-id",
+  PROTEAAI_INTERNAL_REQUEST_ID_HEADER: "x-dyad-internal-request-id",
 }));
 
 vi.mock("@/ipc/utils/mcp_manager", () => ({
@@ -307,7 +307,7 @@ import { handleLocalAgentStream } from "@/pro/main/ipc/handlers/local_agent/loca
 // Tests
 // ============================================================================
 
-const dyadRequestId = "test-request-id";
+const proteaaiRequestId = "test-request-id";
 describe("handleLocalAgentStream", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -324,10 +324,10 @@ describe("handleLocalAgentStream", () => {
   });
 
   describe("Pro status validation", () => {
-    it("should send error when Dyad Pro is not enabled", async () => {
+    it("should send error when ProteaAI Pro is not enabled", async () => {
       // Arrange
       const { event, getMessagesByChannel } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: false });
+      mockSettings = buildTestSettings({ enableProteaAIPro: false });
 
       // Act
       await handleLocalAgentStream(
@@ -337,7 +337,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          proteaaiRequestId,
         },
       );
 
@@ -346,7 +346,7 @@ describe("handleLocalAgentStream", () => {
       expect(errorMessages).toHaveLength(1);
       expect(errorMessages[0].args[0]).toMatchObject({
         chatId: 1,
-        error: expect.stringContaining("Agent v2 requires Dyad Pro"),
+        error: expect.stringContaining("Agent v2 requires ProteaAI Pro"),
       });
     });
 
@@ -354,7 +354,7 @@ describe("handleLocalAgentStream", () => {
       // Arrange
       const { event, getMessagesByChannel } = createFakeEvent();
       mockSettings = buildTestSettings({
-        enableDyadPro: true,
+        enableProteaAIPro: true,
         hasApiKey: false,
       });
 
@@ -366,7 +366,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          proteaaiRequestId,
         },
       );
 
@@ -380,7 +380,7 @@ describe("handleLocalAgentStream", () => {
     it("should throw error when chat is not found", async () => {
       // Arrange
       const { event } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableProteaAIPro: true });
       mockChatData = null; // Chat not found
 
       // Act & Assert
@@ -392,7 +392,7 @@ describe("handleLocalAgentStream", () => {
           {
             placeholderMessageId: 10,
             systemPrompt: "You are helpful",
-            dyadRequestId,
+            proteaaiRequestId,
           },
         ),
       ).rejects.toThrow("Chat not found: 999");
@@ -401,7 +401,7 @@ describe("handleLocalAgentStream", () => {
     it("should throw error when chat has no associated app", async () => {
       // Arrange
       const { event } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableProteaAIPro: true });
       mockChatData = { ...buildTestChat(), app: null } as any;
 
       // Act & Assert
@@ -413,7 +413,7 @@ describe("handleLocalAgentStream", () => {
           {
             placeholderMessageId: 10,
             systemPrompt: "You are helpful",
-            dyadRequestId,
+            proteaaiRequestId,
           },
         ),
       ).rejects.toThrow("Chat not found: 1");
@@ -425,7 +425,7 @@ describe("handleLocalAgentStream", () => {
       // Arrange
       const { event } = createFakeEvent();
       mockSettings = buildTestSettings({
-        enableDyadPro: true,
+        enableProteaAIPro: true,
         enableContextCompaction: false,
       });
       mockChatData = buildTestChat();
@@ -440,7 +440,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          proteaaiRequestId,
         },
       );
 
@@ -453,7 +453,7 @@ describe("handleLocalAgentStream", () => {
     it("should compact between steps when token usage crosses threshold", async () => {
       // Arrange
       const { event, getMessagesByChannel } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableProteaAIPro: true });
       const t0 = new Date("2025-01-01T00:00:00Z");
       const t1 = new Date("2025-01-01T00:01:00Z");
       const t2 = new Date("2025-01-01T00:02:00Z");
@@ -498,7 +498,7 @@ describe("handleLocalAgentStream", () => {
         return {
           success: true,
           summary: "mid-turn summary",
-          backupPath: ".dyad/chats/1/compaction-test.md",
+          backupPath: ".proteaai/chats/1/compaction-test.md",
         };
       });
 
@@ -556,7 +556,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          proteaaiRequestId,
         },
       );
 
@@ -567,7 +567,7 @@ describe("handleLocalAgentStream", () => {
         expect.anything(),
         1,
         "/mock/apps/test-app-path",
-        dyadRequestId,
+        proteaaiRequestId,
         expect.any(Function),
         { createdAtStrategy: "now" },
       );
@@ -599,7 +599,7 @@ describe("handleLocalAgentStream", () => {
       const compactionIndex = finalContent.indexOf("Conversation compacted");
       const doneIndex = finalContent.indexOf("done");
       const backupPathIndex = finalContent.indexOf(
-        ".dyad/chats/1/compaction-test.md",
+        ".proteaai/chats/1/compaction-test.md",
       );
 
       expect(beforeCompactionIndex).toBeGreaterThanOrEqual(0);
@@ -618,7 +618,7 @@ describe("handleLocalAgentStream", () => {
     it("should persist post-compaction response messages without reshaping", async () => {
       // Arrange
       const { event } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableProteaAIPro: true });
       const t0 = new Date("2025-01-01T00:00:00Z");
       const t1 = new Date("2025-01-01T00:01:00Z");
       const t2 = new Date("2025-01-01T00:02:00Z");
@@ -663,7 +663,7 @@ describe("handleLocalAgentStream", () => {
         return {
           success: true,
           summary: "mid-turn summary",
-          backupPath: ".dyad/chats/1/compaction-test.md",
+          backupPath: ".proteaai/chats/1/compaction-test.md",
         };
       });
 
@@ -785,7 +785,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          proteaaiRequestId,
         },
       );
 
@@ -805,7 +805,7 @@ describe("handleLocalAgentStream", () => {
     it("should accumulate text-delta parts and update database", async () => {
       // Arrange
       const { event, getMessagesByChannel } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableProteaAIPro: true });
       mockChatData = buildTestChat({
         messages: [{ id: 1, role: "user", content: "Hello" }],
       });
@@ -822,7 +822,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          proteaaiRequestId,
         },
       );
 
@@ -852,7 +852,7 @@ describe("handleLocalAgentStream", () => {
     it("should retry and resume when a stream terminates transiently", async () => {
       // Arrange
       const { event, getMessagesByChannel } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableProteaAIPro: true });
       mockChatData = buildTestChat();
 
       const streamMessagesByAttempt: any[][] = [];
@@ -896,7 +896,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          proteaaiRequestId,
         },
       );
 
@@ -933,7 +933,7 @@ describe("handleLocalAgentStream", () => {
     it("should replay emitted tool events before retrying a terminated stream", async () => {
       // Arrange
       const { event, getMessagesByChannel } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableProteaAIPro: true });
       mockChatData = buildTestChat();
 
       const streamMessagesByAttempt: any[][] = [];
@@ -989,7 +989,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          proteaaiRequestId,
         },
       );
 
@@ -1030,7 +1030,7 @@ describe("handleLocalAgentStream", () => {
     it("should retry and resume when the provider emits a retryable server error", async () => {
       // Arrange
       const { event, getMessagesByChannel } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableProteaAIPro: true });
       mockChatData = buildTestChat();
 
       const streamMessagesByAttempt: any[][] = [];
@@ -1081,7 +1081,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          proteaaiRequestId,
         },
       );
 
@@ -1112,7 +1112,7 @@ describe("handleLocalAgentStream", () => {
     it("should wrap reasoning content in think tags", async () => {
       // Arrange
       const { event } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableProteaAIPro: true });
       mockChatData = buildTestChat();
       mockStreamResult = createFakeStream([
         { type: "reasoning-start" },
@@ -1129,7 +1129,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          proteaaiRequestId,
         },
       );
 
@@ -1150,7 +1150,7 @@ describe("handleLocalAgentStream", () => {
     it("should close thinking block when transitioning to text", async () => {
       // Arrange
       const { event } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableProteaAIPro: true });
       mockChatData = buildTestChat();
       // Simulate reasoning-delta without explicit reasoning-end before text
       mockStreamResult = createFakeStream([
@@ -1166,7 +1166,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          proteaaiRequestId,
         },
       );
 
@@ -1192,7 +1192,7 @@ describe("handleLocalAgentStream", () => {
     it("injects a non-persisted reflection message after invalid planning_questionnaire input", async () => {
       // Arrange
       const { event } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableProteaAIPro: true });
       mockChatData = buildTestChat({
         messages: [{ id: 1, role: "user", content: "Help me plan this app" }],
       });
@@ -1281,7 +1281,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          proteaaiRequestId,
         },
       );
 
@@ -1320,7 +1320,7 @@ describe("handleLocalAgentStream", () => {
     it("should stop processing stream chunks when abort signal is triggered", async () => {
       // Arrange
       const { event } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableProteaAIPro: true });
       mockChatData = buildTestChat();
 
       const abortController = new AbortController();
@@ -1347,7 +1347,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          proteaaiRequestId,
         },
       );
 
@@ -1368,7 +1368,7 @@ describe("handleLocalAgentStream", () => {
     it("should save partial response with cancellation note when aborted", async () => {
       // Arrange
       const { event } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableProteaAIPro: true });
       mockChatData = buildTestChat();
 
       const abortController = new AbortController();
@@ -1391,7 +1391,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          proteaaiRequestId,
         },
       );
 
@@ -1410,7 +1410,7 @@ describe("handleLocalAgentStream", () => {
     it("should save commit hash after successful stream", async () => {
       // Arrange
       const { event } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableProteaAIPro: true });
       mockChatData = buildTestChat();
       mockStreamResult = createFakeStream([
         { type: "text-delta", text: "Done" },
@@ -1424,7 +1424,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          proteaaiRequestId,
         },
       );
 
@@ -1439,7 +1439,7 @@ describe("handleLocalAgentStream", () => {
     it("should set approval state to approved after completion", async () => {
       // Arrange
       const { event } = createFakeEvent();
-      mockSettings = buildTestSettings({ enableDyadPro: true });
+      mockSettings = buildTestSettings({ enableProteaAIPro: true });
       mockChatData = buildTestChat();
       mockStreamResult = createFakeStream([
         { type: "text-delta", text: "Done" },
@@ -1453,7 +1453,7 @@ describe("handleLocalAgentStream", () => {
         {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
-          dyadRequestId,
+          proteaaiRequestId,
         },
       );
 

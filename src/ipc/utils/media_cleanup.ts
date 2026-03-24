@@ -1,8 +1,8 @@
 import log from "electron-log";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { getDyadAppPath } from "@/paths/paths";
-import { DYAD_MEDIA_DIR_NAME } from "@/ipc/utils/media_path_utils";
+import { getProteaAIAppPath } from "@/paths/paths";
+import { PROTEAAI_MEDIA_DIR_NAME } from "@/ipc/utils/media_path_utils";
 import { db } from "@/db";
 import { apps } from "@/db/schema";
 
@@ -11,7 +11,7 @@ const logger = log.scope("media_cleanup");
 export const MEDIA_TTL_DAYS = 30;
 
 /**
- * Delete media files older than TTL from all app .dyad/media directories.
+ * Delete media files older than TTL from all app .proteaai/media directories.
  * Run on app startup to reclaim disk space.
  */
 export async function cleanupOldMediaFiles(): Promise<void> {
@@ -23,8 +23,8 @@ export async function cleanupOldMediaFiles(): Promise<void> {
     const counts = await Promise.all(
       allApps.map(async (app) => {
         const mediaDir = path.join(
-          getDyadAppPath(app.path),
-          DYAD_MEDIA_DIR_NAME,
+          getProteaAIAppPath(app.path),
+          PROTEAAI_MEDIA_DIR_NAME,
         );
 
         let files: string[];

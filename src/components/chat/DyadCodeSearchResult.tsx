@@ -1,19 +1,19 @@
 import React, { useState, useMemo } from "react";
 import { FileCode, FileText } from "lucide-react";
 import {
-  DyadCard,
-  DyadCardHeader,
-  DyadBadge,
-  DyadExpandIcon,
-  DyadCardContent,
-} from "./DyadCardPrimitives";
+  ProteaAICard,
+  ProteaAICardHeader,
+  ProteaAIBadge,
+  ProteaAIExpandIcon,
+  ProteaAICardContent,
+} from "./ProteaAICardPrimitives";
 
-interface DyadCodeSearchResultProps {
+interface ProteaAICodeSearchResultProps {
   node?: any;
   children?: React.ReactNode;
 }
 
-export const DyadCodeSearchResult: React.FC<DyadCodeSearchResultProps> = ({
+export const ProteaAICodeSearchResult: React.FC<ProteaAICodeSearchResultProps> = ({
   children,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -41,23 +41,23 @@ export const DyadCodeSearchResult: React.FC<DyadCodeSearchResultProps> = ({
   }, [children]);
 
   return (
-    <DyadCard
+    <ProteaAICard
       accentColor="indigo"
       isExpanded={isExpanded}
       onClick={() => setIsExpanded(!isExpanded)}
     >
-      <DyadCardHeader icon={<FileCode size={15} />} accentColor="indigo">
-        <DyadBadge color="indigo">Code Search Result</DyadBadge>
+      <ProteaAICardHeader icon={<FileCode size={15} />} accentColor="indigo">
+        <ProteaAIBadge color="indigo">Code Search Result</ProteaAIBadge>
         {files.length > 0 && (
           <span className="text-xs text-muted-foreground">
             Found {files.length} file{files.length !== 1 ? "s" : ""}
           </span>
         )}
         <div className="ml-auto">
-          <DyadExpandIcon isExpanded={isExpanded} />
+          <ProteaAIExpandIcon isExpanded={isExpanded} />
         </div>
-      </DyadCardHeader>
-      <DyadCardContent isExpanded={isExpanded}>
+      </ProteaAICardHeader>
+      <ProteaAICardContent isExpanded={isExpanded}>
         {files.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {files.map((file, index) => {
@@ -87,7 +87,7 @@ export const DyadCodeSearchResult: React.FC<DyadCodeSearchResultProps> = ({
             })}
           </div>
         )}
-      </DyadCardContent>
-    </DyadCard>
+      </ProteaAICardContent>
+    </ProteaAICard>
   );
 };

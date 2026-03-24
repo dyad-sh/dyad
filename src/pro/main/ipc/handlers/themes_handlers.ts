@@ -64,7 +64,7 @@ function sanitizeKeywords(keywords: string): string {
 }
 
 // Directory for storing temporary theme images
-const THEME_IMAGES_TEMP_DIR = path.join(os.tmpdir(), "dyad-theme-images");
+const THEME_IMAGES_TEMP_DIR = path.join(os.tmpdir(), "proteaai-theme-images");
 
 // Ensure temp directory exists
 if (!fs.existsSync(THEME_IMAGES_TEMP_DIR)) {
@@ -578,9 +578,9 @@ Modern dark theme with purple accents for testing.
         };
       }
 
-      if (!settings.enableDyadPro) {
+      if (!settings.enableProteaAIPro) {
         throw new Error(
-          "Dyad Pro is required for AI theme generation. Please enable Dyad Pro in Settings.",
+          "ProteaAI Pro is required for AI theme generation. Please enable ProteaAI Pro in Settings.",
         );
       }
 
@@ -714,9 +714,9 @@ Modern theme extracted from website for testing.
         };
       }
 
-      if (!settings.enableDyadPro) {
+      if (!settings.enableProteaAIPro) {
         throw new Error(
-          "Dyad Pro is required for AI theme generation. Please enable Dyad Pro in Settings.",
+          "ProteaAI Pro is required for AI theme generation. Please enable ProteaAI Pro in Settings.",
         );
       }
 
@@ -769,17 +769,17 @@ Modern theme extracted from website for testing.
         );
       }
 
-      // Get API key for Dyad Engine
+      // Get API key for ProteaAI Engine
       const apiKey = settings.providerSettings?.auto?.apiKey?.value;
       if (!apiKey) {
-        throw new Error("Dyad Pro API key is required");
+        throw new Error("ProteaAI Pro API key is required");
       }
 
       // Crawl the website
       logger.log(`Crawling website for theme: ${params.url}`);
 
-      const DYAD_ENGINE_URL =
-        process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1";
+      const PROTEAAI_ENGINE_URL =
+        process.env.PROTEAAI_ENGINE_URL ?? "https://engine.proteaai.com/v1";
 
       // Create AbortController for timeout
       const controller = new AbortController();
@@ -790,12 +790,12 @@ Modern theme extracted from website for testing.
 
       let crawlResponse: Response;
       try {
-        crawlResponse = await fetch(`${DYAD_ENGINE_URL}/tools/web-crawl`, {
+        crawlResponse = await fetch(`${PROTEAAI_ENGINE_URL}/tools/web-crawl`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${apiKey}`,
-            "X-Dyad-Request-Id": `theme-crawl-${uuidv4()}`,
+            "X-ProteaAI-Request-Id": `theme-crawl-${uuidv4()}`,
           },
           body: JSON.stringify({ url: params.url }),
           signal: controller.signal,

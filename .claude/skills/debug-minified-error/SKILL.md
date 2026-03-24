@@ -1,11 +1,11 @@
 ---
 name: dyad:debug-minified-error
-description: Map a minified error stack trace from a production Dyad build back to original source locations using source maps.
+description: Map a minified error stack trace from a production ProteaAI build back to original source locations using source maps.
 ---
 
 # Debug Minified Error
 
-Given a minified error stack trace from a production Dyad build (referencing `app.asar/.vite/renderer/main_window/assets/index-*.js`), map each frame back to the original TypeScript source file, line, and column.
+Given a minified error stack trace from a production ProteaAI build (referencing `app.asar/.vite/renderer/main_window/assets/index-*.js`), map each frame back to the original TypeScript source file, line, and column.
 
 ## Arguments
 
@@ -17,9 +17,9 @@ Given a minified error stack trace from a production Dyad build (referencing `ap
 
 ## Instructions
 
-### 1. Determine the Dyad release version
+### 1. Determine the ProteaAI release version
 
-You **must** know which Dyad release version this error occurred in. Check if the user provided it in `$ARGUMENTS` or in conversation context.
+You **must** know which ProteaAI release version this error occurred in. Check if the user provided it in `$ARGUMENTS` or in conversation context.
 
 **If the version is not known, ASK THE USER.** Do not assume or guess the version.
 
@@ -28,7 +28,7 @@ You **must** know which Dyad release version this error occurred in. Check if th
 Look up the GitHub release for that version to find the exact commit hash:
 
 ```bash
-gh release view v<VERSION> --repo dyad-sh/dyad --json tagCommitish,targetCommitish
+gh release view v<VERSION> --repo proteaai/dyad --json tagCommitish,targetCommitish
 ```
 
 If the release tag doesn't resolve directly, find the commit from the tag:

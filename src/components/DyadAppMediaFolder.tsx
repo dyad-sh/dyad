@@ -39,10 +39,10 @@ import {
 } from "./media-library/media-folder-utils";
 import { MediaFolderOpen } from "./media-library/MediaFolderOpen";
 import { ImageLightbox } from "./chat/ImageLightbox";
-import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
+import { buildProteaAIMediaUrl } from "@/lib/dyadMediaUrl";
 import { AppSearchSelect } from "./AppSearchSelect";
 
-interface DyadAppMediaFolderProps {
+interface ProteaAIAppMediaFolderProps {
   appName: string;
   appId: number;
   appPath: string;
@@ -55,7 +55,7 @@ interface DyadAppMediaFolderProps {
   searchQuery?: string;
 }
 
-export function DyadAppMediaFolder({
+export function ProteaAIAppMediaFolder({
   appName,
   appId,
   appPath,
@@ -66,7 +66,7 @@ export function DyadAppMediaFolder({
   onMoveMediaFile,
   isMutatingMedia = false,
   searchQuery,
-}: DyadAppMediaFolderProps) {
+}: ProteaAIAppMediaFolderProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [renameTargetFile, setRenameTargetFile] = useState<MediaFile | null>(
     null,
@@ -351,9 +351,9 @@ export function DyadAppMediaFolder({
 
         {previewFile && (
           <ImageLightbox
-            imageUrl={buildDyadMediaUrl(appPath, previewFile.fileName)}
+            imageUrl={buildProteaAIMediaUrl(appPath, previewFile.fileName)}
             alt={previewFile.fileName}
-            filePath={`${appPath}/.dyad/media/${previewFile.fileName}`}
+            filePath={`${appPath}/.proteaai/media/${previewFile.fileName}`}
             onClose={() => setPreviewFile(null)}
           />
         )}

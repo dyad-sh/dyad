@@ -8,22 +8,22 @@ import { FileEditor } from "../preview_panel/FileEditor";
 import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
-  DyadCard,
-  DyadCardHeader,
-  DyadExpandIcon,
-  DyadStateIndicator,
-  DyadDescription,
-  DyadCardContent,
-} from "./DyadCardPrimitives";
+  ProteaAICard,
+  ProteaAICardHeader,
+  ProteaAIExpandIcon,
+  ProteaAIStateIndicator,
+  ProteaAIDescription,
+  ProteaAICardContent,
+} from "./ProteaAICardPrimitives";
 
-interface DyadWriteProps {
+interface ProteaAIWriteProps {
   children?: ReactNode;
   node?: any;
   path?: string;
   description?: string;
 }
 
-export const DyadWrite: React.FC<DyadWriteProps> = ({
+export const ProteaAIWrite: React.FC<ProteaAIWriteProps> = ({
   children,
   node,
   path: pathProp,
@@ -52,13 +52,13 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
   const fileName = path ? path.split("/").pop() : "";
 
   return (
-    <DyadCard
+    <ProteaAICard
       state={state}
       accentColor="blue"
       onClick={() => setIsContentVisible(!isContentVisible)}
       isExpanded={isContentVisible}
     >
-      <DyadCardHeader icon={<Pencil size={15} />} accentColor="blue">
+      <ProteaAICardHeader icon={<Pencil size={15} />} accentColor="blue">
         <div className="min-w-0 truncate">
           {fileName && (
             <span className="font-medium text-sm text-foreground truncate block">
@@ -72,10 +72,10 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
           )}
         </div>
         {inProgress && (
-          <DyadStateIndicator state="pending" pendingLabel="Writing..." />
+          <ProteaAIStateIndicator state="pending" pendingLabel="Writing..." />
         )}
         {aborted && (
-          <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
+          <ProteaAIStateIndicator state="aborted" abortedLabel="Did not finish" />
         )}
         <div className="ml-auto flex items-center gap-1">
           {!inProgress && (
@@ -105,18 +105,18 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
               )}
             </>
           )}
-          <DyadExpandIcon isExpanded={isContentVisible} />
+          <ProteaAIExpandIcon isExpanded={isContentVisible} />
         </div>
-      </DyadCardHeader>
+      </ProteaAICardHeader>
       {description && (
-        <DyadDescription>
+        <ProteaAIDescription>
           <span className={!isContentVisible ? "line-clamp-2" : undefined}>
             <span className="font-medium">Summary: </span>
             {description}
           </span>
-        </DyadDescription>
+        </ProteaAIDescription>
       )}
-      <DyadCardContent isExpanded={isContentVisible}>
+      <ProteaAICardContent isExpanded={isContentVisible}>
         <div
           className="text-xs cursor-text"
           onClick={(e) => e.stopPropagation()}
@@ -131,7 +131,7 @@ export const DyadWrite: React.FC<DyadWriteProps> = ({
             </CodeHighlight>
           )}
         </div>
-      </DyadCardContent>
-    </DyadCard>
+      </ProteaAICardContent>
+    </ProteaAICard>
   );
 };

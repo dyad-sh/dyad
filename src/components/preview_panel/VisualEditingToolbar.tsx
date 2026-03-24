@@ -222,7 +222,7 @@ export function VisualEditingToolbar({
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === "dyad-component-styles") {
+      if (event.data?.type === "proteaai-component-styles") {
         const { margin, padding, border, backgroundColor, text } =
           event.data.data;
 

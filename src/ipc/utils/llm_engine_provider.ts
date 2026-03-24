@@ -8,7 +8,7 @@ import {
 
 import log from "electron-log";
 import { getExtraProviderOptions } from "./thinking_utils";
-import { DYAD_INTERNAL_REQUEST_ID_HEADER } from "./provider_options";
+import { PROTEAAI_INTERNAL_REQUEST_ID_HEADER } from "./provider_options";
 import type { UserSettings } from "../../lib/schemas";
 import type { LanguageModel } from "ai";
 
@@ -49,7 +49,7 @@ or to provide a custom fetch implementation for e.g. testing.
   settings: UserSettings;
 }
 
-export interface DyadEngineProvider {
+export interface ProteaAIEngineProvider {
   /**
 Creates a model for text generation.
 */
@@ -63,9 +63,9 @@ Creates a chat model for text generation.
   responses(modelId: ExampleChatModelId, chatParams: ChatParams): LanguageModel;
 }
 
-export function createDyadEngine(
+export function createProteaAIEngine(
   options: ExampleProviderSettings,
-): DyadEngineProvider {
+): ProteaAIEngineProvider {
   const baseURL = withoutTrailingSlash(options.baseURL);
   logger.info("creating dyad engine with baseURL", baseURL);
 
@@ -75,7 +75,7 @@ export function createDyadEngine(
   const getHeaders = () => ({
     Authorization: `Bearer ${loadApiKey({
       apiKey: options.apiKey,
-      environmentVariableName: "DYAD_PRO_API_KEY",
+      environmentVariableName: "PROTEAAI_PRO_API_KEY",
       description: "Example API key",
     })}`,
     ...options.headers,
@@ -102,7 +102,7 @@ export function createDyadEngine(
   });
 
   // Custom fetch implementation that adds dyad-specific options to the request
-  const createDyadFetch = ({
+  const createProteaAIFetch = ({
     providerId,
   }: {
     providerId: string;
@@ -120,40 +120,40 @@ export function createDyadEngine(
           ...getExtraProviderOptions(providerId, options.settings),
         };
 
-        const dyadVersionedFiles = parsedBody.dyadVersionedFiles;
-        if ("dyadVersionedFiles" in parsedBody) {
-          delete parsedBody.dyadVersionedFiles;
+        const proteaaiVersionedFiles = parsedBody.proteaaiVersionedFiles;
+        if ("proteaaiVersionedFiles" in parsedBody) {
+          delete parsedBody.proteaaiVersionedFiles;
         }
-        const dyadFiles = parsedBody.dyadFiles;
-        if ("dyadFiles" in parsedBody) {
-          delete parsedBody.dyadFiles;
+        const proteaaiFiles = parsedBody.proteaaiFiles;
+        if ("proteaaiFiles" in parsedBody) {
+          delete parsedBody.proteaaiFiles;
         }
         // Read from body (OpenAICompatible models spread providerOptions into
         // the body) with a fallback to an internal header (OpenAIResponses
         // models don't forward providerOptions, so we pass it via header).
         const requestId =
-          parsedBody.dyadRequestId ??
+          parsedBody.proteaaiRequestId ??
           (init.headers as Record<string, string> | undefined)?.[
-            DYAD_INTERNAL_REQUEST_ID_HEADER
+            PROTEAAI_INTERNAL_REQUEST_ID_HEADER
           ];
-        if ("dyadRequestId" in parsedBody) {
-          delete parsedBody.dyadRequestId;
+        if ("proteaaiRequestId" in parsedBody) {
+          delete parsedBody.proteaaiRequestId;
         }
-        const dyadAppId = parsedBody.dyadAppId;
-        if ("dyadAppId" in parsedBody) {
-          delete parsedBody.dyadAppId;
+        const proteaaiAppId = parsedBody.proteaaiAppId;
+        if ("proteaaiAppId" in parsedBody) {
+          delete parsedBody.proteaaiAppId;
         }
-        const dyadDisableFiles = parsedBody.dyadDisableFiles;
-        if ("dyadDisableFiles" in parsedBody) {
-          delete parsedBody.dyadDisableFiles;
+        const proteaaiDisableFiles = parsedBody.proteaaiDisableFiles;
+        if ("proteaaiDisableFiles" in parsedBody) {
+          delete parsedBody.proteaaiDisableFiles;
         }
-        const dyadMentionedApps = parsedBody.dyadMentionedApps;
-        if ("dyadMentionedApps" in parsedBody) {
-          delete parsedBody.dyadMentionedApps;
+        const proteaaiMentionedApps = parsedBody.proteaaiMentionedApps;
+        if ("proteaaiMentionedApps" in parsedBody) {
+          delete parsedBody.proteaaiMentionedApps;
         }
-        const dyadSmartContextMode = parsedBody.dyadSmartContextMode;
-        if ("dyadSmartContextMode" in parsedBody) {
-          delete parsedBody.dyadSmartContextMode;
+        const proteaaiSmartContextMode = parsedBody.proteaaiSmartContextMode;
+        if ("proteaaiSmartContextMode" in parsedBody) {
+          delete parsedBody.proteaaiSmartContextMode;
         }
 
         // Track and modify requestId with attempt number
@@ -165,31 +165,31 @@ export function createDyadEngine(
         }
 
         // Add files to the request if they exist
-        if (!dyadDisableFiles) {
+        if (!proteaaiDisableFiles) {
           parsedBody.dyad_options = {
-            files: dyadFiles,
-            versioned_files: dyadVersionedFiles,
+            files: proteaaiFiles,
+            versioned_files: proteaaiVersionedFiles,
             enable_lazy_edits: options.dyadOptions.enableLazyEdits,
             enable_smart_files_context:
               options.dyadOptions.enableSmartFilesContext,
-            smart_context_mode: dyadSmartContextMode,
+            smart_context_mode: proteaaiSmartContextMode,
             enable_web_search: options.dyadOptions.enableWebSearch,
-            app_id: dyadAppId,
+            app_id: proteaaiAppId,
           };
-          if (dyadMentionedApps?.length) {
-            parsedBody.dyad_options.mentioned_apps = dyadMentionedApps;
+          if (proteaaiMentionedApps?.length) {
+            parsedBody.dyad_options.mentioned_apps = proteaaiMentionedApps;
           }
         }
 
         // Return modified request with files included and requestId in headers
-        const { [DYAD_INTERNAL_REQUEST_ID_HEADER]: _, ...outgoingHeaders } =
+        const { [PROTEAAI_INTERNAL_REQUEST_ID_HEADER]: _, ...outgoingHeaders } =
           (init.headers as Record<string, string>) ?? {};
         const modifiedInit = {
           ...init,
           headers: {
             ...outgoingHeaders,
             ...(modifiedRequestId && {
-              "X-Dyad-Request-Id": modifiedRequestId,
+              "X-ProteaAI-Request-Id": modifiedRequestId,
             }),
           },
           body: JSON.stringify(parsedBody),
@@ -211,7 +211,7 @@ export function createDyadEngine(
   ) => {
     const config = {
       ...getCommonModelConfig(),
-      fetch: createDyadFetch({ providerId: chatParams.providerId }),
+      fetch: createProteaAIFetch({ providerId: chatParams.providerId }),
     };
 
     return new OpenAICompatibleChatLanguageModel(modelId, config);
@@ -223,7 +223,7 @@ export function createDyadEngine(
   ) => {
     const config = {
       ...getCommonModelConfig(),
-      fetch: createDyadFetch({ providerId: chatParams.providerId }),
+      fetch: createProteaAIFetch({ providerId: chatParams.providerId }),
     };
 
     return new OpenAIResponsesLanguageModel(modelId, config);
@@ -238,7 +238,7 @@ export function createDyadEngine(
   return provider;
 }
 
-export async function transcribeWithDyadEngine(
+export async function transcribeWithProteaAIEngine(
   audioBuffer: Buffer,
   filename: string,
   requestId: string,
@@ -247,8 +247,8 @@ export async function transcribeWithDyadEngine(
   const baseURL = withoutTrailingSlash(options.baseURL);
   const apiKey = loadApiKey({
     apiKey: options.apiKey,
-    environmentVariableName: "DYAD_PRO_API_KEY",
-    description: "Dyad Pro API key",
+    environmentVariableName: "PROTEAAI_PRO_API_KEY",
+    description: "ProteaAI Pro API key",
   });
   logger.info("transcribing with dyad engine with baseURL", baseURL);
 
@@ -271,7 +271,7 @@ export async function transcribeWithDyadEngine(
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
-      "X-Dyad-Request-Id": requestId,
+      "X-ProteaAI-Request-Id": requestId,
       ...options.headers,
     },
     body: formData,
@@ -280,7 +280,7 @@ export async function transcribeWithDyadEngine(
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(
-      `Dyad Engine transcription failed: ${response.status} ${response.statusText} - ${errorText}`,
+      `ProteaAI Engine transcription failed: ${response.status} ${response.statusText} - ${errorText}`,
     );
   }
   const data = (await response.json()) as { text: string };

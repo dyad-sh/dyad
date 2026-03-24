@@ -4,7 +4,7 @@
 const LABEL_REVIEW_ISSUE = "needs-human:review-issue";
 const LABEL_FINAL_CHECK = "needs-human:final-check";
 
-const REVIEW_MARKER = "Dyadbot Code Review Summary";
+const REVIEW_MARKER = "ProteaAIbot Code Review Summary";
 
 // Review verdict strings — keep in sync with:
 //   Swarm verdicts: .claude/skills/swarm-pr-review/SKILL.md

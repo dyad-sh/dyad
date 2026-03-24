@@ -6,7 +6,7 @@ import { testSkipIfWindows } from "./helpers/test_helper";
  */
 
 testSkipIfWindows("local-agent - list_files", async ({ po }) => {
-  await po.setUpDyadPro({ localAgent: true });
+  await po.setUpProteaAIPro({ localAgent: true });
   await po.importApp("minimal");
   await po.chatActions.selectLocalAgentMode();
 
@@ -22,7 +22,7 @@ testSkipIfWindows("local-agent - list_files", async ({ po }) => {
 });
 
 testSkipIfWindows("local-agent - list_files include_hidden", async ({ po }) => {
-  await po.setUpDyadPro({ localAgent: true });
+  await po.setUpProteaAIPro({ localAgent: true });
   await po.importApp("minimal-with-dyad");
   await po.chatActions.selectLocalAgentMode();
 

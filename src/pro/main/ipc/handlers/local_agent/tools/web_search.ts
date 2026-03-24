@@ -161,8 +161,8 @@ export const webSearchTool: ToolDefinition<z.infer<typeof webSearchSchema>> = {
   inputSchema: webSearchSchema,
   defaultConsent: "ask",
 
-  // Requires Dyad Pro engine API
-  isEnabled: (ctx) => ctx.isDyadPro,
+  // Requires ProteaAI Pro engine API
+  isEnabled: (ctx) => ctx.isProteaAIPro,
 
   getConsentPreview: (args) => `Search the web: "${args.query}"`,
 

@@ -11,7 +11,7 @@ import { testSkipIfWindows } from "./helpers/test_helper";
  * into the codebase at the destination path.
  */
 testSkipIfWindows("local-agent - upload file to codebase", async ({ po }) => {
-  await po.setUpDyadPro({ localAgent: true });
+  await po.setUpProteaAIPro({ localAgent: true });
   await po.importApp("minimal");
   await po.chatActions.selectLocalAgentMode();
 

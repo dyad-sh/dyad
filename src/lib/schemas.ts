@@ -215,11 +215,11 @@ export const ExperimentsSchema = z.object({
 });
 export type Experiments = z.infer<typeof ExperimentsSchema>;
 
-export const DyadProBudgetSchema = z.object({
+export const ProteaAIProBudgetSchema = z.object({
   budgetResetAt: z.string(),
   maxBudget: z.number(),
 });
-export type DyadProBudget = z.infer<typeof DyadProBudgetSchema>;
+export type ProteaAIProBudget = z.infer<typeof ProteaAIProBudgetSchema>;
 
 export const GlobPathSchema = z.object({
   globPath: z.string(),
@@ -291,7 +291,7 @@ const BaseUserSettingsFields = {
   // DEPRECATED.
   ////////////////////////////////
   enableProSaverMode: z.boolean().optional(),
-  dyadProBudget: DyadProBudgetSchema.optional(),
+  dyadProBudget: ProteaAIProBudgetSchema.optional(),
   runtimeMode: RuntimeModeSchema.optional(),
 
   ////////////////////////////////
@@ -309,7 +309,7 @@ const BaseUserSettingsFields = {
   telemetryConsent: z.enum(["opted_in", "opted_out", "unset"]).optional(),
   telemetryUserId: z.string().optional(),
   hasRunBefore: z.boolean().optional(),
-  enableDyadPro: z.boolean().optional(),
+  enableProteaAIPro: z.boolean().optional(),
   experiments: ExperimentsSchema.optional(),
   lastShownReleaseNotesVersion: z.string().optional(),
   maxChatTurnsInContext: z.number().optional(),
@@ -427,11 +427,11 @@ export function migrateStoredSettings(
   };
 }
 
-export function isDyadProEnabled(settings: UserSettings): boolean {
-  return settings.enableDyadPro === true && hasDyadProKey(settings);
+export function isProteaAIProEnabled(settings: UserSettings): boolean {
+  return settings.enableProteaAIPro === true && hasProteaAIProKey(settings);
 }
 
-export function hasDyadProKey(settings: UserSettings): boolean {
+export function hasProteaAIProKey(settings: UserSettings): boolean {
   return !!settings.providerSettings?.auto?.apiKey?.value;
 }
 
@@ -451,7 +451,7 @@ export function getEffectiveDefaultChatMode(
   envVars: Record<string, string | undefined>,
   freeAgentQuotaAvailable?: boolean,
 ): ChatMode {
-  const isPro = isDyadProEnabled(settings);
+  const isPro = isProteaAIProEnabled(settings);
   // We are checking that OpenAI or Anthropic is setup, which are the first two
   // choices for the Auto model selection.
   //
@@ -484,7 +484,7 @@ export function getEffectiveDefaultChatMode(
  */
 export function isBasicAgentMode(settings: UserSettings): boolean {
   return (
-    !isDyadProEnabled(settings) && settings.selectedChatMode === "local-agent"
+    !isProteaAIProEnabled(settings) && settings.selectedChatMode === "local-agent"
   );
 }
 
@@ -501,7 +501,7 @@ export function isSupabaseConnected(settings: UserSettings | null): boolean {
 
 export function isTurboEditsV2Enabled(settings: UserSettings): boolean {
   return Boolean(
-    isDyadProEnabled(settings) &&
+    isProteaAIProEnabled(settings) &&
     settings.enableProLazyEditsMode === true &&
     settings.proLazyEditsMode === "v2",
   );

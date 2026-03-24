@@ -1,9 +1,9 @@
 import type { Message } from "@/ipc/types";
 import {
-  DyadMarkdownParser,
+  ProteaAIMarkdownParser,
   VanillaMarkdownParser,
-} from "./DyadMarkdownParser";
-import { DyadAttachment, type AttachmentSize } from "./DyadAttachment";
+} from "./ProteaAIMarkdownParser";
+import { ProteaAIAttachment, type AttachmentSize } from "./ProteaAIAttachment";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { StreamingLoadingAnimation } from "./StreamingLoadingAnimation";
 import {
@@ -161,7 +161,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
               >
                 {message.role === "assistant" ? (
                   <>
-                    <DyadMarkdownParser content={message.content} />
+                    <ProteaAIMarkdownParser content={message.content} />
                     {isLastMessage && isStreaming && (
                       <StreamingLoadingAnimation variant="streaming" />
                     )}
@@ -241,7 +241,7 @@ const ChatMessage = ({ message, isLastMessage }: ChatMessageProps) => {
         {attachments.length > 0 && (
           <div className="mt-2 ml-24 flex flex-wrap gap-2 justify-end">
             {attachments.map((att, i) => (
-              <DyadAttachment
+              <ProteaAIAttachment
                 key={i}
                 size={attachmentSize}
                 node={{

@@ -2,7 +2,7 @@ import { db } from "../../db";
 import { chats, messages } from "../../db/schema";
 import { and, eq } from "drizzle-orm";
 import fs from "node:fs";
-import { getDyadAppPath } from "../../paths/paths";
+import { getProteaAIAppPath } from "../../paths/paths";
 import path from "node:path";
 import { safeJoin } from "../utils/path_utils";
 
@@ -31,13 +31,13 @@ import {
 import { readSettings } from "@/main/settings";
 import { writeMigrationFile } from "../utils/file_utils";
 import {
-  getDyadWriteTags,
-  getDyadRenameTags,
-  getDyadDeleteTags,
-  getDyadAddDependencyTags,
-  getDyadExecuteSqlTags,
-  getDyadSearchReplaceTags,
-  getDyadCopyTags,
+  getProteaAIWriteTags,
+  getProteaAIRenameTags,
+  getProteaAIDeleteTags,
+  getProteaAIAddDependencyTags,
+  getProteaAIExecuteSqlTags,
+  getProteaAISearchReplaceTags,
+  getProteaAICopyTags,
 } from "../utils/dyad_tag_parser";
 import { applySearchReplace } from "../../pro/main/ipc/processors/search_replace_processor";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
@@ -58,7 +58,7 @@ export async function dryRunSearchReplace({
   appPath: string;
 }) {
   const issues: { filePath: string; error: string }[] = [];
-  const dyadSearchReplaceTags = getDyadSearchReplaceTags(fullResponse);
+  const dyadSearchReplaceTags = getProteaAISearchReplaceTags(fullResponse);
   for (const tag of dyadSearchReplaceTags) {
     const filePath = tag.path;
     const fullFilePath = safeJoin(appPath, filePath);
@@ -141,7 +141,7 @@ export async function processFullResponseActions(
   }
 
   const settings: UserSettings = readSettings();
-  const appPath = getDyadAppPath(chatWithApp.app.path);
+  const appPath = getProteaAIAppPath(chatWithApp.app.path);
   const writtenFiles: string[] = [];
   const renamedFiles: string[] = [];
   const deletedFiles: string[] = [];
@@ -154,12 +154,12 @@ export async function processFullResponseActions(
 
   try {
     // Extract all tags
-    const dyadWriteTags = getDyadWriteTags(fullResponse);
-    const dyadRenameTags = getDyadRenameTags(fullResponse);
-    const dyadDeletePaths = getDyadDeleteTags(fullResponse);
-    const dyadAddDependencyPackages = getDyadAddDependencyTags(fullResponse);
+    const dyadWriteTags = getProteaAIWriteTags(fullResponse);
+    const dyadRenameTags = getProteaAIRenameTags(fullResponse);
+    const dyadDeletePaths = getProteaAIDeleteTags(fullResponse);
+    const dyadAddDependencyPackages = getProteaAIAddDependencyTags(fullResponse);
     const dyadExecuteSqlQueries = chatWithApp.app.supabaseProjectId
-      ? getDyadExecuteSqlTags(fullResponse)
+      ? getProteaAIExecuteSqlTags(fullResponse)
       : [];
 
     const message = await db.query.messages.findFirst({
@@ -363,7 +363,7 @@ export async function processFullResponseActions(
     }
 
     // Process all search-replace edits
-    const dyadSearchReplaceTags = getDyadSearchReplaceTags(fullResponse);
+    const dyadSearchReplaceTags = getProteaAISearchReplaceTags(fullResponse);
     for (const tag of dyadSearchReplaceTags) {
       const filePath = tag.path;
       const fullFilePath = safeJoin(appPath, filePath);
@@ -418,7 +418,7 @@ export async function processFullResponseActions(
     }
 
     // Process all file copies
-    const dyadCopyTags = getDyadCopyTags(fullResponse);
+    const dyadCopyTags = getProteaAICopyTags(fullResponse);
     for (const tag of dyadCopyTags) {
       try {
         const result = await executeCopyFile({
@@ -588,7 +588,7 @@ export async function processFullResponseActions(
           try {
             commitHash = await gitCommit({
               path: appPath,
-              message: message + " + extra files edited outside of Dyad",
+              message: message + " + extra files edited outside of ProteaAI",
               amend: true,
             });
             logger.log(
@@ -596,7 +596,7 @@ export async function processFullResponseActions(
             );
           } catch (error) {
             // Just log, but don't throw an error because the user can still
-            // commit these changes outside of Dyad if needed.
+            // commit these changes outside of ProteaAI if needed.
             logger.error(
               `Failed to commit changes outside of dyad: ${uncommittedFiles.join(", ")}`,
             );

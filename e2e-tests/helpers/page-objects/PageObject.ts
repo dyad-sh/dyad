@@ -120,7 +120,7 @@ export class PageObject {
     await this.modelPicker.selectTestModel();
   }
 
-  async setUpDyadPro({
+  async setUpProteaAIPro({
     autoApprove = false,
     localAgent = false,
     localAgentUseAutoModel = false,
@@ -134,7 +134,7 @@ export class PageObject {
     if (autoApprove) {
       await this.settings.toggleAutoApprove();
     }
-    await this.settings.setUpDyadProvider();
+    await this.settings.setUpProteaAIProvider();
     await this.navigation.goToAppsTab();
     if (!localAgent) {
       await this.chatActions.selectChatMode("build");
@@ -156,7 +156,7 @@ export class PageObject {
       await this.settings.toggleAutoApprove();
     }
     // Azure should already be configured via environment variables
-    // so we don't need additional setup steps like setUpDyadProvider
+    // so we don't need additional setup steps like setUpProteaAIProvider
     await this.navigation.goToAppsTab();
   }
 

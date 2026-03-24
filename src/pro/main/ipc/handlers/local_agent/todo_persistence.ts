@@ -15,16 +15,16 @@ const logger = log.scope("todo_persistence");
 /**
  * Return the path to the todos JSON file for a given chat.
  *
- * Layout: `<appPath>/.dyad/todos/<chatId>.json`
+ * Layout: `<appPath>/.proteaai/todos/<chatId>.json`
  */
 export function getTodosFilePath(appPath: string, chatId: number): string {
-  return path.join(appPath, ".dyad", "todos", `${chatId}.json`);
+  return path.join(appPath, ".proteaai", "todos", `${chatId}.json`);
 }
 
 /**
  * Persist the current todos list to disk.
  *
- * Creates the `.dyad/todos/` directory if it does not exist.
+ * Creates the `.proteaai/todos/` directory if it does not exist.
  */
 export async function saveTodos(
   appPath: string,

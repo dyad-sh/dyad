@@ -7,7 +7,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import log from "electron-log";
-import { ensureDyadGitignored } from "@/ipc/handlers/gitignoreUtils";
+import { ensureProteaAIGitignored } from "@/ipc/handlers/gitignoreUtils";
 
 const logger = log.scope("compaction_storage");
 
@@ -25,10 +25,10 @@ export interface CompactionMessage {
 }
 
 /**
- * Get the backup directory for a specific chat within the app's .dyad/chats/ directory.
+ * Get the backup directory for a specific chat within the app's .proteaai/chats/ directory.
  */
 function getChatBackupDir(appPath: string, chatId: number): string {
-  return path.join(appPath, ".dyad", "chats", String(chatId));
+  return path.join(appPath, ".proteaai", "chats", String(chatId));
 }
 
 /**
@@ -99,11 +99,11 @@ export async function storePreCompactionMessages(
 ): Promise<string> {
   const chatBackupDir = getChatBackupDir(appPath, chatId);
 
-  // Ensure directory exists and .dyad is gitignored
+  // Ensure directory exists and .proteaai is gitignored
   if (!fs.existsSync(chatBackupDir)) {
     fs.mkdirSync(chatBackupDir, { recursive: true });
   }
-  await ensureDyadGitignored(appPath);
+  await ensureProteaAIGitignored(appPath);
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const backupFileName = `compaction-${timestamp}.md`;

@@ -69,7 +69,7 @@ This is a meta-skill that orchestrates two sub-skills to comprehensively fix PR 
    </details>
 
    ---
-   [Workflow run](https://github.com/dyad-sh/dyad/actions/runs/12345678)
+   [Workflow run](https://github.com/proteaai/dyad/actions/runs/12345678)
    ```
 
    **Failure:**
@@ -95,7 +95,7 @@ This is a meta-skill that orchestrates two sub-skills to comprehensively fix PR 
    </details>
 
    ---
-   [Workflow run](https://github.com/dyad-sh/dyad/actions/runs/12345678)
+   [Workflow run](https://github.com/proteaai/dyad/actions/runs/12345678)
    ```
 
    Note: Include a link to the workflow run at the end. If the `GITHUB_REPOSITORY` and `GITHUB_RUN_ID` environment variables are available, use them to construct the URL: `https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID`. If these environment variables are not set, omit the workflow run link.

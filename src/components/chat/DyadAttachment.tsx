@@ -1,7 +1,7 @@
 import type React from "react";
 import { useEffect, useState } from "react";
 import { ExternalLink, FileText, Image } from "lucide-react";
-import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
+import { ProteaAICard, ProteaAICardHeader, ProteaAIBadge } from "./ProteaAICardPrimitives";
 import { ImageLightbox, openFile } from "./ImageLightbox";
 
 export type AttachmentSize = "sm" | "md" | "lg";
@@ -12,7 +12,7 @@ const SIZE_CLASSES: Record<AttachmentSize, string> = {
   lg: "size-40",
 };
 
-interface DyadAttachmentProps {
+interface ProteaAIAttachmentProps {
   size?: AttachmentSize;
   node?: {
     properties?: {
@@ -25,7 +25,7 @@ interface DyadAttachmentProps {
   };
 }
 
-export const DyadAttachment: React.FC<DyadAttachmentProps> = ({
+export const ProteaAIAttachment: React.FC<ProteaAIAttachmentProps> = ({
   node,
   size = "md",
 }) => {
@@ -88,20 +88,20 @@ export const DyadAttachment: React.FC<DyadAttachmentProps> = ({
 
   // Non-image files or image load error fallback
   return (
-    <DyadCard
+    <ProteaAICard
       accentColor={accentColor}
       onClick={filePath ? () => openFile(filePath) : undefined}
     >
-      <DyadCardHeader
+      <ProteaAICardHeader
         icon={isImage ? <Image size={15} /> : <FileText size={15} />}
         accentColor={accentColor}
       >
         <span className="font-medium text-sm text-foreground truncate">
           {imageError ? "Image unavailable" : name}
         </span>
-        <DyadBadge color={accentColor}>
+        <ProteaAIBadge color={accentColor}>
           {attachmentType === "upload-to-codebase" ? "Upload" : "Context"}
-        </DyadBadge>
+        </ProteaAIBadge>
         {filePath && (
           <ExternalLink
             size={14}
@@ -109,7 +109,7 @@ export const DyadAttachment: React.FC<DyadAttachmentProps> = ({
             aria-hidden
           />
         )}
-      </DyadCardHeader>
-    </DyadCard>
+      </ProteaAICardHeader>
+    </ProteaAICard>
   );
 };

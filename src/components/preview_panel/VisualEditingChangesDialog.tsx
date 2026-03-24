@@ -27,7 +27,7 @@ export function VisualEditingChangesDialog({
   // Listen for text content responses
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === "dyad-text-content-response") {
+      if (event.data?.type === "proteaai-text-content-response") {
         const { componentId, text } = event.data;
         if (text !== null) {
           textContentCache.current.set(componentId, text);

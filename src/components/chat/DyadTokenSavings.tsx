@@ -1,14 +1,14 @@
 import React from "react";
 import { Zap } from "lucide-react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "../ui/tooltip";
-import { DyadCard, DyadCardHeader } from "./DyadCardPrimitives";
+import { ProteaAICard, ProteaAICardHeader } from "./ProteaAICardPrimitives";
 
-interface DyadTokenSavingsProps {
+interface ProteaAITokenSavingsProps {
   originalTokens: number;
   smartContextTokens: number;
 }
 
-export const DyadTokenSavings: React.FC<DyadTokenSavingsProps> = ({
+export const ProteaAITokenSavings: React.FC<ProteaAITokenSavingsProps> = ({
   originalTokens,
   smartContextTokens,
 }) => {
@@ -19,13 +19,13 @@ export const DyadTokenSavings: React.FC<DyadTokenSavingsProps> = ({
   return (
     <Tooltip>
       <TooltipTrigger>
-        <DyadCard accentColor="green">
-          <DyadCardHeader icon={<Zap size={15} />} accentColor="green">
+        <ProteaAICard accentColor="green">
+          <ProteaAICardHeader icon={<Zap size={15} />} accentColor="green">
             <span className="text-xs font-medium text-green-700 dark:text-green-300">
               Saved {percentageSaved}% of codebase tokens with Smart Context
             </span>
-          </DyadCardHeader>
-        </DyadCard>
+          </ProteaAICardHeader>
+        </ProteaAICard>
       </TooltipTrigger>
       <TooltipContent side="top" align="center">
         <div className="text-left">

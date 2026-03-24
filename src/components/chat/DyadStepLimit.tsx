@@ -2,16 +2,16 @@ import React, { useState } from "react";
 import { useAtomValue } from "jotai";
 import { CustomTagState } from "./stateTypes";
 import {
-  DyadCard,
-  DyadCardHeader,
-  DyadCardContent,
-} from "./DyadCardPrimitives";
+  ProteaAICard,
+  ProteaAICardHeader,
+  ProteaAICardContent,
+} from "./ProteaAICardPrimitives";
 import { PauseCircle, Play, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 
-interface DyadStepLimitProps {
+interface ProteaAIStepLimitProps {
   node: {
     properties: {
       steps?: string;
@@ -22,7 +22,7 @@ interface DyadStepLimitProps {
   children?: React.ReactNode;
 }
 
-export function DyadStepLimit({ node, children }: DyadStepLimitProps) {
+export function ProteaAIStepLimit({ node, children }: ProteaAIStepLimitProps) {
   const { steps = "50", limit: _limit = "50", state } = node.properties;
   const isFinished = state === "finished";
   const content = typeof children === "string" ? children : "";
@@ -41,8 +41,8 @@ export function DyadStepLimit({ node, children }: DyadStepLimitProps) {
   };
 
   return (
-    <DyadCard state={state} accentColor="amber" isExpanded={true}>
-      <DyadCardHeader icon={<PauseCircle size={15} />} accentColor="amber">
+    <ProteaAICard state={state} accentColor="amber" isExpanded={true}>
+      <ProteaAICardHeader icon={<PauseCircle size={15} />} accentColor="amber">
         <span className="font-medium text-sm text-foreground">
           Paused after {steps} tool calls
         </span>
@@ -62,12 +62,12 @@ export function DyadStepLimit({ node, children }: DyadStepLimitProps) {
             Continue
           </Button>
         )}
-      </DyadCardHeader>
-      <DyadCardContent isExpanded={true}>
+      </ProteaAICardHeader>
+      <ProteaAICardContent isExpanded={true}>
         {content && (
           <div className="p-3 text-sm text-muted-foreground">{content}</div>
         )}
-      </DyadCardContent>
-    </DyadCard>
+      </ProteaAICardContent>
+    </ProteaAICard>
   );
 }

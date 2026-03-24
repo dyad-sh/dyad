@@ -3,20 +3,20 @@ import { useState, type ReactNode } from "react";
 import { Globe } from "lucide-react";
 import { CustomTagState } from "./stateTypes";
 import {
-  DyadCard,
-  DyadCardHeader,
-  DyadBadge,
-  DyadExpandIcon,
-  DyadStateIndicator,
-  DyadCardContent,
-} from "./DyadCardPrimitives";
+  ProteaAICard,
+  ProteaAICardHeader,
+  ProteaAIBadge,
+  ProteaAIExpandIcon,
+  ProteaAIStateIndicator,
+  ProteaAICardContent,
+} from "./ProteaAICardPrimitives";
 
-interface DyadWebSearchProps {
+interface ProteaAIWebSearchProps {
   children?: ReactNode;
   node?: any;
 }
 
-export const DyadWebSearch: React.FC<DyadWebSearchProps> = ({
+export const ProteaAIWebSearch: React.FC<ProteaAIWebSearchProps> = ({
   children,
   node,
 }) => {
@@ -27,27 +27,27 @@ export const DyadWebSearch: React.FC<DyadWebSearchProps> = ({
   const inProgress = state === "pending";
 
   return (
-    <DyadCard
+    <ProteaAICard
       state={state}
       accentColor="blue"
       isExpanded={isExpanded}
       onClick={() => setIsExpanded(!isExpanded)}
     >
-      <DyadCardHeader icon={<Globe size={15} />} accentColor="blue">
-        <DyadBadge color="blue">Web Search</DyadBadge>
+      <ProteaAICardHeader icon={<Globe size={15} />} accentColor="blue">
+        <ProteaAIBadge color="blue">Web Search</ProteaAIBadge>
         {!isExpanded && query && (
           <span className="text-sm text-muted-foreground italic truncate">
             {query}
           </span>
         )}
         {inProgress && (
-          <DyadStateIndicator state="pending" pendingLabel="Searching..." />
+          <ProteaAIStateIndicator state="pending" pendingLabel="Searching..." />
         )}
         <div className="ml-auto">
-          <DyadExpandIcon isExpanded={isExpanded} />
+          <ProteaAIExpandIcon isExpanded={isExpanded} />
         </div>
-      </DyadCardHeader>
-      <DyadCardContent isExpanded={isExpanded}>
+      </ProteaAICardHeader>
+      <ProteaAICardContent isExpanded={isExpanded}>
         <div className="text-sm text-muted-foreground space-y-2">
           {query && (
             <div>
@@ -66,7 +66,7 @@ export const DyadWebSearch: React.FC<DyadWebSearchProps> = ({
             </div>
           )}
         </div>
-      </DyadCardContent>
-    </DyadCard>
+      </ProteaAICardContent>
+    </ProteaAICard>
   );
 };

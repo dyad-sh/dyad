@@ -18,16 +18,16 @@ import { db } from "@/db";
 import { chats, messages } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
-import { isDyadProEnabled, isBasicAgentMode } from "@/lib/schemas";
+import { isProteaAIProEnabled, isBasicAgentMode } from "@/lib/schemas";
 import { readSettings } from "@/main/settings";
-import { getDyadAppPath } from "@/paths/paths";
+import { getProteaAIAppPath } from "@/paths/paths";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import { safeSend } from "@/ipc/utils/safe_sender";
 import { getMaxTokens, getTemperature } from "@/ipc/utils/token_utils";
 import {
   getProviderOptions,
   getAiHeaders,
-  DYAD_INTERNAL_REQUEST_ID_HEADER,
+  PROTEAAI_INTERNAL_REQUEST_ID_HEADER,
 } from "@/ipc/utils/provider_options";
 
 import {
@@ -64,7 +64,7 @@ import {
   type InjectedMessage,
 } from "./prepare_step_utils";
 import { loadTodos } from "./todo_persistence";
-import { ensureDyadGitignored } from "@/ipc/handlers/gitignoreUtils";
+import { ensureProteaAIGitignored } from "@/ipc/handlers/gitignoreUtils";
 import { TOOL_DEFINITIONS } from "./tool_definitions";
 import {
   parseAiMessagesJson,
@@ -261,14 +261,14 @@ export async function handleLocalAgentStream(
   {
     placeholderMessageId,
     systemPrompt,
-    dyadRequestId,
+    proteaaiRequestId,
     readOnly = false,
     planModeOnly = false,
     messageOverride,
   }: {
     placeholderMessageId: number;
     systemPrompt: string;
-    dyadRequestId: string;
+    proteaaiRequestId: string;
     /**
      * If true, the agent operates in read-only mode (e.g., ask mode).
      * State-modifying tools are disabled, and no commits/deploys are made.
@@ -321,13 +321,13 @@ export async function handleLocalAgentStream(
   if (
     !readOnly &&
     !planModeOnly &&
-    !isDyadProEnabled(settings) &&
+    !isProteaAIProEnabled(settings) &&
     !isBasicAgentMode(settings)
   ) {
     safeSend(event.sender, "chat:response:error", {
       chatId: req.chatId,
       error:
-        "Agent v2 requires Dyad Pro. Please enable Dyad Pro in Settings → Pro.",
+        "Agent v2 requires ProteaAI Pro. Please enable ProteaAI Pro in Settings → Pro.",
     });
     return false;
   }
@@ -356,7 +356,7 @@ export async function handleLocalAgentStream(
     hiddenMessageIdsForStreaming.add(id);
   }
 
-  const appPath = getDyadAppPath(chat.app.path);
+  const appPath = getProteaAIAppPath(chat.app.path);
 
   const maybePerformPendingCompaction = async (options?: {
     showOnTopOfCurrentResponse?: boolean;
@@ -379,7 +379,7 @@ export async function handleLocalAgentStream(
       event,
       req.chatId,
       appPath,
-      dyadRequestId,
+      proteaaiRequestId,
       (accumulatedSummary: string) => {
         // Stream compaction summary to the frontend in real-time.
         // During mid-turn compaction, keep already streamed content visible.
@@ -477,11 +477,11 @@ export async function handleLocalAgentStream(
 
     // Load persisted todos from a previous turn (if any)
     const persistedTodos = await loadTodos(appPath, chat.id);
-    // Ensure .dyad/ is gitignored (idempotent; also done by compaction/plans)
+    // Ensure .proteaai/ is gitignored (idempotent; also done by compaction/plans)
     // Skip in read-only/plan-only mode to avoid modifying the workspace
     if (!readOnly && !planModeOnly) {
-      await ensureDyadGitignored(appPath).catch((err: unknown) =>
-        logger.warn("Failed to ensure .dyad gitignored:", err),
+      await ensureProteaAIGitignored(appPath).catch((err: unknown) =>
+        logger.warn("Failed to ensure .proteaai gitignored:", err),
       );
     }
     if (persistedTodos.length > 0) {
@@ -504,9 +504,9 @@ export async function handleLocalAgentStream(
       messageId: placeholderMessageId,
       isSharedModulesChanged: false,
       todos: persistedTodos,
-      dyadRequestId,
+      proteaaiRequestId,
       fileEditTracker,
-      isDyadPro: isDyadProEnabled(settings),
+      isProteaAIPro: isProteaAIProEnabled(settings),
       onXmlStream: (accumulatedXml: string) => {
         // Stream accumulated XML to UI without persisting
         streamingPreview = accumulatedXml;
@@ -676,12 +676,12 @@ export async function handleLocalAgentStream(
               ...getAiHeaders({
                 builtinProviderId: modelClient.builtinProviderId,
               }),
-              [DYAD_INTERNAL_REQUEST_ID_HEADER]: dyadRequestId,
+              [PROTEAAI_INTERNAL_REQUEST_ID_HEADER]: proteaaiRequestId,
             },
             providerOptions: getProviderOptions({
-              dyadAppId: chat.app.id,
-              dyadRequestId,
-              dyadDisableFiles: true, // Local agent uses tools, not file injection
+              proteaaiAppId: chat.app.id,
+              proteaaiRequestId,
+              proteaaiDisableFiles: true, // Local agent uses tools, not file injection
               files: [],
               mentionedAppsCodebases: [],
               builtinProviderId: modelClient.builtinProviderId,
@@ -1032,7 +1032,7 @@ export async function handleLocalAgentStream(
                 STREAM_RETRY_BASE_DELAY_MS * terminatedRetryCount;
               sendTelemetryEvent("local_agent:terminated_stream_retry", {
                 chatId: req.chatId,
-                dyadRequestId,
+                proteaaiRequestId,
                 retryCount: terminatedRetryCount,
                 error: String(streamError),
                 phase: "stream_iteration",
@@ -1047,7 +1047,7 @@ export async function handleLocalAgentStream(
               "local_agent:terminated_stream_retries_exhausted",
               {
                 chatId: req.chatId,
-                dyadRequestId,
+                proteaaiRequestId,
                 retryCount: terminatedRetryCount,
                 error: String(streamError),
                 phase: "stream_iteration",
@@ -1081,7 +1081,7 @@ export async function handleLocalAgentStream(
                 STREAM_RETRY_BASE_DELAY_MS * terminatedRetryCount;
               sendTelemetryEvent("local_agent:terminated_stream_retry", {
                 chatId: req.chatId,
-                dyadRequestId,
+                proteaaiRequestId,
                 retryCount: terminatedRetryCount,
                 error: String(err),
                 phase: "response_finalization",
@@ -1097,7 +1097,7 @@ export async function handleLocalAgentStream(
                 "local_agent:terminated_stream_retries_exhausted",
                 {
                   chatId: req.chatId,
-                  dyadRequestId,
+                  proteaaiRequestId,
                   retryCount: terminatedRetryCount,
                   error: String(err),
                   phase: "response_finalization",

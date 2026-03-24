@@ -12,7 +12,7 @@ import {
   writeSettings,
 } from "./main/settings";
 import { handleSupabaseOAuthReturn } from "./supabase_admin/supabase_return_handler";
-import { handleDyadProReturn } from "./main/pro";
+import { handleProteaAIProReturn } from "./main/pro";
 import { IS_TEST_BUILD } from "./ipc/utils/test_utils";
 import { BackupManager } from "./backup_manager";
 import { getDatabasePath, initializeDatabase } from "./db";
@@ -36,10 +36,10 @@ import { cleanupOldAiMessagesJson } from "./pro/main/ipc/handlers/local_agent/ai
 import { cleanupOldMediaFiles } from "./ipc/utils/media_cleanup";
 import fs from "fs";
 import { gitAddSafeDirectory } from "./ipc/utils/git_utils";
-import { getDyadAppsBaseDirectory, getDyadAppPath } from "./paths/paths";
+import { getProteaAIAppsBaseDirectory, getProteaAIAppPath } from "./paths/paths";
 import {
-  DYAD_MEDIA_DIR_NAME,
-  isWithinDyadMediaDir,
+  PROTEAAI_MEDIA_DIR_NAME,
+  isWithinProteaAIMediaDir,
 } from "./ipc/utils/media_path_utils";
 
 log.errorHandler.startCatching();
@@ -78,12 +78,12 @@ if (fs.existsSync(gitDir)) {
 // https://www.electronjs.org/docs/latest/tutorial/launch-app-from-url-in-another-app#main-process-mainjs
 if (process.defaultApp) {
   if (process.argv.length >= 2) {
-    app.setAsDefaultProtocolClient("dyad", process.execPath, [
+    app.setAsDefaultProtocolClient("proteaai", process.execPath, [
       path.resolve(process.argv[1]),
     ]);
   }
 } else {
-  app.setAsDefaultProtocolClient("dyad");
+  app.setAsDefaultProtocolClient("proteaai");
 }
 
 export async function onReady() {
@@ -106,13 +106,13 @@ export async function onReady() {
 
   const settings = readSettings();
 
-  // Add dyad-apps directory to git safe.directory (required for Windows).
+  // Add proteaai-apps directory to git safe.directory (required for Windows).
   // The trailing /* allows access to all repositories under the named directory.
   // See: https://git-scm.com/docs/git-config#Documentation/git-config.txt-safedirectory
   if (settings.enableNativeGit) {
     // Don't need to await because this only needs to run before
-    // the user starts interacting with Dyad app and uses a git-related feature.
-    gitAddSafeDirectory(`${getDyadAppsBaseDirectory()}/*`);
+    // the user starts interacting with ProteaAI app and uses a git-related feature.
+    gitAddSafeDirectory(`${getProteaAIAppsBaseDirectory()}/*`);
   }
 
   // Check if app was force-closed
@@ -132,17 +132,17 @@ export async function onReady() {
   // Start performance monitoring
   startPerformanceMonitoring();
 
-  // Handle dyad-media:// protocol requests to serve persistent media files.
-  protocol.handle("dyad-media", async (request) => {
+  // Handle proteaai-media:// protocol requests to serve persistent media files.
+  protocol.handle("proteaai-media", async (request) => {
     const url = new URL(request.url);
-    // Format: dyad-media://media/{app-path}/.dyad/media/{filename}
+    // Format: proteaai-media://media/{app-path}/.proteaai/media/{filename}
     //   Uses a fixed hostname to avoid URL hostname normalization (lowercasing).
     //   The app-path segment is URI-encoded, so split on "/" before decoding
     //   to correctly handle absolute paths (which contain encoded slashes).
     const pathSegments = url.pathname.slice(1).split("/");
     if (
       pathSegments.length !== 4 ||
-      pathSegments[1] !== ".dyad" ||
+      pathSegments[1] !== ".proteaai" ||
       pathSegments[2] !== "media"
     ) {
       return new Response("Forbidden", { status: 403 });
@@ -162,12 +162,12 @@ export async function onReady() {
 
     // Resolve the app directory, handling both relative names and absolute
     // paths from imported apps (skipCopy).
-    const appPath = getDyadAppPath(appPathRaw);
-    const mediaDir = path.resolve(path.join(appPath, DYAD_MEDIA_DIR_NAME));
+    const appPath = getProteaAIAppPath(appPathRaw);
+    const mediaDir = path.resolve(path.join(appPath, PROTEAAI_MEDIA_DIR_NAME));
     const resolvedPath = path.resolve(path.join(mediaDir, filename));
 
-    // Security: ensure the resolved path stays within the app's .dyad/media directory
-    if (!isWithinDyadMediaDir(resolvedPath, appPath)) {
+    // Security: ensure the resolved path stays within the app's .proteaai/media directory
+    if (!isWithinProteaAIMediaDir(resolvedPath, appPath)) {
       return new Response("Forbidden", { status: 403 });
     }
 
@@ -190,13 +190,13 @@ export async function onReady() {
     // but this is more explicit and falls back to stable if there's an unknown
     // release channel.
     const postfix = settings.releaseChannel === "beta" ? "beta" : "stable";
-    const host = `https://api.dyad.sh/v1/update/${postfix}`;
+    const host = `https://api.proteaai.com/v1/update/${postfix}`;
     logger.info("Auto-update release channel=", postfix);
     updateElectronApp({
       logger,
       updateSource: {
         type: UpdateSourceType.ElectronPublicUpdateService,
-        repo: "dyad-sh/dyad",
+        repo: "khayaai/proteaai",
         host,
       },
     }); // additional configuration options available
@@ -436,11 +436,11 @@ const createApplicationMenu = () => {
   Menu.setApplicationMenu(appMenu);
 };
 
-// Register dyad-media:// protocol for serving persistent media attachments.
+// Register proteaai-media:// protocol for serving persistent media attachments.
 // Must be called before app.whenReady().
 protocol.registerSchemesAsPrivileged([
   {
-    scheme: "dyad-media",
+    scheme: "proteaai-media",
     privileges: {
       standard: true,
       secure: true,
@@ -483,7 +483,7 @@ app.on("open-url", (event, url) => {
 });
 
 async function handleDeepLinkReturn(url: string) {
-  // example url: "dyad://supabase-oauth-return?token=a&refreshToken=b"
+  // example url: "proteaai://supabase-oauth-return?token=a&refreshToken=b"
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -499,10 +499,10 @@ async function handleDeepLinkReturn(url: string) {
     "hostname",
     parsed.hostname,
   );
-  if (parsed.protocol !== "dyad:") {
+  if (parsed.protocol !== "proteaai:") {
     dialog.showErrorBox(
       "Invalid Protocol",
-      `Expected dyad://, got ${parsed.protocol}. Full URL: ${url}`,
+      `Expected proteaai://, got ${parsed.protocol}. Full URL: ${url}`,
     );
     return;
   }
@@ -542,14 +542,14 @@ async function handleDeepLinkReturn(url: string) {
     });
     return;
   }
-  // dyad://dyad-pro-return?key=123&budget_reset_at=2025-05-26T16:31:13.492000Z&max_budget=100
-  if (parsed.hostname === "dyad-pro-return") {
+  // proteaai://proteaai-pro-return?key=123&budget_reset_at=2025-05-26T16:31:13.492000Z&max_budget=100
+  if (parsed.hostname === "proteaai-pro-return") {
     const apiKey = parsed.searchParams.get("key");
     if (!apiKey) {
       dialog.showErrorBox("Invalid URL", "Expected key");
       return;
     }
-    handleDyadProReturn({
+    handleProteaAIProReturn({
       apiKey,
     });
     // Send message to renderer to trigger re-render
@@ -558,7 +558,7 @@ async function handleDeepLinkReturn(url: string) {
     });
     return;
   }
-  // dyad://add-mcp-server?name=Chrome%20DevTools&config=eyJjb21tYW5kIjpudWxsLCJ0eXBlIjoic3RkaW8ifQ%3D%3D
+  // proteaai://add-mcp-server?name=Chrome%20DevTools&config=eyJjb21tYW5kIjpudWxsLCJ0eXBlIjoic3RkaW8ifQ%3D%3D
   if (parsed.hostname === "add-mcp-server") {
     const name = parsed.searchParams.get("name");
     const config = parsed.searchParams.get("config");
@@ -588,7 +588,7 @@ async function handleDeepLinkReturn(url: string) {
     }
     return;
   }
-  // dyad://add-prompt?data=<base64-encoded-json>
+  // proteaai://add-prompt?data=<base64-encoded-json>
   if (parsed.hostname === "add-prompt") {
     const data = parsed.searchParams.get("data");
     if (!data) {

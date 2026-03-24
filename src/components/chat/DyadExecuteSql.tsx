@@ -5,21 +5,21 @@ import { Database } from "lucide-react";
 import { CodeHighlight } from "./CodeHighlight";
 import { CustomTagState } from "./stateTypes";
 import {
-  DyadCard,
-  DyadCardHeader,
-  DyadBadge,
-  DyadExpandIcon,
-  DyadStateIndicator,
-  DyadCardContent,
-} from "./DyadCardPrimitives";
+  ProteaAICard,
+  ProteaAICardHeader,
+  ProteaAIBadge,
+  ProteaAIExpandIcon,
+  ProteaAIStateIndicator,
+  ProteaAICardContent,
+} from "./ProteaAICardPrimitives";
 
-interface DyadExecuteSqlProps {
+interface ProteaAIExecuteSqlProps {
   children?: ReactNode;
   node?: any;
   description?: string;
 }
 
-export const DyadExecuteSql: React.FC<DyadExecuteSqlProps> = ({
+export const ProteaAIExecuteSql: React.FC<ProteaAIExecuteSqlProps> = ({
   children,
   node,
   description,
@@ -31,34 +31,34 @@ export const DyadExecuteSql: React.FC<DyadExecuteSqlProps> = ({
   const queryDescription = description || node?.properties?.description;
 
   return (
-    <DyadCard
+    <ProteaAICard
       state={state}
       accentColor="teal"
       isExpanded={isContentVisible}
       onClick={() => setIsContentVisible(!isContentVisible)}
     >
-      <DyadCardHeader icon={<Database size={15} />} accentColor="teal">
-        <DyadBadge color="teal">SQL</DyadBadge>
+      <ProteaAICardHeader icon={<Database size={15} />} accentColor="teal">
+        <ProteaAIBadge color="teal">SQL</ProteaAIBadge>
         {queryDescription && (
           <span className="font-medium text-sm text-foreground truncate">
             {queryDescription}
           </span>
         )}
         {inProgress && (
-          <DyadStateIndicator state="pending" pendingLabel="Executing..." />
+          <ProteaAIStateIndicator state="pending" pendingLabel="Executing..." />
         )}
         {aborted && (
-          <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
+          <ProteaAIStateIndicator state="aborted" abortedLabel="Did not finish" />
         )}
         <div className="ml-auto">
-          <DyadExpandIcon isExpanded={isContentVisible} />
+          <ProteaAIExpandIcon isExpanded={isContentVisible} />
         </div>
-      </DyadCardHeader>
-      <DyadCardContent isExpanded={isContentVisible}>
+      </ProteaAICardHeader>
+      <ProteaAICardContent isExpanded={isContentVisible}>
         <div className="text-xs">
           <CodeHighlight className="language-sql">{children}</CodeHighlight>
         </div>
-      </DyadCardContent>
-    </DyadCard>
+      </ProteaAICardContent>
+    </ProteaAICard>
   );
 };

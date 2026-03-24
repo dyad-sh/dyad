@@ -239,7 +239,7 @@ export const systemContracts = {
   }),
 
   // Restart
-  restartDyad: defineContract({
+  restartProteaAI: defineContract({
     channel: "restart-dyad",
     input: z.void(),
     output: z.void(),

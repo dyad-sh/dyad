@@ -1,5 +1,5 @@
 {
-  "name": "@dyad-sh/nextjs-webpack-component-tagger",
+  "name": "@proteaai/nextjs-webpack-component-tagger",
   "version": "0.8.0",
   "description": "A webpack loader that automatically adds data attributes to your React components in Next.js.",
   "keywords": [
@@ -10,7 +10,7 @@
     "webpack-loader"
   ],
   "license": "Apache-2.0",
-  "author": "Dyad",
+  "author": "ProteaAI",
   "files": [
     "dist"
   ],

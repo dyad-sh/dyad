@@ -27,7 +27,7 @@ import { getPostCompactionMessages } from "./compaction_utils";
 import {
   getProviderOptions,
   getAiHeaders,
-  DYAD_INTERNAL_REQUEST_ID_HEADER,
+  PROTEAAI_INTERNAL_REQUEST_ID_HEADER,
 } from "@/ipc/utils/provider_options";
 import { escapeXmlContent } from "../../../../shared/xmlEscape";
 
@@ -118,7 +118,7 @@ export async function performCompaction(
   event: IpcMainInvokeEvent,
   chatId: number,
   appPath: string,
-  dyadRequestId: string,
+  proteaaiRequestId: string,
   onSummaryChunk?: (accumulatedText: string) => void,
   options?: {
     createdAtStrategy?: "before-latest-user" | "now";
@@ -152,7 +152,7 @@ export async function performCompaction(
       }),
     );
 
-    // Store readable transcript backup in the app's .dyad/chats/ directory
+    // Store readable transcript backup in the app's .proteaai/chats/ directory
     const backupPath = await storePreCompactionMessages(
       appPath,
       chatId,
@@ -182,12 +182,12 @@ export async function performCompaction(
         ...getAiHeaders({
           builtinProviderId: modelClient.builtinProviderId,
         }),
-        [DYAD_INTERNAL_REQUEST_ID_HEADER]: dyadRequestId,
+        [PROTEAAI_INTERNAL_REQUEST_ID_HEADER]: proteaaiRequestId,
       },
       providerOptions: getProviderOptions({
-        dyadAppId: 0,
-        dyadRequestId,
-        dyadDisableFiles: true,
+        proteaaiAppId: 0,
+        proteaaiRequestId,
+        proteaaiDisableFiles: true,
         files: [],
         mentionedAppsCodebases: [],
         builtinProviderId: modelClient.builtinProviderId,

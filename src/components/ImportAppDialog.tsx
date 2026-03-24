@@ -51,7 +51,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
   const [isCheckingName, setIsCheckingName] = useState<boolean>(false);
   const [installCommand, setInstallCommand] = useState("");
   const [startCommand, setStartCommand] = useState("");
-  const [copyToDyadApps, setCopyToDyadApps] = useState(true);
+  const [copyToProteaAIApps, setCopyToProteaAIApps] = useState(true);
   const navigate = useNavigate();
   const { streamMessage } = useStreamChat({ hasChatId: false });
   const { refreshApps } = useLoadApps();
@@ -75,12 +75,12 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     }
   }, [isOpen]);
 
-  // Re-check app name when copyToDyadApps changes
+  // Re-check app name when copyToProteaAIApps changes
   useEffect(() => {
     if (customAppName.trim() && selectedPath) {
-      checkAppName({ name: customAppName, skipCopy: !copyToDyadApps });
+      checkAppName({ name: customAppName, skipCopy: !copyToProteaAIApps });
     }
-  }, [copyToDyadApps]);
+  }, [copyToProteaAIApps]);
 
   const handleUrlBlur = async () => {
     if (!url.trim()) return;
@@ -236,7 +236,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       // Use the folder name from the IPC response
       setCustomAppName(result.name);
       // Check if the app name already exists
-      await checkAppName({ name: result.name, skipCopy: !copyToDyadApps });
+      await checkAppName({ name: result.name, skipCopy: !copyToProteaAIApps });
       return result;
     },
     onError: (error: Error) => {
@@ -252,7 +252,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
         appName: customAppName,
         installCommand: installCommand || undefined,
         startCommand: startCommand || undefined,
-        skipCopy: !copyToDyadApps,
+        skipCopy: !copyToProteaAIApps,
       });
     },
     onSuccess: async (result) => {
@@ -291,7 +291,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     setNameExists(false);
     setInstallCommand("");
     setStartCommand("");
-    setCopyToDyadApps(true);
+    setCopyToProteaAIApps(true);
   };
 
   const handleAppNameChange = async (
@@ -300,7 +300,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     const newName = e.target.value;
     setCustomAppName(newName);
     if (newName.trim()) {
-      await checkAppName({ name: newName, skipCopy: !copyToDyadApps });
+      await checkAppName({ name: newName, skipCopy: !copyToProteaAIApps });
     }
   };
 
@@ -394,19 +394,19 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
 
                     <div className="flex items-center space-x-2">
                       <Checkbox
-                        id="copy-to-dyad-apps"
-                        aria-label="Copy to the dyad-apps folder"
-                        checked={copyToDyadApps}
+                        id="copy-to-proteaai-apps"
+                        aria-label="Copy to the proteaai-apps folder"
+                        checked={copyToProteaAIApps}
                         onCheckedChange={(checked) =>
-                          setCopyToDyadApps(checked === true)
+                          setCopyToProteaAIApps(checked === true)
                         }
                         disabled={importAppMutation.isPending}
                       />
                       <label
-                        htmlFor="copy-to-dyad-apps"
+                        htmlFor="copy-to-proteaai-apps"
                         className="text-xs sm:text-sm cursor-pointer"
                       >
-                        {t("home:copyToDyadApps")}
+                        {t("home:copyToProteaAIApps")}
                       </label>
                     </div>
 
@@ -479,7 +479,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
                     {hasAiRules === false && (
                       <Alert className="border-yellow-500/20 text-yellow-500 flex items-start gap-2">
                         <span
-                          title="AI_RULES.md lets Dyad know which tech stack to use for editing the app"
+                          title="AI_RULES.md lets ProteaAI know which tech stack to use for editing the app"
                           className="flex-shrink-0 mt-1"
                         >
                           <Info className="h-4 w-4" />

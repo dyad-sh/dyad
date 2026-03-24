@@ -10,7 +10,7 @@ import { testSkipIfWindows } from "./helpers/test_helper";
 testSkipIfWindows(
   "local-agent - recovers from connection drop",
   async ({ po }) => {
-    await po.setUpDyadPro({ localAgent: true });
+    await po.setUpProteaAIPro({ localAgent: true });
     await po.importApp("minimal");
     await po.chatActions.selectLocalAgentMode();
 
@@ -62,7 +62,7 @@ testSkipIfWindows(
 testSkipIfWindows(
   "local-agent - recovers when drop happens after tool-call stream",
   async ({ po }) => {
-    await po.setUpDyadPro({ localAgent: true });
+    await po.setUpProteaAIPro({ localAgent: true });
     await po.importApp("minimal");
     await po.chatActions.selectLocalAgentMode();
 

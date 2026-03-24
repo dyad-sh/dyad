@@ -1,13 +1,13 @@
 /**
- * Shared utility for making fetch requests to the Dyad engine API.
- * Handles common headers including Authorization and X-Dyad-Request-Id.
+ * Shared utility for making fetch requests to the ProteaAI engine API.
+ * Handles common headers including Authorization and X-ProteaAI-Request-Id.
  */
 
 import { readSettings } from "@/main/settings";
 import type { AgentContext } from "./types";
 
-export const DYAD_ENGINE_URL =
-  process.env.DYAD_ENGINE_URL ?? "https://engine.dyad.sh/v1";
+export const PROTEAAI_ENGINE_URL =
+  process.env.PROTEAAI_ENGINE_URL ?? "https://engine.proteaai.com/v1";
 
 export interface EngineFetchOptions extends Omit<RequestInit, "headers"> {
   /** Additional headers to include */
@@ -15,17 +15,17 @@ export interface EngineFetchOptions extends Omit<RequestInit, "headers"> {
 }
 
 /**
- * Fetch wrapper for Dyad engine API calls.
- * Automatically adds Authorization and X-Dyad-Request-Id headers.
+ * Fetch wrapper for ProteaAI engine API calls.
+ * Automatically adds Authorization and X-ProteaAI-Request-Id headers.
  *
  * @param ctx - The agent context containing the request ID
  * @param endpoint - The API endpoint path (e.g., "/tools/web-search")
  * @param options - Fetch options (method, body, additional headers, etc.)
  * @returns The fetch Response
- * @throws Error if Dyad Pro API key is not configured
+ * @throws Error if ProteaAI Pro API key is not configured
  */
 export async function engineFetch(
-  ctx: Pick<AgentContext, "dyadRequestId">,
+  ctx: Pick<AgentContext, "proteaaiRequestId">,
   endpoint: string,
   options: EngineFetchOptions = {},
 ): Promise<Response> {
@@ -33,17 +33,17 @@ export async function engineFetch(
   const apiKey = settings.providerSettings?.auto?.apiKey?.value;
 
   if (!apiKey) {
-    throw new Error("Dyad Pro API key is required");
+    throw new Error("ProteaAI Pro API key is required");
   }
 
   const { headers: extraHeaders, ...restOptions } = options;
 
-  return fetch(`${DYAD_ENGINE_URL}${endpoint}`, {
+  return fetch(`${PROTEAAI_ENGINE_URL}${endpoint}`, {
     ...restOptions,
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
-      "X-Dyad-Request-Id": ctx.dyadRequestId,
+      "X-ProteaAI-Request-Id": ctx.proteaaiRequestId,
       ...extraHeaders,
     },
   });

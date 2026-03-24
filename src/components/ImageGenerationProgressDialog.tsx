@@ -24,7 +24,7 @@ import type {
   ImageGenerationJob,
   ImageGenerationStatus,
 } from "@/atoms/imageGenerationAtoms";
-import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
+import { buildProteaAIMediaUrl } from "@/lib/dyadMediaUrl";
 import { useCancelImageGeneration } from "@/hooks/useGenerateImage";
 import { ImageLightbox } from "@/components/chat/ImageLightbox";
 
@@ -151,7 +151,7 @@ function ImageGenerationCard({ job }: { job: ImageGenerationJob }) {
                   onClick={() => setLightboxOpen(true)}
                 >
                   <img
-                    src={buildDyadMediaUrl(
+                    src={buildProteaAIMediaUrl(
                       job.result.appPath,
                       job.result.fileName,
                     )}
@@ -204,7 +204,7 @@ function ImageGenerationCard({ job }: { job: ImageGenerationJob }) {
         job.result &&
         createPortal(
           <ImageLightbox
-            imageUrl={buildDyadMediaUrl(
+            imageUrl={buildProteaAIMediaUrl(
               job.result.appPath,
               job.result.fileName,
             )}

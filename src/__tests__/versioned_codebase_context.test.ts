@@ -25,7 +25,7 @@ vi.mock("electron-log", () => ({
 }));
 
 describe("parseFilesFromMessage", () => {
-  describe("dyad-read tags", () => {
+  describe("proteaai-read tags", () => {
     it("should parse a single dyad-read tag", () => {
       const input = '<dyad-read path="src/components/Button.tsx"></dyad-read>';
       const result = parseFilesFromMessage(input);
@@ -74,7 +74,7 @@ describe("parseFilesFromMessage", () => {
     });
   });
 
-  describe("dyad-code-search-result tags", () => {
+  describe("proteaai-code-search-result tags", () => {
     it("should parse a single file from dyad-code-search-result", () => {
       const input = `<dyad-code-search-result>
 src/components/Button.tsx
@@ -409,7 +409,7 @@ describe("processChatMessagesWithVersionedFiles", () => {
           content:
             'I found this file: <dyad-read path="src/old.ts"></dyad-read>',
           providerOptions: {
-            "dyad-engine": {
+            "proteaai-engine": {
               sourceCommitHash: "abc123",
             },
           },
@@ -462,7 +462,7 @@ describe("processChatMessagesWithVersionedFiles", () => {
             },
           ],
           providerOptions: {
-            "dyad-engine": {
+            "proteaai-engine": {
               sourceCommitHash: "def456",
             },
           },
@@ -556,7 +556,7 @@ describe("processChatMessagesWithVersionedFiles", () => {
           role: "assistant",
           content: [],
           providerOptions: {
-            "dyad-engine": {
+            "proteaai-engine": {
               sourceCommitHash: "abc123",
             },
           },
@@ -596,7 +596,7 @@ src/file1.ts
 src/file2.ts
 </dyad-code-search-result>`,
           providerOptions: {
-            "dyad-engine": {
+            "proteaai-engine": {
               sourceCommitHash: "commit1",
             },
           },
@@ -656,7 +656,7 @@ src/file3.ts
 </dyad-code-search-result>
 `,
           providerOptions: {
-            "dyad-engine": {
+            "proteaai-engine": {
               sourceCommitHash: "hash1",
             },
           },
@@ -694,7 +694,7 @@ src/file3.ts
           content:
             'Missing file: <dyad-read path="src/missing.ts"></dyad-read>',
           providerOptions: {
-            "dyad-engine": {
+            "proteaai-engine": {
               sourceCommitHash: "commit1",
             },
           },
@@ -728,7 +728,7 @@ src/file3.ts
           role: "assistant",
           content: 'Error file: <dyad-read path="src/error.ts"></dyad-read>',
           providerOptions: {
-            "dyad-engine": {
+            "proteaai-engine": {
               sourceCommitHash: "commit1",
             },
           },
@@ -769,7 +769,7 @@ src/error.ts
 src/missing.ts
 </dyad-code-search-result>`,
           providerOptions: {
-            "dyad-engine": {
+            "proteaai-engine": {
               sourceCommitHash: "commit1",
             },
           },
@@ -816,7 +816,7 @@ src/missing.ts
           role: "assistant",
           content: 'Here it is: <dyad-read path="src/file1.ts"></dyad-read>',
           providerOptions: {
-            "dyad-engine": {
+            "proteaai-engine": {
               sourceCommitHash: "commit1",
             },
           },
@@ -830,7 +830,7 @@ src/missing.ts
           content:
             'Here it is again: <dyad-read path="src/file1.ts"></dyad-read>',
           providerOptions: {
-            "dyad-engine": {
+            "proteaai-engine": {
               sourceCommitHash: "commit2",
             },
           },
@@ -895,7 +895,7 @@ src/missing.ts
           role: "assistant",
           content: 'Old version: <dyad-read path="src/old.ts"></dyad-read>',
           providerOptions: {
-            "dyad-engine": {
+            "proteaai-engine": {
               sourceCommitHash: "abc123",
             },
           },
@@ -948,7 +948,7 @@ src/file1.ts
 src/file2.ts
 </dyad-code-search-result>`,
           providerOptions: {
-            "dyad-engine": {
+            "proteaai-engine": {
               sourceCommitHash: "commit1",
             },
           },
@@ -989,7 +989,7 @@ src/file2.ts
           role: "assistant",
           content: "No commit hash here",
           providerOptions: {
-            "dyad-engine": {
+            "proteaai-engine": {
               sourceCommitHash: "abc123",
               commitHash: null,
             },
@@ -1024,7 +1024,7 @@ src/file2.ts
           role: "assistant",
           content: "Assistant message with commit hash",
           providerOptions: {
-            "dyad-engine": {
+            "proteaai-engine": {
               sourceCommitHash: "ignored-for-this-test",
               commitHash: "commit-123",
             },
@@ -1059,7 +1059,7 @@ src/file2.ts
           role: "assistant",
           content: "Assistant message with different commit hash",
           providerOptions: {
-            "dyad-engine": {
+            "proteaai-engine": {
               sourceCommitHash: "ignored-for-this-test",
               commitHash: "older-commit",
             },
@@ -1094,7 +1094,7 @@ src/file2.ts
           role: "assistant",
           content: "Assistant message with matching commit but dirty status",
           providerOptions: {
-            "dyad-engine": {
+            "proteaai-engine": {
               sourceCommitHash: "ignored-for-this-test",
               commitHash: "same-commit",
             },

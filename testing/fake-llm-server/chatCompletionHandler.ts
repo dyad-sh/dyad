@@ -205,7 +205,7 @@ x.toString(); // replaced with existing method
       <dyad-write path="src/pages/Index.tsx">
       
 
-import { MadeWithDyad } from "@/components/made-with-dyad";
+import { MadeWithProteaAI } from "@/components/made-with-dyad";
 
 const Index = () => {
   return (
@@ -213,7 +213,7 @@ const Index = () => {
       <div className="text-center">
         <h1 className="text-4xl font-bold mb-4">No more errors!</h1>
       </div>
-      <MadeWithDyad />
+      <MadeWithProteaAI />
     </div>
   );
 };

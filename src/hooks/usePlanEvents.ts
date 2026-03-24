@@ -130,7 +130,7 @@ export function usePlanEvents() {
           return;
         }
 
-        // Always persist the plan to .dyad/plans/
+        // Always persist the plan to .proteaai/plans/
         let planSlug: string;
         try {
           planSlug = await planClient.createPlan({
@@ -189,7 +189,7 @@ export function usePlanEvents() {
           const app = queryClient.getQueryData<App | null>(
             queryKeys.apps.detail({ appId: selectedAppIdRef.current! }),
           );
-          new Notification(app?.name ?? "Dyad", {
+          new Notification(app?.name ?? "ProteaAI", {
             body: "A questionnaire needs your input",
           });
         }

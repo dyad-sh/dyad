@@ -4,7 +4,7 @@ import fs from "fs";
 import { testSkipIfWindows } from "./helpers/test_helper";
 import * as eph from "electron-playwright-helpers";
 
-testSkipIfWindows("import app without copying to dyad-apps", async ({ po }) => {
+testSkipIfWindows("import app without copying to proteaai-apps", async ({ po }) => {
   await po.setUp();
 
   // Copy fixture to temp directory to avoid modifying original fixture

@@ -22,7 +22,7 @@ describe("transformToolTags", () => {
     expect(result).toContain('<tool-use name="read_file" server="filesystem">');
     expect(result).toContain('{"path": "/src/index.ts"}');
     expect(result).toContain("</tool-use>");
-    expect(result).not.toContain("dyad-mcp-tool-call");
+    expect(result).not.toContain("proteaai-mcp-tool-call");
   });
 
   it("transforms tool-result tags and includes char count", () => {
@@ -84,7 +84,7 @@ contents of b
     // Both tool calls transformed
     expect(result.match(/<tool-use /g)).toHaveLength(2);
     expect(result.match(/<tool-result /g)).toHaveLength(2);
-    expect(result).not.toContain("dyad-mcp");
+    expect(result).not.toContain("proteaai-mcp");
   });
 
   it("preserves text between tool calls", () => {
@@ -215,7 +215,7 @@ describe("formatAsTranscript", () => {
     expect(result.match(/<tool-use /g)).toHaveLength(3);
     expect(result.match(/<tool-result /g)).toHaveLength(3);
     // No original dyad tags remain
-    expect(result).not.toContain("dyad-mcp");
+    expect(result).not.toContain("proteaai-mcp");
     // Plain-text user messages are untouched
     expect(result).toContain("What's in index.ts?");
     expect(result).toContain("Now rename App to Main everywhere.");

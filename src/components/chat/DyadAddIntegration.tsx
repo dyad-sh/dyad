@@ -8,9 +8,9 @@ import { showError } from "@/lib/toast";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { CheckCircle2, Plug } from "lucide-react";
-import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
+import { ProteaAICard, ProteaAICardHeader, ProteaAIBadge } from "./ProteaAICardPrimitives";
 
-interface DyadAddIntegrationProps {
+interface ProteaAIAddIntegrationProps {
   node: {
     properties: {
       provider: string;
@@ -19,7 +19,7 @@ interface DyadAddIntegrationProps {
   children: React.ReactNode;
 }
 
-export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
+export const ProteaAIAddIntegration: React.FC<ProteaAIAddIntegrationProps> = ({
   node,
   children,
 }) => {
@@ -52,13 +52,13 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
 
   if (app?.supabaseProjectName) {
     return (
-      <DyadCard accentColor="green" state="finished">
-        <DyadCardHeader icon={<CheckCircle2 size={15} />} accentColor="green">
-          <DyadBadge color="green">Integration Complete</DyadBadge>
+      <ProteaAICard accentColor="green" state="finished">
+        <ProteaAICardHeader icon={<CheckCircle2 size={15} />} accentColor="green">
+          <ProteaAIBadge color="green">Integration Complete</ProteaAIBadge>
           <span className="text-sm font-medium text-foreground">
             Supabase integration complete
           </span>
-        </DyadCardHeader>
+        </ProteaAICardHeader>
         <div className="px-3 pb-3">
           <p className="text-sm text-muted-foreground mb-2">
             This app is connected to Supabase project:{" "}
@@ -75,24 +75,24 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
             Continue
           </Button>
         </div>
-      </DyadCard>
+      </ProteaAICard>
     );
   }
 
   return (
-    <DyadCard accentColor="blue">
-      <DyadCardHeader icon={<Plug size={15} />} accentColor="blue">
-        <DyadBadge color="blue">Integration</DyadBadge>
+    <ProteaAICard accentColor="blue">
+      <ProteaAICardHeader icon={<Plug size={15} />} accentColor="blue">
+        <ProteaAIBadge color="blue">Integration</ProteaAIBadge>
         <span className="text-sm font-medium text-foreground">
           Integrate with {provider}?
         </span>
-      </DyadCardHeader>
+      </ProteaAICardHeader>
       <div className="px-3 pb-3">
         <div className="text-xs text-muted-foreground mb-3">{children}</div>
         <Button onClick={handleSetupClick} className="w-full" size="sm">
           Set up {provider}
         </Button>
       </div>
-    </DyadCard>
+    </ProteaAICard>
   );
 };

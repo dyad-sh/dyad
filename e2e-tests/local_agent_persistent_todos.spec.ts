@@ -23,7 +23,7 @@ import { testSkipIfWindows } from "./helpers/test_helper";
 testSkipIfWindows(
   "local-agent - persistent todos across turns",
   async ({ po }) => {
-    await po.setUpDyadPro({ localAgent: true });
+    await po.setUpProteaAIPro({ localAgent: true });
     await po.importApp("minimal");
     await po.chatActions.selectLocalAgentMode();
 

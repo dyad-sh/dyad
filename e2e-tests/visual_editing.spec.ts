@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 
 testSkipIfWindows("edit style of one selected component", async ({ po }) => {
-  await po.setUpDyadPro();
+  await po.setUpProteaAIPro();
   await po.sendPrompt("tc=basic");
   await po.previewPanel.clickTogglePreviewPanel();
   await po.previewPanel.clickPreviewPickElement();
@@ -72,7 +72,7 @@ testSkipIfWindows("edit style of one selected component", async ({ po }) => {
 });
 
 testSkipIfWindows("edit text of the selected component", async ({ po }) => {
-  await po.setUpDyadPro();
+  await po.setUpProteaAIPro();
   await po.sendPrompt("tc=basic");
   await po.previewPanel.clickTogglePreviewPanel();
   await po.previewPanel.clickPreviewPickElement();
@@ -141,7 +141,7 @@ testSkipIfWindows("edit text of the selected component", async ({ po }) => {
 });
 
 testSkipIfWindows("swap image via URL", async ({ po }) => {
-  await po.setUpDyadPro();
+  await po.setUpProteaAIPro();
   await po.sendPrompt("tc=image-basic");
   await po.approveProposal();
 
@@ -215,7 +215,7 @@ testSkipIfWindows("swap image via URL", async ({ po }) => {
 });
 
 testSkipIfWindows("discard changes", async ({ po }) => {
-  await po.setUpDyadPro();
+  await po.setUpProteaAIPro();
   await po.sendPrompt("tc=basic");
   await po.previewPanel.clickTogglePreviewPanel();
   await po.previewPanel.clickPreviewPickElement();

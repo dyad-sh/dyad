@@ -4,7 +4,7 @@ import { testSkipIfWindows } from "./helpers/test_helper";
  * Test for configuring max tool call steps setting
  */
 testSkipIfWindows("max tool call steps setting", async ({ po }) => {
-  await po.setUpDyadPro({ localAgent: true });
+  await po.setUpProteaAIPro({ localAgent: true });
   await po.importApp("minimal");
 
   // Go to settings and change the max tool call steps

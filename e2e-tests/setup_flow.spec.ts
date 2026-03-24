@@ -12,10 +12,10 @@ testSetup.describe("Setup Flow", () => {
       // Wait for the page to fully render before checking UI elements
       await po.page.waitForLoadState("domcontentloaded");
 
-      // Verify the "Setup Dyad" heading is visible (use toPass for CI resilience)
+      // Verify the "Setup ProteaAI" heading is visible (use toPass for CI resilience)
       await expect(async () => {
         await expect(
-          po.page.getByText("Setup Dyad", { exact: true }),
+          po.page.getByText("Setup ProteaAI", { exact: true }),
         ).toBeVisible();
       }).toPass({ timeout: Timeout.MEDIUM });
 
@@ -53,7 +53,7 @@ testSetup.describe("Setup Flow", () => {
     // Verify setup banner is visible (use toPass for resilience)
     await expect(async () => {
       await expect(
-        po.page.getByText("Setup Dyad", { exact: true }),
+        po.page.getByText("Setup ProteaAI", { exact: true }),
       ).toBeVisible();
     }).toPass({ timeout: Timeout.MEDIUM });
 
@@ -117,7 +117,7 @@ testSetup.describe("Setup Flow", () => {
   testSetup("ai provider setup flow", async ({ po }) => {
     // Verify setup banner is visible
     await expect(
-      po.page.getByText("Setup Dyad", { exact: true }),
+      po.page.getByText("Setup ProteaAI", { exact: true }),
     ).toBeVisible();
 
     // Dismiss telemetry consent if present
@@ -162,7 +162,7 @@ testSetup.describe("Setup Flow", () => {
 
     // After configuring a provider, the setup banner should be gone
     await expect(
-      po.page.getByText("Setup Dyad", { exact: true }),
+      po.page.getByText("Setup ProteaAI", { exact: true }),
     ).not.toBeVisible();
     await expect(po.page.getByText("Build a new app")).toBeVisible();
   });

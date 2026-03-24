@@ -11,7 +11,7 @@ import { expect } from "@playwright/test";
 testSkipIfWindows(
   "free agent quota - full flow: mode availability, quota tracking, exceeded banner, switch to build",
   async ({ po }) => {
-    // Set up WITHOUT Dyad Pro - use test provider instead
+    // Set up WITHOUT ProteaAI Pro - use test provider instead
     await po.setUp({ autoApprove: true });
     await po.importApp("minimal");
 
@@ -50,7 +50,7 @@ testSkipIfWindows(
       "You have used all 5 messages for the free Agent mode today",
     );
     await expect(
-      po.page.getByRole("button", { name: "Upgrade to Dyad Pro" }),
+      po.page.getByRole("button", { name: "Upgrade to ProteaAI Pro" }),
     ).toBeVisible();
     await expect(
       po.page.getByRole("button", { name: "Switch back to Build mode" }),
@@ -86,7 +86,7 @@ testSkipIfWindows(
 testSkipIfWindows(
   "free agent quota - quota resets after 24 hours",
   async ({ po }) => {
-    // Set up WITHOUT Dyad Pro - use test provider instead
+    // Set up WITHOUT ProteaAI Pro - use test provider instead
     await po.setUp({ autoApprove: true });
     await po.importApp("minimal");
 

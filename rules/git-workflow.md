@@ -98,6 +98,20 @@ git push --force origin HEAD
 
 ## Rebase workflow and conflict resolution
 
+### Shallow clone causing mass "add/add" conflicts
+
+In CI, repos are often cloned with `--depth=1`, so `upstream/main` may have only 1 commit in the local history. Running `git rebase upstream/main` in this state tries to replay the **entire repo history** (1200+ commits), producing `CONFLICT (add/add)` on every file.
+
+**Fix:** Before rebasing, fetch enough upstream history to find the real merge base:
+
+```bash
+git fetch upstream --depth=100 main
+git merge-base HEAD upstream/main  # verify this now succeeds
+git rebase upstream/main
+```
+
+If the merge base is still not found, increase `--depth` (e.g., 200, 500).
+
 ### Handling unstaged changes during rebase
 
 If `git rebase` fails with "You have unstaged changes" (common with spurious `package-lock.json` changes):

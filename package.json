@@ -72,7 +72,7 @@
     "@babel/parser": "^7.28.5",
     "@base-ui/react": "^1.2.0",
     "@biomejs/biome": "^1.9.4",
-    "@proteaai/supabase-management-js": "v1.0.1",
+    "@dyad-sh/supabase-management-js": "v1.0.1",
     "@flakiness/playwright": "^1.0.0",
     "@lexical/react": "^0.33.1",
     "@modelcontextprotocol/sdk": "^1.17.5",

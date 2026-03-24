@@ -91,6 +91,7 @@ export function registerImportHandlers() {
         skipCopy,
       }: ImportAppParams,
     ): Promise<ImportAppResult> => {
+      // Validate the source path exists with WSL-safe check
       if (!(await pathExistsHandlingWslAsync(sourcePath))) {
         throw new DyadError(
           "Source folder does not exist",

@@ -132,7 +132,7 @@ export function registerVersionHandlers() {
 
     // Return appropriate result if the app is not a git repo
     if (!(await pathExistsHandlingWslAsync(path.join(appPath, ".git")))) {
-      throw new DyadError("Not a git repository", DyadErrorKind.External);
+      throw new DyadError("Not a git repository", DyadErrorKind.Precondition);
     }
 
     try {

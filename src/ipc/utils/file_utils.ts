@@ -248,15 +248,10 @@ async function copyDirectoryRecursiveInternal(
             visitingPaths.delete(resolvedPath);
           }
         } else {
-          // Copy symlinked file that escapes tree by dereferencing
-          try {
-            await fsPromises.realpath(srcPath);
-          } catch {
-            // If realpath fails (broken symlink), skip
-            continue;
-          }
-
-          await copyFileHandlingWsl(srcPath, destPath);
+          // File symlink that escapes source tree boundary - skip to prevent
+          // importing external files (e.g., config/.env -> ../.env would pull
+          // host files into the copied app)
+          continue;
         }
       }
     } else if (entry.isDirectory()) {

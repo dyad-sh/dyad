@@ -2085,21 +2085,24 @@ export function registerAppHandlers() {
       );
 
       if (conflict) {
-        throw new Error(
+        throw new DyadError(
           `Another app already exists at '${nextResolvedPath}'. Please choose a different folder.`,
+          DyadErrorKind.Validation,
         );
       }
 
       // Prevent relocation to WSL UNC paths (spawn cannot use UNC working directories)
       if (isWslPath(nextResolvedPath)) {
-        throw new Error(
+        throw new DyadError(
           "Cannot relocate apps to WSL paths. Please choose a Windows directory.",
+          DyadErrorKind.Validation,
         );
       }
 
       if (await pathExistsHandlingWslAsync(nextResolvedPath)) {
-        throw new Error(
+        throw new DyadError(
           `Destination path '${nextResolvedPath}' already exists. Please choose an empty folder.`,
+          DyadErrorKind.Validation,
         );
       }
 

@@ -476,6 +476,20 @@ function getRegularModelClient(
         backupModelClients: [],
       };
     }
+    case "novita": {
+      const provider = createOpenAICompatible({
+        name: "novita",
+        baseURL: "https://api.novita.ai/openai",
+        apiKey,
+      });
+      return {
+        modelClient: {
+          model: provider(model.name),
+          builtinProviderId: providerId,
+        },
+        backupModelClients: [],
+      };
+    }
     default: {
       // Handle custom providers
       if (providerConfig.type === "custom") {

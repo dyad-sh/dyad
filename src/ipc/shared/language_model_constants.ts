@@ -478,6 +478,35 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       temperature: 0,
     },
   ],
+  novita: [
+    {
+      name: "moonshotai/kimi-k2.5",
+      displayName: "Kimi K2.5",
+      description: "Moonshot AI's latest and most capable model",
+      maxOutputTokens: 262_144,
+      contextWindow: 262_144,
+      temperature: 1.0,
+      dollarSigns: 2,
+    },
+    {
+      name: "zai-org/glm-5",
+      displayName: "GLM 5",
+      description: "Z-AI's best coding model",
+      maxOutputTokens: 131_072,
+      contextWindow: 202_800,
+      temperature: 0.7,
+      dollarSigns: 2,
+    },
+    {
+      name: "minimax/minimax-m2.5",
+      displayName: "MiniMax M2.5",
+      description: "Strong cost-effective model for real-world productivity",
+      maxOutputTokens: 131_100,
+      contextWindow: 204_800,
+      temperature: 0,
+      dollarSigns: 1,
+    },
+  ],
 };
 
 export const TURBO_MODELS: LanguageModel[] = [
@@ -517,6 +546,7 @@ export const PROVIDER_TO_ENV_VAR: Record<string, string> = {
   azure: "AZURE_API_KEY",
   xai: "XAI_API_KEY",
   bedrock: "AWS_BEARER_TOKEN_BEDROCK",
+  novita: "NOVITA_API_KEY",
 };
 
 export const CLOUD_PROVIDERS: Record<
@@ -585,6 +615,13 @@ export const CLOUD_PROVIDERS: Record<
     hasFreeTier: false,
     websiteUrl: "https://console.aws.amazon.com/bedrock/",
     gatewayPrefix: "bedrock/",
+    secondary: true,
+  },
+  novita: {
+    displayName: "Novita AI",
+    hasFreeTier: false,
+    websiteUrl: "https://novita.ai/",
+    gatewayPrefix: "novita/",
     secondary: true,
   },
 };

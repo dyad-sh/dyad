@@ -86,6 +86,12 @@ export const createChatCompletionHandler =
 
     let messageContent = CANNED_MESSAGE;
 
+    // Route plan comment messages to generate dump for testing
+    if (userTextContent.includes("I have the following comments on the plan")) {
+      messageContent =
+        "I'll update the plan based on your comments.\n\n" + generateDump(req);
+    }
+
     // Handle compaction summary requests (from generateText() in compaction_handler)
     if (
       userTextContent.startsWith("Please summarize the following conversation:")

@@ -181,5 +181,23 @@ testSkipIfWindows(
     await expect(
       po.page.getByText("Add more detail for step two."),
     ).toBeVisible();
+
+    // Close the comment dialog and send the annotations
+    await po.page.keyboard.press("Escape");
+    await expect(commentDialog).toBeHidden();
+
+    await commentsButton.click();
+    await expect(po.page.getByText("Comments (1)")).toBeVisible({
+      timeout: Timeout.MEDIUM,
+    });
+    await po.page.getByRole("button", { name: "Send Comments" }).click();
+
+    // Wait for annotations to be cleared (indicates send succeeded)
+    await expect(po.previewPanel.getPlanAnnotationMarks()).toHaveCount(0, {
+      timeout: Timeout.MEDIUM,
+    });
+
+    // Verify the request sent to the server contains the correctly formatted comments
+    await po.snapshotServerDump("last-message");
   },
 );

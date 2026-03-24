@@ -217,7 +217,7 @@ interface AgentContext {
 
 **Dependencies for generated React/Vite apps:**
 
-- `@neondatabase/neon-js` (Neon Auth client SDK + Data API client — provides `auth`, `auth/react/ui`, `query`)
+- `@neondatabase/neon-js` (unified client SDK — provides `createClient` for Data API queries, `BetterAuthReactAdapter` for auth, and `auth/react/ui` for pre-built components)
 - `drizzle-orm` (ORM for type-safe queries, optional)
 
 ### API Changes
@@ -250,7 +250,7 @@ Neon's `DATABASE_URL` connection string gives full read/write database access. T
 
 **React/Vite apps: Data API + RLS replaces server-side access**
 
-React/Vite apps use the Neon Data API — a managed REST proxy that validates JWT tokens from Neon Auth and enforces PostgreSQL Row-Level Security (RLS). This is architecturally similar to Supabase's client SDK model. The system prompt MUST:
+React/Vite apps use the Neon Data API — a managed REST proxy that validates JWT tokens from Neon Auth and enforces PostgreSQL Row-Level Security (RLS). The system prompt MUST:
 
 1. **NEVER** use `DATABASE_URL` or `@neondatabase/serverless` in React/Vite apps
 2. **ALWAYS** use the Data API via `@neondatabase/neon-js` for database queries
@@ -259,7 +259,7 @@ React/Vite apps use the Neon Data API — a managed REST proxy that validates JW
 
 This must be the FIRST rule in `neon_prompt.ts`, with the same prominence as RLS rules in `supabase_prompt.ts`.
 
-## Example Code: Full Stack Integration
+## Example Code: Next.js Full Stack Integration
 
 ### Layer 1: Database Client (`src/db/index.ts`)
 
@@ -441,7 +441,7 @@ export function TodoList() {
 }
 ```
 
-### Environment Variables (`.env.local`)
+### Next.js Environment Variables (`.env.local`)
 
 ```bash
 # Neon Database (injected by Dyad)
@@ -450,6 +450,206 @@ DATABASE_URL=postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/dbname?sslmod
 # Neon Auth (managed by Neon, values from Neon Console > Auth settings)
 NEON_AUTH_BASE_URL=https://auth.neon.tech/...   # Auth service endpoint
 NEON_AUTH_COOKIE_SECRET=your-cookie-secret-here  # Secret for session cookies
+```
+
+---
+
+## Example Code: React/Vite Full Stack Integration
+
+### Neon Client (`src/lib/auth.ts`)
+
+A single client handles both auth and Data API queries. The `BetterAuthReactAdapter` integrates Neon Auth so JWT tokens are automatically included in Data API requests.
+
+```typescript
+import { createClient } from "@neondatabase/neon-js";
+import { BetterAuthReactAdapter } from "@neondatabase/neon-js/auth/react/adapters";
+import type { Database } from "../../types/database";
+
+export const client = createClient<Database>({
+  auth: {
+    adapter: BetterAuthReactAdapter(),
+    url: import.meta.env.VITE_NEON_AUTH_URL,
+  },
+  dataApi: {
+    url: import.meta.env.VITE_NEON_DATA_API_URL,
+  },
+});
+```
+
+### RLS Policies (agent-generated SQL)
+
+```sql
+-- Enable RLS on the todos table
+ALTER TABLE todos ENABLE ROW LEVEL SECURITY;
+
+-- Users can only read their own todos
+CREATE POLICY "crud-authenticated-policy-select"
+  ON todos AS PERMISSIVE FOR SELECT TO "authenticated"
+  USING ((select auth.user_id() = todos.user_id));
+
+-- Users can only insert their own todos
+CREATE POLICY "crud-authenticated-policy-insert"
+  ON todos AS PERMISSIVE FOR INSERT TO "authenticated"
+  WITH CHECK ((select auth.user_id() = todos.user_id));
+
+-- Users can only update their own todos
+CREATE POLICY "crud-authenticated-policy-update"
+  ON todos AS PERMISSIVE FOR UPDATE TO "authenticated"
+  USING ((select auth.user_id() = todos.user_id));
+
+-- Users can only delete their own todos
+CREATE POLICY "crud-authenticated-policy-delete"
+  ON todos AS PERMISSIVE FOR DELETE TO "authenticated"
+  USING ((select auth.user_id() = todos.user_id));
+```
+
+### Data API Queries (`src/components/TodoList.tsx`)
+
+Uses the single `client` for both auth checks and Data API queries. Insert operations chain `.select().single()` to return the created record directly instead of re-fetching the full list.
+
+```tsx
+import { useState, useEffect } from "react";
+import { client } from "@/lib/auth";
+
+interface Todo {
+  id: string;
+  title: string;
+  completed: boolean;
+}
+
+export function TodoList() {
+  const [todos, setTodos] = useState<Todo[]>([]);
+  const [newTitle, setNewTitle] = useState("");
+
+  useEffect(() => {
+    async function loadTodos() {
+      const { data } = await client
+        .from("todos")
+        .select("id, title, completed, created_at")
+        .order("created_at", { ascending: false });
+      if (data) setTodos(data);
+    }
+    loadTodos();
+  }, []);
+
+  async function addTodo(e: React.FormEvent) {
+    e.preventDefault();
+    const { data, error } = await client
+      .from("todos")
+      .insert({ title: newTitle })
+      .select("id, title, completed, created_at")
+      .single();
+
+    if (!error && data) {
+      setTodos([data, ...todos]);
+      setNewTitle("");
+    }
+  }
+
+  async function deleteTodo(id: string) {
+    const { error } = await client.from("todos").delete().eq("id", id);
+    if (!error) {
+      setTodos(todos.filter((t) => t.id !== id));
+    }
+  }
+
+  return (
+    <div>
+      <form onSubmit={addTodo}>
+        <input
+          value={newTitle}
+          onChange={(e) => setNewTitle(e.target.value)}
+          placeholder="Add a todo..."
+        />
+        <button type="submit">Add</button>
+      </form>
+      <ul>
+        {todos.map((todo) => (
+          <li key={todo.id}>
+            {todo.title} {todo.completed ? "(done)" : ""}
+            <button onClick={() => deleteTodo(todo.id)}>Delete</button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+```
+
+### Auth Page (`src/components/AuthPage.tsx`)
+
+Auth is handled via the `BetterAuthReactAdapter` configured in the client. The adapter provides hooks and methods for sign-in/sign-up flows. Since auth is integrated into the single `client`, there's no separate auth client to import.
+
+```tsx
+import { useState } from "react";
+import { client } from "@/lib/auth";
+
+export function AuthPage({ onAuth }: { onAuth: () => void }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isSignUp, setIsSignUp] = useState(true);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const result = isSignUp
+      ? await client.auth.signUp.email({
+          name: email.split("@")[0] || "User",
+          email,
+          password,
+        })
+      : await client.auth.signIn.email({ email, password });
+
+    if (result.error) {
+      alert(result.error.message);
+      return;
+    }
+    onAuth();
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <h1>{isSignUp ? "Sign Up" : "Sign In"}</h1>
+      <input
+        type="email"
+        placeholder="Email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        required
+      />
+      <input
+        type="password"
+        placeholder="Password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        required
+      />
+      <button type="submit">{isSignUp ? "Sign Up" : "Sign In"}</button>
+      <p>
+        <a
+          href="#"
+          onClick={(e) => {
+            e.preventDefault();
+            setIsSignUp(!isSignUp);
+          }}
+        >
+          {isSignUp
+            ? "Already have an account? Sign in"
+            : "Need an account? Sign up"}
+        </a>
+      </p>
+    </form>
+  );
+}
+```
+
+### React/Vite Environment Variables (`.env`)
+
+```bash
+# Neon Auth (managed by Neon, values from Neon Console > Auth settings)
+VITE_NEON_AUTH_URL=https://ep-xxx.neonauth.us-east-2.aws.neon.build/neondb/auth
+
+# Neon Data API (enabled in Neon Console > Data API)
+VITE_NEON_DATA_API_URL=https://ep-xxx.data.us-east-2.aws.neon.build
 ```
 
 ### Neon Client Code Generated by Agent (for Dyad context)
@@ -474,14 +674,28 @@ NEON_AUTH_COOKIE_SECRET=your-cookie-secret-here  # Secret for session cookies
 
 ```typescript
 // getNeonClientCode() for React/Vite:
-// "To query the Neon database, use the Data API via @neondatabase/neon-js:
+// "To query the Neon database, use the Data API via @neondatabase/neon-js
+// with BetterAuthReactAdapter for integrated auth:
 //
-// import { neon } from '@neondatabase/neon-js';
+// import { createClient } from '@neondatabase/neon-js';
+// import { BetterAuthReactAdapter } from '@neondatabase/neon-js/auth/react/adapters';
+// import type { Database } from '../../types/database';
 //
-// const client = neon({ projectId: 'your-project-id' });
-// const todos = await client.query('SELECT * FROM todos WHERE user_id = $1', [userId]);
+// export const client = createClient<Database>({
+//   auth: {
+//     adapter: BetterAuthReactAdapter(),
+//     url: import.meta.env.VITE_NEON_AUTH_URL,
+//   },
+//   dataApi: { url: import.meta.env.VITE_NEON_DATA_API_URL },
+// });
 //
-// IMPORTANT: Always configure RLS policies on your tables.
+// // Query example (PostgREST-compatible):
+// const { data } = await client.from('todos').select('*').eq('completed', false);
+//
+// // Insert with select-back:
+// const { data } = await client.from('todos').insert({ title }).select('*').single();
+//
+// IMPORTANT: Always configure RLS policies (TO "authenticated") on your tables.
 // NEVER use DATABASE_URL or @neondatabase/serverless in React/Vite apps.
 // The Data API validates JWT tokens from Neon Auth and enforces RLS automatically."
 ```
@@ -506,7 +720,7 @@ NEON_AUTH_COOKIE_SECRET=your-cookie-secret-here  # Secret for session cookies
   - `executeNeonSql()` — uses `@neondatabase/serverless` (extract from `neon_timestamp_utils.ts`)
   - `getNeonProjectInfo()` — project ID, branches, table names via `information_schema`
   - `getNeonTableSchema()` — columns, constraints, indexes via `information_schema`
-  - `getNeonClientCode()` — generates Drizzle + Neon client boilerplate
+  - `getNeonClientCode(frameworkType)` — generates framework-specific boilerplate: Drizzle + `@neondatabase/serverless` for Next.js, `createClient` + Data API for React/Vite
   - `getNeonContext()` — full context for agent prompt
 - [ ] Create `get_neon_project_info.ts` agent tool (mirrors `get_supabase_project_info.ts`)
 - [ ] Create `get_neon_table_schema.ts` agent tool (mirrors `get_supabase_table_schema.ts`)
@@ -518,15 +732,11 @@ NEON_AUTH_COOKIE_SECRET=your-cookie-secret-here  # Secret for session cookies
 
 ### Phase 3: System Prompt + Branch UI (Medium effort)
 
-- [ ] Write `src/prompts/neon_prompt.ts`:
-  - Connection security rules per framework (DATABASE_URL for Next.js server-side only; Data API + RLS for React/Vite)
-  - Drizzle ORM setup pattern (Next.js)
-  - Data API query patterns (React/Vite)
-  - Next.js API route patterns
-  - Auth recommendation (Neon Auth — `@neondatabase/auth` server SDK + `@neondatabase/neon-js/auth` client SDK)
-  - RLS policy guidance (required for React/Vite, recommended for Next.js)
-  - Migration patterns
-  - Empty database first-run guidance
+- [ ] Write `src/prompts/neon_prompt.ts` with framework-conditional sections:
+  - **Shared**: Auth recommendation (Neon Auth), RLS policy templates, empty database first-run guidance, migration patterns
+  - **Next.js**: Connection security rules (NEVER client-side `DATABASE_URL`), Drizzle ORM setup, API route / Server Action patterns, `@neondatabase/auth` server SDK + `@neondatabase/neon-js` client SDK
+  - **React/Vite**: Data API setup (`createClient<Database>` with `BetterAuthReactAdapter` + auth/dataApi URLs), PostgREST-style query patterns (`.from().select().eq()`, `.insert().select().single()`), RLS policies with `TO "authenticated"` role required on all tables, `@neondatabase/neon-js` client SDK only (no server SDK), NEVER use `DATABASE_URL` or `@neondatabase/serverless`
+- [ ] Inject the correct prompt section based on `frameworkType` from `AgentContext`
 - [ ] Write `NEON_NOT_AVAILABLE_SYSTEM_PROMPT` (parallel to Supabase's)
 - [ ] Integrate Neon prompt into `chat_stream_handlers.ts` (conditional on `neonProjectId`)
 - [ ] Build branch selector UI in integration card with color-coded badges
@@ -558,14 +768,16 @@ NEON_AUTH_COOKIE_SECRET=your-cookie-secret-here  # Secret for session cookies
 
 ## Risks & Mitigations
 
-| Risk                                           | Likelihood | Impact | Mitigation                                                                                                        |
-| ---------------------------------------------- | ---------- | ------ | ----------------------------------------------------------------------------------------------------------------- |
-| Connection string exposed in client code       | Medium     | High   | Next.js: system prompt rule #1 NEVER client-side. React/Vite: uses Data API instead, no connection string needed. |
-| AI generates insecure homegrown auth           | Medium     | High   | Prompt explicitly forbids JWT+bcrypt, recommends Neon Auth (Better Auth) only. Auth data lives in Neon DB.        |
-| Neon free tier quota exhaustion                | Low        | Medium | Document in system prompt. Consider surfacing usage in `get_neon_project_info`.                                   |
-| Branch switching causes data confusion         | Low        | Medium | Toast notification on branch change. Agent prompt mentions active branch.                                         |
-| Portal template users lose existing connection | Low        | High   | Detect existing `neonProjectId` in new flow, show connected state.                                                |
-| On-demand connection URI fetch latency         | Medium     | Low    | Acceptable for v1 (~200-500ms). Cache in v2 if needed.                                                            |
+| Risk                                           | Likelihood | Impact | Mitigation                                                                                                                                                                                 |
+| ---------------------------------------------- | ---------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Connection string exposed in client code       | Medium     | High   | Next.js: system prompt rule #1 NEVER client-side. React/Vite: uses Data API instead, no connection string needed.                                                                          |
+| AI generates insecure homegrown auth           | Medium     | High   | Prompt explicitly forbids JWT+bcrypt, recommends Neon Auth (Better Auth) only. Auth data lives in Neon DB.                                                                                 |
+| Neon free tier quota exhaustion                | Low        | Medium | Document in system prompt. Consider surfacing usage in `get_neon_project_info`.                                                                                                            |
+| Branch switching causes data confusion         | Low        | Medium | Toast notification on branch change. Agent prompt mentions active branch.                                                                                                                  |
+| Portal template users lose existing connection | Low        | High   | Detect existing `neonProjectId` in new flow, show connected state.                                                                                                                         |
+| On-demand connection URI fetch latency         | Medium     | Low    | Acceptable for v1 (~200-500ms). Cache in v2 if needed.                                                                                                                                     |
+| Missing RLS policies in React/Vite apps        | Medium     | High   | Data API exposes full table without RLS. System prompt must generate RLS policies for every table. Agent should run `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` as part of table creation. |
+| Data API not enabled on Neon project           | Medium     | Medium | Agent checks Data API status via `get_neon_project_info`. System prompt guides user to enable it in Neon Console.                                                                          |
 
 ## Open Questions
 
@@ -577,15 +789,15 @@ NEON_AUTH_COOKIE_SECRET=your-cookie-secret-here  # Secret for session cookies
 
 ## Decision Log
 
-| Decision                                 | Reasoning                                                                                                                                                                                                                         | Alternatives Considered                                                                              |
-| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Next.js and React/Vite in v1             | Next.js uses DATABASE_URL server-side. React/Vite uses Neon Data API (managed REST proxy with JWT validation + RLS), eliminating the need for a server layer or exposed credentials — similar to how Supabase's client SDK works. | Next.js only (unnecessarily restrictive now that Data API exists)                                    |
-| Recommend Neon Auth                      | Neon now provides built-in auth via Better Auth. Auth data stored in the Neon database, branches with database. No external auth providers needed.                                                                                | NextAuth.js (separate config + secrets); Clerk (external SaaS); homegrown JWT+bcrypt (security risk) |
-| Full branch selector in v1               | Branching is Neon's key differentiator over Supabase. Color-coded badges provide clear visual hierarchy.                                                                                                                          | Default to dev only (simpler); Read-only display (compromise)                                        |
-| Mutually exclusive providers per app     | Agent prompt can't cleanly handle both Supabase and Neon contexts. Avoids ambiguity in SQL execution target.                                                                                                                      | Allow both (complex, no clear user value)                                                            |
-| SQL execution in Dyad (management plane) | Matches Supabase pattern. Agent needs to create tables and seed data during build. Credentials already stored.                                                                                                                    | Only in generated app (limits agent capabilities)                                                    |
-| Fetch connection URI on-demand           | Consistent with existing `neon_timestamp_utils.ts` pattern. Avoids credential rotation complexity.                                                                                                                                | Cache (faster but more complex)                                                                      |
-| `@neondatabase/serverless` for SQL       | Already a dependency. HTTP-based, works in Electron. Lower latency than Management API for queries.                                                                                                                               | Management API SQL endpoint (higher latency, fewer features)                                         |
+| Decision                                 | Reasoning                                                                                                                                                                            | Alternatives Considered                                                                              |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| Next.js and React/Vite in v1             | Next.js uses DATABASE_URL server-side. React/Vite uses Neon Data API (managed REST proxy with JWT validation + RLS), eliminating the need for a server layer or exposed credentials. | Next.js only (unnecessarily restrictive now that Data API exists)                                    |
+| Recommend Neon Auth                      | Neon now provides built-in auth via Better Auth. Auth data stored in the Neon database, branches with database. No external auth providers needed.                                   | NextAuth.js (separate config + secrets); Clerk (external SaaS); homegrown JWT+bcrypt (security risk) |
+| Full branch selector in v1               | Branching is Neon's key differentiator over Supabase. Color-coded badges provide clear visual hierarchy.                                                                             | Default to dev only (simpler); Read-only display (compromise)                                        |
+| Mutually exclusive providers per app     | Agent prompt can't cleanly handle both Supabase and Neon contexts. Avoids ambiguity in SQL execution target.                                                                         | Allow both (complex, no clear user value)                                                            |
+| SQL execution in Dyad (management plane) | Matches Supabase pattern. Agent needs to create tables and seed data during build. Credentials already stored.                                                                       | Only in generated app (limits agent capabilities)                                                    |
+| Fetch connection URI on-demand           | Consistent with existing `neon_timestamp_utils.ts` pattern. Avoids credential rotation complexity.                                                                                   | Cache (faster but more complex)                                                                      |
+| `@neondatabase/serverless` for SQL       | Already a dependency. HTTP-based, works in Electron. Lower latency than Management API for queries.                                                                                  | Management API SQL endpoint (higher latency, fewer features)                                         |
 
 ---
 

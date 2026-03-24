@@ -112,9 +112,16 @@ export function usePlanEvents() {
         // Read latest values from refs to avoid stale closure
         const currentState = planStateRef.current;
         const planData = currentState.plansByChatId.get(payload.chatId);
+        const currentChatSettings = await ipc.chat.getChatSettings(
+          payload.chatId,
+        );
 
-        // Switch chat mode to local-agent for implementation (only if currently in plan mode)
-        if (settingsRef.current?.selectedChatMode === "plan") {
+        // Preserve the previous "accept plan" behavior for globally-selected plan mode,
+        // but keep per-chat overrides scoped to the implementation chat.
+        if (
+          currentChatSettings.chatMode == null &&
+          settingsRef.current?.selectedChatMode === "plan"
+        ) {
           updateSettings({ selectedChatMode: "local-agent" });
         }
 
@@ -147,6 +154,13 @@ export function usePlanEvents() {
 
         try {
           const newChatId = await ipc.chat.createChat(selectedAppIdRef.current);
+
+          if (currentChatSettings.chatMode === "plan") {
+            await ipc.chat.updateChatSettings({
+              chatId: newChatId,
+              chatMode: "local-agent",
+            });
+          }
 
           // Navigate to the new chat
           setSelectedChatId(newChatId);

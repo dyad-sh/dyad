@@ -1673,10 +1673,19 @@ ${problemReport.problems
           .update(messages)
           .set({ content: fullResponse })
           .where(eq(messages.id, placeholderAssistantMessage.id));
-        // Use per-chat aware settings (already defined earlier in this function)
+        const latestGlobalSettings = readSettings();
+        const latestSettings = {
+          ...latestGlobalSettings,
+          selectedChatMode: chat.chatMode
+            ? migrateStoredChatMode(chat.chatMode)
+            : latestGlobalSettings.selectedChatMode,
+          selectedModel:
+            chat.selectedModel ?? latestGlobalSettings.selectedModel,
+        };
+
         if (
-          settings.autoApproveChanges &&
-          settings.selectedChatMode !== "ask"
+          latestSettings.autoApproveChanges &&
+          latestSettings.selectedChatMode !== "ask"
         ) {
           const status = await processFullResponseActions(
             fullResponse,

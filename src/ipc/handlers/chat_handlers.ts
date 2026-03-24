@@ -186,7 +186,7 @@ export function registerChatHandlers() {
     });
 
     if (!chat) {
-      throw new Error("Chat not found");
+      throw new DyadError("Chat not found", DyadErrorKind.NotFound);
     }
 
     return {
@@ -199,6 +199,16 @@ export function registerChatHandlers() {
 
   createTypedHandler(chatContracts.updateChatSettings, async (_, params) => {
     const { chatId, chatMode, selectedModel } = params;
+    const chat = await db.query.chats.findFirst({
+      where: eq(chats.id, chatId),
+      columns: {
+        id: true,
+      },
+    });
+
+    if (!chat) {
+      throw new DyadError("Chat not found", DyadErrorKind.NotFound);
+    }
 
     // Build the update object dynamically
     const updates: Record<string, unknown> = {};
@@ -208,6 +218,10 @@ export function registerChatHandlers() {
     }
     if (selectedModel !== undefined) {
       updates.selectedModel = selectedModel;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return;
     }
 
     await db.update(chats).set(updates).where(eq(chats.id, chatId));

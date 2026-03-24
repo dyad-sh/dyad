@@ -4,6 +4,8 @@ import { ipc } from "@/ipc/types";
 import type { ChatMode, LargeLanguageModel } from "@/lib/schemas";
 import { useSettings } from "./useSettings";
 
+const pendingChatSettingsUpdates = new Map<number, Promise<unknown>>();
+
 /**
  * Hook to get and update per-chat settings (mode and model).
  * Falls back to global user settings if no per-chat settings are set.
@@ -36,6 +38,32 @@ export function useChatSettings(chatId: number | null) {
         ...params,
       });
     },
+    onMutate: async (params) => {
+      await queryClient.cancelQueries({
+        queryKey: queryKeys.chats.settings({ chatId }),
+      });
+
+      const previousSettings = queryClient.getQueryData<{
+        chatMode: ChatMode | null;
+        selectedModel: LargeLanguageModel | null;
+      }>(queryKeys.chats.settings({ chatId }));
+
+      queryClient.setQueryData(queryKeys.chats.settings({ chatId }), {
+        chatMode: params.chatMode ?? previousSettings?.chatMode ?? null,
+        selectedModel:
+          params.selectedModel ?? previousSettings?.selectedModel ?? null,
+      });
+
+      return { previousSettings };
+    },
+    onError: (_error, _params, context) => {
+      if (context?.previousSettings !== undefined) {
+        queryClient.setQueryData(
+          queryKeys.chats.settings({ chatId }),
+          context.previousSettings,
+        );
+      }
+    },
     onSuccess: () => {
       // Invalidate the chat settings query to refetch
       queryClient.invalidateQueries({
@@ -47,6 +75,27 @@ export function useChatSettings(chatId: number | null) {
       });
     },
   });
+
+  const startChatSettingsUpdate = (params: {
+    chatMode?: ChatMode;
+    selectedModel?: LargeLanguageModel;
+  }) => {
+    if (chatId === null) {
+      return Promise.reject(
+        new Error("Cannot update settings without a chat ID"),
+      );
+    }
+
+    const updatePromise = updateChatSettingsMutation.mutateAsync(params);
+    pendingChatSettingsUpdates.set(chatId, updatePromise);
+    void updatePromise.finally(() => {
+      if (pendingChatSettingsUpdates.get(chatId) === updatePromise) {
+        pendingChatSettingsUpdates.delete(chatId);
+      }
+    });
+
+    return updatePromise;
+  };
 
   // Effective settings: per-chat if set, otherwise fall back to global
   const effectiveChatMode: ChatMode =
@@ -66,19 +115,25 @@ export function useChatSettings(chatId: number | null) {
     effectiveChatMode,
     effectiveModel,
 
-    // Check if using global settings (no per-chat override)
+    // Treat both null and undefined as "no per-chat override".
     isUsingGlobalSettings: {
-      chatMode: chatSettings?.chatMode === null,
-      model: chatSettings?.selectedModel === null,
+      chatMode: chatSettings?.chatMode == null,
+      model: chatSettings?.selectedModel == null,
     },
 
     // Update functions
     updateChatMode: (chatMode: ChatMode) => {
-      updateChatSettingsMutation.mutate({ chatMode });
+      return startChatSettingsUpdate({ chatMode });
     },
     updateSelectedModel: (selectedModel: LargeLanguageModel) => {
-      updateChatSettingsMutation.mutate({ selectedModel });
+      return startChatSettingsUpdate({ selectedModel });
     },
+    waitForPendingUpdate:
+      chatId === null
+        ? async () => {}
+        : async () => {
+            await (pendingChatSettingsUpdates.get(chatId) ?? Promise.resolve());
+          },
     isUpdating: updateChatSettingsMutation.isPending,
   };
 }

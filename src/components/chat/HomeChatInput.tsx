@@ -47,7 +47,7 @@ export function HomeChatInput({
   const posthog = usePostHog();
   const [inputValue, setInputValue] = useAtom(homeChatInputValueAtom);
   const [selectedApp, setSelectedApp] = useAtom(homeSelectedAppAtom);
-  const { settings } = useSettings();
+  const { settings, waitForPendingUpdate } = useSettings();
   const { isStreaming } = useStreamChat({
     hasChatId: false,
   }); // eslint-disable-line @typescript-eslint/no-unused-vars
@@ -120,6 +120,8 @@ export function HomeChatInput({
     ) {
       return;
     }
+
+    await waitForPendingUpdate();
 
     if (isRecording) {
       await toggleRecording();

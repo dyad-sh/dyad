@@ -18,7 +18,7 @@ import { previewModeAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { usePlan } from "@/hooks/usePlan";
-import { useSettings } from "@/hooks/useSettings";
+import { useChatSettings } from "@/hooks/useChatSettings";
 import { SelectionCommentButton } from "./plan/SelectionCommentButton";
 import { CommentsFloatingButton } from "./plan/CommentsFloatingButton";
 import { CommentPopover } from "./plan/CommentPopover";
@@ -34,7 +34,7 @@ export const PlanPanel: React.FC = () => {
   const setPreviewMode = useSetAtom(previewModeAtom);
   const { streamMessage, isStreaming } = useStreamChat();
   const { savedPlan } = usePlan();
-  const { settings } = useSettings();
+  const { effectiveChatMode } = useChatSettings(chatId ?? null);
 
   const annotations = useAtomValue(planAnnotationsAtom);
   const planContentRef = useRef<HTMLDivElement>(null);
@@ -154,7 +154,7 @@ export const PlanPanel: React.FC = () => {
 
   const handleAccept = () => {
     if (!chatId) return;
-    if (settings?.selectedChatMode !== "plan") return;
+    if (effectiveChatMode !== "plan") return;
     if (isSubmitting) return;
     setIsSubmitting(true);
 

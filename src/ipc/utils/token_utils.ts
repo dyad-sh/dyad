@@ -18,9 +18,9 @@ export const estimateMessagesTokens = (messages: Message[]): number => {
 
 const DEFAULT_CONTEXT_WINDOW = 128_000;
 
-export async function getContextWindow() {
-  const settings = readSettings();
-  const modelOption = await findLanguageModel(settings.selectedModel);
+export async function getContextWindow(model?: LargeLanguageModel) {
+  const selectedModel = model ?? readSettings().selectedModel;
+  const modelOption = await findLanguageModel(selectedModel);
   return modelOption?.contextWindow || DEFAULT_CONTEXT_WINDOW;
 }
 

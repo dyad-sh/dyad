@@ -11,6 +11,7 @@ import { queryKeys } from "@/lib/queryKeys";
 const TELEMETRY_CONSENT_KEY = "dyadTelemetryConsent";
 const TELEMETRY_USER_ID_KEY = "dyadTelemetryUserId";
 const DYAD_PRO_STATUS_KEY = "dyadProStatus";
+let pendingSettingsUpdate: Promise<unknown> | null = null;
 
 export function isTelemetryOptedIn() {
   return window.localStorage.getItem(TELEMETRY_CONSENT_KEY) === "opted_in";
@@ -85,7 +86,14 @@ export function useSettings() {
 
   const updateSettings = useCallback(
     async (newSettings: Partial<UserSettings>) => {
-      return updateSettingsMutation.mutateAsync(newSettings);
+      const updatePromise = updateSettingsMutation.mutateAsync(newSettings);
+      pendingSettingsUpdate = updatePromise;
+      void updatePromise.finally(() => {
+        if (pendingSettingsUpdate === updatePromise) {
+          pendingSettingsUpdate = null;
+        }
+      });
+      return updatePromise;
     },
     [updateSettingsMutation],
   );
@@ -105,6 +113,9 @@ export function useSettings() {
     loading,
     error,
     updateSettings,
+    waitForPendingUpdate: async () => {
+      await (pendingSettingsUpdate ?? Promise.resolve());
+    },
     refreshSettings,
   };
 }

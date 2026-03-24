@@ -22,7 +22,7 @@ import { useRouterState } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { LocalAgentNewChatToast } from "./LocalAgentNewChatToast";
 import { useAtomValue } from "jotai";
-import { chatMessagesByIdAtom, selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 import { Hammer, Bot, MessageCircle, Lightbulb } from "lucide-react";
 
 function NewBadge() {
@@ -37,17 +37,19 @@ export function ChatModeSelector() {
   const { settings, updateSettings } = useSettings();
   const routerState = useRouterState();
   const isChatRoute = routerState.location.pathname === "/chat";
+  const rawRouteChatId = routerState.location.search.id;
+  const routeChatId =
+    isChatRoute && rawRouteChatId != null ? Number(rawRouteChatId) : null;
   const messagesById = useAtomValue(chatMessagesByIdAtom);
-  const selectedChatId = useAtomValue(selectedChatIdAtom);
-  const chatId = routerState.location.search.id as number | undefined;
-  const currentChatMessages = chatId ? (messagesById.get(chatId) ?? []) : [];
+  const currentChatMessages = routeChatId
+    ? (messagesById.get(routeChatId) ?? [])
+    : [];
 
-  // Use per-chat settings when a chat is selected
+  // Use per-chat settings only when the route is showing a chat.
   const { effectiveChatMode, updateChatMode: updatePerChatMode } =
-    useChatSettings(selectedChatId);
+    useChatSettings(routeChatId);
 
-  // Use per-chat mode if available, otherwise fall back to global
-  const selectedMode = selectedChatId
+  const selectedMode = routeChatId
     ? effectiveChatMode
     : settings?.selectedChatMode || "build";
   const isProEnabled = settings ? isDyadProEnabled(settings) : false;
@@ -58,7 +60,7 @@ export function ChatModeSelector() {
   const handleModeChange = (value: string) => {
     const newMode = value as ChatMode;
     // If a chat is selected, update per-chat settings; otherwise update global
-    if (selectedChatId) {
+    if (routeChatId) {
       updatePerChatMode(newMode);
     } else {
       updateSettings({ selectedChatMode: newMode });

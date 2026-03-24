@@ -59,6 +59,7 @@ export function AppList({ show }: { show?: boolean }) {
   };
 
   const handleNewApp = () => {
+    setSelectedChatId(null);
     navigate({ to: "/" });
     // We'll eventually need a create app workflow
   };

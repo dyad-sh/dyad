@@ -25,7 +25,7 @@ import { validateChatContext } from "../utils/context_paths_utils";
 import { readSettings } from "@/main/settings";
 import { extractMentionedAppsCodebases } from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
-import { isTurboEditsV2Enabled } from "@/lib/schemas";
+import { isTurboEditsV2Enabled, migrateStoredChatMode } from "@/lib/schemas";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("token_count_handlers");
@@ -62,7 +62,14 @@ export function registerTokenCountHandlers() {
       // Count input tokens
       const inputTokens = estimateTokens(req.input);
 
-      const settings = readSettings();
+      const globalSettings = readSettings();
+      const settings = {
+        ...globalSettings,
+        selectedChatMode: chat.chatMode
+          ? migrateStoredChatMode(chat.chatMode)
+          : globalSettings.selectedChatMode,
+        selectedModel: chat.selectedModel ?? globalSettings.selectedModel,
+      };
 
       // Parse app mentions from the input
       const mentionedAppNames = parseAppMentions(req.input);
@@ -174,7 +181,7 @@ export function registerTokenCountHandlers() {
         mentionedAppsTokens,
         inputTokens,
         systemPromptTokens,
-        contextWindow: await getContextWindow(),
+        contextWindow: await getContextWindow(settings.selectedModel),
       };
     },
   );

@@ -26,20 +26,24 @@ import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 import { useTrialModelRestriction } from "@/hooks/useTrialModelRestriction";
-import { useAtomValue } from "jotai";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { useRouterState } from "@tanstack/react-router";
 
 export function ModelPicker() {
   const { settings, updateSettings } = useSettings();
   const queryClient = useQueryClient();
   const { isTrial } = useTrialModelRestriction();
-  const selectedChatId = useAtomValue(selectedChatIdAtom);
+  const routerState = useRouterState();
+  const rawRouteChatId = routerState.location.search.id;
+  const routeChatId =
+    routerState.location.pathname === "/chat" && rawRouteChatId != null
+      ? Number(rawRouteChatId)
+      : null;
   const { effectiveModel, updateSelectedModel: updatePerChatModel } =
-    useChatSettings(selectedChatId);
+    useChatSettings(routeChatId);
 
   const onModelSelect = (model: LargeLanguageModel) => {
     // If a chat is selected, update per-chat settings; otherwise update global
-    if (selectedChatId) {
+    if (routeChatId) {
       updatePerChatModel(model);
     } else {
       updateSettings({ selectedModel: model });
@@ -82,6 +86,12 @@ export function ModelPicker() {
       loadLMStudioModels();
     }
   }, [open, loadOllamaModels, loadLMStudioModels]);
+
+  if (!settings) {
+    return null;
+  }
+
+  const selectedModel = routeChatId ? effectiveModel : settings.selectedModel;
 
   // Get display name for the selected model
   const getModelDisplayName = () => {
@@ -148,14 +158,6 @@ export function ModelPicker() {
     !ollamaLoading && !ollamaError && ollamaModels.length > 0;
   const hasLMStudioModels =
     !lmStudioLoading && !lmStudioError && lmStudioModels.length > 0;
-
-  if (!settings) {
-    return null;
-  }
-  // Use per-chat model if available, otherwise fall back to global settings
-  const selectedModel = selectedChatId
-    ? effectiveModel
-    : settings.selectedModel;
   const modelDisplayName = getModelDisplayName();
   // Split providers into primary and secondary groups (excluding auto)
   const providerEntries =

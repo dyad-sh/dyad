@@ -3,10 +3,19 @@ import { useSettings } from "./useSettings";
 import { useShortcut } from "./useShortcut";
 import { usePostHog } from "posthog-js/react";
 import { ChatModeSchema } from "../lib/schemas";
+import { useRouterState } from "@tanstack/react-router";
+import { useChatSettings } from "./useChatSettings";
 
 export function useChatModeToggle() {
   const { settings, updateSettings } = useSettings();
   const posthog = usePostHog();
+  const routerState = useRouterState();
+  const rawRouteChatId = routerState.location.search.id;
+  const routeChatId =
+    routerState.location.pathname === "/chat" && rawRouteChatId != null
+      ? Number(rawRouteChatId)
+      : null;
+  const { effectiveChatMode, updateChatMode } = useChatSettings(routeChatId);
 
   // Detect if user is on mac
   const isMac = useIsMac();
@@ -22,21 +31,34 @@ export function useChatModeToggle() {
 
   // Function to toggle between chat modes
   const toggleChatMode = useCallback(() => {
-    if (!settings || !settings.selectedChatMode) return;
+    if (!settings) return;
 
-    const currentMode = settings.selectedChatMode;
+    const currentMode = routeChatId
+      ? effectiveChatMode
+      : (settings.selectedChatMode ?? "build");
     // Migration on read ensures currentMode is never "agent"
     const modes = ChatModeSchema.options;
     const currentIndex = modes.indexOf(currentMode);
     const newMode = modes[(currentIndex + 1) % modes.length];
 
-    updateSettings({ selectedChatMode: newMode });
+    if (routeChatId) {
+      updateChatMode(newMode);
+    } else {
+      updateSettings({ selectedChatMode: newMode });
+    }
     posthog.capture("chat:mode_toggle", {
       from: currentMode,
       to: newMode,
       trigger: "keyboard_shortcut",
     });
-  }, [settings, updateSettings, posthog]);
+  }, [
+    settings,
+    routeChatId,
+    effectiveChatMode,
+    updateChatMode,
+    updateSettings,
+    posthog,
+  ]);
 
   // Add keyboard shortcut with memoized modifiers
   useShortcut(

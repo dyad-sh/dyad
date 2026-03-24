@@ -22,7 +22,10 @@ testSkipIfWindows(
     expect(initialChatIdMatch).not.toBeNull();
     const initialChatId = initialChatIdMatch![1];
 
-    // Wait for plan panel to appear
+    // Open the plan preview from the inline plan card.
+    await po.page.getByRole("button", { name: "View Plan" }).click();
+
+    // Wait for plan panel to appear.
     const acceptButton = po.page.getByRole("button", { name: "Accept Plan" });
     await expect(acceptButton).toBeVisible({ timeout: Timeout.MEDIUM });
 

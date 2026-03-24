@@ -109,6 +109,19 @@ export class ChatActions {
         name: new RegExp(optionName),
       })
       .click();
+
+    const selectedModeText: Record<string, RegExp> = {
+      build: /Build/,
+      ask: /Ask/,
+      agent: /Agent/,
+      "local-agent": /Agent/,
+      "basic-agent": /Basic Agent/,
+      plan: /Plan/,
+    };
+    await expect(this.page.getByTestId("chat-mode-selector")).toContainText(
+      selectedModeText[mode],
+      { timeout: Timeout.MEDIUM },
+    );
   }
 
   async selectLocalAgentMode() {

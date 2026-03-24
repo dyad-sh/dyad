@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
 import type { ModelMessage } from "ai";
+import type { LargeLanguageModel } from "@/lib/schemas";
 
 export const AI_MESSAGES_SDK_VERSION = "ai@v6" as const;
 
@@ -79,11 +80,9 @@ export const chats = sqliteTable("chats", {
     enum: ["build", "ask", "agent", "local-agent", "plan"],
   }),
   // Per-chat settings: selected model (JSON with name, provider, customModelId)
-  selectedModel: text("selected_model", { mode: "json" }).$type<{
-    name: string;
-    provider: string;
-    customModelId?: number;
-  } | null>(),
+  selectedModel: text("selected_model", {
+    mode: "json",
+  }).$type<LargeLanguageModel | null>(),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),

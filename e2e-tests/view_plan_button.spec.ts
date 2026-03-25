@@ -21,11 +21,14 @@ test(
     // Collapse the preview panel to simulate the issue scenario
     await po.previewPanel.clickTogglePreviewPanel();
 
+    // Verify the preview panel is actually closed (plan content should be hidden)
+    const planContent = po.previewPanel.getPlanContent();
+    await expect(planContent).not.toBeVisible();
+
     // Click the "View Plan" button
     await viewPlanButton.click();
 
     // Assert that the plan content is visible (button opened the panel and switched to plan mode)
-    const planContent = po.previewPanel.getPlanContent();
     await expect(planContent).toBeVisible({ timeout: Timeout.MEDIUM });
   },
 );

@@ -1,7 +1,10 @@
 import { useState } from "react";
-import { useAtomValue, useSetAtom } from "jotai";
-import { X, ArrowUpRight, Loader2, Plus } from "lucide-react";
-import { chatImageGenerationJobsAtom } from "@/atoms/imageGenerationAtoms";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { X, ArrowUpRight, Loader2, Plus, AlertCircle } from "lucide-react";
+import {
+  chatImageGenerationJobsAtom,
+  dismissedImageGenerationJobIdsAtom,
+} from "@/atoms/imageGenerationAtoms";
 import { chatInputValueAtom } from "@/atoms/chatAtoms";
 import { useCancelImageGeneration } from "@/hooks/useGenerateImage";
 import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
@@ -18,17 +21,27 @@ export function ChatImageGenerationStrip({
   const jobs = useAtomValue(chatImageGenerationJobsAtom);
   const setChatInput = useSetAtom(chatInputValueAtom);
   const cancelImageGeneration = useCancelImageGeneration();
-  const [dismissedJobIds, setDismissedJobIds] = useState<Set<string>>(
-    new Set(),
+  const [dismissedJobIds, setDismissedJobIds] = useAtom(
+    dismissedImageGenerationJobIdsAtom,
   );
   const [lightboxJob, setLightboxJob] = useState<ImageGenerationJob | null>(
     null,
   );
 
+  // Prune stale dismissed IDs that no longer correspond to active jobs
+  const validJobIds = new Set(jobs.map((j) => j.id));
+  if ([...dismissedJobIds].some((id) => !validJobIds.has(id))) {
+    setDismissedJobIds(
+      new Set([...dismissedJobIds].filter((id) => validJobIds.has(id))),
+    );
+  }
+
   const visibleJobs = jobs.filter(
     (job) =>
       !dismissedJobIds.has(job.id) &&
-      (job.status === "pending" || job.status === "success"),
+      (job.status === "pending" ||
+        job.status === "success" ||
+        job.status === "error"),
   );
 
   if (visibleJobs.length === 0) return null;
@@ -40,16 +53,16 @@ export function ChatImageGenerationStrip({
     setChatInput((prev: string) =>
       prev.trim() ? `${prev} ${mention} ` : `${mention} `,
     );
-    setDismissedJobIds((prev) => new Set(prev).add(job.id));
+    setDismissedJobIds((prev: Set<string>) => new Set(prev).add(job.id));
   };
 
   const handleDismiss = (jobId: string) => {
-    setDismissedJobIds((prev) => new Set(prev).add(jobId));
+    setDismissedJobIds((prev: Set<string>) => new Set(prev).add(jobId));
   };
 
   const handleCancel = (jobId: string) => {
-    cancelImageGeneration(jobId);
-    setDismissedJobIds((prev) => new Set(prev).add(jobId));
+    void cancelImageGeneration(jobId);
+    setDismissedJobIds((prev: Set<string>) => new Set(prev).add(jobId));
   };
 
   return (
@@ -86,6 +99,24 @@ export function ChatImageGenerationStrip({
                   <X size={12} />
                 </button>
               </>
+            ) : job.status === "error" ? (
+              <>
+                <div className="w-12 h-12 rounded-md bg-destructive/10 flex items-center justify-center shrink-0">
+                  <AlertCircle size={16} className="text-destructive" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <span className="text-destructive truncate block max-w-[120px]">
+                    {job.error ?? "Generation failed"}
+                  </span>
+                </div>
+                <button
+                  onClick={() => handleDismiss(job.id)}
+                  className="hover:bg-muted-foreground/20 rounded-full p-0.5 shrink-0"
+                  aria-label="Dismiss"
+                >
+                  <X size={12} />
+                </button>
+              </>
             ) : (
               <>
                 {job.result && (
@@ -104,14 +135,16 @@ export function ChatImageGenerationStrip({
                     {job.result?.fileName ?? "Generated image"}
                   </span>
                 </div>
-                <button
-                  onClick={() => handleAddToChat(job)}
-                  className="flex items-center gap-0.5 text-primary hover:text-primary/80 transition-colors shrink-0 cursor-pointer"
-                  aria-label="Add to chat"
-                >
-                  <span>Add to chat</span>
-                  <ArrowUpRight size={12} />
-                </button>
+                {job.result && (
+                  <button
+                    onClick={() => handleAddToChat(job)}
+                    className="flex items-center gap-0.5 text-primary hover:text-primary/80 transition-colors shrink-0 cursor-pointer"
+                    aria-label="Add to chat"
+                  >
+                    <span>Add to chat</span>
+                    <ArrowUpRight size={12} />
+                  </button>
+                )}
                 <button
                   onClick={() => handleDismiss(job.id)}
                   className="hover:bg-muted-foreground/20 rounded-full p-0.5 shrink-0"
@@ -127,6 +160,7 @@ export function ChatImageGenerationStrip({
           onClick={onGenerateImage}
           className="group flex items-center justify-center w-12 h-12 shrink-0 cursor-pointer"
           aria-label="Generate another image"
+          title="Generate another image"
         >
           <Plus
             size={18}

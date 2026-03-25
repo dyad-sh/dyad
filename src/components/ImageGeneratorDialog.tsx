@@ -78,12 +78,13 @@ export function ImageGeneratorDialog({
   const { userBudget, isLoadingUserBudget: isBudgetLoading } =
     useUserBudgetInfo();
 
-  // Sync defaultAppId when dialog opens
+  // Sync defaultAppId only when dialog opens (not while already open)
   useEffect(() => {
     if (open && defaultAppId != null) {
       setTargetAppId(defaultAppId);
     }
-  }, [open, defaultAppId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const effectiveTargetAppId =
     targetAppId ?? (apps.length === 1 ? apps[0].id : null);

@@ -28,10 +28,9 @@ export function CustomAppsFolderSelector() {
         await fetchCustomAppsFolder();
         showSuccess("Custom apps folder updated successfully");
       } else if (result.path === null && result.canceled === false) {
-        // Though the handler enforces other constraints (exists, absolute path, is a directory),
-        // the selection dialog loosely enforces these as well. Therefore, we don't cover the
-        // other cases in this error message because they won't happen for most users.
-        showError("Selected folder does not have write permissions");
+        showError(
+          "Unable to use selected folder. Please ensure it is a valid directory with write permissions.",
+        );
       }
     } catch (error: any) {
       showError(`Failed to set custom apps folder: ${error.message}`);

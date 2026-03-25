@@ -650,9 +650,12 @@ ${componentSnippet}
 
         // For local models (Ollama, LM Studio), add an extra reinforcement
         // because smaller models sometimes ignore <joy-write> instructions.
+        // Skip for local-agent mode: it uses XML tool emulation with its own
+        // write_file tool and adding joy-write instructions conflicts.
         if (
           isLocalModel(settings.selectedModel.provider) &&
-          settings.selectedChatMode !== "ask"
+          settings.selectedChatMode !== "ask" &&
+          settings.selectedChatMode !== "local-agent"
         ) {
           systemPrompt += `
 

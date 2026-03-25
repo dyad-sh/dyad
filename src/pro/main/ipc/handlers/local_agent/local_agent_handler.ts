@@ -214,9 +214,17 @@ export async function handleLocalAgentStream(
       .filter((msg) => msg.content || msg.aiMessagesJson)
       .flatMap((msg) => parseAiMessagesJson(msg));
 
+    // For local models, only expose essential tools to avoid overwhelming small models.
+    // 17 tools with XML documentation is too much context for 7B models — they
+    // get confused and output planning text instead of code.
+    const LOCAL_ESSENTIAL_TOOLS = new Set(["write_file", "read_file", "list_files", "set_chat_summary", "search_replace", "add_dependency"]);
+    const localToolDefs = isLocal
+      ? TOOL_DEFINITIONS.filter((t) => LOCAL_ESSENTIAL_TOOLS.has(t.name))
+      : TOOL_DEFINITIONS;
+
     // For local models, append XML tool documentation to the system prompt
     const effectiveSystemPrompt = isLocal
-      ? systemPrompt + "\n\n" + generateXmlToolDocumentation(TOOL_DEFINITIONS)
+      ? systemPrompt + "\n\n" + generateXmlToolDocumentation(localToolDefs)
       : systemPrompt;
 
     // Stream the response
@@ -534,21 +542,101 @@ export async function handleLocalAgentStream(
     // code blocks or joy-write tags, apply them via the standard processor.
     // This catches weak local models that ignore XML tool instructions.
     // ===================================================================
-    if (!abortController.signal.aborted) {
+    if (!abortController.signal.aborted && fullResponse.length > 50) {
       const uncommittedBefore = await getGitUncommittedFiles({ path: appPath }).catch(() => []);
-      if (uncommittedBefore.length === 0) {
-        const converted = convertMarkdownCodeBlocksToJoyWrite(fullResponse);
-        const hasJoyWriteTags = /<(?:joy|dyad)-write\s/i.test(converted);
-        if (hasJoyWriteTags) {
-          logger.info("No files written by agent tools — applying joy-write fallback");
-          const chatSummaryMatch = converted.match(/<joy-chat-summary>(.*?)<\/joy-chat-summary>/);
-          await processFullResponseActions(converted, req.chatId, {
-            chatSummary: chatSummaryMatch?.[1],
-            messageId: placeholderMessageId,
-          });
-          fullResponse = converted;
-          await updateResponseInDb(placeholderMessageId, fullResponse);
-          sendResponseChunk(event, req.chatId, chat, fullResponse);
+      // Run fallback if:
+      // 1. No files were written by agent tools (uncommitted === 0), OR
+      // 2. The response contains joy-write or convertible markdown despite tool changes
+      //    (mixed output — model used tools for some files, markdown for others)
+      const converted = convertMarkdownCodeBlocksToJoyWrite(fullResponse);
+      const hasJoyWriteTags = /<(?:joy|dyad)-write\s/i.test(converted);
+      if (hasJoyWriteTags) {
+        // Only process if there are actual joy-write tags after conversion
+        // (avoiding double-processing if tools already wrote these exact files)
+        logger.info(
+          uncommittedBefore.length === 0
+            ? "No files written by agent tools — applying joy-write fallback"
+            : "Agent tools wrote some files, but response also contains joy-write/markdown — applying hybrid fallback",
+        );
+        const chatSummaryMatch = converted.match(/<joy-chat-summary>(.*?)<\/joy-chat-summary>/);
+        await processFullResponseActions(converted, req.chatId, {
+          chatSummary: chatSummaryMatch?.[1],
+          messageId: placeholderMessageId,
+        });
+        fullResponse = converted;
+        await updateResponseInDb(placeholderMessageId, fullResponse);
+        sendResponseChunk(event, req.chatId, chat, fullResponse);
+      } else if (uncommittedBefore.length === 0) {
+        // The model produced only planning text / no code at all.
+        // Re-prompt with a focused instruction to force code generation.
+        logger.warn(
+          "Model response had no code output — retrying with focused code generation prompt",
+        );
+
+        const retryPrompt =
+          "You did not write any code. Please write the actual code files NOW using write_file. " +
+          "Do not describe or plan — immediately create the files. " +
+          "Start with src/pages/Index.tsx as the main page.";
+
+        const retryMessages: ModelMessage[] = [
+          ...messageHistory,
+          { role: "assistant" as const, content: fullResponse },
+          { role: "user" as const, content: retryPrompt },
+        ];
+
+        let retryResponse = "";
+        const retryResult = streamText({
+          model: modelClient.model,
+          headers: getAiHeaders({
+            builtinProviderId: modelClient.builtinProviderId,
+          }),
+          providerOptions: getProviderOptions({
+            joyAppId: chat.app.id,
+            joyDisableFiles: true,
+            joyFiles: [],
+            mentionedAppsCodebases: [],
+            builtinProviderId: modelClient.builtinProviderId,
+            settings,
+          }),
+          maxOutputTokens: await getMaxTokens(settings.selectedModel),
+          temperature: await getTemperature(settings.selectedModel),
+          maxRetries: 2,
+          system: effectiveSystemPrompt,
+          messages: retryMessages,
+          abortSignal: abortController.signal,
+        });
+
+        for await (const part of retryResult.fullStream) {
+          if (abortController.signal.aborted) break;
+          if (part.type === "text-delta") {
+            retryResponse += part.text;
+            fullResponse += part.text;
+            await updateResponseInDb(placeholderMessageId, fullResponse);
+            sendResponseChunk(event, req.chatId, chat, fullResponse);
+          }
+        }
+
+        // Try conversion on the retry response
+        if (retryResponse.length > 50) {
+          const retryConverted = convertMarkdownCodeBlocksToJoyWrite(retryResponse);
+          const retryHasTags = /<(?:joy|dyad)-write\s/i.test(retryConverted);
+          if (retryHasTags) {
+            logger.info("Retry produced convertible code — applying joy-write fallback");
+            const chatSummaryMatch = retryConverted.match(/<joy-chat-summary>(.*?)<\/joy-chat-summary>/);
+            await processFullResponseActions(retryConverted, req.chatId, {
+              chatSummary: chatSummaryMatch?.[1],
+              messageId: placeholderMessageId,
+            });
+            // Update the full response with the converted version
+            fullResponse = fullResponse.replace(retryResponse, retryConverted);
+            await updateResponseInDb(placeholderMessageId, fullResponse);
+            sendResponseChunk(event, req.chatId, chat, fullResponse);
+          } else {
+            logger.warn(
+              "Retry also produced no code. The model may not be capable enough for structured code generation. " +
+              "Consider using a larger model or Build mode.",
+            );
+          }
         }
       }
     }

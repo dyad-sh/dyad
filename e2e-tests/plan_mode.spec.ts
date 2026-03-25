@@ -201,3 +201,38 @@ testSkipIfWindows(
     await po.snapshotServerDump("last-message");
   },
 );
+
+testSkipIfWindows(
+  "plan mode - view plan button opens preview panel when collapsed",
+  async ({ po }) => {
+    // Set up app
+    await po.setUpDyadPro({ localAgent: true });
+    await po.importApp("minimal");
+
+    // Switch to plan mode
+    await po.chatActions.selectChatMode("plan");
+
+    // Generate a plan by sending a prompt that triggers plan generation
+    await po.sendPrompt("tc=local-agent/accept-plan");
+
+    // Wait for the "View Plan" button to appear
+    const viewPlanButton = po.page.getByRole("button", { name: "View Plan" });
+    await expect(viewPlanButton).toBeVisible({ timeout: Timeout.MEDIUM });
+
+    // Verify plan content is visible
+    const planContent = po.previewPanel.getPlanContent();
+    await expect(planContent).toBeVisible({ timeout: Timeout.MEDIUM });
+
+    // Collapse the preview panel
+    await po.previewPanel.clickTogglePreviewPanel();
+
+    // Verify the preview panel is actually closed (plan content should be hidden)
+    await expect(planContent).not.toBeVisible();
+
+    // Click the "View Plan" button
+    await viewPlanButton.click();
+
+    // Assert that the plan content is visible (button opened the panel and switched to plan mode)
+    await expect(planContent).toBeVisible({ timeout: Timeout.MEDIUM });
+  },
+);

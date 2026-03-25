@@ -483,6 +483,8 @@ function ChatPanel() {
 
 function ProvidersPanel({ providers }: { providers?: any[] }) {
   const queryClient = useQueryClient();
+  const [apiKeyInputs, setApiKeyInputs] = useState<Record<string, string>>({});
+  const [savingKey, setSavingKey] = useState<string | null>(null);
 
   const healthQuery = useQuery({
     queryKey: ["openclaw-provider-health"],
@@ -490,13 +492,41 @@ function ProvidersPanel({ providers }: { providers?: any[] }) {
     refetchInterval: 15000,
   });
 
+  const handleSaveApiKey = async (providerKey: string) => {
+    const key = apiKeyInputs[providerKey]?.trim();
+    if (!key) return;
+    setSavingKey(providerKey);
+    try {
+      await openclawClient.setProviderApiKey(providerKey, key);
+      toast.success(`API key saved for ${providerKey}`);
+      setApiKeyInputs((prev) => ({ ...prev, [providerKey]: "" }));
+      queryClient.invalidateQueries({ queryKey: ["openclaw-providers"] });
+      queryClient.invalidateQueries({ queryKey: ["openclaw-provider-health"] });
+    } catch (e: any) {
+      toast.error(e.message || "Failed to save API key");
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  const handleToggleProvider = async (providerKey: string, enabled: boolean) => {
+    try {
+      await openclawClient.configureProvider({ name: providerKey, config: { enabled } });
+      queryClient.invalidateQueries({ queryKey: ["openclaw-providers"] });
+      queryClient.invalidateQueries({ queryKey: ["openclaw-provider-health"] });
+      toast.success(`${providerKey} ${enabled ? "enabled" : "disabled"}`);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to update provider");
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">AI Providers</h2>
           <p className="text-sm text-muted-foreground">
-            Configure which AI backends OpenClaw routes to.
+            Local-first routing: Ollama handles simple tasks, Claude API handles complex/agentic tasks.
           </p>
         </div>
         <Button
@@ -515,6 +545,8 @@ function ProvidersPanel({ providers }: { providers?: any[] }) {
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
         {(providers ?? []).map((p: any) => {
           const healthy = healthQuery.data?.[p.name];
+          const providerKey = p.name;
+          const needsApiKey = ["anthropic", "openai", "deepseek", "google", "openai-compat", "claude-code"].includes(p.type);
           return (
             <Card key={p.name}>
               <CardHeader className="pb-2">
@@ -541,17 +573,50 @@ function ProvidersPanel({ providers }: { providers?: any[] }) {
                   {p.type} &bull; {p.model}
                 </CardDescription>
               </CardHeader>
-              <CardContent className="text-xs space-y-1">
+              <CardContent className="text-xs space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Priority</span>
                   <span>{p.priority}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Enabled</span>
-                  <Badge variant={p.enabled ? "default" : "secondary"} className="text-xs">
-                    {p.enabled ? "Yes" : "No"}
-                  </Badge>
+                  <Switch
+                    checked={p.enabled}
+                    onCheckedChange={(checked) => handleToggleProvider(providerKey, checked)}
+                    className="scale-75"
+                  />
                 </div>
+                {needsApiKey && (
+                  <div className="space-y-1 pt-1 border-t">
+                    <Label className="text-[10px] text-muted-foreground">API Key</Label>
+                    <div className="flex gap-1">
+                      <Input
+                        type="password"
+                        placeholder={p.hasApiKey ? "••••••••  (key set)" : "Enter API key..."}
+                        value={apiKeyInputs[providerKey] ?? ""}
+                        onChange={(e) =>
+                          setApiKeyInputs((prev) => ({
+                            ...prev,
+                            [providerKey]: e.target.value,
+                          }))
+                        }
+                        className="h-7 text-xs"
+                      />
+                      <Button
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        disabled={!apiKeyInputs[providerKey]?.trim() || savingKey === providerKey}
+                        onClick={() => handleSaveApiKey(providerKey)}
+                      >
+                        {savingKey === providerKey ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          "Save"
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 {p.capabilities && (
                   <div className="flex flex-wrap gap-1 pt-1">
                     {p.capabilities.map((c: string) => (

@@ -1,22 +1,25 @@
-import { useAtom } from "jotai";
+import { useAtom, useSetAtom } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
-import { useLocation } from "@tanstack/react-router";
+import { useLocation, useNavigate } from "@tanstack/react-router";
 import { useSettings } from "@/hooks/useSettings";
 // @ts-ignore
 import customLogo from "../../assets/smileyone.png";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { IpcClient } from "@/ipc/ipc_client";
 import { useSidebar } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { PanelLeft, PanelLeftClose, PanelRightOpen, PanelRightClose } from "lucide-react";
+import { PanelLeft, PanelLeftClose, PanelRightOpen, PanelRightClose, Search } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { AppSearchDialog } from "@/components/AppSearchDialog";
+import { useLoadApps } from "@/hooks/useLoadApps";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 
 export const TitleBar = () => {
   const [selectedAppId] = useAtom(selectedAppIdAtom);
@@ -26,6 +29,23 @@ export const TitleBar = () => {
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [isPreviewOpen, setIsPreviewOpen] = useAtom(isPreviewOpenAtom);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const { apps } = useLoadApps();
+  const navigate = useNavigate();
+  const [, setSelectedAppId] = useAtom(selectedAppIdAtom);
+  const setSelectedChatId = useSetAtom(selectedChatIdAtom);
+
+  const allApps = useMemo(
+    () =>
+      apps.map((a) => ({
+        id: a.id,
+        name: a.name,
+        createdAt: a.createdAt,
+        matchedChatTitle: null,
+        matchedChatMessage: null,
+      })),
+    [apps],
+  );
 
   useEffect(() => {
     // Check if we're running on Windows
@@ -91,6 +111,18 @@ export const TitleBar = () => {
           </TooltipContent>
         </Tooltip>
 
+        {/* Center Search */}
+        <button
+          onClick={() => setIsSearchOpen(true)}
+          className="flex-1 max-w-md mx-auto flex items-center gap-2 h-7 px-3 rounded-md bg-muted/50 hover:bg-muted text-muted-foreground text-xs transition-colors no-app-region-drag border border-border/40 hover:border-border/60 cursor-pointer"
+        >
+          <Search className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">Search apps...</span>
+          <kbd className="ml-auto hidden @sm:inline-flex items-center gap-0.5 rounded border border-border/60 bg-background/50 px-1.5 py-0.5 text-[10px] text-muted-foreground/70 font-mono">
+            Ctrl K
+          </kbd>
+        </button>
+
         {/* Preview Panel Toggle */}
         {location.pathname === "/chat" && (
           <Tooltip>
@@ -116,6 +148,17 @@ export const TitleBar = () => {
 
         {showWindowControls && <WindowsControls />}
       </div>
+
+      <AppSearchDialog
+        open={isSearchOpen}
+        onOpenChange={setIsSearchOpen}
+        onSelectApp={(appId) => {
+          setSelectedAppId(appId);
+          setSelectedChatId(null);
+          navigate({ to: "/chat" });
+        }}
+        allApps={allApps}
+      />
     </>
   );
 };

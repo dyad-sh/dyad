@@ -8,6 +8,7 @@ import { EventEmitter } from "node:events";
 import { app } from "electron";
 import * as path from "node:path";
 import * as fs from "fs-extra";
+import * as nodeFs from "node:fs";
 import { v4 as uuidv4 } from "uuid";
 import log from "electron-log";
 import WebSocket, { WebSocketServer } from "ws";
@@ -197,11 +198,12 @@ export class OpenClawGatewayService extends EventEmitter {
       
       const { host, port } = this.config.gateway;
       
-      // Create HTTP server for dashboard + API
+      // Create HTTP server for control UI + API
       this.httpServer = http.createServer((req, res) => {
         const parsedUrl = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
         const pathname = parsedUrl.pathname;
 
+        // API endpoints take priority
         if (pathname === "/health") {
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify(this.getGatewayState()));
@@ -226,12 +228,10 @@ export class OpenClawGatewayService extends EventEmitter {
             status: this.state.status,
             providers: this.getProviderStatus(),
           }));
-        } else if (pathname === "/" || pathname === "/dashboard") {
+        } else if (!this.serveControlUiFile(req, res)) {
+          // Control UI assets not found — show fallback
           res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
           res.end(this.getDashboardHtml());
-        } else {
-          res.writeHead(404, { "Content-Type": "text/plain" });
-          res.end("Not Found");
         }
       });
       
@@ -363,10 +363,14 @@ export class OpenClawGatewayService extends EventEmitter {
   
   private isOriginAllowed(origin: string): boolean {
     if (!this.config.security.allowRemoteConnections && origin !== "unknown") {
+      // Normalize 127.0.0.1 to localhost so both forms match the same patterns
+      const normalizedOrigin = origin.replace("://127.0.0.1", "://localhost");
       const allowedPatterns = this.config.security.allowedOrigins;
       return allowedPatterns.some((pattern) => {
-        const regex = new RegExp(pattern.replace("*", ".*"));
-        return regex.test(origin);
+        // Escape regex special chars, then convert glob * to .*
+        const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace("\\*", ".*");
+        const regex = new RegExp(`^${escaped}$`);
+        return regex.test(origin) || regex.test(normalizedOrigin);
       });
     }
     return true;
@@ -495,6 +499,12 @@ export class OpenClawGatewayService extends EventEmitter {
         return this.executeChatOllama(provider, request);
       case "anthropic":
         return this.executeChatAnthropic(provider, request);
+      case "openai":
+      case "deepseek":
+      case "openai-compat":
+        return this.executeChatOpenAI(provider, request);
+      case "google":
+        return this.executeChatGoogle(provider, request);
       case "lmstudio":
         return this.executeChatLMStudio(provider, request);
       case "claude-code":
@@ -602,6 +612,119 @@ export class OpenClawGatewayService extends EventEmitter {
     };
   }
   
+  private async executeChatOpenAI(provider: OpenClawAIProvider, request: OpenClawChatRequest): Promise<OpenClawChatResponse> {
+    if (!provider.apiKey) {
+      throw new Error(`${provider.name} API key not configured`);
+    }
+
+    const baseURL = provider.baseURL || "https://api.openai.com/v1";
+
+    const response = await fetch(`${baseURL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${provider.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: request.model || provider.model,
+        messages: request.messages.map((m) => ({
+          role: m.role,
+          content: m.content,
+        })),
+        temperature: request.temperature ?? provider.temperature ?? 0.7,
+        max_tokens: request.maxTokens ?? provider.maxTokens ?? 4096,
+        stream: false,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(`${provider.name} error: ${(error as any).error?.message || response.statusText}`);
+    }
+
+    const data = await response.json();
+    const choice = data.choices[0];
+
+    return {
+      id: data.id,
+      message: {
+        role: "assistant",
+        content: choice.message.content,
+      },
+      finishReason: choice.finish_reason === "stop" ? "stop" : "length",
+      usage: {
+        promptTokens: data.usage?.prompt_tokens || 0,
+        completionTokens: data.usage?.completion_tokens || 0,
+        totalTokens: data.usage?.total_tokens || 0,
+      },
+      provider: provider.name,
+      model: data.model,
+      latencyMs: 0,
+      localProcessed: false,
+    };
+  }
+
+  private async executeChatGoogle(provider: OpenClawAIProvider, request: OpenClawChatRequest): Promise<OpenClawChatResponse> {
+    if (!provider.apiKey) {
+      throw new Error("Google Gemini API key not configured");
+    }
+
+    const baseURL = provider.baseURL || "https://generativelanguage.googleapis.com/v1beta";
+    const model = request.model || provider.model;
+
+    // Convert OpenAI-style messages to Gemini format
+    const systemInstruction = request.messages.find((m) => m.role === "system")?.content || request.systemPrompt;
+    const contents = request.messages
+      .filter((m) => m.role !== "system")
+      .map((m) => ({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [{ text: m.content }],
+      }));
+
+    const response = await fetch(
+      `${baseURL}/models/${model}:generateContent?key=${encodeURIComponent(provider.apiKey)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents,
+          ...(systemInstruction ? { systemInstruction: { parts: [{ text: systemInstruction }] } } : {}),
+          generationConfig: {
+            temperature: request.temperature ?? provider.temperature ?? 0.7,
+            maxOutputTokens: request.maxTokens ?? provider.maxTokens ?? 4096,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(`Google Gemini error: ${(error as any).error?.message || response.statusText}`);
+    }
+
+    const data = await response.json();
+    const candidate = data.candidates?.[0];
+    const text = candidate?.content?.parts?.[0]?.text || "";
+
+    return {
+      id: uuidv4(),
+      message: {
+        role: "assistant",
+        content: text,
+      },
+      finishReason: candidate?.finishReason === "STOP" ? "stop" : "length",
+      usage: {
+        promptTokens: data.usageMetadata?.promptTokenCount || 0,
+        completionTokens: data.usageMetadata?.candidatesTokenCount || 0,
+        totalTokens: data.usageMetadata?.totalTokenCount || 0,
+      },
+      provider: provider.name,
+      model,
+      latencyMs: 0,
+      localProcessed: false,
+    };
+  }
+
   private async executeChatLMStudio(provider: OpenClawAIProvider, request: OpenClawChatRequest): Promise<OpenClawChatResponse> {
     const baseURL = provider.baseURL || "http://localhost:1234";
     
@@ -960,6 +1083,10 @@ Think through this step by step and provide a structured response with your reas
         }
         case "anthropic":
         case "claude-code":
+        case "openai":
+        case "deepseek":
+        case "google":
+        case "openai-compat":
           healthy = !!provider.apiKey;
           break;
         default:
@@ -987,149 +1114,113 @@ Think through this step by step and provide a structured response with your reas
     return health;
   }
   
-  getProviderStatus(): Array<{ name: string; enabled: boolean; healthy: boolean; type: string }> {
+  getProviderStatus(): Array<{ name: string; enabled: boolean; healthy: boolean; type: string; model: string; priority: number; capabilities: string[]; hasApiKey: boolean }> {
     return Object.entries(this.config.aiProviders).map(([name, p]) => ({
       name,
       enabled: p.enabled,
       healthy: this.providerHealthCache.get(name)?.healthy ?? false,
       type: p.type,
+      model: p.model,
+      priority: p.priority,
+      capabilities: p.capabilities ?? [],
+      hasApiKey: !!p.apiKey,
     }));
   }
 
   private getDashboardHtml(): string {
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>OpenClaw Dashboard</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a0a0f;color:#e2e8f0;min-height:100vh}
-.header{background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);border-bottom:1px solid #2d3748;padding:20px 32px;display:flex;align-items:center;gap:16px}
-.logo{width:40px;height:40px;background:linear-gradient(135deg,#7c3aed,#2563eb);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px}
-.header h1{font-size:22px;font-weight:700;background:linear-gradient(135deg,#a78bfa,#60a5fa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.header .version{font-size:12px;color:#64748b;margin-left:auto}
-.container{max-width:1200px;margin:0 auto;padding:24px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px;margin-bottom:24px}
-.card{background:#111827;border:1px solid #1f2937;border-radius:12px;padding:20px;transition:border-color .2s}
-.card:hover{border-color:#374151}
-.card h2{font-size:14px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:16px;display:flex;align-items:center;gap:8px}
-.card h2 .icon{font-size:16px}
-.status-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #1f2937}
-.status-row:last-child{border-bottom:none}
-.status-label{font-size:14px;color:#cbd5e1}
-.status-value{font-size:14px;font-weight:600}
-.badge{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600}
-.badge-green{background:#064e3b;color:#34d399;border:1px solid #065f46}
-.badge-red{background:#450a0a;color:#f87171;border:1px solid #7f1d1d}
-.badge-yellow{background:#422006;color:#fbbf24;border:1px solid #713f12}
-.badge-gray{background:#1f2937;color:#9ca3af;border:1px solid #374151}
-.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
-.dot-green{background:#34d399;box-shadow:0 0 8px #34d39966}
-.dot-red{background:#f87171;box-shadow:0 0 8px #f8717166}
-.dot-yellow{background:#fbbf24}
-.provider-card{background:#0d1117;border:1px solid #1f2937;border-radius:10px;padding:16px;margin-bottom:10px}
-.provider-card:last-child{margin-bottom:0}
-.provider-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
-.provider-name{font-size:15px;font-weight:600;color:#e2e8f0}
-.provider-type{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.8px;margin-top:4px}
-.stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-.stat{text-align:center;padding:16px 8px;background:#0d1117;border-radius:10px;border:1px solid #1f2937}
-.stat-value{font-size:28px;font-weight:700;background:linear-gradient(135deg,#a78bfa,#60a5fa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.stat-label{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.8px;margin-top:4px}
-.log-area{background:#0d1117;border:1px solid #1f2937;border-radius:8px;padding:12px;max-height:200px;overflow-y:auto;font-family:'Fira Code',monospace;font-size:12px;line-height:1.6}
-.log-entry{color:#64748b}.log-entry .time{color:#4b5563}.log-entry.info{color:#60a5fa}.log-entry.ok{color:#34d399}.log-entry.warn{color:#fbbf24}
-.refresh-note{text-align:center;color:#4b5563;font-size:12px;margin-top:16px}
-.endpoints{margin-top:16px}
-.endpoint{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#0d1117;border:1px solid #1f2937;border-radius:8px;margin-bottom:6px;font-family:'Fira Code',monospace;font-size:13px;color:#94a3b8}
-.endpoint .method{color:#34d399;font-weight:600;min-width:36px}
-.endpoint a{color:#60a5fa;text-decoration:none}
-.endpoint a:hover{text-decoration:underline}
-</style>
-</head>
-<body>
-<div class="header">
-  <div class="logo">\u{1F9E0}</div>
-  <div>
-    <h1>OpenClaw Gateway</h1>
-    <div style="font-size:12px;color:#64748b;margin-top:2px">AI Provider Gateway &bull; Create</div>
-  </div>
-  <span class="version" id="ver"></span>
-</div>
-<div class="container">
-  <div class="stats-grid" style="margin-bottom:24px">
-    <div class="stat"><div class="stat-value" id="s-status">--</div><div class="stat-label">Gateway Status</div></div>
-    <div class="stat"><div class="stat-value" id="s-providers">--</div><div class="stat-label">Healthy Providers</div></div>
-    <div class="stat"><div class="stat-value" id="s-clients">--</div><div class="stat-label">Connected Clients</div></div>
-  </div>
-  <div class="grid">
-    <div class="card">
-      <h2><span class="icon">\u{26A1}</span> AI Providers</h2>
-      <div id="providers">Loading...</div>
-    </div>
-    <div class="card">
-      <h2><span class="icon">\u{2699}\uFE0F</span> Gateway Info</h2>
-      <div id="gateway-info">Loading...</div>
-    </div>
-  </div>
-  <div class="card">
-    <h2><span class="icon">\u{1F4E1}</span> API Endpoints</h2>
-    <div class="endpoints">
-      <div class="endpoint"><span class="method">GET</span><a href="/dashboard">/</a> &mdash; This dashboard</div>
-      <div class="endpoint"><span class="method">GET</span><a href="/health">/health</a> &mdash; Gateway health (JSON)</div>
-      <div class="endpoint"><span class="method">GET</span><a href="/status">/status</a> &mdash; Legacy status (JSON)</div>
-      <div class="endpoint"><span class="method">GET</span><a href="/api/status">/api/status</a> &mdash; Full status (JSON)</div>
-      <div class="endpoint"><span class="method">WS</span><span style="color:#a78bfa">ws://localhost:18790</span> &mdash; WebSocket gateway</div>
-    </div>
-  </div>
-  <div class="card" style="margin-top:20px">
-    <h2><span class="icon">\u{1F4CB}</span> Activity Log</h2>
-    <div class="log-area" id="log"></div>
-  </div>
-  <p class="refresh-note">Auto-refreshes every 5 seconds</p>
-</div>
-<script>
-const logEl=document.getElementById('log');
-function addLog(msg,cls='info'){const d=document.createElement('div');d.className='log-entry '+cls;const t=new Date().toLocaleTimeString();d.innerHTML='<span class="time">'+t+'</span> '+msg;logEl.prepend(d);if(logEl.children.length>50)logEl.lastChild.remove()}
-function providerIcon(type){return{ollama:'\u{1F999}',lmstudio:'\u{1F4BB}',anthropic:'\u{1F916}','claude-code':'\u{1F527}'}[type]||'\u{2728}'}
-async function refresh(){
-  try{
-    const r=await fetch('/api/status');
-    const d=await r.json();
-    document.getElementById('ver').textContent='v'+(d.version||'1.0.0');
-    const se=document.getElementById('s-status');
-    se.textContent=d.status==='connected'?'\u{2705}':'\u{274C}';
-    se.style.fontSize='22px';
-    const healthy=d.providers.filter(p=>p.healthy).length;
-    document.getElementById('s-providers').textContent=healthy+'/'+d.providers.length;
-    document.getElementById('s-clients').textContent=d.connectedClients||0;
-    const pe=document.getElementById('providers');
-    pe.innerHTML=d.providers.map(p=>{
-      const badge=!p.enabled?'badge-gray':p.healthy?'badge-green':'badge-red';
-      const label=!p.enabled?'Disabled':p.healthy?'Healthy':'Unhealthy';
-      const dot=!p.enabled?'dot-yellow':p.healthy?'dot-green':'dot-red';
-      return '<div class="provider-card"><div class="provider-header"><div><div class="provider-name">'+providerIcon(p.type)+' '+p.name+'</div><div class="provider-type">'+p.type+'</div></div><span class="badge '+badge+'"><span class="dot '+dot+'"></span>'+label+'</span></div></div>';
-    }).join('');
-    const ge=document.getElementById('gateway-info');
-    const up=d.connectedAt?Math.floor((Date.now()-d.connectedAt)/1000):0;
-    const hb=d.lastHeartbeat?Math.floor((Date.now()-d.lastHeartbeat)/1000):'-';
-    ge.innerHTML=[
-      ['Status',d.status==='connected'?'<span class="badge badge-green"><span class="dot dot-green"></span>Connected</span>':'<span class="badge badge-red"><span class="dot dot-red"></span>Disconnected</span>'],
-      ['Uptime',formatUptime(up)],
-      ['Last Heartbeat',hb+'s ago'],
-      ['Routing Mode',d.config?.routing?.mode||'-'],
-      ['Prefer Local',d.config?.routing?.preferLocal?'Yes':'No'],
-    ].map(([l,v])=>'<div class="status-row"><span class="status-label">'+l+'</span><span class="status-value">'+v+'</span></div>').join('');
-  }catch(e){addLog('Fetch failed: '+e.message,'warn')}
-}
-function formatUptime(s){if(s<60)return s+'s';if(s<3600)return Math.floor(s/60)+'m '+s%60+'s';const h=Math.floor(s/3600);return h+'h '+Math.floor((s%3600)/60)+'m'}
-addLog('Dashboard loaded','ok');
-refresh();
-setInterval(refresh,5000);
-</script>
-</body>
-</html>`;
+    // Fallback HTML shown only when the real control UI assets are not found
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>OpenClaw</title></head>
+<body style="font-family:system-ui;background:#0a0a0f;color:#e2e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0">
+<div style="text-align:center"><h1>OpenClaw Gateway</h1><p style="color:#94a3b8">Control UI assets not found.<br>Install the <code>openclaw</code> package or run <code>npx openclaw gateway run</code>.</p>
+<p style="margin-top:16px"><a href="/api/status" style="color:#60a5fa">API Status</a></p></div></body></html>`;
+  }
+
+  /**
+   * Resolve the directory containing the real OpenClaw control-ui static files
+   * shipped inside the openclaw npm package (dist/control-ui/).
+   */
+  private resolveControlUiRoot(): string | null {
+    const candidates = [
+      // Standard npm install: node_modules/openclaw/dist/control-ui
+      path.resolve(app.getAppPath(), "node_modules", "openclaw", "dist", "control-ui"),
+      // Packaged app: resources/app/node_modules/openclaw/dist/control-ui
+      path.resolve(app.getAppPath(), "..", "node_modules", "openclaw", "dist", "control-ui"),
+    ];
+
+    for (const dir of candidates) {
+      if (nodeFs.existsSync(path.join(dir, "index.html"))) {
+        return dir;
+      }
+    }
+    return null;
+  }
+
+  private static readonly MIME_TYPES: Record<string, string> = {
+    ".html": "text/html; charset=utf-8",
+    ".js": "application/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".map": "application/json; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".ico": "image/x-icon",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+    ".ttf": "font/ttf",
+  };
+
+  /**
+   * Serve a file from the OpenClaw control-ui directory.
+   * Returns true if the request was handled, false otherwise.
+   */
+  private serveControlUiFile(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+    const root = this.resolveControlUiRoot();
+    if (!root) {
+      return false;
+    }
+
+    const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+    let pathname = url.pathname;
+
+    // Serve index.html for the root
+    if (pathname === "/" || pathname === "/dashboard") {
+      pathname = "/index.html";
+    }
+
+    // Strip leading slash, normalize
+    const rel = path.posix.normalize(pathname.slice(1));
+
+    // Path traversal protection
+    if (rel.startsWith("..") || rel.includes("\0")) {
+      return false;
+    }
+
+    const filePath = path.join(root, rel);
+
+    // Ensure the resolved path is inside the root
+    if (!filePath.startsWith(root)) {
+      return false;
+    }
+
+    if (nodeFs.existsSync(filePath) && nodeFs.statSync(filePath).isFile()) {
+      const ext = path.extname(filePath).toLowerCase();
+      const contentType = OpenClawGatewayService.MIME_TYPES[ext] || "application/octet-stream";
+      res.writeHead(200, { "Content-Type": contentType, "Cache-Control": "no-cache" });
+      res.end(nodeFs.readFileSync(filePath));
+      return true;
+    }
+
+    // SPA fallback: serve index.html for unknown routes (client-side router)
+    const indexPath = path.join(root, "index.html");
+    if (nodeFs.existsSync(indexPath)) {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" });
+      res.end(nodeFs.readFileSync(indexPath));
+      return true;
+    }
+
+    return false;
   }
   
   async configureProvider(name: string, updates: Partial<OpenClawAIProvider>): Promise<void> {

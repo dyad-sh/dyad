@@ -14,7 +14,7 @@
 
 export interface OpenClawAIProvider {
   name: string;
-  type: "ollama" | "anthropic" | "openai" | "lmstudio" | "claude-code" | "custom";
+  type: "ollama" | "anthropic" | "openai" | "lmstudio" | "claude-code" | "deepseek" | "google" | "openai-compat" | "custom";
   apiKey?: string;
   baseURL?: string;
   model: string;
@@ -412,7 +412,37 @@ export const DEFAULT_OPENCLAW_CONFIG: OpenClawConfig = {
       enabled: false,
       priority: 3,
       capabilities: ["code", "agentic", "function-calling", "reasoning"],
-      temperature: 0.3, // Lower for code tasks
+      temperature: 0.3,
+    },
+    openai: {
+      name: "OpenAI",
+      type: "openai",
+      baseURL: "https://api.openai.com/v1",
+      model: "gpt-4o",
+      enabled: false,
+      priority: 2,
+      capabilities: ["chat", "code", "vision", "function-calling", "reasoning", "creative", "analysis"],
+      temperature: 0.7,
+    },
+    deepseek: {
+      name: "DeepSeek",
+      type: "deepseek",
+      baseURL: "https://api.deepseek.com/v1",
+      model: "deepseek-chat",
+      enabled: false,
+      priority: 2,
+      capabilities: ["chat", "code", "reasoning", "analysis"],
+      temperature: 0.7,
+    },
+    google: {
+      name: "Google Gemini",
+      type: "google",
+      baseURL: "https://generativelanguage.googleapis.com/v1beta",
+      model: "gemini-2.0-flash",
+      enabled: false,
+      priority: 2,
+      capabilities: ["chat", "code", "vision", "reasoning", "creative", "analysis"],
+      temperature: 0.7,
     },
   },
   defaultProvider: "ollama",
@@ -428,7 +458,7 @@ export const DEFAULT_OPENCLAW_CONFIG: OpenClawConfig = {
   plugins: [],
   security: {
     allowRemoteConnections: false,
-    allowedOrigins: ["http://localhost:*", "file://*"],
+    allowedOrigins: ["http://localhost:*", "http://127.0.0.1:*", "file://*"],
     authRequired: false,
   },
 };

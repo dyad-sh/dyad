@@ -40,6 +40,7 @@ import {
 import { applySearchReplace } from "../../pro/main/ipc/processors/search_replace_processor";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
 import { convertMarkdownCodeBlocksToJoyWrite } from "../utils/markdown_to_joy_write";
+import { fixShadcnImports } from "../utils/fix_shadcn_imports";
 
 import { FileUploadsState } from "../utils/file_uploads_state";
 
@@ -461,6 +462,11 @@ export async function processFullResponseActions(
       // Ensure directory exists
       const dirPath = path.dirname(fullFilePath);
       fs.mkdirSync(dirPath, { recursive: true });
+
+      // Fix broken @shadcn/ui imports from AI models
+      if (typeof content === "string") {
+        content = fixShadcnImports(content, filePath);
+      }
 
       // Write file content
       fs.writeFileSync(fullFilePath, content);

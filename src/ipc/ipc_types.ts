@@ -927,6 +927,10 @@ export interface OpenClawProviderStatus {
   enabled: boolean;
   healthy: boolean;
   type: string;
+  model: string;
+  priority: number;
+  capabilities: string[];
+  hasApiKey: boolean;
 }
 
 export interface OpenClawChatParams {

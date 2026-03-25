@@ -34,6 +34,12 @@ export default defineConfig({
         "@microsoft/microsoft-graph-client",
         "@azure/identity",
         "node-ical",
+        // Babel/recast — bundling breaks Object.defineProperty in Flow/class init
+        "@babel/parser",
+        "@babel/traverse",
+        "@babel/types",
+        "@babel/generator",
+        "recast",
       ],
     },
   },

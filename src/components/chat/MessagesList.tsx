@@ -276,6 +276,11 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
 
     // Stabilize renderSetupBanner with proper dependencies
     const renderSetupBanner = useCallback(() => {
+      // Hide the setup banner once the user has received a response
+      if (messages.length > 0) {
+        return null;
+      }
+
       const selectedModel = settings?.selectedModel;
       if (
         selectedModel?.name === "free" &&
@@ -289,6 +294,7 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
       }
       return null;
     }, [
+      messages.length,
       settings?.selectedModel?.name,
       settings?.selectedModel?.provider,
       isProviderSetup,

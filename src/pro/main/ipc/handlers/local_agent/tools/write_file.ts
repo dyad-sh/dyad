@@ -4,6 +4,7 @@ import { z } from "zod";
 import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
 import { safeJoin } from "@/ipc/utils/path_utils";
+import { fixShadcnImports } from "@/ipc/utils/fix_shadcn_imports";
 import { deploySupabaseFunction } from "../../../../../../supabase_admin/supabase_management_client";
 import {
   isServerFunction,
@@ -51,8 +52,11 @@ export const writeFileTool: ToolDefinition<z.infer<typeof writeFileSchema>> = {
     const dirPath = path.dirname(fullFilePath);
     fs.mkdirSync(dirPath, { recursive: true });
 
+    // Fix broken @shadcn/ui imports from AI models
+    const fixedContent = fixShadcnImports(args.content, args.path);
+
     // Write file content
-    fs.writeFileSync(fullFilePath, args.content);
+    fs.writeFileSync(fullFilePath, fixedContent);
     logger.log(`Successfully wrote file: ${fullFilePath}`);
 
     // Deploy Supabase function if applicable

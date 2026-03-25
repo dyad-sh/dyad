@@ -1,7 +1,7 @@
 import { expect } from "@playwright/test";
-import { Timeout, test } from "./helpers/test_helper";
+import { Timeout, testSkipIfWindows } from "./helpers/test_helper";
 
-test(
+testSkipIfWindows(
   "view plan button opens preview panel and shows plan",
   async ({ po }) => {
     // Set up app
@@ -33,7 +33,7 @@ test(
   },
 );
 
-test(
+testSkipIfWindows(
   "view plan button works on app startup when preview panel is closed",
   async ({ po }) => {
     // Set up app

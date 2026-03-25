@@ -218,7 +218,7 @@ export function ImageGeneratorDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
           <div className="flex items-center gap-2">

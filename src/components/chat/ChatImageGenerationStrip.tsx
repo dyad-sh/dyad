@@ -1,13 +1,23 @@
 import { useEffect, useState } from "react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { X, ArrowUpRight, Loader2, Plus, AlertCircle } from "lucide-react";
+import {
+  X,
+  ArrowUpRight,
+  Loader2,
+  Plus,
+  AlertCircle,
+  RotateCcw,
+} from "lucide-react";
 import {
   chatImageGenerationJobsAtom,
   dismissedImageGenerationJobIdsAtom,
 } from "@/atoms/imageGenerationAtoms";
 import { chatInputValueAtom } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { useCancelImageGeneration } from "@/hooks/useGenerateImage";
+import {
+  useCancelImageGeneration,
+  useGenerateImage,
+} from "@/hooks/useGenerateImage";
 import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
 import { ImageLightbox } from "./ImageLightbox";
 import type { ImageGenerationJob } from "@/atoms/imageGenerationAtoms";
@@ -23,6 +33,7 @@ export function ChatImageGenerationStrip({
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const setChatInput = useSetAtom(chatInputValueAtom);
   const cancelImageGeneration = useCancelImageGeneration();
+  const generateImage = useGenerateImage();
   const [dismissedJobIds, setDismissedJobIds] = useAtom(
     dismissedImageGenerationJobIdsAtom,
   );
@@ -69,6 +80,18 @@ export function ChatImageGenerationStrip({
     setDismissedJobIds((prev: Set<string>) => new Set(prev).add(jobId));
   };
 
+  const handleRetry = (job: ImageGenerationJob) => {
+    setDismissedJobIds((prev: Set<string>) => new Set(prev).add(job.id));
+    generateImage.mutate({
+      requestId: crypto.randomUUID(),
+      prompt: job.prompt,
+      themeMode: job.themeMode,
+      targetAppId: job.targetAppId,
+      targetAppName: job.targetAppName,
+      source: job.source,
+    });
+  };
+
   const handleCancel = (jobId: string) => {
     void cancelImageGeneration(jobId);
     setDismissedJobIds((prev: Set<string>) => new Set(prev).add(jobId));
@@ -108,17 +131,28 @@ export function ChatImageGenerationStrip({
               </>
             ) : job.status === "error" ? (
               <>
-                <div className="w-12 h-12 rounded-md bg-destructive/10 flex items-center justify-center shrink-0">
-                  <AlertCircle size={16} className="text-destructive" />
+                <div className="w-12 h-12 rounded-md bg-destructive/15 flex items-center justify-center shrink-0">
+                  <AlertCircle
+                    size={16}
+                    className="text-destructive-foreground"
+                  />
                 </div>
                 <div className="min-w-0 flex-1">
                   <span
-                    className="text-destructive truncate block max-w-[120px]"
+                    className="text-destructive-foreground truncate block max-w-[120px]"
                     title={job.error ?? "Generation failed"}
                   >
                     {job.error ?? "Generation failed"}
                   </span>
                 </div>
+                <button
+                  onClick={() => handleRetry(job)}
+                  className="hover:bg-muted-foreground/20 rounded-full p-1.5 shrink-0"
+                  aria-label="Retry generation"
+                  title="Retry"
+                >
+                  <RotateCcw size={12} />
+                </button>
                 <button
                   onClick={() => handleDismiss(job.id)}
                   className="hover:bg-muted-foreground/20 rounded-full p-1.5 shrink-0"

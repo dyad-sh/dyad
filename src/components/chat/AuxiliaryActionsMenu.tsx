@@ -161,21 +161,6 @@ export function AuxiliaryActionsMenu({
             </DropdownMenuSubContent>
           </DropdownMenuSub>
 
-          {/* Generate Image */}
-          {onGenerateImage && (
-            <DropdownMenuItem
-              onClick={() => {
-                setIsOpen(false);
-                onGenerateImage();
-              }}
-              className="py-2 px-3"
-              data-testid="generate-image-menu-item"
-            >
-              <ImageIcon size={16} className="mr-2" />
-              Generate Image
-            </DropdownMenuItem>
-          )}
-
           {/* Themes Submenu */}
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className="py-2 px-3">
@@ -294,6 +279,21 @@ export function AuxiliaryActionsMenu({
               </>
             </DropdownMenuSubContent>
           </DropdownMenuSub>
+
+          {/* Generate Image */}
+          {onGenerateImage && (
+            <DropdownMenuItem
+              onClick={() => {
+                setIsOpen(false);
+                onGenerateImage();
+              }}
+              className="py-2 px-3"
+              data-testid="generate-image-menu-item"
+            >
+              <ImageIcon size={16} className="mr-2" />
+              Generate Image
+            </DropdownMenuItem>
+          )}
 
           {toggleShowTokenBar && (
             <>

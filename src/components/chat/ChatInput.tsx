@@ -807,7 +807,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
           />
 
           {/* Chat image generation strip */}
-          <ChatImageGenerationStrip />
+          <ChatImageGenerationStrip
+            onGenerateImage={handleOpenImageGenerator}
+          />
 
           {/* Use the DragDropOverlay component */}
           <DragDropOverlay isDraggingOver={isDraggingOver} />

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
-import { X, Plus, Loader2 } from "lucide-react";
+import { X, ArrowUpRight, Loader2, Plus } from "lucide-react";
 import { chatImageGenerationJobsAtom } from "@/atoms/imageGenerationAtoms";
 import { chatInputValueAtom } from "@/atoms/chatAtoms";
 import { useCancelImageGeneration } from "@/hooks/useGenerateImage";
@@ -8,7 +8,13 @@ import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
 import { ImageLightbox } from "./ImageLightbox";
 import type { ImageGenerationJob } from "@/atoms/imageGenerationAtoms";
 
-export function ChatImageGenerationStrip() {
+interface ChatImageGenerationStripProps {
+  onGenerateImage: () => void;
+}
+
+export function ChatImageGenerationStrip({
+  onGenerateImage,
+}: ChatImageGenerationStripProps) {
   const jobs = useAtomValue(chatImageGenerationJobsAtom);
   const setChatInput = useSetAtom(chatInputValueAtom);
   const cancelImageGeneration = useCancelImageGeneration();
@@ -48,7 +54,7 @@ export function ChatImageGenerationStrip() {
 
   return (
     <>
-      <div className="px-2 pt-2 flex flex-wrap gap-2">
+      <div className="px-2 pt-2 flex flex-wrap items-center gap-2">
         {visibleJobs.map((job) => (
           <div
             key={job.id}
@@ -103,8 +109,8 @@ export function ChatImageGenerationStrip() {
                   className="flex items-center gap-0.5 text-primary hover:text-primary/80 transition-colors shrink-0 cursor-pointer"
                   aria-label="Add to chat"
                 >
-                  <Plus size={12} />
                   <span>Add to chat</span>
+                  <ArrowUpRight size={12} />
                 </button>
                 <button
                   onClick={() => handleDismiss(job.id)}
@@ -117,6 +123,16 @@ export function ChatImageGenerationStrip() {
             )}
           </div>
         ))}
+        <button
+          onClick={onGenerateImage}
+          className="group flex items-center justify-center w-12 h-12 shrink-0 cursor-pointer"
+          aria-label="Generate another image"
+        >
+          <Plus
+            size={18}
+            className="text-muted-foreground group-hover:text-foreground transition-colors"
+          />
+        </button>
       </div>
 
       {lightboxJob?.result && (

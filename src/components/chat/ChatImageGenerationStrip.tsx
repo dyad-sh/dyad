@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { X, ArrowUpRight, Loader2, Plus, AlertCircle } from "lucide-react";
 import {
@@ -6,6 +6,7 @@ import {
   dismissedImageGenerationJobIdsAtom,
 } from "@/atoms/imageGenerationAtoms";
 import { chatInputValueAtom } from "@/atoms/chatAtoms";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useCancelImageGeneration } from "@/hooks/useGenerateImage";
 import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
 import { ImageLightbox } from "./ImageLightbox";
@@ -19,6 +20,7 @@ export function ChatImageGenerationStrip({
   onGenerateImage,
 }: ChatImageGenerationStripProps) {
   const jobs = useAtomValue(chatImageGenerationJobsAtom);
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
   const setChatInput = useSetAtom(chatInputValueAtom);
   const cancelImageGeneration = useCancelImageGeneration();
   const [dismissedJobIds, setDismissedJobIds] = useAtom(
@@ -29,14 +31,21 @@ export function ChatImageGenerationStrip({
   );
 
   // Prune stale dismissed IDs that no longer correspond to active jobs
-  const validJobIds = new Set(jobs.map((j) => j.id));
-  if ([...dismissedJobIds].some((id) => !validJobIds.has(id))) {
-    setDismissedJobIds(
-      new Set([...dismissedJobIds].filter((id) => validJobIds.has(id))),
-    );
-  }
+  useEffect(() => {
+    const validJobIds = new Set(jobs.map((j) => j.id));
+    if ([...dismissedJobIds].some((id) => !validJobIds.has(id))) {
+      setDismissedJobIds(
+        new Set([...dismissedJobIds].filter((id) => validJobIds.has(id))),
+      );
+    }
+  }, [jobs, dismissedJobIds, setDismissedJobIds]);
 
-  const visibleJobs = jobs.filter(
+  // Only show jobs for the currently selected app
+  const appJobs = selectedAppId
+    ? jobs.filter((job) => job.targetAppId === selectedAppId)
+    : jobs;
+
+  const visibleJobs = appJobs.filter(
     (job) =>
       !dismissedJobIds.has(job.id) &&
       (job.status === "pending" ||
@@ -83,9 +92,7 @@ export function ChatImageGenerationStrip({
                 </div>
                 <div className="min-w-0 flex-1">
                   <span className="text-muted-foreground truncate block max-w-[120px]">
-                    {job.prompt.length > 30
-                      ? `${job.prompt.slice(0, 30)}...`
-                      : job.prompt}
+                    {job.prompt}
                   </span>
                   <span className="text-muted-foreground/60 text-[10px]">
                     Generating...
@@ -93,7 +100,7 @@ export function ChatImageGenerationStrip({
                 </div>
                 <button
                   onClick={() => handleCancel(job.id)}
-                  className="hover:bg-muted-foreground/20 rounded-full p-0.5 shrink-0"
+                  className="hover:bg-muted-foreground/20 rounded-full p-1.5 shrink-0"
                   aria-label="Cancel generation"
                 >
                   <X size={12} />
@@ -105,13 +112,16 @@ export function ChatImageGenerationStrip({
                   <AlertCircle size={16} className="text-destructive" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <span className="text-destructive truncate block max-w-[120px]">
+                  <span
+                    className="text-destructive truncate block max-w-[120px]"
+                    title={job.error ?? "Generation failed"}
+                  >
                     {job.error ?? "Generation failed"}
                   </span>
                 </div>
                 <button
                   onClick={() => handleDismiss(job.id)}
-                  className="hover:bg-muted-foreground/20 rounded-full p-0.5 shrink-0"
+                  className="hover:bg-muted-foreground/20 rounded-full p-1.5 shrink-0"
                   aria-label="Dismiss"
                 >
                   <X size={12} />
@@ -147,7 +157,7 @@ export function ChatImageGenerationStrip({
                 )}
                 <button
                   onClick={() => handleDismiss(job.id)}
-                  className="hover:bg-muted-foreground/20 rounded-full p-0.5 shrink-0"
+                  className="hover:bg-muted-foreground/20 rounded-full p-1.5 shrink-0"
                   aria-label="Dismiss"
                 >
                   <X size={12} />

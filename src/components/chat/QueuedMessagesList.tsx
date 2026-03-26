@@ -20,6 +20,7 @@ interface QueuedMessagesListProps {
   onMoveDown: (id: string) => void;
   isStreaming: boolean;
   hasError: boolean;
+  isPaused: boolean;
 }
 
 interface QueuedMessageItemRowProps {
@@ -106,19 +107,27 @@ export function QueuedMessagesList({
   onMoveDown,
   isStreaming,
   hasError,
+  isPaused,
 }: QueuedMessagesListProps) {
   const [isExpanded, setIsExpanded] = useState(true);
 
   if (!messages.length) return null;
 
-  const statusText = hasError
-    ? "will send after a successful response"
-    : isStreaming
-      ? "will send after current response"
-      : "ready to send";
+  const statusText = isPaused
+    ? "paused"
+    : hasError
+      ? "will send after a successful response"
+      : isStreaming
+        ? "will send after current response"
+        : "ready to send";
 
   return (
-    <div className="border-b border-border bg-muted/30">
+    <div
+      className={cn(
+        "border-b border-border bg-muted/30",
+        isPaused && "bg-yellow-500/10 border-yellow-500/50",
+      )}
+    >
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
@@ -127,6 +136,11 @@ export function QueuedMessagesList({
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
           <ListOrdered className="w-4 h-4 text-muted-foreground flex-shrink-0" />
           <span className="text-sm">{messages.length} Queued</span>
+          {isPaused && (
+            <span className="text-xs px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 font-medium">
+              Paused
+            </span>
+          )}
           <span className="text-xs text-muted-foreground">- {statusText}</span>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0 ml-3">

@@ -13,6 +13,7 @@ import {
   recentStreamChatIdsAtom,
   queuedMessagesByIdAtom,
   streamCompletedSuccessfullyByIdAtom,
+  queuePausedByIdAtom,
   type QueuedMessageItem,
 } from "@/atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
@@ -68,6 +69,7 @@ export function useStreamChat({
   const setStreamCompletedSuccessfullyById = useSetAtom(
     streamCompletedSuccessfullyByIdAtom,
   );
+  const [queuePausedById, setQueuePausedById] = useAtom(queuePausedByIdAtom);
 
   const posthog = usePostHog();
   const queryClient = useQueryClient();
@@ -458,6 +460,26 @@ export function useStreamChat({
       setQueuedMessagesById((prev) => {
         const next = new Map(prev);
         next.delete(chatId);
+        return next;
+      });
+    },
+    isPaused:
+      hasChatId && chatId !== undefined
+        ? (queuePausedById.get(chatId) ?? false)
+        : false,
+    pauseQueue: () => {
+      if (chatId === undefined) return;
+      setQueuePausedById((prev) => {
+        const next = new Map(prev);
+        next.set(chatId, true);
+        return next;
+      });
+    },
+    resumeQueue: () => {
+      if (chatId === undefined) return;
+      setQueuePausedById((prev) => {
+        const next = new Map(prev);
+        next.set(chatId, false);
         return next;
       });
     },

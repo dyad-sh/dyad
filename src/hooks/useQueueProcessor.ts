@@ -3,6 +3,7 @@ import { useAtom } from "jotai";
 import {
   queuedMessagesByIdAtom,
   streamCompletedSuccessfullyByIdAtom,
+  queuePausedByIdAtom,
   type QueuedMessageItem,
 } from "@/atoms/chatAtoms";
 import { useStreamChat } from "./useStreamChat";
@@ -20,6 +21,7 @@ export function useQueueProcessor() {
   );
   const [streamCompletedSuccessfullyById, setStreamCompletedSuccessfullyById] =
     useAtom(streamCompletedSuccessfullyByIdAtom);
+  const [queuePausedById] = useAtom(queuePausedByIdAtom);
   const posthog = usePostHog();
   const { settings } = useSettings();
 
@@ -31,6 +33,9 @@ export function useQueueProcessor() {
       const completedSuccessfully =
         streamCompletedSuccessfullyById.get(chatId) ?? false;
       if (!completedSuccessfully) continue;
+
+      const isPaused = queuePausedById.get(chatId) ?? false;
+      if (isPaused) continue;
 
       // Clear the successful completion flag first to prevent loops
       setStreamCompletedSuccessfullyById((prev) => {
@@ -74,6 +79,7 @@ export function useQueueProcessor() {
   }, [
     queuedMessagesById,
     streamCompletedSuccessfullyById,
+    queuePausedById,
     streamMessage,
     setQueuedMessagesById,
     setStreamCompletedSuccessfullyById,

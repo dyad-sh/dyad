@@ -18,6 +18,8 @@ import {
   Lock,
   Mic,
   MicOff,
+  PauseIcon,
+  PlayIcon,
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
@@ -121,6 +123,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     removeQueuedMessage,
     reorderQueuedMessages,
     clearAllQueuedMessages,
+    isPaused,
+    pauseQueue,
+    resumeQueue,
   } = useStreamChat();
   const [showError, setShowError] = useState(true);
   const [isApproving, setIsApproving] = useState(false); // State for approving
@@ -329,6 +334,34 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Restore persisted queue from sessionStorage when chat is opened
+  useEffect(() => {
+    if (!chatId) return;
+    try {
+      const persistedQueueJson = sessionStorage.getItem(
+        `dyad-paused-queue-${chatId}`,
+      );
+      if (persistedQueueJson) {
+        const persistedQueue = JSON.parse(persistedQueueJson);
+        if (Array.isArray(persistedQueue) && persistedQueue.length > 0) {
+          for (const message of persistedQueue) {
+            queueMessage({
+              prompt: message.prompt,
+              attachments: message.attachments,
+              selectedComponents: message.selectedComponents,
+            });
+          }
+        }
+        sessionStorage.removeItem(`dyad-paused-queue-${chatId}`);
+      }
+    } catch (err) {
+      console.warn(
+        "Failed to restore persisted queue from sessionStorage:",
+        err,
+      );
+    }
+  }, [chatId, queueMessage]);
+
   // Queue management handlers
   const handleEditQueuedMessage = useCallback(
     (id: string) => {
@@ -510,6 +543,18 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   };
 
   const handleCancel = () => {
+    // Save queued messages to sessionStorage if queue is not empty
+    if (chatId && queuedMessages.length > 0) {
+      try {
+        sessionStorage.setItem(
+          `dyad-paused-queue-${chatId}`,
+          JSON.stringify(queuedMessages),
+        );
+      } catch (err) {
+        console.warn("Failed to save paused queue to sessionStorage:", err);
+      }
+    }
+
     // Clear all queued messages first, BEFORE the IPC call, to ensure
     // the queue is empty even if the backend response arrives quickly.
     // This prevents race conditions where the queue-processing effect
@@ -524,6 +569,14 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       ipc.chat.cancelStream(chatId);
     }
     setIsStreaming(false);
+  };
+
+  const handleTogglePause = () => {
+    if (isPaused) {
+      resumeQueue();
+    } else {
+      pauseQueue();
+    }
   };
 
   const dismissError = () => {
@@ -703,6 +756,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               onMoveDown={handleMoveDown}
               isStreaming={isStreaming}
               hasError={!!error}
+              isPaused={isPaused}
             />
           )}
           {/* Show editing indicator when editing a queued message */}
@@ -885,20 +939,50 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             )}
 
             {isStreaming ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      onClick={handleCancel}
-                      aria-label={t("cancelGeneration")}
-                      className="px-2 py-2 mb-0.5 mr-1 text-muted-foreground hover:text-destructive rounded-lg transition-colors duration-150 cursor-pointer"
-                    />
-                  }
-                >
-                  <StopCircleIcon size={20} />
-                </TooltipTrigger>
-                <TooltipContent>{t("cancelGeneration")}</TooltipContent>
-              </Tooltip>
+              <>
+                {queuedMessages.length > 0 && (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <button
+                          onClick={handleTogglePause}
+                          aria-label={
+                            isPaused
+                              ? t("resumeQueue", "Resume queue")
+                              : t("pauseQueue", "Pause queue")
+                          }
+                          className="px-2 py-2 mb-0.5 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 cursor-pointer"
+                        />
+                      }
+                    >
+                      {isPaused ? (
+                        <PlayIcon size={20} />
+                      ) : (
+                        <PauseIcon size={20} />
+                      )}
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {isPaused
+                        ? t("resumeQueue", "Resume queue")
+                        : t("pauseQueue", "Pause queue")}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        onClick={handleCancel}
+                        aria-label={t("cancelGeneration")}
+                        className="px-2 py-2 mb-0.5 mr-1 text-muted-foreground hover:text-destructive rounded-lg transition-colors duration-150 cursor-pointer"
+                      />
+                    }
+                  >
+                    <StopCircleIcon size={20} />
+                  </TooltipTrigger>
+                  <TooltipContent>{t("cancelGeneration")}</TooltipContent>
+                </Tooltip>
+              </>
             ) : (
               <Tooltip>
                 <TooltipTrigger

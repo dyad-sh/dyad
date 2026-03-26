@@ -24,11 +24,22 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
-import { ExternalLink, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { ExternalLink, Plus, RefreshCw, Trash2, Info } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useNeon } from "@/hooks/useNeon";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
+
+const VITE_CONFIG_FILES = [
+  "vite.config.js",
+  "vite.config.ts",
+  "vite.config.mjs",
+];
+
+function isViteProject(files: string[] | undefined): boolean {
+  if (!files) return false;
+  return files.some((file) => VITE_CONFIG_FILES.includes(file));
+}
 
 export function NeonConnector({ appId }: { appId: number }) {
   const { t } = useTranslation("home");
@@ -171,6 +182,23 @@ export function NeonConnector({ appId }: { appId: number }) {
         return "outline";
     }
   };
+
+  // Vite/React projects: Neon is not available
+  if (isViteProject(app?.files)) {
+    return (
+      <Card className="mt-1">
+        <CardHeader>
+          <CardTitle>{t("integrations.neon.database")}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Info className="h-4 w-4 shrink-0" />
+            <span>Neon is currently unavailable for React/Vite projects.</span>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   // State 1: Connected and has project set
   if (isConnected && app?.neonProjectId) {

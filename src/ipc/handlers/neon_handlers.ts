@@ -132,7 +132,7 @@ export function registerNeonHandlers() {
             getDyadAppPath(appRecord[0].path),
           );
           const endpointHost =
-            frameworkType === "vite"
+            frameworkType === "vite" || frameworkType === "nextjs"
               ? await getEndpointHost(
                   neonClient,
                   project.id,
@@ -371,7 +371,7 @@ export function registerNeonHandlers() {
               getDyadAppPath(appRecord[0].path),
             );
             const endpointHost =
-              frameworkType === "vite"
+              frameworkType === "vite" || frameworkType === "nextjs"
                 ? await getEndpointHost(neonClient, projectId, activeBranchId)
                 : undefined;
             await updateNeonEnvVars({
@@ -471,7 +471,7 @@ export function registerNeonHandlers() {
             getDyadAppPath(appData.path),
           );
           const endpointHost =
-            frameworkType === "vite"
+            frameworkType === "vite" || frameworkType === "nextjs"
               ? await getEndpointHost(
                   neonClient,
                   appData.neonProjectId,

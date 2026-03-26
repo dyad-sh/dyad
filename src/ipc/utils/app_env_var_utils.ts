@@ -7,6 +7,7 @@ import { getDyadAppPath } from "@/paths/paths";
 import { EnvVar } from "@/ipc/types";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import log from "electron-log";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
@@ -188,6 +189,24 @@ export function deriveViteNeonUrls(endpointHost: string): {
   };
 }
 
+/**
+ * Derive the Neon Auth base URL for Next.js from the compute endpoint host.
+ * endpointHost format: ep-xxx.<region>.aws.neon.tech
+ */
+export function deriveNeonAuthBaseUrl(endpointHost: string): string {
+  const parts = endpointHost.split(".");
+  const epId = parts[0];
+  const rest = parts.slice(1).join(".");
+  return `https://${epId}.neonauth.${rest}/neondb/auth`;
+}
+
+/**
+ * Generate a random cookie secret for Neon Auth session signing.
+ */
+export function generateCookieSecret(): string {
+  return crypto.randomBytes(32).toString("hex");
+}
+
 export async function updateNeonEnvVars({
   appPath,
   connectionUri,
@@ -216,6 +235,22 @@ export async function updateNeonEnvVars({
   } else {
     upsertEnvVar(envVars, "DATABASE_URL", connectionUri);
     upsertEnvVar(envVars, "POSTGRES_URL", connectionUri);
+
+    if (frameworkType === "nextjs" && endpointHost) {
+      const authBaseUrl = deriveNeonAuthBaseUrl(endpointHost);
+      upsertEnvVar(envVars, "NEON_AUTH_BASE_URL", authBaseUrl);
+      // Only generate a new cookie secret if one doesn't already exist
+      const existingSecret = envVars.find(
+        (v) => v.key === "NEON_AUTH_COOKIE_SECRET",
+      );
+      if (!existingSecret) {
+        upsertEnvVar(
+          envVars,
+          "NEON_AUTH_COOKIE_SECRET",
+          generateCookieSecret(),
+        );
+      }
+    }
   }
 
   const envFileContents = serializeEnvFile(envVars);

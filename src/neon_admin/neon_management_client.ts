@@ -161,6 +161,20 @@ export async function getNeonClient(): Promise<Api<unknown>> {
           ],
         },
       }),
+      listProjects: async () => ({
+        data: {
+          projects: [
+            {
+              id: "test-project-id",
+              name: "Test Project",
+              region_id: "aws-us-east-2",
+              platform_id: "aws",
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+          ],
+        },
+      }),
       listOrganizations: async () => ({
         data: {
           organizations: [

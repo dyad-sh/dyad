@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/dialog";
 import { GitHubConnector } from "@/components/GitHubConnector";
 import { SupabaseConnector } from "@/components/SupabaseConnector";
+import { NeonConnector } from "@/components/NeonConnector";
 import { showError, showSuccess } from "@/lib/toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Label } from "@/components/ui/label";
@@ -436,7 +437,12 @@ export default function AppDetailsPage() {
               </div>
             )}
           </div>
-          {appId && <SupabaseConnector appId={appId} />}
+          {appId && !selectedApp?.neonProjectId && (
+            <SupabaseConnector appId={appId} />
+          )}
+          {appId && !selectedApp?.supabaseProjectId && (
+            <NeonConnector appId={appId} />
+          )}
           {appId && <CapacitorControls appId={appId} />}
           <AppUpgrades appId={appId} />
         </div>

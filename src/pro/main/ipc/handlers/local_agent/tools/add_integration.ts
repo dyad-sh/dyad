@@ -1,12 +1,14 @@
 import { z } from "zod";
 import { ToolDefinition, escapeXmlAttr } from "./types";
 
-const SUPPORTED_PROVIDERS = ["supabase"] as const;
+const SUPPORTED_PROVIDERS = ["supabase", "neon"] as const;
 
 const addIntegrationSchema = z.object({
   provider: z
     .enum(SUPPORTED_PROVIDERS)
-    .describe("The integration provider to add (e.g., 'supabase')"),
+    .describe(
+      "The integration provider to add (e.g., 'supabase' for Supabase, 'neon' for Neon Postgres)",
+    ),
 });
 
 export const addIntegrationTool: ToolDefinition<
@@ -14,11 +16,11 @@ export const addIntegrationTool: ToolDefinition<
 > = {
   name: "add_integration",
   description:
-    "Add an integration provider to the app (e.g., Supabase for auth, database, or server-side functions). Once you have called this tool, stop and do not call any more tools because you need to wait for the user to set up the integration.",
+    "Add an integration provider to the app (e.g., Supabase for auth, database, or server-side functions; Neon for serverless Postgres). Once you have called this tool, stop and do not call any more tools because you need to wait for the user to set up the integration.",
   inputSchema: addIntegrationSchema,
   defaultConsent: "always",
   modifiesState: true,
-  isEnabled: (ctx) => !ctx.supabaseProjectId,
+  isEnabled: (ctx) => !ctx.supabaseProjectId && !ctx.neonProjectId,
 
   getConsentPreview: (args) => `Add ${args.provider} integration`,
 

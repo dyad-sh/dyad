@@ -293,8 +293,10 @@ export const queryKeys = {
   // Neon
   // ─────────────────────────────────────────────────────────────────────────────
   neon: {
+    all: ["neon"] as const,
+    projects: ["neon", "projects"] as const,
     project: ({ appId }: { appId: number | null }) =>
-      ["neon-project", appId] as const,
+      ["neon", "project", appId] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

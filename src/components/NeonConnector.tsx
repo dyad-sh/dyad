@@ -1,25 +1,63 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ipc } from "@/ipc/types";
 import { toast } from "sonner";
 import { useSettings } from "@/hooks/useSettings";
-
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useLoadApp } from "@/hooks/useLoadApp";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
-import { NeonDisconnectButton } from "@/components/NeonDisconnectButton";
+import { useNeon } from "@/hooks/useNeon";
 
-export function NeonConnector() {
+export function NeonConnector({ appId }: { appId: number }) {
   const { t } = useTranslation("home");
   const { settings, refreshSettings } = useSettings();
+  const { app, refreshApp } = useLoadApp(appId);
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
   const { isDarkMode } = useTheme();
+
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+
+  const {
+    isConnected,
+    projects,
+    projectInfo,
+    branches,
+    isLoadingProjects,
+    isFetchingProjects,
+    projectsError,
+    isLoadingBranches,
+    branchesError,
+    refetchProjects,
+  } = useNeon(appId);
 
   useEffect(() => {
     const handleDeepLink = async () => {
       if (lastDeepLink?.type === "neon-oauth-return") {
         await refreshSettings();
+        await refetchProjects();
+        await refreshApp();
         toast.success(t("integrations.neon.connectedSuccess"));
         clearLastDeepLink();
       }
@@ -27,61 +65,337 @@ export function NeonConnector() {
     handleDeepLink();
   }, [lastDeepLink?.timestamp]);
 
-  if (settings?.neon?.accessToken) {
+  const handleConnect = async () => {
+    if (settings?.isTestMode) {
+      await ipc.neon.fakeConnect();
+    } else {
+      await ipc.system.openExternalUrl(
+        "https://oauth.dyad.sh/api/integrations/neon/login",
+      );
+    }
+  };
+
+  const handleProjectSelect = async (projectId: string) => {
+    if (projectId === "__create_new__") {
+      setShowCreateForm(true);
+      return;
+    }
+
+    try {
+      await ipc.neon.setAppProject({ appId, projectId });
+      toast.success(t("integrations.neon.projectConnected"));
+      await refreshApp();
+    } catch (error) {
+      toast.error(
+        t("integrations.neon.failedConnectProject", {
+          error: String(error),
+        }),
+      );
+    }
+  };
+
+  const handleCreateProject = async () => {
+    if (!newProjectName.trim()) return;
+
+    setIsCreating(true);
+    try {
+      await ipc.neon.createProject({
+        name: newProjectName.trim(),
+        appId,
+      });
+      toast.success(t("integrations.neon.projectConnected"));
+      setShowCreateForm(false);
+      setNewProjectName("");
+      await refetchProjects();
+      await refreshApp();
+    } catch (error) {
+      toast.error(
+        t("integrations.neon.failedConnectProject", {
+          error: String(error),
+        }),
+      );
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const handleUnsetProject = async () => {
+    try {
+      await ipc.neon.unsetAppProject({ appId });
+      toast.success(t("integrations.neon.disconnectProject"));
+      await refreshApp();
+    } catch (error) {
+      console.error("Failed to disconnect project:", error);
+      toast.error(t("integrations.neon.failedDisconnectProject"));
+    }
+  };
+
+  const handleBranchSelect = async (branchId: string) => {
+    try {
+      await ipc.neon.setActiveBranch({ appId, branchId });
+      const branch = branches.find((b) => b.branchId === branchId);
+      toast.success(
+        `${t("integrations.neon.branchSwitched")}: ${branch?.branchName ?? branchId}`,
+      );
+      await refreshApp();
+    } catch (error) {
+      toast.error(
+        t("integrations.neon.failedSetBranch", {
+          error: String(error),
+        }),
+      );
+    }
+  };
+
+  const getBranchBadgeVariant = (
+    type: string,
+  ): "default" | "secondary" | "outline" => {
+    switch (type) {
+      case "production":
+        return "default";
+      case "development":
+        return "secondary";
+      default:
+        return "outline";
+    }
+  };
+
+  // State 1: Connected and has project set
+  if (isConnected && app?.neonProjectId) {
     return (
-      <div className="flex flex-col space-y-4 p-4 border bg-white dark:bg-gray-800 max-w-100 rounded-md">
-        <div className="flex flex-col items-start justify-between">
-          <div className="flex items-center justify-between w-full">
-            <h2 className="text-lg font-medium pb-1">
-              {t("integrations.neon.database")}
-            </h2>
+      <Card className="mt-1">
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            {t("integrations.neon.project")}
             <Button
               variant="outline"
               onClick={() => {
-                ipc.system.openExternalUrl("https://console.neon.tech/");
+                ipc.system.openExternalUrl(
+                  `https://console.neon.tech/app/projects/${app.neonProjectId}`,
+                );
               }}
-              className="ml-2 px-2 py-1 h-8 mb-2 inline-flex items-center gap-1"
+              className="ml-2 px-2 py-1 inline-flex items-center gap-2"
             >
-              Neon
-              <ExternalLink className="h-3 w-3" />
+              <NeonSvg isDarkMode={isDarkMode} />
+              <ExternalLink className="h-4 w-4" />
+            </Button>
+          </CardTitle>
+          <CardDescription className="flex flex-col gap-1.5 text-sm">
+            {t("integrations.neon.connectedToProject")}
+            <Badge
+              variant="secondary"
+              className="ml-2 text-base font-bold px-3 py-1"
+            >
+              {projectInfo?.projectName ?? app.neonProjectId}
+            </Badge>
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="neon-branch-select">
+                {t("integrations.neon.activeBranch")}
+              </Label>
+              {branchesError ? (
+                <p className="text-sm text-red-500">{String(branchesError)}</p>
+              ) : isLoadingBranches ? (
+                <Skeleton className="h-10 w-full" />
+              ) : (
+                <Select
+                  value={app.neonActiveBranchId ?? ""}
+                  onValueChange={(value) => value && handleBranchSelect(value)}
+                >
+                  <SelectTrigger
+                    id="neon-branch-select"
+                    data-testid="neon-branch-select"
+                  >
+                    <SelectValue
+                      placeholder={t("integrations.neon.selectBranch")}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.map((branch) => (
+                      <SelectItem key={branch.branchId} value={branch.branchId}>
+                        <span className="flex items-center gap-2">
+                          {branch.branchName}
+                          <Badge
+                            variant={getBranchBadgeVariant(branch.type)}
+                            className="text-xs"
+                          >
+                            {t(`integrations.neon.${branch.type}`, {
+                              defaultValue: branch.type,
+                            })}
+                          </Badge>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            <Button variant="destructive" onClick={handleUnsetProject}>
+              <Trash2 className="h-4 w-4 mr-1" />
+              {t("integrations.neon.disconnectProject")}
             </Button>
           </div>
-          <p className="text-sm text-gray-500 dark:text-gray-400 pb-3">
-            {t("integrations.neon.connectedToNeon")}
-          </p>
-          <NeonDisconnectButton />
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     );
   }
 
+  // State 2: Connected, no project set — show project selector
+  if (isConnected) {
+    return (
+      <Card className="mt-1">
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            {t("integrations.neon.projects")}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => refetchProjects()}
+                disabled={isFetchingProjects}
+                title={t("integrations.neon.refreshProjects")}
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${isFetchingProjects ? "animate-spin" : ""}`}
+                />
+              </Button>
+            </div>
+          </CardTitle>
+          <CardDescription>
+            {t("integrations.neon.selectProjectDescription")}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoadingProjects || isFetchingProjects ? (
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          ) : projectsError ? (
+            <div className="text-red-500">
+              {t("integrations.neon.errorLoadingProjects", {
+                message: String(projectsError),
+              })}
+              <Button
+                variant="outline"
+                className="mt-2"
+                onClick={() => refetchProjects()}
+              >
+                Retry
+              </Button>
+            </div>
+          ) : showCreateForm ? (
+            <div className="space-y-3">
+              <Label>{t("integrations.neon.projectName")}</Label>
+              <Input
+                value={newProjectName}
+                onChange={(e) => setNewProjectName(e.target.value)}
+                placeholder="my-app-db"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleCreateProject();
+                }}
+              />
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleCreateProject}
+                  disabled={isCreating || !newProjectName.trim()}
+                  size="sm"
+                >
+                  {isCreating
+                    ? t("integrations.neon.creating")
+                    : t("integrations.neon.create")}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowCreateForm(false);
+                    setNewProjectName("");
+                  }}
+                  size="sm"
+                >
+                  {t("integrations.neon.cancel")}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {projects.length === 0 ? (
+                <p className="text-sm text-gray-500">
+                  {t("integrations.neon.noProjectsFound")}
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  <Label htmlFor="neon-project-select">
+                    {t("integrations.neon.project")}
+                  </Label>
+                  <Select
+                    value=""
+                    onValueChange={(v) => v && handleProjectSelect(v)}
+                  >
+                    <SelectTrigger
+                      id="neon-project-select"
+                      data-testid="neon-project-select"
+                    >
+                      <SelectValue
+                        placeholder={t("integrations.neon.selectAProject")}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__create_new__">
+                        <span className="flex items-center gap-1">
+                          <Plus className="h-4 w-4" />
+                          {t("integrations.neon.createNewProject")}
+                        </span>
+                      </SelectItem>
+                      {projects.map((project) => (
+                        <SelectItem key={project.id} value={project.id}>
+                          {project.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {projects.length === 0 && (
+                <Button
+                  variant="outline"
+                  onClick={() => setShowCreateForm(true)}
+                  className="gap-1"
+                >
+                  <Plus className="h-4 w-4" />
+                  {t("integrations.neon.createNewProject")}
+                </Button>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // State 3: Not connected — show connect button
   return (
-    <div className="flex flex-col space-y-4 p-4 border bg-white dark:bg-gray-800 max-w-100 rounded-md">
-      <div className="flex flex-col items-start justify-between">
-        <h2 className="text-lg font-medium pb-1">
-          {t("integrations.neon.database")}
-        </h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 pb-3">
-          {t("integrations.neon.freeTier")}
-        </p>
+    <Card className="mt-1">
+      <CardHeader>
+        <CardTitle>{t("integrations.neon.database")}</CardTitle>
+        <CardDescription>{t("integrations.neon.freeTier")}</CardDescription>
+      </CardHeader>
+      <CardContent>
         <div
-          onClick={async () => {
-            if (settings?.isTestMode) {
-              await ipc.neon.fakeConnect();
-            } else {
-              await ipc.system.openExternalUrl(
-                "https://oauth.dyad.sh/api/integrations/neon/login",
-              );
-            }
-          }}
-          className="w-auto h-10 cursor-pointer flex items-center justify-center px-4 py-2 rounded-md border-2 transition-colors font-medium text-sm dark:bg-gray-900 dark:border-gray-700"
+          onClick={handleConnect}
+          className="w-auto h-10 cursor-pointer flex items-center justify-center px-4 py-2 rounded-md border-2 transition-colors font-medium text-sm dark:bg-gray-900 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
           data-testid="connect-neon-button"
         >
           <span className="mr-2">{t("integrations.neon.connectTo")}</span>
           <NeonSvg isDarkMode={isDarkMode} />
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 

@@ -198,10 +198,15 @@ export type {
 // Neon types
 export type {
   NeonProject,
+  NeonProjectListItem,
   NeonBranch,
   CreateNeonProjectParams,
   GetNeonProjectParams,
   GetNeonProjectResponse,
+  ListNeonProjectsResponse,
+  SetNeonAppProjectParams,
+  UnsetNeonAppProjectParams,
+  SetNeonActiveBranchParams,
 } from "./neon";
 
 // System types

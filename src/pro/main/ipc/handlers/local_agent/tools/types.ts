@@ -48,6 +48,10 @@ export interface AgentContext {
   chatId: number;
   supabaseProjectId: string | null;
   supabaseOrganizationSlug: string | null;
+  neonProjectId: string | null;
+  neonDevelopmentBranchId: string | null;
+  neonActiveBranchId: string | null;
+  frameworkType: "nextjs" | "vite" | "other" | null;
   messageId: number;
   isSharedModulesChanged: boolean;
   chatSummary?: string;

@@ -554,7 +554,31 @@
       "connectedSuccess": "Successfully connected to Neon!",
       "disconnect": "Disconnect from Neon",
       "disconnected": "Disconnected from Neon successfully",
-      "failedDisconnect": "Failed to disconnect from Neon"
+      "failedDisconnect": "Failed to disconnect from Neon",
+      "project": "Neon Project",
+      "projects": "Neon Projects",
+      "selectProjectDescription": "Select an existing Neon project or create a new one",
+      "selectAProject": "Select a project...",
+      "noProjectsFound": "No projects found. Create a new project to get started.",
+      "refreshProjects": "Refresh projects",
+      "errorLoadingProjects": "Failed to load projects: {{message}}",
+      "projectConnected": "Neon project connected successfully",
+      "failedConnectProject": "Failed to connect project: {{error}}",
+      "connectedToProject": "Connected to project",
+      "disconnectProject": "Disconnect project",
+      "failedDisconnectProject": "Failed to disconnect project",
+      "createNewProject": "Create New Project",
+      "projectName": "Project name",
+      "creating": "Creating...",
+      "create": "Create",
+      "cancel": "Cancel",
+      "activeBranch": "Active Branch",
+      "selectBranch": "Select a branch...",
+      "branchSwitched": "Switched to branch",
+      "failedSetBranch": "Failed to switch branch: {{error}}",
+      "production": "production",
+      "development": "development",
+      "preview": "preview"
     }
   }
 }

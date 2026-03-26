@@ -209,6 +209,139 @@ export function registerNeonHandlers() {
     }
   });
 
+  // List all Neon projects for the authenticated user
+  createTypedHandler(neonContracts.listProjects, async () => {
+    logger.info("Listing Neon projects");
+
+    try {
+      const neonClient = await getNeonClient();
+      const orgId = await getNeonOrganizationId();
+
+      const response = await neonClient.listProjects({
+        org_id: orgId,
+        limit: 100,
+      });
+
+      if (!response.data.projects) {
+        return { projects: [] };
+      }
+
+      return {
+        projects: response.data.projects.map((p) => ({
+          id: p.id,
+          name: p.name,
+          regionId: p.region_id,
+          createdAt: p.created_at,
+        })),
+      };
+    } catch (error: any) {
+      const errorMessage = getNeonErrorMessage(error);
+      logger.error(`Failed to list Neon projects: ${errorMessage}`);
+      throw new Error(`Failed to list Neon projects: ${errorMessage}`);
+    }
+  });
+
+  // Link an existing Neon project to a Dyad app
+  createTypedHandler(neonContracts.setAppProject, async (_, params) => {
+    const { appId, projectId } = params;
+    logger.info(`Setting Neon project ${projectId} for app ${appId}`);
+
+    try {
+      const neonClient = await getNeonClient();
+
+      // Get branches to find the development branch
+      const branchesResponse = await neonClient.listProjectBranches({
+        projectId,
+      });
+
+      if (!branchesResponse.data.branches) {
+        throw new DyadError(
+          "Failed to get branches for project",
+          DyadErrorKind.External,
+        );
+      }
+
+      const branches = branchesResponse.data.branches;
+
+      // Find development branch (non-default, non-preview) or fall back to default
+      const defaultBranch = branches.find((b) => b.default);
+      const developmentBranch =
+        branches.find((b) => !b.default && b.name !== "preview") ??
+        defaultBranch;
+
+      const previewBranch = branches.find((b) => b.name === "preview");
+
+      await db
+        .update(apps)
+        .set({
+          neonProjectId: projectId,
+          neonDevelopmentBranchId: developmentBranch?.id ?? null,
+          neonPreviewBranchId: previewBranch?.id ?? null,
+          neonActiveBranchId:
+            developmentBranch?.id ?? defaultBranch?.id ?? null,
+        })
+        .where(eq(apps.id, appId));
+
+      logger.info(
+        `Successfully linked Neon project ${projectId} to app ${appId}`,
+      );
+      return { success: true };
+    } catch (error: any) {
+      const errorMessage = getNeonErrorMessage(error);
+      logger.error(
+        `Failed to set Neon project for app ${appId}: ${errorMessage}`,
+      );
+      throw new Error(
+        `Failed to set Neon project for app ${appId}: ${errorMessage}`,
+      );
+    }
+  });
+
+  // Unlink a Neon project from a Dyad app
+  createTypedHandler(neonContracts.unsetAppProject, async (_, params) => {
+    const { appId } = params;
+    logger.info(`Unsetting Neon project for app ${appId}`);
+
+    try {
+      await db
+        .update(apps)
+        .set({
+          neonProjectId: null,
+          neonDevelopmentBranchId: null,
+          neonPreviewBranchId: null,
+          neonActiveBranchId: null,
+        })
+        .where(eq(apps.id, appId));
+
+      logger.info(`Successfully unlinked Neon project from app ${appId}`);
+      return { success: true };
+    } catch (error: any) {
+      logger.error(`Failed to unset Neon project for app ${appId}:`, error);
+      throw new Error(`Failed to unset Neon project for app ${appId}`);
+    }
+  });
+
+  // Set the active branch for SQL execution
+  createTypedHandler(neonContracts.setActiveBranch, async (_, params) => {
+    const { appId, branchId } = params;
+    logger.info(`Setting active Neon branch ${branchId} for app ${appId}`);
+
+    try {
+      await db
+        .update(apps)
+        .set({ neonActiveBranchId: branchId })
+        .where(eq(apps.id, appId));
+
+      logger.info(
+        `Successfully set active branch ${branchId} for app ${appId}`,
+      );
+      return { success: true };
+    } catch (error: any) {
+      logger.error(`Failed to set active branch for app ${appId}:`, error);
+      throw new Error(`Failed to set active branch for app ${appId}`);
+    }
+  });
+
   testOnlyHandle("neon:fake-connect", async (event) => {
     // Call handleNeonOAuthReturn with fake data
     handleNeonOAuthReturn({

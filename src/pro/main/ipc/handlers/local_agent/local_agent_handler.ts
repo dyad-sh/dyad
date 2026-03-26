@@ -13,6 +13,8 @@ import {
   type ToolExecutionOptions,
 } from "ai";
 import log from "electron-log";
+import fs from "node:fs";
+import path from "node:path";
 
 import { db } from "@/db";
 import { chats, messages } from "@/db/schema";
@@ -250,6 +252,45 @@ function getMidTurnCompactionSummaryIds(
   }
 
   return hiddenIds;
+}
+
+/**
+ * Detect the framework type for an app by checking config files and package.json.
+ */
+function detectFrameworkType(
+  appPath: string,
+): "nextjs" | "vite" | "other" | null {
+  try {
+    const nextConfigs = ["next.config.js", "next.config.mjs", "next.config.ts"];
+    for (const config of nextConfigs) {
+      if (fs.existsSync(path.join(appPath, config))) {
+        return "nextjs";
+      }
+    }
+
+    const viteConfigs = ["vite.config.js", "vite.config.ts", "vite.config.mjs"];
+    for (const config of viteConfigs) {
+      if (fs.existsSync(path.join(appPath, config))) {
+        return "vite";
+      }
+    }
+
+    // Fallback: check package.json dependencies
+    const packageJsonPath = path.join(appPath, "package.json");
+    if (fs.existsSync(packageJsonPath)) {
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+      const deps = {
+        ...packageJson.dependencies,
+        ...packageJson.devDependencies,
+      };
+      if (deps.next) return "nextjs";
+      if (deps.vite) return "vite";
+    }
+
+    return "other";
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -505,6 +546,10 @@ export async function handleLocalAgentStream(
       chatId: chat.id,
       supabaseProjectId: chat.app.supabaseProjectId,
       supabaseOrganizationSlug: chat.app.supabaseOrganizationSlug,
+      neonProjectId: chat.app.neonProjectId,
+      neonDevelopmentBranchId: chat.app.neonDevelopmentBranchId,
+      neonActiveBranchId: chat.app.neonActiveBranchId,
+      frameworkType: detectFrameworkType(appPath),
       messageId: placeholderMessageId,
       isSharedModulesChanged: false,
       todos: persistedTodos,

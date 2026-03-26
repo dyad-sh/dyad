@@ -36,6 +36,8 @@ import { DyadListFiles } from "./DyadListFiles";
 import { DyadDatabaseSchema } from "./DyadDatabaseSchema";
 import { DyadSupabaseTableSchema } from "./DyadSupabaseTableSchema";
 import { DyadSupabaseProjectInfo } from "./DyadSupabaseProjectInfo";
+import { DyadNeonProjectInfo } from "./DyadNeonProjectInfo";
+import { DyadNeonTableSchema } from "./DyadNeonTableSchema";
 import { DyadStatus } from "./DyadStatus";
 import { DyadCompaction } from "./DyadCompaction";
 import { DyadWritePlan } from "./DyadWritePlan";
@@ -77,6 +79,8 @@ const DYAD_CUSTOM_TAGS = [
   "dyad-database-schema",
   "dyad-supabase-table-schema",
   "dyad-supabase-project-info",
+  "dyad-neon-project-info",
+  "dyad-neon-table-schema",
   "dyad-status",
   "dyad-compaction",
   "dyad-copy",
@@ -747,6 +751,33 @@ function renderCustomTag(
         >
           {content}
         </DyadSupabaseProjectInfo>
+      );
+
+    case "dyad-neon-project-info":
+      return (
+        <DyadNeonProjectInfo
+          node={{
+            properties: {
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadNeonProjectInfo>
+      );
+
+    case "dyad-neon-table-schema":
+      return (
+        <DyadNeonTableSchema
+          node={{
+            properties: {
+              table: attributes.table || "",
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadNeonTableSchema>
       );
 
     case "dyad-image-generation":

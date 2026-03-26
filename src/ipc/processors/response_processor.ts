@@ -42,6 +42,7 @@ import {
 } from "../utils/dyad_tag_parser";
 import { applySearchReplace } from "../../pro/main/ipc/processors/search_replace_processor";
 import { storeDbTimestampAtCurrentVersion } from "../utils/neon_timestamp_utils";
+import { executeNeonSql } from "../../neon_admin/neon_context";
 import { executeCopyFile } from "../utils/copy_file_utils";
 const readFile = fs.promises.readFile;
 const logger = log.scope("response_processor");
@@ -160,7 +161,9 @@ export async function processFullResponseActions(
     const dyadRenameTags = getDyadRenameTags(fullResponse);
     const dyadDeletePaths = getDyadDeleteTags(fullResponse);
     const dyadAddDependencyPackages = getDyadAddDependencyTags(fullResponse);
-    const dyadExecuteSqlQueries = chatWithApp.app.supabaseProjectId
+    const hasDbProvider =
+      chatWithApp.app.supabaseProjectId || chatWithApp.app.neonProjectId;
+    const dyadExecuteSqlQueries = hasDbProvider
       ? getDyadExecuteSqlTags(fullResponse)
       : [];
 
@@ -181,26 +184,43 @@ export async function processFullResponseActions(
     if (dyadExecuteSqlQueries.length > 0) {
       for (const query of dyadExecuteSqlQueries) {
         try {
-          await executeSupabaseSql({
-            supabaseProjectId: chatWithApp.app.supabaseProjectId!,
-            query: query.content,
-            organizationSlug: chatWithApp.app.supabaseOrganizationSlug ?? null,
-          });
+          if (chatWithApp.app.neonProjectId) {
+            // Route to Neon executor
+            const branchId =
+              chatWithApp.app.neonActiveBranchId ??
+              chatWithApp.app.neonDevelopmentBranchId;
+            if (!branchId) {
+              throw new Error("No active Neon branch found for SQL execution");
+            }
+            await executeNeonSql({
+              projectId: chatWithApp.app.neonProjectId,
+              branchId,
+              query: query.content,
+            });
+          } else if (chatWithApp.app.supabaseProjectId) {
+            // Route to Supabase executor
+            await executeSupabaseSql({
+              supabaseProjectId: chatWithApp.app.supabaseProjectId,
+              query: query.content,
+              organizationSlug:
+                chatWithApp.app.supabaseOrganizationSlug ?? null,
+            });
 
-          // Only write migration file if SQL execution succeeded
-          if (settings.enableSupabaseWriteSqlMigration) {
-            try {
-              const migrationFilePath = await writeMigrationFile(
-                appPath,
-                query.content,
-                query.description,
-              );
-              writtenFiles.push(migrationFilePath);
-            } catch (error) {
-              errors.push({
-                message: `Failed to write SQL migration file for: ${query.description}`,
-                error: error,
-              });
+            // Only write migration file if SQL execution succeeded
+            if (settings.enableSupabaseWriteSqlMigration) {
+              try {
+                const migrationFilePath = await writeMigrationFile(
+                  appPath,
+                  query.content,
+                  query.description,
+                );
+                writtenFiles.push(migrationFilePath);
+              } catch (error) {
+                errors.push({
+                  message: `Failed to write SQL migration file for: ${query.description}`,
+                  error: error,
+                });
+              }
             }
           }
         } catch (error) {

@@ -8,6 +8,10 @@ import {
   getNeonErrorMessage,
   getNeonOrganizationId,
 } from "../../neon_admin/neon_management_client";
+import {
+  executeNeonSql,
+  getNeonTableSchema,
+} from "../../neon_admin/neon_context";
 import { neonContracts, type NeonBranch } from "../types/neon";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
@@ -340,6 +344,128 @@ export function registerNeonHandlers() {
       logger.error(`Failed to set active branch for app ${appId}:`, error);
       throw new Error(`Failed to set active branch for app ${appId}`);
     }
+  });
+
+  // Execute SQL on a Neon database
+  createTypedHandler(neonContracts.executeSql, async (_, params) => {
+    const { appId, query } = params;
+    logger.info(`Executing SQL for app ${appId}`);
+
+    const app = await db.select().from(apps).where(eq(apps.id, appId)).limit(1);
+
+    if (app.length === 0) {
+      throw new DyadError(
+        `App with ID ${appId} not found`,
+        DyadErrorKind.NotFound,
+      );
+    }
+
+    const appData = app[0];
+    if (!appData.neonProjectId) {
+      throw new DyadError(
+        `No Neon project found for app ${appId}`,
+        DyadErrorKind.Precondition,
+      );
+    }
+
+    const branchId =
+      appData.neonActiveBranchId ?? appData.neonDevelopmentBranchId;
+    if (!branchId) {
+      throw new DyadError(
+        `No active Neon branch found for app ${appId}`,
+        DyadErrorKind.Precondition,
+      );
+    }
+
+    const result = await executeNeonSql({
+      projectId: appData.neonProjectId,
+      branchId,
+      query,
+    });
+
+    return { result };
+  });
+
+  // Get connection URI for a Neon project
+  createTypedHandler(neonContracts.getConnectionUri, async (_, params) => {
+    const { appId } = params;
+    logger.info(`Getting connection URI for app ${appId}`);
+
+    const app = await db.select().from(apps).where(eq(apps.id, appId)).limit(1);
+
+    if (app.length === 0) {
+      throw new DyadError(
+        `App with ID ${appId} not found`,
+        DyadErrorKind.NotFound,
+      );
+    }
+
+    const appData = app[0];
+    if (!appData.neonProjectId) {
+      throw new DyadError(
+        `No Neon project found for app ${appId}`,
+        DyadErrorKind.Precondition,
+      );
+    }
+
+    const branchId =
+      appData.neonActiveBranchId ?? appData.neonDevelopmentBranchId;
+    if (!branchId) {
+      throw new DyadError(
+        `No active Neon branch found for app ${appId}`,
+        DyadErrorKind.Precondition,
+      );
+    }
+
+    const neonClient = await getNeonClient();
+    const response = await neonClient.getConnectionUri({
+      projectId: appData.neonProjectId,
+      branch_id: branchId,
+      database_name: "neondb",
+      role_name: "neondb_owner",
+    });
+
+    return { connectionUri: response.data.uri };
+  });
+
+  // Get table schema from a Neon database
+  createTypedHandler(neonContracts.getTableSchema, async (_, params) => {
+    const { appId, tableName } = params;
+    logger.info(`Getting table schema for app ${appId}`);
+
+    const app = await db.select().from(apps).where(eq(apps.id, appId)).limit(1);
+
+    if (app.length === 0) {
+      throw new DyadError(
+        `App with ID ${appId} not found`,
+        DyadErrorKind.NotFound,
+      );
+    }
+
+    const appData = app[0];
+    if (!appData.neonProjectId) {
+      throw new DyadError(
+        `No Neon project found for app ${appId}`,
+        DyadErrorKind.Precondition,
+      );
+    }
+
+    const branchId =
+      appData.neonActiveBranchId ?? appData.neonDevelopmentBranchId;
+    if (!branchId) {
+      throw new DyadError(
+        `No active Neon branch found for app ${appId}`,
+        DyadErrorKind.Precondition,
+      );
+    }
+
+    const schema = await getNeonTableSchema({
+      projectId: appData.neonProjectId,
+      branchId,
+      tableName,
+    });
+
+    return { schema };
   });
 
   testOnlyHandle("neon:fake-connect", async (event) => {

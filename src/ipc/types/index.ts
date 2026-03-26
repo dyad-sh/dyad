@@ -207,6 +207,9 @@ export type {
   SetNeonAppProjectParams,
   UnsetNeonAppProjectParams,
   SetNeonActiveBranchParams,
+  ExecuteNeonSqlParams,
+  GetNeonConnectionUriParams,
+  GetNeonTableSchemaParams,
 } from "./neon";
 
 // System types

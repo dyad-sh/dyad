@@ -95,6 +95,30 @@ export type SetNeonActiveBranchParams = z.infer<
   typeof SetNeonActiveBranchParamsSchema
 >;
 
+export const ExecuteNeonSqlParamsSchema = z.object({
+  appId: z.number(),
+  query: z.string(),
+});
+
+export type ExecuteNeonSqlParams = z.infer<typeof ExecuteNeonSqlParamsSchema>;
+
+export const GetNeonConnectionUriParamsSchema = z.object({
+  appId: z.number(),
+});
+
+export type GetNeonConnectionUriParams = z.infer<
+  typeof GetNeonConnectionUriParamsSchema
+>;
+
+export const GetNeonTableSchemaParamsSchema = z.object({
+  appId: z.number(),
+  tableName: z.string().optional(),
+});
+
+export type GetNeonTableSchemaParams = z.infer<
+  typeof GetNeonTableSchemaParamsSchema
+>;
+
 // =============================================================================
 // Neon Contracts
 // =============================================================================
@@ -134,6 +158,24 @@ export const neonContracts = {
     channel: "neon:set-active-branch",
     input: SetNeonActiveBranchParamsSchema,
     output: z.object({ success: z.boolean() }),
+  }),
+
+  executeSql: defineContract({
+    channel: "neon:execute-sql",
+    input: ExecuteNeonSqlParamsSchema,
+    output: z.object({ result: z.string() }),
+  }),
+
+  getConnectionUri: defineContract({
+    channel: "neon:get-connection-uri",
+    input: GetNeonConnectionUriParamsSchema,
+    output: z.object({ connectionUri: z.string() }),
+  }),
+
+  getTableSchema: defineContract({
+    channel: "neon:get-table-schema",
+    input: GetNeonTableSchemaParamsSchema,
+    output: z.object({ schema: z.string() }),
   }),
 
   fakeConnect: defineContract({

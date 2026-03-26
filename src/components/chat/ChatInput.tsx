@@ -355,18 +355,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               selectedComponents: message.selectedComponents,
             });
           }
-          // Restore persisted queue and enable processing if not currently streaming.
-          // If a stream is active, let it complete naturally before queue processing starts.
-          // If no stream is active, signal the queue processor that it can start.
-          // Note: Attachments were stripped during serialization; users can review and
-          // re-attach files if needed before the queue auto-sends.
-          if (!isStreaming) {
-            setStreamCompletedSuccessfullyById((prev) => {
-              const next = new Map(prev);
-              next.set(chatId, true);
-              return next;
-            });
-          }
+          // Messages are restored to the queue but NOT auto-sent.
+          // Attachments were stripped during serialization, so users must review
+          // and re-attach files if needed before resuming the queue.
+          // The queue processor will only run after: (1) user explicitly resumes,
+          // OR (2) an unrelated message completes naturally (stream-completed signal).
         }
         sessionStorage.removeItem(`dyad-queued-messages-${chatId}`);
       }
@@ -376,7 +369,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         err,
       );
     }
-  }, [chatId, queueMessage, isStreaming, setStreamCompletedSuccessfullyById]);
+  }, [chatId, queueMessage]);
 
   // Auto-clear pause state when queue becomes empty to prevent silent queueing
   // Users expect that deleting all queued messages returns them to normal send mode

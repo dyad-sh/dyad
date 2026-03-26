@@ -339,7 +339,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     if (!chatId) return;
     try {
       const persistedQueueJson = sessionStorage.getItem(
-        `dyad-paused-queue-${chatId}`,
+        `dyad-queued-messages-${chatId}`,
       );
       if (persistedQueueJson) {
         const persistedQueue = JSON.parse(persistedQueueJson);
@@ -352,7 +352,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             });
           }
         }
-        sessionStorage.removeItem(`dyad-paused-queue-${chatId}`);
+        sessionStorage.removeItem(`dyad-queued-messages-${chatId}`);
       }
     } catch (err) {
       console.warn(
@@ -543,11 +543,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   };
 
   const handleCancel = () => {
-    // Save queued messages to sessionStorage if queue is not empty
-    if (chatId && queuedMessages.length > 0) {
+    // Save queued messages to sessionStorage only if queue is paused
+    if (chatId && isPaused && queuedMessages.length > 0) {
       try {
         sessionStorage.setItem(
-          `dyad-paused-queue-${chatId}`,
+          `dyad-queued-messages-${chatId}`,
           JSON.stringify(queuedMessages),
         );
       } catch (err) {
@@ -565,6 +565,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     if (editingQueuedMessageId) {
       resetEditingState();
     }
+    // Reset pause state when canceling to prevent stale paused state
+    resumeQueue();
     if (chatId) {
       ipc.chat.cancelStream(chatId);
     }
@@ -938,7 +940,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               </Tooltip>
             )}
 
-            {isStreaming ? (
+            {isStreaming || (isPaused && queuedMessages.length > 0) ? (
               <>
                 {queuedMessages.length > 0 && (
                   <Tooltip>

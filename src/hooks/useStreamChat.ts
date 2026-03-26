@@ -467,21 +467,21 @@ export function useStreamChat({
       hasChatId && chatId !== undefined
         ? (queuePausedById.get(chatId) ?? false)
         : false,
-    pauseQueue: () => {
+    pauseQueue: useCallback(() => {
       if (chatId === undefined) return;
       setQueuePausedById((prev) => {
         const next = new Map(prev);
         next.set(chatId, true);
         return next;
       });
-    },
-    resumeQueue: () => {
+    }, [chatId, setQueuePausedById]),
+    resumeQueue: useCallback(() => {
       if (chatId === undefined) return;
       setQueuePausedById((prev) => {
         const next = new Map(prev);
         next.set(chatId, false);
         return next;
       });
-    },
+    }, [chatId, setQueuePausedById]),
   };
 }

@@ -2361,6 +2361,25 @@ export class IpcClient {
   }
 
   // =============================================================================
+  // DATA VAULT
+  // =============================================================================
+
+  /**
+   * Export vault entries (assets) to JSON file
+   */
+  public async exportDataVault(args: {
+    outputPath: string;
+    filter?: {
+      status?: string;
+      modality?: string;
+      tags?: string[];
+      collections?: string[];
+    };
+  }): Promise<{ path: string; count: number }> {
+    return this.ipcRenderer.invoke("data-vault:export", args);
+  }
+
+  // =============================================================================
   // DATA SOVEREIGNTY & MONETIZATION (COMPLETE USER DATA PROTECTION)
   // =============================================================================
 

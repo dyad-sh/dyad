@@ -317,11 +317,16 @@ const validInvokeChannels = [
   "agent:export:json",
   "agent:export:standalone",
   "agent:export:docker",
+  "agent:export:web-chat",
+  "agent:export:embed-snippet",
   // Agent Creation Pipeline (NLP → Agent)
   "agent:intent:quick-detect",
   "agent:intent:detect",
   "agent:blueprint:generate",
   "agent:pipeline:detect-and-generate",
+  // Agent Markdown Template (.agent.md)
+  "agent:template:parse",
+  "agent:template:export",
   // Agent UI Builder
   "agent:ui:templates",
   "agent:ui:themes",
@@ -1472,6 +1477,7 @@ const validInvokeChannels = [
   "data-vault:decrypt-from-peer",
   "data-vault:export-identity",
   "data-vault:export-backup",
+  "data-vault:export",
   // ── Data Generation ──
   "generation:list-templates",
   "generation:get-template",

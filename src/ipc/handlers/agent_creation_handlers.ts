@@ -23,6 +23,11 @@ import {
   parseBlueprintResponse,
   type AgentBlueprint,
 } from "@/lib/agent_blueprint_generator";
+import {
+  parseAgentTemplate,
+  templateToBlueprint,
+  agentToTemplate,
+} from "@/lib/agent_template_parser";
 import { safeSend } from "../utils/safe_sender";
 
 const logger = log.scope("agent_creation_handlers");
@@ -180,6 +185,56 @@ export function registerAgentCreationHandlers() {
       return { detected: true, intent, blueprint };
     },
   );
+
+  /**
+   * Parse an agent markdown template (.agent.md format) and return a blueprint.
+   * Accepts the raw markdown string with YAML frontmatter + system prompt body.
+   */
+  ipcMain.handle(
+    "agent:template:parse",
+    async (_event: IpcMainInvokeEvent, args: { markdown: string; originalMessage?: string }) => {
+      logger.info("Parsing agent template...");
+      const parsed = parseAgentTemplate(args.markdown);
+      const blueprint = templateToBlueprint(parsed, args.originalMessage || "Created from template");
+      logger.info("Template parsed:", blueprint.name, blueprint.type);
+      return { parsed, blueprint };
+    },
+  );
+
+  /**
+   * Export an existing agent as a .agent.md template string.
+   */
+  ipcMain.handle(
+    "agent:template:export",
+    async (_event: IpcMainInvokeEvent, args: { agentId: number }) => {
+      const { db } = await import("@/db");
+      const { agents: agentsTable } = await import("@/db/schema");
+      const { eq } = await import("drizzle-orm");
+
+      const [agent] = await db
+        .select()
+        .from(agentsTable)
+        .where(eq(agentsTable.id, args.agentId))
+        .limit(1);
+
+      if (!agent) {
+        throw new Error(`Agent not found: ${args.agentId}`);
+      }
+
+      const template = agentToTemplate({
+        name: agent.name,
+        description: agent.description ?? undefined,
+        type: (agent.type as any) ?? undefined,
+        systemPrompt: agent.systemPrompt ?? undefined,
+        modelId: agent.modelId ?? undefined,
+        temperature: agent.temperature ?? undefined,
+        maxTokens: agent.maxTokens ?? undefined,
+        config: agent.configJson ? (typeof agent.configJson === "string" ? JSON.parse(agent.configJson) : agent.configJson) : undefined,
+      });
+
+      return { template };
+    },
+  );
 }
 
 // =============================================================================
@@ -190,6 +245,10 @@ export function registerAgentCreationHandlers() {
  * Check a user message for agent creation intent inline during chat streaming.
  * If detected, sends a `chat:agent-blueprint` event to the renderer.
  *
+ * Supports two modes:
+ * 1. Natural language intent detection (e.g. "create an agent that...")
+ * 2. Direct .agent.md template pasting (message starts with "---")
+ *
  * @returns true if intent was detected (caller can decide how to proceed)
  */
 export async function checkAgentIntentInStream(
@@ -198,6 +257,27 @@ export async function checkAgentIntentInStream(
   userMessage: string,
 ): Promise<{ detected: boolean; blueprint?: AgentBlueprint }> {
   try {
+    // --- Fast path: detect .agent.md template format ---
+    const trimmed = userMessage.trim();
+    if (trimmed.startsWith("---") && trimmed.indexOf("---", 3) > 3) {
+      // Looks like YAML frontmatter — try parsing as a template
+      const parsed = parseAgentTemplate(trimmed);
+      if (parsed.frontmatter.name || parsed.frontmatter.description || parsed.systemPrompt.length > 20) {
+        logger.info("Agent template detected in chat message");
+        const blueprint = templateToBlueprint(parsed, userMessage);
+
+        safeSend(sender, "chat:agent-blueprint", {
+          chatId,
+          blueprint,
+          intent: blueprint.intent,
+          fromTemplate: true,
+        });
+
+        return { detected: true, blueprint };
+      }
+    }
+
+    // --- Standard path: keyword-based intent detection ---
     const quickResult = quickDetectAgentIntent(userMessage);
     if (!quickResult.detected) {
       return { detected: false };

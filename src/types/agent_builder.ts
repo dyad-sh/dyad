@@ -9,7 +9,7 @@
 
 export type AgentType = "chatbot" | "task" | "multi-agent" | "workflow" | "rag";
 export type AgentStatus = "draft" | "testing" | "deployed" | "archived";
-export type DeploymentTarget = "local" | "docker" | "vercel" | "aws" | "custom";
+export type DeploymentTarget = "local" | "docker" | "vercel" | "aws" | "ipfs" | "custom";
 
 export interface Agent {
   id: number;
@@ -543,7 +543,7 @@ export interface TestAgentResponse {
 
 export interface ExportAgentRequest {
   agentId: number;
-  format: "json" | "docker" | "standalone";
+  format: "json" | "docker" | "standalone" | "web-chat" | "embed-snippet";
   includeUI?: boolean;
   includeKnowledgeBase?: boolean;
 }
@@ -551,5 +551,7 @@ export interface ExportAgentRequest {
 export interface ExportAgentResponse {
   success: boolean;
   exportPath?: string;
+  embedCode?: string;
+  ipfsHash?: string;
   error?: string;
 }

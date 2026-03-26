@@ -364,6 +364,97 @@ export function useStreamChat({
     ],
   );
 
+  // Memoize queue management functions to prevent unnecessary re-renders
+  // in components that depend on these functions (e.g., restore effect)
+  const queueMessage = useCallback(
+    (message: Omit<QueuedMessageItem, "id">): boolean => {
+      if (chatId === undefined) return false;
+      const newItem: QueuedMessageItem = {
+        ...message,
+        id: crypto.randomUUID(),
+      };
+      setQueuedMessagesById((prev) => {
+        const next = new Map(prev);
+        const existing = prev.get(chatId) ?? [];
+        next.set(chatId, [...existing, newItem]);
+        return next;
+      });
+      return true;
+    },
+    [chatId, setQueuedMessagesById],
+  );
+
+  const updateQueuedMessage = useCallback(
+    (
+      id: string,
+      updates: Partial<
+        Pick<QueuedMessageItem, "prompt" | "attachments" | "selectedComponents">
+      >,
+    ) => {
+      if (chatId === undefined) return;
+      setQueuedMessagesById((prev) => {
+        const next = new Map(prev);
+        const existing = prev.get(chatId) ?? [];
+        const updated = existing.map((msg) =>
+          msg.id === id ? { ...msg, ...updates } : msg,
+        );
+        next.set(chatId, updated);
+        return next;
+      });
+    },
+    [chatId, setQueuedMessagesById],
+  );
+
+  const removeQueuedMessage = useCallback(
+    (id: string) => {
+      if (chatId === undefined) return;
+      setQueuedMessagesById((prev) => {
+        const next = new Map(prev);
+        const existing = prev.get(chatId) ?? [];
+        const filtered = existing.filter((msg) => msg.id !== id);
+        if (filtered.length > 0) {
+          next.set(chatId, filtered);
+        } else {
+          next.delete(chatId);
+        }
+        return next;
+      });
+    },
+    [chatId, setQueuedMessagesById],
+  );
+
+  const reorderQueuedMessages = useCallback(
+    (fromIndex: number, toIndex: number) => {
+      if (chatId === undefined) return;
+      setQueuedMessagesById((prev) => {
+        const next = new Map(prev);
+        const existing = [...(prev.get(chatId) ?? [])];
+        if (
+          fromIndex < 0 ||
+          fromIndex >= existing.length ||
+          toIndex < 0 ||
+          toIndex >= existing.length
+        ) {
+          return prev;
+        }
+        const [removed] = existing.splice(fromIndex, 1);
+        existing.splice(toIndex, 0, removed);
+        next.set(chatId, existing);
+        return next;
+      });
+    },
+    [chatId, setQueuedMessagesById],
+  );
+
+  const clearAllQueuedMessages = useCallback(() => {
+    if (chatId === undefined) return;
+    setQueuedMessagesById((prev) => {
+      const next = new Map(prev);
+      next.delete(chatId);
+      return next;
+    });
+  }, [chatId, setQueuedMessagesById]);
+
   return {
     streamMessage,
     isStreaming:
@@ -391,78 +482,11 @@ export function useStreamChat({
       hasChatId && chatId !== undefined
         ? (queuedMessagesById.get(chatId) ?? [])
         : [],
-    queueMessage: (message: Omit<QueuedMessageItem, "id">): boolean => {
-      if (chatId === undefined) return false;
-      const newItem: QueuedMessageItem = {
-        ...message,
-        id: crypto.randomUUID(),
-      };
-      setQueuedMessagesById((prev) => {
-        const next = new Map(prev);
-        const existing = prev.get(chatId) ?? [];
-        next.set(chatId, [...existing, newItem]);
-        return next;
-      });
-      return true;
-    },
-    updateQueuedMessage: (
-      id: string,
-      updates: Partial<
-        Pick<QueuedMessageItem, "prompt" | "attachments" | "selectedComponents">
-      >,
-    ) => {
-      if (chatId === undefined) return;
-      setQueuedMessagesById((prev) => {
-        const next = new Map(prev);
-        const existing = prev.get(chatId) ?? [];
-        const updated = existing.map((msg) =>
-          msg.id === id ? { ...msg, ...updates } : msg,
-        );
-        next.set(chatId, updated);
-        return next;
-      });
-    },
-    removeQueuedMessage: (id: string) => {
-      if (chatId === undefined) return;
-      setQueuedMessagesById((prev) => {
-        const next = new Map(prev);
-        const existing = prev.get(chatId) ?? [];
-        const filtered = existing.filter((msg) => msg.id !== id);
-        if (filtered.length > 0) {
-          next.set(chatId, filtered);
-        } else {
-          next.delete(chatId);
-        }
-        return next;
-      });
-    },
-    reorderQueuedMessages: (fromIndex: number, toIndex: number) => {
-      if (chatId === undefined) return;
-      setQueuedMessagesById((prev) => {
-        const next = new Map(prev);
-        const existing = [...(prev.get(chatId) ?? [])];
-        if (
-          fromIndex < 0 ||
-          fromIndex >= existing.length ||
-          toIndex < 0 ||
-          toIndex >= existing.length
-        ) {
-          return prev;
-        }
-        const [removed] = existing.splice(fromIndex, 1);
-        existing.splice(toIndex, 0, removed);
-        next.set(chatId, existing);
-        return next;
-      });
-    },
-    clearAllQueuedMessages: () => {
-      if (chatId === undefined) return;
-      setQueuedMessagesById((prev) => {
-        const next = new Map(prev);
-        next.delete(chatId);
-        return next;
-      });
-    },
+    queueMessage,
+    updateQueuedMessage,
+    removeQueuedMessage,
+    reorderQueuedMessages,
+    clearAllQueuedMessages,
     isPaused:
       hasChatId && chatId !== undefined
         ? (queuePausedById.get(chatId) ?? false)

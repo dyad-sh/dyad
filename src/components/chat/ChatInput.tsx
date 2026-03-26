@@ -34,6 +34,7 @@ import {
   pendingAgentConsentsAtom,
   agentTodosByChatIdAtom,
   needsFreshPlanChatAtom,
+  streamCompletedSuccessfullyByIdAtom,
 } from "@/atoms/chatAtoms";
 import { atom, useAtom, useSetAtom, useAtomValue } from "jotai";
 import { useStreamChat } from "@/hooks/useStreamChat";
@@ -136,6 +137,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const messagesById = useAtomValue(chatMessagesByIdAtom);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
+  const setStreamCompletedSuccessfullyById = useSetAtom(
+    streamCompletedSuccessfullyByIdAtom,
+  );
   const [showTokenBar, setShowTokenBar] = useAtom(showTokenBarAtom);
   const queryClient = useQueryClient();
   const toggleShowTokenBar = useCallback(() => {
@@ -351,6 +355,13 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               selectedComponents: message.selectedComponents,
             });
           }
+          // Trigger queue processing by marking stream as completed
+          // so useQueueProcessor will drain the restored messages
+          setStreamCompletedSuccessfullyById((prev) => {
+            const next = new Map(prev);
+            next.set(chatId, true);
+            return next;
+          });
         }
         sessionStorage.removeItem(`dyad-queued-messages-${chatId}`);
       }
@@ -360,7 +371,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         err,
       );
     }
-  }, [chatId, queueMessage]);
+  }, [chatId, queueMessage, setStreamCompletedSuccessfullyById]);
 
   // Queue management handlers
   const handleEditQueuedMessage = useCallback(
@@ -492,8 +503,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       return;
     }
 
-    // If streaming, queue the message instead of sending immediately
-    if (isStreaming) {
+    // If streaming or paused, queue the message instead of sending immediately
+    if (isStreaming || isPaused) {
       const queued = queueMessage({
         prompt: currentInput,
         attachments,
@@ -544,11 +555,20 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   const handleCancel = () => {
     // Save queued messages to sessionStorage only if queue is paused
+    // Note: We exclude attachments since File objects cannot be serialized to JSON
+    // and would become empty objects, breaking stream setup when restored.
+    // Users will need to re-attach files if they page refresh while paused.
     if (chatId && isPaused && queuedMessages.length > 0) {
       try {
+        const sanitizedMessages = queuedMessages.map((msg) => ({
+          id: msg.id,
+          prompt: msg.prompt,
+          selectedComponents: msg.selectedComponents,
+          // Exclude attachments - File objects don't serialize and would break on restore
+        }));
         sessionStorage.setItem(
           `dyad-queued-messages-${chatId}`,
-          JSON.stringify(queuedMessages),
+          JSON.stringify(sanitizedMessages),
         );
       } catch (err) {
         console.warn("Failed to save paused queue to sessionStorage:", err);

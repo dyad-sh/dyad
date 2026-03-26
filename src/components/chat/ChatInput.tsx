@@ -601,6 +601,15 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     // Reset pause state when canceling to prevent stale paused state
     resumeQueue();
     if (chatId) {
+      // Clear the stream-completed flag to prevent auto-send of restored queue.
+      // Without this, if the queue is restored from sessionStorage in the same
+      // renderer session, the queue processor would immediately dequeue messages
+      // without explicit user action.
+      setStreamCompletedSuccessfullyById((prev) => {
+        const next = new Map(prev);
+        next.delete(chatId);
+        return next;
+      });
       ipc.chat.cancelStream(chatId);
     }
     setIsStreaming(false);

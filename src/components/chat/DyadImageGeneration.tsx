@@ -13,6 +13,7 @@ import {
 } from "./ProteaAICardPrimitives";
 import { ImageLightbox } from "./ImageLightbox";
 import { currentAppAtom } from "@/atoms/appAtoms";
+import { buildProteaAIMediaUrl } from "@/lib/dyadMediaUrl";
 
 interface ProteaAIImageGenerationNode {
   properties: {
@@ -50,12 +51,18 @@ export const ProteaAIImageGeneration: React.FC<ProteaAIImageGenerationProps> = (
   const hasTraversal = normalizedImagePath
     .split("/")
     .some((seg: string) => seg === "..");
+  const MEDIA_PREFIX = ".proteaai/media/";
   const imageUrl =
     appPath && normalizedImagePath && !hasTraversal
-      ? `proteaai-media://media/${encodeURIComponent(appPath)}/${normalizedImagePath
-          .split("/")
-          .map(encodeURIComponent)
-          .join("/")}`
+      ? normalizedImagePath.startsWith(MEDIA_PREFIX)
+        ? buildProteaAIMediaUrl(
+            appPath,
+            normalizedImagePath.slice(MEDIA_PREFIX.length),
+          )
+        : `proteaai-media://media/${encodeURIComponent(appPath)}/${normalizedImagePath
+            .split("/")
+            .map(encodeURIComponent)
+            .join("/")}`
       : "";
   const absolutePath =
     appPath && normalizedImagePath && !hasTraversal

@@ -324,11 +324,8 @@ export function registerChatStreamHandlers() {
           await writeFile(persistentPath, fileBuffer);
           attachmentPaths.push(persistentPath);
 
-          // Build proteaai-media:// URL for display
-          // Use a fixed hostname to avoid URL hostname normalization (lowercasing)
-          // Encode path segments so special characters (spaces, #, ?, %) don't
-          // break URL parsing. The protocol handler already decodeURIComponent's.
-          const mediaUrl = `proteaai-media://media/${encodeURIComponent(chat.app.path)}/.proteaai/media/${encodeURIComponent(filename)}`;
+          // Build media URL for display (web mode → HTTP, Electron → custom protocol)
+          const mediaUrl = buildProteaAIMediaUrl(chat.app.path, filename);
 
           // Build display tag for inline rendering (escape attribute values)
           displayAttachmentInfo += `\n<dyad-attachment name="${escapeXmlAttr(attachment.name)}" type="${escapeXmlAttr(attachment.type)}" url="${escapeXmlAttr(mediaUrl)}" path="${escapeXmlAttr(persistentPath)}" attachment-type="${escapeXmlAttr(attachment.attachmentType)}"></dyad-attachment>\n`;

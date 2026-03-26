@@ -55,6 +55,11 @@ export default defineConfig({
         ws: true,
         changeOrigin: true,
       },
+      // Forward media file requests to Express server
+      "/media": {
+        target: "http://localhost:3001",
+        changeOrigin: true,
+      },
     },
   },
   define: {

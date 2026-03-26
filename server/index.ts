@@ -17,6 +17,7 @@ enableWebMode();
 import express from "express";
 import { createServer } from "http";
 import path from "node:path";
+import fs from "node:fs";
 import cors from "cors";
 import { wsManager } from "./ws_manager";
 import { safeRoute } from "./middleware/safe_route";
@@ -24,6 +25,10 @@ import dotenv from "dotenv";
 
 // Load env vars
 dotenv.config();
+
+import { getProteaAIAppPath } from "../src/paths/paths";
+import { getMimeType } from "../src/ipc/utils/mime_utils";
+import { PROTEAAI_MEDIA_DIR_NAME } from "../src/ipc/utils/media_path_utils";
 
 // Now import and register all IPC handlers
 // (They will self-register into webHandlerRegistry because web mode is enabled)
@@ -62,6 +67,61 @@ app.post(
     return handler(req.body);
   }),
 );
+
+// ── Media file serving ───────────────────────────────────────────────────────
+
+/**
+ * GET /media/:encodedAppPath/:encodedFilename
+ *
+ * Serves persistent media files stored on disk.
+ * Mirrors the proteaai-media:// Electron protocol handler with the same
+ * security checks (path traversal prevention, directory confinement).
+ */
+app.get("/media/:encodedAppPath/:encodedFilename", (req, res) => {
+  const encodedAppPath = req.params.encodedAppPath;
+  const encodedFilename = req.params.encodedFilename;
+
+  let appPathRaw: string;
+  let filename: string;
+  try {
+    appPathRaw = decodeURIComponent(encodedAppPath);
+    filename = decodeURIComponent(encodedFilename);
+  } catch {
+    res.status(400).send("Bad Request");
+    return;
+  }
+
+  // Reject filenames with path separators or traversal
+  if (
+    filename.includes("..") ||
+    filename.includes("/") ||
+    filename.includes("\\")
+  ) {
+    res.status(403).send("Forbidden");
+    return;
+  }
+
+  const appPath = getProteaAIAppPath(appPathRaw);
+  const mediaDir = path.resolve(path.join(appPath, PROTEAAI_MEDIA_DIR_NAME));
+  const resolvedPath = path.resolve(path.join(mediaDir, filename));
+
+  // Security: ensure the resolved path stays within the app's media directory
+  if (!resolvedPath.startsWith(mediaDir + path.sep) && resolvedPath !== mediaDir) {
+    res.status(403).send("Forbidden");
+    return;
+  }
+
+  if (!fs.existsSync(resolvedPath)) {
+    res.status(404).send("Not Found");
+    return;
+  }
+
+  const ext = path.extname(filename).toLowerCase();
+  const mimeType = getMimeType(ext);
+  res.setHeader("Content-Type", mimeType);
+  res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+  fs.createReadStream(resolvedPath).pipe(res);
+});
 
 // ── Serve built React SPA ────────────────────────────────────────────────────
 

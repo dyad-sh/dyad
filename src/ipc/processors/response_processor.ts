@@ -190,13 +190,32 @@ export async function processFullResponseActions(
               chatWithApp.app.neonActiveBranchId ??
               chatWithApp.app.neonDevelopmentBranchId;
             if (!branchId) {
-              throw new Error("No active Neon branch found for SQL execution");
+              throw new Error(
+                "No active Neon branch found for SQL execution. Please select a branch in the Neon integration settings.",
+              );
             }
-            await executeNeonSql({
-              projectId: chatWithApp.app.neonProjectId,
-              branchId,
-              query: query.content,
-            });
+            try {
+              await executeNeonSql({
+                projectId: chatWithApp.app.neonProjectId,
+                branchId,
+                query: query.content,
+              });
+            } catch (neonError) {
+              const errorMsg =
+                neonError instanceof Error
+                  ? neonError.message
+                  : String(neonError);
+              if (
+                errorMsg.includes("password authentication failed") ||
+                errorMsg.includes("authentication failed") ||
+                errorMsg.includes("access token")
+              ) {
+                throw new Error(
+                  `Neon authentication failed. Please reconnect your Neon account in the integration settings. Details: ${errorMsg}`,
+                );
+              }
+              throw new Error(`Neon SQL query failed: ${errorMsg}`);
+            }
           } else if (chatWithApp.app.supabaseProjectId) {
             // Route to Supabase executor
             await executeSupabaseSql({

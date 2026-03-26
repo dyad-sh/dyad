@@ -13,8 +13,6 @@ import {
   type ToolExecutionOptions,
 } from "ai";
 import log from "electron-log";
-import fs from "node:fs";
-import path from "node:path";
 
 import { db } from "@/db";
 import { chats, messages } from "@/db/schema";
@@ -23,6 +21,7 @@ import { eq } from "drizzle-orm";
 import { isDyadProEnabled, isBasicAgentMode } from "@/lib/schemas";
 import { readSettings } from "@/main/settings";
 import { getDyadAppPath } from "@/paths/paths";
+import { detectFrameworkType } from "@/ipc/utils/framework_utils";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import { safeSend } from "@/ipc/utils/safe_sender";
 import { getMaxTokens, getTemperature } from "@/ipc/utils/token_utils";
@@ -254,44 +253,7 @@ function getMidTurnCompactionSummaryIds(
   return hiddenIds;
 }
 
-/**
- * Detect the framework type for an app by checking config files and package.json.
- */
-function detectFrameworkType(
-  appPath: string,
-): "nextjs" | "vite" | "other" | null {
-  try {
-    const nextConfigs = ["next.config.js", "next.config.mjs", "next.config.ts"];
-    for (const config of nextConfigs) {
-      if (fs.existsSync(path.join(appPath, config))) {
-        return "nextjs";
-      }
-    }
-
-    const viteConfigs = ["vite.config.js", "vite.config.ts", "vite.config.mjs"];
-    for (const config of viteConfigs) {
-      if (fs.existsSync(path.join(appPath, config))) {
-        return "vite";
-      }
-    }
-
-    // Fallback: check package.json dependencies
-    const packageJsonPath = path.join(appPath, "package.json");
-    if (fs.existsSync(packageJsonPath)) {
-      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
-      const deps = {
-        ...packageJson.dependencies,
-        ...packageJson.devDependencies,
-      };
-      if (deps.next) return "nextjs";
-      if (deps.vite) return "vite";
-    }
-
-    return "other";
-  } catch {
-    return null;
-  }
-}
+// detectFrameworkType is imported from @/ipc/utils/framework_utils
 
 /**
  * Handle a chat stream in local-agent mode

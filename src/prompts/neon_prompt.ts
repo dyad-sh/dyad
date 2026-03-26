@@ -339,7 +339,7 @@ export function AuthPage() {
 
 \`\`\`bash
 # Neon Auth (managed by Neon, values from Neon Console > Auth settings)
-VITE_NEON_AUTH_URL=https://ep-xxx.neonauth.us-east-2.aws.neon.build/neondb/auth
+VITE_NEON_AUTH_URL=https://ep-xxx.neonauth.us-east-2.aws.neon.tech/neondb/auth
 
 # Neon Data API (enabled in Neon Console > Data API)
 VITE_NEON_DATA_API_URL=https://ep-xxx.data.us-east-2.aws.neon.build

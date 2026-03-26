@@ -27,12 +27,15 @@ import { useDeepLink } from "@/contexts/DeepLinkContext";
 import { ExternalLink, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useNeon } from "@/hooks/useNeon";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function NeonConnector({ appId }: { appId: number }) {
   const { t } = useTranslation("home");
   const { settings, refreshSettings } = useSettings();
   const { app, refreshApp } = useLoadApp(appId);
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
+  const queryClient = useQueryClient();
   const { isDarkMode } = useTheme();
 
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -85,6 +88,9 @@ export function NeonConnector({ appId }: { appId: number }) {
       await ipc.neon.setAppProject({ appId, projectId });
       toast.success(t("integrations.neon.projectConnected"));
       await refreshApp();
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.appEnvVars.byApp({ appId }),
+      });
     } catch (error) {
       toast.error(
         t("integrations.neon.failedConnectProject", {
@@ -108,6 +114,9 @@ export function NeonConnector({ appId }: { appId: number }) {
       setNewProjectName("");
       await refetchProjects();
       await refreshApp();
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.appEnvVars.byApp({ appId }),
+      });
     } catch (error) {
       toast.error(
         t("integrations.neon.failedConnectProject", {
@@ -138,6 +147,9 @@ export function NeonConnector({ appId }: { appId: number }) {
         `${t("integrations.neon.branchSwitched")}: ${branch?.branchName ?? branchId}`,
       );
       await refreshApp();
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.appEnvVars.byApp({ appId }),
+      });
     } catch (error) {
       toast.error(
         t("integrations.neon.failedSetBranch", {

@@ -26,6 +26,7 @@ import {
   getNeonClient,
   getNeonErrorMessage,
 } from "../../neon_admin/neon_management_client";
+import { getBranchRoleName } from "../../neon_admin/neon_context";
 import {
   updatePostgresUrlEnvVar,
   updateDbPushEnvVar,
@@ -417,13 +418,15 @@ export function registerVersionHandlers() {
           if (version && version.neonDbTimestamp) {
             // SWITCH the env var for POSTGRES_URL to the preview branch
             const neonClient = await getNeonClient();
+            const previewRoleName = await getBranchRoleName({
+              projectId: app.neonProjectId,
+              branchId: app.neonPreviewBranchId,
+            });
             const connectionUri = await neonClient.getConnectionUri({
               projectId: app.neonProjectId,
               branch_id: app.neonPreviewBranchId,
-              // This is the default database name for Neon
               database_name: "neondb",
-              // This is the default role name for Neon
-              role_name: "neondb_owner",
+              role_name: previewRoleName,
             });
 
             await restoreBranchForPreview({
@@ -464,13 +467,15 @@ async function switchPostgresToDevelopmentBranch({
 }) {
   // SWITCH the env var for POSTGRES_URL to the development branch
   const neonClient = await getNeonClient();
+  const devRoleName = await getBranchRoleName({
+    projectId: neonProjectId,
+    branchId: neonDevelopmentBranchId,
+  });
   const connectionUri = await neonClient.getConnectionUri({
     projectId: neonProjectId,
     branch_id: neonDevelopmentBranchId,
-    // This is the default database name for Neon
     database_name: "neondb",
-    // This is the default role name for Neon
-    role_name: "neondb_owner",
+    role_name: devRoleName,
   });
 
   await updatePostgresUrlEnvVar({

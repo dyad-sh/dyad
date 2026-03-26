@@ -37,7 +37,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
       return;
     }
     streamMessage({
-      prompt: "Continue. I have completed the Supabase integration.",
+      prompt: `Continue. I have completed the ${provider} integration.`,
       chatId,
     });
   };
@@ -50,20 +50,32 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     navigate({ to: "/app-details", search: { appId } });
   };
 
-  if (app?.supabaseProjectName) {
+  const isIntegrationComplete =
+    (provider === "supabase" && app?.supabaseProjectName) ||
+    (provider === "neon" && app?.neonProjectId);
+
+  const integrationLabel =
+    provider === "supabase" && app?.supabaseProjectName
+      ? app.supabaseProjectName
+      : provider === "neon" && app?.neonProjectId
+        ? app.neonProjectId
+        : null;
+
+  if (isIntegrationComplete) {
     return (
       <DyadCard accentColor="green" state="finished">
         <DyadCardHeader icon={<CheckCircle2 size={15} />} accentColor="green">
           <DyadBadge color="green">Integration Complete</DyadBadge>
           <span className="text-sm font-medium text-foreground">
-            Supabase integration complete
+            {provider.charAt(0).toUpperCase() + provider.slice(1)} integration
+            complete
           </span>
         </DyadCardHeader>
         <div className="px-3 pb-3">
           <p className="text-sm text-muted-foreground mb-2">
-            This app is connected to Supabase project:{" "}
+            This app is connected to {provider} project:{" "}
             <span className="font-mono font-medium px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200">
-              {app.supabaseProjectName}
+              {integrationLabel}
             </span>
           </p>
           <Button

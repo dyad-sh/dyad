@@ -11,6 +11,28 @@ const logger = log.scope("neon_context");
 // =============================================================================
 
 /**
+ * Get the primary role name for a given project branch by querying the Neon API.
+ * Falls back to "neondb_owner" if no roles are found.
+ */
+export async function getBranchRoleName({
+  projectId,
+  branchId,
+}: {
+  projectId: string;
+  branchId: string;
+}): Promise<string> {
+  const neonClient = await getNeonClient();
+  const rolesResponse = await neonClient.listProjectBranchRoles(
+    projectId,
+    branchId,
+  );
+  const roles = rolesResponse.data.roles ?? [];
+  // Prefer the first non-protected role (user-created), fall back to any role
+  const userRole = roles.find((r) => !r.protected) ?? roles[0];
+  return userRole?.name ?? "neondb_owner";
+}
+
+/**
  * Get a Neon connection URI for a given project and branch.
  */
 async function getConnectionUri({
@@ -21,11 +43,12 @@ async function getConnectionUri({
   branchId: string;
 }): Promise<string> {
   const neonClient = await getNeonClient();
+  const roleName = await getBranchRoleName({ projectId, branchId });
   const response = await neonClient.getConnectionUri({
     projectId,
     branch_id: branchId,
     database_name: "neondb",
-    role_name: "neondb_owner",
+    role_name: roleName,
   });
   return response.data.uri;
 }

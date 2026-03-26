@@ -162,6 +162,66 @@ export function parseEnvFile(content: string): EnvVar[] {
   return envVars;
 }
 
+function upsertEnvVar(envVars: EnvVar[], key: string, value: string): void {
+  const existing = envVars.find((envVar) => envVar.key === key);
+  if (existing) {
+    existing.value = value;
+  } else {
+    envVars.push({ key, value });
+  }
+}
+
+/**
+ * Derive Vite Neon URLs from the compute endpoint host.
+ * endpointHost format: ep-xxx.<region>.aws.neon.tech
+ */
+export function deriveViteNeonUrls(endpointHost: string): {
+  authUrl: string;
+  dataApiUrl: string;
+} {
+  const parts = endpointHost.split(".");
+  const epId = parts[0];
+  const rest = parts.slice(1).join(".");
+  return {
+    authUrl: `https://${epId}.neonauth.${rest}/neondb/auth`,
+    dataApiUrl: `https://${epId}.data.${rest}`,
+  };
+}
+
+export async function updateNeonEnvVars({
+  appPath,
+  connectionUri,
+  frameworkType,
+  endpointHost,
+}: {
+  appPath: string;
+  connectionUri: string;
+  frameworkType: "nextjs" | "vite" | "other" | null;
+  /** The compute endpoint host (for deriving Vite URLs) */
+  endpointHost?: string;
+}): Promise<void> {
+  let envVars: EnvVar[];
+  try {
+    const content = await readEnvFile({ appPath });
+    envVars = parseEnvFile(content);
+  } catch {
+    // If file doesn't exist, start with empty array
+    envVars = [];
+  }
+
+  if (frameworkType === "vite" && endpointHost) {
+    const { authUrl, dataApiUrl } = deriveViteNeonUrls(endpointHost);
+    upsertEnvVar(envVars, "VITE_NEON_AUTH_URL", authUrl);
+    upsertEnvVar(envVars, "VITE_NEON_DATA_API_URL", dataApiUrl);
+  } else {
+    upsertEnvVar(envVars, "DATABASE_URL", connectionUri);
+    upsertEnvVar(envVars, "POSTGRES_URL", connectionUri);
+  }
+
+  const envFileContents = serializeEnvFile(envVars);
+  await fs.promises.writeFile(getEnvFilePath({ appPath }), envFileContents);
+}
+
 // Helper function to serialize environment variables to .env.local format
 export function serializeEnvFile(envVars: EnvVar[]): string {
   return envVars

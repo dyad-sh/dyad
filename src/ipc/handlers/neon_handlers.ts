@@ -11,6 +11,7 @@ import {
 import {
   executeNeonSql,
   getNeonTableSchema,
+  getBranchRoleName,
 } from "../../neon_admin/neon_context";
 import { neonContracts, type NeonBranch } from "../types/neon";
 import { db } from "../../db";
@@ -19,10 +20,35 @@ import { eq } from "drizzle-orm";
 import { EndpointType } from "@neondatabase/api-client";
 import { retryOnLocked } from "../utils/retryOnLocked";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { updateNeonEnvVars } from "../utils/app_env_var_utils";
+import { detectFrameworkType } from "../utils/framework_utils";
+import { getDyadAppPath } from "@/paths/paths";
 
 export const logger = log.scope("neon_handlers");
 
 const testOnlyHandle = createTestOnlyLoggedHandler(logger);
+
+/**
+ * Fetches the endpoint host for a branch, used to derive Vite auth/data URLs.
+ */
+async function getEndpointHost(
+  neonClient: Awaited<ReturnType<typeof getNeonClient>>,
+  projectId: string,
+  branchId: string,
+): Promise<string | undefined> {
+  try {
+    const endpointsResponse = await neonClient.listProjectBranchEndpoints(
+      projectId,
+      branchId,
+    );
+    return endpointsResponse.data.endpoints?.[0]?.host;
+  } catch (error) {
+    logger.warn(
+      `Failed to fetch endpoint host for branch ${branchId}: ${error}`,
+    );
+    return undefined;
+  }
+}
 
 export function registerNeonHandlers() {
   // Do not use log handler because there's sensitive data in the response
@@ -88,8 +114,43 @@ export function registerNeonHandlers() {
           neonProjectId: project.id,
           neonDevelopmentBranchId: developmentBranch.id,
           neonPreviewBranchId: previewBranch.id,
+          neonActiveBranchId: developmentBranch.id,
         })
         .where(eq(apps.id, appId));
+
+      const connectionUri = response.data.connection_uris[0].connection_uri;
+
+      // Auto-inject env vars into the app's .env.local
+      try {
+        const appRecord = await db
+          .select()
+          .from(apps)
+          .where(eq(apps.id, appId))
+          .limit(1);
+        if (appRecord.length > 0) {
+          const frameworkType = detectFrameworkType(
+            getDyadAppPath(appRecord[0].path),
+          );
+          const endpointHost =
+            frameworkType === "vite"
+              ? await getEndpointHost(
+                  neonClient,
+                  project.id,
+                  developmentBranch.id,
+                )
+              : undefined;
+          await updateNeonEnvVars({
+            appPath: appRecord[0].path,
+            connectionUri,
+            frameworkType,
+            endpointHost,
+          });
+        }
+      } catch (envError) {
+        logger.warn(
+          `Failed to auto-inject env vars for app ${appId}: ${envError}`,
+        );
+      }
 
       logger.info(
         `Successfully created Neon project: ${project.id} and development branch: ${developmentBranch.id} for app ${appId}`,
@@ -97,7 +158,7 @@ export function registerNeonHandlers() {
       return {
         id: project.id,
         name: project.name,
-        connectionString: response.data.connection_uris[0].connection_uri,
+        connectionString: connectionUri,
         branchId: developmentBranch.id,
       };
     } catch (error: any) {
@@ -275,16 +336,57 @@ export function registerNeonHandlers() {
 
       const previewBranch = branches.find((b) => b.name === "preview");
 
+      const activeBranchId = developmentBranch?.id ?? defaultBranch?.id ?? null;
+
       await db
         .update(apps)
         .set({
           neonProjectId: projectId,
           neonDevelopmentBranchId: developmentBranch?.id ?? null,
           neonPreviewBranchId: previewBranch?.id ?? null,
-          neonActiveBranchId:
-            developmentBranch?.id ?? defaultBranch?.id ?? null,
+          neonActiveBranchId: activeBranchId,
         })
         .where(eq(apps.id, appId));
+
+      // Auto-inject env vars into the app's .env.local
+      if (activeBranchId) {
+        try {
+          const appRecord = await db
+            .select()
+            .from(apps)
+            .where(eq(apps.id, appId))
+            .limit(1);
+          if (appRecord.length > 0) {
+            const roleName = await getBranchRoleName({
+              projectId,
+              branchId: activeBranchId,
+            });
+            const connectionUriResponse = await neonClient.getConnectionUri({
+              projectId,
+              branch_id: activeBranchId,
+              database_name: "neondb",
+              role_name: roleName,
+            });
+            const frameworkType = detectFrameworkType(
+              getDyadAppPath(appRecord[0].path),
+            );
+            const endpointHost =
+              frameworkType === "vite"
+                ? await getEndpointHost(neonClient, projectId, activeBranchId)
+                : undefined;
+            await updateNeonEnvVars({
+              appPath: appRecord[0].path,
+              connectionUri: connectionUriResponse.data.uri,
+              frameworkType,
+              endpointHost,
+            });
+          }
+        } catch (envError) {
+          logger.warn(
+            `Failed to auto-inject env vars for app ${appId}: ${envError}`,
+          );
+        }
+      }
 
       logger.info(
         `Successfully linked Neon project ${projectId} to app ${appId}`,
@@ -331,10 +433,63 @@ export function registerNeonHandlers() {
     logger.info(`Setting active Neon branch ${branchId} for app ${appId}`);
 
     try {
+      const appRecord = await db
+        .select()
+        .from(apps)
+        .where(eq(apps.id, appId))
+        .limit(1);
+
+      if (appRecord.length === 0) {
+        throw new DyadError(
+          `App with ID ${appId} not found`,
+          DyadErrorKind.NotFound,
+        );
+      }
+
+      const appData = appRecord[0];
+
       await db
         .update(apps)
         .set({ neonActiveBranchId: branchId })
         .where(eq(apps.id, appId));
+
+      // Auto-inject env vars for the new active branch
+      if (appData.neonProjectId) {
+        try {
+          const neonClient = await getNeonClient();
+          const roleName = await getBranchRoleName({
+            projectId: appData.neonProjectId,
+            branchId,
+          });
+          const connectionUriResponse = await neonClient.getConnectionUri({
+            projectId: appData.neonProjectId,
+            branch_id: branchId,
+            database_name: "neondb",
+            role_name: roleName,
+          });
+          const frameworkType = detectFrameworkType(
+            getDyadAppPath(appData.path),
+          );
+          const endpointHost =
+            frameworkType === "vite"
+              ? await getEndpointHost(
+                  neonClient,
+                  appData.neonProjectId,
+                  branchId,
+                )
+              : undefined;
+          await updateNeonEnvVars({
+            appPath: appData.path,
+            connectionUri: connectionUriResponse.data.uri,
+            frameworkType,
+            endpointHost,
+          });
+        } catch (envError) {
+          logger.warn(
+            `Failed to auto-inject env vars for app ${appId}: ${envError}`,
+          );
+        }
+      }
 
       logger.info(
         `Successfully set active branch ${branchId} for app ${appId}`,
@@ -418,11 +573,15 @@ export function registerNeonHandlers() {
     }
 
     const neonClient = await getNeonClient();
+    const roleName = await getBranchRoleName({
+      projectId: appData.neonProjectId,
+      branchId,
+    });
     const response = await neonClient.getConnectionUri({
       projectId: appData.neonProjectId,
       branch_id: branchId,
       database_name: "neondb",
-      role_name: "neondb_owner",
+      role_name: roleName,
     });
 
     return { connectionUri: response.data.uri };

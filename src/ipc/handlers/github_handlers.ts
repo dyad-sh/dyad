@@ -1,6 +1,7 @@
 import { BrowserWindow, IpcMainInvokeEvent } from "electron";
 import fetch from "node-fetch"; // Use node-fetch for making HTTP requests in main process
 import { writeSettings, readSettings } from "../../main/settings";
+import { readCurrentUserSettings, writeCurrentUserSettings } from "../../main/web-settings";
 import {
   gitSetRemoteUrl,
   gitPush,
@@ -94,7 +95,7 @@ let currentFlowState: DeviceFlowState | null = null;
  * @returns {Promise<string|null>} The GitHub username, or null if not authenticated or on error.
  */
 export async function getGithubUser(): Promise<GithubUser | null> {
-  const settings = readSettings();
+  const settings = await readCurrentUserSettings();
   const email = settings.githubUser?.email;
   if (email) return { email };
   try {
@@ -111,7 +112,7 @@ export async function getGithubUser(): Promise<GithubUser | null> {
     const email = emails.find((e: any) => e.primary)?.email;
     if (!email) return null;
 
-    writeSettings({
+    await writeCurrentUserSettings({
       githubUser: {
         email,
       },
@@ -227,7 +228,7 @@ export async function prepareLocalBranch({
         if (remoteBranches.includes(targetBranch)) {
           // For native git: create branch with tracking
           // For isomorphic-git: checkout remote branch directly (creates tracking branch automatically)
-          const settings = readSettings();
+          const settings = await readCurrentUserSettings();
           if (settings.enableNativeGit) {
             // Native git: create branch from remote with tracking
             await gitCreateBranch({
@@ -366,7 +367,7 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
       event.sender.send("github:flow-success", {
         message: "Successfully connected!",
       });
-      writeSettings({
+      await writeCurrentUserSettings({
         githubAccessToken: {
           value: data.access_token,
         },
@@ -548,7 +549,7 @@ async function handleListGithubRepos(): Promise<
 > {
   try {
     // Get access token from settings
-    const settings = readSettings();
+    const settings = await readCurrentUserSettings();
     const accessToken = settings.githubAccessToken?.value;
     if (!accessToken) {
       throw new Error("Not authenticated with GitHub.");
@@ -591,7 +592,7 @@ async function handleGetRepoBranches(
 ): Promise<{ name: string; commit: { sha: string } }[]> {
   try {
     // Get access token from settings
-    const settings = readSettings();
+    const settings = await readCurrentUserSettings();
     const accessToken = settings.githubAccessToken?.value;
     if (!accessToken) {
       throw new Error("Not authenticated with GitHub.");
@@ -636,7 +637,7 @@ async function handleIsRepoAvailable(
 
   try {
     // Get access token from settings
-    const settings = readSettings();
+    const settings = await readCurrentUserSettings();
     const accessToken = settings.githubAccessToken?.value;
     if (!accessToken) {
       return { available: false, error: "Not authenticated with GitHub." };
@@ -682,7 +683,7 @@ async function handleCreateRepo(
   const normalizedRepo = normalizeGitHubRepoName(repo);
 
   // Get access token from settings
-  const settings = readSettings();
+  const settings = await readCurrentUserSettings();
   const accessToken = settings.githubAccessToken?.value;
   if (!accessToken) {
     throw new Error("Not authenticated with GitHub.");
@@ -787,7 +788,7 @@ async function handleConnectToExistingRepo(
 ): Promise<void> {
   try {
     // Get access token from settings
-    const settings = readSettings();
+    const settings = await readCurrentUserSettings();
     const accessToken = settings.githubAccessToken?.value;
     if (!accessToken) {
       throw new Error("Not authenticated with GitHub.");
@@ -846,7 +847,7 @@ async function handlePushToGithub(
   },
 ): Promise<void> {
   // Get access token from settings
-  const settings = readSettings();
+  const settings = await readCurrentUserSettings();
   const accessToken = settings.githubAccessToken?.value;
   if (!accessToken) {
     throw new Error("Not authenticated with GitHub.");
@@ -958,7 +959,7 @@ async function handleRebaseFromGithub(
   event: IpcMainInvokeEvent,
   { appId }: { appId: number },
 ): Promise<void> {
-  const settings = readSettings();
+  const settings = await readCurrentUserSettings();
   const accessToken = settings.githubAccessToken?.value;
   if (!accessToken) {
     throw new Error("Not authenticated with GitHub.");
@@ -1032,7 +1033,7 @@ async function handleListCollaborators(
   { appId }: { appId: number },
 ): Promise<{ login: string; avatar_url: string; permissions: any }[]> {
   try {
-    const settings = readSettings();
+    const settings = await readCurrentUserSettings();
     const accessToken = settings.githubAccessToken?.value;
     if (!accessToken) {
       throw new Error("Not authenticated with GitHub.");
@@ -1100,7 +1101,7 @@ async function handleInviteCollaborator(
       }
     }
 
-    const settings = readSettings();
+    const settings = await readCurrentUserSettings();
     const accessToken = settings.githubAccessToken?.value;
     if (!accessToken) {
       throw new Error("Not authenticated with GitHub.");
@@ -1144,7 +1145,7 @@ async function handleRemoveCollaborator(
   { appId, username }: { appId: number; username: string },
 ): Promise<void> {
   try {
-    const settings = readSettings();
+    const settings = await readCurrentUserSettings();
     const accessToken = settings.githubAccessToken?.value;
     if (!accessToken) {
       throw new Error("Not authenticated with GitHub.");
@@ -1223,7 +1224,7 @@ async function handleCloneRepoFromUrl(
 ): Promise<CloneRepoResult> {
   const { url, installCommand, startCommand, appName } = params;
   try {
-    const settings = readSettings();
+    const settings = await readCurrentUserSettings();
     const accessToken = settings.githubAccessToken?.value;
     const urlPattern = /github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?\/?$/;
     const match = url.match(urlPattern);

@@ -10,6 +10,7 @@ import { systemContracts } from "../types/system";
 import fs from "node:fs";
 import path from "node:path";
 import { getProteaAIAppPath, getUserDataPath } from "../../paths/paths";
+import { getCurrentUser } from "../../ipc/context/user-context";
 import { ChildProcess, spawn } from "node:child_process";
 import { promises as fsPromises } from "node:fs";
 
@@ -792,6 +793,21 @@ async function searchAppFilesWithRipgrep({
   });
 }
 
+/**
+ * Fetches an app by ID and enforces ownership in web mode.
+ * Throws "App not found" if the app doesn't exist.
+ * Throws "Forbidden" if a web-mode user tries to access another user's app.
+ */
+async function requireApp(appId: number) {
+  const app = await db.query.apps.findFirst({ where: eq(apps.id, appId) });
+  if (!app) throw new Error("App not found");
+  const currentUser = getCurrentUser();
+  if (currentUser && app.userId && app.userId !== currentUser.userId) {
+    throw new Error("Forbidden");
+  }
+  return app;
+}
+
 export function registerAppHandlers() {
   createTypedHandler(systemContracts.restartProteaAI, async () => {
     app.relaunch();
@@ -800,7 +816,9 @@ export function registerAppHandlers() {
 
   createTypedHandler(appContracts.createApp, async (_, params) => {
     const appPath = params.name;
-    const fullAppPath = getProteaAIAppPath(appPath);
+    const currentUser = getCurrentUser();
+    const userIdValue = currentUser?.userId ?? null;
+    const fullAppPath = getProteaAIAppPath(appPath, userIdValue ?? undefined);
     if (fs.existsSync(fullAppPath)) {
       throw new Error(`App already exists at: ${fullAppPath}`);
     }
@@ -811,6 +829,7 @@ export function registerAppHandlers() {
         name: params.name,
         // Use the name as the path for now
         path: appPath,
+        userId: userIdValue,
       })
       .returning();
 
@@ -866,16 +885,12 @@ export function registerAppHandlers() {
     }
 
     // 2. Find the original app
-    const originalApp = await db.query.apps.findFirst({
-      where: eq(apps.id, appId),
-    });
+    const originalApp = await requireApp(appId);
 
-    if (!originalApp) {
-      throw new Error("Original app not found.");
-    }
-
-    const originalAppPath = getProteaAIAppPath(originalApp.path);
-    const newAppPath = getProteaAIAppPath(newAppName);
+    const currentUser = getCurrentUser();
+    const userIdValue = currentUser?.userId ?? null;
+    const originalAppPath = getProteaAIAppPath(originalApp.path, originalApp.userId ?? undefined);
+    const newAppPath = getProteaAIAppPath(newAppName, userIdValue ?? undefined);
 
     // 3. Copy the app folder
     try {
@@ -915,6 +930,7 @@ export function registerAppHandlers() {
       .values({
         name: newAppName,
         path: newAppName, // Use the new name for the path
+        userId: userIdValue,
         // Explicitly set these to null because we don't want to copy them over.
         // Note: we could just leave them out since they're nullable field, but this
         // is to make it explicit we intentionally don't want to copy them over.
@@ -930,16 +946,10 @@ export function registerAppHandlers() {
   });
 
   createTypedHandler(appContracts.getApp, async (_, appId) => {
-    const app = await db.query.apps.findFirst({
-      where: eq(apps.id, appId),
-    });
-
-    if (!app) {
-      throw new Error("App not found");
-    }
+    const app = await requireApp(appId);
 
     // Get app files
-    const appPath = getProteaAIAppPath(app.path);
+    const appPath = getProteaAIAppPath(app.path, app.userId ?? undefined);
     let files: string[] = [];
 
     try {
@@ -982,12 +992,14 @@ export function registerAppHandlers() {
   });
 
   createTypedHandler(appContracts.listApps, async () => {
+    const currentUser = getCurrentUser();
     const allApps = await db.query.apps.findMany({
       orderBy: [desc(apps.createdAt)],
+      where: currentUser ? eq(apps.userId, currentUser.userId) : undefined,
     });
     const appsWithResolvedPath = allApps.map((app) => ({
       ...app,
-      resolvedPath: getProteaAIAppPath(app.path),
+      resolvedPath: getProteaAIAppPath(app.path, app.userId ?? undefined),
     }));
     return {
       apps: appsWithResolvedPath,
@@ -996,15 +1008,8 @@ export function registerAppHandlers() {
 
   createTypedHandler(appContracts.readAppFile, async (_, params) => {
     const { appId, filePath } = params;
-    const app = await db.query.apps.findFirst({
-      where: eq(apps.id, appId),
-    });
-
-    if (!app) {
-      throw new Error("App not found");
-    }
-
-    const appPath = getProteaAIAppPath(app.path);
+    const app = await requireApp(appId);
+    const appPath = getProteaAIAppPath(app.path, app.userId ?? undefined);
     const fullPath = path.join(appPath, filePath);
 
     // Check if the path is within the app directory (security check)
@@ -1055,17 +1060,11 @@ export function registerAppHandlers() {
         return;
       }
 
-      const app = await db.query.apps.findFirst({
-        where: eq(apps.id, appId),
-      });
-
-      if (!app) {
-        throw new Error("App not found");
-      }
+      const app = await requireApp(appId);
 
       logger.debug(`Starting app ${appId} in path ${app.path}`);
 
-      const appPath = getProteaAIAppPath(app.path);
+      const appPath = getProteaAIAppPath(app.path, app.userId ?? undefined);
       try {
         // There may have been a previous run that left a process on this port.
         await cleanUpPort(getAppPort(appId));
@@ -1162,15 +1161,8 @@ export function registerAppHandlers() {
         await cleanUpPort(getAppPort(appId));
 
         // Now start the app again
-        const app = await db.query.apps.findFirst({
-          where: eq(apps.id, appId),
-        });
-
-        if (!app) {
-          throw new Error("App not found");
-        }
-
-        const appPath = getProteaAIAppPath(app.path);
+        const app = await requireApp(appId);
+        const appPath = getProteaAIAppPath(app.path, app.userId ?? undefined);
 
         // Remove node_modules if requested
         if (removeNodeModules) {
@@ -1235,15 +1227,8 @@ export function registerAppHandlers() {
     let { appId, filePath, content } = params;
     // It should already be normalized, but just in case.
     filePath = normalizePath(filePath);
-    const app = await db.query.apps.findFirst({
-      where: eq(apps.id, appId),
-    });
-
-    if (!app) {
-      throw new Error("App not found");
-    }
-
-    const appPath = getProteaAIAppPath(app.path);
+    const app = await requireApp(appId);
+    const appPath = getProteaAIAppPath(app.path, app.userId ?? undefined);
     const fullPath = path.join(appPath, filePath);
 
     // Check if the path is within the app directory (security check)
@@ -1340,14 +1325,7 @@ export function registerAppHandlers() {
     // Static server worker is NOT terminated here anymore
 
     return withLock(appId, async () => {
-      // Check if app exists
-      const app = await db.query.apps.findFirst({
-        where: eq(apps.id, appId),
-      });
-
-      if (!app) {
-        throw new Error("App not found");
-      }
+      const app = await requireApp(appId);
 
       // Stop the app if it's running
       if (runningApps.has(appId)) {
@@ -1374,7 +1352,7 @@ export function registerAppHandlers() {
       }
 
       // Delete app files
-      const appPath = getProteaAIAppPath(app.path);
+      const appPath = getProteaAIAppPath(app.path, app.userId ?? undefined);
       try {
         await fsPromises.rm(appPath, { recursive: true, force: true });
       } catch (error: any) {
@@ -1432,15 +1410,7 @@ export function registerAppHandlers() {
     const { appId, appName, appPath: newPath } = params;
     return withLock(appId, async () => {
       let appPath = newPath;
-      // Check if app exists
-      const app = await db.query.apps.findFirst({
-        where: eq(apps.id, appId),
-      });
-
-      if (!app) {
-        throw new Error("App not found");
-      }
-
+      const app = await requireApp(appId);
       const pathChanged = appPath !== app.path;
 
       // Security: reject NEW absolute paths - rename-app should only accept relative paths for new paths
@@ -1476,7 +1446,7 @@ export function registerAppHandlers() {
 
       // If the current path is absolute, preserve the directory and only change the folder name
       // Otherwise, resolve the new path using the default base path
-      const currentResolvedPath = getProteaAIAppPath(app.path);
+      const currentResolvedPath = getProteaAIAppPath(app.path, app.userId ?? undefined);
       const newAppPath = path.isAbsolute(app.path)
         ? path.join(path.dirname(app.path), appPath)
         : getProteaAIAppPath(appPath);
@@ -1661,15 +1631,8 @@ export function registerAppHandlers() {
 
   createTypedHandler(appContracts.renameBranch, async (_, params) => {
     const { appId, oldBranchName, newBranchName } = params;
-    const app = await db.query.apps.findFirst({
-      where: eq(apps.id, appId),
-    });
-
-    if (!app) {
-      throw new Error("App not found");
-    }
-
-    const appPath = getProteaAIAppPath(app.path);
+    const app = await requireApp(appId);
+    const appPath = getProteaAIAppPath(app.path, app.userId ?? undefined);
 
     return withLock(appId, async () => {
       try {
@@ -1743,15 +1706,8 @@ export function registerAppHandlers() {
       return [];
     }
 
-    const appRecord = await db.query.apps.findFirst({
-      where: eq(apps.id, appId),
-    });
-
-    if (!appRecord) {
-      throw new Error("App not found");
-    }
-
-    const appPath = getProteaAIAppPath(appRecord.path);
+    const appRecord = await requireApp(appId);
+    const appPath = getProteaAIAppPath(appRecord.path, appRecord.userId ?? undefined);
 
     // Search file contents with ripgrep
     const contentMatches = await searchAppFilesWithRipgrep({
@@ -1882,14 +1838,7 @@ export function registerAppHandlers() {
   createTypedHandler(appContracts.updateAppCommands, async (_, params) => {
     const { appId, installCommand, startCommand } = params;
 
-    const app = await db.query.apps.findFirst({
-      where: eq(apps.id, appId),
-    });
-
-    if (!app) {
-      throw new Error("App not found");
-    }
-
+    const app = await requireApp(appId);
     const trimmedInstall = installCommand?.trim() || null;
     const trimmedStart = startCommand?.trim() || null;
 
@@ -1925,15 +1874,8 @@ export function registerAppHandlers() {
     const normalizedParentDir = path.normalize(parentDirectory);
 
     return withLock(appId, async () => {
-      const app = await db.query.apps.findFirst({
-        where: eq(apps.id, appId),
-      });
-
-      if (!app) {
-        throw new Error("App not found");
-      }
-
-      const currentResolvedPath = getProteaAIAppPath(app.path);
+      const app = await requireApp(appId);
+      const currentResolvedPath = getProteaAIAppPath(app.path, app.userId ?? undefined);
       // Extract app folder name from current path (works for both absolute and relative paths)
       const appFolderName = path.basename(
         path.isAbsolute(app.path) ? app.path : currentResolvedPath,

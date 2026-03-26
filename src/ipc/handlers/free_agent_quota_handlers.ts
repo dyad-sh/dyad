@@ -1,6 +1,7 @@
 import { db } from "../../db";
-import { messages } from "../../db/schema";
-import { eq } from "drizzle-orm";
+import { messages, chats, apps } from "../../db/schema";
+import { eq, and, inArray } from "drizzle-orm";
+import { getCurrentUser } from "../../ipc/context/user-context";
 import { createTypedHandler } from "./base";
 import { freeAgentQuotaContracts } from "../types/free_agent_quota";
 import log from "electron-log";
@@ -142,13 +143,20 @@ export async function unmarkMessageAsUsingFreeAgentQuota(
  * since the oldest message was sent (not a rolling window).
  */
 export async function getFreeAgentQuotaStatus() {
-  // Get all messages with usingFreeAgentModeQuota = true, ordered by creation time
+  const currentUser = getCurrentUser();
+  // Get all messages with usingFreeAgentModeQuota = true, scoped to the current user
   const quotaMessages = await db
     .select({
       createdAt: messages.createdAt,
     })
     .from(messages)
-    .where(eq(messages.usingFreeAgentModeQuota, true))
+    .innerJoin(chats, eq(messages.chatId, chats.id))
+    .innerJoin(apps, eq(chats.appId, apps.id))
+    .where(
+      currentUser
+        ? and(eq(messages.usingFreeAgentModeQuota, true), eq(apps.userId, currentUser.userId))
+        : eq(messages.usingFreeAgentModeQuota, true),
+    )
     .orderBy(messages.createdAt);
 
   // If there are no quota messages, quota is fresh
@@ -174,10 +182,26 @@ export async function getFreeAgentQuotaStatus() {
   if (now >= resetTime) {
     // Clean up expired quota messages before returning fresh quota
     // This prevents stale messages from accumulating and causing incorrect window calculations
-    await db
-      .update(messages)
-      .set({ usingFreeAgentModeQuota: false })
-      .where(eq(messages.usingFreeAgentModeQuota, true));
+    if (currentUser) {
+      // Scope cleanup to the current user via join
+      const expiredIds = await db
+        .select({ id: messages.id })
+        .from(messages)
+        .innerJoin(chats, eq(messages.chatId, chats.id))
+        .innerJoin(apps, eq(chats.appId, apps.id))
+        .where(and(eq(messages.usingFreeAgentModeQuota, true), eq(apps.userId, currentUser.userId)));
+      if (expiredIds.length > 0) {
+        await db
+          .update(messages)
+          .set({ usingFreeAgentModeQuota: false })
+          .where(inArray(messages.id, expiredIds.map((r) => r.id)));
+      }
+    } else {
+      await db
+        .update(messages)
+        .set({ usingFreeAgentModeQuota: false })
+        .where(eq(messages.usingFreeAgentModeQuota, true));
+    }
 
     logger.log("Quota reset: cleaned up expired quota messages");
 

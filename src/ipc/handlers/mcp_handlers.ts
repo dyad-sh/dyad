@@ -3,6 +3,7 @@ import { db } from "../../db";
 import { mcpServers, mcpToolConsents } from "../../db/schema";
 import { eq, and } from "drizzle-orm";
 import { createTypedHandler } from "./base";
+import { getCurrentUser } from "../../ipc/context/user-context";
 
 import { resolveConsent } from "../utils/mcp_consent";
 import { getStoredConsent } from "../utils/mcp_consent";
@@ -27,7 +28,10 @@ function toMcpServer(dbServer: typeof mcpServers.$inferSelect): McpServer {
 export function registerMcpHandlers() {
   // CRUD for MCP servers
   createTypedHandler(mcpContracts.listServers, async () => {
-    const servers = await db.select().from(mcpServers);
+    const currentUser = getCurrentUser();
+    const servers = currentUser
+      ? await db.select().from(mcpServers).where(eq(mcpServers.userId, currentUser.userId))
+      : await db.select().from(mcpServers);
     return servers.map(toMcpServer);
   });
 
@@ -60,6 +64,7 @@ export function registerMcpHandlers() {
         ? (JSON.parse(headersJson) as Record<string, string>)
         : headersJson
       : null;
+    const currentUser = getCurrentUser();
     const result = await db
       .insert(mcpServers)
       .values({
@@ -71,12 +76,20 @@ export function registerMcpHandlers() {
         headersJson: parsedHeadersJson,
         url: url || null,
         enabled: !!enabled,
+        userId: currentUser?.userId ?? null,
       })
       .returning();
     return toMcpServer(result[0]);
   });
 
   createTypedHandler(mcpContracts.updateServer, async (_, params) => {
+    const currentUser = getCurrentUser();
+    if (currentUser) {
+      const existing = await db.query.mcpServers.findFirst({ where: eq(mcpServers.id, params.id) });
+      if (existing?.userId && existing.userId !== currentUser.userId) {
+        throw new Error("Forbidden");
+      }
+    }
     const update: any = {};
     if (params.name !== undefined) update.name = params.name;
     if (params.transport !== undefined) update.transport = params.transport;
@@ -116,6 +129,13 @@ export function registerMcpHandlers() {
   });
 
   createTypedHandler(mcpContracts.deleteServer, async (_, id) => {
+    const currentUser = getCurrentUser();
+    if (currentUser) {
+      const existing = await db.query.mcpServers.findFirst({ where: eq(mcpServers.id, id) });
+      if (existing?.userId && existing.userId !== currentUser.userId) {
+        throw new Error("Forbidden");
+      }
+    }
     try {
       mcpManager.dispose(id);
     } catch {}

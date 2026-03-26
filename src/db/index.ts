@@ -52,6 +52,7 @@ export function initializeDatabase(): BetterSQLite3Database<typeof schema> & {
 
   const sqlite = new Database(dbPath, { timeout: 10000 });
   sqlite.pragma("foreign_keys = ON");
+  sqlite.pragma("journal_mode = WAL");
 
   _db = drizzle(sqlite, { schema });
 

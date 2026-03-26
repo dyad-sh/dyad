@@ -373,6 +373,14 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     }
   }, [chatId, queueMessage, setStreamCompletedSuccessfullyById]);
 
+  // Auto-clear pause state when queue becomes empty to prevent silent queueing
+  // Users expect that deleting all queued messages returns them to normal send mode
+  useEffect(() => {
+    if (chatId && isPaused && queuedMessages.length === 0) {
+      resumeQueue();
+    }
+  }, [chatId, isPaused, queuedMessages.length, resumeQueue]);
+
   // Queue management handlers
   const handleEditQueuedMessage = useCallback(
     (id: string) => {

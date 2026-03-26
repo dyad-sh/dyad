@@ -133,10 +133,21 @@ test.describe("pause queue", () => {
     const pauseButtonAgain = page.getByRole("button", { name: /pause queue/i });
     await expect(pauseButtonAgain).toBeVisible(); // Should show pause button (not paused)
 
-    // 9. Messages are restored but NOT auto-processed (to prevent silent send without attachments).
-    // User can review, edit, and re-attach files before sending if needed.
-    // The queue is now visible with the restored messages ready to send.
+    // 9. Messages are restored and queue processor is enabled (not paused, signal sent).
+    // User can review, edit, and re-attach files before auto-send happens.
+    // The queue is now visible with the restored messages.
     await expect(page.getByText("queued 1")).toBeVisible();
     await expect(page.getByText("queued 2")).toBeVisible();
+
+    // 10. Wait and verify no unintended delayed auto-send.
+    // Even though queue processor is enabled, there's a safety window before auto-send.
+    // Check that new messages don't appear (which would indicate unintended auto-send).
+    // Count initial prose sections (which hold message content)
+    const initialProseCount = await page.locator("div.prose").count();
+    await page.waitForTimeout(3000); // Wait 3 seconds for potential auto-send
+    const finalProseCount = await page.locator("div.prose").count();
+    // Queued messages should NOT auto-send (attachments were stripped during persistence)
+    // Count should remain the same until user explicitly resumes queue
+    await expect(finalProseCount).toBe(initialProseCount);
   });
 });

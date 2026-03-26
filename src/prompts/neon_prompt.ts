@@ -221,13 +221,15 @@ export const authClient = createAuthClient('/api/auth');
 // Provides: useSession(), signIn.email(), signOut(), etc.
 \`\`\`
 
-### Auth UI Components (optional)
+### Auth UI Components
+
+When building auth pages (sign-in, sign-up), **always style them to match the application's existing theme and design**. For sign-up pages, use \`<AuthView pathname="sign-up" />\`.
 
 \`\`\`tsx
 import { NeonAuthUIProvider, AuthView } from '@neondatabase/neon-js/auth/react/ui';
 import { authClient } from '@/lib/auth-client';
 
-export function AuthPage() {
+export default function AuthPage() {
   return (
     <NeonAuthUIProvider authClient={authClient}>
       <AuthView pathname="sign-in" />
@@ -318,17 +320,17 @@ await client.auth.signIn.email({ email, password });
 await client.auth.signOut();
 \`\`\`
 
-### Auth UI Components (optional)
+### Auth UI Components
 
-Neon Auth provides pre-built UI components:
+When building auth pages (sign-in, sign-up), **always style them to match the application's existing theme and design**. For sign-up pages, use \`<AuthView pathname="sign-up" />\`.
 
 \`\`\`tsx
 import { NeonAuthUIProvider, AuthView } from '@neondatabase/neon-js/auth/react/ui';
 import { client } from '@/lib/auth';
 
-export function AuthPage() {
+export default function AuthPage() {
   return (
-    <NeonAuthUIProvider authClient={client.auth}>
+    <NeonAuthUIProvider authClient={client.auth} theme="auto">
       <AuthView pathname="sign-in" />
     </NeonAuthUIProvider>
   );

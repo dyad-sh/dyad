@@ -29,7 +29,7 @@ import {
 } from "../../prompts/supabase_prompt";
 import { getProteaAIAppPath } from "../../paths/paths";
 import { buildProteaAIMediaUrl } from "../../lib/dyadMediaUrl";
-import { readSettings } from "../../main/settings";
+import { readCurrentUserSettings } from "../../main/web-settings";
 import type { ChatResponseEnd, ChatStreamParams } from "@/ipc/types";
 import {
   CodebaseFile,
@@ -524,7 +524,7 @@ ${componentSnippet}
         })
         .returning({ id: messages.id });
       const userMessageId = insertedUserMessage.id;
-      const settings = readSettings();
+      const settings = await readCurrentUserSettings();
       // Only ProteaAI Pro requests have request ids.
       if (settings.enableProteaAIPro) {
         // Generate requestId early so it can be saved with the message
@@ -1643,7 +1643,7 @@ ${problemReport.problems
           .update(messages)
           .set({ content: fullResponse })
           .where(eq(messages.id, placeholderAssistantMessage.id));
-        const settings = readSettings();
+        const settings = await readCurrentUserSettings();
         if (
           settings.autoApproveChanges &&
           settings.selectedChatMode !== "ask"

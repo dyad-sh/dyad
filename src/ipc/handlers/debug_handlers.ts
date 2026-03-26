@@ -1,6 +1,6 @@
 import { BrowserWindow, clipboard } from "electron";
 import { platform, arch } from "os";
-import { readSettings } from "../../main/settings";
+import { readCurrentUserSettings } from "../../main/web-settings";
 import { createTypedHandler } from "./base";
 import { systemContracts } from "../types/system";
 import { miscContracts, SESSION_DEBUG_SCHEMA_VERSION } from "../types/misc";
@@ -73,7 +73,7 @@ async function getSystemDebugInfo({
   }
 
   // Get telemetry info from settings
-  const settings = readSettings();
+  const settings = await readCurrentUserSettings();
   const telemetryId = settings.telemetryUserId || "unknown";
 
   // Get logs from electron-log
@@ -272,7 +272,7 @@ export function registerDebugHandlers() {
     console.log(`IPC: get-session-debug-bundle called for chat ${chatId}`);
 
     try {
-      const settings = readSettings();
+      const settings = await readCurrentUserSettings();
 
       // Get ProteaAI version
       const packageJsonPath = path.resolve(

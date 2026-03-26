@@ -33,7 +33,7 @@ import { withLock } from "../utils/lock_utils";
 import { createLoggedHandler } from "./safe_handle";
 import { ApproveProposalResult } from "@/ipc/types";
 import { validateChatContext } from "../utils/context_paths_utils";
-import { readSettings } from "@/main/settings";
+import { readCurrentUserSettings } from "@/main/web-settings";
 
 const logger = log.scope("proposal_handlers");
 const handle = createLoggedHandler(logger);
@@ -337,7 +337,7 @@ const approveProposalHandler = async (
   _event: IpcMainInvokeEvent,
   { chatId, messageId }: { chatId: number; messageId: number },
 ): Promise<ApproveProposalResult> => {
-  const settings = readSettings();
+  const settings = await readCurrentUserSettings();
   if (settings.selectedChatMode === "ask") {
     throw new Error(
       "Ask mode is not supported for proposal approval. Please switch to build mode.",

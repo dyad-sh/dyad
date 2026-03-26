@@ -10,7 +10,7 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { chats, messages } from "@/db/schema";
-import { readSettings } from "@/main/settings";
+import { readCurrentUserSettings } from "@/main/web-settings";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import {
   getContextWindow,
@@ -83,7 +83,7 @@ export async function checkAndMarkForCompaction(
   chatId: number,
   totalTokens: number,
 ): Promise<boolean> {
-  const settings = readSettings();
+  const settings = await readCurrentUserSettings();
 
   // Skip if compaction is disabled
   if (settings.enableContextCompaction === false) {
@@ -124,7 +124,7 @@ export async function performCompaction(
     createdAtStrategy?: "before-latest-user" | "now";
   },
 ): Promise<CompactionResult> {
-  const settings = readSettings();
+  const settings = await readCurrentUserSettings();
 
   try {
     logger.info(`Starting compaction for chat ${chatId}`);

@@ -1,4 +1,4 @@
-import { readSettings } from "../../main/settings";
+import { readCurrentUserSettings } from "../../main/web-settings";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "./test_utils";
 
@@ -15,7 +15,7 @@ export async function getVercelTeamSlug(
   teamId: string,
 ): Promise<string | null> {
   try {
-    const settings = readSettings();
+    const settings = await readCurrentUserSettings();
     const accessToken = settings.vercelAccessToken?.value;
 
     if (!accessToken) {

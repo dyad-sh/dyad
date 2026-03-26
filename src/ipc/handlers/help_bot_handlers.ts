@@ -1,5 +1,5 @@
 import { streamText, Tool } from "ai";
-import { readSettings } from "../../main/settings";
+import { readCurrentUserSettings } from "../../main/web-settings";
 
 import log from "electron-log";
 import { safeSend } from "../utils/safe_sender";
@@ -43,7 +43,7 @@ export function registerHelpBotHandlers() {
 
       const abortController = new AbortController();
       activeHelpStreams.set(sessionId, abortController);
-      const settings = await readSettings();
+      const settings = await readCurrentUserSettings();
       const apiKey = settings.providerSettings?.["auto"]?.apiKey?.value;
       const provider = createOpenAI({
         baseURL: "https://helpchat.proteaai.com/v1",

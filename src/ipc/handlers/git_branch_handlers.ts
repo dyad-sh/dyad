@@ -1,5 +1,5 @@
 import { IpcMainInvokeEvent } from "electron";
-import { readSettings } from "../../main/settings";
+import { readCurrentUserSettings } from "../../main/web-settings";
 import {
   gitMergeAbort,
   gitFetch,
@@ -55,7 +55,7 @@ async function handleFetchFromGithub(
   event: IpcMainInvokeEvent,
   { appId }: GitBranchAppIdParams,
 ): Promise<void> {
-  const settings = readSettings();
+  const settings = await readCurrentUserSettings();
   const accessToken = settings.githubAccessToken?.value;
   if (!accessToken) {
     throw new Error("Not authenticated with GitHub.");
@@ -394,7 +394,7 @@ async function handlePullFromGithub(
   event: IpcMainInvokeEvent,
   { appId }: GitBranchAppIdParams,
 ): Promise<void> {
-  const settings = readSettings();
+  const settings = await readCurrentUserSettings();
   const accessToken = settings.githubAccessToken?.value;
   if (!accessToken) {
     throw new Error("Not authenticated with GitHub.");

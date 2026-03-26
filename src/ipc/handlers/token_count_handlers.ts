@@ -22,7 +22,7 @@ import { TokenCountParams, TokenCountResult } from "@/ipc/types";
 import { estimateTokens, getContextWindow } from "../utils/token_utils";
 import { createLoggedHandler } from "./safe_handle";
 import { validateChatContext } from "../utils/context_paths_utils";
-import { readSettings } from "@/main/settings";
+import { readCurrentUserSettings } from "@/main/web-settings";
 import { extractMentionedAppsCodebases } from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
 import { isTurboEditsV2Enabled } from "@/lib/schemas";
@@ -58,7 +58,7 @@ export function registerTokenCountHandlers() {
       // Count input tokens
       const inputTokens = estimateTokens(req.input);
 
-      const settings = readSettings();
+      const settings = await readCurrentUserSettings();
 
       // Parse app mentions from the input
       const mentionedAppNames = parseAppMentions(req.input);

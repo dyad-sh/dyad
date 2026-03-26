@@ -1,5 +1,5 @@
 import { LargeLanguageModel } from "@/lib/schemas";
-import { readSettings } from "../../main/settings";
+import { readCurrentUserSettings } from "../../main/web-settings";
 import { Message } from "@/ipc/types";
 
 import { findLanguageModel } from "./findLanguageModel";
@@ -19,7 +19,7 @@ export const estimateMessagesTokens = (messages: Message[]): number => {
 const DEFAULT_CONTEXT_WINDOW = 128_000;
 
 export async function getContextWindow() {
-  const settings = readSettings();
+  const settings = await readCurrentUserSettings();
   const modelOption = await findLanguageModel(settings.selectedModel);
   return modelOption?.contextWindow || DEFAULT_CONTEXT_WINDOW;
 }

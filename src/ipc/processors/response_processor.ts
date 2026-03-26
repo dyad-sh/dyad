@@ -28,7 +28,7 @@ import {
   getGitUncommittedFiles,
   hasStagedChanges,
 } from "../utils/git_utils";
-import { readSettings } from "@/main/settings";
+import { readCurrentUserSettings } from "@/main/web-settings";
 import { writeMigrationFile } from "../utils/file_utils";
 import {
   getProteaAIWriteTags,
@@ -140,7 +140,7 @@ export async function processFullResponseActions(
     }
   }
 
-  const settings: UserSettings = readSettings();
+  const settings: UserSettings = await readCurrentUserSettings();
   const appPath = getProteaAIAppPath(chatWithApp.app.path);
   const writtenFiles: string[] = [];
   const renamedFiles: string[] = [];
@@ -499,7 +499,7 @@ export async function processFullResponseActions(
         logger.info(
           "Shared modules changed, redeploying all Supabase functions",
         );
-        const settings = readSettings();
+        const settings = await readCurrentUserSettings();
         const deployErrors = await deployAllSupabaseFunctions({
           appPath,
           supabaseProjectId: chatWithApp.app.supabaseProjectId,

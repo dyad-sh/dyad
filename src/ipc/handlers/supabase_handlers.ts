@@ -14,7 +14,7 @@ import { extractFunctionName } from "../../supabase_admin/supabase_utils";
 import { createTypedHandler } from "./base";
 import { createTestOnlyLoggedHandler } from "./safe_handle";
 import { safeSend } from "../utils/safe_sender";
-import { readSettings, writeSettings } from "../../main/settings";
+import { readCurrentUserSettings, writeCurrentUserSettings } from "../../main/web-settings";
 import { supabaseContracts } from "../types/supabase";
 
 const logger = log.scope("supabase_handlers");
@@ -23,7 +23,7 @@ const testOnlyHandle = createTestOnlyLoggedHandler(logger);
 export function registerSupabaseHandlers() {
   // List all connected Supabase organizations with details
   createTypedHandler(supabaseContracts.listOrganizations, async () => {
-    const settings = readSettings();
+    const settings = await readCurrentUserSettings();
     const organizations = settings.supabase?.organizations ?? {};
 
     const results: Array<{
@@ -66,7 +66,7 @@ export function registerSupabaseHandlers() {
     supabaseContracts.deleteOrganization,
     async (_, params) => {
       const { organizationSlug } = params;
-      const settings = readSettings();
+      const settings = await readCurrentUserSettings();
       const organizations = { ...settings.supabase?.organizations };
 
       if (!organizations[organizationSlug]) {
@@ -75,7 +75,7 @@ export function registerSupabaseHandlers() {
 
       delete organizations[organizationSlug];
 
-      writeSettings({
+      await writeCurrentUserSettings({
         supabase: {
           ...settings.supabase,
           organizations,
@@ -88,7 +88,7 @@ export function registerSupabaseHandlers() {
 
   // List all projects from all connected organizations
   createTypedHandler(supabaseContracts.listAllProjects, async () => {
-    const settings = readSettings();
+    const settings = await readCurrentUserSettings();
     const organizations = settings.supabase?.organizations ?? {};
     const allProjects: Array<{
       id: string;
@@ -229,9 +229,9 @@ export function registerSupabaseHandlers() {
       // Directly store fake credentials in the organizations map
       // We don't call handleSupabaseOAuthReturn because it attempts a real API call
       // which fails with fake tokens, causing credentials to be stored in legacy format
-      const settings = readSettings();
+      const settings = await readCurrentUserSettings();
       const existingOrgs = settings.supabase?.organizations ?? {};
-      writeSettings({
+      await writeCurrentUserSettings({
         supabase: {
           ...settings.supabase,
           organizations: {

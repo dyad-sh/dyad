@@ -11,7 +11,7 @@ import { createTypedHandler } from "./base";
 import { versionContracts } from "../types/version";
 
 import { deployAllSupabaseFunctions } from "../../supabase_admin/supabase_utils";
-import { readSettings } from "../../main/settings";
+import { readCurrentUserSettings } from "../../main/web-settings";
 import {
   gitCheckout,
   gitCommit,
@@ -334,7 +334,7 @@ export function registerVersionHandlers() {
           logger.info(
             `Re-deploying all Supabase edge functions for app ${appId} after revert`,
           );
-          const settings = readSettings();
+          const settings = await readCurrentUserSettings();
           const deployErrors = await deployAllSupabaseFunctions({
             appPath,
             supabaseProjectId: app.supabaseProjectId,

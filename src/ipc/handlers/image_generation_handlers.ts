@@ -10,7 +10,7 @@ import { getProteaAIAppPath } from "../../paths/paths";
 import { PROTEAAI_MEDIA_DIR_NAME } from "../utils/media_path_utils";
 import { safeJoin } from "../utils/path_utils";
 import { withLock } from "../utils/lock_utils";
-import { readSettings } from "../../main/settings";
+import { readCurrentUserSettings } from "../../main/web-settings";
 import { eq } from "drizzle-orm";
 import fs from "node:fs";
 import path from "node:path";
@@ -41,7 +41,7 @@ export function registerImageGenerationHandlers() {
   createTypedHandler(
     imageGenerationContracts.generateImage,
     async (_, params) => {
-      const settings = readSettings();
+      const settings = await readCurrentUserSettings();
       const apiKey = settings.providerSettings?.auto?.apiKey?.value;
 
       if (!apiKey) {

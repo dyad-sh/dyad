@@ -2,7 +2,7 @@ import fetch from "node-fetch"; // Electron main process might need node-fetch
 import log from "electron-log";
 import { createLoggedHandler } from "./safe_handle";
 import { createLoggedTypedHandler } from "./base";
-import { readSettings } from "../../main/settings"; // Assuming settings are read this way
+import { readCurrentUserSettings } from "../../main/web-settings";
 import { UserBudgetInfo, UserBudgetInfoSchema } from "@/ipc/types";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import { z } from "zod";
@@ -43,7 +43,7 @@ export function registerProHandlers() {
     }
     logger.info("Attempting to fetch user budget information.");
 
-    const settings = readSettings();
+    const settings = await readCurrentUserSettings();
 
     const apiKey = settings.providerSettings?.auto?.apiKey?.value;
 
@@ -105,7 +105,7 @@ export function registerProHandlers() {
   typedHandle(
     audioContracts.transcribeAudio,
     async (_event, input: TranscribeAudioParams) => {
-      const settings = readSettings();
+      const settings = await readCurrentUserSettings();
       const apiKey = settings.providerSettings?.auto?.apiKey?.value;
 
       if (!apiKey || !settings.enableProteaAIPro) {

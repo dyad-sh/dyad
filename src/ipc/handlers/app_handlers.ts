@@ -1,4 +1,17 @@
-import { ipcMain, app, dialog } from "electron";
+// Lazy-load Electron APIs to avoid crashes in web/Node mode
+function getElectron(): typeof import("electron") | null {
+  try {
+    if (process.versions?.electron) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      return require("electron");
+    }
+  } catch { /* Not in Electron */ }
+  return null;
+}
+const _electron = getElectron();
+const ipcMain = _electron?.ipcMain as typeof import("electron")["ipcMain"];
+const app = _electron?.app as typeof import("electron")["app"];
+const dialog = _electron?.dialog as typeof import("electron")["dialog"];
 import { db, getDatabasePath } from "../../db";
 import { apps, chats, messages } from "../../db/schema";
 import { desc, eq, like } from "drizzle-orm";
@@ -28,6 +41,7 @@ import {
 } from "../utils/process_manager";
 import { getEnvVar } from "../utils/read_env";
 import { readSettings } from "../../main/settings";
+import { readCurrentUserSettings } from "../../main/web-settings";
 import { addLog, clearLogs } from "../../lib/log_store";
 
 import fixPath from "fix-path";
@@ -171,7 +185,7 @@ async function executeApp({
   installCommand?: string | null;
   startCommand?: string | null;
 }): Promise<void> {
-  const settings = readSettings();
+  const settings = await readCurrentUserSettings();
   const runtimeMode = settings.runtimeMode2 ?? "host";
 
   if (runtimeMode === "docker") {
@@ -963,7 +977,7 @@ export function registerAppHandlers() {
     }
 
     let supabaseProjectName: string | null = null;
-    const settings = readSettings();
+    const settings = await readCurrentUserSettings();
     // Check for multi-organization credentials or legacy single account
     const hasSupabaseCredentials =
       (app.supabaseOrganizationSlug &&
@@ -1166,7 +1180,7 @@ export function registerAppHandlers() {
 
         // Remove node_modules if requested
         if (removeNodeModules) {
-          const settings = readSettings();
+          const settings = await readCurrentUserSettings();
           const runtimeMode = settings.runtimeMode2 ?? "host";
 
           const nodeModulesPath = path.join(appPath, "node_modules");
@@ -1278,7 +1292,7 @@ export function registerAppHandlers() {
           logger.info(
             `Shared module ${filePath} modified, redeploying all Supabase functions`,
           );
-          const settings = readSettings();
+          const settings = await readCurrentUserSettings();
           const deployErrors = await deployAllSupabaseFunctions({
             appPath,
             supabaseProjectId: app.supabaseProjectId,
@@ -2024,7 +2038,7 @@ function getCommand({
 }
 
 async function cleanUpPort(port: number) {
-  const settings = readSettings();
+  const settings = await readCurrentUserSettings();
   if (settings.runtimeMode2 === "docker") {
     await stopDockerContainersOnPort(port);
   } else {

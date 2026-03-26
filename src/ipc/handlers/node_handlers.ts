@@ -19,7 +19,7 @@ import { runShellCommand } from "../utils/runShellCommand";
 import log from "electron-log";
 import { existsSync } from "fs";
 import { join } from "path";
-import { readSettings } from "../../main/settings";
+import { readCurrentUserSettings } from "../../main/web-settings";
 import { createTypedHandler } from "./base";
 import { systemContracts } from "../types/system";
 import { IS_TEST_BUILD } from "../utils/test_utils";
@@ -112,7 +112,7 @@ export function registerNodeHandlers() {
     } else {
       fixPath();
     }
-    const settings = readSettings();
+    const settings = await readCurrentUserSettings();
     if (settings.customNodePath) {
       const separator = platform() === "win32" ? ";" : ":";
       process.env.PATH = `${settings.customNodePath}${separator}${process.env.PATH}`;

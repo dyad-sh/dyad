@@ -1,6 +1,6 @@
 import { IpcMainInvokeEvent } from "electron";
 import { Vercel } from "@vercel/sdk";
-import { writeSettings, readSettings } from "../../main/settings";
+import { readCurrentUserSettings, writeCurrentUserSettings } from "../../main/web-settings";
 import * as schema from "../../db/schema";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
@@ -210,7 +210,7 @@ async function handleSaveVercelToken(
       );
     }
 
-    writeSettings({
+    await writeCurrentUserSettings({
       vercelAccessToken: {
         value: token.trim(),
       },
@@ -226,7 +226,7 @@ async function handleSaveVercelToken(
 // --- Vercel List Projects Handler ---
 async function handleListVercelProjects(): Promise<VercelProject[]> {
   try {
-    const settings = readSettings();
+    const settings = await readCurrentUserSettings();
     const accessToken = settings.vercelAccessToken?.value;
     if (!accessToken) {
       throw new Error("Not authenticated with Vercel.");
@@ -255,7 +255,7 @@ async function handleIsProjectAvailable(
   { name }: IsVercelProjectAvailableParams,
 ): Promise<{ available: boolean; error?: string }> {
   try {
-    const settings = readSettings();
+    const settings = await readCurrentUserSettings();
     const accessToken = settings.vercelAccessToken?.value;
     if (!accessToken) {
       return { available: false, error: "Not authenticated with Vercel." };
@@ -289,7 +289,7 @@ async function handleCreateProject(
   event: IpcMainInvokeEvent,
   { name, appId }: CreateVercelProjectParams,
 ): Promise<void> {
-  const settings = readSettings();
+  const settings = await readCurrentUserSettings();
   const accessToken = settings.vercelAccessToken?.value;
   if (!accessToken) {
     throw new Error("Not authenticated with Vercel.");
@@ -394,7 +394,7 @@ async function handleConnectToExistingProject(
   { projectId, appId }: ConnectToExistingVercelProjectParams,
 ): Promise<void> {
   try {
-    const settings = readSettings();
+    const settings = await readCurrentUserSettings();
     const accessToken = settings.vercelAccessToken?.value;
     if (!accessToken) {
       throw new Error("Not authenticated with Vercel.");
@@ -444,7 +444,7 @@ async function handleGetVercelDeployments(
   { appId }: GetVercelDeploymentsParams,
 ): Promise<VercelDeployment[]> {
   try {
-    const settings = readSettings();
+    const settings = await readCurrentUserSettings();
     const accessToken = settings.vercelAccessToken?.value;
     if (!accessToken) {
       throw new Error("Not authenticated with Vercel.");

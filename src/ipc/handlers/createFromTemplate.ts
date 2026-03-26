@@ -3,7 +3,7 @@ import fs from "fs-extra";
 import { app } from "electron";
 import { copyDirectoryRecursive } from "../utils/file_utils";
 import { gitClone, getCurrentCommitHash } from "../utils/git_utils";
-import { readSettings } from "@/main/settings";
+import { readCurrentUserSettings } from "@/main/web-settings";
 import { getTemplateOrThrow } from "../utils/template_utils";
 import log from "electron-log";
 
@@ -14,7 +14,7 @@ export async function createFromTemplate({
 }: {
   fullAppPath: string;
 }) {
-  const settings = readSettings();
+  const settings = await readCurrentUserSettings();
   const templateId = settings.selectedTemplateId;
 
   if (templateId === "react") {

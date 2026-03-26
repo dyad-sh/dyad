@@ -326,7 +326,7 @@ test.describe("pause queue", () => {
     await expect(page.getByText("Paused")).toBeVisible();
 
     // Create a new chat tab
-    await po.chatActions.newChat();
+    await po.chatActions.clickNewChat();
     await expect(chatInput).toBeVisible();
 
     // In chat 2: send a message with medium sleep

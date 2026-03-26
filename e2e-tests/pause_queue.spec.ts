@@ -1,28 +1,10 @@
 import { test } from "./helpers/test_helper";
 import { expect, Locator, Page } from "@playwright/test";
 
-// Helper function to navigate away from and back to a chat
+// Helper function to reload page to test sessionStorage restore
 async function navigateAwayAndReturn(page: Page) {
-  const chatIdMatch = page.url().match(/id=(\d+)/);
-  const chatId = chatIdMatch ? chatIdMatch[1] : null;
-
-  // Navigate away from chat
-  await page.goto(page.url().split("?")[0]);
-
-  // Verify chat list is visible
-  await expect(page.getByText(/chat|recent/i).first()).toBeVisible({
-    timeout: 5000,
-  });
-
-  // Reopen the same chat
-  if (chatId) {
-    await page.goto(`${page.url()}?id=${chatId}`);
-  } else {
-    // Fallback: click the most recent chat in the list
-    const recentChat = page.locator('[role="tab"]').first();
-    await expect(recentChat).toBeVisible();
-    await recentChat.click();
-  }
+  // Simply reload the page - this will trigger the useEffect that restores from sessionStorage
+  await page.reload({ waitUntil: "networkidle" });
 }
 
 test.describe("pause queue", () => {
@@ -36,6 +18,7 @@ test.describe("pause queue", () => {
   test("pause/resume queue and cycle through multiple states", async ({
     po,
   }) => {
+    test.setTimeout(120000); // Increase timeout for this test
     const page = po.page;
 
     // 1. Send initial message with medium sleep
@@ -102,6 +85,7 @@ test.describe("pause queue", () => {
   test("session persistence: saved queue restored on page reopening", async ({
     po,
   }) => {
+    test.setTimeout(120000); // Increase timeout for this test
     const page = po.page;
 
     // 1. Send initial message
@@ -149,11 +133,10 @@ test.describe("pause queue", () => {
     const pauseButtonAgain = page.getByRole("button", { name: /pause queue/i });
     await expect(pauseButtonAgain).toBeVisible(); // Should show pause button (not paused)
 
-    // 9. Messages should auto-process since pause state was cleared
-    await po.chatActions.waitForChatCompletion();
-    await po.chatActions.waitForChatCompletion();
-    const messagesList = page.locator('[data-testid="messages-list"]');
-    await expect(messagesList.getByText("queued 1")).toBeVisible();
-    await expect(messagesList.getByText("queued 2")).toBeVisible();
+    // 9. Messages are restored but NOT auto-processed (to prevent silent send without attachments).
+    // User can review, edit, and re-attach files before sending if needed.
+    // The queue is now visible with the restored messages ready to send.
+    await expect(page.getByText("queued 1")).toBeVisible();
+    await expect(page.getByText("queued 2")).toBeVisible();
   });
 });

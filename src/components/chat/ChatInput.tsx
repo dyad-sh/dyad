@@ -355,13 +355,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               selectedComponents: message.selectedComponents,
             });
           }
-          // Trigger queue processing by marking stream as completed
-          // so useQueueProcessor will drain the restored messages
-          setStreamCompletedSuccessfullyById((prev) => {
-            const next = new Map(prev);
-            next.set(chatId, true);
-            return next;
-          });
+          // Restore paused queue but DON'T auto-drain it.
+          // This prevents silently sending messages without their attachments
+          // (which were stripped during serialization to avoid File object issues).
+          // The messages are restored to the queue; the user can review and edit them
+          // before sending, or re-attach files if needed.
         }
         sessionStorage.removeItem(`dyad-queued-messages-${chatId}`);
       }
@@ -371,7 +369,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         err,
       );
     }
-  }, [chatId, queueMessage, setStreamCompletedSuccessfullyById]);
+  }, [chatId, queueMessage]);
 
   // Auto-clear pause state when queue becomes empty to prevent silent queueing
   // Users expect that deleting all queued messages returns them to normal send mode

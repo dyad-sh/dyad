@@ -975,7 +975,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               </Tooltip>
             )}
 
-            {isStreaming || (isPaused && queuedMessages.length > 0) ? (
+            {isStreaming || queuedMessages.length > 0 ? (
               <>
                 {queuedMessages.length > 0 && (
                   <Tooltip>

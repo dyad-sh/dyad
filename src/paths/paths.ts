@@ -3,23 +3,30 @@ import os from "node:os";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
 
 /**
- * Gets the base proteaai-apps directory path (without a specific app subdirectory)
+ * Gets the base proteaai-apps directory path (without a specific app subdirectory).
+ * In web mode with a userId, returns a per-user subdirectory to isolate data.
  */
-export function getProteaAIAppsBaseDirectory(): string {
+export function getProteaAIAppsBaseDirectory(userId?: string): string {
   if (IS_TEST_BUILD) {
     const electron = getElectron();
-    return path.join(electron!.app.getPath("userData"), "proteaai-apps");
+    const base = path.join(electron!.app.getPath("userData"), "proteaai-apps");
+    return userId ? path.join(base, userId) : base;
   }
-  return path.join(os.homedir(), "proteaai-apps");
+  const base = path.join(os.homedir(), "proteaai-apps");
+  // In web mode, scope apps per-user if a userId is provided
+  if (userId && !process.versions?.electron) {
+    return path.join(base, userId);
+  }
+  return base;
 }
 
-export function getProteaAIAppPath(appPath: string): string {
+export function getProteaAIAppPath(appPath: string, userId?: string): string {
   // If appPath is already absolute, use it as-is
   if (path.isAbsolute(appPath)) {
     return appPath;
   }
-  // Otherwise, use the default base path
-  return path.join(getProteaAIAppsBaseDirectory(), appPath);
+  // Otherwise, use the default base path (per-user in web mode)
+  return path.join(getProteaAIAppsBaseDirectory(userId), appPath);
 }
 
 export function getTypeScriptCachePath(): string {

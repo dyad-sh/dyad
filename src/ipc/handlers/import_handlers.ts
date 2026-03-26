@@ -1,4 +1,3 @@
-import { dialog } from "electron";
 import fs from "fs/promises";
 import path from "path";
 import { createLoggedHandler } from "./safe_handle";
@@ -16,9 +15,30 @@ import { gitCommit, gitAdd, gitInit } from "../utils/git_utils";
 const logger = log.scope("import-handlers");
 const handle = createLoggedHandler(logger);
 
+// Lazy-load Electron's dialog — only available in Electron renderer/main
+function getDialog(): typeof import("electron")["dialog"] | null {
+  try {
+    if (process.versions?.electron) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      return require("electron").dialog;
+    }
+  } catch {
+    // Not in Electron
+  }
+  return null;
+}
+
 export function registerImportHandlers() {
   // Handler for selecting an app folder
+  // In web mode there is no native file picker — the client passes the path
+  // via the importApp handler directly (skipCopy + explicit path).
   handle("select-app-folder", async () => {
+    const dialog = getDialog();
+    if (!dialog) {
+      // Web mode: return a sentinel so the UI knows to prompt for a path manually
+      return { path: null, name: null, requiresManualPath: true };
+    }
+
     const result = await dialog.showOpenDialog({
       properties: ["openDirectory"],
       title: "Select App Folder to Import",

@@ -3,6 +3,64 @@ import { integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
 import type { ModelMessage } from "ai";
 
+// ── Users ─────────────────────────────────────────────────────────────────────
+
+export const users = sqliteTable("users", {
+  id: text("id").primaryKey(), // UUID
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  name: text("name"),
+  role: text("role", { enum: ["user", "admin"] }).notNull().default("user"),
+  emailVerified: integer("email_verified", { mode: "boolean" })
+    .notNull()
+    .default(sql`0`),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+// ── Subscriptions ─────────────────────────────────────────────────────────────
+
+export const subscriptions = sqliteTable("subscriptions", {
+  id: text("id").primaryKey(), // Stripe subscription ID
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  stripeCustomerId: text("stripe_customer_id").notNull(),
+  status: text("status", {
+    enum: ["active", "canceled", "past_due", "trialing", "incomplete"],
+  })
+    .notNull()
+    .default("active"),
+  plan: text("plan", { enum: ["free", "pro"] }).notNull().default("free"),
+  currentPeriodEnd: integer("current_period_end", { mode: "timestamp" }),
+  cancelAtPeriodEnd: integer("cancel_at_period_end", { mode: "boolean" })
+    .notNull()
+    .default(sql`0`),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+// ── User Settings (per-user, replaces file-based settings in web mode) ────────
+
+export const userSettings = sqliteTable("user_settings", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  // Encrypted JSON blob of UserSettings
+  settingsJson: text("settings_json").notNull().default("{}"),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
 export const AI_MESSAGES_SDK_VERSION = "ai@v6" as const;
 
 export type AiMessagesJsonV6 = {
@@ -30,6 +88,8 @@ export const prompts = sqliteTable(
 
 export const apps = sqliteTable("apps", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  // userId is null for single-user (Electron) mode; set for multi-user web mode
+  userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   path: text("path").notNull(),
   createdAt: integer("created_at", { mode: "timestamp" })
@@ -226,6 +286,7 @@ export const versionsRelations = relations(versions, ({ one }) => ({
 // --- MCP (Model Context Protocol) tables ---
 export const mcpServers = sqliteTable("mcp_servers", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   transport: text("transport").notNull(),
   command: text("command"),
@@ -270,6 +331,7 @@ export const mcpToolConsents = sqliteTable(
 // --- Custom Themes table ---
 export const customThemes = sqliteTable("custom_themes", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   description: text("description"),
   prompt: text("prompt").notNull(),
@@ -280,3 +342,26 @@ export const customThemes = sqliteTable("custom_themes", {
     .notNull()
     .default(sql`(unixepoch())`),
 });
+
+// ── User / Subscription Relations ─────────────────────────────────────────────
+
+export const usersRelations = relations(users, ({ many, one }) => ({
+  apps: many(apps),
+  mcpServers: many(mcpServers),
+  customThemes: many(customThemes),
+  subscription: one(subscriptions, {
+    fields: [users.id],
+    references: [subscriptions.userId],
+  }),
+  settings: one(userSettings, {
+    fields: [users.id],
+    references: [userSettings.userId],
+  }),
+}));
+
+export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
+  user: one(users, {
+    fields: [subscriptions.userId],
+    references: [users.id],
+  }),
+}));

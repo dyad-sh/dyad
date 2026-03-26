@@ -1,9 +1,21 @@
-import { shell } from "electron";
 import log from "electron-log";
 import path from "node:path";
 import { createLoggedHandler } from "./safe_handle";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import { isFileWithinAnyProteaAIMediaDir } from "../utils/media_path_utils";
+
+// Lazy-load Electron's shell — only available in Electron environment
+function getShell(): typeof import("electron")["shell"] | null {
+  try {
+    if (process.versions?.electron) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      return require("electron").shell;
+    }
+  } catch {
+    // Not in Electron
+  }
+  return null;
+}
 
 const logger = log.scope("shell_handlers");
 const handle = createLoggedHandler(logger);
@@ -46,6 +58,11 @@ export function registerShellHandlers() {
       logger.debug("E2E test mode: skipped opening external URL:", url);
       return;
     }
+    const shell = getShell();
+    if (!shell) {
+      // Web mode: no native shell — client should handle URL opening via window.open
+      return;
+    }
     await shell.openExternal(url);
     logger.debug("Opened external URL:", url);
   });
@@ -56,6 +73,11 @@ export function registerShellHandlers() {
       throw new Error("No file path provided.");
     }
 
+    const shell = getShell();
+    if (!shell) {
+      // Web mode: no native folder opener
+      return;
+    }
     shell.showItemInFolder(fullPath);
     logger.debug("Showed item in folder:", fullPath);
   });
@@ -83,6 +105,11 @@ export function registerShellHandlers() {
       );
     }
 
+    const shell = getShell();
+    if (!shell) {
+      // Web mode: cannot open files natively
+      return;
+    }
     const result = await shell.openPath(resolvedPath);
     if (result) {
       // shell.openPath returns an error string if it fails, empty string on success

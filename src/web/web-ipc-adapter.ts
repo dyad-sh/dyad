@@ -52,13 +52,20 @@ function getOrCreateWs(): WebSocket {
   return ws;
 }
 
+const TOKEN_KEY = "proteaai_token";
+
+function getAuthHeaders(): Record<string, string> {
+  const token = localStorage.getItem(TOKEN_KEY);
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 // ── IPC invoke → HTTP POST ───────────────────────────────────────────────────
 
 async function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
   const input = args[0] ?? {};
   const response = await fetch(`${API_BASE}/${channel}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
     body: JSON.stringify(input),
   });
 

@@ -9,12 +9,25 @@ import {
   VertexProviderSetting,
   migrateStoredSettings,
 } from "../lib/schemas";
-import { safeStorage } from "electron";
 import { v4 as uuidv4 } from "uuid";
 import log from "electron-log";
 import { DEFAULT_TEMPLATE_ID } from "@/shared/templates";
 import { DEFAULT_THEME_ID } from "@/shared/themes";
 import { IS_TEST_BUILD } from "@/ipc/utils/test_utils";
+import { webEncrypt, webDecrypt } from "./web-crypto";
+
+// Lazy-load safeStorage only when running in Electron
+function getSafeStorage(): typeof import("electron")["safeStorage"] | null {
+  try {
+    if (process.versions?.electron) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      return require("electron").safeStorage;
+    }
+  } catch {
+    // Not in Electron
+  }
+  return null;
+}
 
 const logger = log.scope("settings");
 
@@ -257,10 +270,18 @@ export function writeSettings(settings: Partial<UserSettings>): void {
 
 export function encrypt(data: string): Secret {
   const trimmed = data.trim();
-  if (safeStorage.isEncryptionAvailable() && !IS_TEST_BUILD) {
+  const safeStorage = getSafeStorage();
+  if (safeStorage?.isEncryptionAvailable() && !IS_TEST_BUILD) {
     return {
       value: safeStorage.encryptString(trimmed).toString("base64"),
       encryptionType: "electron-safe-storage",
+    };
+  }
+  // Web/Node mode: use AES-256-GCM
+  if (!process.versions?.electron && !IS_TEST_BUILD) {
+    return {
+      value: webEncrypt(trimmed),
+      encryptionType: "aes-256-gcm",
     };
   }
   return {
@@ -271,7 +292,12 @@ export function encrypt(data: string): Secret {
 
 export function decrypt(data: Secret): string {
   if (data.encryptionType === "electron-safe-storage") {
+    const safeStorage = getSafeStorage();
+    if (!safeStorage) throw new Error("safeStorage not available");
     return safeStorage.decryptString(Buffer.from(data.value, "base64")).trim();
+  }
+  if (data.encryptionType === "aes-256-gcm") {
+    return webDecrypt(data.value).trim();
   }
   return data.value.trim();
 }

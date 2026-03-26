@@ -5,9 +5,10 @@
  *  1. Enables web mode on the IPC handler base (so all handlers register via
  *     webHandlerRegistry instead of Electron's ipcMain)
  *  2. Imports all IPC handlers (which self-register into the registry)
- *  3. Exposes each channel as POST /api/:channel
+ *  3. Exposes each channel as POST /api/:channel  (auth-protected)
  *  4. Attaches a WebSocket server for push events (replacing ipcRenderer.on)
- *  5. Serves the built React SPA from /dist/web
+ *  5. Mounts auth, billing, admin, and GDPR route groups
+ *  6. Serves the built React SPA from /dist/web
  */
 
 // Must be FIRST — sets web mode before any handler imports
@@ -19,8 +20,14 @@ import { createServer } from "http";
 import path from "node:path";
 import fs from "node:fs";
 import cors from "cors";
+import rateLimit from "express-rate-limit";
 import { wsManager } from "./ws_manager";
 import { safeRoute } from "./middleware/safe_route";
+import { requireAuth } from "./middleware/auth";
+import { authRouter } from "./routes/auth";
+import { billingRouter } from "./routes/billing";
+import { adminRouter } from "./routes/admin";
+import { gdprRouter } from "./routes/gdpr";
 import dotenv from "dotenv";
 
 // Load env vars
@@ -45,19 +52,78 @@ registerIpcHandlers();
 const app = express();
 const PORT = Number(process.env.PORT ?? 3001);
 
-app.use(cors({ origin: process.env.CORS_ORIGIN ?? "http://localhost:5173" }));
+// CORS
+const allowedOrigins = (process.env.CORS_ORIGIN ?? "http://localhost:5173")
+  .split(",")
+  .map((o) => o.trim());
+app.use(cors({ origin: allowedOrigins, credentials: true }));
+
+// Raw body for Stripe webhooks (must be before express.json)
+app.use(
+  "/billing/webhook",
+  express.raw({ type: "application/json" }),
+);
+
 app.use(express.json({ limit: "50mb" }));
 
-// ── IPC → HTTP bridge ────────────────────────────────────────────────────────
+// ── Rate limiting ─────────────────────────────────────────────────────────────
+
+// Global limiter: 300 requests per minute per IP
+const globalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { ok: false, error: "Too many requests, please slow down." },
+});
+
+// Strict limiter for auth endpoints: 10 attempts per 15 min per IP
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { ok: false, error: "Too many auth attempts, please try again later." },
+});
+
+app.use(globalLimiter);
+
+// ── Health check (public) ─────────────────────────────────────────────────────
+
+app.get("/health", (_req, res) => {
+  res.json({ ok: true, version: process.env.npm_package_version ?? "1.0.0" });
+});
+
+// ── Auth routes (public) ──────────────────────────────────────────────────────
+
+app.use("/auth", authLimiter, authRouter);
+
+// ── Billing routes (auth-protected) ──────────────────────────────────────────
+
+app.use("/billing", billingRouter);
+
+// ── Admin routes (admin-only) ─────────────────────────────────────────────────
+
+app.use("/admin", adminRouter);
+
+// ── GDPR routes (auth-protected) ─────────────────────────────────────────────
+
+app.use("/gdpr", gdprRouter);
+
+// ── IPC → HTTP bridge (auth-protected) ───────────────────────────────────────
 
 /**
  * POST /api/:channel
+ *
+ * Requires a valid JWT. The auth middleware sets the user context so IPC
+ * handlers can call getCurrentUser() / requireCurrentUser().
  *
  * Body: the input payload for the IPC channel.
  * Response: { ok: true, data: <result> } | { ok: false, error: string }
  */
 app.post(
   "/api/:channel(*)",
+  requireAuth,
   safeRoute("ipc-bridge", async (req) => {
     const channel = req.params.channel;
     const handler = webHandlerRegistry.get(channel);
@@ -68,7 +134,7 @@ app.post(
   }),
 );
 
-// ── Media file serving ───────────────────────────────────────────────────────
+// ── Media file serving (auth-protected) ──────────────────────────────────────
 
 /**
  * GET /media/:encodedAppPath/:encodedFilename
@@ -77,7 +143,7 @@ app.post(
  * Mirrors the proteaai-media:// Electron protocol handler with the same
  * security checks (path traversal prevention, directory confinement).
  */
-app.get("/media/:encodedAppPath/:encodedFilename", (req, res) => {
+app.get("/media/:encodedAppPath/:encodedFilename", requireAuth, (req, res) => {
   const encodedAppPath = req.params.encodedAppPath;
   const encodedFilename = req.params.encodedFilename;
 

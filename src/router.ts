@@ -10,6 +10,11 @@ import { libraryRoute } from "./routes/library";
 import { themesRoute } from "./routes/themes";
 import { promptsRoute } from "./routes/prompts";
 import { mediaRoute } from "./routes/media";
+import { loginRoute } from "./routes/auth/login";
+import { signupRoute } from "./routes/auth/signup";
+import { billingRoute } from "./routes/billing";
+import { adminRoute } from "./routes/admin";
+import { onboardingRoute } from "./routes/onboarding";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -21,6 +26,13 @@ const routeTree = rootRoute.addChildren([
   chatRoute,
   appDetailsRoute,
   settingsRoute.addChildren([providerSettingsRoute]),
+  // Auth
+  loginRoute,
+  signupRoute,
+  // SaaS
+  billingRoute,
+  adminRoute,
+  onboardingRoute,
 ]);
 
 // src/components/NotFoundRedirect.tsx

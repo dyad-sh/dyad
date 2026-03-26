@@ -1,4 +1,17 @@
-import { dialog, ipcMain } from "electron";
+import { ipcMain } from "electron";
+
+// Lazy-load dialog — only available in Electron
+function getDialog(): typeof import("electron")["dialog"] | null {
+  try {
+    if (process.versions?.electron) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      return require("electron").dialog;
+    }
+  } catch {
+    // Not in Electron
+  }
+  return null;
+}
 import { execSync } from "child_process";
 import { platform, arch } from "os";
 import fixPath from "fix-path";
@@ -112,6 +125,12 @@ export function registerNodeHandlers() {
   });
 
   createTypedHandler(systemContracts.selectNodeFolder, async () => {
+    const dialog = getDialog();
+    if (!dialog) {
+      // Web mode: no native file picker — caller should prompt via UI
+      return { path: null, canceled: true, selectedPath: null };
+    }
+
     const result = await dialog.showOpenDialog({
       title: "Select Node.js Installation Folder",
       properties: ["openDirectory"],

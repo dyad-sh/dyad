@@ -316,7 +316,7 @@ export class OpenClawGatewayService extends EventEmitter {
     
     // Check security
     if (!this.isOriginAllowed(origin)) {
-      logger.warn(`Rejected connection from disallowed origin: ${origin}`);
+      logger.warn(`Rejected connection from disallowed origin: "${origin}" (allowed: ${JSON.stringify(this.config.security.allowedOrigins)})`);
       ws.close(4003, "Origin not allowed");
       return;
     }
@@ -362,18 +362,69 @@ export class OpenClawGatewayService extends EventEmitter {
   }
   
   private isOriginAllowed(origin: string): boolean {
-    if (!this.config.security.allowRemoteConnections && origin !== "unknown") {
-      // Normalize 127.0.0.1 to localhost so both forms match the same patterns
-      const normalizedOrigin = origin.replace("://127.0.0.1", "://localhost");
-      const allowedPatterns = this.config.security.allowedOrigins;
-      return allowedPatterns.some((pattern) => {
-        // Escape regex special chars, then convert glob * to .*
-        const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace("\\*", ".*");
-        const regex = new RegExp(`^${escaped}$`);
-        return regex.test(origin) || regex.test(normalizedOrigin);
-      });
+    logger.debug(`[isOriginAllowed] Checking origin: "${origin}", allowRemoteConnections: ${this.config.security.allowRemoteConnections}`);
+    
+    // Always allow "unknown", empty, or "null" origin (e.g., from file:// or some WebSocket clients)
+    if (!origin || origin === "unknown" || origin === "" || origin === "null") {
+      logger.debug(`[isOriginAllowed] Allowing empty/unknown/null origin`);
+      return true;
     }
-    return true;
+    
+    // If allowRemoteConnections is true, allow everything
+    if (this.config.security.allowRemoteConnections) {
+      logger.debug(`[isOriginAllowed] allowRemoteConnections=true, allowing all`);
+      return true;
+    }
+    
+    // Quick check: always allow localhost and 127.0.0.1 regardless of port
+    if (origin.startsWith("http://localhost:") || 
+        origin.startsWith("http://127.0.0.1:") ||
+        origin.startsWith("https://localhost:") ||
+        origin.startsWith("https://127.0.0.1:") ||
+        origin.startsWith("file://") ||
+        origin === "http://localhost" ||
+        origin === "http://127.0.0.1") {
+      logger.debug(`[isOriginAllowed] Quick-allowing local origin: "${origin}"`);
+      return true;
+    }
+    
+    // Normalize 127.0.0.1 to localhost so both forms match the same patterns
+    const normalizedOrigin = origin.replace("://127.0.0.1", "://localhost");
+    const allowedPatterns = this.config.security.allowedOrigins || [];
+    
+    // Always include default patterns if somehow missing
+    const patternsToCheck = [
+      ...allowedPatterns,
+      "http://localhost:*",
+      "http://127.0.0.1:*",
+      "file://*",
+    ];
+    // Remove duplicates
+    const uniquePatterns = [...new Set(patternsToCheck)];
+    
+    logger.debug(`[isOriginAllowed] Testing against patterns: ${JSON.stringify(uniquePatterns)}`);
+    
+    const matched = uniquePatterns.some((pattern) => {
+      // 1. Replace glob * with a placeholder before escaping
+      const placeholder = "<<GLOB>>";
+      const withPlaceholder = pattern.replace(/\*/g, placeholder);
+      // 2. Escape all regex special chars
+      const escaped = withPlaceholder.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+      // 3. Restore glob wildcards as .*
+      const regexStr = escaped.replace(/<<GLOB>>/g, ".*");
+      const regex = new RegExp(`^${regexStr}$`);
+      const matchesOriginal = regex.test(origin);
+      const matchesNormalized = regex.test(normalizedOrigin);
+      if (matchesOriginal || matchesNormalized) {
+        logger.debug(`[isOriginAllowed] Pattern "${pattern}" matched`);
+      }
+      return matchesOriginal || matchesNormalized;
+    });
+    
+    if (!matched) {
+      logger.warn(`[isOriginAllowed] No pattern matched origin "${origin}"`);
+    }
+    return matched;
   }
   
   private startHeartbeat(): void {

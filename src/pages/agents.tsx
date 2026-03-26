@@ -23,6 +23,11 @@ import {
   Database,
   Code,
   MessageSquare,
+  Download,
+  Globe,
+  Share2,
+  Container,
+  FileText,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -144,6 +149,52 @@ export default function AgentBuilderPage() {
     },
   });
 
+  // Export mutations
+  const exportWebChatMutation = useMutation({
+    mutationFn: (agentId: number) => agentBuilderClient.exportAgentWebChat(agentId),
+    onSuccess: (result) => {
+      if (result.success) showSuccess(`Chat widget exported to: ${result.exportPath}`);
+      else showError(result.error || "Export failed");
+    },
+    onError: (error) => showError(`Export failed: ${error.message}`),
+  });
+
+  const exportDockerMutation = useMutation({
+    mutationFn: (agentId: number) => agentBuilderClient.exportAgentDocker(agentId),
+    onSuccess: (result) => {
+      if (result.success) showSuccess(`Docker export: ${result.exportPath}`);
+      else showError(result.error || "Export failed");
+    },
+    onError: (error) => showError(`Export failed: ${error.message}`),
+  });
+
+  const exportStandaloneMutation = useMutation({
+    mutationFn: (agentId: number) => agentBuilderClient.exportAgentStandalone(agentId),
+    onSuccess: (result) => {
+      if (result.success) showSuccess(`Standalone app exported: ${result.exportPath}`);
+      else showError(result.error || "Export failed");
+    },
+    onError: (error) => showError(`Export failed: ${error.message}`),
+  });
+
+  const exportJsonMutation = useMutation({
+    mutationFn: (agentId: number) => agentBuilderClient.exportAgentJson(agentId),
+    onSuccess: (result) => {
+      if (result.success) showSuccess(`JSON exported: ${result.exportPath}`);
+      else showError(result.error || "Export failed");
+    },
+    onError: (error) => showError(`Export failed: ${error.message}`),
+  });
+
+  const exportTemplateMutation = useMutation({
+    mutationFn: (agentId: number) => agentBuilderClient.exportAgentTemplate(agentId),
+    onSuccess: (result) => {
+      navigator.clipboard.writeText(result.template);
+      showSuccess("Agent template copied to clipboard (.agent.md format)");
+    },
+    onError: (error) => showError(`Template export failed: ${error.message}`),
+  });
+
   // Filter agents based on search and tab
   const filteredAgents = agents.filter((agent) => {
     const matchesSearch =
@@ -216,6 +267,27 @@ export default function AgentBuilderPage() {
               <DropdownMenuItem onClick={() => duplicateAgentMutation.mutate(agent.id)}>
                 <Copy className="h-4 w-4 mr-2" />
                 Duplicate
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => exportWebChatMutation.mutate(agent.id)}>
+                <Globe className="h-4 w-4 mr-2" />
+                Export Chat Widget
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportDockerMutation.mutate(agent.id)}>
+                <Container className="h-4 w-4 mr-2" />
+                Export Docker
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportStandaloneMutation.mutate(agent.id)}>
+                <Download className="h-4 w-4 mr-2" />
+                Export Standalone
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportJsonMutation.mutate(agent.id)}>
+                <Share2 className="h-4 w-4 mr-2" />
+                Export JSON
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportTemplateMutation.mutate(agent.id)}>
+                <FileText className="h-4 w-4 mr-2" />
+                Export as Template
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -462,6 +534,27 @@ export default function AgentBuilderPage() {
                         >
                           <Copy className="h-4 w-4 mr-2" />
                           Duplicate
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => exportWebChatMutation.mutate(agent.id)}>
+                          <Globe className="h-4 w-4 mr-2" />
+                          Export Chat Widget
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => exportDockerMutation.mutate(agent.id)}>
+                          <Container className="h-4 w-4 mr-2" />
+                          Export Docker
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => exportStandaloneMutation.mutate(agent.id)}>
+                          <Download className="h-4 w-4 mr-2" />
+                          Export Standalone
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => exportJsonMutation.mutate(agent.id)}>
+                          <Share2 className="h-4 w-4 mr-2" />
+                          Export JSON
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => exportTemplateMutation.mutate(agent.id)}>
+                          <FileText className="h-4 w-4 mr-2" />
+                          Export as Template
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem

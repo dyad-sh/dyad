@@ -242,16 +242,18 @@ async function startN8nService(): Promise<ServiceStatus> {
   
   try {
     // n8n connects to the local PostgreSQL database (same as JoyCreate will use)
-    // Database credentials are configured via environment variables
-    // User needs to set POSTGRES_PASSWORD environment variable or use .env file
+    // Database credentials match docker-compose.n8n.yml defaults
+    const pgPassword = process.env.POSTGRES_PASSWORD || "postgres";
+    const pgPort = process.env.POSTGRES_PORT || "5433";
     const n8nCommand = [
       `echo Starting n8n with PostgreSQL on port ${config.port}...`,
       `echo Note: Set POSTGRES_PASSWORD env var if not using default`,
       `set "DB_TYPE=postgresdb"`,
       `set "DB_POSTGRESDB_HOST=localhost"`,
-      `set "DB_POSTGRESDB_PORT=5432"`,
+      `set "DB_POSTGRESDB_PORT=${pgPort}"`,
       `set "DB_POSTGRESDB_DATABASE=joycreate"`,
       `set "DB_POSTGRESDB_USER=postgres"`,
+      `set "DB_POSTGRESDB_PASSWORD=${pgPassword}"`,
       `set "DB_POSTGRESDB_SCHEMA=n8n"`,
       `set "N8N_PORT=${config.port}"`,
       `set "N8N_SECURE_COOKIE=false"`,

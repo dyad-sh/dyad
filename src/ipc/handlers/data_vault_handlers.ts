@@ -17,6 +17,7 @@ import * as crypto from "crypto";
 import log from "electron-log";
 import { v4 as uuidv4 } from "uuid";
 import { db } from "@/db";
+import { vaultAssets } from "@/db/vault_schema";
 import { eq } from "drizzle-orm";
 
 const logger = log.scope("data_vault");
@@ -775,6 +776,56 @@ export function registerDataVaultHandlers() {
       publicKey: vaultState.identity.publicKey,
       createdAt: vaultState.identity.createdAt,
     };
+  });
+
+  /**
+   * Export vault entries (assets) to JSON
+   */
+  ipcMain.handle("data-vault:export", async (_event, args: {
+    outputPath: string;
+    filter?: {
+      status?: string;
+      modality?: string;
+      tags?: string[];
+      collections?: string[];
+    };
+  }) => {
+    const { outputPath, filter } = args;
+
+    let query = db.select().from(vaultAssets).$dynamic();
+
+    if (filter?.status) {
+      query = query.where(eq(vaultAssets.status, filter.status));
+    }
+    if (filter?.modality) {
+      query = query.where(eq(vaultAssets.modality, filter.modality));
+    }
+
+    const entries = await query;
+
+    // Filter by tags/collections in-memory (JSON columns)
+    let filtered = entries;
+    if (filter?.tags?.length) {
+      filtered = filtered.filter((e) =>
+        filter.tags!.some((t) => (e.tags as string[]).includes(t)),
+      );
+    }
+    if (filter?.collections?.length) {
+      filtered = filtered.filter((e) =>
+        filter.collections!.some((c) => (e.collections as string[]).includes(c)),
+      );
+    }
+
+    const exportData = {
+      version: "1.0",
+      exportedAt: new Date().toISOString(),
+      count: filtered.length,
+      entries: filtered,
+    };
+
+    await fs.writeJson(outputPath, exportData, { spaces: 2 });
+
+    return { path: outputPath, count: filtered.length };
   });
 
   /**

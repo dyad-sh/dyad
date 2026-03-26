@@ -186,6 +186,36 @@ class AgentBuilderClient {
   async exportAgentDocker(agentId: number): Promise<{ success: boolean; exportPath?: string; error?: string }> {
     return this.ipcRenderer.invoke("agent:export:docker", agentId);
   }
+
+  async exportAgentWebChat(agentId: number): Promise<{ success: boolean; exportPath?: string; error?: string }> {
+    return this.ipcRenderer.invoke("agent:export:web-chat", agentId);
+  }
+
+  async exportAgentEmbedSnippet(agentId: number, hostUrl?: string): Promise<{ success: boolean; embedCode?: string; error?: string }> {
+    return this.ipcRenderer.invoke("agent:export:embed-snippet", agentId, hostUrl);
+  }
+
+  // ============================================================================
+  // Agent Markdown Template Operations (.agent.md)
+  // ============================================================================
+
+  /**
+   * Parse a .agent.md template (YAML frontmatter + markdown system prompt)
+   * and return a blueprint ready for the creation wizard.
+   */
+  async parseAgentTemplate(markdown: string, originalMessage?: string): Promise<{
+    parsed: import("@/lib/agent_template_parser").ParsedAgentTemplate;
+    blueprint: import("@/lib/agent_blueprint_generator").AgentBlueprint;
+  }> {
+    return this.ipcRenderer.invoke("agent:template:parse", { markdown, originalMessage });
+  }
+
+  /**
+   * Export an existing agent as a .agent.md markdown template string.
+   */
+  async exportAgentTemplate(agentId: number): Promise<{ template: string }> {
+    return this.ipcRenderer.invoke("agent:template:export", { agentId });
+  }
 }
 
 export const agentBuilderClient = AgentBuilderClient.getInstance();

@@ -1208,6 +1208,13 @@ export default function AgentEditorPage() {
                   <div className="grid gap-3">
                     {[
                       {
+                        id: "web-chat",
+                        title: "Chat Widget",
+                        description:
+                          "Export as embeddable web chat widget (works with any AI provider)",
+                        icon: "💬",
+                      },
+                      {
                         id: "local",
                         title: "Local",
                         description:
@@ -1236,6 +1243,24 @@ export default function AgentEditorPage() {
                       <Card
                         key={option.id}
                         className="cursor-pointer hover:shadow-md transition-shadow"
+                        onClick={() => {
+                          if (option.id === "web-chat") {
+                            agentBuilderClient.exportAgentWebChat(agent.id).then((r) => {
+                              if (r.success) showSuccess(`Chat widget exported to: ${r.exportPath}`);
+                              else showError(r.error || "Export failed");
+                            }).catch((e) => showError(e.message));
+                          } else if (option.id === "docker") {
+                            agentBuilderClient.exportAgentDocker(agent.id).then((r) => {
+                              if (r.success) showSuccess(`Docker export: ${r.exportPath}`);
+                              else showError(r.error || "Export failed");
+                            }).catch((e) => showError(e.message));
+                          } else if (option.id === "local") {
+                            agentBuilderClient.exportAgentStandalone(agent.id).then((r) => {
+                              if (r.success) showSuccess(`Standalone export: ${r.exportPath}`);
+                              else showError(r.error || "Export failed");
+                            }).catch((e) => showError(e.message));
+                          }
+                        }}
                       >
                         <CardHeader className="py-3">
                           <div className="flex items-center gap-4">

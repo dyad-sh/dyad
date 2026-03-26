@@ -59,23 +59,23 @@ test.describe("pause queue", () => {
 
     // 4. Pause the queue (blocks next message auto-send)
     await getPauseButton().click();
-    await expect(page.getByText("Paused")).toBeVisible();
+    await expect(page.getByText("Paused").first()).toBeVisible();
     await po.chatActions.waitForChatCompletion();
     await expect(page.getByText("4 Queued")).toBeVisible(); // Queue not processed
 
     // 5. Resume the queue (allows messages to continue)
     await getResumeButton().click();
-    await expect(page.getByText("Paused")).not.toBeVisible();
+    await expect(page.getByText("Paused").first()).not.toBeVisible();
     await po.chatActions.waitForChatCompletion();
 
     // 6. Pause again mid-way
     await getPauseButton().click();
-    await expect(page.getByText("Paused")).toBeVisible();
+    await expect(page.getByText("Paused").first()).toBeVisible();
     await po.chatActions.waitForChatCompletion();
 
     // 7. Final resume and let remaining messages complete
     await getResumeButton().click();
-    await expect(page.getByText("Paused")).not.toBeVisible();
+    await expect(page.getByText("Paused").first()).not.toBeVisible();
     await po.chatActions.waitForChatCompletion();
     await po.chatActions.waitForChatCompletion();
 
@@ -96,7 +96,7 @@ test.describe("pause queue", () => {
 
     // Pause button should exist but NOT be showing paused state
     await expect(getPauseButton()).toBeVisible(); // Can pause
-    await expect(page.getByText("Paused")).not.toBeVisible(); // But not already paused
+    await expect(page.getByText("Paused").first()).not.toBeVisible(); // But not already paused
   });
 
   test("session persistence: saved queue restored on page reopening", async ({
@@ -120,7 +120,7 @@ test.describe("pause queue", () => {
 
     // 3. Pause before stopping (persist to sessionStorage)
     await pauseButton.click();
-    await expect(page.getByText("Paused")).toBeVisible();
+    await expect(page.getByText("Paused").first()).toBeVisible();
 
     // 4. Stop/cancel streaming
     const stopButton = page.getByRole("button", {
@@ -143,7 +143,7 @@ test.describe("pause queue", () => {
 
     // 8. CRITICAL: Verify pause state was reset (NOT in paused state after reopening)
     // This tests the fix for the stale pause state bug
-    await expect(page.getByText("Paused")).not.toBeVisible();
+    await expect(page.getByText("Paused").first()).not.toBeVisible();
     const resumeButton = page.getByRole("button", { name: /resume queue/i });
     await expect(resumeButton).not.toBeVisible(); // Should NOT show resume button
     const pauseButtonAgain = page.getByRole("button", { name: /pause queue/i });

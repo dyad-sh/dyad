@@ -49,13 +49,11 @@ testSkipIfWindows(
     // Verify we're in a new chat (different ID)
     expect(newChatId).not.toBe(originalChatId);
 
-    // Wait for the summarization to complete
-    await po.page.waitForTimeout(3000);
+    // Wait for the summarization message stream to complete
+    await po.chatActions.waitForChatCompletion();
 
-    // Verify the chat contains summarized content
-    const messages = po.page.locator('[data-testid*="message"]');
-    const messageCount = await messages.count();
-    expect(messageCount).toBeGreaterThan(0);
+    // Verify the chat contains summarized content (retry button indicates completion)
+    await expect(po.page.getByRole("button", { name: "Retry" })).toBeVisible();
   }
 );
 
@@ -91,13 +89,8 @@ testSkipIfWindows(
     // Verify we're in a new chat (different from first chat)
     expect(newChatId).not.toBe(originalChatId);
 
-    // Wait for the summarization to complete
-    await po.page.waitForTimeout(3000);
-
-    // Verify the new chat contains content (summarization result)
-    const messages = po.page.locator('[data-testid*="message"]');
-    const messageCount = await messages.count();
-    expect(messageCount).toBeGreaterThan(0);
+    // Wait for the summarization message stream to complete
+    await po.chatActions.waitForChatCompletion();
   }
 );
 

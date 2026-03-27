@@ -1,0 +1,77 @@
+# ============================================================
+# .claudeignore — Minimize token usage for Claude Code
+# Keep this lean: only exclude what's truly noise.
+# ============================================================
+
+# ----- Build artifacts & caches (32 MB+ of generated JS) -----
+.vite/
+dist/
+out/
+build/
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# ----- Dependency directories -----
+node_modules/
+
+# ----- Lock files (2-3 MB of hashes, never need to read) -----
+pnpm-lock.yaml
+package-lock.json
+
+# ----- Generated SQL migrations (75 files, 2.5 MB) -----
+# Schema source-of-truth is src/db/ — migrations are auto-generated
+drizzle/
+
+# ----- Mobile platform boilerplate (not relevant to Electron dev) -----
+android/
+ios/
+
+# ----- Scaffold / template files (static, rarely touched) -----
+scaffold/
+
+# ----- E2E test fixtures & reports -----
+e2e-tests/fixtures/
+e2e-tests/test-results/
+
+# ----- Large binary / media assets -----
+assets/ai-logos/
+assets/icon/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.ico
+*.icns
+*.svg
+*.woff
+*.woff2
+*.ttf
+*.eot
+
+# ----- Data / DB files -----
+*.db
+*.sqlite
+*.sqlite3
+userData/
+
+# ----- Environment & secrets -----
+.env
+.env.local
+.env.test
+
+# ----- Editor / IDE configs -----
+.idea/
+.cursor/
+.devcontainer/
+
+# ----- Docker / infra configs (not core app code) -----
+docker-compose.*.yml
+n8n-config/
+postgres-init/
+
+# ----- Misc large or noisy files -----
+build-output.txt
+*.tgz
+*.map

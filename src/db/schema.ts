@@ -551,6 +551,7 @@ export const agentsRelations = relations(agents, ({ one, many }) => ({
   testSessions: many(agentTestSessions),
   knowledgeBases: many(agentKnowledgeBases),
   uiComponents: many(agentUIComponents),
+  shareConfigs: many(agentShareConfigs),
 }));
 
 export const agentToolsRelations = relations(agentTools, ({ one }) => ({
@@ -594,6 +595,93 @@ export const agentUIComponentsRelations = relations(agentUIComponents, ({ one })
     references: [agents.id],
   }),
 }));
+
+// ============================================================================
+// Agent Share Configurations
+// ============================================================================
+
+export const agentShareConfigs = sqliteTable("agent_share_configs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  agentId: integer("agent_id")
+    .notNull()
+    .references(() => agents.id, { onDelete: "cascade" }),
+  // Unique share token for public links
+  shareToken: text("share_token").notNull().unique(),
+  // Whether sharing is active
+  enabled: integer("enabled", { mode: "boolean" })
+    .notNull()
+    .default(sql`1`),
+  // Share display name (defaults to agent name)
+  title: text("title"),
+  // Backend configuration — API keys, endpoints, auth
+  backendConfigJson: text("backend_config_json", { mode: "json" })
+    .$type<AgentShareBackendConfig | null>(),
+  // Widget customization — colors, position, branding
+  widgetConfigJson: text("widget_config_json", { mode: "json" })
+    .$type<AgentShareWidgetConfig | null>(),
+  // Allowed domains for embed/iframe (empty = all)
+  allowedDomains: text("allowed_domains", { mode: "json" }).$type<string[]>(),
+  // Deployment URL after going live
+  liveUrl: text("live_url"),
+  // Source app this agent was created from
+  sourceAppId: integer("source_app_id").references(() => apps.id, {
+    onDelete: "set null",
+  }),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+export interface AgentShareBackendConfig {
+  /** AI provider base URL */
+  providerBaseUrl?: string;
+  /** Model ID to use */
+  modelId?: string;
+  /** Custom API endpoint for the hosted agent */
+  apiEndpoint?: string;
+  /** Auth mode: none, api-key, oauth */
+  authMode?: "none" | "api-key" | "oauth";
+  /** Environment variables for the deployed agent */
+  envVars?: Record<string, string>;
+  /** Port for the hosted server */
+  port?: number;
+}
+
+export interface AgentShareWidgetConfig {
+  /** Primary brand color */
+  primaryColor?: string;
+  /** Widget position (for floating widget) */
+  position?: "bottom-right" | "bottom-left" | "top-right" | "top-left";
+  /** Widget width in px */
+  width?: number;
+  /** Widget height in px */
+  height?: number;
+  /** Custom welcome message */
+  welcomeMessage?: string;
+  /** Custom avatar URL */
+  avatarUrl?: string;
+  /** Show/hide branding */
+  showBranding?: boolean;
+  /** Custom CSS overrides */
+  customCss?: string;
+}
+
+export const agentShareConfigsRelations = relations(
+  agentShareConfigs,
+  ({ one }) => ({
+    agent: one(agents, {
+      fields: [agentShareConfigs.agentId],
+      references: [agents.id],
+    }),
+    sourceApp: one(apps, {
+      fields: [agentShareConfigs.sourceAppId],
+      references: [apps.id],
+    }),
+  }),
+);
 
 // ============================================================================
 // Agent Workspace Tables (Tasks, Knowledge Sources, Executions)

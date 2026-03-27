@@ -555,3 +555,79 @@ export interface ExportAgentResponse {
   ipfsHash?: string;
   error?: string;
 }
+
+// ============================================================================
+// Sharing Types
+// ============================================================================
+
+export type ShareFormat = "widget" | "sdk" | "link" | "embed" | "iframe";
+
+export interface AgentShareConfig {
+  id: number;
+  agentId: number;
+  shareToken: string;
+  enabled: boolean;
+  title?: string;
+  backendConfig?: AgentShareBackendConfig;
+  widgetConfig?: AgentShareWidgetConfig;
+  allowedDomains?: string[];
+  liveUrl?: string;
+  sourceAppId?: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface AgentShareBackendConfig {
+  providerBaseUrl?: string;
+  modelId?: string;
+  apiEndpoint?: string;
+  authMode?: "none" | "api-key" | "oauth";
+  envVars?: Record<string, string>;
+  port?: number;
+}
+
+export interface AgentShareWidgetConfig {
+  primaryColor?: string;
+  position?: "bottom-right" | "bottom-left" | "top-right" | "top-left";
+  width?: number;
+  height?: number;
+  welcomeMessage?: string;
+  avatarUrl?: string;
+  showBranding?: boolean;
+  customCss?: string;
+}
+
+export interface CreateShareConfigRequest {
+  agentId: number;
+  title?: string;
+  backendConfig?: AgentShareBackendConfig;
+  widgetConfig?: AgentShareWidgetConfig;
+  allowedDomains?: string[];
+  sourceAppId?: number;
+}
+
+export interface UpdateShareConfigRequest {
+  id: number;
+  enabled?: boolean;
+  title?: string;
+  backendConfig?: AgentShareBackendConfig;
+  widgetConfig?: AgentShareWidgetConfig;
+  allowedDomains?: string[];
+  liveUrl?: string;
+}
+
+export interface ShareCodesResponse {
+  widget: string;
+  sdk: string;
+  link: string;
+  embed: string;
+  iframe: string;
+}
+
+export interface SaveAppAsAgentTemplateRequest {
+  appId: number;
+  agentName: string;
+  agentDescription?: string;
+  agentType?: AgentType;
+  systemPrompt?: string;
+}

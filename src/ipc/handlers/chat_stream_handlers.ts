@@ -51,12 +51,13 @@ import * as path from "path";
 import * as os from "os";
 import * as crypto from "crypto";
 import { readFile, writeFile, unlink } from "fs/promises";
-import { getMaxTokens, getTemperature } from "../utils/token_utils";
+import { getMaxTokens, getTemperature, estimateRequestTokens, trimMessagesToFitBudget, buildCompressedChatMessages } from "../utils/token_utils";
 import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 import { validateChatContext } from "../utils/context_paths_utils";
 import { getProviderOptions, getAiHeaders } from "../utils/provider_options";
 import { mcpServers } from "../../db/schema";
 import { requireMcpToolConsent } from "../utils/mcp_consent";
+import { tokenRateLimiter } from "../utils/token_rate_limiter";
 
 import { handleLocalAgentStream } from "../../pro/main/ipc/handlers/local_agent/local_agent_handler";
 
@@ -98,6 +99,34 @@ import { getAiMessagesJsonIfWithinLimit } from "../utils/ai_messages_utils";
 type AsyncIterableStream<T> = AsyncIterable<T> & ReadableStream<T>;
 
 const logger = log.scope("chat_stream_handlers");
+
+// ---------------------------------------------------------------------------
+// Rate-limit retry helpers
+// ---------------------------------------------------------------------------
+const RATE_LIMIT_PATTERNS = [
+  "rate limit",
+  "rate_limit",
+  "tokens per minute",
+  "429",
+  "too many requests",
+  "exceeded",
+];
+
+function isRateLimitError(error: unknown): boolean {
+  const msg =
+    typeof error === "string"
+      ? error
+      : error instanceof Error
+        ? error.message
+        : JSON.stringify(error);
+  const lower = msg.toLowerCase();
+  return RATE_LIMIT_PATTERNS.some((p) => lower.includes(p));
+}
+
+/** Wait `ms` milliseconds. */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // Local model providers that may not support function calling
 const LOCAL_MODEL_PROVIDERS = ["ollama", "lmstudio"];
@@ -835,16 +864,28 @@ This conversation includes one or more image attachments. When the user uploads 
         const codebasePrefix = isEngineEnabled
           ? // No codebase prefix if engine is set, we will take of it there.
             []
-          : ([
-              {
-                role: "user",
-                content: createCodebasePrompt(codebaseInfo),
-              },
-              {
-                role: "assistant",
-                content: "OK, got it. I'm ready to help",
-              },
-            ] as const);
+          : (() => {
+              // Cap codebase content to ~40k chars (~10k tokens) to leave room for
+              // system prompt, chat history, and the user's current message within
+              // the 20k token hard budget.
+              const MAX_CODEBASE_CHARS = 40_000;
+              let codebaseContent = createCodebasePrompt(codebaseInfo);
+              if (codebaseContent.length > MAX_CODEBASE_CHARS) {
+                logger.log(
+                  `Codebase content truncated from ${codebaseContent.length} to ${MAX_CODEBASE_CHARS} chars to fit token budget`,
+                );
+                codebaseContent =
+                  codebaseContent.slice(0, MAX_CODEBASE_CHARS) +
+                  "\n[Codebase truncated to fit token budget]";
+              }
+              return [
+                { role: "user" as const, content: codebaseContent },
+                {
+                  role: "assistant" as const,
+                  content: "OK, got it. I'm ready to help",
+                },
+              ];
+            })();
 
         // If engine is enabled, we will send the other apps codebase info to the engine
         // and process it with smart context.
@@ -879,11 +920,11 @@ This conversation includes one or more image attachments. When the user uploads 
           },
         }));
 
-        let chatMessages: ModelMessage[] = [
-          ...codebasePrefix,
-          ...otherCodebasePrefix,
-          ...limitedHistoryChatMessages,
-        ];
+        let chatMessages: ModelMessage[] = buildCompressedChatMessages(
+          [...codebasePrefix, ...otherCodebasePrefix],
+          limitedHistoryChatMessages,
+          4_000, // max ~4k tokens for history portion (aggressive to stay under 30k rate limit)
+        );
 
         // Check if the last message should include attachments
         if (chatMessages.length >= 2) {
@@ -981,19 +1022,55 @@ This conversation includes one or more image attachments. When the user uploads 
             settings,
           });
 
+          // --- Rate limit guard ---
+          // Estimate input tokens and trim context if needed to stay under the
+          // provider's per-minute rate limit. Then wait if the sliding window
+          // is already near capacity.
+          const providerId = modelClient.builtinProviderId ?? "unknown";
+          const filteredMessages = chatMessages.filter((m) => m.content);
+          const trimmedMessages = trimMessagesToFitBudget(
+            systemPromptOverride,
+            filteredMessages,
+            20_000, // Hard cap — must stay well under 30k rate limit
+          );
+          const estimatedTokens = estimateRequestTokens(
+            systemPromptOverride,
+            trimmedMessages,
+          );
+
+          logger.log(
+            `AI request: ${trimmedMessages.length} messages, ~${estimatedTokens} estimated input tokens`,
+          );
+
+          if (trimmedMessages.length < filteredMessages.length) {
+            logger.log(
+              `Trimmed chat context from ${filteredMessages.length} to ${trimmedMessages.length} messages ` +
+                `to fit token budget (estimated ${estimatedTokens} tokens)`,
+            );
+          }
+
+          // Wait if we'd exceed the per-minute rate limit
+          const delay = await tokenRateLimiter.waitAndRecord(
+            providerId,
+            estimatedTokens,
+          );
+          if (delay > 0) {
+            logger.log(`Rate limit delay: waited ${Math.round(delay / 1000)}s`);
+          }
+
           const streamResult = streamText({
             headers: getAiHeaders({
               builtinProviderId: modelClient.builtinProviderId,
             }),
             maxOutputTokens: await getMaxTokens(settings.selectedModel),
             temperature: await getTemperature(settings.selectedModel),
-            maxRetries: 2,
+            maxRetries: 0, // Disabled — we handle rate-limit retries ourselves with proper backoff
             model: modelClient.model,
             stopWhen: [stepCountIs(20), hasToolCall("edit-code")],
             providerOptions,
             system: systemPromptOverride,
             tools,
-            messages: chatMessages.filter((m) => m.content),
+            messages: trimmedMessages,
             onFinish: (response) => {
               const totalTokens = response.usage?.totalTokens;
 
@@ -1027,15 +1104,8 @@ This conversation includes one or more image attachments. When the user uploads 
               if (errorMessage && responseBody) {
                 errorMessage += "\n\nDetails: " + responseBody;
               }
-              let message = errorMessage || JSON.stringify(error);
-              
-              // Check for "does not support tools" error and provide helpful message
-              if (message.includes("does not support tools")) {
-                const modelMatch = message.match(/([^\s]+) does not support tools/);
-                const modelName = modelMatch ? modelMatch[1] : "This model";
-                message = `${modelName} does not support function calling/tools. Try:\n• Using a model with tool support (GPT-4, Claude 3.5, Gemini Pro)\n• Or switch to a simpler chat mode without tools`;
-              }
-              
+              const message = errorMessage || JSON.stringify(error);
+
               const requestIdPrefix = isEngineEnabled
                 ? `[Request ID: ${joyRequestId}] `
                 : "";
@@ -1043,12 +1113,8 @@ This conversation includes one or more image attachments. When the user uploads 
                 `AI stream text error for request: ${requestIdPrefix} errorMessage=${errorMessage} error=`,
                 error,
               );
-              event.sender.send("chat:response:error", {
-                chatId: req.chatId,
-                error: `${AI_STREAMING_ERROR_MESSAGE_PREFIX}${requestIdPrefix}${message}`,
-              });
-              // Clean up the abort controller
-              activeStreams.delete(req.chatId);
+              // Don't send to frontend here — the rate-limit retry loop or
+              // outer catch handler will send the appropriate error message.
             },
             abortSignal: abortController.signal,
           });
@@ -1205,11 +1271,21 @@ This conversation includes one or more image attachments. When the user uploads 
         }
 
         // When calling streamText, the messages need to be properly formatted for mixed content
-        const { fullStream } = await simpleStreamText({
-          chatMessages,
-          modelClient,
-          files: files,
-        });
+        // ---------- Rate-limit-aware retry loop ----------
+        const MAX_RATE_LIMIT_RETRIES = 3;
+        const RATE_LIMIT_WAIT_MS = 62_000; // wait just over 60s for the rate window to reset
+
+        for (
+          let rateLimitAttempt = 0;
+          rateLimitAttempt <= MAX_RATE_LIMIT_RETRIES;
+          rateLimitAttempt++
+        ) {
+          try {
+            const { fullStream } = await simpleStreamText({
+              chatMessages,
+              modelClient,
+              files: files,
+            });
 
         // Process the stream as before
         try {
@@ -1518,6 +1594,71 @@ ${problemReport.problems
           }
           throw streamError;
         }
+
+        // Stream succeeded — break out of the rate-limit retry loop
+        break;
+
+          } catch (retryError) {
+            // If aborted, don't retry
+            if (abortController.signal.aborted) throw retryError;
+
+            // If this is a rate limit error and we have retries left, wait and retry
+            if (
+              isRateLimitError(retryError) &&
+              rateLimitAttempt < MAX_RATE_LIMIT_RETRIES
+            ) {
+              const waitSecs = Math.round(RATE_LIMIT_WAIT_MS / 1000);
+              logger.warn(
+                `Rate limit hit (attempt ${rateLimitAttempt + 1}/${MAX_RATE_LIMIT_RETRIES + 1}). ` +
+                  `Waiting ${waitSecs}s before retrying...`,
+              );
+
+              // Notify the user that we're waiting and will retry
+              safeSend(event.sender, "chat:response:chunk", {
+                chatId: req.chatId,
+                messages: [
+                  {
+                    ...placeholderAssistantMessage,
+                    content:
+                      fullResponse +
+                      `\n\n> **Rate limit reached** — waiting ${waitSecs}s before retrying automatically (attempt ${rateLimitAttempt + 1}/${MAX_RATE_LIMIT_RETRIES})...\n`,
+                  },
+                ],
+              });
+
+              await sleep(RATE_LIMIT_WAIT_MS);
+              continue; // retry the loop
+            }
+
+            // Non-rate-limit error or retries exhausted — format and send to user
+            const errMsg =
+              retryError instanceof Error
+                ? retryError.message
+                : String(retryError);
+            let userMessage = errMsg;
+
+            if (errMsg.includes("does not support tools")) {
+              const modelMatch = errMsg.match(
+                /([^\s]+) does not support tools/,
+              );
+              const modelName = modelMatch ? modelMatch[1] : "This model";
+              userMessage = `${modelName} does not support function calling/tools. Try:\n• Using a model with tool support (GPT-4, Claude 3.5, Gemini Pro)\n• Or switch to a simpler chat mode without tools`;
+            }
+
+            if (isRateLimitError(retryError)) {
+              userMessage +=
+                `\n\nRate limit was reached and all ${MAX_RATE_LIMIT_RETRIES + 1} attempts were exhausted. ` +
+                `Try:\n• Switching to a model with higher rate limits (e.g. Sonnet instead of Opus)\n• Waiting a minute and trying again`;
+            }
+
+            event.sender.send("chat:response:error", {
+              chatId: req.chatId,
+              error: `${AI_STREAMING_ERROR_MESSAGE_PREFIX}${userMessage}`,
+            });
+            activeStreams.delete(req.chatId);
+            return req.chatId;
+          }
+        } // end rate-limit retry loop
       }
 
       // Only save the response and process it if we weren't aborted

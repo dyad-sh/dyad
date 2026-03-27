@@ -2059,6 +2059,46 @@ export class IpcClient {
   }
 
   // ===========================================================================
+  // AGENT SHARING
+  // ===========================================================================
+
+  public async createAgentShareConfig(
+    req: import("@/types/agent_builder").CreateShareConfigRequest,
+  ): Promise<{ id: number; shareToken: string }> {
+    return this.ipcRenderer.invoke("agent:share:create", req);
+  }
+
+  public async getAgentShareConfig(
+    agentId: number,
+  ): Promise<import("@/types/agent_builder").AgentShareConfig | null> {
+    return this.ipcRenderer.invoke("agent:share:get", agentId);
+  }
+
+  public async updateAgentShareConfig(
+    req: import("@/types/agent_builder").UpdateShareConfigRequest,
+  ): Promise<{ success: boolean }> {
+    return this.ipcRenderer.invoke("agent:share:update", req);
+  }
+
+  public async deleteAgentShareConfig(
+    shareConfigId: number,
+  ): Promise<{ success: boolean }> {
+    return this.ipcRenderer.invoke("agent:share:delete", shareConfigId);
+  }
+
+  public async generateAgentShareCodes(
+    agentId: number,
+  ): Promise<import("@/types/agent_builder").ShareCodesResponse> {
+    return this.ipcRenderer.invoke("agent:share:generate-codes", agentId);
+  }
+
+  public async saveAppAsAgentTemplate(
+    req: import("@/types/agent_builder").SaveAppAsAgentTemplateRequest,
+  ): Promise<{ agentId: number; shareToken: string }> {
+    return this.ipcRenderer.invoke("agent:share:save-app-as-template", req);
+  }
+
+  // ===========================================================================
   // PRIVACY-PRESERVING INFERENCE BRIDGE
   // Local-first AI with federated fallback, no data harvesting
   // ===========================================================================

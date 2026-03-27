@@ -14,8 +14,9 @@ import { readSettings } from "@/main/settings";
 import { getJoyAppPath } from "@/paths/paths";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import { safeSend } from "@/ipc/utils/safe_sender";
-import { getMaxTokens, getTemperature } from "@/ipc/utils/token_utils";
+import { getMaxTokens, getTemperature, estimateRequestTokens, trimMessagesToFitBudget } from "@/ipc/utils/token_utils";
 import { getProviderOptions, getAiHeaders } from "@/ipc/utils/provider_options";
+import { tokenRateLimiter } from "@/ipc/utils/token_rate_limiter";
 
 import {
   AgentToolName,
@@ -227,6 +228,19 @@ export async function handleLocalAgentStream(
       ? systemPrompt + "\n\n" + generateXmlToolDocumentation(localToolDefs)
       : systemPrompt;
 
+    // --- Rate limit guard ---
+    const trimmedHistory = trimMessagesToFitBudget(
+      effectiveSystemPrompt,
+      messageHistory,
+      20_000,
+    );
+    const providerId = modelClient.builtinProviderId ?? "unknown";
+    const estTokens = estimateRequestTokens(effectiveSystemPrompt, trimmedHistory);
+    const delay = await tokenRateLimiter.waitAndRecord(providerId, estTokens);
+    if (delay > 0) {
+      logger.log(`Rate limit delay: waited ${Math.round(delay / 1000)}s`);
+    }
+
     // Stream the response
     const streamResult = streamText({
       model: modelClient.model,
@@ -243,9 +257,9 @@ export async function handleLocalAgentStream(
       }),
       maxOutputTokens: await getMaxTokens(settings.selectedModel),
       temperature: await getTemperature(settings.selectedModel),
-      maxRetries: 2,
+      maxRetries: 0,
       system: effectiveSystemPrompt,
-      messages: messageHistory,
+      messages: trimmedHistory,
       ...(allTools ? { tools: allTools, stopWhen: stepCountIs(25) } : {}),
       abortSignal: abortController.signal,
       onFinish: async (response) => {
@@ -501,7 +515,7 @@ export async function handleLocalAgentStream(
           }),
           maxOutputTokens: await getMaxTokens(settings.selectedModel),
           temperature: await getTemperature(settings.selectedModel),
-          maxRetries: 2,
+          maxRetries: 0,
           system: effectiveSystemPrompt,
           messages: updatedHistory,
           abortSignal: abortController.signal,
@@ -600,7 +614,7 @@ export async function handleLocalAgentStream(
           }),
           maxOutputTokens: await getMaxTokens(settings.selectedModel),
           temperature: await getTemperature(settings.selectedModel),
-          maxRetries: 2,
+          maxRetries: 0,
           system: effectiveSystemPrompt,
           messages: retryMessages,
           abortSignal: abortController.signal,
@@ -696,7 +710,7 @@ ${problemReport.problems.map((p) => `<problem file="${p.file}" line="${p.line}" 
             }),
             maxOutputTokens: await getMaxTokens(settings.selectedModel),
             temperature: await getTemperature(settings.selectedModel),
-            maxRetries: 2,
+            maxRetries: 0,
             system: systemPrompt,
             messages: fixMessages,
             ...(allTools

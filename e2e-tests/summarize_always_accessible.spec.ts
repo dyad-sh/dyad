@@ -7,18 +7,17 @@ import { expect } from "@playwright/test";
  * Tests that the summarize feature is always accessible:
  * 1. Via persistent button in the top-right menu (not just the context limit banner)
  * 2. Via manual "summarize to new chat" typed command
- * 3. Token count properly resets after summarization
  */
 
 testSkipIfWindows(
   "summarize button always accessible via top menu",
   async ({ po }) => {
-    await po.setUpDyadPro();
+    await po.setUpDyadPro({ localAgent: true });
     await po.importApp("minimal");
+    await po.chatActions.selectLocalAgentMode();
 
-    // Send initial message to establish a starting chat
-    await po.sendPrompt("Create a simple counter function");
-    await po.page.waitForTimeout(2000);
+    // Send initial message using standard test command
+    await po.sendPrompt("tc=local-agent/read-then-edit");
 
     // Get the original chat ID from URL
     const url = po.page.url();
@@ -26,12 +25,8 @@ testSkipIfWindows(
     expect(chatIdMatch).toBeTruthy();
     const originalChatId = parseInt(chatIdMatch![1]);
 
-    // Click "Keep going" or dismiss the context limit banner if it appears
-    // (Note: in a real scenario with long context, the banner would appear)
-    // For this test, we'll check if the button exists and use it
+    // Verify the chat actions button (message icon) is visible
     const chatActionsButton = po.page.locator('[data-testid="chat-more-options-button"]');
-    
-    // The chat actions button should be visible when a chat is selected
     await expect(chatActionsButton).toBeVisible();
 
     // Click the chat actions button to open the dropdown menu
@@ -67,12 +62,12 @@ testSkipIfWindows(
 testSkipIfWindows(
   "manually typing 'summarize to new chat' command works",
   async ({ po }) => {
-    await po.setUpDyadPro();
+    await po.setUpDyadPro({ localAgent: true });
     await po.importApp("minimal");
+    await po.chatActions.selectLocalAgentMode();
 
-    // Send initial message to create chat content
-    await po.sendPrompt("Create a button component");
-    await po.page.waitForTimeout(2000);
+    // Send initial message using standard test command
+    await po.sendPrompt("tc=local-agent/read-then-edit");
 
     // Get the original chat ID
     const url = po.page.url();
@@ -80,17 +75,20 @@ testSkipIfWindows(
     expect(chatIdMatch).toBeTruthy();
     const originalChatId = parseInt(chatIdMatch![1]);
 
-    // Type and send the manual "summarize to new chat" command
-    await po.sendPrompt("summarize to new chat");
+    // Create a new chat to test the manual command
+    await po.chatActions.clickNewChat();
 
-    // Wait for navigation to the new chat
+    // Type and send the manual "summarize to new chat" command
+    await po.sendPrompt("summarize to new chat", { skipWaitForCompletion: true });
+
+    // Wait for navigation to the new chat (should happen immediately for this command)
     await po.page.waitForURL(/[?&]id=\d+/);
     const newUrl = po.page.url();
     const newChatIdMatch = newUrl.match(/[?&]id=(\d+)/);
     expect(newChatIdMatch).toBeTruthy();
     const newChatId = parseInt(newChatIdMatch![1]);
 
-    // Verify we're in a new chat
+    // Verify we're in a new chat (different from first chat)
     expect(newChatId).not.toBe(originalChatId);
 
     // Wait for the summarization to complete
@@ -106,12 +104,12 @@ testSkipIfWindows(
 testSkipIfWindows(
   "persistent button is not affected by banner dismissal",
   async ({ po }) => {
-    await po.setUpDyadPro();
+    await po.setUpDyadPro({ localAgent: true });
     await po.importApp("minimal");
+    await po.chatActions.selectLocalAgentMode();
 
     // Send a message to create chat content
-    await po.sendPrompt("Small message");
-    await po.page.waitForTimeout(1000);
+    await po.sendPrompt("tc=local-agent/read-then-edit");
 
     // The chat actions button should be visible
     const chatActionsButton = po.page.locator('[data-testid="chat-more-options-button"]');

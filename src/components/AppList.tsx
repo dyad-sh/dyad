@@ -15,15 +15,40 @@ import { useMemo, useState } from "react";
 import { AppSearchDialog } from "./AppSearchDialog";
 import { useAddAppToFavorite } from "@/hooks/useAddAppToFavorite";
 import { AppItem } from "./appItem";
+import { IpcClient } from "@/ipc/ipc_client";
+import { toast } from "sonner";
 export function AppList({ show }: { show?: boolean }) {
   const navigate = useNavigate();
   const [selectedAppId, setSelectedAppId] = useAtom(selectedAppIdAtom);
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
-  const { apps, loading, error } = useLoadApps();
+  const { apps, loading, error, refreshApps } = useLoadApps();
   const { toggleFavorite, isLoading: isFavoriteLoading } =
     useAddAppToFavorite();
   // search dialog state
   const [isSearchDialogOpen, setIsSearchDialogOpen] = useState(false);
+  const [renamingAppId, setRenamingAppId] = useState<number | null>(null);
+
+  const handleRenameApp = async (appId: number, newName: string) => {
+    const app = apps.find((a) => a.id === appId);
+    if (!app) return;
+
+    setRenamingAppId(appId);
+    try {
+      await IpcClient.getInstance().renameApp({
+        appId,
+        appName: newName,
+        appPath: newName,
+      });
+      await refreshApps();
+      toast.success("App renamed");
+    } catch (error) {
+      toast.error(
+        `Failed to rename app: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      setRenamingAppId(null);
+    }
+  };
 
   const allApps = useMemo(
     () =>
@@ -121,6 +146,8 @@ export function AppList({ show }: { show?: boolean }) {
                     selectedAppId={selectedAppId}
                     handleToggleFavorite={handleToggleFavorite}
                     isFavoriteLoading={isFavoriteLoading}
+                    onRenameApp={handleRenameApp}
+                    isRenaming={renamingAppId === app.id}
                   />
                 ))}
                 <SidebarGroupLabel>Other apps</SidebarGroupLabel>
@@ -132,6 +159,8 @@ export function AppList({ show }: { show?: boolean }) {
                     selectedAppId={selectedAppId}
                     handleToggleFavorite={handleToggleFavorite}
                     isFavoriteLoading={isFavoriteLoading}
+                    onRenameApp={handleRenameApp}
+                    isRenaming={renamingAppId === app.id}
                   />
                 ))}
               </SidebarMenu>

@@ -36,6 +36,7 @@ import { registerVisualEditingHandlers } from "../pro/main/ipc/handlers/visual_e
 import { registerAgentToolHandlers } from "../pro/main/ipc/handlers/local_agent/agent_tool_handlers";
 import { registerAgentBuilderHandlers } from "./handlers/agent_builder_handlers";
 import { registerAgentExportHandlers } from "./handlers/agent_export_handlers";
+import { registerAgentSharingHandlers } from "./handlers/agent_sharing_handlers";
 import { registerN8nHandlers } from "./handlers/n8n_handlers";
 import { registerTrustlessInferenceHandlers } from "./handlers/trustless_inference_handlers";
 import { registerLibreOfficeHandlers } from "./handlers/libreoffice_handlers";
@@ -165,6 +166,7 @@ export function registerIpcHandlers() {
   registerAgentToolHandlers();
   registerAgentBuilderHandlers();
   registerAgentExportHandlers();
+  registerAgentSharingHandlers();
   registerN8nHandlers();
   registerTrustlessInferenceHandlers();
   registerLibreOfficeHandlers();

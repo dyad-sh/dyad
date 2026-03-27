@@ -39,6 +39,7 @@ import {
   Expand,
   BarChart3,
   SlidersHorizontal,
+  Share2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -89,6 +90,7 @@ import AgentStackBuilder from "@/components/agent/AgentStackBuilder";
 import AgentTasksPanel from "@/components/agent/AgentTasksPanel";
 import AgentKnowledgePanel from "@/components/agent/AgentKnowledgePanel";
 import { AgentFlywheelTab } from "@/components/agent/AgentFlywheelTab";
+import AgentSharePanel from "@/components/agent/AgentSharePanel";
 import {
   useDecentralizedPlatforms,
   useDecentralizedDeploy,
@@ -118,6 +120,7 @@ const SIDEBAR_ITEMS = [
   { id: "flywheel", label: "Data Flywheel", icon: RefreshCw },
   { id: "ui", label: "UI Components", icon: Layout },
   { id: "deploy", label: "Deployment", icon: Rocket },
+  { id: "share", label: "Share", icon: Share2 },
 ] as const;
 
 // =============================================================================
@@ -1282,6 +1285,25 @@ export default function AgentEditorPage() {
 
                 {/* Decentralized Deploy */}
                 <AgentDecentralizedDeploy appId={agent.appId} />
+              </div>
+            )}
+
+            {/* ============================================================ */}
+            {/* SHARE TAB                                                    */}
+            {/* ============================================================ */}
+            {activeTab === "share" && (
+              <div className="max-w-5xl space-y-6">
+                <div>
+                  <h2 className="text-lg font-semibold mb-2">Share</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Configure backend, customize appearance, and get share codes
+                    (widget, SDK, link, embed, iframe).
+                  </p>
+                </div>
+                <AgentSharePanel
+                  agentId={parseInt(agentId)}
+                  agentName={agent.name}
+                />
               </div>
             )}
           </div>

@@ -319,6 +319,13 @@ const validInvokeChannels = [
   "agent:export:docker",
   "agent:export:web-chat",
   "agent:export:embed-snippet",
+  // Agent Sharing
+  "agent:share:create",
+  "agent:share:get",
+  "agent:share:update",
+  "agent:share:delete",
+  "agent:share:generate-codes",
+  "agent:share:save-app-as-template",
   // Agent Creation Pipeline (NLP → Agent)
   "agent:intent:quick-detect",
   "agent:intent:detect",

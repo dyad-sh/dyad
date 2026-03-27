@@ -1,4 +1,13 @@
-import { BrowserWindow, clipboard } from "electron";
+function getElectronApis() {
+  try {
+    if (process.versions?.electron) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const e = require("electron") as typeof import("electron");
+      return { BrowserWindow: e.BrowserWindow, clipboard: e.clipboard };
+    }
+  } catch { /* Not in Electron */ }
+  return null;
+}
 import { platform, arch } from "os";
 import { readCurrentUserSettings } from "../../main/web-settings";
 import { createTypedHandler } from "./base";
@@ -448,7 +457,9 @@ export function registerDebugHandlers() {
   console.log("Registered debug IPC handlers");
 
   createTypedHandler(systemContracts.takeScreenshot, async () => {
-    const win = BrowserWindow.getFocusedWindow();
+    const apis = getElectronApis();
+    if (!apis) throw new Error("Screenshot only available in Electron");
+    const win = apis.BrowserWindow.getFocusedWindow();
     if (!win) throw new Error("No focused window to capture");
 
     // Capture the window's current contents as a NativeImage
@@ -458,6 +469,6 @@ export function registerDebugHandlers() {
       throw new Error("Failed to capture screenshot");
     }
     // Write the image to the clipboard
-    clipboard.writeImage(image);
+    apis.clipboard.writeImage(image);
   });
 }

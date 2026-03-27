@@ -1,6 +1,6 @@
 import path from "path";
 import fs from "fs-extra";
-import { app } from "electron";
+import { getUserDataPath } from "../../paths/paths";
 import { copyDirectoryRecursive } from "../utils/file_utils";
 import { gitClone, getCurrentCommitHash } from "../utils/git_utils";
 import { readCurrentUserSettings } from "@/main/web-settings";
@@ -63,7 +63,7 @@ async function cloneRepo(repoUrl: string): Promise<string> {
   logger.info(`Parsed org: ${orgName}, repo: ${repoName} from ${repoUrl}`);
 
   const cachePath = path.join(
-    app.getPath("userData"),
+    getUserDataPath(),
     "templates",
     orgName,
     repoName,

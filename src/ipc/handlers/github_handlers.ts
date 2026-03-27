@@ -1,4 +1,5 @@
-import { BrowserWindow, IpcMainInvokeEvent } from "electron";
+import type { IpcMainInvokeEvent } from "electron";
+import { safeSend } from "../utils/safe_sender";
 import fetch from "node-fetch"; // Use node-fetch for making HTTP requests in main process
 import { writeSettings, readSettings } from "../../main/settings";
 import { readCurrentUserSettings, writeCurrentUserSettings } from "../../main/web-settings";
@@ -81,7 +82,7 @@ interface DeviceFlowState {
   interval: number;
   timeoutId: NodeJS.Timeout | null;
   isPolling: boolean;
-  window: BrowserWindow | null; // Reference to the window that initiated the flow
+  window: import("electron")["BrowserWindow"] | null; // Reference to the window (Electron only)
 }
 
 // Simple map to track ongoing flows (key could be appId or a unique flow ID if needed)
@@ -329,7 +330,7 @@ export async function prepareLocalBranch({
 //   }
 // }
 
-async function pollForAccessToken(event: IpcMainInvokeEvent) {
+async function pollForAccessToken(event: IpcMainInvokeEvent | null) {
   if (!currentFlowState || !currentFlowState.isPolling) {
     logger.debug("[GitHub Handler] Polling stopped or no active flow.");
     return;
@@ -338,7 +339,7 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
   const { deviceCode, interval } = currentFlowState;
 
   logger.debug("[GitHub Handler] Polling for token with device code");
-  event.sender.send("github:flow-update", {
+  safeSend(event?.sender ?? null,"github:flow-update", {
     message: "Polling GitHub for authorization...",
   });
 
@@ -364,7 +365,7 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
 
     if (response.ok && data.access_token) {
       logger.log("Successfully obtained GitHub Access Token.");
-      event.sender.send("github:flow-success", {
+      safeSend(event?.sender ?? null,"github:flow-success", {
         message: "Successfully connected!",
       });
       await writeCurrentUserSettings({
@@ -379,7 +380,7 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
       switch (data.error) {
         case "authorization_pending":
           logger.debug("Authorization pending...");
-          event.sender.send("github:flow-update", {
+          safeSend(event?.sender ?? null,"github:flow-update", {
             message: "Waiting for user authorization...",
           });
           // Schedule next poll
@@ -392,7 +393,7 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
           const newInterval = interval + 5;
           logger.debug(`Slow down requested. New interval: ${newInterval}s`);
           currentFlowState.interval = newInterval; // Update interval
-          event.sender.send("github:flow-update", {
+          safeSend(event?.sender ?? null,"github:flow-update", {
             message: `GitHub asked to slow down. Retrying in ${newInterval}s...`,
           });
           currentFlowState.timeoutId = setTimeout(
@@ -402,14 +403,14 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
           break;
         case "expired_token":
           logger.error("Device code expired.");
-          event.sender.send("github:flow-error", {
+          safeSend(event?.sender ?? null,"github:flow-error", {
             error: "Verification code expired. Please try again.",
           });
           stopPolling();
           break;
         case "access_denied":
           logger.error("Access denied by user.");
-          event.sender.send("github:flow-error", {
+          safeSend(event?.sender ?? null,"github:flow-error", {
             error: "Authorization denied by user.",
           });
           stopPolling();
@@ -418,7 +419,7 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
           logger.error(
             `Unknown GitHub error: ${data.error_description || data.error}`,
           );
-          event.sender.send("github:flow-error", {
+          safeSend(event?.sender ?? null,"github:flow-error", {
             error: `GitHub authorization error: ${data.error_description || data.error}`,
           });
           stopPolling();
@@ -429,7 +430,7 @@ async function pollForAccessToken(event: IpcMainInvokeEvent) {
     }
   } catch (error) {
     logger.error("Error polling for GitHub access token:", error);
-    event.sender.send("github:flow-error", {
+    safeSend(event?.sender ?? null,"github:flow-error", {
       error: `Network or unexpected error during polling: ${
         error instanceof Error ? error.message : String(error)
       }`,
@@ -461,17 +462,22 @@ function handleStartGithubFlow(
   // If a flow is already in progress, maybe cancel it or send an error
   if (currentFlowState && currentFlowState.isPolling) {
     logger.warn("Another GitHub flow is already in progress.");
-    event.sender.send("github:flow-error", {
+    safeSend(event?.sender ?? null,"github:flow-error", {
       error: "Another connection process is already active.",
     });
     return;
   }
 
   // Store the window that initiated the request
-  const window = BrowserWindow.fromWebContents(event.sender);
-  if (!window) {
-    logger.error("Could not get BrowserWindow instance.");
-    return;
+  let window: import("electron")["BrowserWindow"] | null = null;
+  if (process.versions?.electron) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { BrowserWindow } = require("electron") as typeof import("electron");
+    window = BrowserWindow.fromWebContents(event!.sender);
+    if (!window) {
+      logger.error("Could not get BrowserWindow instance.");
+      return;
+    }
   }
 
   currentFlowState = {
@@ -479,10 +485,10 @@ function handleStartGithubFlow(
     interval: 5, // Default interval
     timeoutId: null,
     isPolling: false,
-    window: window,
+    window,
   };
 
-  event.sender.send("github:flow-update", {
+  safeSend(event?.sender ?? null,"github:flow-update", {
     message: "Requesting device code from GitHub...",
   });
 
@@ -521,7 +527,7 @@ function handleStartGithubFlow(
       currentFlowState.isPolling = true;
 
       // Send user code and verification URI to renderer
-      event.sender.send("github:flow-update", {
+      safeSend(event?.sender ?? null,"github:flow-update", {
         userCode: data.user_code,
         verificationUri: data.verification_uri,
         message: "Please authorize in your browser.",
@@ -535,7 +541,7 @@ function handleStartGithubFlow(
     })
     .catch((error) => {
       logger.error("Error initiating GitHub device flow:", error);
-      event.sender.send("github:flow-error", {
+      safeSend(event?.sender ?? null,"github:flow-error", {
         error: `Failed to start GitHub connection: ${error.message}`,
       });
       stopPolling(); // Ensure polling stops on initial error

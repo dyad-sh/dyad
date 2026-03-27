@@ -15,7 +15,7 @@ const dialog = _electron?.dialog as typeof import("electron")["dialog"];
 import { db, getDatabasePath } from "../../db";
 import { apps, chats, messages } from "../../db/schema";
 import { desc, eq, like } from "drizzle-orm";
-import { createTypedHandler } from "./base";
+import { createTypedHandler, isWebMode, webHandlerRegistry } from "./base";
 import { appContracts } from "../types/app";
 import type { AppFileSearchResult } from "../types/app";
 import { miscContracts } from "../types/misc";
@@ -1045,7 +1045,7 @@ export function registerAppHandlers() {
   });
 
   // Do NOT use typed handler for this, it contains sensitive information.
-  ipcMain.handle("get-env-vars", async () => {
+  const getEnvVarsHandler = async () => {
     const envVars: Record<string, string | undefined> = {};
     const providers = await getLanguageModelProviders();
     for (const provider of providers) {
@@ -1054,7 +1054,12 @@ export function registerAppHandlers() {
       }
     }
     return envVars;
-  });
+  };
+  if (isWebMode()) {
+    webHandlerRegistry.set("get-env-vars", getEnvVarsHandler);
+  } else {
+    ipcMain?.handle("get-env-vars", getEnvVarsHandler);
+  }
 
   createTypedHandler(appContracts.runApp, async (event, params) => {
     const { appId } = params;

@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
-import { ipcMain, IpcMainInvokeEvent } from "electron";
-import { createTypedHandler } from "./base";
+import type { IpcMainInvokeEvent } from "electron";
+import { createTypedHandler, isWebMode, webHandlerRegistry } from "./base";
 import { chatContracts } from "../types/chat";
 import {
   ModelMessage,
@@ -228,7 +228,7 @@ async function processStreamChunks({
 }
 
 export function registerChatStreamHandlers() {
-  ipcMain.handle("chat:stream", async (event, req: ChatStreamParams) => {
+  const streamHandler = async (event: IpcMainInvokeEvent | null, req: ChatStreamParams): Promise<void> => {
     let attachmentPaths: string[] = [];
     try {
       let proteaaiRequestId: string | undefined;
@@ -237,7 +237,7 @@ export function registerChatStreamHandlers() {
       activeStreams.set(req.chatId, abortController);
 
       // Notify renderer that stream is starting
-      safeSend(event.sender, "chat:stream:start", { chatId: req.chatId });
+      safeSend(event?.sender ?? null,"chat:stream:start", { chatId: req.chatId });
 
       // Get the chat to check for existing messages
       const chat = await db.query.chats.findFirst({
@@ -562,7 +562,7 @@ ${componentSnippet}
       }
 
       // Send the messages right away so that the loading state is shown for the message.
-      safeSend(event.sender, "chat:response:chunk", {
+      safeSend(event?.sender ?? null,"chat:response:chunk", {
         chatId: req.chatId,
         messages: updatedChat.messages,
       });
@@ -1087,7 +1087,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 `AI stream text error for request: ${requestIdPrefix} errorMessage=${errorMessage} error=`,
                 error,
               );
-              event.sender.send("chat:response:error", {
+              safeSend(event?.sender ?? null, "chat:response:error", {
                 chatId: req.chatId,
                 error: `${AI_STREAMING_ERROR_MESSAGE_PREFIX}${requestIdPrefix}${message}`,
               });
@@ -1124,7 +1124,7 @@ This conversation includes one or more image attachments. When the user uploads 
 
           // Send incremental update with only the streaming message content
           // instead of the full messages array to reduce IPC overhead
-          safeSend(event.sender, "chat:response:chunk", {
+          safeSend(event?.sender ?? null,"chat:response:chunk", {
             chatId: req.chatId,
             streamingMessageId: placeholderAssistantMessage.id,
             streamingContent: fullResponse,
@@ -1213,7 +1213,7 @@ This conversation includes one or more image attachments. When the user uploads 
           if (isBasicAgentModeRequest) {
             const quotaStatus = await getFreeAgentQuotaStatus();
             if (quotaStatus.isQuotaExceeded) {
-              safeSend(event.sender, "chat:response:error", {
+              safeSend(event?.sender ?? null,"chat:response:error", {
                 chatId: req.chatId,
                 error: JSON.stringify({
                   type: "FREE_AGENT_QUOTA_EXCEEDED",
@@ -1666,20 +1666,20 @@ ${problemReport.problems
             },
           });
 
-          safeSend(event.sender, "chat:response:chunk", {
+          safeSend(event?.sender ?? null,"chat:response:chunk", {
             chatId: req.chatId,
             messages: chat!.messages,
           });
 
           if (status.error) {
-            safeSend(event.sender, "chat:response:error", {
+            safeSend(event?.sender ?? null,"chat:response:error", {
               chatId: req.chatId,
               error: `Sorry, there was an error applying the AI's changes: ${status.error}`,
             });
           }
 
           // Signal that the stream has completed
-          safeSend(event.sender, "chat:response:end", {
+          safeSend(event?.sender ?? null,"chat:response:end", {
             chatId: req.chatId,
             updatedFiles: status.updatedFiles ?? false,
             extraFiles: status.extraFiles,
@@ -1687,7 +1687,7 @@ ${problemReport.problems
             chatSummary,
           } satisfies ChatResponseEnd);
         } else {
-          safeSend(event.sender, "chat:response:end", {
+          safeSend(event?.sender ?? null,"chat:response:end", {
             chatId: req.chatId,
             updatedFiles: false,
             chatSummary,
@@ -1699,7 +1699,7 @@ ${problemReport.problems
       return req.chatId;
     } catch (error) {
       logger.error("Error calling LLM:", error);
-      safeSend(event.sender, "chat:response:error", {
+      safeSend(event?.sender ?? null,"chat:response:error", {
         chatId: req.chatId,
         error: `Sorry, there was an error processing your request: ${error}`,
       });
@@ -1710,9 +1710,24 @@ ${problemReport.problems
       activeStreams.delete(req.chatId);
 
       // Notify renderer that stream has ended
-      safeSend(event.sender, "chat:stream:end", { chatId: req.chatId });
+      safeSend(event?.sender ?? null,"chat:stream:end", { chatId: req.chatId });
     }
-  });
+  };
+
+  // Register chat:stream in the appropriate mode
+  if (isWebMode()) {
+    // Web mode: safeSend(null, ...) routes through wsManager.broadcast via setWebBroadcaster
+    webHandlerRegistry.set("chat:stream", (body: unknown) =>
+      streamHandler(null, body as ChatStreamParams),
+    );
+  } else {
+    // Electron mode: use ipcMain.handle
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const ipcMain = require("electron").ipcMain as typeof import("electron")["ipcMain"];
+    ipcMain.handle("chat:stream", (event: IpcMainInvokeEvent, req: ChatStreamParams) =>
+      streamHandler(event, req),
+    );
+  }
 
   // Handler to cancel an ongoing stream
   createTypedHandler(chatContracts.cancelStream, async (event, chatId) => {
@@ -1728,14 +1743,14 @@ ${problemReport.problems
     }
 
     // Send the end event to the renderer with wasCancelled flag
-    safeSend(event.sender, "chat:response:end", {
+    safeSend(event?.sender ?? null,"chat:response:end", {
       chatId,
       updatedFiles: false,
       wasCancelled: true,
     } satisfies ChatResponseEnd);
 
     // Also emit stream:end so cleanup listeners (e.g., pending agent consents) fire
-    safeSend(event.sender, "chat:stream:end", { chatId });
+    safeSend(event?.sender ?? null,"chat:stream:end", { chatId });
 
     return true;
   });

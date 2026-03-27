@@ -22,6 +22,7 @@ import fs from "node:fs";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import { wsManager } from "./ws_manager";
+import { setWebBroadcaster } from "../src/ipc/utils/safe_sender";
 import { safeRoute } from "./middleware/safe_route";
 import { requireAuth } from "./middleware/auth";
 import { authRouter } from "./routes/auth";
@@ -202,6 +203,7 @@ app.get("*", (_req, res) => {
 
 const httpServer = createServer(app);
 wsManager.attach(httpServer);
+setWebBroadcaster((channel, payload) => wsManager.broadcast(channel, payload));
 
 httpServer.listen(PORT, () => {
   console.log(`ProteaAI web server running on http://localhost:${PORT}`);

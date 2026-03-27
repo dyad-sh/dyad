@@ -5,7 +5,6 @@ import { getCurrentUser } from "../../ipc/context/user-context";
 import { createTypedHandler } from "./base";
 import { freeAgentQuotaContracts } from "../types/free_agent_quota";
 import log from "electron-log";
-import { ipcMain } from "electron";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 import fetch from "node-fetch";
 
@@ -81,7 +80,9 @@ export function registerFreeAgentQuotaHandlers() {
   );
 
   // Test-only handler to simulate time passing for quota tests
-  if (IS_TEST_BUILD) {
+  if (IS_TEST_BUILD && process.versions?.electron) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const ipcMain = require("electron").ipcMain as typeof import("electron")["ipcMain"];
     ipcMain.handle(
       "test:simulateQuotaTimeElapsed",
       async (_event, hoursAgo: number) => {

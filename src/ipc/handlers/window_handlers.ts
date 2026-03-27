@@ -1,4 +1,3 @@
-import { BrowserWindow } from "electron";
 import log from "electron-log";
 import { platform } from "os";
 import { createTypedHandler } from "./base";
@@ -6,10 +5,24 @@ import { systemContracts } from "../types/system";
 
 const logger = log.scope("window-handlers");
 
+function getBrowserWindow(): typeof import("electron")["BrowserWindow"] | null {
+  try {
+    if (process.versions?.electron) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      return require("electron").BrowserWindow;
+    }
+  } catch {
+    // Not in Electron
+  }
+  return null;
+}
+
 export function registerWindowHandlers() {
   logger.debug("Registering window control handlers");
 
   createTypedHandler(systemContracts.minimizeWindow, async (event) => {
+    const BrowserWindow = getBrowserWindow();
+    if (!BrowserWindow) return;
     const window = BrowserWindow.fromWebContents(event.sender);
     if (!window) {
       logger.error("Failed to get BrowserWindow instance for minimize command");
@@ -19,6 +32,8 @@ export function registerWindowHandlers() {
   });
 
   createTypedHandler(systemContracts.maximizeWindow, async (event) => {
+    const BrowserWindow = getBrowserWindow();
+    if (!BrowserWindow) return;
     const window = BrowserWindow.fromWebContents(event.sender);
     if (!window) {
       logger.error("Failed to get BrowserWindow instance for maximize command");
@@ -32,6 +47,8 @@ export function registerWindowHandlers() {
   });
 
   createTypedHandler(systemContracts.closeWindow, async (event) => {
+    const BrowserWindow = getBrowserWindow();
+    if (!BrowserWindow) return;
     const window = BrowserWindow.fromWebContents(event.sender);
     if (!window) {
       logger.error("Failed to get BrowserWindow instance for close command");

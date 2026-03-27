@@ -3,7 +3,7 @@
  * Main orchestrator for tool-based agent mode with parallel execution
  */
 
-import { IpcMainInvokeEvent } from "electron";
+import type { IpcMainInvokeEvent } from "electron";
 import {
   streamText,
   ToolSet,
@@ -255,7 +255,7 @@ function getMidTurnCompactionSummaryIds(
  * Handle a chat stream in local-agent mode
  */
 export async function handleLocalAgentStream(
-  event: IpcMainInvokeEvent,
+  event: IpcMainInvokeEvent | null,
   req: ChatStreamParams,
   abortController: AbortController,
   {
@@ -324,7 +324,7 @@ export async function handleLocalAgentStream(
     !isProteaAIProEnabled(settings) &&
     !isBasicAgentMode(settings)
   ) {
-    safeSend(event.sender, "chat:response:error", {
+    safeSend(event?.sender ?? null,"chat:response:error", {
       chatId: req.chatId,
       error:
         "Agent v2 requires ProteaAI Pro. Please enable ProteaAI Pro in Settings → Pro.",
@@ -456,7 +456,7 @@ export async function handleLocalAgentStream(
   await maybePerformPendingCompaction();
 
   // Send initial message update
-  safeSend(event.sender, "chat:response:chunk", {
+  safeSend(event?.sender ?? null,"chat:response:chunk", {
     chatId: req.chatId,
     messages: chat.messages.filter(
       (message) => !hiddenMessageIdsForStreaming.has(message.id),
@@ -486,7 +486,7 @@ export async function handleLocalAgentStream(
     }
     if (persistedTodos.length > 0) {
       // Emit loaded todos to the renderer so the UI shows them immediately
-      safeSend(event.sender, "agent-tool:todos-update", {
+      safeSend(event?.sender ?? null,"agent-tool:todos-update", {
         chatId: chat.id,
         todos: persistedTodos,
       });
@@ -550,7 +550,7 @@ export async function handleLocalAgentStream(
         pendingUserMessages.push(content);
       },
       onUpdateTodos: (todos) => {
-        safeSend(event.sender, "agent-tool:todos-update", {
+        safeSend(event?.sender ?? null,"agent-tool:todos-update", {
           chatId: chat.id,
           todos,
         });
@@ -1260,7 +1260,7 @@ export async function handleLocalAgentStream(
     }
 
     // Send completion
-    safeSend(event.sender, "chat:response:end", {
+    safeSend(event?.sender ?? null,"chat:response:end", {
       chatId: req.chatId,
       updatedFiles: !readOnly,
       chatSummary: ctx.chatSummary,
@@ -1285,7 +1285,7 @@ export async function handleLocalAgentStream(
     }
 
     logger.error("Local agent error:", error);
-    safeSend(event.sender, "chat:response:error", {
+    safeSend(event?.sender ?? null,"chat:response:error", {
       chatId: req.chatId,
       error: `Error: ${getErrorMessage(error)}`,
     });
@@ -1620,14 +1620,14 @@ function sendResponseChunk(
     if (placeholderMsg) {
       placeholderMsg.content = fullResponse;
     }
-    safeSend(event.sender, "chat:response:chunk", {
+    safeSend(event?.sender ?? null,"chat:response:chunk", {
       chatId,
       messages: currentMessages,
     });
   } else {
     // Send incremental update with only the streaming message content
     // to reduce IPC overhead during high-frequency streaming
-    safeSend(event.sender, "chat:response:chunk", {
+    safeSend(event?.sender ?? null,"chat:response:chunk", {
       chatId,
       streamingMessageId: placeholderMessageId,
       streamingContent: fullResponse,

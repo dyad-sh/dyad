@@ -1,4 +1,3 @@
-import { ipcMain } from "electron";
 
 // Lazy-load dialog — only available in Electron
 function getDialog(): typeof import("electron")["dialog"] | null {
@@ -56,7 +55,9 @@ function getNodeDownloadUrl(): string {
 export function registerNodeHandlers() {
   // Test-only handler to control Node.js mock state
   // Guarded by IS_TEST_BUILD constant
-  if (IS_TEST_BUILD) {
+  if (IS_TEST_BUILD && process.versions?.electron) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const ipcMain = require("electron").ipcMain as typeof import("electron")["ipcMain"];
     ipcMain.handle(
       "test:set-node-mock",
       async (_, { installed }: { installed: boolean | null }) => {

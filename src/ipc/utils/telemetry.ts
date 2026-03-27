@@ -1,4 +1,3 @@
-import { BrowserWindow } from "electron";
 import log from "electron-log";
 import { TelemetryEventPayload } from "@/ipc/types";
 
@@ -8,14 +7,18 @@ const FILTERED_EXCEPTION_MESSAGES = new Set([
 ]);
 
 /**
- * Sends a telemetry event from the main process to the renderer,
- * where PostHog can capture it.
+ * Sends a telemetry event from the main process to the renderer.
+ * In Electron mode: pushes via BrowserWindow.webContents.send.
+ * In web mode: no-op (telemetry is handled client-side via PostHog in the browser).
  */
 export function sendTelemetryEvent(
   eventName: string,
   properties?: Record<string, unknown>,
 ): void {
+  if (!process.versions?.electron) return;
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { BrowserWindow } = require("electron") as typeof import("electron");
     const windows = BrowserWindow.getAllWindows();
     if (windows.length > 0) {
       windows[0].webContents.send("telemetry:event", {

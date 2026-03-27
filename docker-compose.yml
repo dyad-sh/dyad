@@ -1,0 +1,66 @@
+version: "3.9"
+
+# ProteaAI local development / self-hosting
+#
+# Usage:
+#   cp .env.example .env          # fill in JWT_SECRET and optionally Stripe keys
+#   docker compose up --build
+#
+# The app will be available at http://localhost:3001
+#
+# Data is persisted in the Docker volume "proteaai_data".
+# To reset all data: docker compose down -v
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${PORT:-3001}:3001"
+    environment:
+      # Server
+      PORT: 3001
+      NODE_ENV: production
+
+      # Auth — CHANGE JWT_SECRET before exposing to the internet
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-string}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+
+      # AES-256-GCM key for encrypting stored secrets (64 hex chars = 32 bytes)
+      # Generate: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+      SECRET_KEY: ${SECRET_KEY:-}
+
+      # Stripe (optional — leave blank to run without paid plans)
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRO_PRICE_ID: ${STRIPE_PRO_PRICE_ID:-}
+
+      # Public URL used for Stripe redirect URLs
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3001}
+
+      # AI provider keys (users can also set these per-account via Settings)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+
+      # Database + app storage
+      PROTEAAI_DATA_DIR: /data
+
+      # CORS — if running the frontend on a different origin during dev, add it here
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3001}
+
+    volumes:
+      # Persistent data volume: SQLite DB + per-user app files
+      - proteaai_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  proteaai_data:
+    driver: local

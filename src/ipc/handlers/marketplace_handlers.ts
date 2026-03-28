@@ -21,6 +21,9 @@ import type {
   DeploymentStatus,
   EarningsReport,
   AppBundle,
+  PublishModelRequest,
+  ModelBundle,
+  BundleFile,
 } from "@/types/marketplace_types";
 
 const logger = log.scope("marketplace_handlers");
@@ -245,6 +248,62 @@ async function createAppZip(appId: number): Promise<string> {
 }
 
 /**
+ * Bundle a trained model/adapter for upload
+ */
+async function bundleModel(adapterPath: string, name: string, baseModelId: string): Promise<ModelBundle> {
+  if (!await fs.pathExists(adapterPath)) {
+    throw new Error("Adapter directory not found");
+  }
+
+  const bundle: ModelBundle = {
+    name,
+    baseModelId,
+    files: [],
+    totalSize: 0,
+    metadata: {},
+    createdAt: new Date().toISOString(),
+  };
+
+  // Read adapter_config.json for metadata if present
+  const configPath = path.join(adapterPath, "adapter_config.json");
+  if (await fs.pathExists(configPath)) {
+    try {
+      const config = await fs.readJson(configPath);
+      bundle.metadata = {
+        peft_type: config.peft_type || "unknown",
+        r: String(config.r || ""),
+        lora_alpha: String(config.lora_alpha || ""),
+        base_model_name_or_path: config.base_model_name_or_path || baseModelId,
+      };
+    } catch {
+      // ignore parse errors
+    }
+  }
+
+  // Collect all files in the adapter directory
+  const entries = await fs.readdir(adapterPath, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const fullPath = path.join(adapterPath, entry.name);
+    try {
+      const content = await fs.readFile(fullPath);
+      const file: BundleFile = {
+        path: entry.name,
+        content: content.toString("base64"),
+        size: content.length,
+      };
+      bundle.files.push(file);
+      bundle.totalSize += content.length;
+    } catch (error) {
+      logger.warn(`Failed to read adapter file ${fullPath}:`, error);
+    }
+  }
+
+  logger.info(`Bundled model ${name}: ${bundle.files.length} files, ${(bundle.totalSize / 1024 / 1024).toFixed(2)} MB`);
+  return bundle;
+}
+
+/**
  * Register all marketplace IPC handlers
  */
 export function registerMarketplaceHandlers() {
@@ -373,6 +432,45 @@ export function registerMarketplaceHandlers() {
       };
     } catch (error) {
       logger.error("Failed to publish app:", error);
+      return {
+        success: false,
+        status: "rejected",
+        message: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  });
+
+  // Publish trained model/adapter to marketplace
+  ipcMain.handle("marketplace:publish-model", async (_, request: PublishModelRequest): Promise<PublishAppResponse> => {
+    try {
+      logger.info(`Publishing model ${request.name} to marketplace...`);
+
+      const bundle = await bundleModel(request.adapterPath, request.name, request.baseModelId);
+
+      const payload = {
+        ...request,
+        assetType: "model" as const,
+        category: request.category || "model",
+        bundle: {
+          files: bundle.files,
+          totalSize: bundle.totalSize,
+          metadata: bundle.metadata,
+        },
+      };
+
+      const response = await marketplaceRequest<PublishAppResponse>("/v1/assets/publish", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
+      logger.info(`Model published successfully: ${response.assetId}`);
+
+      return {
+        ...response,
+        assetUrl: response.assetId ? `${MARKETPLACE_WEB_URL}/assets/${response.assetId}` : undefined,
+      };
+    } catch (error) {
+      logger.error("Failed to publish model:", error);
       return {
         success: false,
         status: "rejected",

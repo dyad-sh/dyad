@@ -16,6 +16,7 @@
 import { useState } from "react";
 import DOMPurify from "dompurify";
 import { useExport } from "@/hooks/use-export";
+import { HuggingFaceExplorer } from "@/components/HuggingFaceExplorer";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1467,6 +1468,10 @@ export function DataStudioPage() {
             <Shield className="h-4 w-4" />
             Policies
           </TabsTrigger>
+          <TabsTrigger value="huggingface" className="gap-2">
+            <Sparkles className="h-4 w-4" />
+            HuggingFace
+          </TabsTrigger>
         </TabsList>
         
         <TabsContent value="datasets">
@@ -1556,6 +1561,20 @@ export function DataStudioPage() {
         
         <TabsContent value="policies">
           <PolicyPanel />
+        </TabsContent>
+
+        <TabsContent value="huggingface">
+          <Card>
+            <CardHeader>
+              <CardTitle>HuggingFace Hub</CardTitle>
+              <CardDescription>
+                Browse and download models and datasets from HuggingFace Hub
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <HuggingFaceExplorer />
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

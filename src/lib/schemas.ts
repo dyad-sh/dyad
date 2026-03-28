@@ -254,6 +254,7 @@ export const UserSettingsSchema = z.object({
   agentToolConsents: z.record(z.string(), AgentToolConsentSchema).optional(),
   githubUser: GithubUserSchema.optional(),
   githubAccessToken: SecretSchema.optional(),
+  huggingFaceToken: SecretSchema.optional(),
   vercelAccessToken: SecretSchema.optional(),
   supabase: SupabaseSchema.optional(),
   neon: NeonSchema.optional(),

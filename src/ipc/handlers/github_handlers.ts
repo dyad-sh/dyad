@@ -4,6 +4,7 @@ import { writeSettings, readSettings } from "../../main/settings";
 import { gitSetRemoteUrl, gitPush, gitClone } from "../utils/git_utils";
 import * as schema from "../../db/schema";
 import fs from "node:fs";
+import path from "node:path";
 import { getJoyAppPath } from "../../paths/paths";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
@@ -620,6 +621,73 @@ async function handleDisconnectGithubRepo(
     })
     .where(eq(apps.id, appId));
 }
+// --- Project Type Auto-Detection ---
+interface DetectedProject {
+  installCommand: string;
+  startCommand: string;
+  projectType: string;
+}
+
+function detectProjectType(appPath: string): DetectedProject | null {
+  // Check for Node.js projects
+  const packageJsonPath = path.join(appPath, "package.json");
+  if (fs.existsSync(packageJsonPath)) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+      const hasYarnLock = fs.existsSync(path.join(appPath, "yarn.lock"));
+      const hasPnpmLock = fs.existsSync(path.join(appPath, "pnpm-lock.yaml"));
+      const pm = hasPnpmLock ? "pnpm" : hasYarnLock ? "yarn" : "npm";
+      const install = `${pm} install`;
+
+      const scripts = pkg.scripts || {};
+      let start = `${pm} run dev`;
+      if (scripts.dev) start = `${pm} run dev`;
+      else if (scripts.start) start = `${pm} start`;
+      else if (scripts.serve) start = `${pm} run serve`;
+
+      return { installCommand: install, startCommand: start, projectType: "node" };
+    } catch {
+      // fallback
+    }
+  }
+
+  // Python projects
+  if (fs.existsSync(path.join(appPath, "requirements.txt"))) {
+    return {
+      installCommand: "pip install -r requirements.txt",
+      startCommand: "python main.py",
+      projectType: "python",
+    };
+  }
+  if (fs.existsSync(path.join(appPath, "pyproject.toml"))) {
+    return {
+      installCommand: "pip install -e .",
+      startCommand: "python -m app",
+      projectType: "python",
+    };
+  }
+
+  // Rust projects
+  if (fs.existsSync(path.join(appPath, "Cargo.toml"))) {
+    return {
+      installCommand: "cargo build",
+      startCommand: "cargo run",
+      projectType: "rust",
+    };
+  }
+
+  // Go projects
+  if (fs.existsSync(path.join(appPath, "go.mod"))) {
+    return {
+      installCommand: "go mod download",
+      startCommand: "go run .",
+      projectType: "go",
+    };
+  }
+
+  return null;
+}
+
 // --- GitHub Clone Repo from URL Handler ---
 async function handleCloneRepoFromUrl(
   event: IpcMainInvokeEvent,
@@ -692,6 +760,22 @@ async function handleCloneRepoFromUrl(
     }
     const aiRulesPath = path.join(appPath, "AI_RULES.md");
     const hasAiRules = fs.existsSync(aiRulesPath);
+
+    // Auto-detect project type and commands if not provided
+    let finalInstallCommand = installCommand || null;
+    let finalStartCommand = startCommand || null;
+    let detectedProjectType: string | null = null;
+
+    if (!finalInstallCommand || !finalStartCommand) {
+      const detected = detectProjectType(appPath);
+      if (detected) {
+        finalInstallCommand = finalInstallCommand || detected.installCommand;
+        finalStartCommand = finalStartCommand || detected.startCommand;
+        detectedProjectType = detected.projectType;
+        logger.log(`[GitHub Handler] Auto-detected ${detected.projectType} project: install="${detected.installCommand}", start="${detected.startCommand}"`);
+      }
+    }
+
     const [newApp] = await db
       .insert(schema.apps)
       .values({
@@ -702,8 +786,8 @@ async function handleCloneRepoFromUrl(
         githubOrg: owner,
         githubRepo: repoName,
         githubBranch: "main",
-        installCommand: installCommand || null,
-        startCommand: startCommand || null,
+        installCommand: finalInstallCommand,
+        startCommand: finalStartCommand,
       })
       .returning();
     logger.log(`Successfully cloned repo ${owner}/${repoName} to ${appPath}`);

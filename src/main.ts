@@ -202,6 +202,15 @@ export async function onReady() {
 
     // 5. Start flywheel training scheduler (checks every 6 hours)
     startFlywheelScheduler();
+
+    // 6. Resume interrupted background missions
+    try {
+      const { backgroundExecutor } = await import("@/lib/background_executor");
+      await backgroundExecutor.startup();
+      svcLogger.info("Background mission executor started");
+    } catch (err) {
+      svcLogger.warn("Background mission executor startup failed:", err);
+    }
   }, 8000);
 
   logger.info("Auto-update enabled=", settings.enableAutoUpdate);

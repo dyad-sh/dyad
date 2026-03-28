@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { IpcClient } from "@/ipc/ipc_client";
 import { showSuccess } from "@/lib/toast";
@@ -9,6 +9,7 @@ import {
   Loader2,
   ExternalLink,
   Copy,
+  Plus,
 } from "lucide-react";
 import {
   Dialog,
@@ -41,10 +42,21 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
   const [androidStatus, setAndroidStatus] = useState<CapacitorStatus>("idle");
 
   // Check if Capacitor is installed
+  const queryClient = useQueryClient();
   const { data: isCapacitor, isLoading } = useQuery({
     queryKey: ["is-capacitor", appId],
     queryFn: () => IpcClient.getInstance().isCapacitor({ appId }),
     enabled: appId !== undefined && appId !== null,
+  });
+
+  const initCapacitorMutation = useMutation({
+    mutationFn: async () => {
+      await IpcClient.getInstance().initCapacitor({ appId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["is-capacitor", appId] });
+      showSuccess("Mobile support added! You can now sync and open iOS/Android projects.");
+    },
   });
 
   const showErrorDialog = (title: string, error: unknown) => {
@@ -116,9 +128,50 @@ export function CapacitorControls({ appId }: CapacitorControlsProps) {
     }
   };
 
-  // Don't render anything if loading or if Capacitor is not installed
-  if (isLoading || !isCapacitor) {
+  // Don't render anything while loading
+  if (isLoading) {
     return null;
+  }
+
+  // Show "Add Mobile Support" when Capacitor is not installed
+  if (!isCapacitor) {
+    return (
+      <Card className="mt-1" data-testid="capacitor-controls-init">
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            Mobile Development
+          </CardTitle>
+          <CardDescription>
+            Add Capacitor to run your app on iOS and Android
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button
+            onClick={() => initCapacitorMutation.mutate()}
+            disabled={initCapacitorMutation.isPending}
+            variant="default"
+            size="sm"
+            className="flex items-center gap-2"
+          >
+            {initCapacitorMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Plus className="h-4 w-4" />
+            )}
+            {initCapacitorMutation.isPending
+              ? "Setting up..."
+              : "Add Mobile Support"}
+          </Button>
+          {initCapacitorMutation.isError && (
+            <p className="text-xs text-red-500 mt-2">
+              {initCapacitorMutation.error instanceof Error
+                ? initCapacitorMutation.error.message
+                : "Failed to initialize Capacitor"}
+            </p>
+          )}
+        </CardContent>
+      </Card>
+    );
   }
 
   const iosButtonText = getIosButtonText();

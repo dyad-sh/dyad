@@ -131,6 +131,13 @@ export function readSettings(): UserSettings {
         encryptionType,
       };
     }
+    if (combinedSettings.huggingFaceToken) {
+      const encryptionType = combinedSettings.huggingFaceToken.encryptionType;
+      combinedSettings.huggingFaceToken = {
+        value: decrypt(combinedSettings.huggingFaceToken),
+        encryptionType,
+      };
+    }
     if (combinedSettings.vercelAccessToken) {
       const encryptionType = combinedSettings.vercelAccessToken.encryptionType;
       combinedSettings.vercelAccessToken = {
@@ -181,6 +188,11 @@ export function writeSettings(settings: Partial<UserSettings>): void {
     if (newSettings.githubAccessToken) {
       newSettings.githubAccessToken = encrypt(
         newSettings.githubAccessToken.value,
+      );
+    }
+    if (newSettings.huggingFaceToken) {
+      newSettings.huggingFaceToken = encrypt(
+        newSettings.huggingFaceToken.value,
       );
     }
     if (newSettings.vercelAccessToken) {

@@ -99,7 +99,13 @@ export default Button;
 - Close all tags with a line break before the closing tag.
 - Always generate responsive designs. Use toasts for important events.
 - Don't use try/catch unless requested — let errors bubble up.
-- Keep it simple. Don't overengineer. Don't do more than asked.`;
+- Keep it simple. Don't overengineer. Don't do more than asked.
+
+# OUTPUT EFFICIENCY
+- Be concise. No fluff or filler text between code blocks.
+- Skip lengthy explanations — brief summary before code, then code.
+- Only modify files that need changes. Don't rewrite unrelated files.
+- If many files need changes, prioritize the most critical ones first.`;
 
 export const BUILD_SYSTEM_POSTFIX = `Directory names MUST be all lower-case (src/pages, src/components, etc.). File names may use mixed-case if you like.
 

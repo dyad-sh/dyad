@@ -19,7 +19,13 @@ export type AssetCategory =
   | "game"
   | "ai-agent"
   | "template"
+  | "model"
+  | "adapter"
+  | "dataset"
   | "other";
+
+// Asset type discriminator
+export type AssetType = "app" | "model" | "dataset";
 
 // Asset status in marketplace
 export type AssetStatus = "draft" | "pending-review" | "published" | "rejected" | "archived";
@@ -47,6 +53,7 @@ export interface MarketplaceAsset {
   description: string;
   shortDescription: string;
   category: AssetCategory;
+  assetType: AssetType;
   tags: string[];
   
   // Pricing
@@ -187,5 +194,46 @@ export interface AssetReview {
   title: string;
   content: string;
   helpful: number;
+  createdAt: string;
+}
+
+// Request to publish a trained model/adapter to marketplace
+export interface PublishModelRequest {
+  // Adapter/model source
+  adapterPath: string;
+  baseModelId: string;
+
+  // Listing info
+  name: string;
+  shortDescription: string;
+  description: string;
+  category: AssetCategory;
+  tags: string[];
+
+  // Pricing
+  pricingModel: PricingModel;
+  price?: number;
+
+  // Model-specific metadata
+  trainingMethod?: string;
+  trainingDatasetInfo?: string;
+  parameterCount?: string;
+  quantization?: string;
+
+  // Media
+  thumbnail?: string;
+
+  // Version
+  version: string;
+  changelog?: string;
+}
+
+// Model bundle for upload
+export interface ModelBundle {
+  name: string;
+  baseModelId: string;
+  files: BundleFile[];
+  totalSize: number;
+  metadata: Record<string, string>;
   createdAt: string;
 }

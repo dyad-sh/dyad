@@ -34,6 +34,8 @@ import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
 import { getAiMessagesJsonIfWithinLimit } from "@/ipc/utils/ai_messages_utils";
 import { generateProblemReport } from "@/ipc/processors/tsc";
 import { createProblemFixPrompt } from "@/shared/problem_prompt";
+import { runVerificationLoop } from "@/lib/verification_loop";
+import type { FixApproach } from "@/types/error_types";
 import { convertMarkdownCodeBlocksToJoyWrite } from "@/ipc/utils/markdown_to_joy_write";
 import { processFullResponseActions } from "@/ipc/processors/response_processor";
 import { getGitUncommittedFiles } from "@/ipc/utils/git_utils";
@@ -232,7 +234,7 @@ export async function handleLocalAgentStream(
     const trimmedHistory = trimMessagesToFitBudget(
       effectiveSystemPrompt,
       messageHistory,
-      20_000,
+      10_000,
     );
     const providerId = modelClient.builtinProviderId ?? "unknown";
     const estTokens = estimateRequestTokens(effectiveSystemPrompt, trimmedHistory);
@@ -492,12 +494,19 @@ export async function handleLocalAgentStream(
         await updateResponseInDb(placeholderMessageId, fullResponse);
         sendResponseChunk(event, req.chatId, chat, fullResponse);
 
-        // Re-prompt the model with tool results for the next iteration
-        const updatedHistory: ModelMessage[] = [
-          ...messageHistory,
-          { role: "assistant" as const, content: currentResponse },
-          { role: "user" as const, content: resultsText + "\n\nContinue based on these tool results. Use more tool calls if needed, or provide your final response." },
-        ];
+        // Re-prompt the model with tool results — use minimal context
+        const updatedHistory: ModelMessage[] = trimMessagesToFitBudget(
+          effectiveSystemPrompt,
+          [
+            ...messageHistory,
+            { role: "assistant" as const, content: currentResponse },
+            { role: "user" as const, content: resultsText + "\n\nContinue based on these tool results. Use more tool calls if needed, or provide your final response." },
+          ],
+          10_000,
+        );
+        const continueEst = estimateRequestTokens(effectiveSystemPrompt, updatedHistory);
+        const continueDelay = await tokenRateLimiter.waitAndRecord(providerId, continueEst);
+        if (continueDelay > 0) logger.log(`Continue loop rate limit delay: ${Math.round(continueDelay / 1000)}s`);
 
         currentResponse = "";
         const continueResult = streamText({
@@ -592,11 +601,17 @@ export async function handleLocalAgentStream(
           "Do not describe or plan — immediately create the files. " +
           "Start with src/pages/Index.tsx as the main page.";
 
-        const retryMessages: ModelMessage[] = [
-          ...messageHistory,
-          { role: "assistant" as const, content: fullResponse },
-          { role: "user" as const, content: retryPrompt },
-        ];
+        const retryMessages: ModelMessage[] = trimMessagesToFitBudget(
+          effectiveSystemPrompt,
+          [
+            { role: "assistant" as const, content: fullResponse },
+            { role: "user" as const, content: retryPrompt },
+          ],
+          10_000,
+        );
+        const retryEst = estimateRequestTokens(effectiveSystemPrompt, retryMessages);
+        const retryDelay = await tokenRateLimiter.waitAndRecord(providerId, retryEst);
+        if (retryDelay > 0) logger.log(`Retry loop rate limit delay: ${Math.round(retryDelay / 1000)}s`);
 
         let retryResponse = "";
         const retryResult = streamText({
@@ -656,117 +671,127 @@ export async function handleLocalAgentStream(
     }
 
     // ===================================================================
-    // Post-agent verification: check for TypeScript errors and auto-fix
+    // Post-agent verification: multi-attempt TypeScript error fix loop
     // ===================================================================
     if (!abortController.signal.aborted) {
       try {
-        const problemReport = await generateProblemReport({
-          fullResponse: "", // empty = check disk state directly
-          appPath,
+        const verifyResult = await runVerificationLoop(appPath, 3, {
+          isAborted: () => abortController.signal.aborted,
+
+          onAttemptStart: (attempt, errorsFound) => {
+            logger.info(
+              `Verification attempt ${attempt}: ${errorsFound} TS errors found`,
+            );
+          },
+
+          runFixAttempt: async (prompt: string, _approach: FixApproach) => {
+            // Append the problem report to the response for visibility
+            fullResponse += `\n<joy-verification-attempt>\n${prompt}\n</joy-verification-attempt>\n`;
+            await updateResponseInDb(placeholderMessageId, fullResponse);
+            sendResponseChunk(event, req.chatId, chat, fullResponse);
+
+            const { modelClient: fixModelClient } = await getModelClient(
+              settings.selectedModel,
+              settings,
+            );
+
+            const fixMessages: ModelMessage[] = trimMessagesToFitBudget(
+              systemPrompt,
+              [
+                { role: "assistant" as const, content: fullResponse.slice(-4_000) },
+                { role: "user" as const, content: prompt },
+              ],
+              10_000,
+            );
+            const fixEst = estimateRequestTokens(systemPrompt, fixMessages);
+            const fixDelay = await tokenRateLimiter.waitAndRecord(providerId, fixEst);
+            if (fixDelay > 0) logger.log(`Fix loop rate limit delay: ${Math.round(fixDelay / 1000)}s`);
+
+            const fixResult = streamText({
+              model: fixModelClient.model,
+              headers: getAiHeaders({
+                builtinProviderId: fixModelClient.builtinProviderId,
+              }),
+              providerOptions: getProviderOptions({
+                joyAppId: chat.app.id,
+                joyDisableFiles: true,
+                joyFiles: [],
+                mentionedAppsCodebases: [],
+                builtinProviderId: fixModelClient.builtinProviderId,
+                settings,
+              }),
+              maxOutputTokens: await getMaxTokens(settings.selectedModel),
+              temperature: await getTemperature(settings.selectedModel),
+              maxRetries: 0,
+              system: systemPrompt,
+              messages: fixMessages,
+              ...(allTools
+                ? { tools: allTools, stopWhen: stepCountIs(10) }
+                : {}),
+              abortSignal: abortController.signal,
+            });
+
+            let fixResponse = "";
+            for await (const part of fixResult.fullStream) {
+              if (abortController.signal.aborted) break;
+
+              let chunk = "";
+              switch (part.type) {
+                case "text-delta":
+                  chunk = part.text;
+                  break;
+                case "tool-input-start":
+                  getOrCreateStreamingEntry(part.id, part.toolName);
+                  break;
+                case "tool-input-delta": {
+                  const entry = getOrCreateStreamingEntry(part.id);
+                  if (entry) {
+                    entry.argsAccumulated += part.delta;
+                    const toolDef = findToolDefinition(entry.toolName);
+                    if (toolDef?.buildXml) {
+                      const argsPartial = parsePartialJson(
+                        entry.argsAccumulated,
+                      );
+                      const xml = toolDef.buildXml(argsPartial, false);
+                      if (xml) ctx.onXmlStream(xml);
+                    }
+                  }
+                  break;
+                }
+                case "tool-input-end": {
+                  const entry = getOrCreateStreamingEntry(part.id);
+                  if (entry) {
+                    const toolDef = findToolDefinition(entry.toolName);
+                    if (toolDef?.buildXml) {
+                      const argsPartial = parsePartialJson(
+                        entry.argsAccumulated,
+                      );
+                      const xml = toolDef.buildXml(argsPartial, true);
+                      if (xml) ctx.onXmlComplete(xml);
+                    }
+                  }
+                  cleanupStreamingEntry(part.id);
+                  break;
+                }
+              }
+              if (chunk) {
+                fixResponse += chunk;
+                fullResponse += chunk;
+                await updateResponseInDb(placeholderMessageId, fullResponse);
+                sendResponseChunk(event, req.chatId, chat, fullResponse);
+              }
+            }
+
+            return fixResponse;
+          },
         });
 
-        if (problemReport.problems.length > 0) {
-          logger.info(
-            `Post-agent verification found ${problemReport.problems.length} TS errors, requesting fix...`,
-          );
-
-          const fixPrompt = createProblemFixPrompt(problemReport);
-
-          // Append the problem report to the response for visibility
-          fullResponse += `\n<joy-problem-report summary="${problemReport.problems.length} problems found after implementation">
-${problemReport.problems.map((p) => `<problem file="${p.file}" line="${p.line}" column="${p.column}" code="${p.code}">${p.message}</problem>`).join("\n")}
+        if (!verifyResult.passed && verifyResult.remainingErrors.length > 0) {
+          fullResponse += `\n<joy-problem-report summary="${verifyResult.remainingErrors.length} errors remain after ${verifyResult.totalAttempts} fix attempts">
+${verifyResult.remainingErrors.map((e) => `<problem file="${e.file ?? "unknown"}" line="${e.line ?? 0}" code="${e.code ?? ""}">${e.message}</problem>`).join("\n")}
 </joy-problem-report>\n`;
           await updateResponseInDb(placeholderMessageId, fullResponse);
           sendResponseChunk(event, req.chatId, chat, fullResponse);
-
-          // Send a follow-up fix request through the same agent loop
-          // (uses the remaining step budget from the original 25)
-          const { modelClient: fixModelClient } = await getModelClient(
-            settings.selectedModel,
-            settings,
-          );
-
-          // Rebuild message history including the fix request
-          const fixMessages: ModelMessage[] = [
-            ...chat.messages
-              .filter((msg) => msg.content || msg.aiMessagesJson)
-              .flatMap((msg) => parseAiMessagesJson(msg)),
-            { role: "assistant" as const, content: fullResponse },
-            { role: "user" as const, content: fixPrompt },
-          ];
-
-          const fixResult = streamText({
-            model: fixModelClient.model,
-            headers: getAiHeaders({
-              builtinProviderId: fixModelClient.builtinProviderId,
-            }),
-            providerOptions: getProviderOptions({
-              joyAppId: chat.app.id,
-              joyDisableFiles: true,
-              joyFiles: [],
-              mentionedAppsCodebases: [],
-              builtinProviderId: fixModelClient.builtinProviderId,
-              settings,
-            }),
-            maxOutputTokens: await getMaxTokens(settings.selectedModel),
-            temperature: await getTemperature(settings.selectedModel),
-            maxRetries: 0,
-            system: systemPrompt,
-            messages: fixMessages,
-            ...(allTools
-              ? { tools: allTools, stopWhen: stepCountIs(10) }
-              : {}),
-            abortSignal: abortController.signal,
-          });
-
-          for await (const part of fixResult.fullStream) {
-            if (abortController.signal.aborted) break;
-
-            let chunk = "";
-            switch (part.type) {
-              case "text-delta":
-                chunk = part.text;
-                break;
-              case "tool-input-start":
-                getOrCreateStreamingEntry(part.id, part.toolName);
-                break;
-              case "tool-input-delta": {
-                const entry = getOrCreateStreamingEntry(part.id);
-                if (entry) {
-                  entry.argsAccumulated += part.delta;
-                  const toolDef = findToolDefinition(entry.toolName);
-                  if (toolDef?.buildXml) {
-                    const argsPartial = parsePartialJson(
-                      entry.argsAccumulated,
-                    );
-                    const xml = toolDef.buildXml(argsPartial, false);
-                    if (xml) ctx.onXmlStream(xml);
-                  }
-                }
-                break;
-              }
-              case "tool-input-end": {
-                const entry = getOrCreateStreamingEntry(part.id);
-                if (entry) {
-                  const toolDef = findToolDefinition(entry.toolName);
-                  if (toolDef?.buildXml) {
-                    const argsPartial = parsePartialJson(
-                      entry.argsAccumulated,
-                    );
-                    const xml = toolDef.buildXml(argsPartial, true);
-                    if (xml) ctx.onXmlComplete(xml);
-                  }
-                }
-                cleanupStreamingEntry(part.id);
-                break;
-              }
-            }
-            if (chunk) {
-              fullResponse += chunk;
-              await updateResponseInDb(placeholderMessageId, fullResponse);
-              sendResponseChunk(event, req.chatId, chat, fullResponse);
-            }
-          }
         }
       } catch (verifyError) {
         logger.warn("Post-agent verification failed (non-fatal):", verifyError);

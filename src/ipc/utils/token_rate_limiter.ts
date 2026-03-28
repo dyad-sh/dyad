@@ -133,17 +133,21 @@ class TokenRateLimiter {
     providerId: string,
     estimatedTokens: number,
   ): Promise<number> {
-    const delay = this.getRequiredDelay(providerId, estimatedTokens);
+    // Apply 1.3x safety multiplier: our estimation doesn't account for
+    // tool schemas, per-message overhead, XML formatting overhead, etc.
+    // that Anthropic counts as input tokens.
+    const safeEstimate = Math.ceil(estimatedTokens * 1.3);
+    const delay = this.getRequiredDelay(providerId, safeEstimate);
 
     if (delay > 0) {
       logger.log(
-        `Rate limit: waiting ${Math.round(delay / 1000)}s before sending ${estimatedTokens} tokens to ${providerId} ` +
+        `Rate limit: waiting ${Math.round(delay / 1000)}s before sending ~${safeEstimate} tokens to ${providerId} ` +
           `(${this.getTokensUsedInWindow(providerId)} tokens used in window)`,
       );
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
 
-    this.recordUsage(providerId, estimatedTokens);
+    this.recordUsage(providerId, safeEstimate);
     return delay;
   }
 }

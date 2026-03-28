@@ -1,14 +1,17 @@
 import { testSkipIfWindows, Timeout } from "./helpers/test_helper";
 
-testSkipIfWindows("capacitor upgrade and sync works", async ({ po }) => {
+testSkipIfWindows("capacitor init and sync works", async ({ po }) => {
   await po.setUp();
   await po.sendPrompt("hi");
   await po.getTitleBarAppNameButton().click();
-  await po.clickAppUpgradeButton({ upgradeId: "capacitor" });
-  await po.expectNoAppUpgrades();
-  await po.snapshotAppFiles({ name: "upgraded-capacitor" });
 
-  await po.page.getByTestId("capacitor-controls").waitFor({ state: "visible" });
+  // Click "Add Mobile Support" button from CapacitorControls init UI
+  const initButton = po.page.getByRole("button", { name: /Add Mobile Support/i });
+  await initButton.waitFor({ state: "visible", timeout: Timeout.LONG });
+  await initButton.click();
+
+  // Wait for init to complete and controls to show sync/open buttons
+  await po.page.getByTestId("capacitor-controls").waitFor({ state: "visible", timeout: Timeout.LONG });
 
   // Test sync & open iOS functionality - the button contains "Sync & Open iOS"
   const iosButton = po.page.getByRole("button", { name: /Sync & Open iOS/i });

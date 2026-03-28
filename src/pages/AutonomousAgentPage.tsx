@@ -82,6 +82,13 @@ import type {
   MissionStatus,
   AutonomousAgentEvent,
 } from "@/ipc/autonomous_agent_client";
+import {
+  useMissions as usePersistedMissions,
+  useStartMission,
+  usePauseMission,
+  useResumeMission,
+  useCancelMission,
+} from "@/hooks/use_missions";
 
 // =============================================================================
 // CONSTANTS
@@ -650,6 +657,7 @@ function AgentDetailView({
         <div className="border-b px-6">
           <TabsList>
             <TabsTrigger value="missions">Missions</TabsTrigger>
+            <TabsTrigger value="background">Background</TabsTrigger>
             <TabsTrigger value="capabilities">Capabilities</TabsTrigger>
             <TabsTrigger value="knowledge">Knowledge</TabsTrigger>
             <TabsTrigger value="artifacts">Artifacts</TabsTrigger>
@@ -665,6 +673,10 @@ function AgentDetailView({
               onSelectMission={onSelectMission}
               onCreateMission={onCreateMission}
             />
+          </TabsContent>
+
+          <TabsContent value="background" className="mt-0 h-full">
+            <BackgroundMissionsTab />
           </TabsContent>
 
           <TabsContent value="capabilities" className="mt-0 h-full">
@@ -1280,5 +1292,171 @@ function CreateMissionDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// =============================================================================
+// BACKGROUND MISSIONS TAB — persisted missions via BackgroundExecutor
+// =============================================================================
+
+const BG_STATUS_COLORS: Record<string, string> = {
+  pending: "bg-gray-500",
+  running: "bg-green-500 animate-pulse",
+  paused: "bg-yellow-500",
+  completed: "bg-emerald-500",
+  failed: "bg-red-500",
+  cancelled: "bg-orange-500",
+};
+
+function BackgroundMissionsTab() {
+  const { data: bgMissions = [], isLoading } = usePersistedMissions();
+  const startMission = useStartMission();
+  const pauseMission = usePauseMission();
+  const resumeMission = useResumeMission();
+  const cancelMission = useCancelMission();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const selected = bgMissions.find((m: any) => m.id === selectedId);
+
+  return (
+    <div className="flex h-full">
+      {/* List */}
+      <div className="w-80 border-r">
+        <div className="flex items-center justify-between p-4">
+          <h3 className="font-medium">Background ({bgMissions.length})</h3>
+        </div>
+        <ScrollArea className="h-[calc(100%-4rem)]">
+          <div className="space-y-2 p-4 pt-0">
+            {isLoading && (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            )}
+            {bgMissions.map((m: any) => (
+              <Card
+                key={m.id}
+                className={cn(
+                  "cursor-pointer transition-all hover:shadow-md",
+                  selectedId === m.id && "border-primary ring-1 ring-primary",
+                )}
+                onClick={() => setSelectedId(m.id)}
+              >
+                <CardContent className="p-3">
+                  <div className="flex items-center justify-between">
+                    <Badge variant="outline" className="text-xs">
+                      {m.status}
+                    </Badge>
+                    <div className={cn("h-2 w-2 rounded-full", BG_STATUS_COLORS[m.status] ?? "bg-gray-400")} />
+                  </div>
+                  <p className="mt-2 line-clamp-2 text-sm font-medium">{m.title}</p>
+                  {m.phases && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {(m.phases as any[]).length} phases · attempt {m.verifyAttempts ?? 0}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+            {!isLoading && bgMissions.length === 0 && (
+              <p className="py-4 text-center text-sm text-muted-foreground">
+                No background missions
+              </p>
+            )}
+          </div>
+        </ScrollArea>
+      </div>
+
+      {/* Detail */}
+      <div className="flex-1 overflow-auto p-6">
+        {selected ? (
+          <div className="space-y-6">
+            <div>
+              <div className="flex items-center gap-2">
+                <Badge className={cn(BG_STATUS_COLORS[selected.status] ?? "bg-gray-400")}>
+                  {selected.status}
+                </Badge>
+              </div>
+              <h3 className="mt-2 text-xl font-bold">{selected.title}</h3>
+              {selected.description && (
+                <p className="mt-2 text-muted-foreground">{selected.description}</p>
+              )}
+            </div>
+
+            {/* Phase progress */}
+            {selected.phases && (selected.phases as any[]).length > 0 && (
+              <div>
+                <h4 className="font-medium">Phases</h4>
+                <div className="mt-2 space-y-2">
+                  {(selected.phases as any[]).map((phase: any, i: number) => (
+                    <div key={i} className="flex items-center gap-2 rounded border p-2">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs">
+                        {i + 1}
+                      </span>
+                      <span className="flex-1 text-sm">{phase.name}</span>
+                      <Badge variant="outline" className="text-xs">
+                        {phase.status}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Log */}
+            {selected.log && (
+              <div>
+                <h4 className="font-medium">Log</h4>
+                <ScrollArea className="mt-2 h-48 rounded border bg-muted/50 p-3">
+                  <pre className="whitespace-pre-wrap text-xs">{selected.log}</pre>
+                </ScrollArea>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-2">
+              {selected.status === "running" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => pauseMission.mutate(selected.id)}
+                >
+                  <Pause className="mr-1 h-3 w-3" /> Pause
+                </Button>
+              )}
+              {selected.status === "paused" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => resumeMission.mutate(selected.id)}
+                >
+                  <Play className="mr-1 h-3 w-3" /> Resume
+                </Button>
+              )}
+              {(selected.status === "running" || selected.status === "paused") && (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => cancelMission.mutate(selected.id)}
+                >
+                  <StopCircle className="mr-1 h-3 w-3" /> Cancel
+                </Button>
+              )}
+            </div>
+
+            {selected.lastError && (
+              <Card className="border-destructive">
+                <CardContent className="p-3">
+                  <p className="text-sm text-destructive">{selected.lastError}</p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        ) : (
+          <div className="flex h-full items-center justify-center text-muted-foreground">
+            Select a background mission to view details
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

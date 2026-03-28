@@ -5,9 +5,11 @@ import type { ModelMessage } from "ai";
 
 import { findLanguageModel } from "./findLanguageModel";
 
-// Estimate tokens (4 characters per token)
+// Estimate tokens — conservative ratio for code/XML content (2.8 chars/token).
+// Standard English is ~4 chars/token, but code with XML tags, short variable
+// names, and JSON schemas typically tokenizes at 2.5-3.0 chars/token with Claude.
 export const estimateTokens = (text: string): number => {
-  return Math.ceil(text.length / 4);
+  return Math.ceil(text.length / 2.8);
 };
 
 export const estimateMessagesTokens = (messages: Message[]): number => {
@@ -42,6 +44,79 @@ export function estimateRequestTokens(
 }
 
 /**
+ * Sanitize messages that contain tool_use / tool_result content parts.
+ * Anthropic requires every tool_use block to have a matching tool_result
+ * in the immediately following message. When we trim history, those pairs
+ * can break. This function converts complex tool messages into plain
+ * text equivalents so they can be safely trimmed without API errors.
+ */
+export function sanitizeToolMessages(
+  messages: ModelMessage[],
+): ModelMessage[] {
+  return messages.map((msg) => {
+    // If content is a string, nothing to sanitize
+    if (typeof msg.content === "string") return msg;
+
+    // If content is an array, check for tool-related parts
+    if (Array.isArray(msg.content)) {
+      const hasToolParts = msg.content.some(
+        (part: any) =>
+          part.type === "tool-call" ||
+          part.type === "tool-result" ||
+          part.type === "tool_use" ||
+          part.type === "tool_result",
+      );
+      if (!hasToolParts) return msg;
+
+      // Convert tool parts to text summaries
+      const textParts: string[] = [];
+      for (const part of msg.content as any[]) {
+        if (part.type === "text" && part.text) {
+          textParts.push(part.text);
+        } else if (
+          part.type === "tool-call" ||
+          part.type === "tool_use"
+        ) {
+          textParts.push(
+            `[Used tool: ${part.toolName || part.name || "unknown"}]`,
+          );
+        } else if (
+          part.type === "tool-result" ||
+          part.type === "tool_result"
+        ) {
+          const resultText =
+            typeof part.result === "string"
+              ? part.result.slice(0, 200)
+              : typeof part.content === "string"
+                ? part.content.slice(0, 200)
+                : "[result]";
+          textParts.push(`[Tool result: ${resultText}]`);
+        }
+      }
+
+      const summaryContent = textParts.join("\n");
+
+      // ToolModelMessage (role: 'tool') requires content: Array<ToolResultPart>,
+      // so we must change `role` to 'user' when converting to string content.
+      // AssistantModelMessage accepts string content, so role stays 'assistant'.
+      if (msg.role === "tool") {
+        return {
+          role: "user" as const,
+          content: summaryContent || "[Tool result]",
+        };
+      }
+
+      return {
+        ...msg,
+        content: summaryContent || (typeof msg.content === "string" ? msg.content : ""),
+      } as ModelMessage;
+    }
+
+    return msg;
+  });
+}
+
+/**
  * Trim chat messages from the oldest end to fit within a token budget.
  * Preserves the codebase prefix messages (first 2) and the latest user message.
  * Returns a new array — does not mutate the input.
@@ -51,14 +126,18 @@ export function trimMessagesToFitBudget(
   chatMessages: ModelMessage[],
   maxInputTokens: number,
 ): ModelMessage[] {
-  let currentTokens = estimateRequestTokens(systemPrompt, chatMessages);
+  // Always sanitize tool_use/tool_result messages. This converts them to
+  // plain text which: (a) prevents broken tool pairs when trimming removes
+  // messages, and (b) ensures stored messages from older AI SDK versions
+  // always conform to the current ModelMessage Zod schema.
+  const safeChatMessages = sanitizeToolMessages(chatMessages);
+  let currentTokens = estimateRequestTokens(systemPrompt, safeChatMessages);
 
   if (currentTokens <= maxInputTokens) {
-    return chatMessages;
+    return safeChatMessages;
   }
 
-  // Work on a copy
-  const trimmed = [...chatMessages];
+  const trimmed = [...safeChatMessages];
 
   // The first 2 messages are codebase prefix (user + assistant "OK, got it"),
   // and the last 1-2 are the current user prompt. We trim from the middle.

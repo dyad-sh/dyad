@@ -7,6 +7,7 @@ import { getJoyAppPath } from "../../paths/paths";
 import fs from "node:fs";
 import path from "node:path";
 import { simpleSpawn } from "../utils/simpleSpawn";
+import { gitAddAll, gitCommit } from "../utils/git_utils";
 import { IS_TEST_BUILD } from "../utils/test_utils";
 
 const logger = log.scope("capacitor_handlers");
@@ -134,6 +135,60 @@ export function registerCapacitorHandlers() {
         successMessage: "Android project opened successfully",
         errorPrefix: "Failed to open Android project",
       });
+    },
+  );
+
+  handle(
+    "capacitor:init",
+    async (_, { appId }: { appId: number }): Promise<void> => {
+      const app = await getApp(appId);
+      const appPath = getJoyAppPath(app.path);
+
+      if (isCapacitorInstalled(appPath)) {
+        throw new Error("Capacitor is already installed in this app");
+      }
+
+      // Install Capacitor dependencies
+      await simpleSpawn({
+        command:
+          "pnpm add @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 || npm install @capacitor/core@7.4.4 @capacitor/cli@7.4.4 @capacitor/ios@7.4.4 @capacitor/android@7.4.4 --legacy-peer-deps",
+        cwd: appPath,
+        successMessage: "Capacitor dependencies installed successfully",
+        errorPrefix: "Failed to install Capacitor dependencies",
+      });
+
+      // Initialize Capacitor
+      const safeName = app.name.toLowerCase().replace(/[^a-z0-9]/g, "");
+      await simpleSpawn({
+        command: `npx cap init "${app.name}" "com.example.${safeName}" --web-dir=dist`,
+        cwd: appPath,
+        successMessage: "Capacitor initialized successfully",
+        errorPrefix: "Failed to initialize Capacitor",
+      });
+
+      // Add iOS and Android platforms
+      await simpleSpawn({
+        command: "npx cap add ios && npx cap add android",
+        cwd: appPath,
+        successMessage: "iOS and Android platforms added successfully",
+        errorPrefix: "Failed to add iOS and Android platforms",
+      });
+
+      // Commit changes
+      try {
+        logger.info("Staging and committing Capacitor changes");
+        await gitAddAll({ path: appPath });
+        await gitCommit({
+          path: appPath,
+          message: "[joy] add Capacitor for mobile app support",
+        });
+        logger.info("Successfully committed Capacitor changes");
+      } catch (err) {
+        logger.warn(
+          "Failed to commit Capacitor changes. This may happen if the project is not in a git repository.",
+          err,
+        );
+      }
     },
   );
 }

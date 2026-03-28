@@ -865,13 +865,13 @@ This conversation includes one or more image attachments. When the user uploads 
           ? // No codebase prefix if engine is set, we will take of it there.
             []
           : (() => {
-              // Cap codebase content to ~8k chars (~2.8k tokens at 2.8 ratio) to fit within
-              // the 30k rate limit after system prompt (~3.5k), history (~3k), and user prompt.
-              const MAX_CODEBASE_CHARS = 8_000;
+              // Cap codebase content to ~5k chars (~1.8k tokens at 2.8 ratio) to fit within
+              // the 30k rate limit after system prompt (~2.5k), history (~3k), and user prompt.
+              const MAX_CODEBASE_CHARS = 5_000;
               let codebaseContent = createCodebasePrompt(codebaseInfo);
               if (codebaseContent.length > MAX_CODEBASE_CHARS) {
                 logger.log(
-                  `Codebase content truncated from ${codebaseContent.length} to ${MAX_CODEBASE_CHARS} chars (~${Math.round(codebaseContent.length / 4)}→${Math.round(MAX_CODEBASE_CHARS / 4)} tokens)`,
+                  `Codebase content truncated from ${codebaseContent.length} to ${MAX_CODEBASE_CHARS} chars (~${Math.round(codebaseContent.length / 2.8)}→${Math.round(MAX_CODEBASE_CHARS / 2.8)} tokens)`,
                 );
                 codebaseContent =
                   codebaseContent.slice(0, MAX_CODEBASE_CHARS) +
@@ -986,11 +986,11 @@ This conversation includes one or more image attachments. When the user uploads 
         // --- System Prompt Hard Cap ---
         // If the system prompt grew too large due to RAG, memory, Supabase context,
         // etc., truncate it to fit the token budget. This is a last-resort safety.
-        const MAX_SYSTEM_PROMPT_CHARS = 10_000; // ~3.5k tokens at 2.8 ratio
+        const MAX_SYSTEM_PROMPT_CHARS = 7_000; // ~2.5k tokens at 2.8 ratio
         if (systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS) {
           logger.warn(
             `System prompt truncated from ${systemPrompt.length} to ${MAX_SYSTEM_PROMPT_CHARS} chars ` +
-              `(~${Math.round(systemPrompt.length / 4)}→~${Math.round(MAX_SYSTEM_PROMPT_CHARS / 4)} tokens)`,
+              `(~${Math.round(systemPrompt.length / 2.8)}→~${Math.round(MAX_SYSTEM_PROMPT_CHARS / 2.8)} tokens)`,
           );
           systemPrompt =
             systemPrompt.slice(0, MAX_SYSTEM_PROMPT_CHARS) +
@@ -1052,7 +1052,7 @@ This conversation includes one or more image attachments. When the user uploads 
           const trimmedMessages = trimMessagesToFitBudget(
             systemPromptOverride,
             filteredMessages,
-            10_000, // Hard cap — system (~3.5k) + messages (10k) = ~13.5k, well under 30k
+            6_000, // Hard cap — system (~2.5k) + messages (6k) = ~8.5k, leaves room for caching overhead
           );
           const estimatedTokens = estimateRequestTokens(
             systemPromptOverride,
@@ -1063,9 +1063,9 @@ This conversation includes one or more image attachments. When the user uploads 
             `AI request breakdown: system ~${Math.round(estimateTokens(systemPromptOverride))} tokens, ` +
               `${trimmedMessages.length} messages totaling ~${estimatedTokens} tokens`,
           );
-          if (estimatedTokens > 25_000) {
+          if (estimatedTokens > 15_000) {
             logger.warn(
-              `High token count (${estimatedTokens}) — close to 30k rate limit. ` +
+              `High token count (${estimatedTokens}) — close to rate limit. ` +
                 `Consider reducing codebase size or chat history.`,
             );
           }
@@ -1086,6 +1086,53 @@ This conversation includes one or more image attachments. When the user uploads 
             logger.log(`Rate limit delay: waited ${Math.round(delay / 1000)}s`);
           }
 
+          // Enable Anthropic prompt caching: pass the system prompt and
+          // codebase prefix as cached messages. Anthropic allows up to 4 cache
+          // breakpoints — we use 2:
+          //   1. System prompt (~2.5k tokens) — stable across the entire chat
+          //   2. Codebase prefix (first user message, ~1.8k tokens) — stable
+          //      within a session (only changes when user edits files)
+          // Cached tokens count at 1/10th the rate-limit cost, saving ~4k
+          // effective tokens per subsequent request.
+          const isAnthropic =
+            modelClient.builtinProviderId === "anthropic";
+
+          const cachedMessages: ModelMessage[] = isAnthropic
+            ? [
+                {
+                  role: "system" as const,
+                  content: systemPromptOverride,
+                  providerOptions: {
+                    anthropic: {
+                      cacheControl: { type: "ephemeral" },
+                    },
+                  },
+                },
+                // Add cacheControl to the codebase prefix (first user message
+                // containing <joy-file> tags), if present.
+                ...trimmedMessages.map((msg, idx) => {
+                  if (
+                    idx === 0 &&
+                    msg.role === "user" &&
+                    typeof msg.content === "string" &&
+                    (msg.content.includes("<joy-file") ||
+                      msg.content.includes("This is my codebase"))
+                  ) {
+                    return {
+                      ...msg,
+                      providerOptions: {
+                        ...msg.providerOptions,
+                        anthropic: {
+                          cacheControl: { type: "ephemeral" as const },
+                        },
+                      },
+                    };
+                  }
+                  return msg;
+                }),
+              ]
+            : trimmedMessages;
+
           const streamResult = streamText({
             headers: getAiHeaders({
               builtinProviderId: modelClient.builtinProviderId,
@@ -1096,27 +1143,35 @@ This conversation includes one or more image attachments. When the user uploads 
             model: modelClient.model,
             stopWhen: [stepCountIs(20), hasToolCall("edit-code")],
             providerOptions,
-            system: systemPromptOverride,
+            system: isAnthropic ? undefined : systemPromptOverride,
             tools,
-            messages: trimmedMessages,
+            messages: cachedMessages,
             onFinish: (response) => {
               const totalTokens = response.usage?.totalTokens;
               const inputTokens = response.usage?.inputTokens;
 
+              // Log Anthropic cache statistics when available
+              const providerMeta = response.providerMetadata;
+              const cacheCreation =
+                (providerMeta as any)?.anthropic?.cacheCreationInputTokens;
+              const cacheRead =
+                (providerMeta as any)?.anthropic?.cacheReadInputTokens;
+              if (
+                typeof cacheCreation === "number" ||
+                typeof cacheRead === "number"
+              ) {
+                logger.log(
+                  `Anthropic cache: created=${cacheCreation ?? 0}, read=${cacheRead ?? 0} tokens`,
+                );
+              }
+
               // Correct rate limiter with actual usage when available
               if (typeof inputTokens === "number" && inputTokens > 0) {
-                const recorded = Math.ceil(estimatedTokens * 1.3);
-                if (inputTokens > recorded) {
-                  // Actual was higher than estimate — record the difference
-                  const correction = inputTokens - recorded;
-                  tokenRateLimiter.recordUsage(
-                    modelClient.builtinProviderId ?? "unknown",
-                    correction,
-                  );
-                  logger.log(
-                    `Rate limiter correction: actual ${inputTokens} > estimated ${recorded}, added ${correction} tokens`,
-                  );
-                }
+                tokenRateLimiter.correctUsage(
+                  modelClient.builtinProviderId ?? "unknown",
+                  estimatedTokens,
+                  inputTokens,
+                );
               }
 
               if (typeof totalTokens === "number") {
@@ -1330,8 +1385,8 @@ This conversation includes one or more image attachments. When the user uploads 
           // On retries, progressively trim chatMessages to reduce token count.
           // Each retry removes more history context to get under the limit.
           if (rateLimitAttempt > 0) {
-            const budgetReduction = rateLimitAttempt * 2_000; // remove ~2k more tokens each retry
-            const newBudget = Math.max(10_000 - budgetReduction, 4_000);
+            const budgetReduction = rateLimitAttempt * 1_500; // remove ~1.5k more tokens each retry
+            const newBudget = Math.max(6_000 - budgetReduction, 2_000);
             logger.log(
               `Rate limit retry #${rateLimitAttempt}: reducing token budget to ${newBudget}`,
             );
@@ -1342,11 +1397,32 @@ This conversation includes one or more image attachments. When the user uploads 
               newBudget,
             );
             // Also truncate system prompt if still too large
-            const retryMaxSysChars = 7_000 - rateLimitAttempt * 2_000;
+            const retryMaxSysChars = 5_000 - rateLimitAttempt * 1_000;
             if (systemPrompt.length > retryMaxSysChars) {
-              systemPrompt =
-                systemPrompt.slice(0, Math.max(retryMaxSysChars, 3_000)) +
-                "\n[System prompt truncated for retry]";
+              systemPrompt = `${systemPrompt.slice(0, Math.max(retryMaxSysChars, 2_000))}\n[System prompt truncated for retry]`;
+            }
+
+            // On retry #2+, strip the codebase prefix entirely to save ~1.8k tokens.
+            // The assistant still has the conversation context to work with.
+            if (rateLimitAttempt >= 2) {
+              chatMessages = chatMessages.filter(
+                (m) =>
+                  !(
+                    m.role === "user" &&
+                    typeof m.content === "string" &&
+                    (m.content.includes("<joy-file") ||
+                      m.content.includes("This is my codebase"))
+                  ) &&
+                  !(
+                    // Remove the "OK." acknowledgement that follows codebase prefix
+                    m.role === "assistant" &&
+                    typeof m.content === "string" &&
+                    m.content === "OK."
+                  ),
+              );
+              logger.log(
+                `Rate limit retry #${rateLimitAttempt}: stripped codebase prefix from messages`,
+              );
             }
           }
           try {
@@ -1671,9 +1747,13 @@ ${problemReport.problems
               rateLimitAttempt < MAX_RATE_LIMIT_RETRIES
             ) {
               const waitSecs = Math.round(RATE_LIMIT_WAIT_MS / 1000);
+              const nextBudget = Math.max(
+                6_000 - (rateLimitAttempt + 1) * 1_500,
+                2_000,
+              );
               logger.warn(
                 `Rate limit hit (attempt ${rateLimitAttempt + 1}/${MAX_RATE_LIMIT_RETRIES + 1}). ` +
-                  `Waiting ${waitSecs}s before retrying...`,
+                  `Waiting ${waitSecs}s, next message budget: ${nextBudget} tokens...`,
               );
 
               // Notify the user that we're waiting and will retry
@@ -1684,7 +1764,7 @@ ${problemReport.problems
                     ...placeholderAssistantMessage,
                     content:
                       fullResponse +
-                      `\n\n> **Rate limit reached** — waiting ${waitSecs}s before retrying automatically (attempt ${rateLimitAttempt + 1}/${MAX_RATE_LIMIT_RETRIES})...\n`,
+                      `\n\n> **Rate limit reached** — waiting ${waitSecs}s before retrying with reduced context (attempt ${rateLimitAttempt + 1}/${MAX_RATE_LIMIT_RETRIES})...\n`,
                   },
                 ],
               });

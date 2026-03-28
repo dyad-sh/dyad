@@ -88,6 +88,14 @@ export async function getSupabaseContext({
   const secrets = await supabase.getSecrets(supabaseProjectId);
   const secretNames = secrets?.map((secret) => secret.name);
 
+  // Cap schema to avoid burning the entire token budget
+  const MAX_SCHEMA_CHARS = 3_000; // ~940 tokens at 3.2 chars/token
+  const schemaJson = JSON.stringify(schema);
+  const cappedSchema =
+    schemaJson.length > MAX_SCHEMA_CHARS
+      ? schemaJson.slice(0, MAX_SCHEMA_CHARS) + "... (truncated)"
+      : schemaJson;
+
   // TODO: include EDGE FUNCTIONS and SECRETS!
 
   const context = `
@@ -103,7 +111,7 @@ export async function getSupabaseContext({
   ${JSON.stringify(secretNames)}
 
   ## Schema
-  ${JSON.stringify(schema)}
+  ${cappedSchema}
   `;
 
   return context;

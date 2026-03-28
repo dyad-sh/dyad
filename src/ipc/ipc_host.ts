@@ -89,6 +89,7 @@ import { registerAgentSwarmHandlers } from "./handlers/agent_swarm_handlers";
 import { registerAutonomousAgentHandlers } from "./handlers/autonomous_agent_handlers";
 import { registerAutonomousAgentProductionHandlers } from "./handlers/autonomous_agent_production_handlers";
 import { registerModelFactoryHandlers } from "./handlers/model_factory_handlers";
+import { registerHuggingFaceHandlers } from "./handlers/huggingface_handlers";
 import { registerAgentFactoryHandlers } from "./handlers/agent_factory_handlers";
 import { registerPrivacyInferenceHandlers } from "./handlers/privacy_inference_handlers";
 import { registerDeployedContractHandlers } from "./handlers/deployed_contract_handlers";
@@ -121,6 +122,7 @@ import { registerFlywheelHandlers } from "./handlers/flywheel_handlers";
 import { registerModelRegistryHandlers } from "./handlers/model_registry_handlers";
 import { registerSsiHandlers } from "./handlers/ssi_handlers";
 import { registerEmailHandlers } from "./handlers/email_handlers";
+import { registerMissionHandlers } from "./handlers/mission_handlers";
 import {
   registerTaskExecutorHandlers,
   registerSystemServicesHandlers,
@@ -256,6 +258,9 @@ export function registerIpcHandlers() {
   // Model Factory - LoRA/QLoRA training for low GPU systems
   registerModelFactoryHandlers();
   
+  // HuggingFace Hub - Model/dataset search, download, push adapters
+  registerHuggingFaceHandlers();
+  
   // Agent Factory - Custom AI agent creation and training
   registerAgentFactoryHandlers();
   
@@ -367,4 +372,7 @@ export function registerIpcHandlers() {
   // Task Executor — Autonomous inference loop & System Services Health
   registerTaskExecutorHandlers();
   registerSystemServicesHandlers();
+
+  // Background Missions — Persisted autonomous mission execution
+  registerMissionHandlers();
 }

@@ -1581,6 +1581,10 @@ export class IpcClient {
     return this.ipcRenderer.invoke("is-capacitor", params);
   }
 
+  public async initCapacitor(params: { appId: number }): Promise<void> {
+    return this.ipcRenderer.invoke("capacitor:init", params);
+  }
+
   public async syncCapacitor(params: { appId: number }): Promise<void> {
     return this.ipcRenderer.invoke("sync-capacitor", params);
   }
@@ -1927,6 +1931,72 @@ export class IpcClient {
     return () => {
       this.ipcRenderer.removeListener("model-factory:training-completed", handler);
     };
+  }
+
+  // ==========================================================================
+  // HuggingFace Hub Methods
+  // ==========================================================================
+
+  public async hfSearchModels(
+    params: import("./handlers/huggingface_handlers").HfSearchParams,
+  ): Promise<import("./handlers/huggingface_handlers").HfModelInfo[]> {
+    return this.ipcRenderer.invoke("hf:search-models", params);
+  }
+
+  public async hfSearchDatasets(
+    params: import("./handlers/huggingface_handlers").HfSearchParams,
+  ): Promise<import("./handlers/huggingface_handlers").HfDatasetInfo[]> {
+    return this.ipcRenderer.invoke("hf:search-datasets", params);
+  }
+
+  public async hfModelInfo(
+    modelId: string,
+  ): Promise<import("./handlers/huggingface_handlers").HfModelInfo> {
+    return this.ipcRenderer.invoke("hf:model-info", modelId);
+  }
+
+  public async hfDownloadModel(
+    params: { modelId: string; files?: string[] },
+  ): Promise<{ path: string; files: string[] }> {
+    return this.ipcRenderer.invoke("hf:download-model", params);
+  }
+
+  public async hfDownloadDataset(
+    params: { datasetId: string; split?: string },
+  ): Promise<{ path: string }> {
+    return this.ipcRenderer.invoke("hf:download-dataset", params);
+  }
+
+  public async hfPushAdapter(
+    params: { adapterPath: string; repoId: string; commitMessage?: string },
+  ): Promise<{ url: string }> {
+    return this.ipcRenderer.invoke("hf:push-adapter", params);
+  }
+
+  public async hfAuthStatus(): Promise<{ authenticated: boolean; username?: string }> {
+    return this.ipcRenderer.invoke("hf:auth-status");
+  }
+
+  public onHfDownloadProgress(
+    callback: (event: import("./handlers/huggingface_handlers").HfDownloadProgress) => void,
+  ): () => void {
+    const handler = (_: unknown, event: import("./handlers/huggingface_handlers").HfDownloadProgress) => {
+      callback(event);
+    };
+    this.ipcRenderer.on("hf:download-progress", handler);
+    return () => {
+      this.ipcRenderer.removeListener("hf:download-progress", handler);
+    };
+  }
+
+  // ==========================================================================
+  // Marketplace Methods
+  // ==========================================================================
+
+  public async publishModel(
+    request: import("../types/marketplace_types").PublishModelRequest,
+  ): Promise<import("../types/marketplace_types").PublishAppResponse> {
+    return this.ipcRenderer.invoke("marketplace:publish-model", request);
   }
 
   // ==========================================================================
@@ -3308,5 +3378,41 @@ export class IpcClient {
 
   public async createMetaWorkflowBuilder(): Promise<any> {
     return this.ipcRenderer.invoke("n8n:meta-builder:create");
+  }
+
+  // ── Background Missions ──────────────────────────────────────
+
+  public async startMission(params: {
+    appId?: number;
+    agentId?: string;
+    title: string;
+    description?: string;
+    targetAppPath?: string;
+    phases?: { name: string }[];
+  }): Promise<any> {
+    return this.ipcRenderer.invoke("mission:start", params);
+  }
+
+  public async getMission(id: string): Promise<any> {
+    return this.ipcRenderer.invoke("mission:get", id);
+  }
+
+  public async listMissions(filter?: {
+    status?: string | string[];
+    appId?: number;
+  }): Promise<any[]> {
+    return this.ipcRenderer.invoke("mission:list", filter);
+  }
+
+  public async pauseMission(id: string): Promise<void> {
+    return this.ipcRenderer.invoke("mission:pause", id);
+  }
+
+  public async resumeMission(id: string): Promise<void> {
+    return this.ipcRenderer.invoke("mission:resume", id);
+  }
+
+  public async cancelMission(id: string): Promise<void> {
+    return this.ipcRenderer.invoke("mission:cancel", id);
   }
 }

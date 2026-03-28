@@ -51,7 +51,7 @@ import * as path from "path";
 import * as os from "os";
 import * as crypto from "crypto";
 import { readFile, writeFile, unlink } from "fs/promises";
-import { getMaxTokens, getTemperature, estimateRequestTokens, trimMessagesToFitBudget, buildCompressedChatMessages } from "../utils/token_utils";
+import { getMaxTokens, getTemperature, estimateRequestTokens, trimMessagesToFitBudget, buildCompressedChatMessages, estimateTokens } from "../utils/token_utils";
 import { MAX_CHAT_TURNS_IN_CONTEXT } from "@/constants/settings_constants";
 import { validateChatContext } from "../utils/context_paths_utils";
 import { getProviderOptions, getAiHeaders } from "../utils/provider_options";
@@ -865,14 +865,13 @@ This conversation includes one or more image attachments. When the user uploads 
           ? // No codebase prefix if engine is set, we will take of it there.
             []
           : (() => {
-              // Cap codebase content to ~40k chars (~10k tokens) to leave room for
-              // system prompt, chat history, and the user's current message within
-              // the 20k token hard budget.
-              const MAX_CODEBASE_CHARS = 40_000;
+              // Cap codebase content to ~8k chars (~2.8k tokens at 2.8 ratio) to fit within
+              // the 30k rate limit after system prompt (~3.5k), history (~3k), and user prompt.
+              const MAX_CODEBASE_CHARS = 8_000;
               let codebaseContent = createCodebasePrompt(codebaseInfo);
               if (codebaseContent.length > MAX_CODEBASE_CHARS) {
                 logger.log(
-                  `Codebase content truncated from ${codebaseContent.length} to ${MAX_CODEBASE_CHARS} chars to fit token budget`,
+                  `Codebase content truncated from ${codebaseContent.length} to ${MAX_CODEBASE_CHARS} chars (~${Math.round(codebaseContent.length / 4)}→${Math.round(MAX_CODEBASE_CHARS / 4)} tokens)`,
                 );
                 codebaseContent =
                   codebaseContent.slice(0, MAX_CODEBASE_CHARS) +
@@ -882,7 +881,7 @@ This conversation includes one or more image attachments. When the user uploads 
                 { role: "user" as const, content: codebaseContent },
                 {
                   role: "assistant" as const,
-                  content: "OK, got it. I'm ready to help",
+                  content: "OK.",
                 },
               ];
             })();
@@ -891,16 +890,23 @@ This conversation includes one or more image attachments. When the user uploads 
         // and process it with smart context.
         const otherCodebasePrefix =
           otherAppsCodebaseInfo && !isEngineEnabled
-            ? ([
-                {
-                  role: "user",
-                  content: createOtherAppsCodebasePrompt(otherAppsCodebaseInfo),
-                },
-                {
-                  role: "assistant",
-                  content: "OK.",
-                },
-              ] as const)
+            ? (() => {
+                // Cap referenced apps to ~2k chars (~700 tokens at 2.8 ratio)
+                const MAX_OTHER_APPS_CHARS = 2_000;
+                let otherContent = createOtherAppsCodebasePrompt(otherAppsCodebaseInfo);
+                if (otherContent.length > MAX_OTHER_APPS_CHARS) {
+                  logger.log(
+                    `Other apps codebase truncated from ${otherContent.length} to ${MAX_OTHER_APPS_CHARS} chars`,
+                  );
+                  otherContent =
+                    otherContent.slice(0, MAX_OTHER_APPS_CHARS) +
+                    "\n[Referenced apps truncated to fit token budget]";
+                }
+                return [
+                  { role: "user" as const, content: otherContent },
+                  { role: "assistant" as const, content: "OK." },
+                ];
+              })()
             : [];
 
         const limitedHistoryChatMessages = limitedMessageHistory.map((msg) => ({
@@ -923,7 +929,7 @@ This conversation includes one or more image attachments. When the user uploads 
         let chatMessages: ModelMessage[] = buildCompressedChatMessages(
           [...codebasePrefix, ...otherCodebasePrefix],
           limitedHistoryChatMessages,
-          4_000, // max ~4k tokens for history portion (aggressive to stay under 30k rate limit)
+          3_000, // max ~3k tokens for history (compressed to fit under 30k rate limit)
         );
 
         // Check if the last message should include attachments
@@ -976,6 +982,21 @@ This conversation includes one or more image attachments. When the user uploads 
             } satisfies ModelMessage,
           ];
         }
+
+        // --- System Prompt Hard Cap ---
+        // If the system prompt grew too large due to RAG, memory, Supabase context,
+        // etc., truncate it to fit the token budget. This is a last-resort safety.
+        const MAX_SYSTEM_PROMPT_CHARS = 10_000; // ~3.5k tokens at 2.8 ratio
+        if (systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS) {
+          logger.warn(
+            `System prompt truncated from ${systemPrompt.length} to ${MAX_SYSTEM_PROMPT_CHARS} chars ` +
+              `(~${Math.round(systemPrompt.length / 4)}→~${Math.round(MAX_SYSTEM_PROMPT_CHARS / 4)} tokens)`,
+          );
+          systemPrompt =
+            systemPrompt.slice(0, MAX_SYSTEM_PROMPT_CHARS) +
+            "\n[System prompt truncated to fit token budget]";
+        }
+
         const simpleStreamText = async ({
           chatMessages,
           modelClient,
@@ -1031,7 +1052,7 @@ This conversation includes one or more image attachments. When the user uploads 
           const trimmedMessages = trimMessagesToFitBudget(
             systemPromptOverride,
             filteredMessages,
-            20_000, // Hard cap — must stay well under 30k rate limit
+            10_000, // Hard cap — system (~3.5k) + messages (10k) = ~13.5k, well under 30k
           );
           const estimatedTokens = estimateRequestTokens(
             systemPromptOverride,
@@ -1039,8 +1060,15 @@ This conversation includes one or more image attachments. When the user uploads 
           );
 
           logger.log(
-            `AI request: ${trimmedMessages.length} messages, ~${estimatedTokens} estimated input tokens`,
+            `AI request breakdown: system ~${Math.round(estimateTokens(systemPromptOverride))} tokens, ` +
+              `${trimmedMessages.length} messages totaling ~${estimatedTokens} tokens`,
           );
+          if (estimatedTokens > 25_000) {
+            logger.warn(
+              `High token count (${estimatedTokens}) — close to 30k rate limit. ` +
+                `Consider reducing codebase size or chat history.`,
+            );
+          }
 
           if (trimmedMessages.length < filteredMessages.length) {
             logger.log(
@@ -1073,6 +1101,23 @@ This conversation includes one or more image attachments. When the user uploads 
             messages: trimmedMessages,
             onFinish: (response) => {
               const totalTokens = response.usage?.totalTokens;
+              const inputTokens = response.usage?.inputTokens;
+
+              // Correct rate limiter with actual usage when available
+              if (typeof inputTokens === "number" && inputTokens > 0) {
+                const recorded = Math.ceil(estimatedTokens * 1.3);
+                if (inputTokens > recorded) {
+                  // Actual was higher than estimate — record the difference
+                  const correction = inputTokens - recorded;
+                  tokenRateLimiter.recordUsage(
+                    modelClient.builtinProviderId ?? "unknown",
+                    correction,
+                  );
+                  logger.log(
+                    `Rate limiter correction: actual ${inputTokens} > estimated ${recorded}, added ${correction} tokens`,
+                  );
+                }
+              }
 
               if (typeof totalTokens === "number") {
                 // We use the highest total tokens used (we are *not* accumulating)
@@ -1272,6 +1317,8 @@ This conversation includes one or more image attachments. When the user uploads 
 
         // When calling streamText, the messages need to be properly formatted for mixed content
         // ---------- Rate-limit-aware retry loop ----------
+        // On rate limit errors, progressively trim context before retrying.
+        // This handles both cumulative rate limits AND single-request-too-large errors.
         const MAX_RATE_LIMIT_RETRIES = 3;
         const RATE_LIMIT_WAIT_MS = 62_000; // wait just over 60s for the rate window to reset
 
@@ -1280,6 +1327,28 @@ This conversation includes one or more image attachments. When the user uploads 
           rateLimitAttempt <= MAX_RATE_LIMIT_RETRIES;
           rateLimitAttempt++
         ) {
+          // On retries, progressively trim chatMessages to reduce token count.
+          // Each retry removes more history context to get under the limit.
+          if (rateLimitAttempt > 0) {
+            const budgetReduction = rateLimitAttempt * 2_000; // remove ~2k more tokens each retry
+            const newBudget = Math.max(10_000 - budgetReduction, 4_000);
+            logger.log(
+              `Rate limit retry #${rateLimitAttempt}: reducing token budget to ${newBudget}`,
+            );
+            const filteredRetry = chatMessages.filter((m) => m.content);
+            chatMessages = trimMessagesToFitBudget(
+              systemPrompt,
+              filteredRetry,
+              newBudget,
+            );
+            // Also truncate system prompt if still too large
+            const retryMaxSysChars = 7_000 - rateLimitAttempt * 2_000;
+            if (systemPrompt.length > retryMaxSysChars) {
+              systemPrompt =
+                systemPrompt.slice(0, Math.max(retryMaxSysChars, 3_000)) +
+                "\n[System prompt truncated for retry]";
+            }
+          }
           try {
             const { fullStream } = await simpleStreamText({
               chatMessages,
@@ -1356,9 +1425,9 @@ ${formattedSearchReplaceIssues}`,
 
               const { fullStream: fixSearchReplaceStream } =
                 await simpleStreamText({
-                  // Build messages: reuse chat history and original full response, then ask to fix search-replace issues.
+                  // For fix loops, use only essential messages — skip codebase prefix to save tokens.
+                  // The original response already contains relevant context.
                   chatMessages: [
-                    ...chatMessages,
                     { role: "assistant", content: originalFullResponse },
                     ...previousAttempts,
                     userPrompt,
@@ -1415,11 +1484,8 @@ ${formattedSearchReplaceIssues}`,
               continuationAttempts++;
 
               const { fullStream: contStream } = await simpleStreamText({
-                // Build messages: replay history then pre-fill assistant with current partial.
-                chatMessages: [
-                  ...chatMessages,
-                  { role: "assistant", content: fullResponse },
-                ],
+                // For continuation, skip codebase — the partial response has all relevant context.
+                chatMessages: [{ role: "assistant", content: fullResponse }],
                 modelClient,
                 files: files,
               });
@@ -1494,7 +1560,7 @@ ${problemReport.problems
                   writeTags,
                 });
 
-                const { formattedOutput: codebaseInfo, files } =
+                const { formattedOutput: updatedCodebaseInfo, files } =
                   await extractCodebase({
                     appPath,
                     chatContext,
@@ -1505,24 +1571,21 @@ ${problemReport.problems
                   settings,
                 );
 
+                // For auto-fix loops, use minimal context: truncated codebase + original + fix prompt
+                const MAX_FIX_CODEBASE_CHARS = 4_000;
+                let fixCodebaseContent = createCodebasePrompt(updatedCodebaseInfo);
+                if (fixCodebaseContent.length > MAX_FIX_CODEBASE_CHARS) {
+                  fixCodebaseContent =
+                    fixCodebaseContent.slice(0, MAX_FIX_CODEBASE_CHARS) +
+                    "\n[Codebase truncated for fix context]";
+                }
+
                 const { fullStream } = await simpleStreamText({
                   modelClient,
                   files: files,
                   chatMessages: [
-                    ...chatMessages.map((msg, index) => {
-                      if (
-                        index === 0 &&
-                        msg.role === "user" &&
-                        typeof msg.content === "string" &&
-                        msg.content.startsWith(CODEBASE_PROMPT_PREFIX)
-                      ) {
-                        return {
-                          role: "user",
-                          content: createCodebasePrompt(codebaseInfo),
-                        } as const;
-                      }
-                      return msg;
-                    }),
+                    { role: "user", content: fixCodebaseContent },
+                    { role: "assistant", content: "OK." },
                     {
                       role: "assistant",
                       content: removeNonEssentialTags(originalFullResponse),
@@ -1985,7 +2048,8 @@ function removeNonEssentialTags(text: string): string {
 
 function removeThinkingTags(text: string): string {
   const thinkRegex = /<think>([\s\S]*?)<\/think>/g;
-  return text.replace(thinkRegex, "").trim();
+  const joyThinkRegex = /<joy-think>([\s\S]*?)<\/joy-think>/g;
+  return text.replace(thinkRegex, "").replace(joyThinkRegex, "").trim();
 }
 
 export function removeProblemReportTags(text: string): string {

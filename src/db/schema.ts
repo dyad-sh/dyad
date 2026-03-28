@@ -2226,3 +2226,6 @@ export * from "./ssi_schema";
 
 // ── AI Email Agent ────────────────────────────────────────────
 export * from "./email_schema";
+
+// ── Autonomous Missions (Background Task Persistence) ─────────
+export * from "./mission_schema";

@@ -7,6 +7,11 @@ import { exec } from "node:child_process";
 import { z } from "zod";
 import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlContent } from "./types";
+import {
+  parseErrors,
+  formatErrorsForAgent,
+} from "@/lib/error_parser";
+import type { ErrorSource } from "@/types/error_types";
 
 const logger = log.scope("get_app_logs");
 
@@ -101,6 +106,24 @@ Use this after making changes to verify the app compiles correctly.
               output.slice(0, MAX / 2) +
               "\n\n... [output truncated] ...\n\n" +
               output.slice(-MAX / 2);
+          }
+
+          // Parse errors into structured format for the agent
+          if (error) {
+            const sourceMap: Record<string, ErrorSource> = {
+              typecheck: "typescript",
+              build: "build",
+              lint: "lint",
+            };
+            const structured = parseErrors(
+              output,
+              sourceMap[checkType] ?? "typescript",
+            );
+            if (structured.length > 0) {
+              output +=
+                "\n\n--- Structured Analysis ---\n" +
+                formatErrorsForAgent(structured);
+            }
           }
 
           resolve(output);

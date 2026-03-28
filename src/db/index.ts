@@ -67,6 +67,34 @@ export function initializeDatabase(): BetterSQLite3Database<typeof schema> & {
     logger.error("Migration error:", error);
   }
 
+  // Self-healing: ensure autonomous_missions table exists even if migration failed
+  try {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS \`autonomous_missions\` (
+        \`id\` text PRIMARY KEY NOT NULL,
+        \`app_id\` integer,
+        \`agent_id\` text,
+        \`title\` text NOT NULL,
+        \`description\` text,
+        \`status\` text DEFAULT 'pending' NOT NULL,
+        \`phases\` text,
+        \`current_phase_index\` integer,
+        \`log\` text DEFAULT '',
+        \`verify_attempts\` integer DEFAULT 0 NOT NULL,
+        \`last_error\` text,
+        \`target_app_path\` text,
+        \`created_at\` integer DEFAULT (unixepoch()) NOT NULL,
+        \`updated_at\` integer DEFAULT (unixepoch()) NOT NULL,
+        \`completed_at\` integer,
+        FOREIGN KEY (\`app_id\`) REFERENCES \`apps\`(\`id\`) ON UPDATE no action ON DELETE cascade
+      )
+    `);
+    sqlite.exec(`CREATE INDEX IF NOT EXISTS \`idx_missions_status\` ON \`autonomous_missions\` (\`status\`)`);
+    sqlite.exec(`CREATE INDEX IF NOT EXISTS \`idx_missions_app\` ON \`autonomous_missions\` (\`app_id\`)`);
+  } catch (fallbackError) {
+    logger.error("Failed to ensure autonomous_missions table:", fallbackError);
+  }
+
   return _db as any;
 }
 

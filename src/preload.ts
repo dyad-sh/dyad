@@ -110,6 +110,7 @@ const validInvokeChannels = [
   "execute-app-upgrade",
   "is-capacitor",
   "sync-capacitor",
+  "capacitor:init",
   "open-ios",
   "open-android",
   "check-problems",
@@ -509,6 +510,7 @@ const validInvokeChannels = [
   "marketplace:list-assets",
   "marketplace:get-asset",
   "marketplace:publish",
+  "marketplace:publish-model",
   "marketplace:update-asset",
   "marketplace:unpublish",
   "marketplace:earnings",
@@ -1045,6 +1047,13 @@ const validInvokeChannels = [
   "autonomous-agent:subscribe",
   "autonomous-agent:unsubscribe",
   "autonomous-agent:inference-response",
+  // Background Mission Management
+  "mission:start",
+  "mission:get",
+  "mission:list",
+  "mission:pause",
+  "mission:resume",
+  "mission:cancel",
   // Autonomous Agent Production - Resource monitoring, security, scheduling, approvals, etc.
   "autonomous-prod:initialize",
   "autonomous-prod:shutdown",
@@ -1085,6 +1094,14 @@ const validInvokeChannels = [
   "model-factory:import-adapter",
   "model-factory:list-adapters",
   "model-factory:delete-adapter",
+  // HuggingFace Hub - Model/dataset search, download, push
+  "hf:search-models",
+  "hf:search-datasets",
+  "hf:model-info",
+  "hf:download-model",
+  "hf:download-dataset",
+  "hf:push-adapter",
+  "hf:auth-status",
   // Agent Factory - Custom AI agent creation and training
   "agent-factory:create",
   "agent-factory:get",
@@ -1810,6 +1827,8 @@ const validReceiveChannels = [
   // Model Factory training events
   "model-factory:training-progress",
   "model-factory:training-completed",
+  // HuggingFace Hub events
+  "hf:download-progress",
   // Agent Factory events
   "agent-factory:event",
   // Hyper Liquid Data Pipeline events

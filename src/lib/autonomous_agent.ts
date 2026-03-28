@@ -20,6 +20,14 @@ import { spawn, ChildProcess, exec } from "node:child_process";
 import { promisify } from "node:util";
 import Database from "better-sqlite3";
 import { getOpenClawSystemIntegration } from "@/lib/openclaw_system_integration";
+import { generateText } from "ai";
+import { getModelClient } from "@/ipc/utils/get_model_client";
+import { readSettings } from "@/main/settings";
+import {
+  executeViaBridge,
+  hasBridgedTool,
+  type BridgeConfig,
+} from "@/lib/autonomous_tool_bridge";
 
 const execAsync = promisify(exec);
 
@@ -2004,6 +2012,17 @@ export class AutonomousAgentSystem extends EventEmitter {
     phase: MissionPhase,
     action: PhaseAction
   ): Promise<ActionResult> {
+    // Route file/command/scrape actions through the local-agent tool bridge
+    // when a target app path is available on the mission.
+    const targetAppPath = (mission as any).targetAppPath as string | undefined;
+    if (hasBridgedTool(action.type) && targetAppPath) {
+      const bridgeConfig: BridgeConfig = {
+        appPath: targetAppPath,
+        onOutput: (xml) => this.emit("action:output", { missionId: mission.id, xml }),
+      };
+      return executeViaBridge(action.type, action.params, bridgeConfig);
+    }
+
     switch (action.type) {
       case "search_web":
         return this.executeWebSearch(action.params);
@@ -2448,13 +2467,8 @@ Output as tailwind.config.js:
       // Check if OpenClaw is initialized, if not use fallback
       const config = OpenClaw.getConfig();
       if (!config.enabled || !config.useForAgents) {
-        // Fallback to event-based handling
-        this.emit("model:inference:request", {
-          agentId: agent.id,
-          model: agent.config.primaryModel,
-          prompt,
-        });
-        return `[Model response for: ${prompt.substring(0, 100)}...]`;
+        // Fallback: use the user's configured AI provider via getModelClient
+        return await this.runModelInferenceViaSettings(agent, prompt);
       }
       
       // Build system prompt from agent context
@@ -2484,9 +2498,46 @@ Output as tailwind.config.js:
         error: error instanceof Error ? error.message : String(error),
       });
       
-      // Return placeholder on error (graceful degradation)
-      return `[Model inference failed: ${error instanceof Error ? error.message : "Unknown error"}]`;
+      // Try settings-based fallback if OpenClaw failed
+      try {
+        return await this.runModelInferenceViaSettings(agent, prompt);
+      } catch {
+        throw error; // Re-throw original if fallback also fails
+      }
     }
+  }
+  
+  /**
+   * Fallback inference using the user's configured AI provider (same as chat).
+   */
+  private async runModelInferenceViaSettings(
+    agent: AutonomousAgent,
+    prompt: string,
+  ): Promise<string> {
+    const settings = readSettings();
+    const { modelClient } = await getModelClient(
+      settings.selectedModel,
+      settings,
+    );
+
+    const systemPrompt = `You are an autonomous AI agent named "${agent.name}". Your purpose is: ${agent.purpose}. Respond concisely and precisely.`;
+
+    const result = await generateText({
+      model: modelClient.model,
+      system: systemPrompt,
+      prompt,
+      maxOutputTokens: 4096,
+      temperature: agent.config.temperature || 0.7,
+    });
+
+    this.emit("model:inference:completed", {
+      agentId: agent.id,
+      model: settings.selectedModel.name,
+      prompt: prompt.substring(0, 100),
+      responseLength: result.text.length,
+    });
+
+    return result.text;
   }
   
   private async executeAnalysis(mission: Mission): Promise<ActionResult> {

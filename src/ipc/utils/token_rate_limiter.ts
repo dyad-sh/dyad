@@ -133,10 +133,30 @@ class TokenRateLimiter {
     providerId: string,
     estimatedTokens: number,
   ): Promise<number> {
-    // Apply 1.3x safety multiplier: our estimation doesn't account for
+    // Apply 1.5x safety multiplier: our estimation doesn't account for
     // tool schemas, per-message overhead, XML formatting overhead, etc.
     // that Anthropic counts as input tokens.
-    const safeEstimate = Math.ceil(estimatedTokens * 1.3);
+    const safeEstimate = Math.ceil(estimatedTokens * 1.5);
+
+    // Auto-queue: if the window is already >70% utilized, add a minimum
+    // cooldown delay even if we technically fit. This prevents rapid-fire
+    // messages from stacking up and hitting the hard limit.
+    const limit = this.getLimit(providerId);
+    let totalDelay = 0;
+    if (limit) {
+      const currentUsage = this.getTokensUsedInWindow(providerId);
+      const utilization = currentUsage / limit.inputTokensPerMinute;
+      if (utilization > 0.7) {
+        // Scale delay: 70% → 3s, 80% → 6s, 90% → 10s
+        const cooldownMs = Math.ceil((utilization - 0.7) * 33_000);
+        logger.log(
+          `Rate limiter: ${Math.round(utilization * 100)}% utilized, adding ${Math.round(cooldownMs / 1000)}s cooldown`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, cooldownMs));
+        totalDelay += cooldownMs;
+      }
+    }
+
     const delay = this.getRequiredDelay(providerId, safeEstimate);
 
     if (delay > 0) {
@@ -145,10 +165,44 @@ class TokenRateLimiter {
           `(${this.getTokensUsedInWindow(providerId)} tokens used in window)`,
       );
       await new Promise((resolve) => setTimeout(resolve, delay));
+      totalDelay += delay;
     }
 
     this.recordUsage(providerId, safeEstimate);
-    return delay;
+    return totalDelay;
+  }
+
+  /**
+   * Correct the rate limiter when actual usage differs from the estimate.
+   * If actual > recorded, adds the difference. If actual < recorded,
+   * reduces the window usage so future requests get through sooner.
+   */
+  correctUsage(
+    providerId: string,
+    estimatedTokens: number,
+    actualTokens: number,
+  ): void {
+    const recorded = Math.ceil(estimatedTokens * 1.5);
+    if (actualTokens > recorded) {
+      const correction = actualTokens - recorded;
+      this.recordUsage(providerId, correction);
+      logger.log(
+        `Rate limiter correction: actual ${actualTokens} > estimated ${recorded}, added ${correction} tokens`,
+      );
+    } else if (actualTokens < recorded * 0.7) {
+      // Actual was much less than recorded — remove the excess from the window
+      // so we don't unnecessarily block future requests.
+      const excess = recorded - actualTokens;
+      const records = this.records.get(providerId);
+      if (records && records.length > 0) {
+        // Reduce the most recent record by the excess amount
+        const last = records[records.length - 1];
+        last.tokens = Math.max(0, last.tokens - excess);
+        logger.log(
+          `Rate limiter correction: actual ${actualTokens} << estimated ${recorded}, freed ${excess} tokens`,
+        );
+      }
+    }
   }
 }
 

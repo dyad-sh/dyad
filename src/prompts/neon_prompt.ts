@@ -92,6 +92,10 @@ When you build queries:
 
 ### Default Packages
 
+Treat the package guidance in this prompt as the default source of truth for Neon work in Next.js.
+- If the request needs Neon Auth and \`@neondatabase/auth\` is not already listed in \`package.json\`, install \`@neondatabase/auth\` directly before writing code.
+- Do not use web search to figure out which Neon Auth package to install or which import surface to start from.
+
 Start with the minimum packages needed for the requested path:
 - \`@neondatabase/serverless\` for server-side database access
 - \`@neondatabase/auth\` for Neon Auth in Next.js
@@ -117,6 +121,8 @@ export async function GET() {
 ### Neon Auth API Path
 
 For Next.js auth, use the current unified SDK surface and avoid legacy APIs such as \`authApiHandler\`, \`neonAuthMiddleware\`, \`createAuthServer\`, or stale Neon Auth v0.1 / Stack Auth patterns.
+
+If the project does not already list \`@neondatabase/auth\`, install it directly before wiring auth. Use the API surface below instead of searching the web for setup snippets.
 
 \`lib/auth/server.ts\`
 
@@ -207,27 +213,23 @@ export default auth.middleware({
 ### Neon Auth UI Path
 
 If the user wants prebuilt auth or account pages, use the current UI package surface:
+- Install \`@neondatabase/auth\` directly if it is missing.
 - \`createAuthClient\` from \`@neondatabase/auth/next\`
 - Do not use \`createAuthClient('/api/auth')\` in Next.js; use \`createAuthClient()\`
-- Resolve the actual UI component import path from the installed package exports and type definitions before generating imports.
-- Depending on the installed package version, the working UI path may be \`@neondatabase/auth/react\` or \`@neondatabase/auth/react/ui\`.
-- Keep \`NeonAuthUIProvider\`, \`AuthView\`, and \`UserButton\` imported from the same resolved UI module path.
+- Use \`@neondatabase/auth/react\` as the default UI import path for \`NeonAuthUIProvider\`, \`AuthView\`, and \`UserButton\`.
+- Keep \`NeonAuthUIProvider\`, \`AuthView\`, and \`UserButton\` imported from the same module path.
+- If the app already has a working Neon Auth UI import path, reuse it instead of changing it.
+- Do not browse/search the web for Neon Auth package exports or setup instructions.
 - Do not use stale \`@neondatabase/neon-js/auth/react/ui\` Next.js examples.
 
-If the app already uses Tailwind CSS v4, add:
-\`\`\`css
-@import "tailwindcss";
-@import "@neondatabase/auth/ui/tailwind";
-\`\`\`
+#### Styling Auth Components
 
-If the app does not use Tailwind, use the prebuilt CSS import instead:
-\`\`\`typescript
-import "@neondatabase/auth/ui/css";
-\`\`\`
+**Do NOT use Neon Auth's default styles.** Style auth components (AuthView, UserButton) to match the app's existing design (colors, fonts, spacing, theme). The auth UI should look like a natural part of the app, not a third-party widget. Do not import Neon Auth CSS files — the app's own styles should govern auth components.
 
 \`app/auth/[path]/page.tsx\`
 \`\`\`tsx
-import { AuthView } from '<resolved @neondatabase/auth UI import path>';
+import { AuthView } from '@neondatabase/auth/react';
+import './auth.css'; // or import "@neondatabase/auth/ui/css" if not using Tailwind
 
 export const dynamicParams = false;
 
@@ -248,7 +250,7 @@ import { authClient } from '@/lib/auth/client';
 import {
   NeonAuthUIProvider,
   UserButton,
-} from '<resolved @neondatabase/auth UI import path>';
+} from '@neondatabase/auth/react';
 
 export default function RootLayout({
   children,

@@ -308,14 +308,12 @@ export function getNeonClientCode(
     return `// Neon Database Client (server-side only)
 // File: src/db/index.ts
 import { neon } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-http';
-import * as schema from './schema';
 
-const sql = neon(process.env.DATABASE_URL!);
-export const db = drizzle(sql, { schema });
+export const sql = neon(process.env.DATABASE_URL!);
 
 // IMPORTANT: Only use this in server-side code (API routes, server actions, server components).
-// NEVER import @neondatabase/serverless in client-side React components.`;
+// NEVER import @neondatabase/serverless in client-side React components.
+// Prefer sql\`...\` tagged queries or Drizzle over string-built SQL.`;
   }
 
   // Fallback for "vite", "other", or null

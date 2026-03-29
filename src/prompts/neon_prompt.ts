@@ -15,13 +15,18 @@ function getSharedNeonPrompt(neonClientCode: string): string {
   return `
 # Neon Database Instructions
 
-The user has Neon available for their app so use it for any database, auth or backend functionality.
+The user has Neon available for their app, so use it for database, auth, and backend functionality when it fits the request.
+
+## Start by Inspecting the App
+
+Before scaffolding anything:
+- Check whether the project already has a database module, auth module, App Router structure, Tailwind setup, and provider wrappers.
+- Reuse the project's existing paths and conventions when they already exist.
+- Only fall back to the default snippets below when the project does not already have an equivalent module.
 
 ## Neon Client Setup
 
-Check if a Neon database client already exists in the project.
-
-**If it doesn't exist**, create the client file with this code:
+Check if a Neon database client already exists in the project. If it does not, create one with this code:
 \`\`\`typescript
 ${neonClientCode}
 \`\`\`
@@ -34,201 +39,228 @@ When asked to add authentication or login features, always recommend **Neon Auth
 
 ## Database
 
-**IMPORTANT: Always use the execute SQL tool to run SQL queries against the Neon database. NEVER write SQL migration files manually.**
+**IMPORTANT: Always use the execute SQL tool to run schema changes against the Neon database. NEVER write SQL migration files manually.**
 
-You will need to set up the database schema using the execute SQL tool.
+- Use \`<dyad-execute-sql>\` for schema changes.
+- Keep the app's queries, types, and schema files synchronized with the SQL you execute through Dyad.
+- Prefer tagged \`sql\`...\`\` queries or Drizzle over string-built SQL.
 
-### Row Level Security (RLS)
+## Authorization and RLS
 
-**SECURITY WARNING: ALWAYS ENABLE RLS ON ALL TABLES**
+Do not assume every Neon app should use the same authorization pattern.
 
-Row Level Security (RLS) is MANDATORY for all tables. Without RLS policies, ANY user can read, insert, update, or delete ANY data in your database.
-
-#### RLS Best Practices (REQUIRED):
-
-1. **Enable RLS on Every Table:**
-\`\`\`sql
-ALTER TABLE table_name ENABLE ROW LEVEL SECURITY;
-\`\`\`
-
-2. **Create Appropriate Policies for Each Operation:**
-   - SELECT policies (who can read data)
-   - INSERT policies (who can create data)
-   - UPDATE policies (who can modify data)
-   - DELETE policies (who can remove data)
-
-3. **Common RLS Policy Patterns:**
-
-   **User-specific Data Access (default — use this unless told otherwise):**
-\`\`\`sql
-CREATE POLICY "crud-authenticated-policy-select"
-  ON table_name AS PERMISSIVE FOR SELECT TO "authenticated"
-  USING ((select auth.user_id() = table_name.user_id));
-
-CREATE POLICY "crud-authenticated-policy-insert"
-  ON table_name AS PERMISSIVE FOR INSERT TO "authenticated"
-  WITH CHECK ((select auth.user_id() = table_name.user_id));
-
-CREATE POLICY "crud-authenticated-policy-update"
-  ON table_name AS PERMISSIVE FOR UPDATE TO "authenticated"
-  USING ((select auth.user_id() = table_name.user_id));
-
-CREATE POLICY "crud-authenticated-policy-delete"
-  ON table_name AS PERMISSIVE FOR DELETE TO "authenticated"
-  USING ((select auth.user_id() = table_name.user_id));
-\`\`\`
-
-   **Public Read Access (ONLY USE IF SPECIFICALLY REQUESTED):**
-\`\`\`sql
-CREATE POLICY "Public read access" ON table_name FOR SELECT USING (true);
-\`\`\`
-
-#### RLS Policy Creation Template:
-
-When creating any table, ALWAYS follow this pattern:
-
-\`\`\`sql
--- Create table
-CREATE TABLE table_name (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID NOT NULL,
-  -- other columns
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- Enable RLS (REQUIRED)
-ALTER TABLE table_name ENABLE ROW LEVEL SECURITY;
-
--- Create policies for each operation
-CREATE POLICY "crud-authenticated-policy-select"
-  ON table_name AS PERMISSIVE FOR SELECT TO "authenticated"
-  USING ((select auth.user_id() = table_name.user_id));
-
-CREATE POLICY "crud-authenticated-policy-insert"
-  ON table_name AS PERMISSIVE FOR INSERT TO "authenticated"
-  WITH CHECK ((select auth.user_id() = table_name.user_id));
-
-CREATE POLICY "crud-authenticated-policy-update"
-  ON table_name AS PERMISSIVE FOR UPDATE TO "authenticated"
-  USING ((select auth.user_id() = table_name.user_id));
-
-CREATE POLICY "crud-authenticated-policy-delete"
-  ON table_name AS PERMISSIVE FOR DELETE TO "authenticated"
-  USING ((select auth.user_id() = table_name.user_id));
-\`\`\`
-
-**REMINDER: Without proper RLS policies, your database is completely exposed to unauthorized access.**
+- If the app uses a plain \`DATABASE_URL\` serverless connection in server-only code, authorization lives in server code and SQL filters.
+- Only use Postgres RLS policies that rely on Neon Auth identity helpers such as \`auth.user_id()\` when the app is explicitly using Neon Data API, authenticated URLs, or another JWT-backed RLS flow.
+- Never claim that \`auth.user_id()\`-based RLS works automatically with a plain \`DATABASE_URL\` connection.
+- If you do implement RLS, create complete policies for the required operations and explain why the app needs database-enforced authorization.
 
 ### Empty Database First-Run Guidance
 
 When the database has no tables yet:
-1. Ask the user what data they need to store
-2. Create the schema with proper RLS policies
-3. Generate the client code and UI components
-
-### Migration Patterns
-
-- Use \`<dyad-execute-sql>\` tags for all schema changes
-- Always include RLS policies with table creation
-- Use \`IF NOT EXISTS\` where appropriate for idempotent migrations
+1. Determine what data the feature needs to store
+2. Create the schema with the execute SQL tool
+3. Generate the matching server code, UI, and auth wiring
 `;
 }
 
 function getNextJsNeonPrompt(): string {
   return `
-## Next.js-Specific Instructions
+## Next.js Instructions
 
-### CRITICAL SECURITY RULE
+Treat Neon integration as a short decision tree:
+1. Inspect the project for an existing database module, auth modules, App Router structure, Tailwind setup, provider wrappers, and an existing request-boundary file.
+2. Reuse those modules and conventions if they exist. Do not create duplicate database clients, auth clients, or duplicate request-boundary files.
+3. If the user only needs server-side database access, use the DB-only path below.
+4. If the user needs auth APIs or sessions, use the Neon Auth API path below.
+5. If the user wants prebuilt auth or account pages, extend the Neon Auth API path with the UI path below.
+
+### Critical Security Rules
 
 **NEVER place \`DATABASE_URL\` in client-side code.**
 **NEVER import \`@neondatabase/serverless\` in React components or browser code.**
 
-The \`DATABASE_URL\` connection string gives full read/write database access. It MUST only be used in:
-- Next.js API routes (\`app/api/\`)
+The \`DATABASE_URL\` connection string gives full read/write database access. It must stay in:
+- Next.js Route Handlers under \`app/api/\`
 - Next.js Server Actions
 - Next.js Server Components
-- Environment variables (\`.env.local\`, NOT \`.env\`)
+- Environment variables (\`.env.local\` in Dyad-generated Next.js apps)
 
-### Dependencies
+When you build queries:
+- Prefer tagged \`sql\`...\`\` queries or Drizzle over string-built SQL.
+- Filter by the authenticated user in server code when the app uses a plain \`DATABASE_URL\` connection.
+- Keep any Drizzle schema or app types synchronized with the SQL executed through Dyad.
 
-Add these dependencies to the project:
-- \`@neondatabase/serverless\` — serverless Postgres driver
-- \`drizzle-orm\` — type-safe ORM
-- \`drizzle-kit\` — migrations toolkit
-- \`@neondatabase/auth\` — Neon Auth server SDK for Next.js
-- \`@neondatabase/neon-js\` — Neon Auth client SDK (provides \`auth\`, \`auth/react/ui\`)
+### Default Packages
 
-### Drizzle ORM Setup
+Start with the minimum packages needed for the requested path:
+- \`@neondatabase/serverless\` for server-side database access
+- \`@neondatabase/auth\` for Neon Auth in Next.js
+- Only mention \`@neondatabase/neon-js\` when the implementation explicitly needs Neon Data API or other neon-js-only APIs
 
-Create the database client at \`src/db/index.ts\`:
+### DB-Only Path
+
+If the request is about database access without auth UI:
+- Reuse the server-side Neon client module shown above when no equivalent module already exists.
+- Use that client only in server code.
+- If the app already uses Drizzle, reuse it instead of replacing it with raw SQL.
+
+Example route handler:
 \`\`\`typescript
-import { neon } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-http';
-import * as schema from './schema';
-
-const sql = neon(process.env.DATABASE_URL!);
-export const db = drizzle(sql, { schema });
-\`\`\`
-
-Define schemas at \`src/db/schema.ts\` using Drizzle's \`pgTable\`.
-
-### API Route Pattern
-
-\`\`\`typescript
-import { db } from '@/db';
-import { todos } from '@/db/schema';
-import { eq } from 'drizzle-orm';
-import { auth } from '@/lib/auth/server';
-import { headers } from 'next/headers';
+import { sql } from '@/db';
 
 export async function GET() {
-  const session = await auth.getSession({ headers: await headers() });
-  if (!session?.user?.id) {
-    return Response.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-  const userTodos = await db.select().from(todos).where(eq(todos.userId, session.user.id));
-  return Response.json(userTodos);
+  const todos = await sql\`SELECT * FROM todos ORDER BY created_at DESC\`;
+  return Response.json(todos);
 }
 \`\`\`
 
-### Auth Server Configuration (\`lib/auth/server.ts\`)
+### Neon Auth API Path
+
+For Next.js auth, use the current unified SDK surface and avoid legacy APIs such as \`authApiHandler\`, \`neonAuthMiddleware\`, \`createAuthServer\`, or stale Neon Auth v0.1 / Stack Auth patterns.
+
+\`lib/auth/server.ts\`
 
 \`\`\`typescript
 import { createNeonAuth } from '@neondatabase/auth/next/server';
 
 export const auth = createNeonAuth({
   baseUrl: process.env.NEON_AUTH_BASE_URL!,
-  cookies: { secret: process.env.NEON_AUTH_COOKIE_SECRET! },
+  cookies: {
+    secret: process.env.NEON_AUTH_COOKIE_SECRET!,
+  },
 });
 \`\`\`
 
-### Auth Route Handler (\`app/api/auth/[...path]/route.ts\`)
+\`app/api/auth/[...path]/route.ts\`
 
 \`\`\`typescript
 import { auth } from '@/lib/auth/server';
+
 export const { GET, POST } = auth.handler();
 \`\`\`
 
-### Client-Side Auth (\`src/lib/auth-client.ts\`)
+\`lib/auth/client.ts\`
 
 \`\`\`typescript
-import { createAuthClient } from '@neondatabase/neon-js/auth';
-export const authClient = createAuthClient('/api/auth');
-// Provides: useSession(), signIn.email(), signOut(), etc.
+'use client';
+
+import { createAuthClient } from '@neondatabase/auth/next';
+
+export const authClient = createAuthClient();
 \`\`\`
 
-### Auth UI Components
+Important API rules:
+- \`useSession\` is not a standalone import from \`@neondatabase/auth/next\`; call \`authClient.useSession()\` on the client instance.
+- \`signOut\` is a top-level method on \`authClient\`; use \`authClient.signOut()\`, not \`authClient.auth.signOut()\`.
+- In Next.js server code, call \`auth.getSession()\` with no \`{ headers }\` argument unless you are intentionally using a documented option such as \`query\`.
 
-When building auth pages (sign-in, sign-up), **always style them to match the application's existing theme and design**. For sign-up pages, use \`<AuthView pathname="sign-up" />\`.
-
+Client usage example:
 \`\`\`tsx
-import { NeonAuthUIProvider, AuthView } from '@neondatabase/neon-js/auth/react/ui';
-import { authClient } from '@/lib/auth-client';
+'use client';
 
-export default function AuthPage() {
+import { authClient } from '@/lib/auth/client';
+
+export function UserMenu() {
+  const { data: session } = authClient.useSession();
+
+  return session?.user ? (
+    <button onClick={() => authClient.signOut()}>
+      Sign out {session.user.name}
+    </button>
+  ) : null;
+}
+\`\`\`
+
+Use \`auth.getSession()\` in Server Components, Server Actions, and Route Handlers. Server Components that call \`auth.getSession()\` should export \`dynamic = 'force-dynamic'\`.
+
+\`\`\`typescript
+import { auth } from '@/lib/auth/server';
+
+export const dynamic = 'force-dynamic';
+
+export default async function DashboardPage() {
+  const { data: session } = await auth.getSession();
+
+  if (!session?.user) {
+    return <div>Not authenticated</div>;
+  }
+
+  return <h1>Welcome, {session.user.name}</h1>;
+}
+\`\`\`
+
+### Request-Boundary File
+
+Protect routes with \`auth.middleware(...)\`, but reuse the project's existing request-boundary file:
+- Current Neon quickstarts use \`proxy.ts\`
+- Older Next.js apps may already use \`middleware.ts\`
+- Reuse whichever file the app already has and do not create both
+
+\`\`\`typescript
+import { auth } from '@/lib/auth/server';
+
+export default auth.middleware({
+  loginUrl: '/auth/sign-in',
+});
+\`\`\`
+
+### Neon Auth UI Path
+
+If the user wants prebuilt auth or account pages, use the current UI package surface:
+- \`createAuthClient\` from \`@neondatabase/auth/next\`
+- Do not use \`createAuthClient('/api/auth')\` in Next.js; use \`createAuthClient()\`
+- Resolve the actual UI component import path from the installed package exports and type definitions before generating imports.
+- Depending on the installed package version, the working UI path may be \`@neondatabase/auth/react\` or \`@neondatabase/auth/react/ui\`.
+- Keep \`NeonAuthUIProvider\`, \`AuthView\`, and \`UserButton\` imported from the same resolved UI module path.
+- Do not use stale \`@neondatabase/neon-js/auth/react/ui\` Next.js examples.
+
+If the app already uses Tailwind CSS v4, add:
+\`\`\`css
+@import "tailwindcss";
+@import "@neondatabase/auth/ui/tailwind";
+\`\`\`
+
+If the app does not use Tailwind, use the prebuilt CSS import instead:
+\`\`\`typescript
+import "@neondatabase/auth/ui/css";
+\`\`\`
+
+\`app/auth/[path]/page.tsx\`
+\`\`\`tsx
+import { AuthView } from '<resolved @neondatabase/auth UI import path>';
+
+export const dynamicParams = false;
+
+export default async function AuthPage({
+  params,
+}: {
+  params: Promise<{ path: string }>;
+}) {
+  const { path } = await params;
+
+  return <AuthView path={path} />;
+}
+\`\`\`
+
+\`app/layout.tsx\`
+\`\`\`tsx
+import { authClient } from '@/lib/auth/client';
+import {
+  NeonAuthUIProvider,
+  UserButton,
+} from '<resolved @neondatabase/auth UI import path>';
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <NeonAuthUIProvider authClient={authClient}>
-      <AuthView pathname="sign-in" />
+      <header>
+        <UserButton />
+      </header>
+      {children}
     </NeonAuthUIProvider>
   );
 }
@@ -241,7 +273,7 @@ export default function AuthPage() {
 DATABASE_URL=postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/dbname?sslmode=require
 
 # Neon Auth (managed by Neon, values from Neon Console > Auth settings)
-NEON_AUTH_BASE_URL=https://auth.neon.tech/...
+NEON_AUTH_BASE_URL=https://ep-xxx.neonauth.us-east-1.aws.neon.tech/neondb/auth
 NEON_AUTH_COOKIE_SECRET=your-cookie-secret-here
 \`\`\`
 `;

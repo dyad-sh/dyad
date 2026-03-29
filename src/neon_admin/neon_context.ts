@@ -318,35 +318,7 @@ export const db = drizzle(sql, { schema });
 // NEVER import @neondatabase/serverless in client-side React components.`;
   }
 
-  if (frameworkType === "vite") {
-    return `// Neon Client (Data API + Auth)
-// File: src/lib/auth.ts
-import { createClient } from '@neondatabase/neon-js';
-import { BetterAuthReactAdapter } from '@neondatabase/neon-js/auth/react/adapters';
-import type { Database } from '../../types/database';
-
-export const client = createClient<Database>({
-  auth: {
-    adapter: BetterAuthReactAdapter(),
-    url: import.meta.env.VITE_NEON_AUTH_URL,
-  },
-  dataApi: {
-    url: import.meta.env.VITE_NEON_DATA_API_URL,
-  },
-});
-
-// Query example (PostgREST-compatible):
-// const { data } = await client.from('todos').select('*').eq('completed', false);
-//
-// Insert with select-back:
-// const { data } = await client.from('todos').insert({ title }).select('*').single();
-//
-// IMPORTANT: Always configure RLS policies (TO "authenticated") on your tables.
-// NEVER use DATABASE_URL or @neondatabase/serverless in React/Vite apps.
-// The Data API validates JWT tokens from Neon Auth and enforces RLS automatically.`;
-  }
-
-  // Fallback for "other" or null
+  // Fallback for "vite", "other", or null
   return `// Neon Database Connection
 import { neon } from '@neondatabase/serverless';
 

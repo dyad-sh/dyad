@@ -173,23 +173,6 @@ function upsertEnvVar(envVars: EnvVar[], key: string, value: string): void {
 }
 
 /**
- * Derive Vite Neon URLs from the compute endpoint host.
- * endpointHost format: ep-xxx.<region>.aws.neon.tech
- */
-export function deriveViteNeonUrls(endpointHost: string): {
-  authUrl: string;
-  dataApiUrl: string;
-} {
-  const parts = endpointHost.split(".");
-  const epId = parts[0];
-  const rest = parts.slice(1).join(".");
-  return {
-    authUrl: `https://${epId}.neonauth.${rest}/neondb/auth`,
-    dataApiUrl: `https://${epId}.data.${rest}`,
-  };
-}
-
-/**
  * Derive the Neon Auth base URL for Next.js from the compute endpoint host.
  * endpointHost format: ep-xxx.<region>.aws.neon.tech
  */
@@ -216,7 +199,7 @@ export async function updateNeonEnvVars({
   appPath: string;
   connectionUri: string;
   frameworkType: "nextjs" | "vite" | "other" | null;
-  /** The compute endpoint host (for deriving Vite URLs) */
+  /** The compute endpoint host (for deriving Next.js auth URLs) */
   endpointHost?: string;
 }): Promise<void> {
   let envVars: EnvVar[];
@@ -228,28 +211,18 @@ export async function updateNeonEnvVars({
     envVars = [];
   }
 
-  if (frameworkType === "vite" && endpointHost) {
-    const { authUrl, dataApiUrl } = deriveViteNeonUrls(endpointHost);
-    upsertEnvVar(envVars, "VITE_NEON_AUTH_URL", authUrl);
-    upsertEnvVar(envVars, "VITE_NEON_DATA_API_URL", dataApiUrl);
-  } else {
-    upsertEnvVar(envVars, "DATABASE_URL", connectionUri);
-    upsertEnvVar(envVars, "POSTGRES_URL", connectionUri);
+  upsertEnvVar(envVars, "DATABASE_URL", connectionUri);
+  upsertEnvVar(envVars, "POSTGRES_URL", connectionUri);
 
-    if (frameworkType === "nextjs" && endpointHost) {
-      const authBaseUrl = deriveNeonAuthBaseUrl(endpointHost);
-      upsertEnvVar(envVars, "NEON_AUTH_BASE_URL", authBaseUrl);
-      // Only generate a new cookie secret if one doesn't already exist
-      const existingSecret = envVars.find(
-        (v) => v.key === "NEON_AUTH_COOKIE_SECRET",
-      );
-      if (!existingSecret) {
-        upsertEnvVar(
-          envVars,
-          "NEON_AUTH_COOKIE_SECRET",
-          generateCookieSecret(),
-        );
-      }
+  if (frameworkType === "nextjs" && endpointHost) {
+    const authBaseUrl = deriveNeonAuthBaseUrl(endpointHost);
+    upsertEnvVar(envVars, "NEON_AUTH_BASE_URL", authBaseUrl);
+    // Only generate a new cookie secret if one doesn't already exist
+    const existingSecret = envVars.find(
+      (v) => v.key === "NEON_AUTH_COOKIE_SECRET",
+    );
+    if (!existingSecret) {
+      upsertEnvVar(envVars, "NEON_AUTH_COOKIE_SECRET", generateCookieSecret());
     }
   }
 

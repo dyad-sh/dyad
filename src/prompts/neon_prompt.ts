@@ -8,10 +8,6 @@ export function getNeonAvailableSystemPrompt(
     return sharedPrompt + getNextJsNeonPrompt();
   }
 
-  if (frameworkType === "vite") {
-    return sharedPrompt + getViteNeonPrompt();
-  }
-
   return sharedPrompt + getGenericNeonPrompt();
 }
 
@@ -247,104 +243,6 @@ DATABASE_URL=postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/dbname?sslmod
 # Neon Auth (managed by Neon, values from Neon Console > Auth settings)
 NEON_AUTH_BASE_URL=https://auth.neon.tech/...
 NEON_AUTH_COOKIE_SECRET=your-cookie-secret-here
-\`\`\`
-`;
-}
-
-function getViteNeonPrompt(): string {
-  return `
-## React/Vite-Specific Instructions
-
-### CRITICAL SECURITY RULE
-
-**NEVER use \`DATABASE_URL\` or \`@neondatabase/serverless\` in React/Vite apps.**
-
-React/Vite apps use the **Neon Data API** — a managed REST proxy that validates JWT tokens from Neon Auth and enforces PostgreSQL Row-Level Security (RLS). This eliminates the need for a server layer or exposed connection strings.
-
-**ALWAYS use the Data API via \`@neondatabase/neon-js\` for all database queries.**
-**ALWAYS configure RLS policies with \`TO "authenticated"\` role on ALL tables.**
-**ALWAYS authenticate via Neon Auth before making Data API requests.**
-
-### Dependencies
-
-Add these dependencies to the project:
-- \`@neondatabase/neon-js\` — unified client SDK (provides \`createClient\` for Data API queries, \`BetterAuthReactAdapter\` for auth, and \`auth/react/ui\` for pre-built components)
-- \`drizzle-orm\` — type-safe ORM (optional)
-
-### Neon Client Setup (\`src/lib/auth.ts\`)
-
-\`\`\`typescript
-import { createClient } from '@neondatabase/neon-js';
-import { BetterAuthReactAdapter } from '@neondatabase/neon-js/auth/react/adapters';
-import type { Database } from '../../types/database';
-
-export const client = createClient<Database>({
-  auth: {
-    adapter: BetterAuthReactAdapter(),
-    url: import.meta.env.VITE_NEON_AUTH_URL,
-  },
-  dataApi: {
-    url: import.meta.env.VITE_NEON_DATA_API_URL,
-  },
-});
-\`\`\`
-
-### Data API Query Patterns (PostgREST-compatible)
-
-\`\`\`typescript
-// SELECT
-const { data } = await client.from('todos').select('id, title, completed, created_at').order('created_at', { ascending: false });
-
-// INSERT with select-back
-const { data } = await client.from('todos').insert({ title: newTitle }).select('id, title, completed, created_at').single();
-
-// UPDATE
-const { error } = await client.from('todos').update({ completed: true }).eq('id', todoId);
-
-// DELETE
-const { error } = await client.from('todos').delete().eq('id', todoId);
-\`\`\`
-
-### Auth Patterns
-
-Auth is handled via the \`BetterAuthReactAdapter\` configured in the client:
-
-\`\`\`typescript
-// Sign up
-await client.auth.signUp.email({ name: 'User', email, password });
-
-// Sign in
-await client.auth.signIn.email({ email, password });
-
-// Sign out
-await client.auth.signOut();
-\`\`\`
-
-### Auth UI Components
-
-When building auth pages (sign-in, sign-up), **always style them to match the application's existing theme and design**. For sign-up pages, use \`<AuthView pathname="sign-up" />\`.
-
-\`\`\`tsx
-import { NeonAuthUIProvider, AuthView } from '@neondatabase/neon-js/auth/react/ui';
-import { client } from '@/lib/auth';
-
-export default function AuthPage() {
-  return (
-    <NeonAuthUIProvider authClient={client.auth} theme="auto">
-      <AuthView pathname="sign-in" />
-    </NeonAuthUIProvider>
-  );
-}
-\`\`\`
-
-### Environment Variables (\`.env\`)
-
-\`\`\`bash
-# Neon Auth (managed by Neon, values from Neon Console > Auth settings)
-VITE_NEON_AUTH_URL=https://ep-xxx.neonauth.us-east-2.aws.neon.tech/neondb/auth
-
-# Neon Data API (enabled in Neon Console > Data API)
-VITE_NEON_DATA_API_URL=https://ep-xxx.data.us-east-2.aws.neon.build
 \`\`\`
 `;
 }

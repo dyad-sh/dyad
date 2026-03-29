@@ -29,7 +29,7 @@ export const logger = log.scope("neon_handlers");
 const testOnlyHandle = createTestOnlyLoggedHandler(logger);
 
 /**
- * Fetches the endpoint host for a branch, used to derive Vite auth/data URLs.
+ * Fetches the endpoint host for a branch, used to derive auth URLs for Next.js.
  */
 async function getEndpointHost(
   neonClient: Awaited<ReturnType<typeof getNeonClient>>,
@@ -132,7 +132,7 @@ export function registerNeonHandlers() {
             getDyadAppPath(appRecord[0].path),
           );
           const endpointHost =
-            frameworkType === "vite" || frameworkType === "nextjs"
+            frameworkType === "nextjs"
               ? await getEndpointHost(
                   neonClient,
                   project.id,
@@ -371,7 +371,7 @@ export function registerNeonHandlers() {
               getDyadAppPath(appRecord[0].path),
             );
             const endpointHost =
-              frameworkType === "vite" || frameworkType === "nextjs"
+              frameworkType === "nextjs"
                 ? await getEndpointHost(neonClient, projectId, activeBranchId)
                 : undefined;
             await updateNeonEnvVars({
@@ -471,7 +471,7 @@ export function registerNeonHandlers() {
             getDyadAppPath(appData.path),
           );
           const endpointHost =
-            frameworkType === "vite" || frameworkType === "nextjs"
+            frameworkType === "nextjs"
               ? await getEndpointHost(
                   neonClient,
                   appData.neonProjectId,

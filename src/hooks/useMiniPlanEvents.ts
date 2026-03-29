@@ -1,0 +1,70 @@
+import { useEffect } from "react";
+import { useSetAtom } from "jotai";
+import { miniPlanStateAtom } from "@/atoms/miniPlanAtoms";
+import {
+  miniPlanEventClient,
+  type MiniPlanUpdatePayload,
+  type MiniPlanVisualsUpdatePayload,
+  type MiniPlanApprovedPayload,
+} from "@/ipc/types/mini_plan";
+
+/**
+ * Hook to handle mini plan IPC events.
+ * Should be called at the app root level to listen for mini plan events.
+ */
+export function useMiniPlanEvents() {
+  const setMiniPlanState = useSetAtom(miniPlanStateAtom);
+
+  useEffect(() => {
+    const unsubscribeUpdate = miniPlanEventClient.onUpdate(
+      (payload: MiniPlanUpdatePayload) => {
+        setMiniPlanState((prev) => {
+          const nextPlans = new Map(prev.plansByChatId);
+          nextPlans.set(payload.chatId, payload.data);
+          return {
+            ...prev,
+            plansByChatId: nextPlans,
+          };
+        });
+      },
+    );
+
+    const unsubscribeVisualsUpdate = miniPlanEventClient.onVisualsUpdate(
+      (payload: MiniPlanVisualsUpdatePayload) => {
+        setMiniPlanState((prev) => {
+          const nextPlans = new Map(prev.plansByChatId);
+          const existingPlan = nextPlans.get(payload.chatId);
+          if (existingPlan) {
+            nextPlans.set(payload.chatId, {
+              ...existingPlan,
+              visuals: payload.visuals,
+            });
+          }
+          return {
+            ...prev,
+            plansByChatId: nextPlans,
+          };
+        });
+      },
+    );
+
+    const unsubscribeApproved = miniPlanEventClient.onApproved(
+      (payload: MiniPlanApprovedPayload) => {
+        setMiniPlanState((prev) => {
+          const nextApproved = new Set(prev.approvedChatIds);
+          nextApproved.add(payload.chatId);
+          return {
+            ...prev,
+            approvedChatIds: nextApproved,
+          };
+        });
+      },
+    );
+
+    return () => {
+      unsubscribeUpdate();
+      unsubscribeVisualsUpdate();
+      unsubscribeApproved();
+    };
+  }, [setMiniPlanState]);
+}

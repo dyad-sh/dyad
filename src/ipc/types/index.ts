@@ -53,6 +53,7 @@ export { freeAgentQuotaContracts } from "./free_agent_quota";
 export { audioContracts } from "./audio";
 export { mediaContracts } from "./media";
 export { imageGenerationContracts } from "./image_generation";
+export { miniPlanContracts, miniPlanEvents } from "./mini_plan";
 
 // =============================================================================
 // Client Exports
@@ -85,6 +86,7 @@ export { freeAgentQuotaClient } from "./free_agent_quota";
 export { audioClient } from "./audio";
 export { mediaClient } from "./media";
 export { imageGenerationClient } from "./image_generation";
+export { miniPlanClient, miniPlanEventClient } from "./mini_plan";
 
 // =============================================================================
 // Type Exports
@@ -315,6 +317,17 @@ export type {
   GenerateImageResponse,
 } from "./image_generation";
 
+// Mini plan types
+export type {
+  MiniPlanVisual,
+  MiniPlanData,
+  MiniPlanUpdatePayload,
+  MiniPlanVisualsUpdatePayload,
+  MiniPlanApprovePayload,
+  MiniPlanFieldEditPayload,
+  MiniPlanApprovedPayload,
+} from "./mini_plan";
+
 // =============================================================================
 // Schema Exports (for validation in handlers/components)
 // =============================================================================
@@ -374,6 +387,7 @@ import { freeAgentQuotaClient } from "./free_agent_quota";
 import { audioClient } from "./audio";
 import { mediaClient } from "./media";
 import { imageGenerationClient } from "./image_generation";
+import { miniPlanClient, miniPlanEventClient } from "./mini_plan";
 
 /**
  * Unified IPC client with all domains organized by namespace.
@@ -432,6 +446,7 @@ export const ipc = {
   audio: audioClient,
   media: mediaClient,
   imageGeneration: imageGenerationClient,
+  miniPlan: miniPlanClient,
 
   // Event clients for main->renderer pub/sub
   events: {
@@ -440,5 +455,6 @@ export const ipc = {
     mcp: mcpEventClient,
     system: systemEventClient,
     misc: miscEventClient,
+    miniPlan: miniPlanEventClient,
   },
 } as const;

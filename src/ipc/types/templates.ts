@@ -45,6 +45,24 @@ export const GetAppThemeParamsSchema = z.object({
 
 export type GetAppThemeParams = z.infer<typeof GetAppThemeParamsSchema>;
 
+export const ApplyAppTemplateParamsSchema = z.object({
+  appId: z.number(),
+  templateId: z.string(),
+  chatId: z.number().optional(),
+});
+
+export type ApplyAppTemplateParams = z.infer<
+  typeof ApplyAppTemplateParamsSchema
+>;
+
+export const ApplyAppTemplateResultSchema = z.object({
+  applied: z.boolean(),
+});
+
+export type ApplyAppTemplateResult = z.infer<
+  typeof ApplyAppTemplateResultSchema
+>;
+
 // =============================================================================
 // Custom Theme Schemas
 // =============================================================================
@@ -204,6 +222,12 @@ export const templateContracts = {
     channel: "get-app-theme",
     input: GetAppThemeParamsSchema,
     output: z.string().nullable(),
+  }),
+
+  applyAppTemplate: defineContract({
+    channel: "apply-app-template",
+    input: ApplyAppTemplateParamsSchema,
+    output: ApplyAppTemplateResultSchema,
   }),
 
   // Custom theme operations

@@ -33,6 +33,9 @@ import { codeSearchTool } from "./tools/code_search";
 import { planningQuestionnaireTool } from "./tools/planning_questionnaire";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
+import { miniPlanQuestionnaireTool } from "./tools/mini_plan_questionnaire";
+import { writeMiniPlanTool } from "./tools/write_mini_plan";
+import { planVisualsTool } from "./tools/plan_visuals";
 import type { LanguageModelV3ToolResultOutput } from "@ai-sdk/provider";
 import {
   escapeXmlAttr,
@@ -75,6 +78,10 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   planningQuestionnaireTool,
   writePlanTool,
   exitPlanTool,
+  // Mini plan tools
+  miniPlanQuestionnaireTool,
+  writeMiniPlanTool,
+  planVisualsTool,
 ];
 // ============================================================================
 // Agent Tool Name Type (derived from TOOL_DEFINITIONS)

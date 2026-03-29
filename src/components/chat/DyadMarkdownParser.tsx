@@ -50,6 +50,7 @@ import { DyadQuestionnaire } from "./DyadQuestionnaire";
 import { DyadStepLimit } from "./DyadStepLimit";
 import { DyadReadGuide } from "./DyadReadGuide";
 import { DyadScript } from "./DyadScript";
+import { DyadMiniPlanCard } from "./DyadMiniPlanCard";
 import { mapActionToButton } from "./ChatInput";
 import { SuggestedAction } from "@/lib/schemas";
 import { FixAllErrorsButton } from "./FixAllErrorsButton";
@@ -902,6 +903,29 @@ function renderCustomTag(
           {content}
         </DyadStepLimit>
       );
+
+    case "dyad-mini-plan":
+      return (
+        <DyadMiniPlanCard
+          node={{
+            properties: {
+              "app-name": attributes["app-name"] || "",
+              template: attributes.template || "react",
+              theme: attributes.theme || "default",
+              "design-direction": attributes["design-direction"] || "",
+              "main-color": attributes["main-color"] || "",
+              complete: attributes.complete,
+              state: getState({ isStreaming, inProgress }),
+            },
+          }}
+        >
+          {content}
+        </DyadMiniPlanCard>
+      );
+
+    case "dyad-mini-plan-visuals":
+      // Visuals are rendered inside DyadMiniPlanCard, not standalone
+      return null;
 
     default:
       return null;

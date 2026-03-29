@@ -17,6 +17,7 @@ import { DEFAULT_ZOOM_LEVEL } from "@/lib/schemas";
 import { selectedComponentsPreviewAtom } from "@/atoms/previewAtoms";
 import { usePlanEvents } from "@/hooks/usePlanEvents";
 import { useIntegrationEvents } from "@/hooks/useIntegrationEvents";
+import { useMiniPlanEvents } from "@/hooks/useMiniPlanEvents";
 import { useZoomShortcuts } from "@/hooks/useZoomShortcuts";
 import { useQueueProcessor } from "@/hooks/useQueueProcessor";
 import { useIntegrationContinuation } from "@/hooks/useIntegrationContinuation";
@@ -41,6 +42,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   // Initialize plan events listener
   usePlanEvents();
   useIntegrationEvents();
+
+  // Initialize mini plan events listener
+  useMiniPlanEvents();
 
   // Zoom keyboard shortcuts (Ctrl/Cmd + =/- /0)
   useZoomShortcuts();

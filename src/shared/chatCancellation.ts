@@ -1,4 +1,4 @@
-export const RESPONSE_CANCELLED_BY_USER_NOTICE = "[Response cancelled by user]";
+const RESPONSE_CANCELLED_BY_USER_NOTICE = "[Response cancelled by user]";
 
 export function isCancelledResponseContent(content: string): boolean {
   return content.trimEnd().endsWith(RESPONSE_CANCELLED_BY_USER_NOTICE);

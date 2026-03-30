@@ -1632,32 +1632,49 @@ ${problemReport.problems
           // Check if this was an abort error
           if (abortController.signal.aborted) {
             const chatId = req.chatId;
-            const partialResponse = partialResponses.get(req.chatId);
-            // If we have a partial response, save it to the database
-            if (partialResponse) {
-              try {
-                // Update the placeholder assistant message with the partial content and cancellation note
-                await db
-                  .update(messages)
-                  .set({
-                    content: appendCancelledResponseNotice(partialResponse),
-                  })
-                  .where(eq(messages.id, placeholderAssistantMessage.id));
+            const partialResponse = partialResponses.get(req.chatId) ?? "";
+            try {
+              // Update the placeholder assistant message with the partial content and cancellation note
+              await db
+                .update(messages)
+                .set({
+                  content: appendCancelledResponseNotice(partialResponse),
+                })
+                .where(eq(messages.id, placeholderAssistantMessage.id));
 
-                logger.log(
-                  `Updated cancelled response for placeholder message ${placeholderAssistantMessage.id} in chat ${chatId}`,
-                );
-                partialResponses.delete(req.chatId);
-              } catch (error) {
-                logger.error(
-                  `Error saving partial response for chat ${chatId}:`,
-                  error,
-                );
-              }
+              logger.log(
+                `Updated cancelled response for placeholder message ${placeholderAssistantMessage.id} in chat ${chatId}`,
+              );
+              partialResponses.delete(req.chatId);
+            } catch (error) {
+              logger.error(
+                `Error saving partial response for chat ${chatId}:`,
+                error,
+              );
             }
             return req.chatId;
           }
           throw streamError;
+        }
+      }
+
+      // If the stream was aborted but didn't throw (e.g. stream ended gracefully),
+      // save the cancellation notice to the placeholder message.
+      if (abortController.signal.aborted) {
+        const partialResponse = partialResponses.get(req.chatId) ?? "";
+        try {
+          await db
+            .update(messages)
+            .set({
+              content: appendCancelledResponseNotice(partialResponse),
+            })
+            .where(eq(messages.id, placeholderAssistantMessage.id));
+          partialResponses.delete(req.chatId);
+        } catch (error) {
+          logger.error(
+            `Error saving cancelled response for chat ${req.chatId}:`,
+            error,
+          );
         }
       }
 

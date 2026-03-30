@@ -349,7 +349,7 @@ const ChatMessage = ({
           </div>
         )}
         {isCancelled && (
-          <div className="mt-1 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+          <div className="mt-1 flex items-center justify-end gap-1 text-xs text-gray-500 dark:text-gray-400">
             <Ban className="h-3 w-3" />
             <span>Cancelled</span>
           </div>

@@ -7,6 +7,7 @@ import { useAtomValue } from "jotai";
 import { showError } from "@/lib/toast";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useStreamChat } from "@/hooks/useStreamChat";
+import { useNeon } from "@/hooks/useNeon";
 import { CheckCircle2, Plug } from "lucide-react";
 import { DyadCard, DyadCardHeader, DyadBadge } from "./DyadCardPrimitives";
 
@@ -30,6 +31,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   const appId = useAtomValue(selectedAppIdAtom);
   const chatId = useAtomValue(selectedChatIdAtom);
   const { app } = useLoadApp(appId);
+  const { projectInfo } = useNeon(appId ?? 0);
 
   const handleKeepGoingClick = () => {
     if (chatId === null) {
@@ -58,7 +60,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
     provider === "supabase" && app?.supabaseProjectName
       ? app.supabaseProjectName
       : provider === "neon" && app?.neonProjectId
-        ? app.neonProjectId
+        ? (projectInfo?.projectName ?? app.neonProjectId)
         : null;
 
   if (isIntegrationComplete) {

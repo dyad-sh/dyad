@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ipc } from "@/ipc/types";
@@ -29,12 +29,18 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { useNeon } from "@/hooks/useNeon";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
-
-const NEXTJS_CONFIG_FILES = [
-  "next.config.js",
-  "next.config.mjs",
-  "next.config.ts",
-];
+import { NEXTJS_CONFIG_FILES } from "@/lib/framework_constants";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 function isNextJsProject(files: string[] | undefined): boolean {
   if (!files) return false;
@@ -185,7 +191,19 @@ export function NeonConnector({ appId }: { appId: number }) {
 
   // Neon is only available for Next.js projects
   if (!isNextJsProject(app?.files)) {
-    return null;
+    return (
+      <Card className="mt-1">
+        <CardHeader>
+          <CardTitle>{t("integrations.neon.database")}</CardTitle>
+          <CardDescription>
+            {t("integrations.neon.nextjsOnly", {
+              defaultValue:
+                "Neon integration is currently available for Next.js projects.",
+            })}
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
   }
 
   // State 1: Connected and has project set
@@ -262,10 +280,35 @@ export function NeonConnector({ appId }: { appId: number }) {
               )}
             </div>
 
-            <Button variant="destructive" onClick={handleUnsetProject}>
-              <Trash2 className="h-4 w-4 mr-1" />
-              {t("integrations.neon.disconnectProject")}
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger
+                className={buttonVariants({ variant: "destructive" })}
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                {t("integrations.neon.disconnectProject")}
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    {t("integrations.neon.disconnectProject")}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {t("integrations.neon.disconnectConfirmation", {
+                      defaultValue:
+                        "Are you sure you want to disconnect this Neon project? This may break your app's database connection.",
+                    })}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>
+                    {t("integrations.neon.cancel")}
+                  </AlertDialogCancel>
+                  <AlertDialogAction onClick={handleUnsetProject}>
+                    {t("integrations.neon.disconnectProject")}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </CardContent>
       </Card>
@@ -414,14 +457,15 @@ export function NeonConnector({ appId }: { appId: number }) {
         <CardDescription>{t("integrations.neon.freeTier")}</CardDescription>
       </CardHeader>
       <CardContent>
-        <div
+        <Button
+          variant="outline"
           onClick={handleConnect}
-          className="w-auto h-10 cursor-pointer flex items-center justify-center px-4 py-2 rounded-md border-2 transition-colors font-medium text-sm dark:bg-gray-900 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
+          className="w-auto h-10 flex items-center justify-center px-4 py-2 border-2 transition-colors font-medium text-sm dark:bg-gray-900 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
           data-testid="connect-neon-button"
         >
           <span className="mr-2">{t("integrations.neon.connectTo")}</span>
           <NeonSvg isDarkMode={isDarkMode} />
-        </div>
+        </Button>
       </CardContent>
     </Card>
   );

@@ -28,6 +28,91 @@ export const logger = log.scope("neon_handlers");
 
 const testOnlyHandle = createTestOnlyLoggedHandler(logger);
 
+type AppRow = typeof apps.$inferSelect;
+
+/**
+ * Fetches an app record and resolves the active Neon branch ID.
+ * Throws if the app is not found, has no Neon project, or has no branch.
+ */
+async function getAppWithNeonBranch(appId: number): Promise<{
+  appData: AppRow;
+  branchId: string;
+}> {
+  const app = await db.select().from(apps).where(eq(apps.id, appId)).limit(1);
+
+  if (app.length === 0) {
+    throw new DyadError(
+      `App with ID ${appId} not found`,
+      DyadErrorKind.NotFound,
+    );
+  }
+
+  const appData = app[0];
+  if (!appData.neonProjectId) {
+    throw new DyadError(
+      `No Neon project found for app ${appId}`,
+      DyadErrorKind.Precondition,
+    );
+  }
+
+  const branchId =
+    appData.neonActiveBranchId ?? appData.neonDevelopmentBranchId;
+  if (!branchId) {
+    throw new DyadError(
+      `No active Neon branch found for app ${appId}`,
+      DyadErrorKind.Precondition,
+    );
+  }
+
+  return { appData, branchId };
+}
+
+/**
+ * Auto-injects Neon environment variables into the app's .env.local.
+ */
+async function autoInjectNeonEnvVars({
+  appId,
+  projectId,
+  branchId,
+}: {
+  appId: number;
+  projectId: string;
+  branchId: string;
+}): Promise<void> {
+  try {
+    const appRecord = await db
+      .select()
+      .from(apps)
+      .where(eq(apps.id, appId))
+      .limit(1);
+    if (appRecord.length === 0) return;
+
+    const neonClient = await getNeonClient();
+    const roleName = await getBranchRoleName({ projectId, branchId });
+    const connectionUriResponse = await neonClient.getConnectionUri({
+      projectId,
+      branch_id: branchId,
+      database_name: "neondb",
+      role_name: roleName,
+    });
+    const frameworkType = detectFrameworkType(
+      getDyadAppPath(appRecord[0].path),
+    );
+    const endpointHost =
+      frameworkType === "nextjs"
+        ? await getEndpointHost(neonClient, projectId, branchId)
+        : undefined;
+    await updateNeonEnvVars({
+      appPath: appRecord[0].path,
+      connectionUri: connectionUriResponse.data.uri,
+      frameworkType,
+      endpointHost,
+    });
+  } catch (envError) {
+    logger.warn(`Failed to auto-inject env vars for app ${appId}: ${envError}`);
+  }
+}
+
 /**
  * Fetches the endpoint host for a branch, used to derive auth URLs for Next.js.
  */
@@ -147,36 +232,11 @@ export function registerNeonHandlers() {
         developmentBranchResponse.data.connection_uris[0].connection_uri;
 
       // Auto-inject env vars into the app's .env.local
-      try {
-        const appRecord = await db
-          .select()
-          .from(apps)
-          .where(eq(apps.id, appId))
-          .limit(1);
-        if (appRecord.length > 0) {
-          const frameworkType = detectFrameworkType(
-            getDyadAppPath(appRecord[0].path),
-          );
-          const endpointHost =
-            frameworkType === "nextjs"
-              ? await getEndpointHost(
-                  neonClient,
-                  project.id,
-                  developmentBranch.id,
-                )
-              : undefined;
-          await updateNeonEnvVars({
-            appPath: appRecord[0].path,
-            connectionUri,
-            frameworkType,
-            endpointHost,
-          });
-        }
-      } catch (envError) {
-        logger.warn(
-          `Failed to auto-inject env vars for app ${appId}: ${envError}`,
-        );
-      }
+      await autoInjectNeonEnvVars({
+        appId,
+        projectId: project.id,
+        branchId: developmentBranch.id,
+      });
 
       logger.info(
         `Successfully created Neon project: ${project.id} with main branch: ${mainBranch.id} and development branch: ${developmentBranch.id} for app ${appId}`,
@@ -354,9 +414,10 @@ export function registerNeonHandlers() {
 
       const branches = branchesResponse.data.branches;
 
-      // Find development branch (non-default, non-preview) or fall back to default
+      // Find development branch by name first, then fall back to non-default/non-preview
       const defaultBranch = branches.find((b) => b.default);
       const developmentBranch =
+        branches.find((b) => b.name === "development") ??
         branches.find((b) => !b.default && b.name !== "preview") ??
         defaultBranch;
 
@@ -376,42 +437,11 @@ export function registerNeonHandlers() {
 
       // Auto-inject env vars into the app's .env.local
       if (activeBranchId) {
-        try {
-          const appRecord = await db
-            .select()
-            .from(apps)
-            .where(eq(apps.id, appId))
-            .limit(1);
-          if (appRecord.length > 0) {
-            const roleName = await getBranchRoleName({
-              projectId,
-              branchId: activeBranchId,
-            });
-            const connectionUriResponse = await neonClient.getConnectionUri({
-              projectId,
-              branch_id: activeBranchId,
-              database_name: "neondb",
-              role_name: roleName,
-            });
-            const frameworkType = detectFrameworkType(
-              getDyadAppPath(appRecord[0].path),
-            );
-            const endpointHost =
-              frameworkType === "nextjs"
-                ? await getEndpointHost(neonClient, projectId, activeBranchId)
-                : undefined;
-            await updateNeonEnvVars({
-              appPath: appRecord[0].path,
-              connectionUri: connectionUriResponse.data.uri,
-              frameworkType,
-              endpointHost,
-            });
-          }
-        } catch (envError) {
-          logger.warn(
-            `Failed to auto-inject env vars for app ${appId}: ${envError}`,
-          );
-        }
+        await autoInjectNeonEnvVars({
+          appId,
+          projectId,
+          branchId: activeBranchId,
+        });
       }
 
       logger.info(
@@ -481,40 +511,11 @@ export function registerNeonHandlers() {
 
       // Auto-inject env vars for the new active branch
       if (appData.neonProjectId) {
-        try {
-          const neonClient = await getNeonClient();
-          const roleName = await getBranchRoleName({
-            projectId: appData.neonProjectId,
-            branchId,
-          });
-          const connectionUriResponse = await neonClient.getConnectionUri({
-            projectId: appData.neonProjectId,
-            branch_id: branchId,
-            database_name: "neondb",
-            role_name: roleName,
-          });
-          const frameworkType = detectFrameworkType(
-            getDyadAppPath(appData.path),
-          );
-          const endpointHost =
-            frameworkType === "nextjs"
-              ? await getEndpointHost(
-                  neonClient,
-                  appData.neonProjectId,
-                  branchId,
-                )
-              : undefined;
-          await updateNeonEnvVars({
-            appPath: appData.path,
-            connectionUri: connectionUriResponse.data.uri,
-            frameworkType,
-            endpointHost,
-          });
-        } catch (envError) {
-          logger.warn(
-            `Failed to auto-inject env vars for app ${appId}: ${envError}`,
-          );
-        }
+        await autoInjectNeonEnvVars({
+          appId,
+          projectId: appData.neonProjectId,
+          branchId,
+        });
       }
 
       logger.info(
@@ -532,34 +533,10 @@ export function registerNeonHandlers() {
     const { appId, query } = params;
     logger.info(`Executing SQL for app ${appId}`);
 
-    const app = await db.select().from(apps).where(eq(apps.id, appId)).limit(1);
-
-    if (app.length === 0) {
-      throw new DyadError(
-        `App with ID ${appId} not found`,
-        DyadErrorKind.NotFound,
-      );
-    }
-
-    const appData = app[0];
-    if (!appData.neonProjectId) {
-      throw new DyadError(
-        `No Neon project found for app ${appId}`,
-        DyadErrorKind.Precondition,
-      );
-    }
-
-    const branchId =
-      appData.neonActiveBranchId ?? appData.neonDevelopmentBranchId;
-    if (!branchId) {
-      throw new DyadError(
-        `No active Neon branch found for app ${appId}`,
-        DyadErrorKind.Precondition,
-      );
-    }
+    const { appData, branchId } = await getAppWithNeonBranch(appId);
 
     const result = await executeNeonSql({
-      projectId: appData.neonProjectId,
+      projectId: appData.neonProjectId!,
       branchId,
       query,
     });
@@ -572,39 +549,15 @@ export function registerNeonHandlers() {
     const { appId } = params;
     logger.info(`Getting connection URI for app ${appId}`);
 
-    const app = await db.select().from(apps).where(eq(apps.id, appId)).limit(1);
-
-    if (app.length === 0) {
-      throw new DyadError(
-        `App with ID ${appId} not found`,
-        DyadErrorKind.NotFound,
-      );
-    }
-
-    const appData = app[0];
-    if (!appData.neonProjectId) {
-      throw new DyadError(
-        `No Neon project found for app ${appId}`,
-        DyadErrorKind.Precondition,
-      );
-    }
-
-    const branchId =
-      appData.neonActiveBranchId ?? appData.neonDevelopmentBranchId;
-    if (!branchId) {
-      throw new DyadError(
-        `No active Neon branch found for app ${appId}`,
-        DyadErrorKind.Precondition,
-      );
-    }
+    const { appData, branchId } = await getAppWithNeonBranch(appId);
 
     const neonClient = await getNeonClient();
     const roleName = await getBranchRoleName({
-      projectId: appData.neonProjectId,
+      projectId: appData.neonProjectId!,
       branchId,
     });
     const response = await neonClient.getConnectionUri({
-      projectId: appData.neonProjectId,
+      projectId: appData.neonProjectId!,
       branch_id: branchId,
       database_name: "neondb",
       role_name: roleName,
@@ -618,34 +571,10 @@ export function registerNeonHandlers() {
     const { appId, tableName } = params;
     logger.info(`Getting table schema for app ${appId}`);
 
-    const app = await db.select().from(apps).where(eq(apps.id, appId)).limit(1);
-
-    if (app.length === 0) {
-      throw new DyadError(
-        `App with ID ${appId} not found`,
-        DyadErrorKind.NotFound,
-      );
-    }
-
-    const appData = app[0];
-    if (!appData.neonProjectId) {
-      throw new DyadError(
-        `No Neon project found for app ${appId}`,
-        DyadErrorKind.Precondition,
-      );
-    }
-
-    const branchId =
-      appData.neonActiveBranchId ?? appData.neonDevelopmentBranchId;
-    if (!branchId) {
-      throw new DyadError(
-        `No active Neon branch found for app ${appId}`,
-        DyadErrorKind.Precondition,
-      );
-    }
+    const { appData, branchId } = await getAppWithNeonBranch(appId);
 
     const schema = await getNeonTableSchema({
-      projectId: appData.neonProjectId,
+      projectId: appData.neonProjectId!,
       branchId,
       tableName,
     });

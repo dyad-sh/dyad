@@ -63,7 +63,8 @@ export async function storeDbTimestampAtCurrentVersion({
       );
     }
 
-    if (!app.neonProjectId || !app.neonDevelopmentBranchId) {
+    const branchId = app.neonActiveBranchId ?? app.neonDevelopmentBranchId;
+    if (!app.neonProjectId || !branchId) {
       throw new DyadError(
         `App with ID ${appId} has no Neon project or branch`,
         DyadErrorKind.External,
@@ -79,11 +80,11 @@ export async function storeDbTimestampAtCurrentVersion({
     const neonClient = await getNeonClient();
     const roleName = await getBranchRoleName({
       projectId: app.neonProjectId,
-      branchId: app.neonDevelopmentBranchId,
+      branchId,
     });
     const connectionUri = await neonClient.getConnectionUri({
       projectId: app.neonProjectId,
-      branch_id: app.neonDevelopmentBranchId,
+      branch_id: branchId,
       database_name: "neondb",
       role_name: roleName,
     });

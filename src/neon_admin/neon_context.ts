@@ -116,9 +116,13 @@ const TABLE_SCHEMA_QUERY = `
   ORDER BY c.table_name, c.ordinal_position;
 `;
 
-function buildTableSchemaQuery(tableName?: string): string {
-  if (!tableName) return TABLE_SCHEMA_QUERY;
-  return `
+function buildTableSchemaQuery(tableName?: string): {
+  query: string;
+  params: string[];
+} {
+  if (!tableName) return { query: TABLE_SCHEMA_QUERY, params: [] };
+  return {
+    query: `
     SELECT
       c.table_name,
       c.column_name,
@@ -137,9 +141,11 @@ function buildTableSchemaQuery(tableName?: string): string {
       ON kcu.constraint_name = tc.constraint_name
       AND kcu.table_schema = tc.table_schema
     WHERE c.table_schema = 'public'
-      AND c.table_name = '${tableName.replace(/'/g, "''")}'
+      AND c.table_name = $1
     ORDER BY c.ordinal_position;
-  `;
+  `,
+    params: [tableName],
+  };
 }
 
 const INDEXES_QUERY = `
@@ -152,18 +158,24 @@ const INDEXES_QUERY = `
   ORDER BY tablename, indexname;
 `;
 
-function buildIndexesQuery(tableName?: string): string {
-  if (!tableName) return INDEXES_QUERY;
-  return `
+function buildIndexesQuery(tableName?: string): {
+  query: string;
+  params: string[];
+} {
+  if (!tableName) return { query: INDEXES_QUERY, params: [] };
+  return {
+    query: `
     SELECT
       tablename AS table_name,
       indexname AS index_name,
       indexdef AS index_definition
     FROM pg_indexes
     WHERE schemaname = 'public'
-      AND tablename = '${tableName.replace(/'/g, "''")}'
+      AND tablename = $1
     ORDER BY indexname;
-  `;
+  `,
+    params: [tableName],
+  };
 }
 
 // =============================================================================
@@ -271,11 +283,13 @@ export async function getNeonTableSchema({
     const connectionUri = await getConnectionUri({ projectId, branchId });
     const sql = neon(connectionUri);
 
-    const schemaQuery = buildTableSchemaQuery(tableName);
-    const schemaResult = await sql.query(schemaQuery, []);
+    const { query: schemaQuery, params: schemaParams } =
+      buildTableSchemaQuery(tableName);
+    const schemaResult = await sql.query(schemaQuery, schemaParams);
 
-    const indexesQuery = buildIndexesQuery(tableName);
-    const indexesResult = await sql.query(indexesQuery, []);
+    const { query: indexesQuery, params: indexesParams } =
+      buildIndexesQuery(tableName);
+    const indexesResult = await sql.query(indexesQuery, indexesParams);
 
     return JSON.stringify(
       {

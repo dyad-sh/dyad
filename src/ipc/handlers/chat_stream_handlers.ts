@@ -831,21 +831,22 @@ ${componentSnippet}
           const appPath = getDyadAppPath(updatedChat.app.path);
           const frameworkType = detectFrameworkType(appPath);
           const neonClientCode = getNeonClientCode(frameworkType);
+          const branchId =
+            updatedChat.app.neonActiveBranchId ??
+            updatedChat.app.neonDevelopmentBranchId;
+
           systemPrompt +=
             "\n\n" +
             getNeonAvailableSystemPrompt(neonClientCode, frameworkType) +
-            "\n\n" +
-            // For local agent, we will explicitly fetch the database context when needed.
-            (settings.selectedChatMode === "local-agent"
-              ? ""
-              : await getNeonContext({
-                  projectId: updatedChat.app.neonProjectId,
-                  branchId:
-                    updatedChat.app.neonActiveBranchId ??
-                    updatedChat.app.neonDevelopmentBranchId ??
-                    "",
-                  frameworkType,
-                }));
+            "\n\n";
+
+          if (settings.selectedChatMode !== "local-agent" && branchId) {
+            systemPrompt += await getNeonContext({
+              projectId: updatedChat.app.neonProjectId,
+              branchId,
+              frameworkType,
+            });
+          }
         } else if (
           // In local agent mode, we will suggest integrations as part of the add-integration tool
           settings.selectedChatMode !== "local-agent" &&

@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import * as path from "path";
+import { NEXTJS_CONFIG_FILES } from "@/lib/framework_constants";
 
 /**
  * Detect the framework type for an app by checking config files and package.json.
@@ -8,8 +9,7 @@ export function detectFrameworkType(
   appPath: string,
 ): "nextjs" | "vite" | "other" | null {
   try {
-    const nextConfigs = ["next.config.js", "next.config.mjs", "next.config.ts"];
-    for (const config of nextConfigs) {
+    for (const config of NEXTJS_CONFIG_FILES) {
       if (fs.existsSync(path.join(appPath, config))) {
         return "nextjs";
       }

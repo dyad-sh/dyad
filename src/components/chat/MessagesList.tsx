@@ -20,6 +20,7 @@ import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useSettings } from "@/hooks/useSettings";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { PromoMessage } from "./PromoMessage";
+import { isCancelledResponseContent } from "@/shared/chatCancellation";
 
 interface MessagesListProps {
   messages: Message[];
@@ -305,17 +306,23 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
       (index: number, message: Message) => {
         const isLastMessage = index === messages.length - 1;
         const messageKey = message.id;
+        // A user message is a "cancelled prompt" if the next message is a cancelled assistant response
+        const isCancelledPrompt =
+          message.role === "user" &&
+          index + 1 < messages.length &&
+          isCancelledResponseContent(messages[index + 1].content);
 
         return (
           <div className="px-4" key={messageKey}>
             <MemoizedChatMessage
               message={message}
               isLastMessage={isLastMessage}
+              isCancelledPrompt={isCancelledPrompt}
             />
           </div>
         );
       },
-      [messages.length],
+      [messages],
     );
 
     // Create context object for Footer component with stable references
@@ -398,9 +405,17 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         >
           {messages.map((message, index) => {
             const isLastMessage = index === messages.length - 1;
+            const isCancelledPrompt =
+              message.role === "user" &&
+              index + 1 < messages.length &&
+              isCancelledResponseContent(messages[index + 1].content);
             return (
               <div className="px-4" key={message.id}>
-                <ChatMessage message={message} isLastMessage={isLastMessage} />
+                <ChatMessage
+                  message={message}
+                  isLastMessage={isLastMessage}
+                  isCancelledPrompt={isCancelledPrompt}
+                />
               </div>
             );
           })}

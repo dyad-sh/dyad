@@ -75,6 +75,10 @@ import { addIntegrationTool } from "./tools/add_integration";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
 import {
+  appendCancelledResponseNotice,
+  isCancelledResponseContent,
+} from "@/shared/chatCancellation";
+import {
   isChatPendingCompaction,
   performCompaction,
   checkAndMarkForCompaction,
@@ -217,9 +221,27 @@ function buildChatMessageHistory(
     reorderedMessages.splice(targetIndex, 0, summary);
   }
 
-  return reorderedMessages
+  const filtered = reorderedMessages
     .filter((msg) => !excludedIds?.has(msg.id))
-    .filter((msg) => msg.content || msg.aiMessagesJson)
+    .filter((msg) => msg.content || msg.aiMessagesJson);
+
+  // Filter out cancelled message pairs (user prompt + cancelled assistant response)
+  // so the AI doesn't try to reconcile cancelled/incorrect prompts with new ones.
+  return filtered
+    .filter((msg, index) => {
+      if (isCancelledResponseContent(msg.content)) {
+        return false;
+      }
+      // Also filter the preceding user message that triggered the cancelled response
+      if (
+        index + 1 < filtered.length &&
+        isCancelledResponseContent(filtered[index + 1].content) &&
+        msg.role === "user"
+      ) {
+        return false;
+      }
+      return true;
+    })
     .flatMap((msg) => parseAiMessagesJson(msg));
 }
 
@@ -1191,7 +1213,7 @@ export async function handleLocalAgentStream(
       if (fullResponse) {
         await db
           .update(messages)
-          .set({ content: `${fullResponse}\n\n[Response cancelled by user]` })
+          .set({ content: appendCancelledResponseNotice(fullResponse) })
           .where(eq(messages.id, placeholderMessageId));
       }
       return false; // Cancelled - don't consume quota
@@ -1282,7 +1304,7 @@ export async function handleLocalAgentStream(
       if (fullResponse) {
         await db
           .update(messages)
-          .set({ content: `${fullResponse}\n\n[Response cancelled by user]` })
+          .set({ content: appendCancelledResponseNotice(fullResponse) })
           .where(eq(messages.id, placeholderMessageId));
       }
       return false; // Cancelled - don't consume quota

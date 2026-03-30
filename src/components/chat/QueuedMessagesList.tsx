@@ -109,8 +109,8 @@ export function QueuedMessagesList({
   onDelete,
   onMoveUp,
   onMoveDown,
-  isStreaming,
-  hasError,
+  isStreaming: _isStreaming, // The underscore prefix avoids unused variable lint errors.
+  hasError: _hasError,
   isPaused,
   onPauseQueue,
   onResumeQueue,
@@ -118,12 +118,6 @@ export function QueuedMessagesList({
   const [isExpanded, setIsExpanded] = useState(true);
 
   if (!messages.length) return null;
-
-  const statusText = hasError
-    ? "will send after a successful response"
-    : isStreaming
-      ? "will send after current response"
-      : "ready to send";
 
   return (
     <div
@@ -139,11 +133,6 @@ export function QueuedMessagesList({
           {isPaused && (
             <span className="text-xs px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 font-medium">
               Paused
-            </span>
-          )}
-          {!isPaused && (
-            <span className="text-xs text-muted-foreground">
-              - {statusText}
             </span>
           )}
         </div>

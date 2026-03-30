@@ -42,6 +42,7 @@ import {
   deployAllFunctionsIfNeeded,
   commitAllChanges,
 } from "./processors/file_operations";
+import { storeDbTimestampAtCurrentVersion } from "@/ipc/utils/neon_timestamp_utils";
 import { mcpManager } from "@/ipc/utils/mcp_manager";
 import { mcpServers } from "@/db/schema";
 import { requireMcpToolConsent } from "@/ipc/utils/mcp_consent";
@@ -1250,6 +1251,18 @@ export async function handleLocalAgentStream(
           .update(messages)
           .set({ commitHash: commitResult.commitHash })
           .where(eq(messages.id, placeholderMessageId));
+      }
+
+      // Store Neon DB timestamp for version tracking / time-travel
+      if (ctx.neonProjectId && ctx.neonDevelopmentBranchId) {
+        try {
+          await storeDbTimestampAtCurrentVersion({ appId: ctx.appId });
+        } catch (error) {
+          logger.error(
+            "Error storing Neon timestamp at current version:",
+            error,
+          );
+        }
       }
     }
 

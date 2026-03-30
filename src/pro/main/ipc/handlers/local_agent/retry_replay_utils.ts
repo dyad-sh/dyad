@@ -23,9 +23,10 @@ export type RetryReplayEvent =
       output: unknown;
     };
 
-export function toToolResultOutput(
-  value: unknown,
-): { type: "text"; value: string } {
+export function toToolResultOutput(value: unknown): {
+  type: "text";
+  value: string;
+} {
   if (typeof value === "string") {
     return { type: "text", value };
   }

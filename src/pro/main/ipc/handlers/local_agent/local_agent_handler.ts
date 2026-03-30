@@ -128,7 +128,6 @@ interface ToolStreamingEntry {
 }
 const toolStreamingEntries = new Map<string, ToolStreamingEntry>();
 
-
 function getOrCreateStreamingEntry(
   id: string,
   toolName?: string,

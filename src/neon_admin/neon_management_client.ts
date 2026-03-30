@@ -101,7 +101,14 @@ export async function getNeonClient(): Promise<Api<unknown>> {
             region_id: "aws-us-east-1",
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-            default_branch_id: "test-branch-id",
+          },
+          branch: {
+            id: "test-main-branch-id",
+            name: "main",
+            project_id: "test-project-id",
+            default: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
           },
           connection_uris: [
             {
@@ -113,16 +120,17 @@ export async function getNeonClient(): Promise<Api<unknown>> {
       createProjectBranch: async (projectId: string, params: any) => ({
         data: {
           branch: {
-            id: "test-dev-branch-id",
+            id: `test-${params.branch?.name || "child"}-branch-id`,
             name: params.branch?.name || "development",
             project_id: projectId,
-            parent_id: "test-branch-id",
+            parent_id: params.branch?.parent_id || "test-main-branch-id",
+            default: false,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           },
           connection_uris: [
             {
-              connection_uri: "postgresql://test:test@test-dev.neon.tech/test",
+              connection_uri: `postgresql://test:test@test-${params.branch?.name || "child"}.neon.tech/test`,
             },
           ],
         },
@@ -135,7 +143,6 @@ export async function getNeonClient(): Promise<Api<unknown>> {
             org_id: "test-org-id",
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-            default_branch_id: "test-branch-id",
           },
         },
       }),
@@ -143,7 +150,7 @@ export async function getNeonClient(): Promise<Api<unknown>> {
         data: {
           branches: [
             {
-              id: "test-branch-id",
+              id: "test-main-branch-id",
               name: "main",
               project_id: projectId,
               created_at: new Date().toISOString(),
@@ -151,9 +158,19 @@ export async function getNeonClient(): Promise<Api<unknown>> {
               default: true,
             },
             {
-              id: "test-dev-branch-id",
+              id: "test-development-branch-id",
               name: "development",
               project_id: projectId,
+              parent_id: "test-main-branch-id",
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              default: false,
+            },
+            {
+              id: "test-preview-branch-id",
+              name: "preview",
+              project_id: projectId,
+              parent_id: "test-development-branch-id",
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
               default: false,

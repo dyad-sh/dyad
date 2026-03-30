@@ -82,8 +82,33 @@ export function registerNeonHandlers() {
       }
 
       const project = response.data.project;
-      const developmentBranch = response.data.branch;
+      const mainBranch = response.data.branch;
 
+      // Create development branch as a child of main (production)
+      const developmentBranchResponse = await retryOnLocked(
+        () =>
+          neonClient.createProjectBranch(project.id, {
+            endpoints: [{ type: EndpointType.ReadWrite }],
+            branch: {
+              name: "development",
+              parent_id: mainBranch.id,
+            },
+          }),
+        `Create development branch for project ${project.id}`,
+      );
+
+      if (
+        !developmentBranchResponse.data.branch ||
+        !developmentBranchResponse.data.connection_uris
+      ) {
+        throw new Error(
+          "Failed to create development branch: No branch data returned.",
+        );
+      }
+
+      const developmentBranch = developmentBranchResponse.data.branch;
+
+      // Create preview branch as a child of development
       const previewBranchResponse = await retryOnLocked(
         () =>
           neonClient.createProjectBranch(project.id, {
@@ -118,7 +143,8 @@ export function registerNeonHandlers() {
         })
         .where(eq(apps.id, appId));
 
-      const connectionUri = response.data.connection_uris[0].connection_uri;
+      const connectionUri =
+        developmentBranchResponse.data.connection_uris[0].connection_uri;
 
       // Auto-inject env vars into the app's .env.local
       try {
@@ -153,7 +179,7 @@ export function registerNeonHandlers() {
       }
 
       logger.info(
-        `Successfully created Neon project: ${project.id} and development branch: ${developmentBranch.id} for app ${appId}`,
+        `Successfully created Neon project: ${project.id} with main branch: ${mainBranch.id} and development branch: ${developmentBranch.id} for app ${appId}`,
       );
       return {
         id: project.id,
@@ -230,12 +256,12 @@ export function registerNeonHandlers() {
         (branch) => {
           let type: "production" | "development" | "snapshot" | "preview";
 
-          if (branch.default) {
-            type = "production";
-          } else if (branch.id === appData.neonDevelopmentBranchId) {
+          if (branch.id === appData.neonDevelopmentBranchId) {
             type = "development";
           } else if (branch.id === appData.neonPreviewBranchId) {
             type = "preview";
+          } else if (branch.default) {
+            type = "production";
           } else {
             type = "snapshot";
           }

@@ -7,6 +7,7 @@ import {
   escapeXmlAttr,
   escapeXmlContent,
 } from "./types";
+import { updateMiniPlanVisuals } from "@/ipc/handlers/mini_plan_handlers";
 import { safeSend } from "@/ipc/utils/safe_sender";
 
 const logger = log.scope("plan_visuals");
@@ -109,6 +110,8 @@ export const planVisualsTool: ToolDefinition<
       description: v.description,
       prompt: v.prompt,
     }));
+
+    updateMiniPlanVisuals(ctx.chatId, visuals);
 
     safeSend(ctx.event.sender, "mini-plan:visuals-update", {
       chatId: ctx.chatId,

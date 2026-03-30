@@ -110,6 +110,7 @@ async function execGit(
 import type {
   GitBaseParams,
   GitFileParams,
+  GitListFileParams,
   GitCheckoutParams,
   GitBranchRenameParams,
   GitCloneParams,
@@ -1155,12 +1156,47 @@ export async function gitIsIgnored({
     throw new DyadError(result.stderr.toString(), DyadErrorKind.Conflict);
   } else {
     // isomorphic-git version
-    return await git.isIgnored({
-      fs,
-      dir: path,
-      filepath,
-    });
+    return await gitIsIgnoredIso({ path, filepath });
   }
+}
+
+export async function gitIsIgnoredIso({
+  path,
+  filepath,
+}: GitFileParams): Promise<boolean> {
+  // isomorphic-git version
+  return await git.isIgnored({
+    fs,
+    dir: path,
+    filepath,
+  });
+}
+
+export async function gitListFilesNative({
+  path,
+  excludedFiles,
+  excludedDirs,
+}: GitListFileParams) {
+  const result = await execGit(
+    [
+      "ls-files",
+      "--cached",
+      "--others",
+      "--exclude-standard",
+      "--",
+      ".",
+      ...excludedFiles.map((file) => `:!${file}`),
+      ...excludedDirs.map((dir) => `:!${dir}/`),
+    ],
+    path,
+  );
+  if (result.exitCode !== 0) {
+    throw new DyadError(
+      `Failed to list files: ${result.stderr.trim() || result.stdout.trim()}`,
+      DyadErrorKind.Conflict,
+    );
+  }
+  return result.stdout.split("\n").filter(Boolean).map(normalizePath);
 }
 
 export async function gitLogNative(

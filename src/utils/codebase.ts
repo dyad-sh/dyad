@@ -1,6 +1,6 @@
 import fsAsync from "node:fs/promises";
 import path from "node:path";
-import { gitIsIgnored } from "../ipc/utils/git_utils";
+import { gitIsIgnoredIso, gitListFilesNative } from "../ipc/utils/git_utils";
 import log from "electron-log";
 import { IS_TEST_BUILD } from "../ipc/utils/test_utils";
 import { glob } from "glob";
@@ -122,7 +122,7 @@ const gitIgnoreMtimes = new Map<string, number>();
 /**
  * Check if a path should be ignored based on git ignore rules
  */
-async function isGitIgnored(
+async function isGitIgnoredIso(
   filePath: string,
   baseDir: string,
 ): Promise<boolean> {
@@ -175,7 +175,7 @@ async function isGitIgnored(
     }
 
     const relativePath = path.relative(baseDir, filePath);
-    const result = await gitIsIgnored({
+    const result = await gitIsIgnoredIso({
       path: baseDir,
       filepath: relativePath,
     });
@@ -243,10 +243,47 @@ export async function readFileWithCache(
   }
 }
 
+async function collectFilesNativeGit(dir: string): Promise<string[]> {
+  let files: string[] = [];
+
+  try {
+    files = (
+      await gitListFilesNative({
+        path: dir,
+        excludedFiles: EXCLUDED_FILES,
+        excludedDirs: EXCLUDED_DIRS,
+      })
+    ).map((file) => path.join(dir, file));
+  } catch (error) {
+    logger.error(`Git failed to read directory ${dir}:`, error);
+    return files;
+  }
+
+  return (
+    await Promise.all(
+      files.map(async (file) => {
+        try {
+          const stats = await fsAsync.stat(file);
+          if (stats.size > MAX_FILE_SIZE) {
+            return "";
+          }
+          return file;
+        } catch (error) {
+          logger.error(`Failed to read file ${file}:`, error);
+          return "";
+        }
+      }),
+    )
+  ).filter(Boolean);
+}
+
 /**
  * Recursively walk a directory and collect all relevant files
  */
-async function collectFiles(dir: string, baseDir: string): Promise<string[]> {
+async function collectFilesIsoGit(
+  dir: string,
+  baseDir: string,
+): Promise<string[]> {
   const files: string[] = [];
 
   // Check if directory exists
@@ -271,13 +308,13 @@ async function collectFiles(dir: string, baseDir: string): Promise<string[]> {
       }
 
       // Skip if the entry is git ignored
-      if (await isGitIgnored(fullPath, baseDir)) {
+      if (await isGitIgnoredIso(fullPath, baseDir)) {
         return;
       }
 
       if (entry.isDirectory()) {
         // Recursively process subdirectories
-        const subDirFiles = await collectFiles(fullPath, baseDir);
+        const subDirFiles = await collectFilesIsoGit(fullPath, baseDir);
         files.push(...subDirFiles);
       } else if (entry.isFile()) {
         // Skip excluded files
@@ -456,7 +493,9 @@ export async function extractCodebase({
   const startTime = Date.now();
 
   // Collect all relevant files
-  let files = await collectFiles(appPath, appPath);
+  let files = settings.enableNativeGit
+    ? await collectFilesNativeGit(appPath)
+    : await collectFilesIsoGit(appPath, appPath);
 
   // Apply virtual filesystem modifications if provided
   if (virtualFileSystem) {

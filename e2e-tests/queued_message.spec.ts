@@ -10,12 +10,14 @@ test.describe("queued messages", () => {
   });
 
   test("gets added and sent after stream completes", async ({ po }) => {
+
     // Send a message with a medium sleep to simulate a slow response
     await po.sendPrompt("tc=1 [sleep=medium]", {
       skipWaitForCompletion: true,
     });
 
-    // Wait for chat input to appear (indicates we're in chat view and streaming)
+    // Wait for chat input container to appear before checking chatInput
+    await po.page.waitForSelector('[data-testid="chat-input-container"]', { timeout: 10000 });
     await expect(chatInput).toBeVisible();
 
     // While streaming, send another message - this should be queued

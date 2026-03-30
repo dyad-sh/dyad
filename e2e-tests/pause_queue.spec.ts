@@ -1,11 +1,6 @@
 import { test } from "./helpers/test_helper";
-import { expect, Locator, Page } from "@playwright/test";
+import { expect, Locator } from "@playwright/test";
 
-// Helper function to reload page to test sessionStorage restore
-async function navigateAwayAndReturn(page: Page) {
-  // Simply reload the page - this will trigger the useEffect that restores from sessionStorage
-  await page.reload({ waitUntil: "networkidle" });
-}
 
 test.describe("pause queue", () => {
   let chatInput: Locator;
@@ -80,73 +75,5 @@ test.describe("pause queue", () => {
     // Pause button should exist but NOT be showing paused state
     await expect(getPauseButton()).toBeVisible(); // Can pause
     await expect(page.getByText("Paused").first()).not.toBeVisible(); // But not already paused
-  });
-
-  test("session persistence: saved queue restored on page reopening", async ({
-    po,
-  }) => {
-    test.setTimeout(120000); // Increase timeout for this test
-    const page = po.page;
-
-    // 1. Send initial message
-    await po.sendPrompt("tc=1 [sleep=medium]", {
-      skipWaitForCompletion: true,
-    });
-    await expect(chatInput).toBeVisible();
-
-    // 2. Queue messages while paused
-    const pauseButton = page.getByRole("button", { name: /pause queue/i });
-    await chatInput.fill("queued 1");
-    await chatInput.press("Enter");
-    await chatInput.fill("queued 2");
-    await chatInput.press("Enter");
-    await expect(page.getByText("2 Queued")).toBeVisible();
-
-    // 3. Pause before stopping (persist to sessionStorage)
-    await pauseButton.click();
-    await expect(page.getByText("Paused").first()).toBeVisible();
-
-    // 4. Stop/cancel streaming
-    const stopButton = page.getByRole("button", {
-      name: /cancel generation/i,
-    });
-    await expect(stopButton).toBeVisible();
-    await stopButton.click();
-
-    // 5. Verify queue is cleared from UI after cancel
-    await expect(page.getByText("2 Queued")).not.toBeVisible();
-
-    // 6. Navigate away and back to same chat
-    await navigateAwayAndReturn(page);
-    await expect(chatInput).toBeVisible({ timeout: 5000 });
-
-    // 7. Verify queue is restored with messages
-    await expect(page.getByText("2 Queued")).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText("queued 1")).toBeVisible();
-    await expect(page.getByText("queued 2")).toBeVisible();
-
-    // 8. CRITICAL: Verify pause state was reset (NOT in paused state after reopening)
-    // This tests the fix for the stale pause state bug
-    await expect(page.getByText("Paused").first()).not.toBeVisible();
-    const resumeButton = page.getByRole("button", { name: /resume queue/i });
-    await expect(resumeButton).not.toBeVisible(); // Should NOT show resume button
-    const pauseButtonAgain = page.getByRole("button", { name: /pause queue/i });
-    await expect(pauseButtonAgain).toBeVisible(); // Should show pause button (not paused)
-
-    // 9. Messages are restored to the queue but NOT auto-processed.
-    // No completion signal was sent (to prevent silent send without attachments).
-    // User must explicitly resume the queue to send restored messages.
-    // The queue is now visible with the restored messages for review.
-    await expect(page.getByText("queued 1")).toBeVisible();
-    await expect(page.getByText("queued 2")).toBeVisible();
-
-    // 10. Wait and verify no unintended auto-send occurs.
-    // Restored messages should remain in queue until user explicitly resumes.
-    // Count initial prose sections (which hold message content)
-    const initialProseCount = await page.locator("div.prose").count();
-    await page.waitForTimeout(3000); // Wait 3 seconds to verify no auto-send
-    const finalProseCount = await page.locator("div.prose").count();
-    // No auto-send should occur - count should remain unchanged
-    await expect(finalProseCount).toBe(initialProseCount);
   });
 });

@@ -6,14 +6,19 @@ interface MiniPlanUserPromptProps {
   attachments: string[];
 }
 
+const PROMPT_PREVIEW_LIMIT = 200;
+
 export const MiniPlanUserPrompt: React.FC<MiniPlanUserPromptProps> = ({
   prompt,
   attachments,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const isLong = prompt.length > 200;
-  const displayText =
-    isExpanded || !isLong ? prompt : `${prompt.slice(0, 200)}...`;
+  const isLong = prompt.length > PROMPT_PREVIEW_LIMIT;
+  let displayText = prompt;
+
+  if (!isExpanded && isLong) {
+    displayText = `${prompt.slice(0, PROMPT_PREVIEW_LIMIT)}...`;
+  }
 
   return (
     <div className="space-y-2">

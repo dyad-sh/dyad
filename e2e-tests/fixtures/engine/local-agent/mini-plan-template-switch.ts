@@ -21,7 +21,8 @@ export const fixture: LocalAgentFixture = {
       ],
     },
     {
-      text: "Please review the mini plan and approve it to continue.",
+      text:
+        "Please review the mini plan and approve it to continue. ".repeat(100),
     },
   ],
 };

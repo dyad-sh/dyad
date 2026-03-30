@@ -124,9 +124,19 @@ testSkipIfWindows(
       skipWaitForCompletion: true,
     });
 
+    const generatingButton = po.page.getByRole("button", {
+      name: "Generating plan...",
+    });
     const approveButton = po.page.getByRole("button", { name: "Approve Plan" });
-    await expect(approveButton).toBeVisible({ timeout: Timeout.MEDIUM });
-    await expect(approveButton).toBeDisabled();
+    await expect(async () => {
+      if (await generatingButton.isVisible().catch(() => false)) {
+        await expect(generatingButton).toBeDisabled();
+        return;
+      }
+
+      await expect(approveButton).toBeVisible();
+      await expect(approveButton).toBeDisabled();
+    }).toPass({ timeout: Timeout.MEDIUM });
 
     await po.chatActions.waitForChatCompletion();
     await expect(approveButton).toBeEnabled();
@@ -217,12 +227,15 @@ testSkipIfWindows(
       label: "Default Theme",
     });
 
-    const customThemeValue = themeOptions.find(
+    const customTheme = themeOptions.find(
       (option) => option.label === "Mini Plan Theme",
-    )?.value;
-    expect(customThemeValue).toMatch(/^custom:\d+$/);
+    );
+    if (!customTheme) {
+      throw new Error("Mini Plan Theme not found");
+    }
+    expect(customTheme.value).toMatch(/^custom:\d+$/);
 
-    await themeSelect.selectOption(customThemeValue!);
-    await expect(themeSelect).toHaveValue(customThemeValue!);
+    await themeSelect.selectOption(customTheme.value);
+    await expect(themeSelect).toHaveValue(customTheme.value);
   },
 );

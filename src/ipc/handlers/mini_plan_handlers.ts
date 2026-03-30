@@ -1,64 +1,28 @@
 import log from "electron-log";
 import { createTypedHandler } from "./base";
-import { miniPlanContracts } from "../types/mini_plan";
+import {
+  miniPlanContracts,
+  type MiniPlanData,
+  type MiniPlanVisual,
+} from "../types/mini_plan";
 import { safeSend } from "../utils/safe_sender";
 
 const logger = log.scope("mini_plan_handlers");
 
 // In-memory store for mini plan data (keyed by chatId)
-const miniPlanStore = new Map<
-  number,
-  {
-    appName: string;
-    userPrompt: string;
-    attachments: string[];
-    templateId: string;
-    themeId: string;
-    designDirection: string;
-    mainColor: string;
-    visuals: Array<{
-      id: string;
-      type: string;
-      description: string;
-      prompt: string;
-    }>;
-    approved: boolean;
-  }
->();
+const miniPlanStore = new Map<number, MiniPlanData & { approved: boolean }>();
 
 export function getMiniPlanForChat(chatId: number) {
   return miniPlanStore.get(chatId);
 }
 
-export function setMiniPlanForChat(
-  chatId: number,
-  data: {
-    appName: string;
-    userPrompt: string;
-    attachments: string[];
-    templateId: string;
-    themeId: string;
-    designDirection: string;
-    mainColor: string;
-    visuals: Array<{
-      id: string;
-      type: string;
-      description: string;
-      prompt: string;
-    }>;
-  },
-) {
+export function setMiniPlanForChat(chatId: number, data: MiniPlanData) {
   miniPlanStore.set(chatId, { ...data, approved: false });
 }
 
 export function updateMiniPlanVisuals(
   chatId: number,
-  visuals: Array<{
-    id: string;
-    type: string;
-    description: string;
-    prompt: string;
-  }>,
+  visuals: MiniPlanVisual[],
 ) {
   const plan = miniPlanStore.get(chatId);
   if (plan) {

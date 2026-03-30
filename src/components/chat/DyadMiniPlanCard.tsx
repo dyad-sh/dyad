@@ -1,12 +1,14 @@
 import React, { useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  AlertCircle,
   Sparkles,
   Check,
   Loader2,
   Palette,
   Layout,
   Paintbrush,
+  Pencil,
 } from "lucide-react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { miniPlanStateAtom } from "@/atoms/miniPlanAtoms";
@@ -22,6 +24,8 @@ import { useCustomThemes } from "@/hooks/useCustomThemes";
 import { useThemes } from "@/hooks/useThemes";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { ipc } from "@/ipc/types";
+import type { MiniPlanEditableField } from "@/ipc/types/mini_plan";
+import { showError } from "@/lib/toast";
 import { queryKeys } from "@/lib/queryKeys";
 import { MiniPlanUserPrompt } from "./MiniPlanUserPrompt";
 import { MiniPlanDesignDirection } from "./MiniPlanDesignDirection";
@@ -98,13 +102,20 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
   ];
 
   const isInProgress = props.state === "pending" || props.complete === "false";
+  const inputIdPrefix = chatId ? `mini-plan-${chatId}` : "mini-plan";
+  const appNameFieldId = `${inputIdPrefix}-app-name`;
+  const templateFieldId = `${inputIdPrefix}-template`;
+  const themeFieldId = `${inputIdPrefix}-theme`;
+  const mainColorTextFieldId = `${inputIdPrefix}-main-color-text`;
+  const mainColorPickerFieldId = `${inputIdPrefix}-main-color-picker`;
 
   const [editingName, setEditingName] = useState(false);
   const [nameValue, setNameValue] = useState(appName);
   const [isApproving, setIsApproving] = useState(false);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
 
   const handleFieldEdit = useCallback(
-    (field: string, value: string) => {
+    (field: MiniPlanEditableField, value: string) => {
       if (!chatId || isApproved) return;
 
       // Update local state immediately
@@ -118,14 +129,25 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
       });
 
       // Persist to main process
-      ipc.miniPlan.editField({ chatId, field, value });
+      void ipc.miniPlan.editField({ chatId, field, value }).catch((error) => {
+        console.error("Failed to persist mini plan field edit:", error);
+        showError("Could not save mini plan changes. Please try again.");
+      });
     },
     [chatId, isApproved, setMiniPlanState],
   );
 
   const handleApprove = useCallback(async () => {
     if (!chatId || isApproved) return;
+
+    const plan = miniPlanState.plansByChatId.get(chatId);
+    if (!plan) {
+      showError("Mini plan data is unavailable. Please regenerate the plan.");
+      return;
+    }
+
     setIsApproving(true);
+    setApprovalError(null);
 
     // Optimistically mark as approved so UI updates immediately
     setMiniPlanState((prev) => {
@@ -133,84 +155,97 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
       nextApproved.add(chatId);
       return { ...prev, approvedChatIds: nextApproved };
     });
+    try {
+      await ipc.miniPlan.approve({ chatId });
 
-    // Snapshot plan data before the async call
-    const plan = miniPlanState.plansByChatId.get(chatId);
+      const applyErrors: string[] = [];
+      const recordApplyError = (message: string, error: unknown) => {
+        console.error(message, error);
+        applyErrors.push(message);
+      };
 
-    await ipc.miniPlan.approve({ chatId });
+      // Apply plan settings to the app
+      if (selectedAppId) {
+        let currentApp = app;
+        let templateApplied = false;
 
-    // Apply plan settings to the app
-    if (plan && selectedAppId) {
-      let currentApp = app;
-      let templateApplied = false;
+        if (!currentApp) {
+          try {
+            currentApp = await ipc.app.getApp(selectedAppId);
+          } catch (error) {
+            recordApplyError(
+              "Could not load the app before applying the mini plan.",
+              error,
+            );
+          }
+        }
 
-      if (!currentApp) {
+        // Rename the app if the name differs (keep existing folder path)
+        if (currentApp && plan.appName && plan.appName !== currentApp.name) {
+          try {
+            await ipc.app.renameApp({
+              appId: selectedAppId,
+              appName: plan.appName,
+              appPath: currentApp.path,
+            });
+          } catch (error) {
+            recordApplyError("Could not rename the app.", error);
+          }
+        }
+
         try {
-          currentApp = await ipc.app.getApp(selectedAppId);
-        } catch (e) {
-          console.error("Failed to load app before applying mini plan:", e);
+          const { applied } = await ipc.template.applyAppTemplate({
+            appId: selectedAppId,
+            templateId: plan.templateId,
+            chatId: chatId ?? undefined,
+          });
+          templateApplied = applied;
+        } catch (error) {
+          recordApplyError("Could not apply the selected template.", error);
         }
-      }
 
-      // Rename the app if the name differs (keep existing folder path)
-      if (currentApp && plan.appName && plan.appName !== currentApp.name) {
+        // Set the theme if it differs
         try {
-          await ipc.app.renameApp({
+          const currentTheme = await ipc.template.getAppTheme({
             appId: selectedAppId,
-            appName: plan.appName,
-            appPath: currentApp.path,
           });
-        } catch (e) {
-          console.error("Failed to rename app:", e);
+          if (plan.themeId !== (currentTheme ?? "default")) {
+            await ipc.template.setAppTheme({
+              appId: selectedAppId,
+              themeId: plan.themeId,
+            });
+          }
+        } catch (error) {
+          recordApplyError("Could not apply the selected theme.", error);
         }
-      }
 
-      try {
-        const { applied } = await ipc.template.applyAppTemplate({
-          appId: selectedAppId,
-          templateId: plan.templateId,
-          chatId: chatId ?? undefined,
-        });
-        templateApplied = applied;
-      } catch (e) {
-        console.error("Failed to apply app template:", e);
-      }
-
-      // Set the theme if it differs
-      try {
-        const currentTheme = await ipc.template.getAppTheme({
-          appId: selectedAppId,
-        });
-        if (plan.themeId !== (currentTheme ?? "default")) {
-          await ipc.template.setAppTheme({
-            appId: selectedAppId,
-            themeId: plan.themeId,
-          });
+        if (templateApplied) {
+          try {
+            await ipc.app.restartApp({
+              appId: selectedAppId,
+              removeNodeModules: true,
+            });
+          } catch (error) {
+            recordApplyError(
+              "Could not restart the app after the template change.",
+              error,
+            );
+          }
         }
-      } catch (e) {
-        console.error("Failed to set app theme:", e);
+
+        // Refresh app data so the sidebar/header reflect the new name
+        await Promise.all([
+          refreshApp(),
+          queryClient.invalidateQueries({ queryKey: queryKeys.apps.all }),
+        ]);
       }
 
-      if (templateApplied) {
-        try {
-          await ipc.app.restartApp({
-            appId: selectedAppId,
-            removeNodeModules: true,
-          });
-        } catch (e) {
-          console.error("Failed to restart app after template change:", e);
-        }
+      if (applyErrors.length > 0) {
+        const errorMessage = `Mini plan approved, but some changes could not be applied:\n- ${applyErrors.join("\n- ")}`;
+        setApprovalError(errorMessage);
+        showError(errorMessage);
       }
 
-      // Refresh app data so the sidebar/header reflect the new name
-      await Promise.all([
-        refreshApp(),
-        queryClient.invalidateQueries({ queryKey: queryKeys.apps.all }),
-      ]);
-    }
-
-    // Build the serialized mini plan context to send to the agent
-    if (plan) {
       const visualsSummary =
         plan.visuals.length > 0
           ? plan.visuals
@@ -320,9 +355,18 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
           },
         },
       );
+    } catch (error) {
+      console.error("Failed to approve mini plan:", error);
+      setMiniPlanState((prev) => {
+        const nextApproved = new Set(prev.approvedChatIds);
+        nextApproved.delete(chatId);
+        return { ...prev, approvedChatIds: nextApproved };
+      });
+      setApprovalError("Failed to approve the mini plan. Please try again.");
+      showError("Failed to approve the mini plan. Please try again.");
+    } finally {
+      setIsApproving(false);
     }
-
-    setIsApproving(false);
   }, [
     chatId,
     isApproved,
@@ -397,11 +441,12 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
       <div className="px-4 py-3 space-y-4">
         {/* App Name */}
         <div className="space-y-1.5">
-          <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+          <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
             App Name
-          </label>
+          </div>
           {editingName && !isApproved ? (
             <input
+              id={appNameFieldId}
               type="text"
               value={nameValue}
               onChange={(e) => setNameValue(e.target.value)}
@@ -413,13 +458,17 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
                   setEditingName(false);
                 }
               }}
+              aria-label="App Name"
               className="block w-full text-lg font-semibold bg-transparent border-b border-primary/40 focus:border-primary outline-none pb-0.5 text-foreground"
               autoFocus
             />
           ) : (
             <button
+              id={appNameFieldId}
               type="button"
-              className={`block text-lg font-semibold text-foreground ${
+              aria-label="Edit app name"
+              title={isApproved ? undefined : "Edit app name"}
+              className={`group inline-flex items-center gap-1 text-lg font-semibold text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-sm ${
                 !isApproved
                   ? "hover:text-primary cursor-text transition-colors"
                   : ""
@@ -432,7 +481,14 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
               }}
               disabled={isApproved}
             >
-              {appName || "Untitled App"}
+              <span>{appName || "Untitled App"}</span>
+              {!isApproved && (
+                <Pencil
+                  size={14}
+                  className="text-muted-foreground/70 transition-colors group-hover:text-primary group-focus-visible:text-primary"
+                  aria-hidden="true"
+                />
+              )}
             </button>
           )}
         </div>
@@ -440,9 +496,9 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
         {/* User Prompt */}
         {userPrompt && (
           <div className="space-y-1">
-            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+            <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
               Prompt
-            </label>
+            </div>
             <MiniPlanUserPrompt prompt={userPrompt} attachments={attachments} />
           </div>
         )}
@@ -451,10 +507,10 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
         <div className="grid grid-cols-2 gap-3">
           {/* Tech Stack */}
           <div className="space-y-1">
-            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+            <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
               <Layout size={10} />
               Tech Stack
-            </label>
+            </div>
             {isApproved ? (
               <span className="text-sm text-foreground/80">
                 {templates?.find((t) => t.id === templateId)?.title ??
@@ -462,6 +518,8 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
               </span>
             ) : (
               <select
+                id={templateFieldId}
+                aria-label="Tech Stack"
                 data-testid="mini-plan-template-select"
                 value={templateId}
                 onChange={(e) => handleFieldEdit("templateId", e.target.value)}
@@ -478,16 +536,18 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
 
           {/* Theme */}
           <div className="space-y-1">
-            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+            <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
               <Paintbrush size={10} />
               Theme
-            </label>
+            </div>
             {isApproved ? (
               <span className="text-sm text-foreground/80">
                 {allThemeOptions.find((t) => t.id === themeId)?.name ?? themeId}
               </span>
             ) : (
               <select
+                id={themeFieldId}
+                aria-label="Theme"
                 data-testid="mini-plan-theme-select"
                 value={themeId}
                 onChange={(e) => handleFieldEdit("themeId", e.target.value)}
@@ -515,10 +575,10 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
         {/* Main Color */}
         {mainColor && (
           <div className="space-y-1">
-            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+            <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
               <Palette size={10} />
               Main Color
-            </label>
+            </div>
             <div className="flex items-center gap-2">
               <div
                 className="w-7 h-7 rounded-md border border-border/50 shrink-0"
@@ -530,7 +590,9 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
                 </span>
               ) : (
                 <input
+                  id={mainColorTextFieldId}
                   type="text"
+                  aria-label="Main Color Hex Code"
                   value={mainColor}
                   onChange={(e) => handleFieldEdit("mainColor", e.target.value)}
                   className="text-sm font-mono bg-background border border-border/50 rounded-md px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 w-28"
@@ -539,7 +601,9 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
               )}
               {!isApproved && (
                 <input
+                  id={mainColorPickerFieldId}
                   type="color"
+                  aria-label="Main Color Picker"
                   value={mainColor}
                   onChange={(e) => handleFieldEdit("mainColor", e.target.value)}
                   className="w-7 h-7 p-0 border-0 bg-transparent cursor-pointer"
@@ -552,9 +616,9 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
         {/* Design Direction */}
         {designDirection && (
           <div className="space-y-1">
-            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+            <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
               Design Direction
-            </label>
+            </div>
             <MiniPlanDesignDirection direction={designDirection} />
           </div>
         )}
@@ -571,24 +635,58 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
       </div>
 
       {/* Footer */}
-      {!isInProgress && appName && (
-        <div className="px-4 py-3 border-t border-border/50 flex justify-end">
+      {appName && (
+        <div
+          className={`px-4 py-3 border-t border-border/50 flex gap-3 ${
+            approvalError ? "items-start justify-between" : "justify-end"
+          }`}
+        >
+          {approvalError && (
+            <p className="max-w-md text-xs text-destructive whitespace-pre-wrap">
+              {approvalError}
+            </p>
+          )}
           {isApproved ? (
-            <span className="flex items-center gap-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">
-              <Check size={16} className="text-emerald-500" />
-              Plan approved
+            <span
+              className={`flex items-center gap-1.5 text-sm font-medium ${
+                approvalError
+                  ? "text-amber-600 dark:text-amber-400"
+                  : "text-emerald-600 dark:text-emerald-400"
+              }`}
+            >
+              {isApproving ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  Applying plan...
+                </>
+              ) : approvalError ? (
+                <>
+                  <AlertCircle size={16} className="text-amber-500" />
+                  Plan approved with issues
+                </>
+              ) : (
+                <>
+                  <Check size={16} className="text-emerald-500" />
+                  Plan approved
+                </>
+              )}
             </span>
           ) : (
             <button
               type="button"
               onClick={handleApprove}
-              disabled={isApproving || isChatStreaming}
+              disabled={isInProgress || isApproving || isChatStreaming}
               className="flex items-center gap-1.5 text-sm font-medium text-primary-foreground px-5 py-2 bg-primary rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isApproving ? (
+              {isInProgress ? (
                 <>
                   <Loader2 size={14} className="animate-spin" />
-                  Approving...
+                  Generating plan...
+                </>
+              ) : isApproving ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Applying plan...
                 </>
               ) : (
                 <>

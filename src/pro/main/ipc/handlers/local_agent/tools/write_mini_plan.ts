@@ -1,6 +1,7 @@
 import { z } from "zod";
 import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
+import { setMiniPlanForChat } from "@/ipc/handlers/mini_plan_handlers";
 import { safeSend } from "@/ipc/utils/safe_sender";
 
 const logger = log.scope("write_mini_plan");
@@ -105,18 +106,22 @@ export const writeMiniPlanTool: ToolDefinition<
   execute: async (args, ctx: AgentContext) => {
     logger.log(`Writing mini plan: ${args.app_name}`);
 
+    const data = {
+      appName: args.app_name,
+      userPrompt: args.user_prompt,
+      attachments: args.attachments ?? [],
+      templateId: args.template_id ?? "react",
+      themeId: args.theme_id ?? "default",
+      designDirection: args.design_direction,
+      mainColor: args.main_color,
+      visuals: [],
+    };
+
+    setMiniPlanForChat(ctx.chatId, data);
+
     safeSend(ctx.event.sender, "mini-plan:update", {
       chatId: ctx.chatId,
-      data: {
-        appName: args.app_name,
-        userPrompt: args.user_prompt,
-        attachments: args.attachments ?? [],
-        templateId: args.template_id ?? "react",
-        themeId: args.theme_id ?? "default",
-        designDirection: args.design_direction,
-        mainColor: args.main_color,
-        visuals: [],
-      },
+      data,
     });
 
     return `Mini plan "${args.app_name}" has been presented to the user. They can review and modify it in the chat. Now use the plan_visuals tool to determine what visuals the app needs.`;

@@ -61,9 +61,21 @@ export const MiniPlanApproveSchema = z.object({
 
 export type MiniPlanApprovePayload = z.infer<typeof MiniPlanApproveSchema>;
 
+export const MINI_PLAN_EDITABLE_FIELDS = [
+  "appName",
+  "templateId",
+  "themeId",
+  "designDirection",
+  "mainColor",
+] as const;
+
+export const MiniPlanEditableFieldSchema = z.enum(MINI_PLAN_EDITABLE_FIELDS);
+
+export type MiniPlanEditableField = z.infer<typeof MiniPlanEditableFieldSchema>;
+
 export const MiniPlanFieldEditSchema = z.object({
   chatId: z.number(),
-  field: z.string(),
+  field: MiniPlanEditableFieldSchema,
   value: z.string(),
 });
 

@@ -4,6 +4,7 @@ import {
   queuedMessagesByIdAtom,
   streamCompletedSuccessfullyByIdAtom,
   queuePausedByIdAtom,
+  isStreamingByIdAtom,
   type QueuedMessageItem,
 } from "@/atoms/chatAtoms";
 import { useStreamChat } from "./useStreamChat";
@@ -22,6 +23,7 @@ export function useQueueProcessor() {
   const [streamCompletedSuccessfullyById, setStreamCompletedSuccessfullyById] =
     useAtom(streamCompletedSuccessfullyByIdAtom);
   const [queuePausedById] = useAtom(queuePausedByIdAtom);
+  const [isStreamingById] = useAtom(isStreamingByIdAtom);
   const posthog = usePostHog();
   const { settings } = useSettings();
 
@@ -30,12 +32,17 @@ export function useQueueProcessor() {
     for (const [chatId, queuedMessages] of queuedMessagesById) {
       if (queuedMessages.length === 0) continue;
 
-      const completedSuccessfully =
-        streamCompletedSuccessfullyById.get(chatId) ?? false;
-      if (!completedSuccessfully) continue;
-
       const isPaused = queuePausedById.get(chatId) ?? false;
       if (isPaused) continue;
+
+      const completedSuccessfully =
+        streamCompletedSuccessfullyById.get(chatId) ?? false;
+      const isStreaming = isStreamingById.get(chatId) ?? false;
+
+      // Process queued messages in two cases:
+      // 1) Previous stream completed successfully (normal dequeue chaining)
+      // 2) Queue is resumed while chat is idle (e.g., user stopped then resumed)
+      if (!completedSuccessfully && isStreaming) continue;
 
       // Clear the successful completion flag first to prevent loops
       setStreamCompletedSuccessfullyById((prev) => {
@@ -80,6 +87,7 @@ export function useQueueProcessor() {
     queuedMessagesById,
     streamCompletedSuccessfullyById,
     queuePausedById,
+    isStreamingById,
     streamMessage,
     setQueuedMessagesById,
     setStreamCompletedSuccessfullyById,

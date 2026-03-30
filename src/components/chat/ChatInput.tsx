@@ -474,8 +474,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       return;
     }
 
-    // If streaming or paused, queue the message instead of sending immediately
-    if (isStreaming || isPaused) {
+    // Queue while actively streaming. If we're paused but currently idle,
+    // send the new message immediately and keep existing queued items paused.
+    if (isStreaming) {
       const queued = queueMessage({
         prompt: currentInput,
         attachments,
@@ -532,8 +533,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         resetEditingState();
       }
     }
-    // Always reset pause state
-    resumeQueue();
+    // Do NOT reset pause state here; queued messages should remain paused after stopping
     if (chatId) {
       setStreamCompletedSuccessfullyById((prev) => {
         const next = new Map(prev);
@@ -544,7 +544,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     }
     setIsStreaming(false);
   };
-
 
   const dismissError = () => {
     setShowError(false);
@@ -907,7 +906,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               </Tooltip>
             )}
 
-            {isStreaming || queuedMessages.length > 0 ? (
+            {isStreaming ? (
               <Tooltip>
                 <TooltipTrigger
                   render={

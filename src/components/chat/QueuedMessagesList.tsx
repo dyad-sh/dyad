@@ -109,8 +109,8 @@ export function QueuedMessagesList({
   onDelete,
   onMoveUp,
   onMoveDown,
-  isStreaming: _isStreaming, // The underscore prefix avoids unused variable lint errors.
-  hasError: _hasError,
+  isStreaming,
+  hasError,
   isPaused,
   onPauseQueue,
   onResumeQueue,
@@ -119,8 +119,19 @@ export function QueuedMessagesList({
 
   if (!messages.length) return null;
 
+  // Keep this statusText logic intact (important per review feedback).
+  // We only remove the redundant paused badge, not this status line.
+  const statusText = hasError
+    ? "Error"
+    : isPaused
+      ? "Paused"
+      : isStreaming
+        ? "Sending..."
+        : "Ready";
+
   return (
     <div
+      data-testid="queue-header"
       className={cn(
         "border-b border-border bg-muted/30",
         isPaused && "bg-yellow-500/10 border-yellow-500/50",
@@ -130,13 +141,18 @@ export function QueuedMessagesList({
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
           <ListOrdered className="w-4 h-4 text-muted-foreground flex-shrink-0" />
           <span className="text-sm">{messages.length} Queued</span>
-          {isPaused && (
-            <span className="text-xs px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 font-medium">
-              Paused
-            </span>
-          )}
+          <span className="text-xs text-muted-foreground">- {statusText}</span>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+          {/* Flip: Collapse/Expand button comes after Pause/Resume button */}
+          <button
+            type="button"
+            onClick={isPaused ? onResumeQueue : onPauseQueue}
+            aria-label={isPaused ? "Resume queue" : "Pause queue"}
+            className="ml-2 px-2 py-1 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 cursor-pointer"
+          >
+            {isPaused ? <PlayIcon size={18} /> : <PauseIcon size={18} />}
+          </button>
           <button
             type="button"
             onClick={() => setIsExpanded(!isExpanded)}
@@ -148,14 +164,6 @@ export function QueuedMessagesList({
             ) : (
               <ChevronDown className="w-4 h-4 text-muted-foreground" />
             )}
-          </button>
-          <button
-            type="button"
-            onClick={isPaused ? onResumeQueue : onPauseQueue}
-            aria-label={isPaused ? "Resume queue" : "Pause queue"}
-            className="ml-2 px-2 py-1 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 cursor-pointer"
-          >
-            {isPaused ? <PlayIcon size={18} /> : <PauseIcon size={18} />}
           </button>
         </div>
       </div>

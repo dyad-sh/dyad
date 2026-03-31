@@ -33,6 +33,7 @@ import { useCheckProblems } from "./useCheckProblems";
 import { useSettings } from "./useSettings";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
+import { applyCancellationNoticeToLastAssistantMessage } from "@/shared/chatCancellation";
 
 export function getRandomNumberId() {
   return Math.floor(Math.random() * 1_000_000_000_000_000);
@@ -218,6 +219,25 @@ export function useStreamChat({
               pendingStreamChatIds.delete(chatId);
               // Only mark as successful if NOT cancelled - wasCancelled flag is set
               // by the backend when user cancels the stream
+              if (response.wasCancelled) {
+                setMessagesById((prev) => {
+                  const existingMessages = prev.get(chatId);
+                  if (!existingMessages) return prev;
+
+                  const updatedMessages =
+                    applyCancellationNoticeToLastAssistantMessage(
+                      existingMessages,
+                    );
+                  if (updatedMessages === existingMessages) {
+                    return prev;
+                  }
+
+                  const next = new Map(prev);
+                  next.set(chatId, updatedMessages);
+                  return next;
+                });
+              }
+
               if (!response.wasCancelled) {
                 setStreamCompletedSuccessfullyById((prev) => {
                   const next = new Map(prev);

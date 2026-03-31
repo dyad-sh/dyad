@@ -2,7 +2,7 @@ import { useAtom, useAtomValue } from "jotai";
 import { selectedAppIdAtom, selectedVersionIdAtom } from "@/atoms/appAtoms";
 import { useVersions } from "@/hooks/useVersions";
 import { formatDistanceToNow } from "date-fns";
-import { RotateCcw, X, Database, Loader2 } from "lucide-react";
+import { RotateCcw, X, Database, Loader2, Search } from "lucide-react";
 import type { Version } from "@/ipc/types";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
@@ -38,6 +38,8 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
   const { checkoutVersion, isCheckingOutVersion } = useCheckoutVersion();
   const wasVisibleRef = useRef(false);
   const [cachedVersions, setCachedVersions] = useState<Version[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     async function updatePaneState() {
@@ -52,6 +54,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
       // Reset when closing
       if (!isVisible && selectedVersionId) {
         setSelectedVersionId(null);
+        setSearchQuery("");
         if (appId) {
           await checkoutVersion({ appId, versionId: "main" });
           if (app?.neonProjectId) {
@@ -102,8 +105,20 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
 
   const versions = cachedVersions.length > 0 ? cachedVersions : liveVersions;
 
+  const filteredVersions = searchQuery.trim()
+    ? versions.filter((v, index) => {
+        const query = searchQuery.toLowerCase();
+        const versionNumber = String(versions.length - index);
+        return (
+          v.oid.toLowerCase().includes(query) ||
+          (v.message && v.message.toLowerCase().includes(query)) ||
+          versionNumber.includes(query)
+        );
+      })
+    : versions;
+
   return (
-    <div className="h-full border-t border-2 border-border w-full">
+    <div className="h-full border-t border-2 border-border w-full flex flex-col">
       <div className="p-2 border-b border-border flex items-center justify-between">
         <h2 className="text-base font-medium pl-2">Version History</h2>
         <div className="flex items-center gap-2">
@@ -116,12 +131,42 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
           </button>
         </div>
       </div>
-      <div className="overflow-y-auto h-[calc(100%-60px)]">
+      <div className="px-3 py-2 border-b border-border">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <input
+            ref={searchInputRef}
+            type="text"
+            placeholder="Search versions..."
+            aria-label="Search versions"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full rounded-md border border-input bg-transparent pl-8 pr-8 py-1.5 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => {
+                setSearchQuery("");
+                searchInputRef.current?.focus();
+              }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              aria-label="Clear search"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto min-h-0">
         {versions.length === 0 ? (
-          <div className="p-4 ">No versions available</div>
+          <div className="p-4">No versions available</div>
+        ) : filteredVersions.length === 0 ? (
+          <div className="p-4 text-sm text-muted-foreground">
+            No matching versions
+          </div>
         ) : (
           <div className="divide-y divide-border">
-            {versions.map((version: Version, index: number) => (
+            {filteredVersions.map((version: Version) => (
               <div
                 key={version.oid}
                 className={cn(
@@ -141,7 +186,7 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-xs">
-                      Version {versions.length - index} (
+                      Version {versions.length - versions.indexOf(version)} (
                       {version.oid.slice(0, 7)})
                     </span>
                     {/* example format: '2025-07-25T21:52:01Z' */}

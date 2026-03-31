@@ -3,12 +3,15 @@ import { test, Timeout } from "./helpers/test_helper";
 
 /**
  * E2E tests for generating an image from the chat via the auxiliary actions menu.
- * This tests the flow: + menu → Generate Image → fill prompt → Generate → image appears in strip → Add to chat.
+ * This tests the flow: + menu → Generate Image → fill prompt → Generate → image appears in strip → send auto-adds to chat.
  */
 
 test("generate image from chat - full flow", async ({ po }) => {
   await po.setUpDyadPro();
   await po.importApp("minimal");
+
+  // Approve the code proposal from the import so the send button is unblocked
+  await po.approveProposal();
 
   // Open auxiliary actions menu in the chat input
   await po.chatActions
@@ -40,20 +43,26 @@ test("generate image from chat - full flow", async ({ po }) => {
   // Dialog should close after clicking Generate
   await expect(dialog).not.toBeVisible();
 
-  // Wait for the generated image to appear in the strip (the "Add to chat" button appears on success)
-  const addToChatButton = po.page.getByRole("button", {
-    name: "Add to chat",
-  });
-  await expect(addToChatButton).toBeVisible({ timeout: Timeout.LONG });
+  // Wait for the generated image to appear in the strip (thumbnail appears on success)
+  const imageStrip = po.chatActions.getChatInputContainer();
+  const generatedImage = imageStrip.locator(
+    "img[alt='A beautiful sunset over mountains']",
+  );
+  await expect(generatedImage).toBeVisible({ timeout: Timeout.LONG });
 
-  // Click "Add to chat" to insert the @media mention into the chat input
-  await addToChatButton.click();
+  // The send button should be enabled even without text input
+  const sendButton = po.page.getByRole("button", { name: "Send message" });
+  await expect(sendButton).toBeEnabled();
 
-  // The image strip entry should be dismissed after adding to chat
-  await expect(addToChatButton).not.toBeVisible();
+  // Click send - images are automatically added to the message
+  await sendButton.click();
 
-  // Verify the chat input contains the generated image file name
-  const chatInput = po.chatActions.getChatInput();
-  const inputText = await chatInput.textContent();
-  expect(inputText).toMatch(/generated_a_beautiful_sunset/);
+  // The image strip entry should be dismissed after sending
+  await expect(generatedImage).not.toBeVisible();
+
+  // Verify the sent message contains the generated image (rendered as an image element)
+  const messagesList = po.page.locator('[data-testid="messages-list"]');
+  await expect(
+    messagesList.locator("img[alt*='generated_a_beautiful_sunset']"),
+  ).toBeVisible({ timeout: Timeout.LONG });
 });

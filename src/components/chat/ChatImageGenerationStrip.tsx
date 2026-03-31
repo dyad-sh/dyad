@@ -1,18 +1,10 @@
 import { useEffect, useState } from "react";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import {
-  X,
-  ArrowUpRight,
-  Loader2,
-  Plus,
-  AlertCircle,
-  RotateCcw,
-} from "lucide-react";
+import { useAtom, useAtomValue } from "jotai";
+import { X, Loader2, Plus, AlertCircle, RotateCcw } from "lucide-react";
 import {
   chatImageGenerationJobsAtom,
   dismissedImageGenerationJobIdsAtom,
 } from "@/atoms/imageGenerationAtoms";
-import { chatInputValueAtom } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import {
   useCancelImageGeneration,
@@ -31,7 +23,6 @@ export function ChatImageGenerationStrip({
 }: ChatImageGenerationStripProps) {
   const jobs = useAtomValue(chatImageGenerationJobsAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const setChatInput = useSetAtom(chatInputValueAtom);
   const cancelImageGeneration = useCancelImageGeneration();
   const generateImage = useGenerateImage();
   const [dismissedJobIds, setDismissedJobIds] = useAtom(
@@ -65,16 +56,6 @@ export function ChatImageGenerationStrip({
   );
 
   if (visibleJobs.length === 0) return null;
-
-  const handleAddToChat = (job: ImageGenerationJob) => {
-    if (!job.result) return;
-    const encodedFileName = encodeURIComponent(job.result.fileName);
-    const mention = `@media:${encodedFileName}`;
-    setChatInput((prev: string) =>
-      prev.trim() ? `${prev} ${mention} ` : `${mention} `,
-    );
-    setDismissedJobIds((prev: Set<string>) => new Set(prev).add(job.id));
-  };
 
   const handleDismiss = (jobId: string) => {
     setDismissedJobIds((prev: Set<string>) => new Set(prev).add(jobId));
@@ -179,16 +160,6 @@ export function ChatImageGenerationStrip({
                     {job.result?.fileName ?? "Generated image"}
                   </span>
                 </div>
-                {job.result && (
-                  <button
-                    onClick={() => handleAddToChat(job)}
-                    className="flex items-center gap-0.5 text-primary hover:text-primary/80 transition-colors shrink-0 cursor-pointer"
-                    aria-label="Add to chat"
-                  >
-                    <span>Add to chat</span>
-                    <ArrowUpRight size={12} />
-                  </button>
-                )}
                 <button
                   onClick={() => handleDismiss(job.id)}
                   className="hover:bg-muted-foreground/20 rounded-full p-1.5 shrink-0"

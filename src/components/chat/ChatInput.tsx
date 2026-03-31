@@ -453,11 +453,17 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       });
       posthog.capture("chat:summarize-manual");
     } catch (err) {
-      showErrorToast(
-        `Failed to summarize chat: ${(err as Error).toString()}`,
-      );
+      showErrorToast(`Failed to summarize chat: ${(err as Error).toString()}`);
     }
-  }, [appId, chatId, setSelectedChatId, navigate, invalidateChats, streamMessage, posthog]);
+  }, [
+    appId,
+    chatId,
+    setSelectedChatId,
+    navigate,
+    invalidateChats,
+    streamMessage,
+    posthog,
+  ]);
 
   const handleSubmit = async () => {
     if (

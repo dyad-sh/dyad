@@ -3,13 +3,15 @@ import { useAtomValue } from "jotai";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
+import { useCountTokens } from "@/hooks/useCountTokens";
 import { ipc } from "@/ipc/types";
 import { showError } from "@/lib/toast";
 
 export function useSummarizeInNewChat() {
   const chatId = useAtomValue(selectedChatIdAtom);
   const appId = useAtomValue(selectedAppIdAtom);
-  const { streamMessage } = useStreamChat();
+  const { streamMessage } = useStreamChat({ hasChatId: false });
+  const { invalidateTokenCount } = useCountTokens(null, "");
   const navigate = useNavigate();
 
   const handleSummarize = async () => {
@@ -28,6 +30,10 @@ export function useSummarizeInNewChat() {
       await streamMessage({
         prompt: "Summarize from chat-id=" + chatId,
         chatId: newChatId,
+        onSettled: () => {
+          // Ensure token counts are reset after summarization completes
+          invalidateTokenCount();
+        },
       });
     } catch (err) {
       showError(err);

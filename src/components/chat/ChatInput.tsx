@@ -432,6 +432,33 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     [editingQueuedMessageId, removeQueuedMessage, resetEditingState],
   );
 
+  const handleSummarizeFromChat = useCallback(async () => {
+    if (!appId || !chatId) {
+      showErrorToast("Unable to summarize: missing app or chat context");
+      return;
+    }
+    try {
+      const newChatId = await ipc.chat.createChat(appId);
+      setSelectedChatId(newChatId);
+      navigate({
+        to: "/chat",
+        search: { id: newChatId },
+      });
+      await invalidateChats();
+
+      await streamMessage({
+        prompt: "Summarize from chat-id=" + chatId,
+        chatId: newChatId,
+        redo: false,
+      });
+      posthog.capture("chat:summarize-manual");
+    } catch (err) {
+      showErrorToast(
+        `Failed to summarize chat: ${(err as Error).toString()}`,
+      );
+    }
+  }, [appId, chatId, setSelectedChatId, navigate, invalidateChats, streamMessage, posthog]);
+
   const handleSubmit = async () => {
     if (
       (!inputValue.trim() &&
@@ -445,6 +472,14 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
     if (isRecording) {
       await toggleRecording();
+    }
+
+    // Handle manual "summarize to new chat" command
+    if (inputValue.trim().toLowerCase() === "summarize to new chat") {
+      setInputValue("");
+      clearAttachments();
+      await handleSummarizeFromChat();
+      return;
     }
 
     // Build prompt with auto-added image mentions

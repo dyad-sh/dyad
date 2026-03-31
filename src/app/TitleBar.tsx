@@ -23,13 +23,14 @@ import {
 } from "@/components/ui/tooltip";
 import { ChatTabs } from "@/components/chat/ChatTabs";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
-import { Wrench, Cog, Trash2 } from "lucide-react";
+import { Wrench, Cog, Trash2, MessageSquare } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useSummarizeInNewChat } from "@/components/chat/SummarizeInNewChatButton";
 import { useRunApp } from "@/hooks/useRunApp";
 import { showError, showSuccess } from "@/lib/toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -112,6 +113,7 @@ export const TitleBar = () => {
           <ChatTabs selectedChatId={selectedChatId} />
         </div>
 
+        <ChatActionsMenu />
         <TitleBarActions />
 
         {showWindowControls && <WindowsControls />}
@@ -201,6 +203,40 @@ function WindowsControls() {
           />
         </svg>
       </button>
+    </div>
+  );
+}
+
+function ChatActionsMenu() {
+  const { t: tChat } = useTranslation("chat");
+  const selectedChatId = useAtomValue(selectedChatIdAtom);
+  const { handleSummarize } = useSummarizeInNewChat();
+
+  if (!selectedChatId) {
+    return null;
+  }
+
+  return (
+    <div className="flex items-center gap-0.5 no-app-region-drag">
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          data-testid="chat-more-options-button"
+          className="flex items-center justify-center w-8 h-8 rounded-md text-sm hover:bg-sidebar-accent transition-colors"
+        >
+          <MessageSquare size={16} />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-60">
+          <DropdownMenuItem onClick={handleSummarize}>
+            <MessageSquare size={16} />
+            <div className="flex flex-col">
+              <span>{tChat("summarizeToNewChat")}</span>
+              <span className="text-xs text-muted-foreground">
+                {tChat("summarizeNewChatTip")}
+              </span>
+            </div>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

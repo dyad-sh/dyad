@@ -38,10 +38,7 @@ export function useQueueProcessor() {
       const completedSuccessfully =
         streamCompletedSuccessfullyById.get(chatId) ?? false;
       const isStreaming = isStreamingById.get(chatId) ?? false;
-
-      // Process queued messages in two cases:
-      // 1) Previous stream completed successfully (normal dequeue chaining)
-      // 2) Queue is resumed while chat is idle (e.g., user stopped then resumed)
+      // stream in progress
       if (!completedSuccessfully && isStreaming) continue;
 
       // Clear the successful completion flag first to prevent loops

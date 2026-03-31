@@ -336,8 +336,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-clear pause state when queue becomes empty to prevent silent queueing
-  // Users expect that deleting all queued messages returns them to normal send mode
+  // Auto-clear pause state when queue becomes empty (Users expect that deleting all queued messages returns them to normal send mode)
+
   useEffect(() => {
     if (chatId && isPaused && queuedMessages.length === 0) {
       resumeQueue();

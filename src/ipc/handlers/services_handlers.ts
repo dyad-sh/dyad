@@ -238,27 +238,43 @@ async function startN8nService(): Promise<ServiceStatus> {
     }
   }
   
-  logger.info("Starting n8n service with local PostgreSQL...");
-  
   try {
-    // n8n connects to the local PostgreSQL database (same as JoyCreate will use)
-    // Database credentials match docker-compose.n8n.yml defaults
+    // Probe PostgreSQL — if it's reachable we use it, otherwise fall back to SQLite
     const pgPassword = process.env.POSTGRES_PASSWORD || "postgres";
     const pgPort = process.env.POSTGRES_PORT || "5433";
-    const n8nCommand = [
-      `echo Starting n8n with PostgreSQL on port ${config.port}...`,
-      `echo Note: Set POSTGRES_PASSWORD env var if not using default`,
-      `set "DB_TYPE=postgresdb"`,
-      `set "DB_POSTGRESDB_HOST=localhost"`,
-      `set "DB_POSTGRESDB_PORT=${pgPort}"`,
-      `set "DB_POSTGRESDB_DATABASE=joycreate"`,
-      `set "DB_POSTGRESDB_USER=postgres"`,
-      `set "DB_POSTGRESDB_PASSWORD=${pgPassword}"`,
-      `set "DB_POSTGRESDB_SCHEMA=n8n"`,
-      `set "N8N_PORT=${config.port}"`,
-      `set "N8N_SECURE_COOKIE=false"`,
-      `npx n8n start`
-    ].join(" && ");
+    const pgAvailable = await checkPortInUse(Number(pgPort));
+    
+    let n8nCommand: string;
+    
+    if (pgAvailable) {
+      logger.info("PostgreSQL detected on port " + pgPort + " — using postgresdb backend");
+      n8nCommand = [
+        `echo Starting n8n with PostgreSQL on port ${config.port}...`,
+        `set "DB_TYPE=postgresdb"`,
+        `set "DB_POSTGRESDB_HOST=localhost"`,
+        `set "DB_POSTGRESDB_PORT=${pgPort}"`,
+        `set "DB_POSTGRESDB_DATABASE=joycreate"`,
+        `set "DB_POSTGRESDB_USER=postgres"`,
+        `set "DB_POSTGRESDB_PASSWORD=${pgPassword}"`,
+        `set "DB_POSTGRESDB_SCHEMA=n8n"`,
+        `set "DB_POSTGRESDB_CONNECTION_TIMEOUT=60000"`,
+        `set "N8N_PORT=${config.port}"`,
+        `set "N8N_SECURE_COOKIE=false"`,
+        `npx n8n start`,
+      ].join(" && ");
+    } else {
+      logger.info("PostgreSQL not available — using SQLite backend");
+      const sqlitePath = path.join(getUserDataPath(), "n8n", "n8n.sqlite");
+      n8nCommand = [
+        `echo Starting n8n with SQLite on port ${config.port}...`,
+        `set "DB_TYPE=sqlite"`,
+        `set "DB_SQLITE_DATABASE=${sqlitePath}"`,
+        `set "N8N_PORT=${config.port}"`,
+        `set "N8N_SECURE_COOKIE=false"`,
+        `set "N8N_USER_FOLDER=${path.join(getUserDataPath(), "n8n")}"`,
+        `npx n8n start`,
+      ].join(" && ");
+    }
     
     launchInExternalTerminal("n8n Workflow Automation", n8nCommand);
     
@@ -271,7 +287,7 @@ async function startN8nService(): Promise<ServiceStatus> {
       await new Promise((r) => setTimeout(r, 2000));
       const isHealthy = await checkServiceHealth(config.healthCheckUrl!);
       if (isHealthy) {
-        logger.info("n8n started successfully with PostgreSQL");
+        logger.info("n8n started successfully");
         return {
           id: "n8n",
           name: config.name,

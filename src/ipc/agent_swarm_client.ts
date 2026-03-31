@@ -35,6 +35,11 @@ import type {
   SwarmEventType,
 } from "@/lib/agent_swarm";
 
+import type {
+  TaskProgressEvent,
+  AgentChatMessage,
+} from "@/lib/agent_swarm_executor";
+
 // Re-export types for convenience
 export type {
   SwarmId,
@@ -66,6 +71,8 @@ export type {
   AgentNodeStatus,
   SwarmStatus,
   SwarmEventType,
+  TaskProgressEvent,
+  AgentChatMessage,
 };
 
 function getIpcRenderer() {
@@ -83,6 +90,8 @@ function getIpcRenderer() {
 class AgentSwarmClient {
   private static instance: AgentSwarmClient | null = null;
   private eventListeners: Set<(event: SwarmEvent) => void> = new Set();
+  private progressListeners: Set<(event: TaskProgressEvent) => void> =
+    new Set();
   private subscribed = false;
 
   private constructor() {
@@ -98,6 +107,18 @@ class AgentSwarmClient {
           }
         });
       });
+      ipc.on(
+        "agent-swarm:task-progress",
+        (_event: unknown, progress: TaskProgressEvent) => {
+          this.progressListeners.forEach((listener) => {
+            try {
+              listener(progress);
+            } catch (e) {
+              console.error("Error in task progress listener:", e);
+            }
+          });
+        }
+      );
     } catch {
       // Not in Electron environment
     }
@@ -431,6 +452,60 @@ class AgentSwarmClient {
     return () => {
       this.eventListeners.delete(callback);
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // TASK EXECUTION
+  // ---------------------------------------------------------------------------
+
+  async executeTask(
+    agentId: AgentNodeId,
+    taskId: string
+  ): Promise<string> {
+    const result = await getIpcRenderer().invoke(
+      "agent-swarm:execute-task",
+      agentId,
+      taskId
+    );
+    return result.output;
+  }
+
+  async getTaskOutput(
+    agentId: AgentNodeId,
+    taskId: string
+  ): Promise<string | null> {
+    return getIpcRenderer().invoke(
+      "agent-swarm:get-task-output",
+      agentId,
+      taskId
+    );
+  }
+
+  onTaskProgress(callback: (event: TaskProgressEvent) => void): () => void {
+    this.progressListeners.add(callback);
+    return () => {
+      this.progressListeners.delete(callback);
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // AGENT CHAT
+  // ---------------------------------------------------------------------------
+
+  async agentChat(
+    agentId: AgentNodeId,
+    message: string
+  ): Promise<string> {
+    const result = await getIpcRenderer().invoke(
+      "agent-swarm:agent-chat",
+      agentId,
+      message
+    );
+    return result.response;
+  }
+
+  async getChatHistory(agentId: AgentNodeId): Promise<AgentChatMessage[]> {
+    return getIpcRenderer().invoke("agent-swarm:get-chat-history", agentId);
   }
 }
 

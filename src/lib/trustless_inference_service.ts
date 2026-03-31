@@ -19,6 +19,7 @@ import type {
   VerificationResult,
   InferenceStats,
   InferenceMessage,
+  InferenceConversation,
   HeliaNodeStatus,
 } from "@/types/trustless_inference";
 
@@ -39,6 +40,7 @@ interface TrustlessServiceConfig {
 class TrustlessInferenceService {
   private config: TrustlessServiceConfig;
   private inferenceHistory: InferenceRecord[] = [];
+  private conversations: Map<string, InferenceConversation> = new Map();
 
   constructor(config?: Partial<TrustlessServiceConfig>) {
     this.config = {
@@ -407,6 +409,132 @@ class TrustlessInferenceService {
       storageUsedBytes: 0,
       modelUsage: heliaStats.modelUsage,
       averageGenerationTimeMs: heliaStats.averageGenerationTimeMs,
+    };
+  }
+
+  // ============================================================================
+  // Conversation Operations
+  // ============================================================================
+
+  createConversation(params: {
+    provider: LocalModelProvider;
+    modelId: string;
+    systemPrompt?: string;
+    title?: string;
+  }): InferenceConversation {
+    const now = Date.now();
+    const conversation: InferenceConversation = {
+      id: uuidv4(),
+      title: params.title || "New Conversation",
+      provider: params.provider,
+      modelId: params.modelId,
+      systemPrompt: params.systemPrompt,
+      messages: [],
+      recordIds: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.conversations.set(conversation.id, conversation);
+    logger.info("Created conversation", { id: conversation.id, title: conversation.title });
+    return conversation;
+  }
+
+  getConversation(conversationId: string): InferenceConversation | null {
+    return this.conversations.get(conversationId) ?? null;
+  }
+
+  listConversations(): InferenceConversation[] {
+    return Array.from(this.conversations.values()).sort(
+      (a, b) => b.updatedAt - a.updatedAt
+    );
+  }
+
+  deleteConversation(conversationId: string): void {
+    if (!this.conversations.has(conversationId)) {
+      throw new Error(`Conversation not found: ${conversationId}`);
+    }
+    this.conversations.delete(conversationId);
+    logger.info("Deleted conversation", { id: conversationId });
+  }
+
+  updateConversation(
+    conversationId: string,
+    updates: { title?: string; systemPrompt?: string; provider?: LocalModelProvider; modelId?: string }
+  ): InferenceConversation {
+    const conversation = this.conversations.get(conversationId);
+    if (!conversation) {
+      throw new Error(`Conversation not found: ${conversationId}`);
+    }
+    if (updates.title !== undefined) conversation.title = updates.title;
+    if (updates.systemPrompt !== undefined) conversation.systemPrompt = updates.systemPrompt;
+    if (updates.provider !== undefined) conversation.provider = updates.provider;
+    if (updates.modelId !== undefined) conversation.modelId = updates.modelId;
+    conversation.updatedAt = Date.now();
+    return conversation;
+  }
+
+  async sendMessage(
+    conversationId: string,
+    userMessage: string,
+    config?: { temperature?: number; maxTokens?: number },
+    skipVerification?: boolean
+  ): Promise<{
+    output: string;
+    recordId?: string;
+    cid?: string;
+    verified?: boolean;
+    tokens: number;
+    timeMs: number;
+  }> {
+    const conversation = this.conversations.get(conversationId);
+    if (!conversation) {
+      throw new Error(`Conversation not found: ${conversationId}`);
+    }
+
+    // Add user message to conversation
+    conversation.messages.push({ role: "user", content: userMessage });
+    conversation.updatedAt = Date.now();
+
+    // Auto-title from first user message
+    if (conversation.messages.filter((m) => m.role === "user").length === 1) {
+      conversation.title = userMessage.slice(0, 60) + (userMessage.length > 60 ? "..." : "");
+    }
+
+    // Build full messages array including system prompt
+    const allMessages: InferenceMessage[] = [];
+    if (conversation.systemPrompt) {
+      allMessages.push({ role: "system", content: conversation.systemPrompt });
+    }
+    allMessages.push(...conversation.messages);
+
+    // Run inference with full conversation history
+    const result = await this.runVerifiedInference(
+      conversation.provider,
+      conversation.modelId,
+      userMessage,
+      {
+        systemPrompt: conversation.systemPrompt,
+        messages: allMessages,
+        config: config ? { options: config } : undefined,
+        skipVerification,
+      }
+    );
+
+    // Add assistant response
+    conversation.messages.push({ role: "assistant", content: result.response.output });
+    conversation.updatedAt = Date.now();
+
+    if (result.record?.id) {
+      conversation.recordIds.push(result.record.id);
+    }
+
+    return {
+      output: result.response.output,
+      recordId: result.record?.id,
+      cid: result.record?.cid,
+      verified: result.verification?.valid,
+      tokens: result.response.totalTokens,
+      timeMs: result.response.generationTimeMs,
     };
   }
 

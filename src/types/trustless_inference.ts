@@ -224,6 +224,23 @@ export interface ModelRegistryEntry {
   signature: string;
 }
 
+// ============================================================================
+// Conversation Types
+// ============================================================================
+
+export interface InferenceConversation {
+  id: string;
+  title: string;
+  provider: LocalModelProvider;
+  modelId: string;
+  systemPrompt?: string;
+  messages: InferenceMessage[];
+  /** Record IDs for each assistant response */
+  recordIds: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface ModelVerificationRequest {
   modelId: string;
   expectedWeightsHash: string;

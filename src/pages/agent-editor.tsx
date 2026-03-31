@@ -40,6 +40,7 @@ import {
   BarChart3,
   SlidersHorizontal,
   Share2,
+  Smartphone,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -85,6 +86,7 @@ import {
 import { IpcClient } from "@/ipc/ipc_client";
 import { agentBuilderClient } from "@/ipc/agent_builder_client";
 import { showError, showSuccess } from "@/lib/toast";
+import type { App } from "@/ipc/ipc_types";
 import AgentMemoryTab from "@/components/agent/AgentMemoryTab";
 import AgentStackBuilder from "@/components/agent/AgentStackBuilder";
 import AgentTasksPanel from "@/components/agent/AgentTasksPanel";
@@ -141,6 +143,7 @@ export default function AgentEditorPage() {
   const [modelId, setModelId] = useState("");
   const [temperature, setTemperature] = useState(0.7);
   const [maxTokens, setMaxTokens] = useState(4096);
+  const [selectedAppId, setSelectedAppId] = useState<number | null>(null);
 
   // ---- Tool dialog state ----
   const [toolDialogOpen, setToolDialogOpen] = useState(false);
@@ -198,6 +201,11 @@ export default function AgentEditorPage() {
     enabled: !!agentId,
   });
 
+  const { data: appsData } = useQuery({
+    queryKey: ["apps"],
+    queryFn: () => IpcClient.getInstance().listApps(),
+  });
+
   // Populate form when agent loads
   useEffect(() => {
     if (agent) {
@@ -207,6 +215,7 @@ export default function AgentEditorPage() {
       setModelId(agent.modelId || "");
       setTemperature(agent.temperature ?? 0.7);
       setMaxTokens(agent.maxTokens ?? 4096);
+      setSelectedAppId(agent.appId ?? null);
     }
   }, [agent]);
 
@@ -267,6 +276,7 @@ export default function AgentEditorPage() {
       modelId,
       temperature,
       maxTokens,
+      appId: selectedAppId,
     });
   };
 
@@ -554,6 +564,48 @@ export default function AgentEditorPage() {
                   </CardContent>
                 </Card>
 
+                {/* Linked App */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Smartphone className="h-4 w-4" />
+                      Linked App
+                    </CardTitle>
+                    <CardDescription>
+                      Attach a built app to this agent as its UI skin
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <Select
+                      value={selectedAppId ? String(selectedAppId) : "none"}
+                      onValueChange={(value) => {
+                        setSelectedAppId(value === "none" ? null : Number(value));
+                        handleFieldChange();
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select an app..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No app linked</SelectItem>
+                        {appsData?.apps.map((app) => (
+                          <SelectItem key={app.id} value={String(app.id)}>
+                            {app.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {selectedAppId && appsData?.apps.find((a) => a.id === selectedAppId) && (
+                      <div className="flex items-center gap-2 p-2 rounded-md bg-muted/50 text-sm">
+                        <Smartphone className="h-4 w-4 text-violet-500 shrink-0" />
+                        <span className="text-muted-foreground truncate">
+                          {appsData.apps.find((a) => a.id === selectedAppId)?.name}
+                        </span>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
                 {/* Configuration Summary (read-only overview) */}
                 <Card>
                   <CardHeader className="pb-3">
@@ -600,6 +652,16 @@ export default function AgentEditorPage() {
                           {systemPrompt
                             ? `${systemPrompt.length} chars`
                             : "Not set"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          Linked App
+                        </span>
+                        <span className="font-medium">
+                          {selectedAppId
+                            ? appsData?.apps.find((a) => a.id === selectedAppId)?.name || "Unknown"
+                            : "None"}
                         </span>
                       </div>
                     </div>

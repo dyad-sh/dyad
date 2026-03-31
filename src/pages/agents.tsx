@@ -28,6 +28,7 @@ import {
   Share2,
   Container,
   FileText,
+  Smartphone,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -58,7 +59,16 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { agentBuilderClient } from "@/ipc/agent_builder_client";
+import { IpcClient } from "@/ipc/ipc_client";
 import { AGENT_TEMPLATES, TEMPLATE_CATEGORIES } from "@/constants/agent_templates";
 import { showError, showSuccess } from "@/lib/toast";
 
@@ -103,12 +113,19 @@ export default function AgentBuilderPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [newAgentName, setNewAgentName] = useState("");
+  const [newAgentAppId, setNewAgentAppId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState("all");
 
   // Fetch agents
   const { data: agents = [], isLoading } = useQuery({
     queryKey: ["agents"],
     queryFn: () => agentBuilderClient.listAgents(),
+  });
+
+  // Fetch apps for linking
+  const { data: appsData } = useQuery({
+    queryKey: ["apps"],
+    queryFn: () => IpcClient.getInstance().listApps(),
   });
 
   // Create agent mutation
@@ -118,6 +135,7 @@ export default function AgentBuilderPage() {
       queryClient.invalidateQueries({ queryKey: ["agents"] });
       showSuccess(`Agent "${agent.name}" created successfully`);
       setCreateDialogOpen(false);
+      setNewAgentAppId(null);
       navigate({ to: "/agents/$agentId", params: { agentId: String(agent.id) } });
     },
     onError: (error) => {
@@ -215,6 +233,7 @@ export default function AgentBuilderPage() {
       templateId: selectedTemplate || undefined,
       systemPrompt: template?.systemPrompt,
       config: template?.config,
+      appId: newAgentAppId ?? undefined,
     };
 
     createAgentMutation.mutate(request);
@@ -364,6 +383,34 @@ export default function AgentBuilderPage() {
                     onChange={(e) => setNewAgentName(e.target.value)}
                     className="mt-1"
                   />
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium flex items-center gap-2">
+                    <Smartphone className="h-3.5 w-3.5" />
+                    Link an App (optional)
+                  </Label>
+                  <Select
+                    value={newAgentAppId ? String(newAgentAppId) : "none"}
+                    onValueChange={(value) =>
+                      setNewAgentAppId(value === "none" ? null : Number(value))
+                    }
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="Select an app to attach..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No app linked</SelectItem>
+                      {appsData?.apps.map((app) => (
+                        <SelectItem key={app.id} value={String(app.id)}>
+                          {app.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Attach a built app as the UI skin for this agent
+                  </p>
                 </div>
 
                 <div>

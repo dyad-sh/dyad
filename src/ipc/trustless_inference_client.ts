@@ -13,6 +13,7 @@ import type {
   HeliaNodeStatus,
   InferenceStats,
   InferenceMessage,
+  InferenceConversation,
 } from "@/types/trustless_inference";
 
 // Type for the inference result
@@ -210,6 +211,47 @@ export class TrustlessInferenceClient {
 
   async getStats(): Promise<InferenceStats> {
     return this.ipcRenderer.invoke("trustless:get-stats");
+  }
+
+  // ============================================================================
+  // Conversation Operations
+  // ============================================================================
+
+  async createConversation(params: {
+    provider: LocalModelProvider;
+    modelId: string;
+    systemPrompt?: string;
+    title?: string;
+  }): Promise<InferenceConversation> {
+    return this.ipcRenderer.invoke("trustless:create-conversation", params);
+  }
+
+  async getConversation(conversationId: string): Promise<InferenceConversation | null> {
+    return this.ipcRenderer.invoke("trustless:get-conversation", conversationId);
+  }
+
+  async listConversations(): Promise<InferenceConversation[]> {
+    return this.ipcRenderer.invoke("trustless:list-conversations");
+  }
+
+  async deleteConversation(conversationId: string): Promise<void> {
+    return this.ipcRenderer.invoke("trustless:delete-conversation", conversationId);
+  }
+
+  async updateConversation(
+    conversationId: string,
+    updates: { title?: string; systemPrompt?: string; provider?: LocalModelProvider; modelId?: string }
+  ): Promise<InferenceConversation> {
+    return this.ipcRenderer.invoke("trustless:update-conversation", { conversationId, updates });
+  }
+
+  async sendMessage(params: {
+    conversationId: string;
+    message: string;
+    config?: { temperature?: number; maxTokens?: number };
+    skipVerification?: boolean;
+  }): Promise<InferenceResult> {
+    return this.ipcRenderer.invoke("trustless:send-message", params);
   }
 }
 

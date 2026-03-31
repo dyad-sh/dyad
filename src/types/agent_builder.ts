@@ -488,6 +488,7 @@ export interface CreateAgentRequest {
   systemPrompt?: string;
   modelId?: string;
   config?: Partial<AgentConfig>;
+  appId?: number;
 }
 
 export interface UpdateAgentRequest {
@@ -501,6 +502,7 @@ export interface UpdateAgentRequest {
   temperature?: number;
   maxTokens?: number;
   config?: Partial<AgentConfig>;
+  appId?: number | null;
 }
 
 export interface CreateAgentToolRequest {

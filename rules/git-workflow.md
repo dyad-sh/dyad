@@ -24,6 +24,16 @@ gh pr create --head <owner>:<branch> ...
 
 This can happen when remotes are configured in a non-fork layout and `gh` fails to infer the branch mapping.
 
+## Empty branches cannot produce PRs
+
+Before creating a PR for a freshly pushed branch, check whether it is actually ahead of the base branch:
+
+```bash
+git rev-list --left-right --count upstream/main...HEAD
+```
+
+If this returns `0	0`, the branch has no commits ahead of `upstream/main`. GitHub cannot open a PR for an empty branch, so do not fabricate an empty commit just to satisfy `gh pr create`; report the branch as pushed but PR-blocked instead.
+
 ## `gh pr create` body quoting
 
 When passing a PR body inline via `gh pr create --body "..."`, unescaped backticks are evaluated by `zsh` before `gh` runs. Avoid backticks in inline bodies, or use a body file / heredoc so literal code identifiers do not turn into `command not found` errors.

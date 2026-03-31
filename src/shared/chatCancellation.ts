@@ -26,6 +26,29 @@ export function stripCancelledResponseNotice(content: string): string {
     .trimEnd();
 }
 
+/**
+ * Filters out cancelled message pairs (user prompt + cancelled assistant response)
+ * so the AI doesn't try to reconcile cancelled/incorrect prompts with new ones.
+ */
+export function filterCancelledMessagePairs<
+  T extends { role: string; content: string },
+>(messages: T[]): T[] {
+  return messages.filter((msg, index) => {
+    if (isCancelledResponseContent(msg.content)) {
+      return false;
+    }
+    // Also filter the preceding user message that triggered the cancelled response
+    if (
+      msg.role === "user" &&
+      index + 1 < messages.length &&
+      isCancelledResponseContent(messages[index + 1].content)
+    ) {
+      return false;
+    }
+    return true;
+  });
+}
+
 export function applyCancellationNoticeToLastAssistantMessage<
   T extends { role: string; content: string },
 >(messages: T[]): T[] {

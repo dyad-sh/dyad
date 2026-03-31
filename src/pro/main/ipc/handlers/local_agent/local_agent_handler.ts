@@ -76,7 +76,7 @@ import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
 import {
   appendCancelledResponseNotice,
-  isCancelledResponseContent,
+  filterCancelledMessagePairs,
 } from "@/shared/chatCancellation";
 import {
   isChatPendingCompaction,
@@ -227,22 +227,9 @@ function buildChatMessageHistory(
 
   // Filter out cancelled message pairs (user prompt + cancelled assistant response)
   // so the AI doesn't try to reconcile cancelled/incorrect prompts with new ones.
-  return filtered
-    .filter((msg, index) => {
-      if (isCancelledResponseContent(msg.content)) {
-        return false;
-      }
-      // Also filter the preceding user message that triggered the cancelled response
-      if (
-        index + 1 < filtered.length &&
-        isCancelledResponseContent(filtered[index + 1].content) &&
-        msg.role === "user"
-      ) {
-        return false;
-      }
-      return true;
-    })
-    .flatMap((msg) => parseAiMessagesJson(msg));
+  return filterCancelledMessagePairs(filtered).flatMap((msg) =>
+    parseAiMessagesJson(msg),
+  );
 }
 
 function getMidTurnCompactionSummaryIds(
@@ -1210,12 +1197,12 @@ export async function handleLocalAgentStream(
 
     // Handle cancellation paths where stream processing exits cleanly after abort.
     if (abortController.signal.aborted) {
-      if (fullResponse) {
-        await db
-          .update(messages)
-          .set({ content: appendCancelledResponseNotice(fullResponse) })
-          .where(eq(messages.id, placeholderMessageId));
-      }
+      await db
+        .update(messages)
+        .set({
+          content: appendCancelledResponseNotice(fullResponse ?? ""),
+        })
+        .where(eq(messages.id, placeholderMessageId));
       return false; // Cancelled - don't consume quota
     }
 
@@ -1301,12 +1288,12 @@ export async function handleLocalAgentStream(
 
     if (abortController.signal.aborted) {
       // Handle cancellation
-      if (fullResponse) {
-        await db
-          .update(messages)
-          .set({ content: appendCancelledResponseNotice(fullResponse) })
-          .where(eq(messages.id, placeholderMessageId));
-      }
+      await db
+        .update(messages)
+        .set({
+          content: appendCancelledResponseNotice(fullResponse ?? ""),
+        })
+        .where(eq(messages.id, placeholderMessageId));
       return false; // Cancelled - don't consume quota
     }
 

@@ -176,6 +176,12 @@ const ChatMessage = ({
             isStreaming &&
             isLastMessage ? (
               <StreamingLoadingAnimation variant="initial" />
+            ) : message.role === "assistant" &&
+              !hasAssistantText &&
+              isCancelled ? (
+              <div className="prose dark:prose-invert max-w-none text-[15px] italic text-muted-foreground">
+                Response cancelled before any content was generated.
+              </div>
             ) : (
               <div
                 className="prose dark:prose-invert prose-headings:mb-2 prose-p:my-1 prose-pre:my-0 max-w-none break-words text-[15px]"

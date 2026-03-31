@@ -80,7 +80,7 @@ import {
 import { fileExists } from "../utils/file_utils";
 import {
   appendCancelledResponseNotice,
-  isCancelledResponseContent,
+  filterCancelledMessagePairs,
 } from "@/shared/chatCancellation";
 import { extractMentionedAppsCodebases } from "../utils/mention_apps";
 import { parseAppMentions } from "@/shared/parse_mention_apps";
@@ -699,20 +699,7 @@ ${componentSnippet}
 
         // Filter out cancelled message pairs (user prompt + cancelled assistant response)
         // so the AI doesn't try to reconcile cancelled/incorrect prompts with new ones.
-        const messageHistory = messageHistoryRaw.filter((msg, index) => {
-          if (isCancelledResponseContent(msg.content)) {
-            return false;
-          }
-          // Also filter the preceding user message that triggered the cancelled response
-          if (
-            index + 1 < messageHistoryRaw.length &&
-            isCancelledResponseContent(messageHistoryRaw[index + 1].content) &&
-            msg.role === "user"
-          ) {
-            return false;
-          }
-          return true;
-        });
+        const messageHistory = filterCancelledMessagePairs(messageHistoryRaw);
 
         // The DB stores display-friendly versions (short /implement-plan= form
         // or clean <dyad-attachment> tags). Replace the last user message with the

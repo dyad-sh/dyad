@@ -301,28 +301,38 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
       isAnyProviderSetup,
     ]);
 
+    // Precompute which indices are cancelled prompts so the callback
+    // can depend on this set instead of the full messages array reference.
+    const cancelledPromptIndices = useMemo(() => {
+      const indices = new Set<number>();
+      for (let i = 0; i < messages.length - 1; i++) {
+        if (
+          messages[i].role === "user" &&
+          isCancelledResponseContent(messages[i + 1].content)
+        ) {
+          indices.add(i);
+        }
+      }
+      return indices;
+    }, [messages]);
+
     // Memoized item renderer for virtualized list
     const itemContent = useCallback(
       (index: number, message: Message) => {
         const isLastMessage = index === messages.length - 1;
         const messageKey = message.id;
-        // A user message is a "cancelled prompt" if the next message is a cancelled assistant response
-        const isCancelledPrompt =
-          message.role === "user" &&
-          index + 1 < messages.length &&
-          isCancelledResponseContent(messages[index + 1].content);
 
         return (
           <div className="px-4" key={messageKey}>
             <MemoizedChatMessage
               message={message}
               isLastMessage={isLastMessage}
-              isCancelledPrompt={isCancelledPrompt}
+              isCancelledPrompt={cancelledPromptIndices.has(index)}
             />
           </div>
         );
       },
-      [messages],
+      [messages.length, cancelledPromptIndices],
     );
 
     // Create context object for Footer component with stable references
@@ -405,16 +415,12 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
         >
           {messages.map((message, index) => {
             const isLastMessage = index === messages.length - 1;
-            const isCancelledPrompt =
-              message.role === "user" &&
-              index + 1 < messages.length &&
-              isCancelledResponseContent(messages[index + 1].content);
             return (
               <div className="px-4" key={message.id}>
                 <ChatMessage
                   message={message}
                   isLastMessage={isLastMessage}
-                  isCancelledPrompt={isCancelledPrompt}
+                  isCancelledPrompt={cancelledPromptIndices.has(index)}
                 />
               </div>
             );

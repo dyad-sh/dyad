@@ -1,4 +1,3 @@
-
 import { test, Timeout } from "./helpers/test_helper";
 import { expect } from "@playwright/test";
 
@@ -34,7 +33,9 @@ test.describe("pause queue", () => {
       timeout: Timeout.SHORT,
     });
 
-    const pauseButton = queueHeader.getByRole("button", { name: /pause queue/i });
+    const pauseButton = queueHeader.getByRole("button", {
+      name: /pause queue/i,
+    });
     await expect(pauseButton).toBeVisible({ timeout: Timeout.SHORT });
     await pauseButton.click();
     await expect(page.getByText("Paused")).toBeVisible();
@@ -64,7 +65,9 @@ test.describe("pause queue", () => {
       timeout: Timeout.SHORT,
     });
 
-    const pauseButton = queueHeader.getByRole("button", { name: /pause queue/i });
+    const pauseButton = queueHeader.getByRole("button", {
+      name: /pause queue/i,
+    });
     await expect(pauseButton).toBeVisible({ timeout: Timeout.SHORT });
     await pauseButton.click();
     await expect(page.getByText("Paused")).toBeVisible();
@@ -72,7 +75,9 @@ test.describe("pause queue", () => {
     await stopButton.click();
     await expect(queueHeader).toContainText(/4\s+Queued/);
 
-    const resumeButton = queueHeader.getByRole("button", { name: /resume queue/i });
+    const resumeButton = queueHeader.getByRole("button", {
+      name: /resume queue/i,
+    });
     await expect(resumeButton).toBeVisible({ timeout: Timeout.SHORT });
     await resumeButton.click();
     await expect(page.getByText("Paused")).not.toBeVisible({
@@ -122,9 +127,11 @@ test.describe("pause queue", () => {
     await chatInput.press("Enter");
 
     const messagesList = page.getByTestId("messages-list");
-    await expect(messagesList.getByText("should send immediately")).toBeVisible({
-      timeout: Timeout.SHORT,
-    });
+    await expect(messagesList.getByText("should send immediately")).toBeVisible(
+      {
+        timeout: Timeout.SHORT,
+      },
+    );
     await expect(queueHeader).toContainText(/3\s+Queued/);
     await expect(page.getByText("Paused")).toBeVisible();
   });

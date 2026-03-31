@@ -33,6 +33,9 @@ import {
   Target,
   Cpu,
   Share2,
+  Terminal,
+  MessagesSquare,
+  Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -88,7 +91,11 @@ import {
   useAssignTask,
   useSendMessage,
   useShareKnowledge,
+  useExecuteTask,
 } from "@/hooks/useAgentSwarm";
+import { SwarmNetworkGraph } from "@/components/agent/SwarmNetworkGraph";
+import { AgentTaskExecutionView } from "@/components/agent/AgentTaskExecutionView";
+import { AgentChatPanel } from "@/components/agent/AgentChatPanel";
 import type {
   SwarmId,
   AgentNodeId,
@@ -274,6 +281,10 @@ export default function AgentSwarmPage() {
                     <Users className="h-4 w-4" />
                     Agents
                   </TabsTrigger>
+                  <TabsTrigger value="topology" className="gap-2">
+                    <Share2 className="h-4 w-4" />
+                    Topology
+                  </TabsTrigger>
                   <TabsTrigger value="witnesses" className="gap-2">
                     <Eye className="h-4 w-4" />
                     Witnesses
@@ -303,6 +314,17 @@ export default function AgentSwarmPage() {
                   agents={agents}
                   selectedAgentId={selectedAgentId}
                   onSelectAgent={setSelectedAgentId}
+                />
+              </TabsContent>
+
+              <TabsContent value="topology" className="flex-1 overflow-auto p-4 m-0">
+                <TopologyTab
+                  agents={agents}
+                  selectedAgentId={selectedAgentId}
+                  onSelectAgent={(id) => {
+                    setSelectedAgentId(id);
+                    setActiveTab("agents");
+                  }}
                 />
               </TabsContent>
 
@@ -349,23 +371,92 @@ function SwarmListItem({
   isSelected: boolean;
   onSelect: () => void;
 }) {
+  const manager = useAgentSwarmManager(swarm.id);
+
   return (
-    <button
-      onClick={onSelect}
-      className={`w-full text-left p-2 rounded-md transition-colors ${
+    <div
+      className={`w-full text-left p-2 rounded-md transition-colors cursor-pointer ${
         isSelected ? "bg-accent" : "hover:bg-muted"
       }`}
+      onClick={onSelect}
     >
       <div className="flex items-center justify-between">
         <span className="font-medium truncate">{swarm.name}</span>
-        <Badge variant="outline" className={`${STATUS_COLORS[swarm.status]} text-white text-xs`}>
-          {swarm.status}
-        </Badge>
+        <div className="flex items-center gap-1">
+          <Badge variant="outline" className={`${STATUS_COLORS[swarm.status]} text-white text-xs`}>
+            {swarm.status}
+          </Badge>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreVertical className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {swarm.status !== "active" && swarm.status !== "running" && (
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    manager.startSwarm(swarm.id).catch((err: unknown) =>
+                      toast.error(`Failed to start: ${err}`)
+                    );
+                  }}
+                >
+                  <Play className="h-4 w-4 mr-2" />
+                  Start
+                </DropdownMenuItem>
+              )}
+              {(swarm.status === "active" || swarm.status === "running") && (
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    manager.pauseSwarm(swarm.id).catch((err: unknown) =>
+                      toast.error(`Failed to pause: ${err}`)
+                    );
+                  }}
+                >
+                  <Pause className="h-4 w-4 mr-2" />
+                  Pause
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  manager.terminateSwarm(swarm.id).catch((err: unknown) =>
+                    toast.error(`Failed to terminate: ${err}`)
+                  );
+                }}
+              >
+                <Square className="h-4 w-4 mr-2" />
+                Terminate
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-destructive"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  manager.deleteSwarm(swarm.id).catch((err: unknown) =>
+                    toast.error(`Failed to delete: ${err}`)
+                  );
+                }}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
       <div className="text-xs text-muted-foreground mt-1">
         {swarm.metrics.totalAgents} agents · {swarm.metrics.completedTasks} tasks
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -827,11 +918,13 @@ function AgentListItem({
 function AgentDetails({ agent }: { agent: AgentNode }) {
   const { data: stats } = useAgentStats(agent.id);
   const replicateAgent = useReplicateAgent();
+  const manager = useAgentSwarmManager();
 
   const [replicateOpen, setReplicateOpen] = useState(false);
   const [replicationStrategy, setReplicationStrategy] = useState<ReplicationStrategy>("clone");
   const [replicationReason, setReplicationReason] = useState("");
   const [taskFocus, setTaskFocus] = useState("");
+  const [detailTab, setDetailTab] = useState("info");
 
   const handleReplicate = async () => {
     try {
@@ -853,8 +946,8 @@ function AgentDetails({ agent }: { agent: AgentNode }) {
   };
 
   return (
-    <Card className="h-full">
-      <CardHeader>
+    <Card className="h-full flex flex-col">
+      <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2">
@@ -872,6 +965,38 @@ function AgentDetails({ agent }: { agent: AgentNode }) {
             </CardDescription>
           </div>
           <div className="flex gap-2">
+            {/* Lifecycle controls */}
+            {agent.status !== "running" && agent.status !== "terminated" && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1"
+                onClick={() =>
+                  manager.startAgent(agent.id).catch((err: unknown) =>
+                    toast.error(`Failed to start: ${err}`)
+                  )
+                }
+              >
+                <Play className="h-4 w-4" />
+                Start
+              </Button>
+            )}
+            {agent.status === "running" && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1"
+                onClick={() =>
+                  manager.stopAgent(agent.id).catch((err: unknown) =>
+                    toast.error(`Failed to stop: ${err}`)
+                  )
+                }
+              >
+                <Pause className="h-4 w-4" />
+                Stop
+              </Button>
+            )}
+            <AssignTaskDialog agentId={agent.id} />
             <Dialog open={replicateOpen} onOpenChange={setReplicateOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-1">
@@ -938,119 +1063,331 @@ function AgentDetails({ agent }: { agent: AgentNode }) {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-4">
-          <div className="text-center p-3 bg-muted rounded-lg">
-            <div className="text-2xl font-bold">{stats?.totalTasks ?? 0}</div>
-            <div className="text-xs text-muted-foreground">Total Tasks</div>
-          </div>
-          <div className="text-center p-3 bg-muted rounded-lg">
-            <div className="text-2xl font-bold">{stats?.successfulTasks ?? 0}</div>
-            <div className="text-xs text-muted-foreground">Successful</div>
-          </div>
-          <div className="text-center p-3 bg-muted rounded-lg">
-            <div className="text-2xl font-bold">{stats?.replications ?? 0}</div>
-            <div className="text-xs text-muted-foreground">Replications</div>
-          </div>
-        </div>
-
-        {/* Capabilities */}
-        <div>
-          <h4 className="font-medium mb-2">Capabilities</h4>
-          <div className="flex flex-wrap gap-2">
-            {agent.capabilities.length > 0 ? (
-              agent.capabilities.map((cap) => (
-                <Badge key={cap.id} variant="secondary">
-                  {cap.name} ({Math.round(cap.proficiency * 100)}%)
-                </Badge>
-              ))
-            ) : (
-              <span className="text-sm text-muted-foreground">No capabilities defined</span>
+            {agent.status !== "terminated" && (
+              <Button
+                variant="destructive"
+                size="sm"
+                className="gap-1"
+                onClick={() =>
+                  manager.terminateAgent(agent.id).catch((err: unknown) =>
+                    toast.error(`Failed to terminate: ${err}`)
+                  )
+                }
+              >
+                <Square className="h-3.5 w-3.5" />
+              </Button>
             )}
           </div>
         </div>
+      </CardHeader>
+      <CardContent className="flex-1 flex flex-col min-h-0 pt-0">
+        <Tabs value={detailTab} onValueChange={setDetailTab} className="flex-1 flex flex-col">
+          <TabsList className="w-full justify-start">
+            <TabsTrigger value="info" className="gap-1.5">
+              <Info className="h-3.5 w-3.5" />
+              Info
+            </TabsTrigger>
+            <TabsTrigger value="execution" className="gap-1.5">
+              <Terminal className="h-3.5 w-3.5" />
+              Execution
+            </TabsTrigger>
+            <TabsTrigger value="chat" className="gap-1.5">
+              <MessagesSquare className="h-3.5 w-3.5" />
+              Chat
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Lineage */}
-        {agent.lineage.length > 0 && (
-          <div>
-            <h4 className="font-medium mb-2">Lineage</h4>
-            <div className="flex items-center gap-1 text-sm">
-              {agent.lineage.map((ancestorId, i) => (
-                <React.Fragment key={ancestorId}>
-                  <span className="text-muted-foreground truncate max-w-[100px]">
-                    {ancestorId.slice(0, 8)}...
-                  </span>
-                  {i < agent.lineage.length - 1 && (
-                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                  )}
-                </React.Fragment>
-              ))}
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-              <span className="font-medium">{agent.name}</span>
+          <TabsContent value="info" className="flex-1 overflow-auto mt-3 space-y-6">
+            {/* Stats */}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="text-center p-3 bg-muted rounded-lg">
+                <div className="text-2xl font-bold">{stats?.totalTasks ?? 0}</div>
+                <div className="text-xs text-muted-foreground">Total Tasks</div>
+              </div>
+              <div className="text-center p-3 bg-muted rounded-lg">
+                <div className="text-2xl font-bold">{stats?.successfulTasks ?? 0}</div>
+                <div className="text-xs text-muted-foreground">Successful</div>
+              </div>
+              <div className="text-center p-3 bg-muted rounded-lg">
+                <div className="text-2xl font-bold">{stats?.replications ?? 0}</div>
+                <div className="text-xs text-muted-foreground">Replications</div>
+              </div>
             </div>
-          </div>
-        )}
 
-        {/* Pending Tasks */}
-        <div>
-          <h4 className="font-medium mb-2">
-            Pending Tasks ({agent.state.pendingTasks.length})
-          </h4>
-          {agent.state.pendingTasks.length > 0 ? (
-            <div className="space-y-2">
-              {agent.state.pendingTasks.slice(0, 5).map((task) => (
-                <div
-                  key={task.id}
-                  className="p-2 border rounded text-sm flex items-center justify-between"
-                >
-                  <div>
-                    <Badge variant="outline">{task.type}</Badge>
-                    <span className="ml-2">{task.description}</span>
-                  </div>
-                  <Badge
-                    variant={task.status === "running" ? "default" : "secondary"}
-                  >
-                    {task.status}
-                  </Badge>
+            {/* Capabilities */}
+            <div>
+              <h4 className="font-medium mb-2">Capabilities</h4>
+              <div className="flex flex-wrap gap-2">
+                {agent.capabilities.length > 0 ? (
+                  agent.capabilities.map((cap) => (
+                    <Badge key={cap.id} variant="secondary">
+                      {cap.name} ({Math.round(cap.proficiency * 100)}%)
+                    </Badge>
+                  ))
+                ) : (
+                  <span className="text-sm text-muted-foreground">No capabilities defined</span>
+                )}
+              </div>
+            </div>
+
+            {/* Lineage */}
+            {agent.lineage.length > 0 && (
+              <div>
+                <h4 className="font-medium mb-2">Lineage</h4>
+                <div className="flex items-center gap-1 text-sm">
+                  {agent.lineage.map((ancestorId, i) => (
+                    <React.Fragment key={ancestorId}>
+                      <span className="text-muted-foreground truncate max-w-[100px]">
+                        {ancestorId.slice(0, 8)}...
+                      </span>
+                      {i < agent.lineage.length - 1 && (
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </React.Fragment>
+                  ))}
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-medium">{agent.name}</span>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <span className="text-sm text-muted-foreground">No pending tasks</span>
-          )}
-        </div>
+              </div>
+            )}
 
-        {/* Memory Usage */}
-        <div>
-          <h4 className="font-medium mb-2">Memory</h4>
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>Short-term</span>
-              <span>{agent.state.memory.shortTerm.length} entries</span>
+            {/* Pending Tasks */}
+            <div>
+              <h4 className="font-medium mb-2">
+                Pending Tasks ({agent.state.pendingTasks.length})
+              </h4>
+              {agent.state.pendingTasks.length > 0 ? (
+                <div className="space-y-2">
+                  {agent.state.pendingTasks.slice(0, 5).map((task) => (
+                    <div
+                      key={task.id}
+                      className="p-2 border rounded text-sm flex items-center justify-between"
+                    >
+                      <div>
+                        <Badge variant="outline">{task.type}</Badge>
+                        <span className="ml-2">{task.description}</span>
+                      </div>
+                      <Badge
+                        variant={task.status === "running" ? "default" : "secondary"}
+                      >
+                        {task.status}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <span className="text-sm text-muted-foreground">No pending tasks</span>
+              )}
             </div>
-            <div className="flex justify-between text-sm">
-              <span>Long-term</span>
-              <span>{agent.state.memory.longTerm.length} entries</span>
+
+            {/* Memory Usage */}
+            <div>
+              <h4 className="font-medium mb-2">Memory</h4>
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Short-term</span>
+                  <span>{agent.state.memory.shortTerm.length} entries</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>Long-term</span>
+                  <span>{agent.state.memory.longTerm.length} entries</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>Shared Knowledge</span>
+                  <span>{agent.state.memory.shared.length} references</span>
+                </div>
+                <Progress
+                  value={(agent.state.memory.used / agent.state.memory.capacity) * 100}
+                  className="h-2"
+                />
+                <div className="text-xs text-muted-foreground text-right">
+                  {agent.state.memory.used} / {agent.state.memory.capacity} used
+                </div>
+              </div>
             </div>
-            <div className="flex justify-between text-sm">
-              <span>Shared Knowledge</span>
-              <span>{agent.state.memory.shared.length} references</span>
-            </div>
-            <Progress
-              value={(agent.state.memory.used / agent.state.memory.capacity) * 100}
-              className="h-2"
+          </TabsContent>
+
+          <TabsContent value="execution" className="flex-1 mt-3">
+            <AgentTaskExecutionView
+              agentId={agent.id}
+              activeTasks={agent.state.pendingTasks.map((t) => ({
+                id: t.id,
+                description: t.description,
+                status: t.status,
+              }))}
             />
-            <div className="text-xs text-muted-foreground text-right">
-              {agent.state.memory.used} / {agent.state.memory.capacity} used
-            </div>
-          </div>
-        </div>
+          </TabsContent>
+
+          <TabsContent value="chat" className="flex-1 mt-3">
+            <AgentChatPanel agentId={agent.id} agentName={agent.name} />
+          </TabsContent>
+        </Tabs>
       </CardContent>
     </Card>
+  );
+}
+
+// =============================================================================
+// ASSIGN TASK DIALOG
+// =============================================================================
+
+function AssignTaskDialog({ agentId }: { agentId: AgentNodeId }) {
+  const [open, setOpen] = useState(false);
+  const [taskType, setTaskType] = useState<TaskType>("custom");
+  const [description, setDescription] = useState("");
+  const [priority, setPriority] = useState(5);
+  const assignTask = useAssignTask();
+
+  const handleAssign = async () => {
+    if (!description.trim()) {
+      toast.error("Task description is required");
+      return;
+    }
+    try {
+      await assignTask.mutateAsync({
+        agentId,
+        task: {
+          type: taskType,
+          description: description.trim(),
+          priority,
+        },
+      });
+      toast.success("Task assigned");
+      setOpen(false);
+      setDescription("");
+      setPriority(5);
+    } catch (error) {
+      toast.error(`Failed to assign task: ${error}`);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="gap-1">
+          <Target className="h-4 w-4" />
+          Assign Task
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Assign Task</DialogTitle>
+          <DialogDescription>Assign a new task to this agent for execution</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label>Task Type</Label>
+            <Select value={taskType} onValueChange={(v) => setTaskType(v as TaskType)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TASK_TYPES.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Description</Label>
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Describe what the agent should do..."
+              rows={3}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Priority: {priority}</Label>
+            <Slider
+              value={[priority]}
+              onValueChange={([v]) => setPriority(v)}
+              min={1}
+              max={10}
+              step={1}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleAssign} disabled={assignTask.isPending}>
+            Assign
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// =============================================================================
+// TOPOLOGY TAB
+// =============================================================================
+
+function TopologyTab({
+  agents,
+  selectedAgentId,
+  onSelectAgent,
+}: {
+  agents: AgentNode[];
+  selectedAgentId: AgentNodeId | null;
+  onSelectAgent: (id: AgentNodeId) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Share2 className="h-5 w-5" />
+            Network Topology
+          </CardTitle>
+          <CardDescription>
+            Visual representation of the agent hierarchy. Click a node to view its details.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <SwarmNetworkGraph
+            agents={agents}
+            selectedAgentId={selectedAgentId ?? undefined}
+            onSelectAgent={onSelectAgent}
+          />
+        </CardContent>
+      </Card>
+
+      {/* Legend */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Legend</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-4 text-xs">
+            {AGENT_ROLES.map((role) => (
+              <div key={role.value} className="flex items-center gap-1.5">
+                {role.icon}
+                <span>{role.label}</span>
+              </div>
+            ))}
+          </div>
+          <Separator className="my-2" />
+          <div className="flex flex-wrap gap-3 text-xs">
+            {Object.entries({ idle: "#6b7280", running: "#22c55e", busy: "#f59e0b", stopped: "#ef4444", terminated: "#991b1b" }).map(
+              ([status, color]) => (
+                <div key={status} className="flex items-center gap-1.5">
+                  <span
+                    className="inline-block h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: color }}
+                  />
+                  <span className="capitalize">{status}</span>
+                </div>
+              )
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 

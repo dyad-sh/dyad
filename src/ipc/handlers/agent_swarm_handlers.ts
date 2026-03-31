@@ -21,6 +21,7 @@ import {
   type TaskAssignment,
   type SwarmEvent,
 } from "@/lib/agent_swarm";
+import { getSwarmExecutor } from "@/lib/agent_swarm_executor";
 
 // Event subscription management
 const eventSubscribers = new Map<number, () => void>();
@@ -34,10 +35,14 @@ export function registerAgentSwarmHandlers(): void {
 
   ipcMain.handle("agent-swarm:initialize", async () => {
     await swarm.initialize();
+    const executor = getSwarmExecutor();
+    await executor.initialize();
     return { success: true };
   });
 
   ipcMain.handle("agent-swarm:shutdown", async () => {
+    const executor = getSwarmExecutor();
+    await executor.shutdown();
     await swarm.shutdown();
     return { success: true };
   });
@@ -495,4 +500,61 @@ export function registerAgentSwarmHandlers(): void {
     }
     return { success: true };
   });
+
+  // ---------------------------------------------------------------------------
+  // TASK EXECUTION (via Swarm Executor + OpenClaw CNS)
+  // ---------------------------------------------------------------------------
+
+  ipcMain.handle(
+    "agent-swarm:execute-task",
+    async (
+      _event: IpcMainInvokeEvent,
+      agentId: AgentNodeId,
+      taskId: string
+    ) => {
+      const executor = getSwarmExecutor();
+      const output = await executor.executeTask(agentId, taskId);
+      return { output };
+    }
+  );
+
+  ipcMain.handle(
+    "agent-swarm:get-task-output",
+    async (
+      _event: IpcMainInvokeEvent,
+      agentId: AgentNodeId,
+      taskId: string
+    ) => {
+      const executor = getSwarmExecutor();
+      return executor.getTaskOutput(agentId, taskId);
+    }
+  );
+
+  // ---------------------------------------------------------------------------
+  // AGENT CHAT (via Swarm Executor + OpenClaw CNS)
+  // ---------------------------------------------------------------------------
+
+  ipcMain.handle(
+    "agent-swarm:agent-chat",
+    async (
+      _event: IpcMainInvokeEvent,
+      agentId: AgentNodeId,
+      message: string
+    ) => {
+      const executor = getSwarmExecutor();
+      const response = await executor.agentChat(agentId, message);
+      return { response };
+    }
+  );
+
+  ipcMain.handle(
+    "agent-swarm:get-chat-history",
+    async (
+      _event: IpcMainInvokeEvent,
+      agentId: AgentNodeId
+    ) => {
+      const executor = getSwarmExecutor();
+      return executor.getChatHistory(agentId);
+    }
+  );
 }

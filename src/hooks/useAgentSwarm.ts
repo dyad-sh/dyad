@@ -3,7 +3,7 @@
  * TanStack Query hooks for the self-replicating agent system
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   agentSwarmClient,
@@ -23,6 +23,8 @@ import {
   type KnowledgeType,
   type TaskAssignment,
   type SwarmEvent,
+  type TaskProgressEvent,
+  type AgentChatMessage,
 } from "@/ipc/agent_swarm_client";
 
 // =============================================================================
@@ -49,6 +51,10 @@ const SWARM_KEYS = {
   knowledgeItem: (id: KnowledgeId) => [...SWARM_KEYS.all, "knowledge", id] as const,
   knowledgeSearch: (swarmId: SwarmId, query: string, type?: KnowledgeType) =>
     [...SWARM_KEYS.knowledge(swarmId), "search", query, type] as const,
+  taskOutput: (agentId: AgentNodeId, taskId: string) =>
+    [...SWARM_KEYS.agent(agentId), "task-output", taskId] as const,
+  chatHistory: (agentId: AgentNodeId) =>
+    [...SWARM_KEYS.agent(agentId), "chat-history"] as const,
 };
 
 // =============================================================================
@@ -722,6 +728,77 @@ export function useSwarmEvents(callback?: (event: SwarmEvent) => void) {
   }, []);
 
   return { events, latestEvent, clearEvents };
+}
+
+// =============================================================================
+// TASK EXECUTION HOOKS
+// =============================================================================
+
+export function useExecuteTask() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ agentId, taskId }: { agentId: AgentNodeId; taskId: string }) =>
+      agentSwarmClient.executeTask(agentId, taskId),
+    onSuccess: (_data, { agentId }) => {
+      queryClient.invalidateQueries({ queryKey: SWARM_KEYS.agent(agentId) });
+      queryClient.invalidateQueries({
+        queryKey: SWARM_KEYS.agentStats(agentId),
+      });
+    },
+  });
+}
+
+export function useTaskOutput(
+  agentId: AgentNodeId | undefined,
+  taskId: string | undefined
+) {
+  return useQuery({
+    queryKey: SWARM_KEYS.taskOutput(agentId!, taskId!),
+    queryFn: () => agentSwarmClient.getTaskOutput(agentId!, taskId!),
+    enabled: !!agentId && !!taskId,
+  });
+}
+
+export function useTaskProgress(agentId?: AgentNodeId) {
+  const [progress, setProgress] = useState<TaskProgressEvent[]>([]);
+
+  useEffect(() => {
+    const unsub = agentSwarmClient.onTaskProgress((event) => {
+      if (!agentId || event.agentId === agentId) {
+        setProgress((prev) => [...prev.slice(-199), event]);
+      }
+    });
+    return unsub;
+  }, [agentId]);
+
+  const clear = useCallback(() => setProgress([]), []);
+
+  return { progress, clear };
+}
+
+// =============================================================================
+// AGENT CHAT HOOKS
+// =============================================================================
+
+export function useAgentChat() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ agentId, message }: { agentId: AgentNodeId; message: string }) =>
+      agentSwarmClient.agentChat(agentId, message),
+    onSuccess: (_data, { agentId }) => {
+      queryClient.invalidateQueries({
+        queryKey: SWARM_KEYS.chatHistory(agentId),
+      });
+    },
+  });
+}
+
+export function useChatHistory(agentId: AgentNodeId | undefined) {
+  return useQuery({
+    queryKey: SWARM_KEYS.chatHistory(agentId!),
+    queryFn: () => agentSwarmClient.getChatHistory(agentId!),
+    enabled: !!agentId,
+  });
 }
 
 // =============================================================================

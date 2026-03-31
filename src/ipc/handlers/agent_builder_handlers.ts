@@ -53,6 +53,7 @@ export async function handleCreateAgent(
       systemPrompt: request.systemPrompt,
       modelId: request.modelId,
       configJson: request.config ?? null,
+      appId: request.appId ?? null,
       status: "draft",
       version: "1.0.0",
     })
@@ -107,6 +108,7 @@ export async function handleUpdateAgent(
   if (request.temperature !== undefined) updateData.temperature = request.temperature;
   if (request.maxTokens !== undefined) updateData.maxTokens = request.maxTokens;
   if (request.config !== undefined) updateData.configJson = request.config;
+  if (request.appId !== undefined) updateData.appId = request.appId;
 
   const [updated] = await db
     .update(agents)

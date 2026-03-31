@@ -16,6 +16,7 @@ import type {
   HeliaNodeStatus,
   InferenceStats,
   InferenceMessage,
+  InferenceConversation,
 } from "@/types/trustless_inference";
 
 const logger = log.scope("trustless_inference_handlers");
@@ -276,6 +277,86 @@ export function registerTrustlessInferenceHandlers(): void {
     "trustless:get-stats",
     async (): Promise<InferenceStats> => {
       return trustlessInferenceService.getStats();
+    }
+  );
+
+  // ============================================================================
+  // Conversation Operations
+  // ============================================================================
+
+  ipcMain.handle(
+    "trustless:create-conversation",
+    async (
+      _,
+      params: {
+        provider: LocalModelProvider;
+        modelId: string;
+        systemPrompt?: string;
+        title?: string;
+      }
+    ): Promise<InferenceConversation> => {
+      return trustlessInferenceService.createConversation(params);
+    }
+  );
+
+  ipcMain.handle(
+    "trustless:get-conversation",
+    async (_, conversationId: string): Promise<InferenceConversation | null> => {
+      return trustlessInferenceService.getConversation(conversationId);
+    }
+  );
+
+  ipcMain.handle(
+    "trustless:list-conversations",
+    async (): Promise<InferenceConversation[]> => {
+      return trustlessInferenceService.listConversations();
+    }
+  );
+
+  ipcMain.handle(
+    "trustless:delete-conversation",
+    async (_, conversationId: string): Promise<void> => {
+      trustlessInferenceService.deleteConversation(conversationId);
+    }
+  );
+
+  ipcMain.handle(
+    "trustless:update-conversation",
+    async (
+      _,
+      params: {
+        conversationId: string;
+        updates: { title?: string; systemPrompt?: string; provider?: LocalModelProvider; modelId?: string };
+      }
+    ): Promise<InferenceConversation> => {
+      return trustlessInferenceService.updateConversation(params.conversationId, params.updates);
+    }
+  );
+
+  ipcMain.handle(
+    "trustless:send-message",
+    async (
+      _,
+      params: {
+        conversationId: string;
+        message: string;
+        config?: { temperature?: number; maxTokens?: number };
+        skipVerification?: boolean;
+      }
+    ): Promise<{
+      output: string;
+      recordId?: string;
+      cid?: string;
+      verified?: boolean;
+      tokens: number;
+      timeMs: number;
+    }> => {
+      return trustlessInferenceService.sendMessage(
+        params.conversationId,
+        params.message,
+        params.config,
+        params.skipVerification
+      );
     }
   );
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Cpu,
@@ -26,6 +26,14 @@ import {
   ChevronRight,
   Sparkles,
   Activity,
+  Plus,
+  Trash2,
+  Send,
+  MessageSquare,
+  Settings2,
+  Bot,
+  User,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -60,6 +68,8 @@ import type {
   VerificationResult,
   HeliaNodeStatus,
   InferenceStats,
+  InferenceConversation,
+  InferenceMessage,
 } from "@/types/trustless_inference";
 
 // ============================================================================
@@ -311,424 +321,485 @@ function ModelList({
 }
 
 // ============================================================================
-// Inference Playground
+// Conversation Sidebar
+// ============================================================================
+
+function ConversationSidebar({
+  activeId,
+  onSelect,
+  onNew,
+}: {
+  activeId: string | null;
+  onSelect: (id: string) => void;
+  onNew: () => void;
+}) {
+  const queryClient = useQueryClient();
+
+  const { data: conversations } = useQuery({
+    queryKey: ["trustless-conversations"],
+    queryFn: () => trustlessInferenceClient.listConversations(),
+    refetchInterval: 5000,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => trustlessInferenceClient.deleteConversation(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["trustless-conversations"] });
+      toast.success("Conversation deleted");
+    },
+    onError: (err) => toast.error(`Delete failed: ${err.message}`),
+  });
+
+  return (
+    <div className="flex flex-col h-full">
+      <Button
+        onClick={onNew}
+        className="mx-3 mt-3 mb-2 h-10 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 shadow-lg shadow-violet-500/20"
+      >
+        <Plus className="h-4 w-4 mr-2" />
+        New Conversation
+      </Button>
+      <ScrollArea className="flex-1 px-2">
+        <div className="space-y-1 pb-3">
+          {conversations?.map((conv) => (
+            <div
+              key={conv.id}
+              className={`group flex items-center gap-2 px-3 py-2.5 rounded-xl cursor-pointer transition-all ${
+                activeId === conv.id
+                  ? "bg-primary/10 border border-primary/20"
+                  : "hover:bg-muted/60"
+              }`}
+              onClick={() => onSelect(conv.id)}
+            >
+              <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate">{conv.title}</div>
+                <div className="text-xs text-muted-foreground">
+                  {conv.messages.length} messages
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deleteMutation.mutate(conv.id);
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+              </Button>
+            </div>
+          ))}
+          {(!conversations || conversations.length === 0) && (
+            <div className="text-center py-8 text-muted-foreground">
+              <MessageSquare className="h-10 w-10 mx-auto mb-2 opacity-20" />
+              <p className="text-sm">No conversations yet</p>
+            </div>
+          )}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
+
+// ============================================================================
+// Chat Message Bubble
+// ============================================================================
+
+function ChatBubble({
+  message,
+  recordId,
+  isStreaming,
+}: {
+  message: InferenceMessage;
+  recordId?: string;
+  isStreaming?: boolean;
+}) {
+  const isUser = message.role === "user";
+  const isSystem = message.role === "system";
+
+  if (isSystem) {
+    return (
+      <div className="flex justify-center my-2">
+        <div className="px-3 py-1.5 rounded-full bg-muted/50 text-xs text-muted-foreground flex items-center gap-1.5">
+          <Settings2 className="h-3 w-3" />
+          System: {message.content.slice(0, 80)}{message.content.length > 80 ? "..." : ""}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"} group`}>
+      {!isUser && (
+        <div className="shrink-0 mt-1">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
+            <Bot className="h-4 w-4 text-white" />
+          </div>
+        </div>
+      )}
+      <div className={`max-w-[75%] space-y-1 ${isUser ? "items-end" : "items-start"}`}>
+        <div
+          className={`px-4 py-3 rounded-2xl text-sm whitespace-pre-wrap ${
+            isUser
+              ? "bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-br-md shadow-lg shadow-violet-500/20"
+              : "bg-muted/70 border rounded-bl-md"
+          } ${isStreaming ? "animate-pulse" : ""}`}
+        >
+          {message.content || (isStreaming ? "Thinking..." : "")}
+        </div>
+        {recordId && !isUser && (
+          <div className="flex items-center gap-1.5 px-1">
+            <Badge
+              variant="outline"
+              className="text-[10px] h-5 cursor-pointer hover:bg-muted"
+              onClick={() => {
+                navigator.clipboard.writeText(recordId);
+                toast.success("Record ID copied");
+              }}
+            >
+              <ShieldCheck className="h-2.5 w-2.5 mr-1 text-emerald-500" />
+              Verified
+            </Badge>
+          </div>
+        )}
+      </div>
+      {isUser && (
+        <div className="shrink-0 mt-1">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+            <User className="h-4 w-4 text-white" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Inference Playground (Conversation Chat UI)
 // ============================================================================
 
 function InferencePlayground() {
   const queryClient = useQueryClient();
+
+  // Conversation state
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [input, setInput] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Model settings
   const [provider, setProvider] = useState<LocalModelProvider>("ollama");
   const [modelId, setModelId] = useState("");
-  const [prompt, setPrompt] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
   const [temperature, setTemperature] = useState(0.7);
   const [maxTokens, setMaxTokens] = useState(2048);
   const [enableVerification, setEnableVerification] = useState(true);
-  const [output, setOutput] = useState("");
-  const [lastRecord, setLastRecord] = useState<{
-    recordId?: string;
-    cid?: string;
-    verified?: boolean;
-    modelId?: string;
-    modelName?: string;
-    provider?: string;
-    tokens?: number;
-    timeMs?: number;
-    timestamp?: number;
-  } | null>(null);
 
-  const { data: models } = useQuery({
+  const { data: availableModels = [] } = useQuery({
     queryKey: ["trustless-models"],
     queryFn: () => trustlessInferenceClient.listModels(),
   });
 
-  const availableModels = models?.filter((m) => m.provider === provider) || [];
-
-  const inferenceMutation = useMutation({
-    mutationFn: async () => {
-      setOutput("");
-      setLastRecord(null);
-
-      const result = await trustlessInferenceClient.runInference({
-        provider,
-        modelId,
-        prompt,
-        systemPrompt: systemPrompt || undefined,
-        config: { temperature, maxTokens },
-        skipVerification: !enableVerification,
-      });
-
-      return result;
-    },
-    onSuccess: (result) => {
-      setOutput(result.output);
-      setLastRecord({
-        recordId: result.recordId,
-        cid: result.cid,
-        verified: result.verified,
-        modelId: modelId,
-        modelName: availableModels.find((m) => m.id === modelId)?.name || modelId,
-        provider: provider,
-        tokens: result.tokens,
-        timeMs: result.timeMs,
-        timestamp: Date.now(),
-      });
-      queryClient.invalidateQueries({ queryKey: ["inference-records"] });
-      toast.success(
-        `Inference complete (${result.tokens} tokens, ${result.timeMs}ms)`
-      );
-    },
-    onError: (error) => {
-      toast.error(`Inference failed: ${error.message}`);
-    },
+  // Active conversation query
+  const { data: activeConversation } = useQuery({
+    queryKey: ["trustless-conversation", activeConversationId],
+    queryFn: () =>
+      activeConversationId
+        ? trustlessInferenceClient.getConversation(activeConversationId)
+        : null,
+    enabled: !!activeConversationId,
+    refetchInterval: 2000,
   });
 
-  const streamMutation = useMutation({
-    mutationFn: async () => {
-      setOutput("");
-      setLastRecord(null);
+  // Send message mutation
+  const sendMutation = useMutation({
+    mutationFn: (message: string) =>
+      trustlessInferenceClient.sendMessage({
+        conversationId: activeConversationId!,
+        message,
+        config: { temperature, maxTokens },
+        skipVerification: !enableVerification,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["trustless-conversation", activeConversationId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["trustless-conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["inference-records"] });
+    },
+    onError: (err) => toast.error(`Inference failed: ${err.message}`),
+  });
 
-      await trustlessInferenceClient.streamInference(
-        {
+  // Auto-scroll to bottom on new messages
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [activeConversation?.messages.length, sendMutation.isPending]);
+
+  // Sync settings when switching conversations
+  useEffect(() => {
+    if (activeConversation) {
+      setProvider(activeConversation.provider);
+      setModelId(activeConversation.modelId);
+      setSystemPrompt(activeConversation.systemPrompt || "");
+    }
+  }, [activeConversation?.id]);
+
+  const handleSend = async () => {
+    if (!input.trim() || sendMutation.isPending) return;
+    if (!modelId) {
+      toast.error("Please select a model first (click the gear icon)");
+      return;
+    }
+
+    const msg = input.trim();
+    setInput("");
+
+    // If no conversation yet, create one first
+    if (!activeConversationId) {
+      try {
+        const conv = await trustlessInferenceClient.createConversation({
           provider,
           modelId,
-          messages: [{ role: "user", content: prompt }],
           systemPrompt: systemPrompt || undefined,
+        });
+        setActiveConversationId(conv.id);
+        queryClient.invalidateQueries({ queryKey: ["trustless-conversations"] });
+
+        // Now send the message to the new conversation
+        await trustlessInferenceClient.sendMessage({
+          conversationId: conv.id,
+          message: msg,
           config: { temperature, maxTokens },
-        },
-        {
-          onToken: (content) => {
-            setOutput((prev) => prev + content);
-          },
-          onDone: (data) => {
-            setLastRecord({ 
-              recordId: data.recordId, 
-              cid: data.cid, 
-              verified: true,
-              modelId: modelId,
-              modelName: availableModels.find((m) => m.id === modelId)?.name || modelId,
-              provider: provider,
-              timestamp: Date.now(),
-            });
-            queryClient.invalidateQueries({ queryKey: ["inference-records"] });
-          },
-          onError: (error) => {
-            toast.error(`Stream error: ${error}`);
-          },
-        }
-      );
-    },
-    onError: (error) => {
-      toast.error(`Stream failed: ${error.message}`);
-    },
+          skipVerification: !enableVerification,
+        });
+        queryClient.invalidateQueries({
+          queryKey: ["trustless-conversation", conv.id],
+        });
+        queryClient.invalidateQueries({ queryKey: ["trustless-conversations"] });
+        queryClient.invalidateQueries({ queryKey: ["inference-records"] });
+      } catch (err) {
+        toast.error(`Failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      return;
+    }
+
+    sendMutation.mutate(msg);
+  };
+
+  const handleNewConversation = () => {
+    setActiveConversationId(null);
+    setInput("");
+  };
+
+  const messages = activeConversation?.messages ?? [];
+  const recordIds = activeConversation?.recordIds ?? [];
+
+  // Map assistant messages to recordIds
+  let assistantIndex = 0;
+  const messageRecordMap: (string | undefined)[] = messages.map((m) => {
+    if (m.role === "assistant") {
+      return recordIds[assistantIndex++];
+    }
+    return undefined;
   });
 
   return (
-    <div className="space-y-4">
-      <Card className="border-0 shadow-lg bg-gradient-to-br from-card to-card/80 overflow-hidden relative">
-        <div className="absolute inset-0 bg-gradient-to-br from-violet-500/5 to-transparent" />
-        <CardHeader className="relative">
-          <CardTitle className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 shadow-lg shadow-violet-500/20">
-              <Zap className="h-5 w-5 text-white" />
+    <div className="flex h-[calc(100vh-280px)] min-h-[500px] rounded-2xl border shadow-lg overflow-hidden bg-card">
+      {/* Sidebar */}
+      <div className="w-64 border-r bg-muted/30 flex flex-col shrink-0">
+        <div className="px-3 pt-3 pb-1">
+          <h3 className="text-sm font-semibold text-muted-foreground tracking-wide uppercase">
+            Conversations
+          </h3>
+        </div>
+        <ConversationSidebar
+          activeId={activeConversationId}
+          onSelect={setActiveConversationId}
+          onNew={handleNewConversation}
+        />
+      </div>
+
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Chat Header */}
+        <div className="h-14 border-b flex items-center justify-between px-4 bg-gradient-to-r from-card to-card/80 shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-1.5 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 shadow-sm">
+              <Zap className="h-4 w-4 text-white" />
             </div>
-            <div>
-              <span className="text-xl font-semibold">Inference Playground</span>
-              <CardDescription className="mt-0.5">
-                Test local models with content-addressed verification
-              </CardDescription>
-            </div>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-5 relative">
-          {/* Model Selection */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Provider</Label>
-              <Select
-                value={provider}
-                onValueChange={(v) => {
-                  setProvider(v as LocalModelProvider);
-                  setModelId("");
-                }}
-              >
-                <SelectTrigger className="h-11 rounded-xl">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ollama">
-                    <span className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-blue-500" />
-                      Ollama
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="lmstudio">
-                    <span className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-purple-500" />
-                      LM Studio
-                    </span>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Model</Label>
-              <Select value={modelId} onValueChange={setModelId}>
-                <SelectTrigger className="h-11 rounded-xl">
-                  <SelectValue placeholder="Select model" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableModels.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="min-w-0">
+              <div className="font-semibold text-sm truncate">
+                {activeConversation?.title || "New Conversation"}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {modelId ? `${provider} / ${modelId}` : "Select a model to start"}
+              </div>
             </div>
           </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowSettings(!showSettings)}
+            className={showSettings ? "bg-muted" : ""}
+          >
+            <Settings2 className="h-4 w-4" />
+          </Button>
+        </div>
 
-          {/* System Prompt */}
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">System Prompt (optional)</Label>
-            <Input
-              value={systemPrompt}
-              onChange={(e) => setSystemPrompt(e.target.value)}
-              placeholder="You are a helpful assistant..."
-              className="h-11 rounded-xl"
-            />
-          </div>
-
-          {/* User Prompt */}
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Prompt</Label>
-            <Textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Enter your prompt..."
-              rows={4}
-              className="rounded-xl resize-none"
-            />
-          </div>
-
-          {/* Parameters */}
-          <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-muted/50">
-            <div className="space-y-3">
-              <Label className="text-sm flex items-center justify-between">
-                Temperature
-                <span className="font-mono text-muted-foreground bg-background px-2 py-0.5 rounded-md text-xs">{temperature.toFixed(2)}</span>
-              </Label>
-              <Slider
-                value={[temperature]}
-                onValueChange={([v]) => setTemperature(v)}
-                min={0}
-                max={2}
-                step={0.1}
-                className="cursor-pointer"
-              />
-            </div>
-            <div className="space-y-3">
-              <Label className="text-sm flex items-center justify-between">
-                Max Tokens
-                <span className="font-mono text-muted-foreground bg-background px-2 py-0.5 rounded-md text-xs">{maxTokens}</span>
-              </Label>
-              <Slider
-                value={[maxTokens]}
-                onValueChange={([v]) => setMaxTokens(v)}
-                min={128}
-                max={8192}
-                step={128}
-                className="cursor-pointer"
-              />
-            </div>
-          </div>
-
-          {/* Verification Toggle */}
-          <div className="flex items-center gap-3 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-            <Switch
-              checked={enableVerification}
-              onCheckedChange={setEnableVerification}
-            />
-            <Label className="flex items-center gap-2 cursor-pointer">
-              <Shield className="h-4 w-4 text-emerald-500" />
-              <span className="font-medium">Enable Verification</span>
-              <span className="text-muted-foreground text-sm">(IPFS proof)</span>
-            </Label>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex gap-3">
-            <Button
-              onClick={() => inferenceMutation.mutate()}
-              disabled={
-                !modelId || !prompt || inferenceMutation.isPending || streamMutation.isPending
-              }
-              className="flex-1 h-11 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 shadow-lg shadow-violet-500/20"
-            >
-              {inferenceMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <Play className="h-4 w-4 mr-2" />
-              )}
-              Run Inference
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => streamMutation.mutate()}
-              disabled={
-                !modelId || !prompt || inferenceMutation.isPending || streamMutation.isPending
-              }
-              className="flex-1 h-11 rounded-xl border-2 hover:bg-muted/50"
-            >
-              {streamMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <Zap className="h-4 w-4 mr-2" />
-              )}
-              Stream
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Output */}
-      {output && (
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-card to-card/80 overflow-hidden relative">
-          <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent" />
-          <CardHeader className="pb-2 relative">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <div className="p-1.5 rounded-lg bg-emerald-500/10">
-                  <CheckCircle className="h-4 w-4 text-emerald-500" />
-                </div>
-                Output
-              </CardTitle>
-              {lastRecord && (
-                <div className="flex items-center gap-2">
-                  {lastRecord.verified !== undefined && (
-                    <Badge
-                      variant={lastRecord.verified ? "default" : "destructive"}
-                      className={`flex items-center gap-1 ${lastRecord.verified ? "bg-emerald-500/20 text-emerald-600 border-emerald-500/30" : ""}`}
-                    >
-                      {lastRecord.verified ? (
-                        <ShieldCheck className="h-3 w-3" />
-                      ) : (
-                        <ShieldX className="h-3 w-3" />
-                      )}
-                      {lastRecord.verified ? "Verified" : "Unverified"}
-                    </Badge>
-                  )}
-                </div>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4 relative">
-            <div className="bg-muted/50 p-4 rounded-xl whitespace-pre-wrap font-mono text-sm border">
-              {output}
-            </div>
-            
-            {/* Verification Hash Details */}
-            {lastRecord?.cid && (
-              <div className="border rounded-lg p-4 space-y-3 bg-card">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-semibold text-sm flex items-center gap-2">
-                    <Shield className="h-4 w-4" />
-                    Verification Hash (IPFS CID)
-                  </h4>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      navigator.clipboard.writeText(lastRecord.cid!);
-                      toast.success("Hash copied to clipboard");
-                    }}
-                  >
-                    <Copy className="h-3 w-3 mr-1" />
-                    Copy Hash
-                  </Button>
-                </div>
-                
-                {/* Full Hash Display */}
-                <div 
-                  className="bg-muted p-3 rounded font-mono text-sm break-all cursor-pointer hover:bg-muted/80 transition-colors"
-                  onClick={() => {
-                    navigator.clipboard.writeText(lastRecord.cid!);
-                    toast.success("Hash copied to clipboard");
-                  }}
-                  title="Click to copy"
-                >
-                  {lastRecord.cid}
-                </div>
-                
-                {/* Metadata Grid */}
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div className="space-y-1">
-                    <div className="text-muted-foreground text-xs uppercase tracking-wide">Model</div>
-                    <div className="font-medium">{lastRecord.modelName || lastRecord.modelId}</div>
-                  </div>
-                  <div className="space-y-1">
-                    <div className="text-muted-foreground text-xs uppercase tracking-wide">Provider</div>
-                    <div className="font-medium capitalize">{lastRecord.provider}</div>
-                  </div>
-                  {lastRecord.tokens && (
-                    <div className="space-y-1">
-                      <div className="text-muted-foreground text-xs uppercase tracking-wide">Tokens</div>
-                      <div className="font-medium">{lastRecord.tokens}</div>
-                    </div>
-                  )}
-                  {lastRecord.timeMs && (
-                    <div className="space-y-1">
-                      <div className="text-muted-foreground text-xs uppercase tracking-wide">Generation Time</div>
-                      <div className="font-medium">{lastRecord.timeMs}ms</div>
-                    </div>
-                  )}
-                  {lastRecord.timestamp && (
-                    <div className="space-y-1 col-span-2">
-                      <div className="text-muted-foreground text-xs uppercase tracking-wide">Timestamp</div>
-                      <div className="font-medium">{new Date(lastRecord.timestamp).toLocaleString()}</div>
-                    </div>
-                  )}
-                  {lastRecord.recordId && (
-                    <div className="space-y-1 col-span-2">
-                      <div className="text-muted-foreground text-xs uppercase tracking-wide">Record ID</div>
-                      <div className="font-mono text-xs break-all">{lastRecord.recordId}</div>
-                    </div>
-                  )}
-                </div>
-                
-                {/* Copy All Data Button */}
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="w-full"
-                  onClick={() => {
-                    const verificationData = {
-                      cid: lastRecord.cid,
-                      recordId: lastRecord.recordId,
-                      model: {
-                        id: lastRecord.modelId,
-                        name: lastRecord.modelName,
-                        provider: lastRecord.provider,
-                      },
-                      metrics: {
-                        tokens: lastRecord.tokens,
-                        generationTimeMs: lastRecord.timeMs,
-                      },
-                      timestamp: lastRecord.timestamp,
-                      timestampISO: lastRecord.timestamp ? new Date(lastRecord.timestamp).toISOString() : undefined,
-                      verified: lastRecord.verified,
-                    };
-                    navigator.clipboard.writeText(JSON.stringify(verificationData, null, 2));
-                    toast.success("Full verification data copied to clipboard");
+        {/* Settings Panel (Collapsible) */}
+        {showSettings && (
+          <div className="border-b p-4 space-y-4 bg-muted/20 shrink-0">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Provider</Label>
+                <Select
+                  value={provider}
+                  onValueChange={(v) => {
+                    setProvider(v as LocalModelProvider);
+                    setModelId("");
                   }}
                 >
-                  <Copy className="h-4 w-4 mr-2" />
-                  Copy Full Verification Data (JSON)
-                </Button>
+                  <SelectTrigger className="h-9 rounded-lg text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ollama">Ollama</SelectItem>
+                    <SelectItem value="lmstudio">LM Studio</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Model</Label>
+                <Select value={modelId} onValueChange={setModelId}>
+                  <SelectTrigger className="h-9 rounded-lg text-sm">
+                    <SelectValue placeholder="Select model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableModels.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">System Prompt</Label>
+              <Input
+                value={systemPrompt}
+                onChange={(e) => setSystemPrompt(e.target.value)}
+                placeholder="You are a helpful assistant..."
+                className="h-9 rounded-lg text-sm"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="text-xs flex items-center justify-between">
+                  Temperature
+                  <span className="font-mono text-muted-foreground text-[10px]">{temperature.toFixed(2)}</span>
+                </Label>
+                <Slider
+                  value={[temperature]}
+                  onValueChange={([v]) => setTemperature(v)}
+                  min={0}
+                  max={2}
+                  step={0.1}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs flex items-center justify-between">
+                  Max Tokens
+                  <span className="font-mono text-muted-foreground text-[10px]">{maxTokens}</span>
+                </Label>
+                <Slider
+                  value={[maxTokens]}
+                  onValueChange={([v]) => setMaxTokens(v)}
+                  min={128}
+                  max={8192}
+                  step={128}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={enableVerification}
+                onCheckedChange={setEnableVerification}
+                className="scale-90"
+              />
+              <Label className="text-xs flex items-center gap-1.5 cursor-pointer">
+                <Shield className="h-3.5 w-3.5 text-emerald-500" />
+                Enable IPFS Verification
+              </Label>
+            </div>
+          </div>
+        )}
+
+        {/* Messages Area */}
+        <ScrollArea className="flex-1 px-4">
+          <div className="py-4 space-y-4 max-w-3xl mx-auto">
+            {messages.length === 0 && !sendMutation.isPending && (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-violet-500/10 to-purple-500/10 mb-4">
+                  <Sparkles className="h-10 w-10 text-violet-500" />
+                </div>
+                <h3 className="text-lg font-semibold mb-1">Start a Conversation</h3>
+                <p className="text-sm text-muted-foreground max-w-sm">
+                  Chat with your local AI models. Every response is content-addressed and verifiable via IPFS.
+                </p>
               </div>
             )}
-          </CardContent>
-        </Card>
-      )}
+            {messages.map((msg, i) => (
+              <ChatBubble
+                key={`${activeConversation?.id}-${i}`}
+                message={msg}
+                recordId={messageRecordMap[i]}
+              />
+            ))}
+            {sendMutation.isPending && (
+              <ChatBubble
+                message={{ role: "assistant", content: "" }}
+                isStreaming
+              />
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+        </ScrollArea>
+
+        {/* Input Area */}
+        <div className="border-t p-3 bg-gradient-to-r from-card to-card/80 shrink-0">
+          <div className="flex gap-2 max-w-3xl mx-auto">
+            <Textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              placeholder={modelId ? "Type a message... (Enter to send, Shift+Enter for new line)" : "Select a model in settings to start chatting..."}
+              rows={1}
+              className="flex-1 rounded-xl resize-none min-h-[44px] max-h-[120px] py-3"
+              disabled={sendMutation.isPending}
+            />
+            <Button
+              onClick={handleSend}
+              disabled={!input.trim() || !modelId || sendMutation.isPending}
+              className="h-11 w-11 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 shadow-lg shadow-violet-500/20 shrink-0"
+              size="icon"
+            >
+              {sendMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1137,11 +1208,6 @@ function StatsCard() {
 // ============================================================================
 
 export default function LocalModelsPage() {
-  const [selectedModel, setSelectedModel] = useState<{
-    provider: LocalModelProvider;
-    modelId: string;
-  } | null>(null);
-
   // Initialize service on mount
   useEffect(() => {
     // Initialize trustless inference (optional - works without it)
@@ -1216,14 +1282,7 @@ export default function LocalModelsPage() {
           </TabsList>
 
           <TabsContent value="playground" className="space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2">
-                <InferencePlayground />
-              </div>
-              <div className="space-y-4">
-                <ModelList onSelectModel={(p, m) => setSelectedModel({ provider: p, modelId: m })} />
-              </div>
-            </div>
+            <InferencePlayground />
           </TabsContent>
 
           <TabsContent value="records">

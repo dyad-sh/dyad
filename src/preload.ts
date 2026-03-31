@@ -481,6 +481,13 @@ const validInvokeChannels = [
   "trustless:verify-batch-proof",
   "trustless:helia-status",
   "trustless:get-stats",
+  // Trustless Conversations
+  "trustless:create-conversation",
+  "trustless:get-conversation",
+  "trustless:list-conversations",
+  "trustless:delete-conversation",
+  "trustless:update-conversation",
+  "trustless:send-message",
   // IPLD Receipts
   "receipt:create",
   "receipt:list",
@@ -1026,6 +1033,10 @@ const validInvokeChannels = [
   "agent-swarm:get-recent-events",
   "agent-swarm:subscribe",
   "agent-swarm:unsubscribe",
+  "agent-swarm:execute-task",
+  "agent-swarm:get-task-output",
+  "agent-swarm:agent-chat",
+  "agent-swarm:get-chat-history",
   // Autonomous Agent System - Fully autonomous perpetually growing AI
   "autonomous-agent:initialize",
   "autonomous-agent:shutdown",
@@ -1819,6 +1830,7 @@ const validReceiveChannels = [
   "ai-learning:event",
   // Agent Swarm System events
   "agent-swarm:event",
+  "agent-swarm:task-progress",
   // Autonomous Agent System events
   "autonomous-agent:event",
   "autonomous-agent:inference-request",

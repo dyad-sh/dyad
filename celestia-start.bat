@@ -1,4 +1,8 @@
 @echo off
-REM Quick start for Celestia node (WSL)
-echo Starting Celestia Light Node in WSL...
-wsl celestia light start --core.ip consensus-full.celestia-bootstrap.net --p2p.network celestia --rpc.addr 0.0.0.0 --rpc.port 26658
+REM Quick start for Celestia node (Docker)
+echo Starting Celestia Light Node via Docker...
+docker compose -f "%~dp0docker-compose.celestia.yml" up -d
+echo.
+echo RPC available at http://localhost:26658
+echo Logs: docker logs -f celestia-mainnet-node
+pause

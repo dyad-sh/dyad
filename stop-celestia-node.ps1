@@ -1,19 +1,12 @@
 #!/usr/bin/env pwsh
-# Stop Celestia Light Node (WSL)
+# Stop Celestia Light Node (Docker)
 
-Write-Host "🛑 Stopping Celestia node in WSL..." -ForegroundColor Yellow
+Write-Host "🛑 Stopping Celestia node..." -ForegroundColor Yellow
 
-$process = wsl pgrep -f "celestia light"
-if ($process) {
-    wsl pkill -f "celestia light"
-    Write-Host "✅ Node stopped (PID: $process)" -ForegroundColor Green
+$running = docker ps --filter "name=celestia-mainnet-node" --format "{{.Names}}" 2>$null
+if ($running -eq "celestia-mainnet-node") {
+    docker compose -f "$PSScriptRoot\docker-compose.celestia.yml" down
+    Write-Host "✅ Celestia node stopped" -ForegroundColor Green
 } else {
-    Write-Host "⚠️  No running celestia process found in WSL" -ForegroundColor Gray
-}
-
-# Also kill tmux session if it exists
-$tmuxSession = wsl bash -c "tmux has-session -t celestia 2>/dev/null && echo yes"
-if ($tmuxSession -eq "yes") {
-    wsl bash -c "tmux kill-session -t celestia"
-    Write-Host "✅ tmux session 'celestia' terminated" -ForegroundColor Green
+    Write-Host "⚠️  No running Celestia container found" -ForegroundColor Gray
 }

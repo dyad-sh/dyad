@@ -119,9 +119,11 @@ export function QueuedMessagesList({
 
   if (!messages.length) return null;
 
-  // Keep this statusText logic intact (important per review feedback).
-  // Show status text for running state; hide it while paused to avoid duplication with Paused badge.
-  const statusText = hasError ? "Error" : isStreaming ? "Sending..." : "Ready";
+  const statusText = hasError
+    ? "will send after a successful response"
+    : isStreaming
+      ? "will send after current response"
+      : "ready to send";
 
   return (
     <div

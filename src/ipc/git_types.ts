@@ -18,7 +18,7 @@ export interface GitCommitParams extends GitBaseParams {
 export interface GitFileParams extends GitBaseParams {
   filepath: string;
 }
-export interface GitListFileParams extends GitBaseParams {
+export interface GitListFilesParams extends GitBaseParams {
   excludedFiles: string[];
   excludedDirs: string[];
 }

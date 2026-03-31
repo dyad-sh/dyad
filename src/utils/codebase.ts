@@ -120,7 +120,7 @@ const gitIgnoreCache = new Map<string, boolean>();
 const gitIgnoreMtimes = new Map<string, number>();
 
 /**
- * Check if a path should be ignored based on git ignore rules
+ * Check if a path should be ignored based on git ignore rules. Uses isomorphic-git
  */
 async function isGitIgnoredIso(
   filePath: string,
@@ -243,10 +243,16 @@ export async function readFileWithCache(
   }
 }
 
+/**
+ * Traverses a directory and collects all relevant files using native Git.
+ */
 async function collectFilesNativeGit(dir: string): Promise<string[]> {
   let files: string[] = [];
 
   try {
+    // We put the vast majority of the computational burden on Git for the
+    // sake of performance. Nonetheless, the behavior of this function
+    // should still be as close as possible to collectFilesIsoGit.
     files = (
       await gitListFilesNative({
         path: dir,
@@ -259,6 +265,7 @@ async function collectFilesNativeGit(dir: string): Promise<string[]> {
     return files;
   }
 
+  // Git cannot exclude files by size, so we still need to do that manually
   return (
     await Promise.all(
       files.map(async (file) => {
@@ -278,7 +285,8 @@ async function collectFilesNativeGit(dir: string): Promise<string[]> {
 }
 
 /**
- * Recursively walk a directory and collect all relevant files
+ * Recursively walk a directory and collect all relevant files. Uses
+ * isomorphic-git to check whether files and directories are gitignored.
  */
 async function collectFilesIsoGit(
   dir: string,

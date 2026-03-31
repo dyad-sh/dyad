@@ -110,7 +110,7 @@ async function execGit(
 import type {
   GitBaseParams,
   GitFileParams,
-  GitListFileParams,
+  GitListFilesParams,
   GitCheckoutParams,
   GitBranchRenameParams,
   GitCloneParams,
@@ -1160,11 +1160,13 @@ export async function gitIsIgnored({
   }
 }
 
+/**
+ * Check whether a specific file/directory is gitignored using isomorphic-git
+ */
 export async function gitIsIgnoredIso({
   path,
   filepath,
 }: GitFileParams): Promise<boolean> {
-  // isomorphic-git version
   return await git.isIgnored({
     fs,
     dir: path,
@@ -1172,11 +1174,17 @@ export async function gitIsIgnoredIso({
   });
 }
 
+/**
+ * Lists all of the files in a git repository, such that:
+ * - Both tracked and untracked files are included.
+ * - Gitignored files/directories are excluded.
+ * - We can exclude additional files/directories as needed.
+ */
 export async function gitListFilesNative({
   path,
   excludedFiles,
   excludedDirs,
-}: GitListFileParams) {
+}: GitListFilesParams): Promise<string[]> {
   const result = await execGit(
     [
       "ls-files",

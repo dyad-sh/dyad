@@ -1,42 +1,50 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useAtomValue } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { useCountTokens } from "@/hooks/useCountTokens";
+import { useChats } from "@/hooks/useChats";
+import { usePostHog } from "posthog-js/react";
 import { ipc } from "@/ipc/types";
 import { showError } from "@/lib/toast";
 
-export function useSummarizeInNewChat() {
-  const chatId = useAtomValue(selectedChatIdAtom);
+export function useSummarizeInNewChat(overrideChatId?: number) {
+  const atomChatId = useAtomValue(selectedChatIdAtom);
+  const chatId = overrideChatId ?? atomChatId;
   const appId = useAtomValue(selectedAppIdAtom);
+  const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const { streamMessage } = useStreamChat({ hasChatId: false });
   const { invalidateTokenCount } = useCountTokens(null, "");
+  const { invalidateChats } = useChats(appId);
+  const posthog = usePostHog();
   const navigate = useNavigate();
 
   const handleSummarize = async () => {
-    if (!appId) {
-      console.error("No app id found");
+    if (!appId || !chatId) {
+      showError("Unable to summarize: missing app or chat context");
       return;
     }
-    if (!chatId) {
-      console.error("No chat id found");
-      return;
-    }
+
     try {
       const newChatId = await ipc.chat.createChat(appId);
-      // navigate to new chat
+      setSelectedChatId(newChatId);
+
       await navigate({ to: "/chat", search: { id: newChatId } });
+      await invalidateChats();
+
       await streamMessage({
         prompt: "Summarize from chat-id=" + chatId,
         chatId: newChatId,
+        redo: false,
         onSettled: () => {
-          // Ensure token counts are reset after summarization completes
           invalidateTokenCount();
         },
       });
+
+      posthog.capture("chat:summarize-manual");
     } catch (err) {
-      showError(err);
+      showError(`Failed to summarize chat: ${(err as Error).toString()}`);
     }
   };
 

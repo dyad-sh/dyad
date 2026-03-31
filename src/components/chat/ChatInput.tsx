@@ -174,6 +174,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const { navigate } = useRouter();
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const { invalidateChats } = useChats(appId);
+  const { handleSummarize } = useSummarizeInNewChat(chatId);
   const [imageGeneratorOpen, setImageGeneratorOpen] = useState(false);
   const handleOpenImageGenerator = useCallback(() => {
     setImageGeneratorOpen(true);
@@ -432,38 +433,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     [editingQueuedMessageId, removeQueuedMessage, resetEditingState],
   );
 
-  const handleSummarizeFromChat = useCallback(async () => {
-    if (!appId || !chatId) {
-      showErrorToast("Unable to summarize: missing app or chat context");
-      return;
-    }
-    try {
-      const newChatId = await ipc.chat.createChat(appId);
-      setSelectedChatId(newChatId);
-      navigate({
-        to: "/chat",
-        search: { id: newChatId },
-      });
-      await invalidateChats();
-
-      await streamMessage({
-        prompt: "Summarize from chat-id=" + chatId,
-        chatId: newChatId,
-        redo: false,
-      });
-      posthog.capture("chat:summarize-manual");
-    } catch (err) {
-      showErrorToast(`Failed to summarize chat: ${(err as Error).toString()}`);
-    }
-  }, [
-    appId,
-    chatId,
-    setSelectedChatId,
-    navigate,
-    invalidateChats,
-    streamMessage,
-    posthog,
-  ]);
 
   const handleSubmit = async () => {
     if (
@@ -484,7 +453,19 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     if (inputValue.trim().toLowerCase() === "summarize to new chat") {
       setInputValue("");
       clearAttachments();
-      await handleSummarizeFromChat();
+
+      // Dismiss any auto-added image jobs so they don't leak into next user prompt.
+      if (visibleSuccessfulImageJobs.length > 0) {
+        setDismissedImageJobIds((prev) => {
+          const next = new Set(prev);
+          for (const job of visibleSuccessfulImageJobs) {
+            next.add(job.id);
+          }
+          return next;
+        });
+      }
+
+      await handleSummarize();
       return;
     }
 

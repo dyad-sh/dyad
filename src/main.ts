@@ -1,4 +1,12 @@
-import { app, BrowserWindow, dialog, Menu, protocol, net } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  Menu,
+  protocol,
+  net,
+  session,
+} from "electron";
 import * as path from "node:path";
 import { registerIpcHandlers } from "./ipc/ipc_host";
 import dotenv from "dotenv";
@@ -87,6 +95,42 @@ if (process.defaultApp) {
 }
 
 export async function onReady() {
+  // Load React DevTools extension in development
+  if (process.env.NODE_ENV === "development") {
+    const userDataDir = process.env.LOCALAPPDATA || "";
+    const chromeUserData = path.join(
+      userDataDir,
+      "Google",
+      "Chrome",
+      "User Data",
+      "Default",
+      "Extensions",
+    );
+    // React DevTools extension ID
+    const reactDevToolsId = "fmkadmapgofadopljbjfkapdkoienihi";
+    const extensionsDir = path.join(chromeUserData, reactDevToolsId);
+
+    if (fs.existsSync(extensionsDir)) {
+      try {
+        const versions = fs.readdirSync(extensionsDir);
+        const latestVersion = versions.sort().reverse()[0];
+        const extensionPath = path.join(extensionsDir, latestVersion);
+        await session.defaultSession.loadExtension(extensionPath, {
+          allowFileAccess: true,
+        });
+        logger.info("React DevTools loaded successfully");
+        // Add small delay to ensure extension is fully initialized
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      } catch (err) {
+        logger.error("Failed to load React DevTools:", err);
+      }
+    } else {
+      logger.warn(
+        "React DevTools extension not found. Install it in Chrome first.",
+      );
+    }
+  }
+
   try {
     const backupManager = new BackupManager({
       settingsFile: getSettingsFilePath(),
@@ -283,10 +327,6 @@ const createWindow = () => {
       path.join(__dirname, "../renderer/main_window/index.html"),
     );
   }
-  if (process.env.NODE_ENV === "development") {
-    // Open the DevTools.
-    mainWindow.webContents.openDevTools();
-  }
 
   // Send force-close event if it was detected
   if (pendingForceCloseData) {
@@ -295,6 +335,25 @@ const createWindow = () => {
         performanceData: pendingForceCloseData,
       });
       pendingForceCloseData = null;
+    });
+  }
+
+  // Open DevTools after page loads in development (allows extension to inject properly)
+  if (process.env.NODE_ENV === "development") {
+    let devToolsOpened = false;
+
+    mainWindow.webContents.on("did-finish-load", () => {
+      if (!devToolsOpened) {
+        devToolsOpened = true;
+        // Add delay to ensure extension is fully injected
+        setTimeout(() => {
+          mainWindow?.webContents.openDevTools();
+          // Reload page to trigger extension injection properly
+          setTimeout(() => {
+            mainWindow?.webContents.reloadIgnoringCache();
+          }, 500);
+        }, 500);
+      }
     });
   }
 

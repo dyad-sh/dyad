@@ -185,6 +185,12 @@ export function registerNeonHandlers() {
       const project = response.data.project;
       const mainBranch = response.data.branch;
 
+      // Enable Neon Auth on the main branch
+      await ensureNeonAuth({
+        projectId: project.id,
+        branchId: mainBranch.id,
+      });
+
       // Create development branch as a child of main (production)
       const developmentBranchResponse = await retryOnLocked(
         () =>
@@ -209,6 +215,12 @@ export function registerNeonHandlers() {
 
       const developmentBranch = developmentBranchResponse.data.branch;
 
+      // Enable Neon Auth on the development branch
+      await ensureNeonAuth({
+        projectId: project.id,
+        branchId: developmentBranch.id,
+      });
+
       // Create preview branch as a child of development
       const previewBranchResponse = await retryOnLocked(
         () =>
@@ -232,6 +244,12 @@ export function registerNeonHandlers() {
       }
 
       const previewBranch = previewBranchResponse.data.branch;
+
+      // Enable Neon Auth on the preview branch
+      await ensureNeonAuth({
+        projectId: project.id,
+        branchId: previewBranch.id,
+      });
 
       // Store project and branch info in the app's DB row
       await db

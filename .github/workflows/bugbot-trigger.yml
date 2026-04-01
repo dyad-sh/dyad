@@ -14,7 +14,6 @@ jobs:
     if: |
       (github.event.pull_request.user.login == 'wwwillchen' ||
       github.event.pull_request.user.login == 'keppo-bot' ||
-      github.event.pull_request.user.login == 'dyadbot' ||
       github.event.pull_request.user.login == 'dyad-assistant' ||
       github.event.pull_request.user.login == 'azizmejri1' ||
       github.event.pull_request.user.login == 'princeaden1') &&

@@ -4,7 +4,7 @@
 
 ## Summary
 
-Improve the speed of landing PRs for the maintainer (wwwillchen/keppo-bot/dyadbot) by optimizing the CI pipeline, automating the fix-and-retry loop, and improving developer feedback during wait times. The current workflow is already highly automated — this plan targets the remaining friction: CI wall-clock time, human-in-the-loop steps, and the "waiting black hole" between push and merge.
+Improve the speed of landing PRs for the maintainer (wwwillchen/keppo-bot) by optimizing the CI pipeline, automating the fix-and-retry loop, and improving developer feedback during wait times. The current workflow is already highly automated — this plan targets the remaining friction: CI wall-clock time, human-in-the-loop steps, and the "waiting black hole" between push and merge.
 
 ## Problem Statement
 

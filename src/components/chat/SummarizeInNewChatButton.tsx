@@ -36,6 +36,7 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
       setIsSummarizing(false);
       return;
     }
+
     try {
       const newChatId = await ipc.chat.createChat(appId);
       setSelectedChatId(newChatId);
@@ -49,13 +50,14 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
         redo: false,
         onSettled: () => {
           invalidateTokenCount();
+          isSummarizingRef.current = false;
+          setIsSummarizing(false);
         },
       });
 
       posthog.capture("chat:summarize-manual");
     } catch (err) {
       showError(`Failed to summarize chat: ${(err as Error).toString()}`);
-    } finally {
       isSummarizingRef.current = false;
       setIsSummarizing(false);
     }

@@ -97,15 +97,40 @@ if (process.defaultApp) {
 export async function onReady() {
   // Load React DevTools extension in development
   if (process.env.NODE_ENV === "development") {
-    const userDataDir = process.env.LOCALAPPDATA || "";
-    const chromeUserData = path.join(
-      userDataDir,
-      "Google",
-      "Chrome",
-      "User Data",
-      "Default",
-      "Extensions",
-    );
+    let chromeUserData: string;
+
+    // Determine Chrome extensions path based on platform
+    if (process.platform === "win32") {
+      chromeUserData = path.join(
+        process.env.LOCALAPPDATA || "",
+        "Google",
+        "Chrome",
+        "User Data",
+        "Default",
+        "Extensions",
+      );
+    } else if (process.platform === "darwin") {
+      // macOS
+      chromeUserData = path.join(
+        process.env.HOME || "",
+        "Library",
+        "Application Support",
+        "Google",
+        "Chrome",
+        "Default",
+        "Extensions",
+      );
+    } else {
+      // Linux
+      chromeUserData = path.join(
+        process.env.HOME || "",
+        ".config",
+        "google-chrome",
+        "Default",
+        "Extensions",
+      );
+    }
+
     // React DevTools extension ID
     const reactDevToolsId = "fmkadmapgofadopljbjfkapdkoienihi";
     const extensionsDir = path.join(chromeUserData, reactDevToolsId);
@@ -113,14 +138,19 @@ export async function onReady() {
     if (fs.existsSync(extensionsDir)) {
       try {
         const versions = fs.readdirSync(extensionsDir);
-        const latestVersion = versions.sort().reverse()[0];
-        const extensionPath = path.join(extensionsDir, latestVersion);
-        await session.defaultSession.loadExtension(extensionPath, {
-          allowFileAccess: true,
-        });
-        logger.info("React DevTools loaded successfully");
-        // Add small delay to ensure extension is fully initialized
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        if (versions.length > 0) {
+          // Get the latest version (most recently created directory)
+          const latestVersion = versions.sort().reverse()[0];
+          const extensionPath = path.join(extensionsDir, latestVersion);
+          await session.defaultSession.loadExtension(extensionPath, {
+            allowFileAccess: true,
+          });
+          logger.info("React DevTools loaded successfully");
+        } else {
+          logger.warn(
+            "React DevTools extension directory is empty. Install it in Chrome first.",
+          );
+        }
       } catch (err) {
         logger.error("Failed to load React DevTools:", err);
       }
@@ -330,25 +360,22 @@ const createWindow = () => {
 
   // Send force-close event if it was detected
   if (pendingForceCloseData) {
-    mainWindow.webContents.once("did-finish-load", () => {
+    mainWindow.webContents.on("did-finish-load", () => {
       mainWindow?.webContents.send("force-close-detected", {
         performanceData: pendingForceCloseData,
       });
-      pendingForceCloseData = null;
     });
   }
 
-  // Open DevTools after page loads in development (allows extension to inject properly)
+  // Open DevTools and reload in development to allow extension injection
   if (process.env.NODE_ENV === "development") {
-    let devToolsOpened = false;
-
+    let reloaded = false;
     mainWindow.webContents.on("did-finish-load", () => {
-      if (!devToolsOpened) {
-        devToolsOpened = true;
-        // Add delay to ensure extension is fully injected
+      if (!reloaded) {
+        reloaded = true;
+        // Add delay to allow extension to init, then reload page for injection
         setTimeout(() => {
           mainWindow?.webContents.openDevTools();
-          // Reload page to trigger extension injection properly
           setTimeout(() => {
             mainWindow?.webContents.reloadIgnoringCache();
           }, 500);

@@ -1042,6 +1042,7 @@ describe("handleLocalAgentStream", () => {
 
         if (attemptCount === 1) {
           return {
+            // eslint-disable-next-line require-yield
             fullStream: (async function* () {
               throw {
                 type: "error",

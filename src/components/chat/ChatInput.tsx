@@ -452,6 +452,8 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     if (inputValue.trim().toLowerCase() === "summarize to new chat") {
       setInputValue("");
       clearAttachments();
+      setSelectedComponents([]);
+      setVisualEditingSelectedComponent(null);
 
       // Dismiss any auto-added image jobs so they don't leak into next user prompt.
       if (visibleSuccessfulImageJobs.length > 0) {

@@ -49,6 +49,13 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
     isSummarizingRef.current = true;
     setIsSummarizing(true);
 
+    if (!appId || !chatId) {
+      showError("Unable to summarize: missing app or chat context");
+      isSummarizingRef.current = false;
+      setIsSummarizing(false);
+      return;
+    }
+
     // Clear shared compose state before summary handoff.
     setChatInputValue("");
     setAttachments([]);
@@ -56,17 +63,10 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
     setDismissedImageJobIds((prev) => {
       const next = new Set(prev);
       chatImageJobs
-        .filter((job) => job.status === "success")
+        .filter((job) => job.status === "success" && job.targetAppId === appId)
         .forEach((job) => next.add(job.id));
       return next;
     });
-
-    if (!appId || !chatId) {
-      showError("Unable to summarize: missing app or chat context");
-      isSummarizingRef.current = false;
-      setIsSummarizing(false);
-      return;
-    }
 
     try {
       const newChatId = await ipc.chat.createChat(appId);

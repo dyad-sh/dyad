@@ -464,6 +464,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
         });
       }
 
+      setNeedsFreshPlanChat(false);
       await handleSummarize();
       return;
     }

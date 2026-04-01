@@ -1,7 +1,16 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useAtomValue, useSetAtom } from "jotai";
 import { useRef, useState } from "react";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import {
+  chatInputValueAtom,
+  attachmentsAtom,
+  needsFreshPlanChatAtom,
+  selectedChatIdAtom,
+} from "@/atoms/chatAtoms";
+import {
+  chatImageGenerationJobsAtom,
+  dismissedImageGenerationJobIdsAtom,
+} from "@/atoms/imageGenerationAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { useCountTokens } from "@/hooks/useCountTokens";
@@ -23,12 +32,34 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
   const [isSummarizing, setIsSummarizing] = useState(false);
   const isSummarizingRef = useRef(false);
 
+  const setChatInputValue = useSetAtom(chatInputValueAtom);
+  const setAttachments = useSetAtom(attachmentsAtom);
+  const setNeedsFreshPlanChat = useSetAtom(needsFreshPlanChatAtom);
+  const chatImageJobs = useAtomValue(chatImageGenerationJobsAtom);
+  const setDismissedImageJobIds = useSetAtom(
+    dismissedImageGenerationJobIdsAtom,
+  );
+
   const handleSummarize = async () => {
     if (isSummarizingRef.current) {
       return;
     }
+
+    // Prevent duplicate summarize clicks while in progress.
     isSummarizingRef.current = true;
     setIsSummarizing(true);
+
+    // Clear shared compose state before summary handoff.
+    setChatInputValue("");
+    setAttachments([]);
+    setNeedsFreshPlanChat(false);
+    setDismissedImageJobIds((prev) => {
+      const next = new Set(prev);
+      chatImageJobs
+        .filter((job) => job.status === "success")
+        .forEach((job) => next.add(job.id));
+      return next;
+    });
 
     if (!appId || !chatId) {
       showError("Unable to summarize: missing app or chat context");

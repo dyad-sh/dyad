@@ -101,7 +101,7 @@ export function ChatHeader({
     }
   };
 
-  const { handleSummarize } = useSummarizeInNewChat();
+  const { handleSummarize, isSummarizing } = useSummarizeInNewChat();
 
   // REMINDER: KEEP UP TO DATE WITH app_handlers.ts
   const versionPostfix = versions.length === 100_000 ? `+` : "";
@@ -208,6 +208,7 @@ export function ChatHeader({
               className="hidden @2xs:flex items-center justify-start gap-2 py-3"
               data-testid="summarize-chat-button"
               title={t("summarizeToNewChat")}
+              disabled={isSummarizing}
             >
               <MessageSquare size={16} />
               <span className="hidden @4xs:inline">

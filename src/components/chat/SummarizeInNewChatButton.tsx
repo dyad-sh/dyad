@@ -1,5 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useAtomValue, useSetAtom } from "jotai";
+import { useState } from "react";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
@@ -19,13 +20,19 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
   const { invalidateChats } = useChats(appId);
   const posthog = usePostHog();
   const navigate = useNavigate();
+  const [isSummarizing, setIsSummarizing] = useState(false);
 
   const handleSummarize = async () => {
+    if (isSummarizing) {
+      return;
+    }
+
     if (!appId || !chatId) {
       showError("Unable to summarize: missing app or chat context");
       return;
     }
 
+    setIsSummarizing(true);
     try {
       const newChatId = await ipc.chat.createChat(appId);
       setSelectedChatId(newChatId);
@@ -45,8 +52,10 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
       posthog.capture("chat:summarize-manual");
     } catch (err) {
       showError(`Failed to summarize chat: ${(err as Error).toString()}`);
+    } finally {
+      setIsSummarizing(false);
     }
   };
 
-  return { handleSummarize };
+  return { handleSummarize, isSummarizing };
 }

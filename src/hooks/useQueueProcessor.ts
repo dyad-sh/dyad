@@ -6,6 +6,7 @@ import {
   type QueuedMessageItem,
 } from "@/atoms/chatAtoms";
 import { useStreamChat } from "./useStreamChat";
+import { useSummarizeInNewChat } from "@/components/chat/SummarizeInNewChatButton";
 import { usePostHog } from "posthog-js/react";
 import { useSettings } from "./useSettings";
 
@@ -15,6 +16,7 @@ import { useSettings } from "./useSettings";
  */
 export function useQueueProcessor() {
   const { streamMessage } = useStreamChat({ hasChatId: false });
+  const { handleSummarize } = useSummarizeInNewChat();
   const [queuedMessagesById, setQueuedMessagesById] = useAtom(
     queuedMessagesByIdAtom,
   );
@@ -24,53 +26,61 @@ export function useQueueProcessor() {
   const { settings } = useSettings();
 
   useEffect(() => {
-    // Find any chatId that has both completed successfully and has queued messages
-    for (const [chatId, queuedMessages] of queuedMessagesById) {
-      if (queuedMessages.length === 0) continue;
+    const processQueue = async () => {
+      // Find any chatId that has both completed successfully and has queued messages
+      for (const [chatId, queuedMessages] of queuedMessagesById) {
+        if (queuedMessages.length === 0) continue;
 
-      const completedSuccessfully =
-        streamCompletedSuccessfullyById.get(chatId) ?? false;
-      if (!completedSuccessfully) continue;
+        const completedSuccessfully =
+          streamCompletedSuccessfullyById.get(chatId) ?? false;
+        if (!completedSuccessfully) continue;
 
-      // Clear the successful completion flag first to prevent loops
-      setStreamCompletedSuccessfullyById((prev) => {
-        const next = new Map(prev);
-        next.set(chatId, false);
-        return next;
-      });
+        // Clear the successful completion flag first to prevent loops
+        setStreamCompletedSuccessfullyById((prev) => {
+          const next = new Map(prev);
+          next.set(chatId, false);
+          return next;
+        });
 
-      // Get and remove the first message atomically
-      let messageToSend: QueuedMessageItem | undefined;
-      setQueuedMessagesById((prev) => {
-        const next = new Map(prev);
-        const current = prev.get(chatId) ?? [];
-        const [first, ...remainingMessages] = current;
-        messageToSend = first;
-        if (remainingMessages.length > 0) {
-          next.set(chatId, remainingMessages);
+        // Get and remove the first message atomically
+        let messageToSend: QueuedMessageItem | undefined;
+        setQueuedMessagesById((prev) => {
+          const next = new Map(prev);
+          const current = prev.get(chatId) ?? [];
+          const [first, ...remainingMessages] = current;
+          messageToSend = first;
+          if (remainingMessages.length > 0) {
+            next.set(chatId, remainingMessages);
+          } else {
+            next.delete(chatId);
+          }
+          return next;
+        });
+
+        if (!messageToSend) return;
+
+        posthog.capture("chat:submit", {
+          chatMode: settings?.selectedChatMode,
+        });
+
+        if (messageToSend.summarizeToNewChat) {
+          await handleSummarize();
         } else {
-          next.delete(chatId);
+          streamMessage({
+            prompt: messageToSend.prompt,
+            chatId,
+            redo: false,
+            attachments: messageToSend.attachments,
+            selectedComponents: messageToSend.selectedComponents,
+          });
         }
-        return next;
-      });
 
-      if (!messageToSend) return;
+        // Only process one chatId per effect run
+        break;
+      }
+    };
 
-      posthog.capture("chat:submit", {
-        chatMode: settings?.selectedChatMode,
-      });
-
-      streamMessage({
-        prompt: messageToSend.prompt,
-        chatId,
-        redo: false,
-        attachments: messageToSend.attachments,
-        selectedComponents: messageToSend.selectedComponents,
-      });
-
-      // Only process one chatId per effect run
-      break;
-    }
+    void processQueue();
   }, [
     queuedMessagesById,
     streamCompletedSuccessfullyById,

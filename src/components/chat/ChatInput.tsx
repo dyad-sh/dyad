@@ -452,9 +452,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     if (inputValue.trim().toLowerCase() === "summarize to new chat") {
       if (isStreaming) {
         const queued = queueMessage({
-          prompt: inputValue,
-          attachments,
-          selectedComponents,
+          prompt: "",
+          attachments: [],
+          selectedComponents: [],
+          summarizeToNewChat: true,
         });
         if (queued) {
           setInputValue("");

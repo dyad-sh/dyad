@@ -1052,6 +1052,8 @@ describe("handleLocalAgentStream", () => {
                   message: "The server had an error processing your request.",
                 },
               };
+              // eslint-disable-next-line require-yield
+              yield { type: "error" };
             })(),
             response: Promise.resolve({ messages: [] }),
             steps: Promise.resolve([]),

@@ -6,7 +6,7 @@ When pushing changes and creating PRs:
 2. If the branch hasn't been pushed before, default to pushing to `origin` (the fork `wwwillchen/dyad`), then create a PR from the fork to the upstream repo (`dyad-sh/dyad`).
 3. If you cannot push to the fork due to permissions, push directly to `upstream` (`dyad-sh/dyad`) as a last resort.
 
-**Bot account push permissions:** The `wwwillchen-bot` account does NOT have write access to `upstream` (`dyad-sh/dyad`). If a branch tracks `upstream` (e.g., `upstream/claude/...`), pushing will fail with a permission error. In this case, push to `origin` (the bot's fork at `wwwillchen-bot/dyad`) instead:
+**Bot account push permissions:** The `keppo-bot` account does NOT have write access to `upstream` (`dyad-sh/dyad`). If a branch tracks `upstream` (e.g., `upstream/claude/...`), pushing will fail with a permission error. In this case, push to `origin` (the bot's fork at `keppo-bot/dyad`) instead:
 
 ```bash
 git push --force-with-lease -u origin HEAD
@@ -90,7 +90,7 @@ gh api graphql --input .claude/tmp/resolve_thread.json
 gh api repos/dyad-sh/dyad/issues/{PR_NUMBER}/labels -f "labels[]=label-name"
 ```
 
-2. **Bot account permission errors:** The `wwwillchen-bot` account (and similar bot/fork accounts) may not have permission to add labels on the upstream repo (`dyad-sh/dyad`). Both `gh pr edit --add-label` and the REST API will fail with 403/permission errors. In this case, skip label addition and note it in the PR summary rather than failing the workflow. Labels can be added later by a maintainer with appropriate permissions.
+2. **Bot account permission errors:** The `keppo-bot` account (and similar bot/fork accounts) may not have permission to add labels on the upstream repo (`dyad-sh/dyad`). Both `gh pr edit --add-label` and the REST API will fail with 403/permission errors. In this case, skip label addition and note it in the PR summary rather than failing the workflow. Labels can be added later by a maintainer with appropriate permissions.
 
 ## CI file access (claude-code-action)
 
@@ -98,7 +98,7 @@ In CI, `claude-code-action` restricts file access to the repo working directory 
 
 ## Force-pushing after rebase with split-remote origin
 
-When `origin` has separate fetch and push URLs (e.g., fetch → `dyad-sh/dyad`, push → `wwwillchen-bot/dyad`), `git push --force-with-lease` fails with **"stale info"** after a rebase because the local tracking ref was refreshed from the fetch URL but does not reflect the push URL's state. In this specific split-remote configuration, use `git push --force origin HEAD`:
+When `origin` has separate fetch and push URLs (e.g., fetch → `dyad-sh/dyad`, push → `keppo-bot/dyad`), `git push --force-with-lease` fails with **"stale info"** after a rebase because the local tracking ref was refreshed from the fetch URL but does not reflect the push URL's state. In this specific split-remote configuration, use `git push --force origin HEAD`:
 
 ```bash
 git push --force origin HEAD

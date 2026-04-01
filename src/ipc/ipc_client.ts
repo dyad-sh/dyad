@@ -1624,6 +1624,51 @@ export class IpcClient {
   public async deletePrompt(id: number): Promise<void> {
     await this.ipcRenderer.invoke("prompts:delete", id);
   }
+
+  // --- Library File Storage ---
+  public async libraryUploadDialog(): Promise<any[]> {
+    return this.ipcRenderer.invoke("library:upload-dialog");
+  }
+
+  public async libraryImportBuffer(params: { name: string; base64: string; mimeType?: string }): Promise<any> {
+    return this.ipcRenderer.invoke("library:import-buffer", params);
+  }
+
+  public async libraryList(filters?: { storageTier?: string; mimeType?: string; search?: string; category?: string }): Promise<any[]> {
+    return this.ipcRenderer.invoke("library:list", filters);
+  }
+
+  public async libraryGet(id: number): Promise<any> {
+    return this.ipcRenderer.invoke("library:get", id);
+  }
+
+  public async libraryGetContent(id: number): Promise<string> {
+    return this.ipcRenderer.invoke("library:get-content", id);
+  }
+
+  public async libraryUpdate(params: { id: number; name?: string; description?: string; tags?: string[]; category?: string }): Promise<any> {
+    return this.ipcRenderer.invoke("library:update", params);
+  }
+
+  public async libraryDelete(id: number): Promise<void> {
+    await this.ipcRenderer.invoke("library:delete", id);
+  }
+
+  public async libraryStoreToIpfs(id: number): Promise<{ cid: string; bytes: number }> {
+    return this.ipcRenderer.invoke("library:store-to-ipfs", id);
+  }
+
+  public async libraryPinToRemote(id: number): Promise<{ cid: string; gateway?: string; provider?: string }> {
+    return this.ipcRenderer.invoke("library:pin-to-remote", id);
+  }
+
+  public async libraryStoreToArweave(id: number): Promise<any> {
+    return this.ipcRenderer.invoke("library:store-to-arweave", id);
+  }
+
+  public async libraryStoreToFilecoin(id: number): Promise<any> {
+    return this.ipcRenderer.invoke("library:store-to-filecoin", id);
+  }
   public async cloneRepoFromUrl(
     params: CloneRepoParams,
   ): Promise<{ app: App; hasAiRules: boolean } | { error: string }> {
@@ -3414,5 +3459,11 @@ export class IpcClient {
 
   public async cancelMission(id: string): Promise<void> {
     return this.ipcRenderer.invoke("mission:cancel", id);
+  }
+
+  // ── LibreOffice ──────────────────────────────────────────────
+
+  public async getLibreOfficeStatus(): Promise<{ installed: boolean; version?: string; message?: string }> {
+    return this.ipcRenderer.invoke("libreoffice:status");
   }
 }

@@ -1913,15 +1913,14 @@ export function OpenClawKanbanPage() {
     let mounted = true;
 
     const connect = () => {
-      if (!gatewayToken) return; // wait for token to load
       try {
         const ws = new WebSocket("ws://127.0.0.1:18789");
         wsRef.current = ws;
 
         ws.onopen = () => {
           if (!mounted) return;
-          // Send the OpenClaw protocol connect frame with auth token
-          const connectFrame = {
+          // Send the OpenClaw protocol connect frame (with auth token if available)
+          const connectFrame: Record<string, unknown> = {
             type: "req",
             method: "connect",
             id: crypto.randomUUID(),
@@ -1933,7 +1932,7 @@ export function OpenClawKanbanPage() {
                 version: "dev",
                 platform: "electron",
               },
-              auth: { token: gatewayToken },
+              ...(gatewayToken ? { auth: { token: gatewayToken } } : {}),
               minProtocol: 3,
               maxProtocol: 3,
               role: "operator",

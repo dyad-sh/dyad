@@ -23,6 +23,28 @@ export const prompts = sqliteTable("prompts", {
     .default(sql`(unixepoch())`),
 });
 
+export const libraryItems = sqliteTable("library_items", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  description: text("description"),
+  mimeType: text("mime_type").notNull(),
+  byteSize: integer("byte_size").notNull(),
+  contentHash: text("content_hash").notNull(),
+  storagePath: text("storage_path").notNull(),
+  storageTier: text("storage_tier").notNull().default("local"),
+  cid: text("cid"),
+  arweaveId: text("arweave_id"),
+  pinned: integer("pinned", { mode: "boolean" }).notNull().default(sql`0`),
+  tags: text("tags", { mode: "json" }).$type<string[]>().default(sql`'[]'`),
+  category: text("category"),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
 export const projects = sqliteTable("projects", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),

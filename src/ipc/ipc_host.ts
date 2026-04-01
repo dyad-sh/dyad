@@ -123,6 +123,7 @@ import { registerModelRegistryHandlers } from "./handlers/model_registry_handler
 import { registerSsiHandlers } from "./handlers/ssi_handlers";
 import { registerEmailHandlers } from "./handlers/email_handlers";
 import { registerMissionHandlers } from "./handlers/mission_handlers";
+import { registerLibraryHandlers } from "./handlers/library_handlers";
 import {
   registerTaskExecutorHandlers,
   registerSystemServicesHandlers,
@@ -375,4 +376,7 @@ export function registerIpcHandlers() {
 
   // Background Missions — Persisted autonomous mission execution
   registerMissionHandlers();
+
+  // Library — Personal file bookshelf with decentralized storage tiers
+  registerLibraryHandlers();
 }

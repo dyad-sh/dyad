@@ -688,11 +688,37 @@ function InferencePlayground() {
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">System Prompt</Label>
-              <Input
+              <Select
+                value="__custom__"
+                onValueChange={(v) => {
+                  if (v !== "__custom__") setSystemPrompt(v);
+                }}
+              >
+                <SelectTrigger className="h-9 rounded-lg text-sm">
+                  <SelectValue placeholder="Choose a preset or write your own..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__custom__">Custom (write your own)</SelectItem>
+                  <SelectItem value="You are a helpful, friendly assistant. Answer questions clearly and concisely.">Helpful Assistant</SelectItem>
+                  <SelectItem value="You are an expert software engineer. Write clean, efficient, well-documented code. Explain your reasoning step by step.">Software Engineer</SelectItem>
+                  <SelectItem value="You are a creative writing assistant. Help craft engaging stories, poems, and creative content with vivid language and imagination.">Creative Writer</SelectItem>
+                  <SelectItem value="You are a data analyst. Analyze information methodically, provide insights backed by evidence, and present findings clearly with structured reasoning.">Data Analyst</SelectItem>
+                  <SelectItem value="You are a research assistant. Provide thorough, well-sourced answers. Consider multiple perspectives and clearly distinguish facts from opinions.">Research Assistant</SelectItem>
+                  <SelectItem value="You are a coding tutor. Explain programming concepts in simple terms with practical examples. Guide learners step by step without giving away full solutions immediately.">Coding Tutor</SelectItem>
+                  <SelectItem value="You are a technical documentation writer. Produce clear, structured documentation with examples, API references, and troubleshooting sections.">Technical Writer</SelectItem>
+                  <SelectItem value="You are a DevOps engineer. Help with infrastructure, CI/CD pipelines, Docker, Kubernetes, cloud services, and deployment automation.">DevOps Engineer</SelectItem>
+                  <SelectItem value="You are a cybersecurity expert. Identify vulnerabilities, recommend security best practices, and explain threats in the context of OWASP and modern attack vectors.">Security Expert</SelectItem>
+                  <SelectItem value="You are a product manager. Help analyze user needs, write user stories, prioritize features, and make data-driven product decisions.">Product Manager</SelectItem>
+                  <SelectItem value="You are a math and science tutor. Break down complex problems into clear steps, use analogies, and verify your calculations.">Math &amp; Science Tutor</SelectItem>
+                  <SelectItem value="You are a concise assistant. Respond in as few words as possible while remaining accurate and helpful. No filler.">Concise Mode</SelectItem>
+                </SelectContent>
+              </Select>
+              <Textarea
                 value={systemPrompt}
                 onChange={(e) => setSystemPrompt(e.target.value)}
                 placeholder="You are a helpful assistant..."
-                className="h-9 rounded-lg text-sm"
+                className="rounded-lg text-sm min-h-[60px] resize-y mt-1.5"
+                rows={2}
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -825,6 +851,7 @@ function InferenceRecordsList() {
     onSuccess: (result) => {
       setVerificationResult(result);
       if (result.valid) {
+        queryClient.invalidateQueries({ queryKey: ["inference-records"] });
         toast.success("Record verified successfully");
       } else {
         toast.error(`Verification failed: ${result.details.join(", ")}`);
@@ -897,6 +924,8 @@ function InferenceRecordsList() {
                       <div className="flex items-center gap-2">
                         {record.verified ? (
                           <ShieldCheck className="h-4 w-4 text-green-500" />
+                        ) : record.cid.startsWith("local-") ? (
+                          <Shield className="h-4 w-4 text-yellow-500" />
                         ) : (
                           <ShieldX className="h-4 w-4 text-red-500" />
                         )}
@@ -911,17 +940,21 @@ function InferenceRecordsList() {
                       {record.request.prompt.slice(0, 100)}...
                     </div>
                     <div className="flex items-center gap-2 mt-2 text-xs">
-                      <Badge 
-                        variant="outline" 
-                        className="cursor-pointer hover:bg-muted"
+                      <Badge
+                        variant={record.verified ? "default" : "outline"}
+                        className={`cursor-pointer hover:bg-muted ${record.verified ? "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30 hover:bg-green-500/25" : record.cid.startsWith("local-") ? "text-yellow-700 dark:text-yellow-400 border-yellow-500/30" : ""}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           navigator.clipboard.writeText(record.cid);
                           toast.success("Hash copied to clipboard");
                         }}
-                        title="Click to copy full hash"
+                        title={record.verified ? "Verified — click to copy CID" : record.cid.startsWith("local-") ? "Local record — click Verify to check integrity" : "Click to copy hash"}
                       >
-                        <Hash className="h-3 w-3 mr-1" />
+                        {record.verified ? (
+                          <ShieldCheck className="h-3 w-3 mr-1" />
+                        ) : (
+                          <Hash className="h-3 w-3 mr-1" />
+                        )}
                         {record.cid.slice(0, 8)}...{record.cid.slice(-4)}
                       </Badge>
                       <Badge variant="outline">

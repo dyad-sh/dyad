@@ -50,6 +50,7 @@ import { systemServicesRoute } from "./routes/system-services";
 import { modelRegistryRoute } from "./routes/model-registry";
 import { emailHubRoute } from "./routes/email-hub";
 import { scrapingRoute } from "./routes/scraping";
+import { integrationsRoute } from "./routes/integrations";
 
 const routeTree = rootRoute.addChildren([
   homeRoute,
@@ -105,6 +106,7 @@ const routeTree = rootRoute.addChildren([
   modelRegistryRoute,
   emailHubRoute,
   scrapingRoute,
+  integrationsRoute,
 ]);
 
 // src/components/NotFoundRedirect.tsx

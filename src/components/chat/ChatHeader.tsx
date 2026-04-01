@@ -4,6 +4,7 @@ import {
   PlusCircle,
   GitBranch,
   Info,
+  MessageSquare,
 } from "lucide-react";
 import { PanelRightClose } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -31,6 +32,7 @@ import { useRenameBranch } from "@/hooks/useRenameBranch";
 import { isAnyCheckoutVersionInProgressAtom } from "@/store/appAtoms";
 import { LoadingBar } from "../ui/LoadingBar";
 import { UncommittedFilesBanner } from "./UncommittedFilesBanner";
+import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
 
 interface ChatHeaderProps {
   isVersionPaneOpen: boolean;
@@ -98,6 +100,8 @@ export function ChatHeader({
       navigate({ to: "/" });
     }
   };
+
+  const { handleSummarize } = useSummarizeInNewChat();
 
   // REMINDER: KEEP UP TO DATE WITH app_handlers.ts
   const versionPostfix = versions.length === 100_000 ? `+` : "";
@@ -197,6 +201,20 @@ export function ChatHeader({
             <PlusCircle size={16} />
             <span>{t("newChat")}</span>
           </Button>
+          {selectedChatId && (
+            <Button
+              onClick={handleSummarize}
+              variant="ghost"
+              className="hidden @2xs:flex items-center justify-start gap-2 py-3"
+              data-testid="summarize-chat-button"
+              title={t("summarizeToNewChat")}
+            >
+              <MessageSquare size={16} />
+              <span className="hidden @4xs:inline">
+                {t("summarizeToNewChat")}
+              </span>
+            </Button>
+          )}
           <Button
             onClick={onVersionClick}
             variant="ghost"

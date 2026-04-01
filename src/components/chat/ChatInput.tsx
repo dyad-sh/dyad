@@ -433,7 +433,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     [editingQueuedMessageId, removeQueuedMessage, resetEditingState],
   );
 
-
   const handleSubmit = async () => {
     if (
       (!inputValue.trim() &&

@@ -274,6 +274,13 @@
       "when": 1774669617313,
       "tag": "0038_light_shen",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "6",
+      "when": 1775004079571,
+      "tag": "0039_daily_tyrannus",
+      "breakpoints": true
     }
   ]
 }

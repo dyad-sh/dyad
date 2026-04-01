@@ -375,7 +375,12 @@ class LibreOfficeManager {
     options: AIGenerationOptions
   ): Promise<{ content: DocumentContent | SpreadsheetContent | PresentationContent; model: string }> {
     const settings = readSettings();
-    const selectedModel = settings.selectedModel;
+
+    // Use the model explicitly requested by the user, or fall back to the global default
+    const selectedModel =
+      options.provider && options.model
+        ? { provider: options.provider, name: options.model }
+        : settings.selectedModel;
     
     const systemPrompt = this.getDocumentGenerationSystemPrompt(type, options);
     const userPrompt = `Create a ${type} titled "${name}" based on this description:\n\n${options.prompt}`;

@@ -387,6 +387,12 @@ class HeliaVerificationService {
 
     const valid = Object.values(checks).every((c) => c);
 
+    // Persist the verification result on the record
+    if (valid && !record.verified) {
+      record.verified = true;
+      await this.saveRecords();
+    }
+
     return { valid, checks, details, warnings };
   }
 

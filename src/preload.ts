@@ -274,6 +274,18 @@ const validInvokeChannels = [
   "prompts:create",
   "prompts:update",
   "prompts:delete",
+  // Library
+  "library:upload-dialog",
+  "library:import-buffer",
+  "library:list",
+  "library:get",
+  "library:get-content",
+  "library:update",
+  "library:delete",
+  "library:store-to-ipfs",
+  "library:pin-to-remote",
+  "library:store-to-arweave",
+  "library:store-to-filecoin",
   // adding app to favorite
   "add-to-favorite",
   "github:clone-repo-from-url",

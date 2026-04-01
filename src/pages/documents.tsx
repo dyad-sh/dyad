@@ -3,7 +3,7 @@
  * Create, manage, and export documents using LibreOffice
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   FileText,
@@ -29,6 +29,10 @@ import {
   Receipt,
   TrendingUp,
   Layout,
+  Cpu,
+  Cloud,
+  Bot,
+  ChevronDown,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -70,6 +74,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { libreOfficeClient } from "@/ipc/libreoffice_client";
 import { showError, showSuccess } from "@/lib/toast";
+import { useLocalModels } from "@/hooks/useLocalModels";
+import { useLanguageModelsByProviders } from "@/hooks/useLanguageModelsByProviders";
 
 import type {
   DocumentType,
@@ -194,6 +200,39 @@ export default function DocumentsPage() {
   const [aiDocType, setAiDocType] = useState<DocumentType>("document");
   const [aiDocName, setAiDocName] = useState("");
   const [aiTone, setAiTone] = useState<"formal" | "casual" | "professional" | "creative">("professional");
+  const [aiLength, setAiLength] = useState<"short" | "medium" | "long" | "detailed">("medium");
+  // Model selection for AI generation: undefined = use global settings default
+  const [aiSelectedModel, setAiSelectedModel] = useState<{ provider: string; name: string } | undefined>(undefined);
+
+  // Load available models for the model picker
+  const { models: localModels, loadModels: loadLocalModels } = useLocalModels();
+  const { data: cloudModelsByProvider = {} } = useLanguageModelsByProviders();
+
+  // Flatten cloud models that have api keys (non-empty providers)
+  const cloudModelOptions = useMemo(() => {
+    return Object.entries(cloudModelsByProvider).flatMap(([providerId, models]) =>
+      models.map((m) => ({
+        provider: providerId,
+        name: m.apiName,
+        displayName: m.displayName,
+        groupLabel: providerId,
+      }))
+    );
+  }, [cloudModelsByProvider]);
+
+  const localModelOptions = useMemo(() =>
+    localModels.map((m) => ({
+      provider: "ollama",
+      name: m.name,
+      displayName: m.name,
+      groupLabel: "Local (Ollama)",
+    })),
+  [localModels]);
+
+  const allModelOptions = useMemo(() => [
+    ...localModelOptions,
+    ...cloudModelOptions,
+  ], [localModelOptions, cloudModelOptions]);
 
   // Query LibreOffice status
   const { data: loStatus, isLoading: isStatusLoading, refetch: refetchStatus } = useQuery({
@@ -330,6 +369,10 @@ export default function DocumentsPage() {
       aiGenerate: {
         prompt: aiPrompt,
         tone: aiTone,
+        length: aiLength,
+        ...(aiSelectedModel
+          ? { provider: aiSelectedModel.provider, model: aiSelectedModel.name }
+          : {}),
       },
     });
     setAiDialogOpen(false);
@@ -623,6 +666,99 @@ export default function DocumentsPage() {
                     </div>
                   </div>
 
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Length</Label>
+                      <Select value={aiLength} onValueChange={(v) => setAiLength(v as any)}>
+                        <SelectTrigger className="border-border/50">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="short">Short</SelectItem>
+                          <SelectItem value="medium">Medium</SelectItem>
+                          <SelectItem value="long">Long</SelectItem>
+                          <SelectItem value="detailed">Detailed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-1">
+                        <Bot className="h-3 w-3" />
+                        Model
+                      </Label>
+                      <Select
+                        value={
+                          aiSelectedModel
+                            ? `${aiSelectedModel.provider}::${aiSelectedModel.name}`
+                            : "__default__"
+                        }
+                        onValueChange={(v) => {
+                          if (v === "__default__") {
+                            setAiSelectedModel(undefined);
+                          } else {
+                            const [provider, ...rest] = v.split("::");
+                            setAiSelectedModel({ provider, name: rest.join("::") });
+                          }
+                        }}
+                        onOpenChange={(open) => {
+                          if (open && localModels.length === 0) loadLocalModels();
+                        }}
+                      >
+                        <SelectTrigger className="border-border/50">
+                          <SelectValue placeholder="Use default model" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          <SelectItem value="__default__">
+                            <span className="flex items-center gap-2 text-muted-foreground">
+                              <Sparkles className="h-3 w-3" />
+                              Settings default
+                            </span>
+                          </SelectItem>
+
+                          {localModelOptions.length > 0 && (
+                            <>
+                              <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                                <Cpu className="h-3 w-3" />
+                                Local (Ollama)
+                              </div>
+                              {localModelOptions.map((m) => (
+                                <SelectItem
+                                  key={`ollama::${m.name}`}
+                                  value={`ollama::${m.name}`}
+                                >
+                                  {m.displayName}
+                                </SelectItem>
+                              ))}
+                            </>
+                          )}
+
+                          {cloudModelOptions.length > 0 && (
+                            <>
+                              <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                                <Cloud className="h-3 w-3" />
+                                Cloud Models
+                              </div>
+                              {cloudModelOptions.map((m) => (
+                                <SelectItem
+                                  key={`${m.provider}::${m.name}`}
+                                  value={`${m.provider}::${m.name}`}
+                                >
+                                  <span className="flex items-center gap-2">
+                                    <span className="text-xs text-muted-foreground w-16 truncate capitalize">
+                                      {m.provider}
+                                    </span>
+                                    {m.displayName}
+                                  </span>
+                                </SelectItem>
+                              ))}
+                            </>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
                     <Label>Description</Label>
                     <Textarea
@@ -632,6 +768,17 @@ export default function DocumentsPage() {
                       className="min-h-[120px] border-border/50"
                     />
                   </div>
+
+                  {aiSelectedModel && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-500/10 border border-violet-500/20 text-xs text-violet-600">
+                      <Bot className="h-3.5 w-3.5 shrink-0" />
+                      Using{" "}
+                      <span className="font-semibold">
+                        {aiSelectedModel.provider === "ollama" ? "Ollama / " : `${aiSelectedModel.provider} / `}
+                        {aiSelectedModel.name}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <DialogFooter>

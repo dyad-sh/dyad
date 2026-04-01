@@ -17,7 +17,10 @@ import { neonContracts, type NeonBranch } from "../types/neon";
 import { db } from "../../db";
 import { apps } from "../../db/schema";
 import { eq } from "drizzle-orm";
-import { EndpointType } from "@neondatabase/api-client";
+import {
+  EndpointType,
+  NeonAuthSupportedAuthProvider,
+} from "@neondatabase/api-client";
 import { retryOnLocked } from "../utils/retryOnLocked";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { updateNeonEnvVars } from "../utils/app_env_var_utils";
@@ -68,7 +71,38 @@ async function getAppWithNeonBranch(appId: number): Promise<{
 }
 
 /**
+ * Checks if Neon Auth is enabled on the given branch, and enables it if not.
+ * Returns the auth base URL from the API. Throws on failure.
+ */
+async function ensureNeonAuth({
+  projectId,
+  branchId,
+}: {
+  projectId: string;
+  branchId: string;
+}): Promise<string | undefined> {
+  const neonClient = await getNeonClient();
+
+  // Check if Neon Auth is already enabled on this branch
+  try {
+    const response = await neonClient.getNeonAuth(projectId, branchId);
+    return response.data.base_url;
+  } catch (error: any) {
+    // 404 means auth not enabled — proceed to create
+    if (error.response?.status !== 404) throw error;
+  }
+
+  // Enable Neon Auth on this branch
+  const createResponse = await neonClient.createNeonAuth(projectId, branchId, {
+    auth_provider: NeonAuthSupportedAuthProvider.BetterAuth,
+  });
+  return createResponse.data.base_url;
+}
+
+/**
  * Auto-injects Neon environment variables into the app's .env.local.
+ * Always writes DATABASE_URL/POSTGRES_URL. Returns a warning message
+ * if Neon Auth activation fails.
  */
 async function autoInjectNeonEnvVars({
   appId,
@@ -78,61 +112,43 @@ async function autoInjectNeonEnvVars({
   appId: number;
   projectId: string;
   branchId: string;
-}): Promise<void> {
-  try {
-    const appRecord = await db
-      .select()
-      .from(apps)
-      .where(eq(apps.id, appId))
-      .limit(1);
-    if (appRecord.length === 0) return;
+}): Promise<string | undefined> {
+  const appRecord = await db
+    .select()
+    .from(apps)
+    .where(eq(apps.id, appId))
+    .limit(1);
+  if (appRecord.length === 0) return;
 
-    const neonClient = await getNeonClient();
-    const roleName = await getBranchRoleName({ projectId, branchId });
-    const connectionUriResponse = await neonClient.getConnectionUri({
-      projectId,
-      branch_id: branchId,
-      database_name: "neondb",
-      role_name: roleName,
-    });
-    const frameworkType = detectFrameworkType(
-      getDyadAppPath(appRecord[0].path),
-    );
-    const endpointHost =
-      frameworkType === "nextjs"
-        ? await getEndpointHost(neonClient, projectId, branchId)
-        : undefined;
-    await updateNeonEnvVars({
-      appPath: appRecord[0].path,
-      connectionUri: connectionUriResponse.data.uri,
-      frameworkType,
-      endpointHost,
-    });
-  } catch (envError) {
-    logger.warn(`Failed to auto-inject env vars for app ${appId}: ${envError}`);
-  }
-}
+  const neonClient = await getNeonClient();
+  const roleName = await getBranchRoleName({ projectId, branchId });
+  const connectionUriResponse = await neonClient.getConnectionUri({
+    projectId,
+    branch_id: branchId,
+    database_name: "neondb",
+    role_name: roleName,
+  });
+  const frameworkType = detectFrameworkType(getDyadAppPath(appRecord[0].path));
 
-/**
- * Fetches the endpoint host for a branch, used to derive auth URLs for Next.js.
- */
-async function getEndpointHost(
-  neonClient: Awaited<ReturnType<typeof getNeonClient>>,
-  projectId: string,
-  branchId: string,
-): Promise<string | undefined> {
+  // Attempt to ensure Neon Auth is active; capture any error as a warning
+  let neonAuthBaseUrl: string | undefined;
+  let warning: string | undefined;
   try {
-    const endpointsResponse = await neonClient.listProjectBranchEndpoints(
-      projectId,
-      branchId,
-    );
-    return endpointsResponse.data.endpoints?.[0]?.host;
-  } catch (error) {
-    logger.warn(
-      `Failed to fetch endpoint host for branch ${branchId}: ${error}`,
-    );
-    return undefined;
+    neonAuthBaseUrl = await ensureNeonAuth({ projectId, branchId });
+  } catch (error: any) {
+    const message = error instanceof Error ? error.message : String(error);
+    warning = `Failed to activate Neon Auth: ${message}`;
   }
+
+  // Always write env vars (DATABASE_URL, POSTGRES_URL, and auth URL if available)
+  await updateNeonEnvVars({
+    appPath: appRecord[0].path,
+    connectionUri: connectionUriResponse.data.uri,
+    frameworkType,
+    neonAuthBaseUrl,
+  });
+
+  return warning;
 }
 
 export function registerNeonHandlers() {
@@ -510,8 +526,9 @@ export function registerNeonHandlers() {
         .where(eq(apps.id, appId));
 
       // Auto-inject env vars for the new active branch
+      let warning: string | undefined;
       if (appData.neonProjectId) {
-        await autoInjectNeonEnvVars({
+        warning = await autoInjectNeonEnvVars({
           appId,
           projectId: appData.neonProjectId,
           branchId,
@@ -521,7 +538,7 @@ export function registerNeonHandlers() {
       logger.info(
         `Successfully set active branch ${branchId} for app ${appId}`,
       );
-      return { success: true };
+      return { success: true, warning };
     } catch (error: any) {
       logger.error(`Failed to set active branch for app ${appId}:`, error);
       throw new Error(`Failed to set active branch for app ${appId}`);

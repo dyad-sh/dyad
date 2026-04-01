@@ -195,12 +195,15 @@ export async function updateNeonEnvVars({
   connectionUri,
   frameworkType,
   endpointHost,
+  neonAuthBaseUrl,
 }: {
   appPath: string;
   connectionUri: string;
   frameworkType: "nextjs" | "vite" | "other" | null;
   /** The compute endpoint host (for deriving Next.js auth URLs) */
   endpointHost?: string;
+  /** Auth base URL returned by the Neon Auth API (preferred over deriving from endpointHost) */
+  neonAuthBaseUrl?: string;
 }): Promise<void> {
   let envVars: EnvVar[];
   try {
@@ -214,8 +217,12 @@ export async function updateNeonEnvVars({
   upsertEnvVar(envVars, "DATABASE_URL", connectionUri);
   upsertEnvVar(envVars, "POSTGRES_URL", connectionUri);
 
-  if (frameworkType === "nextjs" && endpointHost) {
-    const authBaseUrl = deriveNeonAuthBaseUrl(endpointHost);
+  const authBaseUrl =
+    neonAuthBaseUrl ??
+    (frameworkType === "nextjs" && endpointHost
+      ? deriveNeonAuthBaseUrl(endpointHost)
+      : undefined);
+  if (authBaseUrl) {
     upsertEnvVar(envVars, "NEON_AUTH_BASE_URL", authBaseUrl);
     // Only generate a new cookie secret if one doesn't already exist
     const existingSecret = envVars.find(

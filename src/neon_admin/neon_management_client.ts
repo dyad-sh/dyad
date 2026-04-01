@@ -210,6 +210,36 @@ export async function getNeonClient(): Promise<Api<unknown>> {
           },
         },
       }),
+      getNeonAuth: async (projectId: string, branchId: string) => ({
+        data: {
+          auth_provider: "better_auth",
+          auth_provider_project_id: "test-auth-project-id",
+          branch_id: branchId,
+          db_name: "neondb",
+          created_at: new Date().toISOString(),
+          owned_by: "neon",
+          jwks_url: "https://test.neon.tech/.well-known/jwks.json",
+          base_url:
+            "https://ep-test.neonauth.us-east-2.aws.neon.tech/neondb/auth",
+        },
+      }),
+      createNeonAuth: async (
+        projectId: string,
+        branchId: string,
+        data: any,
+      ) => ({
+        data: {
+          auth_provider: data.auth_provider || "better_auth",
+          auth_provider_project_id: "test-auth-project-id",
+          pub_client_key: "test-pub-key",
+          secret_server_key: "test-secret-key",
+          jwks_url: "https://test.neon.tech/.well-known/jwks.json",
+          schema_name: "neon_auth",
+          table_name: "users",
+          base_url:
+            "https://ep-test.neonauth.us-east-2.aws.neon.tech/neondb/auth",
+        },
+      }),
     } as unknown as Api<unknown>;
   }
 

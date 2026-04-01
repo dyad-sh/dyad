@@ -157,7 +157,10 @@ export const neonContracts = {
   setActiveBranch: defineContract({
     channel: "neon:set-active-branch",
     input: SetNeonActiveBranchParamsSchema,
-    output: z.object({ success: z.boolean() }),
+    output: z.object({
+      success: z.boolean(),
+      warning: z.string().optional(),
+    }),
   }),
 
   executeSql: defineContract({

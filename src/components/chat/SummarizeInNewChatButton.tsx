@@ -40,7 +40,7 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
     dismissedImageGenerationJobIdsAtom,
   );
 
-  const handleSummarize = async () => {
+  const handleSummarizeImpl = async (chatIdForSummarize?: number) => {
     if (isSummarizingRef.current) {
       return;
     }
@@ -49,7 +49,10 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
     isSummarizingRef.current = true;
     setIsSummarizing(true);
 
-    if (!appId || !chatId) {
+    // Use parameter override, then hook-level override, then atom value
+    const finalChatId = chatIdForSummarize ?? chatId;
+
+    if (!appId || !finalChatId) {
       showError("Unable to summarize: missing app or chat context");
       isSummarizingRef.current = false;
       setIsSummarizing(false);
@@ -78,7 +81,7 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
       });
 
       await streamMessage({
-        prompt: "Summarize from chat-id=" + chatId,
+        prompt: "Summarize from chat-id=" + finalChatId,
         chatId: newChatId,
         redo: false,
         onSettled: () => {
@@ -96,5 +99,12 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
     }
   };
 
-  return { handleSummarize, isSummarizing };
+  // No-parameter version for click handlers
+  const handleSummarize = () => handleSummarizeImpl();
+
+  return {
+    handleSummarize,
+    isSummarizing,
+    handleSummarizeWithChatId: handleSummarizeImpl,
+  };
 }

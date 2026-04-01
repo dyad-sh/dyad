@@ -16,7 +16,7 @@ import { useSettings } from "./useSettings";
  */
 export function useQueueProcessor() {
   const { streamMessage } = useStreamChat({ hasChatId: false });
-  const { handleSummarize } = useSummarizeInNewChat();
+  const { handleSummarizeWithChatId } = useSummarizeInNewChat();
   const [queuedMessagesById, setQueuedMessagesById] = useAtom(
     queuedMessagesByIdAtom,
   );
@@ -64,7 +64,7 @@ export function useQueueProcessor() {
         });
 
         if (messageToSend.summarizeToNewChat) {
-          await handleSummarize();
+          await handleSummarizeWithChatId(chatId);
         } else {
           streamMessage({
             prompt: messageToSend.prompt,
@@ -87,6 +87,7 @@ export function useQueueProcessor() {
     streamMessage,
     setQueuedMessagesById,
     setStreamCompletedSuccessfullyById,
+    handleSummarizeWithChatId,
     posthog,
     settings?.selectedChatMode,
   ]);

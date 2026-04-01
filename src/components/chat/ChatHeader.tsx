@@ -208,7 +208,7 @@ export function ChatHeader({
               className="hidden @2xs:flex items-center justify-start gap-2 py-3"
               data-testid="summarize-chat-button"
               title={t("summarizeToNewChat")}
-              disabled={isSummarizing}
+              disabled={isSummarizing || isStreaming}
             >
               <MessageSquare size={16} />
               <span className="hidden @4xs:inline">

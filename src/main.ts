@@ -358,12 +358,17 @@ const createWindow = () => {
     );
   }
 
-  // Send force-close event if it was detected
+  // Send force-close event if it was detected (only once, even with reload)
+  let forceCloseMessageSent = false;
   if (pendingForceCloseData) {
     mainWindow.webContents.on("did-finish-load", () => {
-      mainWindow?.webContents.send("force-close-detected", {
-        performanceData: pendingForceCloseData,
-      });
+      if (!forceCloseMessageSent) {
+        forceCloseMessageSent = true;
+        mainWindow?.webContents.send("force-close-detected", {
+          performanceData: pendingForceCloseData,
+        });
+        pendingForceCloseData = null;
+      }
     });
   }
 

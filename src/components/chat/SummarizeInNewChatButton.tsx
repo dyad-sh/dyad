@@ -56,24 +56,26 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
       return;
     }
 
-    // Clear shared compose state before summary handoff.
-    setChatInputValue("");
-    setAttachments([]);
-    setNeedsFreshPlanChat(false);
-    setDismissedImageJobIds((prev) => {
-      const next = new Set(prev);
-      chatImageJobs
-        .filter((job) => job.status === "success" && job.targetAppId === appId)
-        .forEach((job) => next.add(job.id));
-      return next;
-    });
-
     try {
       const newChatId = await ipc.chat.createChat(appId);
       setSelectedChatId(newChatId);
 
       await navigate({ to: "/chat", search: { id: newChatId } });
       await invalidateChats();
+
+      // Draft is preserved until we successfully create and navigate to the summary chat.
+      setChatInputValue("");
+      setAttachments([]);
+      setNeedsFreshPlanChat(false);
+      setDismissedImageJobIds((prev) => {
+        const next = new Set(prev);
+        chatImageJobs
+          .filter(
+            (job) => job.status === "success" && job.targetAppId === appId,
+          )
+          .forEach((job) => next.add(job.id));
+        return next;
+      });
 
       await streamMessage({
         prompt: "Summarize from chat-id=" + chatId,

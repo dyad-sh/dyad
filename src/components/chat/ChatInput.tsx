@@ -450,23 +450,22 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
     // Handle manual "summarize to new chat" command
     if (inputValue.trim().toLowerCase() === "summarize to new chat") {
-      setInputValue("");
-      clearAttachments();
-      setSelectedComponents([]);
-      setVisualEditingSelectedComponent(null);
-
-      // Dismiss any auto-added image jobs so they don't leak into next user prompt.
-      if (visibleSuccessfulImageJobs.length > 0) {
-        setDismissedImageJobIds((prev) => {
-          const next = new Set(prev);
-          for (const job of visibleSuccessfulImageJobs) {
-            next.add(job.id);
-          }
-          return next;
+      if (isStreaming) {
+        const queued = queueMessage({
+          prompt: inputValue,
+          attachments,
+          selectedComponents,
         });
+        if (queued) {
+          setInputValue("");
+          clearAttachments();
+          setSelectedComponents([]);
+          setVisualEditingSelectedComponent(null);
+        }
+        return;
       }
 
-      setNeedsFreshPlanChat(false);
+      // Keep input/attachments intact until summarize actually succeeds in the hook.
       await handleSummarize();
       return;
     }

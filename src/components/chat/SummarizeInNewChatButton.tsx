@@ -32,10 +32,10 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
 
     if (!appId || !chatId) {
       showError("Unable to summarize: missing app or chat context");
+      isSummarizingRef.current = false;
+      setIsSummarizing(false);
       return;
     }
-
-    setIsSummarizing(true);
     try {
       const newChatId = await ipc.chat.createChat(appId);
       setSelectedChatId(newChatId);

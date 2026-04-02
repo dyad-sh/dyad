@@ -1195,7 +1195,7 @@ export async function gitListFilesNative({
       "--",
       ".",
       ...excludedFiles.map((file) => `:(exclude,glob)**/${file}`),
-      ...excludedDirs.map((dir) => `:(exclude,glob)**/${dir}/`),
+      ...excludedDirs.map((dir) => `:(exclude,glob)**/${dir}/**`),
     ],
     path,
   );

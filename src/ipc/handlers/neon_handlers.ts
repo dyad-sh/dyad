@@ -93,10 +93,29 @@ async function ensureNeonAuth({
   }
 
   // Enable Neon Auth on this branch
-  const createResponse = await neonClient.createNeonAuth(projectId, branchId, {
-    auth_provider: NeonAuthSupportedAuthProvider.BetterAuth,
-  });
-  return createResponse.data.base_url;
+  try {
+    const createResponse = await neonClient.createNeonAuth(
+      projectId,
+      branchId,
+      {
+        auth_provider: NeonAuthSupportedAuthProvider.BetterAuth,
+      },
+    );
+    return createResponse.data.base_url;
+  } catch (createError: any) {
+    // 409 means the neon_auth schema already exists (inherited from parent branch).
+    // Try fetching the auth config again since it may now be available.
+    if (createError.response?.status === 409) {
+      try {
+        const retryResponse = await neonClient.getNeonAuth(projectId, branchId);
+        return retryResponse.data.base_url;
+      } catch {
+        // Auth schema exists but isn't formally enabled — return undefined
+        return undefined;
+      }
+    }
+    throw createError;
+  }
 }
 
 /**

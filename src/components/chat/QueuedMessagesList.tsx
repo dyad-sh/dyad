@@ -109,8 +109,8 @@ export function QueuedMessagesList({
   onDelete,
   onMoveUp,
   onMoveDown,
-  isStreaming: _isStreaming,
-  hasError: _hasError,
+  isStreaming,
+  hasError,
   isPaused,
   onPauseQueue,
   onResumeQueue,
@@ -119,9 +119,9 @@ export function QueuedMessagesList({
 
   if (!messages.length) return null;
 
-  const statusText = _hasError
+  const statusText = hasError
     ? "will send after a successful response"
-    : _isStreaming
+    : isStreaming
       ? "will send after current response"
       : "ready to send";
 
@@ -167,7 +167,12 @@ export function QueuedMessagesList({
             onClick={isPaused ? onResumeQueue : onPauseQueue}
             aria-label={isPaused ? "Resume queue" : "Pause queue"}
             title={isPaused ? "Resume queue" : "Pause queue"}
-            className="ml-2 px-2 py-1 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 cursor-pointer"
+            className={cn(
+              "ml-2 px-2 py-1 rounded-lg transition-colors duration-150 cursor-pointer",
+              isPaused
+                ? "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 hover:bg-yellow-500/30"
+                : "text-muted-foreground hover:text-primary hover:bg-muted/50",
+            )}
           >
             {isPaused ? <PlayIcon size={18} /> : <PauseIcon size={18} />}
           </button>

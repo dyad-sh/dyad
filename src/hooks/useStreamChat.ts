@@ -515,9 +515,7 @@ export function useStreamChat({
         next.set(chatId, false);
         return next;
       });
-      // We set this to true so the queue processor can pick up any queued messages,
-      // but ONLY if we are not currently streaming. If we are streaming, setting this
-      // would incorrectly trigger an immediate dequeue.
+      // Signal the queue processor if we're not currently streaming
       if (!pendingStreamChatIds.has(chatId)) {
         setStreamCompletedSuccessfullyById((prev) => {
           const next = new Map(prev);

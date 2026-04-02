@@ -15,10 +15,7 @@ test.describe("queued messages", () => {
       skipWaitForCompletion: true,
     });
 
-    // Wait for chat input container to appear before checking chatInput
-    await po.page.waitForSelector('[data-testid="chat-input-container"]', {
-      timeout: 10000,
-    });
+    // Wait for chat input to appear (indicates we're in chat view and streaming)
     await expect(chatInput).toBeVisible();
 
     // While streaming, send another message - this should be queued
@@ -27,13 +24,17 @@ test.describe("queued messages", () => {
 
     // Verify the queued message indicator is visible
     // The UI shows "{count} Queued" followed by "- {status}"
-    await expect(po.page.getByText(/\d+ Queued/)).toBeVisible();
+    await expect(
+      po.page.getByText(/\d+ Queued.*will send after current response/),
+    ).toBeVisible();
 
     // Wait for the first stream to complete
     await po.chatActions.waitForChatCompletion();
 
     // Verify the queued message indicator is gone (message is now being sent)
-    await expect(po.page.getByText(/\d+ Queued/)).not.toBeVisible();
+    await expect(
+      po.page.getByText(/\d+ Queued.*will send after current response/),
+    ).not.toBeVisible();
 
     // Wait for the queued message to also complete
     await po.chatActions.waitForChatCompletion();
@@ -123,7 +124,9 @@ test.describe("queued messages", () => {
     await chatInput.press("Enter");
 
     // Verify the queued message indicator is visible
-    await expect(po.page.getByText(/\d+ Queued/)).toBeVisible();
+    await expect(
+      po.page.getByText(/\d+ Queued.*will send after current response/),
+    ).toBeVisible();
 
     // Navigate away from the chat page while streaming + queue are active
     await po.sleep(1_000);

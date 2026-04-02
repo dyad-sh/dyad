@@ -94,6 +94,7 @@ export function EmailCompose({
   }), [selectedAccount, to, cc, bcc, subject, body, replyTo]);
 
   const handleSend = () => {
+    if (!to.trim()) return;
     const draft = buildDraft();
     sendEmail.mutate(
       { accountId: selectedAccount, draft },

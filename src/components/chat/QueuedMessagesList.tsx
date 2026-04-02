@@ -109,8 +109,8 @@ export function QueuedMessagesList({
   onDelete,
   onMoveUp,
   onMoveDown,
-  isStreaming,
-  hasError,
+  isStreaming: _isStreaming,
+  hasError: _hasError,
   isPaused,
   onPauseQueue,
   onResumeQueue,
@@ -119,9 +119,9 @@ export function QueuedMessagesList({
 
   if (!messages.length) return null;
 
-  const statusText = hasError
+  const statusText = _hasError
     ? "will send after a successful response"
-    : isStreaming
+    : _isStreaming
       ? "will send after current response"
       : "ready to send";
 
@@ -134,7 +134,12 @@ export function QueuedMessagesList({
       )}
     >
       <div className="w-full flex items-center justify-between px-3 py-2">
-        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+        {/* Make left header area clickable for expand/collapse */}
+        <div
+          className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer select-none"
+          onClick={() => setIsExpanded((v) => !v)}
+          title={isExpanded ? "Collapse" : "Expand"}
+        >
           <ListOrdered className="w-4 h-4 text-muted-foreground flex-shrink-0" />
           <span className="text-sm">{messages.length} Queued</span>
           {!isPaused && (

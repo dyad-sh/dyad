@@ -37,9 +37,8 @@ export function useQueueProcessor() {
 
       const completedSuccessfully =
         streamCompletedSuccessfullyById.get(chatId) ?? false;
-      const isStreaming = isStreamingById.get(chatId) ?? false;
-      // stream in progress
-      if (!completedSuccessfully && isStreaming) continue;
+      // Only dequeue if the previous stream completed successfully
+      if (!completedSuccessfully) continue;
 
       // Clear the successful completion flag first to prevent loops
       setStreamCompletedSuccessfullyById((prev) => {

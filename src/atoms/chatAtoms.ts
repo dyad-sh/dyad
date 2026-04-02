@@ -236,4 +236,5 @@ export const streamCompletedSuccessfullyByIdAtom = atom<Map<number, boolean>>(
 
 // Tracks if the queue is paused for each chat (Map<chatId, isPaused>)
 // When paused, queued messages are not processed even when a stream completes successfully
+// NOTE: This atom is NOT persisted to sessionStorage. Pause state will be lost on refresh.
 export const queuePausedByIdAtom = atom<Map<number, boolean>>(new Map());

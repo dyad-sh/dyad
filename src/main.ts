@@ -358,36 +358,47 @@ const createWindow = () => {
     );
   }
 
-  // Send force-close event if it was detected (only once, even with reload)
+  // Handle force-close message and dev reload together
+  // In dev: reload first for React DevTools, then send force-close (to preserve message)
+  // In prod: send force-close once without reload
+  let devReloaded = false;
   let forceCloseMessageSent = false;
-  if (pendingForceCloseData) {
-    mainWindow.webContents.on("did-finish-load", () => {
-      if (!forceCloseMessageSent) {
+
+  mainWindow.webContents.on("did-finish-load", () => {
+    // Development: reload once for React DevTools extension injection
+    if (process.env.NODE_ENV === "development") {
+      if (!devReloaded) {
+        devReloaded = true;
+        // Open DevTools and reload for extension injection
+        setTimeout(() => {
+          if (!mainWindow?.isDestroyed()) {
+            mainWindow?.webContents.openDevTools();
+            setTimeout(() => {
+              if (!mainWindow?.isDestroyed()) {
+                mainWindow?.webContents.reloadIgnoringCache();
+              }
+            }, 500);
+          }
+        }, 500);
+      } else if (pendingForceCloseData && !forceCloseMessageSent) {
+        // After reload: now send force-close so message persists
         forceCloseMessageSent = true;
         mainWindow?.webContents.send("force-close-detected", {
           performanceData: pendingForceCloseData,
         });
         pendingForceCloseData = null;
       }
-    });
-  }
-
-  // Open DevTools and reload in development to allow extension injection
-  if (process.env.NODE_ENV === "development") {
-    let reloaded = false;
-    mainWindow.webContents.on("did-finish-load", () => {
-      if (!reloaded) {
-        reloaded = true;
-        // Add delay to allow extension to init, then reload page for injection
-        setTimeout(() => {
-          mainWindow?.webContents.openDevTools();
-          setTimeout(() => {
-            mainWindow?.webContents.reloadIgnoringCache();
-          }, 500);
-        }, 500);
+    } else {
+      // Production: send force-close once without reload
+      if (pendingForceCloseData && !forceCloseMessageSent) {
+        forceCloseMessageSent = true;
+        mainWindow?.webContents.send("force-close-detected", {
+          performanceData: pendingForceCloseData,
+        });
+        pendingForceCloseData = null;
       }
-    });
-  }
+    }
+  });
 
   // Enable native context menu on right-click
   mainWindow.webContents.on("context-menu", (event, params) => {

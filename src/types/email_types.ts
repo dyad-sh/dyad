@@ -74,6 +74,9 @@ export interface EmailAccountConfig {
   smtpTls?: boolean;
   username?: string;
 
+  // TLS — allow self-signed certificates
+  allowInsecure?: boolean;
+
   // OAuth tokens (Gmail / Microsoft)
   accessToken?: string;
   refreshToken?: string;
@@ -344,6 +347,42 @@ export interface AddEmailAccountPayload {
   email: string;
   config: EmailAccountConfig;
   isDefault?: boolean;
+}
+
+// ─── Autonomous Orchestrator ─────────────────────────────────────────────────
+
+export type EmailAutoRuleAction =
+  | "archive"
+  | "label"
+  | "mark_read"
+  | "delete"
+  | "star";
+
+export interface EmailAutoRule {
+  id?: number;
+  accountId: string;
+  name: string;
+  enabled: boolean;
+  /** Match condition — any of these can be set */
+  condition: {
+    aiCategory?: EmailCategory;
+    priority?: EmailPriority;
+    fromPattern?: string;   // regex or glob
+    subjectPattern?: string;
+  };
+  action: EmailAutoRuleAction;
+  actionTarget?: string; // e.g. folder name for "label"/"archive"
+  createdAt?: number;
+}
+
+export interface EmailOrchestratorStatus {
+  running: boolean;
+  autoTriageEnabled: boolean;
+  autoActionsEnabled: boolean;
+  rulesCount: number;
+  lastRunAt?: number;
+  messagesProcessed: number;
+  actionsExecuted: number;
 }
 
 export interface EmailComposeRequest {

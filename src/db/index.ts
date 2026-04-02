@@ -95,6 +95,129 @@ export function initializeDatabase(): BetterSQLite3Database<typeof schema> & {
     logger.error("Failed to ensure autonomous_missions table:", fallbackError);
   }
 
+  // Self-healing: ensure email agent tables exist
+  try {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS \`email_accounts\` (
+        \`id\` text PRIMARY KEY NOT NULL,
+        \`provider\` text NOT NULL,
+        \`display_name\` text NOT NULL,
+        \`email\` text NOT NULL,
+        \`config\` text NOT NULL,
+        \`is_default\` integer DEFAULT false NOT NULL,
+        \`sync_cursor\` text,
+        \`last_sync_at\` integer,
+        \`created_at\` integer DEFAULT (unixepoch()) NOT NULL
+      )
+    `);
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS \`email_messages\` (
+        \`id\` integer PRIMARY KEY AUTOINCREMENT,
+        \`account_id\` text NOT NULL,
+        \`remote_id\` text NOT NULL,
+        \`thread_id\` text,
+        \`folder\` text NOT NULL,
+        \`from_addr\` text NOT NULL,
+        \`to_addr\` text NOT NULL,
+        \`cc_addr\` text DEFAULT '[]' NOT NULL,
+        \`bcc_addr\` text DEFAULT '[]' NOT NULL,
+        \`subject\` text DEFAULT '' NOT NULL,
+        \`body_plain\` text,
+        \`body_html\` text,
+        \`snippet\` text DEFAULT '' NOT NULL,
+        \`date\` integer NOT NULL,
+        \`is_read\` integer DEFAULT false NOT NULL,
+        \`is_starred\` integer DEFAULT false NOT NULL,
+        \`has_attachments\` integer DEFAULT false NOT NULL,
+        \`raw_headers\` text,
+        \`size\` integer,
+        \`priority\` text,
+        \`ai_category\` text,
+        \`ai_summary\` text,
+        \`ai_follow_up_date\` integer,
+        \`calendar_event_json\` text,
+        \`created_at\` integer DEFAULT (unixepoch()) NOT NULL,
+        FOREIGN KEY (\`account_id\`) REFERENCES \`email_accounts\`(\`id\`) ON UPDATE no action ON DELETE cascade
+      )
+    `);
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS \`email_drafts\` (
+        \`id\` integer PRIMARY KEY AUTOINCREMENT,
+        \`account_id\` text NOT NULL,
+        \`to_addr\` text DEFAULT '[]' NOT NULL,
+        \`cc_addr\` text DEFAULT '[]' NOT NULL,
+        \`bcc_addr\` text DEFAULT '[]' NOT NULL,
+        \`subject\` text DEFAULT '' NOT NULL,
+        \`body\` text DEFAULT '' NOT NULL,
+        \`body_html\` text,
+        \`in_reply_to\` text,
+        \`parent_message_id\` integer,
+        \`ai_generated\` integer DEFAULT false NOT NULL,
+        \`created_at\` integer DEFAULT (unixepoch()) NOT NULL,
+        \`updated_at\` integer DEFAULT (unixepoch()) NOT NULL,
+        FOREIGN KEY (\`account_id\`) REFERENCES \`email_accounts\`(\`id\`) ON UPDATE no action ON DELETE cascade
+      )
+    `);
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS \`email_folders\` (
+        \`id\` integer PRIMARY KEY AUTOINCREMENT,
+        \`account_id\` text NOT NULL,
+        \`name\` text NOT NULL,
+        \`path\` text NOT NULL,
+        \`type\` text DEFAULT 'custom' NOT NULL,
+        \`delimiter\` text DEFAULT '/' NOT NULL,
+        \`unread_count\` integer DEFAULT 0 NOT NULL,
+        \`total_count\` integer DEFAULT 0 NOT NULL,
+        \`last_sync_at\` integer,
+        FOREIGN KEY (\`account_id\`) REFERENCES \`email_accounts\`(\`id\`) ON UPDATE no action ON DELETE cascade
+      )
+    `);
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS \`email_attachments\` (
+        \`id\` integer PRIMARY KEY AUTOINCREMENT,
+        \`message_id\` integer NOT NULL,
+        \`filename\` text NOT NULL,
+        \`mime_type\` text NOT NULL,
+        \`size\` integer DEFAULT 0 NOT NULL,
+        \`content_id\` text,
+        \`storage_path\` text,
+        FOREIGN KEY (\`message_id\`) REFERENCES \`email_messages\`(\`id\`) ON UPDATE no action ON DELETE cascade
+      )
+    `);
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS \`email_agent_actions\` (
+        \`id\` integer PRIMARY KEY AUTOINCREMENT,
+        \`account_id\` text NOT NULL,
+        \`action_type\` text NOT NULL,
+        \`target_message_id\` integer,
+        \`payload\` text NOT NULL,
+        \`trust_level\` text NOT NULL,
+        \`status\` text DEFAULT 'pending' NOT NULL,
+        \`result\` text,
+        \`executed_at\` integer,
+        \`created_at\` integer DEFAULT (unixepoch()) NOT NULL,
+        FOREIGN KEY (\`account_id\`) REFERENCES \`email_accounts\`(\`id\`) ON UPDATE no action ON DELETE cascade
+      )
+    `);
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS \`email_sync_log\` (
+        \`id\` integer PRIMARY KEY AUTOINCREMENT,
+        \`account_id\` text NOT NULL,
+        \`sync_type\` text NOT NULL,
+        \`status\` text NOT NULL,
+        \`messages_added\` integer DEFAULT 0 NOT NULL,
+        \`messages_deleted\` integer DEFAULT 0 NOT NULL,
+        \`messages_updated\` integer DEFAULT 0 NOT NULL,
+        \`error\` text,
+        \`started_at\` integer DEFAULT (unixepoch()) NOT NULL,
+        \`completed_at\` integer,
+        FOREIGN KEY (\`account_id\`) REFERENCES \`email_accounts\`(\`id\`) ON UPDATE no action ON DELETE cascade
+      )
+    `);
+  } catch (fallbackError) {
+    logger.error("Failed to ensure email tables:", fallbackError);
+  }
+
   return _db as any;
 }
 

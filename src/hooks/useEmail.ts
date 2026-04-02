@@ -12,11 +12,14 @@ import type {
   AddEmailAccountPayload,
   EmailAccountConfig,
   EmailAgentConfig,
+  EmailAutoRule,
   EmailComposeRequest,
   EmailDraft,
+  EmailOrchestratorStatus,
   EmailSearchQuery,
   EmailSyncEvent,
   EmailAgentAction,
+  DailyDigest,
 } from "@/types/email_types";
 
 const client = EmailClient.getInstance();
@@ -375,4 +378,129 @@ export function useEmailPendingActionEvents(
   useEffect(() => {
     return client.onPendingAction(onAction);
   }, [onAction]);
+}
+
+// ─── Orchestrator Hooks ──────────────────────────────────────────────────────
+
+export const orchestratorKeys = {
+  status: [...emailKeys.all, "orchestrator-status"] as const,
+  rules: [...emailKeys.all, "orchestrator-rules"] as const,
+};
+
+export function useOrchestratorStatus() {
+  return useQuery({
+    queryKey: orchestratorKeys.status,
+    queryFn: () => client.getOrchestratorStatus(),
+    refetchInterval: 10_000,
+  });
+}
+
+export function useStartOrchestrator() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (config?: Partial<EmailAgentConfig>) =>
+      client.startOrchestrator(config),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: orchestratorKeys.status });
+    },
+  });
+}
+
+export function useStopOrchestrator() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => client.stopOrchestrator(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: orchestratorKeys.status });
+    },
+  });
+}
+
+export function useSetAutoTriage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => client.setAutoTriage(enabled),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: orchestratorKeys.status });
+    },
+  });
+}
+
+export function useSetAutoActions() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => client.setAutoActions(enabled),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: orchestratorKeys.status });
+    },
+  });
+}
+
+export function useUpdateOrchestratorConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (config: Partial<EmailAgentConfig>) =>
+      client.updateOrchestratorConfig(config),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: orchestratorKeys.status });
+    },
+  });
+}
+
+export function useAutoRules() {
+  return useQuery({
+    queryKey: orchestratorKeys.rules,
+    queryFn: () => client.listAutoRules(),
+  });
+}
+
+export function useAddAutoRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (rule: Omit<EmailAutoRule, "id" | "createdAt">) =>
+      client.addAutoRule(rule),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: orchestratorKeys.rules });
+    },
+  });
+}
+
+export function useUpdateAutoRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      ruleId,
+      updates,
+    }: { ruleId: number; updates: Partial<EmailAutoRule> }) =>
+      client.updateAutoRule(ruleId, updates),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: orchestratorKeys.rules });
+    },
+  });
+}
+
+export function useRemoveAutoRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ruleId: number) => client.removeAutoRule(ruleId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: orchestratorKeys.rules });
+    },
+  });
+}
+
+export function useOrchestratorStatusEvents(
+  onStatus: (status: EmailOrchestratorStatus & { type: string }) => void,
+) {
+  useEffect(() => {
+    return client.onOrchestratorStatus(onStatus);
+  }, [onStatus]);
+}
+
+export function useDailyDigestEvents(
+  onDigest: (digest: DailyDigest) => void,
+) {
+  useEffect(() => {
+    return client.onDailyDigestReady(onDigest);
+  }, [onDigest]);
 }

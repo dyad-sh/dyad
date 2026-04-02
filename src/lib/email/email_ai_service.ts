@@ -1,14 +1,16 @@
 /**
  * Email AI Service
  *
- * Uses the same model resolution pipeline as the chat system
- * (readSettings → getModelClient → generateText) to provide
- * triage, summarization, composition, and follow-up detection.
+ * Uses smart AI routing to select the optimal model for each task:
+ * - Light tasks (triage, smart replies) → prefer fast/local models
+ * - Heavy tasks (compose, digest, summaries) → prefer capable API models
+ * Falls back gracefully if preferred route unavailable.
  */
 
 import { generateText } from "ai";
 import { readSettings } from "@/main/settings";
 import { getModelClient } from "@/ipc/utils/get_model_client";
+import { getLanguageModelProviders } from "@/ipc/shared/language_model_helpers";
 import log from "electron-log";
 import type {
   EmailMessage,
@@ -23,15 +25,89 @@ import type {
 
 const logger = log.scope("email/ai");
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Smart AI Routing ────────────────────────────────────────────────────────
 
-async function getModel() {
+type TaskComplexity = "light" | "medium" | "heavy";
+
+/**
+ * Fast/small models for quick classification tasks.
+ * Tried in order — first one with a configured key wins.
+ */
+const FAST_MODEL_PREFERENCES = [
+  { provider: "ollama", name: "llama3.2" },
+  { provider: "ollama", name: "mistral" },
+  { provider: "ollama", name: "phi3" },
+  { provider: "lmstudio", name: "default" },
+  { provider: "google", name: "gemini-2.5-flash" },
+  { provider: "openrouter", name: "qwen/qwen3-coder:free" },
+  { provider: "openai", name: "gpt-4.1-mini" },
+  { provider: "anthropic", name: "claude-sonnet-4-20250514" },
+];
+
+/**
+ * Capable models for complex generation tasks.
+ */
+const CAPABLE_MODEL_PREFERENCES = [
+  { provider: "anthropic", name: "claude-sonnet-4-20250514" },
+  { provider: "openai", name: "gpt-4.1" },
+  { provider: "google", name: "gemini-2.5-flash" },
+  { provider: "openrouter", name: "qwen/qwen3-coder:free" },
+  { provider: "ollama", name: "llama3.2" },
+  { provider: "lmstudio", name: "default" },
+];
+
+/**
+ * Resolves the best available model for a given task complexity.
+ * Falls back to the user's currently selected model if no preferred route is available.
+ */
+async function getModelForTask(complexity: TaskComplexity) {
   const settings = readSettings();
+  const allProviders = await getLanguageModelProviders();
+
+  const preferences =
+    complexity === "light" ? FAST_MODEL_PREFERENCES : CAPABLE_MODEL_PREFERENCES;
+
+  // Try each preferred model in order
+  for (const pref of preferences) {
+    const providerConfig = allProviders.find((p) => p.id === pref.provider);
+    if (!providerConfig) continue;
+
+    // Local providers (Ollama, LM Studio) don't need API keys
+    const isLocal = pref.provider === "ollama" || pref.provider === "lmstudio";
+    const hasKey =
+      !!settings.providerSettings?.[pref.provider]?.apiKey?.value;
+
+    if (isLocal || hasKey) {
+      try {
+        const { modelClient } = await getModelClient(
+          { provider: pref.provider, name: pref.name },
+          settings,
+        );
+        logger.info(
+          `[smart-route] ${complexity} task → ${pref.provider}/${pref.name}`,
+        );
+        return modelClient.model;
+      } catch {
+        // This provider/model isn't available, try next
+        continue;
+      }
+    }
+  }
+
+  // Fallback: use the user's currently selected model
+  logger.info(
+    `[smart-route] ${complexity} task → fallback to selected model: ${settings.selectedModel.provider}/${settings.selectedModel.name}`,
+  );
   const { modelClient } = await getModelClient(
     settings.selectedModel,
     settings,
   );
   return modelClient.model;
+}
+
+// Keep backward-compatible helper
+async function getModel() {
+  return getModelForTask("medium");
 }
 
 function msgContext(msg: EmailMessage): string {
@@ -67,7 +143,7 @@ function parseJSON<T>(text: string, fallback: T): T {
 export async function triageMessage(
   msg: EmailMessage,
 ): Promise<EmailTriageResult> {
-  const model = await getModel();
+  const model = await getModelForTask("light");
   const { text } = await generateText({
     model,
     maxOutputTokens: 500,
@@ -98,7 +174,7 @@ Return ONLY valid JSON, no extra text.`,
 export async function summarizeMessage(
   messages: EmailMessage[],
 ): Promise<EmailSummary> {
-  const model = await getModel();
+  const model = await getModelForTask("medium");
   const conversation = messages.map(msgContext).join("\n\n===\n\n");
 
   const { text } = await generateText({
@@ -129,7 +205,7 @@ export async function composeEmail(
   request: EmailComposeRequest,
   fromAddress: EmailAddress,
 ): Promise<EmailDraft> {
-  const model = await getModel();
+  const model = await getModelForTask("heavy");
 
   let contextBlock = "";
   if (request.context?.threadMessages?.length) {
@@ -202,7 +278,7 @@ export async function adjustTone(
   draft: EmailDraft,
   tone: "formal" | "casual" | "friendly" | "urgent",
 ): Promise<EmailDraft> {
-  const model = await getModel();
+  const model = await getModelForTask("medium");
 
   const { text } = await generateText({
     model,
@@ -236,7 +312,7 @@ Return ONLY valid JSON.`,
 export async function detectFollowUps(
   msg: EmailMessage,
 ): Promise<FollowUp[]> {
-  const model = await getModel();
+  const model = await getModelForTask("medium");
 
   const { text } = await generateText({
     model,
@@ -277,7 +353,7 @@ Return ONLY valid JSON array. Return [] if no follow-ups detected.`,
 export async function generateDailyDigest(
   messages: EmailMessage[],
 ): Promise<DailyDigest> {
-  const model = await getModel();
+  const model = await getModelForTask("heavy");
 
   const urgent = messages.filter((m) => m.priority === "urgent");
   const actionRequired = messages.filter(
@@ -338,7 +414,7 @@ Return ONLY valid JSON.`,
 export async function generateSmartReplies(
   msg: EmailMessage,
 ): Promise<string[]> {
-  const model = await getModel();
+  const model = await getModelForTask("light");
 
   const { text } = await generateText({
     model,

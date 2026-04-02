@@ -982,6 +982,16 @@ const validInvokeChannels = [
   "email:sync:start-all",
   "email:sync:stop-all",
   "email:stats",
+  "email:orchestrator:start",
+  "email:orchestrator:stop",
+  "email:orchestrator:status",
+  "email:orchestrator:set-auto-triage",
+  "email:orchestrator:set-auto-actions",
+  "email:orchestrator:update-config",
+  "email:orchestrator:rules:list",
+  "email:orchestrator:rules:add",
+  "email:orchestrator:rules:update",
+  "email:orchestrator:rules:remove",
   "jcn:admin:replay",
   "jcn:admin:recover",
   "jcn:admin:stats",
@@ -1953,6 +1963,8 @@ const validReceiveChannels = [
   // Email Agent System events
   "email:sync-event",
   "email:pending-action",
+  "email:orchestrator-status",
+  "email:daily-digest-ready",
 ] as const;
 
 type ValidInvokeChannel = (typeof validInvokeChannels)[number];

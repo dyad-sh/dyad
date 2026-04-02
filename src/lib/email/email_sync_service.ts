@@ -3,6 +3,7 @@
  *
  * Manages background sync for all email accounts, persisting
  * messages to the local SQLite DB and emitting events for the UI.
+ * Supports auto-triage of new messages via AI.
  */
 
 import { db } from "@/db";
@@ -13,6 +14,7 @@ import {
   emailSyncLog,
 } from "@/db/schema";
 import { getProvider, removeProvider } from "./email_provider_factory";
+import { triageMessage } from "./email_ai_service";
 import { eq, and, inArray } from "drizzle-orm";
 import log from "electron-log";
 import { BrowserWindow } from "electron";
@@ -140,6 +142,7 @@ async function doSync(accountId: string): Promise<EmailSyncResult> {
     let added = 0;
     let deleted = 0;
     let updated = 0;
+    const newMessageIds: number[] = [];
 
     // Persist new / changed messages
     for (const msg of messages) {
@@ -166,7 +169,7 @@ async function doSync(accountId: string): Promise<EmailSyncResult> {
           .run();
         updated++;
       } else {
-        db.insert(emailMessages)
+        const inserted = db.insert(emailMessages)
           .values({
             accountId,
             remoteId: msg.remoteId,
@@ -186,7 +189,9 @@ async function doSync(accountId: string): Promise<EmailSyncResult> {
             hasAttachments: msg.hasAttachments,
             size: msg.size ?? 0,
           })
-          .run();
+          .returning({ id: emailMessages.id })
+          .get();
+        if (inserted) newMessageIds.push(inserted.id);
         added++;
       }
     }
@@ -246,6 +251,14 @@ async function doSync(accountId: string): Promise<EmailSyncResult> {
     logger.info(
       `Sync complete for ${accountId}: +${added} -${deleted} ~${updated} (${result.durationMs}ms)`,
     );
+
+    // Auto-triage new messages in the background (fire-and-forget)
+    if (newMessageIds.length > 0) {
+      autoTriageNewMessages(newMessageIds).catch((err) =>
+        logger.warn(`Auto-triage failed: ${err}`),
+      );
+    }
+
     return result;
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
@@ -325,6 +338,50 @@ async function upsertFolders(
         .run();
     }
   }
+}
+
+// ─── Auto-Triage ─────────────────────────────────────────────────────────────
+
+/**
+ * Triage newly synced messages using AI.
+ * Runs in the background — errors are logged, never propagated.
+ */
+async function autoTriageNewMessages(messageIds: number[]): Promise<void> {
+  logger.info(`Auto-triaging ${messageIds.length} new messages`);
+
+  for (const id of messageIds) {
+    try {
+      const msg = db
+        .select()
+        .from(emailMessages)
+        .where(eq(emailMessages.id, id))
+        .get();
+      if (!msg || msg.priority) continue; // Skip already-triaged
+
+      const result = await triageMessage(msg as any);
+
+      db.update(emailMessages)
+        .set({
+          priority: result.priority,
+          aiCategory: result.category,
+          aiFollowUpDate: result.followUpDate
+            ? new Date(result.followUpDate)
+            : null,
+        })
+        .where(eq(emailMessages.id, id))
+        .run();
+    } catch (err) {
+      logger.warn(`Auto-triage failed for message ${id}: ${err}`);
+    }
+  }
+
+  // Notify the UI that messages were triaged
+  emitSyncEvent({
+    accountId: "all",
+    type: "sync_completed",
+    data: { messagesAdded: 0, messagesDeleted: 0 },
+    timestamp: Date.now(),
+  });
 }
 
 function emitSyncEvent(event: EmailSyncEvent): void {

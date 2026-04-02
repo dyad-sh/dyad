@@ -39,15 +39,27 @@ import {
   rejectAction,
   getPendingActions,
 } from "@/lib/email/email_agent_executor";
+import {
+  startOrchestrator,
+  stopOrchestrator,
+  getOrchestratorStatus,
+  setAutoTriage,
+  setAutoActions,
+  updateAgentConfig,
+  getRules,
+  addRule,
+  updateRule,
+  removeRule,
+} from "@/lib/email/email_orchestrator";
 import type {
   AddEmailAccountPayload,
   EmailAccountConfig,
   EmailAgentConfig,
+  EmailAutoRule,
   EmailComposeRequest,
   EmailProviderType,
   EmailSearchQuery,
   EmailDraft,
-  DEFAULT_EMAIL_AGENT_CONFIG,
 } from "@/types/email_types";
 
 export function registerEmailHandlers(): void {
@@ -59,11 +71,38 @@ export function registerEmailHandlers(): void {
     "email:account:add",
     async (_, payload: AddEmailAccountPayload) => {
       const id = uuidv4();
+      let usedConfig = payload.config;
 
-      // Test connection before saving
-      const provider = getProvider(id, payload.provider, payload.config);
-      await provider.connect();
-      await provider.disconnect();
+      // Test connection before saving — auto-retry with insecure TLS on cert errors
+      try {
+        const provider = getProvider(id, payload.provider, usedConfig);
+        await provider.connect();
+        await provider.disconnect();
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const isCertError =
+          msg.includes("self signed certificate") ||
+          msg.includes("UNABLE_TO_VERIFY_LEAF_SIGNATURE") ||
+          msg.includes("DEPTH_ZERO_SELF_SIGNED_CERT") ||
+          msg.includes("CERT_HAS_EXPIRED") ||
+          msg.includes("ERR_TLS_CERT_ALTNAME_INVALID") ||
+          msg.includes("certificate");
+
+        if (isCertError && !usedConfig.allowInsecure) {
+          // Retry with insecure TLS
+          await removeProvider(id);
+          usedConfig = { ...usedConfig, allowInsecure: true };
+          const retryProvider = getProvider(id, payload.provider, usedConfig);
+          await retryProvider.connect();
+          await retryProvider.disconnect();
+        } else {
+          await removeProvider(id);
+          throw err;
+        }
+      }
+
+      // Clean up the test provider before saving
+      await removeProvider(id);
 
       db.insert(emailAccounts)
         .values({
@@ -71,7 +110,7 @@ export function registerEmailHandlers(): void {
           provider: payload.provider,
           displayName: payload.displayName,
           email: payload.email,
-          config: payload.config as unknown as Record<string, unknown>,
+          config: usedConfig as unknown as Record<string, unknown>,
           isDefault: payload.isDefault ?? false,
         })
         .run();
@@ -685,4 +724,72 @@ export function registerEmailHandlers(): void {
       unread: unreadResult?.count ?? 0,
     };
   });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ORCHESTRATOR (Autonomous Email Agent)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  ipcMain.handle(
+    "email:orchestrator:start",
+    async (_, config?: Partial<EmailAgentConfig>) => {
+      startOrchestrator(config);
+    },
+  );
+
+  ipcMain.handle("email:orchestrator:stop", async () => {
+    stopOrchestrator();
+  });
+
+  ipcMain.handle("email:orchestrator:status", async () => {
+    return getOrchestratorStatus();
+  });
+
+  ipcMain.handle(
+    "email:orchestrator:set-auto-triage",
+    async (_, enabled: boolean) => {
+      setAutoTriage(enabled);
+    },
+  );
+
+  ipcMain.handle(
+    "email:orchestrator:set-auto-actions",
+    async (_, enabled: boolean) => {
+      setAutoActions(enabled);
+    },
+  );
+
+  ipcMain.handle(
+    "email:orchestrator:update-config",
+    async (_, config: Partial<EmailAgentConfig>) => {
+      updateAgentConfig(config);
+    },
+  );
+
+  ipcMain.handle("email:orchestrator:rules:list", async () => {
+    return getRules();
+  });
+
+  ipcMain.handle(
+    "email:orchestrator:rules:add",
+    async (_, rule: Omit<EmailAutoRule, "id" | "createdAt">) => {
+      return addRule(rule);
+    },
+  );
+
+  ipcMain.handle(
+    "email:orchestrator:rules:update",
+    async (_, ruleId: number, updates: Partial<EmailAutoRule>) => {
+      const updated = updateRule(ruleId, updates);
+      if (!updated) throw new Error(`Rule ${ruleId} not found`);
+      return updated;
+    },
+  );
+
+  ipcMain.handle(
+    "email:orchestrator:rules:remove",
+    async (_, ruleId: number) => {
+      const removed = removeRule(ruleId);
+      if (!removed) throw new Error(`Rule ${ruleId} not found`);
+    },
+  );
 }

@@ -350,6 +350,19 @@ const createWindow = () => {
     // backgroundColor: "#00000001",
     // frame: false,
   });
+  // In development, wait for DevTools to open, then reload the page once so React DevTools initializes correctly
+  if (process.env.NODE_ENV === "development") {
+    mainWindow.webContents.once("devtools-opened", () => {
+      setTimeout(() => {
+        const windowRef = mainWindow;
+        if (!windowRef?.isDestroyed()) {
+          windowRef?.webContents.reloadIgnoringCache();
+        }
+      }, 300);
+    });
+    mainWindow.webContents.openDevTools();
+  }
+
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
@@ -359,45 +372,29 @@ const createWindow = () => {
     );
   }
 
-  // Handle force-close message and dev reload together
-  // In dev: reload first for React DevTools, then send force-close (to preserve message)
-  // In prod: send force-close once without reload
-  let devReloaded = false;
+  // Handle force-close message and development reload coordination
   let forceCloseMessageSent = false;
+  let devToolsReloadedCount = 0;
 
   mainWindow.webContents.on("did-finish-load", () => {
-    // Development: reload once for React DevTools extension injection
     if (process.env.NODE_ENV === "development") {
-      if (!devReloaded) {
-        devReloaded = true;
-        // Add delay to allow extension to init, then reload page for injection
-        setTimeout(() => {
-          if (!mainWindow?.isDestroyed()) {
-            mainWindow?.webContents.openDevTools();
-            setTimeout(() => {
-              if (!mainWindow?.isDestroyed()) {
-                mainWindow?.webContents.reloadIgnoringCache();
-              }
-            }, 500);
-          }
-        }, 500);
-      } else if (pendingForceCloseData && !forceCloseMessageSent) {
-        // After reload: now send force-close so message persists
-        forceCloseMessageSent = true;
-        mainWindow?.webContents.send("force-close-detected", {
+      // In dev, wait until AFTER the DevTools-triggered reload before sending the message
+      if (devToolsReloadedCount === 0) {
+        devToolsReloadedCount++;
+        return; // Ignore first load, we will reload momentarily
+      }
+    }
+
+    // Send force-close once after the correct load
+    if (pendingForceCloseData && !forceCloseMessageSent) {
+      forceCloseMessageSent = true;
+      const windowRef = mainWindow;
+      if (!windowRef?.isDestroyed()) {
+        windowRef?.webContents.send("force-close-detected", {
           performanceData: pendingForceCloseData,
         });
-        pendingForceCloseData = null;
       }
-    } else {
-      // Production: send force-close once without reload
-      if (pendingForceCloseData && !forceCloseMessageSent) {
-        forceCloseMessageSent = true;
-        mainWindow?.webContents.send("force-close-detected", {
-          performanceData: pendingForceCloseData,
-        });
-        pendingForceCloseData = null;
-      }
+      pendingForceCloseData = null;
     }
   });
 

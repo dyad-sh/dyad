@@ -124,6 +124,8 @@ import { registerSsiHandlers } from "./handlers/ssi_handlers";
 import { registerEmailHandlers } from "./handlers/email_handlers";
 import { registerMissionHandlers } from "./handlers/mission_handlers";
 import { registerLibraryHandlers } from "./handlers/library_handlers";
+import { registerImageStudioHandlers } from "./handlers/image_studio_handlers";
+import { registerVideoStudioHandlers } from "./handlers/video_studio_handlers";
 import {
   registerTaskExecutorHandlers,
   registerSystemServicesHandlers,
@@ -379,4 +381,10 @@ export function registerIpcHandlers() {
 
   // Library — Personal file bookshelf with decentralized storage tiers
   registerLibraryHandlers();
+
+  // Image Studio — AI image generation and canvas editing
+  registerImageStudioHandlers();
+
+  // Video Studio — AI video generation across multiple providers
+  registerVideoStudioHandlers();
 }

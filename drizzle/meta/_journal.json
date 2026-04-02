@@ -281,6 +281,20 @@
       "when": 1775004079571,
       "tag": "0039_daily_tyrannus",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1775020907529,
+      "tag": "0040_normal_roulette",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "6",
+      "when": 1775090121789,
+      "tag": "0041_noisy_molecule_man",
+      "breakpoints": true
     }
   ]
 }

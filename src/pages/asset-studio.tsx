@@ -5,6 +5,8 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { ImageStudioTab } from "@/components/image-studio/ImageStudioTab";
+import { VideoStudioTab } from "@/components/video-studio/VideoStudioTab";
 import { AssetStudioClient } from "@/ipc/asset_studio_client";
 import { MarketplaceClient } from "@/ipc/marketplace_client";
 import type { Asset, AssetType, ASSET_CATEGORIES } from "@/types/asset_types";
@@ -57,6 +59,8 @@ import {
   FileJson,
   Bot,
   Layout,
+  ImageIcon,
+  Video,
   FileCode,
   GitBranch,
   MessageSquare,
@@ -784,12 +788,25 @@ export default function AssetStudioPage() {
               <Layout className="w-4 h-4 mr-2" />
               UI
             </TabsTrigger>
+            <TabsTrigger value="images" className="data-[state=active]:bg-background">
+              <ImageIcon className="w-4 h-4 mr-2" />
+              Image Studio
+            </TabsTrigger>
+            <TabsTrigger value="videos" className="data-[state=active]:bg-background">
+              <Video className="w-4 h-4 mr-2" />
+              Video Studio
+            </TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-hidden">
+        {activeTab === "images" ? (
+          <ImageStudioTab />
+        ) : activeTab === "videos" ? (
+          <VideoStudioTab />
+        ) : (
         <ScrollArea className="h-full">
           <div className="p-6">
             {isLoading ? (
@@ -973,6 +990,7 @@ export default function AssetStudioPage() {
             )}
           </div>
         </ScrollArea>
+        )}
       </div>
 
       {/* Preview Dialog */}

@@ -1,0 +1,20 @@
+CREATE TABLE `video_studio_videos` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`prompt` text NOT NULL,
+	`negative_prompt` text,
+	`provider` text NOT NULL,
+	`model` text NOT NULL,
+	`width` integer DEFAULT 1280 NOT NULL,
+	`height` integer DEFAULT 720 NOT NULL,
+	`duration` real DEFAULT 5 NOT NULL,
+	`fps` integer DEFAULT 24 NOT NULL,
+	`format` text DEFAULT 'mp4' NOT NULL,
+	`file_path` text NOT NULL,
+	`thumbnail_path` text,
+	`seed` text,
+	`style` text,
+	`source_type` text DEFAULT 'text-to-video' NOT NULL,
+	`source_id` integer,
+	`metadata` text,
+	`created_at` integer DEFAULT (unixepoch()) NOT NULL
+);

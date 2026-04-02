@@ -1051,3 +1051,71 @@ export interface OpenClawConfigureProviderParams {
     maxTokens?: number;
   };
 }
+
+export interface ImageStudioImage {
+  id: number;
+  prompt: string;
+  negativePrompt: string | null;
+  provider: string;
+  model: string;
+  width: number;
+  height: number;
+  filePath: string;
+  seed: string | null;
+  style: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: Date;
+}
+
+export interface ImageStudioProviderModel {
+  id: string;
+  label: string;
+  supportsImg2Img?: boolean;
+  supportsNegativePrompt?: boolean;
+}
+
+export interface ImageStudioProvider {
+  id: string;
+  label: string;
+  models: ImageStudioProviderModel[];
+  supportsUpscale?: boolean;
+}
+
+// ── Video Studio Types ─────────────────────────────────────────────────────────
+
+export interface VideoStudioVideo {
+  id: number;
+  prompt: string;
+  negativePrompt: string | null;
+  provider: string;
+  model: string;
+  width: number;
+  height: number;
+  duration: number;
+  fps: number;
+  format: string;
+  filePath: string;
+  thumbnailPath: string | null;
+  seed: string | null;
+  style: string | null;
+  sourceType: string;
+  sourceId: number | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: Date;
+}
+
+export interface VideoStudioProviderModel {
+  id: string;
+  label: string;
+  supportsImg2Video?: boolean;
+  supportsVideoExtend?: boolean;
+  supportsVideo2Video?: boolean;
+  maxDurationSeconds?: number;
+  defaultFps?: number;
+}
+
+export interface VideoStudioProvider {
+  id: string;
+  label: string;
+  models: VideoStudioProviderModel[];
+}

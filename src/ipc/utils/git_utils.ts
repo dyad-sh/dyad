@@ -1188,6 +1188,7 @@ export async function gitListFilesNative({
   const result = await execGit(
     [
       "ls-files",
+      "-z",
       "--cached",
       "--others",
       "--exclude-standard",
@@ -1204,7 +1205,7 @@ export async function gitListFilesNative({
       DyadErrorKind.Conflict,
     );
   }
-  return result.stdout.split("\n").filter(Boolean).map(normalizePath);
+  return result.stdout.split("\0").filter(Boolean).map(normalizePath);
 }
 
 export async function gitLogNative(

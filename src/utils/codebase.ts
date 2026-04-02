@@ -266,7 +266,7 @@ async function collectFilesNativeGit(dir: string): Promise<string[]> {
       error,
     );
     // Since collectFilesIsoGit traverses the directory tree manually,
-    // we'll still be able to collect the files even if the gitignore checks fail
+    // we'll still be able to collect the files even if git fails
     return await collectFilesIsoGit(dir, dir);
   }
 

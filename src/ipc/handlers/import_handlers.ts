@@ -106,8 +106,9 @@ export function registerImportHandlers() {
       // still use sync fs calls that fail on UNC paths. Copy-based imports work
       // because files are copied to non-WSL storage.
       if (skipCopy && isWslPath(sourcePath)) {
-        throw new Error(
-          "Skip-copy import not supported for WSL paths. Please choose 'Copy to Dyad' instead.",
+        throw new DyadError(
+          "Skip-copy import is not supported for WSL paths. Please enable 'Copy to the dyad-apps folder' and try again.",
+          DyadErrorKind.Validation,
         );
       }
 

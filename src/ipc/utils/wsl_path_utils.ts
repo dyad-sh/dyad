@@ -6,7 +6,7 @@ import log from "electron-log";
 const logger = log.scope("wsl_path_utils");
 
 /**
- * Detects if a path is a WSL2 network UNC path.
+ * Detects if a path is  WSL2 network UNC path.
  * Matches patterns like \\wsl.localhost\Ubuntu\home\user\project and \\wsl$\Ubuntu\home\user\project.
  */
 export function isWslPath(filePath: string): boolean {

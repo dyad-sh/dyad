@@ -105,6 +105,10 @@ export class ImapSmtpProvider implements IEmailProvider {
   async connect(): Promise<void> {
     if (this.connected) return;
 
+    const tlsOptions = this.config.allowInsecure
+      ? { rejectUnauthorized: false }
+      : undefined;
+
     this.imap = new ImapFlow({
       host: this.config.imapHost ?? "",
       port: this.config.imapPort ?? 993,
@@ -114,6 +118,7 @@ export class ImapSmtpProvider implements IEmailProvider {
         pass: this.config.accessToken ?? "",
       },
       logger: false,
+      tls: tlsOptions,
     });
 
     await this.imap.connect();
@@ -126,6 +131,7 @@ export class ImapSmtpProvider implements IEmailProvider {
         user: this.config.username ?? "",
         pass: this.config.accessToken ?? "",
       },
+      tls: tlsOptions,
     });
 
     this.connected = true;

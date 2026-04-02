@@ -5,10 +5,11 @@
  */
 
 import { useState } from "react";
-import { X, Mail, Chrome, Building2, Eye, EyeOff } from "lucide-react";
+import { X, Mail, Chrome, Building2, Eye, EyeOff, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -129,6 +130,7 @@ function ImapSetupForm({
   const [imapPort, setImapPort] = useState("993");
   const [smtpHost, setSmtpHost] = useState("");
   const [smtpPort, setSmtpPort] = useState("587");
+  const [allowInsecure, setAllowInsecure] = useState(false);
 
   const handleSubmit = () => {
     onSubmit({
@@ -143,7 +145,8 @@ function ImapSetupForm({
         smtpPort: Number.parseInt(smtpPort, 10),
         smtpTls: true,
         username: email,
-        accessToken: password, // IMAP uses password in accessToken field for pass-through
+        accessToken: password,
+        allowInsecure,
       },
     });
   };
@@ -235,6 +238,22 @@ function ImapSetupForm({
             onChange={(e) => setSmtpPort(e.target.value)}
           />
         </div>
+      </div>
+
+      <div className="flex items-center justify-between rounded-lg border border-border/50 p-2">
+        <div className="flex items-center gap-2">
+          <ShieldAlert className="h-3.5 w-3.5 text-amber-500" />
+          <div>
+            <Label className="text-xs">Allow insecure certificates</Label>
+            <p className="text-[10px] text-muted-foreground">
+              Enable for self-signed or expired server certificates
+            </p>
+          </div>
+        </div>
+        <Switch
+          checked={allowInsecure}
+          onCheckedChange={setAllowInsecure}
+        />
       </div>
 
       {error && (

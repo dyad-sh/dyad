@@ -12,10 +12,12 @@ import type {
   EmailAccountConfig,
   EmailAgentAction,
   EmailAgentConfig,
+  EmailAutoRule,
   EmailComposeRequest,
   EmailDraft,
   EmailFolder,
   EmailMessage,
+  EmailOrchestratorStatus,
   EmailSearchQuery,
   EmailSummary,
   EmailSyncEvent,
@@ -254,5 +256,88 @@ export class EmailClient {
     this.ipcRenderer.on("email:pending-action", handler);
     return () =>
       this.ipcRenderer.removeListener("email:pending-action", handler);
+  }
+
+  // ─── Orchestrator ─────────────────────────────────────────────────
+
+  async startOrchestrator(
+    config?: Partial<EmailAgentConfig>,
+  ): Promise<void> {
+    return this.ipcRenderer.invoke("email:orchestrator:start", config);
+  }
+
+  async stopOrchestrator(): Promise<void> {
+    return this.ipcRenderer.invoke("email:orchestrator:stop");
+  }
+
+  async getOrchestratorStatus(): Promise<EmailOrchestratorStatus> {
+    return this.ipcRenderer.invoke("email:orchestrator:status");
+  }
+
+  async setAutoTriage(enabled: boolean): Promise<void> {
+    return this.ipcRenderer.invoke(
+      "email:orchestrator:set-auto-triage",
+      enabled,
+    );
+  }
+
+  async setAutoActions(enabled: boolean): Promise<void> {
+    return this.ipcRenderer.invoke(
+      "email:orchestrator:set-auto-actions",
+      enabled,
+    );
+  }
+
+  async updateOrchestratorConfig(
+    config: Partial<EmailAgentConfig>,
+  ): Promise<void> {
+    return this.ipcRenderer.invoke(
+      "email:orchestrator:update-config",
+      config,
+    );
+  }
+
+  async listAutoRules(): Promise<EmailAutoRule[]> {
+    return this.ipcRenderer.invoke("email:orchestrator:rules:list");
+  }
+
+  async addAutoRule(
+    rule: Omit<EmailAutoRule, "id" | "createdAt">,
+  ): Promise<EmailAutoRule> {
+    return this.ipcRenderer.invoke("email:orchestrator:rules:add", rule);
+  }
+
+  async updateAutoRule(
+    ruleId: number,
+    updates: Partial<EmailAutoRule>,
+  ): Promise<EmailAutoRule> {
+    return this.ipcRenderer.invoke(
+      "email:orchestrator:rules:update",
+      ruleId,
+      updates,
+    );
+  }
+
+  async removeAutoRule(ruleId: number): Promise<void> {
+    return this.ipcRenderer.invoke("email:orchestrator:rules:remove", ruleId);
+  }
+
+  onOrchestratorStatus(
+    callback: (status: EmailOrchestratorStatus & { type: string }) => void,
+  ): () => void {
+    const handler = (
+      _: unknown,
+      status: EmailOrchestratorStatus & { type: string },
+    ) => callback(status);
+    this.ipcRenderer.on("email:orchestrator-status", handler);
+    return () =>
+      this.ipcRenderer.removeListener("email:orchestrator-status", handler);
+  }
+
+  onDailyDigestReady(callback: (digest: DailyDigest) => void): () => void {
+    const handler = (_: unknown, digest: DailyDigest) => callback(digest);
+    this.ipcRenderer.on("email:daily-digest-ready", handler);
+    return () =>
+      this.ipcRenderer.removeListener("email:daily-digest-ready", handler);
   }
 }

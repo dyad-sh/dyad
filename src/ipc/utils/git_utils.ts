@@ -1193,8 +1193,8 @@ export async function gitListFilesNative({
       "--exclude-standard",
       "--",
       ".",
-      ...excludedFiles.map((file) => `:!${file}`),
-      ...excludedDirs.map((dir) => `:!${dir}/`),
+      ...excludedFiles.map((file) => `:(exclude,glob)**/${file}`),
+      ...excludedDirs.map((dir) => `:(exclude,glob)**/${dir}/`),
     ],
     path,
   );

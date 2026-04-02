@@ -4,6 +4,7 @@ import {
   queuedMessagesByIdAtom,
   streamCompletedSuccessfullyByIdAtom,
   queuePausedByIdAtom,
+  isStreamingByIdAtom,
   type QueuedMessageItem,
 } from "@/atoms/chatAtoms";
 import { useStreamChat } from "./useStreamChat";
@@ -22,6 +23,7 @@ export function useQueueProcessor() {
   const [streamCompletedSuccessfullyById, setStreamCompletedSuccessfullyById] =
     useAtom(streamCompletedSuccessfullyByIdAtom);
   const [queuePausedById] = useAtom(queuePausedByIdAtom);
+  const [isStreamingById] = useAtom(isStreamingByIdAtom);
   const posthog = usePostHog();
   const { settings } = useSettings();
 
@@ -32,6 +34,10 @@ export function useQueueProcessor() {
 
       const isPaused = queuePausedById.get(chatId) ?? false;
       if (isPaused) continue;
+
+      const isStreaming = isStreamingById.get(chatId) ?? false;
+      // Never dequeue while a stream is active for this chat
+      if (isStreaming) continue;
 
       const completedSuccessfully =
         streamCompletedSuccessfullyById.get(chatId) ?? false;
@@ -81,6 +87,7 @@ export function useQueueProcessor() {
     queuedMessagesById,
     streamCompletedSuccessfullyById,
     queuePausedById,
+    isStreamingById,
     streamMessage,
     setQueuedMessagesById,
     setStreamCompletedSuccessfullyById,

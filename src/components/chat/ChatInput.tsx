@@ -123,6 +123,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     clearAllQueuedMessages,
     isPaused,
     pauseQueue,
+    clearPauseOnly,
     resumeQueue,
     clearCompletionFlag,
   } = useStreamChat();
@@ -337,9 +338,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   useEffect(() => {
     if (chatId && isPaused && queuedMessages.length === 0) {
-      resumeQueue();
+      clearPauseOnly();
     }
-  }, [chatId, isPaused, queuedMessages.length, resumeQueue]);
+  }, [chatId, isPaused, queuedMessages.length, clearPauseOnly]);
 
   // Queue management handlers
   const handleEditQueuedMessage = useCallback(

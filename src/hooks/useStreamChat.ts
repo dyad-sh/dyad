@@ -69,7 +69,8 @@ export function useStreamChat({
   const setStreamCompletedSuccessfullyById = useSetAtom(
     streamCompletedSuccessfullyByIdAtom,
   );
-  const [queuePausedById, setQueuePausedById] = useAtom(queuePausedByIdAtom);
+  const queuePausedById = useAtomValue(queuePausedByIdAtom);
+  const setQueuePausedById = useSetAtom(queuePausedByIdAtom);
 
   const posthog = usePostHog();
   const queryClient = useQueryClient();
@@ -499,6 +500,14 @@ export function useStreamChat({
         return next;
       });
     }, [chatId, setQueuePausedById]),
+    clearPauseOnly: useCallback(() => {
+      if (chatId === undefined) return;
+      setQueuePausedById((prev) => {
+        const next = new Map(prev);
+        next.set(chatId, false);
+        return next;
+      });
+    }, [chatId, setQueuePausedById]),
     resumeQueue: useCallback(() => {
       if (chatId === undefined) return;
       setQueuePausedById((prev) => {
@@ -506,13 +515,16 @@ export function useStreamChat({
         next.set(chatId, false);
         return next;
       });
-      // We set this to true so the queue processor can pick up any queued messages.
-      // If we don't do this, resume after a cancel/stop will leave the queue stuck.
-      setStreamCompletedSuccessfullyById((prev) => {
-        const next = new Map(prev);
-        next.set(chatId, true);
-        return next;
-      });
+      // We set this to true so the queue processor can pick up any queued messages,
+      // but ONLY if we are not currently streaming. If we are streaming, setting this
+      // would incorrectly trigger an immediate dequeue.
+      if (!pendingStreamChatIds.has(chatId)) {
+        setStreamCompletedSuccessfullyById((prev) => {
+          const next = new Map(prev);
+          next.set(chatId, true);
+          return next;
+        });
+      }
     }, [chatId, setQueuePausedById, setStreamCompletedSuccessfullyById]),
     clearCompletionFlag: useCallback(() => {
       if (chatId === undefined) return;

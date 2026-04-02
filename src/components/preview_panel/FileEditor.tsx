@@ -112,26 +112,33 @@ export const FileEditor = ({
   const isSavingRef = useRef<boolean>(false);
   const needsSaveRef = useRef<boolean>(false);
   const currentValueRef = useRef<string | undefined>(undefined);
+  const hasInitializedContentRef = useRef(false);
+  const isMountedRef = useRef(false);
 
   const queryClient = useQueryClient();
   const { checkProblems } = useCheckProblems(appId);
 
-  // Update state when content loads
   useEffect(() => {
-    if (content !== null) {
-      setValue(content);
-      originalValueRef.current = content;
-      currentValueRef.current = content;
-      needsSaveRef.current = false;
-      setDisplayUnsavedChanges(false);
-      setIsSaving(false);
-    }
-  }, [content, filePath]);
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
-  // Sync the UI with the needsSave ref
+  // Initialize editor state from disk once per mounted file editor instance.
   useEffect(() => {
-    setDisplayUnsavedChanges(needsSaveRef.current);
-  }, [needsSaveRef.current]);
+    if (content === null || hasInitializedContentRef.current) {
+      return;
+    }
+
+    hasInitializedContentRef.current = true;
+    setValue(content);
+    originalValueRef.current = content;
+    currentValueRef.current = content;
+    needsSaveRef.current = false;
+    setDisplayUnsavedChanges(false);
+    setIsSaving(false);
+  }, [content]);
 
   // Determine if dark mode based on theme
   const isDarkMode =
@@ -168,9 +175,8 @@ export const FileEditor = ({
       navigateToLine(initialLine);
     }
 
-    // Listen for model content change events
+    // Save when the editor loses focus and the current model is dirty.
     editor.onDidBlurEditorText(() => {
-      console.log("Editor text blurred, checking if save needed");
       if (needsSaveRef.current) {
         saveFile();
       }
@@ -190,24 +196,37 @@ export const FileEditor = ({
   // Save the file
   const saveFile = async () => {
     if (
-      !appId ||
-      !currentValueRef.current ||
+      appId === null ||
+      currentValueRef.current === undefined ||
       !needsSaveRef.current ||
       isSavingRef.current
     )
       return;
 
+    const saveAppId = appId;
+    const saveFilePath = filePath;
+    const savedValue = currentValueRef.current;
+
     try {
       isSavingRef.current = true;
-      setIsSaving(true);
+      if (isMountedRef.current) {
+        setIsSaving(true);
+      }
 
       const { warning } = await ipc.app.editAppFile({
-        appId,
-        filePath,
-        content: currentValueRef.current,
+        appId: saveAppId,
+        filePath: saveFilePath,
+        content: savedValue,
       });
+      queryClient.setQueryData(
+        queryKeys.appFiles.content({
+          appId: saveAppId,
+          filePath: saveFilePath,
+        }),
+        savedValue,
+      );
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.versions.list({ appId }),
+        queryKey: queryKeys.versions.list({ appId: saveAppId }),
       });
       if (settings?.enableAutoFixProblems) {
         checkProblems();
@@ -218,14 +237,19 @@ export const FileEditor = ({
         showSuccess(t("preview.fileSaved"));
       }
 
-      originalValueRef.current = currentValueRef.current;
-      needsSaveRef.current = false;
-      setDisplayUnsavedChanges(false);
+      originalValueRef.current = savedValue;
+      const hasNewerEdits = currentValueRef.current !== savedValue;
+      needsSaveRef.current = hasNewerEdits;
+      if (isMountedRef.current) {
+        setDisplayUnsavedChanges(hasNewerEdits);
+      }
     } catch (error) {
       showError(error);
     } finally {
       isSavingRef.current = false;
-      setIsSaving(false);
+      if (isMountedRef.current) {
+        setIsSaving(false);
+      }
     }
   };
 
@@ -247,7 +271,7 @@ export const FileEditor = ({
     return <div className="p-4 text-red-500">Error: {error.message}</div>;
   }
 
-  if (!content) {
+  if (content === null) {
     return (
       <div className="p-4 text-gray-500">{t("preview.noContentAvailable")}</div>
     );

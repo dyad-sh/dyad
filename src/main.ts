@@ -369,13 +369,15 @@ const createWindow = () => {
     if (process.env.NODE_ENV === "development") {
       if (!devReloaded) {
         devReloaded = true;
+        // Capture window reference at schedule time to prevent stale callbacks on new windows
+        const windowRef = mainWindow;
         // Open DevTools and reload for extension injection
         setTimeout(() => {
-          if (!mainWindow?.isDestroyed()) {
-            mainWindow?.webContents.openDevTools();
+          if (!windowRef?.isDestroyed()) {
+            windowRef?.webContents.openDevTools();
             setTimeout(() => {
-              if (!mainWindow?.isDestroyed()) {
-                mainWindow?.webContents.reloadIgnoringCache();
+              if (!windowRef?.isDestroyed()) {
+                windowRef?.webContents.reloadIgnoringCache();
               }
             }, 500);
           }

@@ -261,8 +261,13 @@ async function collectFilesNativeGit(dir: string): Promise<string[]> {
       })
     ).map((file) => path.join(dir, file));
   } catch (error) {
-    logger.error(`Git failed to read directory ${dir}:`, error);
-    return files;
+    logger.error(
+      `Git failed to read directory ${dir} and is falling back to isomorphic-git:`,
+      error,
+    );
+    // Since collectFilesIsoGit traverses the directory tree manually,
+    // we'll still be able to collect the files even if the gitignore checks fail
+    return await collectFilesIsoGit(dir, dir);
   }
 
   // Git cannot exclude files by size, so we still need to do that manually

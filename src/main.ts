@@ -98,7 +98,6 @@ export async function onReady() {
   // Load React DevTools extension in development
   if (process.env.NODE_ENV === "development") {
     let chromeUserData: string;
-
     // Determine Chrome extensions path based on platform
     if (process.platform === "win32") {
       chromeUserData = path.join(
@@ -139,8 +138,10 @@ export async function onReady() {
       try {
         const versions = fs.readdirSync(extensionsDir);
         if (versions.length > 0) {
-          // Get the latest version (most recently created directory)
-          const latestVersion = versions.sort().reverse()[0];
+          // Get the latest version using numeric sort to handle version boundaries (e.g., 9.0.0 vs 10.0.0)
+          const latestVersion = versions
+            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+            .reverse()[0];
           const extensionPath = path.join(extensionsDir, latestVersion);
           await session.defaultSession.loadExtension(extensionPath, {
             allowFileAccess: true,
@@ -369,15 +370,13 @@ const createWindow = () => {
     if (process.env.NODE_ENV === "development") {
       if (!devReloaded) {
         devReloaded = true;
-        // Capture window reference at schedule time to prevent stale callbacks on new windows
-        const windowRef = mainWindow;
-        // Open DevTools and reload for extension injection
+        // Add delay to allow extension to init, then reload page for injection
         setTimeout(() => {
-          if (!windowRef?.isDestroyed()) {
-            windowRef?.webContents.openDevTools();
+          if (!mainWindow?.isDestroyed()) {
+            mainWindow?.webContents.openDevTools();
             setTimeout(() => {
-              if (!windowRef?.isDestroyed()) {
-                windowRef?.webContents.reloadIgnoringCache();
+              if (!mainWindow?.isDestroyed()) {
+                mainWindow?.webContents.reloadIgnoringCache();
               }
             }, 500);
           }

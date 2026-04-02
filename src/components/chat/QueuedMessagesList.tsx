@@ -136,7 +136,15 @@ export function QueuedMessagesList({
       <div className="w-full flex items-center justify-between px-3 py-2">
         {/* Make left header area clickable for expand/collapse */}
         <div
-          className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer select-none"
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setIsExpanded((v) => !v);
+            }
+          }}
+          className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
           onClick={() => setIsExpanded((v) => !v)}
           title={isExpanded ? "Collapse" : "Expand"}
         >
@@ -158,6 +166,7 @@ export function QueuedMessagesList({
             type="button"
             onClick={isPaused ? onResumeQueue : onPauseQueue}
             aria-label={isPaused ? "Resume queue" : "Pause queue"}
+            title={isPaused ? "Resume queue" : "Pause queue"}
             className="ml-2 px-2 py-1 text-muted-foreground hover:text-primary rounded-lg transition-colors duration-150 cursor-pointer"
           >
             {isPaused ? <PlayIcon size={18} /> : <PauseIcon size={18} />}

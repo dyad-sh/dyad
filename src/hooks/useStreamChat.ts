@@ -506,6 +506,21 @@ export function useStreamChat({
         next.set(chatId, false);
         return next;
       });
-    }, [chatId, setQueuePausedById]),
+      // We set this to true so the queue processor can pick up any queued messages.
+      // If we don't do this, resume after a cancel/stop will leave the queue stuck.
+      setStreamCompletedSuccessfullyById((prev) => {
+        const next = new Map(prev);
+        next.set(chatId, true);
+        return next;
+      });
+    }, [chatId, setQueuePausedById, setStreamCompletedSuccessfullyById]),
+    clearCompletionFlag: useCallback(() => {
+      if (chatId === undefined) return;
+      setStreamCompletedSuccessfullyById((prev) => {
+        const next = new Map(prev);
+        next.delete(chatId);
+        return next;
+      });
+    }, [chatId, setStreamCompletedSuccessfullyById]),
   };
 }

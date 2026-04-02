@@ -32,7 +32,6 @@ import {
   pendingAgentConsentsAtom,
   agentTodosByChatIdAtom,
   needsFreshPlanChatAtom,
-  streamCompletedSuccessfullyByIdAtom,
 } from "@/atoms/chatAtoms";
 import { atom, useAtom, useSetAtom, useAtomValue } from "jotai";
 import { useStreamChat } from "@/hooks/useStreamChat";
@@ -125,6 +124,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     isPaused,
     pauseQueue,
     resumeQueue,
+    clearCompletionFlag,
   } = useStreamChat();
   const [showError, setShowError] = useState(true);
   const [isApproving, setIsApproving] = useState(false); // State for approving
@@ -135,9 +135,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const messagesById = useAtomValue(chatMessagesByIdAtom);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
-  const setStreamCompletedSuccessfullyById = useSetAtom(
-    streamCompletedSuccessfullyByIdAtom,
-  );
   const [showTokenBar, setShowTokenBar] = useAtom(showTokenBarAtom);
   const queryClient = useQueryClient();
   const toggleShowTokenBar = useCallback(() => {
@@ -535,11 +532,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     }
     // Do NOT reset pause state here; queued messages should remain paused after stopping
     if (chatId) {
-      setStreamCompletedSuccessfullyById((prev) => {
-        const next = new Map(prev);
-        next.delete(chatId);
-        return next;
-      });
+      clearCompletionFlag();
       ipc.chat.cancelStream(chatId);
     }
     setIsStreaming(false);

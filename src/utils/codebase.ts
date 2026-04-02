@@ -275,8 +275,8 @@ async function collectFilesNativeGit(dir: string): Promise<string[]> {
     await Promise.all(
       files.map(async (file) => {
         try {
-          const stats = await fsAsync.stat(file);
-          if (stats.size > MAX_FILE_SIZE) {
+          const stats = await fsAsync.lstat(file);
+          if (!stats.isFile() || stats.size > MAX_FILE_SIZE) {
             return "";
           }
           return file;

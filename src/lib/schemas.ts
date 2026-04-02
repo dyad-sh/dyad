@@ -70,6 +70,13 @@ const providers = [
   "azure",
   "xai",
   "bedrock",
+  // Image generation providers
+  "stabilityai",
+  "replicate",
+  "fal",
+  "runway",
+  // Video generation providers
+  "luma",
 ] as const;
 
 export const cloudProviders = providers.filter(

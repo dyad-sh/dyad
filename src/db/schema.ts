@@ -2251,3 +2251,45 @@ export * from "./email_schema";
 
 // ── Autonomous Missions (Background Task Persistence) ─────────
 export * from "./mission_schema";
+
+// -- Image Studio (AI Image Generation + Canvas Editing) ------
+export const imageStudioImages = sqliteTable("image_studio_images", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  prompt: text("prompt").notNull(),
+  negativePrompt: text("negative_prompt"),
+  provider: text("provider").notNull(),
+  model: text("model").notNull(),
+  width: integer("width").notNull().default(1024),
+  height: integer("height").notNull().default(1024),
+  filePath: text("file_path").notNull(),
+  seed: text("seed"),
+  style: text("style"),
+  metadata: text("metadata", { mode: "json" }).$type<Record<string, unknown>>(),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+// -- Video Studio (AI Video Generation + Playback) ------
+export const videoStudioVideos = sqliteTable("video_studio_videos", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  prompt: text("prompt").notNull(),
+  negativePrompt: text("negative_prompt"),
+  provider: text("provider").notNull(),
+  model: text("model").notNull(),
+  width: integer("width").notNull().default(1280),
+  height: integer("height").notNull().default(720),
+  duration: real("duration").notNull().default(5),
+  fps: integer("fps").notNull().default(24),
+  format: text("format").notNull().default("mp4"),
+  filePath: text("file_path").notNull(),
+  thumbnailPath: text("thumbnail_path"),
+  seed: text("seed"),
+  style: text("style"),
+  sourceType: text("source_type").notNull().default("text-to-video"),
+  sourceId: integer("source_id"),
+  metadata: text("metadata", { mode: "json" }).$type<Record<string, unknown>>(),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});

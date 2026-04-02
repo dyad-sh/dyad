@@ -80,6 +80,10 @@ import type {
   AgentToolConsentRequestPayload,
   AgentToolConsentResponseParams,
   TelemetryEventPayload,
+  ImageStudioImage,
+  ImageStudioProvider,
+  VideoStudioVideo,
+  VideoStudioProvider,
 } from "./ipc_types";
 import type { ConsoleEntry } from "../atoms/appAtoms";
 import type { Template } from "../shared/templates";
@@ -3465,5 +3469,158 @@ export class IpcClient {
 
   public async getLibreOfficeStatus(): Promise<{ installed: boolean; version?: string; message?: string }> {
     return this.ipcRenderer.invoke("libreoffice:status");
+  }
+
+  // ── Image Studio ────────────────────────────────────────────────────────────
+
+  public async generateImage(params: {
+    provider: string;
+    model: string;
+    prompt: string;
+    negativePrompt?: string;
+    width: number;
+    height: number;
+    style?: string;
+    seed?: string;
+    batchCount?: number;
+    referenceImageBase64?: string;
+    strength?: number;
+    steps?: number;
+    cfgScale?: number;
+    sampler?: string;
+  }): Promise<ImageStudioImage[]> {
+    return this.ipcRenderer.invoke("image-studio:generate", params);
+  }
+
+  public async editImage(params: {
+    imageId: number;
+    maskBase64: string;
+    prompt: string;
+    provider: string;
+    model: string;
+  }): Promise<ImageStudioImage> {
+    return this.ipcRenderer.invoke("image-studio:edit", params);
+  }
+
+  public async listImages(params?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    provider?: string;
+  }): Promise<ImageStudioImage[]> {
+    return this.ipcRenderer.invoke("image-studio:list", params);
+  }
+
+  public async getImage(id: number): Promise<ImageStudioImage> {
+    return this.ipcRenderer.invoke("image-studio:get", id);
+  }
+
+  public async deleteImage(id: number): Promise<{ success: boolean }> {
+    return this.ipcRenderer.invoke("image-studio:delete", id);
+  }
+
+  public async saveImageToDisk(id: number): Promise<{ saved: boolean; dest?: string }> {
+    return this.ipcRenderer.invoke("image-studio:save-to-disk", id);
+  }
+
+  public async openImageInFolder(id: number): Promise<void> {
+    return this.ipcRenderer.invoke("image-studio:open-in-folder", id);
+  }
+
+  public async getAvailableImageProviders(): Promise<ImageStudioProvider[]> {
+    return this.ipcRenderer.invoke("image-studio:available-providers");
+  }
+
+  public async readImageAsBase64(id: number): Promise<string> {
+    return this.ipcRenderer.invoke("image-studio:read-image", id);
+  }
+
+  public async enhanceImagePrompt(prompt: string): Promise<string> {
+    return this.ipcRenderer.invoke("image-studio:enhance-prompt", prompt);
+  }
+
+  public async upscaleImage(params: {
+    imageId: number;
+    scale?: number;
+    provider: string;
+  }): Promise<ImageStudioImage> {
+    return this.ipcRenderer.invoke("image-studio:upscale", params);
+  }
+
+  public async generateVariations(params: {
+    imageId: number;
+    count?: number;
+  }): Promise<ImageStudioImage[]> {
+    return this.ipcRenderer.invoke("image-studio:variations", params);
+  }
+
+  // ── Video Studio ──────────────────────────────────────────────────────────
+
+  public async generateVideo(params: {
+    provider: string;
+    model: string;
+    prompt: string;
+    negativePrompt?: string;
+    width: number;
+    height: number;
+    duration?: number;
+    fps?: number;
+    seed?: string;
+    style?: string;
+    sourceType?: string;
+    referenceImageBase64?: string;
+    referenceVideoId?: number;
+    strength?: number;
+    motionAmount?: number;
+  }): Promise<VideoStudioVideo> {
+    return this.ipcRenderer.invoke("video-studio:generate", params);
+  }
+
+  public async listVideos(params?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    provider?: string;
+  }): Promise<VideoStudioVideo[]> {
+    return this.ipcRenderer.invoke("video-studio:list", params);
+  }
+
+  public async getVideo(id: number): Promise<VideoStudioVideo> {
+    return this.ipcRenderer.invoke("video-studio:get", id);
+  }
+
+  public async deleteVideo(id: number): Promise<{ success: boolean }> {
+    return this.ipcRenderer.invoke("video-studio:delete", id);
+  }
+
+  public async saveVideoToDisk(id: number): Promise<{ saved: boolean; dest?: string }> {
+    return this.ipcRenderer.invoke("video-studio:save-to-disk", id);
+  }
+
+  public async openVideoInFolder(id: number): Promise<void> {
+    return this.ipcRenderer.invoke("video-studio:open-in-folder", id);
+  }
+
+  public async getAvailableVideoProviders(): Promise<VideoStudioProvider[]> {
+    return this.ipcRenderer.invoke("video-studio:available-providers");
+  }
+
+  public async readVideo(id: number): Promise<string> {
+    return this.ipcRenderer.invoke("video-studio:read-video", id);
+  }
+
+  public async readVideoThumbnail(id: number): Promise<string> {
+    return this.ipcRenderer.invoke("video-studio:read-thumbnail", id);
+  }
+
+  public async enhanceVideoPrompt(prompt: string): Promise<string> {
+    return this.ipcRenderer.invoke("video-studio:enhance-prompt", prompt);
+  }
+
+  public async extractVideoFrames(params: {
+    videoId: number;
+    count?: number;
+  }): Promise<{ videoDataUrl: string; duration: number | null; fps: number | null; requestedFrames: number }> {
+    return this.ipcRenderer.invoke("video-studio:extract-frames", params);
   }
 }

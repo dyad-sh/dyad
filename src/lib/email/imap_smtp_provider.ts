@@ -305,8 +305,9 @@ export class ImapSmtpProvider implements IEmailProvider {
   ): Promise<{ messageId: string }> {
     if (!this.smtpTransport) throw new Error("Not connected");
 
+    const fromAddr = (draft as EmailDraft & { from?: string }).from ?? this.config.username ?? "";
     const info = await this.smtpTransport.sendMail({
-      from: draft.accountId, // will be overridden by SMTP auth user
+      from: fromAddr,
       to: draft.to.map((a) => (a.name ? `"${a.name}" <${a.address}>` : a.address)).join(", "),
       cc: draft.cc.map((a) => (a.name ? `"${a.name}" <${a.address}>` : a.address)).join(", ") || undefined,
       bcc: draft.bcc.map((a) => a.address).join(", ") || undefined,

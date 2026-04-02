@@ -429,7 +429,7 @@ export function registerEmailHandlers(): void {
       );
       if (!provider.isConnected()) await provider.connect();
 
-      return provider.sendMessage({ ...draft, accountId });
+      return provider.sendMessage({ ...draft, accountId, from: acct.email as string });
     },
   );
 

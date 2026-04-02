@@ -8,6 +8,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { EmailClient } from "@/ipc/email_client";
 import { useEffect } from "react";
+import { toast } from "sonner";
 import type {
   AddEmailAccountPayload,
   EmailAccountConfig,
@@ -206,7 +207,11 @@ export function useSendEmail() {
     }: { accountId: string; draft: EmailDraft }) =>
       client.sendEmail(accountId, draft),
     onSuccess: () => {
+      toast.success("Email sent");
       qc.invalidateQueries({ queryKey: emailKeys.all });
+    },
+    onError: (err: Error) => {
+      toast.error(`Failed to send email: ${err.message}`);
     },
   });
 }

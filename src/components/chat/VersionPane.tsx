@@ -16,6 +16,27 @@ import {
 
 import { useRunApp } from "@/hooks/useRunApp";
 
+function HighlightMatch({
+  text,
+  query,
+}: {
+  text: string;
+  query: string;
+}): React.ReactNode {
+  if (!query) return text;
+  const index = text.toLowerCase().indexOf(query.toLowerCase());
+  if (index === -1) return text;
+  return (
+    <>
+      {text.slice(0, index)}
+      <mark className="bg-yellow-200 dark:bg-yellow-800 rounded-sm">
+        {text.slice(index, index + query.length)}
+      </mark>
+      {text.slice(index + query.length)}
+    </>
+  );
+}
+
 interface VersionPaneProps {
   isVisible: boolean;
   onClose: () => void;
@@ -186,8 +207,19 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-xs">
-                      Version {versions.length - versions.indexOf(version)} (
-                      {version.oid.slice(0, 7)})
+                      Version{" "}
+                      <HighlightMatch
+                        text={String(
+                          versions.length - versions.indexOf(version),
+                        )}
+                        query={searchQuery.trim()}
+                      />{" "}
+                      (
+                      <HighlightMatch
+                        text={version.oid.slice(0, 7)}
+                        query={searchQuery.trim()}
+                      />
+                      )
                     </span>
                     {/* example format: '2025-07-25T21:52:01Z' */}
                     {version.dbTimestamp &&
@@ -244,23 +276,28 @@ export function VersionPane({ isVisible, onClose }: VersionPaneProps) {
                 <div className="flex items-center justify-between gap-2">
                   {version.message && (
                     <p className="mt-1 text-sm">
-                      {version.message.startsWith(
-                        "Reverted all changes back to version ",
-                      )
-                        ? version.message.replace(
-                            /Reverted all changes back to version ([a-f0-9]+)/,
-                            (_, hash) => {
-                              const targetIndex = versions.findIndex(
-                                (v) => v.oid === hash,
-                              );
-                              return targetIndex !== -1
-                                ? `Reverted all changes back to version ${
-                                    versions.length - targetIndex
-                                  }`
-                                : version.message;
-                            },
+                      <HighlightMatch
+                        text={
+                          version.message.startsWith(
+                            "Reverted all changes back to version ",
                           )
-                        : version.message}
+                            ? version.message.replace(
+                                /Reverted all changes back to version ([a-f0-9]+)/,
+                                (_, hash) => {
+                                  const targetIndex = versions.findIndex(
+                                    (v) => v.oid === hash,
+                                  );
+                                  return targetIndex !== -1
+                                    ? `Reverted all changes back to version ${
+                                        versions.length - targetIndex
+                                      }`
+                                    : version.message;
+                                },
+                              )
+                            : version.message
+                        }
+                        query={searchQuery.trim()}
+                      />
                     </p>
                   )}
 

@@ -35,7 +35,7 @@ export async function getBranchRoleName({
 /**
  * Get a Neon connection URI for a given project and branch.
  */
-async function getConnectionUri({
+export async function getConnectionUri({
   projectId,
   branchId,
 }: {

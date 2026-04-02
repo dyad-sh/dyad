@@ -4,6 +4,7 @@ import { useLoadApp } from "@/hooks/useLoadApp";
 import { GitHubConnector } from "@/components/GitHubConnector";
 import { VercelConnector } from "@/components/VercelConnector";
 import { PortalMigrate } from "@/components/PortalMigrate";
+import { MigrationPanel } from "@/components/MigrationPanel";
 import { ipc } from "@/ipc/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManager";
@@ -82,6 +83,9 @@ export const PublishPanel = () => {
 
         {/* Portal Section - Show only if app has neon project */}
         {app.neonProjectId && <PortalMigrate appId={selectedAppId} />}
+
+        {/* Database Migration - Show only if app has neon project */}
+        {app.neonProjectId && <MigrationPanel appId={selectedAppId} />}
 
         {/* GitHub Section */}
         <Card>

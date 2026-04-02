@@ -24,14 +24,6 @@ import { useAtomValue } from "jotai";
 import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
 import { Hammer, Bot, MessageCircle, Lightbulb } from "lucide-react";
 
-function NewBadge() {
-  return (
-    <span className="inline-flex items-center rounded-full px-2 text-[11px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
-      New
-    </span>
-  );
-}
-
 export function ChatModeSelector() {
   const { settings, updateSettings } = useSettings();
   const routerState = useRouterState();
@@ -154,7 +146,6 @@ export function ChatModeSelector() {
                 <div className="flex items-center gap-1.5">
                   <Bot size={14} className="text-muted-foreground" />
                   <span className="font-medium">Agent v2</span>
-                  <NewBadge />
                 </div>
                 <span className="text-xs text-muted-foreground ml-[22px]">
                   Better at bigger tasks and debugging
@@ -167,7 +158,6 @@ export function ChatModeSelector() {
               <div className="flex items-center gap-1.5">
                 <Lightbulb size={14} className="text-blue-500" />
                 <span className="font-medium">Plan</span>
-                <NewBadge />
               </div>
               <span className="text-xs text-muted-foreground ml-[22px]">
                 Design before you build

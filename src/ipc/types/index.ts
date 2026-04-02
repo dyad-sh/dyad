@@ -215,13 +215,7 @@ export type {
 } from "./neon";
 
 // Migration types
-export type {
-  MigrationStatement,
-  GenerateMigrationDiffParams,
-  GenerateMigrationDiffResponse,
-  ApplyMigrationParams,
-  ApplyMigrationResponse,
-} from "./migration";
+export type { MigrationPushParams, MigrationPushResponse } from "./migration";
 
 // System types
 export type {

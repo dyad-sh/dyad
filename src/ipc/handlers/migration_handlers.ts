@@ -6,7 +6,6 @@ import fs from "node:fs/promises";
 import { spawn } from "child_process";
 import { createTypedHandler } from "./base";
 import { migrationContracts } from "../types/migration";
-import type { MigrationStatement } from "../types/migration";
 import { getNeonClient } from "../../neon_admin/neon_management_client";
 import {
   getConnectionUri,
@@ -221,159 +220,24 @@ async function spawnDrizzleKit({
 }
 
 // =============================================================================
-// SQL Statement Analysis
-// =============================================================================
-
-/**
- * Strips ANSI escape codes from a string.
- */
-function stripAnsi(str: string): string {
-  return str.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, "");
-}
-
-/**
- * Parses SQL statements from drizzle-kit push --verbose output.
- */
-export function parseDrizzleKitPushOutput(rawOutput: string): string[] {
-  const output = stripAnsi(rawOutput);
-  const lines = output.split("\n");
-
-  const statements: string[] = [];
-  let currentStatement = "";
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-
-    // Skip empty lines and drizzle-kit UI noise
-    if (!trimmed) {
-      // Empty line might separate statements — flush if we have content
-      if (currentStatement.trim()) {
-        statements.push(currentStatement.trim());
-        currentStatement = "";
-      }
-      continue;
-    }
-
-    // Skip known non-SQL lines
-    if (
-      trimmed.startsWith("[") ||
-      trimmed.startsWith("~") ||
-      trimmed.startsWith(">") ||
-      trimmed.startsWith("---") ||
-      trimmed.startsWith("Warning:") ||
-      trimmed.startsWith("drizzle-kit:") ||
-      /^Do you want to apply/i.test(trimmed) ||
-      /^Yes,? I want/i.test(trimmed) ||
-      /^No,? abort/i.test(trimmed) ||
-      /^Reading schema/i.test(trimmed) ||
-      /^Pulling schema/i.test(trimmed) ||
-      /^Changes applied/i.test(trimmed) ||
-      /^No changes/i.test(trimmed) ||
-      /^Your schema/i.test(trimmed) ||
-      /^\d+ (tables?|columns?|indexes?|enums?)/i.test(trimmed)
-    ) {
-      // Flush current statement before skipping
-      if (currentStatement.trim()) {
-        statements.push(currentStatement.trim());
-        currentStatement = "";
-      }
-      continue;
-    }
-
-    // Check if this line starts a new SQL statement
-    if (
-      /^\s*(CREATE|ALTER|DROP|INSERT|UPDATE|DELETE|SET|DO|BEGIN|COMMIT|TRUNCATE|GRANT|REVOKE)\s/i.test(
-        trimmed,
-      )
-    ) {
-      // Flush previous statement
-      if (currentStatement.trim()) {
-        statements.push(currentStatement.trim());
-      }
-      currentStatement = trimmed;
-    } else if (currentStatement) {
-      // Continuation of current statement
-      currentStatement += "\n" + trimmed;
-    }
-    // If no current statement and line doesn't look like SQL start, skip it
-  }
-
-  // Flush final statement
-  if (currentStatement.trim()) {
-    statements.push(currentStatement.trim());
-  }
-
-  // Post-process: remove trailing semicolons (we add them back when executing)
-  return statements
-    .map((s) => s.replace(/;\s*$/, "").trim())
-    .filter((s) => s.length > 0);
-}
-
-/**
- * Classifies a SQL statement by its DDL type.
- */
-export function classifyStatement(
-  sql: string,
-): "create" | "alter" | "drop" | "other" {
-  const trimmed = sql.trim().toUpperCase();
-  if (trimmed.startsWith("CREATE ")) return "create";
-  if (trimmed.startsWith("ALTER ")) return "alter";
-  if (trimmed.startsWith("DROP ")) return "drop";
-  return "other";
-}
-
-/**
- * Extracts the table name from a DDL statement.
- */
-export function extractTableName(sql: string): string | null {
-  const match = sql.match(
-    /(?:CREATE|ALTER|DROP)\s+TABLE\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?(?:"([^"]+)"|(\w+))/i,
-  );
-  return match?.[1] ?? match?.[2] ?? null;
-}
-
-/**
- * Returns true if the SQL statement is destructive (data loss risk).
- */
-export function isDestructiveStatement(sql: string): boolean {
-  const upper = sql.toUpperCase();
-  if (/^\s*DROP\s+TABLE/i.test(sql)) return true;
-  if (/^\s*TRUNCATE/i.test(sql)) return true;
-  if (upper.includes("DROP COLUMN")) return true;
-  if (/ALTER\s+COLUMN\s+\S+\s+(SET\s+DATA\s+)?TYPE/i.test(sql)) return true;
-  return false;
-}
-
-// =============================================================================
 // Handler Registration
 // =============================================================================
 
 export function registerMigrationHandlers() {
   // -------------------------------------------------------------------------
-  // migration:generate-diff
+  // migration:push
   // -------------------------------------------------------------------------
-  createTypedHandler(migrationContracts.generateDiff, async (_, params) => {
+  createTypedHandler(migrationContracts.push, async (_, params) => {
     const { appId } = params;
-    logger.info(`Generating migration diff for app ${appId}`);
+    logger.info(`Pushing migration for app ${appId}`);
 
     // 1. Get app data and resolve branches
     const { projectId, devBranchId } = await getAppWithNeonProject(appId);
-    const { branchId: prodBranchId, branchName: prodBranchName } =
-      await getProductionBranchId(projectId);
+    const { branchId: prodBranchId } = await getProductionBranchId(projectId);
 
     logger.info(
       `Resolved branches — dev: ${devBranchId}, prod: ${prodBranchId}, project: ${projectId}`,
     );
-
-    // Get dev branch name for the UI
-    const neonClient = await getNeonClient();
-    const branchesResponse = await neonClient.listProjectBranches({
-      projectId,
-    });
-    const devBranch = branchesResponse.data.branches?.find(
-      (b) => b.id === devBranchId,
-    );
-    const devBranchName = devBranch?.name ?? "development";
 
     // 2. Get connection URIs for both branches
     const devUri = await getConnectionUri({
@@ -399,7 +263,7 @@ export function registerMigrationHandlers() {
     const tableCount = JSON.parse(tableCheckResult);
     if (!tableCount?.[0]?.cnt || parseInt(tableCount[0].cnt) === 0) {
       throw new DyadError(
-        "Development database has no tables. Create at least one table before generating a migration.",
+        "Development database has no tables. Create at least one table before migrating.",
         DyadErrorKind.Precondition,
       );
     }
@@ -428,7 +292,7 @@ export function registerMigrationHandlers() {
         );
       }
 
-      // 7. Find the generated schema file(s)
+      // 7. Find the generated schema file
       const schemaOutDir = path.join(tmpDir, "schema-out");
       let schemaFiles: string[];
       try {
@@ -440,7 +304,6 @@ export function registerMigrationHandlers() {
         );
       }
 
-      // Prefer schema.ts explicitly — relations.ts doesn't contain table definitions
       const tsSchemaFile =
         schemaFiles.find((f) => f === "schema.ts") ??
         schemaFiles.find((f) => f.endsWith(".ts") && f !== "relations.ts");
@@ -461,129 +324,26 @@ export function registerMigrationHandlers() {
         schemaPath: path.join(schemaOutDir, tsSchemaFile),
       });
 
-      // 9. Run drizzle-kit push --verbose --strict against production
-      //    Pipe "n\n" to stdin to abort actual execution
+      // 9. Run drizzle-kit push directly against production
       const pushResult = await spawnDrizzleKit({
-        args: ["push", `--config=${pushConfigPath}`, "--verbose", "--strict"],
+        args: ["push", `--config=${pushConfigPath}`],
         cwd: tmpDir,
-        stdinData: "n\n",
       });
 
-      // Exit code may be non-zero because we aborted — that's expected.
-      // We only care about parsing SQL from the output.
-
-      // 10. Parse SQL statements from push output
-      const combinedOutput = pushResult.stdout + "\n" + pushResult.stderr;
-      const rawStatements = parseDrizzleKitPushOutput(combinedOutput);
-
-      if (rawStatements.length === 0) {
-        return {
-          hasChanges: false,
-          statements: [],
-          fullSql: "",
-          summary: { added: [], altered: [], dropped: [] },
-          hasDestructiveChanges: false,
-          devBranchName,
-          prodBranchName,
-        };
+      if (pushResult.exitCode !== 0) {
+        throw new DyadError(
+          `Migration push failed: ${pushResult.stderr || pushResult.stdout}`,
+          DyadErrorKind.External,
+        );
       }
 
-      // 11. Classify statements and build summary
-      const statements: MigrationStatement[] = rawStatements.map((sql) => ({
-        sql,
-        type: classifyStatement(sql),
-      }));
-
-      const added = new Set<string>();
-      const altered = new Set<string>();
-      const dropped = new Set<string>();
-
-      for (const stmt of statements) {
-        const tableName = extractTableName(stmt.sql);
-        if (!tableName) continue;
-        switch (stmt.type) {
-          case "create":
-            added.add(tableName);
-            break;
-          case "alter":
-            altered.add(tableName);
-            break;
-          case "drop":
-            dropped.add(tableName);
-            break;
-        }
-      }
-
-      const hasDestructiveChanges = statements.some((s) =>
-        isDestructiveStatement(s.sql),
-      );
-
-      return {
-        hasChanges: true,
-        statements,
-        fullSql: rawStatements.join(";\n\n") + ";",
-        summary: {
-          added: [...added],
-          altered: [...altered],
-          dropped: [...dropped],
-        },
-        hasDestructiveChanges,
-        devBranchName,
-        prodBranchName,
-      };
+      logger.info(`Migration push completed successfully for app ${appId}`);
+      return { success: true };
     } finally {
-      // 12. Always clean up temp directory
+      // 10. Always clean up temp directory
       await fs.rm(tmpDir, { recursive: true, force: true }).catch((err) => {
         logger.warn(`Failed to clean up temp directory ${tmpDir}: ${err}`);
       });
     }
-  });
-
-  // -------------------------------------------------------------------------
-  // migration:apply
-  // -------------------------------------------------------------------------
-  createTypedHandler(migrationContracts.apply, async (_, params) => {
-    const { appId, statements } = params;
-    logger.info(
-      `Applying migration for app ${appId}: ${statements.length} statements`,
-    );
-
-    if (statements.length === 0) {
-      throw new DyadError(
-        "No migration statements to apply.",
-        DyadErrorKind.Validation,
-      );
-    }
-
-    const { projectId } = await getAppWithNeonProject(appId);
-    const { branchId: prodBranchId } = await getProductionBranchId(projectId);
-
-    // Execute each statement individually — Neon's serverless driver
-    // uses prepared statements which don't support multiple commands.
-    try {
-      for (const stmt of statements) {
-        const sql = stmt.endsWith(";") ? stmt : stmt + ";";
-        logger.info(`Executing migration statement: ${sql.slice(0, 80)}...`);
-        await executeNeonSql({
-          projectId,
-          branchId: prodBranchId,
-          query: sql,
-        });
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new DyadError(
-        `Migration failed. Some statements may have been applied. Error: ${message}`,
-        DyadErrorKind.External,
-      );
-    }
-
-    logger.info(
-      `Migration applied successfully: ${statements.length} statements executed`,
-    );
-    return {
-      success: true,
-      statementsExecuted: statements.length,
-    };
   });
 }

@@ -5,6 +5,7 @@ import {
   GitBranch,
   Info,
   MessageSquarePlus,
+  Loader2,
 } from "lucide-react";
 import { PanelRightClose } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -214,7 +215,7 @@ export function ChatHeader({
             >
               {isSummarizing ? (
                 <span className="inline-flex items-center gap-1">
-                  <span className="animate-spin">⏳</span>
+                  <Loader2 size={16} className="animate-spin" />
                   {t("summarizing")}
                 </span>
               ) : (

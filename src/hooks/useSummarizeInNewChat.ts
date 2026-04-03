@@ -1,6 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useAtomValue, useSetAtom } from "jotai";
-import { useRef, useState } from "react";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   chatInputValueAtom,
   attachmentsAtom,
@@ -8,6 +7,7 @@ import {
   selectedChatIdAtom,
   pushRecentViewedChatIdAtom,
   addSessionOpenedChatIdAtom,
+  isSummarizeInProgressAtom,
 } from "@/atoms/chatAtoms";
 import {
   chatImageGenerationJobsAtom,
@@ -15,8 +15,6 @@ import {
 } from "@/atoms/imageGenerationAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
-import { useCountTokens } from "@/hooks/useCountTokens";
-import { useChats } from "@/hooks/useChats";
 import { usePostHog } from "posthog-js/react";
 import { ipc } from "@/ipc/types";
 import { showError } from "@/lib/toast";
@@ -29,12 +27,9 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
   const pushRecentViewedChatId = useSetAtom(pushRecentViewedChatIdAtom);
   const addSessionOpenedChatId = useSetAtom(addSessionOpenedChatIdAtom);
   const { streamMessage } = useStreamChat({ hasChatId: false });
-  const { invalidateTokenCount } = useCountTokens(null, "");
-  const { invalidateChats } = useChats(appId);
   const posthog = usePostHog();
   const navigate = useNavigate();
-  const [isSummarizing, setIsSummarizing] = useState(false);
-  const isSummarizingRef = useRef(false);
+  const [isSummarizing, setIsSummarizing] = useAtom(isSummarizeInProgressAtom);
 
   const setChatInputValue = useSetAtom(chatInputValueAtom);
   const setAttachments = useSetAtom(attachmentsAtom);
@@ -45,12 +40,11 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
   );
 
   const handleSummarizeImpl = async (chatIdForSummarize?: number) => {
-    if (isSummarizingRef.current) {
+    if (isSummarizing) {
       return;
     }
 
     // Prevent duplicate summarize clicks while in progress.
-    isSummarizingRef.current = true;
     setIsSummarizing(true);
 
     // Use parameter override, then hook-level override, then atom value
@@ -58,7 +52,6 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
 
     if (!appId || !finalChatId) {
       showError("Unable to summarize: missing app or chat context");
-      isSummarizingRef.current = false;
       setIsSummarizing(false);
       return;
     }
@@ -73,8 +66,6 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
       setSelectedChatId(newChatId);
       addSessionOpenedChatId(newChatId);
       pushRecentViewedChatId(newChatId);
-
-      await invalidateChats();
 
       // Clear draft and UI state after navigation to new summary chat.
       setChatInputValue("");
@@ -95,8 +86,6 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
         chatId: newChatId,
         redo: false,
         onSettled: ({ success }) => {
-          invalidateTokenCount();
-          isSummarizingRef.current = false;
           setIsSummarizing(false);
           // Capture event only when stream actually succeeds
           if (success) {
@@ -107,7 +96,6 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
     } catch (err) {
       const errorMessage = (err as Error)?.message ?? "Unknown error";
       showError(`Failed to summarize chat: ${errorMessage}`);
-      isSummarizingRef.current = false;
       setIsSummarizing(false);
     }
   };

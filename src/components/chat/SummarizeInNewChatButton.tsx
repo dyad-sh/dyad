@@ -6,6 +6,8 @@ import {
   attachmentsAtom,
   needsFreshPlanChatAtom,
   selectedChatIdAtom,
+  pushRecentViewedChatIdAtom,
+  addSessionOpenedChatIdAtom,
 } from "@/atoms/chatAtoms";
 import {
   chatImageGenerationJobsAtom,
@@ -24,6 +26,8 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
   const chatId = overrideChatId ?? atomChatId;
   const appId = useAtomValue(selectedAppIdAtom);
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
+  const pushRecentViewedChatId = useSetAtom(pushRecentViewedChatIdAtom);
+  const addSessionOpenedChatId = useSetAtom(addSessionOpenedChatIdAtom);
   const { streamMessage } = useStreamChat({ hasChatId: false });
   const { invalidateTokenCount } = useCountTokens(null, "");
   const { invalidateChats } = useChats(appId);
@@ -62,11 +66,13 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
     try {
       const newChatId = await ipc.chat.createChat(appId);
       setSelectedChatId(newChatId);
+      addSessionOpenedChatId(newChatId);
+      pushRecentViewedChatId(newChatId);
 
       await navigate({ to: "/chat", search: { id: newChatId } });
       await invalidateChats();
 
-      // Draft is preserved until we successfully create and navigate to the summary chat.
+      // Clear draft and UI state after navigation to new summary chat.
       setChatInputValue("");
       setAttachments([]);
       setNeedsFreshPlanChat(false);

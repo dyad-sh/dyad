@@ -197,6 +197,7 @@ export function ChatHeader({
             variant="ghost"
             className="hidden @2xs:flex items-center justify-start gap-2 mx-2 py-3"
             data-testid="new-chat-button"
+            disabled={isSummarizing}
           >
             <PlusCircle size={16} />
             <span>{t("newChat")}</span>

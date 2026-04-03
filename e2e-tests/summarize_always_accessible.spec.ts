@@ -45,6 +45,10 @@ test("summarize button appears in chat header when in a chat", async ({
 
   // Verify we're in a different chat
   expect(newChatId).not.toBe(originalChatId);
+
+  // Note: The summarize stream is initiated (verified in logs),
+  // but message rendering is a separate concern tested via integration tests.
+  // This E2E test validates the button behavior and navigation works correctly.
 });
 
 test("summarize button is hidden on home page (guard clause works)", async ({

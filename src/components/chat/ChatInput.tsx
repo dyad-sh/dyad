@@ -174,7 +174,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const { navigate } = useRouter();
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const { invalidateChats } = useChats(appId);
-  const { handleSummarize } = useSummarizeInNewChat(chatId);
   const [imageGeneratorOpen, setImageGeneratorOpen] = useState(false);
   const handleOpenImageGenerator = useCallback(() => {
     setImageGeneratorOpen(true);
@@ -446,29 +445,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
     if (isRecording) {
       await toggleRecording();
-    }
-
-    // Handle manual "summarize to new chat" command
-    if (inputValue.trim().toLowerCase() === "summarize to new chat") {
-      if (isStreaming) {
-        const queued = queueMessage({
-          prompt: "",
-          attachments: [],
-          selectedComponents: [],
-          summarizeToNewChat: true,
-        });
-        if (queued) {
-          setInputValue("");
-          clearAttachments();
-          setSelectedComponents([]);
-          setVisualEditingSelectedComponent(null);
-        }
-        return;
-      }
-
-      // Keep input/attachments intact until summarize actually succeeds in the hook.
-      await handleSummarize();
-      return;
     }
 
     // Build prompt with auto-added image mentions

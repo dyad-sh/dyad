@@ -221,7 +221,6 @@ export interface QueuedMessageItem {
   prompt: string;
   attachments?: FileAttachment[];
   selectedComponents?: ComponentSelection[];
-  summarizeToNewChat?: boolean;
 }
 
 // Map<chatId, QueuedMessageItem[]>

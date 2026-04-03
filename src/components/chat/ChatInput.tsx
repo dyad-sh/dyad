@@ -59,7 +59,7 @@ import { AttachmentsList } from "./AttachmentsList";
 import { DragDropOverlay } from "./DragDropOverlay";
 import { FileAttachmentTypeDialog } from "./FileAttachmentTypeDialog";
 import { showExtraFilesToast, showInfo } from "@/lib/toast";
-import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
+import { useSummarizeInNewChat } from "@/hooks/useSummarizeInNewChat";
 import { ChatInputControls } from "../ChatInputControls";
 import { ChatErrorBox } from "./ChatErrorBox";
 import { AgentConsentBanner } from "./AgentConsentBanner";

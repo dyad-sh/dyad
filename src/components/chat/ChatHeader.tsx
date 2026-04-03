@@ -4,7 +4,7 @@ import {
   PlusCircle,
   GitBranch,
   Info,
-  MessageSquare,
+  MessageSquarePlus,
 } from "lucide-react";
 import { PanelRightClose } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -32,7 +32,7 @@ import { useRenameBranch } from "@/hooks/useRenameBranch";
 import { isAnyCheckoutVersionInProgressAtom } from "@/store/appAtoms";
 import { LoadingBar } from "../ui/LoadingBar";
 import { UncommittedFilesBanner } from "./UncommittedFilesBanner";
-import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
+import { useSummarizeInNewChat } from "@/hooks/useSummarizeInNewChat";
 
 interface ChatHeaderProps {
   isVersionPaneOpen: boolean;
@@ -212,7 +212,7 @@ export function ChatHeader({
               aria-label={t("summarizeToNewChat")}
               disabled={isSummarizing || isStreaming}
             >
-              <MessageSquare size={16} />
+              <MessageSquarePlus size={16} />
               <span className="hidden @4xs:inline">
                 {t("summarizeToNewChat")}
               </span>

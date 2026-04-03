@@ -5,7 +5,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useSummarizeInNewChat } from "./SummarizeInNewChatButton";
+import { useSummarizeInNewChat } from "@/hooks/useSummarizeInNewChat";
 
 const CONTEXT_LIMIT_THRESHOLD = 40_000;
 const LONG_CONTEXT_THRESHOLD = 200_000;

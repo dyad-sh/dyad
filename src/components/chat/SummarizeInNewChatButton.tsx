@@ -65,11 +65,15 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
 
     try {
       const newChatId = await ipc.chat.createChat(appId);
+
+      // Delay chat selection until after navigation succeeds to prevent orphaned chats
+      await navigate({ to: "/chat", search: { id: newChatId } });
+
+      // Now safe to update atoms after successful navigation
       setSelectedChatId(newChatId);
       addSessionOpenedChatId(newChatId);
       pushRecentViewedChatId(newChatId);
 
-      await navigate({ to: "/chat", search: { id: newChatId } });
       await invalidateChats();
 
       // Clear draft and UI state after navigation to new summary chat.
@@ -94,10 +98,10 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
           invalidateTokenCount();
           isSummarizingRef.current = false;
           setIsSummarizing(false);
+          // Capture event only when stream actually completes
+          posthog.capture("chat:summarize-manual");
         },
       });
-
-      posthog.capture("chat:summarize-manual");
     } catch (err) {
       showError(`Failed to summarize chat: ${(err as Error).toString()}`);
       isSummarizingRef.current = false;

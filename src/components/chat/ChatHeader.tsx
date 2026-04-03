@@ -209,6 +209,7 @@ export function ChatHeader({
               className="hidden @2xs:flex items-center justify-start gap-2 py-3"
               data-testid="summarize-chat-button"
               title={t("summarizeToNewChat")}
+              aria-label={t("summarizeToNewChat")}
               disabled={isSummarizing || isStreaming}
             >
               <MessageSquare size={16} />

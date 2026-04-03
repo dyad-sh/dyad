@@ -99,17 +99,15 @@ test("edit code edits the right file during rapid switches", async ({ po }) => {
     await selectFileAndWaitForEditor(po.page, "made-with-dyad.tsx");
   }
 
-  await po.page.waitForTimeout(1500);
-
-  const currentFirstOpenedFile = fs.readFileSync(
-    path.join(appPath, firstOpenedFilePath),
-    "utf8",
-  );
-  expect(currentFirstOpenedFile).toEqual(firstFileEdit);
-
-  const editedRobotsFile = fs.readFileSync(
-    path.join(appPath, robotsFilePath),
-    "utf8",
-  );
-  expect(editedRobotsFile).toEqual(updatedRobotsFile);
+  await expect
+    .poll(
+      () => fs.readFileSync(path.join(appPath, firstOpenedFilePath), "utf8"),
+      { timeout: Timeout.MEDIUM },
+    )
+    .toEqual(firstFileEdit);
+  await expect
+    .poll(() => fs.readFileSync(path.join(appPath, robotsFilePath), "utf8"), {
+      timeout: Timeout.MEDIUM,
+    })
+    .toEqual(updatedRobotsFile);
 });

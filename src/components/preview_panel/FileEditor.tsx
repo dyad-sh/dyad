@@ -127,7 +127,10 @@ export const FileEditor = ({
 
   // Initialize editor state from disk once per mounted file editor instance.
   useEffect(() => {
-    if (content === null || hasInitializedContentRef.current) {
+    if (
+      content === null ||
+      (hasInitializedContentRef.current && needsSaveRef.current)
+    ) {
       return;
     }
 

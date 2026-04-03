@@ -27,20 +27,22 @@ export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
   // Consider in progress if state is pending OR complete is explicitly "false"
   const isInProgress = state === "pending" || complete === "false";
 
-  const { savedPlan, hasPlanInMemory } = usePlan({ enabled: !isInProgress });
+  // Always load plan data regardless of isInProgress so we can show the View Plan
+  // button even when complete="false" is stale (e.g. after switching chats).
+  const { savedPlan, hasPlanInMemory } = usePlan();
 
   const hasPlan = hasPlanInMemory || !!savedPlan;
 
   return (
     <div
       className={`my-4 border rounded-lg overflow-hidden ${
-        isInProgress ? "border-primary/60" : "border-primary/20"
+        isInProgress && !hasPlan ? "border-primary/60" : "border-primary/20"
       } bg-primary/5`}
     >
       <div className="px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <FileText
-            className={`text-primary ${isInProgress ? "animate-pulse" : ""}`}
+            className={`text-primary ${isInProgress && !hasPlan ? "animate-pulse" : ""}`}
             size={20}
           />
           <div className="flex items-center gap-2">
@@ -62,7 +64,7 @@ export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
           </div>
         </div>
         <div className="flex items-center">
-          {!isInProgress && hasPlan && (
+          {hasPlan && (
             <button
               type="button"
               onClick={() => {
@@ -75,7 +77,7 @@ export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
               View Plan
             </button>
           )}
-          {isInProgress && (
+          {isInProgress && !hasPlan && (
             <span className="flex items-center gap-1.5 text-xs text-primary px-3 py-1 bg-primary/20 rounded-md font-medium">
               <Loader2 size={12} className="animate-spin" />
               Generating plan...
@@ -83,7 +85,7 @@ export const DyadWritePlan: React.FC<DyadWritePlanProps> = ({ node }) => {
           )}
         </div>
       </div>
-      {isInProgress && (
+      {isInProgress && !hasPlan && (
         <div className="px-4 pb-3">
           <div
             className="h-1.5 w-full rounded-full overflow-hidden"

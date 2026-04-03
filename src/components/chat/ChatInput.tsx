@@ -527,9 +527,10 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     // Only clear the queue if NOT paused
     if (!isPaused) {
       clearAllQueuedMessages();
-      if (editingQueuedMessageId) {
-        resetEditingState();
-      }
+    }
+    // Always reset editing state when cancelling, regardless of pause state
+    if (editingQueuedMessageId) {
+      resetEditingState();
     }
     // Do NOT reset pause state here; queued messages should remain paused after stopping
     if (chatId) {

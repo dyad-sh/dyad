@@ -1,5 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useEffect, useRef } from "react";
 import {
   chatInputValueAtom,
   attachmentsAtom,
@@ -14,6 +15,10 @@ import {
   dismissedImageGenerationJobIdsAtom,
 } from "@/atoms/imageGenerationAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
+import {
+  selectedComponentsPreviewAtom,
+  visualEditingSelectedComponentAtom,
+} from "@/atoms/previewAtoms";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { usePostHog } from "posthog-js/react";
 import { ipc } from "@/ipc/types";
@@ -38,17 +43,28 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
   const setDismissedImageJobIds = useSetAtom(
     dismissedImageGenerationJobIdsAtom,
   );
+  const setSelectedComponents = useSetAtom(selectedComponentsPreviewAtom);
+  const setVisualEditingSelectedComponent = useSetAtom(
+    visualEditingSelectedComponentAtom,
+  );
+
+  // Use ref-based mutex for synchronous race-condition protection
+  // The Jotai atom guard is async, so double-clicks can both read false before first update commits
+  const inFlightRef = useRef(false);
 
   const handleSummarizeImpl = async (chatIdForSummarize?: number) => {
-    if (isSummarizing) {
+    // Use synchronous ref check to prevent double-submissions within a single render frame
+    if (inFlightRef.current || isSummarizing) {
       return;
     }
 
-    // Prevent duplicate summarize clicks while in progress.
+    // Prevent duplicate summarize clicks while in progress
+    inFlightRef.current = true;
     setIsSummarizing(true);
     const finalChatId = chatIdForSummarize ?? chatId;
     if (!appId || !finalChatId) {
       showError("Unable to summarize: missing app or chat context");
+      inFlightRef.current = false;
       setIsSummarizing(false);
       return;
     }
@@ -68,6 +84,9 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
       setChatInputValue("");
       setAttachments([]);
       setNeedsFreshPlanChat(false);
+      // Clear visual selections to prevent stale components from applying to wrong chat
+      setSelectedComponents([]);
+      setVisualEditingSelectedComponent(null);
       setDismissedImageJobIds((prev) => {
         const next = new Set(prev);
         chatImageJobs
@@ -83,6 +102,7 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
         chatId: newChatId,
         redo: false,
         onSettled: ({ success }) => {
+          inFlightRef.current = false;
           setIsSummarizing(false);
           // Capture event only when stream actually succeeds
           if (success) {
@@ -93,9 +113,20 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
     } catch (err) {
       const errorMessage = (err as Error)?.message ?? "Unknown error";
       showError(`Failed to summarize chat: ${errorMessage}`);
+      inFlightRef.current = false;
       setIsSummarizing(false);
     }
   };
+
+  // Reset atom on unmount to prevent permanent lock if navigation occurs mid-summarize
+  useEffect(() => {
+    return () => {
+      if (inFlightRef.current) {
+        inFlightRef.current = false;
+        setIsSummarizing(false);
+      }
+    };
+  }, [setIsSummarizing]);
 
   // No-parameter version for click handlers
   const handleSummarize = () => handleSummarizeImpl();

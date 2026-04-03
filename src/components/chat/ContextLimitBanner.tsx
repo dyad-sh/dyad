@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowRight } from "lucide-react";
+import { AlertTriangle, ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -36,7 +36,7 @@ export function ContextLimitBanner({
   totalTokens,
   contextWindow,
 }: ContextLimitBannerProps) {
-  const { handleSummarize } = useSummarizeInNewChat();
+  const { handleSummarize, isSummarizing } = useSummarizeInNewChat();
 
   if (!shouldShowContextLimitBanner({ totalTokens, contextWindow })) {
     return null;
@@ -62,14 +62,24 @@ export function ContextLimitBanner({
           render={
             <Button
               onClick={handleSummarize}
+              disabled={isSummarizing}
               variant="outline"
               size="sm"
-              className="h-6 px-2 text-xs border-amber-500/40 bg-amber-500/5 text-amber-600 dark:text-amber-500 hover:bg-amber-500/20 hover:border-amber-500/60"
+              className="h-6 px-2 text-xs border-amber-500/40 bg-amber-500/5 text-amber-600 dark:text-amber-500 hover:bg-amber-500/20 hover:border-amber-500/60 disabled:opacity-50 disabled:cursor-default"
             />
           }
         >
-          Summarize
-          <ArrowRight className="h-3 w-3 ml-1" />
+          {isSummarizing ? (
+            <>
+              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+              Summarizing
+            </>
+          ) : (
+            <>
+              Summarize
+              <ArrowRight className="h-3 w-3 ml-1" />
+            </>
+          )}
         </TooltipTrigger>
         <TooltipContent>Summarize to new chat</TooltipContent>
       </Tooltip>

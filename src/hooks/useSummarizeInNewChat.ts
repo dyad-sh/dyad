@@ -94,16 +94,19 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
         prompt: "Summarize from chat-id=" + finalChatId,
         chatId: newChatId,
         redo: false,
-        onSettled: () => {
+        onSettled: ({ success }) => {
           invalidateTokenCount();
           isSummarizingRef.current = false;
           setIsSummarizing(false);
-          // Capture event only when stream actually completes
-          posthog.capture("chat:summarize-manual");
+          // Capture event only when stream actually succeeds
+          if (success) {
+            posthog.capture("chat:summarize-manual");
+          }
         },
       });
     } catch (err) {
-      showError(`Failed to summarize chat: ${(err as Error).toString()}`);
+      const errorMessage = (err as Error)?.message ?? "Unknown error";
+      showError(`Failed to summarize chat: ${errorMessage}`);
       isSummarizingRef.current = false;
       setIsSummarizing(false);
     }

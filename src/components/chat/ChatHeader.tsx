@@ -212,10 +212,19 @@ export function ChatHeader({
               aria-label={t("summarizeToNewChat")}
               disabled={isSummarizing || isStreaming}
             >
-              <MessageSquarePlus size={16} />
-              <span className="hidden @4xs:inline">
-                {t("summarizeToNewChat")}
-              </span>
+              {isSummarizing ? (
+                <span className="inline-flex items-center gap-1">
+                  <span className="animate-spin">⏳</span>
+                  {t("summarizing")}
+                </span>
+              ) : (
+                <>
+                  <MessageSquarePlus size={16} />
+                  <span className="hidden @4xs:inline">
+                    {t("summarizeToNewChat")}
+                  </span>
+                </>
+              )}
             </Button>
           )}
           <Button

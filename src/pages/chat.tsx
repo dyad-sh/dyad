@@ -36,9 +36,7 @@ export default function ChatPage() {
 
   // Sync selectedChatIdAtom with the chatId from the URL
   useEffect(() => {
-    if (chatId) {
-      setSelectedChatId(chatId);
-    }
+    setSelectedChatId(chatId ?? null);
   }, [chatId, setSelectedChatId]);
 
   // Handle plan implementation when a plan is accepted

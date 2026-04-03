@@ -248,9 +248,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   const handleTranscription = useCallback(
     (text: string) => {
-      setInputValue(inputValue.trim() ? inputValue + " " + text : text);
+      setInputValue((prev: string) => (prev.trim() ? prev + " " + text : text));
     },
-    [setInputValue, inputValue],
+    [setInputValue],
   );
 
   const { isRecording, isTranscribing, toggleRecording } = useVoiceToText({

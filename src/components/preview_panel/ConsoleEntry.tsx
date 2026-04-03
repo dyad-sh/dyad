@@ -5,7 +5,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import { useAtom } from "jotai";
+import { useSetAtom } from "jotai";
 import { chatInputValueAtom } from "@/atoms/chatAtoms";
 import {
   Tooltip,
@@ -44,7 +44,7 @@ export const ConsoleEntryComponent = (props: ConsoleEntryProps) => {
     onToggleExpand,
   } = props;
   const { t } = useTranslation(["home", "common"]);
-  const [chatInput, setChatInput] = useAtom(chatInputValueAtom);
+  const setChatInput = useSetAtom(chatInputValueAtom);
 
   const isTruncated = message.length > MAX_MESSAGE_LENGTH;
   const displayMessage =
@@ -60,7 +60,7 @@ export const ConsoleEntryComponent = (props: ConsoleEntryProps) => {
     const prefix = sourceName ? `[${sourceName}]` : "";
     const formattedLog = `[${time}] ${level.toUpperCase()} ${prefix}: ${message}`;
 
-    setChatInput(`${chatInput}\n\`\`\`\n${formattedLog}\n\`\`\``);
+    setChatInput((prev) => `${prev}\n\`\`\`\n${formattedLog}\n\`\`\``);
   };
 
   // Determine styling based on log level

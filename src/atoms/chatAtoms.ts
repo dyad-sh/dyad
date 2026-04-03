@@ -23,12 +23,17 @@ export const chatInputValueAtom = atom(
     if (chatId === null) return "";
     return get(chatInputValuesByIdAtom).get(chatId) ?? "";
   },
-  (get, set, newValue: string) => {
+  (get, set, newValue: string | ((prev: string) => string)) => {
     const chatId = get(selectedChatIdAtom);
+    // Intentionally a no-op when no chat is selected (e.g. before the URL
+    // sync effect in chat.tsx has run). Callers on the chat page always have
+    // a valid chatId by the time they write, so no queuing is needed.
     if (chatId === null) return;
     const currentMap = get(chatInputValuesByIdAtom);
+    const prev = currentMap.get(chatId) ?? "";
+    const next = typeof newValue === "function" ? newValue(prev) : newValue;
     const newMap = new Map(currentMap);
-    newMap.set(chatId, newValue);
+    newMap.set(chatId, next);
     set(chatInputValuesByIdAtom, newMap);
   },
 );

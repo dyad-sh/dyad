@@ -214,6 +214,7 @@ export const agentTodosByChatIdAtom = atom<Map<number, AgentTodo[]>>(new Map());
 
 // Flag: set when user switches to plan mode from another mode in a chat with messages
 export const needsFreshPlanChatAtom = atom<boolean>(false);
+export const isSummarizeInProgressAtom = atom<boolean>(false);
 
 // Queued messages (multiple messages per chat, sent in sequence after streams complete)
 export interface QueuedMessageItem {

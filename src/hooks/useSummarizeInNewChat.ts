@@ -46,10 +46,7 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
 
     // Prevent duplicate summarize clicks while in progress.
     setIsSummarizing(true);
-
-    // Use parameter override, then hook-level override, then atom value
     const finalChatId = chatIdForSummarize ?? chatId;
-
     if (!appId || !finalChatId) {
       showError("Unable to summarize: missing app or chat context");
       setIsSummarizing(false);

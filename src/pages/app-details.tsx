@@ -37,7 +37,7 @@ import { GitHubConnector } from "@/components/GitHubConnector";
 import { SupabaseConnector } from "@/components/SupabaseConnector";
 import { NeonConnector } from "@/components/NeonConnector";
 import { showError, showSuccess } from "@/lib/toast";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Label } from "@/components/ui/label";
 import { Info, Loader2 } from "lucide-react";
 import {
@@ -54,6 +54,7 @@ import { CapacitorControls } from "@/components/CapacitorControls";
 import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManager";
 import { useAddAppToFavorite } from "@/hooks/useAddAppToFavorite";
 import { useTranslation } from "react-i18next";
+import { queryKeys } from "@/lib/queryKeys";
 
 function UnavailableIntegrationCard({
   provider,
@@ -118,6 +119,12 @@ export default function AppDetailsPage() {
   // Get the appId and provider filter from search params
   const appId = search.appId ? Number(search.appId) : null;
   const providerFilter = search.provider;
+
+  const { data: screenshotData } = useQuery({
+    queryKey: queryKeys.apps.screenshot({ appId }),
+    queryFn: () => ipc.app.getAppScreenshot({ appId: appId! }),
+    enabled: !!appId,
+  });
   const selectedApp = appId ? appsList.find((app) => app.id === appId) : null;
 
   const handleDeleteApp = async () => {
@@ -409,6 +416,16 @@ export default function AppDetailsPage() {
             </PopoverContent>
           </Popover>
         </div>
+
+        {screenshotData?.url && (
+          <div className="mb-4 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+            <img
+              src={screenshotData.url}
+              alt="App preview"
+              className="w-full max-h-80 object-cover object-top"
+            />
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3 text-sm mb-4">
           <div>

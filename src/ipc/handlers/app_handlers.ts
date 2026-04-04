@@ -2684,6 +2684,70 @@ export function registerAppHandlers() {
     }
   });
 
+  // Screenshot handlers
+  createTypedHandler(appContracts.saveAppScreenshot, async (_, params) => {
+    const { appId, dataUrl } = params;
+
+    const appRecord = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
+    if (!appRecord) {
+      throw new DyadError("App not found", DyadErrorKind.NotFound);
+    }
+
+    const appPath = getDyadAppPath(appRecord.path);
+    const screenshotDir = path.join(appPath, ".dyad", "screenshot");
+
+    // Ensure directory exists
+    await fsPromises.mkdir(screenshotDir, { recursive: true });
+
+    // Delete any existing screenshot files
+    try {
+      const existingFiles = await fsPromises.readdir(screenshotDir);
+      for (const file of existingFiles) {
+        await fsPromises.unlink(path.join(screenshotDir, file));
+      }
+    } catch {
+      // Directory may not exist yet, ignore
+    }
+
+    // Decode data URL and write PNG
+    const base64Data = dataUrl.replace(/^data:image\/\w+;base64,/, "");
+    const buffer = Buffer.from(base64Data, "base64");
+    await fsPromises.writeFile(
+      path.join(screenshotDir, "screenshot.png"),
+      buffer,
+    );
+  });
+
+  createTypedHandler(appContracts.getAppScreenshot, async (_, params) => {
+    const { appId } = params;
+
+    const appRecord = await db.query.apps.findFirst({
+      where: eq(apps.id, appId),
+    });
+    if (!appRecord) {
+      throw new DyadError("App not found", DyadErrorKind.NotFound);
+    }
+
+    const appPath = getDyadAppPath(appRecord.path);
+    const screenshotPath = path.join(
+      appPath,
+      ".dyad",
+      "screenshot",
+      "screenshot.png",
+    );
+
+    try {
+      await fsPromises.access(screenshotPath);
+      // Build a dyad-media protocol URL to serve the screenshot
+      const url = `dyad-media://media/${encodeURIComponent(appRecord.path)}/.dyad/screenshot/screenshot.png`;
+      return { url };
+    } catch {
+      return { url: null };
+    }
+  });
+
   void reconcileCloudSandboxes().catch((error) => {
     logger.warn("Failed to reconcile cloud sandboxes on startup:", error);
   });

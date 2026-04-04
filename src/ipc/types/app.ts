@@ -460,6 +460,18 @@ export const appContracts = {
     input: z.object({ appId: z.number().nullable() }),
     output: z.void(),
   }),
+
+  saveAppScreenshot: defineContract({
+    channel: "app:save-screenshot",
+    input: z.object({ appId: z.number(), dataUrl: z.string() }),
+    output: z.void(),
+  }),
+
+  getAppScreenshot: defineContract({
+    channel: "app:get-screenshot",
+    input: z.object({ appId: z.number() }),
+    output: z.object({ url: z.string().nullable() }),
+  }),
 } as const;
 
 // =============================================================================

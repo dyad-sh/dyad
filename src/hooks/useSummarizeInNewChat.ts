@@ -50,7 +50,6 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
   // Ref to prevent double-submission of summarize action , which can happen due to multiple quick clicks
   const inFlightRef = useRef(false);
   const handleSummarizeImpl = async (chatIdForSummarize?: number) => {
-    // Use synchronous ref check to prevent double-submissions within a single render frame
     if (inFlightRef.current || isSummarizing) {
       return;
     }
@@ -73,9 +72,7 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
       // Clear ui state
       setChatInputValue("");
       setAttachments([]);
-      // Note: pendingFiles state in useAttachments hook is local and persists across chat navigation.
-      // Clearing attachmentsAtom clears confirmed attachments, but pending file dialogs from drag/paste
-      // will remain until user cancels them. Future improvement: move pendingFiles to atom.
+
       setNeedsFreshPlanChat(false);
       setSelectedComponents([]);
       setVisualEditingSelectedComponent(null);
@@ -96,7 +93,7 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
         onSettled: ({ success }) => {
           inFlightRef.current = false;
           setIsSummarizing(false);
-          // Capture event only when stream actually succeeds
+
           if (success) {
             posthog.capture("chat:summarize-manual");
           }
@@ -104,15 +101,13 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
       });
     } catch (err) {
       const errorMessage = (err as Error)?.message ?? "Unknown error";
-      // If stream initiation fails, the new empty chat will show the error
-      // User can use browser back button or navigate to another chat
+
       showError(`Failed to summarize chat: ${errorMessage}`);
       inFlightRef.current = false;
       setIsSummarizing(false);
     }
   };
 
-  // No-parameter version for click handlers
   const handleSummarize = () => handleSummarizeImpl();
 
   return {

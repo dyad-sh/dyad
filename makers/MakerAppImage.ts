@@ -146,11 +146,30 @@ export class MakerAppImage extends MakerBase<{ icon?: string }> {
 
       // The entry point of an AppImage should be the AppRun file.
       // See: https://docs.appimage.org/reference/appdir.html#general-description
-      await symlink(
-        relative(appDir, resolve(binDir, appName)),
-        resolve(appDir, "AppRun"),
-        "file",
-      );
+      // Use a shell script rather than a symlink so we can set up LD_LIBRARY_PATH
+      // to handle libcurl compatibility on distributions (e.g. Fedora) that only
+      // provide libcurl.so.4 instead of the libcurl-gnutls.so.4 expected by the
+      // bundled git binary.
+      const appRunScript = [
+        "#!/bin/sh",
+        'APPDIR="$(dirname "$(readlink -f "$0")")"',
+        "",
+        "# Allow git HTTPS to work on systems that provide libcurl.so.4 but not",
+        "# libcurl-gnutls.so.4 (e.g. Fedora). Add the libcurl directory to",
+        "# LD_LIBRARY_PATH so the bundled git-remote-https binary can load it.",
+        "if ! ldconfig -p 2>/dev/null | grep -q 'libcurl-gnutls\\.so\\.4'; then",
+        "  _libcurl=$(ldconfig -p 2>/dev/null | grep 'libcurl\\.so\\.4' | grep -v gnutls | awk '{print $NF}' | head -1)",
+        '  if [ -n "$_libcurl" ]; then',
+        '    export LD_LIBRARY_PATH="$(dirname "$_libcurl")${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"',
+        "  fi",
+        "fi",
+        "",
+        `exec "$APPDIR/usr/bin/${appName}" "$@"`,
+      ].join("\n");
+
+      const appRunPath = resolve(appDir, "AppRun");
+      await writeFile(appRunPath, appRunScript);
+      await chmod(appRunPath, 0o755);
 
       // mksquashfs emits a file, so we create a temporary file
       // inside a temporary directory to hold the output

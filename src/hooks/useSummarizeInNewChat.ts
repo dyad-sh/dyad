@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import {
   chatInputValueAtom,
   attachmentsAtom,
@@ -106,16 +106,6 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
       setIsSummarizing(false);
     }
   };
-
-  // Reset atom on unmount to prevent permanent lock if navigation occurs mid-summarize
-  useEffect(() => {
-    return () => {
-      if (inFlightRef.current) {
-        inFlightRef.current = false;
-        setIsSummarizing(false);
-      }
-    };
-  }, [setIsSummarizing]);
 
   // No-parameter version for click handlers
   const handleSummarize = () => handleSummarizeImpl();

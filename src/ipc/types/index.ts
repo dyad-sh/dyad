@@ -212,6 +212,9 @@ export type {
   ExecuteNeonSqlParams,
   GetNeonConnectionUriParams,
   GetNeonTableSchemaParams,
+  NeonAuthEmailAndPasswordConfig,
+  GetNeonEmailPasswordConfigParams,
+  UpdateNeonEmailVerificationParams,
 } from "./neon";
 
 // Migration types

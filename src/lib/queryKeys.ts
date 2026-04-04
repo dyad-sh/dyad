@@ -297,6 +297,13 @@ export const queryKeys = {
     projects: ["neon", "projects"] as const,
     project: ({ appId }: { appId: number | null }) =>
       ["neon", "project", appId] as const,
+    emailPasswordConfig: ({
+      appId,
+      branchId,
+    }: {
+      appId: number;
+      branchId: string | null;
+    }) => ["neon", "emailPasswordConfig", appId, branchId] as const,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────

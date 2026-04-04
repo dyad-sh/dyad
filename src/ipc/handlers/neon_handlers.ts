@@ -636,6 +636,57 @@ export function registerNeonHandlers() {
     return { schema };
   });
 
+  // Get email and password config for the active branch
+  createTypedHandler(
+    neonContracts.getEmailPasswordConfig,
+    async (_, params) => {
+      const { appData, branchId } = await getAppWithNeonBranch(params.appId);
+      const neonClient = await getNeonClient();
+
+      try {
+        const response = await neonClient.getNeonAuthEmailAndPasswordConfig(
+          appData.neonProjectId!,
+          branchId,
+        );
+        return response.data;
+      } catch (error: any) {
+        if (error.response?.status === 404) {
+          return {
+            enabled: true,
+            email_verification_method: "otp" as const,
+            require_email_verification: false,
+            auto_sign_in_after_verification: true,
+            send_verification_email_on_sign_up: false,
+            send_verification_email_on_sign_in: false,
+            disable_sign_up: false,
+          };
+        }
+        throw error;
+      }
+    },
+  );
+
+  // Update email verification setting for the active branch
+  createTypedHandler(
+    neonContracts.updateEmailVerification,
+    async (_, params) => {
+      const { appData, branchId } = await getAppWithNeonBranch(params.appId);
+      const neonClient = await getNeonClient();
+
+      const response = await neonClient.updateNeonAuthEmailAndPasswordConfig(
+        appData.neonProjectId!,
+        branchId,
+        {
+          require_email_verification: params.requireEmailVerification,
+          ...(params.requireEmailVerification && {
+            send_verification_email_on_sign_up: true,
+          }),
+        },
+      );
+      return response.data;
+    },
+  );
+
   testOnlyHandle("neon:fake-connect", async (event) => {
     // Call handleNeonOAuthReturn with fake data
     handleNeonOAuthReturn({

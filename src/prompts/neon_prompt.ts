@@ -1,11 +1,16 @@
 export function getNeonAvailableSystemPrompt(
   neonClientCode: string,
   frameworkType: "nextjs" | "vite" | "other" | null,
+  options?: { emailVerificationEnabled?: boolean },
 ): string {
   const sharedPrompt = getSharedNeonPrompt(neonClientCode);
 
   if (frameworkType === "nextjs") {
-    return sharedPrompt + getNextJsNeonPrompt();
+    return (
+      sharedPrompt +
+      getNextJsNeonPrompt() +
+      (options?.emailVerificationEnabled ? getEmailVerificationPrompt() : "")
+    );
   }
 
   return sharedPrompt + getGenericNeonPrompt();
@@ -301,6 +306,143 @@ Add the \`@neondatabase/serverless\` dependency to the project.
 \`\`\`bash
 DATABASE_URL=postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/dbname?sslmode=require
 \`\`\`
+`;
+}
+
+function getEmailVerificationPrompt(): string {
+  return `
+## Email Verification
+
+Email verification is **enabled** on this Neon Auth branch. When users sign up, they must verify their email before they can sign in.
+
+### How It Works
+
+1. User signs up with email and password.
+2. Neon Auth automatically sends a verification email with a one-time code (OTP).
+3. The user enters the OTP on a verification page in your app.
+4. Once verified, the user can sign in.
+
+### Implementation Guide
+
+**After sign-up, check \`emailVerified\` to redirect to verification:**
+
+\`\`\`tsx
+const handleSignUp = async (email: string, password: string, name: string) => {
+  const { data, error } = await authClient.signUp.email({
+    email,
+    password,
+    name,
+  });
+
+  if (error) {
+    // Handle error
+    return;
+  }
+
+  if (data?.user && !data.user.emailVerified) {
+    // Redirect to verification page
+    router.push(\`/auth/verify-email?email=\${encodeURIComponent(email)}\`);
+  }
+};
+\`\`\`
+
+### Verification Page
+
+Create a verification page where users enter the OTP code:
+
+\`\`\`tsx
+'use client';
+
+import { useState } from 'react';
+import { authClient } from '@/lib/auth/client';
+import { useRouter } from 'next/navigation';
+
+export default function VerifyEmailPage() {
+  const [otp, setOtp] = useState('');
+  const [message, setMessage] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const router = useRouter();
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const email = searchParams.get('email') ?? '';
+
+  const handleVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsVerifying(true);
+    setMessage('');
+
+    try {
+      const { data, error } = await authClient.emailOtp.verifyEmail({
+        email,
+        otp,
+      });
+
+      if (error) throw error;
+
+      if (data?.session) {
+        router.push('/dashboard');
+      } else {
+        setMessage('Email verified! You can now sign in.');
+        router.push('/auth/sign-in');
+      }
+    } catch (err: any) {
+      setMessage(err?.message || 'Invalid or expired verification code.');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const handleResend = async () => {
+    try {
+      const { error } = await authClient.sendVerificationEmail({
+        email,
+        callbackURL: window.location.href,
+      });
+      if (error) throw error;
+      setMessage('Verification email resent! Check your inbox.');
+    } catch (err: any) {
+      setMessage(err?.message || 'Failed to resend verification email.');
+    }
+  };
+
+  return (
+    <div>
+      <h1>Verify your email</h1>
+      <p>Enter the verification code sent to {email}</p>
+      <form onSubmit={handleVerify}>
+        <input
+          type="text"
+          value={otp}
+          onChange={(e) => setOtp(e.target.value)}
+          placeholder="Enter verification code"
+          required
+        />
+        {message && <p>{message}</p>}
+        <button type="submit" disabled={isVerifying}>
+          {isVerifying ? 'Verifying...' : 'Verify Email'}
+        </button>
+      </form>
+      <button onClick={handleResend}>
+        Resend verification code
+      </button>
+      <p>Verification codes expire after 15 minutes.</p>
+    </div>
+  );
+}
+\`\`\`
+
+### Key APIs
+
+- \`authClient.emailOtp.verifyEmail({ email, otp })\` — verify a one-time code
+- \`authClient.sendVerificationEmail({ email, callbackURL })\` — resend the verification email
+- Check \`data.user.emailVerified\` after sign-up to determine if verification is needed
+- Codes expire after **15 minutes**
+
+### Important Notes
+
+- Always check \`data.user.emailVerified\` after sign-up to determine if verification is needed.
+- The verification page should be accessible without authentication (the user hasn't completed sign-up yet).
+- Style the verification page to match the app's design.
 `;
 }
 

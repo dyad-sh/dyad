@@ -32,6 +32,7 @@ import {
   getNeonClientCode,
   getNeonContext,
 } from "../../neon_admin/neon_context";
+import { getNeonClient } from "../../neon_admin/neon_management_client";
 import { detectFrameworkType } from "../utils/framework_utils";
 import { getDyadAppPath } from "../../paths/paths";
 import { buildDyadMediaUrl } from "../../lib/dyadMediaUrl";
@@ -835,9 +836,28 @@ ${componentSnippet}
             updatedChat.app.neonActiveBranchId ??
             updatedChat.app.neonDevelopmentBranchId;
 
+          // Fetch email verification state for the active branch
+          let emailVerificationEnabled = false;
+          if (branchId) {
+            try {
+              const neonApiClient = await getNeonClient();
+              const emailConfig =
+                await neonApiClient.getNeonAuthEmailAndPasswordConfig(
+                  updatedChat.app.neonProjectId,
+                  branchId,
+                );
+              emailVerificationEnabled =
+                emailConfig.data.require_email_verification;
+            } catch {
+              // Best-effort: proceed without email verification guidance
+            }
+          }
+
           systemPrompt +=
             "\n\n" +
-            getNeonAvailableSystemPrompt(neonClientCode, frameworkType) +
+            getNeonAvailableSystemPrompt(neonClientCode, frameworkType, {
+              emailVerificationEnabled,
+            }) +
             "\n\n";
 
           if (settings.selectedChatMode !== "local-agent" && branchId) {

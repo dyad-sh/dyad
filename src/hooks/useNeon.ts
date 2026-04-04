@@ -1,4 +1,9 @@
-import { ipc, type NeonProjectListItem, type NeonBranch } from "@/ipc/types";
+import {
+  ipc,
+  type NeonProjectListItem,
+  type NeonBranch,
+  type NeonAuthEmailAndPasswordConfig,
+} from "@/ipc/types";
 import { useSettings } from "@/hooks/useSettings";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useQuery } from "@tanstack/react-query";
@@ -38,11 +43,26 @@ export function useNeon(appId: number) {
 
   const branches: NeonBranch[] = projectInfo?.branches ?? [];
 
+  // Fetch email and password config for the active branch
+  const { data: emailPasswordConfig, isLoading: isLoadingEmailConfig } =
+    useQuery({
+      queryKey: queryKeys.neon.emailPasswordConfig({
+        appId,
+        branchId: app?.neonActiveBranchId ?? null,
+      }),
+      queryFn: () => ipc.neon.getEmailPasswordConfig({ appId }),
+      enabled: !!app?.neonProjectId && !!app?.neonActiveBranchId,
+    });
+
   return {
     isConnected,
     projects,
     projectInfo,
     branches,
+    emailPasswordConfig: emailPasswordConfig as
+      | NeonAuthEmailAndPasswordConfig
+      | undefined,
+    isLoadingEmailConfig,
 
     isLoadingProjects,
     isFetchingProjects,

@@ -578,7 +578,11 @@
       "failedSetBranch": "Failed to switch branch: {{error}}",
       "production": "production",
       "development": "development",
-      "preview": "preview"
+      "preview": "preview",
+      "requireEmailVerification": "Require email verification",
+      "emailVerificationEnabled": "Email verification enabled",
+      "emailVerificationDisabled": "Email verification disabled",
+      "failedUpdateEmailVerification": "Failed to update email verification: {{error}}"
     }
   }
 }

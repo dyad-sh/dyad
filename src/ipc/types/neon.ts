@@ -119,6 +119,37 @@ export type GetNeonTableSchemaParams = z.infer<
   typeof GetNeonTableSchemaParamsSchema
 >;
 
+export const NeonAuthEmailAndPasswordConfigSchema = z.object({
+  enabled: z.boolean(),
+  email_verification_method: z.enum(["link", "otp"]),
+  require_email_verification: z.boolean(),
+  auto_sign_in_after_verification: z.boolean(),
+  send_verification_email_on_sign_up: z.boolean(),
+  send_verification_email_on_sign_in: z.boolean(),
+  disable_sign_up: z.boolean(),
+});
+
+export type NeonAuthEmailAndPasswordConfig = z.infer<
+  typeof NeonAuthEmailAndPasswordConfigSchema
+>;
+
+export const GetNeonEmailPasswordConfigParamsSchema = z.object({
+  appId: z.number(),
+});
+
+export type GetNeonEmailPasswordConfigParams = z.infer<
+  typeof GetNeonEmailPasswordConfigParamsSchema
+>;
+
+export const UpdateNeonEmailVerificationParamsSchema = z.object({
+  appId: z.number(),
+  requireEmailVerification: z.boolean(),
+});
+
+export type UpdateNeonEmailVerificationParams = z.infer<
+  typeof UpdateNeonEmailVerificationParamsSchema
+>;
+
 // =============================================================================
 // Neon Contracts
 // =============================================================================
@@ -179,6 +210,18 @@ export const neonContracts = {
     channel: "neon:get-table-schema",
     input: GetNeonTableSchemaParamsSchema,
     output: z.object({ schema: z.string() }),
+  }),
+
+  getEmailPasswordConfig: defineContract({
+    channel: "neon:get-email-password-config",
+    input: GetNeonEmailPasswordConfigParamsSchema,
+    output: NeonAuthEmailAndPasswordConfigSchema,
+  }),
+
+  updateEmailVerification: defineContract({
+    channel: "neon:update-email-verification",
+    input: UpdateNeonEmailVerificationParamsSchema,
+    output: NeonAuthEmailAndPasswordConfigSchema,
   }),
 
   fakeConnect: defineContract({

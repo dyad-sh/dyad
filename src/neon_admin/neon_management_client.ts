@@ -240,6 +240,36 @@ export async function getNeonClient(): Promise<Api<unknown>> {
             "https://ep-test.neonauth.us-east-2.aws.neon.tech/neondb/auth",
         },
       }),
+      getNeonAuthEmailAndPasswordConfig: async (
+        _projectId: string,
+        _branchId: string,
+      ) => ({
+        data: {
+          enabled: true,
+          email_verification_method: "otp",
+          require_email_verification: false,
+          auto_sign_in_after_verification: true,
+          send_verification_email_on_sign_up: false,
+          send_verification_email_on_sign_in: false,
+          disable_sign_up: false,
+        },
+      }),
+      updateNeonAuthEmailAndPasswordConfig: async (
+        _projectId: string,
+        _branchId: string,
+        data: any,
+      ) => ({
+        data: {
+          enabled: true,
+          email_verification_method: "otp",
+          require_email_verification: data.require_email_verification ?? false,
+          auto_sign_in_after_verification: true,
+          send_verification_email_on_sign_up:
+            data.send_verification_email_on_sign_up ?? false,
+          send_verification_email_on_sign_in: false,
+          disable_sign_up: false,
+        },
+      }),
     } as unknown as Api<unknown>;
   }
 

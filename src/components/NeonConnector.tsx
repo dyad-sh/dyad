@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { useDeepLink } from "@/contexts/DeepLinkContext";
+import { Switch } from "@/components/ui/switch";
 import { ExternalLink, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useNeon } from "@/hooks/useNeon";
@@ -64,6 +65,8 @@ export function NeonConnector({ appId }: { appId: number }) {
     projects,
     projectInfo,
     branches,
+    emailPasswordConfig,
+    isLoadingEmailConfig,
     isLoadingProjects,
     isFetchingProjects,
     projectsError,
@@ -153,6 +156,32 @@ export function NeonConnector({ appId }: { appId: number }) {
     } catch (error) {
       console.error("Failed to disconnect project:", error);
       toast.error(t("integrations.neon.failedDisconnectProject"));
+    }
+  };
+
+  const handleEmailVerificationToggle = async (checked: boolean) => {
+    try {
+      await ipc.neon.updateEmailVerification({
+        appId,
+        requireEmailVerification: checked,
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.neon.emailPasswordConfig({
+          appId,
+          branchId: app?.neonActiveBranchId ?? null,
+        }),
+      });
+      toast.success(
+        checked
+          ? t("integrations.neon.emailVerificationEnabled")
+          : t("integrations.neon.emailVerificationDisabled"),
+      );
+    } catch (error) {
+      toast.error(
+        t("integrations.neon.failedUpdateEmailVerification", {
+          error: String(error),
+        }),
+      );
     }
   };
 
@@ -282,6 +311,19 @@ export function NeonConnector({ appId }: { appId: number }) {
                 </Select>
               )}
             </div>
+
+            {!isLoadingEmailConfig && emailPasswordConfig && (
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="neon-email-verification"
+                  checked={emailPasswordConfig.require_email_verification}
+                  onCheckedChange={handleEmailVerificationToggle}
+                />
+                <Label htmlFor="neon-email-verification">
+                  {t("integrations.neon.requireEmailVerification")}
+                </Label>
+              </div>
+            )}
 
             <AlertDialog>
               <AlertDialogTrigger

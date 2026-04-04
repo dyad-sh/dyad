@@ -202,6 +202,19 @@ class WebRTCClient {
   async toggleVideo(callId: string, enabled: boolean): Promise<boolean> {
     return this.ipcRenderer.invoke("webrtc:call:video", callId, enabled);
   }
+
+  // ============================================================================
+  // Decentralized ICE (Privacy Layer Integration)
+  // ============================================================================
+
+  /**
+   * Discover ICE servers via the decentralized DHT-based relay network.
+   * Delegates to the unified dchat privacy layer instead of using centralized STUN.
+   */
+  async getDecentralizedIceServers(): Promise<RTCIceServer[]> {
+    const result = await this.ipcRenderer.invoke("dchat:ice:discover");
+    return result?.iceServers ?? [];
+  }
 }
 
 export const webRTCClient = WebRTCClient.getInstance();

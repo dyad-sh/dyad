@@ -185,7 +185,7 @@ export async function performLogin(
 ): Promise<SavedSession> {
   logger.info(`Performing login at ${config.url}`);
 
-  await page.goto(config.url, { waitUntil: "networkidle" });
+  await page.goto(config.url, { waitUntil: "domcontentloaded" });
 
   // Fill credentials
   await page.fill(config.usernameSelector, config.username);
@@ -195,7 +195,7 @@ export async function performLogin(
 
   // Submit
   await Promise.all([
-    page.waitForNavigation({ waitUntil: "networkidle" }).catch(() => {}),
+    page.waitForNavigation({ waitUntil: "domcontentloaded" }).catch(() => {}),
     page.click(config.submitSelector),
   ]);
 

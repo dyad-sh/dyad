@@ -70,6 +70,11 @@ import {
   Star,
   Archive,
   Sparkles,
+  Shield,
+  ShieldCheck,
+  ShieldAlert,
+  Route,
+  Globe,
 } from "lucide-react";
 import type {
   ChatConversation,
@@ -85,6 +90,13 @@ import {
   useActiveChat,
   useChatConversations,
   useChatIdentity,
+  usePrivacyStatus,
+  usePrivacyInit,
+  usePrivacyShutdown,
+  useCoverTraffic,
+  useIceStatus,
+  useRelayStatus,
+  useNatDetect,
 } from "@/hooks/useDecentralizedChat";
 
 // Import new components
@@ -878,6 +890,109 @@ function EnhancedIdentityCard({
 }
 
 // ============================================================================
+// Privacy Status Badge
+// ============================================================================
+
+function PrivacyStatusBadge() {
+  const { data: privacy } = usePrivacyStatus({ enabled: true, refetchInterval: 15000 });
+  const { data: relay } = useRelayStatus({ enabled: true });
+  const { data: ice } = useIceStatus({ enabled: true });
+  const initMutation = usePrivacyInit();
+  const coverTraffic = useCoverTraffic();
+
+  if (!privacy) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={() => initMutation.mutateAsync()}
+              disabled={initMutation.isPending}
+            >
+              <Shield className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
+              {initMutation.isPending ? "Initializing..." : "Enable Privacy"}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Initialize onion routing, decentralized ICE, and cover traffic</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  const level = privacy.privacyLevel ?? "degraded";
+  const colorMap: Record<string, string> = {
+    maximum: "text-green-500",
+    high: "text-emerald-500",
+    medium: "text-yellow-500",
+    degraded: "text-red-500",
+  };
+  const bgMap: Record<string, string> = {
+    maximum: "bg-green-500/10 border-green-500/20",
+    high: "bg-emerald-500/10 border-emerald-500/20",
+    medium: "bg-yellow-500/10 border-yellow-500/20",
+    degraded: "bg-red-500/10 border-red-500/20",
+  };
+  const ShieldIcon = level === "maximum" || level === "high" ? ShieldCheck : ShieldAlert;
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge variant="outline" className={cn("text-xs cursor-default gap-1", bgMap[level])}>
+            <ShieldIcon className={cn("h-3 w-3", colorMap[level])} />
+            {level.charAt(0).toUpperCase() + level.slice(1)}
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="max-w-xs">
+          <div className="space-y-1.5 text-xs">
+            <div className="font-medium">Privacy: {level}</div>
+            <div className="flex justify-between gap-4">
+              <span className="text-muted-foreground">Relay Nodes</span>
+              <span>{relay?.relayNodes ?? 0}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-muted-foreground">Active Circuits</span>
+              <span>{relay?.activeCircuits ?? 0}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-muted-foreground">ICE Relays</span>
+              <span>{ice?.relayCount ?? 0} ({ice?.healthyRelays ?? 0} healthy)</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-muted-foreground">Cover Traffic</span>
+              <span className={relay?.coverTrafficActive ? "text-green-500" : "text-muted-foreground"}>
+                {relay?.coverTrafficActive ? "Active" : "Off"}
+              </span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-muted-foreground">Ratchet Sessions</span>
+              <span>{privacy.ratchetSessions ?? 0}</span>
+            </div>
+            {!relay?.coverTrafficActive && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full h-6 text-xs mt-1"
+                onClick={() => coverTraffic.start()}
+                disabled={coverTraffic.isStarting}
+              >
+                <Route className="h-3 w-3 mr-1" />
+                Enable Cover Traffic
+              </Button>
+            )}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+// ============================================================================
 // Main Enhanced Chat Panel
 // ============================================================================
 
@@ -1062,6 +1177,7 @@ export function EnhancedDecentralizedChatPanel() {
                 Offline
               </Badge>
             )}
+            <PrivacyStatusBadge />
           </div>
 
           <div className="flex items-center gap-2">
@@ -1231,6 +1347,13 @@ export function EnhancedDecentralizedChatPanel() {
                     )} />
                     {status.connectedPeers}
                   </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="flex items-center gap-1">
+                    <Shield className="h-3 w-3" />
+                    Privacy
+                  </span>
+                  <PrivacyStatusBadge />
                 </div>
               </div>
             )}

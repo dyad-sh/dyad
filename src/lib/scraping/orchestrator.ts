@@ -317,22 +317,45 @@ export async function quickScrape(
   // Auto-select engine
   let engineType: EngineType = opts?.engine ?? "auto";
   if (engineType === "auto") {
-    const probe = await probeUrl(url);
-    engineType = selectEngine(probe);
+    try {
+      const probe = await probeUrl(url);
+      engineType = selectEngine(probe);
+    } catch {
+      engineType = "static"; // fallback if probe itself fails
+    }
   }
 
-  const engine = getEngine(engineType);
-  const result = await engine.scrape(url, opts ?? {});
-  const extracted = quickExtract(result.html, result.finalUrl);
-
-  return {
-    url: result.finalUrl,
-    title: extracted.title,
-    text: extracted.text,
-    markdown: extracted.markdown,
-    engine: engineType,
-    durationMs: Date.now() - start,
+  // Try primary engine, fallback to static on timeout / browser errors
+  const tryEngine = async (type: EngineType): Promise<QuickScrapeResult> => {
+    const engine = getEngine(type);
+    const result = await engine.scrape(url, opts ?? {});
+    const extracted = quickExtract(result.html, result.finalUrl);
+    return {
+      url: result.finalUrl,
+      title: extracted.title,
+      text: extracted.text,
+      markdown: extracted.markdown,
+      engine: type,
+      durationMs: Date.now() - start,
+    };
   };
+
+  try {
+    return await tryEngine(engineType);
+  } catch (err) {
+    const msg = String(err);
+    // If a browser/stealth engine timed out or crashed, try static as fallback
+    if (
+      engineType !== "static" &&
+      (msg.includes("Timeout") || msg.includes("timeout") ||
+       msg.includes("Target closed") || msg.includes("browser has been closed") ||
+       msg.includes("net::ERR_"))
+    ) {
+      logger.warn(`Engine '${engineType}' failed for ${url}, falling back to static`, msg);
+      return await tryEngine("static");
+    }
+    throw err;
+  }
 }
 
 // ── Job Management Queries ──────────────────────────────────────────────────

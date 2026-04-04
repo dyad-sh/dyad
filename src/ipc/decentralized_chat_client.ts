@@ -415,6 +415,148 @@ class DecentralizedChatClient {
   }> {
     return this.ipcRenderer.invoke("dchat:test:connectivity");
   }
+
+  // ============================================================================
+  // Privacy Layer — Onion Routing, Double Ratchet, Cover Traffic
+  // ============================================================================
+
+  /**
+   * Initialize the privacy subsystem (onion relay, decentralized ICE, ratchet)
+   */
+  async privacyInit(): Promise<{ success: boolean }> {
+    return this.ipcRenderer.invoke("dchat:privacy:init");
+  }
+
+  /**
+   * Get full privacy status (relay count, circuits, ratchet sessions, ICE relays)
+   */
+  async privacyStatus(): Promise<import("@/types/private_chat_types").PrivacyServiceStatus> {
+    return this.ipcRenderer.invoke("dchat:privacy:status");
+  }
+
+  /**
+   * Shut down the privacy subsystem
+   */
+  async privacyShutdown(): Promise<void> {
+    return this.ipcRenderer.invoke("dchat:privacy:shutdown");
+  }
+
+  /**
+   * Discover decentralized TURN/STUN servers via DHT
+   */
+  async iceDiscover(): Promise<import("@/types/private_chat_types").IceDiscoveryResult> {
+    return this.ipcRenderer.invoke("dchat:ice:discover");
+  }
+
+  /**
+   * Register this node as a TURN/STUN relay
+   */
+  async iceRegisterRelay(opts?: {
+    host?: string;
+    stunPort?: number;
+    turnPort?: number;
+    bandwidth?: number;
+  }): Promise<import("@/types/private_chat_types").DecentralizedRelay> {
+    return this.ipcRenderer.invoke("dchat:ice:register-relay", opts);
+  }
+
+  /**
+   * Health-check all known ICE relays
+   */
+  async iceHealthCheck(): Promise<{ healthy: number; total: number }> {
+    return this.ipcRenderer.invoke("dchat:ice:health-check");
+  }
+
+  /**
+   * Get ICE relay registry status
+   */
+  async iceStatus(): Promise<{
+    relayCount: number;
+    healthyRelays: number;
+    localRelayActive: boolean;
+  }> {
+    return this.ipcRenderer.invoke("dchat:ice:status");
+  }
+
+  /**
+   * Build a new onion circuit through relay nodes
+   */
+  async circuitBuild(): Promise<import("@/types/private_chat_types").OnionCircuit> {
+    return this.ipcRenderer.invoke("dchat:circuit:build");
+  }
+
+  /**
+   * Get onion relay status (relays, circuits, cover traffic)
+   */
+  async relayStatus(): Promise<{
+    relayNodes: number;
+    activeCircuits: number;
+    coverTrafficActive: boolean;
+    totalMessagesRelayed: number;
+  }> {
+    return this.ipcRenderer.invoke("dchat:relay:status");
+  }
+
+  /**
+   * Send a message through the privacy layer (onion-routed + ratchet-encrypted)
+   */
+  async privateSend(request: {
+    recipientWallet: string;
+    content: string;
+    conversationId: string;
+    messageType?: string;
+  }): Promise<{ messageId: string; circuitId: string; hops: number }> {
+    return this.ipcRenderer.invoke("dchat:private:send", request);
+  }
+
+  /**
+   * Initialize a Double Ratchet session with a peer
+   */
+  async ratchetInit(
+    peerWallet: string,
+    peerPublicKey: string
+  ): Promise<{ sessionId: string; established: boolean }> {
+    return this.ipcRenderer.invoke("dchat:ratchet:init", peerWallet, peerPublicKey);
+  }
+
+  /**
+   * Send a WebRTC signaling message through onion circuit
+   */
+  async signalSend(
+    recipientWallet: string,
+    signal: Record<string, unknown>
+  ): Promise<{ sent: boolean; circuitId: string }> {
+    return this.ipcRenderer.invoke("dchat:signal:send", recipientWallet, signal);
+  }
+
+  /**
+   * Start cover traffic generation
+   */
+  async coverTrafficStart(config?: {
+    intervalMs?: number;
+    paddingSize?: number;
+  }): Promise<{ active: boolean }> {
+    return this.ipcRenderer.invoke("dchat:cover-traffic:start", config);
+  }
+
+  /**
+   * Stop cover traffic generation
+   */
+  async coverTrafficStop(): Promise<void> {
+    return this.ipcRenderer.invoke("dchat:cover-traffic:stop");
+  }
+
+  /**
+   * Detect the local NAT type (full cone, symmetric, etc.)
+   */
+  async natDetect(): Promise<{
+    type: string;
+    externalIp?: string;
+    externalPort?: number;
+    symmetric: boolean;
+  }> {
+    return this.ipcRenderer.invoke("dchat:nat:detect");
+  }
 }
 
 export const decentralizedChatClient = DecentralizedChatClient.getInstance();

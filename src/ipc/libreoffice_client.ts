@@ -111,6 +111,14 @@ class LibreOfficeClient {
     });
   }
 
+  async exportToPng(documentId: number, outputPath?: string): Promise<DocumentOperationResult> {
+    return this.exportDocument({
+      documentId,
+      format: "png",
+      outputPath,
+    });
+  }
+
   // ============================================================================
   // Document Management
   // ============================================================================
@@ -238,6 +246,19 @@ class LibreOfficeClient {
       prompt,
       ...options,
     });
+  }
+
+  // ============================================================================
+  // Lifecycle — call ensureReady when the documents page opens and shutdown
+  // when it closes so LibreOffice only runs when actively needed.
+  // ============================================================================
+
+  async ensureReady(): Promise<LibreOfficeStatus> {
+    return this.ipcRenderer.invoke("libreoffice:ensure-ready");
+  }
+
+  async shutdown(): Promise<void> {
+    return this.ipcRenderer.invoke("libreoffice:shutdown");
   }
 }
 

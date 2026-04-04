@@ -73,6 +73,7 @@ const EXPORT_FILTERS: Record<ExportFormat, string> = {
   html: "HTML (StarWriter)",
   txt: "Text",
   csv: "Text - txt - csv (StarCalc)",
+  png: "png",
   xml: "", // Handled natively
   json: "", // Handled natively
 };
@@ -82,6 +83,10 @@ class LibreOfficeManager {
   private libreOfficePath: string | null = null;
   private documentsDir: string;
   private headlessProfileDir: string;
+  /** Track spawned child processes so we can kill them on shutdown. */
+  private activeProcesses: Set<import("child_process").ChildProcess> = new Set();
+  /** Number of active consumers (e.g. the documents page). When 0, shutdown is allowed. */
+  private refCount = 0;
 
   private constructor() {
     this.documentsDir = path.join(app.getPath("userData"), "documents");
@@ -226,10 +231,11 @@ class LibreOfficeManager {
           ...nativeCapabilities,
           editInLibreOffice: false,
           exportToPdf: false,
+          exportToPng: false,
           exportToDocx: false,
           exportToXlsx: false,
         },
-        message: "LibreOffice not installed. You can still create documents and export to CSV, TXT, JSON, and XML formats. Install LibreOffice for PDF, DOCX, and XLSX export.",
+        message: "LibreOffice not installed. You can still create documents and export to CSV, TXT, JSON, and XML formats. Install LibreOffice for PDF, PNG, DOCX, and XLSX export.",
       };
     }
 
@@ -258,6 +264,7 @@ class LibreOfficeManager {
           ...nativeCapabilities,
           editInLibreOffice: true,
           exportToPdf: true,
+          exportToPng: true,
           exportToDocx: true,
           exportToXlsx: true,
         },
@@ -275,6 +282,7 @@ class LibreOfficeManager {
           ...nativeCapabilities,
           editInLibreOffice: true,
           exportToPdf: true,
+          exportToPng: true,
           exportToDocx: true,
           exportToXlsx: true,
         },
@@ -1305,28 +1313,33 @@ ${bulletParagraphs}    </draw:text-box>
       // Use LibreOffice headless to convert, with a separate user profile
       // to avoid conflicts with any running LibreOffice GUI instance
       const filter = EXPORT_FILTERS[request.format] || "writer_pdf_Export";
+      // For PNG, LibreOffice expects just the format name without a filter suffix
+      const convertArg = request.format === "png" ? "png" : `${request.format}:${filter}`;
       
       await new Promise<void>((resolve, reject) => {
         const args = [
           "--headless",
           this.getHeadlessProfileArg(),
           "--convert-to",
-          `${request.format}:${filter}`,
+          convertArg,
           "--outdir",
           outputDir,
           doc.filePath,
         ];
 
         const proc = spawn(loPath, args, { windowsHide: true });
+        this.activeProcesses.add(proc);
         
         // Timeout to prevent hanging if LibreOffice gets stuck
         const timeout = setTimeout(() => {
           proc.kill();
+          this.activeProcesses.delete(proc);
           reject(new Error("LibreOffice export timed out after 60 seconds. Try closing any open LibreOffice windows and retry."));
         }, 60000);
 
         proc.on("close", (code) => {
           clearTimeout(timeout);
+          this.activeProcesses.delete(proc);
           if (code === 0) {
             resolve();
           } else {
@@ -1336,6 +1349,7 @@ ${bulletParagraphs}    </draw:text-box>
 
         proc.on("error", (err) => {
           clearTimeout(timeout);
+          this.activeProcesses.delete(proc);
           reject(err);
         });
       });
@@ -1602,6 +1616,67 @@ ${bulletParagraphs}    </draw:text-box>
   getDocumentsDirectory(): string {
     return this.documentsDir;
   }
+
+  // ===========================================================================
+  // Lifecycle management — LibreOffice should only be running when a consumer
+  // (e.g. the Document Studio page) is active or a conversion is in progress.
+  // ===========================================================================
+
+  /**
+   * Called when a consumer (e.g. documents page) mounts.
+   * Increments the reference count and optionally pre-detects LibreOffice.
+   */
+  async ensureReady(): Promise<LibreOfficeStatus> {
+    this.refCount++;
+    return this.getStatus();
+  }
+
+  /**
+   * Called when a consumer unmounts.
+   * Decrements the refCount; when zero, kills any orphaned soffice processes
+   * that LibreOffice headless may have left behind.
+   */
+  async shutdown(): Promise<void> {
+    this.refCount = Math.max(0, this.refCount - 1);
+    if (this.refCount > 0) return;
+
+    // 1. Kill any still-tracked child processes
+    for (const proc of this.activeProcesses) {
+      try { proc.kill(); } catch { /* already exited */ }
+    }
+    this.activeProcesses.clear();
+
+    // 2. Kill orphaned soffice processes spawned by our headless profile.
+    //    We only kill processes whose command line references our private
+    //    headless profile directory, to avoid killing the user's own
+    //    LibreOffice GUI session.
+    try {
+      if (process.platform === "win32") {
+        // Use WMIC to find soffice.bin processes that reference our profile dir
+        const profileFragment = this.headlessProfileDir.replace(/\\/g, "\\\\");
+        await execAsync(
+          `wmic process where "name='soffice.bin' and CommandLine like '%${profileFragment}%'" call terminate`,
+          { windowsHide: true, timeout: 5000 }
+        ).catch(() => {});
+      } else {
+        // On Unix, pkill matching the profile dir
+        const profileFragment = this.headlessProfileDir;
+        await execAsync(
+          `pkill -f "${profileFragment}" 2>/dev/null || true`,
+          { timeout: 5000 }
+        ).catch(() => {});
+      }
+    } catch {
+      // Best-effort cleanup
+    }
+  }
+
+  /**
+   * Check if any consumer is currently active.
+   */
+  isActive(): boolean {
+    return this.refCount > 0 || this.activeProcesses.size > 0;
+  }
 }
 
 // Register IPC handlers
@@ -1662,6 +1737,18 @@ export function registerLibreOfficeHandlers() {
   // Get documents directory
   ipcMain.handle("libreoffice:get-directory", async () => {
     return manager.getDocumentsDirectory();
+  });
+
+  // Lifecycle: signal that a consumer (e.g. Document Studio) is active.
+  // Returns current LibreOffice status. Call on page mount.
+  ipcMain.handle("libreoffice:ensure-ready", async () => {
+    return manager.ensureReady();
+  });
+
+  // Lifecycle: signal that a consumer has unmounted.
+  // When no consumers remain, kills any orphaned soffice processes.
+  ipcMain.handle("libreoffice:shutdown", async () => {
+    await manager.shutdown();
   });
 }
 

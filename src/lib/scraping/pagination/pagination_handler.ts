@@ -169,11 +169,11 @@ export async function* executeBrowserPagination(
         if (!href) {
           // It might be a button — try clicking
           await nextEl.click();
-          await page.waitForLoadState("networkidle").catch(() => {});
+          await page.waitForLoadState("domcontentloaded").catch(() => {});
           navigated = true;
         } else {
           await Promise.all([
-            page.waitForNavigation({ waitUntil: "networkidle" }).catch(() => {}),
+            page.waitForNavigation({ waitUntil: "domcontentloaded" }).catch(() => {}),
             nextEl.click(),
           ]);
           navigated = true;
@@ -182,7 +182,7 @@ export async function* executeBrowserPagination(
       }
       case "url-pattern": {
         if (!detection.nextUrl) break;
-        await page.goto(detection.nextUrl, { waitUntil: "networkidle" });
+        await page.goto(detection.nextUrl, { waitUntil: "domcontentloaded" });
         navigated = true;
         // Detect next URL from loaded page
         const newHtml = await page.content();
@@ -197,7 +197,7 @@ export async function* executeBrowserPagination(
         const visible = await btn.isVisible();
         if (!visible) break;
         await btn.click();
-        await page.waitForLoadState("networkidle").catch(() => {});
+        await page.waitForLoadState("domcontentloaded").catch(() => {});
         navigated = true;
         break;
       }

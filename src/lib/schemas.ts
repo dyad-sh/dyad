@@ -328,6 +328,16 @@ export const UserSettingsSchema = z.object({
     .optional(),
 
   ////////////////////////////////
+  // MCP SERVER
+  ////////////////////////////////
+  mcpServer: z
+    .object({
+      enabled: z.boolean(),
+      port: z.number(),
+    })
+    .optional(),
+
+  ////////////////////////////////
   // E2E TESTING ONLY.
   ////////////////////////////////
   isTestMode: z.boolean().optional(),

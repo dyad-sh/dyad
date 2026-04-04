@@ -16,6 +16,8 @@ import {
   Radio,
   ExternalLink,
   FileText,
+  Plug,
+  Copy,
 } from "lucide-react";
 
 interface ServiceHealth {
@@ -58,6 +60,7 @@ const serviceIcons: Record<string, React.ReactNode> = {
   "Inference Bridge": <Server className="w-5 h-5" />,
   "Task Executor": <Activity className="w-5 h-5" />,
   LibreOffice: <FileText className="w-5 h-5" />,
+  "MCP Server": <Plug className="w-5 h-5" />,
 };
 
 export function SystemServicesPage() {
@@ -130,7 +133,8 @@ export function SystemServicesPage() {
   const handleRefresh = useCallback(() => {
     refetchServices();
     refetchExecutor();
-  }, [refetchServices, refetchExecutor]);
+    queryClient.invalidateQueries({ queryKey: ["mcp-server-status"] });
+  }, [refetchServices, refetchExecutor, queryClient]);
 
   const healthyCount = services.filter((s) => s.status === "healthy").length;
   const totalCount = services.length;
@@ -275,6 +279,9 @@ export function SystemServicesPage() {
             </div>
           )}
         </div>
+
+        {/* MCP Server Control Panel */}
+        <McpServerPanel />
 
         {/* Quick Launch */}
         <div>
@@ -456,6 +463,120 @@ function StatCard({
     <div className="border rounded-md p-3">
       <p className="text-xs text-muted-foreground mb-1">{label}</p>
       <p className={`text-lg font-semibold ${color ?? ""}`}>{value}</p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MCP Server Control Panel
+// ---------------------------------------------------------------------------
+
+function McpServerPanel() {
+  const ipc = IpcClient.getInstance();
+  const queryClient = useQueryClient();
+  const [copied, setCopied] = useState(false);
+
+  const { data: mcpStatus } = useQuery<{
+    running: boolean;
+    port: number;
+    url: string | null;
+  }>({
+    queryKey: ["mcp-server-status"],
+    queryFn: () => ipc.mcpServerStatus(),
+    refetchInterval: 5_000,
+  });
+
+  const startMcp = useMutation({
+    mutationFn: (port?: number) => ipc.mcpServerStart(port),
+    onSuccess: (result) => {
+      toast.success(`MCP server started on port ${result.port}`);
+      queryClient.invalidateQueries({ queryKey: ["mcp-server-status"] });
+      queryClient.invalidateQueries({ queryKey: ["system-services-health"] });
+    },
+    onError: (err: any) => toast.error(`Failed to start MCP server: ${err.message}`),
+  });
+
+  const stopMcp = useMutation({
+    mutationFn: () => ipc.mcpServerStop(),
+    onSuccess: () => {
+      toast.success("MCP server stopped");
+      queryClient.invalidateQueries({ queryKey: ["mcp-server-status"] });
+      queryClient.invalidateQueries({ queryKey: ["system-services-health"] });
+    },
+    onError: (err: any) => toast.error(`Failed to stop MCP server: ${err.message}`),
+  });
+
+  const handleCopyUrl = useCallback(() => {
+    if (mcpStatus?.url) {
+      navigator.clipboard.writeText(mcpStatus.url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }, [mcpStatus?.url]);
+
+  return (
+    <div className="border rounded-lg p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <Plug className="w-6 h-6 text-purple-500" />
+          <div>
+            <h2 className="text-lg font-semibold">MCP Server</h2>
+            <p className="text-sm text-muted-foreground">
+              Expose JoyCreate tools to external AI platforms via the Model
+              Context Protocol
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {mcpStatus?.running ? (
+            <button
+              onClick={() => stopMcp.mutate()}
+              disabled={stopMcp.isPending}
+              className="flex items-center gap-2 px-4 py-2 text-sm bg-red-500/10 text-red-500 border border-red-500/30 rounded-md hover:bg-red-500/20 transition-colors disabled:opacity-50"
+            >
+              <Square className="w-4 h-4" />
+              Stop
+            </button>
+          ) : (
+            <button
+              onClick={() => startMcp.mutate()}
+              disabled={startMcp.isPending}
+              className="flex items-center gap-2 px-4 py-2 text-sm bg-green-500/10 text-green-500 border border-green-500/30 rounded-md hover:bg-green-500/20 transition-colors disabled:opacity-50"
+            >
+              <Play className="w-4 h-4" />
+              Start
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard
+          label="Status"
+          value={mcpStatus?.running ? "Running" : "Stopped"}
+          color={mcpStatus?.running ? "text-green-500" : "text-red-500"}
+        />
+        <StatCard
+          label="Port"
+          value={String(mcpStatus?.port ?? 3777)}
+        />
+        <StatCard label="Transport" value="HTTP + stdio" />
+        <StatCard label="Tools" value="16" />
+      </div>
+
+      {mcpStatus?.running && mcpStatus.url && (
+        <div className="mt-4 flex items-center gap-2 bg-muted/50 rounded-md px-4 py-3">
+          <span className="text-xs text-muted-foreground">Connection URL:</span>
+          <code className="text-sm font-mono flex-1">{mcpStatus.url}</code>
+          <button
+            onClick={handleCopyUrl}
+            className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-400 transition-colors"
+          >
+            <Copy className="w-3.5 h-3.5" />
+            {copied ? "Copied!" : "Copy"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -26,6 +26,8 @@ import {
   Plug,
   Mail,
   ChevronRight,
+  ShoppingBag,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 import { Link, useRouter } from "@tanstack/react-router";
@@ -92,6 +94,20 @@ const quickActions: {
     to: "/scraping",
     gradient: "from-rose-500/20 to-orange-500/20",
   },
+  {
+    icon: ShoppingBag,
+    label: "Marketplace",
+    description: "Discover agents, workflows & more",
+    to: "/marketplace",
+    gradient: "from-purple-500/20 to-indigo-500/20",
+  },
+  {
+    icon: Sparkles,
+    label: "My Creations",
+    description: "Manage your published assets",
+    to: "/creator",
+    gradient: "from-orange-500/20 to-amber-500/20",
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -113,6 +129,7 @@ const systemNavCategories: {
       { title: "Library", to: "/library", icon: BookOpen, gradient: "from-amber-500 to-yellow-500" },
       { title: "MCP Hub", to: "/mcp-hub", icon: Plug, gradient: "from-indigo-500 to-violet-500" },
       { title: "Email Hub", to: "/email-hub", icon: Mail, gradient: "from-emerald-500 to-teal-500" },
+      { title: "Marketplace", to: "/marketplace", icon: ShoppingBag, gradient: "from-purple-500 to-indigo-500" },
     ],
   },
   {
@@ -152,6 +169,7 @@ const systemNavCategories: {
       { title: "Federation", to: "/federation", icon: Globe, gradient: "from-cyan-500 to-teal-500" },
       { title: "P2P Chat", to: "/decentralized-chat", icon: Radio, gradient: "from-green-500 to-emerald-500" },
       { title: "AI Compute", to: "/compute", icon: Cpu, gradient: "from-amber-500 to-orange-500" },
+      { title: "My Creations", to: "/creator", icon: Sparkles, gradient: "from-orange-500 to-amber-500" },
     ],
   },
 ];

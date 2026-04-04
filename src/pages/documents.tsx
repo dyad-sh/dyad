@@ -105,9 +105,9 @@ const DOCUMENT_TYPE_ICON_COLORS: Record<DocumentType, string> = {
 };
 
 const EXPORT_FORMATS: Record<DocumentType, ExportFormat[]> = {
-  document: ["pdf", "docx", "odt", "html", "txt", "xml"],
-  spreadsheet: ["pdf", "xlsx", "ods", "csv", "json", "xml"],
-  presentation: ["pdf", "pptx", "odp", "xml"],
+  document: ["pdf", "png", "docx", "odt", "html", "txt", "xml"],
+  spreadsheet: ["pdf", "png", "xlsx", "ods", "csv", "json", "xml"],
+  presentation: ["pdf", "png", "pptx", "odp", "xml"],
 };
 
 // JoyCreate quick-start templates
@@ -234,14 +234,23 @@ export default function DocumentsPage() {
     ...cloudModelOptions,
   ], [localModelOptions, cloudModelOptions]);
 
-  // Query LibreOffice status
+  // Query LibreOffice status — uses ensureReady to register this page as an
+  // active consumer so LO is only kept alive while the Document Studio is open.
   const { data: loStatus, isLoading: isStatusLoading, refetch: refetchStatus } = useQuery({
     queryKey: ["libreoffice-status"],
-    queryFn: () => libreOfficeClient.getStatus(),
+    queryFn: () => libreOfficeClient.ensureReady(),
     refetchInterval: 60000, // Re-check every 60s in case user installs while app is open
     retry: 3,
     retryDelay: 2000,
   });
+
+  // Shutdown LibreOffice when this page unmounts so stale soffice processes
+  // don't linger in the background.
+  useEffect(() => {
+    return () => {
+      libreOfficeClient.shutdown().catch(() => {});
+    };
+  }, []);
 
   // Query documents
   const { data: documents = [], isLoading: isDocsLoading, refetch: refetchDocs } = useQuery({
@@ -473,7 +482,7 @@ export default function DocumentsPage() {
                     onClick={() => window.open("https://www.libreoffice.org/download/", "_blank")}
                   >
                     <AlertCircle className="h-3 w-3 mr-2" />
-                    Install LibreOffice for PDF, DOCX, XLSX
+                    Install LibreOffice for PDF, PNG, DOCX, XLSX
                   </DropdownMenuItem>
                 </>
               )}
@@ -609,6 +618,7 @@ export default function DocumentsPage() {
                 <Button
                   variant="outline"
                   className="border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-violet-600"
+                  data-joy-assist="doc-ai-generate-btn"
                 >
                   <Wand2 className="h-4 w-4 mr-2" />
                   AI Generate
@@ -800,7 +810,7 @@ export default function DocumentsPage() {
             {/* Create Button */}
             <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
               <DialogTrigger asChild>
-                <Button className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 shadow-lg shadow-blue-500/20 border-0">
+                <Button className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 shadow-lg shadow-blue-500/20 border-0" data-joy-assist="doc-new-btn">
                   <Plus className="h-4 w-4 mr-2" />
                   New Document
                 </Button>
@@ -875,6 +885,7 @@ export default function DocumentsPage() {
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
+              data-joy-assist="doc-search"
               placeholder="Search documents..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}

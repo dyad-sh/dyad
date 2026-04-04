@@ -668,26 +668,52 @@ export async function getSystemServicesHealth(): Promise<
     });
   }
 
-  // 2. n8n
+  // 2. n8n — accepts any HTTP response (n8n may redirect to login or return 401)
   try {
     const res = await fetch("http://localhost:5678/healthz", {
       signal: AbortSignal.timeout(3000),
+      redirect: "manual",
     });
+    // Any HTTP response means n8n is running (even 401/302)
+    const isUp = true;
+    const isHealthy = res.ok || res.status === 200;
     services.push({
       name: "n8n",
-      status: res.ok ? "healthy" : "degraded",
+      status: isHealthy ? "healthy" : "degraded",
       port: 5678,
-      details: res.ok ? "Workflow engine running" : `HTTP ${res.status}`,
+      details: isHealthy
+        ? "Workflow engine running"
+        : `Running (HTTP ${res.status} — may need login)`,
       lastCheck: now,
     });
   } catch {
-    services.push({
-      name: "n8n",
-      status: "offline",
-      port: 5678,
-      details: "Docker container not running",
-      lastCheck: now,
-    });
+    // Fetch failed — try a fallback: check if something is listening on port 5678
+    let portReachable = false;
+    try {
+      const probe = await fetch("http://localhost:5678/", {
+        signal: AbortSignal.timeout(2000),
+        redirect: "manual",
+      });
+      portReachable = true;
+      services.push({
+        name: "n8n",
+        status: "degraded",
+        port: 5678,
+        details: `Running (HTTP ${probe.status} on /)`,
+        lastCheck: now,
+      });
+    } catch {
+      // nothing on the port at all
+    }
+    if (!portReachable) {
+      services.push({
+        name: "n8n",
+        status: "offline",
+        port: 5678,
+        details: "Not reachable on port 5678",
+        lastCheck: now,
+      });
+    }
   }
 
   // 3. Celestia – use process-based check first, then try RPC for details
@@ -741,27 +767,54 @@ export async function getSystemServicesHealth(): Promise<
     });
   }
 
-  // 4. OpenClaw Gateway
+  // 4. OpenClaw Gateway — accept any HTTP response as evidence it's running
   try {
     const res = await fetch("http://127.0.0.1:18789/", {
       signal: AbortSignal.timeout(3000),
+      redirect: "manual",
     });
-    // Any HTTP response means the gateway is reachable
+    // Any response means the gateway is reachable
     services.push({
       name: "OpenClaw Gateway",
-      status: "healthy",
+      status: res.ok || res.status < 500 ? "healthy" : "degraded",
       port: 18789,
-      details: `Gateway running (HTTP ${res.status})`,
+      details: res.ok
+        ? "Gateway running"
+        : `Gateway responding (HTTP ${res.status})`,
       lastCheck: now,
     });
   } catch {
-    services.push({
-      name: "OpenClaw Gateway",
-      status: "offline",
-      port: 18789,
-      details: "Gateway not running",
-      lastCheck: now,
-    });
+    // Gateway might not have an HTTP root endpoint — try the actual gateway object
+    try {
+      const { getOpenClawGateway } = await import("@/lib/openclaw_gateway_service");
+      const gw = getOpenClawGateway();
+      const state = gw.getGatewayState();
+      if (state.status === "connected") {
+        services.push({
+          name: "OpenClaw Gateway",
+          status: "healthy",
+          port: 18789,
+          details: "Gateway connected",
+          lastCheck: now,
+        });
+      } else {
+        services.push({
+          name: "OpenClaw Gateway",
+          status: state.status === "connecting" ? "degraded" : "offline",
+          port: 18789,
+          details: `Gateway ${state.status}`,
+          lastCheck: now,
+        });
+      }
+    } catch {
+      services.push({
+        name: "OpenClaw Gateway",
+        status: "offline",
+        port: 18789,
+        details: "Gateway not running",
+        lastCheck: now,
+      });
+    }
   }
 
   // 5. Inference Bridge

@@ -83,7 +83,7 @@ export function ContextLimitBanner({
             </>
           )}
         </TooltipTrigger>
-        <TooltipContent>Summarize to new chat</TooltipContent>
+        <TooltipContent>{t("summarizeToNewChat")}</TooltipContent>
       </Tooltip>
     </div>
   );

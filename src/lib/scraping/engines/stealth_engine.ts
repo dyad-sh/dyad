@@ -191,10 +191,16 @@ export class StealthEngine extends BaseEngine {
         await page.setExtraHTTPHeaders(options.headers);
       }
 
-      // Navigate with networkidle for CF challenge resolution
+      // Navigate — use domcontentloaded first, then wait for networkidle briefly.
+      // networkidle can hang forever on sites with persistent connections or analytics.
       const response = await page.goto(url, {
-        waitUntil: "networkidle",
+        waitUntil: "domcontentloaded",
         timeout,
+      });
+
+      // Give the page a few extra seconds for network to settle (best-effort)
+      await page.waitForLoadState("networkidle").catch(() => {
+        logger.debug("networkidle timed out — proceeding with what we have");
       });
 
       // Wait for Cloudflare challenge if present

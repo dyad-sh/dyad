@@ -5,6 +5,8 @@ import { DeepLinkProvider } from "../contexts/DeepLinkContext";
 import { Toaster } from "sonner";
 import { TitleBar } from "./TitleBar";
 import { useEffect, type ReactNode } from "react";
+import { AssistantContextProvider } from "@/components/joy-assistant/AssistantContextProvider";
+import { JoyAssistantPanel } from "@/components/joy-assistant/JoyAssistantPanel";
 import { useRunApp } from "@/hooks/useRunApp";
 import { useAtomValue, useSetAtom } from "jotai";
 import {
@@ -88,12 +90,15 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <SidebarProvider>
             <TitleBar />
             <AppSidebar />
-            <div
-              id="layout-main-content-container"
-              className="flex h-screenish w-full overflow-x-hidden mt-12 mb-4 mr-4 border border-border/40 rounded-xl bg-background/80 backdrop-blur-sm shadow-sm"
-            >
-              {children}
-            </div>
+            <AssistantContextProvider>
+              <div
+                id="layout-main-content-container"
+                className="flex h-screenish w-full overflow-x-hidden mt-12 mb-4 mr-4 border border-border/40 rounded-xl bg-background/80 backdrop-blur-sm shadow-sm"
+              >
+                {children}
+              </div>
+              <JoyAssistantPanel />
+            </AssistantContextProvider>
             <Toaster richColors />
           </SidebarProvider>
         </DeepLinkProvider>

@@ -120,10 +120,12 @@ async function checkServiceHealth(url: string): Promise<boolean> {
     const response = await fetch(url, { 
       signal: controller.signal,
       method: "GET",
+      redirect: "manual",
     });
     
     clearTimeout(timeout);
-    return response.ok;
+    // Accept any HTTP response (even 401/302) as evidence the service is up
+    return response.status > 0;
   } catch {
     return false;
   }

@@ -269,6 +269,14 @@ const validInvokeChannels = [
   // Help bot
   "help:chat:start",
   "help:chat:cancel",
+  // Joy Assistant
+  "joy-assistant:chat",
+  "joy-assistant:cancel",
+  "joy-assistant:suggestions",
+  "joy-assistant:history",
+  "joy-assistant:clear",
+  "joy-assistant:set-mode",
+  "joy-assistant:execute-action",
   // Prompts
   "prompts:list",
   "prompts:create",
@@ -521,6 +529,8 @@ const validInvokeChannels = [
   "libreoffice:download",
   "libreoffice:show-in-folder",
   "libreoffice:get-directory",
+  "libreoffice:ensure-ready",
+  "libreoffice:shutdown",
   // Marketplace Integration
   "marketplace:status",
   "marketplace:connect",
@@ -559,6 +569,26 @@ const validInvokeChannels = [
   "marketplace-sync:get-usdc-balance",
   "marketplace-sync:get-nft-metadata",
   "marketplace-sync:get-owned-nfts",
+  // Marketplace Browse (public discovery)
+  "marketplace:browse",
+  "marketplace:asset-detail",
+  "marketplace:install-asset",
+  "marketplace:featured",
+  "marketplace:categories",
+  // Creator Dashboard
+  "creator:get-overview",
+  "creator:get-all-assets",
+  "creator:get-earnings-breakdown",
+  "creator:get-analytics",
+  // Agent Marketplace Publishing
+  "agent:publish-to-marketplace",
+  "agent:unpublish",
+  "agent:update-listing",
+  // Workflow Marketplace Publishing
+  "workflow:publish-to-marketplace",
+  "workflow:install-from-marketplace",
+  "workflow:unpublish",
+  "workflow:list-published",
   // Web Scraper & Dataset Management
   "scraper:status",
   "scraper:config:list",
@@ -850,6 +880,22 @@ const validInvokeChannels = [
   "dchat:test:encryption",
   "dchat:test:pin",
   "dchat:test:connectivity",
+  // Decentralized Chat — Privacy Layer (Onion Routing, Double Ratchet, Cover Traffic)
+  "dchat:privacy:init",
+  "dchat:privacy:status",
+  "dchat:privacy:shutdown",
+  "dchat:ice:discover",
+  "dchat:ice:register-relay",
+  "dchat:ice:health-check",
+  "dchat:ice:status",
+  "dchat:circuit:build",
+  "dchat:relay:status",
+  "dchat:private:send",
+  "dchat:ratchet:init",
+  "dchat:signal:send",
+  "dchat:cover-traffic:start",
+  "dchat:cover-traffic:stop",
+  "dchat:nat:detect",
   // Compute Network (Decentralized AI Inference)
   "compute-network:initialize",
   "compute-network:shutdown",
@@ -1812,6 +1858,11 @@ const validInvokeChannels = [
   "model-registry:download",
   "model-registry:download-status",
   "model-registry:list-downloads",
+  // MCP Server
+  "mcp-server:start",
+  "mcp-server:stop",
+  "mcp-server:status",
+  "mcp-server:get-config",
   // Test-only channels
   // These should ALWAYS be guarded with IS_TEST_BUILD in the main process.
   // We can't detect with IS_TEST_BUILD in the preload script because
@@ -1835,6 +1886,10 @@ const validReceiveChannels = [
   "help:chat:response:chunk",
   "help:chat:response:end",
   "help:chat:response:error",
+  // Joy Assistant
+  "joy-assistant:response:chunk",
+  "joy-assistant:response:end",
+  "joy-assistant:response:error",
   // MCP consent request from main to renderer
   "mcp:tool-consent-request",
   // Agent tool consent request from main to renderer

@@ -112,6 +112,19 @@ import type {
   DistanceMetric,
   ChunkingConfig,
 } from "@/types/sovereign_stack_types";
+import type {
+  MarketplaceBrowseParams,
+  MarketplaceBrowseResult,
+  MarketplaceAssetDetail,
+  InstallAssetRequest,
+  InstallAssetResult,
+  CreatorOverview,
+  CreatorAssetRecord,
+  EarningsBreakdown,
+  CreatorAnalytics,
+  UnifiedPublishPayload,
+  PublishResult,
+} from "@/types/publish_types";
 
 export interface ChatStreamCallbacks {
   onUpdate: (messages: Message[]) => void;
@@ -3622,5 +3635,95 @@ export class IpcClient {
     count?: number;
   }): Promise<{ videoDataUrl: string; duration: number | null; fps: number | null; requestedFrames: number }> {
     return this.ipcRenderer.invoke("video-studio:extract-frames", params);
+  }
+
+  // ── Marketplace Browse ──────────────────────────────────────────────────
+
+  public async marketplaceBrowse(params: MarketplaceBrowseParams): Promise<MarketplaceBrowseResult> {
+    return this.ipcRenderer.invoke("marketplace:browse", params);
+  }
+
+  public async marketplaceAssetDetail(assetId: string): Promise<MarketplaceAssetDetail> {
+    return this.ipcRenderer.invoke("marketplace:asset-detail", assetId);
+  }
+
+  public async marketplaceInstallAsset(request: InstallAssetRequest): Promise<InstallAssetResult> {
+    return this.ipcRenderer.invoke("marketplace:install-asset", request);
+  }
+
+  public async marketplaceFeatured(): Promise<MarketplaceBrowseResult> {
+    return this.ipcRenderer.invoke("marketplace:featured");
+  }
+
+  public async marketplaceCategories(): Promise<{ category: string; count: number }[]> {
+    return this.ipcRenderer.invoke("marketplace:categories");
+  }
+
+  // ── Creator Dashboard ─────────────────────────────────────────────────
+
+  public async creatorGetOverview(): Promise<CreatorOverview> {
+    return this.ipcRenderer.invoke("creator:get-overview");
+  }
+
+  public async creatorGetAllAssets(): Promise<CreatorAssetRecord[]> {
+    return this.ipcRenderer.invoke("creator:get-all-assets");
+  }
+
+  public async creatorGetEarningsBreakdown(): Promise<EarningsBreakdown> {
+    return this.ipcRenderer.invoke("creator:get-earnings-breakdown");
+  }
+
+  public async creatorGetAnalytics(): Promise<CreatorAnalytics> {
+    return this.ipcRenderer.invoke("creator:get-analytics");
+  }
+
+  // ── Agent Marketplace ─────────────────────────────────────────────────
+
+  public async agentPublishToMarketplace(payload: UnifiedPublishPayload): Promise<PublishResult> {
+    return this.ipcRenderer.invoke("agent:publish-to-marketplace", payload);
+  }
+
+  public async agentUnpublish(agentId: number): Promise<void> {
+    return this.ipcRenderer.invoke("agent:unpublish", agentId);
+  }
+
+  public async agentUpdateListing(params: { agentId: number; updates: Partial<UnifiedPublishPayload> }): Promise<unknown> {
+    return this.ipcRenderer.invoke("agent:update-listing", params);
+  }
+
+  // ── Workflow Marketplace ───────────────────────────────────────────────
+
+  public async workflowPublishToMarketplace(payload: UnifiedPublishPayload): Promise<PublishResult> {
+    return this.ipcRenderer.invoke("workflow:publish-to-marketplace", payload);
+  }
+
+  public async workflowInstallFromMarketplace(assetId: string): Promise<{ workflowId: string }> {
+    return this.ipcRenderer.invoke("workflow:install-from-marketplace", assetId);
+  }
+
+  public async workflowUnpublish(workflowId: string): Promise<void> {
+    return this.ipcRenderer.invoke("workflow:unpublish", workflowId);
+  }
+
+  public async workflowListPublished(): Promise<unknown[]> {
+    return this.ipcRenderer.invoke("workflow:list-published");
+  }
+
+  // ── MCP Server ─────────────────────────────────────────────────
+
+  public async mcpServerStart(port?: number): Promise<{ port: number }> {
+    return this.ipcRenderer.invoke("mcp-server:start", { port });
+  }
+
+  public async mcpServerStop(): Promise<void> {
+    return this.ipcRenderer.invoke("mcp-server:stop");
+  }
+
+  public async mcpServerStatus(): Promise<{ running: boolean; port: number; url: string | null }> {
+    return this.ipcRenderer.invoke("mcp-server:status");
+  }
+
+  public async mcpServerGetConfig(): Promise<{ defaultPort: number; currentPort: number; running: boolean; url: string | null }> {
+    return this.ipcRenderer.invoke("mcp-server:get-config");
   }
 }

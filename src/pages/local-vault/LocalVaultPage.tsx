@@ -1,8 +1,8 @@
 // =============================================================================
-// Local Data Vault — Main page: vault overview, storage health, pinned items
+// Local Data Vault — Simplified with 4 inline tabs: Overview, Privacy, Memory, Audit
 // =============================================================================
 
-import { useState } from "react";
+import { useState, lazy, Suspense } from "react";
 import {
   useVaultStatus,
   useVaultConfig,
@@ -16,51 +16,52 @@ import {
   useImportText,
   useDeleteAsset,
 } from "../../hooks/useLocalVault";
-import { VaultNav } from "./VaultNav";
+import {
+  useVaultIdentity,
+  useVaultUnlock,
+  useVaultLock as useVaultLockIdentity,
+  useVaultPeers,
+} from "@/hooks/useDataStudioExtended";
 import { formatBytes } from "../../lib/vault_utils";
 import {
   Shield,
   HardDrive,
   Lock,
-  Unlock,
   Upload,
   FolderUp,
   FileText,
   Trash2,
   Eye,
-  Tag,
   Search,
   RefreshCw,
   Database,
   Layers,
   Package,
   Activity,
-  Plus,
   CheckCircle2,
-  XCircle,
   AlertTriangle,
+  Brain,
+  Loader2,
 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+
+const MemoryLearningPage = lazy(() => import("./MemoryLearningPage"));
 
 export default function LocalVaultPage() {
   const { data: status, isLoading: statusLoading } = useVaultStatus();
   const { data: config } = useVaultConfig();
-  const { data: auditLog } = useVaultAuditLog(10);
 
   const initVault = useInitializeVault();
   const unlockVault = useUnlockVault();
   const lockVault = useLockVault();
-  const importFiles = useImportFiles();
-  const importFolder = useImportFolder();
-  const importText = useImportText();
-  const deleteAsset = useDeleteAsset();
 
   const [passphrase, setPassphrase] = useState("");
-  const [textName, setTextName] = useState("");
-  const [textContent, setTextContent] = useState("");
-  const [showTextImport, setShowTextImport] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-
-  const { data: assetsResult } = useVaultAssets({ limit: 20, search: searchQuery || undefined });
+  const [activeTab, setActiveTab] = useState("overview");
 
   if (statusLoading) {
     return (
@@ -140,26 +141,22 @@ export default function LocalVaultPage() {
     );
   }
 
-  const assets = assetsResult?.assets ?? [];
-  const totalAssets = assetsResult?.total ?? 0;
-
   return (
-    <div className="h-full overflow-y-auto p-6 space-y-6">
-      {/* Vault Tab Navigation */}
-      <VaultNav />
-
+    <div className="flex flex-col h-full w-full" data-joy-assist="data-vault-page">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Shield className="w-7 h-7 text-primary" />
-            Data Vault
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Your sovereign, encrypted local data store
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+      <div className="shrink-0 border-b bg-gradient-to-r from-amber-500/5 via-orange-500/5 to-yellow-500/5 px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/20">
+              <HardDrive className="h-5 w-5 text-amber-500" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight">Data Vault</h1>
+              <p className="text-sm text-muted-foreground">
+                Your sovereign, encrypted local data store
+              </p>
+            </div>
+          </div>
           <button
             onClick={() => lockVault.mutate()}
             className="px-3 py-1.5 rounded-lg border text-sm flex items-center gap-1.5 hover:bg-muted"
@@ -170,206 +167,379 @@ export default function LocalVaultPage() {
         </div>
       </div>
 
-      {/* Status Cards */}
-      <div className="grid grid-cols-4 gap-4">
-        <StatusCard
-          icon={<Database className="w-5 h-5" />}
-          label="Total Assets"
-          value={String(status.totalAssets)}
-          color="text-blue-500"
-        />
-        <StatusCard
-          icon={<HardDrive className="w-5 h-5" />}
-          label="Storage Used"
-          value={formatBytes(status.totalBytes)}
-          color="text-purple-500"
-        />
-        <StatusCard
-          icon={<Layers className="w-5 h-5" />}
-          label="Connectors"
-          value={String(status.connectorCount)}
-          color="text-green-500"
-        />
-        <StatusCard
-          icon={
-            status.storageHealth === "healthy" ? (
-              <CheckCircle2 className="w-5 h-5" />
-            ) : (
-              <AlertTriangle className="w-5 h-5" />
-            )
-          }
-          label="Storage Health"
-          value={status.storageHealth}
-          color={status.storageHealth === "healthy" ? "text-emerald-500" : "text-amber-500"}
-        />
-      </div>
-
-      {/* Quick Actions */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => importFiles.mutate()}
-          disabled={importFiles.isPending}
-          className="px-4 py-2 rounded-lg bg-primary text-primary-foreground font-medium text-sm flex items-center gap-2 hover:bg-primary/90 disabled:opacity-50"
-        >
-          <Upload className="w-4 h-4" />
-          Import Files
-        </button>
-        <button
-          onClick={() => importFolder.mutate({ recursive: true })}
-          disabled={importFolder.isPending}
-          className="px-4 py-2 rounded-lg border font-medium text-sm flex items-center gap-2 hover:bg-muted disabled:opacity-50"
-        >
-          <FolderUp className="w-4 h-4" />
-          Import Folder
-        </button>
-        <button
-          onClick={() => setShowTextImport(!showTextImport)}
-          className="px-4 py-2 rounded-lg border font-medium text-sm flex items-center gap-2 hover:bg-muted"
-        >
-          <FileText className="w-4 h-4" />
-          Capture Text
-        </button>
-      </div>
-
-      {/* Text Import */}
-      {showTextImport && (
-        <div className="p-4 border rounded-lg space-y-3 bg-muted/30">
-          <input
-            placeholder="Title"
-            value={textName}
-            onChange={(e) => setTextName(e.target.value)}
-            className="w-full px-3 py-1.5 rounded border bg-background text-sm"
-          />
-          <textarea
-            placeholder="Paste or type your text content here..."
-            value={textContent}
-            onChange={(e) => setTextContent(e.target.value)}
-            rows={4}
-            className="w-full px-3 py-1.5 rounded border bg-background text-sm resize-none"
-          />
-          <div className="flex gap-2">
-            <button
-              onClick={() => {
-                if (textName && textContent) {
-                  importText.mutate({ name: textName, content: textContent });
-                  setTextName("");
-                  setTextContent("");
-                  setShowTextImport(false);
-                }
-              }}
-              disabled={!textName || !textContent}
-              className="px-3 py-1.5 rounded bg-primary text-primary-foreground text-sm disabled:opacity-50"
-            >
-              Save to Vault
-            </button>
-            <button
-              onClick={() => setShowTextImport(false)}
-              className="px-3 py-1.5 rounded border text-sm hover:bg-muted"
-            >
-              Cancel
-            </button>
-          </div>
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
+        <div className="shrink-0 border-b px-6">
+          <TabsList className="h-11 bg-transparent p-0 gap-1">
+            <TabsTrigger value="overview" className="gap-1.5 data-[state=active]:shadow-none data-[state=active]:bg-muted">
+              <HardDrive className="h-3.5 w-3.5" />
+              Overview
+            </TabsTrigger>
+            <TabsTrigger value="privacy" className="gap-1.5 data-[state=active]:shadow-none data-[state=active]:bg-muted">
+              <Shield className="h-3.5 w-3.5" />
+              Privacy
+            </TabsTrigger>
+            <TabsTrigger value="memory" className="gap-1.5 data-[state=active]:shadow-none data-[state=active]:bg-muted">
+              <Brain className="h-3.5 w-3.5" />
+              Memory
+            </TabsTrigger>
+            <TabsTrigger value="audit" className="gap-1.5 data-[state=active]:shadow-none data-[state=active]:bg-muted">
+              <Activity className="h-3.5 w-3.5" />
+              Audit
+            </TabsTrigger>
+          </TabsList>
         </div>
-      )}
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <input
-          placeholder="Search vault assets..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full pl-9 pr-4 py-2 rounded-lg border bg-background text-sm"
-        />
-      </div>
-
-      {/* Assets List */}
-      <div className="space-y-2">
-        <h2 className="text-lg font-semibold flex items-center gap-2">
-          <Package className="w-5 h-5" />
-          Vault Assets
-          <span className="text-sm text-muted-foreground font-normal">({totalAssets})</span>
-        </h2>
-
-        {assets.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <Database className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p>No assets in vault yet</p>
-            <p className="text-sm">Import files, folders, or text to get started</p>
+        <ScrollArea className="flex-1">
+          <div className="p-6">
+            <TabsContent value="overview" className="mt-0">
+              <OverviewContent status={status} />
+            </TabsContent>
+            <TabsContent value="privacy" className="mt-0">
+              <PrivacyContent />
+            </TabsContent>
+            <TabsContent value="memory" className="mt-0">
+              <Suspense fallback={<div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+                <MemoryLearningPage />
+              </Suspense>
+            </TabsContent>
+            <TabsContent value="audit" className="mt-0">
+              <AuditContent />
+            </TabsContent>
           </div>
-        ) : (
-          <div className="border rounded-lg divide-y">
-            {assets.map((asset) => (
-              <div key={asset.id} className="px-4 py-3 flex items-center gap-3 hover:bg-muted/30">
-                <ModalityIcon modality={asset.modality} />
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm truncate">{asset.name}</div>
-                  <div className="text-xs text-muted-foreground flex items-center gap-2">
-                    <span>{formatBytes(asset.byteSize)}</span>
-                    <span>·</span>
-                    <span>{asset.mimeType}</span>
-                    <span>·</span>
-                    <StatusBadge status={asset.status} />
-                    {asset.encrypted && (
-                      <>
-                        <span>·</span>
-                        <Lock className="w-3 h-3 text-green-500" />
-                      </>
-                    )}
-                    {asset.piiDetected && (
-                      <>
-                        <span>·</span>
-                        <span className={asset.piiRedacted ? "text-green-500" : "text-amber-500"}>
-                          PII {asset.piiRedacted ? "redacted" : "detected"}
-                        </span>
-                      </>
-                    )}
-                  </div>
-                  {asset.tags.length > 0 && (
-                    <div className="flex gap-1 mt-1">
-                      {asset.tags.slice(0, 4).map((tag) => (
-                        <span key={tag} className="px-1.5 py-0.5 rounded text-xs bg-primary/10 text-primary">
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={() => deleteAsset.mutate(asset.id)}
-                  className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
+        </ScrollArea>
+      </Tabs>
+    </div>
+  );
+
+  // biome-ignore lint/correctness/noUnreachable: This is never reached; it's a section boundary marker
+  function OverviewContent({ status: vaultStatus }: { status: any }) {
+    const importFiles2 = useImportFiles();
+    const importFolder2 = useImportFolder();
+    const importText2 = useImportText();
+    const deleteAsset2 = useDeleteAsset();
+
+    const [textName, setTextName] = useState("");
+    const [textContent, setTextContent] = useState("");
+    const [showTextImport, setShowTextImport] = useState(false);
+    const [searchQuery, setSearchQuery] = useState("");
+
+    const { data: assetsResult } = useVaultAssets({ limit: 20, search: searchQuery || undefined });
+    const assets = assetsResult?.assets ?? [];
+    const totalAssets = assetsResult?.total ?? 0;
+
+    return (
+      <div className="space-y-6">
+        {/* Status Cards */}
+        <div className="grid grid-cols-4 gap-4">
+          <VaultStatusCard
+            icon={<Database className="w-5 h-5" />}
+            label="Total Assets"
+            value={String(vaultStatus.totalAssets)}
+            color="text-blue-500"
+          />
+          <VaultStatusCard
+            icon={<HardDrive className="w-5 h-5" />}
+            label="Storage Used"
+            value={formatBytes(vaultStatus.totalBytes)}
+            color="text-purple-500"
+          />
+          <VaultStatusCard
+            icon={<Layers className="w-5 h-5" />}
+            label="Connectors"
+            value={String(vaultStatus.connectorCount)}
+            color="text-green-500"
+          />
+          <VaultStatusCard
+            icon={
+              vaultStatus.storageHealth === "healthy" ? (
+                <CheckCircle2 className="w-5 h-5" />
+              ) : (
+                <AlertTriangle className="w-5 h-5" />
+              )
+            }
+            label="Storage Health"
+            value={vaultStatus.storageHealth}
+            color={vaultStatus.storageHealth === "healthy" ? "text-emerald-500" : "text-amber-500"}
+          />
+        </div>
+
+        {/* Quick Actions */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => importFiles2.mutate()}
+            disabled={importFiles2.isPending}
+            className="px-4 py-2 rounded-lg bg-primary text-primary-foreground font-medium text-sm flex items-center gap-2 hover:bg-primary/90 disabled:opacity-50"
+          >
+            <Upload className="w-4 h-4" />
+            Import Files
+          </button>
+          <button
+            onClick={() => importFolder2.mutate({ recursive: true })}
+            disabled={importFolder2.isPending}
+            className="px-4 py-2 rounded-lg border font-medium text-sm flex items-center gap-2 hover:bg-muted disabled:opacity-50"
+          >
+            <FolderUp className="w-4 h-4" />
+            Import Folder
+          </button>
+          <button
+            onClick={() => setShowTextImport(!showTextImport)}
+            className="px-4 py-2 rounded-lg border font-medium text-sm flex items-center gap-2 hover:bg-muted"
+          >
+            <FileText className="w-4 h-4" />
+            Capture Text
+          </button>
+        </div>
+
+        {/* Text Import */}
+        {showTextImport && (
+          <div className="p-4 border rounded-lg space-y-3 bg-muted/30">
+            <input
+              placeholder="Title"
+              value={textName}
+              onChange={(e) => setTextName(e.target.value)}
+              className="w-full px-3 py-1.5 rounded border bg-background text-sm"
+            />
+            <textarea
+              placeholder="Paste or type your text content here..."
+              value={textContent}
+              onChange={(e) => setTextContent(e.target.value)}
+              rows={4}
+              className="w-full px-3 py-1.5 rounded border bg-background text-sm resize-none"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  if (textName && textContent) {
+                    importText2.mutate({ name: textName, content: textContent });
+                    setTextName("");
+                    setTextContent("");
+                    setShowTextImport(false);
+                  }
+                }}
+                disabled={!textName || !textContent}
+                className="px-3 py-1.5 rounded bg-primary text-primary-foreground text-sm disabled:opacity-50"
+              >
+                Save to Vault
+              </button>
+              <button
+                onClick={() => setShowTextImport(false)}
+                className="px-3 py-1.5 rounded border text-sm hover:bg-muted"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         )}
-      </div>
 
-      {/* Recent Audit Log */}
-      {auditLog && auditLog.length > 0 && (
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <input
+            placeholder="Search vault assets..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 rounded-lg border bg-background text-sm"
+          />
+        </div>
+
+        {/* Assets List */}
         <div className="space-y-2">
           <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Activity className="w-5 h-5" />
-            Recent Activity
+            <Package className="w-5 h-5" />
+            Vault Assets
+            <span className="text-sm text-muted-foreground font-normal">({totalAssets})</span>
           </h2>
-          <div className="border rounded-lg divide-y text-sm">
-            {auditLog.map((entry) => (
-              <div key={entry.id} className="px-4 py-2 flex items-center gap-3">
-                <AuditIcon action={entry.action} />
-                <div className="flex-1 min-w-0">
-                  <span className="font-medium">{formatAuditAction(entry.action)}</span>
-                  {entry.details && (
-                    <span className="text-muted-foreground ml-1">— {entry.details}</span>
-                  )}
+
+          {assets.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Database className="w-12 h-12 mx-auto mb-3 opacity-30" />
+              <p>No assets in vault yet</p>
+              <p className="text-sm">Import files, folders, or text to get started</p>
+            </div>
+          ) : (
+            <div className="border rounded-lg divide-y">
+              {assets.map((asset) => (
+                <div key={asset.id} className="px-4 py-3 flex items-center gap-3 hover:bg-muted/30">
+                  <ModalityIcon modality={asset.modality} />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm truncate">{asset.name}</div>
+                    <div className="text-xs text-muted-foreground flex items-center gap-2">
+                      <span>{formatBytes(asset.byteSize)}</span>
+                      <span>·</span>
+                      <span>{asset.mimeType}</span>
+                      <span>·</span>
+                      <AssetStatusBadge status={asset.status} />
+                      {asset.encrypted && (
+                        <>
+                          <span>·</span>
+                          <Lock className="w-3 h-3 text-green-500" />
+                        </>
+                      )}
+                      {asset.piiDetected && (
+                        <>
+                          <span>·</span>
+                          <span className={asset.piiRedacted ? "text-green-500" : "text-amber-500"}>
+                            PII {asset.piiRedacted ? "redacted" : "detected"}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                    {asset.tags.length > 0 && (
+                      <div className="flex gap-1 mt-1">
+                        {asset.tags.slice(0, 4).map((tag) => (
+                          <span key={tag} className="px-1.5 py-0.5 rounded text-xs bg-primary/10 text-primary">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => deleteAsset2.mutate(asset.id)}
+                    className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
-                <span className="text-xs text-muted-foreground whitespace-nowrap">
-                  {new Date(entry.timestamp).toLocaleString()}
-                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+}
+
+// ---- Privacy Tab ----
+
+function PrivacyContent() {
+  const [passphrase, setPassphrase] = useState("");
+  const { data: identity, isError: identityError } = useVaultIdentity();
+  const { data: peers } = useVaultPeers();
+  const unlock = useVaultUnlock();
+  const lockIdentity = useVaultLockIdentity();
+
+  const isLocked = identityError;
+
+  const handleUnlock = () => {
+    if (!passphrase) return;
+    unlock.mutate(passphrase);
+    setPassphrase("");
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Lock className="h-5 w-5" />
+            Vault Identity
+          </CardTitle>
+          <CardDescription>Cryptographic identity and encrypted storage</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isLocked ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-yellow-600">
+                <Lock className="h-4 w-4" />
+                <span>Vault identity is locked</span>
               </div>
-            ))}
-          </div>
+              <Input
+                type="password"
+                value={passphrase}
+                onChange={(e) => setPassphrase(e.target.value)}
+                placeholder="Enter passphrase"
+                onKeyDown={(e) => e.key === "Enter" && handleUnlock()}
+              />
+              <Button onClick={handleUnlock} disabled={unlock.isPending}>
+                Unlock Vault
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-green-600">
+                <CheckCircle2 className="h-4 w-4" />
+                <span>Vault identity unlocked</span>
+              </div>
+
+              {identity?.identity && (
+                <div className="p-3 bg-muted rounded-md">
+                  <p className="text-xs font-medium mb-1">Public Key</p>
+                  <code className="text-xs break-all">
+                    {identity.identity.publicKey.substring(0, 64)}...
+                  </code>
+                </div>
+              )}
+
+              <Button variant="outline" onClick={() => lockIdentity.mutate()}>
+                Lock Identity
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {!isLocked && peers?.peers && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Trusted Peers</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {peers.peers.length === 0 ? (
+              <p className="text-muted-foreground text-sm">No peers added yet</p>
+            ) : (
+              <div className="space-y-2">
+                {peers.peers.map((peer, i) => (
+                  <div key={i} className="flex items-center justify-between p-2 border rounded">
+                    <div>
+                      <p className="font-medium">{peer.name}</p>
+                      <p className="text-xs text-muted-foreground">{peer.peerId}</p>
+                    </div>
+                    {peer.trusted && <Badge variant="secondary">Trusted</Badge>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ---- Audit Tab ----
+
+function AuditContent() {
+  const { data: auditLog } = useVaultAuditLog(50);
+
+  return (
+    <div className="space-y-2">
+      <h2 className="text-lg font-semibold flex items-center gap-2">
+        <Activity className="w-5 h-5" />
+        Activity Log
+      </h2>
+      {auditLog && auditLog.length > 0 ? (
+        <div className="border rounded-lg divide-y text-sm">
+          {auditLog.map((entry) => (
+            <div key={entry.id} className="px-4 py-2 flex items-center gap-3">
+              <AuditIcon action={entry.action} />
+              <div className="flex-1 min-w-0">
+                <span className="font-medium">{formatAuditAction(entry.action)}</span>
+                {entry.details && (
+                  <span className="text-muted-foreground ml-1">— {entry.details}</span>
+                )}
+              </div>
+              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                {new Date(entry.timestamp).toLocaleString()}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-12 text-muted-foreground">
+          <Activity className="w-12 h-12 mx-auto mb-3 opacity-30" />
+          <p>No activity yet</p>
         </div>
       )}
     </div>
@@ -378,7 +548,7 @@ export default function LocalVaultPage() {
 
 // ---- Sub-components ----
 
-function StatusCard({
+function VaultStatusCard({
   icon,
   label,
   value,
@@ -412,7 +582,7 @@ function ModalityIcon({ modality }: { modality: string }) {
   }
 }
 
-function StatusBadge({ status }: { status: string }) {
+function AssetStatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
     ingested: "text-blue-500",
     processing: "text-amber-500",

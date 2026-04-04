@@ -87,6 +87,8 @@ import { IpcClient } from "@/ipc/ipc_client";
 import { agentBuilderClient } from "@/ipc/agent_builder_client";
 import { showError, showSuccess } from "@/lib/toast";
 import type { App } from "@/ipc/ipc_types";
+import { PublishWizard } from "@/components/marketplace/PublishWizard";
+import { usePublishAgent } from "@/hooks/use_publish_agent";
 import AgentMemoryTab from "@/components/agent/AgentMemoryTab";
 import AgentStackBuilder from "@/components/agent/AgentStackBuilder";
 import AgentTasksPanel from "@/components/agent/AgentTasksPanel";
@@ -439,6 +441,7 @@ export default function AgentEditorPage() {
               <Play className="h-4 w-4 mr-2" />
               Test
             </Button>
+            <PublishAgentButton agent={agent} />
             <Button
               onClick={handleSave}
               disabled={!hasChanges || updateAgentMutation.isPending}
@@ -1600,5 +1603,41 @@ function AgentDecentralizedDeploy({ appId }: { appId?: number }) {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Publish Agent Button (self-contained)
+// ---------------------------------------------------------------------------
+
+function PublishAgentButton({ agent }: { agent: { id: number; name: string; description?: string | null; type: string } }) {
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const publishAgent = usePublishAgent();
+
+  return (
+    <>
+      <Button variant="outline" onClick={() => setWizardOpen(true)}>
+        <Rocket className="h-4 w-4 mr-2" />
+        Publish
+      </Button>
+      <PublishWizard
+        open={wizardOpen}
+        onOpenChange={setWizardOpen}
+        assetType="agent"
+        sourceId={agent.id}
+        defaultName={agent.name}
+        defaultDescription={agent.description ?? ""}
+        defaultCategory="ai-agent"
+        isPublishing={publishAgent.isPending}
+        onPublish={(payload) => {
+          publishAgent.mutate(payload, {
+            onSuccess: () => {
+              setWizardOpen(false);
+              showSuccess("Agent published to JoyMarketplace!");
+            },
+          });
+        }}
+      />
+    </>
   );
 }

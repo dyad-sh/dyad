@@ -326,10 +326,29 @@ export const agents = sqliteTable("agents", {
   configJson: text("config_json", { mode: "json" }).$type<AgentConfig | null>(),
   // Version tracking
   version: text("version").notNull().default("1.0.0"),
+  // Marketplace publishing
+  publishStatus: text("publish_status").$type<"local" | "draft" | "pending-review" | "published" | "rejected" | "archived">().default("local"),
+  marketplaceId: text("marketplace_id"),
+  publishedAt: integer("published_at", { mode: "timestamp" }),
+  publishPrice: integer("publish_price"),
+  publishCurrency: text("publish_currency").default("USD"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),
   updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});
+
+// Workflow marketplace listings
+export const workflowListings = sqliteTable("workflow_listings", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  workflowId: text("workflow_id").notNull().unique(),
+  name: text("name").notNull(),
+  marketplaceId: text("marketplace_id"),
+  publishStatus: text("publish_status").$type<"local" | "draft" | "pending-review" | "published" | "rejected" | "archived">().default("local"),
+  publishedAt: integer("published_at", { mode: "timestamp" }),
+  createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),
 });

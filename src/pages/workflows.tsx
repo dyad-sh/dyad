@@ -32,7 +32,10 @@ import {
   MessageSquare,
   Settings,
   Database,
+  Rocket,
 } from "lucide-react";
+import { PublishWizard } from "@/components/marketplace/PublishWizard";
+import { usePublishWorkflow } from "@/hooks/use_publish_workflow";
 import type { N8nWorkflow } from "@/types/n8n_types";
 import type { N8nDatabaseConfig } from "@/ipc/n8n_client";
 
@@ -472,9 +475,42 @@ function WorkflowCard({
           <Button variant="ghost" size="sm" onClick={onDelete} className="text-destructive hover:text-destructive">
             <Trash2 className="h-3 w-3" />
           </Button>
+          <PublishWorkflowButton workflow={workflow} />
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function PublishWorkflowButton({ workflow }: { workflow: N8nWorkflow }) {
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const publishWorkflow = usePublishWorkflow();
+
+  return (
+    <>
+      <Button variant="outline" size="sm" onClick={() => setWizardOpen(true)}>
+        <Rocket className="h-3 w-3 mr-1" />
+        Publish
+      </Button>
+      <PublishWizard
+        open={wizardOpen}
+        onOpenChange={setWizardOpen}
+        assetType="workflow"
+        sourceId={workflow.id ?? ""}
+        defaultName={workflow.name}
+        defaultDescription={`Automated workflow with ${workflow.nodes?.length || 0} nodes`}
+        defaultCategory="automation"
+        isPublishing={publishWorkflow.isPending}
+        onPublish={(payload) => {
+          publishWorkflow.mutate(payload, {
+            onSuccess: () => {
+              setWizardOpen(false);
+              toast.success("Workflow published to JoyMarketplace!");
+            },
+          });
+        }}
+      />
+    </>
   );
 }
 

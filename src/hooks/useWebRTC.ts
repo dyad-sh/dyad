@@ -50,11 +50,22 @@ export function useInitWebRTC() {
 
 /**
  * Hook for listing ICE servers
+ * Uses decentralized DHT-discovered TURN/STUN relays when available,
+ * falls back to the original webrtc:ice:list for legacy compat.
  */
 export function useIceServers() {
   return useQuery({
     queryKey: WEBRTC_QUERY_KEYS.iceServers,
-    queryFn: () => webRTCClient.listIceServers(),
+    queryFn: async () => {
+      try {
+        // Prefer decentralized ICE discovery via the privacy layer
+        const decentralized = await webRTCClient.getDecentralizedIceServers();
+        if (decentralized.length > 0) return decentralized;
+      } catch {
+        // Privacy layer not initialized yet — fall through
+      }
+      return webRTCClient.listIceServers();
+    },
     staleTime: 30000,
   });
 }

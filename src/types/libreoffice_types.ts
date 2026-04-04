@@ -10,7 +10,7 @@ export type DocumentFormat =
   | "ods" | "xlsx" | "xls" | "csv"                           // Spreadsheets
   | "odp" | "pptx" | "ppt";                                  // Presentations
 
-export type ExportFormat = "pdf" | "docx" | "xlsx" | "pptx" | "odt" | "ods" | "odp" | "html" | "txt" | "csv" | "xml" | "json";
+export type ExportFormat = "pdf" | "docx" | "xlsx" | "pptx" | "odt" | "ods" | "odp" | "html" | "txt" | "csv" | "xml" | "json" | "png";
 
 // Document Status
 export type DocumentStatus = "draft" | "generating" | "ready" | "error";
@@ -236,6 +236,7 @@ export interface LibreOfficeStatus {
     createDocuments: boolean;      // Always true (native ODF creation)
     editInLibreOffice: boolean;    // Requires LibreOffice
     exportToPdf: boolean;          // Requires LibreOffice
+    exportToPng: boolean;          // Requires LibreOffice
     exportToDocx: boolean;         // Requires LibreOffice
     exportToXlsx: boolean;         // Requires LibreOffice
     exportToCsv: boolean;          // Always true (native)

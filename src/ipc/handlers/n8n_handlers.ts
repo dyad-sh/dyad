@@ -173,7 +173,25 @@ async function waitForN8n(maxAttempts = 30): Promise<void> {
 }
 
 export function isN8nRunning(): boolean {
-  return n8nProcess !== null;
+  // If we started n8n ourselves, trust the process handle
+  if (n8nProcess !== null) return true;
+  // Otherwise, do a quick synchronous check — caller should prefer checkN8nAvailable() for accuracy
+  return false;
+}
+
+/** Async check: is n8n actually responding on its port? Works even if started externally. */
+export async function isN8nReachable(): Promise<boolean> {
+  if (n8nProcess !== null) return true;
+  try {
+    const response = await fetch(`${n8nConfig.baseUrl}/healthz`, {
+      signal: AbortSignal.timeout(2000),
+      redirect: "manual",
+    });
+    // Any HTTP response means n8n is up (even 401/302)
+    return response.status > 0;
+  } catch {
+    return false;
+  }
 }
 
 // ============================================================================
@@ -1095,7 +1113,7 @@ export function registerN8nHandlers(): void {
   // n8n Process Management
   ipcMain.handle("n8n:start", async () => startN8n());
   ipcMain.handle("n8n:stop", async () => stopN8n());
-  ipcMain.handle("n8n:status", async () => ({ running: isN8nRunning() }));
+  ipcMain.handle("n8n:status", async () => ({ running: await isN8nReachable() }));
   
   // Database Configuration
   ipcMain.handle("n8n:db:configure", async (_event, config: Partial<N8nDatabaseConfig>) => {

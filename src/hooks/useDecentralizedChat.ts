@@ -16,6 +16,12 @@ import type {
   CreateConversationRequest,
   ChatServiceStatus,
 } from "@/types/decentralized_chat_types";
+import type {
+  PrivacyServiceStatus,
+  IceDiscoveryResult,
+  OnionCircuit,
+  CoverTrafficConfig,
+} from "@/types/private_chat_types";
 
 // Query keys
 export const chatQueryKeys = {
@@ -25,6 +31,12 @@ export const chatQueryKeys = {
   conversations: () => [...chatQueryKeys.all, "conversations"] as const,
   conversation: (id: string) => [...chatQueryKeys.all, "conversation", id] as const,
   messages: (conversationId: string) => [...chatQueryKeys.all, "messages", conversationId] as const,
+  // Privacy layer keys
+  privacyStatus: () => [...chatQueryKeys.all, "privacy-status"] as const,
+  iceStatus: () => [...chatQueryKeys.all, "ice-status"] as const,
+  iceDiscover: () => [...chatQueryKeys.all, "ice-discover"] as const,
+  relayStatus: () => [...chatQueryKeys.all, "relay-status"] as const,
+  natType: () => [...chatQueryKeys.all, "nat-type"] as const,
 };
 
 // ============================================================================
@@ -537,6 +549,220 @@ export function useDecentralizedChat(options: UseDecentralizedChatOptions = {}) 
     // Loading states
     isLoading: status.isLoading || identity.isLoading || conversations.isLoading,
   };
+}
+
+// ============================================================================
+// Privacy Layer Hooks
+// ============================================================================
+
+/**
+ * Hook to query the privacy subsystem status (onion relay, ICE, ratchet sessions)
+ */
+export function usePrivacyStatus(options: { enabled?: boolean; refetchInterval?: number } = {}) {
+  const { enabled = true, refetchInterval = 10000 } = options;
+
+  return useQuery<PrivacyServiceStatus>({
+    queryKey: chatQueryKeys.privacyStatus(),
+    queryFn: () => decentralizedChatClient.privacyStatus(),
+    enabled,
+    refetchInterval,
+    staleTime: 5000,
+  });
+}
+
+/**
+ * Hook to initialize the privacy subsystem
+ */
+export function usePrivacyInit() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => decentralizedChatClient.privacyInit(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: chatQueryKeys.privacyStatus() });
+      queryClient.invalidateQueries({ queryKey: chatQueryKeys.iceStatus() });
+      queryClient.invalidateQueries({ queryKey: chatQueryKeys.relayStatus() });
+    },
+  });
+}
+
+/**
+ * Hook to shut down the privacy subsystem
+ */
+export function usePrivacyShutdown() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => decentralizedChatClient.privacyShutdown(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: chatQueryKeys.privacyStatus() });
+    },
+  });
+}
+
+/**
+ * Hook to discover decentralized TURN/STUN servers via DHT
+ */
+export function useIceDiscover(options: { enabled?: boolean } = {}) {
+  const { enabled = true } = options;
+
+  return useQuery<IceDiscoveryResult>({
+    queryKey: chatQueryKeys.iceDiscover(),
+    queryFn: () => decentralizedChatClient.iceDiscover(),
+    enabled,
+    staleTime: 30000,
+  });
+}
+
+/**
+ * Hook to register this node as a TURN/STUN relay
+ */
+export function useIceRegisterRelay() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (opts?: { host?: string; stunPort?: number; turnPort?: number; bandwidth?: number }) =>
+      decentralizedChatClient.iceRegisterRelay(opts),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: chatQueryKeys.iceStatus() });
+      queryClient.invalidateQueries({ queryKey: chatQueryKeys.iceDiscover() });
+    },
+  });
+}
+
+/**
+ * Hook to health-check all known ICE relays
+ */
+export function useIceHealthCheck() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => decentralizedChatClient.iceHealthCheck(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: chatQueryKeys.iceStatus() });
+    },
+  });
+}
+
+/**
+ * Hook to query ICE relay registry status
+ */
+export function useIceStatus(options: { enabled?: boolean } = {}) {
+  const { enabled = true } = options;
+
+  return useQuery({
+    queryKey: chatQueryKeys.iceStatus(),
+    queryFn: () => decentralizedChatClient.iceStatus(),
+    enabled,
+    staleTime: 15000,
+  });
+}
+
+/**
+ * Hook to build a new onion circuit
+ */
+export function useCircuitBuild() {
+  const queryClient = useQueryClient();
+
+  return useMutation<OnionCircuit>({
+    mutationFn: () => decentralizedChatClient.circuitBuild(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: chatQueryKeys.relayStatus() });
+      queryClient.invalidateQueries({ queryKey: chatQueryKeys.privacyStatus() });
+    },
+  });
+}
+
+/**
+ * Hook to query onion relay status
+ */
+export function useRelayStatus(options: { enabled?: boolean } = {}) {
+  const { enabled = true } = options;
+
+  return useQuery({
+    queryKey: chatQueryKeys.relayStatus(),
+    queryFn: () => decentralizedChatClient.relayStatus(),
+    enabled,
+    staleTime: 10000,
+  });
+}
+
+/**
+ * Hook to send a privacy-protected message (onion-routed + ratchet-encrypted)
+ */
+export function usePrivateMessageSend() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: {
+      recipientWallet: string;
+      content: string;
+      conversationId: string;
+      messageType?: string;
+    }) => decentralizedChatClient.privateSend(request),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: chatQueryKeys.messages(variables.conversationId) });
+      queryClient.invalidateQueries({ queryKey: chatQueryKeys.conversations() });
+    },
+  });
+}
+
+/**
+ * Hook to initialize a Double Ratchet session with a peer
+ */
+export function useRatchetInit() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ peerWallet, peerPublicKey }: { peerWallet: string; peerPublicKey: string }) =>
+      decentralizedChatClient.ratchetInit(peerWallet, peerPublicKey),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: chatQueryKeys.privacyStatus() });
+    },
+  });
+}
+
+/**
+ * Hook to manage cover traffic
+ */
+export function useCoverTraffic() {
+  const queryClient = useQueryClient();
+
+  const startMutation = useMutation({
+    mutationFn: (config?: { intervalMs?: number; paddingSize?: number }) =>
+      decentralizedChatClient.coverTrafficStart(config),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: chatQueryKeys.relayStatus() });
+      queryClient.invalidateQueries({ queryKey: chatQueryKeys.privacyStatus() });
+    },
+  });
+
+  const stopMutation = useMutation({
+    mutationFn: () => decentralizedChatClient.coverTrafficStop(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: chatQueryKeys.relayStatus() });
+      queryClient.invalidateQueries({ queryKey: chatQueryKeys.privacyStatus() });
+    },
+  });
+
+  return {
+    start: startMutation.mutateAsync,
+    stop: stopMutation.mutateAsync,
+    isStarting: startMutation.isPending,
+    isStopping: stopMutation.isPending,
+  };
+}
+
+/**
+ * Hook to detect local NAT type
+ */
+export function useNatDetect() {
+  return useQuery({
+    queryKey: chatQueryKeys.natType(),
+    queryFn: () => decentralizedChatClient.natDetect(),
+    staleTime: 120000,
+    retry: 1,
+  });
 }
 
 // ============================================================================

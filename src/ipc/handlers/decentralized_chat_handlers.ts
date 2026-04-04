@@ -1847,4 +1847,140 @@ export function registerDecentralizedChatHandlers(): void {
   });
   
   logger.info("Decentralized chat handlers registered");
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Unified Privacy Layer — merges WebRTC signaling + onion routing + ICE
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // Privacy service init (bootstraps relay discovery + prekeys)
+  ipcMain.handle("dchat:privacy:init", async () => {
+    const identity = await getLocalChatIdentity();
+    if (!identity) throw new Error("No chat identity — create one first");
+
+    const { initPrivateChatService } = await import("@/lib/private_chat_service");
+    await initPrivateChatService(identity);
+    return { success: true };
+  });
+
+  // Privacy service status
+  ipcMain.handle("dchat:privacy:status", async () => {
+    const { getPrivacyChatStatus } = await import("@/lib/private_chat_service");
+    return getPrivacyChatStatus();
+  });
+
+  // Get decentralized ICE servers (no Google)
+  ipcMain.handle("dchat:ice:discover", async () => {
+    const { getPrivateIceServers } = await import("@/lib/private_chat_service");
+    return getPrivateIceServers();
+  });
+
+  // Register this node as a community TURN/STUN relay
+  ipcMain.handle("dchat:ice:register-relay", async (_, opts: {
+    type: "stun" | "turn" | "both";
+    publicIp: string;
+    port: number;
+    maxBandwidthKbps?: number;
+    region?: string;
+  }) => {
+    const { createLocalRelayAnnouncement } = await import("@/lib/decentralized_ice");
+    const identity = await getLocalChatIdentity();
+    return createLocalRelayAnnouncement({
+      ...opts,
+      operatorWallet: identity?.walletAddress,
+    });
+  });
+
+  // ICE relay health check
+  ipcMain.handle("dchat:ice:health-check", async () => {
+    const { healthCheckAll } = await import("@/lib/decentralized_ice");
+    return healthCheckAll();
+  });
+
+  // ICE status
+  ipcMain.handle("dchat:ice:status", async () => {
+    const { getIceStatus } = await import("@/lib/decentralized_ice");
+    return getIceStatus();
+  });
+
+  // Build/get an onion circuit
+  ipcMain.handle("dchat:circuit:build", async () => {
+    const { buildCircuit } = await import("@/lib/private_relay");
+    const circuit = await buildCircuit();
+    return { id: circuit.id, hops: circuit.relayPeerIds.length };
+  });
+
+  // Relay status
+  ipcMain.handle("dchat:relay:status", async () => {
+    const { getRelayStatus } = await import("@/lib/private_relay");
+    return getRelayStatus();
+  });
+
+  // Send private message (onion-routed)
+  ipcMain.handle("dchat:private:send", async (_, request: {
+    conversationId: string;
+    recipientWallet: string;
+    content: string;
+  }) => {
+    const { sendPrivateMessage } = await import("@/lib/private_chat_service");
+    // deliverFn: sends the onion packet to the entry relay via libp2p
+    const deliverFn = async (entryPeerId: string, packet: any) => {
+      // Would use chatHelia.libp2p to dial entryPeerId and send packet
+      logger.debug("Delivering onion packet to entry relay", { entryPeerId });
+      // In production: chatHelia.libp2p.dialProtocol(peerId, '/joycreate/onion/1.0.0')
+    };
+    return sendPrivateMessage(
+      request.conversationId,
+      request.recipientWallet,
+      request.content,
+      deliverFn,
+    );
+  });
+
+  // Init a Double Ratchet session with a peer
+  ipcMain.handle("dchat:ratchet:init", async (_, peerWallet: string, peerPublicKey: string) => {
+    const { initRatchetSession } = await import("@/lib/private_chat_service");
+    await initRatchetSession(peerWallet, peerPublicKey);
+    return { success: true };
+  });
+
+  // Send WebRTC signaling through onion route
+  ipcMain.handle("dchat:signal:send", async (_, recipientWallet: string, signal: any) => {
+    const { sendPrivateSignaling } = await import("@/lib/private_chat_service");
+    const deliverFn = async (entryPeerId: string, packet: any) => {
+      logger.debug("Delivering signaling via onion", { entryPeerId });
+    };
+    await sendPrivateSignaling(recipientWallet, signal, deliverFn);
+    return { success: true };
+  });
+
+  // Cover traffic control
+  ipcMain.handle("dchat:cover-traffic:start", async (_, config?: Partial<import("@/types/private_chat_types").CoverTrafficConfig>) => {
+    const { startCoverTraffic } = await import("@/lib/private_relay");
+    const deliverFn = async (packet: any) => {
+      logger.debug("Cover traffic packet sent");
+    };
+    startCoverTraffic(config, deliverFn);
+    return { success: true };
+  });
+
+  ipcMain.handle("dchat:cover-traffic:stop", async () => {
+    const { stopCoverTraffic } = await import("@/lib/private_relay");
+    stopCoverTraffic();
+    return { success: true };
+  });
+
+  // NAT detection via decentralized STUN
+  ipcMain.handle("dchat:nat:detect", async () => {
+    const { detectNATType } = await import("@/lib/decentralized_ice");
+    return detectNATType();
+  });
+
+  // Shutdown privacy service
+  ipcMain.handle("dchat:privacy:shutdown", async () => {
+    const { shutdownPrivateChatService } = await import("@/lib/private_chat_service");
+    await shutdownPrivateChatService();
+    return { success: true };
+  });
+
+  logger.info("Privacy layer handlers registered");
 }

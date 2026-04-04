@@ -126,6 +126,12 @@ import { registerMissionHandlers } from "./handlers/mission_handlers";
 import { registerLibraryHandlers } from "./handlers/library_handlers";
 import { registerImageStudioHandlers } from "./handlers/image_studio_handlers";
 import { registerVideoStudioHandlers } from "./handlers/video_studio_handlers";
+import { registerMarketplaceBrowseHandlers } from "./handlers/marketplace_browse_handlers";
+import { registerCreatorDashboardHandlers } from "./handlers/creator_dashboard_handlers";
+import { registerAgentMarketplaceHandlers } from "./handlers/agent_marketplace_handlers";
+import { registerWorkflowMarketplaceHandlers } from "./handlers/workflow_marketplace_handlers";
+import { registerMcpServerHandlers } from "./handlers/mcp_server_handlers";
+import { registerJoyAssistantHandlers } from "./handlers/joy_assistant_handlers";
 import {
   registerTaskExecutorHandlers,
   registerSystemServicesHandlers,
@@ -387,4 +393,22 @@ export function registerIpcHandlers() {
 
   // Video Studio — AI video generation across multiple providers
   registerVideoStudioHandlers();
+
+  // Marketplace Browse — Public discovery, search, and install from JoyMarketplace
+  registerMarketplaceBrowseHandlers();
+
+  // Creator Dashboard — Aggregated creator stats, earnings, and analytics
+  registerCreatorDashboardHandlers();
+
+  // Agent Marketplace Publishing — Publish/unpublish agents to JoyMarketplace
+  registerAgentMarketplaceHandlers();
+
+  // Workflow Marketplace Publishing — Publish/unpublish workflows to JoyMarketplace
+  registerWorkflowMarketplaceHandlers();
+
+  // MCP Server — Start/stop/status for the Model Context Protocol server
+  registerMcpServerHandlers();
+
+  // Joy Assistant — AI platform assistant with smart routing
+  registerJoyAssistantHandlers();
 }

@@ -128,6 +128,13 @@ function HardwareDashboard({
 
   const gpus = hardware.gpus || [];
   const hasGpu = gpus.length > 0;
+  const cpuName = hardware.cpuModel || hardware.cpu || "Unknown";
+  const totalMemoryGB = hardware.totalRAM_MB
+    ? Math.round(hardware.totalRAM_MB / 1024)
+    : hardware.totalMemoryGB ?? null;
+  const availableMemoryGB = hardware.freeRAM_MB
+    ? Math.round(hardware.freeRAM_MB / 1024)
+    : hardware.availableMemoryGB ?? null;
 
   return (
     <Card>
@@ -155,7 +162,7 @@ function HardwareDashboard({
               CPU
             </p>
             <p className="text-sm font-medium truncate">
-              {hardware.cpu || "Unknown"}
+              {cpuName}
             </p>
             <p className="text-xs text-muted-foreground">
               {hardware.cpuCores || "?"} cores
@@ -168,13 +175,13 @@ function HardwareDashboard({
               System RAM
             </p>
             <p className="text-sm font-medium">
-              {hardware.totalMemoryGB
-                ? `${hardware.totalMemoryGB} GB`
+              {totalMemoryGB !== null
+                ? `${totalMemoryGB} GB`
                 : "Unknown"}
             </p>
             <p className="text-xs text-muted-foreground">
-              {hardware.availableMemoryGB
-                ? `${hardware.availableMemoryGB} GB available`
+              {availableMemoryGB !== null
+                ? `${availableMemoryGB} GB available`
                 : ""}
             </p>
           </div>
@@ -189,7 +196,7 @@ function HardwareDashboard({
                 <div key={i}>
                   <p className="text-sm font-medium truncate">{gpu.name}</p>
                   <p className="text-xs text-muted-foreground">
-                    {gpu.vramGB ? `${gpu.vramGB} GB VRAM` : ""}
+                    {gpu.vramMB ? `${Math.round(gpu.vramMB / 1024)} GB VRAM` : gpu.vramGB ? `${gpu.vramGB} GB VRAM` : ""}
                     {gpu.vendor ? ` · ${gpu.vendor}` : ""}
                   </p>
                 </div>

@@ -238,10 +238,15 @@ async function fetchWithPlaywright(
       await context.addCookies(cookies);
     }
 
-    // Navigate
+    // Navigate — use domcontentloaded to avoid hanging on persistent connections
     const response = await page.goto(url, {
-      waitUntil: "networkidle",
-      timeout: 60_000,
+      waitUntil: "domcontentloaded",
+      timeout: 45_000,
+    });
+
+    // Best-effort wait for idle network (don't block forever)
+    await page.waitForLoadState("networkidle").catch(() => {
+      // Sites with analytics/websockets may never reach networkidle
     });
 
     // Wait for additional selectors if specified

@@ -1,9 +1,8 @@
-import { createRoute } from "@tanstack/react-router";
+import { createRoute, lazyRouteComponent } from "@tanstack/react-router";
 import { rootRoute } from "./root";
-import DatasetPage from "../pages/datasets";
 
 export const datasetsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/datasets",
-  component: DatasetPage,
+  component: lazyRouteComponent(() => import("../pages/dataset-studio/DatasetStudioPage")),
 });

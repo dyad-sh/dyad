@@ -33,7 +33,7 @@
   "visualEditor": "Visual editor (Pro)",
   "visualEditorDescription": "Visual editing lets you make UI changes without AI and is a Pro-only feature",
   "summarizeNewChatTip": "Creating a new chat makes the AI more focused and efficient",
-  "summarizeToNewChat": "Summarize",
+  "summarizeToNewChat": "Summarize to new chat",
   "summarizeErrorNoContext": "Unable to summarize: missing app or chat context",
   "summarizeErrorFailed": "Failed to summarize chat: {{error}}",
   "summarizing": "Summarizing...",

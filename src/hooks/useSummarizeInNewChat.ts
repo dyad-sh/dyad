@@ -1,6 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import {
   chatInputValueAtom,
@@ -48,17 +47,14 @@ export function useSummarizeInNewChat() {
   const setVisualEditingSelectedComponent = useSetAtom(
     visualEditingSelectedComponentAtom,
   );
-  // Ref to prevent double-submission of summarize action , which can happen due to multiple quick clicks
-  const inFlightRef = useRef(false);
+
   const handleSummarizeImpl = async () => {
-    if (inFlightRef.current || isSummarizing) {
+    if (isSummarizing) {
       return;
     }
-    inFlightRef.current = true;
     setIsSummarizing(true);
     if (!appId || !chatId) {
       showError(t("summarizeErrorNoContext"));
-      inFlightRef.current = false;
       setIsSummarizing(false);
       return;
     }
@@ -91,9 +87,7 @@ export function useSummarizeInNewChat() {
         chatId: newChatId,
         redo: false,
         onSettled: ({ success }) => {
-          inFlightRef.current = false;
           setIsSummarizing(false);
-
           if (success) {
             posthog.capture("chat:summarize-manual");
           }
@@ -102,8 +96,6 @@ export function useSummarizeInNewChat() {
     } catch (err) {
       const errorMessage = (err as Error)?.message ?? "Unknown error";
       showError(t("summarizeErrorFailed", { error: errorMessage }));
-    } finally {
-      inFlightRef.current = false;
       setIsSummarizing(false);
     }
   };

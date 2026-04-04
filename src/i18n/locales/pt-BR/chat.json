@@ -33,7 +33,7 @@
   "visualEditor": "Editor visual (Pro)",
   "visualEditorDescription": "A edição visual permite fazer alterações na interface sem IA e é um recurso exclusivo do Pro",
   "summarizeNewChatTip": "Criar um novo chat torna a IA mais focada e eficiente",
-  "summarizeToNewChat": "Resumir",
+  "summarizeToNewChat": "Resumir em novo chat",
   "summarizeErrorNoContext": "Não é possível resumir: falta contexto de aplicativo ou chat",
   "summarizeErrorFailed": "Falha ao resumir chat: {{error}}",
   "summarizing": "Resumindo...",

@@ -47,18 +47,13 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
   const setVisualEditingSelectedComponent = useSetAtom(
     visualEditingSelectedComponentAtom,
   );
-
-  // Use ref-based mutex for synchronous race-condition protection
-  // The Jotai atom guard is async, so double-clicks can both read false before first update commits
+  // Ref to prevent double-submission of summarize action , which can happen due to multiple quick clicks
   const inFlightRef = useRef(false);
-
   const handleSummarizeImpl = async (chatIdForSummarize?: number) => {
     // Use synchronous ref check to prevent double-submissions within a single render frame
     if (inFlightRef.current || isSummarizing) {
       return;
     }
-
-    // Prevent duplicate summarize clicks while in progress
     inFlightRef.current = true;
     setIsSummarizing(true);
     const finalChatId = chatIdForSummarize ?? chatId;
@@ -71,20 +66,14 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
 
     try {
       const newChatId = await ipc.chat.createChat(appId);
-
-      // Delay chat selection until after navigation succeeds to prevent orphaned chats
       await navigate({ to: "/chat", search: { id: newChatId } });
-
-      // Now safe to update atoms after successful navigation
       setSelectedChatId(newChatId);
       addSessionOpenedChatId(newChatId);
       pushRecentViewedChatId(newChatId);
-
-      // Clear draft and UI state after navigation to new summary chat.
+      // Clear ui state
       setChatInputValue("");
       setAttachments([]);
       setNeedsFreshPlanChat(false);
-      // Clear visual selections to prevent stale components from applying to wrong chat
       setSelectedComponents([]);
       setVisualEditingSelectedComponent(null);
       setDismissedImageJobIds((prev) => {

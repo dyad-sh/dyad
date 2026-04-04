@@ -1,4 +1,5 @@
 import { AlertTriangle, ArrowRight, Loader2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -36,6 +37,7 @@ export function ContextLimitBanner({
   totalTokens,
   contextWindow,
 }: ContextLimitBannerProps) {
+  const { t } = useTranslation("chat");
   const { handleSummarize, isSummarizing } = useSummarizeInNewChat();
 
   if (!shouldShowContextLimitBanner({ totalTokens, contextWindow })) {
@@ -72,11 +74,11 @@ export function ContextLimitBanner({
           {isSummarizing ? (
             <>
               <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-              Summarizing
+              {t("summarizing")}
             </>
           ) : (
             <>
-              Summarize
+              {t("summarizeToNewChat")}
               <ArrowRight className="h-3 w-3 ml-1" />
             </>
           )}

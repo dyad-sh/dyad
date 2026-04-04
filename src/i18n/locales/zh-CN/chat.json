@@ -34,6 +34,8 @@
   "visualEditorDescription": "可视化编辑让您无需 AI 即可进行 UI 更改，这是 Pro 专属功能",
   "summarizeNewChatTip": "创建新聊天可以让 AI 更加专注和高效",
   "summarizeToNewChat": "总结",
+  "summarizeErrorNoContext": "无法总结：缺少应用或聊天上下文",
+  "summarizeErrorFailed": "总结聊天失败：{{error}}",
   "summarizing": "正在总结...",
   "refactorFile": "重构 {{path}} 并使其更模块化",
   "refactorDescription": "重构文件以提高可维护性",

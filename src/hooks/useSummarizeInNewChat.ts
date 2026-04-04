@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useRef } from "react";
+import { useTranslation } from "react-i18next";
 import {
   chatInputValueAtom,
   attachmentsAtom,
@@ -24,9 +25,9 @@ import { usePostHog } from "posthog-js/react";
 import { ipc } from "@/ipc/types";
 import { showError } from "@/lib/toast";
 
-export function useSummarizeInNewChat(overrideChatId?: number) {
-  const atomChatId = useAtomValue(selectedChatIdAtom);
-  const chatId = overrideChatId ?? atomChatId;
+export function useSummarizeInNewChat() {
+  const { t } = useTranslation("chat");
+  const chatId = useAtomValue(selectedChatIdAtom);
   const appId = useAtomValue(selectedAppIdAtom);
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const pushRecentViewedChatId = useSetAtom(pushRecentViewedChatIdAtom);
@@ -49,15 +50,14 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
   );
   // Ref to prevent double-submission of summarize action , which can happen due to multiple quick clicks
   const inFlightRef = useRef(false);
-  const handleSummarizeImpl = async (chatIdForSummarize?: number) => {
+  const handleSummarizeImpl = async () => {
     if (inFlightRef.current || isSummarizing) {
       return;
     }
     inFlightRef.current = true;
     setIsSummarizing(true);
-    const finalChatId = chatIdForSummarize ?? chatId;
-    if (!appId || !finalChatId) {
-      showError("Unable to summarize: missing app or chat context");
+    if (!appId || !chatId) {
+      showError(t("summarizeErrorNoContext"));
       inFlightRef.current = false;
       setIsSummarizing(false);
       return;
@@ -87,7 +87,7 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
       });
 
       await streamMessage({
-        prompt: "Summarize from chat-id=" + finalChatId,
+        prompt: "Summarize from chat-id=" + chatId,
         chatId: newChatId,
         redo: false,
         onSettled: ({ success }) => {
@@ -101,8 +101,8 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
       });
     } catch (err) {
       const errorMessage = (err as Error)?.message ?? "Unknown error";
-
-      showError(`Failed to summarize chat: ${errorMessage}`);
+      showError(t("summarizeErrorFailed", { error: errorMessage }));
+    } finally {
       inFlightRef.current = false;
       setIsSummarizing(false);
     }
@@ -113,6 +113,5 @@ export function useSummarizeInNewChat(overrideChatId?: number) {
   return {
     handleSummarize,
     isSummarizing,
-    handleSummarizeWithChatId: handleSummarizeImpl,
   };
 }

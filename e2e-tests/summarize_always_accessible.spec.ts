@@ -29,9 +29,9 @@ test("summarize button appears in chat header when in a chat", async ({
     ? parseInt(originalChatIdMatch[1])
     : null;
 
+  await expect(summarizeButton).toBeEnabled({ timeout: Timeout.LONG });
   await summarizeButton.click();
 
-  // Wait for navigation to a DIFFERENT chat (not just the pattern match)
   await po.page.waitForURL(
     (url) => {
       const match = url.toString().match(/id=(\d+)/);
@@ -63,10 +63,5 @@ test("summarize button is hidden on home page (guard clause works)", async ({
     '[data-testid="summarize-chat-button"]',
   );
 
-  // Give some time for the page to stabilize
-  await po.page.waitForTimeout(500);
-
-  // Verify the button is not visible when no chat is selected
-  const isVisible = await summarizeButton.isVisible().catch(() => false);
-  expect(isVisible).toBe(false);
+  await expect(summarizeButton).not.toBeVisible();
 });

@@ -251,8 +251,6 @@ function getMidTurnCompactionSummaryIds(
   return hiddenIds;
 }
 
-// detectFrameworkType is imported from @/ipc/utils/framework_utils
-
 /**
  * Handle a chat stream in local-agent mode
  */

@@ -355,15 +355,16 @@ Create a verification page where users enter the OTP code:
 
 import { useState } from 'react';
 import { authClient } from '@/lib/auth/client';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 
 export default function VerifyEmailPage() {
   const [otp, setOtp] = useState('');
   const [message, setMessage] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
 
-  const searchParams = new URLSearchParams(window.location.search);
+  const searchParams = useSearchParams();
   const email = searchParams.get('email') ?? '';
 
   const handleVerify = async (e: React.FormEvent) => {
@@ -396,7 +397,7 @@ export default function VerifyEmailPage() {
     try {
       const { error } = await authClient.sendVerificationEmail({
         email,
-        callbackURL: window.location.href,
+        callbackURL: pathname,
       });
       if (error) throw error;
       setMessage('Verification email resent! Check your inbox.');

@@ -240,6 +240,23 @@ export async function getNeonClient(): Promise<Api<unknown>> {
             "https://ep-test.neonauth.us-east-2.aws.neon.tech/neondb/auth",
         },
       }),
+      listProjectBranchRoles: async () => ({
+        data: {
+          roles: [{ name: "neondb_owner", protected: false }],
+        },
+      }),
+      getProjectBranch: async (projectId: string, branchId: string) => ({
+        data: {
+          branch: {
+            id: branchId,
+            project_id: projectId,
+            name: "test-branch",
+            default: false,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+        },
+      }),
       getNeonAuthEmailAndPasswordConfig: async (
         _projectId: string,
         _branchId: string,

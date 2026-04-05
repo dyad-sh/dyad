@@ -11,59 +11,14 @@ import {
   getConnectionUri,
   executeNeonSql,
 } from "../../neon_admin/neon_context";
-import { db } from "../../db";
-import { apps } from "../../db/schema";
-import { eq } from "drizzle-orm";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import { getAppWithNeonBranch } from "./neon_handlers";
 
 const logger = log.scope("migration_handlers");
 
 // =============================================================================
 // Helper Functions
 // =============================================================================
-
-type AppRow = typeof apps.$inferSelect;
-
-/**
- * Fetches an app record and validates it has a Neon project and dev branch.
- */
-async function getAppWithNeonProject(appId: number): Promise<{
-  appData: AppRow;
-  projectId: string;
-  devBranchId: string;
-}> {
-  const result = await db
-    .select()
-    .from(apps)
-    .where(eq(apps.id, appId))
-    .limit(1);
-
-  if (result.length === 0) {
-    throw new DyadError(
-      `App with ID ${appId} not found`,
-      DyadErrorKind.NotFound,
-    );
-  }
-
-  const appData = result[0];
-  if (!appData.neonProjectId) {
-    throw new DyadError(
-      `No Neon project found for app ${appId}. Connect a Neon database first.`,
-      DyadErrorKind.Precondition,
-    );
-  }
-
-  const devBranchId =
-    appData.neonActiveBranchId ?? appData.neonDevelopmentBranchId;
-  if (!devBranchId) {
-    throw new DyadError(
-      `No development branch found for app ${appId}`,
-      DyadErrorKind.Precondition,
-    );
-  }
-
-  return { appData, projectId: appData.neonProjectId, devBranchId };
-}
 
 /**
  * Finds the production (default) branch for a Neon project.
@@ -222,14 +177,24 @@ export function registerMigrationHandlers() {
     logger.info(`Pushing migration for app ${appId}`);
 
     // 1. Get app data and resolve branches
-    const { projectId, devBranchId } = await getAppWithNeonProject(appId);
+    const { appData, branchId: devBranchId } =
+      await getAppWithNeonBranch(appId);
+    const projectId = appData.neonProjectId!;
     const { branchId: prodBranchId } = await getProductionBranchId(projectId);
 
     logger.info(
       `Resolved branches — dev: ${devBranchId}, prod: ${prodBranchId}, project: ${projectId}`,
     );
 
-    // 2. Get connection URIs for both branches
+    // 2. Guard: dev and prod must be different branches
+    if (devBranchId === prodBranchId) {
+      throw new DyadError(
+        "Active branch is the production branch. Create a development branch first.",
+        DyadErrorKind.Precondition,
+      );
+    }
+
+    // 3. Get connection URIs for both branches
     const devUri = await getConnectionUri({
       projectId,
       branchId: devBranchId,
@@ -316,7 +281,7 @@ export function registerMigrationHandlers() {
 
       // 9. Run drizzle-kit push directly against production
       const pushResult = await spawnDrizzleKit({
-        args: ["push", `--config=${pushConfigPath}`],
+        args: ["push", "--force", `--config=${pushConfigPath}`],
         cwd: tmpDir,
       });
 

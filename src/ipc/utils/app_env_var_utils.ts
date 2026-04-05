@@ -216,12 +216,14 @@ export async function updateNeonEnvVars({
   await fs.promises.writeFile(getEnvFilePath({ appPath }), envFileContents);
 }
 
-const NEON_ENV_VAR_KEYS = [
-  "DATABASE_URL",
-  "POSTGRES_URL",
+/** Keys that are unambiguously Neon-owned and always safe to remove. */
+const NEON_ONLY_ENV_VAR_KEYS = [
   "NEON_AUTH_BASE_URL",
   "NEON_AUTH_COOKIE_SECRET",
 ];
+
+/** Generic DB keys that should only be removed if their value looks Neon-owned. */
+const GENERIC_DB_ENV_VAR_KEYS = ["DATABASE_URL", "POSTGRES_URL"];
 
 export async function removeNeonEnvVars({
   appPath,
@@ -237,9 +239,16 @@ export async function removeNeonEnvVars({
     return;
   }
 
-  const filtered = envVars.filter(
-    (envVar) => !NEON_ENV_VAR_KEYS.includes(envVar.key),
-  );
+  const filtered = envVars.filter((envVar) => {
+    if (NEON_ONLY_ENV_VAR_KEYS.includes(envVar.key)) return false;
+    if (
+      GENERIC_DB_ENV_VAR_KEYS.includes(envVar.key) &&
+      envVar.value.includes(".neon.tech")
+    ) {
+      return false;
+    }
+    return true;
+  });
 
   const envFileContents = serializeEnvFile(filtered);
   await fs.promises.writeFile(getEnvFilePath({ appPath }), envFileContents);

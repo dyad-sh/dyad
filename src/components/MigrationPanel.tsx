@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ipc } from "@/ipc/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +14,14 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
     mutationFn: () => ipc.migration.push({ appId }),
   });
 
+  // Auto-dismiss success banner after 5 seconds
+  useEffect(() => {
+    if (pushMutation.isSuccess) {
+      const timer = setTimeout(() => pushMutation.reset(), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [pushMutation.isSuccess]);
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -23,7 +32,8 @@ export const MigrationPanel = ({ appId }: MigrationPanelProps) => {
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          Push your development database schema to production.
+          Push your active development branch schema to the default (production)
+          branch.
         </p>
 
         <Button

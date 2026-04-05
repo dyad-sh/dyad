@@ -59,6 +59,10 @@ export function NeonConnector({ appId }: { appId: number }) {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [isSwitchingBranch, setIsSwitchingBranch] = useState(false);
+  const [isUpdatingEmailVerification, setIsUpdatingEmailVerification] =
+    useState(false);
 
   const {
     isConnected,
@@ -104,6 +108,7 @@ export function NeonConnector({ appId }: { appId: number }) {
       return;
     }
 
+    setIsConnecting(true);
     try {
       await ipc.neon.setAppProject({ appId, projectId });
       toast.success(t("integrations.neon.projectConnected"));
@@ -117,6 +122,8 @@ export function NeonConnector({ appId }: { appId: number }) {
           error: String(error),
         }),
       );
+    } finally {
+      setIsConnecting(false);
     }
   };
 
@@ -160,6 +167,7 @@ export function NeonConnector({ appId }: { appId: number }) {
   };
 
   const handleEmailVerificationToggle = async (checked: boolean) => {
+    setIsUpdatingEmailVerification(true);
     try {
       await ipc.neon.updateEmailVerification({
         appId,
@@ -182,15 +190,18 @@ export function NeonConnector({ appId }: { appId: number }) {
           error: String(error),
         }),
       );
+    } finally {
+      setIsUpdatingEmailVerification(false);
     }
   };
 
   const handleBranchSelect = async (branchId: string) => {
+    setIsSwitchingBranch(true);
     try {
       const result = await ipc.neon.setActiveBranch({ appId, branchId });
       const branch = branches.find((b) => b.branchId === branchId);
       toast.success(
-        `${t("integrations.neon.branchSwitched")}: ${branch?.branchName ?? branchId}`,
+        `${t("integrations.neon.branchSwitched")}: ${branch?.branchName ?? branchId}. DATABASE_URL updated in .env.local.`,
       );
       if (result.warning) {
         toast.warning(result.warning);
@@ -205,6 +216,8 @@ export function NeonConnector({ appId }: { appId: number }) {
           error: String(error),
         }),
       );
+    } finally {
+      setIsSwitchingBranch(false);
     }
   };
 
@@ -284,6 +297,7 @@ export function NeonConnector({ appId }: { appId: number }) {
                 <Select
                   value={app.neonActiveBranchId ?? ""}
                   onValueChange={(value) => value && handleBranchSelect(value)}
+                  disabled={isSwitchingBranch}
                 >
                   <SelectTrigger
                     id="neon-branch-select"
@@ -320,6 +334,7 @@ export function NeonConnector({ appId }: { appId: number }) {
                   id="neon-email-verification"
                   checked={emailPasswordConfig.require_email_verification}
                   onCheckedChange={handleEmailVerificationToggle}
+                  disabled={isUpdatingEmailVerification}
                 />
                 <Label htmlFor="neon-email-verification">
                   {t("integrations.neon.requireEmailVerification")}
@@ -454,6 +469,7 @@ export function NeonConnector({ appId }: { appId: number }) {
                   <Select
                     value=""
                     onValueChange={(v) => v && handleProjectSelect(v)}
+                    disabled={isConnecting}
                   >
                     <SelectTrigger
                       id="neon-project-select"

@@ -38,7 +38,7 @@ type AppRow = typeof apps.$inferSelect;
  * Fetches an app record and resolves the active Neon branch ID.
  * Throws if the app is not found, has no Neon project, or has no branch.
  */
-async function getAppWithNeonBranch(appId: number): Promise<{
+export async function getAppWithNeonBranch(appId: number): Promise<{
   appData: AppRow;
   branchId: string;
 }> {
@@ -438,6 +438,12 @@ export function registerNeonHandlers() {
         return { projects: [] };
       }
 
+      if (response.data.projects.length >= 100) {
+        logger.warn(
+          "Neon project list may be truncated — returned 100 projects (the maximum). Some projects may not be shown.",
+        );
+      }
+
       return {
         projects: response.data.projects.map((p) => ({
           id: p.id,
@@ -514,6 +520,7 @@ export function registerNeonHandlers() {
       );
       return { success: true };
     } catch (error: any) {
+      if (error instanceof DyadError) throw error;
       const errorMessage = getNeonErrorMessage(error);
       logger.error(
         `Failed to set Neon project for app ${appId}: ${errorMessage}`,
@@ -581,26 +588,35 @@ export function registerNeonHandlers() {
 
       const appData = appRecord[0];
 
+      if (!appData.neonProjectId) {
+        throw new DyadError(
+          `No Neon project found for app ${appId}`,
+          DyadErrorKind.Precondition,
+        );
+      }
+
+      // Validate that the branch belongs to this project
+      const neonClient = await getNeonClient();
+      await neonClient.getProjectBranch(appData.neonProjectId, branchId);
+
+      // Inject env vars first so DB is only updated on success
+      const warning = await autoInjectNeonEnvVars({
+        appId,
+        projectId: appData.neonProjectId,
+        branchId,
+      });
+
       await db
         .update(apps)
         .set({ neonActiveBranchId: branchId })
         .where(eq(apps.id, appId));
-
-      // Auto-inject env vars for the new active branch
-      let warning: string | undefined;
-      if (appData.neonProjectId) {
-        warning = await autoInjectNeonEnvVars({
-          appId,
-          projectId: appData.neonProjectId,
-          branchId,
-        });
-      }
 
       logger.info(
         `Successfully set active branch ${branchId} for app ${appId}`,
       );
       return { success: true, warning };
     } catch (error: any) {
+      if (error instanceof DyadError) throw error;
       logger.error(`Failed to set active branch for app ${appId}:`, error);
       throw new Error(`Failed to set active branch for app ${appId}`);
     }

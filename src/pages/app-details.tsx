@@ -47,8 +47,10 @@ import { AppUpgrades } from "@/components/AppUpgrades";
 import { CapacitorControls } from "@/components/CapacitorControls";
 import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManager";
 import { useAddAppToFavorite } from "@/hooks/useAddAppToFavorite";
+import { useTranslation } from "react-i18next";
 
 export default function AppDetailsPage() {
+  const { t } = useTranslation("home");
   const navigate = useNavigate();
   const router = useRouter();
   const search = useSearch({ from: "/app-details" as const });
@@ -442,8 +444,7 @@ export default function AppDetailsPage() {
           )}
           {appId && selectedApp?.neonProjectId && (
             <p className="text-xs text-muted-foreground italic px-1">
-              Supabase is unavailable because a Neon database is already
-              connected. Only one database integration can be active at a time.
+              {t("integrations.mutualExclusion.supabaseUnavailable")}
             </p>
           )}
           {appId && !selectedApp?.supabaseProjectId && (
@@ -451,8 +452,7 @@ export default function AppDetailsPage() {
           )}
           {appId && selectedApp?.supabaseProjectId && (
             <p className="text-xs text-muted-foreground italic px-1">
-              Neon is unavailable because a Supabase project is already
-              connected. Only one database integration can be active at a time.
+              {t("integrations.mutualExclusion.neonUnavailable")}
             </p>
           )}
           {appId && <CapacitorControls appId={appId} />}

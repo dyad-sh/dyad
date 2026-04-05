@@ -1,14 +1,6 @@
-import React, { useState } from "react";
+import React from "react";
 import { CustomTagState } from "./stateTypes";
-import { Table2 } from "lucide-react";
-import {
-  DyadCard,
-  DyadCardHeader,
-  DyadBadge,
-  DyadExpandIcon,
-  DyadStateIndicator,
-  DyadCardContent,
-} from "./DyadCardPrimitives";
+import { DyadDbTableSchema } from "./DyadDbTableSchema";
 
 interface DyadNeonTableSchemaProps {
   node: {
@@ -20,49 +12,6 @@ interface DyadNeonTableSchemaProps {
   children: React.ReactNode;
 }
 
-export function DyadNeonTableSchema({
-  node,
-  children,
-}: DyadNeonTableSchemaProps) {
-  const [isContentVisible, setIsContentVisible] = useState(false);
-  const { table, state } = node.properties;
-  const isLoading = state === "pending";
-  const isAborted = state === "aborted";
-  const content = typeof children === "string" ? children : "";
-
-  return (
-    <DyadCard
-      state={state}
-      accentColor="teal"
-      onClick={() => setIsContentVisible(!isContentVisible)}
-      isExpanded={isContentVisible}
-    >
-      <DyadCardHeader icon={<Table2 size={15} />} accentColor="teal">
-        <DyadBadge color="teal">
-          {table ? "Table Schema" : "Neon Table Schema"}
-        </DyadBadge>
-        {table && (
-          <span className="font-medium text-sm text-foreground truncate">
-            {table}
-          </span>
-        )}
-        {isLoading && (
-          <DyadStateIndicator state="pending" pendingLabel="Fetching..." />
-        )}
-        {isAborted && (
-          <DyadStateIndicator state="aborted" abortedLabel="Did not finish" />
-        )}
-        <div className="ml-auto">
-          <DyadExpandIcon isExpanded={isContentVisible} />
-        </div>
-      </DyadCardHeader>
-      <DyadCardContent isExpanded={isContentVisible}>
-        {content && (
-          <div className="p-3 text-xs font-mono whitespace-pre-wrap max-h-80 overflow-y-auto bg-muted/20 rounded-lg">
-            {content}
-          </div>
-        )}
-      </DyadCardContent>
-    </DyadCard>
-  );
+export function DyadNeonTableSchema(props: DyadNeonTableSchemaProps) {
+  return <DyadDbTableSchema provider="Neon" {...props} />;
 }

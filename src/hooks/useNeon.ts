@@ -9,7 +9,7 @@ import { useLoadApp } from "@/hooks/useLoadApp";
 import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
 
-export function useNeon(appId: number) {
+export function useNeon(appId: number | null) {
   const { settings } = useSettings();
   const { app } = useLoadApp(appId);
 
@@ -37,8 +37,8 @@ export function useNeon(appId: number) {
     error: branchesError,
   } = useQuery({
     queryKey: queryKeys.neon.project({ appId }),
-    queryFn: () => ipc.neon.getProject({ appId }),
-    enabled: !!app?.neonProjectId,
+    queryFn: () => ipc.neon.getProject({ appId: appId! }),
+    enabled: !!appId && !!app?.neonProjectId,
   });
 
   const branches: NeonBranch[] = projectInfo?.branches ?? [];
@@ -50,8 +50,8 @@ export function useNeon(appId: number) {
         appId,
         branchId: app?.neonActiveBranchId ?? null,
       }),
-      queryFn: () => ipc.neon.getEmailPasswordConfig({ appId }),
-      enabled: !!app?.neonProjectId && !!app?.neonActiveBranchId,
+      queryFn: () => ipc.neon.getEmailPasswordConfig({ appId: appId! }),
+      enabled: !!appId && !!app?.neonProjectId && !!app?.neonActiveBranchId,
     });
 
   return {

@@ -31,7 +31,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
   const appId = useAtomValue(selectedAppIdAtom);
   const chatId = useAtomValue(selectedChatIdAtom);
   const { app } = useLoadApp(appId);
-  const { projectInfo } = useNeon(appId ?? 0);
+  const { projectInfo } = useNeon(appId);
 
   const handleKeepGoingClick = () => {
     if (chatId === null) {

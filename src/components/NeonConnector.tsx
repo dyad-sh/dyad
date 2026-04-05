@@ -329,16 +329,21 @@ export function NeonConnector({ appId }: { appId: number }) {
             </div>
 
             {!isLoadingEmailConfig && emailPasswordConfig && (
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="neon-email-verification"
-                  checked={emailPasswordConfig.require_email_verification}
-                  onCheckedChange={handleEmailVerificationToggle}
-                  disabled={isUpdatingEmailVerification}
-                />
-                <Label htmlFor="neon-email-verification">
-                  {t("integrations.neon.requireEmailVerification")}
-                </Label>
+              <div className="space-y-1">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="neon-email-verification"
+                    checked={emailPasswordConfig.require_email_verification}
+                    onCheckedChange={handleEmailVerificationToggle}
+                    disabled={isUpdatingEmailVerification}
+                  />
+                  <Label htmlFor="neon-email-verification">
+                    {t("integrations.neon.requireEmailVerification")}
+                  </Label>
+                </div>
+                <p className="text-xs text-muted-foreground pl-9">
+                  {t("integrations.neon.emailVerificationHelp")}
+                </p>
               </div>
             )}
 

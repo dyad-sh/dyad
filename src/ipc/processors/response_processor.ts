@@ -124,19 +124,6 @@ export async function processFullResponseActions(
     return {};
   }
 
-  if (
-    chatWithApp.app.neonProjectId &&
-    chatWithApp.app.neonDevelopmentBranchId
-  ) {
-    try {
-      await storeDbTimestampAtCurrentVersion({
-        appId: chatWithApp.app.id,
-      });
-    } catch (error) {
-      logger.error("Error creating Neon branch at current version:", error);
-    }
-  }
-
   const settings: UserSettings = readSettings();
   const appPath = getDyadAppPath(chatWithApp.app.path);
   const writtenFiles: string[] = [];
@@ -148,6 +135,24 @@ export async function processFullResponseActions(
 
   const warnings: Output[] = [];
   const errors: Output[] = [];
+
+  if (
+    chatWithApp.app.neonProjectId &&
+    chatWithApp.app.neonDevelopmentBranchId
+  ) {
+    try {
+      await storeDbTimestampAtCurrentVersion({
+        appId: chatWithApp.app.id,
+      });
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logger.error("Error creating Neon branch at current version:", error);
+      warnings.push({
+        message: "Failed to save database version snapshot",
+        error: errorMsg,
+      });
+    }
+  }
 
   try {
     // Extract all tags

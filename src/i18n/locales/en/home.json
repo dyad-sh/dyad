@@ -585,7 +585,21 @@
       "failedUpdateEmailVerification": "Failed to update email verification: {{error}}",
       "nextjsOnly": "Neon integration is currently available for Next.js projects.",
       "disconnectConfirmation": "Are you sure you want to disconnect this Neon project? This may break your app's database connection.",
-      "errorLoadingBranches": "Failed to load branches: {{message}}"
+      "errorLoadingBranches": "Failed to load branches: {{message}}",
+      "emailVerificationHelp": "When enabled, users must verify their email address before they can sign in to your app."
+    },
+    "migration": {
+      "title": "Database Migration",
+      "description": "Push your active development branch schema to the default (production) branch.",
+      "migrateToProduction": "Migrate to Production",
+      "migrating": "Migrating...",
+      "success": "Migration applied successfully.",
+      "errorMessage": "Migration failed. Check that your development database has a valid schema.",
+      "showDetails": "Show details"
+    },
+    "mutualExclusion": {
+      "supabaseUnavailable": "Supabase is unavailable because a Neon database is already connected. Only one database integration can be active at a time.",
+      "neonUnavailable": "Neon is unavailable because a Supabase project is already connected. Only one database integration can be active at a time."
     }
   }
 }

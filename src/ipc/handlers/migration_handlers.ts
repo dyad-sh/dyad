@@ -86,7 +86,10 @@ async function createTempDrizzleConfig({
 };
 `;
   const configPath = path.join(tmpDir, configName);
-  await fs.writeFile(configPath, configContent, "utf-8");
+  await fs.writeFile(configPath, configContent, {
+    encoding: "utf-8",
+    mode: 0o600,
+  });
   return configPath;
 }
 
@@ -103,17 +106,15 @@ async function spawnDrizzleKit({
   timeoutMs?: number;
 }): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const drizzleKitBin = getDrizzleKitPath();
-  const command = `node "${drizzleKitBin}" ${args.join(" ")}`;
 
   return new Promise((resolve, reject) => {
-    logger.info(`Running: ${command}`);
+    logger.info(`Running: node ${drizzleKitBin} ${args.join(" ")}`);
 
     // Set NODE_PATH so that schema files in the temp dir can resolve
     // drizzle-orm and other dependencies from the project's node_modules.
     const nodeModulesPath = path.join(app.getAppPath(), "node_modules");
-    const proc = spawn(command, {
+    const proc = spawn("node", [drizzleKitBin, ...args], {
       cwd,
-      shell: true,
       stdio: "pipe",
       env: { ...process.env, NODE_PATH: nodeModulesPath },
     });

@@ -301,7 +301,7 @@ export const queryKeys = {
       appId,
       branchId,
     }: {
-      appId: number;
+      appId: number | null;
       branchId: string | null;
     }) => ["neon", "emailPasswordConfig", appId, branchId] as const,
   },

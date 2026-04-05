@@ -12,6 +12,7 @@ import {
   executeNeonSql,
   getNeonTableSchema,
   getBranchRoleName,
+  getConnectionUri,
 } from "../../neon_admin/neon_context";
 import { neonContracts, type NeonBranch } from "../types/neon";
 import { db } from "../../db";
@@ -145,14 +146,7 @@ async function autoInjectNeonEnvVars({
     .limit(1);
   if (appRecord.length === 0) return;
 
-  const neonClient = await getNeonClient();
-  const roleName = await getBranchRoleName({ projectId, branchId });
-  const connectionUriResponse = await neonClient.getConnectionUri({
-    projectId,
-    branch_id: branchId,
-    database_name: "neondb",
-    role_name: roleName,
-  });
+  const connectionUri = await getConnectionUri({ projectId, branchId });
   // Attempt to ensure Neon Auth is active; capture any error as a warning
   let neonAuthBaseUrl: string | undefined;
   let warning: string | undefined;
@@ -166,7 +160,7 @@ async function autoInjectNeonEnvVars({
   // Always write env vars (DATABASE_URL, POSTGRES_URL, and auth URL if available)
   await updateNeonEnvVars({
     appPath: appRecord[0].path,
-    connectionUri: connectionUriResponse.data.uri,
+    connectionUri,
     neonAuthBaseUrl,
   });
 
@@ -180,6 +174,19 @@ export function registerNeonHandlers() {
     const neonClient = await getNeonClient();
 
     logger.info(`Creating Neon project: ${name} for app ${appId}`);
+
+    // Guard: prevent connecting both Supabase and Neon on the same app
+    const existingApp = await db
+      .select({ supabaseProjectId: apps.supabaseProjectId })
+      .from(apps)
+      .where(eq(apps.id, appId))
+      .limit(1);
+    if (existingApp[0]?.supabaseProjectId) {
+      throw new DyadError(
+        "Cannot connect Neon: this app already has a Supabase project. Disconnect Supabase first.",
+        DyadErrorKind.Precondition,
+      );
+    }
 
     try {
       // Get the organization ID
@@ -463,6 +470,19 @@ export function registerNeonHandlers() {
   createTypedHandler(neonContracts.setAppProject, async (_, params) => {
     const { appId, projectId } = params;
     logger.info(`Setting Neon project ${projectId} for app ${appId}`);
+
+    // Guard: prevent connecting both Supabase and Neon on the same app
+    const existingApp = await db
+      .select({ supabaseProjectId: apps.supabaseProjectId })
+      .from(apps)
+      .where(eq(apps.id, appId))
+      .limit(1);
+    if (existingApp[0]?.supabaseProjectId) {
+      throw new DyadError(
+        "Cannot connect Neon: this app already has a Supabase project. Disconnect Supabase first.",
+        DyadErrorKind.Precondition,
+      );
+    }
 
     try {
       const neonClient = await getNeonClient();

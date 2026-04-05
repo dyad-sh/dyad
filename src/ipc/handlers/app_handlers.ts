@@ -2698,18 +2698,9 @@ export function registerAppHandlers() {
     const appPath = getDyadAppPath(appRecord.path);
     const screenshotDir = path.join(appPath, ".dyad", "screenshot");
 
-    // Ensure directory exists
+    // Ensure directory exists and is empty
+    await fsPromises.rm(screenshotDir, { recursive: true, force: true });
     await fsPromises.mkdir(screenshotDir, { recursive: true });
-
-    // Delete any existing screenshot files
-    try {
-      const existingFiles = await fsPromises.readdir(screenshotDir);
-      for (const file of existingFiles) {
-        await fsPromises.unlink(path.join(screenshotDir, file));
-      }
-    } catch {
-      // Directory may not exist yet, ignore
-    }
 
     // Decode data URL and write PNG
     const base64Data = dataUrl.replace(/^data:image\/\w+;base64,/, "");

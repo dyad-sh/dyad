@@ -54,7 +54,7 @@ export const DyadAddIntegration: React.FC<DyadAddIntegrationProps> = ({
 
   const isIntegrationComplete =
     (provider === "supabase" && app?.supabaseProjectName) ||
-    (provider === "neon" && app?.neonProjectId);
+    (provider === "neon" && app?.neonProjectId && app?.neonActiveBranchId);
 
   const integrationLabel =
     provider === "supabase" && app?.supabaseProjectName

@@ -27,7 +27,10 @@ import {
   getSupabaseAvailableSystemPrompt,
   SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT,
 } from "../../prompts/supabase_prompt";
-import { getNeonAvailableSystemPrompt } from "../../prompts/neon_prompt";
+import {
+  getNeonAvailableSystemPrompt,
+  NEON_NOT_AVAILABLE_SYSTEM_PROMPT,
+} from "../../prompts/neon_prompt";
 import {
   getNeonClientCode,
   getNeonContext,
@@ -874,6 +877,7 @@ ${componentSnippet}
           !isSecurityReviewIntent
         ) {
           systemPrompt += "\n\n" + SUPABASE_NOT_AVAILABLE_SYSTEM_PROMPT;
+          systemPrompt += "\n\n" + NEON_NOT_AVAILABLE_SYSTEM_PROMPT;
         }
         const isSummarizeIntent = req.prompt.startsWith(
           "Summarize from chat-id=",

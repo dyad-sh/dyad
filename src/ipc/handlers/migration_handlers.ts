@@ -54,7 +54,7 @@ async function getAppWithNeonProject(appId: number): Promise<{
   }
 
   const devBranchId =
-    appData.neonDevelopmentBranchId ?? appData.neonActiveBranchId;
+    appData.neonActiveBranchId ?? appData.neonDevelopmentBranchId;
   if (!devBranchId) {
     throw new DyadError(
       `No development branch found for app ${appId}`,
@@ -141,12 +141,10 @@ async function createTempDrizzleConfig({
 async function spawnDrizzleKit({
   args,
   cwd,
-  stdinData,
   timeoutMs = 60_000,
 }: {
   args: string[];
   cwd: string;
-  stdinData?: string;
   timeoutMs?: number;
 }): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const drizzleKitBin = getDrizzleKitPath();
@@ -191,14 +189,6 @@ async function spawnDrizzleKit({
       stderr += output;
       logger.warn(`drizzle-kit stderr: ${output}`);
     });
-
-    if (stdinData) {
-      // Write to stdin after a brief delay to ensure the process is ready
-      setTimeout(() => {
-        proc.stdin?.write(stdinData);
-        proc.stdin?.end();
-      }, 500);
-    }
 
     proc.on("close", (code) => {
       if (timedOut) return;

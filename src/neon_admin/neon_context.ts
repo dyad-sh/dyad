@@ -121,31 +121,13 @@ function buildTableSchemaQuery(tableName?: string): {
   params: string[];
 } {
   if (!tableName) return { query: TABLE_SCHEMA_QUERY, params: [] };
-  return {
-    query: `
-    SELECT
-      c.table_name,
-      c.column_name,
-      c.data_type,
-      c.is_nullable,
-      c.column_default,
-      c.character_maximum_length,
-      tc.constraint_type,
-      kcu.constraint_name
-    FROM information_schema.columns c
-    LEFT JOIN information_schema.key_column_usage kcu
-      ON c.table_schema = kcu.table_schema
-      AND c.table_name = kcu.table_name
-      AND c.column_name = kcu.column_name
-    LEFT JOIN information_schema.table_constraints tc
-      ON kcu.constraint_name = tc.constraint_name
-      AND kcu.table_schema = tc.table_schema
-    WHERE c.table_schema = 'public'
-      AND c.table_name = $1
-    ORDER BY c.ordinal_position;
-  `,
-    params: [tableName],
-  };
+  // Append a table filter to the base query, replacing the final ORDER BY
+  // so we can inject the AND clause and use a single-column ordering.
+  const filtered = TABLE_SCHEMA_QUERY.replace(
+    /ORDER BY c\.table_name, c\.ordinal_position;\s*$/,
+    `AND c.table_name = $1\n  ORDER BY c.ordinal_position;\n`,
+  );
+  return { query: filtered, params: [tableName] };
 }
 
 const INDEXES_QUERY = `
@@ -163,19 +145,13 @@ function buildIndexesQuery(tableName?: string): {
   params: string[];
 } {
   if (!tableName) return { query: INDEXES_QUERY, params: [] };
-  return {
-    query: `
-    SELECT
-      tablename AS table_name,
-      indexname AS index_name,
-      indexdef AS index_definition
-    FROM pg_indexes
-    WHERE schemaname = 'public'
-      AND tablename = $1
-    ORDER BY indexname;
-  `,
-    params: [tableName],
-  };
+  // Append a table filter to the base query, replacing the final ORDER BY
+  // so we can inject the AND clause and use a single-column ordering.
+  const filtered = INDEXES_QUERY.replace(
+    /ORDER BY tablename, indexname;\s*$/,
+    `AND tablename = $1\n  ORDER BY indexname;\n`,
+  );
+  return { query: filtered, params: [tableName] };
 }
 
 // =============================================================================

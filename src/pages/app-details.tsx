@@ -440,8 +440,20 @@ export default function AppDetailsPage() {
           {appId && !selectedApp?.neonProjectId && (
             <SupabaseConnector appId={appId} />
           )}
+          {appId && selectedApp?.neonProjectId && (
+            <p className="text-xs text-muted-foreground italic px-1">
+              Supabase is unavailable because a Neon database is already
+              connected. Only one database integration can be active at a time.
+            </p>
+          )}
           {appId && !selectedApp?.supabaseProjectId && (
             <NeonConnector appId={appId} />
+          )}
+          {appId && selectedApp?.supabaseProjectId && (
+            <p className="text-xs text-muted-foreground italic px-1">
+              Neon is unavailable because a Supabase project is already
+              connected. Only one database integration can be active at a time.
+            </p>
           )}
           {appId && <CapacitorControls appId={appId} />}
           <AppUpgrades appId={appId} />

@@ -10,6 +10,7 @@ export const NeonProjectSchema = z.object({
   name: z.string(),
   connectionString: z.string(),
   branchId: z.string(),
+  warning: z.string().optional(),
 });
 
 export type NeonProject = z.infer<typeof NeonProjectSchema>;

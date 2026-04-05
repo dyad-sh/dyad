@@ -16,7 +16,7 @@ export const executeNeonSqlTool: ToolDefinition<
   inputSchema: executeNeonSqlSchema,
   defaultConsent: "ask",
   modifiesState: true,
-  isEnabled: (ctx) => !!ctx.neonProjectId,
+  isEnabled: (ctx) => !!ctx.neonProjectId && !!ctx.neonActiveBranchId,
 
   getConsentPreview: (args) =>
     args.query.slice(0, 100) + (args.query.length > 100 ? "..." : ""),

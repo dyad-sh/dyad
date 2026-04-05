@@ -25,7 +25,7 @@ export const getNeonTableSchemaTool: ToolDefinition<
     "Get database table schema from Neon. If tableName is provided, returns schema for that specific table (columns, constraints, indexes). If omitted, returns schema for all tables.",
   inputSchema: getNeonTableSchemaSchema,
   defaultConsent: "always",
-  isEnabled: (ctx) => !!ctx.neonProjectId,
+  isEnabled: (ctx) => !!ctx.neonProjectId && !!ctx.neonActiveBranchId,
 
   getConsentPreview: (args) =>
     args.tableName

@@ -23,9 +23,10 @@ import {
 } from "@neondatabase/api-client";
 import { retryOnLocked } from "../utils/retryOnLocked";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
-import { updateNeonEnvVars } from "../utils/app_env_var_utils";
-import { detectFrameworkType } from "../utils/framework_utils";
-import { getDyadAppPath } from "@/paths/paths";
+import {
+  updateNeonEnvVars,
+  removeNeonEnvVars,
+} from "../utils/app_env_var_utils";
 
 export const logger = log.scope("neon_handlers");
 
@@ -109,8 +110,13 @@ async function ensureNeonAuth({
       try {
         const retryResponse = await neonClient.getNeonAuth(projectId, branchId);
         return retryResponse.data.base_url;
-      } catch {
-        // Auth schema exists but isn't formally enabled — return undefined
+      } catch (retryError: any) {
+        // Auth schema exists but isn't formally enabled — log warning and return undefined
+        const message =
+          retryError instanceof Error ? retryError.message : String(retryError);
+        logger.warn(
+          `Neon Auth schema conflict (409) on branch ${branchId}, and retry fetch also failed: ${message}`,
+        );
         return undefined;
       }
     }
@@ -147,8 +153,6 @@ async function autoInjectNeonEnvVars({
     database_name: "neondb",
     role_name: roleName,
   });
-  const frameworkType = detectFrameworkType(getDyadAppPath(appRecord[0].path));
-
   // Attempt to ensure Neon Auth is active; capture any error as a warning
   let neonAuthBaseUrl: string | undefined;
   let warning: string | undefined;
@@ -163,7 +167,6 @@ async function autoInjectNeonEnvVars({
   await updateNeonEnvVars({
     appPath: appRecord[0].path,
     connectionUri: connectionUriResponse.data.uri,
-    frameworkType,
     neonAuthBaseUrl,
   });
 
@@ -225,10 +228,12 @@ export function registerNeonHandlers() {
 
       if (
         !developmentBranchResponse.data.branch ||
-        !developmentBranchResponse.data.connection_uris
+        !developmentBranchResponse.data.connection_uris ||
+        developmentBranchResponse.data.connection_uris.length === 0
       ) {
-        throw new Error(
+        throw new DyadError(
           "Failed to create development branch: No branch data returned.",
+          DyadErrorKind.External,
         );
       }
 
@@ -255,10 +260,12 @@ export function registerNeonHandlers() {
 
       if (
         !previewBranchResponse.data.branch ||
-        !previewBranchResponse.data.connection_uris
+        !previewBranchResponse.data.connection_uris ||
+        previewBranchResponse.data.connection_uris.length === 0
       ) {
-        throw new Error(
+        throw new DyadError(
           "Failed to create preview branch: No branch data returned.",
+          DyadErrorKind.External,
         );
       }
 
@@ -285,7 +292,7 @@ export function registerNeonHandlers() {
         developmentBranchResponse.data.connection_uris[0].connection_uri;
 
       // Auto-inject env vars into the app's .env.local
-      await autoInjectNeonEnvVars({
+      const warning = await autoInjectNeonEnvVars({
         appId,
         projectId: project.id,
         branchId: developmentBranch.id,
@@ -299,6 +306,7 @@ export function registerNeonHandlers() {
         name: project.name,
         connectionString: connectionUri,
         branchId: developmentBranch.id,
+        warning,
       };
     } catch (error: any) {
       const errorMessage = getNeonErrorMessage(error);
@@ -469,20 +477,24 @@ export function registerNeonHandlers() {
 
       // Find development branch by name first, then fall back to non-default/non-preview
       const defaultBranch = branches.find((b) => b.default);
-      const developmentBranch =
+      const dedicatedDevBranch =
         branches.find((b) => b.name === "development") ??
-        branches.find((b) => !b.default && b.name !== "preview") ??
-        defaultBranch;
+        branches.find((b) => !b.default && b.name !== "preview");
 
       const previewBranch = branches.find((b) => b.name === "preview");
 
-      const activeBranchId = developmentBranch?.id ?? defaultBranch?.id ?? null;
+      // Use the dedicated development branch if found, otherwise fall back to default
+      // for the active branch only. neonDevelopmentBranchId should be null when
+      // no dedicated development branch exists to prevent destructive operations
+      // against the production/default branch.
+      const activeBranchId =
+        dedicatedDevBranch?.id ?? defaultBranch?.id ?? null;
 
       await db
         .update(apps)
         .set({
           neonProjectId: projectId,
-          neonDevelopmentBranchId: developmentBranch?.id ?? null,
+          neonDevelopmentBranchId: dedicatedDevBranch?.id ?? null,
           neonPreviewBranchId: previewBranch?.id ?? null,
           neonActiveBranchId: activeBranchId,
         })
@@ -518,6 +530,13 @@ export function registerNeonHandlers() {
     logger.info(`Unsetting Neon project for app ${appId}`);
 
     try {
+      // Fetch the app record to get its path before clearing Neon fields
+      const appRecord = await db
+        .select()
+        .from(apps)
+        .where(eq(apps.id, appId))
+        .limit(1);
+
       await db
         .update(apps)
         .set({
@@ -527,6 +546,11 @@ export function registerNeonHandlers() {
           neonActiveBranchId: null,
         })
         .where(eq(apps.id, appId));
+
+      // Remove Neon-injected env vars from .env.local
+      if (appRecord.length > 0) {
+        await removeNeonEnvVars({ appPath: appRecord[0].path });
+      }
 
       logger.info(`Successfully unlinked Neon project from app ${appId}`);
       return { success: true };
@@ -652,7 +676,7 @@ export function registerNeonHandlers() {
       } catch (error: any) {
         if (error.response?.status === 404) {
           return {
-            enabled: true,
+            enabled: false,
             email_verification_method: "otp" as const,
             require_email_verification: false,
             auto_sign_in_after_verification: true,

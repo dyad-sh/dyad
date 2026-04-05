@@ -511,7 +511,8 @@ export async function handleLocalAgentStream(
       supabaseOrganizationSlug: chat.app.supabaseOrganizationSlug,
       neonProjectId: chat.app.neonProjectId,
       neonDevelopmentBranchId: chat.app.neonDevelopmentBranchId,
-      neonActiveBranchId: chat.app.neonActiveBranchId,
+      neonActiveBranchId:
+        chat.app.neonActiveBranchId ?? chat.app.neonDevelopmentBranchId,
       frameworkType: detectFrameworkType(appPath),
       messageId: placeholderMessageId,
       isSharedModulesChanged: false,
@@ -1254,7 +1255,10 @@ export async function handleLocalAgentStream(
       }
 
       // Store Neon DB timestamp for version tracking / time-travel
-      if (ctx.neonProjectId && ctx.neonDevelopmentBranchId) {
+      if (
+        ctx.neonProjectId &&
+        (ctx.neonActiveBranchId || ctx.neonDevelopmentBranchId)
+      ) {
         try {
           await storeDbTimestampAtCurrentVersion({ appId: ctx.appId });
         } catch (error) {

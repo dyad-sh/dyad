@@ -29,7 +29,6 @@ import {
   hasStagedChanges,
 } from "../utils/git_utils";
 import { readSettings } from "@/main/settings";
-import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 import { writeMigrationFile } from "../utils/file_utils";
 import {
   getDyadWriteTags,
@@ -135,11 +134,6 @@ export async function processFullResponseActions(
       });
     } catch (error) {
       logger.error("Error creating Neon branch at current version:", error);
-      throw new DyadError(
-        "Could not create Neon branch; database versioning functionality is not working: " +
-          error,
-        DyadErrorKind.External,
-      );
     }
   }
 

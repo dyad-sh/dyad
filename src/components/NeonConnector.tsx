@@ -51,7 +51,7 @@ function isNextJsProject(files: string[] | undefined): boolean {
 export function NeonConnector({ appId }: { appId: number }) {
   const { t } = useTranslation("home");
   const { settings, refreshSettings } = useSettings();
-  const { app, refreshApp } = useLoadApp(appId);
+  const { app, loading: isLoadingApp, refreshApp } = useLoadApp(appId);
   const { lastDeepLink, clearLastDeepLink } = useDeepLink();
   const queryClient = useQueryClient();
   const { isDarkMode } = useTheme();
@@ -222,17 +222,15 @@ export function NeonConnector({ appId }: { appId: number }) {
   };
 
   // Neon is only available for Next.js projects
+  if (isLoadingApp) {
+    return null;
+  }
   if (!isNextJsProject(app?.files)) {
     return (
       <Card className="mt-1">
         <CardHeader>
           <CardTitle>{t("integrations.neon.database")}</CardTitle>
-          <CardDescription>
-            {t("integrations.neon.nextjsOnly", {
-              defaultValue:
-                "Neon integration is currently available for Next.js projects.",
-            })}
-          </CardDescription>
+          <CardDescription>{t("integrations.neon.nextjsOnly")}</CardDescription>
         </CardHeader>
       </Card>
     );
@@ -275,7 +273,11 @@ export function NeonConnector({ appId }: { appId: number }) {
                 {t("integrations.neon.activeBranch")}
               </Label>
               {branchesError ? (
-                <p className="text-sm text-red-500">{String(branchesError)}</p>
+                <p className="text-sm text-red-500">
+                  {t("integrations.neon.errorLoadingBranches", {
+                    message: String(branchesError),
+                  })}
+                </p>
               ) : isLoadingBranches ? (
                 <Skeleton className="h-10 w-full" />
               ) : (
@@ -338,17 +340,17 @@ export function NeonConnector({ appId }: { appId: number }) {
                     {t("integrations.neon.disconnectProject")}
                   </AlertDialogTitle>
                   <AlertDialogDescription>
-                    {t("integrations.neon.disconnectConfirmation", {
-                      defaultValue:
-                        "Are you sure you want to disconnect this Neon project? This may break your app's database connection.",
-                    })}
+                    {t("integrations.neon.disconnectConfirmation")}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>
                     {t("integrations.neon.cancel")}
                   </AlertDialogCancel>
-                  <AlertDialogAction onClick={handleUnsetProject}>
+                  <AlertDialogAction
+                    onClick={handleUnsetProject}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
                     {t("integrations.neon.disconnectProject")}
                   </AlertDialogAction>
                 </AlertDialogFooter>
@@ -386,7 +388,7 @@ export function NeonConnector({ appId }: { appId: number }) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoadingProjects || isFetchingProjects ? (
+          {isLoadingProjects ? (
             <div className="space-y-2">
               <Skeleton className="h-4 w-full" />
               <Skeleton className="h-10 w-full" />

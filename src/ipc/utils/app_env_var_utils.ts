@@ -173,17 +173,6 @@ function upsertEnvVar(envVars: EnvVar[], key: string, value: string): void {
 }
 
 /**
- * Derive the Neon Auth base URL for Next.js from the compute endpoint host.
- * endpointHost format: ep-xxx.<region>.aws.neon.tech
- */
-export function deriveNeonAuthBaseUrl(endpointHost: string): string {
-  const parts = endpointHost.split(".");
-  const epId = parts[0];
-  const rest = parts.slice(1).join(".");
-  return `https://${epId}.neonauth.${rest}/neondb/auth`;
-}
-
-/**
  * Generate a random cookie secret for Neon Auth session signing.
  */
 export function generateCookieSecret(): string {
@@ -193,16 +182,11 @@ export function generateCookieSecret(): string {
 export async function updateNeonEnvVars({
   appPath,
   connectionUri,
-  frameworkType,
-  endpointHost,
   neonAuthBaseUrl,
 }: {
   appPath: string;
   connectionUri: string;
-  frameworkType: "nextjs" | "vite" | "other" | null;
-  /** The compute endpoint host (for deriving Next.js auth URLs) */
-  endpointHost?: string;
-  /** Auth base URL returned by the Neon Auth API (preferred over deriving from endpointHost) */
+  /** Auth base URL returned by the Neon Auth API */
   neonAuthBaseUrl?: string;
 }): Promise<void> {
   let envVars: EnvVar[];
@@ -217,13 +201,8 @@ export async function updateNeonEnvVars({
   upsertEnvVar(envVars, "DATABASE_URL", connectionUri);
   upsertEnvVar(envVars, "POSTGRES_URL", connectionUri);
 
-  const authBaseUrl =
-    neonAuthBaseUrl ??
-    (frameworkType === "nextjs" && endpointHost
-      ? deriveNeonAuthBaseUrl(endpointHost)
-      : undefined);
-  if (authBaseUrl) {
-    upsertEnvVar(envVars, "NEON_AUTH_BASE_URL", authBaseUrl);
+  if (neonAuthBaseUrl) {
+    upsertEnvVar(envVars, "NEON_AUTH_BASE_URL", neonAuthBaseUrl);
     // Only generate a new cookie secret if one doesn't already exist
     const existingSecret = envVars.find(
       (v) => v.key === "NEON_AUTH_COOKIE_SECRET",
@@ -234,6 +213,35 @@ export async function updateNeonEnvVars({
   }
 
   const envFileContents = serializeEnvFile(envVars);
+  await fs.promises.writeFile(getEnvFilePath({ appPath }), envFileContents);
+}
+
+const NEON_ENV_VAR_KEYS = [
+  "DATABASE_URL",
+  "POSTGRES_URL",
+  "NEON_AUTH_BASE_URL",
+  "NEON_AUTH_COOKIE_SECRET",
+];
+
+export async function removeNeonEnvVars({
+  appPath,
+}: {
+  appPath: string;
+}): Promise<void> {
+  let envVars: EnvVar[];
+  try {
+    const content = await readEnvFile({ appPath });
+    envVars = parseEnvFile(content);
+  } catch {
+    // If file doesn't exist, nothing to remove
+    return;
+  }
+
+  const filtered = envVars.filter(
+    (envVar) => !NEON_ENV_VAR_KEYS.includes(envVar.key),
+  );
+
+  const envFileContents = serializeEnvFile(filtered);
   await fs.promises.writeFile(getEnvFilePath({ appPath }), envFileContents);
 }
 

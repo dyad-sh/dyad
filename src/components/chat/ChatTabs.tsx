@@ -64,7 +64,7 @@ function NewTabDropdown({
     <DropdownMenu>
       <DropdownMenuTrigger
         className="flex h-7 w-7 ml-1 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
-        aria-label={t("newChat")}
+        aria-label={t("newTabOptions")}
       >
         <Plus size={14} />
       </DropdownMenuTrigger>
@@ -72,6 +72,11 @@ function NewTabDropdown({
         <DropdownMenuItem onClick={onNewApp}>{t("newApp")}</DropdownMenuItem>
         <DropdownMenuItem onClick={onNewChatInApp} disabled={newChatDisabled}>
           {t("newChatInApp")}
+          {newChatDisabled && (
+            <span className="ml-1 text-xs text-muted-foreground">
+              ({t("selectAppFirst")})
+            </span>
+          )}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -83,6 +88,17 @@ const TAB_GAP_PX = 4;
 const OVERFLOW_TRIGGER_WIDTH_PX = 36;
 const DEFAULT_UNMEASURED_VISIBLE_TABS = 3;
 const MAX_OVERFLOW_MENU_ITEMS = 8;
+
+const TAB_BASE_CLASSES =
+  "group relative flex h-9 min-w-[160px] max-w-[240px] flex-1 shrink-0 items-center gap-1 rounded-t-lg px-2.5 transition-colors";
+const TAB_ACTIVE_CLASSES =
+  "bg-background text-foreground -mb-px border-b border-b-background shadow-[0_-1px_3px_0_rgba(0,0,0,0.06)]";
+const TAB_INACTIVE_CLASSES = "text-muted-foreground hover:bg-muted/40";
+const CLOSE_BUTTON_BASE_CLASSES =
+  "flex h-5 w-5 items-center justify-center rounded-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+const CLOSE_BUTTON_ACTIVE_CLASSES = "opacity-60 hover:bg-muted/50";
+const CLOSE_BUTTON_INACTIVE_CLASSES =
+  "opacity-0 group-hover:opacity-60 hover:bg-muted/50 focus-visible:opacity-60";
 
 /**
  * Returns an ordered list of chat IDs to display as tabs.
@@ -355,8 +371,10 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
       const scrollable = node.scrollWidth > node.clientWidth;
       setIsScrollable(scrollable);
       if (scrollable) {
-        const ratio = node.clientWidth / node.scrollWidth;
-        const thumbWidth = Math.max(ratio * node.clientWidth, 30);
+        const ratio =
+          node.scrollWidth > 0 ? node.clientWidth / node.scrollWidth : 0;
+        const thumbWidth =
+          node.clientWidth > 0 ? Math.max(ratio * node.clientWidth, 30) : 0;
         const maxScrollLeft = node.scrollWidth - node.clientWidth;
         const scrollRatio =
           maxScrollLeft > 0 ? node.scrollLeft / maxScrollLeft : 0;
@@ -709,10 +727,10 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                               setDraggingChatId(null);
                             }}
                             className={cn(
-                              "group relative flex h-9 w-[240px] shrink-0 items-center gap-1 rounded-t-lg px-2.5 transition-colors",
+                              TAB_BASE_CLASSES,
                               isActive
-                                ? "bg-background text-foreground -mb-px border-b border-b-background shadow-[0_-1px_3px_0_rgba(0,0,0,0.06)]"
-                                : "text-muted-foreground hover:bg-muted/40",
+                                ? TAB_ACTIVE_CLASSES
+                                : TAB_INACTIVE_CLASSES,
                               isDragging && "opacity-60",
                               // Chrome-style divider on right edge
                               !isActive &&
@@ -758,10 +776,10 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                             handleCloseTab(chat.id);
                           }}
                           className={cn(
-                            "flex h-5 w-5 items-center justify-center rounded-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                            CLOSE_BUTTON_BASE_CLASSES,
                             isActive
-                              ? "opacity-60 hover:bg-muted/50"
-                              : "opacity-0 group-hover:opacity-60 hover:bg-muted/50 focus-visible:opacity-60",
+                              ? CLOSE_BUTTON_ACTIVE_CLASSES
+                              : CLOSE_BUTTON_INACTIVE_CLASSES,
                           )}
                           aria-label={t("closeChatTab", { title })}
                         >
@@ -822,10 +840,9 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                     }
                   }}
                   className={cn(
-                    "group relative flex h-9 w-[200px] shrink-0 items-center gap-1 rounded-t-lg px-2.5 transition-colors",
-                    isActive
-                      ? "bg-background text-foreground -mb-px border-b border-b-background shadow-[0_-1px_3px_0_rgba(0,0,0,0.06)]"
-                      : "text-muted-foreground hover:bg-muted/40",
+                    TAB_BASE_CLASSES,
+                    "max-w-[200px]",
+                    isActive ? TAB_ACTIVE_CLASSES : TAB_INACTIVE_CLASSES,
                   )}
                 >
                   <button
@@ -846,10 +863,10 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
                         handleCloseVirtualTab(vt.id);
                       }}
                       className={cn(
-                        "flex h-5 w-5 items-center justify-center rounded-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                        CLOSE_BUTTON_BASE_CLASSES,
                         isActive
-                          ? "opacity-60 hover:bg-muted/50"
-                          : "opacity-0 group-hover:opacity-60 hover:bg-muted/50 focus-visible:opacity-60",
+                          ? CLOSE_BUTTON_ACTIVE_CLASSES
+                          : CLOSE_BUTTON_INACTIVE_CLASSES,
                       )}
                       aria-label={t("closeChatTab", { title: t("newAppTab") })}
                     >

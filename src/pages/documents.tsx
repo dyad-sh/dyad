@@ -223,8 +223,8 @@ export default function DocumentsPage() {
   const localModelOptions = useMemo(() =>
     localModels.map((m) => ({
       provider: "ollama",
-      name: m.name,
-      displayName: m.name,
+      name: m.modelName,
+      displayName: m.displayName,
       groupLabel: "Local (Ollama)",
     })),
   [localModels]);

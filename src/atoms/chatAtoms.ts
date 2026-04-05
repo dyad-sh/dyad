@@ -233,3 +233,54 @@ export const queuedMessagesByIdAtom = atom<Map<number, QueuedMessageItem[]>>(
 export const streamCompletedSuccessfullyByIdAtom = atom<Map<number, boolean>>(
   new Map(),
 );
+
+// Virtual "new app..." tabs (not backed by real chats)
+export type VirtualTabId = string;
+
+export interface VirtualTab {
+  id: VirtualTabId;
+  type: "new-app";
+}
+
+let virtualTabCounter = 0;
+
+const initialVirtualTab: VirtualTab = {
+  id: `new-app-${++virtualTabCounter}`,
+  type: "new-app",
+};
+export const virtualTabsAtom = atom<VirtualTab[]>([initialVirtualTab]);
+export const activeVirtualTabIdAtom = atom<VirtualTabId | null>(
+  initialVirtualTab.id,
+);
+
+export const addVirtualTabAtom = atom(null, (get, set) => {
+  const id = `new-app-${++virtualTabCounter}`;
+  const tab: VirtualTab = { id, type: "new-app" };
+  set(virtualTabsAtom, [...get(virtualTabsAtom), tab]);
+  set(activeVirtualTabIdAtom, id);
+  return id;
+});
+
+export const removeVirtualTabAtom = atom(
+  null,
+  (get, set, tabId: VirtualTabId) => {
+    set(
+      virtualTabsAtom,
+      get(virtualTabsAtom).filter((t) => t.id !== tabId),
+    );
+    if (get(activeVirtualTabIdAtom) === tabId) {
+      set(activeVirtualTabIdAtom, null);
+    }
+  },
+);
+
+export const replaceActiveVirtualTabAtom = atom(null, (get, set) => {
+  const activeId = get(activeVirtualTabIdAtom);
+  if (activeId) {
+    set(
+      virtualTabsAtom,
+      get(virtualTabsAtom).filter((t) => t.id !== activeId),
+    );
+    set(activeVirtualTabIdAtom, null);
+  }
+});

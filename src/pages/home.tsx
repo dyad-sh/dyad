@@ -1,7 +1,10 @@
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useAtom, useSetAtom } from "jotai";
-import { homeChatInputValueAtom } from "../atoms/chatAtoms";
+import {
+  homeChatInputValueAtom,
+  replaceActiveVirtualTabAtom,
+} from "../atoms/chatAtoms";
 import { ipc } from "@/ipc/types";
 import { generateCuteAppName } from "@/lib/utils";
 import { useLoadApps } from "@/hooks/useLoadApps";
@@ -65,6 +68,7 @@ export default function HomePage() {
   const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
 
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
+  const replaceActiveVirtualTab = useSetAtom(replaceActiveVirtualTabAtom);
   const { selectChat } = useSelectChat();
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMode, setLoadingMode] = useState<"new" | "existing">("new");
@@ -233,6 +237,8 @@ export default function HomePage() {
       // Invalidate chats so ChatTabs picks up the new chat immediately.
       await queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
       posthog.capture("home:chat-submit", { existingApp: !!selectedApp });
+      // Remove the virtual "new app..." tab that's being replaced by this real chat.
+      replaceActiveVirtualTab();
       // Select newly created first chat so it appears first in tabs.
       selectChat({ chatId, appId });
     } catch (error) {

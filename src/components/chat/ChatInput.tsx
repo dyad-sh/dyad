@@ -78,6 +78,12 @@ import { SelectedComponentsDisplay } from "./SelectedComponentDisplay";
 import { useCheckProblems } from "@/hooks/useCheckProblems";
 import { LexicalChatInput } from "./LexicalChatInput";
 import { AuxiliaryActionsMenu } from "./AuxiliaryActionsMenu";
+import { ChatImageGenerationStrip } from "./ChatImageGenerationStrip";
+import {
+  chatImageGenerationJobsAtom,
+  dismissedImageGenerationJobIdsAtom,
+} from "@/atoms/imageGenerationAtoms";
+import { ImageGeneratorDialog } from "@/components/ImageGeneratorDialog";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
 import { VisualEditingChangesDialog } from "@/components/preview_panel/VisualEditingChangesDialog";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
@@ -168,6 +174,29 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const { navigate } = useRouter();
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const { invalidateChats } = useChats(appId);
+  const [imageGeneratorOpen, setImageGeneratorOpen] = useState(false);
+  const handleOpenImageGenerator = useCallback(() => {
+    setImageGeneratorOpen(true);
+  }, []);
+
+  // Image generation jobs for auto-adding to chat on send
+  const chatImageJobs = useAtomValue(chatImageGenerationJobsAtom);
+  const [dismissedImageJobIds, setDismissedImageJobIds] = useAtom(
+    dismissedImageGenerationJobIdsAtom,
+  );
+  const visibleSuccessfulImageJobs = useMemo(() => {
+    const appJobs = appId
+      ? chatImageJobs.filter((job) => job.targetAppId === appId)
+      : chatImageJobs;
+    return appJobs.filter(
+      (job) =>
+        !dismissedImageJobIds.has(job.id) &&
+        job.status === "success" &&
+        job.result,
+    );
+  }, [chatImageJobs, dismissedImageJobIds, appId]);
+  const hasSuccessfulImageJobs = visibleSuccessfulImageJobs.length > 0;
+
   // Use the attachments hook
   const {
     attachments,
@@ -405,7 +434,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
 
   const handleSubmit = async () => {
     if (
-      (!inputValue.trim() && attachments.length === 0) ||
+      (!inputValue.trim() &&
+        attachments.length === 0 &&
+        !hasSuccessfulImageJobs) ||
       !chatId ||
       pendingFiles
     ) {
@@ -416,10 +447,30 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       await toggleRecording();
     }
 
+    // Build prompt with auto-added image mentions
+    const imageMentions = visibleSuccessfulImageJobs
+      .map((job) => `@media:${encodeURIComponent(job.result!.fileName)}`)
+      .join(" ");
+    const promptWithImages = inputValue.trim()
+      ? imageMentions
+        ? `${inputValue} ${imageMentions}`
+        : inputValue
+      : imageMentions;
+
+    // Dismiss image jobs that were auto-added
+    if (visibleSuccessfulImageJobs.length > 0) {
+      setDismissedImageJobIds((prev) => {
+        const next = new Set(prev);
+        for (const job of visibleSuccessfulImageJobs) {
+          next.add(job.id);
+        }
+        return next;
+      });
+    }
+
     // If switching to plan mode from another mode in a chat with messages,
     // create a new chat for a clean context.
     if (needsFreshPlanChat && settings?.selectedChatMode === "plan" && appId) {
-      const currentInput = inputValue;
       setInputValue("");
       setNeedsFreshPlanChat(false);
 
@@ -430,7 +481,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       showInfo("We've switched you to a new chat for a clean context");
 
       await streamMessage({
-        prompt: currentInput,
+        prompt: promptWithImages,
         chatId: newChatId,
         attachments,
         redo: false,
@@ -440,7 +491,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       return;
     }
 
-    const currentInput = inputValue;
+    const currentInput = promptWithImages;
 
     // Use all selected components for multi-component editing
     const componentsToSend =
@@ -800,6 +851,11 @@ export function ChatInput({ chatId }: { chatId?: number }) {
             onRemove={removeAttachment}
           />
 
+          {/* Chat image generation strip */}
+          <ChatImageGenerationStrip
+            onGenerateImage={handleOpenImageGenerator}
+          />
+
           {/* Use the DragDropOverlay component */}
           <DragDropOverlay isDraggingOver={isDraggingOver} />
 
@@ -906,7 +962,9 @@ export function ChatInput({ chatId }: { chatId?: number }) {
                     <button
                       onClick={handleSubmit}
                       disabled={
-                        (!inputValue.trim() && attachments.length === 0) ||
+                        (!inputValue.trim() &&
+                          attachments.length === 0 &&
+                          !hasSuccessfulImageJobs) ||
                         disableSendButton
                       }
                       aria-label={t("sendMessage")}
@@ -930,12 +988,21 @@ export function ChatInput({ chatId }: { chatId?: number }) {
               showTokenBar={showTokenBar}
               toggleShowTokenBar={toggleShowTokenBar}
               appId={appId ?? undefined}
+              onGenerateImage={handleOpenImageGenerator}
             />
           </div>
           {/* TokenBar is only displayed when showTokenBar is true */}
           {showTokenBar && <TokenBar chatId={chatId} />}
         </div>
       </div>
+
+      {/* Image Generator Dialog */}
+      <ImageGeneratorDialog
+        open={imageGeneratorOpen}
+        onOpenChange={setImageGeneratorOpen}
+        defaultAppId={appId ?? undefined}
+        source="chat"
+      />
     </>
   );
 }

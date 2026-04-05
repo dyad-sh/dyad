@@ -23,11 +23,12 @@ jobs:
     # https://github.com/anthropics/claude-code-action/blob/main/examples/pr-review-filtered-authors.yml
     if: |
       github.event.pull_request.user.login == 'wwwillchen' ||
-      github.event.pull_request.user.login == 'wwwillchen-bot' ||
-      github.event.pull_request.user.login == 'dyadbot' ||
+      github.event.pull_request.user.login == 'keppo-bot' ||
       github.event.pull_request.user.login == 'dyad-assistant' ||
       github.event.pull_request.user.login == 'azizmejri1' ||
-      github.event.pull_request.user.login == 'princeaden1'
+      github.event.pull_request.user.login == 'princeaden1' ||
+      github.event.pull_request.user.login == 'nourzakhama2003' ||
+      github.event.pull_request.user.login == 'ryangroch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -61,7 +62,7 @@ jobs:
 
           # See: https://github.com/anthropics/claude-code-action/blob/v1/docs/security.md
           github_token: ${{ steps.app-token.outputs.token }}
-          allowed_non_write_users: "princeaden1,wwwillchen-bot,dyadbot,dyad-assistant" # remember, we already filter above.
+          allowed_non_write_users: "princeaden1,keppo-bot,dyad-assistant,nourzakhama2003,ryangroch" # remember, we already filter above.
 
           # Disable progress tracking (try to save tokens)
           track_progress: false

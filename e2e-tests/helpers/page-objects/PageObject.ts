@@ -462,7 +462,7 @@ export class PageObject {
 
   async sendPrompt(
     prompt: string,
-    options?: { skipWaitForCompletion?: boolean },
+    options?: { skipWaitForCompletion?: boolean; timeout?: number },
   ) {
     return this.chatActions.sendPrompt(prompt, options);
   }

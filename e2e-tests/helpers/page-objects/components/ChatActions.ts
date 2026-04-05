@@ -65,9 +65,11 @@ export class ChatActions {
     return this.page.getByRole("button", { name: "Undo" });
   }
 
-  async waitForChatCompletion() {
+  async waitForChatCompletion({
+    timeout = Timeout.MEDIUM,
+  }: { timeout?: number } = {}) {
     await expect(this.getRetryButton()).toBeVisible({
-      timeout: Timeout.MEDIUM,
+      timeout,
     });
   }
 
@@ -81,13 +83,16 @@ export class ChatActions {
 
   async sendPrompt(
     prompt: string,
-    { skipWaitForCompletion = false }: { skipWaitForCompletion?: boolean } = {},
+    {
+      skipWaitForCompletion = false,
+      timeout,
+    }: { skipWaitForCompletion?: boolean; timeout?: number } = {},
   ) {
     await this.getChatInput().click();
     await this.getChatInput().fill(prompt);
     await this.page.getByRole("button", { name: "Send message" }).click();
     if (!skipWaitForCompletion) {
-      await this.waitForChatCompletion();
+      await this.waitForChatCompletion({ timeout });
     }
   }
 

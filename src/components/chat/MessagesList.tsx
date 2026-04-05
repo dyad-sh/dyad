@@ -20,6 +20,7 @@ import { useLanguageModelProviders } from "@/hooks/useLanguageModelProviders";
 import { useSettings } from "@/hooks/useSettings";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { PromoMessage } from "./PromoMessage";
+import { isCancelledResponseContent } from "@/shared/chatCancellation";
 
 interface MessagesListProps {
   messages: Message[];
@@ -300,6 +301,21 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
       isAnyProviderSetup,
     ]);
 
+    // Precompute which indices are cancelled prompts so the callback
+    // can depend on this set instead of the full messages array reference.
+    const cancelledPromptIndices = useMemo(() => {
+      const indices = new Set<number>();
+      for (let i = 0; i < messages.length - 1; i++) {
+        if (
+          messages[i].role === "user" &&
+          isCancelledResponseContent(messages[i + 1].content)
+        ) {
+          indices.add(i);
+        }
+      }
+      return indices;
+    }, [messages]);
+
     // Memoized item renderer for virtualized list
     const itemContent = useCallback(
       (index: number, message: Message) => {
@@ -311,11 +327,12 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
             <MemoizedChatMessage
               message={message}
               isLastMessage={isLastMessage}
+              isCancelledPrompt={cancelledPromptIndices.has(index)}
             />
           </div>
         );
       },
-      [messages.length],
+      [messages.length, cancelledPromptIndices],
     );
 
     // Create context object for Footer component with stable references
@@ -400,7 +417,11 @@ export const MessagesList = forwardRef<HTMLDivElement, MessagesListProps>(
             const isLastMessage = index === messages.length - 1;
             return (
               <div className="px-4" key={message.id}>
-                <ChatMessage message={message} isLastMessage={isLastMessage} />
+                <ChatMessage
+                  message={message}
+                  isLastMessage={isLastMessage}
+                  isCancelledPrompt={cancelledPromptIndices.has(index)}
+                />
               </div>
             );
           })}

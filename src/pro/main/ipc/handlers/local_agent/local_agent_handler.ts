@@ -77,6 +77,10 @@ import { addIntegrationTool } from "./tools/add_integration";
 import { writePlanTool } from "./tools/write_plan";
 import { exitPlanTool } from "./tools/exit_plan";
 import {
+  appendCancelledResponseNotice,
+  filterCancelledMessagePairs,
+} from "@/shared/chatCancellation";
+import {
   isChatPendingCompaction,
   performCompaction,
   checkAndMarkForCompaction,
@@ -84,6 +88,12 @@ import {
 import { getPostCompactionMessages } from "@/ipc/handlers/compaction/compaction_utils";
 import { DEFAULT_MAX_TOOL_CALL_STEPS } from "@/constants/settings_constants";
 import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
+import {
+  type RetryReplayEvent,
+  maybeCaptureRetryReplayEvent,
+  maybeCaptureRetryReplayText,
+  maybeAppendRetryReplayForRetry,
+} from "./retry_replay_utils";
 
 const logger = log.scope("local_agent_handler");
 const PLANNING_QUESTIONNAIRE_TOOL_NAME = "planning_questionnaire";
@@ -123,24 +133,6 @@ interface ToolStreamingEntry {
   argsAccumulated: string;
 }
 const toolStreamingEntries = new Map<string, ToolStreamingEntry>();
-
-type RetryReplayEvent =
-  | {
-      type: "assistant-text";
-      text: string;
-    }
-  | {
-      type: "tool-call";
-      toolCallId: string;
-      toolName: string;
-      input: unknown;
-    }
-  | {
-      type: "tool-result";
-      toolCallId: string;
-      toolName: string;
-      output: unknown;
-    };
 
 function getOrCreateStreamingEntry(
   id: string,
@@ -219,10 +211,15 @@ function buildChatMessageHistory(
     reorderedMessages.splice(targetIndex, 0, summary);
   }
 
-  return reorderedMessages
+  const filtered = reorderedMessages
     .filter((msg) => !excludedIds?.has(msg.id))
-    .filter((msg) => msg.content || msg.aiMessagesJson)
-    .flatMap((msg) => parseAiMessagesJson(msg));
+    .filter((msg) => msg.content || msg.aiMessagesJson);
+
+  // Filter out cancelled message pairs (user prompt + cancelled assistant response)
+  // so the AI doesn't try to reconcile cancelled/incorrect prompts with new ones.
+  return filterCancelledMessagePairs(filtered).flatMap((msg) =>
+    parseAiMessagesJson(msg),
+  );
 }
 
 function getMidTurnCompactionSummaryIds(
@@ -1197,12 +1194,12 @@ export async function handleLocalAgentStream(
 
     // Handle cancellation paths where stream processing exits cleanly after abort.
     if (abortController.signal.aborted) {
-      if (fullResponse) {
-        await db
-          .update(messages)
-          .set({ content: `${fullResponse}\n\n[Response cancelled by user]` })
-          .where(eq(messages.id, placeholderMessageId));
-      }
+      await db
+        .update(messages)
+        .set({
+          content: appendCancelledResponseNotice(fullResponse ?? ""),
+        })
+        .where(eq(messages.id, placeholderMessageId));
       return false; // Cancelled - don't consume quota
     }
 
@@ -1303,12 +1300,12 @@ export async function handleLocalAgentStream(
 
     if (abortController.signal.aborted) {
       // Handle cancellation
-      if (fullResponse) {
-        await db
-          .update(messages)
-          .set({ content: `${fullResponse}\n\n[Response cancelled by user]` })
-          .where(eq(messages.id, placeholderMessageId));
-      }
+      await db
+        .update(messages)
+        .set({
+          content: appendCancelledResponseNotice(fullResponse ?? ""),
+        })
+        .where(eq(messages.id, placeholderMessageId));
       return false; // Cancelled - don't consume quota
     }
 
@@ -1425,199 +1422,8 @@ function shouldRetryTransientStreamError(params: {
   );
 }
 
-function maybeCaptureRetryReplayEvent(
-  retryReplayEvents: RetryReplayEvent[],
-  part: unknown,
-): void {
-  if (!isRecord(part) || typeof part.type !== "string") {
-    return;
-  }
-
-  if (
-    part.type === "tool-call" &&
-    typeof part.toolCallId === "string" &&
-    typeof part.toolName === "string"
-  ) {
-    // Keep one emitted tool-call event per toolCallId.
-    if (
-      retryReplayEvents.some(
-        (event) =>
-          event.type === "tool-call" && event.toolCallId === part.toolCallId,
-      )
-    ) {
-      return;
-    }
-
-    retryReplayEvents.push({
-      type: "tool-call",
-      toolCallId: part.toolCallId,
-      toolName: part.toolName,
-      input:
-        typeof part.input === "object" && part.input !== null ? part.input : {},
-    });
-    return;
-  }
-
-  if (
-    part.type === "tool-result" &&
-    typeof part.toolCallId === "string" &&
-    typeof part.toolName === "string"
-  ) {
-    // Keep one emitted tool-result event per toolCallId.
-    if (
-      retryReplayEvents.some(
-        (event) =>
-          event.type === "tool-result" && event.toolCallId === part.toolCallId,
-      )
-    ) {
-      return;
-    }
-
-    retryReplayEvents.push({
-      type: "tool-result",
-      toolCallId: part.toolCallId,
-      toolName: part.toolName,
-      output: part.output,
-    });
-  }
-}
-
-function maybeAppendRetryReplayForRetry(params: {
-  retryReplayEvents: RetryReplayEvent[];
-  currentMessageHistoryRef: ModelMessage[];
-  accumulatedAiMessagesRef: ModelMessage[];
-  onCurrentMessageHistoryUpdate: (next: ModelMessage[]) => void;
-}) {
-  const {
-    retryReplayEvents,
-    currentMessageHistoryRef,
-    accumulatedAiMessagesRef,
-    onCurrentMessageHistoryUpdate,
-  } = params;
-  const replayMessages: ModelMessage[] = [];
-  const pendingAssistantParts: Array<
-    | { type: "text"; text: string }
-    | {
-        type: "tool-call";
-        toolCallId: string;
-        toolName: string;
-        input: unknown;
-      }
-  > = [];
-  const toolCallsWithResult = new Set<string>();
-  const toolResultsWithCall = new Set<string>();
-
-  for (const event of retryReplayEvents) {
-    if (event.type === "tool-call") {
-      toolResultsWithCall.add(event.toolCallId);
-      continue;
-    }
-    if (event.type === "tool-result") {
-      toolCallsWithResult.add(event.toolCallId);
-    }
-  }
-
-  const completedToolExchangeIds = new Set(
-    [...toolCallsWithResult].filter((toolCallId) =>
-      toolResultsWithCall.has(toolCallId),
-    ),
-  );
-
-  const flushPendingAssistantMessage = () => {
-    if (pendingAssistantParts.length === 0) {
-      return;
-    }
-    replayMessages.push({
-      role: "assistant",
-      content: [...pendingAssistantParts],
-    });
-    pendingAssistantParts.length = 0;
-  };
-
-  for (const event of retryReplayEvents) {
-    if (event.type === "assistant-text") {
-      if (!event.text.trim()) {
-        continue;
-      }
-      pendingAssistantParts.push({ type: "text", text: event.text });
-      continue;
-    }
-
-    if (event.type === "tool-call") {
-      if (!completedToolExchangeIds.has(event.toolCallId)) {
-        continue;
-      }
-      pendingAssistantParts.push({
-        type: "tool-call",
-        toolCallId: event.toolCallId,
-        toolName: event.toolName,
-        input: event.input,
-      });
-      continue;
-    }
-
-    if (!completedToolExchangeIds.has(event.toolCallId)) {
-      continue;
-    }
-    flushPendingAssistantMessage();
-    replayMessages.push({
-      role: "tool",
-      content: [
-        {
-          type: "tool-result",
-          toolCallId: event.toolCallId,
-          toolName: event.toolName,
-          output: toToolResultOutput(event.output),
-        },
-      ],
-    });
-  }
-  flushPendingAssistantMessage();
-
-  if (replayMessages.length === 0) {
-    return;
-  }
-
-  onCurrentMessageHistoryUpdate([
-    ...currentMessageHistoryRef,
-    ...replayMessages,
-  ]);
-  accumulatedAiMessagesRef.push(...replayMessages);
-}
-
-function maybeCaptureRetryReplayText(
-  retryReplayEvents: RetryReplayEvent[] | null,
-  text: string,
-): void {
-  if (!retryReplayEvents || text.length === 0) {
-    return;
-  }
-
-  const lastEvent = retryReplayEvents[retryReplayEvents.length - 1];
-  if (lastEvent?.type === "assistant-text") {
-    lastEvent.text += text;
-    return;
-  }
-
-  retryReplayEvents.push({
-    type: "assistant-text",
-    text,
-  });
-}
-
 async function delay(ms: number): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, ms));
-}
-
-function toToolResultOutput(value: unknown): { type: "text"; value: string } {
-  if (typeof value === "string") {
-    return { type: "text", value };
-  }
-  try {
-    return { type: "text", value: JSON.stringify(value) };
-  } catch {
-    return { type: "text", value: String(value) };
-  }
 }
 
 async function updateResponseInDb(messageId: number, content: string) {

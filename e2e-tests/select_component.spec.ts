@@ -151,7 +151,8 @@ testSkipIfWindows("select component next.js", async ({ po }) => {
 
   await po.navigation.goToHubAndSelectTemplate("Next.js Template");
   await po.chatActions.selectChatMode("build");
-  await po.sendPrompt("tc=basic");
+  // Next.js apps take longer to build on the first prompt, use LONG timeout
+  await po.sendPrompt("tc=basic", { timeout: Timeout.LONG });
   await po.previewPanel.clickTogglePreviewPanel();
 
   // Wait for the preview iframe to be visible before interacting

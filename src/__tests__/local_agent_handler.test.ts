@@ -1362,7 +1362,7 @@ describe("handleLocalAgentStream", () => {
       expect(contentUpdates.length).toBeGreaterThan(0);
       const finalContent = contentUpdates[contentUpdates.length - 1].data
         .content as string;
-      expect(finalContent).toContain("First ");
+      expect(finalContent).toContain("First");
       expect(finalContent).not.toContain("Second");
     });
 

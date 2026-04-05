@@ -312,8 +312,12 @@ async function processArgPlaceholders<T extends Record<string, any>>(
   }
 
   let neonClientCode: string | undefined;
-  if (hasNeonPlaceholder && ctx.neonProjectId) {
-    neonClientCode = getNeonClientCode(ctx.frameworkType);
+  if (hasNeonPlaceholder) {
+    if (ctx.neonProjectId) {
+      neonClientCode = getNeonClientCode(ctx.frameworkType);
+    } else {
+      neonClientCode = "";
+    }
   }
 
   // Process all string values in args
@@ -326,7 +330,7 @@ async function processArgPlaceholders<T extends Record<string, any>>(
           supabaseClientCode,
         );
       }
-      if (neonClientCode) {
+      if (neonClientCode !== undefined) {
         result = result.replace(/\$\$NEON_CLIENT_CODE\$\$/g, neonClientCode);
       }
       return result;

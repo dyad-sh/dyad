@@ -177,7 +177,10 @@ export const neonContracts = {
   setAppProject: defineContract({
     channel: "neon:set-app-project",
     input: SetNeonAppProjectParamsSchema,
-    output: z.object({ success: z.boolean() }),
+    output: z.object({
+      success: z.boolean(),
+      warning: z.string().optional(),
+    }),
   }),
 
   unsetAppProject: defineContract({

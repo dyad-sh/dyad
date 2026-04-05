@@ -110,8 +110,11 @@ export function NeonConnector({ appId }: { appId: number }) {
 
     setIsConnecting(true);
     try {
-      await ipc.neon.setAppProject({ appId, projectId });
+      const result = await ipc.neon.setAppProject({ appId, projectId });
       toast.success(t("integrations.neon.projectConnected"));
+      if (result.warning) {
+        toast.warning(result.warning);
+      }
       await refreshApp();
       queryClient.invalidateQueries({
         queryKey: queryKeys.appEnvVars.byApp({ appId }),
@@ -201,7 +204,7 @@ export function NeonConnector({ appId }: { appId: number }) {
       const result = await ipc.neon.setActiveBranch({ appId, branchId });
       const branch = branches.find((b) => b.branchId === branchId);
       toast.success(
-        `${t("integrations.neon.branchSwitched")}: ${branch?.branchName ?? branchId}. DATABASE_URL updated in .env.local.`,
+        `${t("integrations.neon.branchSwitched")}: ${branch?.branchName ?? branchId}. ${t("integrations.neon.envUpdated")}`,
       );
       if (result.warning) {
         toast.warning(result.warning);

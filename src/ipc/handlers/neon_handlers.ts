@@ -527,8 +527,9 @@ export function registerNeonHandlers() {
         .where(eq(apps.id, appId));
 
       // Auto-inject env vars into the app's .env.local
+      let warning: string | undefined;
       if (activeBranchId) {
-        await autoInjectNeonEnvVars({
+        warning = await autoInjectNeonEnvVars({
           appId,
           projectId,
           branchId: activeBranchId,
@@ -538,7 +539,7 @@ export function registerNeonHandlers() {
       logger.info(
         `Successfully linked Neon project ${projectId} to app ${appId}`,
       );
-      return { success: true };
+      return { success: true, warning };
     } catch (error: any) {
       if (error instanceof DyadError) throw error;
       const errorMessage = getNeonErrorMessage(error);
@@ -564,6 +565,11 @@ export function registerNeonHandlers() {
         .where(eq(apps.id, appId))
         .limit(1);
 
+      // Remove env vars first so DB is only updated on success
+      if (appRecord.length > 0) {
+        await removeNeonEnvVars({ appPath: appRecord[0].path });
+      }
+
       await db
         .update(apps)
         .set({
@@ -573,11 +579,6 @@ export function registerNeonHandlers() {
           neonActiveBranchId: null,
         })
         .where(eq(apps.id, appId));
-
-      // Remove Neon-injected env vars from .env.local
-      if (appRecord.length > 0) {
-        await removeNeonEnvVars({ appPath: appRecord[0].path });
-      }
 
       logger.info(`Successfully unlinked Neon project from app ${appId}`);
       return { success: true };

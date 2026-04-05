@@ -234,7 +234,7 @@ If the user wants prebuilt auth or account pages, use the current UI package sur
 \`app/auth/[path]/page.tsx\`
 \`\`\`tsx
 import { AuthView } from '@neondatabase/auth/react';
-import './auth.css'; // or import "@neondatabase/auth/ui/css" if not using Tailwind
+import './auth.css';
 
 export const dynamicParams = false;
 

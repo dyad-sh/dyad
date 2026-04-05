@@ -575,6 +575,7 @@
       "activeBranch": "Active Branch",
       "selectBranch": "Select a branch...",
       "branchSwitched": "Switched to branch",
+      "envUpdated": "DATABASE_URL updated in .env.local.",
       "failedSetBranch": "Failed to switch branch: {{error}}",
       "production": "production",
       "development": "development",

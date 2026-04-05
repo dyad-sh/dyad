@@ -27,6 +27,28 @@ import { DyadError, DyadErrorKind } from "@/errors/dyad_error";
 
 const logger = log.scope("vercel_handlers");
 
+/**
+ * Parses structured error info from Vercel SDK API errors.
+ * Vercel SDK throws errors with messages like:
+ *   "API error occurred: Status 400 ... Body: {"error":{"message":"...","action":"...","link":"..."}}"
+ * Returns a user-friendly message, or null if the error can't be parsed.
+ */
+function parseVercelApiError(err: any): string | null {
+  const message: string = err?.message ?? "";
+  const bodyMatch = message.match(/Body:\s*(\{[\s\S]*\})/);
+  if (!bodyMatch) return null;
+  try {
+    const parsed = JSON.parse(bodyMatch[1]);
+    const apiError = parsed?.error;
+    if (!apiError?.message) return null;
+    return apiError.link
+      ? `${apiError.message} See: ${apiError.link}`
+      : apiError.message;
+  } catch {
+    return null;
+  }
+}
+
 // Use test server URLs when in test mode
 const TEST_SERVER_BASE = `http://localhost:${process.env.FAKE_LLM_PORT || "3500"}`;
 
@@ -256,7 +278,9 @@ async function handleListVercelProjects(): Promise<VercelProject[]> {
   } catch (err: any) {
     if (err instanceof DyadError) throw err;
     logger.error("[Vercel Handler] Failed to list projects:", err);
-    throw new Error(err.message || "Failed to list Vercel projects.");
+    throw new Error(
+      parseVercelApiError(err) ?? err.message ?? "Failed to list Vercel projects.",
+    );
   }
 }
 
@@ -399,7 +423,9 @@ async function handleCreateProject(
   } catch (err: any) {
     if (err instanceof DyadError) throw err;
     logger.error("[Vercel Handler] Failed to create project:", err);
-    throw new Error(err.message || "Failed to create Vercel project.");
+    throw new Error(
+      parseVercelApiError(err) ?? err.message ?? "Failed to create Vercel project.",
+    );
   }
 }
 
@@ -453,7 +479,9 @@ async function handleConnectToExistingProject(
       "[Vercel Handler] Failed to connect to existing project:",
       err,
     );
-    throw new Error(err.message || "Failed to connect to existing project.");
+    throw new Error(
+      parseVercelApiError(err) ?? err.message ?? "Failed to connect to existing project.",
+    );
   }
 }
 
@@ -527,7 +555,9 @@ async function handleGetVercelDeployments(
   } catch (err: any) {
     if (err instanceof DyadError) throw err;
     logger.error("[Vercel Handler] Failed to get deployments:", err);
-    throw new Error(err.message || "Failed to get Vercel deployments.");
+    throw new Error(
+      parseVercelApiError(err) ?? err.message ?? "Failed to get Vercel deployments.",
+    );
   }
 }
 

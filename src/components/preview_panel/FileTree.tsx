@@ -10,7 +10,7 @@ import {
   X,
 } from "lucide-react";
 import { selectedFileAtom } from "@/atoms/viewAtoms";
-import { useAtom, useSetAtom } from "jotai";
+import { useSetAtom } from "jotai";
 import { Input } from "@/components/ui/input";
 import type { AppFileSearchResult } from "@/ipc/types";
 import { useSearchAppFiles } from "@/hooks/useSearchAppFiles";
@@ -44,9 +44,10 @@ const MentionFileButton = ({ filePath }: { filePath: string }) => {
   const handleMentionFile = useMentionFile(filePath);
   return (
     <button
-      className="ml-1 flex-shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
+      type="button"
+      className="ml-1 flex-shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
       onClick={handleMentionFile}
-      title="Mention file in chat"
+      aria-label="Mention file in chat"
     >
       <MessageCircle size={14} />
     </button>
@@ -54,13 +55,16 @@ const MentionFileButton = ({ filePath }: { filePath: string }) => {
 };
 
 const useMentionFile = (filePath: string) => {
-  const [chatInputValue, setChatInputValue] = useAtom(chatInputValueAtom);
+  const setChatInputValue = useSetAtom(chatInputValueAtom);
   return (e: React.MouseEvent) => {
     e.stopPropagation();
     const mention = `@file:${filePath}`;
-    if (chatInputValue.includes(mention)) return;
-    const separator = chatInputValue.trim() ? " " : "";
-    setChatInputValue(chatInputValue.trimEnd() + separator + mention + " ");
+    setChatInputValue((prev) => {
+      const tokens = prev.split(/\s+/);
+      if (tokens.includes(mention)) return prev;
+      const separator = prev.trim() ? " " : "";
+      return prev.trimEnd() + separator + mention + " ";
+    });
   };
 };
 

@@ -52,12 +52,11 @@ export function useSelectChat() {
         search: { id: chatId },
       });
 
-      // IMPORTANT: Update settings with the chat's mode or effective global default
+      //  Update settings with the chat's mode or effective global default
       // For null chatMode (legacy chats), use initialChatMode which accounts for:
       // - User's selectedChatMode setting (global default)
       // - Environment variables (DYAD_MODE override)
       // - Free agent quota availability
-      // This prevents legacy chats from inheriting the previous chat's mode
       const modeToSet = chatMode ?? initialChatMode;
       if (modeToSet) {
         updateSettings({ selectedChatMode: modeToSet }).catch((error) => {

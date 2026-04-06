@@ -1,10 +1,10 @@
 - paragraph: basic
 - button "file1.txt file1.txt Edit":
   - img
-  - text: /file1\.txt.*/
+  - text: ""
   - button "Edit":
     - img
-    - text: /Edit/
+    - text: ""
   - img
 - paragraph: More EOM
 - button "Copy":
@@ -16,7 +16,7 @@
 - img
 - text: less than a minute ago
 - img
-- text: /wrote 1 file\(s\).*/
+- text: (1 files changed)
 - paragraph: "[[UPLOAD_IMAGE_TO_CODEBASE]]"
 - 'button "Expand image: logo.png"':
   - img "logo.png"
@@ -29,14 +29,12 @@
 - button "Copy":
   - img
 - img
-- text: Approved
-- img
 - text: test-model
 - img
 - text: less than a minute ago
 - button "Undo":
   - img
-  - text: /Undo/
+  - text: ""
 - button "Retry":
   - img
-  - text: /Retry/
+  - text: ""

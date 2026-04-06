@@ -16,10 +16,11 @@ export function registerChatHandlers() {
   createTypedHandler(
     chatContracts.createChat,
     async (_, { appId, initialChatMode }) => {
-      // Note: initialChatMode may be undefined/null, which is expected for backward compatibility.
-      // Clients are responsible for determining the proper mode using useInitialChatMode() hook,
-      // which handles quota checks and environment variable overrides.
-      // The handler only persists what the client explicitly provides or null.
+      // initialChatMode may be undefined/null for legacy compatibility.
+      // Clients should resolve the effective mode using useInitialChatMode() before
+      // passing it here, but the handler persists exactly what the client sends.
+      // If no explicit mode is provided, the chat stores null and the UI falls back
+      // to the global/default mode behavior.
 
       // Get the app's path first
       const app = await db.query.apps.findFirst({

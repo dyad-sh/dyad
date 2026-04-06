@@ -6,11 +6,8 @@ const logger = log.scope("chatModeUtils");
 
 /**
  * Persist a chat mode change to the database.
- * Calls the provided callbacks on success and error.
  * Returns true if successful, false if failed.
- *
- * This helper prevents duplication of the fire-and-forget pattern used in
- * multiple places (ChatModeSelector, useChatModeToggle, etc.)
+ * This helper prevents duplication of the fire-and-forget pattern used in other components like  (ChatModeSelector, useChatModeToggle, etc.)
  */
 export async function persistChatModeToDb(
   chatId: number,

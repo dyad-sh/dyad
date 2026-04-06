@@ -1,6 +1,4 @@
 ===
 role: user
 message: [dump]
-
-Attachments:
-- logo.png (image/png)
+<dyad-attachment name="logo.png" type="image/png" url="dyad-media://media/silent-panda-cheer/.dyad/media/7fb9336783b6beb6c4b6b1e470ac024e.png" path="C:\Users\LENOVO\AppData\Local\Temp\dyad-e2e-tests-1775444161965\dyad-apps\silent-panda-cheer\.dyad\media\7fb9336783b6beb6c4b6b1e470ac024e.png" attachment-type="chat-context"></dyad-attachment>

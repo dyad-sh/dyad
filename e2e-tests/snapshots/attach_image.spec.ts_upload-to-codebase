@@ -1,9 +1,4 @@
 ===
 role: user
 message: [[UPLOAD_IMAGE_TO_CODEBASE]]
-
-Attachments:
-
-
-File to upload to codebase: "logo.png" (path: C:\Users\LENOVO\AppData\Local\Temp\dyad-e2e-tests-1775397035177\dyad-apps\happy-armadillo-swim\.dyad\media\82166f472e7ff4b34f65edecf58ab9f4.png)
-Use the copy_file tool (or <dyad-copy> tag) to copy this file into the codebase at the appropriate location.
+<dyad-attachment name="logo.png" type="image/png" url="dyad-media://media/whistling-koala-sniff/.dyad/media/d336fa0ee1b3b82423f1763f2dcb1f33.png" path="C:\Users\LENOVO\AppData\Local\Temp\dyad-e2e-tests-1775444143125\dyad-apps\whistling-koala-sniff\.dyad\media\d336fa0ee1b3b82423f1763f2dcb1f33.png" attachment-type="upload-to-codebase"></dyad-attachment>

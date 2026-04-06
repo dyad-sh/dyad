@@ -518,7 +518,8 @@
           "3": {},
           "5": {
             "src/pages/Index.tsx": "[[FILE_ID_8]]"
-          }
+          },
+          "7": {}
         },
         "hasExternalChanges": false
       },

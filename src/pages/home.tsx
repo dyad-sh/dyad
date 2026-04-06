@@ -8,7 +8,7 @@ import { useLoadApps } from "@/hooks/useLoadApps";
 import { useSettings } from "@/hooks/useSettings";
 import { SetupBanner } from "@/components/SetupBanner";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { HomeChatInput } from "@/components/chat/HomeChatInput";
 import { usePostHog } from "posthog-js/react";
@@ -42,8 +42,7 @@ import {
   ManageDyadProButton,
   SetupDyadProButton,
 } from "@/components/ProBanner";
-import { hasDyadProKey, getEffectiveDefaultChatMode } from "@/lib/schemas";
-import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
+import { hasDyadProKey } from "@/lib/schemas";
 import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 
 // Track whether we've already checked release notes this session (module-scoped
@@ -62,8 +61,7 @@ export default function HomePage() {
   const navigate = useNavigate();
   const search = useSearch({ from: "/" });
   const { refreshApps } = useLoadApps();
-  const { settings, updateSettings, envVars } = useSettings();
-  const { isQuotaExceeded, isLoading: isQuotaLoading } = useFreeAgentQuota();
+  const { settings, updateSettings } = useSettings();
 
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const { selectChat } = useSelectChat();
@@ -155,24 +153,6 @@ export default function HomePage() {
       navigate({ to: "/app-details", search: { appId } });
     }
   }, [appId, navigate]);
-
-  // Apply default chat mode when navigating to home page
-  // Wait for quota status to load to avoid race condition where we default to Basic Agent
-  // before knowing if quota is actually exceeded
-  const hasAppliedDefaultChatMode = useRef(false);
-  useEffect(() => {
-    if (settings && !hasAppliedDefaultChatMode.current && !isQuotaLoading) {
-      hasAppliedDefaultChatMode.current = true;
-      const effectiveDefaultMode = getEffectiveDefaultChatMode(
-        settings,
-        envVars,
-        !isQuotaExceeded,
-      );
-      if (settings.selectedChatMode !== effectiveDefaultMode) {
-        updateSettings({ selectedChatMode: effectiveDefaultMode });
-      }
-    }
-  }, [settings, updateSettings, isQuotaExceeded, isQuotaLoading, envVars]);
 
   const handleSubmit = async (options?: HomeSubmitOptions) => {
     const attachments = options?.attachments || [];

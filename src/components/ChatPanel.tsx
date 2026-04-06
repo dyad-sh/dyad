@@ -28,8 +28,9 @@ import {
 } from "@/components/ui/tooltip";
 import { ArrowDown } from "lucide-react";
 import { useSettings } from "@/hooks/useSettings";
+import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
-import { isBasicAgentMode } from "@/lib/schemas";
+import { isBasicAgentMode, type ChatSummary } from "@/lib/schemas";
 
 interface ChatPanelProps {
   chatId?: number;
@@ -50,6 +51,7 @@ export function ChatPanel({
   const streamCountById = useAtomValue(chatStreamCountByIdAtom);
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
   const { settings, updateSettings } = useSettings();
+  const initialChatMode = useInitialChatMode();
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { isQuotaExceeded } = useFreeAgentQuota();
   const showFreeAgentQuotaBanner =
@@ -142,17 +144,16 @@ export function ChatPanel({
     if (!chatId || !selectedAppId) return;
 
     try {
-      const chatSummaries = queryClient.getQueryData<any[]>(
+      const chatSummaries = queryClient.getQueryData<ChatSummary[]>(
         queryKeys.chats.list({ appId: selectedAppId }),
       );
 
       if (chatSummaries) {
         const currentChat = chatSummaries.find((c) => c.id === chatId);
-        if (
-          currentChat?.chatMode &&
-          currentChat.chatMode !== settings?.selectedChatMode
-        ) {
-          updateSettings({ selectedChatMode: currentChat.chatMode });
+        // Handle both new chats with explicit mode and legacy chats (chatMode === null)
+        const chatMode = currentChat?.chatMode ?? initialChatMode;
+        if (chatMode && chatMode !== settings?.selectedChatMode) {
+          updateSettings({ selectedChatMode: chatMode });
         }
       }
     } catch (err) {
@@ -161,7 +162,7 @@ export function ChatPanel({
 
     // Exclude settings?.selectedChatMode from dependencies to prevent race condition/infinite loop
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId, selectedAppId, queryClient, updateSettings]);
+  }, [chatId, selectedAppId, queryClient, updateSettings, initialChatMode]);
 
   const isStreaming = chatId ? (isStreamingById.get(chatId) ?? false) : false;
   // but only if the user was following (at bottom) during the stream.

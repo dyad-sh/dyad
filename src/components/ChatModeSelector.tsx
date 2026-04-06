@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   MiniSelectTrigger,
   Select,
@@ -15,7 +16,7 @@ import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { useMcp } from "@/hooks/useMcp";
 import { persistChatModeToDb } from "@/lib/chatModeUtils";
 import type { ChatMode } from "@/lib/schemas";
-import { isDyadProEnabled } from "@/lib/schemas";
+import { isChatModeAllowed, isDyadProEnabled } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
 import { detectIsMac } from "@/hooks/useChatModeToggle";
 import { useRouterState } from "@tanstack/react-router";
@@ -28,7 +29,7 @@ import { Hammer, Bot, MessageCircle, Lightbulb } from "lucide-react";
 import { useChats } from "@/hooks/useChats";
 
 export function ChatModeSelector() {
-  const { settings, updateSettings } = useSettings();
+  const { settings, updateSettings, envVars } = useSettings();
   const routerState = useRouterState();
   const isChatRoute = routerState.location.pathname === "/chat";
   const messagesById = useAtomValue(chatMessagesByIdAtom);
@@ -36,38 +37,57 @@ export function ChatModeSelector() {
   const currentChatMessages = chatId ? (messagesById.get(chatId) ?? []) : [];
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { invalidateChats } = useChats(selectedAppId);
+  const [isPersisting, setIsPersisting] = useState(false);
 
   // Migration happens on read, so selectedChatMode will never be "agent"
   const selectedMode = settings?.selectedChatMode || "build";
   const isProEnabled = settings ? isDyadProEnabled(settings) : false;
   const { messagesRemaining, isQuotaExceeded } = useFreeAgentQuota();
+  const freeAgentQuotaAvailable = !isQuotaExceeded;
   const { servers } = useMcp();
   const enabledMcpServersCount = servers.filter((s) => s.enabled).length;
+  const isLocalAgentAllowed =
+    settings &&
+    isChatModeAllowed(
+      "local-agent",
+      settings,
+      envVars,
+      freeAgentQuotaAvailable,
+    );
 
   const handleModeChange = async (value: string) => {
     const newMode = value as ChatMode;
+    const currentChatId = chatId;
+    const currentRoute = isChatRoute;
 
-    // If we're in a chat, also save the mode to this specific chat (foreground)
-    if (chatId && isChatRoute) {
-      const persistSucceeded = await persistChatModeToDb(
-        chatId,
-        newMode,
-        () => invalidateChats(), // on success
-        () => {
-          // on error - show error and don't update settings
-          invalidateChats();
-          toast.error("Failed to save chat mode to database");
-        },
-      );
-
-      // Only proceed if persist succeeded
-      if (!persistSucceeded) {
+    setIsPersisting(true);
+    try {
+      if (newMode === "local-agent" && !isLocalAgentAllowed) {
+        toast.error("Agent mode unavailable — free quota exceeded");
         return;
       }
-    }
 
-    // Apply change to settings only after DB save (if in chat) to prevent wrong-mode sends during persist window
-    updateSettings({ selectedChatMode: newMode });
+      if (chatId && isChatRoute) {
+        const persistSucceeded = await persistChatModeToDb(
+          chatId,
+          newMode,
+          () => invalidateChats(),
+          () => {
+            invalidateChats();
+            toast.error("Failed to save chat mode to database");
+          },
+        );
+        if (!persistSucceeded) {
+          return;
+        }
+      }
+
+      if (currentChatId === chatId && currentRoute === isChatRoute) {
+        updateSettings({ selectedChatMode: newMode });
+      }
+    } finally {
+      setIsPersisting(false);
+    }
 
     // We want to show a toast when user is switching to the new agent mode
     // because they might weird results mixing Build and Agent mode in the same chat.
@@ -134,6 +154,8 @@ export function ChatModeSelector() {
       <Select
         value={selectedMode}
         onValueChange={(v) => v && handleModeChange(v)}
+        disabled={isPersisting}
+        aria-busy={isPersisting}
       >
         <Tooltip>
           <TooltipTrigger
@@ -191,7 +213,17 @@ export function ChatModeSelector() {
             </div>
           </SelectItem>
           {!isProEnabled && (
-            <SelectItem value="local-agent" disabled={isQuotaExceeded}>
+            <SelectItem
+              value="local-agent"
+              disabled={
+                !isChatModeAllowed(
+                  "local-agent",
+                  settings!,
+                  envVars,
+                  freeAgentQuotaAvailable,
+                )
+              }
+            >
               <div className="flex flex-col items-start">
                 <div className="flex items-center gap-1.5">
                   <Bot size={14} className="text-muted-foreground" />

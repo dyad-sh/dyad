@@ -16,6 +16,7 @@ export function useChats(appId: number | null) {
   const invalidateChats = () => {
     // Invalidate all chat queries (any appId) since mutations affect both
     // app-specific lists and the global list (appId=null)
+    // Without return - the promise is ignored (fire and forget) / now caller  callers can await completion
     return queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
   };
 

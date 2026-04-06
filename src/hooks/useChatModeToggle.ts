@@ -2,7 +2,11 @@ import { useCallback, useMemo } from "react";
 import { useSettings } from "./useSettings";
 import { useShortcut } from "./useShortcut";
 import { usePostHog } from "posthog-js/react";
-import { ChatModeSchema, isDyadProEnabled } from "../lib/schemas";
+import {
+  ChatModeSchema,
+  isChatModeAllowed,
+  isDyadProEnabled,
+} from "../lib/schemas";
 import { persistChatModeToDb } from "@/lib/chatModeUtils";
 import { useRouter } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -11,7 +15,7 @@ import { useFreeAgentQuota } from "./useFreeAgentQuota";
 import { toast } from "sonner";
 
 export function useChatModeToggle() {
-  const { settings, updateSettings } = useSettings();
+  const { settings, updateSettings, envVars } = useSettings();
   const posthog = usePostHog();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -46,13 +50,11 @@ export function useChatModeToggle() {
     // Migration on read ensures currentMode is never "agent"
 
     // Filter to only available modes based on user's access level
+    const freeAgentQuotaAvailable = !isQuotaExceeded;
     const allModes = ChatModeSchema.options;
-    const availableModes = allModes.filter((mode) => {
-      // Pro users have access to all modes
-      if (isProEnabled) return true;
-      if (mode === "local-agent" && isQuotaExceeded) return false;
-      return true;
-    });
+    const availableModes = allModes.filter((mode) =>
+      isChatModeAllowed(mode, settings, envVars, freeAgentQuotaAvailable),
+    );
     const currentIndex = availableModes.indexOf(currentMode);
     // When current mode is filtered out (e.g., quota exceeded), start from the first mode
     // not from the next one to avoid skipping availableModes[0]
@@ -61,39 +63,58 @@ export function useChatModeToggle() {
         ? availableModes[(currentIndex + 1) % availableModes.length]
         : availableModes[0];
 
-    // Check if the shortcut would have landed on local-agent but it was filtered
-    const nextInFullCycle =
-      allModes[(allModes.indexOf(currentMode) + 1) % allModes.length];
-    if (nextInFullCycle === "local-agent" && isQuotaExceeded && !isProEnabled) {
+    // Only show the quota-toast when the user is already on local-agent and it is unavailable.
+    if (
+      currentMode === "local-agent" &&
+      !isChatModeAllowed(
+        "local-agent",
+        settings,
+        envVars,
+        freeAgentQuotaAvailable,
+      )
+    ) {
       toast.info("Agent mode unavailable — free quota exceeded");
     }
 
+    const initialChatId = chatId?.id;
+    const initialPath = router.state.location.pathname;
+
+    // Persist to chat if we're in a chat (match ChatModeSelector pattern: persist first)
+    if (chatId?.id) {
+      const persistSucceeded = await persistChatModeToDb(
+        chatId.id,
+        newMode,
+        () => queryClient.invalidateQueries({ queryKey: queryKeys.chats.all }), // on success
+        () => {
+          toast.error("Failed to save chat mode to database");
+        }, // on error
+      );
+      if (!persistSucceeded) {
+        return; // Don't update settings if DB persist failed
+      }
+
+      if (
+        chatId?.id !== initialChatId ||
+        router.state.location.pathname !== initialPath
+      ) {
+        return; // Route changed while persisting; don't apply stale mode.
+      }
+    }
+
+    // Apply change to settings only after DB save (if in chat) to prevent wrong-mode sends during persist window
     updateSettings({ selectedChatMode: newMode });
     posthog.capture("chat:mode_toggle", {
       from: currentMode,
       to: newMode,
       trigger: "keyboard_shortcut",
     });
-
-    // Persist to chat if we're in a chat (fire-and-forget like dropdown)
-    if (chatId?.id) {
-      await persistChatModeToDb(
-        chatId.id,
-        newMode,
-        () => queryClient.invalidateQueries({ queryKey: queryKeys.chats.all }), // on success
-        () => {
-          updateSettings({ selectedChatMode: currentMode });
-          queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
-          toast.error("Failed to save chat mode to database");
-        }, // on error
-      );
-    }
   }, [
     settings,
     updateSettings,
     posthog,
     chatId,
     queryClient,
+    router.state.location.pathname,
     isProEnabled,
     isQuotaExceeded,
   ]);

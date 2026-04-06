@@ -7,10 +7,7 @@ export const SecretSchema = z.object({
 });
 export type Secret = z.infer<typeof SecretSchema>;
 
-/**
- * Chat modes (excludes deprecated values like "agent")
- * Keep this early since it's used in multiple schemas below
- */
+// Chat modes schema for type  safety
 export const ChatModeSchema = z.enum(["build", "ask", "local-agent", "plan"]);
 export type ChatMode = z.infer<typeof ChatModeSchema>;
 
@@ -480,6 +477,20 @@ export function getEffectiveDefaultChatMode(
   if (isPro) return "local-agent";
   if (freeAgentQuotaAvailable && hasPaidProviderSetup) return "local-agent";
   return "build";
+}
+
+export function isChatModeAllowed(
+  chatMode: ChatMode,
+  settings: UserSettings,
+  envVars: Record<string, string | undefined>,
+  freeAgentQuotaAvailable = false,
+): boolean {
+  if (chatMode !== "local-agent") return true;
+  if (isDyadProEnabled(settings)) return true;
+  if (!freeAgentQuotaAvailable) return false;
+  // For non-Pro users, local-agent is only allowed when OpenAI or Anthropic
+  // is configured; otherwise basic quota should not enable the agent mode.
+  return isOpenAIOrAnthropicSetup(settings, envVars);
 }
 
 /**

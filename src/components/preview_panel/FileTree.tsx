@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  MessageCircle,
   ChevronDown,
   ChevronRight,
   Folder,
@@ -9,11 +10,12 @@ import {
   X,
 } from "lucide-react";
 import { selectedFileAtom } from "@/atoms/viewAtoms";
-import { useSetAtom } from "jotai";
+import { useAtom, useSetAtom } from "jotai";
 import { Input } from "@/components/ui/input";
 import type { AppFileSearchResult } from "@/ipc/types";
 import { useSearchAppFiles } from "@/hooks/useSearchAppFiles";
 import { useTranslation } from "react-i18next";
+import { chatInputValueAtom } from "@/atoms/chatAtoms";
 
 interface FileTreeProps {
   appId: number | null;
@@ -36,6 +38,30 @@ const useDebouncedValue = <T,>(value: T, delay = 200) => {
   }, [value, delay]);
 
   return debouncedValue;
+};
+
+const MentionFileButton = ({ filePath }: { filePath: string }) => {
+  const handleMentionFile = useMentionFile(filePath);
+  return (
+    <button
+      className="ml-1 flex-shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
+      onClick={handleMentionFile}
+      title="Mention file in chat"
+    >
+      <MessageCircle size={14} />
+    </button>
+  );
+};
+
+const useMentionFile = (filePath: string) => {
+  const [chatInputValue, setChatInputValue] = useAtom(chatInputValueAtom);
+  return (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const mention = `@file:${filePath}`;
+    if (chatInputValue.includes(mention)) return;
+    const separator = chatInputValue.trim() ? " " : "";
+    setChatInputValue(chatInputValue.trimEnd() + separator + mention + " ");
+  };
 };
 
 const highlightMatch = (text: string, query: string) => {
@@ -317,7 +343,7 @@ const SearchResultItem = ({
   return (
     <div className="py-1">
       <div
-        className="flex items-center rounded px-1.5 py-1 text-sm hover:bg-(--sidebar) cursor-pointer"
+        className="group flex items-center rounded px-1.5 py-1 text-sm hover:bg-(--sidebar) cursor-pointer"
         onClick={handleFileClick}
       >
         {/* Chevron */}
@@ -327,6 +353,9 @@ const SearchResultItem = ({
 
         {/* Path */}
         <span className="truncate flex-1">{path}</span>
+
+        {/* Mention button */}
+        <MentionFileButton filePath={path} />
 
         {/* Count badge (right-aligned, circular) */}
         <span
@@ -400,7 +429,7 @@ const TreeNode = ({
   return (
     <li className="py-0.5">
       <div
-        className="flex items-center rounded px-1.5 py-0.5 text-sm hover:bg-(--sidebar)"
+        className="group flex items-center rounded px-1.5 py-0.5 text-sm hover:bg-(--sidebar)"
         onClick={handleClick}
       >
         {node.isDirectory && (
@@ -411,6 +440,7 @@ const TreeNode = ({
         <span className="truncate flex-1">
           {isSearchMode ? highlightMatch(node.name, searchQuery) : node.name}
         </span>
+        {!node.isDirectory && <MentionFileButton filePath={node.path} />}
       </div>
 
       {match?.matchesContent &&

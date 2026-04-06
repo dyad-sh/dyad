@@ -40,6 +40,9 @@ export default defineConfig({
         "@babel/types",
         "@babel/generator",
         "recast",
+        // dugite — must be external so __dirname resolves to its real location
+        // for embedded git binary discovery
+        "dugite",
       ],
     },
   },

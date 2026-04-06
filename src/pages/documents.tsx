@@ -33,6 +33,8 @@ import {
   Cloud,
   Bot,
   ChevronDown,
+  Zap,
+  Monitor,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -75,6 +77,7 @@ import { Label } from "@/components/ui/label";
 import { libreOfficeClient } from "@/ipc/libreoffice_client";
 import { showError, showSuccess } from "@/lib/toast";
 import { useLocalModels } from "@/hooks/useLocalModels";
+import { useLocalLMSModels } from "@/hooks/useLMStudioModels";
 import { useLanguageModelsByProviders } from "@/hooks/useLanguageModelsByProviders";
 
 import type {
@@ -201,11 +204,12 @@ export default function DocumentsPage() {
   const [aiDocName, setAiDocName] = useState("");
   const [aiTone, setAiTone] = useState<"formal" | "casual" | "professional" | "creative">("professional");
   const [aiLength, setAiLength] = useState<"short" | "medium" | "long" | "detailed">("medium");
-  // Model selection for AI generation: undefined = use global settings default
-  const [aiSelectedModel, setAiSelectedModel] = useState<{ provider: string; name: string } | undefined>(undefined);
+  // Model selection for AI generation: undefined = use global settings default, "__smart__" = smart auto routing
+  const [aiSelectedModel, setAiSelectedModel] = useState<{ provider: string; name: string } | "__smart__" | undefined>(undefined);
 
   // Load available models for the model picker
   const { models: localModels, loadModels: loadLocalModels } = useLocalModels();
+  const { models: lmStudioModels, loadModels: loadLMStudioModels } = useLocalLMSModels();
   const { data: cloudModelsByProvider = {} } = useLanguageModelsByProviders();
 
   // Flatten cloud models that have api keys (non-empty providers)
@@ -220,14 +224,20 @@ export default function DocumentsPage() {
     );
   }, [cloudModelsByProvider]);
 
-  const localModelOptions = useMemo(() =>
-    localModels.map((m) => ({
-      provider: "ollama",
+  const localModelOptions = useMemo(() => [
+    ...localModels.map((m) => ({
+      provider: "ollama" as const,
       name: m.modelName,
       displayName: m.displayName,
       groupLabel: "Local (Ollama)",
     })),
-  [localModels]);
+    ...lmStudioModels.map((m) => ({
+      provider: "lmstudio" as const,
+      name: m.modelName,
+      displayName: m.displayName,
+      groupLabel: "Local (LM Studio)",
+    })),
+  ], [localModels, lmStudioModels]);
 
   const allModelOptions = useMemo(() => [
     ...localModelOptions,
@@ -379,9 +389,11 @@ export default function DocumentsPage() {
         prompt: aiPrompt,
         tone: aiTone,
         length: aiLength,
-        ...(aiSelectedModel
-          ? { provider: aiSelectedModel.provider, model: aiSelectedModel.name }
-          : {}),
+        ...(aiSelectedModel === "__smart__"
+          ? { routingMode: "smart" as const }
+          : aiSelectedModel
+            ? { provider: aiSelectedModel.provider, model: aiSelectedModel.name, routingMode: "manual" as const }
+            : {}),
       },
     });
     setAiDialogOpen(false);
@@ -699,20 +711,27 @@ export default function DocumentsPage() {
                       </Label>
                       <Select
                         value={
-                          aiSelectedModel
-                            ? `${aiSelectedModel.provider}::${aiSelectedModel.name}`
-                            : "__default__"
+                          aiSelectedModel === "__smart__"
+                            ? "__smart__"
+                            : aiSelectedModel
+                              ? `${aiSelectedModel.provider}::${aiSelectedModel.name}`
+                              : "__default__"
                         }
                         onValueChange={(v) => {
                           if (v === "__default__") {
                             setAiSelectedModel(undefined);
+                          } else if (v === "__smart__") {
+                            setAiSelectedModel("__smart__");
                           } else {
                             const [provider, ...rest] = v.split("::");
                             setAiSelectedModel({ provider, name: rest.join("::") });
                           }
                         }}
                         onOpenChange={(open) => {
-                          if (open && localModels.length === 0) loadLocalModels();
+                          if (open) {
+                            if (localModels.length === 0) loadLocalModels();
+                            if (lmStudioModels.length === 0) loadLMStudioModels();
+                          }
                         }}
                       >
                         <SelectTrigger className="border-border/50">
@@ -726,16 +745,40 @@ export default function DocumentsPage() {
                             </span>
                           </SelectItem>
 
-                          {localModelOptions.length > 0 && (
+                          <SelectItem value="__smart__">
+                            <span className="flex items-center gap-2 text-amber-500">
+                              <Zap className="h-3 w-3" />
+                              Smart (Auto)
+                            </span>
+                          </SelectItem>
+
+                          {localModelOptions.filter(m => m.provider === "ollama").length > 0 && (
                             <>
                               <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
                                 <Cpu className="h-3 w-3" />
                                 Local (Ollama)
                               </div>
-                              {localModelOptions.map((m) => (
+                              {localModelOptions.filter(m => m.provider === "ollama").map((m) => (
                                 <SelectItem
                                   key={`ollama::${m.name}`}
                                   value={`ollama::${m.name}`}
+                                >
+                                  {m.displayName}
+                                </SelectItem>
+                              ))}
+                            </>
+                          )}
+
+                          {localModelOptions.filter(m => m.provider === "lmstudio").length > 0 && (
+                            <>
+                              <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                                <Monitor className="h-3 w-3" />
+                                Local (LM Studio)
+                              </div>
+                              {localModelOptions.filter(m => m.provider === "lmstudio").map((m) => (
+                                <SelectItem
+                                  key={`lmstudio::${m.name}`}
+                                  value={`lmstudio::${m.name}`}
                                 >
                                   {m.displayName}
                                 </SelectItem>
@@ -779,12 +822,18 @@ export default function DocumentsPage() {
                     />
                   </div>
 
-                  {aiSelectedModel && (
+                  {aiSelectedModel === "__smart__" && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-600">
+                      <Zap className="h-3.5 w-3.5 shrink-0" />
+                      Smart routing will automatically pick the best model based on task complexity
+                    </div>
+                  )}
+                  {aiSelectedModel && aiSelectedModel !== "__smart__" && (
                     <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-500/10 border border-violet-500/20 text-xs text-violet-600">
                       <Bot className="h-3.5 w-3.5 shrink-0" />
                       Using{" "}
                       <span className="font-semibold">
-                        {aiSelectedModel.provider === "ollama" ? "Ollama / " : `${aiSelectedModel.provider} / `}
+                        {aiSelectedModel.provider === "ollama" ? "Ollama / " : aiSelectedModel.provider === "lmstudio" ? "LM Studio / " : `${aiSelectedModel.provider} / `}
                         {aiSelectedModel.name}
                       </span>
                     </div>

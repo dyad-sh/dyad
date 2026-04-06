@@ -14,6 +14,7 @@ import { eq, desc, like, and, or } from "drizzle-orm";
 import { generateText } from "ai";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import { readSettings } from "../../main/settings";
+import { smartRouter } from "@/lib/smart_router";
 import type {
   DocumentType,
   DocumentFormat,
@@ -36,12 +37,13 @@ import type {
 const execAsync = promisify(exec);
 
 // LibreOffice paths for different platforms
+// On Windows, .exe is the GUI binary; .com is the console launcher (for headless/CLI).
 const LIBREOFFICE_PATHS = {
   win32: [
-    "C:\\Program Files\\LibreOffice\\program\\soffice.com",
     "C:\\Program Files\\LibreOffice\\program\\soffice.exe",
-    "C:\\Program Files (x86)\\LibreOffice\\program\\soffice.com",
+    "C:\\Program Files\\LibreOffice\\program\\soffice.com",
     "C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe",
+    "C:\\Program Files (x86)\\LibreOffice\\program\\soffice.com",
   ],
   darwin: [
     "/Applications/LibreOffice.app/Contents/MacOS/soffice",
@@ -384,11 +386,26 @@ class LibreOfficeManager {
   ): Promise<{ content: DocumentContent | SpreadsheetContent | PresentationContent; model: string }> {
     const settings = readSettings();
 
-    // Use the model explicitly requested by the user, or fall back to the global default
-    const selectedModel =
-      options.provider && options.model
-        ? { provider: options.provider, name: options.model }
-        : settings.selectedModel;
+    // Determine which model to use based on routing mode:
+    // 1. "smart" — delegate to the Smart Router based on prompt complexity
+    // 2. Explicit provider/model — use exactly what the user picked
+    // 3. Fallback — use the global default model from settings
+    let selectedModel = settings.selectedModel;
+
+    if (options.routingMode === "smart") {
+      try {
+        const decision = await smartRouter.route({
+          taskType: type === "spreadsheet" ? "extraction" : "creative_writing",
+          prompt: options.prompt,
+          privacyLevel: "standard",
+        });
+        selectedModel = { provider: decision.providerId, name: decision.modelId };
+      } catch (routeError) {
+        console.warn("Smart Router failed, using default model:", routeError);
+      }
+    } else if (options.provider && options.model) {
+      selectedModel = { provider: options.provider, name: options.model };
+    }
     
     const systemPrompt = this.getDocumentGenerationSystemPrompt(type, options);
     const userPrompt = `Create a ${type} titled "${name}" based on this description:\n\n${options.prompt}`;
@@ -1515,8 +1532,22 @@ ${bulletParagraphs}    </draw:text-box>
         return { success: false, error: "Document file not found on disk. It may have been moved or deleted." };
       }
 
-      // Open in LibreOffice
-      spawn(loPath, [doc.filePath], { detached: true, stdio: "ignore", windowsHide: true }).unref();
+      // Open in LibreOffice — use .exe for GUI on Windows, never hide the window
+      let guiPath = loPath;
+      if (process.platform === "win32" && loPath.endsWith("soffice.com")) {
+        const exePath = loPath.replace(/soffice\.com$/i, "soffice.exe");
+        try {
+          await fs.access(exePath);
+          guiPath = exePath;
+        } catch {
+          // fall back to .com
+        }
+      }
+      const child = spawn(guiPath, [doc.filePath], { detached: true, stdio: "ignore" });
+      child.on("error", (err) => {
+        console.error("[LibreOffice] Failed to spawn:", err.message);
+      });
+      child.unref();
 
       return { success: true };
     } catch (error) {

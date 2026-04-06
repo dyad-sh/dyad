@@ -46,6 +46,8 @@ export interface AIGenerationOptions {
   prompt: string;
   provider?: string;  // 'local' | 'openai' | 'anthropic' | etc.
   model?: string;
+  /** When set to 'smart', the Smart Router picks the best model based on prompt complexity. */
+  routingMode?: "smart" | "manual";
   style?: DocumentStyle;
   sections?: string[];
   language?: string;

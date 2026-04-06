@@ -131,6 +131,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
         streamMessage({
           prompt: AI_RULES_PROMPT,
           chatId,
+          appId: result.app.id,
         });
       }
       onClose();
@@ -167,6 +168,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
         streamMessage({
           prompt: AI_RULES_PROMPT,
           chatId,
+          appId: result.app.id,
         });
       }
       onClose();
@@ -266,6 +268,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
         streamMessage({
           prompt: AI_RULES_PROMPT,
           chatId: result.chatId,
+          appId: result.appId,
         });
       }
       setSelectedAppId(result.appId);

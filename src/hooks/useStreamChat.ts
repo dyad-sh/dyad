@@ -90,6 +90,7 @@ export function useStreamChat({
     async ({
       prompt,
       chatId,
+      appId,
       redo,
       attachments,
       selectedComponents,
@@ -98,6 +99,7 @@ export function useStreamChat({
     }: {
       prompt: string;
       chatId: number;
+      appId?: number;
       redo?: boolean;
       attachments?: FileAttachment[];
       selectedComponents?: ComponentSelection[];
@@ -171,6 +173,7 @@ export function useStreamChat({
       }
 
       let hasIncrementedStreamCount = false;
+      const targetAppId = appId ?? selectedAppId;
       try {
         const cachedChat =
           requestedChatMode === null
@@ -292,10 +295,10 @@ export function useStreamChat({
                   !document.hasFocus()
                 ) {
                   const app = queryClient.getQueryData<App | null>(
-                    queryKeys.apps.detail({ appId: selectedAppId }),
+                    queryKeys.apps.detail({ appId: targetAppId ?? null }),
                   );
                   const chats = queryClient.getQueryData<ChatSummary[]>(
-                    queryKeys.chats.list({ appId: selectedAppId }),
+                    queryKeys.chats.list({ appId: targetAppId ?? null }),
                   );
                   const chat = chats?.find((c) => c.id === chatId);
                   const appName = app?.name ?? "Dyad";
@@ -315,8 +318,8 @@ export function useStreamChat({
                     setIsPreviewOpen(true);
                   }
                   refreshAppIframe();
-                  if (selectedAppId) {
-                    setPendingScreenshotAppId(selectedAppId);
+                  if (targetAppId) {
+                    setPendingScreenshotAppId(targetAppId);
                   }
                   if (settings?.enableAutoFixProblems) {
                     checkProblems();

@@ -225,6 +225,7 @@ export default function HomePage() {
       streamMessage({
         prompt: inputValue,
         chatId,
+        appId,
         attachments,
         requestedChatMode: initialChatMode,
       });

@@ -16,7 +16,7 @@
 - img
 - text: less than a minute ago
 - img
-- text: (1 files changed)
+- text: wrote 1 file(s)
 - paragraph: "[[UPLOAD_IMAGE_TO_CODEBASE]]"
 - 'button "Expand image: logo.png"':
   - img "logo.png"
@@ -29,9 +29,13 @@
 - button "Copy":
   - img
 - img
+- text: Approved
+- img
 - text: test-model
 - img
 - text: less than a minute ago
+- img
+- text: wrote 1 file(s) + extra files edited outside of Dyad
 - button "Undo":
   - img
   - text: ""

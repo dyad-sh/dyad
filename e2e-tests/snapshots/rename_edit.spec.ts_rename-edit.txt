@@ -23,6 +23,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+.dyad/
 
 
 === file1.txt ===
@@ -72,15 +73,18 @@ A file (2)
   "packageManager": "<scrubbed>"
 }
 
+=== src/App.tsx ===
+const App = () => <div>Minimal imported app</div>;
+
+export default App;
+
+
 === src/main.tsx ===
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 
 createRoot(document.getElementById("root")!).render(<App />);
 
-
-=== src/Renamed.tsx ===
-// newly added content to renamed file should exist
 
 === src/vite-env.d.ts ===
 /// <reference types="vite/client" />

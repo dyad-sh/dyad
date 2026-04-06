@@ -16,13 +16,15 @@
 - img
 - text: less than a minute ago
 - img
-- text: (1 files changed)
+- text: wrote 1 file(s)
 - paragraph: "[dump]"
 - 'button "Expand image: logo.png"':
   - img "logo.png"
 - paragraph: "[[dyad-dump-path=*]]"
 - button "Copy":
   - img
+- img
+- text: Approved
 - img
 - text: test-model
 - img

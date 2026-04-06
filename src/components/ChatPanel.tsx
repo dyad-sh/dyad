@@ -155,6 +155,19 @@ export function ChatPanel({
         if (chatMode && chatMode !== settings?.selectedChatMode) {
           updateSettings({ selectedChatMode: chatMode });
         }
+      } else {
+        // Fallback: fetch chat directly when cache is empty (cold deep-link / browser history)
+        ipc.chat
+          .getChat(chatId)
+          .then((chat) => {
+            const chatMode = chat.chatMode ?? initialChatMode;
+            if (chatMode && chatMode !== settings?.selectedChatMode) {
+              updateSettings({ selectedChatMode: chatMode });
+            }
+          })
+          .catch((err) => {
+            console.error("Failed to restore chat mode on deep-link:", err);
+          });
       }
     } catch (err) {
       console.error(err);
@@ -268,7 +281,11 @@ export function ChatPanel({
                         }),
                       () => {
                         toast.error("Failed to save chat mode");
-                        if (previousMode) {
+                        // Only rollback if mode is still "build" (no newer override from another code path)
+                        if (
+                          previousMode &&
+                          settings?.selectedChatMode === "build"
+                        ) {
                           updateSettings({ selectedChatMode: previousMode });
                         }
                       },

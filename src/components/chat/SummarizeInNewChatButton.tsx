@@ -13,7 +13,7 @@ export function useSummarizeInNewChat() {
   const appId = useAtomValue(selectedAppIdAtom);
   const { streamMessage } = useStreamChat();
   const { selectChat } = useSelectChat();
-  const currentChatMode = useInitialChatMode() ?? "build";
+  const defaultChatMode = useInitialChatMode() ?? "build";
 
   const handleSummarize = useCallback(async () => {
     if (!appId) {
@@ -25,21 +25,34 @@ export function useSummarizeInNewChat() {
       return;
     }
     try {
+      // Fetch source chat to get its persisted mode instead of using global default
+      let sourceChatMode = defaultChatMode;
+      try {
+        const sourceChat = await ipc.chat.getChat(chatId);
+        sourceChatMode = sourceChat.chatMode ?? defaultChatMode;
+      } catch (err) {
+        console.error(
+          "Failed to fetch source chat mode, falling back to default:",
+          err,
+        );
+        // Use default mode if fetch fails
+      }
+
       const newChatId = await ipc.chat.createChat({
         appId,
-        initialChatMode: currentChatMode,
+        initialChatMode: sourceChatMode,
       });
       // Use selectChat to ensure mode is synced properly
-      selectChat({ chatId: newChatId, appId, chatMode: currentChatMode });
+      selectChat({ chatId: newChatId, appId, chatMode: sourceChatMode });
       await streamMessage({
         prompt: "Summarize from chat-id=" + chatId,
         chatId: newChatId,
-        chatMode: currentChatMode,
+        chatMode: sourceChatMode,
       });
     } catch (err) {
       showError(err);
     }
-  }, [appId, chatId, selectChat, currentChatMode, streamMessage]);
+  }, [appId, chatId, selectChat, defaultChatMode, streamMessage]);
 
   return { handleSummarize };
 }

@@ -117,20 +117,6 @@ export function useChatModeToggle() {
     }
 
     // Apply change to settings only after DB save (if in chat) to prevent wrong-mode sends during persist window
-    // Final validation: ensure mode is still allowed before persisting
-    const freeAgentQuotaAvailableForFinalCheck = !isQuotaExceeded;
-    if (
-      !isChatModeAllowed(
-        newMode,
-        settings,
-        envVars,
-        freeAgentQuotaAvailableForFinalCheck,
-      )
-    ) {
-      toast.error("Mode is no longer available — try again");
-      return;
-    }
-
     updateSettings({ selectedChatMode: newMode });
     posthog.capture("chat:mode_toggle", {
       from: currentMode,

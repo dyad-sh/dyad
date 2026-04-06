@@ -11,6 +11,9 @@ import { useSettings } from "./useSettings";
 import { useInitialChatMode } from "./useInitialChatMode";
 import { ChatMode, isChatModeAllowed } from "@/lib/schemas";
 import { useFreeAgentQuota } from "./useFreeAgentQuota";
+import { persistChatModeToDb } from "@/lib/chatModeUtils";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
 import { toast } from "sonner";
 import log from "electron-log";
 
@@ -26,6 +29,7 @@ export function useSelectChat() {
   const { updateSettings, settings, envVars } = useSettings();
   const initialChatMode = useInitialChatMode();
   const { isQuotaExceeded } = useFreeAgentQuota();
+  const queryClient = useQueryClient();
 
   return {
     selectChat: ({
@@ -77,9 +81,24 @@ export function useSelectChat() {
         // Mode is no longer available, fall back to initialChatMode
         const fallbackMode = initialChatMode;
         if (fallbackMode) {
-          toast.error(
+          toast.info(
             `Agent mode unavailable — switched this chat to ${fallbackMode}`,
           );
+          // Persist fallback mode to database so toast doesn't re-fire on every open
+          persistChatModeToDb(
+            chatId,
+            fallbackMode,
+            () =>
+              queryClient.invalidateQueries({ queryKey: queryKeys.chats.all }),
+            (error) => {
+              logger.error(
+                "Failed to persist fallback mode to database:",
+                error,
+              );
+            },
+          ).catch((error) => {
+            logger.error("Error persisting fallback chat mode:", error);
+          });
           updateSettings({ selectedChatMode: fallbackMode }).catch((error) => {
             logger.error("Error updating chat mode:", error);
           });

@@ -141,9 +141,12 @@ export function ChatPanel({
     fetchChatMessages();
   }, [fetchChatMessages]);
 
-  // Restore mode on route-driven chat switches (fallback if useSelectChat isn't called, e.g., browser history)
+  // Restore mode when chat data loads (cache or fresh fetch for deep-links)
+  // Skips updates on normal chat switches where useSelectChat already set the mode
   useEffect(() => {
-    if (!chatId || !selectedAppId) return;
+    if (!chatId || !selectedAppId) {
+      return;
+    }
 
     try {
       // Check if we have the current chat in the list
@@ -151,6 +154,7 @@ export function ChatPanel({
         const currentChat = chatsList.find((c: ChatSummary) => c.id === chatId);
         if (currentChat) {
           const chatMode = currentChat.chatMode ?? initialChatMode;
+          // Only update if different from current selection (avoids race with useSelectChat)
           if (chatMode && chatMode !== settings?.selectedChatMode) {
             updateSettings({ selectedChatMode: chatMode });
           }
@@ -159,12 +163,16 @@ export function ChatPanel({
       }
 
       // Not in cache, fetch directly for cold deep-link / browser history
+      const capturedChatId = chatId; // Capture for stale-ness check
       ipc.chat
         .getChat(chatId)
         .then((chat) => {
-          const chatMode = chat.chatMode ?? initialChatMode;
-          if (chatMode && chatMode !== settings?.selectedChatMode) {
-            updateSettings({ selectedChatMode: chatMode });
+          // Guard against stale async results: only apply if still on same chat
+          if (capturedChatId === chatId) {
+            const chatMode = chat.chatMode ?? initialChatMode;
+            if (chatMode && chatMode !== settings?.selectedChatMode) {
+              updateSettings({ selectedChatMode: chatMode });
+            }
           }
         })
         .catch((err) => {
@@ -173,15 +181,10 @@ export function ChatPanel({
     } catch (err) {
       console.error(err);
     }
-    // Include chatsList in deps so effect re-runs when cache data arrives
-  }, [
-    chatId,
-    selectedAppId,
-    chatsList,
-    settings?.selectedChatMode,
-    updateSettings,
-    initialChatMode,
-  ]);
+    // Re-run when chatsList loads to pick up persisted modes
+    // Don't depend on selectedChatMode to avoid re-running after useSelectChat updates it
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, selectedAppId, chatsList, initialChatMode, updateSettings]);
 
   const isStreaming = chatId ? (isStreamingById.get(chatId) ?? false) : false;
   // but only if the user was following (at bottom) during the stream.
@@ -287,11 +290,9 @@ export function ChatPanel({
                         }),
                       () => {
                         toast.error("Failed to save chat mode");
-                        // Only rollback if mode is still "build" (no newer override from another code path)
-                        if (
-                          previousMode &&
-                          settings?.selectedChatMode === "build"
-                        ) {
+                        // Rollback to previous mode if persist failed and we're still "build"
+                        // (check previousMode !== "build" since that's the actual switch condition)
+                        if (previousMode && previousMode !== "build") {
                           updateSettings({ selectedChatMode: previousMode });
                         }
                       },

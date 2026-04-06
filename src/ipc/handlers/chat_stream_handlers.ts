@@ -567,13 +567,20 @@ ${componentSnippet}
         "build";
 
       // Legacy chat migration: if chat_mode is null (pre-migration 0027) and we've resolved a concrete mode,
-      // persist it to the database so per-chat mode memory works going forward
+      // persist it to the database so per-chat mode memory works going forward.
+      // Note: For chats with chatMode == null, this imprints the user's current global default mode (req.chatMode)
+      // on the first send. This means legacy chats get locked to whatever global default was active on first Send,
+      // not explicitly chosen per-chat. This is intentional: it preserves the user's intent at the time of the first
+      // message, and users can override by explicitly selecting a mode via ChatModeSelector.
       if (updatedChat.chatMode === null && effectiveStreamMode !== null) {
         try {
           await db
             .update(chats)
             .set({ chatMode: effectiveStreamMode })
             .where(eq(chats.id, req.chatId));
+          logger.info(
+            `Migrated legacy chat ${req.chatId} to mode ${effectiveStreamMode} on first send`,
+          );
         } catch (err) {
           logger.error(
             `Failed to migrate legacy chat ${req.chatId} to mode ${effectiveStreamMode}:`,
@@ -1268,9 +1275,8 @@ This conversation includes one or more image attachments. When the user uploads 
           !mentionedAppsCodebases.length
         ) {
           // Check quota for local-agent mode (non-Pro users)
-          const isBasicAgentModeRequest =
-            effectiveStreamMode === "local-agent" &&
-            !isDyadProEnabled(settings);
+          // Note: this block is already gated on effectiveStreamMode === "local-agent"
+          const isBasicAgentModeRequest = !isDyadProEnabled(settings);
           if (isBasicAgentModeRequest) {
             const quotaStatus = await getFreeAgentQuotaStatus();
             if (quotaStatus.isQuotaExceeded) {

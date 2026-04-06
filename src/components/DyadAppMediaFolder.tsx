@@ -38,6 +38,7 @@ import {
   getFileExtension,
 } from "./media-library/media-folder-utils";
 import { MediaFolderOpen } from "./media-library/MediaFolderOpen";
+import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 import { ImageLightbox } from "./chat/ImageLightbox";
 import { buildDyadMediaUrl } from "@/lib/dyadMediaUrl";
 import { AppSearchSelect } from "./AppSearchSelect";
@@ -84,6 +85,7 @@ export function DyadAppMediaFolder({
   const [previewFile, setPreviewFile] = useState<MediaFile | null>(null);
   const queryClient = useQueryClient();
   const { selectChat } = useSelectChat();
+  const initialChatMode = useInitialChatMode();
 
   const moveTargetApps = useMemo(
     () => allApps.filter((app) => app.id !== appId),
@@ -100,11 +102,15 @@ export function DyadAppMediaFolder({
   const handleStartNewChatWithImage = async (file: MediaFile) => {
     setIsStartingChat(true);
     try {
-      const chatId = await ipc.chat.createChat(file.appId);
+      const chatId = await ipc.chat.createChat({
+        appId: file.appId,
+        ...(initialChatMode && { initialChatMode }),
+      });
       await queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
       selectChat({
         chatId,
         appId: file.appId,
+        chatMode: initialChatMode,
         prefillInput: `@media:${encodeURIComponent(file.fileName)} `,
       });
     } catch (error) {

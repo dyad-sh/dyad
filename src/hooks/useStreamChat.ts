@@ -18,7 +18,7 @@ import {
 import { ipc } from "@/ipc/types";
 import { isPreviewOpenAtom } from "@/atoms/viewAtoms";
 import type { ChatResponseEnd, App } from "@/ipc/types";
-import type { ChatSummary } from "@/lib/schemas";
+import type { ChatSummary, ChatMode } from "@/lib/schemas";
 import { useChats } from "./useChats";
 import { useLoadApp } from "./useLoadApp";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
@@ -87,6 +87,7 @@ export function useStreamChat({
       redo,
       attachments,
       selectedComponents,
+      chatMode,
       onSettled,
     }: {
       prompt: string;
@@ -94,6 +95,7 @@ export function useStreamChat({
       redo?: boolean;
       attachments?: FileAttachment[];
       selectedComponents?: ComponentSelection[];
+      chatMode?: ChatMode;
       onSettled?: (result: { success: boolean }) => void;
     }) => {
       if (
@@ -171,6 +173,7 @@ export function useStreamChat({
             redo,
             attachments: convertedAttachments,
             selectedComponents: selectedComponents ?? [],
+            chatMode,
           },
           {
             onChunk: ({

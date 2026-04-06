@@ -46,6 +46,7 @@ import { AppUpgrades } from "@/components/AppUpgrades";
 import { CapacitorControls } from "@/components/CapacitorControls";
 import { GithubCollaboratorManager } from "@/components/GithubCollaboratorManager";
 import { useAddAppToFavorite } from "@/hooks/useAddAppToFavorite";
+import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 
 export default function AppDetailsPage() {
   const navigate = useNavigate();
@@ -79,6 +80,7 @@ export default function AppDetailsPage() {
   const nameExists = checkNameResult?.exists ?? false;
   const { toggleFavorite, isLoading: isFavoriteLoading } =
     useAddAppToFavorite();
+  const initialChatMode = useInitialChatMode();
 
   // Get the appId from search params and find the corresponding app
   const appId = search.appId ? Number(search.appId) : null;
@@ -226,7 +228,10 @@ export default function AppDetailsPage() {
       setSelectedAppId(appId);
       await invalidateAppQuery(queryClient, { appId });
       await refreshApps();
-      await ipc.chat.createChat(appId);
+      await ipc.chat.createChat({
+        appId,
+        ...(initialChatMode && { initialChatMode }),
+      });
       setIsCopyDialogOpen(false);
       navigate({ to: "/app-details", search: { appId } });
     },

@@ -1,7 +1,7 @@
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue } from "jotai";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
-import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { useSecurityReview } from "@/hooks/useSecurityReview";
+import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 import { ipc } from "@/ipc/types";
 import { queryKeys } from "@/lib/queryKeys";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,7 +24,7 @@ import {
   Pencil,
   Wrench,
 } from "lucide-react";
-import { useNavigate } from "@tanstack/react-router";
+import { useSelectChat } from "@/hooks/useSelectChat";
 import { useStreamChat } from "@/hooks/useStreamChat";
 import { showError } from "@/lib/toast";
 import { Badge } from "@/components/ui/badge";
@@ -699,10 +699,10 @@ function FindingDetailsDialog({
 
 export const SecurityPanel = () => {
   const selectedAppId = useAtomValue(selectedAppIdAtom);
-  const setSelectedChatId = useSetAtom(selectedChatIdAtom);
-  const navigate = useNavigate();
+  const { selectChat } = useSelectChat();
   const queryClient = useQueryClient();
   const { streamMessage } = useStreamChat({ hasChatId: false });
+  const initialChatMode = useInitialChatMode();
   const { data, isLoading, error, refetch } = useSecurityReview(selectedAppId);
   const [isRunningReview, setIsRunningReview] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -773,6 +773,22 @@ export const SecurityPanel = () => {
     setDetailsOpen(true);
   };
 
+  const startSecurityChat = async (prompt: string, onSettled: () => void) => {
+    if (!selectedAppId) throw new Error("No app selected");
+    const chatId = await ipc.chat.createChat({
+      appId: selectedAppId,
+      initialChatMode,
+    });
+    selectChat({ chatId, appId: selectedAppId, chatMode: initialChatMode });
+    await streamMessage({
+      prompt,
+      chatId,
+      chatMode: initialChatMode,
+      onSettled,
+    });
+    return chatId;
+  };
+
   const handleRunSecurityReview = async () => {
     if (!selectedAppId) {
       showError("No app selected");
@@ -782,21 +798,10 @@ export const SecurityPanel = () => {
     try {
       setIsRunningReview(true);
 
-      // Create a new chat
-      const chatId = await ipc.chat.createChat(selectedAppId);
-
-      // Navigate to the new chat
-      setSelectedChatId(chatId);
-      await navigate({ to: "/chat", search: { id: chatId } });
-
       // Stream the security review prompt
-      await streamMessage({
-        prompt: "/security-review",
-        chatId,
-        onSettled: () => {
-          refetch();
-          setIsRunningReview(false);
-        },
+      await startSecurityChat("/security-review", () => {
+        refetch();
+        setIsRunningReview(false);
       });
     } catch (err) {
       showError(`Failed to run security review: ${err}`);
@@ -814,24 +819,14 @@ export const SecurityPanel = () => {
       const key = createFindingKey(finding);
       setFixingFindingKey(key);
 
-      const chatId = await ipc.chat.createChat(selectedAppId);
-
-      // Navigate to the new chat
-      setSelectedChatId(chatId);
-      await navigate({ to: "/chat", search: { id: chatId } });
-
       const prompt = `Please fix the following security issue in a simple and effective way:
 
 **${finding.title}** (${finding.level} severity)
 
 ${finding.description}`;
 
-      await streamMessage({
-        prompt,
-        chatId,
-        onSettled: () => {
-          setFixingFindingKey(null);
-        },
+      await startSecurityChat(prompt, () => {
+        setFixingFindingKey(null);
       });
     } catch (err) {
       showError(`Failed to create fix chat: ${err}`);
@@ -882,13 +877,6 @@ ${finding.description}`;
         selectedFindings.has(createFindingKey(finding)),
       );
 
-      // Create a new chat
-      const chatId = await ipc.chat.createChat(selectedAppId);
-
-      // Navigate to the new chat
-      setSelectedChatId(chatId);
-      await navigate({ to: "/chat", search: { id: chatId } });
-
       // Build a comprehensive prompt for all selected issues
       const issuesList = findingsToFix
         .map(
@@ -901,13 +889,9 @@ ${finding.description}`;
 
 ${issuesList}`;
 
-      await streamMessage({
-        prompt,
-        chatId,
-        onSettled: () => {
-          setIsFixingSelected(false);
-          setSelectedFindings(new Set());
-        },
+      await startSecurityChat(prompt, () => {
+        setIsFixingSelected(false);
+        setSelectedFindings(new Set());
       });
     } catch (err) {
       showError(`Failed to create fix chat: ${err}`);

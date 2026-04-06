@@ -6,7 +6,12 @@ import {
   chatStreamCountByIdAtom,
   isStreamingByIdAtom,
 } from "../atoms/chatAtoms";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { ipc } from "@/ipc/types";
+import { toast } from "sonner";
+import { persistChatModeToDb } from "@/lib/chatModeUtils";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
 
 import { ChatHeader } from "./chat/ChatHeader";
 import { MessagesList } from "./chat/MessagesList";
@@ -45,9 +50,11 @@ export function ChatPanel({
   const streamCountById = useAtomValue(chatStreamCountByIdAtom);
   const isStreamingById = useAtomValue(isStreamingByIdAtom);
   const { settings, updateSettings } = useSettings();
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { isQuotaExceeded } = useFreeAgentQuota();
   const showFreeAgentQuotaBanner =
     settings && isBasicAgentMode(settings) && isQuotaExceeded;
+  const queryClient = useQueryClient();
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
@@ -130,9 +137,33 @@ export function ChatPanel({
     fetchChatMessages();
   }, [fetchChatMessages]);
 
-  const isStreaming = chatId ? (isStreamingById.get(chatId) ?? false) : false;
+  // Restore mode on route-driven chat switches (fallback if useSelectChat isn't called, e.g., browser history)
+  useEffect(() => {
+    if (!chatId || !selectedAppId) return;
 
-  // Scroll to bottom when streaming completes to ensure footer content is visible,
+    try {
+      const chatSummaries = queryClient.getQueryData<any[]>(
+        queryKeys.chats.list({ appId: selectedAppId }),
+      );
+
+      if (chatSummaries) {
+        const currentChat = chatSummaries.find((c) => c.id === chatId);
+        if (
+          currentChat?.chatMode &&
+          currentChat.chatMode !== settings?.selectedChatMode
+        ) {
+          updateSettings({ selectedChatMode: currentChat.chatMode });
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+
+    // Exclude settings?.selectedChatMode from dependencies to prevent race condition/infinite loop
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, selectedAppId, queryClient, updateSettings]);
+
+  const isStreaming = chatId ? (isStreamingById.get(chatId) ?? false) : false;
   // but only if the user was following (at bottom) during the stream.
   useEffect(() => {
     const wasStreaming = prevIsStreamingRef.current;
@@ -222,9 +253,27 @@ export function ChatPanel({
             <ChatError error={error} onDismiss={() => setError(null)} />
             {showFreeAgentQuotaBanner && (
               <FreeAgentQuotaBanner
-                onSwitchToBuildMode={() =>
-                  updateSettings({ selectedChatMode: "build" })
-                }
+                onSwitchToBuildMode={() => {
+                  const previousMode = settings?.selectedChatMode;
+                  updateSettings({ selectedChatMode: "build" });
+                  // Also persist to current chat if in a chat
+                  if (chatId) {
+                    persistChatModeToDb(
+                      chatId,
+                      "build",
+                      () =>
+                        queryClient.invalidateQueries({
+                          queryKey: queryKeys.chats.all,
+                        }),
+                      () => {
+                        toast.error("Failed to save chat mode");
+                        if (previousMode) {
+                          updateSettings({ selectedChatMode: previousMode });
+                        }
+                      },
+                    );
+                  }
+                }}
               />
             )}
             <NotificationBanner />

@@ -91,11 +91,13 @@ export function usePlanImplementation() {
 
         // Send the message to start implementation using IPC directly
         // (We can't use useStreamChat here because it has conditional hooks)
+        // IMPORTANT: Always use local-agent mode for plan implementation
         ipc.chatStream.start(
           {
             chatId,
             prompt,
             selectedComponents: [],
+            chatMode: "local-agent",
           },
           {
             onChunk: ({

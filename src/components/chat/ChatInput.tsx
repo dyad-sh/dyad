@@ -24,6 +24,7 @@ import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useSettings } from "@/hooks/useSettings";
+import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 import { ipc } from "@/ipc/types";
 import {
   chatInputValueAtom,
@@ -85,6 +86,7 @@ import {
 } from "@/atoms/imageGenerationAtoms";
 import { ImageGeneratorDialog } from "@/components/ImageGeneratorDialog";
 import { useChatModeToggle } from "@/hooks/useChatModeToggle";
+import { useSelectChat } from "@/hooks/useSelectChat";
 import { VisualEditingChangesDialog } from "@/components/preview_panel/VisualEditingChangesDialog";
 import { useUserBudgetInfo } from "@/hooks/useUserBudgetInfo";
 import { useQueryClient } from "@tanstack/react-query";
@@ -115,6 +117,7 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const { settings } = useSettings();
   const appId = useAtomValue(selectedAppIdAtom);
   const { refreshVersions } = useVersions(appId);
+  const { selectChat } = useSelectChat();
   const {
     streamMessage,
     isStreaming,
@@ -172,7 +175,6 @@ export function ChatInput({ chatId }: { chatId?: number }) {
   const { checkProblems } = useCheckProblems(appId);
   const { refreshAppIframe } = useRunApp();
   const { navigate } = useRouter();
-  const setSelectedChatId = useSetAtom(selectedChatIdAtom);
   const { invalidateChats } = useChats(appId);
   const [imageGeneratorOpen, setImageGeneratorOpen] = useState(false);
   const handleOpenImageGenerator = useCallback(() => {
@@ -474,9 +476,13 @@ export function ChatInput({ chatId }: { chatId?: number }) {
       setInputValue("");
       setNeedsFreshPlanChat(false);
 
-      const newChatId = await ipc.chat.createChat(appId);
-      setSelectedChatId(newChatId);
-      navigate({ to: "/chat", search: { id: newChatId } });
+      // Create new chat with plan mode initialized
+      const newChatId = await ipc.chat.createChat({
+        appId,
+        initialChatMode: "plan",
+      });
+      // Use selectChat to ensure mode is properly persisted
+      selectChat({ chatId: newChatId, appId, chatMode: "plan" });
       queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
       showInfo("We've switched you to a new chat for a clean context");
 
@@ -581,15 +587,18 @@ export function ChatInput({ chatId }: { chatId?: number }) {
     setShowError(false);
   };
 
+  const initialChatMode = useInitialChatMode();
+
   const handleNewChat = async () => {
     if (appId) {
       try {
-        const newChatId = await ipc.chat.createChat(appId);
-        setSelectedChatId(newChatId);
-        navigate({
-          to: "/chat",
-          search: { id: newChatId },
+        // Create new chat with effective global default mode (accounts for quota, env vars)
+        const newChatId = await ipc.chat.createChat({
+          appId,
+          initialChatMode,
         });
+        // Use selectChat to ensure mode is properly persisted to settings
+        selectChat({ chatId: newChatId, appId, chatMode: initialChatMode });
         await invalidateChats();
       } catch (err) {
         showErrorToast(

@@ -13,7 +13,15 @@ import type { ChatSummary, ChatSearchResult } from "@/lib/schemas";
 type ChatSearchDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSelectChat: ({ chatId, appId }: { chatId: number; appId: number }) => void;
+  onSelectChat: ({
+    chatId,
+    appId,
+    chatMode,
+  }: {
+    chatId: number;
+    appId: number;
+    chatMode?: "ask" | "build" | "local-agent" | "plan" | null;
+  }) => void;
   appId: number | null;
   allChats: ChatSummary[];
 };
@@ -129,7 +137,11 @@ export function ChatSearchDialog({
               <CommandItem
                 key={chat.id}
                 onSelect={() =>
-                  onSelectChat({ chatId: chat.id, appId: chat.appId })
+                  onSelectChat({
+                    chatId: chat.id,
+                    appId: chat.appId,
+                    chatMode: chat.chatMode,
+                  })
                 }
                 value={
                   (chat.title || "Untitled Chat") +

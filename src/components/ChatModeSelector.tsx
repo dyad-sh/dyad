@@ -13,6 +13,7 @@ import {
 import { useSettings } from "@/hooks/useSettings";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
 import { useMcp } from "@/hooks/useMcp";
+import { persistChatModeToDb } from "@/lib/chatModeUtils";
 import type { ChatMode } from "@/lib/schemas";
 import { isDyadProEnabled } from "@/lib/schemas";
 import { cn } from "@/lib/utils";
@@ -22,7 +23,9 @@ import { toast } from "sonner";
 import { LocalAgentNewChatToast } from "./LocalAgentNewChatToast";
 import { useAtomValue } from "jotai";
 import { chatMessagesByIdAtom } from "@/atoms/chatAtoms";
+import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { Hammer, Bot, MessageCircle, Lightbulb } from "lucide-react";
+import { useChats } from "@/hooks/useChats";
 
 export function ChatModeSelector() {
   const { settings, updateSettings } = useSettings();
@@ -31,6 +34,8 @@ export function ChatModeSelector() {
   const messagesById = useAtomValue(chatMessagesByIdAtom);
   const chatId = routerState.location.search.id as number | undefined;
   const currentChatMessages = chatId ? (messagesById.get(chatId) ?? []) : [];
+  const selectedAppId = useAtomValue(selectedAppIdAtom);
+  const { invalidateChats } = useChats(selectedAppId);
 
   // Migration happens on read, so selectedChatMode will never be "agent"
   const selectedMode = settings?.selectedChatMode || "build";
@@ -39,8 +44,29 @@ export function ChatModeSelector() {
   const { servers } = useMcp();
   const enabledMcpServersCount = servers.filter((s) => s.enabled).length;
 
-  const handleModeChange = (value: string) => {
+  const handleModeChange = async (value: string) => {
     const newMode = value as ChatMode;
+
+    // If we're in a chat, also save the mode to this specific chat (foreground)
+    if (chatId && isChatRoute) {
+      const persistSucceeded = await persistChatModeToDb(
+        chatId,
+        newMode,
+        () => invalidateChats(), // on success
+        () => {
+          // on error - show error and don't update settings
+          invalidateChats();
+          toast.error("Failed to save chat mode to database");
+        },
+      );
+
+      // Only proceed if persist succeeded
+      if (!persistSucceeded) {
+        return;
+      }
+    }
+
+    // Apply change to settings only after DB save (if in chat) to prevent wrong-mode sends during persist window
     updateSettings({ selectedChatMode: newMode });
 
     // We want to show a toast when user is switching to the new agent mode

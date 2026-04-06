@@ -44,6 +44,7 @@ import {
 } from "@/components/ProBanner";
 import { hasDyadProKey, getEffectiveDefaultChatMode } from "@/lib/schemas";
 import { useFreeAgentQuota } from "@/hooks/useFreeAgentQuota";
+import { useInitialChatMode } from "@/hooks/useInitialChatMode";
 
 // Track whether we've already checked release notes this session (module-scoped
 // so it persists across component unmount/remount cycles).
@@ -66,6 +67,7 @@ export default function HomePage() {
 
   const setIsPreviewOpen = useSetAtom(isPreviewOpenAtom);
   const { selectChat } = useSelectChat();
+  const initialChatMode = useInitialChatMode();
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMode, setLoadingMode] = useState<"new" | "existing">("new");
   const [forceCloseDialogOpen, setForceCloseDialogOpen] = useState(false);
@@ -181,18 +183,27 @@ export default function HomePage() {
     try {
       setLoadingMode(selectedApp ? "existing" : "new");
       setIsLoading(true);
-
       let chatId: number;
       let appId: number;
+      // Use the effective default mode (accounts for quota/env-var constraints)
+      const submissionChatMode = initialChatMode;
 
       if (selectedApp) {
-        // Existing app flow: create a new chat in the selected app
-        chatId = await ipc.chat.createChat(selectedApp.id);
+        // Existing app flow: create a new chat in the selected app with initial mode
+        chatId = await ipc.chat.createChat({
+          appId: selectedApp.id,
+          ...(submissionChatMode && {
+            initialChatMode: submissionChatMode,
+          }),
+        });
         appId = selectedApp.id;
       } else {
         // New app flow (default behavior)
         const result = await ipc.app.createApp({
           name: generateCuteAppName(),
+          ...(submissionChatMode && {
+            initialChatMode: submissionChatMode,
+          }),
         });
         chatId = result.chatId;
         appId = result.app.id;
@@ -216,11 +227,12 @@ export default function HomePage() {
         }
       }
 
-      // Stream the message with attachments
+      // Stream the message with attachments AND chat mode
       streamMessage({
         prompt: inputValue,
         chatId,
         attachments,
+        chatMode: submissionChatMode,
       });
       await new Promise((resolve) =>
         setTimeout(resolve, settings?.isTestMode ? 0 : 2000),
@@ -234,7 +246,7 @@ export default function HomePage() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
       posthog.capture("home:chat-submit", { existingApp: !!selectedApp });
       // Select newly created first chat so it appears first in tabs.
-      selectChat({ chatId, appId });
+      selectChat({ chatId, appId, chatMode: submissionChatMode });
     } catch (error) {
       console.error("Failed to create chat:", error);
       showError(

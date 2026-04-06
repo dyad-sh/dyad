@@ -11,6 +11,7 @@ import {
 } from "@/atoms/planAtoms";
 import { previewModeAtom, selectedAppIdAtom } from "@/atoms/appAtoms";
 import { selectedChatIdAtom } from "@/atoms/chatAtoms";
+import { useSelectChat } from "./useSelectChat";
 import {
   planEventClient,
   planClient,
@@ -35,6 +36,7 @@ export function usePlanEvents() {
   );
   const setPendingQuestionnaire = useSetAtom(pendingQuestionnaireAtom);
   const setSelectedChatId = useSetAtom(selectedChatIdAtom);
+  const { selectChat } = useSelectChat();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { settings, updateSettings } = useSettings();
@@ -146,11 +148,17 @@ export function usePlanEvents() {
         }
 
         try {
-          const newChatId = await ipc.chat.createChat(selectedAppIdRef.current);
+          const newChatId = await ipc.chat.createChat({
+            appId: selectedAppIdRef.current,
+            initialChatMode: "local-agent",
+          });
 
-          // Navigate to the new chat
-          setSelectedChatId(newChatId);
-          navigate({ to: "/chat", search: { id: newChatId } });
+          // Navigate to the new chat using selectChat to ensure mode sync
+          selectChat({
+            chatId: newChatId,
+            appId: selectedAppIdRef.current,
+            chatMode: "local-agent",
+          });
 
           // Refresh the chat list so the new chat appears in the sidebar
           queryClient.invalidateQueries({

@@ -18,8 +18,10 @@ import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { useNavigate } from "@tanstack/react-router";
 import { useStreamChat } from "@/hooks/useStreamChat";
+import { useSettings } from "@/hooks/useSettings";
+import { useInitialChatMode } from "@/hooks/useInitialChatMode";
+import { useSelectChat } from "@/hooks/useSelectChat";
 import type { GithubRepository } from "@/ipc/types";
 import { useGithubRepos } from "@/hooks/useGithubRepos";
 
@@ -33,7 +35,6 @@ import {
   AccordionTrigger,
 } from "./ui/accordion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useSettings } from "@/hooks/useSettings";
 import { UnconnectedGitHubConnector } from "@/components/GitHubConnector";
 
 interface ImportAppDialogProps {
@@ -52,10 +53,11 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
   const [installCommand, setInstallCommand] = useState("");
   const [startCommand, setStartCommand] = useState("");
   const [copyToDyadApps, setCopyToDyadApps] = useState(true);
-  const navigate = useNavigate();
   const { streamMessage } = useStreamChat({ hasChatId: false });
   const { refreshApps } = useLoadApps();
   const setSelectedAppId = useSetAtom(selectedAppIdAtom);
+  const initialChatMode = useInitialChatMode();
+  const { selectChat } = useSelectChat();
   // GitHub import state
   const [url, setUrl] = useState("");
   const [importing, setImporting] = useState(false);
@@ -106,6 +108,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
     const match = url.match(/github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?\/?$/);
     return match ? match[2] : null;
   };
+
   const handleImportFromUrl = async () => {
     setImporting(true);
     try {
@@ -125,8 +128,11 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       }
       setSelectedAppId(result.app.id);
       showSuccess(t("home:successfullyImported", { name: result.app.name }));
-      const chatId = await ipc.chat.createChat(result.app.id);
-      navigate({ to: "/chat", search: { id: chatId } });
+      const chatId = await ipc.chat.createChat({
+        appId: result.app.id,
+        initialChatMode,
+      });
+      selectChat({ chatId, appId: result.app.id, chatMode: initialChatMode });
       if (!result.hasAiRules) {
         streamMessage({
           prompt: AI_RULES_PROMPT,
@@ -161,8 +167,11 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       }
       setSelectedAppId(result.app.id);
       showSuccess(t("home:successfullyImported", { name: result.app.name }));
-      const chatId = await ipc.chat.createChat(result.app.id);
-      navigate({ to: "/chat", search: { id: chatId } });
+      const chatId = await ipc.chat.createChat({
+        appId: result.app.id,
+        initialChatMode,
+      });
+      selectChat({ chatId, appId: result.app.id, chatMode: initialChatMode });
       if (!result.hasAiRules) {
         streamMessage({
           prompt: AI_RULES_PROMPT,
@@ -261,7 +270,7 @@ export function ImportAppDialog({ isOpen, onClose }: ImportAppDialogProps) {
       );
       onClose();
 
-      navigate({ to: "/chat", search: { id: result.chatId } });
+      selectChat({ chatId: result.chatId, appId: result.appId });
       if (!hasAiRules) {
         streamMessage({
           prompt: AI_RULES_PROMPT,

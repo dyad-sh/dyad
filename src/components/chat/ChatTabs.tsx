@@ -387,10 +387,15 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
 
     clearNotification(chat.id);
 
+    // Pass the current chat's persisted mode so settings.selectedChatMode stays in sync.
+    // ChatSummary is invalidated after mode changes, so chat.chatMode is reasonably current.
+    // The stream handler uses: settings.selectedChatMode ?? updatedChat.chatMode,
+    // so keeping settings in sync prevents executing next message with wrong mode.
     selectChat({
       chatId: chat.id,
       appId: chat.appId,
       preserveTabOrder: true,
+      chatMode: chat.chatMode ?? undefined,
     });
   };
 
@@ -420,6 +425,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
       chatId: fallbackTab.id,
       appId: fallbackTab.appId,
       preserveTabOrder: true,
+      chatMode: fallbackTab.chatMode || undefined,
     });
   };
 
@@ -448,6 +454,7 @@ export function ChatTabs({ selectedChatId }: ChatTabsProps) {
             chatId: fallbackTab.id,
             appId: fallbackTab.appId,
             preserveTabOrder: true,
+            chatMode: fallbackTab.chatMode || undefined,
           });
         }
       }

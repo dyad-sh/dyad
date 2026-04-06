@@ -1,14 +1,14 @@
 import { useCallback, useRef, useState } from "react";
 import { useSetAtom } from "jotai";
 import { useNavigate } from "@tanstack/react-router";
+import { useInitialChatMode } from "@/hooks/useInitialChatMode";
+import { useSelectChat } from "@/hooks/useSelectChat";
 import { ipc } from "@/ipc/types";
 import {
-  selectedChatIdAtom,
   chatMessagesByIdAtom,
   isStreamingByIdAtom,
   chatStreamCountByIdAtom,
 } from "@/atoms/chatAtoms";
-import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { showError } from "@/lib/toast";
 import { useChats } from "@/hooks/useChats";
 import { useLoadApp } from "@/hooks/useLoadApp";
@@ -28,8 +28,6 @@ export function useResolveMergeConflictsWithAI({
   conflicts,
   onStartResolving,
 }: UseResolveMergeConflictsWithAIProps) {
-  const setSelectedChatId = useSetAtom(selectedChatIdAtom);
-  const setSelectedAppId = useSetAtom(selectedAppIdAtom);
   const setMessagesById = useSetAtom(chatMessagesByIdAtom);
   const setIsStreamingById = useSetAtom(isStreamingByIdAtom);
   const setStreamCountById = useSetAtom(chatStreamCountByIdAtom);
@@ -38,6 +36,8 @@ export function useResolveMergeConflictsWithAI({
   const isResolvingRef = useRef(false);
   const { invalidateChats } = useChats(appId);
   const { refreshApp } = useLoadApp(appId);
+  const initialChatMode = useInitialChatMode();
+  const { selectChat } = useSelectChat();
 
   const resolveWithAI = useCallback(async () => {
     if (!appId) {
@@ -57,8 +57,11 @@ export function useResolveMergeConflictsWithAI({
 
     let chatId: number | null = null;
     try {
-      // Create a new chat for conflict resolution
-      const newChatId = await ipc.chat.createChat(appId);
+      // Create a new chat for conflict resolution with effective global default mode
+      const newChatId = await ipc.chat.createChat({
+        appId,
+        initialChatMode,
+      });
       chatId = newChatId;
 
       // Clear conflicts state after successful chat creation
@@ -72,10 +75,6 @@ ${fileList}
 
 For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choose the best resolution that preserves the intended functionality from both sides. Remove all conflict markers and provide the complete resolved file content.`;
 
-      // Set up the chat state and navigate
-      setSelectedChatId(newChatId);
-      setSelectedAppId(appId);
-
       // Mark as streaming
       setIsStreamingById((prev) => {
         const next = new Map(prev);
@@ -83,10 +82,11 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
         return next;
       });
 
-      // Navigate to the chat page
-      navigate({
-        to: "/chat",
-        search: { id: newChatId },
+      // Navigate to the chat and set up state with selectChat to sync settings
+      selectChat({
+        chatId: newChatId,
+        appId,
+        chatMode: initialChatMode,
       });
 
       // Start the stream
@@ -95,6 +95,7 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
         {
           chatId: newChatId,
           prompt,
+          chatMode: initialChatMode,
         },
         {
           onChunk: ({ messages, streamingMessageId, streamingContent }) => {
@@ -175,14 +176,14 @@ For each file, review the conflict markers (<<<<<<<, =======, >>>>>>>) and choos
     appId,
     conflicts,
     onStartResolving,
-    setSelectedChatId,
-    setSelectedAppId,
     setMessagesById,
     setIsStreamingById,
     setStreamCountById,
     navigate,
     invalidateChats,
     refreshApp,
+    initialChatMode,
+    selectChat,
   ]);
 
   return { resolveWithAI, isResolving };

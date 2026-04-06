@@ -198,6 +198,66 @@ export function clearPendingQuestionnairesForChat(chatId: number): void {
   }
 }
 
+// ============================================================================
+// Mini Plan Approval Management
+// ============================================================================
+
+interface PendingMiniPlanEntry {
+  chatId: number;
+  resolve: (approved: boolean) => void;
+}
+
+const pendingMiniPlanResolvers = new Map<number, PendingMiniPlanEntry>();
+
+const MINI_PLAN_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
+export function waitForMiniPlanApproval(chatId: number): Promise<boolean> {
+  // Cancel any existing pending approval for this chat
+  const existing = pendingMiniPlanResolvers.get(chatId);
+  if (existing) {
+    existing.resolve(false);
+    pendingMiniPlanResolvers.delete(chatId);
+  }
+
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      const entry = pendingMiniPlanResolvers.get(chatId);
+      if (entry) {
+        pendingMiniPlanResolvers.delete(chatId);
+        entry.resolve(false);
+      }
+    }, MINI_PLAN_TIMEOUT_MS);
+
+    pendingMiniPlanResolvers.set(chatId, {
+      chatId,
+      resolve: (approved) => {
+        clearTimeout(timeout);
+        resolve(approved);
+      },
+    });
+  });
+}
+
+export function resolveMiniPlanApproval(chatId: number, approved: boolean) {
+  const entry = pendingMiniPlanResolvers.get(chatId);
+  if (entry) {
+    pendingMiniPlanResolvers.delete(chatId);
+    entry.resolve(approved);
+  }
+}
+
+/**
+ * Clean up all pending mini plan approval requests for a given chat.
+ * Called when a stream is cancelled/aborted to prevent orphaned promises.
+ */
+export function clearPendingMiniPlanApprovalsForChat(chatId: number): void {
+  const entry = pendingMiniPlanResolvers.get(chatId);
+  if (entry) {
+    pendingMiniPlanResolvers.delete(chatId);
+    entry.resolve(false);
+  }
+}
+
 export function getDefaultConsent(toolName: AgentToolName): AgentToolConsent {
   const tool = TOOL_DEFINITIONS.find((t) => t.name === toolName);
   return tool?.defaultConsent ?? "ask";

@@ -12,19 +12,18 @@ import {
 } from "lucide-react";
 import { useAtomValue, useSetAtom } from "jotai";
 import { miniPlanStateAtom } from "@/atoms/miniPlanAtoms";
-import {
-  selectedChatIdAtom,
-  chatMessagesByIdAtom,
-  isStreamingByIdAtom,
-  chatErrorByIdAtom,
-} from "@/atoms/chatAtoms";
+import { selectedChatIdAtom } from "@/atoms/chatAtoms";
 import { selectedAppIdAtom } from "@/atoms/appAtoms";
 import { useTemplates } from "@/hooks/useTemplates";
 import { useCustomThemes } from "@/hooks/useCustomThemes";
 import { useThemes } from "@/hooks/useThemes";
 import { useLoadApp } from "@/hooks/useLoadApp";
 import { ipc } from "@/ipc/types";
-import type { MiniPlanEditableField } from "@/ipc/types/mini_plan";
+import type {
+  MiniPlanEditableField,
+  MiniPlanVisualEditableField,
+  MiniPlanVisual,
+} from "@/ipc/types/mini_plan";
 import { showError } from "@/lib/toast";
 import { queryKeys } from "@/lib/queryKeys";
 import { MiniPlanUserPrompt } from "./MiniPlanUserPrompt";
@@ -53,12 +52,8 @@ interface DyadMiniPlanCardProps {
 export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
   const props = node.properties;
   const chatId = useAtomValue(selectedChatIdAtom);
-  const isStreamingById = useAtomValue(isStreamingByIdAtom);
   const miniPlanState = useAtomValue(miniPlanStateAtom);
   const setMiniPlanState = useSetAtom(miniPlanStateAtom);
-  const setMessagesById = useSetAtom(chatMessagesByIdAtom);
-  const setIsStreamingById = useSetAtom(isStreamingByIdAtom);
-  const setErrorById = useSetAtom(chatErrorByIdAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
   const { app, refreshApp } = useLoadApp(selectedAppId);
   const queryClient = useQueryClient();
@@ -68,10 +63,6 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
 
   const isApproved = chatId ? miniPlanState.approvedChatIds.has(chatId) : false;
   const planData = chatId ? miniPlanState.plansByChatId.get(chatId) : null;
-  const isChatStreaming = chatId
-    ? (isStreamingById.get(chatId) ?? false)
-    : false;
-
   // Use atom data if available, fall back to XML attributes
   const appName = planData?.appName || props["app-name"] || props.appName || "";
   const templateId = planData?.templateId || props.template || "react";
@@ -113,6 +104,141 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
   const [nameValue, setNameValue] = useState(appName);
   const [isApproving, setIsApproving] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
+
+  const handleVisualEdit = useCallback(
+    (visualId: string, field: MiniPlanVisualEditableField, value: string) => {
+      if (!chatId || isApproved) return;
+
+      // Update local state immediately
+      setMiniPlanState((prev) => {
+        const nextPlans = new Map(prev.plansByChatId);
+        const existing = nextPlans.get(chatId);
+        if (existing) {
+          nextPlans.set(chatId, {
+            ...existing,
+            visuals: existing.visuals.map((v) =>
+              v.id === visualId ? { ...v, [field]: value } : v,
+            ),
+          });
+        }
+        return { ...prev, plansByChatId: nextPlans };
+      });
+
+      // Persist to main process
+      void ipc.miniPlan
+        .editVisual({ chatId, visualId, field, value })
+        .catch((error) => {
+          console.error("Failed to persist visual edit:", error);
+          showError("Could not save visual changes. Please try again.");
+        });
+    },
+    [chatId, isApproved, setMiniPlanState],
+  );
+
+  const handleAddVisual = useCallback(
+    (visual: Omit<MiniPlanVisual, "id">) => {
+      if (!chatId || isApproved) return;
+
+      // Generate a temporary ID for optimistic update
+      const tempId = `visual_${Date.now().toString(36)}`;
+
+      // Update local state immediately
+      setMiniPlanState((prev) => {
+        const nextPlans = new Map(prev.plansByChatId);
+        const existing = nextPlans.get(chatId);
+        if (existing) {
+          nextPlans.set(chatId, {
+            ...existing,
+            visuals: [...existing.visuals, { ...visual, id: tempId }],
+          });
+        }
+        return { ...prev, plansByChatId: nextPlans };
+      });
+
+      // Persist to main process and update with real ID
+      void ipc.miniPlan
+        .addVisual({ chatId, ...visual })
+        .then(({ visualId }) => {
+          if (visualId && visualId !== tempId) {
+            setMiniPlanState((prev) => {
+              const nextPlans = new Map(prev.plansByChatId);
+              const existing = nextPlans.get(chatId);
+              if (existing) {
+                nextPlans.set(chatId, {
+                  ...existing,
+                  visuals: existing.visuals.map((v) =>
+                    v.id === tempId ? { ...v, id: visualId } : v,
+                  ),
+                });
+              }
+              return { ...prev, plansByChatId: nextPlans };
+            });
+          }
+        })
+        .catch((error) => {
+          console.error("Failed to add visual:", error);
+          showError("Could not add visual. Please try again.");
+          // Roll back optimistic update
+          setMiniPlanState((prev) => {
+            const nextPlans = new Map(prev.plansByChatId);
+            const existing = nextPlans.get(chatId);
+            if (existing) {
+              nextPlans.set(chatId, {
+                ...existing,
+                visuals: existing.visuals.filter((v) => v.id !== tempId),
+              });
+            }
+            return { ...prev, plansByChatId: nextPlans };
+          });
+        });
+    },
+    [chatId, isApproved, setMiniPlanState],
+  );
+
+  const handleRemoveVisual = useCallback(
+    (visualId: string) => {
+      if (!chatId || isApproved) return;
+
+      // Store for rollback
+      let removedVisual: MiniPlanVisual | undefined;
+
+      // Update local state immediately
+      setMiniPlanState((prev) => {
+        const nextPlans = new Map(prev.plansByChatId);
+        const existing = nextPlans.get(chatId);
+        if (existing) {
+          removedVisual = existing.visuals.find((v) => v.id === visualId);
+          nextPlans.set(chatId, {
+            ...existing,
+            visuals: existing.visuals.filter((v) => v.id !== visualId),
+          });
+        }
+        return { ...prev, plansByChatId: nextPlans };
+      });
+
+      // Persist to main process
+      void ipc.miniPlan.removeVisual({ chatId, visualId }).catch((error) => {
+        console.error("Failed to remove visual:", error);
+        showError("Could not remove visual. Please try again.");
+        // Roll back
+        if (removedVisual) {
+          const restored = removedVisual;
+          setMiniPlanState((prev) => {
+            const nextPlans = new Map(prev.plansByChatId);
+            const existing = nextPlans.get(chatId);
+            if (existing) {
+              nextPlans.set(chatId, {
+                ...existing,
+                visuals: [...existing.visuals, restored],
+              });
+            }
+            return { ...prev, plansByChatId: nextPlans };
+          });
+        }
+      });
+    },
+    [chatId, isApproved, setMiniPlanState],
+  );
 
   const handleFieldEdit = useCallback(
     (field: MiniPlanEditableField, value: string) => {
@@ -156,15 +282,13 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
       return { ...prev, approvedChatIds: nextApproved };
     });
     try {
-      await ipc.miniPlan.approve({ chatId });
-
       const applyErrors: string[] = [];
       const recordApplyError = (message: string, error: unknown) => {
         console.error(message, error);
         applyErrors.push(message);
       };
 
-      // Apply plan settings to the app
+      // Apply plan settings to the app before resolving the agent's promise
       if (selectedAppId) {
         let currentApp = app;
         let templateApplied = false;
@@ -246,115 +370,9 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
         showError(errorMessage);
       }
 
-      const visualsSummary =
-        plan.visuals.length > 0
-          ? plan.visuals
-              .map(
-                (v) => `- ${v.type}: ${v.description}\n  Prompt: ${v.prompt}`,
-              )
-              .join("\n")
-          : "No visuals planned";
-
-      const templateName =
-        templates?.find((t) => t.id === plan.templateId)?.title ??
-        plan.templateId;
-      const themeName =
-        allThemeOptions.find((t) => t.id === plan.themeId)?.name ??
-        plan.themeId;
-
-      const miniPlanContext = [
-        `[Mini Plan Approved]`,
-        `App Name: ${plan.appName}`,
-        `Template: ${templateName} (${plan.templateId})`,
-        `Theme: ${themeName} (${plan.themeId})`,
-        `Main Color: ${plan.mainColor}`,
-        `Design Direction: ${plan.designDirection}`,
-        ``,
-        `Visual Assets:`,
-        visualsSummary,
-        ``,
-        `Original Prompt: ${plan.userPrompt}`,
-      ].join("\n");
-
-      // Set streaming state
-      setIsStreamingById((prev) => {
-        const next = new Map(prev);
-        next.set(chatId, true);
-        return next;
-      });
-
-      // Clear any previous errors
-      setErrorById((prev) => {
-        const next = new Map(prev);
-        next.set(chatId, null);
-        return next;
-      });
-
-      // Send the approved plan as a follow-up message to start building
-      ipc.chatStream.start(
-        {
-          chatId,
-          prompt: miniPlanContext,
-          attachments: plan.attachments.map((a) => ({
-            name: a.split("/").pop() || a,
-            type: "application/octet-stream",
-            data: "",
-            attachmentType: "chat-context" as const,
-          })),
-          selectedComponents: [],
-        },
-        {
-          onChunk: ({
-            messages: updatedMessages,
-            streamingMessageId,
-            streamingContent,
-          }) => {
-            if (updatedMessages) {
-              setMessagesById((prev) => {
-                const next = new Map(prev);
-                next.set(chatId, updatedMessages);
-                return next;
-              });
-            } else if (
-              streamingMessageId !== undefined &&
-              streamingContent !== undefined
-            ) {
-              setMessagesById((prev) => {
-                const existingMessages = prev.get(chatId);
-                if (!existingMessages) return prev;
-                const next = new Map(prev);
-                const updated = existingMessages.map((msg) =>
-                  msg.id === streamingMessageId
-                    ? { ...msg, content: streamingContent }
-                    : msg,
-                );
-                next.set(chatId, updated);
-                return next;
-              });
-            }
-          },
-          onEnd: () => {
-            setIsStreamingById((prev) => {
-              const next = new Map(prev);
-              next.set(chatId, false);
-              return next;
-            });
-          },
-          onError: ({ error }) => {
-            console.error("Mini plan implementation stream error:", error);
-            setErrorById((prev) => {
-              const next = new Map(prev);
-              next.set(chatId, error);
-              return next;
-            });
-            setIsStreamingById((prev) => {
-              const next = new Map(prev);
-              next.set(chatId, false);
-              return next;
-            });
-          },
-        },
-      );
+      // Approve the plan — this resolves the agent's blocking promise
+      // so it can continue in the existing stream (no new chatStream.start needed)
+      await ipc.miniPlan.approve({ chatId });
     } catch (error) {
       console.error("Failed to approve mini plan:", error);
       setMiniPlanState((prev) => {
@@ -371,17 +389,11 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
     chatId,
     isApproved,
     miniPlanState,
-    templates,
-    themes,
-    customThemes,
     selectedAppId,
     app,
     refreshApp,
     queryClient,
     setMiniPlanState,
-    setMessagesById,
-    setIsStreamingById,
-    setErrorById,
   ]);
 
   const handleNameSubmit = useCallback(() => {
@@ -619,7 +631,11 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
             <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
               Design Direction
             </div>
-            <MiniPlanDesignDirection direction={designDirection} />
+            <MiniPlanDesignDirection
+              direction={designDirection}
+              isApproved={isApproved}
+              onEdit={(value) => handleFieldEdit("designDirection", value)}
+            />
           </div>
         )}
 
@@ -629,6 +645,10 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
             <MiniPlanVisuals
               visuals={visuals}
               state={isInProgress ? "pending" : "finished"}
+              isApproved={isApproved}
+              onEditVisual={handleVisualEdit}
+              onAddVisual={handleAddVisual}
+              onRemoveVisual={handleRemoveVisual}
             />
           </div>
         )}
@@ -675,7 +695,7 @@ export const DyadMiniPlanCard: React.FC<DyadMiniPlanCardProps> = ({ node }) => {
             <button
               type="button"
               onClick={handleApprove}
-              disabled={isInProgress || isApproving || isChatStreaming}
+              disabled={isInProgress || isApproving}
               className="flex items-center gap-1.5 text-sm font-medium text-primary-foreground px-5 py-2 bg-primary rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isInProgress ? (

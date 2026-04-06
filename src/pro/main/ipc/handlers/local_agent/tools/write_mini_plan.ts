@@ -1,8 +1,12 @@
 import { z } from "zod";
 import log from "electron-log";
 import { ToolDefinition, AgentContext, escapeXmlAttr } from "./types";
-import { setMiniPlanForChat } from "@/ipc/handlers/mini_plan_handlers";
+import {
+  setMiniPlanForChat,
+  getMiniPlanForChat,
+} from "@/ipc/handlers/mini_plan_handlers";
 import { safeSend } from "@/ipc/utils/safe_sender";
+import { waitForMiniPlanApproval } from "../tool_definitions";
 
 const logger = log.scope("write_mini_plan");
 
@@ -124,6 +128,41 @@ export const writeMiniPlanTool: ToolDefinition<
       data,
     });
 
-    return `Mini plan "${args.app_name}" has been presented to the user. They can review and modify it in the chat. Now use the plan_visuals tool to determine what visuals the app needs.`;
+    logger.log(`Waiting for user to approve mini plan for chat ${ctx.chatId}`);
+
+    const approved = await waitForMiniPlanApproval(ctx.chatId);
+
+    if (!approved) {
+      return "The user dismissed the mini plan without approving. Ask them how they'd like to proceed.";
+    }
+
+    // Read back the plan data which may have been edited by the user
+    const approvedPlan = getMiniPlanForChat(ctx.chatId);
+    if (!approvedPlan) {
+      return "The mini plan was approved but the data is no longer available. Ask the user to try again.";
+    }
+
+    const visualsSummary =
+      approvedPlan.visuals.length > 0
+        ? approvedPlan.visuals
+            .map((v) => `- ${v.type}: ${v.description}\n  Prompt: ${v.prompt}`)
+            .join("\n")
+        : "No visuals planned";
+
+    return [
+      `[Mini Plan Approved]`,
+      `App Name: ${approvedPlan.appName}`,
+      `Template: ${approvedPlan.templateId}`,
+      `Theme: ${approvedPlan.themeId}`,
+      `Main Color: ${approvedPlan.mainColor}`,
+      `Design Direction: ${approvedPlan.designDirection}`,
+      ``,
+      `Visual Assets:`,
+      visualsSummary,
+      ``,
+      `Original Prompt: ${approvedPlan.userPrompt}`,
+      ``,
+      `The user has approved the mini plan. Proceed with building the app based on the approved plan above.`,
+    ].join("\n");
   },
 };

@@ -36,6 +36,7 @@ import {
   requireAgentToolConsent,
   clearPendingConsentsForChat,
   clearPendingQuestionnairesForChat,
+  clearPendingMiniPlanApprovalsForChat,
 } from "./tool_definitions";
 import {
   deployAllFunctionsIfNeeded,
@@ -871,6 +872,7 @@ export async function handleLocalAgentStream(
                 // Clean up pending consent/questionnaire requests to prevent stale UI banners
                 clearPendingConsentsForChat(req.chatId);
                 clearPendingQuestionnairesForChat(req.chatId);
+                clearPendingMiniPlanApprovalsForChat(req.chatId);
                 break;
               }
 
@@ -1276,6 +1278,7 @@ export async function handleLocalAgentStream(
     // stale UI banners and orphaned promises
     clearPendingConsentsForChat(req.chatId);
     clearPendingQuestionnairesForChat(req.chatId);
+    clearPendingMiniPlanApprovalsForChat(req.chatId);
 
     if (abortController.signal.aborted) {
       // Handle cancellation

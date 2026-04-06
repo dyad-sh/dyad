@@ -11,6 +11,8 @@
 - text: auto
 - img
 - text: less than a minute ago
+- img
+- text: (1 files changed)
 - button "Copy Request ID":
   - img
   - text: ""
@@ -32,8 +34,6 @@
 - text: auto
 - img
 - text: less than a minute ago
-- img
-- text: wrote 1 file(s)
 - button "Copy Request ID":
   - img
   - text: ""
@@ -57,8 +57,6 @@
 - paragraph: "[[dyad-dump-path=*]]"
 - button "Copy":
   - img
-- img
-- text: Approved
 - img
 - text: auto
 - img

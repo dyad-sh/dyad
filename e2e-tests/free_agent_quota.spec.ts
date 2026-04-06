@@ -4,7 +4,7 @@ import { expect } from "@playwright/test";
 /**
  * E2E test for Basic Agent mode quota (free users).
  *
- * Basic Agent mode is available to non-Pro users with a 5-message-per-day limit.
+ * Basic Agent mode is available to non-Pro users with a 10-message-per-window limit.
  * This test verifies mode availability, quota tracking, exceeded banner, and mode switching.
  */
 
@@ -24,9 +24,9 @@ testSkipIfWindows(
       po.page.getByRole("option", { name: /Agent v2/ }),
     ).not.toBeVisible();
 
-    // 2. Verify quota display is present (may not be 5/5 if AI_RULES.md generation consumed quota)
+    // 2. Verify quota display is present (may not be 10/10 if AI_RULES.md generation consumed quota)
     await expect(
-      po.page.getByRole("option", { name: /Basic Agent.*\d\/5 remaining/ }),
+      po.page.getByRole("option", { name: /Basic Agent.*\d+\/10 remaining/ }),
     ).toBeVisible();
     await po.page.keyboard.press("Escape");
 
@@ -36,8 +36,8 @@ testSkipIfWindows(
       "Basic Agent",
     );
 
-    // 4. Send 5 messages to exhaust quota (this will exhaust quota even if some was already used)
-    for (let i = 0; i < 5; i++) {
+    // 4. Send 10 messages to exhaust quota (this will exhaust quota even if some was already used)
+    for (let i = 0; i < 10; i++) {
       await po.sendPrompt(`tc=local-agent/simple-response message ${i + 1}`);
       await po.chatActions.waitForChatCompletion();
     }
@@ -47,7 +47,7 @@ testSkipIfWindows(
       timeout: Timeout.MEDIUM,
     });
     await expect(po.page.getByTestId("free-agent-quota-banner")).toContainText(
-      "You have used all 5 messages for the free Agent mode today",
+      "You have used all 10 messages for the free Agent mode today",
     );
     await expect(
       po.page.getByRole("button", { name: "Upgrade to Dyad Pro" }),
@@ -56,14 +56,14 @@ testSkipIfWindows(
       po.page.getByRole("button", { name: "Switch back to Build mode" }),
     ).toBeVisible();
 
-    // 6. Try to send a 6th message - should be blocked with error
-    await po.sendPrompt("tc=local-agent/simple-response message 6");
+    // 6. Try to send an 11th message - should be blocked with error
+    await po.sendPrompt("tc=local-agent/simple-response message 11");
     // Verify error message appears indicating quota exceeded
     await expect(po.page.getByTestId("chat-error-box")).toBeVisible({
       timeout: Timeout.MEDIUM,
     });
     await expect(po.page.getByTestId("chat-error-box")).toContainText(
-      "You have used all 5 free Agent messages for today",
+      "You have used all 10 free Agent messages for today",
     );
 
     // 8. Click "Switch back to Build mode" and verify mode changes
@@ -104,10 +104,11 @@ testSkipIfWindows(
 
     // 2. Verify quota decreased (exact count may vary due to setup messages)
     await po.page.getByTestId("chat-mode-selector").click();
-    // The quota should be less than 5/5 after sending messages
-    await expect(
-      po.page.getByRole("option", { name: /Basic Agent.*[0-4]\/5 remaining/ }),
-    ).toBeVisible();
+    const basicAgentOption = po.page.getByRole("option", {
+      name: /Basic Agent/,
+    });
+    await expect(basicAgentOption).toContainText(/\/10 remaining/);
+    await expect(basicAgentOption).not.toContainText("10/10");
     await po.page.keyboard.press("Escape");
 
     // 3. Simulate 25 hours passing by calling the test-only IPC handler
@@ -130,10 +131,10 @@ testSkipIfWindows(
       timeout: Timeout.MEDIUM,
     });
 
-    // 5. Verify quota has reset to 5/5 remaining
+    // 5. Verify quota has reset to 10/10 remaining
     await po.page.getByTestId("chat-mode-selector").click();
     await expect(
-      po.page.getByRole("option", { name: /Basic Agent.*5\/5 remaining/ }),
+      po.page.getByRole("option", { name: /Basic Agent.*10\/10 remaining/ }),
     ).toBeVisible();
     await po.page.keyboard.press("Escape");
 

@@ -531,6 +531,7 @@ const validInvokeChannels = [
   "libreoffice:get-directory",
   "libreoffice:ensure-ready",
   "libreoffice:shutdown",
+  "libreoffice:stream-generate",
   // Marketplace Integration
   "marketplace:status",
   "marketplace:connect",
@@ -2020,6 +2021,8 @@ const validReceiveChannels = [
   "email:pending-action",
   "email:orchestrator-status",
   "email:daily-digest-ready",
+  // LibreOffice streaming document generation
+  "libreoffice:generate-chunk",
 ] as const;
 
 type ValidInvokeChannel = (typeof validInvokeChannels)[number];

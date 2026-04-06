@@ -213,6 +213,47 @@ class LibreOfficeClient {
     });
   }
 
+  /**
+   * Stream AI document generation. Calls the provided callback with each text
+   * chunk as the AI writes, then resolves when the document has been saved.
+   *
+   * @param requestId   A unique ID you generate so you can match events.
+   * @param onChunk     Called for each streamed text delta.
+   * @param onDone      Called once with the created document (or an error string).
+   */
+  streamGenerateDocument(
+    params: {
+      requestId: string;
+      type: DocumentType;
+      name: string;
+      options: AIGenerationOptions;
+    },
+    onChunk: (text: string) => void,
+    onDone: (result: { document?: BaseDocument; error?: string }) => void
+  ): () => void {
+    const { requestId } = params;
+
+    const unsubscribe = (this.ipcRenderer as any).on(
+      "libreoffice:generate-chunk",
+      (data: { requestId: string; text: string; done: boolean; document?: BaseDocument; error?: string }) => {
+        if (data.requestId !== requestId) return;
+        if (data.done) {
+          onDone({ document: data.document, error: data.error });
+        } else {
+          onChunk(data.text);
+        }
+      }
+    );
+
+    // Fire the stream — ignore the return value, events carry progress
+    this.ipcRenderer.invoke("libreoffice:stream-generate", params).catch((err: Error) => {
+      onDone({ error: err.message });
+    });
+
+    // Return a cleanup function so callers can unsubscribe if they unmount early
+    return typeof unsubscribe === "function" ? unsubscribe : () => {};
+  }
+
   async generateReport(
     name: string,
     prompt: string,

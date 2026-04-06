@@ -4,6 +4,7 @@
  */
 
 import { ipcMain, app, shell } from "electron";
+import type { IpcMainInvokeEvent } from "electron";
 import { spawn, exec } from "child_process";
 import * as fs from "fs/promises";
 import * as path from "path";
@@ -11,10 +12,11 @@ import { promisify } from "util";
 import { getDb } from "@/db";
 import { documents, documentTemplates } from "@/db/schema";
 import { eq, desc, like, and, or } from "drizzle-orm";
-import { generateText } from "ai";
+import { generateText, streamText } from "ai";
 import { getModelClient } from "@/ipc/utils/get_model_client";
 import { readSettings } from "../../main/settings";
 import { smartRouter } from "@/lib/smart_router";
+import { safeSend } from "@/ipc/utils/safe_sender";
 import type {
   DocumentType,
   DocumentFormat,
@@ -243,18 +245,25 @@ class LibreOfficeManager {
 
     try {
       // Use --headless with a separate user profile to prevent conflicts
-      // with any running LibreOffice GUI instance (profile lock issue)
+      // with any running LibreOffice GUI instance (profile lock issue).
+      // Use spawn() directly (not exec/shell) so no cmd.exe window appears on
+      // Windows when using soffice.com (a console-subsystem binary).
       const profileArg = this.getHeadlessProfileArg();
-      // On Windows, avoid quoting the -env: argument — cmd.exe quote
-      // handling can interfere with LibreOffice's argument parsing.
-      const versionCmd = process.platform === "win32" 
-        ? `"${loPath}" --headless ${profileArg} --version < nul`
-        : `"${loPath}" --headless ${profileArg} --version < /dev/null`;
-      
-      const { stdout } = await execAsync(versionCmd, { 
-        windowsHide: true,
-        timeout: 30000, // 30 second timeout to allow profile init on first run
+      const stdout = await new Promise<string>((resolve, reject) => {
+        const proc = spawn(loPath, ["--headless", profileArg, "--version"], {
+          windowsHide: true,
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        let out = "";
+        proc.stdout?.on("data", (d: Buffer) => { out += d.toString(); });
+        const timer = setTimeout(() => {
+          proc.kill();
+          reject(new Error("LibreOffice version check timed out after 30 seconds"));
+        }, 30000);
+        proc.on("close", () => { clearTimeout(timer); resolve(out); });
+        proc.on("error", (err) => { clearTimeout(timer); reject(err); });
       });
+
       const versionMatch = stdout.match(/LibreOffice\s+([\d.]+)/);
       
       return {
@@ -1703,6 +1712,115 @@ ${bulletParagraphs}    </draw:text-box>
   }
 
   /**
+   * Stream AI document generation — sends text chunks to the renderer in
+   * real-time, then creates and saves the document once streaming finishes.
+   */
+  async streamGenerateDocument(
+    event: IpcMainInvokeEvent,
+    requestId: string,
+    type: DocumentType,
+    name: string,
+    options: AIGenerationOptions
+  ): Promise<void> {
+    const settings = readSettings();
+    let selectedModel = settings.selectedModel;
+
+    if (options.routingMode === "smart") {
+      try {
+        const decision = await smartRouter.route({
+          taskType: type === "spreadsheet" ? "extraction" : "creative_writing",
+          prompt: options.prompt,
+          privacyLevel: "standard",
+        });
+        selectedModel = { provider: decision.providerId, name: decision.modelId };
+      } catch {
+        // fall back to default
+      }
+    } else if (options.provider && options.model) {
+      selectedModel = { provider: options.provider, name: options.model };
+    }
+
+    const systemPrompt = this.getDocumentGenerationSystemPrompt(type, options);
+    const userPrompt = `Create a ${type} titled "${name}" based on this description:\n\n${options.prompt}`;
+
+    try {
+      const { modelClient } = await getModelClient(selectedModel, settings);
+
+      let fullText = "";
+      const stream = streamText({
+        model: modelClient.model,
+        system: systemPrompt,
+        prompt: userPrompt,
+      });
+
+      for await (const chunk of stream.textStream) {
+        fullText += chunk;
+        safeSend(event.sender, "libreoffice:generate-chunk", {
+          requestId,
+          text: chunk,
+          done: false,
+        });
+      }
+
+      // Parse the streamed response and create the document
+      const content = this.parseAIResponseToContent(type, fullText, options);
+      const db = getDb();
+      const format = FORMAT_EXTENSIONS[type];
+      const fileName = `${name.replace(/[^a-zA-Z0-9-_]/g, "_")}_${Date.now()}.${format}`;
+      const filePath = path.join(this.documentsDir, fileName);
+
+      let xmlContent: string;
+      if (type === "document") {
+        xmlContent = this.generateDocumentXML(content as DocumentContent);
+      } else if (type === "spreadsheet") {
+        xmlContent = this.generateSpreadsheetXML(content as SpreadsheetContent);
+      } else {
+        xmlContent = this.generatePresentationXML(content as PresentationContent);
+      }
+
+      await this.writeDocumentContent(filePath, type, xmlContent);
+
+      const [doc] = await db
+        .insert(documents)
+        .values({
+          name,
+          type,
+          format,
+          status: "ready",
+          filePath,
+          description: options.prompt || null,
+          aiPrompt: options.prompt,
+          aiModel: `${selectedModel.provider}/${selectedModel.name}`,
+        })
+        .returning();
+
+      safeSend(event.sender, "libreoffice:generate-chunk", {
+        requestId,
+        text: "",
+        done: true,
+        document: {
+          id: doc.id,
+          name: doc.name,
+          type: doc.type as DocumentType,
+          format: doc.format as DocumentFormat,
+          status: doc.status as any,
+          filePath: doc.filePath,
+          createdAt: doc.createdAt,
+          updatedAt: doc.updatedAt,
+          description: doc.description || undefined,
+        } satisfies BaseDocument,
+      });
+    } catch (error) {
+      safeSend(event.sender, "libreoffice:generate-chunk", {
+        requestId,
+        text: "",
+        done: true,
+        error: error instanceof Error ? error.message : "AI generation failed",
+      });
+    }
+  }
+
+  /**
    * Check if any consumer is currently active.
    */
   isActive(): boolean {
@@ -1781,6 +1899,35 @@ export function registerLibreOfficeHandlers() {
   ipcMain.handle("libreoffice:shutdown", async () => {
     await manager.shutdown();
   });
+
+  // AI streaming document generation — sends libreoffice:generate-chunk events
+  // to the renderer with live text chunks and completes with the saved document.
+  ipcMain.handle(
+    "libreoffice:stream-generate",
+    async (
+      event,
+      params: {
+        requestId: string;
+        type: DocumentType;
+        name: string;
+        options: AIGenerationOptions;
+      }
+    ) => {
+      // Start the stream in a non-blocking async flow so the invoke returns
+      // immediately (chunk events carry progress; done event carries result).
+      manager
+        .streamGenerateDocument(event, params.requestId, params.type, params.name, params.options)
+        .catch((err) => {
+          safeSend(event.sender, "libreoffice:generate-chunk", {
+            requestId: params.requestId,
+            text: "",
+            done: true,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+      return { started: true };
+    }
+  );
 }
 
 export { LibreOfficeManager };

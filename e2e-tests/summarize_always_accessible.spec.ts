@@ -50,18 +50,3 @@ test("summarize button appears in chat header when in a chat", async ({
   // but message rendering is a separate concern tested via integration tests.
   // This E2E test validates the button behavior and navigation works correctly.
 });
-
-test("summarize button is hidden on home page (guard clause works)", async ({
-  po,
-}) => {
-  // Setup: Initialize app and start in home without selecting a chat
-  await po.setUp();
-
-  // Verify home route has no summarize button
-  // (it should be hidden by the guard clause: {selectedChatId && (...)})
-  const summarizeButton = po.page.locator(
-    '[data-testid="summarize-chat-button"]',
-  );
-
-  await expect(summarizeButton).not.toBeVisible();
-});

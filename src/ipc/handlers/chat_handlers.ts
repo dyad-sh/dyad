@@ -13,48 +13,59 @@ import { chatContracts } from "../types/chat";
 const logger = log.scope("chat_handlers");
 
 export function registerChatHandlers() {
-  createTypedHandler(chatContracts.createChat, async (_, appId) => {
-    // Get the app's path first
-    const app = await db.query.apps.findFirst({
-      where: eq(apps.id, appId),
-      columns: {
-        path: true,
-      },
-    });
+  createTypedHandler(
+    chatContracts.createChat,
+    async (_, { appId, initialChatMode }) => {
+      // Note: initialChatMode may be undefined/null, which is expected for backward compatibility.
+      // Clients are responsible for determining the proper mode using useInitialChatMode() hook,
+      // which handles quota checks and environment variable overrides.
+      // The handler only persists what the client explicitly provides or null.
 
-    if (!app) {
-      throw new DyadError("App not found", DyadErrorKind.NotFound);
-    }
-
-    let initialCommitHash = null;
-    try {
-      // Get the current git revision of the currently checked-out branch
-      initialCommitHash = await getCurrentCommitHash({
-        path: getDyadAppPath(app.path),
+      // Get the app's path first
+      const app = await db.query.apps.findFirst({
+        where: eq(apps.id, appId),
+        columns: {
+          path: true,
+        },
       });
-    } catch (error) {
-      logger.error("Error getting git revision:", error);
-      // Continue without the git revision
-    }
 
-    // Create a new chat
-    const [chat] = await db
-      .insert(chats)
-      .values({
+      if (!app) {
+        throw new DyadError("App not found", DyadErrorKind.NotFound);
+      }
+
+      let initialCommitHash = null;
+      try {
+        // Get the current git revision of the currently checked-out branch
+        initialCommitHash = await getCurrentCommitHash({
+          path: getDyadAppPath(app.path),
+        });
+      } catch (error) {
+        logger.error("Error getting git revision:", error);
+        // Continue without the git revision
+      }
+
+      // Create a new chat with the initial chat mode (or null if not provided)
+      const [chat] = await db
+        .insert(chats)
+        .values({
+          appId,
+          initialCommitHash,
+          chatMode: initialChatMode ?? null,
+        })
+        .returning();
+      logger.info(
+        "Created chat:",
+        chat.id,
+        "for app:",
         appId,
+        "with initial commit hash:",
         initialCommitHash,
-      })
-      .returning();
-    logger.info(
-      "Created chat:",
-      chat.id,
-      "for app:",
-      appId,
-      "with initial commit hash:",
-      initialCommitHash,
-    );
-    return chat.id;
-  });
+        "and mode:",
+        initialChatMode,
+      );
+      return chat.id;
+    },
+  );
 
   createTypedHandler(chatContracts.getChat, async (_, chatId) => {
     const chat = await db.query.chats.findFirst({
@@ -90,6 +101,7 @@ export function registerChatHandlers() {
             title: true,
             createdAt: true,
             appId: true,
+            chatMode: true,
           },
           orderBy: [desc(chats.createdAt)],
         })
@@ -99,6 +111,7 @@ export function registerChatHandlers() {
             title: true,
             createdAt: true,
             appId: true,
+            chatMode: true,
           },
           orderBy: [desc(chats.createdAt)],
         });
@@ -116,6 +129,20 @@ export function registerChatHandlers() {
     await db.update(chats).set({ title }).where(eq(chats.id, chatId));
   });
 
+  createTypedHandler(chatContracts.updateChatMode, async (_, params) => {
+    const { chatId, chatMode } = params;
+    const result = await db
+      .update(chats)
+      .set({ chatMode })
+      .where(eq(chats.id, chatId));
+
+    if (result.changes === 0) {
+      throw new DyadError("Chat not found", DyadErrorKind.NotFound);
+    }
+
+    logger.info("Updated chat mode for chat:", chatId, "to:", chatMode);
+  });
+
   createTypedHandler(chatContracts.deleteMessages, async (_, chatId) => {
     await db.delete(messages).where(eq(messages.chatId, chatId));
   });
@@ -129,6 +156,7 @@ export function registerChatHandlers() {
         appId: chats.appId,
         title: chats.title,
         createdAt: chats.createdAt,
+        chatMode: chats.chatMode,
       })
       .from(chats)
       .where(and(eq(chats.appId, appId), like(chats.title, `%${query}%`)))
@@ -141,6 +169,7 @@ export function registerChatHandlers() {
       title: c.title,
       createdAt: c.createdAt,
       matchedMessageContent: null,
+      chatMode: c.chatMode,
     }));
 
     // 2) Find messages that match and join to chats to build one result per message
@@ -151,6 +180,7 @@ export function registerChatHandlers() {
         title: chats.title,
         createdAt: chats.createdAt,
         matchedMessageContent: messages.content,
+        chatMode: chats.chatMode,
       })
       .from(messages)
       .innerJoin(chats, eq(messages.chatId, chats.id))

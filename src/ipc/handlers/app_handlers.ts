@@ -880,6 +880,7 @@ export function registerAppHandlers() {
       .insert(chats)
       .values({
         appId: app.id,
+        ...(params.initialChatMode && { chatMode: params.initialChatMode }),
       })
       .returning();
 

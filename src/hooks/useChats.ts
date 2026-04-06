@@ -16,7 +16,7 @@ export function useChats(appId: number | null) {
   const invalidateChats = () => {
     // Invalidate all chat queries (any appId) since mutations affect both
     // app-specific lists and the global list (appId=null)
-    queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
+    return queryClient.invalidateQueries({ queryKey: queryKeys.chats.all });
   };
 
   return {

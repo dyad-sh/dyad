@@ -283,6 +283,8 @@ export const UserSettingsSchema = z.object({
   selectedTemplateId: z.string(),
   enableSupabaseWriteSqlMigration: z.boolean().optional(),
   selectedChatMode: ChatModeSchema.optional(),
+  /** Model used for Document Studio AI generation and in-editor AI commands. Falls back to selectedModel when undefined. */
+  documentAiModel: LargeLanguageModelSchema.optional(),
   acceptedCommunityCode: z.boolean().optional(),
   zoomLevel: ZoomLevelSchema.optional(),
 

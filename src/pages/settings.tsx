@@ -33,6 +33,7 @@ import { CNSSettings } from "@/components/settings/CNSSettings";
 import { ExternalServicesSettings } from "@/components/settings/ExternalServicesSettings";
 import { CelestiaBlobExplorer } from "@/components/settings/CelestiaBlobExplorer";
 import { CreatorLifecycleDashboard } from "@/components/settings/CreatorLifecycleDashboard";
+import { DocumentAiSettings } from "@/components/settings/DocumentAiSettings";
 import { ZoomSelector } from "@/components/ZoomSelector";
 import { useSetAtom } from "jotai";
 import { activeSettingsSectionAtom } from "@/atoms/viewAtoms";
@@ -100,6 +101,7 @@ export default function SettingsPage() {
           <GeneralSettings appVersion={appVersion} />
           <WorkflowSettings />
           <AISettings />
+          <DocumentAiSettings />
 
           <div
             id="provider-settings"

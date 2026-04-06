@@ -398,8 +398,9 @@ class LibreOfficeManager {
     // Determine which model to use based on routing mode:
     // 1. "smart" — delegate to the Smart Router based on prompt complexity
     // 2. Explicit provider/model — use exactly what the user picked
-    // 3. Fallback — use the global default model from settings
-    let selectedModel = settings.selectedModel;
+    // 3. Fallback — prefer documentAiModel from settings, then global selectedModel
+    let selectedModel = (settings as Record<string, unknown>).documentAiModel as { provider: string; name: string } | undefined
+      ?? settings.selectedModel;
 
     if (options.routingMode === "smart") {
       try {
@@ -418,6 +419,7 @@ class LibreOfficeManager {
     
     const systemPrompt = this.getDocumentGenerationSystemPrompt(type, options);
     const userPrompt = `Create a ${type} titled "${name}" based on this description:\n\n${options.prompt}`;
+    const maxTokens = this.getMaxTokensForLength(options.length);
 
     try {
       const { modelClient } = await getModelClient(selectedModel, settings);
@@ -426,6 +428,7 @@ class LibreOfficeManager {
         model: modelClient.model,
         system: systemPrompt,
         prompt: userPrompt,
+        maxTokens,
       });
 
       // Parse AI response into document content structure
@@ -480,18 +483,46 @@ class LibreOfficeManager {
     }
   }
 
+  /**
+   * Map the user-facing length option to a maxTokens value so the model
+   * actually produces long-form content when asked.
+   */
+  private getMaxTokensForLength(length?: string): number {
+    switch (length) {
+      case "short":
+        return 2048;
+      case "medium":
+        return 4096;
+      case "long":
+        return 8192;
+      case "detailed":
+        return 12288;
+      default:
+        return 4096;
+    }
+  }
+
   private getDocumentGenerationSystemPrompt(type: DocumentType, options: AIGenerationOptions): string {
     const tone = options.tone || "professional";
     const length = options.length || "medium";
 
+    const lengthGuidance: Record<string, { rows: string; slides: string; words: string }> = {
+      short: { rows: "5-10", slides: "3-5", words: "300-500" },
+      medium: { rows: "10-25", slides: "6-10", words: "800-1500" },
+      long: { rows: "25-50", slides: "10-15", words: "2000-4000" },
+      detailed: { rows: "50-100", slides: "15-25", words: "4000-8000" },
+    };
+    const guide = lengthGuidance[length] || lengthGuidance.medium;
+
     if (type === "spreadsheet") {
       return `You are an expert spreadsheet creator. Generate tabular data.
 Tone: ${tone}
-Length: ${length}
+Length: ${length} (generate ${guide.rows} data rows)
 
 IMPORTANT: Output your response as a markdown table. The first row is the header row.
 Use standard markdown table syntax with | separators.
-Include at least 5-10 data rows with realistic data. More rows for "long" or "detailed" length.
+You MUST generate at least ${guide.rows} data rows with realistic, varied data.
+Include multiple columns with meaningful headers.
 
 Example:
 | Name | Department | Salary | Start Date |
@@ -506,13 +537,14 @@ Output ONLY the markdown table. No other text, explanations, or formatting.`;
     if (type === "presentation") {
       return `You are an expert presentation creator. Generate slide content.
 Tone: ${tone}
-Length: ${length}
+Length: ${length} (generate ${guide.slides} slides)
 
 IMPORTANT: Output your response in this exact format. Each slide starts with "## SLIDE:" followed by the slide title.
-Under each slide, add bullet points with "- " prefix for content.
+Under each slide, add bullet points with "- " prefix for content. Each slide should have 3-6 bullet points.
 Optionally add "NOTES:" at the end of a slide for speaker notes.
 
-Generate 5-8 slides for a complete presentation.
+You MUST generate ${guide.slides} slides for a thorough, complete presentation.
+Cover the topic comprehensively with real detail in each bullet point.
 
 Example:
 ## SLIDE: Introduction
@@ -536,29 +568,34 @@ Output ONLY the slides in this format. No other text.`;
     }
 
     // Default: document
-    return `You are an expert document creator. Generate content in a structured format.
+    return `You are an expert document creator and writer. Generate comprehensive, detailed content.
 Tone: ${tone}
-Length: ${length}
+Length: ${length} (write approximately ${guide.words} words of content)
 
 IMPORTANT: Output your response in a specific format that can be parsed:
 - Start each heading with "## HEADING:" followed by the heading text
-- Start each paragraph with "PARAGRAPH:" followed by the paragraph text
+- Start each paragraph with "PARAGRAPH:" followed by the paragraph text (write full, detailed paragraphs of 3-5 sentences each)
 - Start each bullet list item with "- LIST:" followed by the item text
 - For numbered lists use "1. LIST:" format
 
+You MUST write approximately ${guide.words} words total. Each paragraph should be substantive and detailed.
+Include multiple sections with headings, thorough paragraphs, and lists where appropriate.
+Do NOT write a brief outline — write full prose content as if authoring a real document.
+
 Example format:
 ## HEADING: Introduction
-PARAGRAPH: This is the introduction paragraph with detailed content.
+PARAGRAPH: This is the introduction paragraph with detailed content about the topic. It provides context and background information that helps the reader understand what follows. The introduction sets the stage for the comprehensive analysis ahead.
 
 ## HEADING: Key Points
-- LIST: First important point
-- LIST: Second important point
+PARAGRAPH: The first major area to consider is the current state of the market. Recent trends show significant growth across multiple sectors, driven by technological innovation and changing consumer preferences.
+- LIST: First important point with explanation
+- LIST: Second important point with explanation
 1. LIST: Numbered item one
 2. LIST: Numbered item two
 
-PARAGRAPH: Conclusion text here.
+PARAGRAPH: In conclusion, the evidence presented demonstrates clear patterns that warrant attention.
 
-You are creating a text document. Include headings, paragraphs, and lists as appropriate.`;
+You are creating a text document. Write thorough, publication-quality content.`;
   }
 
   /**
@@ -790,7 +827,15 @@ You are creating a text document. Include headings, paragraphs, and lists as app
           type: "paragraph",
           content: trimmed.replace(/LIST:\s*/, ""),
         });
-      } else if (trimmed && !trimmed.startsWith("#") && trimmed.length > 10) {
+      } else if (trimmed.match(/^#{1,3}\s+/) && !trimmed.includes("HEADING:")) {
+        // Handle plain markdown headings that don't follow our format
+        const level = (trimmed.match(/^(#+)/)?.[1].length ?? 1) as 1 | 2;
+        sections.push({
+          type: "heading",
+          level: Math.min(level, 2) as 1 | 2,
+          content: trimmed.replace(/^#+\s*/, ""),
+        });
+      } else if (trimmed && trimmed.length > 0) {
         sections.push({
           type: "paragraph",
           content: trimmed,
@@ -1712,6 +1757,241 @@ ${bulletParagraphs}    </draw:text-box>
   }
 
   /**
+   * Read the plain text / structured content back from an existing ODF document.
+   * Returns { text, rows, slides } — only the field relevant to the doc type is populated.
+   */
+  async readDocumentContent(id: number): Promise<{
+    success: boolean;
+    text?: string;
+    rows?: string[][];
+    slides?: Array<{ title: string; content: string; notes?: string }>;
+    error?: string;
+  }> {
+    const db = getDb();
+    const [doc] = await db.select().from(documents).where(eq(documents.id, id)).limit(1);
+    if (!doc) return { success: false, error: "Document not found" };
+    try {
+      await fs.access(doc.filePath);
+    } catch {
+      return { success: false, error: "Document file not found on disk" };
+    }
+
+    try {
+      const AdmZip = require("adm-zip");
+      const zip = new AdmZip(doc.filePath);
+      const contentXml: string = zip.readAsText("content.xml");
+
+      if (doc.type === "spreadsheet") {
+        // Parse table rows
+        const rows: string[][] = [];
+        const rowRegex = /<table:table-row[^>]*>([\s\S]*?)<\/table:table-row>/g;
+        const cellRegex = /<table:table-cell[^>]*>[\s\S]*?<text:p[^>]*>(.*?)<\/text:p>[\s\S]*?<\/table:table-cell>|<table:table-cell[^>]*\/>/g;
+        let rowMatch;
+        while ((rowMatch = rowRegex.exec(contentXml)) !== null) {
+          const cells: string[] = [];
+          const rowContent = rowMatch[1];
+          let cellMatch;
+          while ((cellMatch = cellRegex.exec(rowContent)) !== null) {
+            const raw = (cellMatch[1] || "").replace(/<[^>]+>/g, "")
+              .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+              .replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+            cells.push(raw);
+          }
+          if (cells.length > 0) rows.push(cells);
+        }
+        return { success: true, rows };
+      }
+
+      if (doc.type === "presentation") {
+        // Parse draw:page elements as slides
+        const slides: Array<{ title: string; content: string; notes?: string }> = [];
+        const pageRegex = /<draw:page[^>]*>([\s\S]*?)<\/draw:page>/g;
+        const textRegex = /<text:(?:p|h)[^>]*>(.*?)<\/text:(?:p|h)>/g;
+        let pageMatch;
+        while ((pageMatch = pageRegex.exec(contentXml)) !== null) {
+          const pageContent = pageMatch[1];
+          const texts: string[] = [];
+          let tm;
+          while ((tm = textRegex.exec(pageContent)) !== null) {
+            const t = (tm[1] || "").replace(/<[^>]+>/g, "")
+              .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+              .replace(/&quot;/g, '"').replace(/&apos;/g, "'").trim();
+            if (t) texts.push(t);
+          }
+          slides.push({
+            title: texts[0] || "Untitled Slide",
+            content: texts.slice(1).join("\n"),
+          });
+        }
+        return { success: true, slides };
+      }
+
+      // Text document — extract paragraphs
+      const paragraphs: string[] = [];
+      const paraRegex = /<text:(?:p|h)[^>]*>(.*?)<\/text:(?:p|h)>/g;
+      let pm;
+      while ((pm = paraRegex.exec(contentXml)) !== null) {
+        const t = (pm[1] || "").replace(/<[^>]+>/g, "")
+          .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+          .replace(/&quot;/g, '"').replace(/&apos;/g, "'").trim();
+        if (t) paragraphs.push(t);
+      }
+      return { success: true, text: paragraphs.join("\n\n") };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to read document",
+      };
+    }
+  }
+
+  /**
+   * Rewrite the content of an existing document from plain text / structured data.
+   * Updates the ODF zip on disk and touches the DB updatedAt timestamp.
+   */
+  async updateDocumentContent(
+    id: number,
+    payload: {
+      text?: string;
+      rows?: string[][];
+      slides?: Array<{ title: string; content: string; notes?: string }>;
+    }
+  ): Promise<{ success: boolean; error?: string }> {
+    const db = getDb();
+    const [doc] = await db.select().from(documents).where(eq(documents.id, id)).limit(1);
+    if (!doc) return { success: false, error: "Document not found" };
+
+    try {
+      let content: DocumentContent | SpreadsheetContent | PresentationContent;
+      if (doc.type === "spreadsheet" && payload.rows) {
+        const colLetters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        const cells: SpreadsheetCell[] = [];
+        payload.rows.forEach((row, ri) => {
+          row.forEach((val, ci) => {
+            if (ci < 26) {
+              const num = Number(val);
+              cells.push({ row: ri + 1, col: colLetters[ci], value: !isNaN(num) && val !== "" ? num : val });
+            }
+          });
+        });
+        content = { sheets: [{ name: "Sheet1", cells }] } as SpreadsheetContent;
+      } else if (doc.type === "presentation" && payload.slides) {
+        content = {
+          slides: payload.slides.map((s, idx) => ({
+            layout: idx === 0 ? "title" as const : "content" as const,
+            title: s.title,
+            content: s.content
+              ? s.content.split("\n").filter(Boolean).map((line) => ({ type: "paragraph" as const, content: line }))
+              : [],
+            notes: s.notes,
+          })),
+        } as PresentationContent;
+      } else if (payload.text !== undefined) {
+        // Parse plain text back to DocumentContent sections
+        const lines = payload.text.split("\n");
+        const sections: DocumentSection[] = [];
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          if (line.startsWith("# ")) {
+            sections.push({ type: "heading", level: 1, content: line.slice(2).trim() });
+          } else if (line.startsWith("## ")) {
+            sections.push({ type: "heading", level: 2, content: line.slice(3).trim() });
+          } else if (line.startsWith("### ")) {
+            sections.push({ type: "heading", level: 3, content: line.slice(4).trim() });
+          } else if (line.startsWith("- ") || line.startsWith("* ")) {
+            sections.push({ type: "list", content: line.slice(2).trim() });
+          } else {
+            sections.push({ type: "paragraph", content: line.trim() });
+          }
+        }
+        content = { title: doc.name, sections } as DocumentContent;
+      } else {
+        return { success: false, error: "No content provided" };
+      }
+
+      let xmlContent: string;
+      if (doc.type === "document") xmlContent = this.generateDocumentXML(content as DocumentContent);
+      else if (doc.type === "spreadsheet") xmlContent = this.generateSpreadsheetXML(content as SpreadsheetContent);
+      else xmlContent = this.generatePresentationXML(content as PresentationContent);
+
+      await this.writeDocumentContent(doc.filePath, doc.type as DocumentType, xmlContent);
+      await db.update(documents).set({ updatedAt: new Date().toISOString() } as any).where(eq(documents.id, id));
+
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to update document",
+      };
+    }
+  }
+
+  /**
+   * Stream an AI-powered editing command on document text.
+   * Sends libreoffice:ai-assist-chunk events to the renderer.
+   * Commands: improve | grammar | summarize | continue | tone | explain | custom
+   */
+  async streamAiAssist(
+    event: IpcMainInvokeEvent,
+    requestId: string,
+    params: {
+      docId: number;
+      command: "improve" | "grammar" | "summarize" | "continue" | "tone" | "explain" | "custom";
+      selection: string;
+      context?: string;
+      toneValue?: string;
+      customPrompt?: string;
+      provider?: string;
+      model?: string;
+    }
+  ): Promise<void> {
+    const settings = readSettings();
+    let selectedModel = (settings as any).documentAiModel || settings.selectedModel;
+    if (params.provider && params.model) {
+      selectedModel = { provider: params.provider, name: params.model };
+    }
+
+    const commandPrompts: Record<string, string> = {
+      improve: "Improve the writing quality, clarity, and flow of the following text. Keep the same meaning and length. Return only the improved text, no explanations:",
+      grammar: "Fix all grammar, spelling, and punctuation errors in the following text. Return only the corrected text, no explanations:",
+      summarize: "Write a concise summary of the following text in 2-3 sentences. Return only the summary:",
+      continue: "Continue writing the following text naturally, matching the existing style and tone. Add 1-3 paragraphs:",
+      explain: "Explain the following text in simple, clear language. Break down key concepts:",
+      tone: `Rewrite the following text in a ${params.toneValue || "professional"} tone. Keep the same meaning. Return only the rewritten text:`,
+      custom: params.customPrompt || "Improve the following text:",
+    };
+
+    const systemPrompt = "You are an expert writing assistant embedded in a document editor. Respond only with the requested text transformation — no preamble, no explanation, no markdown code fences unless the content itself is code.";
+    const userPrompt = `${commandPrompts[params.command]}\n\n${params.selection}`;
+
+    try {
+      const { modelClient } = await getModelClient(selectedModel, settings);
+      const stream = streamText({ model: modelClient.model, system: systemPrompt, prompt: userPrompt });
+
+      for await (const chunk of stream.textStream) {
+        safeSend(event.sender, "libreoffice:ai-assist-chunk", {
+          requestId,
+          text: chunk,
+          done: false,
+        });
+      }
+
+      safeSend(event.sender, "libreoffice:ai-assist-chunk", {
+        requestId,
+        text: "",
+        done: true,
+      });
+    } catch (error) {
+      safeSend(event.sender, "libreoffice:ai-assist-chunk", {
+        requestId,
+        text: "",
+        done: true,
+        error: error instanceof Error ? error.message : "AI assist failed",
+      });
+    }
+  }
+
+  /**
    * Stream AI document generation — sends text chunks to the renderer in
    * real-time, then creates and saves the document once streaming finishes.
    */
@@ -1723,7 +2003,9 @@ ${bulletParagraphs}    </draw:text-box>
     options: AIGenerationOptions
   ): Promise<void> {
     const settings = readSettings();
-    let selectedModel = settings.selectedModel;
+    // Prefer documentAiModel from settings, then global selectedModel
+    let selectedModel = (settings as Record<string, unknown>).documentAiModel as { provider: string; name: string } | undefined
+      ?? settings.selectedModel;
 
     if (options.routingMode === "smart") {
       try {
@@ -1742,6 +2024,7 @@ ${bulletParagraphs}    </draw:text-box>
 
     const systemPrompt = this.getDocumentGenerationSystemPrompt(type, options);
     const userPrompt = `Create a ${type} titled "${name}" based on this description:\n\n${options.prompt}`;
+    const maxTokens = this.getMaxTokensForLength(options.length);
 
     try {
       const { modelClient } = await getModelClient(selectedModel, settings);
@@ -1751,6 +2034,7 @@ ${bulletParagraphs}    </draw:text-box>
         model: modelClient.model,
         system: systemPrompt,
         prompt: userPrompt,
+        maxTokens,
       });
 
       for await (const chunk of stream.textStream) {
@@ -1920,6 +2204,58 @@ export function registerLibreOfficeHandlers() {
         .catch((err) => {
           safeSend(event.sender, "libreoffice:generate-chunk", {
             requestId: params.requestId,
+            text: "",
+            done: true,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+      return { started: true };
+    }
+  );
+
+  // Read the plain-text / structured content of an existing document.
+  ipcMain.handle("libreoffice:read-content", async (_event, id: number) => {
+    return manager.readDocumentContent(id);
+  });
+
+  // Overwrite a document with edited content.
+  ipcMain.handle(
+    "libreoffice:update-content",
+    async (
+      _event,
+      id: number,
+      payload: {
+        text?: string;
+        rows?: string[][];
+        slides?: Array<{ title: string; content: string; notes?: string }>;
+      }
+    ) => {
+      return manager.updateDocumentContent(id, payload);
+    }
+  );
+
+  // Stream an AI editing command on selected document text.
+  ipcMain.handle(
+    "libreoffice:ai-assist",
+    async (
+      event,
+      requestId: string,
+      params: {
+        docId: number;
+        command: "improve" | "grammar" | "summarize" | "continue" | "tone" | "explain" | "custom";
+        selection: string;
+        context?: string;
+        toneValue?: string;
+        customPrompt?: string;
+        provider?: string;
+        model?: string;
+      }
+    ) => {
+      manager
+        .streamAiAssist(event, requestId, params)
+        .catch((err) => {
+          safeSend(event.sender, "libreoffice:ai-assist-chunk", {
+            requestId,
             text: "",
             done: true,
             error: err instanceof Error ? err.message : String(err),

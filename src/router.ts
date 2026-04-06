@@ -11,7 +11,7 @@ import { libraryRoute } from "./routes/library";
 import { agentsRoute, agentEditorRoute, agentTestRoute, agentPreviewRoute } from "./routes/agents";
 import { workflowsRoute } from "./routes/workflows";
 import { localModelsRoute } from "./routes/local-models";
-import { documentsRoute } from "./routes/documents";
+import { documentsRoute, documentEditorRoute } from "./routes/documents";
 import { deployRoute } from "./routes/deploy";
 import { datasetsRoute } from "./routes/datasets";
 import { assetStudioRoute } from "./routes/asset-studio";
@@ -65,6 +65,7 @@ const routeTree = rootRoute.addChildren([
   workflowsRoute,
   localModelsRoute,
   documentsRoute,
+  documentEditorRoute,
   deployRoute,
   datasetsRoute,
   assetStudioRoute,

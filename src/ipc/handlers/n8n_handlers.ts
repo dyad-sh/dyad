@@ -60,9 +60,43 @@ let n8nDbConfig: N8nDatabaseConfig = {
 let n8nProcess: ChildProcess | null = null;
 let n8nConfig: N8nApiConfig = {
   baseUrl: "http://localhost:5678",
-  apiKey:
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjMmQ3MDA0Ny0wNmYyLTQzNmMtYTFkNC1iYmU5MDM1MjZmMWIiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiMTBjY2E0MDYtMDBjNC00MGZlLTg0YjUtNDgwZGI4MGIyY2M0IiwiaWF0IjoxNzczODEyNDAxLCJleHAiOjIwODI2NzIwMDAwMDB9.hySnkUos7AHfyOOZZ-A0XMiMW_1D4MD60loXyiXW3HM",
+  apiKey: "",
 };
+
+/**
+ * Fetch the owner API key from the local n8n instance.
+ * n8n >= 1.x exposes GET /api/v1/me which returns the logged-in user,
+ * but only after an API key has been created, so we attempt a no-auth
+ * health probe first. If n8n responds without auth, we leave apiKey
+ * empty (no auth needed for local). If it 401s on /api/v1/workflows
+ * we try to fall back to any persisted key.
+ */
+async function refreshN8nApiKey(): Promise<void> {
+  try {
+    // Try a real API call without auth — local n8n usually has no auth
+    const res = await fetch(`${n8nConfig.baseUrl}/api/v1/workflows?limit=1`, {
+      headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(3000),
+    });
+    if (res.ok) {
+      // No auth needed — clear any stale key
+      n8nConfig.apiKey = "";
+      return;
+    }
+    // If 401, look for a persisted key in userdata
+    if (res.status === 401) {
+      const keyFile = path.join(getUserDataPath(), "n8n", "api_key.txt");
+      if (await fs.pathExists(keyFile)) {
+        n8nConfig.apiKey = (await fs.readFile(keyFile, "utf-8")).trim();
+        logger.info("Loaded n8n API key from persisted file");
+      } else {
+        logger.warn("n8n requires auth but no API key is persisted — requests will fail");
+      }
+    }
+  } catch {
+    // n8n not reachable
+  }
+}
 
 /**
  * Configure n8n database settings
@@ -162,6 +196,7 @@ async function waitForN8n(maxAttempts = 30): Promise<void> {
       const response = await fetch(`${n8nConfig.baseUrl}/healthz`);
       if (response.ok) {
         logger.info("n8n is ready");
+        await refreshN8nApiKey();
         return;
       }
     } catch {
@@ -206,21 +241,28 @@ async function n8nApiRequest<T>(
 ): Promise<T> {
   const url = `${n8nConfig.baseUrl}/api/v1${endpoint}`;
   
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+  const buildHeaders = (): Record<string, string> => {
+    const h: Record<string, string> = { "Content-Type": "application/json" };
+    if (n8nConfig.apiKey) h["X-N8N-API-KEY"] = n8nConfig.apiKey;
+    return h;
   };
-  
-  if (n8nConfig.apiKey) {
-    headers["X-N8N-API-KEY"] = n8nConfig.apiKey;
-  }
 
-  try {
-    const response = await fetch(url, {
+  const doFetch = async (headers: Record<string, string>) =>
+    fetch(url, {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(timeoutMs),
     });
+
+  try {
+    let response = await doFetch(buildHeaders());
+
+    // On 401, try refreshing the API key and retry once
+    if (response.status === 401) {
+      await refreshN8nApiKey();
+      response = await doFetch(buildHeaders());
+    }
 
     if (!response.ok) {
       const error = await response.text();
@@ -1115,6 +1157,19 @@ export function registerN8nHandlers(): void {
   ipcMain.handle("n8n:stop", async () => stopN8n());
   ipcMain.handle("n8n:status", async () => ({ running: await isN8nReachable() }));
   
+  // API Key Management
+  ipcMain.handle("n8n:set-api-key", async (_event, apiKey: string) => {
+    n8nConfig.apiKey = apiKey;
+    const keyFile = path.join(getUserDataPath(), "n8n", "api_key.txt");
+    await fs.ensureDir(path.dirname(keyFile));
+    await fs.writeFile(keyFile, apiKey, "utf-8");
+    return { success: true };
+  });
+  ipcMain.handle("n8n:refresh-auth", async () => {
+    await refreshN8nApiKey();
+    return { success: true };
+  });
+
   // Database Configuration
   ipcMain.handle("n8n:db:configure", async (_event, config: Partial<N8nDatabaseConfig>) => {
     configureN8nDatabase(config);

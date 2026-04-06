@@ -301,6 +301,61 @@ class LibreOfficeClient {
   async shutdown(): Promise<void> {
     return this.ipcRenderer.invoke("libreoffice:shutdown");
   }
+
+  async readDocumentContent(id: number): Promise<{
+    success: boolean;
+    text?: string;
+    rows?: string[][];
+    slides?: Array<{ title: string; content: string; notes?: string }>;
+    error?: string;
+  }> {
+    return this.ipcRenderer.invoke("libreoffice:read-content", id);
+  }
+
+  async updateDocumentContent(
+    id: number,
+    payload: {
+      text?: string;
+      rows?: string[][];
+      slides?: Array<{ title: string; content: string; notes?: string }>;
+    }
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.ipcRenderer.invoke("libreoffice:update-content", id, payload);
+  }
+
+  aiAssist(
+    requestId: string,
+    params: {
+      docId: number;
+      command: "improve" | "grammar" | "summarize" | "continue" | "tone" | "explain" | "custom";
+      selection: string;
+      context?: string;
+      toneValue?: string;
+      customPrompt?: string;
+      provider?: string;
+      model?: string;
+    },
+    onChunk: (text: string) => void,
+    onDone: (result: { text?: string; error?: string }) => void
+  ): () => void {
+    const unsubscribe = (this.ipcRenderer as any).on(
+      "libreoffice:ai-assist-chunk",
+      (data: { requestId: string; text: string; done: boolean; error?: string }) => {
+        if (data.requestId !== requestId) return;
+        if (data.done) {
+          onDone({ error: data.error });
+        } else {
+          onChunk(data.text);
+        }
+      }
+    );
+
+    this.ipcRenderer.invoke("libreoffice:ai-assist", requestId, params).catch((err: Error) => {
+      onDone({ error: err.message });
+    });
+
+    return typeof unsubscribe === "function" ? unsubscribe : () => {};
+  }
 }
 
 export const libreOfficeClient = LibreOfficeClient.getInstance();

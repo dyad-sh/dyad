@@ -6,3 +6,9 @@ export const documentsRoute = createRoute({
   path: "/documents",
   component: lazyRouteComponent(() => import("@/pages/documents")),
 });
+
+export const documentEditorRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/documents/$docId",
+  component: lazyRouteComponent(() => import("@/pages/document-editor")),
+});

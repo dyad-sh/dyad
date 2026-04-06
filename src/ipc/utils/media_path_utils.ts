@@ -6,6 +6,16 @@ import path from "node:path";
 export const DYAD_MEDIA_DIR_NAME = ".dyad/media";
 
 /**
+ * The subdirectory within each app where screenshot files are stored.
+ */
+export const DYAD_SCREENSHOT_DIR_NAME = ".dyad/screenshot";
+
+/**
+ * The filename used for app screenshots.
+ */
+export const SCREENSHOT_FILE_NAME = "screenshot.png";
+
+/**
  * Check if an absolute path falls within the app's .dyad/media directory.
  * Used to validate that file copy operations only read from the allowed media dir.
  */

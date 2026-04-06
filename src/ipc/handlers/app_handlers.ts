@@ -35,6 +35,10 @@ import {
 import { getEnvVar } from "../utils/read_env";
 import { readSettings } from "../../main/settings";
 import { addLog, clearLogs } from "../../lib/log_store";
+import {
+  DYAD_SCREENSHOT_DIR_NAME,
+  SCREENSHOT_FILE_NAME,
+} from "../utils/media_path_utils";
 
 import fixPath from "fix-path";
 
@@ -2688,6 +2692,23 @@ export function registerAppHandlers() {
   createTypedHandler(appContracts.saveAppScreenshot, async (_, params) => {
     const { appId, dataUrl } = params;
 
+    // Validate data URL format
+    if (!/^data:image\/(png|jpe?g|webp);base64,/.test(dataUrl)) {
+      throw new DyadError(
+        "Invalid screenshot data URL format",
+        DyadErrorKind.Validation,
+      );
+    }
+
+    // Enforce a max size of 5 MB
+    const MAX_DATA_URL_LENGTH = 5 * 1024 * 1024;
+    if (dataUrl.length > MAX_DATA_URL_LENGTH) {
+      throw new DyadError(
+        "Screenshot data URL exceeds maximum allowed size",
+        DyadErrorKind.Validation,
+      );
+    }
+
     const appRecord = await db.query.apps.findFirst({
       where: eq(apps.id, appId),
     });
@@ -2696,7 +2717,7 @@ export function registerAppHandlers() {
     }
 
     const appPath = getDyadAppPath(appRecord.path);
-    const screenshotDir = path.join(appPath, ".dyad", "screenshot");
+    const screenshotDir = path.join(appPath, DYAD_SCREENSHOT_DIR_NAME);
 
     // Ensure directory exists and is empty
     await fsPromises.rm(screenshotDir, { recursive: true, force: true });
@@ -2706,7 +2727,7 @@ export function registerAppHandlers() {
     const base64Data = dataUrl.replace(/^data:image\/\w+;base64,/, "");
     const buffer = Buffer.from(base64Data, "base64");
     await fsPromises.writeFile(
-      path.join(screenshotDir, "screenshot.png"),
+      path.join(screenshotDir, SCREENSHOT_FILE_NAME),
       buffer,
     );
   });
@@ -2724,15 +2745,14 @@ export function registerAppHandlers() {
     const appPath = getDyadAppPath(appRecord.path);
     const screenshotPath = path.join(
       appPath,
-      ".dyad",
-      "screenshot",
-      "screenshot.png",
+      DYAD_SCREENSHOT_DIR_NAME,
+      SCREENSHOT_FILE_NAME,
     );
 
     try {
       await fsPromises.access(screenshotPath);
       // Build a dyad-media protocol URL to serve the screenshot
-      const url = `dyad-media://media/${encodeURIComponent(appRecord.path)}/.dyad/screenshot/screenshot.png`;
+      const url = `dyad-media://media/${encodeURIComponent(appRecord.path)}/${DYAD_SCREENSHOT_DIR_NAME}/${SCREENSHOT_FILE_NAME}`;
       return { url };
     } catch {
       return { url: null };

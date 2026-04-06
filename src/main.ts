@@ -36,6 +36,7 @@ import {
   startPerformanceMonitoring,
   stopPerformanceMonitoring,
 } from "./utils/performance_monitor";
+import { DYAD_SCREENSHOT_DIR_NAME } from "./ipc/utils/media_path_utils";
 import {
   stopAllAppsSync,
   stopAppGarbageCollection,
@@ -212,7 +213,7 @@ export async function onReady() {
     //   The app-path segment is URI-encoded, so split on "/" before decoding
     //   to correctly handle absolute paths (which contain encoded slashes).
     const pathSegments = url.pathname.slice(1).split("/");
-    const allowedSubdirs = ["media", "screenshot"];
+    const allowedSubdirs = ["media", path.basename(DYAD_SCREENSHOT_DIR_NAME)];
     if (
       pathSegments.length !== 4 ||
       pathSegments[1] !== ".dyad" ||

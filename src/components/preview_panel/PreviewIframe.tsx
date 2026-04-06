@@ -270,19 +270,45 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
     requestId: string;
   } | null>(null);
   const pendingAnnotatorScreenshotRequestIdRef = useRef<string | null>(null);
+  const captureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keep ref in sync with atom so the message handler always reads the latest value
   useEffect(() => {
     pendingScreenshotAppIdRef.current = pendingScreenshotAppId;
   }, [pendingScreenshotAppId]);
 
+  // Clean up pending screenshot timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (captureTimeoutRef.current !== null) {
+        clearTimeout(captureTimeoutRef.current);
+        captureTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   const captureScreenshot = (appId: number) => {
+    // Cancel any in-flight capture to avoid duplicate/racing requests
+    if (captureTimeoutRef.current !== null) {
+      clearTimeout(captureTimeoutRef.current);
+      captureTimeoutRef.current = null;
+    }
+
     // Wait for page animations to finish before capturing.
-    setTimeout(() => {
+    captureTimeoutRef.current = setTimeout(() => {
+      captureTimeoutRef.current = null;
+      // Bail out if the user switched to a different app during the delay
+      if (selectedAppId !== appId) {
+        setPendingScreenshotAppId(null);
+        return;
+      }
       // Re-read contentWindow inside the timeout to avoid stale references
       // (e.g. if the iframe reloads or gets replaced during the delay).
       const contentWindow = iframeRef.current?.contentWindow;
-      if (!contentWindow) return;
+      if (!contentWindow) {
+        setPendingScreenshotAppId(null);
+        return;
+      }
       const requestId = crypto.randomUUID();
       pendingCommitScreenshotRequestRef.current = {
         appId,
@@ -689,10 +715,16 @@ export const PreviewIframe = ({ loading }: { loading: boolean }) => {
           iframeRef.current?.contentWindow
         ) {
           requestCommitScreenshot();
-        } else if (selectedAppId !== null && iframeRef.current?.contentWindow) {
-          // No pending commit screenshot — check if the app already has a
-          // screenshot on disk. If not (e.g. iframe was still loading when
-          // earlier commits happened), capture one now.
+        } else if (
+          selectedAppId !== null &&
+          iframeRef.current?.contentWindow &&
+          captureTimeoutRef.current === null &&
+          pendingCommitScreenshotRequestRef.current === null
+        ) {
+          // No pending commit screenshot and no capture already in flight —
+          // check if the app already has a screenshot on disk. If not (e.g.
+          // iframe was still loading when earlier commits happened), capture
+          // one now.
           const appId = selectedAppId;
           ipc.app
             .getAppScreenshot({ appId })

@@ -31,7 +31,7 @@ import { useRunApp } from "./useRunApp";
 import { useCountTokens } from "./useCountTokens";
 import { useUserBudgetInfo } from "./useUserBudgetInfo";
 import { usePostHog } from "posthog-js/react";
-import { useCheckProblems } from "./useCheckProblems";
+
 import { useSettings } from "./useSettings";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
@@ -64,7 +64,6 @@ export function useStreamChat({
   const { refreshAppIframe } = useRunApp();
   const { refetchUserBudget } = useUserBudgetInfo();
   const setPendingScreenshotAppId = useSetAtom(pendingScreenshotAppIdAtom);
-  const { checkProblems } = useCheckProblems(selectedAppId);
   const { settings } = useSettings();
   const setRecentStreamChatIds = useSetAtom(recentStreamChatIdsAtom);
   const [queuedMessagesById, setQueuedMessagesById] = useAtom(
@@ -321,8 +320,12 @@ export function useStreamChat({
                   if (targetAppId) {
                     setPendingScreenshotAppId(targetAppId);
                   }
-                  if (settings?.enableAutoFixProblems) {
-                    checkProblems();
+                  if (settings?.enableAutoFixProblems && targetAppId) {
+                    queryClient.invalidateQueries({
+                      queryKey: queryKeys.problems.byApp({
+                        appId: targetAppId,
+                      }),
+                    });
                   }
                 }
                 if (response.extraFiles) {
@@ -457,7 +460,6 @@ export function useStreamChat({
       setIsStreamingById,
       setIsPreviewOpen,
       setStreamCompletedSuccessfullyById,
-      checkProblems,
       selectedAppId,
       refetchUserBudget,
       settings,

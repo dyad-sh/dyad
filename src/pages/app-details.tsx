@@ -421,7 +421,7 @@ export default function AppDetailsPage() {
           <div className="mb-4 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
             <img
               src={screenshotData.url}
-              alt="App preview"
+              alt={`Preview of ${selectedApp?.name ?? "app"}`}
               className="w-full max-h-80 object-cover object-top"
             />
           </div>

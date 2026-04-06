@@ -249,7 +249,11 @@ export function writeSettings(settings: Partial<UserSettings>): void {
     }
     // Use StoredUserSettingsSchema for writing to maintain backwards compatibility
     const validatedSettings = StoredUserSettingsSchema.parse(newSettings);
-    fs.writeFileSync(filePath, JSON.stringify(validatedSettings, null, 2));
+    // Write to a temp file first, then atomically rename to prevent corruption
+    // if the process is killed mid-write (fixes settings wipe on crash).
+    const tempPath = filePath + ".tmp";
+    fs.writeFileSync(tempPath, JSON.stringify(validatedSettings, null, 2));
+    fs.renameSync(tempPath, filePath);
   } catch (error) {
     logger.error("Error writing settings:", error);
   }

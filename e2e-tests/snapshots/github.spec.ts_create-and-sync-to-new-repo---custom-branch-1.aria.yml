@@ -11,6 +11,7 @@
 - button:
   - img
 - text: new-branch
-- button "Sync to GitHub"
+- button "Syncing..." [disabled]:
+  - img
+  - text: ""
 - button "Disconnect from repo"
-- paragraph: Successfully pushed to GitHub!

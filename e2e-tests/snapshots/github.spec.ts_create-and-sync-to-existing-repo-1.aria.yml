@@ -7,6 +7,7 @@
 - heading "Branches" [level=3]
 - paragraph: Manage your branches, merge, delete, and more.
 - img
-- button "Sync to GitHub"
+- button "Syncing..." [disabled]:
+  - img
+  - text: ""
 - button "Disconnect from repo"
-- paragraph: Successfully pushed to GitHub!

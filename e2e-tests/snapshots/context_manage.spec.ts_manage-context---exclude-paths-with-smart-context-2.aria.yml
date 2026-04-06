@@ -10,10 +10,6 @@
   - text: /4 files, ~\d+ tokens/
   - button:
     - img
-  - button "manual/**"
-  - text: /3 files, ~\d+ tokens/
-  - button:
-    - img
   - heading "Exclude Paths" [level=3]
   - paragraph:
     - text: These files will be excluded from the context.
@@ -21,6 +17,10 @@
       - img
   - textbox "node_modules/**/*"
   - button "Add"
+  - button "src/components/**"
+  - text: /2 files, ~\d+ tokens/
+  - button:
+    - img
   - button "exclude/exclude.ts"
   - text: /1 files, ~\d+ tokens/
   - button:
@@ -34,10 +34,6 @@
   - button "Add"
   - button "a.ts"
   - text: /1 files, ~\d+ tokens/
-  - button:
-    - img
-  - button "exclude/**"
-  - text: /2 files, ~\d+ tokens/
   - button:
     - img
   - button "Close":

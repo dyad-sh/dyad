@@ -50,6 +50,7 @@ typings/
 
 # TypeScript cache
 *.tsbuildinfo
+ts_errors.txt
 
 # Optional npm cache directory
 .npm

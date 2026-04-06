@@ -339,6 +339,7 @@ describe("handleLocalAgentStream", () => {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
           dyadRequestId,
+          effectiveStreamMode: "build",
         },
       );
 
@@ -368,6 +369,7 @@ describe("handleLocalAgentStream", () => {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
           dyadRequestId,
+          effectiveStreamMode: "build",
         },
       );
 
@@ -394,6 +396,7 @@ describe("handleLocalAgentStream", () => {
             placeholderMessageId: 10,
             systemPrompt: "You are helpful",
             dyadRequestId,
+            effectiveStreamMode: "local-agent",
           },
         ),
       ).rejects.toThrow("Chat not found: 999");
@@ -415,6 +418,7 @@ describe("handleLocalAgentStream", () => {
             placeholderMessageId: 10,
             systemPrompt: "You are helpful",
             dyadRequestId,
+            effectiveStreamMode: "local-agent",
           },
         ),
       ).rejects.toThrow("Chat not found: 1");
@@ -442,6 +446,7 @@ describe("handleLocalAgentStream", () => {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
           dyadRequestId,
+          effectiveStreamMode: "local-agent",
         },
       );
 
@@ -558,6 +563,7 @@ describe("handleLocalAgentStream", () => {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
           dyadRequestId,
+          effectiveStreamMode: "local-agent",
         },
       );
 
@@ -787,6 +793,7 @@ describe("handleLocalAgentStream", () => {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
           dyadRequestId,
+          effectiveStreamMode: "local-agent",
         },
       );
 
@@ -824,6 +831,7 @@ describe("handleLocalAgentStream", () => {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
           dyadRequestId,
+          effectiveStreamMode: "local-agent",
         },
       );
 
@@ -898,6 +906,7 @@ describe("handleLocalAgentStream", () => {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
           dyadRequestId,
+          effectiveStreamMode: "local-agent",
         },
       );
 
@@ -991,6 +1000,7 @@ describe("handleLocalAgentStream", () => {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
           dyadRequestId,
+          effectiveStreamMode: "local-agent",
         },
       );
 
@@ -1042,7 +1052,11 @@ describe("handleLocalAgentStream", () => {
 
         if (attemptCount === 1) {
           return {
-            fullStream: (async function* () {
+            fullStream: (async function* (): AsyncGenerator<
+              { type: string; [key: string]: unknown },
+              void,
+              unknown
+            > {
               throw {
                 type: "error",
                 sequence_number: 0,
@@ -1052,10 +1066,12 @@ describe("handleLocalAgentStream", () => {
                   message: "The server had an error processing your request.",
                 },
               };
+              // This yield is never reached, but required for generator signature.
+              yield { type: "error" };
             })(),
             response: Promise.resolve({ messages: [] }),
             steps: Promise.resolve([]),
-          };
+          } as unknown as FakeStreamResult;
         }
 
         return {
@@ -1083,6 +1099,7 @@ describe("handleLocalAgentStream", () => {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
           dyadRequestId,
+          effectiveStreamMode: "local-agent",
         },
       );
 
@@ -1131,6 +1148,7 @@ describe("handleLocalAgentStream", () => {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
           dyadRequestId,
+          effectiveStreamMode: "local-agent",
         },
       );
 
@@ -1168,6 +1186,7 @@ describe("handleLocalAgentStream", () => {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
           dyadRequestId,
+          effectiveStreamMode: "local-agent",
         },
       );
 
@@ -1283,6 +1302,7 @@ describe("handleLocalAgentStream", () => {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
           dyadRequestId,
+          effectiveStreamMode: "local-agent",
         },
       );
 
@@ -1349,6 +1369,7 @@ describe("handleLocalAgentStream", () => {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
           dyadRequestId,
+          effectiveStreamMode: "local-agent",
         },
       );
 
@@ -1393,6 +1414,7 @@ describe("handleLocalAgentStream", () => {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
           dyadRequestId,
+          effectiveStreamMode: "local-agent",
         },
       );
 
@@ -1426,6 +1448,7 @@ describe("handleLocalAgentStream", () => {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
           dyadRequestId,
+          effectiveStreamMode: "local-agent",
         },
       );
 
@@ -1455,6 +1478,7 @@ describe("handleLocalAgentStream", () => {
           placeholderMessageId: 10,
           systemPrompt: "You are helpful",
           dyadRequestId,
+          effectiveStreamMode: "local-agent",
         },
       );
 

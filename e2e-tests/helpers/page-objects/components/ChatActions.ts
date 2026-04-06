@@ -120,6 +120,12 @@ export class ChatActions {
     await this.selectChatMode("local-agent");
   }
 
+  async getChatMode(): Promise<string> {
+    // Get the text content of the chat mode selector button
+    const modeButton = this.page.getByTestId("chat-mode-selector");
+    return (await modeButton.textContent()) || "";
+  }
+
   async snapshotChatInputContainer() {
     await expect(this.getChatInputContainer()).toMatchAriaSnapshot();
   }

@@ -21,13 +21,10 @@
       - img
   - textbox "src/**/*.config.ts"
   - button "Add"
-  - button "a.ts"
-  - text: /1 files, ~\d+ tokens/
-  - button:
-    - img
   - button "manual/**"
   - text: /3 files, ~\d+ tokens/
   - button:
     - img
   - button "Close":
     - img
+    - text: ""

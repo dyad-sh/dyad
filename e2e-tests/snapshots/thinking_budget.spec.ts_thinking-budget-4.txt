@@ -509,8 +509,7 @@
         ],
         "messageIndexToFilePathToFileId": {
           "1": {},
-          "3": {},
-          "5": {}
+          "3": {}
         },
         "hasExternalChanges": true
       },

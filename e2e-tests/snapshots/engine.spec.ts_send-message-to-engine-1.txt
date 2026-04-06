@@ -491,9 +491,7 @@
             "fileId": "[[FILE_ID_20]]"
           }
         ],
-        "messageIndexToFilePathToFileId": {
-          "1": {}
-        },
+        "messageIndexToFilePathToFileId": {},
         "hasExternalChanges": true
       },
       "enable_lazy_edits": true,

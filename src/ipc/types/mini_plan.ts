@@ -81,6 +81,55 @@ export const MiniPlanFieldEditSchema = z.object({
 
 export type MiniPlanFieldEditPayload = z.infer<typeof MiniPlanFieldEditSchema>;
 
+export const MINI_PLAN_VISUAL_EDITABLE_FIELDS = [
+  "prompt",
+  "description",
+] as const;
+
+export const MiniPlanVisualEditableFieldSchema = z.enum(
+  MINI_PLAN_VISUAL_EDITABLE_FIELDS,
+);
+
+export type MiniPlanVisualEditableField = z.infer<
+  typeof MiniPlanVisualEditableFieldSchema
+>;
+
+export const MiniPlanVisualEditSchema = z.object({
+  chatId: z.number(),
+  visualId: z.string(),
+  field: MiniPlanVisualEditableFieldSchema,
+  value: z.string(),
+});
+
+export type MiniPlanVisualEditPayload = z.infer<
+  typeof MiniPlanVisualEditSchema
+>;
+
+export const MiniPlanAddVisualSchema = z.object({
+  chatId: z.number(),
+  type: z.enum([
+    "logo",
+    "photo",
+    "illustration",
+    "icon",
+    "background",
+    "other",
+  ]),
+  description: z.string(),
+  prompt: z.string(),
+});
+
+export type MiniPlanAddVisualPayload = z.infer<typeof MiniPlanAddVisualSchema>;
+
+export const MiniPlanRemoveVisualSchema = z.object({
+  chatId: z.number(),
+  visualId: z.string(),
+});
+
+export type MiniPlanRemoveVisualPayload = z.infer<
+  typeof MiniPlanRemoveVisualSchema
+>;
+
 export const MiniPlanApprovedSchema = z.object({
   chatId: z.number(),
 });
@@ -122,6 +171,24 @@ export const miniPlanContracts = {
   editField: defineContract({
     channel: "mini-plan:edit-field",
     input: MiniPlanFieldEditSchema,
+    output: z.void(),
+  }),
+
+  editVisual: defineContract({
+    channel: "mini-plan:edit-visual",
+    input: MiniPlanVisualEditSchema,
+    output: z.void(),
+  }),
+
+  addVisual: defineContract({
+    channel: "mini-plan:add-visual",
+    input: MiniPlanAddVisualSchema,
+    output: z.object({ visualId: z.string() }),
+  }),
+
+  removeVisual: defineContract({
+    channel: "mini-plan:remove-visual",
+    input: MiniPlanRemoveVisualSchema,
     output: z.void(),
   }),
 } as const;

@@ -41,6 +41,7 @@ import {
   buildAgentToolSet,
   requireAgentToolConsent,
   clearPendingConsentsForChat,
+  clearPendingMiniPlanApprovalsForChat,
 } from "./tool_definitions";
 import {
   questionnaireResolver,
@@ -1072,6 +1073,7 @@ export async function handleLocalAgentStream(
                 clearPendingConsentsForChat(req.chatId);
                 questionnaireResolver.abortChat(req.chatId);
                 integrationResolver.abortChat(req.chatId);
+                clearPendingMiniPlanApprovalsForChat(req.chatId);
                 break;
               }
 
@@ -1540,6 +1542,7 @@ export async function handleLocalAgentStream(
     clearPendingConsentsForChat(req.chatId);
     questionnaireResolver.abortChat(req.chatId);
     integrationResolver.abortChat(req.chatId);
+    clearPendingMiniPlanApprovalsForChat(req.chatId);
 
     if (abortController.signal.aborted) {
       // Handle cancellation

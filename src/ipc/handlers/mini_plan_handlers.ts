@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import log from "electron-log";
 import { createTypedHandler } from "./base";
 import {
@@ -6,6 +7,7 @@ import {
   type MiniPlanVisual,
 } from "../types/mini_plan";
 import { safeSend } from "../utils/safe_sender";
+import { resolveMiniPlanApproval } from "@/pro/main/ipc/handlers/local_agent/tool_definitions";
 
 const logger = log.scope("mini_plan_handlers");
 
@@ -41,6 +43,9 @@ export function registerMiniPlanHandlers() {
       safeSend(event.sender, "mini-plan:approved", {
         chatId: params.chatId,
       });
+
+      // Resolve the pending promise so the agent can continue
+      resolveMiniPlanApproval(params.chatId, true);
     }
   });
 
@@ -77,5 +82,76 @@ export function registerMiniPlanHandlers() {
       default:
         logger.warn(`Unknown mini plan field: ${params.field}`);
     }
+  });
+
+  createTypedHandler(miniPlanContracts.editVisual, async (_, params) => {
+    const plan = miniPlanStore.get(params.chatId);
+    if (!plan) {
+      logger.warn(
+        `No mini plan found for chat ${params.chatId} when editing visual ${params.field}`,
+      );
+      return;
+    }
+
+    if (plan.approved) {
+      logger.warn(`Cannot edit approved mini plan for chat ${params.chatId}`);
+      return;
+    }
+
+    const visual = plan.visuals.find((v) => v.id === params.visualId);
+    if (!visual) {
+      logger.warn(
+        `Visual ${params.visualId} not found in mini plan for chat ${params.chatId}`,
+      );
+      return;
+    }
+
+    visual[params.field] = params.value;
+  });
+
+  createTypedHandler(miniPlanContracts.addVisual, async (_, params) => {
+    const plan = miniPlanStore.get(params.chatId);
+    if (!plan) {
+      logger.warn(
+        `No mini plan found for chat ${params.chatId} when adding visual`,
+      );
+      return { visualId: "" };
+    }
+
+    if (plan.approved) {
+      logger.warn(
+        `Cannot add visual to approved mini plan for chat ${params.chatId}`,
+      );
+      return { visualId: "" };
+    }
+
+    const visualId = `visual_${crypto.randomUUID().split("-")[0]}`;
+    plan.visuals.push({
+      id: visualId,
+      type: params.type,
+      description: params.description,
+      prompt: params.prompt,
+    });
+
+    return { visualId };
+  });
+
+  createTypedHandler(miniPlanContracts.removeVisual, async (_, params) => {
+    const plan = miniPlanStore.get(params.chatId);
+    if (!plan) {
+      logger.warn(
+        `No mini plan found for chat ${params.chatId} when removing visual`,
+      );
+      return;
+    }
+
+    if (plan.approved) {
+      logger.warn(
+        `Cannot remove visual from approved mini plan for chat ${params.chatId}`,
+      );
+      return;
+    }
+
+    plan.visuals = plan.visuals.filter((v) => v.id !== params.visualId);
   });
 }

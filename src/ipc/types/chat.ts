@@ -5,6 +5,7 @@ import {
   createClient,
   createStreamClient,
 } from "../contracts/core";
+import { ChatModeSchema } from "../../lib/schemas";
 
 // =============================================================================
 // Chat Schemas
@@ -38,6 +39,7 @@ export const ChatSchema = z.object({
   messages: z.array(MessageSchema),
   initialCommitHash: z.string().nullable().optional(),
   dbTimestamp: z.string().nullable().optional(),
+  chatMode: ChatModeSchema.nullable().optional(),
 });
 
 export type Chat = z.infer<typeof ChatSchema>;
@@ -86,6 +88,7 @@ export const ChatStreamParamsSchema = z.object({
   redo: z.boolean().optional(),
   attachments: z.array(ChatAttachmentSchema).optional(),
   selectedComponents: z.array(ComponentSelectionSchema).optional(),
+  chatMode: ChatModeSchema.optional(),
 });
 
 export type ChatStreamParams = z.infer<typeof ChatStreamParamsSchema>;
@@ -191,6 +194,8 @@ export const chatContracts = {
         id: z.number(),
         appId: z.number(),
         title: z.string().nullable(),
+        // Persisted chat mode for this specific chat (null = use global setting)
+        chatMode: ChatModeSchema.nullable(),
         createdAt: z.date(),
       }),
     ),
@@ -198,13 +203,27 @@ export const chatContracts = {
 
   createChat: defineContract({
     channel: "create-chat",
-    input: z.number(), // appId
+    input: z.object({
+      appId: z.number(),
+      // Initial chat mode to persist for this new chat
+      // Falls back to global default if not specified
+      initialChatMode: ChatModeSchema.optional(),
+    }),
     output: CreateChatResultSchema,
   }),
 
   updateChat: defineContract({
     channel: "update-chat",
     input: UpdateChatParamsSchema,
+    output: z.void(),
+  }),
+
+  updateChatMode: defineContract({
+    channel: "update-chat-mode",
+    input: z.object({
+      chatId: z.number(),
+      chatMode: ChatModeSchema.nullable(),
+    }),
     output: z.void(),
   }),
 
@@ -233,6 +252,7 @@ export const chatContracts = {
         title: z.string().nullable(),
         createdAt: z.date(),
         matchedMessageContent: z.string().nullable(),
+        chatMode: ChatModeSchema.nullable(),
       }),
     ),
   }),

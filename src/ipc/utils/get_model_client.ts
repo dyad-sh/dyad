@@ -44,9 +44,12 @@ export interface ModelClient {
 }
 
 const logger = log.scope("getModelClient");
+import type { ChatMode } from "@/lib/schemas";
+
 export async function getModelClient(
   model: LargeLanguageModel,
   settings: UserSettings,
+  chatMode?: ChatMode,
   // files?: File[],
 ): Promise<{
   modelClient: ModelClient;
@@ -80,7 +83,7 @@ export async function getModelClient(
         baseURL: dyadEngineUrl ?? "https://engine.dyad.sh/v1",
         dyadOptions: {
           enableLazyEdits:
-            settings.selectedChatMode === "ask"
+            (chatMode ?? settings.selectedChatMode) === "ask"
               ? false
               : settings.enableProLazyEditsMode &&
                 settings.proLazyEditsMode !== "v2",
@@ -105,6 +108,7 @@ export async function getModelClient(
         settings,
         provider,
         modelId: `${providerConfig.gatewayPrefix || ""}${modelName}`,
+        chatMode,
       });
 
       return {
@@ -174,6 +178,7 @@ export async function getModelClient(
             name: resolvedModel.apiName,
           },
           settings,
+          chatMode,
         );
       }
     }
@@ -190,14 +195,16 @@ async function getProModelClient({
   settings,
   provider,
   modelId,
+  chatMode,
 }: {
   model: LargeLanguageModel;
   settings: UserSettings;
   provider: DyadEngineProvider;
   modelId: string;
+  chatMode?: "ask" | "build" | "local-agent" | "plan";
 }): Promise<ModelClient> {
   if (
-    settings.selectedChatMode === "local-agent" &&
+    (chatMode ?? settings.selectedChatMode) === "local-agent" &&
     model.provider === "auto" &&
     model.name === "auto"
   ) {
@@ -251,7 +258,7 @@ async function getProModelClient({
     };
   }
   if (
-    settings.selectedChatMode === "local-agent" &&
+    (chatMode ?? settings.selectedChatMode) === "local-agent" &&
     model.provider === "openai"
   ) {
     return {

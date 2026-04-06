@@ -8,12 +8,21 @@ export const SecretSchema = z.object({
 export type Secret = z.infer<typeof SecretSchema>;
 
 /**
+ * Chat modes (excludes deprecated values like "agent")
+ * Keep this early since it's used in multiple schemas below
+ */
+export const ChatModeSchema = z.enum(["build", "ask", "local-agent", "plan"]);
+export type ChatMode = z.infer<typeof ChatModeSchema>;
+
+/**
  * Zod schema for chat summary objects returned by the get-chats IPC
  */
 export const ChatSummarySchema = z.object({
   id: z.number(),
   appId: z.number(),
   title: z.string().nullable(),
+  // Persisted chat mode for this specific chat (null = use global setting)
+  chatMode: ChatModeSchema.nullable(),
   createdAt: z.date(),
 });
 
@@ -36,6 +45,8 @@ export const ChatSearchResultSchema = z.object({
   title: z.string().nullable(),
   createdAt: z.date(),
   matchedMessageContent: z.string().nullable(),
+  // Persisted chat mode for this specific chat (null = use global setting)
+  chatMode: ChatModeSchema.nullable(),
 });
 
 /**
@@ -154,12 +165,6 @@ export const StoredChatModeSchema = z.enum([
   "plan",
 ]);
 export type StoredChatMode = z.infer<typeof StoredChatModeSchema>;
-
-/**
- * Active chat modes (excludes deprecated values)
- */
-export const ChatModeSchema = z.enum(["build", "ask", "local-agent", "plan"]);
-export type ChatMode = z.infer<typeof ChatModeSchema>;
 
 export const GitHubSecretsSchema = z.object({
   accessToken: SecretSchema.nullable(),

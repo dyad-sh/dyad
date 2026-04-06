@@ -27,7 +27,7 @@ export type FreeAgentQuotaStatus = z.infer<typeof FreeAgentQuotaStatusSchema>;
 
 /**
  * Free agent quota contracts define the IPC interface for managing
- * the 5-message-per-day quota for non-Pro users using Basic Agent mode.
+ * the Basic Agent per-window message quota for non-Pro users.
  */
 export const freeAgentQuotaContracts = {
   /**

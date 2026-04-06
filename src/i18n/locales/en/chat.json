@@ -1,5 +1,10 @@
 {
   "newChat": "New Chat",
+  "newApp": "New App",
+  "newChatInApp": "New Chat",
+  "newTabOptions": "Add new tab",
+  "selectAppFirst": "Select an app first",
+  "newAppTab": "New app...",
   "recentChats": "Recent Chats",
   "searchChats": "Search chats",
   "closeChatTab": "Close tab: {{title}}",

@@ -6,6 +6,7 @@
   "closeTab": "Fechar",
   "closeOtherTabs": "Fechar outras abas",
   "closeTabsToRight": "Fechar abas à direita",
+  "groupTabsByApp": "Agrupar abas por aplicativo",
   "chatInProgress": "Chat em andamento",
   "newActivity": "Nova atividade",
   "openOverflowTabs": "Abrir mais abas ({{count}})",

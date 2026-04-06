@@ -59,7 +59,9 @@ test("reference file from editor file tree", async ({ po }) => {
   await fileRow.hover();
 
   // Click the "Mention file in chat" button within this specific row
-  const mentionButton = fileRow.locator('button[title="Mention file in chat"]');
+  const mentionButton = fileRow.getByRole("button", {
+    name: "Mention file in chat",
+  });
   await expect(mentionButton).toBeVisible({ timeout: Timeout.SHORT });
   await mentionButton.click();
 

@@ -42,12 +42,13 @@ const useDebouncedValue = <T,>(value: T, delay = 200) => {
 
 const MentionFileButton = ({ filePath }: { filePath: string }) => {
   const handleMentionFile = useMentionFile(filePath);
+  const { t } = useTranslation("home");
   return (
     <button
       type="button"
       className="ml-1 flex-shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
       onClick={handleMentionFile}
-      aria-label="Mention file in chat"
+      aria-label={t("mentionFileInChat")}
     >
       <MessageCircle size={14} />
     </button>
@@ -60,8 +61,8 @@ const useMentionFile = (filePath: string) => {
     e.stopPropagation();
     const mention = `@file:${filePath}`;
     setChatInputValue((prev) => {
-      const tokens = prev.split(/\s+/);
-      if (tokens.includes(mention)) return prev;
+      const escaped = mention.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (new RegExp(`(^|\\s)${escaped}(\\s|$)`).test(prev)) return prev;
       const separator = prev.trim() ? " " : "";
       return prev.trimEnd() + separator + mention + " ";
     });

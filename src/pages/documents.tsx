@@ -3,7 +3,7 @@
  * Create, manage, and export documents using LibreOffice
  */
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   FileText,
@@ -35,6 +35,8 @@ import {
   ChevronDown,
   Zap,
   Monitor,
+  Loader2,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -206,6 +208,22 @@ export default function DocumentsPage() {
   const [aiLength, setAiLength] = useState<"short" | "medium" | "long" | "detailed">("medium");
   // Model selection for AI generation: undefined = use global settings default, "__smart__" = smart auto routing
   const [aiSelectedModel, setAiSelectedModel] = useState<{ provider: string; name: string } | "__smart__" | undefined>(undefined);
+
+  // Streaming generation state
+  const [streamingState, setStreamingState] = useState<{
+    requestId: string;
+    text: string;
+    isActive: boolean;
+    documentName: string;
+  } | null>(null);
+  const streamCleanupRef = useRef<(() => void) | null>(null);
+
+  // Cleanup stream on unmount
+  useEffect(() => {
+    return () => {
+      streamCleanupRef.current?.();
+    };
+  }, []);
 
   // Load available models for the model picker
   const { models: localModels, loadModels: loadLocalModels } = useLocalModels();
@@ -382,34 +400,53 @@ export default function DocumentsPage() {
       showError("Please enter both a name and description");
       return;
     }
-    createDocMutation.mutate({
-      name: aiDocName,
-      type: aiDocType,
-      aiGenerate: {
-        prompt: aiPrompt,
-        tone: aiTone,
-        length: aiLength,
-        ...(aiSelectedModel === "__smart__"
-          ? { routingMode: "smart" as const }
-          : aiSelectedModel
-            ? { provider: aiSelectedModel.provider, model: aiSelectedModel.name, routingMode: "manual" as const }
-            : {}),
-      },
-    });
+    const requestId = crypto.randomUUID();
+    const docName = aiDocName;
     setAiDialogOpen(false);
+    setStreamingState({ requestId, text: "", isActive: true, documentName: docName });
+
+    const cleanup = libreOfficeClient.streamGenerateDocument(
+      {
+        requestId,
+        type: aiDocType,
+        name: docName,
+        options: {
+          prompt: aiPrompt,
+          tone: aiTone,
+          length: aiLength,
+          ...(aiSelectedModel === "__smart__"
+            ? { routingMode: "smart" as const }
+            : aiSelectedModel
+              ? { provider: aiSelectedModel.provider, model: aiSelectedModel.name, routingMode: "manual" as const }
+              : {}),
+        },
+      },
+      (chunk) => {
+        setStreamingState((prev) => prev ? { ...prev, text: prev.text + chunk } : null);
+      },
+      (result) => {
+        streamCleanupRef.current = null;
+        if (result.error) {
+          showError(result.error);
+          setStreamingState(null);
+        } else {
+          setStreamingState((prev) => prev ? { ...prev, isActive: false } : null);
+          queryClient.invalidateQueries({ queryKey: ["documents"] });
+        }
+      }
+    );
+    streamCleanupRef.current = cleanup;
+
     setAiPrompt("");
     setAiDocName("");
   };
 
   const handleTemplateCreate = (template: (typeof JOYCREATE_TEMPLATES)[number]) => {
-    createDocMutation.mutate({
-      name: template.name,
-      type: template.type,
-      aiGenerate: {
-        prompt: template.prompt,
-        tone: template.tone,
-      },
-    });
+    setAiDocName(template.name);
+    setAiDocType(template.type);
+    setAiPrompt(template.prompt);
+    setAiTone(template.tone);
+    setAiDialogOpen(true);
   };
 
   // Filter documents based on search
@@ -846,11 +883,11 @@ export default function DocumentsPage() {
                   </Button>
                   <Button
                     onClick={handleAiGenerate}
-                    disabled={createDocMutation.isPending}
+                    disabled={!aiPrompt.trim() || !aiDocName.trim()}
                     className="bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 border-0"
                   >
                     <Sparkles className="h-4 w-4 mr-2" />
-                    {createDocMutation.isPending ? "Generating..." : "Generate"}
+                    Generate
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -1021,11 +1058,10 @@ export default function DocumentsPage() {
                 {JOYCREATE_TEMPLATES.map((template) => (
                   <button
                     key={template.id}
-                    disabled={createDocMutation.isPending}
                     onClick={() => handleTemplateCreate(template)}
                     className="group text-left p-4 rounded-xl border border-border/50 bg-background/50 backdrop-blur-sm
                       hover:border-violet-500/30 hover:shadow-lg hover:shadow-violet-500/5 hover:scale-[1.02]
-                      transition-all duration-300 disabled:opacity-50 disabled:cursor-wait"
+                      transition-all duration-300"
                   >
                     <div className="flex items-start gap-3">
                       <div className={`p-2.5 rounded-lg bg-gradient-to-br ${template.gradient} text-white shrink-0`}>
@@ -1039,6 +1075,10 @@ export default function DocumentsPage() {
                           </Badge>
                         </div>
                         <p className="text-xs text-muted-foreground line-clamp-2">{template.description}</p>
+                        <p className="text-[10px] text-violet-500 mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                          <Wand2 className="h-2.5 w-2.5" />
+                          Click to configure &amp; generate
+                        </p>
                       </div>
                     </div>
                   </button>
@@ -1083,6 +1123,68 @@ export default function DocumentsPage() {
           </div>
         )}
       </div>
+
+      {/* Streaming Generation Preview */}
+      {streamingState && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-2xl mx-4 rounded-2xl border border-border/50 bg-background shadow-2xl shadow-violet-500/10 overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border/50 bg-gradient-to-r from-violet-500/10 via-purple-500/10 to-indigo-500/10">
+              <div className="flex items-center gap-3">
+                {streamingState.isActive ? (
+                  <Loader2 className="h-5 w-5 text-violet-500 animate-spin" />
+                ) : (
+                  <Sparkles className="h-5 w-5 text-violet-500" />
+                )}
+                <div>
+                  <h3 className="font-semibold text-sm">
+                    {streamingState.isActive ? "AI is writing your document..." : "Document created!"}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">{streamingState.documentName}</p>
+                </div>
+              </div>
+              {!streamingState.isActive && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setStreamingState(null)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+
+            {/* Live text stream */}
+            <div className="px-6 py-4 max-h-96 overflow-auto font-mono text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed bg-muted/20">
+              {streamingState.text || (
+                <span className="text-muted-foreground/50 italic">Waiting for AI response…</span>
+              )}
+              {streamingState.isActive && (
+                <span className="inline-block w-1.5 h-4 bg-violet-500 animate-pulse ml-0.5 align-middle" />
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-border/50 flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">
+                {streamingState.isActive
+                  ? `${streamingState.text.length} characters generated`
+                  : "Your document is ready in the library above"}
+              </span>
+              {!streamingState.isActive && (
+                <Button
+                  size="sm"
+                  className="bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 border-0"
+                  onClick={() => setStreamingState(null)}
+                >
+                  View Documents
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
